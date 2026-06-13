@@ -94,7 +94,7 @@ class TestAspectRegistryWired(BrainTestBase):
 
     def test_all_with_counts_shape(self):
         result = self.brain.aspects.all_with_counts()
-        self.assertEqual(len(result), 14)
+        self.assertEqual(len(result), 15)
         for entry in result:
             self.assertIn('name', entry)
             self.assertIn('node_types_count', entry)
@@ -104,21 +104,21 @@ class TestAspectRegistryWired(BrainTestBase):
 
 
 class TestAspectRegistryIdempotentAcrossBrains(BrainTestBase):
-    """Two Brains over the same db_dir both load the 14 aspects consistently."""
+    """Two Brains over the same db_dir both load the required aspects consistently."""
 
     needs_embedder = False
 
     def test_second_brain_loads_existing_aspects(self):
-        # First brain loads the 14 from aspects_v1.json
+        # First brain loads the required set from aspects_v1.json
         first_count = len(self.brain.aspects.all())
-        self.assertEqual(first_count, 14)
+        self.assertEqual(first_count, 15)
 
-        # Second brain over the same db_dir reads the same JSON → same 14
+        # Second brain over the same db_dir reads the same JSON → same set
         from servers.brain import Brain
         second_brain = Brain(self.db_path, skip_embedder=True)
         second_count = len(second_brain.aspects.all())
-        self.assertEqual(second_count, 14,
-                         'second brain should load the same 14 aspects from JSON')
+        self.assertEqual(second_count, 15,
+                         'second brain should load the same aspects from JSON')
 
 
 class TestAspectRegistryHealerDisplayLabel(BrainTestBase):

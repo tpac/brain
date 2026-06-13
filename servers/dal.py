@@ -2533,7 +2533,8 @@ class GraphDAL:
 
         return {owner: list(nbrs.values()) for owner, nbrs in grouped.items()}
 
-    def archive_dangling_edges(self, archived_by: str) -> int:
+    def archive_dangling_edges(self, archived_by: str,
+                               exempt_relations=()) -> int:
         """Archive active edge_relations rows whose source or target node is archived.
 
         Invariant restorer: the brain's rule is `Archive edges alongside nodes —
@@ -2544,6 +2545,13 @@ class GraphDAL:
         Args:
             archived_by: encoding_source-style tag for the archive action
                 (e.g. 's2:healer', 'migration:cleanup_2026_05_16').
+            exempt_relations: relations that are SUPPOSED to span an archived
+                endpoint and must NOT be scrubbed — the survivor-redirect link
+                `absorbed_into` (resolve_live walks it; in a chain A→B→C its
+                target is itself archived). The caller sources these from
+                `brain.aspects.relations_in(['survivor_lineage'])` so the
+                taxonomy, not this method, owns the list. DAL stays
+                aspect-agnostic — it just takes the strings.
 
         Returns count of edge_relations rows newly archived.
         """
@@ -2553,12 +2561,18 @@ class GraphDAL:
         # unix-ms writer into the TEXT column, which broke lexicographic
         # time reads and rendered as 1970 epoch dates.)
         ts = _now()
+        exempt = list(exempt_relations or ())
+        exempt_clause = ''
+        if exempt:
+            exempt_clause = 'AND relation NOT IN (%s)' % ','.join(
+                '?' * len(exempt))
         cur = self.conn.execute("""
             UPDATE edge_relations
                SET archived = 1,
                    archived_at = ?,
                    archived_by = ?
              WHERE archived = 0
+               %s
                AND edge_id IN (
                  SELECT er.edge_id FROM edge_relations er
                  JOIN edges e ON e.edge_id = er.edge_id
@@ -2567,7 +2581,7 @@ class GraphDAL:
                  WHERE er.archived = 0
                    AND (n_src.archived = 1 OR n_tgt.archived = 1)
                )
-        """, (ts, archived_by))
+        """ % exempt_clause, [ts, archived_by] + exempt)
         return cur.rowcount
 
     def has_edge_between(self, source_ids, target_ids,
@@ -2819,8 +2833,13 @@ class GraphDAL:
     # Hebbian strengthening now uses atomic UPSERT inside
     # recall_write_queue._apply_hebbian_pairs via add_relation.
 
-    def delete_node_edges(self, node_id: str) -> int:
+    def delete_node_edges(self, node_id: str,
+                          archived_by: str = 'delete_node_edges',
+                          exempt_relations=()) -> int:
         """Soft-archive all edge_relations touching a node (v25).
+
+        Single source for "archive a node's edges" — archive_node routes here
+        (passing its real `archived_by`) instead of duplicating the SQL.
 
         Commit is gated on self.conn.in_batch (commit_unless_batched) — a no-op
         inside a brain_batch envelope, a real commit standalone.
@@ -2829,6 +2848,15 @@ class GraphDAL:
         destroyed edge provenance forever. Now sets archived=1 on the
         relations and leaves the edges aggregate row intact. Returns count
         of relations archived.
+
+        Args:
+            archived_by: encoding_source-style tag (e.g. 's2:consolidation').
+            exempt_relations: relations that must outlive the node — the
+                survivor-redirect link `absorbed_into`, or the resolve_live
+                chain breaks. Caller sources these from
+                `brain.aspects.relations_in(['survivor_lineage'])`; the DAL
+                stays aspect-agnostic. hard_delete_node_edges removes
+                everything regardless (a deleted endpoint leaves no chain).
         """
         edge_ids = [r[0] for r in self.conn.execute(
             'SELECT edge_id FROM edges WHERE source_id = ? OR target_id = ?',
@@ -2838,7 +2866,11 @@ class GraphDAL:
         archived_count = 0
         if edge_ids:
             ts = _now()
-            ph = ','.join('?' * len(edge_ids))
+            exempt = list(exempt_relations or ())
+            exempt_clause = ''
+            if exempt:
+                exempt_clause = 'AND relation NOT IN (%s)' % ','.join(
+                    '?' * len(exempt))
             # NULL the stored embedding on archive — same pattern node
             # archive uses (DELETE FROM node_enrichments). Archived edges
             # are never read by spread/select_edges (every read filters
@@ -2847,13 +2879,17 @@ class GraphDAL:
             # created=True fires enqueue_edge and the embed_queue worker
             # re-embeds async. Symmetric with nodes; storage isn't burned
             # on history that no one queries.
-            cur = self.conn.execute(
-                'UPDATE edge_relations '
-                'SET archived = 1, archived_at = ?, archived_by = ?, '
-                '    embedding = NULL, embedding_model = NULL '
-                'WHERE edge_id IN (%s) AND archived = 0' % ph,
-                [ts, 'delete_node_edges'] + edge_ids)
-            archived_count = cur.rowcount
+            for i in range(0, len(edge_ids), 500):
+                chunk = edge_ids[i:i + 500]
+                ph = ','.join('?' * len(chunk))
+                cur = self.conn.execute(
+                    'UPDATE edge_relations '
+                    'SET archived = 1, archived_at = ?, archived_by = ?, '
+                    '    embedding = NULL, embedding_model = NULL '
+                    'WHERE edge_id IN (%s) AND archived = 0 %s' % (
+                        ph, exempt_clause),
+                    [ts, archived_by] + chunk + exempt)
+                archived_count += cur.rowcount
 
         commit_unless_batched(self.conn)
         return archived_count

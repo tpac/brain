@@ -52,6 +52,7 @@ REQUIRED_ASPECTS: tuple = (
     'validation_evidence',      # validates, demonstrates
     'hierarchical_structure',   # part_of, supersedes_structurally
     'temporal_sequence',        # follows_from, leads_to
+    'survivor_lineage',         # absorbed_into — archived→living-descendant redirect
 )
 
 

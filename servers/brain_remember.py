@@ -216,40 +216,26 @@ class BrainRememberMixin:
             self._log_error('archive_metadata', _e,
                             'storing audit for %s' % node_id[:8])
 
-        # 3. Soft-archive edge_relations touching this node (v25). Preserves
-        # edge history so future rescue/reconstruction is possible — old
-        # hard-delete destroyed provenance irreversibly. The edges aggregate
-        # row is left intact; all reads filter via edge_relations joins,
-        # so archived edges stop joining in.
-        edge_ids = [r[0] for r in self.conn.execute(
-            'SELECT edge_id FROM edges WHERE source_id = ? OR target_id = ?',
-            (full_id, full_id)).fetchall()]
-        edges_deleted = 0
-        if edge_ids:
-            for i in range(0, len(edge_ids), 500):
-                chunk = edge_ids[i:i + 500]
-                ph = ','.join('?' * len(chunk))
-                # absorbed_into is the survivor-redirect link (written below on
-                # merge-archive). It MUST outlive the node — when a survivor is
-                # itself later absorbed (chain A→B→C), re-archiving the A→B edge
-                # here would break edge-level chain traversal. Exempt it.
-                cur = self.conn.execute(
-                    'UPDATE edge_relations SET archived = 1, archived_at = ?, archived_by = ? '
-                    "WHERE edge_id IN (%s) AND archived = 0 "
-                    "AND relation != 'absorbed_into'" % ph,
-                    [ts, archived_by] + chunk)
-                edges_deleted += cur.rowcount
+        # 3. Soft-archive edge_relations touching this node (v25) via the DAL —
+        # single source, no inline SQL. Preserves edge history (old hard-delete
+        # destroyed provenance); the edges aggregate row stays. The
+        # survivor-redirect relations (`survivor_lineage` aspect: absorbed_into)
+        # are EXEMPT — they must outlive the node so the resolve_live chain
+        # A→B→C survives B's own archival. The taxonomy owns the exempt list;
+        # the DAL just takes the strings.
+        edges_deleted = self._graph.delete_node_edges(
+            full_id, archived_by=archived_by,
+            exempt_relations=self.aspects.relations_in(['survivor_lineage']))
 
         # 3b. Survivor-redirect edge. When this archive is a MERGE (caller
         # passed a survivor via extra={'survivor_id': ...} — the absorb op and
         # any consolidation merge both route here), record absorbed→survivor as
-        # a first-class `absorbed_into` edge (correction_improvement aspect, so
-        # correction_enrich walks it for free). This is the traversable link
-        # resolve_live follows; it is written AFTER the soft-archive above
-        # (which exempts absorbed_into) so it lands and stays archived=0.
+        # a first-class `absorbed_into` edge. It's multi-homed:
+        # correction_improvement (correction_enrich walks it) + survivor_lineage
+        # (the redirect/archival-exempt role). Written AFTER the soft-archive
+        # above (which exempts it) so it lands and stays archived=0.
         # `_sys_archived_survivor_id` is still written (step 2 audit) as the
-        # backfill source + resolve_live's current read path. Single source:
-        # one helper, both routes agree.
+        # backfill source + resolve_live's current read path.
         survivor_id = (extra or {}).get('survivor_id')
         if survivor_id and survivor_id != full_id:
             try:

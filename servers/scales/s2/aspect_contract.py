@@ -53,16 +53,47 @@ SEED_ASPECTS_JSON_PATH = os.path.join(
 
 
 def ensure_aspects_user_copy() -> bool:
-    """Seed the user-dir aspects file from the repo on first boot.
+    """Seed the user-dir aspects file from the repo seed, and SELF-HEAL.
 
-    Returns True if a copy happened, False otherwise (already exists,
-    or seed missing). Idempotent — safe to call on every boot.
+    Two jobs, both idempotent and safe to call on every boot:
+      1. First boot — working copy missing → copy the whole seed.
+      2. Self-heal — working copy exists but the seed has gained a new
+         REQUIRED aspect → add the missing required aspect(s) from the seed.
+         This is how a deliberate seed addition (e.g. survivor_lineage)
+         propagates to an existing brain without a manual migration.
+
+    Scoped tightly: only adds WHOLE missing required aspects. Never writes
+    the seed itself (tests may point ASPECTS_JSON_PATH at it); never touches
+    existing entries, so operator/AspectIntegration-grown member lists and
+    emergent aspects are preserved. Returns True if the file was created or
+    modified.
     """
     import shutil
-    if os.path.exists(ASPECTS_JSON_PATH):
-        return False
     if not os.path.exists(SEED_ASPECTS_JSON_PATH):
         return False
-    os.makedirs(os.path.dirname(ASPECTS_JSON_PATH), exist_ok=True)
-    shutil.copy2(SEED_ASPECTS_JSON_PATH, ASPECTS_JSON_PATH)
+    # Never heal the seed into itself.
+    if os.path.abspath(ASPECTS_JSON_PATH) == os.path.abspath(SEED_ASPECTS_JSON_PATH):
+        return False
+    if not os.path.exists(ASPECTS_JSON_PATH):
+        os.makedirs(os.path.dirname(ASPECTS_JSON_PATH), exist_ok=True)
+        shutil.copy2(SEED_ASPECTS_JSON_PATH, ASPECTS_JSON_PATH)
+        return True
+
+    # Working copy exists — self-heal any missing REQUIRED aspect from the seed.
+    import json
+    from servers.aspects import REQUIRED_ASPECTS  # local: avoid import cycle
+    try:
+        with open(SEED_ASPECTS_JSON_PATH) as f:
+            seed = json.load(f)
+        with open(ASPECTS_JSON_PATH) as f:
+            cur = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return False
+    missing = [n for n in REQUIRED_ASPECTS if n in seed and n not in cur]
+    if not missing:
+        return False
+    for n in missing:
+        cur[n] = seed[n]
+    with open(ASPECTS_JSON_PATH, 'w') as f:
+        json.dump(cur, f, indent=2, ensure_ascii=False)
     return True

@@ -2,14 +2,21 @@
 TRACE-NODE-RESOLUTION).
 
 On a merge-archive, archive_node writes a first-class `absorbed_into` edge
-(source = absorbed/dead, target = survivor/live) in the correction_improvement
-aspect. The edge must:
+(source = absorbed/dead, target = survivor/live). The relation is multi-homed:
+`correction_improvement` (correction_enrich walks it) + `survivor_lineage` (the
+archival-exempt redirect role). The edge must:
   - be written only on a MERGE (survivor passed via extra), not a plain archive
   - land and stay live (archived=0) despite archive_node soft-archiving the
-    node's other edges
-  - survive a chained absorb (A→B→C) so edge-level chain traversal holds
+    node's other edges (the survivor_lineage exemption)
+  - survive a chained absorb (A→B→C) and survive the Healer's
+    archive_dangling_edges sweep — both exempt survivor_lineage relations
   - coexist with the `_sys_archived_survivor_id` audit breadcrumb (backfill
     source + resolve_live's current read path)
+
+The exempt list is sourced from the aspect taxonomy at the call site
+(brain.aspects.relations_in(['survivor_lineage'])), not hardcoded in the DAL.
+BrainTestBase isolates the aspect registry to a per-test working copy seeded
+from the repo seed, so survivor_lineage (and the exemption) is present.
 
 The edge's source endpoint is archived, so get_connections_bulk (which filters
 archived endpoints) won't surface it — we read the raw edge tables, which is
@@ -44,19 +51,28 @@ class TestAbsorbedIntoEdge(BrainTestBase):
 
     # ── aspect membership (the SHIPPED SEED) ──
 
-    def test_absorbed_into_in_seed_correction_improvement_aspect(self):
-        """Phase 1 changes the repo SEED baseline. The runtime registry reads a
-        per-operator working copy ($BRAIN_DB_DIR/aspects_v1.json) seeded from
-        this file only on first boot — so updating an EXISTING brain's live
-        registry is a separate production step (flagged to the supervising
-        stream), not something a fresh-brain test would observe. Assert the
-        thing this slice actually edits: the shipped seed."""
+    def test_absorbed_into_multi_homed_in_seed(self):
+        """Phase 1 ships absorbed_into multi-homed in the SEED: correction_
+        improvement (correction walk) AND survivor_lineage (archival-exempt
+        redirect role). Updating an EXISTING brain's live working copy is a
+        separate supervised production step; assert the shipped seed here."""
         import json
         from servers.scales.s2.aspect_contract import SEED_ASPECTS_JSON_PATH
         with open(SEED_ASPECTS_JSON_PATH) as f:
             seed = json.load(f)
         self.assertIn('absorbed_into',
                       seed['correction_improvement']['edge_relations'])
+        self.assertIn('survivor_lineage', seed)
+        self.assertEqual(seed['survivor_lineage']['edge_relations'],
+                         ['absorbed_into'])
+
+    def test_survivor_lineage_is_required_aspect(self):
+        from servers.aspects import REQUIRED_ASPECTS
+        self.assertIn('survivor_lineage', REQUIRED_ASPECTS)
+        # resolvable on the seed-backed registry (setUp pointed it at the seed)
+        self.assertEqual(
+            tuple(self.brain.aspects.relations_in(['survivor_lineage'])),
+            ('absorbed_into',))
 
     # ── writer: merge writes the edge ──
 
@@ -146,6 +162,97 @@ class TestAbsorbedIntoEdge(BrainTestBase):
             (absorbed,)).fetchone()
         self.assertIsNotNone(row)
         self.assertEqual(row[0], 1)
+
+    # ── the Healer (archive_dangling_edges) must NOT scrub absorbed_into ──
+
+    def test_healer_dangling_sweep_spares_absorbed_into(self):
+        """archive_dangling_edges archives edges touching archived nodes — an
+        absorbed_into edge has an archived source BY CONSTRUCTION. Without the
+        survivor_lineage exemption the Healer would scrub it every cycle and
+        sever the redirect. Prove both directions: exempt → survives;
+        not-exempt → scrubbed (so the exemption is what saves it)."""
+        survivor = self._node('survivor')
+        absorbed = self._node('absorbed')
+        self.brain.absorb(survivor, absorbed)
+        self.assertEqual(self._absorbed_into(absorbed)[0][3], 0)  # live pre-sweep
+
+        # Healer's real call: exempt survivor_lineage → edge survives.
+        self.brain._graph.archive_dangling_edges(
+            archived_by='s2:healer',
+            exempt_relations=self.brain.aspects.relations_in(['survivor_lineage']))
+        self.assertEqual(self._absorbed_into(absorbed)[0][3], 0,
+                         'Healer scrubbed the redirect despite the exemption')
+
+        # Control: no exemption → the same sweep DOES scrub it.
+        self.brain._graph.archive_dangling_edges(archived_by='s2:healer')
+        self.assertEqual(self._absorbed_into(absorbed)[0][3], 1,
+                         'without exemption the edge should be scrubbed')
+
+    # ── DAL-level exemption (no aspect dependency) ──
+
+    def test_dal_delete_node_edges_exempts_passed_relations(self):
+        survivor = self._node('survivor')
+        absorbed = self._node('absorbed')
+        neighbor = self._node('neighbor')
+        self.brain._graph.add_relation(absorbed, survivor, 'absorbed_into')
+        self.brain._graph.add_relation(absorbed, neighbor, 'depends_on')
+        # archive absorbed's edges, exempting absorbed_into explicitly
+        self.brain._graph.delete_node_edges(
+            absorbed, archived_by='test', exempt_relations=['absorbed_into'])
+        ai = self.brain.conn.execute(
+            "SELECT er.archived FROM edges e JOIN edge_relations er "
+            "ON er.edge_id = e.edge_id WHERE er.relation='absorbed_into' "
+            "AND e.source_id=?", (absorbed,)).fetchone()
+        dep = self.brain.conn.execute(
+            "SELECT er.archived FROM edges e JOIN edge_relations er "
+            "ON er.edge_id = e.edge_id WHERE er.relation='depends_on' "
+            "AND e.source_id=?", (absorbed,)).fetchone()
+        self.assertEqual(ai[0], 0)   # exempt → live
+        self.assertEqual(dep[0], 1)  # not exempt → archived
+
+
+class TestAspectSelfHeal(unittest.TestCase):
+    """ensure_aspects_user_copy self-heals a missing REQUIRED aspect into an
+    EXISTING working copy — how survivor_lineage reaches an already-running
+    brain with no manual migration. Must preserve existing/grown members."""
+
+    def test_missing_required_aspect_healed_and_idempotent(self):
+        import json
+        import shutil
+        import tempfile
+        import servers.scales.s2.aspect_contract as ac
+        from servers.scales.s2.aspect_contract import (
+            ensure_aspects_user_copy, SEED_ASPECTS_JSON_PATH)
+
+        with open(SEED_ASPECTS_JSON_PATH) as f:
+            seed = json.load(f)
+        tmpdir = tempfile.mkdtemp()
+        orig = ac.ASPECTS_JSON_PATH
+        try:
+            wc = os.path.join(tmpdir, 'aspects_v1.json')
+            # Simulate a pre-migration brain: working copy lacks survivor_lineage
+            # but its correction_improvement carries an operator-grown member.
+            stale = {k: dict(v) for k, v in seed.items() if k != 'survivor_lineage'}
+            stale['correction_improvement']['edge_relations'] = (
+                stale['correction_improvement']['edge_relations'] + ['operator_grown'])
+            with open(wc, 'w') as f:
+                json.dump(stale, f)
+
+            ac.ASPECTS_JSON_PATH = wc
+            self.assertTrue(ensure_aspects_user_copy())   # heal happened
+            with open(wc) as f:
+                healed = json.load(f)
+            self.assertIn('survivor_lineage', healed)     # missing required added
+            self.assertEqual(healed['survivor_lineage']['edge_relations'],
+                             ['absorbed_into'])
+            # existing entry untouched — operator-grown member preserved
+            self.assertIn('operator_grown',
+                          healed['correction_improvement']['edge_relations'])
+            # idempotent: nothing missing now → no-op
+            self.assertFalse(ensure_aspects_user_copy())
+        finally:
+            ac.ASPECTS_JSON_PATH = orig
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 if __name__ == '__main__':

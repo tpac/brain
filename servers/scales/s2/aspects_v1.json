@@ -483,5 +483,17 @@
     "metadata": {
       "display_label": "follows from/leads to"
     }
+  },
+  "survivor_lineage": {
+    "node_types": [],
+    "edge_relations": [
+      "absorbed_into"
+    ],
+    "meaning": "Edges recording where an archived node's knowledge SURVIVED \u2014 the source node was absorbed/merged into the living target that now carries it forward. The redirect from a dead node to its living descendant; resolve_live walks it to return the living form for any history-sourced id. By construction the source is archived (and in a chain A\u2192B\u2192C the target is too), so these edges intentionally span archived\u2192archived/live and are EXEMPT from dangling-edge archival \u2014 archiving them would sever the redirect. NOT: supersession between live nodes (hierarchical_structure) or amendment of a claim (correction_improvement); absorbed_into is multi-homed in correction_improvement for the correction walk and here for the lineage/redirect role.",
+    "dimension": "semantic",
+    "locked": true,
+    "metadata": {
+      "display_label": "absorbed into"
+    }
   }
 }

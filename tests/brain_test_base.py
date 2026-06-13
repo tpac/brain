@@ -252,6 +252,16 @@ class BrainTestBase(unittest.TestCase):
         self._test_start = time.time()
         self.tmp = tempfile.mkdtemp()
         self.db_path = os.path.join(self.tmp, 'brain.db')
+        # Isolate the aspect registry: BrainTestBase brains must read an
+        # isolated working copy seeded from the repo seed, NOT the operator's
+        # live $BRAIN_DB_DIR/aspects_v1.json. ASPECTS_JSON_PATH is import-time-
+        # bound to BRAIN_DB_DIR, so a fresh Brain would otherwise read (and
+        # auto-heal could WRITE) the operator's live file. Point it at the
+        # per-test tmp dir before Brain() loads; ensure_aspects_user_copy seeds
+        # it from the seed so every required aspect (the contract) is present.
+        import servers.scales.s2.aspect_contract as _ac
+        self._orig_aspects_json_path = _ac.ASPECTS_JSON_PATH
+        _ac.ASPECTS_JSON_PATH = os.path.join(self.tmp, 'aspects_v1.json')
         self.brain = Brain(self.db_path, skip_embedder=not self.needs_embedder)
         self.brain.reset_session_activity()
         # Auto-drain embeddings: the embed_queue worker only fires every
@@ -358,6 +368,10 @@ class BrainTestBase(unittest.TestCase):
         # Original cleanup
         if self.brain is not None:
             self.brain.close()
+        # Restore the aspect registry path patched in setUp
+        if hasattr(self, '_orig_aspects_json_path'):
+            import servers.scales.s2.aspect_contract as _ac
+            _ac.ASPECTS_JSON_PATH = self._orig_aspects_json_path
         shutil.rmtree(self.tmp, ignore_errors=True)
 
 
