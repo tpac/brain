@@ -30,7 +30,9 @@ TRACE_WRITER_FILES = [
     'servers/scales/s2/healer_encoder.py',
     'servers/scales/s2/aspect_decoder.py',
     'servers/scales/s2/aspect_encoder.py',
-    'servers/scales/s2/reclassify.py',
+    # reclassify.py retired to servers/scales/s2/archive/ in 3df4181 — its
+    # community_assignments trace write went with it (no successor inherited it;
+    # the ref_type lives on in trace_contract.py for historic events only).
     'hooks/scripts/post_tool_trace.py',
 ]
 
