@@ -470,11 +470,28 @@ class BrainRememberMixin:
                     if not k.startswith('_sys_') and k not in drop
                     and k not in field_updates
                     and (v or '').strip() and not (s_kv.get(k) or '').strip()}
-            merged = {**fill, **field_updates}
+            # Voice fields are the exception to survivor-wins-drop. A distinctive
+            # operator/Anchor quote on the absorbed node is meaning paraphrase
+            # can't recover; dropping it because the survivor already has a
+            # (different) quote is real signal loss. When BOTH carry a quote and
+            # they're genuinely distinct, merge-append instead of dropping the
+            # absorbed one. (survivor-lacks is already covered by `fill`; caller
+            # override via field_updates and `drop` still win below.)
+            voice = {}
+            for vf in ('user_raw_quote', 'anchor_raw_quote'):
+                if vf in drop or vf in field_updates:
+                    continue
+                s_val = (s_kv.get(vf) or '').strip()
+                a_val = (a_kv.get(vf) or '').strip()
+                if (s_val and a_val and a_val != s_val
+                        and a_val not in s_val and s_val not in a_val):
+                    voice[vf] = '%s\n\n%s' % (s_val, a_val)
+            merged = {**fill, **voice, **field_updates}
             rev_failed = False
             if merged:
                 rev = self.revise(survivor_id, updates=merged,
                                   reason=reason or 'absorb %s' % absorbed_id[:8])
+                report['voice_merged'] = sorted(voice.keys())
                 report['fields_filled'] = sorted(fill.keys())
                 report['fields_revised'] = sorted(field_updates.keys())
                 if rev.get('warnings'):
