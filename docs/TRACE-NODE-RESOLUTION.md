@@ -201,9 +201,31 @@ Remaining: the live-wiring (Phase 1) + the deferred-set backfill + migration.
 1. **Edge + writers (live-wiring).** Add `absorbed_into` to
    `correction_improvement` in `aspects_v1.json` (this is what makes the 216
    backfilled edges live — `correction_enrich` starts surfacing them; restart
-   to take effect). `absorb` op writes the edge (stop dropping that intra-edge);
-   consolidation archive path writes it. Single helper so both routes agree.
-   Fold in `bc34734d`'s voice fix here (merge-append distinctive quotes).
+   to take effect).
+   - **Writer chokepoint** (better than first draft — found by `ae6e7d8d`):
+     centralize the edge-write inside `archive_node`, gated on
+     `extra.get('survivor_id')`. That's the real convergence of the absorb op
+     AND any consolidation merge — single source. Don't touch absorb's
+     migration loop (its intra-edge drop stays; a fresh canonical
+     `absorbed_into` is written instead). Direction: source = absorbed/dead,
+     target = survivor/live.
+   - **CRITICAL — exempt `absorbed_into` from edge-reaping (two sites).**
+     `absorbed_into` intentionally bridges an archived node to a live one, so
+     any sweep that archives edges-touching-archived-nodes will reap it and
+     silently kill the redirect. Both must exempt it:
+     (a) `archive_node` step-3 edge soft-archive (else B-absorbed-into-C
+     re-archives the live A→B edge, breaking the chain) — `ae6e7d8d`'s slice;
+     (b) `GraphDAL.archive_dangling_edges` (the Healer reaper) — **SHIPPED**
+     `9711e04`-onward (`dal.py`, `AND er.relation != 'absorbed_into'`).
+     Until the daemon restarts with (b), the live Healer still reaps the 216
+     backfilled edges — so they are NOT durable until restart; **re-run the
+     backfill after the wiring restart** (idempotent).
+   - Fold in the **voice fix** here (independent of `bc34734d` — that was a
+     stream/session id that filed a *finding*, never a commit; implement fresh):
+     in absorb's metadata fill (`brain_remember.py` ~442-445), merge-append
+     distinctive `user_raw_quote`/`anchor_raw_quote` from the absorbed peer
+     instead of survivor-wins-drop; + a voice-preservation rule in
+     `consolidation_enrichment_prompt` parallel to the numbers/dates rule.
 2. **Backfill — remaining + census.** DONE: 216 clean 1-hop archived→live.
    TODO: ~23 multi-hop chains (survivor itself archived → run the
    resolve_live-based pass to terminal) and the **94 live-with-stale-stamp**

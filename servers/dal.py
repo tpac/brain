@@ -2566,6 +2566,12 @@ class GraphDAL:
                  JOIN nodes n_tgt ON n_tgt.id = e.target_id
                  WHERE er.archived = 0
                    AND (n_src.archived = 1 OR n_tgt.archived = 1)
+                   -- absorbed_into is the survivor-redirect edge: it EXISTS to
+                   -- bridge an archived node (source) to its live survivor, so
+                   -- it must survive this sweep. Without the exemption the
+                   -- redirect edges (incl. the backfilled set) get silently
+                   -- reaped on the next Healer cycle. docs/TRACE-NODE-RESOLUTION.md.
+                   AND er.relation != 'absorbed_into'
                )
         """, (ts, archived_by))
         return cur.rowcount
