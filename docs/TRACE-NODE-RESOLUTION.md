@@ -88,11 +88,17 @@ absorbed/dead node, target = survivor/live node), added to the
 
 Why an edge in that aspect, not a column:
 
-- **It unifies with machinery that already exists.** `get_node`'s
-  `correction_enrich` already walks the `correction_improvement` aspect
-  bidirectionally. So "the thing you referenced was absorbed into X" surfaces
-  as correction context *for free* — the redirect and the correction substrate
-  become one mechanism.
+- **It shares the correction substrate's vocabulary** — but NOT "for free."
+  CORRECTION (caught by `ae6e7d8d`, 2026-06-13): `correction_enrich` calls
+  `get_connections_bulk(include_neighbor_archived=False)`, which forces
+  `n1.archived=0 AND n2.archived=0`. An `absorbed_into` edge ALWAYS has an
+  archived endpoint (the absorbed source), so the *standard* correction walk
+  filters it out — it will NOT surface via plain `correction_enrich`. Surfacing
+  it requires a reader that passes `include_neighbor_archived=True` for
+  `absorbed_into` (the param already exists; it's just off by default). That
+  reader is `resolve_live`'s edge-source (Phase 4) / a correction_enrich
+  variant. So the aspect membership is the right *classification*, but the
+  surfacing is a deliberate reader change, not automatic.
 - **It's visible and traversable.** Spread activation can follow it; the
   dashboard can show it. A link nobody can see is what caused this incident.
 - **It's Tom's "cluster with certain aspects"**: resolution finds the survivor
@@ -185,12 +191,72 @@ loud belongs on the contract violation, not the routine redirect.
 
 ---
 
-## 8. Implementation phases (pending greenlight — NOT built)
+## 8. Implementation phases
 
-1. **Edge + writers.** Add `absorbed_into` to `correction_improvement` in
-   `aspects_v1.json`. `absorb` op writes it (stop dropping that intra-edge);
-   consolidation archive path writes it. Single helper so both routes agree.
-2. **Backfill + census.** Empirical breakdown — `resolve_live` run over all 340
+**Status 2026-06-13:** Phase 3 primitive LANDED (resolve_live merged to main,
+`20c2951`, read-only, 13 tests). Phase 2 backfill EXECUTED for the clean set
+(216 `absorbed_into` edges written via the daemon, verified, 0 failures —
+`eval/oracle_audit/backfill_absorbed_into.py`; brain.db backed up first).
+The edges are LAID BUT INERT: `absorbed_into` is not yet in the
+`correction_improvement` aspect (so `correction_enrich` doesn't walk them) and
+`resolve_live` still reads the metadata pointer, not the edge — so there is NO
+behavior change yet, and no leak (spread's `get_connections_bulk` defaults
+`include_neighbor_archived=False`, so the archived endpoints don't surface).
+
+Phase 1 CODE COMPLETE (`ae6e7d8d`, branch `claude/absorbed-into-ae6e7d8d`):
+`absorbed_into` written in `archive_node` gated on `extra['survivor_id']` (single
+chokepoint) + step-3 reaper exemption + aspect SEED + voice merge-append
+(distinct `user_raw_quote`/`anchor_raw_quote` → appended, not survivor-wins-drop).
+26 tests green. Pairs with the dangling-edge-reaper exemption (`4c971da`, main).
+**Everything stays INERT until a deliberate daemon restart** (writers + reaper
+exemption go live together; backfill must be RE-RUN after, since the old-code
+Healer may have reaped the first 216).
+
+Remaining = the **reader phase (was "Phase 4"), bundle these together**:
+(i) add `absorbed_into` to the LIVE aspects working copy
+`$BRAIN_DB_DIR/aspects_v1.json` (deliberate one-line, NOT left to S2
+classifier — production mutation, supervised);
+(ii) `resolve_live` edge-source: read the `absorbed_into` edge via
+`include_neighbor_archived=True` (its seam already isolates the pointer read);
+(iii) surface absorbed_into despite the archived endpoint — same
+`include_neighbor_archived=True` query (the standard `correction_enrich` walk
+filters it out — see §3 correction); (iv) migrate sites §5 #1–#6; (v) finish the
+deferred backfill (~23 chains + clean the 94 stale stamps — verdict: one-time
+recovery artifact, delete `_sys_archived_*` keys, no stamping bug).
+
+1. **Edge + writers (live-wiring).** Add `absorbed_into` to
+   `correction_improvement` in `aspects_v1.json` (this is what makes the 216
+   backfilled edges live — `correction_enrich` starts surfacing them; restart
+   to take effect).
+   - **Writer chokepoint** (better than first draft — found by `ae6e7d8d`):
+     centralize the edge-write inside `archive_node`, gated on
+     `extra.get('survivor_id')`. That's the real convergence of the absorb op
+     AND any consolidation merge — single source. Don't touch absorb's
+     migration loop (its intra-edge drop stays; a fresh canonical
+     `absorbed_into` is written instead). Direction: source = absorbed/dead,
+     target = survivor/live.
+   - **CRITICAL — exempt `absorbed_into` from edge-reaping (two sites).**
+     `absorbed_into` intentionally bridges an archived node to a live one, so
+     any sweep that archives edges-touching-archived-nodes will reap it and
+     silently kill the redirect. Both must exempt it:
+     (a) `archive_node` step-3 edge soft-archive (else B-absorbed-into-C
+     re-archives the live A→B edge, breaking the chain) — `ae6e7d8d`'s slice;
+     (b) `GraphDAL.archive_dangling_edges` (the Healer reaper) — **SHIPPED**
+     `9711e04`-onward (`dal.py`, `AND er.relation != 'absorbed_into'`).
+     Until the daemon restarts with (b), the live Healer still reaps the 216
+     backfilled edges — so they are NOT durable until restart; **re-run the
+     backfill after the wiring restart** (idempotent).
+   - Fold in the **voice fix** here (independent of `bc34734d` — that was a
+     stream/session id that filed a *finding*, never a commit; implement fresh):
+     in absorb's metadata fill (`brain_remember.py` ~442-445), merge-append
+     distinctive `user_raw_quote`/`anchor_raw_quote` from the absorbed peer
+     instead of survivor-wins-drop; + a voice-preservation rule in
+     `consolidation_enrichment_prompt` parallel to the numbers/dates rule.
+2. **Backfill — remaining + census.** DONE: 216 clean 1-hop archived→live.
+   TODO: ~23 multi-hop chains (survivor itself archived → run the
+   resolve_live-based pass to terminal) and the **94 live-with-stale-stamp**
+   clean (pending `ae6e7d8d`'s revert-artifact-vs-stamping-bug verdict; if a
+   bug, fix the stamp-on-revert clear, don't just one-time-clean). Empirical breakdown — `resolve_live` run over all 340
    `_sys_archived_survivor_id` nodes (stream `ae6e7d8d`, 2026-06-13):
    - **225** archived → live survivor → backfill these into `absorbed_into` edges.
    - **94 LIVE nodes carrying a stale stamp** — reverted-archive artifacts from
