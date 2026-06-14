@@ -25,11 +25,12 @@ class Healer(HealerDecoder):
             # absorbed_into (survivor_lineage aspect) is exempt — those edges
             # are SUPPOSED to span an archived endpoint (the redirect to the
             # living survivor); scrubbing them as "dangling" would sever the
-            # resolve_live chain. Taxonomy owns the list; DAL takes the strings.
+            # resolve_live chain. archive_exempt_relations() is the single
+            # source and logs loudly if the aspect is missing/empty (which would
+            # silently disable the exemption and reap redirect edges).
             edges_archived = self.brain._graph.archive_dangling_edges(
                 archived_by='s2:healer',
-                exempt_relations=self.brain.aspects.relations_in(
-                    ['survivor_lineage']))
+                exempt_relations=self.brain.archive_exempt_relations())
         except Exception as e:
             edges_archived = 0
             # Capture the error for the result dict so the caller can

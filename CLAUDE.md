@@ -79,9 +79,12 @@ vocabularies are open text. **Aspects** group these strings by semantic role:
 covers types AND relations that express correction; `noise` covers
 structural-only strings with no semantic claim.
 
-The taxonomy is a **closed list of 14 required aspects**, defined in
-`servers/scales/s2/aspects_v1.json`. The encoder cannot propose new aspects;
-adding a 15th aspect is a deliberate human edit to the JSON.
+The taxonomy is a **closed list of 15 required aspects**, defined in
+`servers/scales/s2/aspects_v1.json` (the 15th, `survivor_lineage`, carries
+`absorbed_into` — the archival-exempt survivor-redirect role). The encoder
+cannot propose new aspects; adding another is a deliberate human edit to the
+JSON (REQUIRED_ASPECTS + seed + contract tests, and it self-heals into existing
+working copies via `ensure_aspects_user_copy`).
 
 **Source of truth: `aspects_v1.json`.** The file holds:
 - aspect `name`, `meaning` (description), `locked`, `dimension`, `metadata`
@@ -113,7 +116,7 @@ brain.aspects.all_with_counts()                 # for list_aspects MCP
 ```
 
 **`AspectIntegration` S2 unit** (`servers/scales/s2/aspect_integration.py`)
-classifies new node_types and edge_relations into the 14 aspects via Sonnet,
+classifies new node_types and edge_relations into the 15 aspects via Sonnet,
 writes JSON-only output back to `aspects_v1.json` (no brain mutations). Runs
 in the coordinator after Healer.
 

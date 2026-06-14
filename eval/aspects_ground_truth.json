@@ -1,10 +1,11 @@
 {
-  "_doc": "Hand-crafted ground truth for aspect classification eval. Built by Anchor 2026-05-08 from eval/aspect_inventory.json. Each string mapped to exactly one of the 14 aspects. Strings in _unsure are genuinely 50/50 — exclude from accuracy, surface for operator review.",
+  "_doc": "Hand-crafted ground truth for aspect classification eval. Built by Anchor 2026-05-08 from eval/aspect_inventory.json. Each string mapped to one aspect. Strings in _unsure are excluded from accuracy — genuinely 50/50, OR deliberately multi-homed (e.g. absorbed_into is BOTH correction_improvement and survivor_lineage) — surface for operator review.",
   "_aspects_in_use": [
     "identity_bearing", "episodic_anchor", "active_thread", "lesson_insight",
     "correction_improvement", "extension_refinement", "explanation_causation",
     "dependency_flow", "contradiction_conflict", "validation_evidence",
-    "hierarchical_structure", "temporal_sequence", "generic_relation", "noise"
+    "hierarchical_structure", "temporal_sequence", "generic_relation", "noise",
+    "survivor_lineage"
   ],
   "node_types": {
     "decision": "lesson_insight",
@@ -290,7 +291,8 @@
       "answers",
       "complements",
       "configures",
-      "enforces"
+      "enforces",
+      "absorbed_into"
     ]
   }
 }

@@ -1,6 +1,6 @@
 """S2 Aspect Integration — Contract and Configuration.
 
-Classifies distinct node types and edge relations into the 14 required
+Classifies distinct node types and edge relations into the 15 required
 aspects defined in `aspects_v1.json`. Closed-list classification — encoder
 can only route to existing aspects (or `noise`/`generic_relation` as
 catch-alls), never proposes new ones. New aspects are added by humans
@@ -92,8 +92,31 @@ def ensure_aspects_user_copy() -> bool:
     missing = [n for n in REQUIRED_ASPECTS if n in seed and n not in cur]
     if not missing:
         return False
+    # NOTE (accepted, narrow): this read-modify-write can lose to a concurrent
+    # AspectIntegration os.replace that carries a pre-heal snapshot. The window
+    # is tiny — self-heal only writes when a required aspect is MISSING (the
+    # first boot after a seed addition), and AspectIntegration runs during S2
+    # idle maintenance, not at Brain.__init__. If it ever loses, the next boot
+    # self-heals again (idempotent), so it's self-correcting, not durable loss.
     for n in missing:
         cur[n] = seed[n]
-    with open(ASPECTS_JSON_PATH, 'w') as f:
-        json.dump(cur, f, indent=2, ensure_ascii=False)
+    # Atomic write — temp file + os.replace, so a crash mid-write can't leave a
+    # truncated/0-byte aspects file. A corrupt working copy loads as an empty
+    # registry → relations_in(['survivor_lineage']) returns () → the
+    # absorbed_into exemption silently disables and the reaper scrubs redirect
+    # edges. Mirrors AspectEncoder._write_aspects.
+    import tempfile
+    d = os.path.dirname(ASPECTS_JSON_PATH)
+    fd, tmp = tempfile.mkstemp(prefix='aspects_v1_', suffix='.json.tmp', dir=d)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            json.dump(cur, f, indent=2, ensure_ascii=False)
+            f.write('\n')
+        os.replace(tmp, ASPECTS_JSON_PATH)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
     return True

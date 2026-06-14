@@ -2163,6 +2163,18 @@ ABSORB_EXCLUDED_RELATIONS = frozenset(['community_member'])
 # this contract is the reason the filter lives in one place.
 
 
+def _relation_not_in_clause(values):
+    """Build an `AND relation NOT IN (?,?...)` SQL fragment + its param list for
+    exempting relations from an edge-archival UPDATE. Returns ('', []) when
+    empty. Single source for the survivor_lineage exemption shared by
+    delete_node_edges + archive_dangling_edges, so the clause shape can't drift
+    between them."""
+    vals = list(values or ())
+    if not vals:
+        return '', []
+    return 'AND relation NOT IN (%s)' % ','.join('?' * len(vals)), vals
+
+
 class GraphDAL:
     """Access layer for brain.db graph tables: edges + edge_relations.
 
@@ -2561,11 +2573,7 @@ class GraphDAL:
         # unix-ms writer into the TEXT column, which broke lexicographic
         # time reads and rendered as 1970 epoch dates.)
         ts = _now()
-        exempt = list(exempt_relations or ())
-        exempt_clause = ''
-        if exempt:
-            exempt_clause = 'AND relation NOT IN (%s)' % ','.join(
-                '?' * len(exempt))
+        exempt_clause, exempt = _relation_not_in_clause(exempt_relations)
         cur = self.conn.execute("""
             UPDATE edge_relations
                SET archived = 1,
@@ -2866,11 +2874,7 @@ class GraphDAL:
         archived_count = 0
         if edge_ids:
             ts = _now()
-            exempt = list(exempt_relations or ())
-            exempt_clause = ''
-            if exempt:
-                exempt_clause = 'AND relation NOT IN (%s)' % ','.join(
-                    '?' * len(exempt))
+            exempt_clause, exempt = _relation_not_in_clause(exempt_relations)
             # NULL the stored embedding on archive — same pattern node
             # archive uses (DELETE FROM node_enrichments). Archived edges
             # are never read by spread/select_edges (every read filters

@@ -188,6 +188,68 @@ class TestAbsorbedIntoEdge(BrainTestBase):
         self.assertEqual(self._absorbed_into(absorbed)[0][3], 1,
                          'without exemption the edge should be scrubbed')
 
+    # ── archive_node atomicity (standalone path) ──
+
+    def test_standalone_archive_commits_atomically(self):
+        """A standalone archive_node (not inside a batch) still commits node +
+        edges + absorbed_into in one go via the in_batch envelope."""
+        survivor = self._node('survivor')
+        victim = self._node('victim')
+        r = self.brain.archive_node(victim, archived_by='test',
+                                    extra={'survivor_id': survivor})
+        self.assertTrue(r['ok'], r)
+        self.assertEqual(self.brain.conn.execute(
+            'SELECT archived FROM nodes WHERE id=?', (victim,)).fetchone()[0], 1)
+        edges = self._absorbed_into(victim)
+        self.assertEqual(len(edges), 1)
+        self.assertEqual(edges[0][3], 0)  # absorbed_into live
+
+    def test_standalone_archive_rolls_back_on_midstep_failure(self):
+        """The envelope makes a standalone archive all-or-nothing: a failure in
+        the edge step must roll back the archived=1 flag (no half-archived node
+        committed, the regression the inline-commit reintroduced)."""
+        victim = self._node('victim')
+        orig = self.brain._graph.delete_node_edges
+
+        def boom(*a, **k):
+            raise RuntimeError('injected mid-archive failure')
+        self.brain._graph.delete_node_edges = boom
+        try:
+            with self.assertRaises(RuntimeError):
+                self.brain.archive_node(victim, archived_by='test')
+        finally:
+            self.brain._graph.delete_node_edges = orig
+        # rolled back: node still live, no partial commit
+        self.assertEqual(self.brain.conn.execute(
+            'SELECT archived FROM nodes WHERE id=?', (victim,)).fetchone()[0], 0)
+
+    # ── loud exemption helper ──
+
+    def test_archive_exempt_relations_resolves_and_is_quiet(self):
+        calls = []
+        orig = self.brain._log_error
+        self.brain._log_error = lambda *a, **k: calls.append(a)
+        try:
+            rels = self.brain.archive_exempt_relations()
+        finally:
+            self.brain._log_error = orig
+        self.assertEqual(tuple(rels), ('absorbed_into',))
+        self.assertEqual(calls, [], 'must not log when the aspect is present')
+
+    def test_archive_exempt_relations_loud_when_empty(self):
+        calls = []
+        orig_log = self.brain._log_error
+        orig_ri = self.brain.aspects.relations_in
+        self.brain._log_error = lambda *a, **k: calls.append(a)
+        self.brain.aspects.relations_in = lambda names: ()  # simulate missing aspect
+        try:
+            rels = self.brain.archive_exempt_relations()
+        finally:
+            self.brain.aspects.relations_in = orig_ri
+            self.brain._log_error = orig_log
+        self.assertEqual(tuple(rels), ())
+        self.assertTrue(calls, 'empty survivor_lineage must log loudly')
+
     # ── DAL-level exemption (no aspect dependency) ──
 
     def test_dal_delete_node_edges_exempts_passed_relations(self):

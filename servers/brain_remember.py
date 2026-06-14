@@ -151,6 +151,30 @@ class BrainRememberMixin:
         finally:
             self.conn.in_batch = prior
 
+    def archive_exempt_relations(self) -> tuple:
+        """Relations exempt from dangling-edge archival — the survivor-redirect
+        links (survivor_lineage aspect: absorbed_into) that must outlive the
+        nodes they leave. Single source for archive_node + the Healer; the DAL
+        stays aspect-agnostic and just takes the strings.
+
+        LOUD on empty: survivor_lineage is a REQUIRED aspect, so an empty result
+        means the registry is unset (init failed — brain.py leaves self.aspects
+        unset by design) or the working copy predates the aspect and hasn't
+        self-healed yet. Either way the exemption is DISABLED and the
+        dangling-edge reaper will scrub absorbed_into redirect edges — a silent
+        correctness failure, so we log it (rate-limited) instead of letting it
+        pass quietly or raising AttributeError mid-archive."""
+        rels = ()
+        if getattr(self, 'aspects', None) is not None:
+            rels = tuple(self.aspects.relations_in(['survivor_lineage']))
+        if not rels:
+            self._log_error(
+                'survivor_lineage_exempt_empty',
+                ValueError('survivor_lineage aspect missing/empty'),
+                'absorbed_into archival exemption DISABLED — redirect edges '
+                'will be reaped by the dangling-edge sweep')
+        return rels
+
     def archive_node(self, node_id: str, archived_by: str,
                      reason: str = '', extra: Dict[str, Any] = None) -> Dict[str, Any]:
         """Archive a node. Single path for all callers.
@@ -216,58 +240,75 @@ class BrainRememberMixin:
             self._log_error('archive_metadata', _e,
                             'storing audit for %s' % node_id[:8])
 
-        # 3. Soft-archive edge_relations touching this node (v25) via the DAL —
-        # single source, no inline SQL. Preserves edge history (old hard-delete
-        # destroyed provenance); the edges aggregate row stays. The
-        # survivor-redirect relations (`survivor_lineage` aspect: absorbed_into)
-        # are EXEMPT — they must outlive the node so the resolve_live chain
-        # A→B→C survives B's own archival. The taxonomy owns the exempt list;
-        # the DAL just takes the strings.
-        edges_deleted = self._graph.delete_node_edges(
-            full_id, archived_by=archived_by,
-            exempt_relations=self.aspects.relations_in(['survivor_lineage']))
+        # 3–5 run inside ONE connection batch envelope. delete_node_edges and
+        # add_relation self-commit via commit_unless_batched, so without this a
+        # STANDALONE archive (consolidation orphan-heal, hook:integrity — paths
+        # that don't set conn.in_batch) would commit the node+edges and then a
+        # failure in the vector/FTS cleanup would leave a half-archived node:
+        # archived=1 but still in FTS5 → it resurfaces in recall (the exact
+        # dead-node-leak class). Composes with an outer batch (absorb): defers
+        # the commit/rollback to the owner via the saved in_batch state.
+        # Mirrors _delete's cascade envelope.
+        prior = self.conn.in_batch
+        self.conn.in_batch = True
+        try:
+            # 3. Soft-archive edge_relations touching this node (v25) via the
+            # DAL — single source, no inline SQL. The survivor-redirect
+            # relations (survivor_lineage aspect: absorbed_into) are EXEMPT —
+            # they must outlive the node so the resolve_live chain A→B→C
+            # survives B's own archival.
+            edges_deleted = self._graph.delete_node_edges(
+                full_id, archived_by=archived_by,
+                exempt_relations=self.archive_exempt_relations())
 
-        # 3b. Survivor-redirect edge. When this archive is a MERGE (caller
-        # passed a survivor via extra={'survivor_id': ...} — the absorb op and
-        # any consolidation merge both route here), record absorbed→survivor as
-        # a first-class `absorbed_into` edge. It's multi-homed:
-        # correction_improvement (correction_enrich walks it) + survivor_lineage
-        # (the redirect/archival-exempt role). Written AFTER the soft-archive
-        # above (which exempts it) so it lands and stays archived=0.
-        # `_sys_archived_survivor_id` is still written (step 2 audit) as the
-        # backfill source + resolve_live's current read path.
-        survivor_id = (extra or {}).get('survivor_id')
-        if survivor_id and survivor_id != full_id:
-            try:
-                self._graph.add_relation(
-                    full_id, survivor_id, 'absorbed_into',
-                    description=reason or 'absorbed into %s' % survivor_id[:8],
-                    encoding_source=archived_by)
-            except Exception as _e:
-                self._log_error('archive_absorbed_into_edge', _e,
-                                'absorbed_into %s -> %s' % (
-                                    full_id[:8], str(survivor_id)[:8]))
+            # 3b. Survivor-redirect edge. When this archive is a MERGE (caller
+            # passed a survivor via extra={'survivor_id': ...} — the absorb op
+            # and any consolidation merge both route here), record
+            # absorbed→survivor as a first-class `absorbed_into` edge,
+            # multi-homed in correction_improvement (correction_enrich walks it)
+            # + survivor_lineage (the redirect/archival-exempt role). Written
+            # AFTER the soft-archive above (which exempts it) so it lands and
+            # stays archived=0. `_sys_archived_survivor_id` is still written
+            # (step 2 audit) as the backfill source + resolve_live's read path.
+            survivor_id = (extra or {}).get('survivor_id')
+            if survivor_id and survivor_id != full_id:
+                try:
+                    self._graph.add_relation(
+                        full_id, survivor_id, 'absorbed_into',
+                        description=reason or 'absorbed into %s' % survivor_id[:8],
+                        encoding_source=archived_by)
+                except Exception as _e:
+                    self._log_error('archive_absorbed_into_edge', _e,
+                                    'absorbed_into %s -> %s' % (
+                                        full_id[:8], str(survivor_id)[:8]))
 
-        # 4. Delete vectors from node_enrichments
-        vectors_deleted = self.conn.execute(
-            'DELETE FROM node_enrichments WHERE node_id = ?',
-            (full_id,)).rowcount
+            # 4. Delete vectors from node_enrichments
+            vectors_deleted = self.conn.execute(
+                'DELETE FROM node_enrichments WHERE node_id = ?',
+                (full_id,)).rowcount
 
-        # 5. Remove from FTS5 index. Some test DBs don't enable FTS5 —
-        # skip cleanly when the virtual table is absent, but log any
-        # real failure (production always has FTS5).
-        has_fts5 = self.conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='nodes_fts'"
-        ).fetchone() is not None
-        if has_fts5:
-            try:
-                from .dal import Fts5DAL
-                self._fts.delete(full_id)
-            except Exception as _e:
-                self._log_error('archive_fts5', _e,
-                                'FTS5 delete for %s' % full_id[:8])
+            # 5. Remove from FTS5 index. Some test DBs don't enable FTS5 —
+            # skip cleanly when the virtual table is absent, but log any
+            # real failure (production always has FTS5).
+            has_fts5 = self.conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='nodes_fts'"
+            ).fetchone() is not None
+            if has_fts5:
+                try:
+                    from .dal import Fts5DAL
+                    self._fts.delete(full_id)
+                except Exception as _e:
+                    self._log_error('archive_fts5', _e,
+                                    'FTS5 delete for %s' % full_id[:8])
 
-        self._maybe_commit()
+            if not prior:
+                self.conn.commit()  # commit-ok: single atomic archive
+        except Exception:
+            if not prior:
+                self.conn.rollback()
+            raise
+        finally:
+            self.conn.in_batch = prior
 
         # 6. AFTER commit — invalidate the in-memory vector cache so recall's
         # cached matrix doesn't retain dead rows. Order matters: if we
