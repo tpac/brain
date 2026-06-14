@@ -2028,11 +2028,24 @@ class Fts5DAL:
     def __init__(self, conn):
         self.conn = conn
 
-    def search(self, query: str, limit: int = 30) -> List[str]:
+    def search(self, query: str, limit: int = 30,
+               include_archived: bool = False) -> List[str]:
         """Full-text search. Returns node_ids ranked by BM25 relevance.
 
         Title matches weighted 10x over content.
         bm25() column weights: (node_id=0, title=10, content=1)
+
+        Excludes archived nodes by default. FTS5 (nodes_fts) is a separate
+        virtual table with no `archived` column — historically the ONE recall
+        candidate lane that didn't filter liveness, so a lingering FTS entry for
+        an archived node surfaced it in recall (the dead-node leak; see
+        docs/TRACE-NODE-RESOLUTION.md). JOINing `nodes` and filtering
+        `archived = 0` makes the flag the single source of truth at READ time —
+        so the FTS-delete on archive becomes hygiene, not a correctness
+        requirement, and `LIMIT` now returns live hits instead of spending
+        slots on dead ones. The survivor-redirect reader passes
+        include_archived=True to SEE an archived hit and resolve_live it to its
+        living survivor rather than drop it.
 
         Note: prior to schema v28 there was a 4th column `keywords` carrying
         an auto-extracted tokenizer dump. The column was dropped because the
@@ -2043,13 +2056,18 @@ class Fts5DAL:
         if not safe_query:
             return []
         try:
-            rows = self.conn.execute(
-                """SELECT node_id FROM nodes_fts
-                   WHERE nodes_fts MATCH ?
-                   ORDER BY bm25(nodes_fts, 0, 10.0, 1.0)
-                   LIMIT ?""",
-                (safe_query, limit)
-            ).fetchall()
+            if include_archived:
+                sql = """SELECT node_id FROM nodes_fts
+                         WHERE nodes_fts MATCH ?
+                         ORDER BY bm25(nodes_fts, 0, 10.0, 1.0)
+                         LIMIT ?"""
+            else:
+                sql = """SELECT nodes_fts.node_id FROM nodes_fts
+                         JOIN nodes ON nodes.id = nodes_fts.node_id
+                         WHERE nodes_fts MATCH ? AND nodes.archived = 0
+                         ORDER BY bm25(nodes_fts, 0, 10.0, 1.0)
+                         LIMIT ?"""
+            rows = self.conn.execute(sql, (safe_query, limit)).fetchall()
             return [r[0] for r in rows]
         except Exception as e:
             # Loud-by-default: a malformed query or corrupt FTS5 index must not
