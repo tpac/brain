@@ -129,7 +129,14 @@ class TestWorktreeHooks(unittest.TestCase):
     }
 
     def _load_worktree_hooks(self):
-        """Load all worktree hooks.json files."""
+        """Load all worktree hooks.json files, normalized to event level.
+
+        Worktree hooks.json mirrors the plugin format (`hooks/hooks.json`): a
+        `{"description": ..., "hooks": {<event>: [...]}}` envelope. Unwrap the
+        envelope so callers always see the event-level dict — matching how
+        `test_main_settings_has_all_hooks` reads `hooks_config.get('hooks')`.
+        A flat (already event-level) file is returned as-is for back-compat.
+        """
         worktree_dir = os.path.join(PROJECT_ROOT, '.claude', 'worktrees')
         if not os.path.isdir(worktree_dir):
             return {}
@@ -138,7 +145,11 @@ class TestWorktreeHooks(unittest.TestCase):
             hooks_path = os.path.join(worktree_dir, wt, 'hooks', 'hooks.json')
             if os.path.isfile(hooks_path):
                 with open(hooks_path) as f:
-                    results[wt] = json.load(f)
+                    config = json.load(f)
+                # Unwrap the plugin envelope; no hook event is named "hooks",
+                # so a dict-valued "hooks" key unambiguously marks the wrapper.
+                inner = config.get('hooks')
+                results[wt] = inner if isinstance(inner, dict) else config
         return results
 
     def test_worktree_hooks_have_required_events(self):
