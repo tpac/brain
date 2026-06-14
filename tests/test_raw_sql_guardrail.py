@@ -35,7 +35,7 @@ ALLOWED = {
     'brain.py': 6,
     'brain_assembly.py': 5,               # exception: health-check / integrity audit + ping
     'brain_connections.py': 1,
-    'brain_remember.py': 11,              # pending: deferred 3c (archive/content_summary/revise/personal multi-field UPDATEs)
+    'brain_remember.py': 10,              # pending: deferred 3c; archive_node's inline edge UPDATE moved to GraphDAL.delete_node_edges (2026-06-14)
     'daemon_server.py': 1,
     'dispatch_observability.py': 4,       # exception: observability writes
     'dispatch_ops.py': 1,
