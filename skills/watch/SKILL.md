@@ -55,15 +55,17 @@ instant the operator speaks (see Exit) — so there's no downside to weigh and n
 seek permission for. "Should I watch?" is almost always already answered: yes.
 
 You know your own id from the boot banner (`MY_STREAM_ID: <id>`). Arm the listener in
-one step:
+one step — `brain-watch` ships with the plugin and is on your `$PATH`, so it runs from
+any repo or session with no path to fill in:
 
     Monitor(persistent: true, timeout_ms: 3600000,
       description: "self-channel: messages to <your-short-id>",
-      command: "cd <REPO_ROOT> && ./dev python3 hooks/scripts/self_inbox_poller.py <YOUR_SESSION_ID>")
+      command: "brain-watch <MY_STREAM_ID>")
 
-The poller peeks the inbox **read-only** (never consumes — the Stop hook owns the real
-drain) and prints one line per NEW message, igniting this window in ~1–5s. End it with
-`TaskStop` (or it self-expires at `timeout_ms`).
+`brain-watch` runs the poller under the plugin's bundled python and finds the daemon by
+port. The poller peeks the inbox **read-only** (never consumes — the Stop hook owns the
+real drain) and prints one line per NEW message, igniting this window in ~1–5s. End it
+with `TaskStop` (or it self-expires at `timeout_ms`).
 
 ## Delegate with a return path
 

@@ -120,6 +120,9 @@ FILES=(
   hooks/scripts/encoding_hook.py
   hooks/scripts/post_tool_trace.py
   hooks/scripts/agent-bridge.py
+  hooks/scripts/self_inbox_poller.py
+  # Launcher on $PATH (plugin bin/ — callable from any repo as `brain-watch`)
+  bin/brain-watch
   # Skills
   skills/brain/SKILL.md
   skills/brain/references/detailed-api.md
