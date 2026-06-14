@@ -73,6 +73,7 @@ eval/encoder_eval/reports/
 eval/replay_snapshots/
 eval/reports/
 eval/aspects_v1_classified_run_summary.json
+eval/oracle_audit/endo_surface_corpus.json
 exports/
 
 # Research outputs — large (26MB+), not source code
