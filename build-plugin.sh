@@ -33,17 +33,14 @@ FILES=(
   # DAL
   servers/dal.py
   servers/dal_metadata.py
-  servers/dal_signal_queue.py
   # Daemon
   servers/daemon_config.py
   servers/daemon_server.py
   servers/daemon_client.py
   servers/daemon_dispatch.py
   servers/daemon_hooks.py
-  # MCP + signals
+  # MCP
   servers/brain_mcp.py
-  servers/signal_producers.py
-  servers/surface_assembler.py
   servers/health_check.py
   servers/interaction_seed.py
   servers/session_context.py
@@ -81,7 +78,6 @@ FILES=(
   servers/scales/s2/healer_decoder.py
   servers/scales/s2/healer_encoder.py
   servers/scales/s2/healer_prompt.py
-  servers/scales/s2/reclassify.py
   # Migrations directory removed — schema migrations handled by schema.py's
   # diff-based ALTER TABLE mechanism (see 7d6caeb1).
   # Hook scripts — bash shims
