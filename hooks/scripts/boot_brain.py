@@ -19,26 +19,27 @@ _hook_cwd = os.environ.get("BRAIN_HOOK_CWD", "")
 
 def _boot_via_daemon():
     """Boot context through daemon — the normal path.
-    Skips full boot if already booted this session (once: true not honored for settings hooks).
+
+    New-vs-resume is decided by the daemon from the SESSION OBJECT
+    (ctx.boot_time), not a global `last_booted_session` brain_meta key. That
+    global guard was last-writer-wins across parallel streams: with multiple live
+    sessions, every session but the most-recent booter failed the check, so its
+    resume was treated as a fresh boot and the daemon zeroed its accumulated
+    session state (back when the Scribe cadence was a stored counter, this is what
+    starved it). We now always call reset_session; the daemon preserves session
+    state on resume and signals it with status='resumed'.
     """
-    # Check if already booted — use Claude's session_id for continuity.
-    current_sid = daemon_call("get_config", {"key": "session_id", "default": ""})
-    current_sid = current_sid.get("value", current_sid) if isinstance(current_sid, dict) else (current_sid or "")
-    booted_sid = daemon_call("get_config", {"key": "last_booted_session", "default": ""})
-    booted_sid = booted_sid.get("value", booted_sid) if isinstance(booted_sid, dict) else (booted_sid or "")
-
-    # Use Claude's session_id if available, otherwise check existing
-    _sid = _hook_session_id or current_sid
-    if _sid and booted_sid and _sid == booted_sid:
-        print("[BRAIN] (session resumed — brain already loaded)", file=sys.stderr)
-        return True
-
-    # Reset session activity with Claude's session_id (not a random UUID).
+    # Reset/resume session activity with Claude's session_id (not a random UUID).
     # Feed cwd so the daemon can stamp session identity (cwd + derived branch).
     reset_args = {"session_id": _hook_session_id} if _hook_session_id else {}
     if _hook_cwd:
         reset_args["cwd"] = _hook_cwd
-    daemon_call("reset_session", reset_args)
+    reset_result = daemon_call("reset_session", reset_args)
+    if isinstance(reset_result, dict) and reset_result.get("status") == "resumed":
+        print("[BRAIN] (session resumed — brain already loaded)", file=sys.stderr)
+        return True
+
+    _sid = _hook_session_id
 
     # Get debug mode
     debug = daemon_call("get_config", {"key": "debug_enabled", "default": "0"})
@@ -78,12 +79,8 @@ def _boot_via_daemon():
         text = result.get("for_claude", "") or result.get("text", "")
         if text:
             print(text)
-            # Mark session as booted (skip re-boots on resume)
-            # Mark this session as booted (skip re-boots on resume)
-            sid = daemon_call("get_config", {"key": "session_id", "default": ""})
-            sid_val = sid.get("value", sid) if isinstance(sid, dict) else (sid or "")
-            if sid_val:
-                daemon_call("set_config", {"key": "last_booted_session", "value": sid_val})
+            # Resume-skip now lives in the daemon's session object (boot_time),
+            # so no global last_booted_session marker to write here.
             return True
     elif isinstance(result, str) and result:
         print(result)

@@ -121,7 +121,10 @@ class TestPersistenceRoundTrip(unittest.TestCase):
             'fatigue': {'nA': 1},
             'edge_fatigue': {},
             'remember_count': 0, 'message_count': 0, 'edit_check_count': 0,
-            'last_encode_at_message': 0, 'boot_time': '',
+            # conversational_count + last_encode_at_message are PRE-MIGRATION keys
+            # (removed when the Scribe cadence moved to trace-pull). load() must
+            # tolerate old rows that still carry them — they're silently ignored.
+            'conversational_count': 7, 'last_encode_at_message': 0, 'boot_time': '',
             'segment_id': 0, 'segment_embeddings': [], 'segment_node_ids': [],
             # NO node_activity key
         })
@@ -137,6 +140,9 @@ class TestPersistenceRoundTrip(unittest.TestCase):
         # Other fields still load correctly.
         self.assertEqual(loaded.stop_counter, 3)
         self.assertEqual(loaded.fatigue, {'nA': 1})
+        # Removed cadence keys in the old blob don't resurrect as attributes.
+        self.assertFalse(hasattr(loaded, 'conversational_count'))
+        self.assertFalse(hasattr(loaded, 'last_encode_at_message'))
 
     def test_per_session_isolation_across_save(self):
         """Two sessions saved to the same DB → load returns isolated state."""

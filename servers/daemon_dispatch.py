@@ -32,10 +32,10 @@ from .dispatch_observability import (
     _handle_get_interaction, _handle_set_interaction_active, _handle_register_interaction,
 )
 from .dispatch_ops import (
-    _handle_ping, _handle_heartbeat, _handle_health_check, _handle_validate_config,
+    _handle_ping, _handle_health_check, _handle_validate_config,
     _handle_scan_host, _handle_procedure_trigger, _handle_get_config,
     _handle_get_debug_status, _handle_enrichment_coverage, _handle_pre_edit,
-    _handle_save, _handle_record_message, _handle_reset_session, _handle_set_config,
+    _handle_save, _handle_reset_session, _handle_set_config,
     _handle_promote_staged, _handle_backfill_summaries, _handle_backfill_vectors,
     _handle_diagnose, _handle_eval,
     _handle_drop_sys_revision_history,
@@ -56,7 +56,6 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "ping":                     CmdEntry(_handle_ping,                 is_write=False),
     "context_boot":             CmdEntry(_handle_context_boot,         is_write=False),
     "recall":                   CmdEntry(_handle_recall,               is_write=False),
-    "heartbeat":                CmdEntry(_handle_heartbeat,            is_write=False),
     "validate_config":          CmdEntry(_handle_validate_config,      is_write=False),
     "health_check":             CmdEntry(_handle_health_check,         is_write=False),
     "scan_host":                CmdEntry(_handle_scan_host,            is_write=False),
@@ -77,7 +76,6 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
 
     # ── Writes (exclusive lock) ──
     "save":                CmdEntry(_handle_save,               is_write=True, marks_dirty=False),
-    "record_message":      CmdEntry(_handle_record_message,     is_write=True, marks_dirty=True),
     "reset_session":       CmdEntry(_handle_reset_session,      is_write=True, marks_dirty=True),
     "set_config":          CmdEntry(_handle_set_config,         is_write=True, marks_dirty=True),
     "log_debug":           CmdEntry(_handle_log_debug,          is_write=True, marks_dirty=True),

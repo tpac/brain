@@ -9,8 +9,8 @@ SessionContext carries:
 - stop_counter: which stop we're on
 - fatigue: {node_id: access_count} for synaptic fatigue (resets between sessions)
 - activity counters (remember_count, message_count, edit_check_count,
-  last_encode_at_message, boot_time) — replaces the brain_meta globals
-  that leaked across parallel sessions before 2026-05-17
+  boot_time) — replaces the brain_meta globals that leaked across
+  parallel sessions before 2026-05-17
 
 Usage:
     # In a hook:
@@ -49,12 +49,12 @@ class SessionContext:
         # client-side, so its stop never updates this → it reads as a heartbeat.
         # -1 = recall has never run for this session.
         self.last_recall_stop: int = -1
-        # Integration cadence — advances ONLY on conversational turns. The S1
-        # Scribe gates on this (every Nth conversational turn), decoupled from
-        # stop_counter (the per-stop SEQUENCE number, which advances on every
-        # stop incl. heartbeats so chain IDs stay unique). Two counters, two
-        # responsibilities. See trace_contract S0 TURN CLASSIFICATION.
-        self.conversational_count: int = 0
+        # Integration cadence (every Nth conversational turn → S1 Scribe) is NOT
+        # a stored counter anymore — it's derived live from traces via
+        # turns_since_last_encode(). A maintained counter desynced across resume
+        # (boot reset it while the traces stayed truthful), starving the Scribe.
+        # stop_counter stays a real counter: it names chain IDs and must be
+        # assigned synchronously, before its trace exists.
         # Transient (not persisted): set by post_response_common each turn so the
         # Stop hook's Scribe gate only fires on conversational turns.
         self.last_turn_conversational: bool = True
@@ -74,7 +74,6 @@ class SessionContext:
         self.remember_count: int = 0
         self.message_count: int = 0
         self.edit_check_count: int = 0
-        self.last_encode_at_message: int = 0
         self.boot_time: str = ''  # ISO timestamp; empty means not booted yet
         # Session env — the Claude-side facts (working dir + git branch) FED IN
         # from the boot hook; the daemon never introspects Claude to learn them.
@@ -109,6 +108,14 @@ class SessionContext:
     def increment_stop(self):
         """Increment stop counter. Called by the Stop hook."""
         self.stop_counter += 1
+
+    def turns_since_last_encode(self, brain) -> int:
+        """Conversational turns since this session's last encode — the cadence the
+        S1 Scribe gates on, read live from traces. Delegates to the S0 traces
+        layer; the session object holds no trace-schema knowledge. Replaces the
+        persisted conversational_count, which desynced across resume."""
+        from servers.scales.s0.conversation import turns_since_last_encode
+        return turns_since_last_encode(brain, self.session_id)
 
     # ── Chain ID generators ──
 
@@ -213,13 +220,11 @@ class SessionContext:
         data = json.dumps({
             'stop_counter': self.stop_counter,
             'last_recall_stop': self.last_recall_stop,
-            'conversational_count': self.conversational_count,
             'fatigue': self.fatigue,
             'edge_fatigue': self.edge_fatigue,
             'remember_count': self.remember_count,
             'message_count': self.message_count,
             'edit_check_count': self.edit_check_count,
-            'last_encode_at_message': self.last_encode_at_message,
             'boot_time': self.boot_time,
             'cwd': self.cwd,
             'branch': self.branch,
@@ -247,13 +252,11 @@ class SessionContext:
                 stop_counter=data.get('stop_counter', 0),
             )
             ctx.last_recall_stop = int(data.get('last_recall_stop', -1))
-            ctx.conversational_count = int(data.get('conversational_count', 0))
             ctx.fatigue = {k: int(v) for k, v in data.get('fatigue', {}).items()}
             ctx.edge_fatigue = {k: int(v) for k, v in data.get('edge_fatigue', {}).items()}
             ctx.remember_count = int(data.get('remember_count', 0))
             ctx.message_count = int(data.get('message_count', 0))
             ctx.edit_check_count = int(data.get('edit_check_count', 0))
-            ctx.last_encode_at_message = int(data.get('last_encode_at_message', 0))
             ctx.boot_time = data.get('boot_time', '') or ''
             ctx.cwd = data.get('cwd', '') or ''
             ctx.branch = data.get('branch', '') or ''

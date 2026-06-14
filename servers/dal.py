@@ -1073,6 +1073,23 @@ class TraceDAL:
         return {'started_at': started_at, 'last_active_at': last_active_at,
                 'turn_count': turn_count, 'recent_msgs': recent}
 
+    def conversational_turns_since(self, session_id: str, since_iso: str = '') -> int:
+        """Count this session's conversational turns — optionally only those after
+        `since_iso`. A turn == one s0 `user_message` trace, wake-envelope
+        (`<task-notification>`) ignitions excluded — the same definition
+        active_sessions_by_turn's turn_count uses. This is the S1 Scribe's cadence
+        primitive: turns-since-last-encode, read live from traces instead of a
+        maintained counter (which desynced across resume). Uses idx_trace_session
+        + the scale/ref_type predicates. since_iso='' counts all turns."""
+        from .trace_contract import WAKE_ENVELOPE_MARKER
+        sql = ("SELECT COUNT(*) FROM trace_events WHERE scale='s0' "
+               "AND session_id=? AND ref_type='user_message' AND summary NOT LIKE ?")
+        params: List[Any] = [session_id, WAKE_ENVELOPE_MARKER + '%']
+        if since_iso:
+            sql += " AND created_at > ?"
+            params.append(since_iso)
+        return self.conn.execute(sql, params).fetchone()[0]
+
     def find_by_metadata_substring(self, scale: str, ref_type: str,
                                    substring: str) -> Optional[Dict[str, str]]:
         """First trace matching (scale, ref_type) whose metadata contains

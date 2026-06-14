@@ -123,14 +123,82 @@ class TestSessionContextPersistence:
         assert loaded.branch == 'claude/x'
 
     def test_reset_session_activity_stamps_cwd(self):
-        # boot feeds cwd → reset stamps cwd + derived branch. Post-3a there is a
-        # SINGLE authoritative reset per boot (render_boot_v2 no longer resets),
-        # so no preserve dance — a fresh reset with cwd is the whole story.
+        # boot feeds cwd → a NEW session's reset stamps cwd + derived branch.
         from servers.session_context import SessionContext
-        self.brain.reset_session_activity(session_id='env-sess', cwd='/work/tree/y')
+        is_resume = self.brain.reset_session_activity(session_id='env-sess', cwd='/work/tree/y')
+        assert is_resume is False                    # never booted → new session
         after = SessionContext.load(self.brain.logs_conn, 'env-sess')
         assert after.cwd == '/work/tree/y'          # stamped from the boot feed
         assert after.branch                          # derived (real branch or 'unknown')
+
+    def test_reset_session_activity_resume_preserves_state(self):
+        # REGRESSION: a re-boot of an already-booted session is a RESUME — it must
+        # CONTINUE accumulated state, not zero it. Pre-fix, every boot built a
+        # fresh ctx, so under parallel sessions the global resume-guard misfired
+        # and reset live sessions: stop_counter→0 (duplicate chain IDs) and segment
+        # state lost. Resume detection now lives in the session object
+        # (ctx.boot_time). (The Scribe cadence itself is trace-derived now, so it's
+        # immune regardless — see test_turns_since_last_encode_trace_pull.)
+        from servers.session_context import SessionContext
+        assert self.brain.reset_session_activity(session_id='resume-sess', cwd='/w/a') is False
+        ctx = self.brain._session_contexts['resume-sess']
+        ctx.stop_counter = 7
+        ctx.message_count = 4
+        ctx.segment_id = 2
+        # Re-boot the SAME session (resume) — different cwd to prove identity still
+        # refreshes while accumulated state is preserved.
+        assert self.brain.reset_session_activity(session_id='resume-sess', cwd='/w/b') is True
+        after = SessionContext.load(self.brain.logs_conn, 'resume-sess')
+        assert after.stop_counter == 7               # chain-id sequence preserved (no dup chains)
+        assert after.message_count == 4
+        assert after.segment_id == 2
+        assert after.cwd == '/w/b'                    # identity refreshed on resume
+
+    def test_resume_after_daemon_restart_loads_from_db(self):
+        # A daemon restart empties the in-memory cache but the persisted row
+        # survives. The next boot must still detect a resume (from the DB row) and
+        # preserve state — the suspend-restart path that was resetting live
+        # sessions in production.
+        from servers.session_context import SessionContext
+        self.brain.reset_session_activity(session_id='restart-sess', cwd='/w/a')
+        ctx = self.brain._session_contexts['restart-sess']
+        ctx.stop_counter = 9
+        ctx.save(self.brain.logs_conn)               # persist before the "restart"
+        self.brain._session_contexts.clear()         # simulate daemon restart
+        assert self.brain.reset_session_activity(session_id='restart-sess', cwd='/w/a') is True
+        after = SessionContext.load(self.brain.logs_conn, 'restart-sess')
+        assert after.stop_counter == 9               # survived the restart + re-boot
+
+    def test_turns_since_last_encode_trace_pull(self):
+        # The S1 Scribe cadence is derived LIVE from traces — no stored counter.
+        # Pins the definition: a turn == one s0 user_message; <task-notification>
+        # ignitions don't count; only turns AFTER the last s1 encoding_prompt count.
+        from servers.scales.s0.conversation import turns_since_last_encode
+        sid = 'cadence-sess'
+        c = self.brain.logs_conn
+        _n = [0]
+        def ins(scale, etype, ref_type, ts, summary='hi'):
+            _n[0] += 1
+            c.execute(
+                "INSERT INTO trace_events (id, chain_id, scale, event_type, ref_type, "
+                "ref_id, summary, metadata, session_id, interaction_id, created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                ('t%07d' % _n[0], '%s-x-%d' % (scale, _n[0]), scale, etype, ref_type,
+                 '', summary, None, sid, None, ts))
+        # 3 turns, no encode yet → counts all 3
+        ins('s0', 'K', 'user_message', '2026-06-13T10:00:01+00:00')
+        ins('s0', 'K', 'user_message', '2026-06-13T10:00:02+00:00')
+        ins('s0', 'K', 'user_message', '2026-06-13T10:00:03+00:00')
+        c.commit()
+        assert turns_since_last_encode(self.brain, sid) == 3
+        # encode runs, then 2 real turns + 1 task-notification ignition after it
+        ins('s1', 'O', 'encoding_prompt', '2026-06-13T10:00:04+00:00')
+        ins('s0', 'K', 'user_message', '2026-06-13T10:00:05+00:00')
+        ins('s0', 'K', 'user_message', '2026-06-13T10:00:06+00:00')
+        ins('s0', 'K', 'user_message', '2026-06-13T10:00:07+00:00', summary='<task-notification> wake')
+        c.commit()
+        assert turns_since_last_encode(self.brain, sid) == 2   # ignition excluded; only real turns since encode
+
 
     def test_multiple_sessions_isolated(self):
         """Two sessions don't interfere with each other."""
@@ -144,6 +212,27 @@ class TestSessionContextPersistence:
         loaded2 = SessionContext.load(self.brain.logs_conn, 'sess-2')
         assert loaded1.stop_counter == 10
         assert loaded2.stop_counter == 20
+
+
+class TestScribeStarvationThreshold:
+    """The Scribe-starvation alarm is a pure threshold decision (level trigger,
+    rate-limited). The gate (daemon_hooks) logs a loud brain error when it trips —
+    the monitor that would have caught the 20h encode-drought on hour one."""
+
+    def test_below_threshold_not_starved(self):
+        from servers.scales.s1.encode_contract import (
+            scribe_is_starved, SCRIBE_STARVATION_TURNS, ENCODE_EVERY)
+        assert SCRIBE_STARVATION_TURNS == 4 * ENCODE_EVERY
+        assert not scribe_is_starved(0)
+        assert not scribe_is_starved(ENCODE_EVERY)               # normal: gate fires, no alarm
+        assert not scribe_is_starved(SCRIBE_STARVATION_TURNS - 1)
+
+    def test_at_threshold_then_rate_limited(self):
+        from servers.scales.s1.encode_contract import (
+            scribe_is_starved, SCRIBE_STARVATION_TURNS, ENCODE_EVERY)
+        assert scribe_is_starved(SCRIBE_STARVATION_TURNS)                  # first alert at threshold
+        assert not scribe_is_starved(SCRIBE_STARVATION_TURNS + 1)          # rate-limited between cadences
+        assert scribe_is_starved(SCRIBE_STARVATION_TURNS + ENCODE_EVERY)   # next alert one cadence later
 
 
 # ═══════════════════════════════════════════════════════

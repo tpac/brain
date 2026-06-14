@@ -603,14 +603,12 @@ def post_response_common(brain, session_id, user_message, assistant_response):
         brain._log_error('record_message', e, 'post_response_common')
 
     # stop_counter is the per-stop SEQUENCE number — it advances on EVERY stop
-    # (incl. heartbeats) so S0/S1 chain IDs stay unique. conversational_count is
-    # the integration CADENCE — it advances only on conversational turns and is
-    # what the Scribe gates on. Two counters, two responsibilities (sequence vs
-    # cadence). In-memory; autosave persists. See trace_contract S0 TURN
-    # CLASSIFICATION.
+    # (incl. heartbeats) so S0/S1 chain IDs stay unique. The integration CADENCE
+    # the Scribe gates on is NOT a counter here — it's derived live from traces
+    # (turns_since_last_encode counts s0 user_message turns), so there's nothing
+    # to tick on this path. last_turn_conversational (set above) is what the Stop
+    # gate uses to skip heartbeats. See trace_contract S0 TURN CLASSIFICATION.
     ctx.increment_stop()
-    if is_conversational:
-        ctx.conversational_count += 1
     return ctx
 
 
@@ -645,13 +643,27 @@ def hook_post_response_track(brain, args, graph_changes):
             # advance the integration cadence — skip the Scribe gate entirely.
             encoding_status = "heartbeat — not a turn, encoder gate skipped"
         else:
-            # Gate on the integration CADENCE (conversational turns), not the raw
-            # stop SEQUENCE — wakeups never drag the Scribe along. `counter` (the
-            # stop sequence) still names the s1e chain / prompt file uniquely.
+            # Gate on conversational turns since the last encode — read LIVE from
+            # traces (turns_since_last_encode), not a maintained counter. The old
+            # conversational_count desynced across resume/restart (boot reset it),
+            # starving the Scribe; the trace log never desyncs. LEVEL trigger
+            # (>= N): a run skipped because the lock is busy isn't lost — the next
+            # turn re-checks and fires. `counter` (the stop sequence) still names
+            # the s1e chain / prompt file uniquely.
             counter = ctx.stop_counter
-            position = ctx.conversational_count % 5
+            from .scales.s1.encode_contract import ENCODE_EVERY, scribe_is_starved
+            turns_since = ctx.turns_since_last_encode(brain)
+            if scribe_is_starved(turns_since):
+                # Loud signal — the Scribe should have fired at ENCODE_EVERY but the
+                # backlog kept growing. This is the observability gap that hid a 20h
+                # encode-drought; surface it to the brain error log (→ dashboard).
+                brain._log_error(
+                    'scribe_starvation',
+                    RuntimeError('%d conversational turns since last encode — Scribe '
+                                 'not completing runs (lock wedged or encoder erroring)' % turns_since),
+                    'session=%s' % session_id)
 
-            if ctx.conversational_count > 0 and position == 0:
+            if turns_since >= ENCODE_EVERY:
                 if not _encoding_lock.acquire(blocking=False):
                     encoding_status = "encoding skipped (previous still running)"
                     print("[brain-hooks] Encoding agent skipped — previous run still active", flush=True)
@@ -680,7 +692,7 @@ def hook_post_response_track(brain, args, graph_changes):
                     acquired_for_spawn = False
                     encoding_status = "encoding started (background)"
             else:
-                encoding_status = "encoding %d/5" % position
+                encoding_status = "encoding %d/%d" % (turns_since, ENCODE_EVERY)
     except Exception as e:
         brain._log_error('encoding_agent_gate', e, 'Stop hook')
         encoding_status = "encoding error: %s" % str(e)[:50]

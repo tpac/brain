@@ -11,6 +11,25 @@ Interaction: 'encoding_agent' in interactions table. Prompt is learnable.
 
 from servers.contract import render_rich_node
 
+# How many conversational turns accumulate before the S1 Scribe fires. The gate
+# is a LEVEL trigger on turns-since-last-encode (read live from traces), not a
+# modular counter — a skipped run (lock busy) isn't lost; the next turn re-checks.
+ENCODE_EVERY = 5
+
+# turns-since-last-encode at/above this means the Scribe is WEDGED: it should have
+# fired at ENCODE_EVERY but the backlog kept growing (lock jammed, or runs erroring
+# before they write their encoding_prompt trace). The gate logs a loud error here —
+# this is the monitor that would have caught the 20h encode-drought on hour one.
+# 4× the cadence: well past normal, so a rapid burst mid-run can't trip it.
+SCRIBE_STARVATION_TURNS = 4 * ENCODE_EVERY
+
+
+def scribe_is_starved(turns_since: int) -> bool:
+    """True when the Scribe is wedged and the gate should emit a loud signal.
+    Level condition, rate-limited to one alert per ENCODE_EVERY turns of continued
+    starvation (fires at 20, 25, 30… not every turn) so the error log isn't spammed."""
+    return turns_since >= SCRIBE_STARVATION_TURNS and turns_since % ENCODE_EVERY == 0
+
 # ═══════════════════════════════════════════════════════════════
 # ENCODING AGENT CONFIG
 # ═══════════════════════════════════════════════════════════════

@@ -81,6 +81,26 @@ def get_conversation(brain, session_id: str, limit: int = 20) -> List[Dict]:
         return []
 
 
+def turns_since_last_encode(brain, session_id: str) -> int:
+    """Conversational turns this session has had since its last S1 encode run.
+
+    The S1 Scribe's cadence signal, read LIVE from traces instead of a
+    maintained counter. The old `conversational_count` desynced across
+    resume/restart (boot reset it while the traces stayed truthful), which
+    starved the Scribe — so the gate now derives the count from the event log
+    that never lies. Anchors on the most recent `encoding_prompt` S1 trace
+    (written at encode start); counts s0 user_message turns after it. No prior
+    encode → counts all turns, so a fresh session fires at the threshold. Same
+    turn definition the encoder reads (trace_contract).
+    """
+    if not session_id:
+        return 0
+    last = brain._trace_dal.get_by_ref_type(
+        'encoding_prompt', scale='s1', session_id=session_id, hours=None, limit=1)
+    since = last[0]['created_at'] if last else ''
+    return brain._trace_dal.conversational_turns_since(session_id, since)
+
+
 def get_conversation_around(brain, node_id: str = None,
                             session_id: str = None,
                             timestamp: str = None,

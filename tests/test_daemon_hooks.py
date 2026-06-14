@@ -115,11 +115,12 @@ class TestHookRecallOutput(BrainTestBase):
 class TestTurnClassification(BrainTestBase):
     """post_response_common classifies each stop: conversational (a real prompt
     ran recall this stop → last_recall_stop == stop_counter) vs heartbeat (a
-    /watch wakeup re-arm, recall skipped client-side). Two counters, two jobs:
-    stop_counter is the per-stop SEQUENCE (advances every stop → unique chain
-    IDs); conversational_count is the integration CADENCE (advances only on
-    conversational turns → what the Scribe gates on). A heartbeat advances the
-    sequence but NOT the cadence, and never enters the conversation stream.
+    /watch wakeup re-arm, recall skipped client-side). It advances stop_counter
+    (the per-stop SEQUENCE → unique chain IDs), sets last_turn_conversational
+    (the Stop gate's heartbeat-skip), and writes the right s0 trace type. The
+    Scribe's CADENCE is no longer a counter here — it's derived live from the
+    user_message traces (see test_turns_since_last_encode_trace_pull); a heartbeat
+    writes a `heartbeat` trace, not a user_message, so it can't drag the cadence.
     See trace_contract S0 TURN CLASSIFICATION."""
 
     needs_embedder = False
@@ -130,7 +131,7 @@ class TestTurnClassification(BrainTestBase):
             "ORDER BY created_at", (session_id,)).fetchall()
         return [r[0] for r in rows]
 
-    def test_conversational_turn_advances_both_counters_and_writes_assistant_message(self):
+    def test_conversational_turn_advances_sequence_and_writes_assistant_message(self):
         # post_response_common writes the ASSISTANT half at Stop; the user_message
         # half is now written upstream by hook_recall at prompt-arrival (see
         # TestHookRecallOutput.test_hook_recall_writes_user_message_trace). This
@@ -139,12 +140,11 @@ class TestTurnClassification(BrainTestBase):
         # unchanged between hook_recall and this Stop), so the pair stays grouped.
         sid = 'test-turn-conv'
         ctx = self.brain.get_or_create_session(sid)
-        seq_before, cad_before = ctx.stop_counter, ctx.conversational_count
+        seq_before = ctx.stop_counter
         ctx.last_recall_stop = ctx.stop_counter   # simulate hook_recall having run this stop
         post_response_common(self.brain, sid, "a real operator prompt", "a response")
         self.assertEqual(ctx.stop_counter, seq_before + 1)           # sequence advances
-        self.assertEqual(ctx.conversational_count, cad_before + 1)   # cadence advances
-        self.assertTrue(ctx.last_turn_conversational)
+        self.assertTrue(ctx.last_turn_conversational)                # gate will treat as a turn
         refs = self._s0_refs(sid)
         self.assertIn('assistant_message', refs)
         self.assertNotIn('heartbeat', refs)
@@ -152,28 +152,34 @@ class TestTurnClassification(BrainTestBase):
     def test_heartbeat_advances_sequence_but_not_cadence_no_user_message(self):
         sid = 'test-turn-heartbeat'
         ctx = self.brain.get_or_create_session(sid)
-        seq_before, cad_before = ctx.stop_counter, ctx.conversational_count
+        seq_before = ctx.stop_counter
         post_response_common(self.brain, sid, "/watch skill body", "(watching — inbox empty)")
         self.assertEqual(ctx.stop_counter, seq_before + 1)           # sequence advances → unique chain IDs
-        self.assertEqual(ctx.conversational_count, cad_before)       # cadence does NOT → Scribe not dragged along
-        self.assertFalse(ctx.last_turn_conversational)
+        self.assertFalse(ctx.last_turn_conversational)               # gate skips it
         refs = self._s0_refs(sid)
         self.assertIn('heartbeat', refs)
-        self.assertNotIn('user_message', refs)
+        self.assertNotIn('user_message', refs)                       # no user_message → cadence untouched
         self.assertNotIn('assistant_message', refs)
 
-    def test_heartbeats_dont_advance_cadence_between_real_turns(self):
+    def test_mixed_sequence_classifies_each_turn(self):
+        # real → heartbeat → real: stop_counter advances on ALL (unique chain IDs),
+        # but only real turns enter the conversation stream (assistant_message);
+        # the heartbeat writes a `heartbeat` trace and never a user/assistant one,
+        # so it can't drag the trace-derived cadence.
         sid = 'test-turn-mixed'
         ctx = self.brain.get_or_create_session(sid)
         ctx.last_recall_stop = ctx.stop_counter
         post_response_common(self.brain, sid, "real one", "r")
-        cad_after_real, seq_after_real = ctx.conversational_count, ctx.stop_counter
+        seq_after_real = ctx.stop_counter
         post_response_common(self.brain, sid, "/watch", "(watching)")   # heartbeat: no recall mark
-        self.assertEqual(ctx.conversational_count, cad_after_real)      # cadence unchanged by heartbeat
-        self.assertEqual(ctx.stop_counter, seq_after_real + 1)         # but sequence advanced
-        ctx.last_recall_stop = ctx.stop_counter                        # next real turn
+        self.assertFalse(ctx.last_turn_conversational)
+        self.assertEqual(ctx.stop_counter, seq_after_real + 1)          # sequence advanced
+        ctx.last_recall_stop = ctx.stop_counter                         # next real turn
         post_response_common(self.brain, sid, "real two", "r")
-        self.assertEqual(ctx.conversational_count, cad_after_real + 1)  # cadence +1 for the real turn only
+        self.assertTrue(ctx.last_turn_conversational)
+        refs = self._s0_refs(sid)
+        self.assertEqual(refs.count('assistant_message'), 2)           # two real turns
+        self.assertEqual(refs.count('heartbeat'), 1)                   # one heartbeat, off the cadence
 
 
 if __name__ == '__main__':

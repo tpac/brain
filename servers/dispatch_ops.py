@@ -24,13 +24,6 @@ def _handle_ping(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
-def _handle_heartbeat(brain, args, graph_changes):
-    sid = args.get("session_id", "")
-    ctx = brain.get_or_create_session(sid) if sid else None
-    nudge = brain.get_encoding_heartbeat(ctx, nudge_threshold=args.get("threshold", 8))
-    return {"ok": True, "result": {"nudge": nudge}}
-
-
 def _handle_health_check(brain, args, graph_changes):
     return {"ok": True, "result": brain.health_check(
         session_id=args.get("session_id", "daemon"),
@@ -87,23 +80,16 @@ def _handle_save(brain, args, graph_changes):
     return {"ok": True, "result": {"status": "saved"}}
 
 
-def _handle_record_message(brain, args, graph_changes):
-    sid = args.get("session_id", "")
-    if not sid:
-        return {"ok": True, "result": {"nudge": None}}
-    ctx = brain.get_or_create_session(sid)
-    brain.record_message(ctx)
-    nudge = brain.get_encoding_heartbeat(ctx)
-    # ctx mutation persists via autosave loop.
-    return {"ok": True, "result": {"nudge": nudge}}
-
-
 def _handle_reset_session(brain, args, graph_changes):
     sid = args.get("session_id", "")
     # cwd is fed from the boot hook (Claude side); the daemon never introspects
-    # it. reset_session_activity stamps it as session identity + derives branch.
-    brain.reset_session_activity(session_id=sid, cwd=args.get("cwd", ""))
-    return {"ok": True, "result": {"status": "reset", "session_id": sid}}
+    # it. reset_session_activity stamps it as session identity + derives branch,
+    # and returns True when it RESUMED an existing session (counters preserved).
+    is_resume = brain.reset_session_activity(session_id=sid, cwd=args.get("cwd", ""))
+    return {"ok": True, "result": {
+        "status": "resumed" if is_resume else "reset",
+        "session_id": sid,
+    }}
 
 
 def _handle_set_config(brain, args, graph_changes):

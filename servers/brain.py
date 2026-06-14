@@ -586,7 +586,7 @@ class Brain(
     # ─── Session Activity Tracking ───
     # Counters live on SessionContext, persisted via session_state.
     # See record_remember / record_message / record_edit_check /
-    # get_encoding_heartbeat / reset_session_activity — all session-keyed.
+    # reset_session_activity — all session-keyed.
 
     def session_context_for(self, session_id: str) -> str:
         """Per-session running journey summary (encoder's session arc).
@@ -1004,44 +1004,71 @@ class Brain(
             self._cached_session_id = self.get_config('session_id', '') or ''
         return self._cached_session_id or 'no_session'
 
-    def reset_session_activity(self, session_id: str = '', cwd: str = ''):
-        """Reset session counters. Session_id comes from hook args, not generated.
+    def reset_session_activity(self, session_id: str = '', cwd: str = '') -> bool:
+        """Boot a session. Resume-aware: CONTINUES an existing session's counters
+        instead of zeroing them. Returns True on resume, False for a new session.
+
+        New-vs-resume is decided from the SESSION OBJECT itself (ctx.boot_time —
+        empty means never booted), NOT a global brain_meta flag. The old design
+        let the boot hook gate resume-detection on the global `last_booted_session`
+        key, which is last-writer-wins across parallel sessions: with concurrent
+        streams every session but the most-recent booter failed the guard, so its
+        re-boot (resume / host-wake / compaction) fell through to a full reset.
+        That reset wiped the session's accumulated state — back then the S1
+        Scribe's cadence was a stored counter, so it got zeroed and the Scribe
+        starved. The cadence is trace-derived now (turns_since_last_encode), but
+        preserving the rest still matters: a reset would reset stop_counter (→
+        duplicate chain IDs), segment state, fatigue, and node_activity.
 
         Activity counters (remember_count, message_count, edit_check_count,
-        last_encode_at_message, boot_time) live on SessionContext now.
-        Two writes to brain_meta are retained as deprecated singleton
-        fallbacks (`session_id`, `boot_time`) for callers that haven't yet
-        been threaded with session_id — see XXX flags in _log_error,
-        brain_remember.remember(), and brain_assembly.pre_edit_check.
+        boot_time) live on SessionContext now.
         """
         sid = session_id or uuid.uuid4().hex
         self._cached_session_id = sid
-        # Persist SessionContext with fresh counters + segment state
-        # (segment_id=0, segment_embeddings=[], segment_node_ids=[] are
-        # the SessionContext defaults). Save immediately and replace the
-        # cache entry — operator-visible reset semantics should land in
-        # DB right away, not wait for autosave.
-        from .session_context import SessionContext
-        ctx = SessionContext(session_id=sid)
-        ctx.boot_time = self.now()
-        # cwd/branch are session IDENTITY (where this stream works), fed in from
-        # the boot hook. Boot resets the session exactly once now (render_boot_v2
-        # no longer resets), so a fresh ctx stamped with cwd is the whole story —
-        # no double-reset, no preserve dance. Surfaced via session_env_for / peek.
-        if cwd:
-            ctx.cwd = cwd
-            ctx.branch = self.detect_git_branch(cwd)
-        # Serialize the brain_meta (brain.db) + session_state (logs_conn)
-        # writes under write_lock — same shared-connection race as
-        # get_or_create_session when this runs outside the dispatch write
-        # path (e.g. direct boot/test calls).
+        from .session_context import SessionContext, SessionContextCorrupt
+        # Derive branch BEFORE the lock — detect_git_branch may shell out to git,
+        # and we don't want to hold write_lock across a subprocess.
+        branch = self.detect_git_branch(cwd) if cwd else ''
+        # The whole read-decide-write must be atomic under write_lock — same
+        # double-checked-locking discipline as get_or_create_session. Doing the
+        # resume read outside the lock lets two concurrent boots of the SAME
+        # session_id both observe `None`, both build a fresh ctx, and clobber the
+        # accumulated state. write_lock is reentrant (TrackedRLock), so the nested
+        # SessionContext.load / _log_error / save are safe.
         with self.write_lock:
+            # Resume detection from the session object. Prefer the live cached ctx;
+            # fall back to the persisted row (a daemon restart empties the cache
+            # but the row survives, so a post-restart re-boot is still a resume).
+            existing = self._session_contexts.get(sid)
+            if existing is None:
+                try:
+                    existing = SessionContext.load(self.logs_conn, sid)
+                except SessionContextCorrupt as e:
+                    self._log_error('session_context_load', e,
+                                    'reset_session_activity session=%s' % (sid or '')[:8])
+                    existing = None
+            is_resume = existing is not None and bool(existing.boot_time)
+            if is_resume:
+                # RESUME — keep every accumulated counter (activity), fatigue, and
+                # segment state. Only per-boot facts get refreshed below.
+                ctx = existing
+            else:
+                # NEW session — fresh counters + segment state (segment_id=0, empty
+                # embeddings/ids are the SessionContext defaults).
+                ctx = SessionContext(session_id=sid)
+            ctx.boot_time = self.now()
+            # cwd/branch are session IDENTITY (where this stream works), fed in
+            # from the boot hook. Surfaced via session_env_for / peek.
+            if cwd:
+                ctx.cwd = cwd
+                ctx.branch = branch
             # XXX deprecated singleton fallback for un-threaded callers (see
             # brain.session_id property + _log_error/_log_warning). C-refactor
             # threads session_id through every call site and drops this write.
             self._meta.set('session_id', sid)
             ctx.save(self.logs_conn)
             self._session_contexts[sid] = ctx
+        return is_resume
 
     def check_segment_boundary(self, query_embedding, session_id: str):
         """Detect if a new message represents a context/topic shift.
@@ -1146,16 +1173,13 @@ class Brain(
             ctx.segment_node_ids.append(node_id)
 
     def record_remember(self, ctx):
-        """Increment remember counter and mark last encode position.
-
-        Takes a SessionContext; mutates in place. Caller is responsible
-        for ctx.save() at the transaction boundary (turn end / handler
-        exit). None ctx is a silent no-op.
+        """Increment the remember counter (feeds the Frame's session-activity
+        render). Takes a SessionContext; mutates in place. Caller is responsible
+        for ctx.save() at the transaction boundary. None ctx is a silent no-op.
         """
         if ctx is None:
             return
         ctx.remember_count += 1
-        ctx.last_encode_at_message = ctx.message_count
 
     def record_message(self, ctx):
         """Increment message counter. Mutates ctx in place."""
@@ -1168,42 +1192,6 @@ class Brain(
         if ctx is None:
             return
         ctx.edit_check_count += 1
-
-    def get_encoding_heartbeat(self, ctx,
-                               nudge_threshold: int = 8) -> Optional[Dict[str, Any]]:
-        """Check if Claude should be nudged to encode learnings.
-
-        Read-only against SessionContext counters.
-
-        Args:
-            ctx: SessionContext for the session being inspected
-            nudge_threshold: Messages without encoding before nudging (default 8)
-        """
-        if ctx is None:
-            return None
-        msg_count = ctx.message_count
-        remember_count = ctx.remember_count
-        last_encode_at = ctx.last_encode_at_message
-
-        messages_since_encode = msg_count - last_encode_at
-
-        if messages_since_encode < nudge_threshold:
-            return None
-
-        # Build nudge with context
-        nudge = {
-            'messages_since_encode': messages_since_encode,
-            'total_messages': msg_count,
-            'total_encodes': remember_count,
-            'severity': 'gentle' if messages_since_encode < 15 else 'urgent',
-        }
-
-        if remember_count == 0:
-            nudge['message'] = '%d messages in session, nothing encoded yet. Decisions, corrections, or learnings to capture?' % msg_count
-        else:
-            nudge['message'] = '%d messages since last encode (%d total encodes). Any recent decisions or learnings worth preserving?' % (messages_since_encode, remember_count)
-
-        return nudge
 
     # ─── Utilities ───
 
