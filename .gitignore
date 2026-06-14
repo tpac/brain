@@ -27,7 +27,8 @@ venv/
 node_modules/
 
 # Plugin-scoped runtime (installed by hooks/scripts/ensure-runtime.sh)
-bin/
+bin/*
+!bin/brain-watch
 py/
 .runtime-ready
 
