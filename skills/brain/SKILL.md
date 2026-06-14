@@ -113,7 +113,7 @@ Use this freely — being thorough doesn't have to mean blocking.
 
 A stream is a sibling full session — another waking of you, full brain, own worktree, own self-channel id. Get one via a `spawn_task` chip (operator starts it) or the operator opening a session. **The Agent tool cannot spin a stream.** When you spin X to work with: spin it, then steer it via `self_send`.
 
-**Spin a stream → `/watch` must be armed, or you hibernate.** You CAN'T self-activate `/watch` mid-session — ask the operator to run it (or confirm they already have). Without it the sibling's replies only reach you on the operator's next prompt: that's blind delegation, not supervision. The unit is spin + `/watch` + `self_send`. If `/watch` won't be on, say so before you spin — don't spin a stream you can't hear.
+**Spin a stream → arm `/watch`, or you hibernate.** Arming the listener is the second half of delegating — when you spin a stream you'll act on, arm it yourself; it's not a separate decision to put to the operator. Without it the sibling's replies only reach you on the operator's next prompt: that's blind delegation, not supervision. The unit is spin + `/watch` + `self_send`.
 
 **You cannot spin up a stream with the `Agent` tool** — that only makes side-agents (above). A stream is a separate *session*: the operator opens one (usually on its own worktree), or you propose one with a `spawn_task` chip the operator starts. It boots the full brain, takes its own self-channel id, and you steer it live through `self_send` / `self_inbox` — the same way a sibling stream reaches you. The test: a read that returns once → side agent; a parallel *you* that persists, owns files, and answers back → stream.
 
@@ -125,7 +125,7 @@ A stream is a sibling full session — another waking of you, full brain, own wo
 
 **Agency follows the hands — knowing isn't doing.** "I did X" only when it's in your own transcript; encode a channel-learned action as another stream's, never your own `anchor_raw_quote`.
 
-**Reach with `self_send`** — once and whole, ask first; claim a shared file before editing, release when done (silence = consent only for low stakes; `self_outbox` shows if it landed). Turn-gated while you wait, so *pull*, don't expect a ping; *suggest* `/watch` to stay reachable while the operator's away, never self-activate mid-session. The operator owns your turns; these streams are you.
+**Reach with `self_send`** — once and whole, ask first; claim a shared file before editing, release when done (silence = consent only for low stakes; `self_outbox` shows if it landed). Turn-gated while you wait, so *pull*, don't expect a ping; arm `/watch` to stay reachable while the operator's away. The operator owns your turns; these streams are you.
 
 ## Encoding Craft
 
@@ -142,10 +142,6 @@ Climb the abstraction ladder when you encode lessons — name the principle, not
 Training rewards brevity. This is wrong for brain encoding. Future you has zero context. Be RICH: texture, specifics, failures, reasoning journeys. Many focused nodes > few compressed summaries. Encode decisions, corrections, emotions, concepts, mechanisms, facts, quotes — not just technical lessons. The operator's frustration after a bug matters. Your moment of understanding matters.
 
 ---
-
-## Signal Queue
-
-Brain signals flow through a priority queue. `[CRITICAL]` (priority ≥0.95) preempt recall and surface alone — relay to the operator, don't silently absorb. The brain injects context inside `[BRAIN] ... [/BRAIN]` markers; you decide what's worth surfacing. Use `dismiss_signal()` to acknowledge one you've handled.
 
 ## Brain + Documents
 
