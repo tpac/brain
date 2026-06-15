@@ -151,7 +151,7 @@ survivor-redirect (recall quality) under one contract.
 
 | # | Site | file:line | id source | today | required |
 |---|------|-----------|-----------|-------|----------|
-| 1 | `recall_by_time` **discussed** | `scales/s1/fetch_tools.py` (anchor + source gate) | `surface_selected` traces (JSON ref_id) | drops archived + **loud ERROR** (this-session stopgap) | **resolve_live** — redirect to survivor; drop only orphans; de-noise |
+| 1 | `recall_by_time` **discussed** | `scales/s1/fetch_tools.py` (anchor + source gate) | `surface_selected` traces (JSON ref_id) | ✅ **resolve_live** — redirects to survivor, drops orphans quietly (2026-06-14) | done |
 | 2 | `recall_by_time` **event** | `fetch_tools.py:507` | `entity_dates` (DAL) | archived filtered (`n.archived=0`) ✓ | route through resolver for survivor-redirect |
 | 3 | `_get_recently_surfaced` (surface dedup) | `scales/s1/surface.py:21-55` | `surface_selected` traces → `get_title` | **no liveness** — archived titles enter dedup set | resolve_live — track survivor, not dead id |
 | 4 | Hebbian drain | `daemon_hooks.py:473-525` | surfaced-ids tmp file → `resolve_id` | archived dropped + loud (bc34734d) | resolve_live — strengthen edges on survivor |
@@ -192,6 +192,17 @@ loud belongs on the contract violation, not the routine redirect.
 ---
 
 ## 8. Implementation phases
+
+**Status 2026-06-14 (site #1 shipped):** `recall_by_time` **discussed** (§5 #1)
+migrated to `resolve_live` — the drop-and-loud stopgap (`fetch_by_time_archived_leak`)
+is gone; archived trace-ids redirect to their live survivors and only true orphans
+drop, quietly. The loud backstop is the downstream `execute_tool` tripwire (§6).
+`resolve_live` was also made **batch-first**: all in-flight ids advance in lockstep,
+hitting the DB twice per chain LEVEL (`_live_status_bulk` + `_survivor_pointers_bulk`)
+instead of twice per id per hop — O(chain depth) queries regardless of input count,
+the shape sites #2–#6 will reuse. Survivor source is still the metadata pointer
+(`_sys_archived_survivor_id`); the edge-source swap (reader-phase (ii)) is now
+isolated to `_survivor_pointers_bulk` — one method, the walk unchanged.
 
 **Status 2026-06-13:** Phase 3 primitive LANDED (resolve_live merged to main,
 `20c2951`, read-only, 13 tests). Phase 2 backfill EXECUTED for the clean set

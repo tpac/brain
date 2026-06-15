@@ -577,23 +577,33 @@ def recall_by_time(brain, start_when: str = '', end_when: str = '',
         else:
             return []  # unknown anchor
 
-        # Liveness gate at the SOURCE (2026-06-12, bc34734d handoff —
-        # spread_seed_no_vectors incident class): archived ids must never
-        # enter the candidate flow. Fixed here per operator directive, not
-        # by a pre-Haiku filter layer. 'created'/'updated' SQL already
-        # filters archived; 'event' (entity_dates) and 'discussed' (trace
-        # refs pointing at since-absorbed nodes) can carry archived ids.
-        # One gate covers every anchor. Loud, never stat-only.
+        # Resolve history-sourced ids forward to their live survivors
+        # (docs/TRACE-NODE-RESOLUTION.md, site #1 — replaces the 2026-06-12
+        # drop-and-loud stopgap). The 'discussed' anchor reads ids from
+        # immutable surface_selected traces; a node live when surfaced may
+        # have been absorbed/archived since. resolve_live redirects each to
+        # the live node it became — "the thing we discussed survives as its
+        # descendant" — and marks true orphans (no live survivor). Orphans are
+        # dropped and COUNTED via a low-severity warning (§6: routine retrieval,
+        # NOT the loud error the dashboard surfaces) so survivor-pointer rot
+        # stays observable during the recovery window without re-spamming.
+        # Backstop scope: the execute_tool tripwire downstream guards the NODE
+        # feed only — it matches ids against the nodes table, and edge
+        # candidates carry edge_ids it can't inspect, so the edge feed keeps
+        # its own archived-endpoint gate in _fetch_edges_with_endpoints.
+        # 'created'/'updated'/'event' already filter archived in SQL, so for
+        # them this is a single passthrough query.
         if time_node_ids:
-            _dead = brain._nodes.archived_subset(time_node_ids)
-            if _dead:
-                brain._log_error(
-                    'fetch_by_time_archived_leak',
-                    RuntimeError('%d archived node ids reached recall_by_time '
-                                 'candidate set (anchor=%s)'
-                                 % (len(_dead), time_anchor)),
-                    'dropped at source; sample=%s' % sorted(_dead)[:5])
-                time_node_ids -= _dead
+            _resolved = brain._nodes.resolve_live(
+                time_node_ids, on_orphan='mark')
+            time_node_ids = set(_resolved['live'])
+            _orphans = _resolved.get('orphans') or []
+            if _orphans:
+                brain._log_warning(
+                    'fetch_by_time_orphans_dropped',
+                    '%d discussed-anchor ids had no live survivor (anchor=%s)'
+                    % (len(_orphans), time_anchor),
+                    'dropped; sample=%s' % sorted(_orphans)[:5])
 
         # 3. Semantic matches (if query). Over-fetch so tiers can fill.
         semantic_results: List[Dict[str, Any]] = []

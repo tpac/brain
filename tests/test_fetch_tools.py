@@ -126,6 +126,22 @@ def env():
         yield env
 
 
+def _event_count(b, event_type, source=None) -> int:
+    """Count debug_log rows of an event_type (optionally a specific source).
+    The copied logs db carries historical rows, so the discussed-anchor tests
+    assert on the DELTA across a single call. event_type='error' is the loud,
+    dashboard-surfaced severity; 'warning' is the quiet §6 signal — asserting
+    on these (not on the deleted 'fetch_by_time_archived_leak' string, which
+    now has zero writers) is what makes the 'quiet' check non-tautological."""
+    if source is not None:
+        return b.logs_conn.execute(
+            "SELECT COUNT(*) FROM debug_log WHERE event_type=? AND source=?",
+            (event_type, source)).fetchone()[0]
+    return b.logs_conn.execute(
+        "SELECT COUNT(*) FROM debug_log WHERE event_type=?",
+        (event_type,)).fetchone()[0]
+
+
 class TestRecallTopical:
     def test_returns_candidates(self, env):
         results = recall_topical(env.brain, query='partnership target function', k=5)
@@ -175,37 +191,82 @@ class TestRecallByTimeDiscussed:
                                  end_when='February 2001', time_anchor='discussed')
         assert isinstance(results, list)
 
-    def test_discussed_anchor_drops_archived_loudly(self, env):
-        # Source liveness gate (2026-06-12): a trace can point at a node
-        # that S2 absorbed/archived since — the gate must drop it before
-        # it reaches Haiku, and must log loudly (never stat-only).
+    def test_discussed_anchor_redirects_archived_to_survivor(self, env):
+        # TRACE-NODE-RESOLUTION site #1: a trace can point at a node S2
+        # absorbed since. The anchor must resolve forward to the live
+        # survivor (the thing we discussed survives as its descendant) — the
+        # survivor surfaces, the dead id does not — and do it QUIETLY (the
+        # old loud `fetch_by_time_archived_leak` stopgap is gone; §6).
         import json as _json
         b = env.brain
-        row = b.conn.execute(
-            "SELECT id FROM nodes WHERE COALESCE(archived,0)=1 LIMIT 1").fetchone()
-        if not row:  # fixture copy has no archived nodes — archive one
-            nid = b.conn.execute("SELECT id FROM nodes LIMIT 1").fetchone()[0]
-            b.conn.execute("UPDATE nodes SET archived=1 WHERE id=?", (nid,))
-            b.conn.commit()
-            archived_id = nid
-        else:
-            archived_id = row[0]
+        live = b.conn.execute(
+            "SELECT id FROM nodes WHERE COALESCE(archived,0)=0 LIMIT 1").fetchone()[0]
+        src = b.conn.execute(
+            "SELECT id FROM nodes WHERE COALESCE(archived,0)=0 AND id != ? "
+            "LIMIT 1", (live,)).fetchone()[0]
+        # Absorb `src` into `live`: archive it + stamp the survivor pointer.
+        b.conn.execute("UPDATE nodes SET archived=1 WHERE id=?", (src,))
+        b.conn.execute(
+            "INSERT OR REPLACE INTO node_metadata_kv (node_id, key, value) "
+            "VALUES (?, '_sys_archived_survivor_id', ?)", (src, live))
+        b.conn.commit()
+        # Isolated far-past window so only this synthetic trace matches.
         b.logs_conn.execute(
             "INSERT INTO trace_events (id, chain_id, scale, event_type, ref_type, ref_id, summary, session_id, created_at) "
-            "VALUES ('te5tdead', 's1r-test-2', 's1', 'K', 'surface_selected', ?, 'test', 'test-sess', "
-            "'2008-03-15T12:00:00+00:00')",
-            (_json.dumps([archived_id]),))
+            "VALUES ('te5tredir', 's1r-test-3', 's1', 'K', 'surface_selected', ?, 'test', 'test-sess', "
+            "'2007-05-15T12:00:00+00:00')",
+            (_json.dumps([src]),))
         b.logs_conn.commit()
-        results = recall_by_time(b, start_when='March 2008',
-                                 end_when='April 2008', time_anchor='discussed')
+        # `live in ids` is the positive control (get_node is a raw point
+        # lookup that does NOT itself resolve survivors, so `live` can only
+        # appear if resolve_live actually redirected). Quietness = no loud
+        # error row added by this call (event_type='error' is what the
+        # dashboard surfaces); a routine redirect logs nothing.
+        err_before = _event_count(b, 'error')
+        results = recall_by_time(b, start_when='May 2007',
+                                 end_when='June 2007', time_anchor='discussed')
         ids = {r.get('id') for r in results}
-        assert archived_id not in ids, "archived node leaked through discussed anchor"
-        err = b.logs_conn.execute(
-            "SELECT COUNT(*) FROM debug_log "
-            "WHERE source LIKE '%fetch_by_time_archived_leak%' "
-            "OR event_type LIKE '%fetch_by_time_archived_leak%'"
-        ).fetchone()[0]
-        assert err >= 1, "archived drop must be logged loudly, not silent"
+        assert src not in ids, "absorbed source must not surface"
+        assert live in ids, "survivor must surface in place of the absorbed node"
+        assert _event_count(b, 'error') == err_before, \
+            "routine redirect must not write a loud error row"
+
+    def test_discussed_anchor_drops_orphan_quietly(self, env):
+        # An archived node with NO survivor pointer is a true orphan: dropped,
+        # never surfaced, with no loud error — but COUNTED via a low-severity
+        # warning (§6). `ctrl` is a LIVE sibling in the same trace: the
+        # positive control. It must still surface, so the test fails if
+        # resolve_live returns nothing (rather than passing vacuously on an
+        # empty result, e.g. a swallowed crash).
+        import json as _json
+        b = env.brain
+        src = b.conn.execute(
+            "SELECT id FROM nodes WHERE COALESCE(archived,0)=0 LIMIT 1").fetchone()[0]
+        ctrl = b.conn.execute(
+            "SELECT id FROM nodes WHERE COALESCE(archived,0)=0 AND id != ? "
+            "LIMIT 1", (src,)).fetchone()[0]
+        b.conn.execute("UPDATE nodes SET archived=1 WHERE id=?", (src,))
+        b.conn.execute(
+            "DELETE FROM node_metadata_kv WHERE node_id=? "
+            "AND key='_sys_archived_survivor_id'", (src,))
+        b.conn.commit()
+        b.logs_conn.execute(
+            "INSERT INTO trace_events (id, chain_id, scale, event_type, ref_type, ref_id, summary, session_id, created_at) "
+            "VALUES ('te5torph', 's1r-test-4', 's1', 'K', 'surface_selected', ?, 'test', 'test-sess', "
+            "'2006-07-15T12:00:00+00:00')",
+            (_json.dumps([src, ctrl]),))
+        b.logs_conn.commit()
+        err_before = _event_count(b, 'error')
+        warn_before = _event_count(b, 'warning', 'fetch_by_time_orphans_dropped')
+        results = recall_by_time(b, start_when='July 2006',
+                                 end_when='August 2006', time_anchor='discussed')
+        ids = {r.get('id') for r in results}
+        assert src not in ids, "true orphan must be dropped"
+        assert ctrl in ids, "live sibling must still surface (positive control)"
+        assert _event_count(b, 'error') == err_before, \
+            "orphan drop must not write a loud error row"
+        assert _event_count(b, 'warning', 'fetch_by_time_orphans_dropped') > warn_before, \
+            "orphan drop must be COUNTED via a low-severity warning (§6)"
 
 
 class TestRecallByTime:
