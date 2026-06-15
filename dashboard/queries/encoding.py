@@ -11,7 +11,7 @@ and edges created inside the run's time window.
 import json
 import os
 
-from ..clock import iso_window_around, utc_cutoff
+from ..clock import utc_cutoff
 from ..db import brain_db_path, logs_db_path, ro_connect
 from ..log import warn
 from ..query import safe_query
@@ -153,12 +153,26 @@ def _query_encoding_chains(conn, limit: int, session_id: str, hours: int):
         catalog_info = k_row[0] if k_row else ''
 
         d_row = conn.execute(
-            "SELECT summary, created_at FROM trace_events "
+            "SELECT summary, created_at, metadata FROM trace_events "
             "WHERE chain_id = ? AND event_type = 'delta'",
             (chain_id,),
         ).fetchone()
         summary = d_row[0] if d_row else '(encoding in progress or no actions)'
         delta_ts = d_row[1] if d_row else ''
+
+        # The run records the exact node ids it created/revised in its delta
+        # metadata (build_delta_metadata, populated for both remember_batch and
+        # brain_batch). Read that authoritative list rather than reconstructing
+        # it from encoding_source + a time window — the reconstruction drifts the
+        # moment the tag or the run duration changes; the trace never does.
+        created_ids, revised_ids = [], []
+        if d_row and d_row[2]:
+            try:
+                dmeta = json.loads(d_row[2])
+                created_ids = [i for i in (dmeta.get('created') or []) if i]
+                revised_ids = [i for i in (dmeta.get('revised') or []) if i]
+            except (ValueError, TypeError):
+                pass
 
         encoder_prompt = None
         if prompt_file and os.path.exists(prompt_file):
@@ -178,6 +192,8 @@ def _query_encoding_chains(conn, limit: int, session_id: str, hours: int):
             "summary": summary[:500],
             "prompt_info": prompt_info,
             "catalog_info": catalog_info,
+            "created_ids": created_ids,
+            "revised_ids": revised_ids,
             "nodes": [],
             "edges": [],
             "encoder_prompt": encoder_prompt,
@@ -186,71 +202,95 @@ def _query_encoding_chains(conn, limit: int, session_id: str, hours: int):
 
 
 def query_encoding_runs(limit: int = 10, session_id: str = '', hours: int = 24):
-    """S1E runs — one chain per run, enriched with nodes/edges from brain.db.
+    """S1E runs — one chain per run, enriched with the exact nodes the run
+    recorded, plus the edges touching them.
 
     Two-pass: chain skeletons from logs_db (via @safe_query), then per-run
-    enrichment from brain.db (manual second connection). Manual second pass
-    because @safe_query is single-DB by design.
+    enrichment from brain.db (manual second connection, @safe_query is single-DB).
+
+    The nodes shown are the precise ids the run recorded in its delta trace
+    (`created`/`revised`), fetched by id — NOT reconstructed from
+    encoding_source + a time window. The trace is the run's own statement of what
+    it did, so the view can't drift when tagging changes (e.g. a run writing via
+    brain_batch instead of remember_batch) or when a run runs longer than the old
+    ±2min guess. A run that recorded no node writes shows empty — truthfully.
     """
     runs = _query_encoding_chains(limit, session_id, hours)
     if not runs:
         return runs
+    # Strip the internal id scaffolding up front so it never leaks into the
+    # response on the bconn-None / exception paths (the per-run loop below
+    # consumes from this map instead of from the run dict).
+    ids_by_chain = {
+        r['chain_id']: ((r.pop('created_ids', []) or []), (r.pop('revised_ids', []) or []))
+        for r in runs
+    }
     try:
         with ro_connect(brain_db_path()) as bconn:
             if bconn is None:
                 return runs
             for run in runs:
-                ts = run.get('delta_ts') or run.get('start_ts', '')
-                if not ts:
-                    continue
-                # ±2-minute window around the run timestamp. Rolls hours
-                # and midnight correctly (the old string-clamp version did not).
-                ts_lo, ts_hi = iso_window_around(ts, minutes=2)
+                created_ids, revised_ids = ids_by_chain.get(run['chain_id'], ([], []))
+                node_ids = created_ids + revised_ids
+                if not node_ids:
+                    continue  # nothing recorded for this run — leave it empty
 
-                nodes = bconn.execute(
-                    "SELECT id, type, title, substr(content,1,200), created_at "
-                    "FROM nodes WHERE encoding_source = 'encoder:sonnet' "
-                    "AND created_at BETWEEN ? AND ? ORDER BY created_at",
-                    (ts_lo, ts_hi),
+                placeholders = ','.join('?' * len(node_ids))
+                rows = bconn.execute(
+                    "SELECT id, type, title, substr(content,1,200), created_at, encoding_source "
+                    "FROM nodes WHERE id IN (%s)" % placeholders,
+                    node_ids,
                 ).fetchall()
-                run['nodes'] = [
-                    {"id": n[0], "type": n[1], "title": n[2], "content": n[3], "timestamp": n[4]}
-                    for n in nodes
-                ]
+                by_id = {r[0]: r for r in rows}
 
-                revised = bconn.execute(
-                    "SELECT id, type, title, substr(content,1,200), revised_at "
-                    "FROM nodes WHERE encoding_source = 'encoder:sonnet' "
-                    "AND revised_at BETWEEN ? AND ? ORDER BY revised_at",
-                    (ts_lo, ts_hi),
-                ).fetchall()
-                for r in revised:
-                    if not any(n['id'] == r[0] for n in run['nodes']):
+                run['nodes'] = []
+                seen = set()
+                for nid in created_ids:
+                    r = by_id.get(nid)
+                    if r and nid not in seen:
+                        seen.add(nid)
                         run['nodes'].append({
                             "id": r[0], "type": r[1], "title": r[2],
-                            "content": r[3], "timestamp": r[4], "kind": "revised",
+                            "content": r[3], "timestamp": r[4], "encoding_source": r[5],
+                        })
+                for nid in revised_ids:
+                    r = by_id.get(nid)
+                    if r and nid not in seen:
+                        seen.add(nid)
+                        run['nodes'].append({
+                            "id": r[0], "type": r[1], "title": r[2],
+                            "content": r[3], "timestamp": r[4],
+                            "encoding_source": r[5], "kind": "revised",
                         })
 
-                edges = bconn.execute(
-                    "SELECT e.source_id, e.target_id, er.relation, e.weight, e.created_at, "
-                    "n1.title, n2.title "
-                    "FROM edges e "
-                    "JOIN edge_relations er ON er.edge_id = e.edge_id "
-                    "LEFT JOIN nodes n1 ON n1.id = e.source_id "
-                    "LEFT JOIN nodes n2 ON n2.id = e.target_id "
-                    "WHERE e.created_at BETWEEN ? AND ? "
-                    "AND er.archived = 0 "
-                    "AND er.relation NOT IN ('co_accessed', 'emergent_bridge') "
-                    "ORDER BY e.created_at",
-                    (ts_lo, ts_hi),
-                ).fetchall()
-                run['edges'] = [
-                    {"relation": e[2], "weight": e[3],
-                     "source_title": e[5] or e[0][:12],
-                     "target_title": e[6] or e[1][:12],
-                     "timestamp": e[4]}
-                    for e in edges
-                ]
+                # Edges the run formed: those touching its own node set, bounded
+                # by the run's real span (start trace → delta trace). Derived from
+                # the authoritative node set, so no fixed-window or tag guessing.
+                start_ts = run.get('start_ts', '')
+                end_ts = run.get('delta_ts') or start_ts
+                if start_ts and end_ts:
+                    nid_ph = ','.join('?' * len(node_ids))
+                    edges = bconn.execute(
+                        "SELECT e.source_id, e.target_id, er.relation, e.weight, e.created_at, "
+                        "n1.title, n2.title "
+                        "FROM edges e "
+                        "JOIN edge_relations er ON er.edge_id = e.edge_id "
+                        "LEFT JOIN nodes n1 ON n1.id = e.source_id "
+                        "LEFT JOIN nodes n2 ON n2.id = e.target_id "
+                        "WHERE e.created_at BETWEEN ? AND ? "
+                        "AND er.archived = 0 "
+                        "AND er.relation NOT IN ('co_accessed', 'emergent_bridge') "
+                        "AND (e.source_id IN (%s) OR e.target_id IN (%s)) "
+                        "ORDER BY e.created_at" % (nid_ph, nid_ph),
+                        [start_ts, end_ts] + node_ids + node_ids,
+                    ).fetchall()
+                    run['edges'] = [
+                        {"relation": e[2], "weight": e[3],
+                         "source_title": e[5] or e[0][:12],
+                         "target_title": e[6] or e[1][:12],
+                         "timestamp": e[4]}
+                        for e in edges
+                    ]
     except Exception as e:
         warn('queries.encoding', 'enriching runs with nodes/edges failed', exc=e)
     return runs

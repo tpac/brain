@@ -104,7 +104,7 @@ async function loadStats() {
        <div class="stat"><span class="stat-value">${d.recent_24h}</span><span class="stat-label">24h</span></div>
        <div class="stat"><span class="stat-value">${d.orphans}</span><span class="stat-label">Orphans</span></div>
        <div class="daemon-status ${statusClass}">${statusText}</div>
-       <div class="daemon-status alive" style="font-size:10px;padding:3px 8px">${d.encoding ? 'Encode: ' + d.encoding.position + '/5' + (d.encoding.position === 0 ? ' ⚡' : '') : ''}</div>`;
+       <div class="daemon-status alive" style="font-size:10px;padding:3px 8px">${d.encoding ? 'Encode: ' + d.encoding.turns_since + '/' + d.encoding.every + (d.encoding.due ? ' ⚡' : '') : ''}</div>`;
 
     const banner = document.getElementById('daemon-banner');
     if (!daemonAlive) {

@@ -1,6 +1,5 @@
 """Top-bar stats + insights — high-level summaries."""
 
-import json
 import os
 
 from ..clock import utc_cutoff
@@ -30,20 +29,40 @@ def query_stats():
         db_path=db,
     )
 
-    enc_counter = 0
+    # Encoding cadence indicator — turns since the active session's last S1
+    # encode, read live from traces (the gate's own signal). NOT stop_counter % 5:
+    # that counter was retired when the cadence became a trace-derived LEVEL
+    # trigger (turns_since_last_encode >= ENCODE_EVERY), so the modular indicator
+    # drifted into a meaningless number. Mirrors dal.conversational_turns_since:
+    # active session = latest s0 user turn; anchor on that session's latest
+    # encoding_prompt; count s0 user_message turns since, excluding wake-envelope
+    # ignitions ("<task-notification>" = WAKE_ENVELOPE_MARKER in trace_contract).
+    ENCODE_EVERY = 5
     enc_position = 0
     try:
-        enc_row = direct_query(
-            "SELECT session_id, value FROM session_state "
-            "WHERE key = '_session_context' ORDER BY updated_at DESC LIMIT 1",
-            db_path=logs_db_path(),
-        )
-        if enc_row and enc_row[0][1]:
-            state = json.loads(enc_row[0][1])
-            enc_counter = state.get('stop_counter', 0)
-            enc_position = enc_counter % 5
+        logs = logs_db_path()
+        sess = direct_query(
+            "SELECT session_id FROM trace_events WHERE scale='s0' "
+            "AND ref_type='user_message' AND session_id != '' "
+            "ORDER BY created_at DESC LIMIT 1", db_path=logs)
+        if sess and sess[0][0]:
+            sid = sess[0][0]
+            last = direct_query(
+                "SELECT created_at FROM trace_events WHERE scale='s1' "
+                "AND ref_type='encoding_prompt' AND session_id=? "
+                "ORDER BY created_at DESC LIMIT 1", args=(sid,), db_path=logs)
+            since = last[0][0] if last else ''
+            sql = ("SELECT COUNT(*) FROM trace_events WHERE scale='s0' "
+                   "AND session_id=? AND ref_type='user_message' "
+                   "AND summary NOT LIKE ?")
+            params = [sid, '<task-notification>%']
+            if since:
+                sql += " AND created_at > ?"
+                params.append(since)
+            r = direct_query(sql, args=tuple(params), db_path=logs)
+            enc_position = r[0][0] if r else 0
     except Exception as e:
-        warn('queries.stats', 'reading session_context for encode position failed', exc=e)
+        warn('queries.stats', 'computing turns-since-last-encode failed', exc=e)
 
     return {
         "nodes": nodes[0][0] if nodes else 0,
@@ -54,9 +73,9 @@ def query_stats():
         "types": {t: cnt for t, cnt in types},
         "daemon": "alive" if daemon_alive() else "unavailable",
         "encoding": {
-            "counter": enc_counter,
-            "position": enc_position,
-            "next_in": 5 - enc_position if enc_position else 0,
+            "turns_since": enc_position,
+            "every": ENCODE_EVERY,
+            "due": enc_position >= ENCODE_EVERY,
         },
     }
 

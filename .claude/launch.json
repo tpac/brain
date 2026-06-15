@@ -5,6 +5,7 @@
       "name": "brain-dashboard",
       "runtimeExecutable": "python3",
       "runtimeArgs": ["dashboard/brain_dashboard_standalone.py"],
+      "autoPort": false,
       "port": 47303
     }
   ]

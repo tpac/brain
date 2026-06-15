@@ -87,6 +87,16 @@ WRITE_COMMANDS = {
     'trace_append', 'set_config',
 }
 
+# The subset of WRITE_COMMANDS that create or attribute nodes/edges and so must
+# carry the scale agent's encoding_source. Every command here reads a top-level
+# `encoding_source` and cascades it (the batch handlers fan it out per-op).
+# DERIVED from WRITE_COMMANDS (single source of truth) minus the explicitly
+# non-attributed writes — so a newly-added attributed write is tagged
+# automatically and can't silently slip through as 'anchor' (the gap that once
+# mislabelled brain_batch encodes and hid them from the dashboard's encoder view).
+NON_ATTRIBUTED_WRITES = {'enrich', 'trace_append', 'set_config'}
+ATTRIBUTED_WRITE_COMMANDS = WRITE_COMMANDS - NON_ATTRIBUTED_WRITES
+
 
 def make_scale_dispatch(read_brain, encoding_source='encoder:sonnet'):
     """Create a dispatch function for a scale agent.
@@ -105,7 +115,7 @@ def make_scale_dispatch(read_brain, encoding_source='encoder:sonnet'):
     from servers.daemon_dispatch import COMMAND_TABLE, check_unknown_keys
 
     def dispatch(cmd, cmd_args):
-        if cmd in ('remember', 'remember_batch', 'revise'):
+        if cmd in ATTRIBUTED_WRITE_COMMANDS:
             cmd_args.setdefault('encoding_source', encoding_source)
         if cmd in WRITE_COMMANDS:
             return daemon_tcp_send(cmd, cmd_args)

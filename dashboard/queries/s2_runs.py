@@ -118,6 +118,17 @@ def _enrich_consolidation(bconn, delta_row, ok_payload) -> dict:
 
     # ±60-minute window around the delta. iso_window_around handles
     # midnight/hour rollovers (the old string-clamp did not).
+    #
+    # This view stays window-based ON PURPOSE — unlike the S1 encoding-runs
+    # view, consolidation runs leave their delta `created` bucket EMPTY (verified:
+    # 564 deltas, 0 with meta.created, yet 102 s2:consolidation nodes exist). The
+    # delta DOES carry action_details — `created` is empty because consolidation
+    # synthesizes via consolidate/evolve ops, not the remember->'created' path the
+    # runner buckets. So reading trace ids here would show 0 synth for every run.
+    # The window is sound for consolidation because S2 tags reliably (base.py
+    # stamps encoding_source unconditionally) and runs are idle-gated/spaced, so
+    # cross-run overlap is unlikely. The authoritative fix lives in the
+    # consolidation encoder (bucket synthesis ids into `created`), not here.
     ts_lo, ts_hi = iso_window_around(created_at, minutes=60)
 
     synth_nodes = bconn.execute(
