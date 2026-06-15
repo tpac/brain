@@ -12,7 +12,7 @@ import json
 import os
 
 from ..clock import utc_cutoff
-from ..db import brain_db_path, logs_db_path, ro_connect
+from ..db import brain_db_path, fetch_by_id, logs_db_path, ro_connect
 from ..log import warn
 from ..query import safe_query
 
@@ -235,13 +235,10 @@ def query_encoding_runs(limit: int = 10, session_id: str = '', hours: int = 24):
                 if not node_ids:
                     continue  # nothing recorded for this run — leave it empty
 
-                placeholders = ','.join('?' * len(node_ids))
-                rows = bconn.execute(
-                    "SELECT id, type, title, substr(content,1,200), created_at, encoding_source "
-                    "FROM nodes WHERE id IN (%s)" % placeholders,
-                    node_ids,
-                ).fetchall()
-                by_id = {r[0]: r for r in rows}
+                by_id = fetch_by_id(
+                    bconn, 'nodes',
+                    'id, type, title, substr(content,1,200), created_at, encoding_source',
+                    node_ids)
 
                 run['nodes'] = []
                 seen = set()

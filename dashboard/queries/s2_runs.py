@@ -16,7 +16,7 @@ import json
 from typing import Callable, List
 
 from ..clock import iso_window_around, utc_cutoff
-from ..db import brain_db_path, logs_db_path, ro_connect
+from ..db import brain_db_path, fetch_by_id, logs_db_path, ro_connect
 from ..log import warn
 
 
@@ -207,12 +207,10 @@ def _enrich_consolidation(bconn, delta_row, ok_payload) -> dict:
                        for s in (k['source_id'], k['target_id']))})
 
     if node_ids:
-        ph = ','.join('?' * len(node_ids))
-        rows = bconn.execute(
-            "SELECT id, type, title, substr(content,1,500), confidence, archived "
-            "FROM nodes WHERE id IN (%s)" % ph, node_ids,
-        ).fetchall()
-        by_id = {r[0]: r for r in rows}
+        by_id = fetch_by_id(
+            bconn, 'nodes',
+            'id, type, title, substr(content,1,500), confidence, archived',
+            node_ids)
 
         # Liveness is the DB `archived` flag, not op ordering. A node that was a
         # survivor in one op and absorbed in a later op (chain merge), or a

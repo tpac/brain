@@ -9,7 +9,7 @@ enrichment and render whatever it returns.
 """
 
 from ..daemon_client import daemon_send
-from ..db import brain_db_path, direct_query, logs_db_path, ro_connect
+from ..db import brain_db_path, direct_query, fetch_by_id, logs_db_path, ro_connect
 from ..log import warn
 
 
@@ -120,20 +120,17 @@ def query_node_source_refs(node_id: str):
     if not refs:
         return []
     trace_ids = [r[0] for r in refs]
-    placeholders = ",".join("?" * len(trace_ids))
-    trace_rows = []
+    trace_by_id = {}
     with ro_connect(logs_db_path()) as conn:
         if conn is not None:
             try:
-                trace_rows = conn.execute(
-                    "SELECT id, chain_id, scale, event_type, ref_type, summary, session_id, created_at "
-                    "FROM trace_events WHERE id IN (%s)" % placeholders,
-                    trace_ids,
-                ).fetchall()
+                trace_by_id = fetch_by_id(
+                    conn, 'trace_events',
+                    'id, chain_id, scale, event_type, ref_type, summary, '
+                    'session_id, created_at',
+                    trace_ids)
             except Exception as e:
                 warn('queries.explorer', 'trace_events join for source_refs failed', exc=e)
-                trace_rows = []
-    trace_by_id = {r[0]: r for r in trace_rows}
     out = []
     for trace_id, position, ref_created in refs:
         t = trace_by_id.get(trace_id)

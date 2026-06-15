@@ -44,6 +44,32 @@ def ro_connect(path: str, timeout: float = 3):
         conn.close()
 
 
+def fetch_by_id(conn, table: str, columns: str, ids) -> dict:
+    """Fetch `columns` for rows whose id is in `ids`, returned as {id: row}.
+
+    Centralizes the placeholder + `WHERE id IN (...)` + by-id-dict idiom that
+    several queries/ modules hand-rolled. The first selected column MUST be the
+    id (it becomes the dict key). `table` and `columns` are code-controlled
+    constants, never user input — there is no injection surface; `ids` are
+    bound parameters. Falsy ids are dropped; an empty set short-circuits to {}.
+
+    Liveness-NEUTRAL by design: a point-fetch-by-id returns archived rows too,
+    matching the brain's fetch-by-id contract (liveness is enforced at call
+    sites that need it, e.g. _enrich_consolidation uses the `archived` flag as
+    its own tiebreaker). This helper must never silently filter what a caller
+    asked for by id.
+    """
+    ids = [i for i in ids if i]
+    if not ids:
+        return {}
+    placeholders = ",".join("?" * len(ids))
+    rows = conn.execute(
+        "SELECT %s FROM %s WHERE id IN (%s)" % (columns, table, placeholders),
+        ids,
+    ).fetchall()
+    return {r[0]: r for r in rows}
+
+
 def direct_query(sql: str, args=(), db_path: str = None):
     """Read-only query against brain.db (or any other path).
 
