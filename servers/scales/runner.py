@@ -32,8 +32,11 @@ ANTHROPIC_CLIENT_TIMEOUT = 600.0
 
 
 # Op → bucket for brain_batch's per-op results (each item carries its own `op`).
+# `absorb` is deliberately absent — it touches TWO nodes (an enriched survivor +
+# an archived original), so _split_action_ids routes its two ids explicitly
+# rather than through this one-op-one-bucket map.
 _OP_BUCKET = {'remember': 'created', 'revise': 'revised', 'connect': 'connected',
-              'absorb': 'absorbed', 'archive': 'archived'}
+              'archive': 'archived'}
 # Homogeneous tools — route every result id by the tool name.
 _TOOL_BUCKET = {'remember': 'created', 'remember_batch': 'created',
                 'revise': 'revised', 'revise_batch': 'revised',
@@ -42,15 +45,22 @@ _TOOL_BUCKET = {'remember': 'created', 'remember_batch': 'created',
 
 def _split_action_ids(tool, result):
     """Attribute one write action's affected node ids to created/revised/
-    connected/absorbed/archived buckets.
+    connected/archived buckets.
 
     `result` is the inner handler result dict. brain_batch carries per-op
     results — route each by its own `op` (this is the brain_batch-awareness the
     old legacy writer lacked). Homogeneous *_batch / single tools route by tool
     name. Best-effort: created/revised carry node ids (consumed by S2 community
-    + consolidation); connected is observability.
+    + consolidation); connected/archived are observability + the S2 view.
+
+    `absorb` is the one op that touches TWO nodes: it rewrites the survivor's
+    content (a revision) and archives the absorbed original. So it splits into
+    two buckets — survivor → revised, absorbed_id → archived — instead of one.
+    Pre-fix it dumped the survivor into an `absorbed` bucket that nothing read,
+    and the archived original was lost entirely; that gap is why both the S2
+    consolidation view and the S1E encoding view went blind to absorbs.
     """
-    out = {'created': [], 'revised': [], 'connected': [], 'absorbed': [], 'archived': []}
+    out = {'created': [], 'revised': [], 'connected': [], 'archived': []}
     if not isinstance(result, dict):
         return out
 
@@ -62,13 +72,22 @@ def _split_action_ids(tool, result):
         inner = item.get('result')
         if isinstance(inner, dict) and inner.get('id'):
             return inner['id']
-        return item.get('survivor_id') or item.get('node_id')
+        return item.get('node_id')
 
     if tool == 'brain_batch':
         for item in (result.get('results') or []):
             if not isinstance(item, dict) or not item.get('ok', True):
                 continue
-            bucket = _OP_BUCKET.get(item.get('op'))
+            op = item.get('op')
+            if op == 'absorb':
+                # Two affected nodes: the enriched survivor (its content is
+                # rewritten — a revision) and the archived original.
+                if item.get('survivor_id'):
+                    out['revised'].append(item['survivor_id'])
+                if item.get('absorbed_id'):
+                    out['archived'].append(item['absorbed_id'])
+                continue
+            bucket = _OP_BUCKET.get(op)
             if bucket:
                 nid = _item_id(item)
                 if nid:
@@ -362,7 +381,7 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             action_summary = tu.input.get("title", tu.input.get("query",
                 tu.input.get("node_id", "")))[:60]
             result_ids = []
-            split = {'created': [], 'revised': [], 'connected': []}
+            split = {'created': [], 'revised': [], 'connected': [], 'archived': []}
             if result.get("ok"):
                 r = result.get("result", {})
                 if isinstance(r, dict):
@@ -385,12 +404,13 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                 # build_delta_metadata aggregates and S2 reads.
                 s = _split_action_ids(tu.name, r if isinstance(r, dict) else {})
                 split = {'created': s['created'], 'revised': s['revised'],
-                         'connected': s['connected']}
+                         'connected': s['connected'], 'archived': s['archived']}
             actions.append({"tool": tu.name, "summary": action_summary,
                             "node_ids": result_ids,
                             "created": split['created'],
                             "revised": split['revised'],
                             "connected": split['connected'],
+                            "archived": split['archived'],
                             "input": tu.input})
             _log("  [%s] %s" % (tu.name, action_summary))
         return tool_results, tool_uses

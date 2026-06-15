@@ -239,8 +239,9 @@ DELTA_METADATA_SHAPE = {
     # scale runner that was blind to brain_batch — so revised/connected were
     # always empty. They belong on the one unified delta now.
     'created':           list,    # node ids created this run
-    'revised':           list,    # node ids revised this run
+    'revised':           list,    # node ids revised this run (incl. absorb survivors — content rewritten)
     'connected':         list,    # node ids touched by connect ops (observability)
+    'archived':          list,    # node ids archived this run (incl. absorb's folded-in originals)
     # Cost & provenance of producing this Δ (all int, default 0). elapsed_ms +
     # token counts let you trend encoder latency/cost over time — and, paired
     # with interaction_version, compare cost across prompt versions — straight
@@ -268,7 +269,7 @@ def build_delta_metadata(*,
                          action_details=None, read_calls=None,
                          final_text='',
                          errors=None,
-                         created=None, revised=None, connected=None,
+                         created=None, revised=None, connected=None, archived=None,
                          elapsed_ms=0, input_tokens=0, output_tokens=0,
                          cache_read_tokens=0, cache_creation_tokens=0,
                          truncated=0, interaction_version=0,
@@ -284,10 +285,12 @@ def build_delta_metadata(*,
     etc.). Useful for observability — answering "what did the encoder ask
     for that the catalog didn't already give it?" without parsing logs.
 
-    created/revised/connected default to an aggregation over action_details
-    (each write action carries its own op-attributed split, stamped by the
-    runner where the rich per-op result is still available). Pass them
-    explicitly only to override. This is the structured Δ S2 reads.
+    created/revised/connected/archived default to an aggregation over
+    action_details (each write action carries its own op-attributed split,
+    stamped by the runner where the rich per-op result is still available).
+    Pass them explicitly only to override. This is the structured Δ S2 reads
+    — `revised` includes absorb survivors and `archived` their folded-in
+    originals, so a merge-only consolidation run is no longer invisible.
 
     Returns a dict ready to pass as the metadata kwarg to a trace writer.
     """
@@ -317,6 +320,7 @@ def build_delta_metadata(*,
         'created':           _agg('created', created),
         'revised':           _agg('revised', revised),
         'connected':         _agg('connected', connected),
+        'archived':          _agg('archived', archived),
         'elapsed_ms':            int(elapsed_ms or 0),
         'input_tokens':          int(input_tokens or 0),
         'output_tokens':         int(output_tokens or 0),

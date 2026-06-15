@@ -584,6 +584,7 @@
 .enc-kind--archived { background: #663333; color: #ff8888; }
 .enc-kind--evolved  { background: #444400; color: #ffcc00; }
 .enc-kind--kept     { background: #003344; color: #45B7D1; }
+.enc-kind--corrects { background: #4a2a1a; color: #ff8866; }
 
 /* O / K / Δ tier labels in the S2 default (community) card. Healer
  * uses its unit color via inline style; only the default branch had

@@ -97,19 +97,25 @@ class TestSplitActionIds:
 
     def test_brain_batch_routes_by_op_not_tool(self):
         # The legacy writer had no brain_batch branch, so these all vanished.
+        # absorb is special: it enriches the survivor (a revision) AND archives
+        # the folded-in original — two affected nodes routed to two buckets.
         result = {'results': [
             {'op': 'remember', 'ok': True, 'result': {'id': 'c0de0001'}},
             {'op': 'revise',   'ok': True, 'result': {'id': 'c0de0002'}},
             {'op': 'connect',  'ok': True, 'result': {'id': 'c0de0003'}},
-            {'op': 'absorb',   'ok': True, 'survivor_id': 'c0de0004'},
+            {'op': 'absorb',   'ok': True, 'survivor_id': 'c0de0004',
+             'absorbed_id': 'c0de0006'},
             {'op': 'archive',  'ok': True, 'node_id': 'c0de0005'},
         ]}
         s = _split_action_ids('brain_batch', result)
         assert s['created'] == ['c0de0001']
-        assert s['revised'] == ['c0de0002']
+        # revise result + absorb survivor (its content is rewritten on merge)
+        assert s['revised'] == ['c0de0002', 'c0de0004']
         assert s['connected'] == ['c0de0003']
-        assert s['absorbed'] == ['c0de0004']
-        assert s['archived'] == ['c0de0005']
+        # absorbed original (folded in + archived) + standalone archive
+        assert s['archived'] == ['c0de0006', 'c0de0005']
+        # no vestigial 'absorbed' bucket — absorb's survivor is a revision
+        assert 'absorbed' not in s
 
     def test_brain_batch_skips_failed_ops(self):
         result = {'results': [
@@ -131,8 +137,16 @@ class TestSplitActionIds:
 
     def test_non_dict_result_is_safe(self):
         s = _split_action_ids('brain_batch', None)
-        assert s == {'created': [], 'revised': [], 'connected': [],
-                     'absorbed': [], 'archived': []}
+        assert s == {'created': [], 'revised': [], 'connected': [], 'archived': []}
+
+    def test_absorb_with_only_survivor_routes_to_revised(self):
+        # Defensive: an absorb result missing absorbed_id still records the
+        # survivor as revised (never silently drops it).
+        s = _split_action_ids('brain_batch', {'results': [
+            {'op': 'absorb', 'ok': True, 'survivor_id': 'su00'},
+        ]})
+        assert s['revised'] == ['su00']
+        assert s['archived'] == []
 
 
 class TestDeltaSplitAggregation:
@@ -147,6 +161,19 @@ class TestDeltaSplitAggregation:
         assert m['created'] == ['a', 'd', 'e']
         assert m['revised'] == ['b']
         assert m['connected'] == ['c']
+
+    def test_aggregates_archived_from_actions(self):
+        # The absorb-fix bucket: a merge-only run records its survivors
+        # (revised) and folded-in originals (archived) on the unified delta.
+        m = build_delta_metadata(action_details=[
+            {'tool': 'brain_batch', 'created': [], 'revised': ['surv1'],
+             'connected': [], 'archived': ['orig1', 'orig2']},
+        ])
+        assert m['revised'] == ['surv1']
+        assert m['archived'] == ['orig1', 'orig2']
+
+    def test_archived_default_empty(self):
+        assert build_delta_metadata()['archived'] == []
 
     def test_explicit_override_wins(self):
         m = build_delta_metadata(action_details=[{'created': ['x']}], created=['override'])

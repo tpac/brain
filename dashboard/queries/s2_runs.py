@@ -106,29 +106,172 @@ def _query_s2_unit_runs(unit_keyword: str, hours: int, delta_columns: str,
 
 # ── Consolidation enricher ──────────────────────────────────────────────────
 
+def _short(nid) -> str:
+    """8-char id label for a link endpoint we couldn't resolve to a title.
+    str() guards against a malformed delta carrying a non-string id."""
+    return str(nid)[:8]
+
+
+# Hebbian/system relations are never encoder-emitted in a consolidation batch,
+# but exclude them defensively so a stray one can't pollute the links list.
+_NON_DECISION_RELATIONS = {'co_accessed', 'emergent_bridge'}
+
+
+def _deconstruct_consolidation_ops(meta: dict):
+    """Read what a consolidation run produced from its OWN delta record.
+
+    Modern consolidation never CREATES nodes — by design it folds clusters into
+    existing survivors (consolidation_enrichment_prompt.py: "Consolidation does
+    not create new nodes. It strengthens existing ones."). A run's product is
+    therefore enriched survivors, folded-in (archived) originals, and the
+    suppression/teaching links it draws between nodes it KEEPS.
+
+    Two id sources, by reliability:
+      • survivors (enriched) + archived (folded-in): prefer the ok-gated
+        top-level `revised`/`archived` buckets that build_delta_metadata
+        populates (runner._split_action_ids routes absorb→survivor to `revised`,
+        absorbed→`archived`, and SKIPS failed ops). Fall back to deconstructing
+        the recorded op INPUT for pre-fix historical deltas, whose buckets are
+        empty. The op INPUT is what was *requested*, so it isn't ok-gated — the
+        buckets are strictly better when present, which is why they win.
+      • links: every `connect` op — KEEP/SKIP (`similar_to`), SUPERSESSION
+        (`supersedes`), CONTRADICTION (`corrects`), partition (`depends_on`),
+        … . Connect ops aren't bucketed as node *pairs*, so links can only come
+        from the recorded op input; capturing every relation (not just
+        `similar_to`) is what keeps supersession/contradiction decisions
+        visible and keeps a connect-only run off the legacy time window.
+
+    Returns (synth_ids, archived_ids, links); links = list of
+    {source_id, target_id, relation, description}.
+    """
+    op_survivors, op_archived, links = [], [], []
+    for ad in (meta.get('action_details') or []):
+        if not isinstance(ad, dict):
+            continue
+        for op in ((ad.get('input') or {}).get('operations') or []):
+            if not isinstance(op, dict):
+                continue
+            name = op.get('op')
+            if name == 'absorb':
+                if op.get('survivor_id'):
+                    op_survivors.append(op['survivor_id'])
+                if op.get('absorbed_id'):
+                    op_archived.append(op['absorbed_id'])
+            elif name == 'revise':
+                if op.get('node_id'):
+                    op_survivors.append(op['node_id'])
+            elif name == 'archive':
+                if op.get('node_id'):
+                    op_archived.append(op['node_id'])
+            elif name == 'connect':
+                rel = op.get('relation')
+                src, tgt = op.get('source_id'), op.get('target_id')
+                if rel and rel not in _NON_DECISION_RELATIONS and src and tgt:
+                    links.append({'source_id': src, 'target_id': tgt,
+                                  'relation': rel,
+                                  'description': op.get('description', '') or ''})
+    # ok-gated buckets win when present (post-fix deltas); op-input is the
+    # retroactive fallback for pre-fix history.
+    synth_ids = [i for i in (meta.get('revised') or []) if i] or op_survivors
+    archived_ids = [i for i in (meta.get('archived') or []) if i] or op_archived
+    return synth_ids, archived_ids, links
+
+
 def _enrich_consolidation(bconn, delta_row, ok_payload) -> dict:
     chain_id, summary, meta_raw, created_at = delta_row
 
-    journal = ''
+    meta, journal = {}, ''
     try:
         meta = json.loads(meta_raw) if meta_raw else {}
         journal = meta.get('final_text', '')
     except Exception:
         pass
 
-    # ±60-minute window around the delta. iso_window_around handles
-    # midnight/hour rollovers (the old string-clamp did not).
-    #
-    # This view stays window-based ON PURPOSE — unlike the S1 encoding-runs
-    # view, consolidation runs leave their delta `created` bucket EMPTY (verified:
-    # 564 deltas, 0 with meta.created, yet 102 s2:consolidation nodes exist). The
-    # delta DOES carry action_details — `created` is empty because consolidation
-    # synthesizes via consolidate/evolve ops, not the remember->'created' path the
-    # runner buckets. So reading trace ids here would show 0 synth for every run.
-    # The window is sound for consolidation because S2 tags reliably (base.py
-    # stamps encoding_source unconditionally) and runs are idle-gated/spaced, so
-    # cross-run overlap is unlikely. The authoritative fix lives in the
-    # consolidation encoder (bucket synthesis ids into `created`), not here.
+    # Trace-authoritative: read the exact node ids the run recorded touching
+    # (from its delta's recorded ops/buckets) and fetch them by id — mirroring
+    # query_encoding_runs in encoding.py, NOT reconstructing from encoding_source
+    # + a time window. The window drifted the moment consolidation switched from
+    # creating synth nodes to folding clusters into survivors via `absorb`; the
+    # trace never does.
+    synth_ids, archived_ids, link_specs = _deconstruct_consolidation_ops(meta)
+
+    synthesized, archived_nodes, links = [], [], []
+    node_ids = list({*synth_ids, *archived_ids,
+                     *(s for k in link_specs
+                       for s in (k['source_id'], k['target_id']))})
+
+    if node_ids:
+        ph = ','.join('?' * len(node_ids))
+        rows = bconn.execute(
+            "SELECT id, type, title, substr(content,1,500), confidence, archived "
+            "FROM nodes WHERE id IN (%s)" % ph, node_ids,
+        ).fetchall()
+        by_id = {r[0]: r for r in rows}
+
+        # Liveness is the DB `archived` flag, not op ordering. A node that was a
+        # survivor in one op and absorbed in a later op (chain merge), or a
+        # survivor archived by a later run, is shown as archived — never as a
+        # live survivor. The shared `seen` set dedups one node to one section.
+        seen = set()
+        for nid in synth_ids:
+            if nid in seen:
+                continue
+            r = by_id.get(nid)
+            if not r:
+                continue
+            seen.add(nid)
+            node = {"id": r[0], "type": r[1], "title": r[2], "content": r[3]}
+            if r[5]:  # archived flag → it didn't survive
+                archived_nodes.append(node)
+            else:
+                node["confidence"] = r[4]
+                synthesized.append(node)
+        for nid in archived_ids:
+            if nid in seen:
+                continue
+            r = by_id.get(nid)
+            if not r:
+                continue
+            seen.add(nid)
+            archived_nodes.append({"id": r[0], "type": r[1], "title": r[2],
+                                   "content": r[3]})
+        for k in link_specs:
+            rs, rt = by_id.get(k['source_id']), by_id.get(k['target_id'])
+            links.append({"source": rs[2] if rs else _short(k['source_id']),
+                          "target": rt[2] if rt else _short(k['target_id']),
+                          "relation": k['relation'],
+                          "description": k['description']})
+    else:
+        # Legacy-only fallback. Pre-absorb deltas created synth nodes via
+        # `remember`, whose generated ids aren't in the op input, so there's
+        # nothing to deconstruct — reconstruct from encoding_source + a ±60min
+        # window. This is the ONLY remaining window-based path; it fires solely
+        # for the April-era deltas that predate survive-and-absorb (and the live
+        # dashboard's 12–24h horizon). Modern runs never reach here.
+        synthesized, archived_nodes, links = \
+            _legacy_window_consolidation(bconn, created_at)
+
+    return {
+        "chain_id": chain_id,
+        "timestamp": created_at,
+        "summary": summary or '',
+        "o_summary": ok_payload.get('O', {}).get('summary', ''),
+        "k_summary": ok_payload.get('K', {}).get('summary', ''),
+        "journal": journal[:1000],
+        "synthesized": synthesized,
+        "archived": archived_nodes,
+        "links": links,
+    }
+
+
+def _legacy_window_consolidation(bconn, created_at):
+    """Pre-absorb fallback (see _enrich_consolidation). Reconstructs a run's
+    synthesized/archived nodes + links from encoding_source + a ±60min window —
+    the original heuristic, kept so April-era forensic views don't regress.
+    Returns (synthesized, archived, links) in the same shapes the
+    trace-authoritative path produces (similar_to + supersedes edges → links).
+    """
+    # ±60-minute window. iso_window_around handles midnight/hour rollovers.
     ts_lo, ts_hi = iso_window_around(created_at, minutes=60)
 
     synth_nodes = bconn.execute(
@@ -184,27 +327,15 @@ def _enrich_consolidation(bconn, delta_row, ok_payload) -> dict:
         (ts_lo, ts_hi),
     ).fetchall()
 
-    return {
-        "chain_id": chain_id,
-        "timestamp": created_at,
-        "summary": summary or '',
-        "o_summary": ok_payload.get('O', {}).get('summary', ''),
-        "k_summary": ok_payload.get('K', {}).get('summary', ''),
-        "journal": journal[:1000],
-        "synthesized": [
-            {"id": n[0], "type": n[1], "title": n[2], "content": n[3], "confidence": n[4]}
-            for n in synth_nodes
-        ],
-        "archived": archived_nodes,
-        "kept": [
-            {"source": e[0], "target": e[1], "description": e[3] or ''}
-            for e in kept_edges
-        ],
-        "evolved": [
-            {"survivor": e[0], "archived": e[1], "description": e[2] or ''}
-            for e in evolved_edges
-        ],
-    }
+    return (
+        [{"id": n[0], "type": n[1], "title": n[2], "content": n[3], "confidence": n[4]}
+         for n in synth_nodes],
+        archived_nodes,
+        [{"source": e[0], "target": e[1], "relation": "similar_to",
+          "description": e[3] or ''} for e in kept_edges]
+        + [{"source": e[0], "target": e[1], "relation": "supersedes",
+            "description": e[2] or ''} for e in evolved_edges],
+    )
 
 
 def query_consolidation_runs(hours: int = 24):

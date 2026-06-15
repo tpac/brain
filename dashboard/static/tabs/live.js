@@ -791,6 +791,16 @@ function _encTierRow(letter, refType, summary, { accentClass, accentStyle } = {}
   );
 }
 
+// Consolidation link relations → display (label / direction glyph / accent).
+// similar_to is symmetric (↔); supersedes/corrects/depends_on are directional
+// (source → target). Unknown relations fall back to the verb itself.
+const REL_DISPLAY = {
+  similar_to: { label: 'KEPT',       glyph: '↔', cls: 'enc-kind--kept' },
+  supersedes: { label: 'SUPERSEDES', glyph: '→', cls: 'enc-kind--evolved' },
+  corrects:   { label: 'CORRECTS',   glyph: '→', cls: 'enc-kind--corrects' },
+  depends_on: { label: 'DEPENDS',    glyph: '→', cls: 'enc-kind--kept' },
+};
+
 function _renderS2ConsolBody(run) {
   const out = [];
   for (const n of (run.synthesized || [])) {
@@ -808,28 +818,23 @@ function _renderS2ConsolBody(run) {
       nodeId: n.id,
     }));
   }
-  for (const e of (run.evolved || [])) {
+  // Relation-aware links: KEEP/SKIP (similar_to), SUPERSESSION (supersedes),
+  // CONTRADICTION (corrects), partition (depends_on), … — every connect the
+  // run drew, shown with its actual verb. Both endpoints are kept (these are
+  // the no-archive decisions), so we render source <glyph> target.
+  for (const lnk of (run.links || [])) {
+    const d = REL_DISPLAY[lnk.relation] ||
+      { label: (lnk.relation || 'LINKED').toUpperCase(), glyph: '→', cls: 'enc-kind--kept' };
     out.push(el('div', { class: 'enc-entry enc-sub-row' },
-      el('span', { class: 'enc-kind enc-kind--evolved' }, 'EVOLVED'),
+      el('span', { class: 'enc-kind ' + d.cls }, d.label),
       ' ',
-      e.survivor || '',
+      lnk.source || '',
       ' ',
-      el('span', { class: 'enc-kind--evolved' }, 'supersedes'),
+      el('span', { class: d.cls }, d.glyph),
       ' ',
-      el('span', { style: { opacity: 0.6 } }, e.archived || ''),
-    ));
-  }
-  for (const e of (run.kept || [])) {
-    out.push(el('div', { class: 'enc-entry enc-sub-row' },
-      el('span', { class: 'enc-kind enc-kind--kept' }, 'KEPT'),
-      ' ',
-      e.source || '',
-      ' ',
-      el('span', { class: 'enc-kind--kept' }, '↔'),
-      ' ',
-      e.target || '',
-      e.description ? el('div', { class: 'enc-meta-line enc-meta-line--dim' },
-        e.description.substring(0, 250)) : null,
+      lnk.target || '',
+      lnk.description ? el('div', { class: 'enc-meta-line enc-meta-line--dim' },
+        lnk.description.substring(0, 250)) : null,
     ));
   }
   if (run.journal) {
@@ -891,7 +896,7 @@ function _renderS2RunCard(run) {
   const label      = isConsol ? 'S2 CONSOLIDATE' : unit.label;
   const t          = localTime(run.start_ts, 'time');
   const actionCount = (run.synthesized || []).length + (run.archived || []).length
-                    + (run.kept || []).length + (run.evolved || []).length;
+                    + (run.links || []).length;
   const headerSummary = isConsol ? (actionCount + ' actions')
                       : isHealer ? (run.summary || '').substring(0, 80)
                       : (run.summary || '').substring(0, 60);
