@@ -126,8 +126,7 @@ def query_node_source_refs(node_id: str):
             try:
                 trace_by_id = fetch_by_id(
                     conn, 'trace_events',
-                    'id, chain_id, scale, event_type, ref_type, summary, '
-                    'session_id, created_at',
+                    'id, chain_id, scale, event_type, ref_type, summary, session_id, created_at',
                     trace_ids)
             except Exception as e:
                 warn('queries.explorer', 'trace_events join for source_refs failed', exc=e)

@@ -45,13 +45,16 @@ def ro_connect(path: str, timeout: float = 3):
 
 
 def fetch_by_id(conn, table: str, columns: str, ids) -> dict:
-    """Fetch `columns` for rows whose id is in `ids`, returned as {id: row}.
+    """Fetch whole rows by PRIMARY id, keyed by id: {id: row}.
 
-    Centralizes the placeholder + `WHERE id IN (...)` + by-id-dict idiom that
-    several queries/ modules hand-rolled. The first selected column MUST be the
-    id (it becomes the dict key). `table` and `columns` are code-controlled
-    constants, never user input — there is no injection surface; `ids` are
-    bound parameters. Falsy ids are dropped; an empty set short-circuits to {}.
+    Centralizes the one idiom three queries/ modules shared — placeholder +
+    single-table `WHERE id IN (...)` + `{r[0]: r}`. Scope is deliberately
+    narrow: JOIN / multi-predicate / dual-`IN` / non-`id`-key lookups (the edge
+    and metadata queries elsewhere in queries/) don't fit this shape and stay
+    inline. The first selected column MUST be the id (it becomes the dict key).
+    `table` and `columns` are code-controlled constants, never user input —
+    there is no injection surface; `ids` are bound parameters. Falsy ids are
+    dropped; an empty set short-circuits to {} (no invalid `IN ()`).
 
     Liveness-NEUTRAL by design: a point-fetch-by-id returns archived rows too,
     matching the brain's fetch-by-id contract (liveness is enforced at call
