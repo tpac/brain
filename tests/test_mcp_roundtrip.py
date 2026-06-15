@@ -570,6 +570,21 @@ class TestMCPRoundTrip(BrainTestBase):
                       "scale='' dropped an s1 trace — 'all scales' collapsed to "
                       "the s0 conversational lens")
 
+    def test_recall_episodes_embed_unavailable_is_loud(self):
+        """A semantic query that can't be embedded (embedder returns None) must
+        log a breadcrumb and degrade to time — not silently answer by recency."""
+        from unittest import mock
+        from servers import embedder
+        logged = []
+        with mock.patch.object(embedder, "embed_query", return_value=None), \
+             mock.patch.object(self.brain, "_log_error",
+                               side_effect=lambda *a, **k: logged.append(a)):
+            result = self.brain.recall_episodes(query="anything", limit=5)
+        self.assertEqual(result["ranked_by"], "time")
+        self.assertTrue(
+            any("embed_unavailable" in str(a[0]) for a in logged),
+            "embedder-unavailable degrade was silent — no _log_error fired")
+
     # ── Interactions ──
 
     def test_list_interactions(self):

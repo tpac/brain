@@ -153,6 +153,16 @@ class BrainEpisodesMixin:
                         return {'episodes': episodes,
                                 'truncated': len(cands) > limit,
                                 'ranked_by': 'relevance'}
+                else:
+                    # embed_query returned no vector → embedder unavailable.
+                    # A no-MATCH (cands empty) is legit and stays quiet; an
+                    # un-embeddable semantic request is a real degrade — surface
+                    # it instead of silently answering by recency.
+                    self._log_error(
+                        'recall_episodes_embed_unavailable',
+                        RuntimeError('embed_query returned no vector'),
+                        'semantic query requested but not embeddable (embedder '
+                        'unavailable?); degraded to time path')
             except ValueError:
                 raise
             except Exception as e:
