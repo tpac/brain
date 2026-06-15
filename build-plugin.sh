@@ -13,122 +13,16 @@ FILES=(
   .claude-plugin/plugin.json
   .mcp.json
   requirements.txt
-  # Core brain
-  servers/__init__.py
-  servers/brain.py
-  servers/brain_assembly.py
-  servers/brain_connections.py
-  servers/brain_constants.py
-  servers/brain_recall.py
-  servers/brain_remember.py
-  servers/brain_reminders.py
-  servers/brain_voice.py
-  servers/contract.py
-  servers/pipeline_contract.py
-  servers/recall_scoring.py
-  servers/text_processing.py
-  servers/embedder.py
-  servers/embed_queue.py
-  servers/schema.py
-  # DAL
-  servers/dal.py
-  servers/dal_metadata.py
-  # Daemon
-  servers/daemon_config.py
-  servers/daemon_server.py
-  servers/daemon_client.py
-  servers/daemon_dispatch.py
-  servers/daemon_hooks.py
-  # MCP
-  servers/brain_mcp.py
-  servers/health_check.py
-  servers/interaction_seed.py
-  servers/session_context.py
-  servers/trace_contract.py
-  servers/brain_cli.py
-  # Aspects (unified taxonomy — replaces former families layer)
-  servers/aspects.py
-  # Scale modules
-  servers/scales/__init__.py
-  servers/scales/dispatch.py
-  servers/scales/runner.py
-  servers/scales/s0/__init__.py
-  servers/scales/s0/conversation.py
-  servers/scales/s1/__init__.py
-  servers/scales/s1/surface.py
-  servers/scales/s1/surface_contract.py
-  servers/scales/s1/encode.py
-  servers/scales/s1/encode_contract.py
-  servers/scales/s2/__init__.py
-  servers/scales/s2/base.py
-  servers/scales/s2/coordinator.py
-  servers/scales/s2/community.py
-  servers/scales/s2/community_contract.py
-  servers/scales/s2/community_decoder.py
-  servers/scales/s2/community_encoder.py
-  servers/scales/s2/community_enrichment_prompt.py
-  servers/scales/s2/consolidation.py
-  servers/scales/s2/consolidation_contract.py
-  servers/scales/s2/consolidation_decoder.py
-  servers/scales/s2/consolidation_encoder.py
-  servers/scales/s2/consolidation_enrichment_prompt.py
-  servers/scales/s2/aspects_v1.json
-  servers/scales/s2/healer.py
-  servers/scales/s2/healer_contract.py
-  servers/scales/s2/healer_decoder.py
-  servers/scales/s2/healer_encoder.py
-  servers/scales/s2/healer_prompt.py
-  # Migrations directory removed — schema migrations handled by schema.py's
-  # diff-based ALTER TABLE mechanism (see 7d6caeb1).
-  # Hook scripts — bash shims
-  hooks/hooks.json
-  hooks/scripts/ensure-runtime.sh
-  hooks/scripts/brain-env.sh
-  hooks/scripts/mcp-launch.sh
-  hooks/scripts/boot-brain.sh
-  hooks/scripts/pre-edit-suggest.sh
-  hooks/scripts/pre-bash-safety.sh
-  hooks/scripts/pre-response-recall.sh
-  hooks/scripts/post-response-track.sh
-  hooks/scripts/idle-maintenance.sh
-  hooks/scripts/session-end.sh
-  hooks/scripts/stop-failure-log.sh
-  hooks/scripts/config-change-host.sh
-  hooks/scripts/post-bash-host-check.sh
-  hooks/scripts/worktree-context.sh
-  hooks/scripts/worktree-cleanup.sh
-  hooks/scripts/restart-daemon.sh
-  hooks/scripts/encoding-hook.sh
-  hooks/scripts/brain-statusline.sh
-  hooks/scripts/resolve-brain-db.sh
-  hooks/scripts/daemon-client.sh
-  hooks/scripts/brain-client.sh
-  # Hook scripts — Python logic
-  hooks/scripts/hook_common.py
-  hooks/scripts/boot_brain.py
-  hooks/scripts/pre_edit_suggest.py
-  hooks/scripts/pre_bash_safety.py
-  hooks/scripts/pre_response_recall.py
-  hooks/scripts/post_response_track.py
-  hooks/scripts/idle_maintenance.py
-  hooks/scripts/session_end.py
-  hooks/scripts/stop_failure_log.py
-  hooks/scripts/config_change_host.py
-  hooks/scripts/post_bash_host_check.py
-  hooks/scripts/worktree_context.py
-  hooks/scripts/worktree_cleanup.py
-  hooks/scripts/encoding_hook.py
-  hooks/scripts/post_tool_trace.py
-  hooks/scripts/agent-bridge.py
-  hooks/scripts/self_inbox_poller.py
-  # Launchers on $PATH (plugin bin/ — callable from any repo)
-  bin/brain-watch
-  bin/brain-dashboard
-  # Skills
-  skills/brain/SKILL.md
-  skills/brain/references/detailed-api.md
-  skills/watch/SKILL.md
-  # Data
+  # servers/ ships in FULL via `git ls-files servers` below — do NOT hand-list.
+  # The explicit list rotted 62 files behind reality and shipped a brain_mcp.py
+  # that imported modules (dispatch_common, frame, scouts/, …) which never got
+  # packaged → the per-session MCP server crashed on import. git ls-files ends
+  # that class of bug: tracked-only (no scratch leaks), new modules auto-ship.
+  # hooks/ skills/ bin/ ship in FULL via `git ls-files` below — do NOT hand-list.
+  # Same rot class as servers/: the hand-list silently dropped start-daemon.sh
+  # (daemon launcher — dead on clean installs) and watch/SKILL.md before it.
+  # Data + the one runtime seed script stay explicit (scripts/ is a dev dir —
+  # only seed_brain.py belongs in the package, the other 23 are dev/migration).
   data/common_words_10k.txt
   scripts/seed_brain.py
 )
@@ -146,6 +40,34 @@ if [ -z "$_dash_files" ]; then
   exit 1
 fi
 while IFS= read -r _f; do FILES+=("$_f"); done <<< "$_dash_files"
+
+# servers/ — ship the git-TRACKED tree in full (same tracked-only safety as
+# dashboard above). Replaces the hand-maintained allowlist that rotted 62 files
+# behind reality. Dev architecture notes (*.md) are excluded — runtime code only.
+_srv_files="$(git ls-files servers | grep -vE '\.md$' || true)"
+if [ -z "$_srv_files" ]; then
+  echo "MISSING: servers/ — no tracked files found (dir renamed/removed?)"
+  exit 1
+fi
+while IFS= read -r _f; do FILES+=("$_f"); done <<< "$_srv_files"
+
+# hooks/ skills/ bin/ — git-TRACKED runtime code, shipped in full (same pattern
+# as dashboard/servers above). This closes the start-daemon.sh / watch-SKILL.md
+# class of omission.
+#   hooks/ + bin/ : exclude *.md (dev notes like hooks/HOOKS.md — not runtime).
+#   skills/       : KEEP *.md — SKILL.md *is* the skill; .md is the payload.
+for _dir in hooks skills bin; do
+  if [ "$_dir" = "skills" ]; then
+    _files="$(git ls-files "$_dir" || true)"
+  else
+    _files="$(git ls-files "$_dir" | grep -vE '\.md$' || true)"
+  fi
+  if [ -z "$_files" ]; then
+    echo "MISSING: $_dir/ — no tracked files found (dir renamed/removed?)"
+    exit 1
+  fi
+  while IFS= read -r _f; do FILES+=("$_f"); done <<< "$_files"
+done
 
 # End-user artifacts must ship without the developer safety-net opt-out (see the
 # repackaging checklist in CLAUDE.md). BRAIN_DEV_MODE is a runtime env var, not a
