@@ -150,7 +150,7 @@ class TestEnrichConsolidationById:
                              "absorbed_id": "orig1"}])
         delta_row = ("s2-20260614-consolidation", "1 action",
                      json.dumps(meta), "2026-06-14T10:00:00+00:00")
-        out = _enrich_consolidation(c, delta_row, {})
+        out = _enrich_consolidation(c, delta_row, lambda *_: {})
         assert [n["id"] for n in out["synthesized"]] == ["surv1"]
         assert out["synthesized"][0]["title"] == "Survivor title"
         assert [n["id"] for n in out["archived"]] == ["orig1"]
@@ -165,7 +165,7 @@ class TestEnrichConsolidationById:
                              "target_id": "old1", "relation": "supersedes",
                              "description": "new supersedes old"}])
         delta_row = ("chain", "s", json.dumps(meta), "2026-06-14T10:00:00+00:00")
-        out = _enrich_consolidation(c, delta_row, {})
+        out = _enrich_consolidation(c, delta_row, lambda *_: {})
         assert out["links"] == [{"source": "New state", "target": "Prior state",
                                  "relation": "supersedes",
                                  "description": "new supersedes old"}]
@@ -183,7 +183,7 @@ class TestEnrichConsolidationById:
         meta = _delta_meta([{"op": "absorb", "survivor_id": "survX",
                              "absorbed_id": "origX"}])
         delta_row = ("chain", "s", json.dumps(meta), "2026-06-14T10:00:00+00:00")
-        out = _enrich_consolidation(c, delta_row, {})
+        out = _enrich_consolidation(c, delta_row, lambda *_: {})
         assert out["synthesized"] == []
         assert {n["id"] for n in out["archived"]} == {"survX", "origX"}
 
@@ -200,7 +200,7 @@ class TestEnrichConsolidationById:
             {"op": "absorb", "survivor_id": "C", "absorbed_id": "A"},
         ])
         delta_row = ("chain", "s", json.dumps(meta), "2026-06-14T10:00:00+00:00")
-        out = _enrich_consolidation(c, delta_row, {})
+        out = _enrich_consolidation(c, delta_row, lambda *_: {})
         assert [n["id"] for n in out["synthesized"]] == ["C"]
         assert {n["id"] for n in out["archived"]} == {"A", "B"}
 
@@ -211,7 +211,7 @@ class TestEnrichConsolidationById:
         meta = _delta_meta([{"op": "connect", "source_id": "present",
                              "target_id": "deadbeef", "relation": "similar_to"}])
         delta_row = ("chain", "s", json.dumps(meta), "2026-06-14T10:00:00+00:00")
-        out = _enrich_consolidation(c, delta_row, {})
+        out = _enrich_consolidation(c, delta_row, lambda *_: {})
         assert out["links"][0]["source"] == "Present node"
         assert out["links"][0]["target"] == "deadbeef"  # short-id fallback
 
@@ -223,7 +223,7 @@ class TestEnrichConsolidationById:
         c = self._conn()
         delta_row = ("chain-corrupt", "summary", "{not valid json",
                      "2026-06-14T10:00:00+00:00")
-        out = _enrich_consolidation(c, delta_row, {})  # must NOT raise
+        out = _enrich_consolidation(c, delta_row, lambda *_: {})  # must NOT raise
         assert out["synthesized"] == [] and out["links"] == []
         msgs = [e["message"] for e in log.recent()]
         assert any("unparseable metadata" in m for m in msgs), msgs
@@ -236,6 +236,95 @@ class TestEnrichConsolidationById:
         c.commit()
         delta_row = ("chain", "s", json.dumps({"action_details": []}),
                      "2026-04-20T10:00:00+00:00")
-        out = _enrich_consolidation(c, delta_row, {})
+        out = _enrich_consolidation(c, delta_row, lambda *_: {})
         assert [n["id"] for n in out["synthesized"]] == ["legacy1"]
         assert "links" in out  # legacy path produces the unified shape
+
+
+class TestSameChainRunsGetOwnOK:
+    """Regression: every run on a given day shares one chain_id
+    (s2-{date}-{unit}). Keying O/K by chain_id alone collapsed all runs onto
+    the chain's single (oldest) O/K pair, so every consolidation card showed
+    identical cluster counts ("196 clusters ..." forever). Each delta must
+    snap to the O/K that immediately precede IT in time.
+    """
+
+    def _build_dbs(self, tmp_path, runs):
+        """Write minimal brain.db + brain_logs.db. `runs` is a list of
+        (offset_minutes_ago, k_summary) — each becomes an O→K→delta triple in
+        the shared chain. Returns the chain_id used."""
+        from datetime import datetime, timezone, timedelta
+
+        chain = 's2-20260614-consolidation'
+        now = datetime.now(timezone.utc)
+
+        def iso(mins_ago):
+            return (now - timedelta(minutes=mins_ago)).strftime(
+                '%Y-%m-%dT%H:%M:%S+00:00')
+
+        logs = sqlite3.connect(str(tmp_path / 'brain_logs.db'))
+        logs.execute(
+            "CREATE TABLE trace_events (id TEXT, chain_id TEXT, scale TEXT, "
+            "event_type TEXT, ref_type TEXT, summary TEXT, metadata TEXT, "
+            "created_at TEXT)")
+        n = 0
+        for mins_ago, k_summary in runs:
+            # O slightly before K, K before delta — same order the decoder
+            # writes them. Spread by seconds so timestamps are distinct.
+            base = mins_ago
+            # Larger mins-ago = further in the past. O oldest, delta newest —
+            # the order the decoder/encoder write them within a run.
+            for et, ref, summ, sub in [
+                ('O', 'consolidation_candidates', 'scanned', 0.2),
+                ('K', 'consolidation_proposals', k_summary, 0.1),
+                ('delta', 'consolidation_run', '%d action' % n, 0.0),
+            ]:
+                meta = (json.dumps(_delta_meta(
+                    [{"op": "connect", "source_id": "live%d" % n,
+                      "target_id": "dead%d" % n, "relation": "similar_to"}]))
+                    if et == 'delta' else '')
+                logs.execute(
+                    "INSERT INTO trace_events VALUES (?,?,?,?,?,?,?,?)",
+                    ('id%d' % n, chain, 's2', et, ref, summ, meta,
+                     iso(base + sub)))  # O furthest back, delta newest
+                n += 1
+        logs.commit()
+        logs.close()
+
+        brain = sqlite3.connect(str(tmp_path / 'brain.db'))
+        brain.execute(
+            "CREATE TABLE nodes (id TEXT PRIMARY KEY, type TEXT, title TEXT, "
+            "content TEXT, confidence REAL, encoding_source TEXT, "
+            "created_at TEXT, archived INTEGER DEFAULT 0)")
+        brain.execute("CREATE TABLE edges (edge_id INTEGER, source_id TEXT, "
+                      "target_id TEXT, weight REAL, created_at TEXT)")
+        brain.execute("CREATE TABLE edge_relations (edge_id INTEGER, "
+                      "relation TEXT, description TEXT, archived INTEGER DEFAULT 0)")
+        for i in range(len(runs)):
+            brain.execute(
+                "INSERT INTO nodes VALUES (?,?,?,?,?,?,?,0)",
+                ('live%d' % (i * 3), 'principle', 'Live node %d' % i, 'c',
+                 0.9, 's2:consolidation', iso(0)))
+        brain.commit()
+        brain.close()
+        return chain
+
+    def test_each_run_gets_its_own_k_summary(self, tmp_path, monkeypatch):
+        monkeypatch.setenv('BRAIN_DB_DIR', str(tmp_path))
+        # Newest run first in input is irrelevant; build two distinct runs.
+        self._build_dbs(tmp_path, [
+            (10, '196 clusters: 181 needs_judgment, 15 likely_consolidate'),
+            (5,  '30 clusters: 29 needs_judgment, 1 likely_consolidate'),
+        ])
+        from dashboard.queries.s2_runs import query_consolidation_runs
+        runs = query_consolidation_runs(hours=24)
+
+        # Two delta cards, ordered newest-first.
+        by_k = sorted(r['k_summary'] for r in runs)
+        assert len(runs) == 2, runs
+        # The bug: both would read the oldest K ("196 clusters ..."). The fix:
+        # each delta snaps to its own run's K.
+        assert by_k == [
+            '196 clusters: 181 needs_judgment, 15 likely_consolidate',
+            '30 clusters: 29 needs_judgment, 1 likely_consolidate',
+        ], [r['k_summary'] for r in runs]

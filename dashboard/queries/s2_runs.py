@@ -39,7 +39,7 @@ def _fetch_ok_deltas(conn, unit_keyword: str, hours: int, delta_columns: str,
         % delta_columns,
         ('%' + unit_keyword + '%', since),
     ).fetchall()
-    ok_select = "chain_id, event_type, summary"
+    ok_select = "chain_id, event_type, summary, created_at"
     if ok_extra_columns:
         ok_select += ', ' + ok_extra_columns
     ok_rows = conn.execute(
@@ -58,12 +58,16 @@ def _query_s2_unit_runs(unit_keyword: str, hours: int, delta_columns: str,
 
     Steps:
       1. Open logs_db, pull O/K and delta rows for `unit_keyword`.
-      2. Build `ok_by_chain[chain_id][event_type]` payload dict.
+      2. Build a per-chain, time-ordered O/K index + a `nearest_ok(chain,
+         delta_ts)` closure that snaps a delta to the O/K immediately
+         preceding it.
       3. Open brain_db. For each delta, call `enricher(bconn, delta_row,
-         ok_payload) -> dict` and append to the result list.
+         nearest_ok) -> dict` and append to the result list.
 
     Either DB unreachable → return []. The enricher's job is to produce the
-    per-run dict (chain_id, timestamp, summary, etc + unit-specific fields).
+    per-run dict (chain_id, timestamp, summary, etc + unit-specific fields);
+    it calls `nearest_ok(chain_id, delta_created_at)` to resolve its run's
+    O/K summaries.
     Loud-by-default: any failure logs via warn() before returning [].
     """
     runs: List[dict] = []
@@ -78,21 +82,41 @@ def _query_s2_unit_runs(unit_keyword: str, hours: int, delta_columns: str,
         warn(component, '%s logs_db pull failed' % unit_keyword, exc=e)
         return []
 
-    # Build chain → event_type → payload index.
-    ok_by_chain: dict = {}
+    # A unit's chain_id is shared by every run on the same day
+    # (s2-{date}-{unit}), so one chain holds many O/K/delta triples. Keying
+    # O/K by chain_id alone collapses all runs onto a single (oldest) O/K
+    # pair — which made every consolidation/community card show identical
+    # cluster counts. Instead build a per-chain, time-ordered O/K list and
+    # snap each delta to the O and K that immediately precede it.
+    ok_events: dict = {}
     for r in ok_rows:
-        chain, et, summary = r[0], r[1], r[2] or ''
-        meta = r[3] if len(r) > 3 else None
-        ok_by_chain.setdefault(chain, {})[et] = {'summary': summary, 'metadata': meta}
+        chain, et, summary, ts = r[0], r[1], r[2] or '', r[3]
+        meta = r[4] if len(r) > 4 else None
+        ok_events.setdefault(chain, []).append(
+            {'et': et, 'ts': ts, 'summary': summary, 'metadata': meta})
+    for evs in ok_events.values():
+        evs.sort(key=lambda e: e['ts'])  # ascending; ISO-T strings compare lexically
+
+    def nearest_ok(chain_id: str, delta_ts) -> dict:
+        """Most-recent O and K in `chain_id` at or before `delta_ts`.
+
+        Returns {event_type: {'summary', 'metadata'}} — the same shape the
+        enrichers already consume via .get('O'/'K', {}).get('summary')."""
+        payload: dict = {}
+        for e in ok_events.get(chain_id, []):
+            if e['ts'] <= delta_ts:
+                payload[e['et']] = {'summary': e['summary'], 'metadata': e['metadata']}
+            else:
+                break  # list is ascending — nothing after this can precede the delta
+        return payload
 
     try:
         with ro_connect(brain_db_path()) as bconn:
             if bconn is None:
                 return []
             for delta_row in delta_rows:
-                ok_payload = ok_by_chain.get(delta_row[0], {})
                 try:
-                    runs.append(enricher(bconn, delta_row, ok_payload))
+                    runs.append(enricher(bconn, delta_row, nearest_ok))
                 except Exception as e:
                     # One delta failing shouldn't drop the whole feed.
                     warn(component, '%s enricher failed for chain %s' % (
@@ -177,8 +201,9 @@ def _deconstruct_consolidation_ops(meta: dict):
     return synth_ids, archived_ids, links
 
 
-def _enrich_consolidation(bconn, delta_row, ok_payload) -> dict:
+def _enrich_consolidation(bconn, delta_row, nearest_ok) -> dict:
     chain_id, summary, meta_raw, created_at = delta_row
+    ok_payload = nearest_ok(chain_id, created_at)
 
     meta, journal = {}, ''
     if meta_raw:
@@ -358,8 +383,9 @@ def query_consolidation_runs(hours: int = 24):
 # requerying. We bind that via a factory.
 
 def _make_community_enricher(community_list):
-    def _enrich(bconn, delta_row, ok_payload):
+    def _enrich(bconn, delta_row, nearest_ok):
         chain_id, summary, _meta_raw, created_at, ref_type = delta_row
+        ok_payload = nearest_ok(chain_id, created_at)
         # `created_count` mirrors what query_community_runs reported before:
         # count of `community_created` deltas in the same chain. We don't
         # have the full delta_rows here, so 1 if THIS row was the trigger,
