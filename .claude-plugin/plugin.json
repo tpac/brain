@@ -27,5 +27,13 @@
       "model_name": "nomic-ai/nomic-embed-text-v1.5-Q",
       "dim": 768
     }
+  },
+  "userConfig": {
+    "api_key": {
+      "type": "string",
+      "title": "Anthropic API key",
+      "description": "Used to encode and surface memories (Haiku + Sonnet). Optional — leave blank if you set ANTHROPIC_API_KEY in your shell or in ~/.config/brain/env. Get a key at https://console.anthropic.com/settings/keys.",
+      "sensitive": true
+    }
   }
 }

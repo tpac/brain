@@ -121,8 +121,9 @@ FILES=(
   hooks/scripts/post_tool_trace.py
   hooks/scripts/agent-bridge.py
   hooks/scripts/self_inbox_poller.py
-  # Launcher on $PATH (plugin bin/ — callable from any repo as `brain-watch`)
+  # Launchers on $PATH (plugin bin/ — callable from any repo)
   bin/brain-watch
+  bin/brain-dashboard
   # Skills
   skills/brain/SKILL.md
   skills/brain/references/detailed-api.md
@@ -133,6 +134,18 @@ FILES=(
 )
 
 cd "$DIR"
+
+# Dashboard (read-only observer UI) — ship the git-TRACKED subtree only, via
+# `git ls-files`, so a developer's untracked scratch / DB dump / secret in
+# dashboard/ can never leak into the distributed package (the explicit-manifest
+# safety the rest of this list enforces). New tracked files are picked up
+# automatically (no per-file drift); a vanished dir fails loudly. Dev notes excluded.
+_dash_files="$(git ls-files dashboard | grep -vE '/(DASHBOARD-NEXT|Dashboard-nextwork)\.md$' || true)"
+if [ -z "$_dash_files" ]; then
+  echo "MISSING: dashboard/ — no tracked files found (dir renamed/removed?)"
+  exit 1
+fi
+while IFS= read -r _f; do FILES+=("$_f"); done <<< "$_dash_files"
 
 # End-user artifacts must ship without the developer safety-net opt-out (see the
 # repackaging checklist in CLAUDE.md). BRAIN_DEV_MODE is a runtime env var, not a

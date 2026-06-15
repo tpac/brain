@@ -22,12 +22,27 @@ export BRAIN_HOOK_CWD
 # Single source: ${XDG_CONFIG_HOME:-$HOME/.config}/brain/env (mode 600,
 # dotenv format). Matches the CLI-tool convention (gh, stripe, kubectl, ...).
 # Env-var override: a key already in ANTHROPIC_API_KEY (shell export) wins.
-# The daemon mirrors this resolution via servers/scales/dispatch.load_env.
+# The daemon's dispatch.load_env mirrors the env-file/shell resolution but NOT
+# the userConfig fallback below — it inherits ANTHROPIC_API_KEY from this hook's
+# env on the direct-spawn path. A launchd-spawned daemon sees neither
+# CLAUDE_PLUGIN_OPTION_* nor this export, so a userConfig-only key needs the env
+# file there. See docs/DISTRIBUTION-READINESS.md (§2 onboarding).
 BRAIN_ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/brain/env"
 if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -f "$BRAIN_ENV_FILE" ]; then
   set -a
   . "$BRAIN_ENV_FILE"
   set +a
+fi
+
+# Additive userConfig fallback (CLAUDE_PLUGIN_OPTION_<KEY>, plugins-reference):
+# fill the key from the plugin-config value if the env file / shell didn't.
+# Both casings checked (doc doesn't pin <KEY>'s case).
+if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+  if [ -n "${CLAUDE_PLUGIN_OPTION_API_KEY:-}" ]; then
+    export ANTHROPIC_API_KEY="$CLAUDE_PLUGIN_OPTION_API_KEY"
+  elif [ -n "${CLAUDE_PLUGIN_OPTION_api_key:-}" ]; then
+    export ANTHROPIC_API_KEY="$CLAUDE_PLUGIN_OPTION_api_key"
+  fi
 fi
 
 if [ -z "${ANTHROPIC_API_KEY:-}" ] || [[ "${ANTHROPIC_API_KEY}" != sk-* ]]; then
@@ -37,7 +52,9 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ] || [[ "${ANTHROPIC_API_KEY}" != sk-* ]]; then
 The brain needs your Anthropic API key to encode and surface memories.
 Without it, recall still works but no new memories will be written.
 
-To fix:
+Easiest: set it in the plugin's configuration when you enable Anchor — Claude
+Code prompts for "Anthropic API key" and stores it in your keychain. Or via the
+env file:
 
   mkdir -p "${XDG_CONFIG_HOME:-\$HOME/.config}/brain"
   printf 'ANTHROPIC_API_KEY=sk-ant-...\n' > "${XDG_CONFIG_HOME:-\$HOME/.config}/brain/env"

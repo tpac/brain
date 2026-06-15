@@ -164,6 +164,27 @@ class TestRelaunchDaemon(unittest.TestCase):
             ensure.assert_not_called()
 
 
+class TestLaunchdHelpersDegradeWhenAbsent(unittest.TestCase):
+    """The launchd helpers must return False — not raise — when the `launchctl`
+    binary is absent (i.e. on Linux). The no-launchd direct-spawn fallback
+    (test_no_launchd_falls_back_to_direct_spawn) RELIES on this: it mocks both
+    helpers to False but never proves they actually degrade that way when
+    launchctl is missing. Narrowing the `except Exception` in either helper to a
+    subprocess-specific error would let FileNotFoundError propagate, break the
+    Linux daemon path, and slip past every other test. This locks the contract.
+    """
+
+    def test_kickstart_returns_false_when_launchctl_missing(self):
+        with patch.object(dc.subprocess, "run",
+                          side_effect=FileNotFoundError("launchctl")):
+            self.assertFalse(dc._launchd_kickstart())
+
+    def test_manages_returns_false_when_launchctl_missing(self):
+        with patch.object(dc.subprocess, "run",
+                          side_effect=FileNotFoundError("launchctl")):
+            self.assertFalse(dc._launchd_manages_daemon())
+
+
 class TestHookDelegation(unittest.TestCase):
     """hook_common must delegate, not carry its own recovery copy."""
 

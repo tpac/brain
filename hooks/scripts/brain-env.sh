@@ -25,6 +25,18 @@ if [ -f "$_BRAIN_USER_ENV" ]; then
     set +a
 fi
 
+# Additive userConfig fallback: if the env file / shell didn't supply the key,
+# take it from the plugin-config value CC injects as CLAUDE_PLUGIN_OPTION_<KEY>
+# (per plugins-reference). Env file / shell still win. Both casings checked —
+# the doc doesn't pin <KEY>'s case and a wrong name would be a silent no-op.
+if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+    if [ -n "${CLAUDE_PLUGIN_OPTION_API_KEY:-}" ]; then
+        export ANTHROPIC_API_KEY="$CLAUDE_PLUGIN_OPTION_API_KEY"
+    elif [ -n "${CLAUDE_PLUGIN_OPTION_api_key:-}" ]; then
+        export ANTHROPIC_API_KEY="$CLAUDE_PLUGIN_OPTION_api_key"
+    fi
+fi
+
 # Ensure runtime is installed (idempotent, fast-path on sentinel)
 if ! "$_BRAIN_ENV_DIR/ensure-runtime.sh"; then
     echo "[brain-env] FATAL: runtime bootstrap failed — brain disabled" >&2

@@ -29,6 +29,7 @@ node_modules/
 # Plugin-scoped runtime (installed by hooks/scripts/ensure-runtime.sh)
 bin/*
 !bin/brain-watch
+!bin/brain-dashboard
 py/
 .runtime-ready
 
@@ -75,6 +76,10 @@ eval/replay_snapshots/
 eval/reports/
 eval/aspects_v1_classified_run_summary.json
 eval/oracle_audit/endo_surface_corpus.json
+# Real-session-derived eval corpora — personal data, never commit.
+# (The public LongMemEval benchmark longmemeval_oracle.json stays tracked.)
+eval/longmem/data/realchat_sessions.json
+eval/longmem/data/realchat_oracle.json
 exports/
 
 # Research outputs — large (26MB+), not source code

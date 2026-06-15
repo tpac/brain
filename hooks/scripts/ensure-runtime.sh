@@ -40,7 +40,7 @@ echo "[brain-boot]   plugin dir: $PLUGIN_DIR" >&2
 
 # ── 1. uv binary ───────────────────────────────────────────────
 if [ ! -x "$UV_BIN" ]; then
-    echo "[brain-boot]   [1/3] installing uv $UV_VERSION..." >&2
+    echo "[brain-boot]   [1/4] installing uv $UV_VERSION..." >&2
     mkdir -p "$PLUGIN_DIR/bin"
 
     # Detect platform triple for uv release artifact
@@ -81,7 +81,7 @@ fi
 
 # ── 2. Standalone Python ───────────────────────────────────────
 if [ ! -d "$PY_DIR" ] || [ -z "$(ls -A "$PY_DIR" 2>/dev/null)" ]; then
-    echo "[brain-boot]   [2/3] installing Python $PY_VERSION (isolated)..." >&2
+    echo "[brain-boot]   [2/4] installing Python $PY_VERSION (isolated)..." >&2
     mkdir -p "$PY_DIR"
     if ! "$UV_BIN" python install "$PY_VERSION" --install-dir "$PY_DIR" >&2; then
         echo "[brain-boot] FATAL: Python install failed" >&2
@@ -91,7 +91,7 @@ fi
 
 # ── 3. venv + deps ─────────────────────────────────────────────
 if [ ! -x "$VENV_PY" ]; then
-    echo "[brain-boot]   [3/3] creating venv + installing deps (~200MB)..." >&2
+    echo "[brain-boot]   [3/4] creating venv + installing deps (~200MB)..." >&2
     if ! UV_PYTHON_INSTALL_DIR="$PY_DIR" \
          "$UV_BIN" venv "$VENV_DIR" --python "$PY_VERSION" >&2; then
         echo "[brain-boot] FATAL: venv creation failed" >&2
@@ -109,6 +109,20 @@ if ! VIRTUAL_ENV="$VENV_DIR" \
      "$UV_BIN" pip install --python "$VENV_PY" -r "$REQ_FILE" >&2; then
     echo "[brain-boot] FATAL: dep install failed" >&2
     exit 1
+fi
+
+# ── 4. Pre-fetch embedding model ───────────────────────────────
+# Pull the embedding model into fastembed's cache now, during this (already
+# blocking) first-run bootstrap, so the daemon's first load_model() is cache-fast
+# instead of blocking the first SessionStart on a ~150MB download. Non-fatal: if
+# this fails (offline, etc.), the daemon downloads it on first recall as before.
+# Model name read from plugin.json so it never drifts from the daemon's default.
+# Paths/names passed via env (not string-interpolated) so a quote/metachar in the
+# install path or model name can't break the python invocation.
+MODEL_NAME="$(BRAIN_PLUGIN_DIR="$PLUGIN_DIR" "$VENV_PY" -c "import json, os; print(json.load(open(os.path.join(os.environ['BRAIN_PLUGIN_DIR'], '.claude-plugin', 'plugin.json'))).get('config', {}).get('embedder', {}).get('model_name', 'nomic-ai/nomic-embed-text-v1.5-Q'))" 2>/dev/null || echo 'nomic-ai/nomic-embed-text-v1.5-Q')"
+echo "[brain-boot]   [4/4] pre-fetching embedding model ($MODEL_NAME)..." >&2
+if ! BRAIN_PREFETCH_MODEL="$MODEL_NAME" "$VENV_PY" -c "import os; from fastembed import TextEmbedding; TextEmbedding(model_name=os.environ['BRAIN_PREFETCH_MODEL'])" >&2; then
+    echo "[brain-boot] WARN: model pre-fetch failed — daemon will download it on first recall (slower); continuing" >&2
 fi
 
 # ── Done ───────────────────────────────────────────────────────
