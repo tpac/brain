@@ -215,6 +215,19 @@ class TestEnrichConsolidationById:
         assert out["links"][0]["source"] == "Present node"
         assert out["links"][0]["target"] == "deadbeef"  # short-id fallback
 
+    def test_corrupt_meta_is_logged_not_swallowed(self):
+        # Loud-by-default: a delta with unparseable metadata must surface a
+        # warning (stderr + Logs-tab ring) and still degrade, not vanish.
+        from dashboard import log
+        log.clear()
+        c = self._conn()
+        delta_row = ("chain-corrupt", "summary", "{not valid json",
+                     "2026-06-14T10:00:00+00:00")
+        out = _enrich_consolidation(c, delta_row, {})  # must NOT raise
+        assert out["synthesized"] == [] and out["links"] == []
+        msgs = [e["message"] for e in log.recent()]
+        assert any("unparseable metadata" in m for m in msgs), msgs
+
     def test_legacy_window_fallback_when_no_ops(self):
         c = self._conn()
         # Pre-absorb synth node created in the window; delta carries no ops.

@@ -181,11 +181,17 @@ def _enrich_consolidation(bconn, delta_row, ok_payload) -> dict:
     chain_id, summary, meta_raw, created_at = delta_row
 
     meta, journal = {}, ''
-    try:
-        meta = json.loads(meta_raw) if meta_raw else {}
-        journal = meta.get('final_text', '')
-    except Exception:
-        pass
+    if meta_raw:
+        try:
+            meta = json.loads(meta_raw)
+            journal = meta.get('final_text', '')
+        except (ValueError, TypeError) as e:
+            # Loud-by-default: a corrupt delta payload silently fell back to the
+            # ±60min window before. Surface it (stderr + Logs tab) and still
+            # degrade gracefully to the window rather than dropping the run.
+            warn('queries.s2_runs',
+                 'consolidation delta %s has unparseable metadata; '
+                 'falling back to window' % (chain_id or '?'), exc=e)
 
     # Trace-authoritative: read the exact node ids the run recorded touching
     # (from its delta's recorded ops/buckets) and fetch them by id — mirroring

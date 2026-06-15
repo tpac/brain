@@ -73,6 +73,28 @@ class TestCommunityDetectionContract(unittest.TestCase):
         # Encoder is separate, not inherited
         self.assertFalse(issubclass(CommunityDetection, CommunityEncoder))
 
+    def test_absorb_survivor_reaches_community_candidacy(self):
+        """Cross-scale coupling pinned by the absorb-bucket fix.
+
+        `_split_action_ids` now routes an absorb's survivor into the delta's
+        `revised` bucket (it's content-rewritten). `_read_s1_delta` seeds
+        community candidacy (`new_node_ids`) from `created` + `revised`, so an
+        absorb survivor now reaches community detection — an intended but
+        previously incidental/untested consequence. If a future change stops
+        routing absorb survivors to `revised`, or community detection stops
+        reading it, this breaks loudly instead of silently dropping survivors
+        from re-clustering.
+        """
+        from servers.scales.s2.community_decoder import CommunityDecoder
+        # _read_s1_delta only uses self._read_traces_since — no brain needed.
+        dec = CommunityDecoder.__new__(CommunityDecoder)
+        enc_run = {'metadata': {'created': ['c_new'], 'revised': ['absorb_surv']}}
+        dec._read_traces_since = lambda scale, since, ref_types=None: (
+            [enc_run] if ref_types == ['encoding_run'] else [])
+        out = dec._read_s1_delta('')
+        self.assertIn('absorb_surv', out['new_node_ids'])  # the coupling
+        self.assertIn('c_new', out['new_node_ids'])
+
 
 class TestCommunityDecoder(BrainTestBase):
     """Test the decoder's algorithmic pipeline on synthetic graphs.
