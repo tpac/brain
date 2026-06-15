@@ -414,7 +414,10 @@ data before writing, turning the emergent boundary into an explicit decision.
    node count (the over-encode-thin-material risk)?
 5. **Provenance vs journal-only dedup** — does ground-truth provenance reduce
    re-encoding of what Anchor/prior-S1S already wrote, vs today's journal-prose baseline?
-6. **Effort tier interaction** — see below; effort is co-gated with batch size.
+6. **Effort: off vs adaptive-low** — OPEN. Our 24-trial probe found forced thinking
+   gave the *old* encoder no quality gain at +cost+latency, but never tested adaptive-low
+   and predates the provenance redesign. Does adaptive-low buy anything on the
+   reconciliation-heavier input? See the Effort section. We don't know yet.
 
 ---
 
@@ -426,29 +429,43 @@ rounds ([runner.py:313](../servers/scales/runner.py),
 [encode.py:197](../servers/scales/s1/encode.py)). `effort` requires adaptive thinking
 (`thinking:{type:"adaptive"}` + `output_config:{effort: low|medium|high|xhigh|max}`).
 
-**The trade-off for THIS task.** Encoding is reconciliation-heavy (atomize; dedup
-against journal + catalog + 4-actor provenance; decide links; calibrate confidence) —
-so *some* reasoning helps, and the richer provenance-ledger input increases that load.
-But it's a **bounded, contract-specified** task, not open-ended research. And it runs
-**often** (every 5 turns + idle flushes), so thinking tokens multiply across runs.
+**What we already know — and what we DON'T.** ~3 weeks ago (2026-05) we ran a 24-trial
+thinking probe on the encoder (`eval/agent_introspect/`, nodes id:57eaadf4 +
+id:a068777c). Forced extended thinking (`budget_tokens` 4k/6k) vs no-thinking gave **no
+quality gain** — node counts statistically equivalent (overlapping SDs) — at **+23–38%
+cost and +22–27s latency**. Mechanistic finding: *"Sonnet adds reasoning, it doesn't
+relocate it"* (visible output grew too). Extended thinking was rejected for the encoder
+then.
 
-**The specific risk: high effort fuels over-encoding.** Sonnet/Opus 4.6 over-explore at
-high `effort`; on a thin idle-flush batch that directly produces the
-over-encode-thin-material failure mode (one throwaway turn inflated into several
-low-value nodes). So effort should **scale with batch size**, not be pinned high.
+But that probe does **NOT** settle the off-vs-low question now, for two reasons:
+1. It tested **forced `budget_tokens`**, not the new **adaptive `effort=low`**
+   (self-gating). Adaptive-low lets the model *decline* to think; on encoder batches it
+   would likely produce near-zero thinking → behave **≈ off**. So the probe arguably
+   predicts "off ≈ low," but it never measured adaptive-low directly.
+2. It predates the **provenance-ledger redesign**. The added 4-actor reconciliation
+   load is exactly the kind of multi-step decision that *might* newly reward a short
+   think — and that load didn't exist at probe time.
 
-| Effort | Quality on a real batch | Over-encode risk (thin batch) | Cost/latency | Verdict |
-|--------|------------------------|-------------------------------|--------------|---------|
-| off (today) | adequate; weaker dedup/linking reasoning | low | cheapest | baseline |
-| low | better dedup/reconciliation; little over-think | low | small bump | likely sweet spot for small flushes |
-| medium | best reconciliation on big/backed-up batches | moderate | moderate | likely sweet spot for normal/large batches |
-| high+ / xhigh / max | diminishing returns; over-exploration | **high** | expensive | avoid for encoding |
+**So off-vs-low is an OPEN question.** Strong prior (our own data) that thinking did
+nothing for the *old* encoder; genuinely unknown whether adaptive-low changes that for
+the *provenance-heavy* one. We don't know yet — don't assume either way.
 
-**Recommendation (eval-gated):** turn on adaptive thinking at a **modest** tier and
-**co-gate it with batch size via the same `reason`/`final` param** we already need —
-small idle flush → `low` (or off); normal/large batch → `medium`. Never high+. Interleaved
-thinking also helps the multi-round flow (reflect on round-1 writes before round-2).
-Gate on `s1_encode_eval` across tiers (off/low/medium/high) measuring nodes-per-turn,
-dedup correctness, confidence calibration, noise rate, AND token cost + latency — pick
-the tier where quality plateaus before cost climbs.
+**The over-encode caveat (separate axis).** Independently, *high* effort fuels
+over-exploration → on a thin idle-flush batch that risks the over-encode-thin-material
+failure. This is a reason to never pin effort high, regardless of how off-vs-low lands.
+
+| Effort | What we know | Status |
+|--------|-------------|--------|
+| off (today) | validated baseline — the probe's no-thinking config | known-good |
+| low (adaptive) | untested; prior says ≈off, redesign *might* change it | **open** |
+| medium | untested on encoding; Anthropic's general default | open |
+| high+ / xhigh / max | over-exploration → over-encode risk on thin batches | avoid |
+
+**Stance:** keep **off** as the baseline — it's the only config our data has validated.
+Treat **off-vs-low (adaptive)** as a specific open eval arm, run *after* the
+provenance-ledger lands (that's the only world where the verdict might flip). Burden of
+proof is on the new design. Eval via `s1_encode_eval` across off/low (and medium for
+reference), measuring nodes-per-turn, dedup correctness, confidence calibration, noise
+rate, AND token cost + latency — does adaptive-low buy anything the probe said forced
+thinking didn't?
 
