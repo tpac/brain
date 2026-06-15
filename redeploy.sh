@@ -28,8 +28,18 @@ fi
 cd "$REPO"
 ./build-plugin.sh
 
-# 2. Overlay code only. unzip -o overwrites packaged files; venv/ py/ bin/
-#    .runtime-ready are not in the package, so they survive untouched.
+# 2. Replace package-sourced dirs wholesale, THEN unzip — don't just overlay.
+#    `unzip -o` only OVERWRITES packaged files; it never deletes a file that was
+#    removed from the manifest, so stale orphan modules drift in across deploys
+#    (e.g. a since-deleted servers/*.py lingers and can still be imported).
+#    Pruning the fully-package-sourced dirs first makes the deployed tree a
+#    faithful mirror of the package. Runtime artifacts (venv/ py/ .runtime-ready,
+#    bin/uv) are NOT in the package and survive — bin/ is mixed (ships launchers,
+#    holds the runtime uv), so it is left to unzip -o overlay, not pruned.
+#    ${PLUGIN:?} guards against an empty var turning this into `rm -rf /…`.
+for _d in servers hooks skills dashboard data scripts .claude-plugin; do
+  rm -rf "${PLUGIN:?}/$_d"
+done
 unzip -o -q "$REPO/brain.plugin" -d "$PLUGIN"
 
 # 3. Refresh deps only when requirements.txt actually changed.
@@ -43,16 +53,21 @@ else
   echo "deps unchanged — skipping pip install."
 fi
 
-# 3.5. Smoke-test the DEPLOYED package: import the MCP entrypoint using the
-#       plugin's own venv, from the plugin dir. Catches the manifest-omission /
-#       broken-import class at DEPLOY time (e.g. a packaged brain_mcp.py that
-#       imports a module which didn't ship) — loud here beats a silent "Failed
-#       to connect" / zero MCP tools at the next session start. ~40ms: brain_mcp
-#       is a thin TCP client to the daemon, so importing it loads no embedder.
+# 3.5. Smoke-test the DEPLOYED package: import BOTH entrypoints — the MCP server
+#       (servers.brain_mcp, per-session, talks to the daemon over TCP) AND the
+#       daemon itself (servers.daemon_server, what start-daemon.sh launches) —
+#       using the plugin's own venv from the plugin dir. Catches a packaged
+#       module that imports something which didn't ship, at DEPLOY time, before
+#       the daemon restart — loud here beats a silent "Failed to connect" / dead
+#       daemon at the next session start. ~250ms: neither import loads torch or
+#       the embedder (lazy at runtime). NOTE: this exercises only MODULE-LEVEL
+#       imports; lazy in-function imports aren't reached — git ls-files
+#       completeness (build-plugin.sh) is what guarantees those ship.
 echo "smoke-testing packaged imports..."
-if ! ( cd "$PLUGIN" && "$PLUGIN/venv/bin/python" -c "import servers.brain_mcp" ); then
-  echo "ERROR: packaged 'servers.brain_mcp' failed to import — aborting before daemon restart." >&2
-  echo "       A required module is missing from the package or an import is broken." >&2
+if ! ( cd "$PLUGIN" && "$PLUGIN/venv/bin/python" -c "import servers.brain_mcp, servers.daemon_server" ); then
+  echo "ERROR: a packaged entrypoint (brain_mcp / daemon_server) failed to import —" >&2
+  echo "       aborting before daemon restart. A required module is missing from the" >&2
+  echo "       package or an import is broken." >&2
   exit 1
 fi
 
