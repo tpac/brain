@@ -458,12 +458,15 @@ class TestMCPRoundTrip(BrainTestBase):
         # passed through verbatim (the pre-fix silent-empty bug).
         self.assertRegex(_resolve_time_bound('2H'), r'^\d{4}-\d{2}-\d{2}')
         self.assertNotEqual(_resolve_time_bound('2H'), '2H')
+        # Naive literals are normalized to tz-aware UTC to match storage
+        # ('+00:00'); already-aware passes through; space form → ISO-T (avoids
+        # the 'T' > ' ' lex hazard). Out-of-range / trailing-junk dates raise.
         self.assertEqual(_resolve_time_bound('2026-06-14T00:00:00'),
-                         '2026-06-14T00:00:00')
-        # Space-separated bound normalized to ISO-T (avoids the 'T' > ' ' lex
-        # hazard vs ISO-T storage); out-of-range / trailing-junk dates rejected.
+                         '2026-06-14T00:00:00+00:00')
+        self.assertEqual(_resolve_time_bound('2026-06-14T00:00:00+00:00'),
+                         '2026-06-14T00:00:00+00:00')
         self.assertEqual(_resolve_time_bound('2026-06-14 12:00:00'),
-                         '2026-06-14T12:00:00')
+                         '2026-06-14T12:00:00+00:00')
         for junk in ('1mo', 'garbage', '7', '2026-13-99', '2026-06-14xyz'):
             with self.assertRaises(ValueError):
                 _resolve_time_bound(junk)
@@ -528,6 +531,44 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertIn("the cadence fix landed", rendered)
         self.assertIn("0.51", rendered)              # score rendered
         self.assertNotIn("{", rendered)              # not raw JSON
+
+    def test_recall_episodes_not_auto_session_scoped(self):
+        """recall_episodes must NOT inherit the ambient CLAUDE_CODE_SESSION_ID
+        that daemon_send auto-injects for attribution — its default is all
+        streams (the cross-stream feature). Attribution-needing commands still
+        get it; an explicit session_id is always preserved."""
+        import os
+        from servers.brain_mcp import _inject_session_id
+        prev = os.environ.get("CLAUDE_CODE_SESSION_ID")
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "sess-current"
+        try:
+            self.assertNotIn("session_id", _inject_session_id("recall_episodes", {}),
+                             "recall_episodes was auto-scoped to the calling "
+                             "session — breaks the all-streams default")
+            self.assertEqual(
+                _inject_session_id("remember", {}).get("session_id"), "sess-current")
+            self.assertEqual(
+                _inject_session_id("recall_episodes", {"session_id": "x"})["session_id"], "x")
+        finally:
+            if prev is None:
+                os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+            else:
+                os.environ["CLAUDE_CODE_SESSION_ID"] = prev
+
+    def test_recall_episodes_all_scales_not_collapsed(self):
+        """scale='' (all scales) must NOT collapse to the s0 conversational
+        whitelist — an s1/s2 trace must be reachable. Regression for the
+        `(scale or 's0')` guard that treated '' like 's0'."""
+        s1 = self.brain._trace_dal.append(
+            chain_id='roundtrip-allscale', scale='s1', event_type='delta',
+            ref_type='encoding_run', summary='zqx encode run',
+            session_id='roundtrip-allscale-sess')
+        result = self._dispatch("recall_episodes",
+                                {"contains": "zqx", "scale": "", "limit": 50})
+        ids = {e["id"] for e in result["episodes"]}
+        self.assertIn(s1, ids,
+                      "scale='' dropped an s1 trace — 'all scales' collapsed to "
+                      "the s0 conversational lens")
 
     # ── Interactions ──
 

@@ -55,8 +55,11 @@ def _resolve_time_bound(value):
     # compares against ISO-T storage (the documented 'T'(0x54) > ' '(0x20)
     # hazard). fromisoformat rejects junk/impossible dates and re-emits ISO-T.
     try:
-        from datetime import datetime as _dt
-        return _dt.fromisoformat(s).isoformat()
+        from datetime import datetime as _dt, timezone as _tz
+        dt = _dt.fromisoformat(s)
+        if dt.tzinfo is None:        # storage is tz-aware ('+00:00') — match it
+            dt = dt.replace(tzinfo=_tz.utc)
+        return dt.isoformat()
     except ValueError:
         raise ValueError(
             "time bound %r not understood — use relative shorthand "
@@ -117,7 +120,7 @@ class BrainEpisodesMixin:
         # to drift); other scales have no conversational notion → no filter.
         if ref_type:
             ref_types = [ref_type] if isinstance(ref_type, str) else list(ref_type)
-        elif (scale or 's0') == 's0':
+        elif scale == 's0':
             ref_types = list(CONVERSATIONAL_REF_TYPES)
         else:
             ref_types = None
@@ -148,7 +151,7 @@ class BrainEpisodesMixin:
                         episodes = [dict(recs[tid], _score=round(score, 4))
                                     for score, tid in scored if tid in recs]
                         return {'episodes': episodes,
-                                'truncated': len(cands) >= EPISODE_SEMANTIC_CANDIDATE_CAP,
+                                'truncated': len(cands) > limit,
                                 'ranked_by': 'relevance'}
             except ValueError:
                 raise

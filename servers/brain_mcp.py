@@ -356,23 +356,41 @@ def _build_revise_batch_schema():
     }
 
 
-def daemon_send(cmd, args=None, timeout=30.0):
-    """Send command to brain daemon via TCP, return result dict.
+# Commands that treat session_id as an explicit cross-session FILTER, not the
+# caller's identity. They must NOT receive the auto-injected ambient session —
+# doing so silently scopes their documented "all streams" default to the calling
+# session. recall_episodes is the live case (its whole point is cross-stream);
+# query_traces uses session_id the same way and shares this latent issue (its
+# doc'd default is "all sessions") — left out of this set for now to avoid
+# changing its behavior in an unrelated change; worth its own fix.
+_SESSION_FILTER_READS = {"recall_episodes"}
 
-    Auto-injects session_id from CLAUDE_CODE_SESSION_ID (the env var
-    Claude Code sets per session) when the caller didn't supply one.
-    The daemon is a singleton per user; each MCP subprocess has its own
-    env, so this gives every tool call the calling session's identity
-    without requiring every tool schema to surface session_id.
-    Handlers that ignore session_id (most reads) cost nothing; handlers
-    that use it (recall, record_message, pre_edit, ...) get correct
-    per-session behavior under parallel Claude Code sessions.
-    """
-    args = dict(args) if args else {}
+
+def _inject_session_id(cmd, args):
+    """Add the calling session's id (CLAUDE_CODE_SESSION_ID) for attribution and
+    per-session behavior, UNLESS `cmd` treats session_id as an explicit filter
+    (see _SESSION_FILTER_READS) or the caller already supplied one. Pure +
+    testable: the socket path stays out of it."""
+    if cmd in _SESSION_FILTER_READS:
+        return args
     if not args.get("session_id"):
         sid = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
         if sid:
             args["session_id"] = sid
+    return args
+
+
+def daemon_send(cmd, args=None, timeout=30.0):
+    """Send command to brain daemon via TCP, return result dict.
+
+    Auto-injects session_id from CLAUDE_CODE_SESSION_ID (the env var Claude Code
+    sets per session) for attribution / per-session behavior — see
+    _inject_session_id, which excludes commands that use session_id as a
+    cross-session filter. The daemon is a singleton per user; each MCP subprocess
+    has its own env, so this gives every write/behavior call the calling
+    session's identity without requiring every tool schema to surface session_id.
+    """
+    args = _inject_session_id(cmd, dict(args) if args else {})
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(timeout)
     try:
