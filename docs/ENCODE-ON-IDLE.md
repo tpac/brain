@@ -289,3 +289,166 @@ unencoded tail. It's a bigger change than Changes 1–2 above, but it's the one 
 moves the encoder from self-reported continuity to ground-truth awareness of
 everything that happened since its last run — across all four actors.
 
+---
+
+## Prompt information architecture — research synthesis (2026-06-15)
+
+Contained web research into how to lay out a long mixed-content prompt (conversation +
+per-turn provenance) for an LLM agent. Sources: [Anthropic long-context
+tips](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/long-context-tips),
+["Lost in the Middle", Liu et al. 2023](https://arxiv.org/abs/2307.03172), Anthropic
+prompting best-practices.
+
+### The reconciliation: two kinds of "instruction" → a sandwich
+
+"Instructions first" and "data first, query last" aren't in conflict — they govern
+different things:
+
+- **Stable role / rules / format** ("how to encode") → **first** (system prompt). This
+  is also our 1h cache prefix, so it's forced here anyway.
+- **Actionable task / focus query** ("what to do with *this* data") → **last**, after
+  the variable data. Anthropic: *"Place your long documents near the top, above your
+  query… Queries at the end can improve response quality by up to 30%… especially with
+  complex, multi-document inputs."*
+
+→ **Sandwich:** stable framing on top, variable data in the middle, the actionable task
+restated at the bottom. "Lost in the middle" is why: accuracy peaks at the **beginning
+and end**, worst in the middle, *even for long-context models*. Never put anything
+load-bearing in the dead middle.
+
+### Decisions
+
+| Question | Verdict | Basis |
+|---|---|---|
+| Instruction placement | Stable rules **before** the data; actionable task **after** it. Nothing load-bearing in the middle. | Anthropic long-context tips; lost-in-the-middle |
+| Glossary vs inline | **Keep the glossary.** Catalog = full nodes once, near the **top**; reference by **id** everywhere else (incl. provenance). Never re-inline node bodies. | Anthropic doc+metadata structure; token economy |
+| ID-dereference reliability | Reliable on frontier models **iff** the catalog isn't buried — keep it compact and **high**. | positional effects |
+| Provenance: interleaved vs parallel | **Interleave, terse, after each turn.** A parallel section forces list-by-index alignment (the cross-reference that degrades mid-context); inline keeps the turn↔provenance binding local. *(reasoned from positional findings, not directly tested — A/B with `s1_encode_eval` if built.)* | reasoning |
+| Formatting | **XML tags** for major compartments (`<node_catalog>`, `<timeline>`, `<turn>`). | Anthropic trains Claude on structured prompts |
+| Cross-model | Structural guidance **transfers** (lost-in-the-middle is general; ends beat middle everywhere). Only divergence: XML is Claude-specific convention — and our pipeline is all-Claude (Sonnet encoder, Haiku surface), so no hedge needed. | cross-model long-context literature |
+
+### Caching interaction (our constraint)
+
+"Task at the end" does **not** fight prompt caching: everything after the first variable
+byte is uncached anyway, so a trailing task block costs nothing. The cached 1h prefix
+stays = system + stable preamble at the very top. Only the `final`/run-context line is
+dynamic; keep the rest of the closing task in the stable preamble.
+
+---
+
+## Proposed section structure
+
+Top → bottom is the sandwich. Load-bearing content sits on both strong ends (catalog at
+top, newest/unencoded turns at the bottom); already-handled older turns tolerate the
+dead middle.
+
+| # | Section | Position | Cache | Role |
+|---|---------|----------|-------|------|
+| 1 | System: role + encoding rules + format + how-to-read | top (strong) | 1h | stable "how to encode" |
+| 2 | Preamble: section legend + "read before acting" | top (strong) | 1h | teaches the layout once |
+| 3 | `<continuity>`: encoding journal + session context | early | 5m | priors — what prior runs did / what the session is about |
+| 4 | `<node_catalog>`: full rich nodes, once | early-mid (must precede refs) | 5m | the glossary everything dereferences by `id:` |
+| 5 | `<timeline>`: turns + terse inline provenance | bulk; newest last → strong end | 5m | the data + the emergent boundary |
+| 6 | `<task>`: encode-what's-new + identify-first + `final` line | very end (strongest) | mostly 1h; `final` line dynamic | the actionable query |
+
+### Example — a timeline turn (interleaved, terse provenance)
+
+```xml
+<turn n="8">
+  <user trace="a1b2c3d4">…operator text…</user>
+  <assistant trace="e5f6a7b8">…Anchor text…</assistant>
+  <provenance>
+    surfaced(Haiku):  id:1c0v, id:9ab2
+    encoded(S1S):     —
+    encoded(Anchor):  id:7f3e
+    endo:             id:44d1
+  </provenance>
+</turn>
+```
+
+`encoded(S1S): —` is the **emergent boundary** — it clusters on the recent turns, so
+"what hasn't had an encoding pass" is visible at a glance, no computed turn-index.
+Node bodies live only in the catalog (§4); the turn carries `id:` refs only — never
+re-inline (glossary+reference rule).
+
+### Example — the closing task block (strongest position, last)
+
+```xml
+<task>
+  Encode what's new since your last journal entry.
+  Turns whose provenance shows no encoded(S1S)/encoded(Anchor) are your focus —
+  they have not had an encoding pass yet.
+
+  First, list the turn numbers that are unencoded. Then encode them.
+
+  <!-- dynamic, only on an idle/terminal flush: -->
+  FINAL FLUSH: this session has gone idle — this is likely the last encode of it.
+  Do not defer encodable material to a future run; capture it now or it is lost.
+</task>
+```
+
+Two research techniques fold in here: the task is **last** (the query-at-end ~30%
+effect), and "**list the unencoded turns first, then encode**" is Anthropic's
+ground-before-acting / extract-quotes-first move — it forces the model to bind to the
+data before writing, turning the emergent boundary into an explicit decision.
+
+### Why this composes with the three threads
+
+- **Turn-count flexibility** is a non-issue: no "5" anywhere — the boundary is whatever
+  provenance shows unencoded. A 2-turn flush and a 9-turn one read identically.
+- **Terminal-flush gap** → §6's `final` line (the one substantive behavior change).
+- **Cross-actor awareness** (Anchor's direct writes, endo) → two more provenance lines
+  in §5; stream-extensible, endo slots in when it ships.
+
+### Open questions for eval
+
+1. **Interleaved vs parallel provenance** — the one layout choice reasoned (not cited).
+   A/B inline-`<provenance>`-per-turn vs a separate aligned block; measure correct
+   turn↔node association and tail-coverage.
+2. **Catalog size vs position** — a large catalog pushes early turns toward the dead
+   middle. Measure whether large-catalog runs lose recall/linking on mid-window turns;
+   consider a size cap or summarizing cold catalog entries.
+3. **Ground-before-act** — does "list unencoded turns first, then encode" actually
+   improve tail coverage and reduce over-encoding, or just add latency?
+4. **`final` line efficacy** — does it measurably reduce tail loss WITHOUT inflating
+   node count (the over-encode-thin-material risk)?
+5. **Provenance vs journal-only dedup** — does ground-truth provenance reduce
+   re-encoding of what Anchor/prior-S1S already wrote, vs today's journal-prose baseline?
+6. **Effort tier interaction** — see below; effort is co-gated with batch size.
+
+---
+
+## Effort / thinking level for S1 Scribe
+
+**Current baseline:** the encoder runs `claude-sonnet-4-6` with **thinking OFF** (no
+`thinking` param, no `effort`/`output_config`) — direct generation over ≤5 tool-use
+rounds ([runner.py:313](../servers/scales/runner.py),
+[encode.py:197](../servers/scales/s1/encode.py)). `effort` requires adaptive thinking
+(`thinking:{type:"adaptive"}` + `output_config:{effort: low|medium|high|xhigh|max}`).
+
+**The trade-off for THIS task.** Encoding is reconciliation-heavy (atomize; dedup
+against journal + catalog + 4-actor provenance; decide links; calibrate confidence) —
+so *some* reasoning helps, and the richer provenance-ledger input increases that load.
+But it's a **bounded, contract-specified** task, not open-ended research. And it runs
+**often** (every 5 turns + idle flushes), so thinking tokens multiply across runs.
+
+**The specific risk: high effort fuels over-encoding.** Sonnet/Opus 4.6 over-explore at
+high `effort`; on a thin idle-flush batch that directly produces the
+over-encode-thin-material failure mode (one throwaway turn inflated into several
+low-value nodes). So effort should **scale with batch size**, not be pinned high.
+
+| Effort | Quality on a real batch | Over-encode risk (thin batch) | Cost/latency | Verdict |
+|--------|------------------------|-------------------------------|--------------|---------|
+| off (today) | adequate; weaker dedup/linking reasoning | low | cheapest | baseline |
+| low | better dedup/reconciliation; little over-think | low | small bump | likely sweet spot for small flushes |
+| medium | best reconciliation on big/backed-up batches | moderate | moderate | likely sweet spot for normal/large batches |
+| high+ / xhigh / max | diminishing returns; over-exploration | **high** | expensive | avoid for encoding |
+
+**Recommendation (eval-gated):** turn on adaptive thinking at a **modest** tier and
+**co-gate it with batch size via the same `reason`/`final` param** we already need —
+small idle flush → `low` (or off); normal/large batch → `medium`. Never high+. Interleaved
+thinking also helps the multi-round flow (reflect on round-1 writes before round-2).
+Gate on `s1_encode_eval` across tiers (off/low/medium/high) measuring nodes-per-turn,
+dedup correctness, confidence calibration, noise rate, AND token cost + latency — pick
+the tier where quality plateaus before cost climbs.
+
