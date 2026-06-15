@@ -57,6 +57,17 @@ Synaptic-fatigue (per-session anti-repeat) + hub-dampening are broken post sprea
 ### Tom-time-gated
 `eval/ground_truth/` — 7 conversation templates across 5 strata are scaffolded (source conversations written), but the **ideal-node YAML is still unfilled** (verified 2026-06-05 — all `<fill>`). Tom's ~1.75h authoring session, untouched. Once filled: targeted structural-delta eval joins the longmem oracle path.
 
+### Distribution readiness (OSS) — `docs/DISTRIBUTION-READINESS.md`
+Making Anchor installable by strangers. **Phases 2–4 mechanical pieces done + committed
+(`0d2c1e7`, 2026-06-14):** userConfig API key (keychain + additive shell fallback),
+embedder pre-fetch at install, shippable `dashboard/` + `bin/brain-dashboard`, Linux
+daemon verified already-degrading. Code-reviewed (8 findings, 4 fixed incl. a `bin/*`
+gitignore build-break). **Not deployed** — `redeploy.sh` + new session needed; hold
+until the tree settles (it rebuilds from the working tree, which carries another
+stream's WIP). **Next: D-5 (seed-pack)** — mine the brain for genericized encoder
+examples; the gate before any publish. Locked decisions (separation, defer-v2) + risk
+register in the doc.
+
 ---
 
 ## Production state (don't hardcode — `list_interactions` is the source of truth)

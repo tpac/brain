@@ -1,6 +1,8 @@
 # Distribution Readiness — Sharing Anchor
 
-**Status:** planning · **Started:** 2026-06-14 · **Audience:** dev-facing
+**Status:** Phases 2–4 mechanical pieces executed, code-reviewed, and committed
+(`0d2c1e7`); next substantive step is D-5 (seed pack). · **Started:** 2026-06-14 ·
+**Audience:** dev-facing
 **Placement:** lives in the **private** dev repo only. This document names personal-data
 findings and internal file paths — it must **never** be copied into the public
 distribution repo.
@@ -32,6 +34,10 @@ stated reason.
 ---
 
 ## 3. Current state (grounded findings, verified 2026-06-14)
+
+> Snapshot of the original investigation. Several findings below are now **resolved** —
+> Linux degradation verified (§4 3.1), realchat data untracked (§4 1.3), dashboard
+> shipped (§4 4.1), userConfig added (§4 2.1). See §4/§6 for execution status.
 
 The 2026-05-01 audit (`cd4a99f`) fixed hardcoded paths, the API-key gate, and
 `.claude/settings.local.json`. **Those held.** New issues since:
@@ -201,15 +207,17 @@ Buys `RunAtLoad` warmth + immediate `KeepAlive` on both OSes. **Not this cycle.*
 Trace showed the daemon is raw JSON-over-TCP (a `/dashboard` route would be real new
 surface), while the dashboard is already a standalone threaded HTTP server **already
 bound to `127.0.0.1`** ([dashboard/server.py:332](dashboard/server.py:332)),
-daemon-proxying with a read-only SQLite fallback — just not shipped. So: added
-`dashboard/` to `build-plugin.sh` as a **dynamic subtree** (excludes `__pycache__` +
-dev notes; dynamic so static/query files can't drift out — per the manifest-drift
-lesson) + a `bin/brain-dashboard` launcher mirroring `bin/brain-watch` (sources
-`brain-env.sh` + `resolve-brain-db.sh`, execs the standalone server). **No daemon
-change; the 127.0.0.1 binding was already correct** (the network-exposure risk I
-flagged was already handled). Verified: test-build packs it junk-free, launcher
-`bash -n` clean, dashboard imports under the venv. Plugin ~575K→720K. A new user
-runs `brain-dashboard` from any repo.
+daemon-proxying with a read-only SQLite fallback — just not shipped. So: `build-plugin.sh`
+now ships the **git-tracked** `dashboard/` subtree (`git ls-files`, dev notes excluded)
++ a `bin/brain-dashboard` launcher mirroring `bin/brain-watch` (sources `brain-env.sh`
++ `resolve-brain-db.sh`, execs the standalone server). **No daemon change; the
+127.0.0.1 binding was already correct.** Verified: test-build packs it junk-free,
+launcher `bash -n` clean, dashboard imports under the venv (self-contained — no
+`servers/` imports). Plugin ~575K→720K. A new user runs `brain-dashboard` from any repo.
+*(Code-review corrections: the first cut used a `find` over the working tree, which would
+ship a developer's untracked scratch/secrets and silently ship nothing if the dir moved —
+switched to `git ls-files` (tracked-only, fails loud if empty). Also caught: the new
+launcher was gitignored by `bin/*` — added `!bin/brain-dashboard` so it actually ships.)*
 
 ### Phase 5 — Packaging & distribution
 
@@ -241,28 +249,47 @@ first brain should wake up *well*, not with neutralized-placeholder fixtures.
 
 ---
 
-## 6. This session (2026-06-14) — decided + done
+## 6. Session log (2026-06-14) — executed + committed
 
-**Decisions taken:** baseline → smoke-test now, full 20-item baseline deferred to
-the head of D-5 (run on the then-current prompts); **all** of 1.1 (operator-name
-genericization — both the community framing *and* the encoder few-shot examples)
-folded into D-5, so prompt genericization happens once, holistically, with the
-baseline in hand.
+**Decisions taken:** baseline → smoke-test now, full 20-item baseline deferred to the
+head of D-5; **all** of 1.1 (operator-name + few-shot genericization) folded into D-5,
+so prompt de-personalization happens once, holistically, with the baseline in hand.
 
-**Done this session:**
-- This plan doc created.
-- **1.3** — `realchat_sessions.json` (5.6M) + `realchat_oracle.json` (598K)
-  untracked (`git rm --cached`, kept on disk) and gitignored; the public
-  LongMemEval benchmark stays tracked. Working-tree change, **not committed**.
-- **1.4** — conclusive shipped-surface audit: no hard path/identity leaks
-  (`cd4a99f` held; `~/AgentsContext` refs are `$HOME`-relative); "Tom Pachys"
-  author/owner attribution stays (correct for an MIT repo). One new low-sev
-  finding logged in §3.
-- Eval harness **smoke-test** (5 items, pipeline-health) — to confirm the harness
-  is healthy ahead of D-5.
+**Executed — all committed in `0d2c1e7` (path-scoped on `main`):**
+- **Plan doc** created (this file).
+- **1.3** — `realchat_sessions.json` (5.6M) + `realchat_oracle.json` (598K) untracked
+  (`git rm --cached`, kept on disk) + gitignored; public LongMemEval stays tracked.
+- **1.4** — conclusive shipped-surface audit: no hard path/identity leaks (`cd4a99f`
+  held; `~/AgentsContext` is `$HOME`-relative); "Tom Pachys" attribution stays (MIT).
+  New low-sev finding: "Tom" in ~30 code comments (§3) → D-5/Phase-5 polish.
+- **2.1 + 2.3** — `userConfig.api_key` (optional, keychain) + additive shell fallback
+  (env-file/shell wins) + clearer first-run message. (Supervisor-daemon limitation: §2.1.)
+- **2.2** — embedder pre-fetch at install (`ensure-runtime.sh` step 4; option B).
+- **3.1 / 3.2** — Linux daemon: found *already handled* (launchctl absence caught, Popen
+  fallback runs); added a regression test, **no code change**.
+- **4.1** — shipped `dashboard/` (git-tracked subtree) + `bin/brain-dashboard` launcher.
+- **Eval smoke-test** — 5/5 pipeline-health pass; harness good for the D-5 baseline.
+- **Code-review pass** (max-effort recall) — 8 findings; **fixed 4**: the critical
+  `bin/brain-dashboard` gitignore build-break, `find`→`git ls-files` (ship tracked-only),
+  the stale daemon-mirror comment, and `python -c` path-interpolation hardening.
+  **Deferred 4** (noted): #2 supervisor-daemon key gap (→ §2.1), cache_dir pre-fetch,
+  eval FileNotFound on clone, launcher double-source.
 
-**Not this session:** all prompt edits (→ D-5), Phase 2 onboarding, 4.1 dashboard,
-Phase 5 packaging. The publish is far off.
+**Deploy state:** committed but **NOT live** — hook/manifest/dashboard changes load from
+the *built* plugin copy, so going live needs `redeploy.sh` + a new session (+ one plugin
+re-enable for the userConfig keychain prompt). **Hold the redeploy until the tree
+settles** — it rebuilds from the working tree, which still carries another stream's
+in-flight dispatch refactor.
+
+**Process learning — multi-session shared tree.** This work ran alongside another active
+stream in the **same working tree**, and it bit twice: (a) `git add` / `git rm --cached`
+staging got silently wiped by the other stream's `git reset`; (b) `git checkout -b` is
+unsafe (shared HEAD would yank the other stream onto the branch). Working pattern that
+held: commit **directly on `main`, path-scoped, atomically** (stage + commit in one shot,
+no pre-stage-and-wait), with a guard that aborts unless the staged set is *exactly* this
+session's files. See `0d2c1e7`.
+
+**Not this session:** all prompt edits (→ D-5), Phase 5 packaging, the publish.
 
 ---
 
