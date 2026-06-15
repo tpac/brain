@@ -112,6 +112,35 @@ def _handle_query_traces(brain, args, graph_changes):
         return {"ok": False, "error": str(e)}
 
 
+def _handle_recall_episodes(brain, args, graph_changes):
+    """Episodic pull over the traces layer — semantic (`query`) and/or lexical
+    (`contains`) search over trace_events, returning full episode records.
+
+    session_id / session_ids are mutually exclusive (filter_events raises);
+    surface any ValueError as a structured error rather than crashing the
+    daemon thread, same as query_traces.
+    """
+    sids = args.get("session_ids")
+    if sids is not None and not isinstance(sids, list):
+        return {"ok": False, "error": "session_ids must be a list of strings"}
+    try:
+        result = brain.recall_episodes(
+            query=args.get("query"),
+            contains=args.get("contains"),
+            session_id=args.get("session_id"),
+            session_ids=sids,
+            scale=args.get("scale", "s0"),
+            event_type=args.get("event_type"),
+            ref_type=args.get("ref_type"),
+            older_than=args.get("older_than"),
+            younger_than=args.get("younger_than"),
+            sort_order=args.get("sort_order", "desc"),
+            limit=args.get("limit"))
+        return {"ok": True, "result": result}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+
+
 def _handle_query_outcomes(brain, args, graph_changes):
     """Query outcome events — the learning signal."""
     result = brain.query_outcomes(

@@ -352,6 +352,183 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertGreaterEqual(result.get("O", 0), 2,
                                 "two appended 'O' events not reflected in counts")
 
+    def test_recall_episodes(self):
+        """recall_episodes: lexical `contains` over trace_events returns the
+        full matching episode records (not nodes), scoped + attributed. The
+        decoy without the token must not leak through the filter."""
+        for et, rt, summ in (
+                ('K', 'user_message', 'zorblax episode one'),
+                ('delta', 'assistant_message', 'zorblax episode two'),
+                ('K', 'user_message', 'totally unrelated decoy')):
+            self.brain._trace_dal.append(
+                chain_id='roundtrip-ep', scale='s0', event_type=et,
+                ref_type=rt, summary=summ, session_id='roundtrip-ep-sess')
+
+        result = self._dispatch("recall_episodes",
+                                {"contains": "zorblax", "limit": 10})
+        self.assertIn("episodes", result)
+        self.assertEqual(result["ranked_by"], "time")
+        summaries = [e["summary"] for e in result["episodes"]]
+        self.assertEqual(len(summaries), 2,
+                         "contains filter returned wrong count: %r" % summaries)
+        self.assertTrue(all("zorblax" in s for s in summaries),
+                        "contains leaked non-matching episodes: %r" % summaries)
+        # Both matches present (order-insensitive — created_at ties are
+        # microsecond-fragile), attribution + metadata carried as full records.
+        self.assertEqual(set(summaries),
+                         {"zorblax episode one", "zorblax episode two"})
+        self.assertTrue(all(e["session_id"] == "roundtrip-ep-sess"
+                            for e in result["episodes"]))
+        self.assertIn("metadata", result["episodes"][0])
+
+    def test_recall_episodes_session_scope_and_sort(self):
+        """session_id scopes the pull; sort_order=asc returns oldest-first."""
+        for summ in ('scoped alpha', 'scoped beta', 'scoped gamma'):
+            self.brain._trace_dal.append(
+                chain_id='roundtrip-ep2', scale='s0', event_type='K',
+                ref_type='user_message', summary=summ,
+                session_id='roundtrip-scope-sess')
+        result = self._dispatch("recall_episodes", {
+            "session_id": "roundtrip-scope-sess",
+            "sort_order": "asc", "limit": 50})
+        summaries = [e["summary"] for e in result["episodes"]]
+        self.assertEqual(summaries[:3], ['scoped alpha', 'scoped beta', 'scoped gamma'],
+                         "asc sort / session scope wrong: %r" % summaries)
+        self.assertTrue(all(e["session_id"] == "roundtrip-scope-sess"
+                            for e in result["episodes"]),
+                        "session scope leaked other sessions")
+
+    def test_recall_episodes_semantic_ranks_by_meaning(self):
+        """recall_episodes with `query` ranks by cosine over the existing
+        trace_embeddings, not by recency. Seed two embedded episodes (the
+        semantically-far one appended LAST, so recency would mis-rank it
+        first) and confirm meaning wins."""
+        from servers import embedder
+        pet = self.brain._trace_dal.append(
+            chain_id='roundtrip-sem', scale='s0', event_type='K',
+            ref_type='user_message',
+            summary='cats and dogs make wonderful household pets',
+            session_id='roundtrip-sem-sess')
+        db = self.brain._trace_dal.append(
+            chain_id='roundtrip-sem', scale='s0', event_type='K',
+            ref_type='user_message',
+            summary='sqlite index migration and schema version drift',
+            session_id='roundtrip-sem-sess')
+        for tid, text in ((pet, 'cats and dogs make wonderful household pets'),
+                          (db, 'sqlite index migration and schema version drift')):
+            self.brain._trace_dal.store_embeddings(
+                [(tid, embedder.embed_document(text), text)], model='test')
+
+        result = self._dispatch("recall_episodes", {
+            "query": "feline and canine companion animals",
+            "session_id": "roundtrip-sem-sess", "limit": 2})
+        self.assertEqual(result["ranked_by"], "relevance")
+        self.assertGreaterEqual(len(result["episodes"]), 1)
+        self.assertEqual(result["episodes"][0]["id"], pet,
+                         "semantic rank should put the pets episode first, "
+                         "not the database one")
+        self.assertIn("_score", result["episodes"][0])
+
+    def test_recall_episodes_older_than_not_clobbered_by_default_window(self):
+        """older_than alone must NOT get a default 7-day younger floor forced
+        on it (which would make the window empty). Regression: the default-
+        window guard previously ignored older_than."""
+        from servers.clock import iso_cutoff
+        tid = self.brain._trace_dal.append(
+            chain_id='roundtrip-old', scale='s0', event_type='K',
+            ref_type='user_message', summary='ancient episode about migrations',
+            session_id='roundtrip-old-sess')
+        # Backdate to 10 days ago — older than both older_than='1d' and the 7d floor.
+        self.brain._trace_dal.conn.execute(
+            "UPDATE trace_events SET created_at = ? WHERE id = ?",
+            (iso_cutoff(days=10), tid))
+        result = self._dispatch("recall_episodes", {"older_than": "1d", "limit": 10})
+        ids = [e["id"] for e in result["episodes"]]
+        self.assertIn(tid, ids,
+                      "older_than lost a 10-day-old episode — a default 7d "
+                      "younger floor wrongly clobbered the older_than window")
+
+    def test_resolve_time_bound_parsing(self):
+        """Relative shorthand is case-insensitive; unparseable bounds raise
+        instead of silently binding a non-timestamp into a lex comparison."""
+        from servers.brain_episodes import _resolve_time_bound
+        self.assertEqual(_resolve_time_bound(''), '')
+        self.assertRegex(_resolve_time_bound('3d'), r'^\d{4}-\d{2}-\d{2}')
+        # Case-insensitive: uppercase units are parsed to a timestamp, not
+        # passed through verbatim (the pre-fix silent-empty bug).
+        self.assertRegex(_resolve_time_bound('2H'), r'^\d{4}-\d{2}-\d{2}')
+        self.assertNotEqual(_resolve_time_bound('2H'), '2H')
+        self.assertEqual(_resolve_time_bound('2026-06-14T00:00:00'),
+                         '2026-06-14T00:00:00')
+        # Space-separated bound normalized to ISO-T (avoids the 'T' > ' ' lex
+        # hazard vs ISO-T storage); out-of-range / trailing-junk dates rejected.
+        self.assertEqual(_resolve_time_bound('2026-06-14 12:00:00'),
+                         '2026-06-14T12:00:00')
+        for junk in ('1mo', 'garbage', '7', '2026-13-99', '2026-06-14xyz'):
+            with self.assertRaises(ValueError):
+                _resolve_time_bound(junk)
+
+    def test_recall_episodes_ref_type_dial_optin_firehose(self):
+        """Default ref_type lens is the trace-contract conversational DIAL
+        (CONVERSATIONAL_REF_TYPES) — so it drops tool_result AND heartbeat /
+        structural noise, not a hardcoded tool_result list. A single ref_type
+        opts into one lens; a list is the interleaved said+did firehose."""
+        sess = 'roundtrip-tr-sess'
+        msg = self.brain._trace_dal.append(
+            chain_id='roundtrip-tr', scale='s0', event_type='K',
+            ref_type='user_message', summary='discuss the dal refactor',
+            session_id=sess)
+        tool = self.brain._trace_dal.append(
+            chain_id='roundtrip-tr', scale='s0', event_type='delta',
+            ref_type='tool_result', summary='Edit: servers/dal.py filter_events',
+            session_id=sess)
+        beat = self.brain._trace_dal.append(
+            chain_id='roundtrip-tr', scale='s0', event_type='K',
+            ref_type='heartbeat', summary='watch re-arm', session_id=sess)
+
+        # Default = conversational dial: user_message in; tool_result AND
+        # heartbeat out (proves it's the contract dial, not a tool_result hardcode).
+        default = {e["id"] for e in self._dispatch(
+            "recall_episodes", {"session_id": sess, "limit": 50})["episodes"]}
+        self.assertIn(msg, default)
+        self.assertNotIn(tool, default)
+        self.assertNotIn(beat, default,
+                         "default dropped only tool_result, not heartbeat — "
+                         "it isn't sourced from the conversational dial")
+        # Single opt-in lens.
+        tools = {e["id"] for e in self._dispatch(
+            "recall_episodes", {"session_id": sess, "ref_type": "tool_result",
+                                "limit": 50})["episodes"]}
+        self.assertEqual(tools, {tool})
+        # List = interleaved said+did firehose.
+        fire = {e["id"] for e in self._dispatch(
+            "recall_episodes",
+            {"session_id": sess,
+             "ref_type": ["user_message", "tool_result", "heartbeat"],
+             "limit": 50})["episodes"]}
+        self.assertEqual(fire, {msg, tool, beat})
+
+    def test_recall_episodes_render(self):
+        """The MCP renderer turns episode records into attributed lines (not raw
+        JSON): who · when · trace-handle · body. Locks the attribution coupling
+        to metadata keys — a non-default identity must appear verbatim, so a key
+        rename (which would fall back to 'Anchor') fails this test."""
+        from servers.brain_mcp import _format_result
+        rendered = _format_result("recall_episodes", {
+            "ranked_by": "relevance",
+            "episodes": [{
+                "id": "abc12345", "ref_type": "assistant_message",
+                "session_id": "c3a2e74c-x",
+                "created_at": "2026-06-14T02:58:56+00:00",
+                "metadata": {"agent_identity": "Anchor-7",
+                             "content": "the cadence fix landed"},
+                "_score": 0.5123}]})
+        self.assertIn("Anchor-7", rendered)          # reads agent_identity
+        self.assertIn("trace:abc12345", rendered)    # expansion handle
+        self.assertIn("the cadence fix landed", rendered)
+        self.assertIn("0.51", rendered)              # score rendered
+        self.assertNotIn("{", rendered)              # not raw JSON
+
     # ── Interactions ──
 
     def test_list_interactions(self):

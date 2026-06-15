@@ -29,7 +29,7 @@ Returns: [{role: 'user'|'assistant', content: str, timestamp: str}]
 import json
 import os
 from bisect import bisect_left
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 # Conversation JSONL directory — relative to brain repo root
 _CONV_DIR = None

@@ -794,6 +794,118 @@ class TraceDAL:
                   file=_sys.stderr)
         return out
 
+    def _event_where(self, contains: str, scale: str, event_type: str,
+                     ref_types: Optional[List[str]], session_id: str,
+                     session_ids: Optional[List[str]],
+                     younger_than: str, older_than: str):
+        """Build the shared WHERE clause + params for recall_episodes' two
+        access paths (filter_events / filter_event_vectors). Columns are
+        `te.`-qualified so the same clause works under the trace_embeddings
+        JOIN, where `created_at` would otherwise be ambiguous.
+
+        Needles: contains → (summary OR metadata) LIKE %s% (same idiom as
+        find_by_metadata_substring; metadata is JSON text, so it greps the full
+        body, not the 200-char summary). Structural: scale/event_type equality.
+        ref_types: an INCLUDE whitelist (te.ref_type IN (...)); None/empty = no
+        ref_type filter (all types). The caller (BrainEpisodesMixin) sources the
+        default whitelist from the trace_contract dial, so there's no hardcoded
+        list here to drift. Scope: session_id XOR session_ids (both raises, like
+        get_recent). Time (ISO, caller pre-resolves shorthand): younger_than →
+        created_at >, older_than → <.
+        """
+        if session_id and session_ids:
+            raise ValueError(
+                "Pass either session_id (single str) or session_ids (List[str]), "
+                "not both. Got session_id=%r session_ids=%r"
+                % (session_id, session_ids))
+        conditions: list = []
+        params: list = []
+        if session_ids:
+            placeholders = ','.join(['?'] * len(session_ids))
+            conditions.append('te.session_id IN (%s)' % placeholders)
+            params.extend(session_ids)
+        elif session_id:
+            conditions.append('te.session_id = ?')
+            params.append(session_id)
+        if scale:
+            conditions.append('te.scale = ?')
+            params.append(scale)
+        if event_type:
+            conditions.append('te.event_type = ?')
+            params.append(event_type)
+        if ref_types:
+            placeholders = ','.join(['?'] * len(ref_types))
+            conditions.append('te.ref_type IN (%s)' % placeholders)
+            params.extend(ref_types)
+        if contains:
+            like = '%' + contains + '%'
+            conditions.append('(te.summary LIKE ? OR te.metadata LIKE ?)')
+            params.extend([like, like])
+        if younger_than:
+            conditions.append('te.created_at > ?')
+            params.append(younger_than)
+        if older_than:
+            conditions.append('te.created_at < ?')
+            params.append(older_than)
+        return (' AND '.join(conditions) if conditions else '1=1'), params
+
+    def filter_events(self, contains: str = '', scale: str = '',
+                      event_type: str = '', ref_types: Optional[List[str]] = None,
+                      session_id: str = '', session_ids: Optional[List[str]] = None,
+                      younger_than: str = '', older_than: str = '',
+                      sort_order: str = 'desc',
+                      limit: int = 10) -> List[Dict[str, Any]]:
+        """Structured + lexical query over trace_events — the filter_nodes
+        analog for the traces layer. Returns full DECODED records (same shape
+        as get_by_ids), the substance recall_episodes returns to the caller.
+        The time/no-query path: indexed WHERE + ORDER BY created_at + LIMIT
+        early-exits, so only `limit` rows are decoded. See _event_where for the
+        filter semantics (ref_types is an INCLUDE whitelist). Semantic ranking
+        lives in BrainEpisodesMixin.recall_episodes.
+        """
+        from .brain_constants import EPISODE_MAX_LIMIT
+        limit = min(max(int(limit), 1), EPISODE_MAX_LIMIT)
+        where, params = self._event_where(
+            contains, scale, event_type, ref_types, session_id, session_ids,
+            younger_than, older_than)
+        order = 'ASC' if sort_order == 'asc' else 'DESC'
+        rows = self.conn.execute(
+            'SELECT te.id, te.chain_id, te.scale, te.event_type, te.ref_type, '
+            'te.ref_id, te.summary, te.metadata, te.session_id, te.created_at '
+            'FROM trace_events te WHERE %s ORDER BY te.created_at %s LIMIT ?'
+            % (where, order),
+            params + [limit]).fetchall()
+        return [{'id': r[0], 'chain_id': r[1], 'scale': r[2], 'event_type': r[3],
+                 'ref_type': r[4] or '', 'ref_id': r[5] or '', 'summary': r[6] or '',
+                 'metadata': self._decode_metadata(r[7]), 'session_id': r[8] or '',
+                 'created_at': r[9]}
+                for r in rows]
+
+    def filter_event_vectors(self, contains: str = '', scale: str = '',
+                             event_type: str = '', ref_types: Optional[List[str]] = None,
+                             session_id: str = '',
+                             session_ids: Optional[List[str]] = None,
+                             younger_than: str = '', older_than: str = '',
+                             limit: int = 500) -> List[tuple]:
+        """Lean candidate scan for semantic recall_episodes: returns
+        [(trace_id, vector)] for embedded traces matching the same filter as
+        filter_events, INNER JOINed to trace_embeddings (only embedded traces
+        are rankable). No metadata decode and no second query — the embedding
+        rides the JOIN, and only the top-k full records get hydrated (via
+        get_by_ids) after ranking. Newest-first so the cap keeps recent ones.
+        """
+        from .brain_constants import EPISODE_MAX_LIMIT
+        limit = min(max(int(limit), 1), EPISODE_MAX_LIMIT)
+        where, params = self._event_where(
+            contains, scale, event_type, ref_types, session_id, session_ids,
+            younger_than, older_than)
+        rows = self.conn.execute(
+            'SELECT te.id, tem.vector FROM trace_events te '
+            'JOIN trace_embeddings tem ON tem.trace_id = te.id '
+            'WHERE %s ORDER BY te.created_at DESC LIMIT ?' % where,
+            params + [limit]).fetchall()
+        return [(r[0], r[1]) for r in rows if r[1]]
+
     def get_chains_for_session(self, session_id: str) -> List[str]:
         """Get all chain IDs from a session."""
         rows = self.conn.execute(

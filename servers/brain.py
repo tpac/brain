@@ -34,6 +34,7 @@ from .dal import LogsDAL, BrainMetaDAL
 from .db_backends.sqlite import commit_unless_batched
 from .clock import iso_cutoff, iso_now
 from .brain_recall import BrainRecallMixin
+from .brain_episodes import BrainEpisodesMixin
 from .brain_remember import BrainRememberMixin
 from .brain_connections import BrainConnectionsMixin
 from .brain_reminders import BrainRemindersMixin
@@ -54,6 +55,7 @@ from .brain_constants import (
 
 class Brain(
     BrainRecallMixin,
+    BrainEpisodesMixin,
     BrainRememberMixin,
     BrainConnectionsMixin,
     BrainRemindersMixin,

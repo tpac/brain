@@ -243,6 +243,16 @@ TRACE_CHAIN_RESERVE = 5      # reserved tail slots for trace-chain rescues (addi
 TRACE_CHAIN_T = 5            # top dialogue traces to chain FROM (answer trace may not be rank-1)
 TRACE_CHAIN_N = 25           # nodes each trace pulls before dedup/merge
 
+# recall_episodes — episodic pull over the traces layer (TraceDAL.filter_events +
+# optional semantic re-rank over the existing trace_embeddings). trace→trace, returns
+# full episode records — distinct from the trace→node TRACE_CHAIN rescue lane above.
+EPISODE_DEFAULT_LIMIT = 10           # episodes returned by default
+EPISODE_MAX_LIMIT = 500              # hard cap on a single pull
+EPISODE_DEFAULT_WINDOW_DAYS = 7      # default created_at lower bound when no session/time scope
+                                     # (perf: bounds the contains LIKE scan over a big append-only table)
+EPISODE_SEMANTIC_CANDIDATE_CAP = 500  # max candidates fetched before semantic (query) re-rank
+EPISODE_RENDER_BODY_CHARS = 280      # per-episode body cap in the recall_episodes MCP render
+
 # Retrieval stats — surfacer guidance thresholds
 RETRIEVAL_LOW_CONFIDENCE = 0.35   # Top score below this → surfacer gets low-confidence warning
 

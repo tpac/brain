@@ -665,6 +665,21 @@ def _build_tools():
          "hours": {"type": "integer", "description": "Look back window in hours (default 24). Ignored when session_id or session_ids is set.", "default": 24},
          "limit": {"type": "integer", "description": "Max results (default 100)", "default": 100}}}},
 
+    {"name": "recall_episodes",
+     "description": "Episodic recall over the trace substrate — the brain's universal record of the whole fractal (S0 exchanges, S1 runs, S2 runs). Search/filter trace_events and get the actual episodes back, verbatim, with attribution (which stream, when, who spoke). The decode-over-traces sibling of `recall` (which searches distilled nodes): use this for 'what did I — or another stream — actually SAY/DO about X, lately', where the answer is raw recent activity, not an encoded memory. Two needles, composable: `query` (semantic — ranks by meaning against existing trace embeddings) and/or `contains` (exact substring over summary+metadata). Defaults to conversation (messages); pass ref_type='tool_result' to recall what you DID with files/commands, or ref_type=['user_message','assistant_message','tool_result'] for the interleaved said+did timeline. NOTE: semantic `query` currently covers s0 conversation; other scales fall back to time order. Returns full episode records (incl. metadata.content), newest-first, or relevance-ranked when `query` is set.",
+     "inputSchema": {"type": "object", "properties": {
+         "query": {"type": "string", "description": "Semantic needle — ranks candidate episodes by meaning against the existing trace embeddings; finds them even when the literal words differ. When set, results are relevance-ranked (each carries _score)."},
+         "contains": {"type": "string", "description": "Lexical needle — exact substring matched over the episode's summary AND full metadata (SQL LIKE). Use for a precise token: a function name, an error string, a flag."},
+         "session_id": {"type": "string", "description": "Single stream (session) filter. Mutually exclusive with session_ids. Default: all streams."},
+         "session_ids": {"type": "array", "items": {"type": "string"}, "description": "Multi-stream filter (cross-session pulls). Mutually exclusive with session_id."},
+         "scale": {"type": "string", "description": "Trace scale: 's0' (conversation — default, the 'what was said' layer), 's1', 's2'… Empty = all scales.", "default": "s0"},
+         "event_type": {"type": "string", "description": "Filter by event type: 'O', 'K', 'delta', 'outcome'. Empty = all."},
+         "ref_type": {"type": ["string", "array"], "items": {"type": "string"}, "description": "One ref_type (str) or several (array). UNSET = conversation default sourced from the trace-contract dial (user/assistant messages — drops tool_result, heartbeats, structural deltas) at s0; all types at other scales. Pass 'tool_result' for the 'what I did' lens, or ['user_message','assistant_message','tool_result'] for the interleaved said+did timeline."},
+         "younger_than": {"type": "string", "description": "Only episodes more recent than this. ISO timestamp or relative shorthand ('30m','2h','3d','1w')."},
+         "older_than": {"type": "string", "description": "Only episodes older than this. ISO timestamp or relative shorthand. With no session scope and no younger_than, a default 7-day lower bound is applied (bounds the scan)."},
+         "sort_order": {"type": "string", "description": "'desc' (latest first, default) or 'asc' (oldest first). Ignored when `query` is set — then results are relevance-ranked.", "default": "desc"},
+         "limit": {"type": "integer", "description": "Max episodes returned (default 10, capped at 500).", "default": 10}}}},
+
     {"name": "query_outcomes",
      "description": "Query outcome events — the learning signal. Outcomes are added retrospectively when we learn what happened next (corrections, future recalls). Use to find which chains got corrected vs validated.",
      "inputSchema": {"type": "object", "properties": {
@@ -888,6 +903,33 @@ def _format_result(tool_name, result):
                           stats.get("results_by_source", {}).items() if v > 0)
             ))
         return "\n".join(lines)
+
+    if tool_name == "recall_episodes" and isinstance(result, dict):
+        from servers.brain_constants import EPISODE_RENDER_BODY_CHARS
+        eps = result.get("episodes", [])
+        if not eps:
+            return "No episodes found."
+        out = ["%d episode%s · ranked by %s" % (
+            len(eps), "" if len(eps) == 1 else "s",
+            result.get("ranked_by", "time")), ""]
+        for e in eps:
+            meta = e.get("metadata") or {}
+            rt = e.get("ref_type", "")
+            if rt == "assistant_message":
+                who = meta.get("agent_identity") or "Anchor"
+            elif rt == "user_message":
+                who = meta.get("human_identity") or "Operator"
+            else:                       # tool_result etc. → surface the tool
+                who = meta.get("tool") or rt or "?"
+            score = " %.2f" % e["_score"] if e.get("_score") is not None else ""
+            out.append("[%s%s] %s · %s · %s (trace:%s)" % (
+                (e.get("session_id") or "")[:8], score, who,
+                (e.get("created_at") or "")[:16].replace("T", " "),
+                rt or "?", e.get("id", "")))
+            body = (meta.get("content") or e.get("summary") or "").strip()
+            out.append("  " + body[:EPISODE_RENDER_BODY_CHARS].replace("\n", "\n  "))
+            out.append("")
+        return "\n".join(out)
 
     return json.dumps(result, indent=2, default=str)
 
