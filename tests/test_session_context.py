@@ -199,6 +199,52 @@ class TestSessionContextPersistence:
         c.commit()
         assert turns_since_last_encode(self.brain, sid) == 2   # ignition excluded; only real turns since encode
 
+    def test_parallel_sessions_count_cadence_independently(self):
+        # The cross-session fix: the Scribe cadence is per-session, derived live
+        # from traces. With interleaved turns from two parallel streams, each
+        # session must count ONLY its own turns since ITS OWN last encode — and
+        # one session encoding must NOT reset the other's count. Pre-fix, a
+        # global conversational_count was clobbered last-writer-wins, so a busy
+        # stream could starve a quiet one (or fire it early). This pins that the
+        # two streams never see each other's cadence.
+        from servers.scales.s0.conversation import turns_since_last_encode
+        a, b = 'stream-A', 'stream-B'
+        c = self.brain.logs_conn
+        _n = [0]
+
+        def ins(sid, scale, etype, ref_type, ts, summary='hi'):
+            _n[0] += 1
+            c.execute(
+                "INSERT INTO trace_events (id, chain_id, scale, event_type, ref_type, "
+                "ref_id, summary, metadata, session_id, interaction_id, created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                ('p%07d' % _n[0], '%s-%s-%d' % (scale, sid[:6], _n[0]), scale, etype,
+                 ref_type, '', summary, None, sid, None, ts))
+
+        # Interleave: A, B, A, B, A → A has 3 turns, B has 2, in real time order.
+        ins(a, 's0', 'K', 'user_message', '2026-06-13T10:00:01+00:00')
+        ins(b, 's0', 'K', 'user_message', '2026-06-13T10:00:02+00:00')
+        ins(a, 's0', 'K', 'user_message', '2026-06-13T10:00:03+00:00')
+        ins(b, 's0', 'K', 'user_message', '2026-06-13T10:00:04+00:00')
+        ins(a, 's0', 'K', 'user_message', '2026-06-13T10:00:05+00:00')
+        c.commit()
+        # Each sees only its own turns — A's 3 are invisible to B and vice versa.
+        assert turns_since_last_encode(self.brain, a) == 3
+        assert turns_since_last_encode(self.brain, b) == 2
+
+        # A encodes. This must reset ONLY A's cadence — B's count is untouched.
+        ins(a, 's1', 'O', 'encoding_prompt', '2026-06-13T10:00:06+00:00')
+        c.commit()
+        assert turns_since_last_encode(self.brain, a) == 0   # A's backlog cleared
+        assert turns_since_last_encode(self.brain, b) == 2   # B unaffected by A's encode
+
+        # More interleaved turns after A's encode: A +2, B +1.
+        ins(a, 's0', 'K', 'user_message', '2026-06-13T10:00:07+00:00')
+        ins(b, 's0', 'K', 'user_message', '2026-06-13T10:00:08+00:00')
+        ins(a, 's0', 'K', 'user_message', '2026-06-13T10:00:09+00:00')
+        c.commit()
+        assert turns_since_last_encode(self.brain, a) == 2   # only post-encode turns
+        assert turns_since_last_encode(self.brain, b) == 3   # all B turns; B never encoded
 
     def test_multiple_sessions_isolated(self):
         """Two sessions don't interfere with each other."""

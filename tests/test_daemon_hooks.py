@@ -182,5 +182,118 @@ class TestTurnClassification(BrainTestBase):
         self.assertEqual(refs.count('heartbeat'), 1)                   # one heartbeat, off the cadence
 
 
+class TestEncodingGate(BrainTestBase):
+    """The Stop-hook encoder gate (hook_post_response_track). Proves the
+    behavioral guarantee the cross-session fix is about: each parallel session
+    fires its Scribe every ENCODE_EVERY of ITS OWN conversational turns, the
+    global encoder lock serializes runs WITHOUT losing a starved session's
+    backlog (LEVEL trigger re-fires once the lock frees), and a sub-threshold
+    session never fires. The gate's decision is surfaced in the return
+    `output` string, so we assert on that rather than mocking internals.
+    """
+
+    needs_embedder = False
+
+    def setUp(self):
+        super().setUp()
+        from servers.daemon_hooks import _encoding_lock
+        self._lock = _encoding_lock
+        # Defensive: a prior test that left the global lock held would make
+        # every gate here read "skipped". Start from a known-free lock.
+        if self._lock.locked():
+            self._lock.release()
+
+    def tearDown(self):
+        if self._lock.locked():
+            self._lock.release()
+        super().tearDown()
+
+    _row = [0]
+
+    def _seed_turns(self, sid, n):
+        """Insert n conversational (user_message) s0 traces for `sid`."""
+        c = self.brain.logs_conn
+        for _i in range(n):
+            self._row[0] += 1
+            c.execute(
+                "INSERT INTO trace_events (id, chain_id, scale, event_type, "
+                "ref_type, ref_id, summary, metadata, session_id, "
+                "interaction_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                ('g%07d' % self._row[0], 's0-%s-%d' % (sid[:6], self._row[0]),
+                 's0', 'K', 'user_message', '', 'hi', None, sid, None,
+                 '2026-06-13T10:%02d:%02d+00:00' % (self._row[0] // 60, self._row[0] % 60)))
+        c.commit()
+
+    def _fire_stop(self, sid):
+        """Drive one conversational Stop through the gate; return its status."""
+        from servers.daemon_hooks import hook_post_response_track
+        ctx = self.brain.get_or_create_session(sid)
+        ctx.last_recall_stop = ctx.stop_counter   # mark this stop conversational
+        out = hook_post_response_track(self.brain, {
+            'session_id': sid, 'hook_event_name': 'Stop',
+            'prompt': 'p', 'last_assistant_message': 'r'}, [])
+        return out.get('output', '')
+
+    def _patched_rib(self):
+        """Patch run_in_background to NOT spawn a Sonnet thread, but to honor
+        the real lock contract: ownership transfers to the 'thread', which
+        releases on completion. We simulate instant completion by releasing
+        immediately — so the next turn sees a free lock, exactly as prod does
+        once an encode finishes."""
+        from unittest.mock import patch
+        self.spawned = []
+
+        def fake(name, brain_db_path, session_id, counter, lock,
+                 run_fn, on_complete=None):
+            self.spawned.append({'session_id': session_id, 'counter': counter})
+            lock.release()   # mimic the background thread's finally
+        return patch('servers.scales.runner.run_in_background', side_effect=fake)
+
+    def test_fires_at_threshold_and_skips_below(self):
+        from servers.scales.s1.encode_contract import ENCODE_EVERY
+        with self._patched_rib():
+            # Session A: exactly ENCODE_EVERY turns → fires.
+            self._seed_turns('gate-A', ENCODE_EVERY)
+            self.assertIn('encoding started', self._fire_stop('gate-A'))
+            self.assertEqual([s['session_id'] for s in self.spawned], ['gate-A'])
+            # Session B: below threshold → does NOT fire, reports progress.
+            self._seed_turns('gate-B', ENCODE_EVERY - 3)
+            statusB = self._fire_stop('gate-B')
+            self.assertIn('encoding %d/%d' % (ENCODE_EVERY - 3, ENCODE_EVERY), statusB)
+            self.assertNotIn('gate-B', [s['session_id'] for s in self.spawned])
+
+    def test_each_parallel_session_fires_on_its_own_count(self):
+        # Two streams, interleaved, BOTH at threshold independently. Each fires
+        # its own encode — neither rides the other's count.
+        from servers.scales.s1.encode_contract import ENCODE_EVERY
+        with self._patched_rib():
+            self._seed_turns('par-A', ENCODE_EVERY)
+            self._seed_turns('par-B', ENCODE_EVERY)
+            self.assertIn('encoding started', self._fire_stop('par-A'))
+            self.assertIn('encoding started', self._fire_stop('par-B'))
+            fired = sorted(s['session_id'] for s in self.spawned)
+            self.assertEqual(fired, ['par-A', 'par-B'])
+
+    def test_lock_contention_skips_then_refires_when_free(self):
+        # The crux of cross-session safety with a single global encoder lock: a
+        # starved session is NOT lost. While A's encode holds the lock, B (at
+        # threshold) skips — but the LEVEL trigger means B re-fires on its next
+        # turn once the lock is free. "Every 5+ turns" survives contention.
+        from servers.scales.s1.encode_contract import ENCODE_EVERY
+        self._seed_turns('busy-B', ENCODE_EVERY)
+        # Simulate session A mid-encode: the global lock is held.
+        self._lock.acquire()
+        statusBusy = self._fire_stop('busy-B')
+        self.assertIn('skipped (previous still running)', statusBusy)
+        self.assertFalse(hasattr(self, 'spawned') and
+                         any(s['session_id'] == 'busy-B' for s in self.spawned))
+        # A's encode finishes → lock frees. B's backlog (still ≥ ENCODE_EVERY,
+        # never encoded) must fire on its very next turn.
+        self._lock.release()
+        with self._patched_rib():
+            self.assertIn('encoding started', self._fire_stop('busy-B'))
+            self.assertEqual([s['session_id'] for s in self.spawned], ['busy-B'])
+
+
 if __name__ == '__main__':
     unittest.main()
