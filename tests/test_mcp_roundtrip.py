@@ -532,27 +532,202 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertIn("0.51", rendered)              # score rendered
         self.assertNotIn("{", rendered)              # not raw JSON
 
-    def test_recall_episodes_not_auto_session_scoped(self):
-        """recall_episodes must NOT inherit the ambient CLAUDE_CODE_SESSION_ID
-        that daemon_send auto-injects for attribution — its default is all
-        streams (the cross-stream feature). Attribution-needing commands still
-        get it; an explicit session_id is always preserved."""
+    def test_caller_session_stamped_never_as_session_id(self):
+        """The MCP proxy stamps the calling session under the reserved
+        `_caller_session` key — NEVER `session_id`. That keeps session_id a
+        pure caller-supplied filter, so cross-session reads (recall_episodes,
+        query_traces) default to all streams. Identity stays available under
+        its own name; an explicit caller-supplied session_id is preserved.
+
+        (Adapted from the old recall_episodes-specific denylist test: the fix
+        is now command-agnostic — no command is special-cased.)"""
         import os
-        from servers.brain_mcp import _inject_session_id
+        from servers.brain_mcp import _stamp_caller_session, CALLER_SESSION_KEY
         prev = os.environ.get("CLAUDE_CODE_SESSION_ID")
         os.environ["CLAUDE_CODE_SESSION_ID"] = "sess-current"
         try:
-            self.assertNotIn("session_id", _inject_session_id("recall_episodes", {}),
-                             "recall_episodes was auto-scoped to the calling "
-                             "session — breaks the all-streams default")
-            self.assertEqual(
-                _inject_session_id("remember", {}).get("session_id"), "sess-current")
-            self.assertEqual(
-                _inject_session_id("recall_episodes", {"session_id": "x"})["session_id"], "x")
+            stamped = _stamp_caller_session({})
+            self.assertEqual(stamped.get(CALLER_SESSION_KEY), "sess-current",
+                             "identity must be stamped under _caller_session")
+            self.assertNotIn("session_id", stamped,
+                             "session_id must never be auto-injected — it is a "
+                             "pure caller-supplied filter now")
+            # An explicit caller filter is preserved untouched, alongside the
+            # ambient identity.
+            explicit = _stamp_caller_session({"session_id": "x"})
+            self.assertEqual(explicit["session_id"], "x")
+            self.assertEqual(explicit.get(CALLER_SESSION_KEY), "sess-current")
         finally:
             if prev is None:
                 os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
             else:
+                os.environ["CLAUDE_CODE_SESSION_ID"] = prev
+
+    def test_recall_episodes_no_scope_is_cross_session(self):
+        """recall_episodes with the ambient `_caller_session` present but NO
+        explicit session_id must span ALL streams. This is the freshly-awoken
+        stream case: identity is known, but an unscoped recall reaches all of
+        itself — the original bug auto-scoped it to the newborn session."""
+        from servers.dispatch_common import CALLER_SESSION_KEY
+        for sess in ('re-xsess-A', 're-xsess-B'):
+            self.brain._trace_dal.append(
+                chain_id='re-%s' % sess, scale='s0', event_type='O',
+                ref_type='user_message', summary='rexsess shared token',
+                session_id=sess)
+        eps = self._dispatch("recall_episodes", {
+            "contains": "rexsess shared token", "limit": 50,
+            CALLER_SESSION_KEY: 're-xsess-A'})["episodes"]
+        sessions = {e["session_id"] for e in eps}
+        self.assertEqual(
+            sessions, {'re-xsess-A', 're-xsess-B'},
+            "_caller_session scoped recall_episodes to the calling stream — "
+            "the all-streams default was overridden (the original bug)")
+
+    def test_query_traces_no_scope_is_cross_session(self):
+        """query_traces shares recall_episodes' contract: the ambient
+        `_caller_session` must NOT scope the pull (the latent bug the stopgap
+        denylist never covered). An omitted session_id spans all streams."""
+        from servers.dispatch_common import CALLER_SESSION_KEY
+        for sess in ('qt-xsess-A', 'qt-xsess-B'):
+            self.brain._trace_dal.append(
+                chain_id='qt-%s' % sess, scale='s0', event_type='O',
+                ref_type='user_message', summary='qtxsess token',
+                session_id=sess)
+        events = self._dispatch("query_traces", {
+            "hours": 1, "limit": 500, CALLER_SESSION_KEY: 'qt-xsess-A'})["events"]
+        sessions = {e["session_id"] for e in events}
+        self.assertIn('qt-xsess-A', sessions)
+        self.assertIn('qt-xsess-B', sessions,
+                      "_caller_session scoped query_traces to the calling "
+                      "stream — the all-streams default was overridden")
+
+    def test_caller_session_reaches_attribution_handler(self):
+        """An identity (attribution) command must reach the calling session via
+        the ambient `_caller_session` key alone — no explicit session_id, which
+        the write tool schemas don't surface. Proves identity survived the move
+        off the overloaded session_id arg: the node_revised trace is attributed
+        to the caller."""
+        from servers.dispatch_common import CALLER_SESSION_KEY
+        sess = "attrib-sess-9f1c"
+        node_id = self._dispatch("remember", {
+            "type": "lesson", "title": "Attribution probe",
+            "content": "original content for the attribution probe."})["id"]
+        # Revise carrying ONLY the ambient identity key — exactly what the MCP
+        # proxy stamps for a tool whose schema doesn't expose session_id.
+        self._dispatch("revise", {
+            "node_id": node_id, "reason": "attribution test",
+            "content": "revised content, forcing a delta and its trace.",
+            CALLER_SESSION_KEY: sess})
+        events = self._dispatch("query_traces", {
+            "session_id": sess, "ref_type": "node_revised"})["events"]
+        self.assertTrue(events,
+                        "no node_revised trace attributed to the calling "
+                        "session via _caller_session")
+        self.assertTrue(all(e["session_id"] == sess for e in events),
+                        "attribution handler did not stamp the caller session")
+
+    def test_brain_batch_sub_ops_attributed_to_caller(self):
+        """EVERY brain_batch sub-op (revise, connect — not just remember) must
+        attribute its trace to the caller carried under the ambient
+        _caller_session key. Guards the per-op-type attribution split: a sub-op
+        that fails to propagate identity emits an unattributed (session_id='')
+        trace, invisible to per-stream forensics. The fix propagates identity
+        under the reserved key into every op's op_args."""
+        from servers.dispatch_common import CALLER_SESSION_KEY
+        sess = "batch-attrib-7a2e"
+        a = self._dispatch("remember", {"type": "concept", "title": "Batch attrib A",
+                                        "content": "node A for batch attribution."})["id"]
+        b = self._dispatch("remember", {"type": "concept", "title": "Batch attrib B",
+                                        "content": "node B for batch attribution."})["id"]
+        res = self._dispatch("brain_batch", {
+            CALLER_SESSION_KEY: sess,
+            "operations": [
+                {"op": "revise", "node_id": a, "reason": "batch attrib revise",
+                 "content": "revised A content forcing a delta and its trace."},
+                {"op": "connect", "source_id": a, "target_id": b,
+                 "relation": "relates_to_batch",
+                 "description": "edge A->B created inside a batch for attribution coverage."},
+            ]})
+        self.assertEqual(res["failed"], 0, "batch ops failed: %r" % res)
+        revised = self._dispatch("query_traces",
+                                 {"session_id": sess, "ref_type": "node_revised"})["events"]
+        edges = self._dispatch("query_traces",
+                               {"session_id": sess, "ref_type": "edge_relation_revised"})["events"]
+        self.assertTrue(revised, "batch revise op emitted no caller-attributed node_revised trace")
+        self.assertTrue(edges, "batch connect op emitted no caller-attributed edge_relation_revised trace")
+        self.assertTrue(all(e["session_id"] == sess for e in revised + edges),
+                        "a brain_batch sub-op trace was not attributed to the caller session")
+
+    def test_check_unknown_keys_exempts_caller_session(self):
+        """check_unknown_keys (run by the daemon BEFORE every handler) must not
+        flag the proxy-stamped _caller_session against a handler's `accepts`
+        set — else every accepts-guarded write logs dispatch_unknown_keys. The
+        _dispatch helper bypasses this guard, so exercise it directly."""
+        from servers.daemon_dispatch import COMMAND_TABLE
+        from servers.dispatch_common import check_unknown_keys, CALLER_SESSION_KEY
+        entry = COMMAND_TABLE["connect"]  # has an `accepts` frozenset
+        self.assertIsNotNone(entry.accepts, "test assumes connect declares accepts")
+        logged = []
+        orig = self.brain._log_error
+        self.brain._log_error = lambda *a, **k: logged.append((a, k))
+        try:
+            check_unknown_keys("connect", entry,
+                               {"source_id": "x", "target_id": "y", CALLER_SESSION_KEY: "s"},
+                               self.brain)
+            self.assertEqual(logged, [], "_caller_session was wrongly flagged as an unknown key")
+            # The exemption is not a blanket pass — a real unknown key still flags.
+            check_unknown_keys("connect", entry,
+                               {"source_id": "x", "bogus_key": 1}, self.brain)
+            self.assertTrue(logged, "a genuinely unknown key was not flagged")
+        finally:
+            self.brain._log_error = orig
+
+    def test_stamp_then_dispatch_reads_are_cross_session(self):
+        """End-to-end composition: what the proxy ACTUALLY stamps
+        (_stamp_caller_session) fed into the filter reads must still span all
+        streams. The handler-only cross-session tests inject _caller_session by
+        hand; this guards the proxy half — a regression re-injecting session_id
+        at daemon_send for reads would slip past those."""
+        import os
+        from servers.brain_mcp import _stamp_caller_session
+        for sess in ('compose-A', 'compose-B'):
+            self.brain._trace_dal.append(
+                chain_id='compose-%s' % sess, scale='s0', event_type='O',
+                ref_type='user_message', summary='compose token', session_id=sess)
+        prev = os.environ.get("CLAUDE_CODE_SESSION_ID")
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "compose-A"
+        try:
+            args = _stamp_caller_session({"contains": "compose token", "limit": 50})
+            self.assertNotIn("session_id", args, "proxy injected session_id into a read")
+            eps = self._dispatch("recall_episodes", args)["episodes"]
+            self.assertEqual({e["session_id"] for e in eps}, {"compose-A", "compose-B"},
+                             "stamp+dispatch scoped recall_episodes to the caller stream")
+            qt = self._dispatch("query_traces",
+                                _stamp_caller_session({"hours": 1, "limit": 500}))["events"]
+            seen = {e["session_id"] for e in qt}
+            self.assertIn("compose-A", seen)
+            self.assertIn("compose-B", seen)
+        finally:
+            if prev is None:
+                os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+            else:
+                os.environ["CLAUDE_CODE_SESSION_ID"] = prev
+
+    def test_stamp_caller_session_scrubs_forged_key(self):
+        """The proxy is the SOLE writer of _caller_session: with the session env
+        unset it must SCRUB an inbound _caller_session rather than let the
+        daemon honor it as identity (MCP payloads can carry arbitrary keys)."""
+        import os
+        from servers.brain_mcp import _stamp_caller_session, CALLER_SESSION_KEY
+        prev = os.environ.get("CLAUDE_CODE_SESSION_ID")
+        os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        try:
+            scrubbed = _stamp_caller_session({CALLER_SESSION_KEY: "forged-stream", "x": 1})
+            self.assertNotIn(CALLER_SESSION_KEY, scrubbed,
+                             "a forged _caller_session was trusted when the env was unset")
+            self.assertEqual(scrubbed.get("x"), 1, "scrub clobbered unrelated args")
+        finally:
+            if prev is not None:
                 os.environ["CLAUDE_CODE_SESSION_ID"] = prev
 
     def test_recall_episodes_all_scales_not_collapsed(self):

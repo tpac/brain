@@ -356,41 +356,48 @@ def _build_revise_batch_schema():
     }
 
 
-# Commands that treat session_id as an explicit cross-session FILTER, not the
-# caller's identity. They must NOT receive the auto-injected ambient session —
-# doing so silently scopes their documented "all streams" default to the calling
-# session. recall_episodes is the live case (its whole point is cross-stream);
-# query_traces uses session_id the same way and shares this latent issue (its
-# doc'd default is "all sessions") — left out of this set for now to avoid
-# changing its behavior in an unrelated change; worth its own fix.
-_SESSION_FILTER_READS = {"recall_episodes"}
+# Identity is stamped under its OWN reserved key — never overloaded onto
+# session_id. CALLER_SESSION_KEY is the single source of truth (servers.
+# dispatch_common); the daemon's identity handlers read it via caller_session().
+# Importing it here keeps the wire key from drifting across the proxy boundary.
+from servers.dispatch_common import CALLER_SESSION_KEY
 
 
-def _inject_session_id(cmd, args):
-    """Add the calling session's id (CLAUDE_CODE_SESSION_ID) for attribution and
-    per-session behavior, UNLESS `cmd` treats session_id as an explicit filter
-    (see _SESSION_FILTER_READS) or the caller already supplied one. Pure +
-    testable: the socket path stays out of it."""
-    if cmd in _SESSION_FILTER_READS:
-        return args
-    if not args.get("session_id"):
-        sid = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
-        if sid:
-            args["session_id"] = sid
+def _stamp_caller_session(args):
+    """Stamp the calling session (CLAUDE_CODE_SESSION_ID) under the RESERVED
+    `_caller_session` key, so attribution / per-session handlers always have the
+    caller's identity WITHOUT it colliding with `session_id`.
+
+    `session_id` stays a PURE caller-supplied cross-session FILTER: when a read
+    omits it, the daemon defaults to all streams — the natural default for a
+    freshly-awoken stream reaching all of itself, never the calling session.
+    Identity ≠ filter, by design, not by per-command exception. Pure +
+    testable: the socket path stays out of it.
+
+    The proxy is the SOLE writer of `_caller_session`: a tool-call payload may
+    carry an arbitrary `_caller_session` (MCP schemas don't forbid extra keys),
+    so we always set it from the env when present and SCRUB it otherwise —
+    never trust an inbound value the daemon would otherwise honor as identity."""
+    sid = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+    if sid:
+        args[CALLER_SESSION_KEY] = sid
+    else:
+        args.pop(CALLER_SESSION_KEY, None)
     return args
 
 
 def daemon_send(cmd, args=None, timeout=30.0):
     """Send command to brain daemon via TCP, return result dict.
 
-    Auto-injects session_id from CLAUDE_CODE_SESSION_ID (the env var Claude Code
-    sets per session) for attribution / per-session behavior — see
-    _inject_session_id, which excludes commands that use session_id as a
-    cross-session filter. The daemon is a singleton per user; each MCP subprocess
-    has its own env, so this gives every write/behavior call the calling
-    session's identity without requiring every tool schema to surface session_id.
+    Stamps the calling session under the reserved `_caller_session` key (from
+    CLAUDE_CODE_SESSION_ID, the env var Claude Code sets per session) so every
+    write / per-session handler can attribute to the caller — see
+    _stamp_caller_session. `session_id` is left untouched: it reaches the daemon
+    only when the caller explicitly scopes a read, so cross-session filter reads
+    (recall_episodes, query_traces) default to all streams. The daemon is a
+    singleton per user; each MCP subprocess carries its own session env.
     """
-    args = _inject_session_id(cmd, dict(args) if args else {})
+    args = _stamp_caller_session(dict(args) if args else {})
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(timeout)
     try:
@@ -660,8 +667,8 @@ def _build_tools():
 
     {"name": "self_inbox",
      "description": "Drain your inbox — messages other streams of thought sent you, consumed once. (Phase 2a is manual pull; later this delivers automatically at boot/turn.)",
-     "inputSchema": {"type": "object", "required": ["session_id"], "properties": {
-         "session_id": {"type": "string", "description": "Your own session id, to fetch messages addressed to you."}}}},
+     "inputSchema": {"type": "object", "properties": {
+         "session_id": {"type": "string", "description": "Your own session id (optional) — defaults to your own stream. Identity is supplied automatically; pass this only to drain a specific stream's inbox."}}}},
 
     {"name": "self_outbox",
      "description": "Delivery status of messages YOU sent to other streams — the receipt view. Per recent message: which streams have drained (read) it and when, and for a directed send whether the target is still pending. Use it to read silence correctly: 'delivered, not acted on' vs 'never delivered' — so you don't wait forever or re-send into the void. Read-only.",

@@ -17,6 +17,7 @@ even though the handler succeeded. test_self_dispatch.py locks this.
 """
 
 from servers.scales.self_channel import presence, signal
+from servers.dispatch_common import caller_session
 
 
 def _handle_self_presence(brain, args, graph_changes):
@@ -31,7 +32,7 @@ def _handle_self_presence(brain, args, graph_changes):
     """
     return {"ok": True, "result": presence.build_presence(
         brain,
-        my_session_id=args.get('session_id', '') or '',
+        my_session_id=caller_session(args),
         limit=args.get('limit'),
         rich=args.get('rich', True),
         active_streams=args.get('active_streams', True),
@@ -64,7 +65,7 @@ def _handle_self_send(brain, args, graph_changes):
         return {"ok": False, "error": error}
     return {"ok": True, "result": signal.send(
         brain,
-        from_session=args.get('from_session', '') or args.get('session_id', '') or '',
+        from_session=args.get('from_session', '') or caller_session(args),
         address=address,
         body=args.get('body', '') or '',
         refs=args.get('refs'))}
@@ -75,7 +76,7 @@ def _handle_self_inbox(brain, args, graph_changes):
 
     args.session_id = the caller's own session, to fetch messages addressed to it.
     """
-    return {"ok": True, "result": {'messages': signal.drain_inbox(brain, to_session=args.get('session_id', '') or '')}}
+    return {"ok": True, "result": {'messages': signal.drain_inbox(brain, to_session=caller_session(args))}}
 
 
 def _handle_self_inbox_peek(brain, args, graph_changes):
@@ -84,7 +85,7 @@ def _handle_self_inbox_peek(brain, args, graph_changes):
     Powers the /watch-live poller's arrival detection. The consume-once drain
     stays in self_inbox (the Stop hook). args.session_id = the caller's session.
     """
-    return {"ok": True, "result": {'messages': signal.peek_inbox(brain, to_session=args.get('session_id', '') or '')}}
+    return {"ok": True, "result": {'messages': signal.peek_inbox(brain, to_session=caller_session(args))}}
 
 
 def _handle_self_outbox(brain, args, graph_changes):
@@ -96,5 +97,5 @@ def _handle_self_outbox(brain, args, graph_changes):
     """
     return {"ok": True, "result": signal.outbox(
         brain,
-        from_session=args.get('from_session', '') or args.get('session_id', '') or '',
+        from_session=args.get('from_session', '') or caller_session(args),
         limit=args.get('limit', 20))}

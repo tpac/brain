@@ -4,7 +4,7 @@ Lock-free reads: recall, batch recall, get_node(s), title lookup, structured
 filter, graph expansion, boot context.
 """
 
-from .dispatch_common import _resolve_id
+from .dispatch_common import _resolve_id, caller_session
 
 
 def _enrich_recall_results(brain, result, graph_changes):
@@ -36,7 +36,7 @@ def _handle_recall(brain, args, graph_changes):
             node_id, neighbor_limit=args.get("neighbor_limit", 3))
         return {"ok": True, "result": result}
 
-    sid = args.get("session_id", "")
+    sid = caller_session(args)  # identity: drives this session's fatigue/activity
     # By-query recall. brain.recall() already blends keyword + semantic and
     # degrades internally, so there is no separate keyword-only mode to fall
     # back to at this layer. If it raises, surface the failure loudly instead
@@ -60,7 +60,7 @@ def _handle_recall_batch(brain, args, graph_changes):
     queries = args.get("queries", [])
     limit = args.get("limit", 5)
     batch_filter = args.get("filter")
-    sid = args.get("session_id", "")
+    sid = caller_session(args)  # identity: drives this session's fatigue/activity
     results = []
     for q in queries[:10]:  # cap at 10 queries
         try:

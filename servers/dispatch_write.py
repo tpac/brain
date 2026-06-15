@@ -9,7 +9,7 @@ import re
 import sys
 
 from .clock import brain_today
-from .dispatch_common import _resolve_id, _pop_session_ctx
+from .dispatch_common import _resolve_id, _pop_session_ctx, caller_session, CALLER_SESSION_KEY
 
 
 _HEX_TRACE_ID_RE = re.compile(r'^[0-9a-f]{8}$')
@@ -329,7 +329,11 @@ def _handle_remember_batch(brain, args, graph_changes):
     cleaned_nodes = []
     reason_warnings = []  # reason/reasoning confusion — see _handle_remember
     for i, spec in enumerate(nodes):
-        spec.pop('session_id', None)  # defensive: not a node field
+        # defensive: neither identity key is a node field. _pop_session_ctx
+        # already stripped the top-level args; this guards a spec that bundled
+        # either key per-node (so it can't cascade into node_metadata_kv).
+        spec.pop('session_id', None)
+        spec.pop(CALLER_SESSION_KEY, None)
         if spec.get('reason') and not spec.get('reasoning'):
             reason_warnings.append(
                 "nodes[%d]: `reason` is not a node field and was dropped — "
@@ -383,7 +387,10 @@ def _handle_revise(brain, args, graph_changes):
         return {"ok": False, "error": _missing_reason_error(args)}
 
     # Reserve known dispatch keys so they don't get treated as field updates.
-    DISPATCH_KEYS = {"node_id", "reason", "encoding_source", "chain_id", "session_id"}
+    # CALLER_SESSION_KEY is the ambient identity the proxy stamps — reserve it
+    # too so it never lands in `updates` as a bogus node field.
+    DISPATCH_KEYS = {"node_id", "reason", "encoding_source", "chain_id",
+                     "session_id", CALLER_SESSION_KEY}
     updates = {k: v for k, v in args.items() if k not in DISPATCH_KEYS}
 
     # v29 / Phase B Step 4 — source_refs validation on revise
@@ -425,7 +432,7 @@ def _handle_revise(brain, args, graph_changes):
         result.get('deltas', []),
         warnings=result.get('warnings', []),
         chain_id_override=args.get('chain_id', ''),
-        session_id=args.get('session_id', ''),
+        session_id=caller_session(args),
     )
 
     graph_changes.append("REVISE: [%s] %s" % (
@@ -481,7 +488,7 @@ def _handle_revise_batch(brain, args, graph_changes):
     # Emit one node_revised trace event per revised row.
     # Includes warnings so audit history captures attempted-but-rejected ops.
     chain_id_override = args.get('chain_id', '')
-    session_id = args.get('session_id', '')
+    session_id = caller_session(args)
     for row, spec in zip(result.get('results', []), resolved):
         if row.get('status') == 'revised':
             _emit_revise_trace(
@@ -522,10 +529,12 @@ def _handle_brain_batch(brain, args, graph_changes):
     # detects them so a dropped op isn't mistaken for a clean SKIP.
 
     top_encoding_source = args.get("encoding_source")
-    # Propagate session_id to each op so sub-handlers can load ctx per op.
-    # (Each sub-handler will pop session_id and load its own ctx; cheap
-    # session_state reads + writes, acceptable for a batch of 1-10 ops.)
-    top_session_id = args.get("session_id", "")
+    # The caller's identity, resolved once. Propagated to every sub-op under the
+    # RESERVED key (never session_id) so attribution flows to the caller while
+    # `session_id == filter` stays true at every layer — a sub-op can't be
+    # accidentally scoped by the ambient identity. Sub-handlers read it via
+    # caller_session(); remember additionally pops it through _pop_session_ctx.
+    top_session_id = caller_session(args)
     results = []
 
     # Sibling-aware connect_to: defer per-op connect_to from `remember` ops
@@ -624,8 +633,8 @@ def _handle_brain_batch(brain, args, graph_changes):
                                if k not in ("op", "connect_to")}
                     if top_encoding_source and "encoding_source" not in op_args:
                         op_args["encoding_source"] = top_encoding_source
-                    if top_session_id and "session_id" not in op_args:
-                        op_args["session_id"] = top_session_id
+                    if top_session_id and CALLER_SESSION_KEY not in op_args:
+                        op_args[CALLER_SESSION_KEY] = top_session_id
                     # Same fix as remember_batch: disable inner remember()'s
                     # conversation-context auto_connect inside batches so it
                     # doesn't create reverse-direction co_accessed edges between
@@ -648,6 +657,8 @@ def _handle_brain_batch(brain, args, graph_changes):
                     op_args = {k: v for k, v in op_spec.items() if k != "op"}
                     if top_encoding_source and "encoding_source" not in op_args:
                         op_args["encoding_source"] = top_encoding_source
+                    if top_session_id and CALLER_SESSION_KEY not in op_args:
+                        op_args[CALLER_SESSION_KEY] = top_session_id
                     r = _handle_revise(brain, op_args, graph_changes)
                     results.append({"op": "revise", "index": i, **r})
 
@@ -655,6 +666,8 @@ def _handle_brain_batch(brain, args, graph_changes):
                     op_args = {k: v for k, v in op_spec.items() if k != "op"}
                     if top_encoding_source and "encoding_source" not in op_args:
                         op_args["encoding_source"] = top_encoding_source
+                    if top_session_id and CALLER_SESSION_KEY not in op_args:
+                        op_args[CALLER_SESSION_KEY] = top_session_id
                     r = _handle_connect(brain, op_args, graph_changes)
                     results.append({"op": "connect", "index": i, **r})
 
@@ -743,7 +756,7 @@ def _handle_brain_batch(brain, args, graph_changes):
                             deltas=[{'field': 'archived',
                                      'old': 0, 'new': 1}],
                             chain_id_override=args.get('chain_id', ''),
-                            session_id=args.get('session_id', ''),
+                            session_id=top_session_id,
                         )
 
                     results.append({"op": "disconnect", "index": i, "ok": True})
@@ -848,7 +861,7 @@ def _handle_connect(brain, args, graph_changes):
             result.get('deltas', []),
             warnings=result.get('warnings', []),
             chain_id_override=args.get('chain_id', ''),
-            session_id=args.get('session_id', ''),
+            session_id=caller_session(args),
         )
 
     graph_changes.append(
@@ -886,7 +899,7 @@ def _handle_revise_edge(brain, args, graph_changes):
             args.get("reason", ""), args.get("encoding_source") or "",
             result.get("deltas", []),
             chain_id_override=args.get("chain_id", ""),
-            session_id=args.get("session_id", ""))
+            session_id=caller_session(args))
 
     graph_changes.append(
         "REVISE_EDGE: %s -[%s]-> %s" % (
@@ -903,7 +916,7 @@ def _handle_connect_batch(brain, args, graph_changes):
         return {"ok": False, "error": "connections array is required"}
 
     chain_id_override = args.get('chain_id', '')
-    session_id = args.get('session_id', '')
+    session_id = caller_session(args)
     top_encoding_source = args.get('encoding_source', '')
 
     # Known per-connection keys — used to build a "did you mean" hint when a

@@ -8,6 +8,7 @@ import json
 import os
 
 from .daemon_config import _CODE_FINGERPRINT, REPO_ROOT
+from .dispatch_common import caller_session
 
 
 def _handle_ping(brain, args, graph_changes):
@@ -64,7 +65,7 @@ def _handle_pre_edit(brain, args, graph_changes):
     handler stays simple."""
     file = args.get("file", "")
     tool_name = args.get("tool_name", "Edit")
-    sid = args.get("session_id", "")
+    sid = caller_session(args)  # identity: per-session pre-edit surfacing
     ctx = brain.get_or_create_session(sid) if sid else None
     data = brain.pre_edit(file=file, tool_name=tool_name, ctx=ctx)
     try:

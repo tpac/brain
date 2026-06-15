@@ -22,17 +22,41 @@ def _resolve_id(brain, node_id):
     return full_id if full_id else node_id  # Not found — let the caller handle the error
 
 
-def _pop_session_ctx(brain, args):
-    """Pop session_id from args, return (ctx, args).
+# Reserved arg key: the calling session's identity, stamped by the MCP proxy
+# (brain_mcp.daemon_send) on EVERY tool call under its OWN name — never as
+# `session_id`. Identity handlers (attribution / per-session state) resolve the
+# caller via caller_session(); cross-session FILTER reads (recall_episodes,
+# query_traces) read the caller-supplied `session_id` only, so an absent scope
+# means "all streams" by design — never the calling session.
+CALLER_SESSION_KEY = "_caller_session"
 
-    Handlers that pass `**args` into a brain method should call this first.
-    session_id is auto-injected by daemon_send() from CLAUDE_CODE_SESSION_ID;
-    without popping it, it cascades into the brain method's `**extra_fields`
-    and is silently stored as a `session_id` KV on every node — a real leak
-    from the auto-injection convenience. Returns the resolved SessionContext
-    (or None), ready to pass as an explicit `ctx=` kwarg.
+
+def caller_session(args):
+    """The calling session's identity, for attribution / per-session state.
+
+    Explicit caller-supplied `session_id` wins (the few write/self tools that
+    surface it in their schema); otherwise the ambient session the MCP proxy
+    stamped under `_caller_session`. Returns '' when neither is present.
+
+    Do NOT use for cross-session FILTER reads — those read
+    `args.get('session_id')` directly so an omitted scope means all streams.
     """
-    sid = args.pop('session_id', None)
+    return args.get('session_id') or args.get(CALLER_SESSION_KEY) or ''
+
+
+def _pop_session_ctx(brain, args):
+    """Resolve the calling session's ctx, popping BOTH identity keys.
+
+    Handlers that pass `**args` into a brain method must call this first:
+    identity arrives under `_caller_session` (stamped by the MCP proxy) or an
+    explicit caller-supplied `session_id`; left in args, either cascades into
+    the brain method's `**extra_fields` and is silently stored as KV on every
+    node. Returns the resolved SessionContext (or None), ready to pass as an
+    explicit `ctx=` kwarg.
+    """
+    sid = caller_session(args)
+    args.pop('session_id', None)
+    args.pop(CALLER_SESSION_KEY, None)
     if not sid:
         return None, args
     try:
@@ -62,7 +86,10 @@ def check_unknown_keys(cmd: str, entry: 'CmdEntry', args: Dict[str, Any], brain)
     """
     if entry.accepts is None or not args:
         return
-    unknown = set(args.keys()) - entry.accepts
+    # _caller_session is the ambient identity the MCP proxy stamps on every
+    # call — it is never declared in a handler's `accepts` set, so exempt it
+    # here rather than mis-flagging it as a dropped key.
+    unknown = set(args.keys()) - entry.accepts - {CALLER_SESSION_KEY}
     if not unknown:
         return
     try:
