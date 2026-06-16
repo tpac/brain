@@ -24,17 +24,19 @@ from .aspect_contract import ASPECT, ASPECTS_JSON_PATH, ASPECTS_PROPOSED_PATH
 # Which categories each aspect accepts. Derived from the design — not
 # discoverable from current member lists alone (an aspect with empty
 # node_types might be edge-only by design or just not yet populated).
-# 14 of the 16 required aspects are LLM-routable here. Deliberately excluded:
-# survivor_lineage (system-generated absorbed_into edges, never classified) and
-# wisdom (a hand-curated multi-membership VIEW — its node types are all already
-# classified in lesson_insight/identity_bearing, so the decoder never proposes
-# them and the encoder must not route to it). "14 aspects" in the menu below is
-# correct — do NOT bump it to match the required-aspect count.
+# 15 of the 16 required aspects are LLM-routable here. Only survivor_lineage is
+# excluded (system-generated absorbed_into edges, never classified). `wisdom` IS
+# routable so it GROWS: it's a multi-membership view (its node types also live in
+# lesson_insight/identity_bearing), and the encoder multi-homes generative types
+# into it, guided by the aspect's `meaning`. The decoder proposes only
+# unclassified strings, so existing types stay as seeded while NEW generative
+# types auto-join wisdom alongside their primary aspect.
 ASPECT_ACCEPTS = {
     'identity_bearing':       {'node_types'},
     'episodic_anchor':        {'node_types'},
     'active_thread':          {'node_types'},
     'lesson_insight':         {'node_types'},
+    'wisdom':                 {'node_types'},
     'correction_improvement': {'node_types', 'edge_relations'},
     'extension_refinement':   {'edge_relations'},
     'explanation_causation':  {'edge_relations'},
@@ -156,7 +158,8 @@ class AspectEncoder(IntegrationUnit):
         lines = []
 
         lines.append('═' * 70)
-        lines.append('ASPECT MENU — 14 aspects, closed list. Route every candidate to one of these.')
+        lines.append('ASPECT MENU — %d aspects, closed list. Route every candidate to one of these.'
+                     % len(ASPECT_ACCEPTS))
         lines.append('═' * 70)
         lines.append('')
 
@@ -165,6 +168,7 @@ class AspectEncoder(IntegrationUnit):
         # encoder build a mental map.
         order = [
             'identity_bearing', 'episodic_anchor', 'active_thread', 'lesson_insight',
+            'wisdom',
             'correction_improvement',
             'extension_refinement', 'explanation_causation', 'dependency_flow',
             'contradiction_conflict', 'validation_evidence',

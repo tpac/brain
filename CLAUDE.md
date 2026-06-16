@@ -86,11 +86,14 @@ multi-membership node-type aspect — the generative subset (insight / lesson /
 principle / vision / reflection / meta_learning / philosophy) the Frame's "What
 I've learned" section pulls; its members also belong to `lesson_insight` /
 `identity_bearing`, so it is appended **last** in JSON order to leave their
-reverse-lookups (`by_node_type`) intact. `wisdom` is **hand-curated** — because
-its members are already classified elsewhere, the S2 AspectIntegration
-classifier never proposes them, so it does not auto-grow; adding a new
-generative type is a deliberate edit (and `wisdom` is correctly absent from the
-encoder's 14-aspect routable menu). The encoder cannot propose new aspects;
+reverse-lookups (`by_node_type`) intact. `wisdom` is **encoder-routable so it
+grows**: it's in `ASPECT_ACCEPTS` + the encoder menu, and AspectIntegration
+multi-homes new generative types into it (alongside their primary aspect),
+guided by the aspect's `meaning`. Existing members stay as seeded — the decoder
+proposes only *unclassified* strings — but new generative types auto-join.
+(Only `survivor_lineage` is non-routable, being system-generated.) The encoder
+cannot propose new aspects; adding another is a deliberate human edit to the JSON
+(REQUIRED_ASPECTS + seed +
 adding another is a deliberate human edit to the JSON (REQUIRED_ASPECTS + seed +
 contract tests, and it self-heals into existing working copies via
 `ensure_aspects_user_copy`).
