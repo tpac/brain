@@ -91,8 +91,34 @@ class IsolatedBrain:
         if self.load_env:
             _load_env()
 
-        # Set environment so Brain resolves correctly
+        # Set environment so Brain resolves correctly. Both BRAIN_DB_DIR and
+        # ASPECTS_JSON_PATH are saved here and restored in __exit__ so the
+        # process env returns to its pre-context state — the temp dir is
+        # rmtree'd on exit, so a leaked override would point at a deleted dir.
+        self._orig_brain_db_dir = os.environ.get('BRAIN_DB_DIR')
+        self._orig_aspects_json_path = os.environ.get('ASPECTS_JSON_PATH')
+
+        # Aspect isolation. If the caller already pinned ASPECTS_JSON_PATH
+        # (e.g. run_aspect_cycles_on_clone.py points it at its own work file),
+        # honor it — they own the aspects location. Otherwise pin it into our
+        # temp dir so the BRAIN_DB_DIR fallback in aspects_json_path() can't
+        # leak heals into the live file, and seed it from the operator's grown
+        # aspects (not a fresh repo seed) for production-faithful fidelity.
+        #
+        # The failure-prone copy runs BEFORE any os.environ mutation: if it
+        # raises, __enter__ propagates and Python never calls __exit__, so a
+        # half-set environment would leak. Env assignments (below) can't raise.
+        pin_aspects = self._orig_aspects_json_path is None
+        if pin_aspects:
+            src_aspects = os.path.join(self.production_dir, 'aspects_v1.json')
+            if os.path.exists(src_aspects):
+                shutil.copy2(src_aspects,
+                             os.path.join(self.db_dir, 'aspects_v1.json'))
+
         os.environ['BRAIN_DB_DIR'] = self.db_dir
+        if pin_aspects:
+            os.environ['ASPECTS_JSON_PATH'] = os.path.join(
+                self.db_dir, 'aspects_v1.json')
 
         # Create isolated Brain instance
         import sys
@@ -151,6 +177,18 @@ class IsolatedBrain:
                 self.brain.close()
             except Exception:
                 pass
+        # Restore env overrides so they don't leak to later code (the temp dir
+        # we pointed them at is about to be rmtree'd).
+        if hasattr(self, '_orig_brain_db_dir'):
+            if self._orig_brain_db_dir is None:
+                os.environ.pop('BRAIN_DB_DIR', None)
+            else:
+                os.environ['BRAIN_DB_DIR'] = self._orig_brain_db_dir
+        if hasattr(self, '_orig_aspects_json_path'):
+            if self._orig_aspects_json_path is None:
+                os.environ.pop('ASPECTS_JSON_PATH', None)
+            else:
+                os.environ['ASPECTS_JSON_PATH'] = self._orig_aspects_json_path
         if self.cleanup and self.db_dir:
             shutil.rmtree(self.db_dir, ignore_errors=True)
         return False

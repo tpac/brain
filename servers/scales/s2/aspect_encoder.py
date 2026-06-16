@@ -18,7 +18,7 @@ import tempfile
 from servers.trace_contract import build_delta_metadata
 
 from .base import IntegrationUnit
-from .aspect_contract import ASPECT, ASPECTS_JSON_PATH, ASPECTS_PROPOSED_PATH
+from .aspect_contract import ASPECT, aspects_json_path, aspects_proposed_path
 
 
 # Which categories each aspect accepts. Derived from the design — not
@@ -349,24 +349,26 @@ class AspectEncoder(IntegrationUnit):
     # ─── file I/O ────────────────────────────────────────────────────
 
     def _load_aspects(self):
+        json_path = aspects_json_path()
         try:
-            with open(ASPECTS_JSON_PATH, 'r') as f:
+            with open(json_path, 'r') as f:
                 return json.load(f)
         except (OSError, json.JSONDecodeError) as e:
             self.brain._log_error(
                 self.NAME, e,
-                'failed to read %s — encoder cannot proceed' % ASPECTS_JSON_PATH)
+                'failed to read %s — encoder cannot proceed' % json_path)
             raise
 
     def _write_aspects(self, aspects):
         """Atomic write: temp file + rename."""
-        d = os.path.dirname(ASPECTS_JSON_PATH)
+        json_path = aspects_json_path()
+        d = os.path.dirname(json_path)
         fd, tmp = tempfile.mkstemp(prefix='aspects_v1_', suffix='.json.tmp', dir=d)
         try:
             with os.fdopen(fd, 'w') as f:
                 json.dump(aspects, f, indent=2, sort_keys=False)
                 f.write('\n')
-            os.replace(tmp, ASPECTS_JSON_PATH)
+            os.replace(tmp, json_path)
         except Exception:
             try:
                 os.unlink(tmp)
@@ -387,12 +389,13 @@ class AspectEncoder(IntegrationUnit):
             'classifications_rejected': rejected,
         }
         try:
-            d = os.path.dirname(ASPECTS_PROPOSED_PATH)
+            proposed_path = aspects_proposed_path()
+            d = os.path.dirname(proposed_path)
             fd, tmp = tempfile.mkstemp(prefix='aspects_proposed_', suffix='.json.tmp', dir=d)
             with os.fdopen(fd, 'w') as f:
                 json.dump(record, f, indent=2)
                 f.write('\n')
-            os.replace(tmp, ASPECTS_PROPOSED_PATH)
+            os.replace(tmp, proposed_path)
         except Exception as e:
             self.brain._log_error(
                 self.NAME, e,

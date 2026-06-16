@@ -282,14 +282,13 @@ class TestAspectSelfHeal(unittest.TestCase):
         import json
         import shutil
         import tempfile
-        import servers.scales.s2.aspect_contract as ac
         from servers.scales.s2.aspect_contract import (
             ensure_aspects_user_copy, SEED_ASPECTS_JSON_PATH)
 
         with open(SEED_ASPECTS_JSON_PATH) as f:
             seed = json.load(f)
         tmpdir = tempfile.mkdtemp()
-        orig = ac.ASPECTS_JSON_PATH
+        orig = os.environ.get('ASPECTS_JSON_PATH')
         try:
             wc = os.path.join(tmpdir, 'aspects_v1.json')
             # Simulate a pre-migration brain: working copy lacks survivor_lineage
@@ -300,7 +299,7 @@ class TestAspectSelfHeal(unittest.TestCase):
             with open(wc, 'w') as f:
                 json.dump(stale, f)
 
-            ac.ASPECTS_JSON_PATH = wc
+            os.environ['ASPECTS_JSON_PATH'] = wc
             self.assertTrue(ensure_aspects_user_copy())   # heal happened
             with open(wc) as f:
                 healed = json.load(f)
@@ -313,7 +312,10 @@ class TestAspectSelfHeal(unittest.TestCase):
             # idempotent: nothing missing now → no-op
             self.assertFalse(ensure_aspects_user_copy())
         finally:
-            ac.ASPECTS_JSON_PATH = orig
+            if orig is None:
+                os.environ.pop('ASPECTS_JSON_PATH', None)
+            else:
+                os.environ['ASPECTS_JSON_PATH'] = orig
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 

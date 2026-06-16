@@ -159,7 +159,8 @@ class AspectRegistry:
         import json
         import os
         from servers.scales.s2.aspect_contract import (
-            ASPECTS_JSON_PATH, ensure_aspects_user_copy)
+            aspects_json_path, ensure_aspects_user_copy)
+        ASPECTS_JSON_PATH = aspects_json_path()
 
         self._aspects = {}
         self._reverse_node = {}

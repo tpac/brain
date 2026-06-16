@@ -35,17 +35,30 @@ ASPECT = {
 # AspectRegistry copies seed → user dir on first load when missing. After
 # that, all encoder writes stay in the user dir — the repo seed is read-
 # only and never touched by runtime.
+#
+# Paths are resolved at CALL time, not import time. BRAIN_DB_DIR (and the
+# explicit overrides) are read on every call so a later `os.environ` change
+# takes effect — IsolatedBrain sets BRAIN_DB_DIR in __enter__, AFTER this
+# module is imported, and a module-level constant would freeze the live
+# user-dir path and leak heals into it (observed 2026-06-16).
 _DEFAULT_DB_DIR = os.path.join(os.path.expanduser('~'), 'AgentsContext', 'brain')
-_BRAIN_DB_DIR = os.environ.get('BRAIN_DB_DIR', _DEFAULT_DB_DIR)
 
-ASPECTS_JSON_PATH = os.environ.get(
-    'ASPECTS_JSON_PATH',
-    os.path.join(_BRAIN_DB_DIR, 'aspects_v1.json'))
 
-# Per-cycle audit artifact. Same per-operator location.
-ASPECTS_PROPOSED_PATH = os.environ.get(
-    'ASPECTS_PROPOSED_PATH',
-    os.path.join(_BRAIN_DB_DIR, 'aspects_proposed.json'))
+def aspects_json_path() -> str:
+    """Path to the per-operator working aspects file (call-time resolved)."""
+    return os.environ.get(
+        'ASPECTS_JSON_PATH',
+        os.path.join(os.environ.get('BRAIN_DB_DIR', _DEFAULT_DB_DIR),
+                     'aspects_v1.json'))
+
+
+def aspects_proposed_path() -> str:
+    """Path to the per-cycle audit artifact (call-time resolved)."""
+    return os.environ.get(
+        'ASPECTS_PROPOSED_PATH',
+        os.path.join(os.environ.get('BRAIN_DB_DIR', _DEFAULT_DB_DIR),
+                     'aspects_proposed.json'))
+
 
 # Repo seed — frozen baseline shipped with the plugin. Never written.
 SEED_ASPECTS_JSON_PATH = os.path.join(
@@ -63,20 +76,21 @@ def ensure_aspects_user_copy() -> bool:
          propagates to an existing brain without a manual migration.
 
     Scoped tightly: only adds WHOLE missing required aspects. Never writes
-    the seed itself (tests may point ASPECTS_JSON_PATH at it); never touches
+    the seed itself (tests may point the working path at it); never touches
     existing entries, so operator/AspectIntegration-grown member lists and
     emergent aspects are preserved. Returns True if the file was created or
     modified.
     """
     import shutil
+    json_path = aspects_json_path()
     if not os.path.exists(SEED_ASPECTS_JSON_PATH):
         return False
     # Never heal the seed into itself.
-    if os.path.abspath(ASPECTS_JSON_PATH) == os.path.abspath(SEED_ASPECTS_JSON_PATH):
+    if os.path.abspath(json_path) == os.path.abspath(SEED_ASPECTS_JSON_PATH):
         return False
-    if not os.path.exists(ASPECTS_JSON_PATH):
-        os.makedirs(os.path.dirname(ASPECTS_JSON_PATH), exist_ok=True)
-        shutil.copy2(SEED_ASPECTS_JSON_PATH, ASPECTS_JSON_PATH)
+    if not os.path.exists(json_path):
+        os.makedirs(os.path.dirname(json_path), exist_ok=True)
+        shutil.copy2(SEED_ASPECTS_JSON_PATH, json_path)
         return True
 
     # Working copy exists — self-heal any missing REQUIRED aspect from the seed.
@@ -85,7 +99,7 @@ def ensure_aspects_user_copy() -> bool:
     try:
         with open(SEED_ASPECTS_JSON_PATH) as f:
             seed = json.load(f)
-        with open(ASPECTS_JSON_PATH) as f:
+        with open(json_path) as f:
             cur = json.load(f)
     except (OSError, json.JSONDecodeError):
         return False
@@ -106,13 +120,13 @@ def ensure_aspects_user_copy() -> bool:
     # absorbed_into exemption silently disables and the reaper scrubs redirect
     # edges. Mirrors AspectEncoder._write_aspects.
     import tempfile
-    d = os.path.dirname(ASPECTS_JSON_PATH)
+    d = os.path.dirname(json_path)
     fd, tmp = tempfile.mkstemp(prefix='aspects_v1_', suffix='.json.tmp', dir=d)
     try:
         with os.fdopen(fd, 'w') as f:
             json.dump(cur, f, indent=2, ensure_ascii=False)
             f.write('\n')
-        os.replace(tmp, ASPECTS_JSON_PATH)
+        os.replace(tmp, json_path)
     except Exception:
         try:
             os.unlink(tmp)

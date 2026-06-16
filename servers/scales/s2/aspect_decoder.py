@@ -16,7 +16,7 @@ import json
 import os
 
 from .base import IntegrationUnit
-from .aspect_contract import ASPECT, ASPECTS_JSON_PATH
+from .aspect_contract import ASPECT, aspects_json_path
 
 
 class AspectDecoder(IntegrationUnit):
@@ -113,13 +113,14 @@ class AspectDecoder(IntegrationUnit):
         Strings that already appear in any aspect's member list are
         considered classified and won't be re-proposed.
         """
+        json_path = aspects_json_path()
         try:
-            with open(ASPECTS_JSON_PATH, 'r') as f:
+            with open(json_path, 'r') as f:
                 data = json.load(f)
         except (OSError, json.JSONDecodeError) as e:
             self.brain._log_error(
                 self.NAME, e,
-                'failed to read %s — treating all strings as unclassified' % ASPECTS_JSON_PATH)
+                'failed to read %s — treating all strings as unclassified' % json_path)
             return {'node_types': set(), 'edge_relations': set()}
 
         node_types = set()

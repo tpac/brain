@@ -255,15 +255,15 @@ class BrainTestBase(unittest.TestCase):
         self.db_path = os.path.join(self.tmp, 'brain.db')
         # Isolate the aspect registry: BrainTestBase brains must read an
         # isolated working copy seeded from the repo seed, NOT the operator's
-        # live $BRAIN_DB_DIR/aspects_v1.json. ASPECTS_JSON_PATH is import-time-
-        # bound to BRAIN_DB_DIR, so a fresh Brain would otherwise read (and
-        # auto-heal could WRITE) the operator's live file. Point it at the
-        # per-test tmp dir before Brain() loads; ensure_aspects_user_copy seeds
-        # it from the seed so every required aspect (the contract) is present.
-        # tearDown ALWAYS restores this (finally), even if Brain() raises here.
-        import servers.scales.s2.aspect_contract as _ac
-        self._orig_aspects_json_path = _ac.ASPECTS_JSON_PATH
-        _ac.ASPECTS_JSON_PATH = os.path.join(self.tmp, 'aspects_v1.json')
+        # live $BRAIN_DB_DIR/aspects_v1.json. The aspects path is resolved at
+        # CALL time from the ASPECTS_JSON_PATH env var, so a fresh Brain would
+        # otherwise read (and auto-heal could WRITE) the operator's live file.
+        # Point the env var at the per-test tmp dir before Brain() loads;
+        # ensure_aspects_user_copy seeds it from the seed so every required
+        # aspect (the contract) is present. tearDown ALWAYS restores this
+        # (finally), even if Brain() raises here.
+        self._orig_aspects_json_path = os.environ.get('ASPECTS_JSON_PATH')
+        os.environ['ASPECTS_JSON_PATH'] = os.path.join(self.tmp, 'aspects_v1.json')
         self.brain = Brain(self.db_path, skip_embedder=not self.needs_embedder)
         self.brain.reset_session_activity()
         # Auto-drain embeddings: the embed_queue worker only fires every
@@ -336,8 +336,10 @@ class BrainTestBase(unittest.TestCase):
         # process (which would make every later BrainTestBase brain read a
         # deleted tmp dir → empty registry → cascade of unrelated failures).
         if hasattr(self, '_orig_aspects_json_path'):
-            import servers.scales.s2.aspect_contract as _ac
-            _ac.ASPECTS_JSON_PATH = self._orig_aspects_json_path
+            if self._orig_aspects_json_path is None:
+                os.environ.pop('ASPECTS_JSON_PATH', None)
+            else:
+                os.environ['ASPECTS_JSON_PATH'] = self._orig_aspects_json_path
 
         duration_ms = (time.time() - self._test_start) * 1000
 
