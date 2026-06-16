@@ -24,6 +24,12 @@ from .aspect_contract import ASPECT, ASPECTS_JSON_PATH, ASPECTS_PROPOSED_PATH
 # Which categories each aspect accepts. Derived from the design — not
 # discoverable from current member lists alone (an aspect with empty
 # node_types might be edge-only by design or just not yet populated).
+# 14 of the 16 required aspects are LLM-routable here. Deliberately excluded:
+# survivor_lineage (system-generated absorbed_into edges, never classified) and
+# wisdom (a hand-curated multi-membership VIEW — its node types are all already
+# classified in lesson_insight/identity_bearing, so the decoder never proposes
+# them and the encoder must not route to it). "14 aspects" in the menu below is
+# correct — do NOT bump it to match the required-aspect count.
 ASPECT_ACCEPTS = {
     'identity_bearing':       {'node_types'},
     'episodic_anchor':        {'node_types'},

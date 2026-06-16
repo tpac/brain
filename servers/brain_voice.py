@@ -271,32 +271,59 @@ class BrainVoice:
             return None
         return "\n\n".join(sections)
 
+    def _load_stance(self) -> str:
+        """Read the SKILL.md identity stance — the always-on prior injected at
+        boot, first and OUTSIDE the [BRAIN] envelope.
+
+        Lives at skills/brain/SKILL.md relative to this file's root. The daemon
+        runs from the repo; the no-daemon fallback runs from the deployed
+        plugin — the relative path resolves in both. Returns '' if unreadable
+        (degrade: boot continues without the stance, logged loudly).
+        """
+        import os
+        try:
+            root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            with open(os.path.join(root, 'skills', 'brain', 'SKILL.md')) as f:
+                return f.read().strip()
+        except Exception as e:
+            # Loud: the identity prior failed to load — surface it in the
+            # errors table (event_type='error'), don't degrade quietly.
+            # _log_error self-protects (never re-raises), so call it unguarded.
+            self.brain._log_error(
+                'boot_stance_load', e,
+                'SKILL.md stance unreadable — boot proceeding without identity prior')
+            return ''
+
     # ── Clean boot (v2) — wake-up, not system report ──
 
     def render_boot_v2(self, user: str = 'User', project: str = 'default',
                        db_dir: str = '', session_id: str = '') -> Dict[str, Optional[str]]:
-        """Frame-centered boot — Anchor wakes up with the same prior surface uses.
+        """Boot context — the SKILL.md identity stance, then the [BRAIN] block.
 
-        2026-05-02 (Frame Phase 2.5): rewritten from a 6-section recall-driven
-        render (YOU / OPERATOR / PATTERNS / BRAIN MAP / LAST SESSION / RECENTLY
-        ENCODED — each its own ad-hoc query) to a single Frame block built via
-        ctx.get_frame(brain). The Frame's named sections (Operator / Partnership
-        / Active threads / Current focus / Recent moves) subsume the previous
-        six. ~48% smaller, structurally cleaner, deterministic across calls,
-        and identical to what surface uses every turn — Anchor's wakeup is the
-        same prior as its turn-by-turn awareness.
+        Output order:
+          1. The identity stance (SKILL.md), FIRST and OUTSIDE [BRAIN] — the
+             always-on prior, read via _load_stance().
+          2. The [BRAIN] envelope: header (memory/locked counts) + MY_STREAM_ID,
+             the Frame (ctx.get_frame(brain) — What I've learned / Current focus
+             / Recent moves), and the embedder status line.
 
-        What's preserved: header line (memory/locked counts), embedder line,
-        [BRAIN] envelope, operator channel (for_operator).
+        The operator channel (for_operator) carries the stats summary.
 
-        What's gone: ad-hoc recall queries for identity/operator/community
-        listings; maturity/size tags on communities; verbose render_rich_node
-        dumps with full content+metadata+edges per node; PATTERNS YOU FALL
-        INTO listing; explicit RECENTLY ENCODED section. All replaced by Frame.
-        See FRAME-DESIGN.md Phase 2.5.
+        Note: the Frame's wisdom section is deterministic mid-session (relevance
+        ranked against the arc) but uses a seeded influence-sample at boot, so
+        boot output is stable within a session, not byte-identical across them.
         """
         brain = self.brain
         out = []
+
+        # ── Identity stance (SKILL.md) — FIRST, OUTSIDE the [BRAIN] envelope.
+        # The always-on prior: who Anchor is + how it reaches into the brain.
+        # It reads as Anchor's own voice, not brain "state", so it sits before
+        # the [BRAIN] block rather than inside it. ──
+        stance = self._load_stance()
+        if stance:
+            out.append(stance)
+            out.append("")
 
         # ── Gather data ──
         ctx = brain.context_boot(user=user, project=project, task="session start")

@@ -495,5 +495,21 @@
     "metadata": {
       "display_label": "absorbed into"
     }
+  },
+  "wisdom": {
+    "node_types": [
+      "insight",
+      "lesson",
+      "principle",
+      "vision",
+      "reflection",
+      "meta_learning",
+      "philosophy"
+    ],
+    "edge_relations": [],
+    "meaning": "Earned understanding that shapes how Anchor thinks — the generative insights, lessons, principles, and visions that define the partnership's way of reasoning. The inspiring, high-influence subset surfaced as Anchor's wisdom layer (boot + recall, focus-adaptive — relevance-ranked to the session arc when present, influence-sampled at boot). Multi-membership: these types also belong to lesson_insight (earned through doing the work) or identity_bearing (axiomatic); wisdom marks the ones that are GENERATIVE — re-encountering them shifts how I think, not just what I know. NOT operational rules (identity_bearing's rule/operator/procedure), NOT tactical record-keeping (lesson_insight's decision/fact/finding/mechanism/bug). Test: would running into this again change my frame of mind, not just add a fact? If yes → wisdom.",
+    "dimension": "semantic",
+    "locked": true,
+    "metadata": {}
   }
 }

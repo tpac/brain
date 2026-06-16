@@ -298,6 +298,17 @@ session's files. See `0d2c1e7`.
 - **D-5 seed pack / persona design** — mine the brain for mechanism-teaching +
   good-encoder-example nodes; genericize into the shipped seed pack. Folds in a
   proper 1.2 redesign.
+- **Zero-Memory boot block** — a conditional block `brain_assembly` injects at boot
+  *only while the brain is sparse* (fresh install), dropped once the graph is rich
+  enough that character emerges from it. Gate on an identity signal (e.g. count of
+  locked identity/principle nodes), not raw node count. It can be *detailed* for free:
+  when it fires the dossier is near-empty, so it doesn't contend for the 10k boot cap
+  (the two are anti-correlated). Frame it as scaffolding that fades, not fixed
+  character — it holds the anti-sycophancy axioms (useful-not-liked, hold-a-position)
+  as bootstrap, while the epistemic-integrity stance (don't assert unchecked memory)
+  stays always-on in SKILL.md, since a mature brain needs it *more*. Parked 2026-06-15
+  during the SKILL.md instinct rewrite; sibling of D-5 (both = what a near-empty Anchor
+  wakes up as).
 - **3.3 cross-platform v2** — systemd + supervisor abstraction; trigger = first
   real Linux user.
 - **Cowork support [DEFERRED 2026-06-14 — diversion from the Code goal]** — Tom

@@ -79,12 +79,21 @@ vocabularies are open text. **Aspects** group these strings by semantic role:
 covers types AND relations that express correction; `noise` covers
 structural-only strings with no semantic claim.
 
-The taxonomy is a **closed list of 15 required aspects**, defined in
-`servers/scales/s2/aspects_v1.json` (the 15th, `survivor_lineage`, carries
-`absorbed_into` — the archival-exempt survivor-redirect role). The encoder
-cannot propose new aspects; adding another is a deliberate human edit to the
-JSON (REQUIRED_ASPECTS + seed + contract tests, and it self-heals into existing
-working copies via `ensure_aspects_user_copy`).
+The taxonomy is a **closed list of 16 required aspects**, defined in
+`servers/scales/s2/aspects_v1.json`. `survivor_lineage` carries `absorbed_into`
+(the archival-exempt survivor-redirect role). `wisdom` is a
+multi-membership node-type aspect — the generative subset (insight / lesson /
+principle / vision / reflection / meta_learning / philosophy) the Frame's "What
+I've learned" section pulls; its members also belong to `lesson_insight` /
+`identity_bearing`, so it is appended **last** in JSON order to leave their
+reverse-lookups (`by_node_type`) intact. `wisdom` is **hand-curated** — because
+its members are already classified elsewhere, the S2 AspectIntegration
+classifier never proposes them, so it does not auto-grow; adding a new
+generative type is a deliberate edit (and `wisdom` is correctly absent from the
+encoder's 14-aspect routable menu). The encoder cannot propose new aspects;
+adding another is a deliberate human edit to the JSON (REQUIRED_ASPECTS + seed +
+contract tests, and it self-heals into existing working copies via
+`ensure_aspects_user_copy`).
 
 **Source of truth: `aspects_v1.json`.** The file holds:
 - aspect `name`, `meaning` (description), `locked`, `dimension`, `metadata`
@@ -192,16 +201,14 @@ Sonnet call sites (S2 reclassify, S2 base, S1 Scribe encoder) use tool-use shape
 
 ## Frame — the structured prior
 
-Frame is the 5-section markdown object Anchor wakes up with at boot AND surfaces against per turn. Built deterministically via `brain.filter_nodes()` — no LLM call, no new SQL, ~1500–2000 tokens.
+Frame is the 3-section markdown object Anchor wakes up with at boot AND surfaces against per turn. Built deterministically via `brain.filter_nodes()` — no LLM call, no new SQL.
 
 Sections:
-- **Operator** — locked identity-bearing nodes (principle / identity / vision / rule)
-- **Partnership** — three layers: integrated (top communities by recency), permanent (locked moments), warm (recently-touched lessons/insights)
-- **Active threads** — open work / tensions / hypotheses / aspirations, optionally arc-relevance-ranked against the session's current focus
-- **Current focus** — encoder's per-session arc blob
-- **Recent moves** — encoder's recent journal entries
+- **What I've learned** — the `wisdom` aspect (insight / lesson / principle / vision / reflection / meta_learning / philosophy): the generative understanding that shapes how Anchor thinks. **Focus-adaptive** — when a session arc (current focus) exists it is relevance-ranked against it (the wisdom tracks the topic, refreshing every encode); at boot (no arc) it is **influence-sampled** (`_influence_sample`: rank by connection-degree, hub-dampened, random draw → varied wisdom at waking, not a fixed top-N).
+- **Current focus** — encoder's per-session arc blob.
+- **Recent moves** — encoder's recent journal entries.
 
-Same Frame at boot and at recall-time — Anchor's prior is symmetric across the lifecycle. Type routing (which node types belong in which section) reads from `brain.aspects.<name>.node_types` — see the Aspects section above.
+Same Frame at boot and at recall-time — Anchor's prior is symmetric across the lifecycle. Type routing reads from `brain.aspects.wisdom.node_types`. (Seed-brain operator/identity scaffolding lives in the conditional Zero-Memory boot block — `docs/DISTRIBUTION-READINESS.md` §7 — not the Frame.)
 
 Files: `servers/scales/s1/frame.py`
 Design: `docs/RECALL-OVERVIEW.md` (historical detail: `docs/archive/FRAME-DESIGN.md`)

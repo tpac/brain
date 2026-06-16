@@ -1,198 +1,146 @@
 """Frame Constructor — Anchor's structured awareness object.
 
-Phase 2 of the Frame architecture (see docs/FRAME-DESIGN.md). Produces a
-markdown text Frame composed of five sections, deterministically queried
-from the brain's existing API. No LLM call. No new SQL. Pure composition
-over `brain.filter_nodes`, `brain.session_context_for(session_id)`,
-`brain.get_recent_encoding_journal(session_id)`, and `brain.aspects`
-(the AspectRegistry — Step 11 of unified-aspects).
+Produces a markdown Frame, deterministically composed from the brain's
+existing API (no LLM call, no new SQL). Three sections:
 
-Sections:
-    Operator      — locked identity-bearing nodes (principle/identity/vision)
-    Partnership   — three layers:
-                    integrated (top communities by access_count)
-                    permanent  (locked moments)
-                    warm       (recent moments/insights, last 7 days)
-    Active state  — open + tension nodes
-    Current focus — encoder's session_context blob
-    Recent moves  — encoder's recent journal entries
+    What I've learned — the `wisdom` aspect (insight / lesson / principle /
+                        vision / reflection / meta_learning / philosophy): the
+                        generative understanding that shapes how Anchor thinks.
+                        Focus-adaptive — relevance-ranked against the session
+                        arc when present, influence-sampled at boot.
+    Current focus     — the encoder's rolling per-session arc.
+    Recent moves      — the encoder's recent per-session journal.
 
-Same Frame is rendered at boot (via SessionStart hook) and during
-conversation (via hook_recall → run_surface). Unified per Tom's call
-2026-05-02 — splits into boot/live variants only if measurement says so.
+Same Frame renders at boot (SessionStart hook) and during conversation
+(hook_recall → run_surface).
+
+Operator and Partnership are deliberately absent: they were recency-by-type
+pulls that, for a mature brain whose work is software, filled with engineering
+nodes (a dev changelog wearing partnership labels) and polluted Haiku's
+per-turn prior. Seed-brain operator/identity scaffolding lives in the
+conditional Zero-Memory boot block (docs/DISTRIBUTION-READINESS.md §7); the
+rest is recoverable via recall() on demand.
 
 Aspect routing:
-    brain.aspects.identity_bearing → Operator section
-    brain.aspects.episodic_anchor  → Partnership.permanent
-    brain.aspects.episodic_anchor + lesson_insight → Partnership.warm (union)
-    brain.aspects.active_thread    → Active threads
+    brain.aspects.wisdom → What I've learned
 """
 
-from typing import Dict, List
+import random
+from typing import List
 
 
-# ── Layer caps ──
-# Token budget targets ~1500-2000 total. SQL fetches are wider than render
-# to leave headroom for type filtering in Python.
-TOP_COMMUNITIES = 8
-LOCKED_PULL_LIMIT = 200        # 342 total locked exist — pull wide so type-filter has options
-ACTIVE_THREAD_PULL = 10
-WARM_PULL = 8
-
-# Live-session resort fetches N×OVERSAMPLE candidates from SQL, then Python
-# reorders by live-session activity. 4× is enough headroom: even if every
-# top-N-by-global slot is "polluted" by an idle session, the wider pull
-# still surfaces live-session-active nodes from outside the global top-N.
-LIVE_RESORT_OVERSAMPLE = 4
+# ── Caps ──
+WISDOM_RENDER = 5      # wisdom nodes surfaced
+WISDOM_POOL = 200      # wide skinny candidate pull, degree-ranked in Python at boot
+WISDOM_HUB_CAP = 30    # structural degree past which influence is dampened, so
+                       # over-connected hubs don't crowd out genuinely deep nodes
 
 
-def _live_session_resort(brain, nodes, limit, fallback_field='last_accessed'):
-    """Reorder rich nodes by live-session aggregated `last_accessed`.
+def _influence_sample(brain, pool: List[dict], k: int, seed: str = '') -> List[dict]:
+    """Rank wisdom candidates by STRUCTURAL graph degree, dampen runaway hubs,
+    then sample k from the top tier — seeded per session (varied across
+    sessions, stable within one, so the list doesn't reshuffle each arc-less
+    turn).
 
-    Nodes touched by any of the last X >=Y-msg sessions float to the top,
-    ordered by their MAX `last_accessed` across those live sessions.
-    Nodes no live session touched fall to a lower tier, ordered by their
-    own global `fallback_field` (so they still appear, just ranked behind
-    live-session-active nodes).
-
-    Behavior is backward-compatible: with no live sessions, every node
-    lands in the fallback tier and order matches the global sort the
-    caller already did.
+    Boot has no session arc to relevance-rank against, so we surface a *varied*
+    set of high-influence wisdom rather than a fixed top-N. Degree comes from
+    the brain's structural-degree cache (excludes Hebbian co_accessed /
+    emergent_bridge edges — topology, not churn — and is already built at
+    warm_up). Hub-dampening keeps over-connected nodes from crowding out
+    genuinely deep ones. A failed cache build logs loud (in _ensure_*) and
+    degrades to an unranked sample — never silent.
     """
+    if len(pool) <= k:
+        return pool
+
+    brain._ensure_structural_degree_cache()
+    degree = getattr(brain, '_structural_degree_cache', {}) or {}
+
+    def _influence(n: dict) -> float:
+        d = degree.get(n.get('id'), 0)
+        if d <= WISDOM_HUB_CAP:
+            return float(d)
+        return WISDOM_HUB_CAP * WISDOM_HUB_CAP / d  # dampen past the cap
+
+    top = sorted(pool, key=_influence, reverse=True)[:max(k * 2, k)]
+    if len(top) <= k:
+        return top
+    rng = random.Random(seed) if seed else random
+    return rng.sample(top, k)
+
+
+def _snippet(node: dict, limit: int = 200) -> str:
+    """Short content for the wisdom render — prefer content_summary, whitespace-
+    collapsed to one line and trimmed at a word boundary (no mid-word cuts)."""
+    text = ' '.join((node.get('content_summary') or node.get('content') or '').split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(' ', 1)[0].rstrip() + '…'
+
+
+def _render_wisdom(brain, arc_text: str = '', session_id: str = '') -> str:
+    """What I've learned — the inspiring, generative wisdom layer.
+
+    Pulls the `wisdom` aspect (insight / lesson / principle / vision /
+    reflection / meta_learning / philosophy) — explicitly NOT operational rules
+    or tactical record-keeping.
+
+    Focus present (mid-session): relevance-rank the wisdom nodes against the
+    session's current focus, so the surfaced wisdom tracks the topic and
+    refreshes every encode (the encoder updates current_focus; the Frame reads
+    it at the next turn).
+
+    No focus (boot/fresh): influence-sample (see _influence_sample) so waking
+    surfaces a varied set of high-influence wisdom rather than a fixed list.
+    """
+    # by_name (not attribute access) so a missing aspect degrades gracefully —
+    # surface builds the Frame every turn and isn't wrapped, so a raise here
+    # would crash recall, not just boot.
+    wis = brain.aspects.by_name('wisdom')
+    if wis is None:
+        # Loud: a REQUIRED aspect is missing — surface as an error, not a quiet
+        # degrade. _log_error self-protects (never re-raises), so call unguarded.
+        brain._log_error(
+            'frame_wisdom',
+            Exception('wisdom aspect missing from registry — Frame rendered without it'),
+            'required aspect absent')
+        return ""
+    wisdom_types = list(wis.node_types)
+    if not wisdom_types:
+        return ""
+
+    # Both branches rank cheaply (skinny / embedding), then enrich ONLY the
+    # <=WISDOM_RENDER winners for their content — the render shows a snippet,
+    # but we never correction-enrich the whole candidate pool.
+    if arc_text:
+        # Focus present → relevance-rank; rank-then-enrich (brain_recall) means
+        # rich=True here enriches only the <=5 winners, not the pool.
+        res = brain.filter_nodes(
+            field='type', include=wisdom_types,
+            sort_by='last_accessed', sort_order='desc',
+            limit=WISDOM_RENDER, rich=True, relevance_query=arc_text)
+        nodes = res.get('nodes', []) if isinstance(res, dict) else []
+    else:
+        # No focus (boot) → degree-rank a wide skinny pool, seeded sample, then
+        # enrich only the sampled winners for their content.
+        res = brain.filter_nodes(
+            field='type', include=wisdom_types,
+            sort_by='created_at', sort_order='desc',
+            limit=WISDOM_POOL, rich=False)
+        pool = res.get('nodes', []) if isinstance(res, dict) else []
+        sampled = _influence_sample(brain, pool, WISDOM_RENDER, seed=session_id)
+        rich_map = brain.get_node([n['id'] for n in sampled]) if sampled else {}
+        nodes = [rich_map[n['id']] for n in sampled if n.get('id') in rich_map]
+
     if not nodes:
-        return nodes
-    node_ids = {n['id'] for n in nodes if n.get('id')}
-    try:
-        agg = brain.live_session_activity(node_ids=node_ids)
-    except Exception as _e:
-        try:
-            brain._log_error('frame_live_resort', _e,
-                             'live_session_activity raised — falling back to '
-                             'global sort')
-        except Exception:
-            pass
-        return nodes[:limit]
-
-    def _key(n):
-        rec = agg.get(n.get('id'))
-        if rec and rec.get('last_accessed'):
-            return (1, rec['last_accessed'])  # live-session tier
-        return (0, n.get(fallback_field, '') or '')  # fallback tier
-    nodes.sort(key=_key, reverse=True)
-    return nodes[:limit]
-
-
-def _short_content(node: dict, limit: int = 180) -> str:
-    """Prefer content_summary; fall back to content snippet."""
-    cs = node.get('content_summary') or ''
-    if cs:
-        return cs[:limit].rstrip()
-    return (node.get('content') or '')[:limit].rstrip()
-
-
-def _render_operator(brain, locked_nodes: List[dict]) -> str:
-    """Operator section — who the operator is, what locked principles Anchor lives by.
-
-    Reads `brain.aspects.identity_bearing.node_types` to know which types
-    qualify (principle, identity, vision, rule, operator, capability).
-    """
-    operator_types = set(brain.aspects.identity_bearing.node_types)
-    operator_nodes = [n for n in locked_nodes
-                      if n.get('type') in operator_types]
-    if not operator_nodes:
-        return "## Operator\n(no locked operator/principle/identity nodes)\n"
-
-    lines = ["## Operator"]
-    for n in operator_nodes[:10]:  # cap render even if pull is bigger
-        snippet = _short_content(n, 160)
-        lines.append("- **%s** — %s" % (n.get('title', ''), snippet))
-    return "\n".join(lines) + "\n"
-
-
-def _render_partnership(brain, locked_nodes: List[dict]) -> str:
-    """Partnership section — three layers: integrated, permanent, warm.
-
-    Permanent uses `brain.aspects.episodic_anchor.node_types`. Warm unions
-    types from episodic_anchor + lesson_insight via `aspects.types_in(...)`.
-    """
-    lines = ["## Partnership"]
-
-    # Integrated: top communities by live-session recency. Wider SQL pull
-    # then live-session resort lifts communities touched by the X most-recent
-    # >=Y-msg sessions above background activity. Vacation gaps + parallel
-    # eval/dashboard sessions stop polluting "currently in mind."
-    comms_result = brain.filter_nodes(
-        field='type', include=['community'],
-        sort_by='last_accessed', sort_order='desc',
-        limit=TOP_COMMUNITIES * LIVE_RESORT_OVERSAMPLE, rich=True)
-    comms = comms_result.get('nodes', []) if isinstance(comms_result, dict) else []
-    comms = _live_session_resort(brain, comms, TOP_COMMUNITIES)
-    if comms:
-        lines.append("\n**Integrated (top communities):**")
-        for c in comms:
-            snippet = _short_content(c, 140)
-            lines.append("- **%s** — %s" % (c.get('title', ''), snippet))
-
-    # Permanent: locked moments / identity (episodic_anchor types only)
-    permanent_types = set(brain.aspects.episodic_anchor.node_types)
-    permanent = [n for n in locked_nodes
-                 if n.get('type') in permanent_types]
-    if permanent:
-        lines.append("\n**Permanent (locked moments):**")
-        for n in permanent[:10]:
-            snippet = _short_content(n, 140)
-            lines.append("- **%s** — %s" % (n.get('title', ''), snippet))
-
-    # Warm: recently-accessed nodes from episodic + lesson aspects. Wider
-    # SQL pull + live-session resort surfaces what THIS partnership's recent
-    # sessions touched, not what any background process happened to bump.
-    warm_types = list(brain.aspects.types_in(
-        ['episodic_anchor', 'lesson_insight']))
-    warm_result = brain.filter_nodes(
-        field='type', include=warm_types,
-        sort_by='last_accessed', sort_order='desc',
-        limit=WARM_PULL * LIVE_RESORT_OVERSAMPLE, rich=True)
-    warm = warm_result.get('nodes', []) if isinstance(warm_result, dict) else []
-    warm = _live_session_resort(brain, warm, WARM_PULL)
-    if warm:
-        lines.append("\n**Warm (recently active):**")
-        for n in warm:
-            snippet = _short_content(n, 120)
-            lines.append("- **%s** — %s" % (n.get('title', ''), snippet))
-
-    if len(lines) == 1:  # only the heading
-        lines.append("(no partnership context yet)")
-    return "\n".join(lines) + "\n"
-
-
-def _render_active_threads(brain, arc_text: str = '') -> str:
-    """Open work — types in the active_thread aspect.
-
-    When arc_text is non-empty (the session's current focus blob), the result
-    is relevance-ranked against it — top half by relevance to today's arc,
-    remainder by raw recency. Lifts threads semantically connected to current
-    work above unrelated brain-wide noise. See FRAME-DESIGN.md Phase 2.5.
-    """
-    active_types = list(brain.aspects.active_thread.node_types)
-    res = brain.filter_nodes(
-        field='type', include=active_types,
-        sort_by='last_accessed', sort_order='desc',
-        limit=ACTIVE_THREAD_PULL * LIVE_RESORT_OVERSAMPLE, rich=True,
-        relevance_query=arc_text or None)
-    nodes = res.get('nodes', []) if isinstance(res, dict) else []
-    # Only keep unresolved — skip nodes with resolved_at set
-    open_nodes = [n for n in nodes if not n.get('resolved_at')]
-    # Live-session resort: open threads touched by recent meaningful work
-    # outrank stale-but-globally-recent threads (e.g. an open question some
-    # background eval brushed against).
-    open_nodes = _live_session_resort(brain, open_nodes, ACTIVE_THREAD_PULL)
-    if not open_nodes:
-        return "## Active threads\n(none open)\n"
-    lines = ["## Active threads"]
-    for n in open_nodes[:8]:
-        snippet = _short_content(n, 140)
-        lines.append("- **%s** [%s] — %s" % (
-            n.get('title', ''), n.get('type', ''), snippet))
+        return "## What I've learned\n(nothing yet)\n"
+    lines = ["## What I've learned"]
+    for n in nodes:
+        snip = _snippet(n)
+        if snip:
+            lines.append("- **%s** — %s" % (n.get('title', ''), snip))
+        else:
+            lines.append("- **%s**" % n.get('title', ''))
     return "\n".join(lines) + "\n"
 
 
@@ -219,45 +167,25 @@ def _render_recent_moves(brain, session_id: str) -> str:
 
 
 def build_frame(brain, session_id: str) -> str:
-    """Construct the Frame as markdown text.
+    """Construct the Frame as markdown text — three sections, no LLM call.
 
-    Five sections, deterministic SQL via brain.filter_nodes, no LLM call.
-    Type-routing for sections reads `brain.aspects` (the AspectRegistry —
-    single source of truth for which node types qualify as identity-bearing,
-    episodic, lesson-insight, active-thread).
-
-    Reuses one locked-nodes pull for both Operator and Partnership-permanent
-    sections.
+    Type-routing for the wisdom section reads `brain.aspects.wisdom` (the
+    AspectRegistry — single source of truth for which node types are the
+    generative-wisdom subset).
 
     Args:
         brain: Brain instance
-        session_id: current session ID (for recent_moves)
+        session_id: current session ID (for focus + recent_moves)
     Returns:
-        Markdown string. ~1500-2000 tokens typical.
+        Markdown string.
     """
-    # One pull, two consumers — reuse locked-nodes between operator + permanent.
-    # Sort by last_accessed: locked nodes are curated, but recency reveals which
-    # are still ALIVE in the partnership vs which have gone dormant.
-    # Live-session resort then prioritizes locked nodes the current meaningful
-    # partnership has been touching, above globally-recent-but-not-this-session ones.
-    locked_result = brain.filter_nodes(
-        field='locked', include=[1],
-        sort_by='last_accessed', sort_order='desc',
-        limit=LOCKED_PULL_LIMIT, rich=True)
-    locked_nodes = (locked_result.get('nodes', [])
-                    if isinstance(locked_result, dict) else [])
-    locked_nodes = _live_session_resort(brain, locked_nodes, LOCKED_PULL_LIMIT)
-
-    # Arc text: this session's compressed-down current focus. Used as the
-    # relevance pivot for Active threads (and later, Warm/Integrated). When
-    # empty (fresh session), relevance ranking falls back to pure recency.
+    # This session's compressed arc — the relevance pivot for the wisdom
+    # section. Empty (fresh session) → wisdom falls back to influence-sampling.
     arc_text = brain.session_context_for(session_id)
 
     sections = [
-        _render_operator(brain, locked_nodes),
-        _render_partnership(brain, locked_nodes),
-        _render_active_threads(brain, arc_text=arc_text),
+        _render_wisdom(brain, arc_text=arc_text, session_id=session_id),
         _render_current_focus(brain, session_id),
         _render_recent_moves(brain, session_id),
     ]
-    return "\n".join(sections).strip() + "\n"
+    return "\n".join(s for s in sections if s).strip() + "\n"

@@ -466,23 +466,31 @@ class BrainRecallMixin:
         result = node_dal.filter_nodes(
             field=field, include=include, exclude=exclude,
             lt=lt, gt=gt, limit=dal_limit, sort_by=sort_by, sort_order=sort_order)
-        if not rich or 'error' in result or not result.get('nodes'):
-            # rich=False or no results — apply pool truncation if relevance was
-            # requested but skipped (still want `limit` results, not pool size)
-            if relevance_query and result.get('nodes'):
-                result['nodes'] = result['nodes'][:limit]
+        if 'error' in result or not result.get('nodes'):
             return result
-        ids = [n['id'] for n in result['nodes']]
-        rich_map = self.get_node(ids)
-        rich_nodes = [rich_map[i] for i in ids if i in rich_map]
 
-        # Optional relevance re-rank
-        if relevance_query and rich_nodes:
-            rich_nodes = _rerank_by_relevance(
-                self.conn, rich_nodes, relevance_query, limit,
+        # Relevance ranking happens BEFORE enrichment. _rerank_by_relevance
+        # scores by embedding (looked up by id) + structural order — it needs
+        # only ids, not rich content — so we rank the skinny candidate pool and
+        # trim to `limit` here, then enrich only the winners below. This is the
+        # decoupling: correction-enrich `limit` nodes, not the whole
+        # (limit × relevance_pool_multiplier) candidate pool we discard most of.
+        nodes = result['nodes']
+        if relevance_query:
+            nodes = _rerank_by_relevance(
+                self.conn, nodes, relevance_query, limit,
                 vector_type=relevance_vector_type)
+        # No relevance: the DAL already applied LIMIT == `limit`, so nodes is
+        # already <= limit — no slice needed.
 
-        result['nodes'] = rich_nodes
+        if not rich:
+            result['nodes'] = nodes
+            return result
+
+        # Rich: enrich only the (already-ranked, <= limit) winners.
+        ids = [n['id'] for n in nodes]
+        rich_map = self.get_node(ids)
+        result['nodes'] = [rich_map[i] for i in ids if i in rich_map]
         return result
 
     def query_logs(self, source: str = 'all', hours: int = 24,

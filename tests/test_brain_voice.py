@@ -129,7 +129,11 @@ class TestBrainVoiceRenderBoot(BrainTestBase):
         voice = BrainVoice(self.brain)
         result = voice.render_boot()
         text = result['for_claude']
-        self.assertTrue(text.startswith("[BRAIN]"))
+        # Contract evolved (operator-directed): the SKILL.md stance is injected
+        # FIRST, so boot opens with the stance and the [BRAIN] block follows.
+        self.assertTrue(text.startswith(voice._load_stance()),
+                        "boot must open with the SKILL.md stance, not [BRAIN]")
+        self.assertIn("[BRAIN]", text)
         self.assertIn("[/BRAIN]", text)
 
     def test_wrapper_delegates_to_render_boot(self):
@@ -166,6 +170,24 @@ class TestBrainVoiceRenderBoot(BrainTestBase):
         self.assertIsNotNone(result['for_operator'])
         self.assertIn("@priority:", result['for_operator'])
         self.assertIn("nodes", result['for_operator'])
+
+    def test_render_boot_v2_stance_first_outside_brain_tags(self):
+        """The SKILL.md stance is injected FIRST, before/outside [BRAIN]."""
+        voice = BrainVoice(self.brain)
+        stance = voice._load_stance()
+        self.assertTrue(stance, "stance should load from skills/brain/SKILL.md")
+
+        result = voice.render_boot_v2(
+            user="Tom", project="test", db_dir="/test",
+            session_id="stance-order-check")
+        text = result['for_claude']
+
+        self.assertIn("[BRAIN]", text)
+        # Boot opens with the stance, not the [BRAIN] envelope
+        self.assertTrue(text.startswith(stance),
+                        "boot must open with the identity stance")
+        self.assertLess(text.find(stance), text.find("[BRAIN]"),
+                        "stance must sit outside/before the [BRAIN] block")
 
 
 
