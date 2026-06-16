@@ -158,6 +158,10 @@
 
 <div id="tab-traces" class="tab-content">
   <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;padding:4px 8px">
+    <div class="feed-toggle" style="margin-right:2px">
+      <button class="feed-btn" id="trace-mode-friendly" onclick="setTraceMode('friendly')">✨ Friendly</button>
+      <button class="feed-btn" id="trace-mode-technical" onclick="setTraceMode('technical')">🔧 Technical</button>
+    </div>
     <select id="trace-scale-filter" class="toolbar-select" onchange="onTraceScaleChange()">
       <option value="">All scales</option>
       <option value="s0">S0 (Exchange)</option>

@@ -170,6 +170,7 @@ window.searchNodes           = explorer.searchNodes;
 window.onTraceScaleChange    = traces.onTraceScaleChange;
 window.loadTraces            = traces.loadTraces;
 window._loadMoreTraces       = traces._loadMoreTraces;
+window.setTraceMode          = traces.setTraceMode;
 window.switchStreamsView     = streams.switchStreamsView;
 window.loadStreams           = streams.loadStreams;
 window.onStreamsSend         = streams.onStreamsSend;

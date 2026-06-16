@@ -36,7 +36,7 @@ def query_traces(conn, hours: int = 24, scale: str = '', limit: int = 500, sessi
     where = ' AND '.join(conditions)
     rows = conn.execute(
         "SELECT id, chain_id, scale, event_type, ref_type, ref_id, "
-        "summary, metadata, session_id, created_at "
+        "summary, metadata, session_id, created_at, interaction_id "
         "FROM trace_events WHERE %s ORDER BY created_at DESC LIMIT ?" % where,
         params + [limit],
     ).fetchall()
@@ -47,7 +47,7 @@ def query_traces(conn, hours: int = 24, scale: str = '', limit: int = 500, sessi
             'id': r[0], 'chain_id': r[1], 'scale': r[2],
             'event_type': r[3], 'ref_type': r[4] or '', 'ref_id': r[5] or '',
             'summary': r[6] or '', 'metadata': r[7], 'session_id': r[8] or '',
-            'created_at': r[9],
+            'created_at': r[9], 'interaction_id': r[10],
             'human_identity': hi, 'agent_identity': ai,
         })
     return out

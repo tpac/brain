@@ -11,11 +11,44 @@ import { api } from '/static/lib/api.js';
 import { poll } from '/static/lib/poll.js';
 import { escapeHtml, localTime, identityChipHTML } from '/static/lib/dom.js';
 import { SCALE_COLORS } from '/static/lib/scales.js';
-import { reapplyTraceFlashIfPending } from '/static/lib/node_detail.js';
+import { reapplyTraceFlashIfPending, loadNodeDetail } from '/static/lib/node_detail.js';
+import { renderTraceDetail, collapsedBadges } from '/static/lib/trace_detail.js';
+import { renderFriendlyChain } from '/static/lib/trace_friendly.js';
 
 let _traceChainEntries = [];
 let _traceRendered = 0;
 const _TRACE_BATCH = 30;
+
+// View mode: 'friendly' (jargon-free activity digest, one card per chain) or
+// 'technical' (the full O/K/Δ event drill-down). Persisted so each operator
+// keeps their choice; defaults to technical (hardening is the current use).
+let _traceMode = (() => {
+  try { return localStorage.getItem('traceMode') || 'technical'; } catch (_) { return 'technical'; }
+})();
+
+// Friendly relabelling of the jargon controls. Same filter values (s0/s1/s2),
+// human words on top — a newcomer picks "Remembering", not "S1".
+const _FRIENDLY_SCALE_LABELS = {
+  '': 'All activity', s0: 'Conversations', s1: 'Remembering & learning',
+  s2: 'Organizing', s3: 'Reflecting', s4: 'Growing',
+};
+const _TECH_SCALE_LABELS = {
+  '': 'All scales', s0: 'S0 (Exchange)', s1: 'S1 (Turn)',
+  s2: 'S2 (Graph)', s3: 'S3 (Sleep)', s4: 'S4 (Growth)',
+};
+
+// Expand-on-click state. Tracked by trace id (not DOM) so expansion survives
+// the 5s poll that rewrites #traces-content from scratch — the same reason
+// the source-ref flash is re-applied after each render. _traceEventById maps
+// id → row so the delegated click handler can build detail without re-fetching.
+const _traceExpanded = new Set();
+let _traceEventById = {};
+
+function _detailHTML(ev) {
+  return '<div class="trace-detail" data-detail-for="' + escapeHtml(String(ev.id)) + '" '
+    + 'style="background:#070710;border-top:1px solid #15151f;padding:6px 14px 10px 22px">'
+    + renderTraceDetail(ev) + '</div>';
+}
 
 export function onTraceScaleChange() {
   const scale = document.getElementById('trace-scale-filter').value;
@@ -43,8 +76,13 @@ export async function loadTraces(opts = {}) {
       session: sessionFilter || undefined,
     });
     const el = document.getElementById('traces-content');
-    const label = hours <= 1 ? '1h' : hours <= 6 ? '6h' : hours <= 24 ? '24h' : '7d';
-    document.getElementById('trace-count').textContent = traces.length + ' events (' + label + ')';
+    const techLabel = hours <= 1 ? '1h' : hours <= 6 ? '6h' : hours <= 24 ? '24h' : '7d';
+    const friendlyLabel = hours <= 1 ? 'the last hour' : hours <= 6 ? 'the last 6 hours'
+      : hours <= 24 ? 'the last day' : 'the last week';
+    const chainCount = new Set(traces.map(t => t.chain_id)).size;
+    document.getElementById('trace-count').textContent = _traceMode === 'friendly'
+      ? chainCount + ' things the brain did in ' + friendlyLabel
+      : traces.length + ' events (' + techLabel + ')';
 
     const sessSelect = document.getElementById('trace-session-filter');
     // Sync the dropdown to the resolved sessionFilter — without this,
@@ -82,6 +120,7 @@ export async function loadTraces(opts = {}) {
     });
     _traceChainEntries = chainEntries;
     _traceRendered = 0;
+    _traceEventById = {};
     el.innerHTML = '';
     _renderTracesBatch(el);
     // Re-apply the source-ref flash if one is still pending. The 5s
@@ -116,6 +155,13 @@ function _renderTracesBatch(el) {
   let html = '';
   for (let i = _traceRendered; i < end; i++) {
     const [chainId, events] = _traceChainEntries[i];
+
+    // Friendly mode: one plain-language card per chain, no event drill-down.
+    if (_traceMode === 'friendly') {
+      html += renderFriendlyChain(chainId, events);
+      continue;
+    }
+
     const firstTime = events[0].created_at;
     const chainScale = events[0].scale;
     const color = SCALE_COLORS[chainScale] || '#666';
@@ -146,17 +192,25 @@ function _renderTracesBatch(el) {
     html += '</div>';
 
     events.forEach(ev => {
+      if (ev.id) _traceEventById[ev.id] = ev;
       const tColor = typeColors[ev.event_type] || '#666';
       const tLabel = typeLabels[ev.event_type] || ev.event_type;
       const traceIdAttr = ev.id ? ' data-trace-id="' + escapeHtml(String(ev.id)) + '"' : '';
-      html += '<div class="trace-event"' + traceIdAttr + ' style="padding:4px 12px 4px 20px;border-top:1px solid #111;display:flex;gap:8px;align-items:flex-start">';
+      const expanded = ev.id && _traceExpanded.has(ev.id);
+      const caret = '<span class="trace-caret" style="flex-shrink:0;width:10px;color:#556;font-size:9px;margin-top:3px">' + (expanded ? '▾' : '▸') + '</span>';
+      // Whole row is the expand affordance — cursor:pointer signals it; the
+      // delegated #traces-content handler toggles on click.
+      html += '<div class="trace-event"' + traceIdAttr + ' style="padding:4px 12px 4px 16px;border-top:1px solid #111;display:flex;gap:6px;align-items:flex-start;cursor:pointer">';
+      html += caret;
       html += '<span style="flex-shrink:0;font-size:10px;font-weight:bold;color:' + tColor + ';min-width:55px">' + tLabel + '</span>';
       html += '<div style="flex:1;min-width:0">';
       if (ev.ref_type) html += '<span style="color:#666;font-size:10px;background:#1a1a2a;padding:1px 4px;border-radius:2px;margin-right:4px">' + ev.ref_type + '</span>';
+      html += collapsedBadges(ev);
       html += '<div style="color:#ccc;font-size:12px;margin-top:2px;white-space:pre-wrap;word-break:break-word">' + escapeHtml((ev.summary || '').substring(0, 300)) + '</div>';
       html += '</div>';
       html += '<span style="color:#444;font-size:9px;flex-shrink:0;white-space:nowrap">' + localTime(ev.created_at, 'time') + '</span>';
       html += '</div>';
+      if (expanded) html += _detailHTML(ev);
     });
 
     html += '</div>';
@@ -175,9 +229,75 @@ export function _loadMoreTraces() {
   _renderTracesBatch(document.getElementById('traces-content'));
 }
 
+// Delegated click handler on the stable #traces-content container (its
+// innerHTML is rewritten every poll, but the element itself persists, so one
+// listener outlives every re-render). Two targets:
+//   .trace-nodeid → open that node in the detail panel (no inline onclick, so
+//                   arbitrary node-id chars never get interpolated into JS).
+//   .trace-event  → toggle the expanded technical detail for that event.
+// The detail panel is a SIBLING of .trace-event (inserted afterend), not a
+// child, so clicks inside it (e.g. selecting text in a code block) don't
+// match `.trace-event` and won't collapse the row.
+function _onTracesClick(e) {
+  const nodeEl = e.target.closest('.trace-nodeid');
+  if (nodeEl) {
+    const id = nodeEl.dataset.nodeid;
+    if (id) loadNodeDetail(id);
+    return;
+  }
+  const row = e.target.closest('.trace-event');
+  if (!row) return;
+  const id = row.getAttribute('data-trace-id');
+  if (!id) return;
+  const caret = row.querySelector('.trace-caret');
+  const existing = document.querySelector('.trace-detail[data-detail-for="' + id + '"]');
+  if (_traceExpanded.has(id)) {
+    _traceExpanded.delete(id);
+    if (existing) existing.remove();
+    if (caret) caret.textContent = '▸';
+  } else {
+    _traceExpanded.add(id);
+    const ev = _traceEventById[id];
+    if (ev && !existing) row.insertAdjacentHTML('afterend', _detailHTML(ev));
+    if (caret) caret.textContent = '▾';
+  }
+}
+
+// ── View mode (Friendly ⇄ Technical) ──────────────────────────────────
+
+// Relabel the jargon controls + sync the toggle buttons to the active mode.
+function _applyModeLabels() {
+  const labels = _traceMode === 'friendly' ? _FRIENDLY_SCALE_LABELS : _TECH_SCALE_LABELS;
+  const sel = document.getElementById('trace-scale-filter');
+  if (sel) [...sel.options].forEach(o => { if (o.value in labels) o.textContent = labels[o.value]; });
+  ['friendly', 'technical'].forEach(m => {
+    const b = document.getElementById('trace-mode-' + m);
+    if (b) b.classList.toggle('active', _traceMode === m);
+  });
+}
+
+export function setTraceMode(mode) {
+  if (mode !== 'friendly' && mode !== 'technical' || mode === _traceMode) return;
+  _traceMode = mode;
+  try { localStorage.setItem('traceMode', mode); } catch (_) {}
+  // Expanded-detail state is technical-only; clear on switch so it's not
+  // stranded behind the friendly cards.
+  _traceExpanded.clear();
+  _applyModeLabels();
+  loadTraces();
+}
+
 // ── Lifecycle ─────────────────────────────────────────────────────────
 
 export function init() {
+  // One delegated listener on the persistent container — survives every
+  // poll-driven innerHTML rewrite (see _onTracesClick).
+  const container = document.getElementById('traces-content');
+  if (container && !container._traceClickBound) {
+    container.addEventListener('click', _onTracesClick);
+    container._traceClickBound = true;
+  }
+  _applyModeLabels();
   // 5s refresh while the Traces tab is active. Matches the pattern other
   // tabs use; the older _startTraceAutoRefresh/_stopTraceAutoRefresh helpers
   // were converted to a poll.register call during P1.
@@ -193,6 +313,7 @@ export function init() {
 }
 
 export function activate() {
+  _applyModeLabels();
   loadTraces();
 }
 

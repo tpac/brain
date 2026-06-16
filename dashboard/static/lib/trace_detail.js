@@ -1,0 +1,302 @@
+// ===========================================================================
+// lib/trace_detail.js — technical-density rendering of one trace event's
+// metadata payload.
+// ---------------------------------------------------------------------------
+// The Traces tab shows a one-line summary per event. This expands a single
+// event into the full O/K/Δ record the trace actually carries: token cost,
+// action breakdown, op-attributed node-id lists, field-level diffs, the
+// encoder's journal, raw agent text, and errors — i.e. everything
+// build_delta_metadata / build_revise_metadata / build_selection_metadata
+// (servers/trace_contract.py) stamps and the dashboard used to throw away.
+//
+// Dispatch is by PAYLOAD SHAPE, detected by key presence rather than
+// ref_type — the ref_type vocabulary is open (50+ values, encoder-extensible)
+// but the metadata builders are a closed set of four shapes. Key-detection
+// stays correct when a new ref_type appears.
+//
+// Returns an HTML string (matches tabs/traces.js's string-concat idiom).
+// Node-ids render as `.trace-nodeid[data-nodeid]` chips; tabs/traces.js owns
+// the delegated click handler that routes them to loadNodeDetail.
+// ===========================================================================
+
+import { escapeHtml } from '/static/lib/dom.js';
+
+/** Parse the raw metadata blob. Returns {} on null/garbage — a trace that
+ *  predates a builder, or a bare early-out marker, legitimately has none. */
+export function parseTraceMeta(raw) {
+  if (!raw) return {};
+  if (typeof raw === 'object') return raw;
+  try { return JSON.parse(raw) || {}; } catch (_) { return {}; }
+}
+
+// Shape detection. Order matters: delta is checked first because a delta
+// payload can also carry list-typed keys that look generic.
+export function traceShape(ev, meta) {
+  if ('write_actions' in meta || 'final_text' in meta ||
+      'action_details' in meta || 'journal_entry' in meta) return 'delta';
+  if (Array.isArray(meta.deltas) && ('node_id' in meta || 'edge_id' in meta)) return 'revise';
+  if ('candidates_considered' in meta || 'outcomes_per_candidate' in meta ||
+      ('selected' in meta && 'content' in meta)) return 'selection';
+  return 'generic';
+}
+
+// ── presentation atoms ─────────────────────────────────────────────────────
+
+function _stat(label, val, color) {
+  return '<span style="display:inline-block;background:#15151f;border-radius:3px;'
+    + 'padding:1px 6px;margin:0 4px 4px 0;color:#778;font-size:10px">'
+    + escapeHtml(label) + ' <b style="color:' + (color || '#bcd') + '">'
+    + escapeHtml(String(val)) + '</b></span>';
+}
+
+function _section(title, body) {
+  if (!body) return '';
+  return '<div style="color:#667;font-size:9px;text-transform:uppercase;'
+    + 'letter-spacing:.6px;margin:8px 0 3px">' + escapeHtml(title) + '</div>' + body;
+}
+
+function _code(text, maxH) {
+  return '<pre style="margin:3px 0;padding:6px 8px;background:#0c0c16;'
+    + 'border:1px solid #181826;border-radius:4px;color:#bcd;white-space:pre-wrap;'
+    + 'word-break:break-word;max-height:' + (maxH || 300) + 'px;overflow:auto;'
+    + 'font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px">'
+    + escapeHtml(text) + '</pre>';
+}
+
+/** Clickable node-id chip. tabs/traces.js's delegated handler reads
+ *  data-nodeid and calls loadNodeDetail — no inline onclick, so node-ids
+ *  (which can contain arbitrary chars) never get interpolated into a JS
+ *  string. */
+function _nodeChip(id) {
+  const s = escapeHtml(String(id));
+  return '<span class="trace-nodeid" data-nodeid="' + s + '" title="Open node ' + s + '" '
+    + 'style="display:inline-block;cursor:pointer;color:#7eb8ff;background:#10182a;'
+    + 'border:1px solid #1d2c44;border-radius:3px;padding:0 5px;margin:0 4px 4px 0;'
+    + 'font-family:ui-monospace,monospace;font-size:10px">' + s + '</span>';
+}
+
+function _nodeList(ids) {
+  if (!ids || !ids.length) return '';
+  return ids.map(_nodeChip).join('');
+}
+
+/** Render any value compactly — scalars inline, objects/arrays as JSON. */
+function _val(v) {
+  if (v == null) return '<span style="color:#556">∅</span>';
+  if (typeof v === 'object') {
+    try { return _code(JSON.stringify(v, null, 2)); } catch (_) { return escapeHtml(String(v)); }
+  }
+  return '<span style="color:#cfe;font-family:ui-monospace,monospace;font-size:11px">'
+    + escapeHtml(String(v)) + '</span>';
+}
+
+function _fmtMs(ms) {
+  ms = Number(ms) || 0;
+  return ms >= 1000 ? (ms / 1000).toFixed(1) + 's' : ms + 'ms';
+}
+
+// Keys the delta renderer surfaces in dedicated lanes — everything else in a
+// delta payload is a unit-specific extra (build_delta_metadata's **extras,
+// e.g. nodes_healed, fields_written, clusters_processed) and gets its own
+// section so the technical view stays complete.
+const _DELTA_KNOWN = new Set([
+  'actions', 'write_actions', 'rounds', 'inputs_processed', 'outcomes',
+  'rejection_skipped', 'journal_entry', 'action_details', 'read_calls',
+  'final_text', 'errors', 'created', 'revised', 'connected', 'archived',
+  'elapsed_ms', 'input_tokens', 'output_tokens', 'cache_read_tokens',
+  'cache_creation_tokens', 'truncated', 'interaction_version',
+  'human_identity', 'agent_identity',
+]);
+
+// ── per-shape renderers ─────────────────────────────────────────────────────
+
+function _renderDelta(ev, m) {
+  let h = '';
+
+  // Cost & provenance — the lane that turns Traces into a hardening cockpit.
+  let cost = '';
+  if (m.rounds != null)            cost += _stat('rounds', m.rounds);
+  if (m.actions != null)           cost += _stat('actions', m.actions);
+  if (m.write_actions != null)     cost += _stat('writes', m.write_actions, '#33ff88');
+  if (m.inputs_processed != null)  cost += _stat('inputs', m.inputs_processed);
+  if (m.rejection_skipped)         cost += _stat('rej.skipped', m.rejection_skipped, '#ffaa33');
+  if (m.elapsed_ms != null)        cost += _stat('elapsed', _fmtMs(m.elapsed_ms));
+  if (m.input_tokens != null)      cost += _stat('tok in', m.input_tokens);
+  if (m.output_tokens != null)     cost += _stat('tok out', m.output_tokens);
+  if (m.cache_read_tokens)         cost += _stat('cache rd', m.cache_read_tokens);
+  if (m.cache_creation_tokens)     cost += _stat('cache wr', m.cache_creation_tokens);
+  if (m.interaction_version)       cost += _stat('K v', m.interaction_version, '#ffaa33');
+  if (ev.interaction_id != null)   cost += _stat('K id', ev.interaction_id);
+  if (m.truncated) {
+    cost += '<span style="display:inline-block;background:#3a0e0e;border:1px solid #c33;'
+      + 'border-radius:3px;padding:1px 6px;margin:0 4px 4px 0;color:#ff7777;font-size:10px;'
+      + 'font-weight:bold">⚠ TRUNCATED (write cut mid-tool-call — data loss)</span>';
+  }
+  h += _section('cost & provenance', cost);
+
+  // Outcomes — unit-specific {action: count} vocab.
+  if (m.outcomes && Object.keys(m.outcomes).length) {
+    const chips = Object.entries(m.outcomes)
+      .map(([k, v]) => _stat(k, v, '#9fd')).join('');
+    h += _section('outcomes', chips);
+  }
+
+  // Op-attributed node lists — each id navigable to the graph.
+  const lanes = [
+    ['created', '#33ff88'], ['revised', '#ffaa33'],
+    ['connected', '#7eb8ff'], ['archived', '#888'],
+  ];
+  let nodeBody = '';
+  for (const [k, c] of lanes) {
+    const ids = m[k];
+    if (ids && ids.length) {
+      nodeBody += '<div style="margin-bottom:4px"><span style="color:' + c
+        + ';font-size:10px;margin-right:6px">' + k + ' (' + ids.length + ')</span>'
+        + _nodeList(ids) + '</div>';
+    }
+  }
+  h += _section('graph Δ', nodeBody);
+
+  if (m.journal_entry) h += _section('journal entry', _code(m.journal_entry));
+  if (m.final_text)    h += _section('agent text (raw, ≤2KB)', _code(m.final_text));
+
+  if (m.read_calls && m.read_calls.length) {
+    const body = m.read_calls.map(c =>
+      typeof c === 'object' ? JSON.stringify(c) : String(c)).join('\n');
+    h += _section('read calls (' + m.read_calls.length + ')', _code(body, 160));
+  }
+
+  if (m.errors && m.errors.length) {
+    const body = m.errors.map(e =>
+      typeof e === 'object' ? JSON.stringify(e, null, 2) : String(e)).join('\n');
+    h += _section('errors (' + m.errors.length + ')',
+      '<div style="border-left:2px solid #c33;padding-left:6px">' + _code(body, 200) + '</div>');
+  }
+
+  if (m.action_details && m.action_details.length) {
+    h += _section('action details (' + m.action_details.length + ')',
+      _code(JSON.stringify(m.action_details, null, 2), 240));
+  }
+
+  // Unit-specific extras (healer's nodes_healed/fields_written, etc.).
+  const extras = Object.keys(m).filter(k => !_DELTA_KNOWN.has(k));
+  if (extras.length) {
+    let body = '';
+    for (const k of extras) {
+      const v = m[k];
+      if (v != null && typeof v !== 'object') body += _stat(k, v, '#9fd');
+    }
+    const objExtras = extras.filter(k => m[k] && typeof m[k] === 'object');
+    for (const k of objExtras) body += _section(k, _code(JSON.stringify(m[k], null, 2), 160));
+    h += _section('unit extras', body);
+  }
+  return h;
+}
+
+function _renderRevise(ev, m) {
+  let h = '';
+  let head = '';
+  if (m.node_id) head += '<span style="color:#778;font-size:10px;margin-right:4px">node</span>' + _nodeChip(m.node_id);
+  if (m.edge_id) head += _stat('edge', m.edge_id) + (m.relation ? _stat('relation', m.relation, '#9fd') : '');
+  if (m.encoding_source) head += _stat('by', m.encoding_source);
+  h += _section('target', head);
+  if (m.reason) h += _section('reason',
+    '<div style="color:#cdd;font-size:11px">' + escapeHtml(m.reason) + '</div>');
+
+  // Field-level diffs: the whole point of a revise trace.
+  if (m.deltas && m.deltas.length) {
+    let rows = '<table style="width:100%;border-collapse:collapse;font-size:11px">'
+      + '<tr style="color:#667;font-size:9px;text-transform:uppercase">'
+      + '<td style="padding:2px 6px">field</td><td style="padding:2px 6px">old</td>'
+      + '<td style="padding:2px 6px">new</td></tr>';
+    for (const d of m.deltas) {
+      rows += '<tr style="border-top:1px solid #15151f;vertical-align:top">'
+        + '<td style="padding:3px 6px;color:#9fd;font-family:ui-monospace,monospace">'
+        + escapeHtml(String(d.field)) + '</td>'
+        + '<td style="padding:3px 6px;color:#a88">' + _val(d.old) + '</td>'
+        + '<td style="padding:3px 6px;color:#8c8">' + _val(d.new) + '</td></tr>';
+    }
+    rows += '</table>';
+    h += _section('field deltas (' + m.deltas.length + ')', rows);
+  }
+  if (m.warnings && m.warnings.length) {
+    const body = m.warnings.map(w => '• ' + (typeof w === 'object' ? JSON.stringify(w) : w)).join('\n');
+    h += _section('warnings', '<div style="color:#ffaa33">' + _code(body, 160) + '</div>');
+  }
+  return h;
+}
+
+function _renderSelection(ev, m) {
+  let h = '';
+  let stats = '';
+  if (m.candidates_considered != null) stats += _stat('candidates', m.candidates_considered);
+  if (Array.isArray(m.selected)) stats += _stat('selected', m.selected.length, '#33ff88');
+  if (Array.isArray(m.dropped))  stats += _stat('dropped', m.dropped.length, '#888');
+  h += _section('selection', stats);
+
+  if (m.selected && m.selected.length) {
+    h += _section('selected', m.selected.map(s =>
+      _stat('', s, '#9fd')).join(''));
+  }
+  if (m.outcomes_per_candidate && Object.keys(m.outcomes_per_candidate).length) {
+    h += _section('outcomes per candidate',
+      _code(JSON.stringify(m.outcomes_per_candidate, null, 2), 180));
+  }
+  if (m.content) h += _section('output (what Anchor saw)', _code(m.content, 360));
+  return h;
+}
+
+function _renderGeneric(ev, m) {
+  const keys = Object.keys(m).filter(k => k !== 'human_identity' && k !== 'agent_identity');
+  if (!keys.length) return '<div style="color:#556;font-size:11px">No metadata payload.</div>';
+  const clean = {};
+  for (const k of keys) clean[k] = m[k];
+  return _section('metadata', _code(JSON.stringify(clean, null, 2)));
+}
+
+// ── public entry ────────────────────────────────────────────────────────────
+
+/** Render the expanded technical detail for one trace event as an HTML
+ *  string. `ev` is a row from /api/traces (carries raw `metadata`). */
+export function renderTraceDetail(ev) {
+  const m = parseTraceMeta(ev.metadata);
+  let h = '';
+
+  // Full (untruncated) summary — the collapsed row caps at 300 chars.
+  if (ev.summary && ev.summary.length > 300) {
+    h += _section('summary (full)',
+      '<div style="color:#cdd;font-size:11px;white-space:pre-wrap;word-break:break-word">'
+      + escapeHtml(ev.summary) + '</div>');
+  }
+  if (ev.ref_id) {
+    h += '<div style="color:#667;font-size:10px;margin:2px 0 4px">ref: '
+      + '<span style="color:#9ab;font-family:ui-monospace,monospace">'
+      + escapeHtml(ev.ref_id) + '</span></div>';
+  }
+
+  const shape = traceShape(ev, m);
+  if (shape === 'delta')          h += _renderDelta(ev, m);
+  else if (shape === 'revise')    h += _renderRevise(ev, m);
+  else if (shape === 'selection') h += _renderSelection(ev, m);
+  else                            h += _renderGeneric(ev, m);
+
+  return h || '<div style="color:#556;font-size:11px">No detail.</div>';
+}
+
+/** Lightweight badges for the COLLAPSED row — data-loss / errors shouldn't
+ *  require a click to notice while hardening. Returns '' for clean events. */
+export function collapsedBadges(ev) {
+  const m = parseTraceMeta(ev.metadata);
+  let b = '';
+  if (m.truncated) {
+    b += '<span title="write cut mid-tool-call — data loss" style="background:#3a0e0e;'
+      + 'border:1px solid #c33;border-radius:2px;color:#ff7777;font-size:9px;font-weight:bold;'
+      + 'padding:0 4px;margin-left:4px">⚠ TRUNC</span>';
+  }
+  if (m.errors && m.errors.length) {
+    b += '<span title="' + escapeHtml(String(m.errors.length)) + ' error(s)" style="background:#2a1a00;'
+      + 'border:1px solid #c83;border-radius:2px;color:#ffaa33;font-size:9px;'
+      + 'padding:0 4px;margin-left:4px">' + m.errors.length + ' err</span>';
+  }
+  return b;
+}
