@@ -1,166 +1,199 @@
 // ===========================================================================
 // tabs/streams.js — the self↔self channel observatory.
 // ---------------------------------------------------------------------------
-// Two sub-views over the self-channel + boot, plus the dashboard's one write
-// path (a send composer):
+// Headline: a live ROSTER of streams of thought (rendered as panes by
+// stream_roster.js). Click a pane to drill in — its full arc, its OWN boot
+// context, and the messages it sent/received. Boot is per-stream context, so
+// it lives inside the stream; there is no separate Boot tab.
 //
-//   Messages — the courier log (self_inflight) with each message's delivery
-//              fan-out folded in (self_delivered). "Who said what to whom, and
-//              did it land." The delivery chips ARE the s0 `self_message`
-//              marker events; the raw s0 rows also show in the Traces tab.
-//   Boot     — the faithful per-session boot captures (boot_renders): the
-//              exact text the daemon served at SessionStart. Collapsible.
-//
-// Presence (top line) is the live roster, read through the daemon. Sending
-// goes POST → daemon self_send; the operator sends attributed, never as a
-// stream of thought.
+// Below the roster: the cross-stream message log (the courier — self_inflight
+// with delivery fan-out folded in) + the dashboard's one write path, a send
+// composer. The operator sends attributed, never as a stream of thought.
 // ===========================================================================
 
 import { api } from '/static/lib/api.js';
 import { poll } from '/static/lib/poll.js';
-import { escapeHtml, localTime, relativeTime } from '/static/lib/dom.js';
+import { escapeHtml, relativeTime } from '/static/lib/dom.js';
+import { renderRoster } from '/static/lib/stream_roster.js';
 
-let _streamsView = 'messages';   // 'messages' | 'boot'
+// Roster state. _lastPresence / _lastMessages let the drill-down re-render
+// synchronously without re-fetching; _streamOpen tracks which panes are drilled
+// open (survives the 5s poll, which rebuilds the roster wholesale); _bootCache
+// holds per-stream boot renders fetched lazily on first drill-in.
+let _lastPresence = null;
+let _lastMessages = [];
+const _streamOpen = new Set();
+const _bootCache = {};
+const _msgExpanded = new Set();   // message ids whose body is expanded past the 4-line clamp
+// Render signatures — the 5s poll calls _loadPresence/_loadMessages every tick;
+// without these guards it rebuilt the roster + message feed wholesale every
+// time, resetting page scroll and the scroll inside an open boot <pre> the
+// operator is reading. We re-render only on a STRUCTURAL change (excluding raw
+// updated_at, which ticks every poll). Toggles call _renderPresence /
+// _paintMessages directly, so skipping here never strands an open pane.
+let _lastPresenceFp = null;
+let _lastMsgFp = null;
 
-export function switchStreamsView(view) {
-  _streamsView = view;
-  document.querySelectorAll('#tab-streams .feed-btn').forEach(b => {
-    b.classList.toggle('active', b.textContent.trim().toLowerCase().startsWith(view));
-  });
-  document.getElementById('feed-streams-messages').style.display = view === 'messages' ? '' : 'none';
-  document.getElementById('feed-streams-boot').style.display     = view === 'boot' ? '' : 'none';
-  // The send composer only makes sense on the Messages view.
-  const compose = document.getElementById('streams-compose');
-  if (compose) compose.style.display = view === 'messages' ? 'flex' : 'none';
-  loadStreams();
+function _msgSignature() {
+  return _lastMessages.length + '|' + (_lastMessages[0] && _lastMessages[0].id) + '|'
+    + _lastMessages.reduce((n, m) => n + (m.delivered ? m.delivered.length : 0), 0);
+}
+function _presenceSignature() {
+  const streams = (_lastPresence && _lastPresence.streams) || [];
+  const lost = (_lastPresence && _lastPresence.lost) || [];
+  return streams.map(s => [s.session_id, s.state, s.turn_count, s.pending_inbox_count,
+    s.focus, (s.arc || '').length].join(':')).join('|')
+    + '#lost:' + lost.length + '#msg:' + _msgSignature();
+}
+
+// Resolve a session id to its branch handle (via the live roster), so the
+// message log reads "main → adoring-williams" instead of hex. Falls back to
+// the 8-char short when the party isn't a currently-live stream.
+function _handleForSession(sid) {
+  if (!sid) return '?';
+  const streams = (_lastPresence && _lastPresence.streams) || [];
+  const s = streams.find(x => x.session_id === sid || x.short === sid.slice(0, 8));
+  const b = s && s.branch && s.branch !== 'unknown' ? s.branch : '';
+  if (b) return b.includes('/') ? b.slice(b.indexOf('/') + 1) : b;
+  return sid.slice(0, 8);
 }
 
 export async function loadStreams() {
+  await _loadMessages();    // load first so open drill-downs have the message list
   await _loadPresence();
-  if (_streamsView === 'messages') await _loadMessages();
-  else await _loadBoot();
 }
 
-// ── Presence (live roster + send-to dropdown) ──────────────────────────
+// ── Presence roster ────────────────────────────────────────────────────
 async function _loadPresence() {
   try {
-    const p = await api.selfPresence();
-    const line = document.getElementById('streams-presence');
-    if (line) line.textContent = (p && p.line) ? '🧵 ' + p.line : 'no other streams of thought live right now';
-
-    // Keep the send-to dropdown in sync with the live roster (broadcast
-    // always first). Preserve the current selection across refreshes.
-    const sel = document.getElementById('streams-send-to');
-    if (sel) {
-      const current = sel.value;
-      let html = '<option value="broadcast">broadcast (all live streams)</option>';
-      for (const s of (p && p.streams) || []) {
-        const focus = s.focus ? ' — ' + s.focus.substring(0, 40) : '';
-        html += '<option value="' + escapeHtml(s.session_id) + '">' +
-          escapeHtml(s.short || s.session_id.substring(0, 8)) + escapeHtml(focus) + '</option>';
-      }
-      sel.innerHTML = html;
-      if (current) sel.value = current;   // resets to broadcast if the stream went away
-    }
+    _lastPresence = await api.selfPresence();
+    _syncSendDropdown(_lastPresence);   // cheap; safe to refresh every tick
+    const fp = _presenceSignature();
+    if (fp === _lastPresenceFp) return;  // nothing structural changed — don't stomp scroll
+    _lastPresenceFp = fp;
+    _renderPresence();
   } catch (e) { console.error('[streams] presence', e); }
 }
 
-// ── Messages (courier log + delivery fan-out) ──────────────────────────
+function _renderPresence() {
+  const host = document.getElementById('streams-presence');
+  if (host) host.innerHTML = renderRoster(_lastPresence, {
+    open: _streamOpen, boots: _bootCache, messages: _lastMessages,
+  });
+}
+
+// Handle-first dropdown (branch · focus). Preserve selection across refreshes.
+function _syncSendDropdown(p) {
+  const sel = document.getElementById('streams-send-to');
+  if (!sel) return;
+  const current = sel.value;
+  let html = '<option value="broadcast">broadcast (all live streams)</option>';
+  for (const s of (p && p.streams) || []) {
+    const handle = (s.branch && s.branch !== 'unknown') ? s.branch : (s.short || s.session_id.substring(0, 8));
+    const focus = s.focus ? ' — ' + s.focus.substring(0, 40) : '';
+    html += '<option value="' + escapeHtml(s.session_id) + '">' + escapeHtml(handle) + escapeHtml(focus) + '</option>';
+  }
+  sel.innerHTML = html;
+  if (current) sel.value = current;
+}
+
+// Drill-down toggle — delegated on the persistent #streams-presence host.
+// Opening lazily fetches that stream's boot captures (cached), then re-renders.
+async function _onPresenceClick(e) {
+  const bar = e.target.closest('[data-stream-toggle]');
+  if (!bar) return;
+  const sid = bar.getAttribute('data-stream-toggle');
+  if (!sid) return;
+  if (_streamOpen.has(sid)) {
+    _streamOpen.delete(sid);
+    _renderPresence();
+    return;
+  }
+  _streamOpen.add(sid);
+  _renderPresence();                 // immediate (shows "loading boot…")
+  if (_bootCache[sid] === undefined) {
+    try {
+      const body = await api.bootRenders({ session: sid, limit: 3 });
+      _bootCache[sid] = (body && body.renders) || [];
+    } catch (_) { _bootCache[sid] = []; }
+    if (_streamOpen.has(sid)) _renderPresence();
+  }
+}
+
+// ── Cross-stream message log (courier + delivery fan-out) ──────────────
 async function _loadMessages() {
   try {
     const hours = document.getElementById('streams-hours').value;
     const body = await api.selfMessages({ hours });
-    const msgs = (body && body.messages) || [];
-    document.getElementById('streams-count').textContent =
-      msgs.length + ' message' + (msgs.length === 1 ? '' : 's');
-    const el = document.getElementById('feed-streams-messages');
-    if (!msgs.length) {
-      el.innerHTML = '<div style="color:#888;text-align:center;padding:40px">' +
-        'No in-flight messages. Sends appear here; older ones reap after their TTL ' +
-        '(then survive only as S0 traces).</div>';
-      return;
-    }
-    el.innerHTML = msgs.map(_renderMessage).join('');
+    _lastMessages = (body && body.messages) || [];
+    const fp = _msgSignature();
+    if (fp === _lastMsgFp) return;   // unchanged — don't stomp scroll/expanded bodies
+    _lastMsgFp = fp;
+    _paintMessages();
   } catch (e) { console.error('[streams] messages', e); }
 }
 
+// Render the message feed from cache (called by the load + the expand toggle).
+function _paintMessages() {
+  document.getElementById('streams-count').textContent =
+    _lastMessages.length + ' message' + (_lastMessages.length === 1 ? '' : 's');
+  const el = document.getElementById('feed-streams-messages');
+  if (!el) return;
+  if (!_lastMessages.length) {
+    el.innerHTML = '<div style="color:#888;text-align:center;padding:40px">' +
+      'No messages between streams right now. Sends appear here; older ones reap ' +
+      'after their TTL (then survive only as S0 traces).</div>';
+    return;
+  }
+  el.innerHTML = _lastMessages.map(_renderMessage).join('');
+}
+
 function _renderMessage(m) {
-  const accent = '#7eb8ff';
-  const target = m.address === 'self:broadcast'
-    ? 'broadcast'
-    : (m.address || '').replace(/^self:/, '').substring(0, 8) || '—';
+  const broadcast = m.address === 'self:broadcast';
+  const fromHandle = _handleForSession(m.from_full || m.from);
+  const toSid = broadcast ? '' : (m.address || '').replace(/^self:/, '');
+  const toHandle = broadcast ? 'broadcast' : _handleForSession(toSid);
+  const expanded = _msgExpanded.has(m.id);
 
   const delivered = (m.delivered || []);
   const deliveredHtml = delivered.length
-    ? '<div style="margin-top:4px;font-size:10px;color:#5a8a5a">✓ delivered → ' +
+    ? '<div style="margin-top:6px;font-size:10px;color:#5a8a5a">✓ delivered → ' +
         delivered.map(d => '<span title="' + escapeHtml(d.to_full) + ' @ ' + escapeHtml(d.at || '') +
-          '" style="background:#0e1a0e;border:1px solid #1e3a1e;border-radius:3px;padding:0 4px;margin-right:3px">' +
-          escapeHtml(d.to) + '</span>').join('') + '</div>'
-    : '<div style="margin-top:4px;font-size:10px;color:#806a3a">○ pending — not yet consumed</div>';
+          '" style="background:#0e1a0e;border:1px solid #1e3a1e;border-radius:3px;padding:1px 6px;margin-right:4px">' +
+          escapeHtml(_handleForSession(d.to_full) || d.to) + '</span>').join('') + '</div>'
+    : '<div style="margin-top:6px;font-size:10px;color:#806a3a">○ pending — not yet consumed</div>';
 
   const refsHtml = (m.refs && m.refs.length)
-    ? '<div style="margin-top:3px;font-size:10px;color:#666">refs: ' +
+    ? '<div style="margin-top:4px;font-size:10px;color:#666">refs: ' +
         m.refs.map(r => escapeHtml(String(r))).join(', ') + '</div>'
     : '';
 
-  return '<div class="stream-msg" style="background:#0a0a12;border-radius:8px;margin:6px 0;border-left:3px solid ' + accent + ';padding:8px 12px">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">' +
-      '<div style="font-size:12px;min-width:0">' +
-        '<span style="color:' + accent + ';font-weight:bold">⚡ ' + escapeHtml(m.from || '?') + '</span>' +
-        '<span style="color:#555;margin:0 5px">→</span>' +
-        '<span style="color:#bbb">' + escapeHtml(target) + '</span>' +
+  const bodyClass = expanded ? '' : ' msg-clamp';
+  return '<div class="stream-msg" data-mid="' + escapeHtml(String(m.id || '')) + '">' +
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">' +
+      '<div style="font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,monospace">' +
+        '<span style="color:#ffd479">⚡</span> ' +
+        '<span style="color:#7eb8ff;font-weight:600">' + escapeHtml(fromHandle) + '</span>' +
+        '<span style="color:#556;margin:0 6px">→</span>' +
+        '<span style="color:' + (broadcast ? '#c4a8f0' : '#cfd') + ';font-weight:600">' + escapeHtml(toHandle) + '</span>' +
       '</div>' +
-      '<span style="color:#555;font-size:10px;white-space:nowrap" title="' + escapeHtml(m.created_at || '') + '">' + relativeTime(m.created_at) + '</span>' +
+      '<span style="color:#556;font-size:10px;white-space:nowrap;flex-shrink:0" title="' + escapeHtml(m.created_at || '') + '">' + relativeTime(m.created_at) + '</span>' +
     '</div>' +
-    '<div style="color:#ddd;font-size:12px;margin-top:5px;white-space:pre-wrap;word-break:break-word">' + escapeHtml(m.body || '') + '</div>' +
+    '<div class="msg-body' + bodyClass + '" style="color:#cdd;font-size:12px;margin-top:6px;line-height:1.5;white-space:pre-wrap;word-break:break-word">' + escapeHtml(m.body || '') + '</div>' +
     refsHtml +
     deliveredHtml +
   '</div>';
 }
 
-// ── Boot (faithful per-session captures) ───────────────────────────────
-async function _loadBoot() {
-  try {
-    const body = await api.bootRenders({ limit: 30 });
-    const renders = (body && body.renders) || [];
-    document.getElementById('streams-count').textContent =
-      renders.length + ' boot' + (renders.length === 1 ? '' : 's');
-    const el = document.getElementById('feed-streams-boot');
-
-    // Boot captures are append-only and rare (one per SessionStart), but the
-    // streams poll fires every 5s. Without this guard every poll rebuilds
-    // innerHTML and snaps each expanded <details> shut. Skip the rebuild when
-    // the capture set is unchanged — mirrors the encoding feed's fingerprint
-    // short-circuit (live.js). A new boot changes the count or the newest
-    // row, so it still re-renders when it actually should.
-    const fingerprint = renders.length
-      ? renders.length + ':' + (renders[0].session_short || '') + ':' + (renders[0].created_at || '')
-      : '0';
-    if (el.dataset.fingerprint === fingerprint) return;
-    el.dataset.fingerprint = fingerprint;
-
-    if (!renders.length) {
-      el.innerHTML = '<div style="color:#888;text-align:center;padding:40px">' +
-        'No boot captures yet. Each SessionStart records the exact text the ' +
-        'daemon served — the next boot will appear here.</div>';
-      return;
-    }
-    el.innerHTML = renders.map(_renderBoot).join('');
-  } catch (e) { console.error('[streams] boot', e); }
-}
-
-function _renderBoot(b) {
-  // The boot text is large (~2k tokens); collapse behind a native <details>.
-  return '<details class="boot-render" style="background:#0a0a12;border-radius:8px;margin:6px 0;border-left:3px solid #9c7bd6;padding:6px 12px">' +
-    '<summary style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;list-style:none">' +
-      '<span style="font-size:12px;color:#c4a8f0;font-weight:bold">boot · ' + escapeHtml(b.session_short || '?') + '</span>' +
-      '<span style="color:#666;font-size:10px">' + (b.char_count || 0) + ' chars · ' +
-        escapeHtml(b.user || '') + (b.project ? '/' + escapeHtml(b.project) : '') +
-        ' · <span title="' + escapeHtml(b.created_at || '') + '">' + relativeTime(b.created_at) + '</span></span>' +
-    '</summary>' +
-    '<pre style="white-space:pre-wrap;word-break:break-word;color:#cdd;font-size:11px;line-height:1.45;margin:8px 0 4px;font-family:ui-monospace,Menlo,monospace">' +
-      escapeHtml(b.text || '') + '</pre>' +
-  '</details>';
+// Click a message → expand/collapse its body past the 4-line clamp.
+function _onMessagesClick(e) {
+  const card = e.target.closest('.stream-msg');
+  if (!card) return;
+  const mid = card.getAttribute('data-mid');
+  if (!mid) return;
+  if (_msgExpanded.has(mid)) _msgExpanded.delete(mid);
+  else _msgExpanded.add(mid);
+  _paintMessages();
 }
 
 // ── Send composer (the one write path) ─────────────────────────────────
@@ -183,7 +216,7 @@ export async function onStreamsSend() {
       statusEl.textContent = '✓ sent to ' + (to === 'broadcast' ? 'all streams' : to.substring(0, 8));
       setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 4000);
     }
-    await _loadMessages();   // show it land in the log immediately
+    await loadStreams();   // refresh the log AND any open pane's message list
   } catch (e) {
     if (statusEl) statusEl.textContent = '✗ ' + (e.message || 'send failed');
     console.error('[streams] send', e);
@@ -192,6 +225,18 @@ export async function onStreamsSend() {
 
 // ── Lifecycle ──────────────────────────────────────────────────────────
 export function init() {
+  // One delegated listener on the persistent presence host — survives the
+  // poll-driven roster rebuilds (mirrors the traces tab pattern).
+  const host = document.getElementById('streams-presence');
+  if (host && !host._presenceClickBound) {
+    host.addEventListener('click', _onPresenceClick);
+    host._presenceClickBound = true;
+  }
+  const msgFeed = document.getElementById('feed-streams-messages');
+  if (msgFeed && !msgFeed._msgClickBound) {
+    msgFeed.addEventListener('click', _onMessagesClick);
+    msgFeed._msgClickBound = true;
+  }
   poll.register({
     key: 'streams',
     interval: 5000,

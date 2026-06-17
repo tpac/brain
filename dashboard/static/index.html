@@ -131,21 +131,25 @@
 </div>
 
 <div id="tab-logs" class="tab-content">
-  <div class="feed-toggle">
-    <button class="feed-btn active" onclick="switchLogFeed('errors')">Errors <span id="err-badge" class="notif"></span></button>
-    <button class="feed-btn" onclick="switchLogFeed('daemon')">Daemon</button>
-    <button class="feed-btn" onclick="switchLogFeed('dashboard')">Dashboard <span id="dash-err-badge" class="notif"></span></button>
-    <select id="error-hours" class="toolbar-select" onchange="loadLogs()" style="margin-left:auto">
+  <!-- One unified feed: brain + hook + dashboard + client, identical error
+       types grouped (×N), click a row to expand the full traceback. -->
+  <div style="display:flex;gap:8px;align-items:center;padding:6px 8px">
+    <select id="log-source" class="toolbar-select" onchange="loadLogs()" title="Filter by source">
+      <option value="all">All sources</option>
+      <option value="brain">Brain</option>
+      <option value="hook">Hook</option>
+      <option value="dashboard">Dashboard</option>
+      <option value="client">Client (JS)</option>
+    </select>
+    <select id="error-hours" class="toolbar-select" onchange="loadLogs()">
       <option value="1">1h</option>
       <option value="6">6h</option>
       <option value="24" selected>24h</option>
       <option value="168">7d</option>
     </select>
-    <span id="logs-count" style="color:#666;font-size:11px"></span>
+    <span id="logs-count" style="color:#666;font-size:11px;margin-left:auto"></span>
   </div>
-  <div class="feed" id="feed-errors"></div>
-  <div class="feed" id="feed-daemon" style="display:none"></div>
-  <div class="feed" id="feed-dashboard" style="display:none"></div>
+  <div class="feed" id="feed-logs"></div>
 </div>
 
 <div id="tab-health" class="tab-content">
@@ -193,19 +197,22 @@
      (POST /api/self-send → daemon self_send). The presence line up top is
      the live roster (read through the daemon). -->
 <div id="tab-streams" class="tab-content">
-  <div class="streams-presence" id="streams-presence" style="padding:6px 10px;color:#7eb8ff;font-size:12px;border-bottom:1px solid #1a1a2a"></div>
-  <div class="feed-toggle">
-    <button class="feed-btn active" onclick="switchStreamsView('messages')">Messages</button>
-    <button class="feed-btn" onclick="switchStreamsView('boot')">Boot</button>
+  <!-- Roster of live streams of thought (panes). Each drills open to its arc,
+       its own boot context, and its messages — no separate Boot tab. -->
+  <div class="streams-presence" id="streams-presence" style="padding:4px 8px"></div>
+
+  <!-- Cross-stream message log header -->
+  <div style="display:flex;align-items:center;gap:8px;padding:8px 10px 4px;border-top:1px solid #1a1a2a;margin-top:4px">
+    <span style="color:#9a9aab;font-size:12px;font-weight:600">Messages between streams</span>
     <select id="streams-hours" class="toolbar-select" onchange="loadStreams()" style="margin-left:auto">
       <option value="24">24h</option>
       <option value="48" selected>48h</option>
       <option value="168">7d</option>
     </select>
-    <span id="streams-count" style="color:#888;font-size:11px;margin-left:8px"></span>
+    <span id="streams-count" style="color:#888;font-size:11px;margin-left:4px"></span>
   </div>
 
-  <!-- Send composer -->
+  <!-- Send composer (the one write path) -->
   <div class="streams-compose" id="streams-compose" style="display:flex;gap:6px;align-items:center;padding:8px 10px;border-bottom:1px solid #1a1a2a;flex-wrap:wrap">
     <select id="streams-send-to" class="toolbar-select" title="Recipient stream (or broadcast)">
       <option value="broadcast">broadcast (all live streams)</option>
@@ -218,7 +225,6 @@
   </div>
 
   <div class="feed" id="feed-streams-messages"></div>
-  <div class="feed" id="feed-streams-boot" style="display:none"></div>
 </div>
 
 <!-- Main app — type=module enables ES imports, no build step needed. -->

@@ -160,7 +160,6 @@ window.filterByScale         = live.filterByScale;
 // toggleConsolPrompt) are gone. Migrating _renderS2ChainEntry would
 // let us drop this last one too.
 window.toggleHookBody        = live.toggleHookBody;
-window.switchLogFeed         = logs.switchLogFeed;
 window.loadLogs              = logs.loadLogs;
 window.loadGraph3D           = graph.loadGraph3D;
 window.onGraphSearch         = graph.onGraphSearch;
@@ -171,7 +170,6 @@ window.onTraceScaleChange    = traces.onTraceScaleChange;
 window.loadTraces            = traces.loadTraces;
 window._loadMoreTraces       = traces._loadMoreTraces;
 window.setTraceMode          = traces.setTraceMode;
-window.switchStreamsView     = streams.switchStreamsView;
 window.loadStreams           = streams.loadStreams;
 window.onStreamsSend         = streams.onStreamsSend;
 window.onStreamsSendKey      = streams.onStreamsSendKey;

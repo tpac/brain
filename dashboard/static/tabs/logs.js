@@ -1,343 +1,309 @@
 // ===========================================================================
-// tabs/logs.js — Errors / Daemon / Dashboard sub-feeds + client-error capture.
+// tabs/logs.js — one unified log feed: brain + hook + dashboard + client.
 // ---------------------------------------------------------------------------
-// Owns:
-//   - Three sub-feeds (errors, daemon, dashboard) under the Logs tab.
-//   - The badge that flashes when error count grows for the inactive feed.
-//   - The browser-side error wraps (window.onerror, console.error,
-//     unhandledrejection) that populate the Dashboard sub-feed.
+// Was three sub-feeds (Errors / Daemon / Dashboard) behind a toggle. Now a
+// single stream with a SOURCE PICKER, identical error types GROUPED together
+// (×N), and click-to-expand for the full story — message, context, and the
+// traceback/stack that the old flat rows never showed.
+//
+// Still owns the browser-side error capture (window.onerror, console.error,
+// unhandledrejection) — those are the "client" source — and the tab's unread
+// badge (#logs-badge).
 // ===========================================================================
 
 import { api } from '/static/lib/api.js';
 import { poll } from '/static/lib/poll.js';
-import { escapeHtml, localTime } from '/static/lib/dom.js';
+import { escapeHtml, localTime, relativeTime } from '/static/lib/dom.js';
 
-// Severity → border/text color. Used by both the Errors and Daemon
-// renderers; previously defined twice with identical contents.
-const LEVEL_COLORS = {
-  critical: '#ff4444',
-  error:    '#ff6644',
-  warning:  '#ffaa33',
-  info:     '#4a9eff',
+const LEVEL_COLORS = { critical: '#ff4444', error: '#ff6644', warning: '#ffaa33', info: '#4a9eff' };
+const _levelColor = (l) => LEVEL_COLORS[l] || '#888';
+
+// Per-source identity for the filter + the source chip.
+const SOURCE_META = {
+  brain:     { label: 'brain',     color: '#7eb8ff' },
+  hook:      { label: 'hook',      color: '#33d17a' },
+  dashboard: { label: 'dashboard', color: '#ffaa33' },
+  client:    { label: 'client',    color: '#ff6644' },
 };
-function _levelColor(level) { return LEVEL_COLORS[level] || '#888'; }
 
-let activeLogFeed = 'errors';
+let _groups = [];                  // last computed groups (for expand re-render)
+const _expanded = new Set();       // group keys currently expanded
+let _lastLogFp = null;             // render signature — guards the 5s poll rebuild
 
-export function switchLogFeed(name) {
-  activeLogFeed = name;
-  // Find the button whose text matches `name` (case-insensitive) and mark
-  // it active. Previously `event.target.classList.add('active')` — global
-  // `event` only exists inside inline onclick handlers, so calling
-  // switchLogFeed() programmatically threw.
-  document.querySelectorAll('#tab-logs .feed-btn').forEach(b => {
-    b.classList.toggle('active', b.textContent.trim().toLowerCase().startsWith(name));
-  });
-  ['errors','daemon','dashboard'].forEach(f => {
-    document.getElementById('feed-' + f).style.display = f === name ? '' : 'none';
-  });
-  // Hide the sub-feed badge immediately + roll the tab badge so the
-  // operator sees their click reflected without waiting for the next poll.
-  if (name === 'errors') document.getElementById('err-badge').style.display = 'none';
-  if (name === 'dashboard') document.getElementById('dash-err-badge').style.display = 'none';
-  _recomputeLogsBadge();
-  loadLogs();
-}
-
-export async function loadLogs() {
-  if (activeLogFeed === 'errors') loadErrors();
-  else if (activeLogFeed === 'daemon') loadDaemonLogs();
-  else if (activeLogFeed === 'dashboard') loadDashboardErrors();
-}
-
-// ── Dashboard self-monitoring ──────────────────────────────────────────
-// The dashboard captures TWO error sources:
-//   1. Python warn() calls — surfaced via /api/dashboard-errors (the ring
-//      buffer in dashboard/log.py).
-//   2. Browser-side errors — window.onerror + console.error wrap below.
-
-const _clientErrors = [];  // ring of {ts, source, message, stack}
+// ── Client-side error capture (the "client" source) ────────────────────
+const _clientErrors = [];          // ring of {ts, source, message, stack}
 const MAX_CLIENT_ERRORS = 200;
 
 function _captureClientError(source, message, stack) {
   _clientErrors.push({
-    ts: new Date().toISOString(),
-    source,
+    ts: new Date().toISOString(), source,
     message: String(message).slice(0, 300),
-    stack: stack ? String(stack).split('\n').slice(0, 4).join(' | ') : '',
+    stack: stack ? String(stack).split('\n').slice(0, 8).join('\n') : '',
   });
   while (_clientErrors.length > MAX_CLIENT_ERRORS) _clientErrors.shift();
-  // Flash the badge on the Dashboard sub-feed unless it's currently visible.
-  // Roll the tab badge in lockstep so client errors lift it without
-  // waiting for the 15s dash-err-badge poll to fire.
-  if (activeLogFeed !== 'dashboard') {
-    const b = document.getElementById('dash-err-badge');
-    if (b) { b.textContent = String(_clientErrors.length); b.style.display = ''; }
-    _recomputeLogsBadge();
-  }
+  if (!_logsTabActive()) { _unreadDash++; _setLogsBadge(); }
 }
 
-// Idempotency guard — _wireClientErrorCapture replaces window.onerror,
-// console.error, and registers unhandledrejection. Double-wiring would
-// create a chain of wrappers (new → old → original) so every error event
-// would cascade through N layers and N captures land in _clientErrors.
-// Single-init in current architecture, but cheap insurance against
-// future drift (hot module reload, double-init bug).
 let _clientErrorsWired = false;
 function _wireClientErrorCapture() {
   if (_clientErrorsWired) return;
   _clientErrorsWired = true;
-  // Existing window.onerror handler still updates document.title for the
-  // legacy at-a-glance indicator; we wrap it so capture still happens.
   const _legacyOnError = window.onerror;
-  window.onerror = function(msg, src, line, col, err) {
+  window.onerror = function (msg, src, line, col, err) {
     _captureClientError('window.onerror', msg + ' @ line ' + line, err && err.stack);
     if (_legacyOnError) return _legacyOnError(msg, src, line, col, err);
   };
-  // console.error wrap — every error log lands in the ring too.
   const _origConsoleError = console.error.bind(console);
-  console.error = function(...args) {
+  console.error = function (...args) {
     try {
-      const text = args.map(a => a && a.message ? a.message : String(a)).join(' ');
-      _captureClientError('console.error', text, args[args.length-1] && args[args.length-1].stack);
+      const text = args.map(a => (a && a.message ? a.message : String(a))).join(' ');
+      _captureClientError('console.error', text, args[args.length - 1] && args[args.length - 1].stack);
     } catch (e) { /* don't recurse */ }
     _origConsoleError(...args);
   };
-  // Promise rejections that nothing else caught.
   window.addEventListener('unhandledrejection', e => {
-    _captureClientError('unhandledrejection', e.reason && e.reason.message || String(e.reason),
-                        e.reason && e.reason.stack);
+    _captureClientError('unhandledrejection', (e.reason && e.reason.message) || String(e.reason),
+      e.reason && e.reason.stack);
   });
 }
 
-// One renderer, three callers. spec keys: borderColor, pillText,
-// source, component, sessionTag, message, context, stack, timestamp,
-// dataSource (optional dataset.source). Everything is auto-escaped.
-function _renderLogEntry(spec) {
-  const div = document.createElement('div');
-  div.className = 'log-entry';
-  if (spec.borderColor) div.style.borderLeftColor = spec.borderColor;
-  if (spec.dataSource) div.dataset.source = spec.dataSource;
-  const pillStyle = spec.borderColor
-    ? 'background:' + spec.borderColor + '22;color:' + spec.borderColor
-    : '';
-  let html =
-    '<span class="log-pill" style="' + pillStyle + '">'
-      + escapeHtml(spec.pillText || '') + '</span> ';
-  if (spec.source)    html += '<span class="log-source">' + escapeHtml(spec.source) + '</span> ';
-  if (spec.component) html += '<span class="log-component">' + escapeHtml(spec.component) + '</span>';
-  if (spec.sessionTag) {
-    html += '<span class="log-session">' + escapeHtml(spec.sessionTag) + '</span>';
-  }
-  if (spec.message) html += '<div class="log-message">' + escapeHtml(spec.message) + '</div>';
-  if (spec.context) html += '<div class="log-context">' + escapeHtml(spec.context) + '</div>';
-  if (spec.stack)   html += '<div class="log-stack">'   + escapeHtml(spec.stack)   + '</div>';
-  if (spec.timestamp) html += '<div class="log-time">' + localTime(spec.timestamp) + '</div>';
-  div.innerHTML = html;
-  return div;
-}
+// ── Fetch + normalize every source into one uniform entry shape ────────
+// { source, level, component, message, context, detail, timestamp }
+// `detail` is the traceback / stack — the full story shown on expand.
+async function _fetchEntries() {
+  const hours = document.getElementById('error-hours').value;
+  const out = [];
 
-function _renderEmpty(feed, text, variant) {
-  feed.innerHTML = '<div class="feed-empty feed-empty--' + variant + '">'
-    + escapeHtml(text) + '</div>';
-}
+  // brain + hook (one aggregated endpoint; `source` distinguishes them)
+  try {
+    const d = await api.errors({ hours, limit: 300 });
+    for (const e of (d.errors || [])) {
+      out.push({
+        source: e.source || 'brain', level: e.level || 'error',
+        component: e.component || '', message: e.error || '',
+        context: e.context || '', detail: e.traceback || '',
+        timestamp: e.timestamp,
+      });
+    }
+  } catch (e) { console.error('[logs] errors fetch failed', e); }
 
-async function loadDashboardErrors() {
-  const feed = document.getElementById('feed-dashboard');
-  let serverEntries = [];
+  // dashboard server ring (Python warn() calls in the dashboard itself)
   try {
     const d = await fetch('/api/dashboard-errors').then(r => r.json());
-    serverEntries = (d.errors || []).map(e => ({
-      ts: e.ts,
-      source: 'server:' + (e.component || '?'),
-      message: e.message + (e.exc_text ? ' — ' + e.exc_type + ': ' + e.exc_text : ''),
-      stack: '',
-    }));
-  } catch (e) {
-    _captureClientError('loadDashboardErrors', 'server fetch failed: ' + e);
-  }
-  const all = [...serverEntries, ..._clientErrors.slice().reverse()];
-  all.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
-  document.getElementById('logs-count').textContent = all.length + ' dashboard events';
+    for (const e of (d.errors || [])) {
+      out.push({
+        source: 'dashboard', level: 'warning',
+        component: e.component || '?', message: e.message || '',
+        context: e.exc_type ? e.exc_type : '', detail: e.exc_text || '',
+        timestamp: e.ts,
+      });
+    }
+  } catch (e) { /* dashboard ring unavailable — leave it out */ }
 
-  if (!all.length) {
-    _renderEmpty(feed, 'No dashboard errors. The substrate is loud-by-default; '
-                     + 'if a panel goes blank without entries here, that\'s a regression.',
-                 'ok');
+  // client (browser) errors — the in-memory ring
+  for (const e of _clientErrors) {
+    out.push({
+      source: 'client', level: 'error', component: e.source || 'browser',
+      message: e.message || '', context: '', detail: e.stack || '',
+      timestamp: e.ts,
+    });
+  }
+  return out;
+}
+
+// Fingerprint: collapse occurrences of the SAME error type. Mask the volatile
+// bits (numbers, hex ids, quoted strings, paths) so "failed for node a1b2" and
+// "failed for node c3d4" group as one type. Keyed within (source, component).
+function _fingerprint(e) {
+  let m = (e.message || '').toLowerCase();
+  m = m.replace(/0x[0-9a-f]+/g, '#')
+       .replace(/\b[0-9a-f]{8,}\b/g, '#')
+       .replace(/\d[\d.,:_/-]*/g, '#')   // any number run, incl. unit suffixes (352s → #s)
+       .replace(/'[^']*'/g, "'…'").replace(/"[^"]*"/g, '"…"')
+       .replace(/\/[^\s,)]+/g, '/…')
+       .replace(/\s+/g, ' ').trim();
+  return (e.source || '') + '|' + (e.component || '') + '|' + m.slice(0, 100);
+}
+
+function _group(entries) {
+  const map = new Map();
+  for (const e of entries) {
+    const key = _fingerprint(e);
+    let g = map.get(key);
+    if (!g) { g = { key, rep: e, count: 0, occ: [] }; map.set(key, g); }
+    g.count++;
+    g.occ.push(e);
+    if ((e.timestamp || '') > (g.rep.timestamp || '')) g.rep = e;   // newest is representative
+  }
+  const groups = [...map.values()];
+  groups.sort((a, b) => (b.rep.timestamp || '').localeCompare(a.rep.timestamp || ''));
+  return groups;
+}
+
+// ── Render ──────────────────────────────────────────────────────────────
+export async function loadLogs() {
+  const feed = document.getElementById('feed-logs');
+  if (!feed) return;
+  const src = document.getElementById('log-source').value;
+  const hours = document.getElementById('error-hours').value;
+  let entries = await _fetchEntries();
+  if (src && src !== 'all') entries = entries.filter(e => e.source === src);
+
+  _groups = _group(entries);
+
+  // Skip the rebuild when nothing changed — the 5s poll would otherwise wipe
+  // the page scroll and the scroll position inside an expanded <pre> traceback
+  // the operator is reading. Expand toggles re-render a single card directly
+  // (not via loadLogs), so skipping here never strands them.
+  const fp = [src, hours, entries.length, _groups.length,
+    _groups[0] && _groups[0].rep.timestamp].join('|');
+  if (fp === _lastLogFp) return;
+  _lastLogFp = fp;
+
+  document.getElementById('logs-count').textContent =
+    entries.length + ' event' + (entries.length === 1 ? '' : 's') +
+    ' · ' + _groups.length + ' type' + (_groups.length === 1 ? '' : 's');
+
+  if (!_groups.length) {
+    const hours = document.getElementById('error-hours').value;
+    feed.innerHTML = '<div style="color:#5a8a5a;text-align:center;padding:40px;font-size:12px">'
+      + 'No ' + (src === 'all' ? '' : escapeHtml(src) + ' ') + 'logs in the last ' + escapeHtml(hours) + 'h. '
+      + 'The substrate is loud-by-default — a blank panel here means quiet, not broken.</div>';
     return;
   }
-  feed.innerHTML = '';
-  for (const e of all) {
-    const isServer = e.source && e.source.startsWith('server:');
-    feed.appendChild(_renderLogEntry({
-      borderColor: isServer ? '#ffaa33' : '#ff6644',
-      pillText:    isServer ? 'PY' : 'JS',
-      component:   e.source || '?',
-      message:     e.message || '',
-      stack:       e.stack || '',
-      timestamp:   e.ts,
-    }));
-  }
+  feed.innerHTML = _groups.map(_renderGroup).join('');
 }
 
-async function loadErrors() {
-  const hours = document.getElementById('error-hours').value;
-  const feed = document.getElementById('feed-errors');
-  try {
-    const d = await api.errors({ hours, limit: 100 });
-    document.getElementById('logs-count').textContent = d.count + ' errors';
-    if (!d.errors || !d.errors.length) {
-      _renderEmpty(feed, 'No errors in the last ' + hours + 'h', 'ok');
-      return;
-    }
-    feed.innerHTML = '';
-    for (const e of d.errors) {
-      feed.appendChild(_renderLogEntry({
-        borderColor: _levelColor(e.level),
-        pillText:    e.level || 'error',
-        dataSource:  e.source || '',
-        source:      e.source || '',
-        component:   e.component || '',
-        sessionTag:  e.session_id ? e.session_id.substring(0, 8) : '',
-        message:     e.error || '',
-        context:     e.context || '',
-        timestamp:   e.timestamp,
-      }));
-    }
-  } catch(e) {
-    _renderEmpty(feed, 'Failed to load: ' + e, 'error');
-  }
+function _renderGroup(g) {
+  const e = g.rep;
+  const lc = _levelColor(e.level);
+  const sm = SOURCE_META[e.source] || { label: e.source || '?', color: '#888' };
+  const open = _expanded.has(g.key);
+
+  let h = '<div class="log-group" data-key="' + escapeHtml(g.key) + '" '
+    + 'style="background:#0b0c12;border:1px solid #1a1b26;border-left:3px solid ' + lc + ';border-radius:8px;margin:6px 0;padding:8px 11px;cursor:pointer">';
+
+  // header
+  h += '<div style="display:flex;align-items:center;gap:7px">';
+  h += '<span style="background:' + lc + '22;color:' + lc + ';font-size:9px;font-weight:bold;text-transform:uppercase;padding:1px 6px;border-radius:3px">' + escapeHtml(e.level || 'error') + '</span>';
+  h += '<span style="color:' + sm.color + ';font-size:10px;font-family:ui-monospace,monospace">' + escapeHtml(sm.label) + '</span>';
+  if (e.component) h += '<span style="color:#778;font-size:10px;font-family:ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(e.component) + '</span>';
+  h += '<span style="flex:1"></span>';
+  if (g.count > 1) h += '<span title="' + g.count + ' occurrences" style="background:#1a1b26;color:#cdd;font-size:10px;font-weight:bold;padding:1px 7px;border-radius:10px">×' + g.count + '</span>';
+  h += '<span style="color:#556;font-size:10px;white-space:nowrap" title="' + escapeHtml(e.timestamp || '') + '">' + escapeHtml(relativeTime(e.timestamp)) + '</span>';
+  h += '<span style="color:#566;font-size:10px;width:10px;text-align:center">' + (open ? '▾' : '▸') + '</span>';
+  h += '</div>';
+
+  // message — clamped to 2 lines until expanded
+  const clamp = open ? '' : 'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;';
+  h += '<div style="color:#cdd;font-size:12px;margin-top:5px;line-height:1.45;white-space:pre-wrap;word-break:break-word;' + clamp + '">' + escapeHtml(e.message || '(no message)') + '</div>';
+
+  if (open) h += _renderDetail(g);
+  h += '</div>';
+  return h;
 }
 
-async function loadDaemonLogs() {
-  const hours = document.getElementById('error-hours').value;
-  const feed = document.getElementById('feed-daemon');
-  try {
-    const d  = await api.errors({ hours, limit: 200, source: 'daemon' });
-    const d2 = await api.errors({ hours, limit: 50,  source: 'hook' });
-    const all = [...(d.errors || []), ...(d2.errors || [])];
-    all.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
-    document.getElementById('logs-count').textContent = all.length + ' daemon events';
-    if (!all.length) {
-      _renderEmpty(feed, 'No daemon events in the last ' + hours + 'h', 'ok');
-      return;
-    }
-    feed.innerHTML = '';
-    for (const e of all) {
-      // Restart events get a distinct blue stripe + 'restart' pill — they're
-      // not errors, they're lifecycle markers. Keep them visually separated
-      // so an oncall scanning the feed can see "daemon bounced" at a glance.
-      const isRestart = (e.error || '').includes('restart')
-                        || (e.component || '').includes('restart');
-      feed.appendChild(_renderLogEntry({
-        borderColor: isRestart ? '#4a9eff' : _levelColor(e.level),
-        pillText:    isRestart ? 'restart' : (e.level || 'error'),
-        component:   e.component || '',
-        message:     e.error || '',
-        timestamp:   e.timestamp,
-      }));
-    }
-  } catch(e) {
-    _renderEmpty(feed, 'Failed to load: ' + e, 'error');
+function _renderDetail(g) {
+  // Show context/traceback from the RICHEST occurrence, not just the newest:
+  // a grouped type whose latest firing is a bare marker shouldn't hide a full
+  // traceback an earlier occurrence recorded.
+  const _weight = (o) => (o.detail || '').length + (o.context || '').length;
+  const e = g.occ.reduce((best, o) => (_weight(o) > _weight(best) ? o : best), g.rep);
+  let h = '<div style="margin-top:8px;border-top:1px solid #15161f;padding-top:8px">';
+  if (e.context) {
+    h += '<div style="color:#667;font-size:9px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:2px">context</div>'
+      + '<div style="color:#9ab;font-size:11px;white-space:pre-wrap;word-break:break-word;margin-bottom:6px">' + escapeHtml(e.context) + '</div>';
   }
+  if (e.detail) {
+    h += '<div style="color:#667;font-size:9px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:2px">traceback</div>'
+      + '<pre style="margin:0 0 6px;padding:6px 8px;background:#0c0c16;border:1px solid #181826;border-radius:4px;color:#bcd;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow:auto;font-family:ui-monospace,Menlo,monospace;font-size:11px">' + escapeHtml(e.detail) + '</pre>';
+  }
+  // occurrences — when grouped, list each time it fired (newest first)
+  if (g.count > 1) {
+    const times = g.occ.slice().sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || '')).slice(0, 25);
+    h += '<div style="color:#667;font-size:9px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">'
+      + g.count + ' occurrences</div><div style="display:flex;flex-wrap:wrap;gap:4px">';
+    h += times.map(o => '<span style="background:#101119;border:1px solid #1c1d28;border-radius:3px;color:#9ab;font-size:10px;padding:1px 6px" title="' + escapeHtml(o.timestamp || '') + '">' + escapeHtml(localTime(o.timestamp, 'time')) + '</span>').join('');
+    if (g.count > 25) h += '<span style="color:#566;font-size:10px;align-self:center">+ ' + (g.count - 25) + ' more</span>';
+    h += '</div>';
+  } else if (!e.context && !e.detail) {
+    h += '<div style="color:#566;font-size:11px">No further detail recorded.</div>';
+  }
+  h += '</div>';
+  return h;
 }
 
-// ── Unread-error counters ─────────────────────────────────────────────
-// Two sub-feeds (errors, dashboard) each track a baseline ("count when
-// the user last looked"). The tab-title badge is the SUM of unread for
-// every source so opening Logs always reveals every source's queue at a
-// glance — previously the tab badge only reflected brain errors and
-// silently swallowed new dashboard errors. _recomputeLogsBadge() is the
-// single setter for #logs-badge — each source updates its own sub-feed
-// badge then calls this to roll up.
-let _seenBrainErrCount = -1;   // /api/errors baseline
-let _seenDashErrCount  = -1;   // dashboard-errors + client ring baseline
-
-function _recomputeLogsBadge() {
-  const logsBadge = document.getElementById('logs-badge');
-  if (!logsBadge) return;
-  let total = 0;
-  for (const id of ['err-badge', 'dash-err-badge']) {
-    const b = document.getElementById(id);
-    if (!b || b.style.display === 'none') continue;
-    total += parseInt(b.textContent || '0', 10) || 0;
-  }
-  if (total > 0) {
-    logsBadge.textContent = String(total);
-    logsBadge.style.display = '';
-  } else {
-    logsBadge.style.display = 'none';
-  }
+function _onFeedClick(e) {
+  const card = e.target.closest('.log-group');
+  if (!card) return;
+  const key = card.getAttribute('data-key');
+  if (!key) return;
+  if (_expanded.has(key)) _expanded.delete(key);
+  else _expanded.add(key);
+  // re-render just this group in place
+  const idx = _groups.findIndex(g => g.key === key);
+  if (idx >= 0) card.outerHTML = _renderGroup(_groups[idx]);
 }
 
-async function _checkErrBadge() {
-  const logsTab = document.getElementById('tab-logs');
-  const isViewing = logsTab && logsTab.classList.contains('active');
-  try {
-    const d = await api.errors({ hours: 1, limit: 1 });
-    const errBadge = document.getElementById('err-badge');
-    if (_seenBrainErrCount < 0) _seenBrainErrCount = d.count;
-    if (isViewing && activeLogFeed === 'errors') {
-      _seenBrainErrCount = d.count;
-      errBadge.style.display = 'none';
-      loadErrors();
-    } else if (d.count > _seenBrainErrCount) {
-      const diff = d.count - _seenBrainErrCount;
-      errBadge.textContent = String(diff);
-      errBadge.style.display = '';
-    } else {
-      errBadge.style.display = 'none';
-    }
-  } catch(e) { console.error('[dashboard] err-badge check failed:', e); }
-  _recomputeLogsBadge();
+// ── Unread badge (#logs-badge on the tab) ──────────────────────────────
+let _seenErr = -1, _seenDash = -1, _unreadErr = 0, _unreadDash = 0;
+function _logsTabActive() {
+  const t = document.getElementById('tab-logs');
+  return t && t.classList.contains('active');
+}
+function _setLogsBadge() {
+  const b = document.getElementById('logs-badge');
+  if (!b) return;
+  const total = _unreadErr + _unreadDash;
+  if (total > 0) { b.textContent = String(total); b.style.display = ''; }
+  else b.style.display = 'none';
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────
-
 export function init() {
   _wireClientErrorCapture();
 
-  // Error badge — 10s background poll, always running (no activeWhen). The
-  // badge counts errors for tabs that AREN'T visible; document.hidden still
-  // gates poll.js so an unfocused window pauses.
-  poll.register({ key: 'err-badge', interval: 10000, fetcher: _checkErrBadge });
+  const feed = document.getElementById('feed-logs');
+  if (feed && !feed._logsClickBound) {
+    feed.addEventListener('click', _onFeedClick);
+    feed._logsClickBound = true;
+  }
 
-  // Background poll for new dashboard errors — drives the badge so the
-  // operator sees regression clusters without manually clicking the tab.
-  // Diff-based against `_seenDashErrCount` so the badge counts NEW
-  // errors since the user last opened the Dashboard sub-feed, matching
-  // the brain-error badge semantics. Without diff tracking the badge
-  // would show the lifetime total and never clear.
+  // Refresh the feed while the tab is open.
   poll.register({
-    key: 'dash-err-badge',
-    interval: 15000,
+    key: 'logs-feed', interval: 5000,
+    activeWhen: _logsTabActive,
+    fetcher: loadLogs,
+  });
+
+  // Unread badge — counts new brain/hook + dashboard/client errors while the
+  // tab ISN'T open; resets the baseline when it is. Always-on (no activeWhen);
+  // poll.js still pauses on a hidden window.
+  poll.register({
+    key: 'logs-badge', interval: 10000,
     fetcher: async () => {
       try {
-        const d = await fetch('/api/dashboard-errors?limit=1').then(r => r.json());
-        const totalServer = d.count || 0;
-        const totalClient = _clientErrors.length;
-        const total = totalServer + totalClient;
-        const badge = document.getElementById('dash-err-badge');
-        if (!badge) return;
-        const logsTab = document.getElementById('tab-logs');
-        const isViewing = logsTab && logsTab.classList.contains('active');
-        if (_seenDashErrCount < 0) _seenDashErrCount = total;
-        if (isViewing && activeLogFeed === 'dashboard') {
-          _seenDashErrCount = total;
-          badge.style.display = 'none';
-        } else if (total > _seenDashErrCount) {
-          badge.textContent = String(total - _seenDashErrCount);
-          badge.style.display = '';
+        const d = await api.errors({ hours: 24, limit: 200 });
+        const errCount = d.count || 0;
+        if (_seenErr < 0) _seenErr = errCount;
+        let dashTotal = _clientErrors.length;
+        try { dashTotal += (await fetch('/api/dashboard-errors?limit=1').then(r => r.json())).count || 0; } catch (_) {}
+        if (_seenDash < 0) _seenDash = dashTotal;
+        if (_logsTabActive()) {
+          _seenErr = errCount; _seenDash = dashTotal; _unreadErr = 0; _unreadDash = 0;
         } else {
-          badge.style.display = 'none';
+          _unreadErr = Math.max(0, errCount - _seenErr);
+          _unreadDash = Math.max(0, dashTotal - _seenDash);
         }
-        _recomputeLogsBadge();
-      } catch (e) { /* don't recurse into _captureClientError here */ }
+        _setLogsBadge();
+      } catch (e) { /* badge is best-effort */ }
     },
   });
 }
 
 export function activate() {
+  _seenErr = -1; _seenDash = -1; _unreadErr = 0; _unreadDash = 0;
+  _setLogsBadge();
   loadLogs();
 }
 

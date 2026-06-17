@@ -35,24 +35,61 @@ export function traceShape(ev, meta) {
   if ('write_actions' in meta || 'final_text' in meta ||
       'action_details' in meta || 'journal_entry' in meta) return 'delta';
   if (Array.isArray(meta.deltas) && ('node_id' in meta || 'edge_id' in meta)) return 'revise';
+  // A selection payload carries `selected` even when `content` is empty/absent
+  // (a turn that surfaced nothing). Detect on `selected` alone so it doesn't
+  // fall through to the raw-JSON generic renderer. (delta/revise are ruled out
+  // above and carry no `selected`, so this can't steal them.)
   if ('candidates_considered' in meta || 'outcomes_per_candidate' in meta ||
-      ('selected' in meta && 'content' in meta)) return 'selection';
+      Array.isArray(meta.selected)) return 'selection';
   return 'generic';
 }
 
 // ── presentation atoms ─────────────────────────────────────────────────────
 
-function _stat(label, val, color) {
-  return '<span style="display:inline-block;background:#15151f;border-radius:3px;'
-    + 'padding:1px 6px;margin:0 4px 4px 0;color:#778;font-size:10px">'
-    + escapeHtml(label) + ' <b style="color:' + (color || '#bcd') + '">'
+// Plain-English definitions, shown on hover. Keyed by the chip/section label
+// so _stat / _section attach them automatically. "What all the params mean."
+const TIPS = {
+  // delta cost & provenance
+  'rounds':     'LLM conversation rounds this run took',
+  'actions':    'Total tool calls the agent made this run',
+  'writes':     'Successful graph writes — create / revise / connect / archive',
+  'inputs':     'Items processed this run (clusters / proposals / nodes seen)',
+  'rej.skipped':'Proposals skipped via rejection-fingerprint — already decided, not re-proposed',
+  'elapsed':    'Wall-clock time to produce this change',
+  'tok in':     'Prompt (input) tokens sent to the model',
+  'tok out':    'Completion (output) tokens the model generated',
+  'cache rd':   'Prompt-cache tokens read — a cache hit (cheap)',
+  'cache wr':   'Prompt-cache tokens written — cache creation (one-time cost)',
+  'K v':        'Interaction VERSION — which versioned prompt/config produced this Δ (the learnable boundary)',
+  'K id':       'Interaction id — FK to the exact prompt/config row in the interactions table',
+  // selection / recall
+  'candidates': 'Memories scored as recall candidates before selection',
+  'selected':   'Memories chosen to surface to Anchor this turn — the actual recall',
+  'dropped':    'Candidates considered but not surfaced',
+  // section headers
+  'cost & provenance': 'What this run cost and which prompt version produced it',
+  'graph Δ':    'Nodes this run created / revised / connected / archived — the change to memory',
+  'outcomes':   'Unit-specific tally of what the run decided (e.g. merged, kept, consolidated)',
+  'output (what Anchor saw)': 'The exact additionalContext block this recall injected into Anchor',
+  'field deltas': 'Per-field old → new values changed by this revise',
+};
+
+function _stat(label, val, color, title) {
+  const tip = title || TIPS[label] || '';
+  return '<span title="' + escapeHtml(tip) + '" style="display:inline-block;background:#15151f;border-radius:3px;'
+    + 'padding:1px 6px;margin:0 4px 4px 0;color:#778;font-size:10px;'
+    + (tip ? 'cursor:help;' : '')
+    + '">' + escapeHtml(label) + ' <b style="color:' + (color || '#bcd') + '">'
     + escapeHtml(String(val)) + '</b></span>';
 }
 
 function _section(title, body) {
   if (!body) return '';
-  return '<div style="color:#667;font-size:9px;text-transform:uppercase;'
-    + 'letter-spacing:.6px;margin:8px 0 3px">' + escapeHtml(title) + '</div>' + body;
+  // Strip a trailing "(N)" count so the tip lookup matches the base label.
+  const tip = TIPS[title] || TIPS[title.replace(/\s*\(\d+\)\s*$/, '')] || '';
+  return '<div title="' + escapeHtml(tip) + '" style="color:#667;font-size:9px;text-transform:uppercase;'
+    + 'letter-spacing:.6px;margin:8px 0 3px;' + (tip ? 'cursor:help;' : '')
+    + '">' + escapeHtml(title) + '</div>' + body;
 }
 
 function _code(text, maxH) {
@@ -126,7 +163,7 @@ function _renderDelta(ev, m) {
   if (m.cache_read_tokens)         cost += _stat('cache rd', m.cache_read_tokens);
   if (m.cache_creation_tokens)     cost += _stat('cache wr', m.cache_creation_tokens);
   if (m.interaction_version)       cost += _stat('K v', m.interaction_version, '#ffaa33');
-  if (ev.interaction_id != null)   cost += _stat('K id', ev.interaction_id);
+  if (ev.interaction_id)           cost += _stat('K id', ev.interaction_id);   // truthy: hide 0/null, matching K v
   if (m.truncated) {
     cost += '<span style="display:inline-block;background:#3a0e0e;border:1px solid #c33;'
       + 'border-radius:3px;padding:1px 6px;margin:0 4px 4px 0;color:#ff7777;font-size:10px;'

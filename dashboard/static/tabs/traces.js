@@ -43,6 +43,13 @@ const _TECH_SCALE_LABELS = {
 // id → row so the delegated click handler can build detail without re-fetching.
 const _traceExpanded = new Set();
 let _traceEventById = {};
+// Signature of the last rendered result. The 5s poll calls loadTraces
+// unconditionally; without this guard it rebuilt #traces-content every tick —
+// blanking innerHTML resets the page scroll (jumps to top) and wipes the scroll
+// position inside any expanded <pre> the operator is reading. We skip the
+// rebuild when nothing relevant changed. Expansions go through the click
+// handler (direct DOM), not loadTraces, so skipping never strands them.
+let _lastTraceFp = null;
 
 function _detailHTML(ev) {
   return '<div class="trace-detail" data-detail-for="' + escapeHtml(String(ev.id)) + '" '
@@ -75,6 +82,14 @@ export async function loadTraces(opts = {}) {
       scale: scaleFilter || undefined,
       session: sessionFilter || undefined,
     });
+    // Skip the rebuild when nothing changed (traces use absolute timestamps, so
+    // identical data → identical render). Newest id+count+filters+mode capture
+    // every structural change; a new trace flips the newest id. Bypass via
+    // opts.force for explicit refreshes that must re-render regardless.
+    const fp = [_traceMode, scaleFilter, hours, sessionFilter,
+      traces.length, traces[0] && traces[0].id, traces[traces.length - 1] && traces[traces.length - 1].id].join('|');
+    if (!opts.force && fp === _lastTraceFp) return;
+    _lastTraceFp = fp;
     const el = document.getElementById('traces-content');
     const techLabel = hours <= 1 ? '1h' : hours <= 6 ? '6h' : hours <= 24 ? '24h' : '7d';
     const friendlyLabel = hours <= 1 ? 'the last hour' : hours <= 6 ? 'the last 6 hours'
@@ -93,10 +108,11 @@ export async function loadTraces(opts = {}) {
     // explicitly chosen.
     try {
       const sessions = await api.sessions();
-      const opts = '<option value="">All sessions</option>' + sessions.map(s =>
+      // Note: not `opts` — that's the function parameter (opts.force/.session).
+      const optsHtml = '<option value="">All sessions</option>' + sessions.map(s =>
         '<option value="' + s.id + '"' + (s.id === sessionFilter ? ' selected' : '') + '>' + s.short + ' (' + s.events + ' events)</option>'
       ).join('');
-      sessSelect.innerHTML = opts;
+      sessSelect.innerHTML = optsHtml;
     } catch(e) { /* keep existing options */ }
 
     if (!traces.length) {
@@ -256,9 +272,10 @@ function _onTracesClick(e) {
     if (existing) existing.remove();
     if (caret) caret.textContent = '▸';
   } else {
-    _traceExpanded.add(id);
     const ev = _traceEventById[id];
-    if (ev && !existing) row.insertAdjacentHTML('afterend', _detailHTML(ev));
+    if (!ev) return;   // not in the rendered batch's map — don't flip the caret with no detail to show
+    _traceExpanded.add(id);
+    if (!existing) row.insertAdjacentHTML('afterend', _detailHTML(ev));
     if (caret) caret.textContent = '▾';
   }
 }

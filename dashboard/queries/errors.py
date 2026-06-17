@@ -1,15 +1,18 @@
 """Unified errors view — pulls from every component that records errors.
 
-Sources: brain `debug_log`, `hook_errors` (incl. DAEMON_DOWN — written by both
-the hook-side detector and the MCP health monitor), `conflict_log`, and
-`brain_telemetry`. Each source contributes a row with a uniform shape so the
-UI can render them in one feed.
+Sources: brain `debug_log` and `hook_errors` (incl. DAEMON_DOWN — written by
+both the hook-side detector and the MCP health monitor). Each source
+contributes a row with a uniform shape so the UI can render them in one feed.
+(`conflict_log` and `brain_telemetry` were removed in schema v21 — querying
+them only ever warned loudly into the dashboard's own error ring, so those
+dead sources are gone.)
 
-Previously this file had five copies of the same
-``with ro_connect: if conn: try: ... except: pass`` block — silent failures
-all the way down. Now sources are declared as a config list and one helper
-runs each through @safe_query-equivalent boilerplate, with loud-by-default
-warnings on any failure.
+Each row carries full `error` / `context` / `traceback` text (capped, not
+list-truncated) so the Logs tab's click-to-expand can show the whole story —
+the hook traceback in particular was recorded but never surfaced.
+
+Sources are declared as a config list and one helper runs each with
+loud-by-default warnings on any failure.
 """
 
 import json
@@ -34,38 +37,28 @@ def _decode_meta(raw):
 # dict the UI consumes. Each source has its own mapper because column order
 # differs per table, but the OUTPUT shape is identical.
 
+# Caps: generous, not list-truncation. The list view clamps display in CSS;
+# the click-to-expand wants the whole message / context / traceback.
+_ERR_CAP, _CTX_CAP, _TB_CAP = 2000, 1000, 6000
+
+
 def _shape_brain(r):
     meta = _decode_meta(r[3])
     return {
         'source': 'brain', 'component': r[2], 'timestamp': r[1],
-        'error': (meta.get('error', r[3] or ''))[:200],
-        'context': (meta.get('context', '') or '')[:100],
-        'level': 'error',
+        'error': (meta.get('error', r[3] or ''))[:_ERR_CAP],
+        'context': (meta.get('context', '') or '')[:_CTX_CAP],
+        'traceback': (meta.get('traceback', '') or '')[:_TB_CAP],
+        'level': meta.get('level', 'error') or 'error',
     }
 
 
 def _shape_hook(r):
     return {
         'source': 'hook', 'component': r[2], 'timestamp': r[1],
-        'error': (r[4] or '')[:200], 'context': (r[5] or '')[:100],
+        'error': (r[4] or '')[:_ERR_CAP], 'context': (r[5] or '')[:_CTX_CAP],
+        'traceback': (r[6] or '')[:_TB_CAP],
         'level': r[3] or 'error',
-    }
-
-
-def _shape_conflict(r):
-    return {
-        'source': 'conflict', 'component': r[2], 'timestamp': r[1],
-        'error': 'Rule: %s — Decision: %s' % (r[3] or '?', r[4] or '?'),
-        'context': 'Resolution: %s' % (r[5] or 'pending'),
-        'level': 'warning',
-    }
-
-
-def _shape_telemetry(r):
-    return {
-        'source': 'telemetry', 'component': r[2], 'timestamp': r[1],
-        'error': (r[3] or '')[:200], 'context': '',
-        'level': 'warning',
     }
 
 
@@ -79,18 +72,9 @@ _SOURCES = [
      "ORDER BY created_at DESC LIMIT ?",
      _shape_brain, 'brain debug_log'),
     (logs_db_path,
-     "SELECT id, created_at, hook_name, level, error, context FROM hook_errors "
+     "SELECT id, created_at, hook_name, level, error, context, traceback FROM hook_errors "
      "WHERE created_at > ? ORDER BY created_at DESC LIMIT ?",
      _shape_hook, 'hook_errors'),
-    (logs_db_path,
-     "SELECT id, created_at, hook_name, rule_title, brain_decision, resolution "
-     "FROM conflict_log WHERE created_at > ? ORDER BY created_at DESC LIMIT ?",
-     _shape_conflict, 'conflict_log'),
-    (logs_db_path,
-     "SELECT id, timestamp, operation, error_message FROM brain_telemetry "
-     "WHERE success=0 AND timestamp > ? "
-     "ORDER BY timestamp DESC LIMIT ?",
-     _shape_telemetry, 'brain_telemetry'),
 ]
 
 

@@ -22,20 +22,23 @@ import { parseTraceMeta } from '/static/lib/trace_detail.js';
 // Chain ids stay prefixed (s0-/s1r-/s1e-/s2-<op>) even though event ids are
 // hex — the prefix is what tells us which kind of work the chain represents.
 function _chainKind(chainId) {
+  // Revise chains are `{scale}-{YYYYMMDD}-revise` for ANY scale (s0 for direct
+  // operator revises, s1/s2 for encoder/unit revises — dispatch_write.py).
+  // Detect by the op SUFFIX before the scale-prefix routing, else an
+  // `s0-…-revise` is caught by the `s0-` branch and mislabeled 'conversation'.
+  if (chainId.endsWith('-revise')) return 'revise';
+  if (chainId.startsWith('archive-') || chainId.endsWith('-archive')) return 'archive';
   if (chainId.startsWith('s1r-')) return 'remember';
   if (chainId.startsWith('s1e-')) return 'learn';
-  if (chainId.startsWith('s0-'))  return 'conversation';
   if (chainId.startsWith('s2-')) {
     const op = chainId.split('-').slice(2).join('-');
     if (op.includes('consolid')) return 's2_merge';
     if (op.includes('community')) return 's2_group';
     if (op.includes('healer'))    return 's2_heal';
-    if (op.includes('aspect') || op.includes('family') || op.includes('reclassify')) return 's2_aspect';
+    if (op.includes('aspect') || op.includes('reclassify')) return 's2_aspect';
     return 's2_other';
   }
-  // Bare `s1-DATE-op` (not s1r-/s1e-, checked above) — direct field revises.
-  if (chainId.startsWith('s1-')) return 'revise';
-  if (chainId.startsWith('archive-')) return 'archive';
+  if (chainId.startsWith('s0-')) return 'conversation';
   return 'other';
 }
 
@@ -100,16 +103,19 @@ function _remember(events) {
 
 function _learn(events) {
   const m = _deltaMeta(events) || {};
-  const c = (m.created || []).length, r = (m.revised || []).length, k = (m.connected || []).length;
+  const c = (m.created || []).length, r = (m.revised || []).length,
+        k = (m.connected || []).length, a = (m.archived || []).length;
   let title;
   if (c && r)      title = 'Learned ' + _plural(c, 'new thing') + ' and refined ' + r;
   else if (c)      title = 'Learned ' + _plural(c, 'new thing');
   else if (r)      title = 'Refined ' + _plural(r, 'memory', 'memories');
+  else if (a)      title = 'Cleaned up ' + _plural(a, 'memory', 'memories');   // archive-only run
   else             title = 'Reviewed the conversation';
   const bits = [];
   if (c) bits.push(_plural(c, 'new memory', 'new memories'));
   if (r) bits.push(r + ' updated');
   if (k) bits.push(k + ' linked');
+  if (a) bits.push(a + ' archived');
   return {
     title,
     line: bits.length ? 'Saved what mattered — ' + bits.join(', ') + '.'
@@ -146,16 +152,26 @@ function _s2(kind, events) {
 }
 
 function _revise(events) {
-  const ids = new Set();
+  // node_revised and edge_relation_revised share one `{scale}-{date}-revise`
+  // chain. Count node revises as memories; edge-relation revises are links,
+  // not memories — tally them separately so the headline isn't inflated.
+  const memIds = new Set();
+  let edges = 0;
   for (const ev of events) {
-    if (ev.ref_id) ids.add(ev.ref_id);
-    else { const m = parseTraceMeta(ev.metadata); if (m.node_id) ids.add(m.node_id); }
+    if (ev.ref_type === 'edge_relation_revised') { edges++; continue; }
+    const id = ev.ref_id || parseTraceMeta(ev.metadata).node_id;
+    if (id) memIds.add(id);
   }
-  const n = ids.size || events.length;
-  return {
+  const n = memIds.size;
+  if (n) return {
     title: 'Refined ' + _plural(n, 'memory', 'memories'),
     line: 'Updated details on memories it already had.',
   };
+  if (edges) return {
+    title: 'Updated ' + _plural(edges, 'connection'),
+    line: 'Adjusted links between memories.',
+  };
+  return { title: 'Refined memories', line: 'Updated details on memories it already had.' };
 }
 
 function _archive(events) {
