@@ -358,6 +358,72 @@ class TestAbsorbEmbedding(BrainTestBase):
             self.brain._meta_kv.get_all_bulk([survivor])[survivor].get('user_raw_quote'),
             'peer quote')
 
+    def test_content_override_via_brain_batch_op(self):
+        """REGRESSION: a content-rewriting absorb inside brain_batch must be
+        atomic AND succeed. The content override re-embeds the survivor; the
+        embed backfill (_store_batch in backfill_vectors) used to self-commit
+        unconditionally, and a COMMIT releases every open SAVEPOINT — so the
+        absorb's `absorb_sp` vanished mid-merge and `RELEASE absorb_sp` threw
+        `no such savepoint: absorb_sp`. The absorb sub-op returned ok=False
+        while the batch reported ok=True overall: a silent merge loss. This is
+        S2 Consolidation's primary path (synthesised content + absorb).
+
+        The pre-existing test_field_override_via_brain_batch_op only exercised
+        title/confidence (no re-embed), so it never tripped the backfill commit
+        and this regression slipped through."""
+        from servers.daemon_dispatch import COMMAND_TABLE
+        survivor = self._node('survivor', content='old survivor body')
+        absorbed = self._node('absorbed', content='folded body')
+        res = COMMAND_TABLE['brain_batch'].handler(self.brain, {'operations': [
+            {'op': 'absorb', 'survivor_id': survivor, 'absorbed_id': absorbed,
+             'content': 'merged synthesis content', 'reason': 'consolidation',
+             'encoding_source': 's2:consolidation'}]}, [])
+        # The batch reports ok (it always did) — but now the SUB-OP must too.
+        self.assertTrue(res.get('ok'), res)
+        sub = res['result']['results'][0]
+        self.assertTrue(sub.get('ok'), sub)               # the bug: this was False
+        self.assertNotIn('savepoint', str(sub).lower())   # specifically not absorb_sp
+        self.assertEqual(res['result']['failed'], 0, res['result'])
+        # survivor content actually rewritten (the merge landed, not no-op'd)...
+        c = self.brain.conn.execute(
+            "SELECT content FROM nodes WHERE id = ?", (survivor,)).fetchone()[0]
+        self.assertEqual(c, 'merged synthesis content')
+        # ...and absorbed archived
+        self.assertEqual(self.brain.conn.execute(
+            "SELECT archived FROM nodes WHERE id = ?", (absorbed,)).fetchone()[0], 1)
+
+    def test_content_override_brain_batch_atomic_on_midmerge_failure(self):
+        """A forced failure AFTER the content re-embed must roll the whole
+        merge back cleanly — no half-merge committed. Before the fix the
+        backfill commit had already released absorb_sp and flushed the
+        partial merge, so the survivor content was rewritten-and-committed
+        even though the absorb failed. With the savepoint intact, the unwind
+        (ROLLBACK TO absorb_sp) restores the survivor exactly."""
+        from unittest import mock
+        survivor = self._node('survivor', content='untouched survivor body',
+                              source_refs=['aaaaaaaa'])
+        absorbed = self._node('absorbed', content='folded body',
+                              source_refs=['bbbbbbbb'])
+        from servers.daemon_dispatch import COMMAND_TABLE
+        with mock.patch.object(self.brain, 'archive_node',
+                               side_effect=RuntimeError('boom')):
+            res = COMMAND_TABLE['brain_batch'].handler(self.brain, {'operations': [
+                {'op': 'absorb', 'survivor_id': survivor, 'absorbed_id': absorbed,
+                 'content': 'should not persist', 'reason': 't',
+                 'encoding_source': 's2:consolidation'}]}, [])
+        # Per-op failure is recorded; the batch as a whole doesn't raise.
+        sub = res['result']['results'][0]
+        self.assertFalse(sub.get('ok'), sub)
+        self.assertNotIn('savepoint', str(sub).lower())  # clean unwind, not a sp error
+        # No half-merge: content unchanged, absorbed not archived, refs not unioned.
+        c = self.brain.conn.execute(
+            "SELECT content FROM nodes WHERE id = ?", (survivor,)).fetchone()[0]
+        self.assertEqual(c, 'untouched survivor body')
+        self.assertEqual(self.brain.conn.execute(
+            "SELECT archived FROM nodes WHERE id = ?", (absorbed,)).fetchone()[0], 0)
+        self.assertEqual(set(self.brain._source_refs.get_source_refs(survivor)),
+                         {'aaaaaaaa'})
+
 
 if __name__ == '__main__':
     unittest.main()

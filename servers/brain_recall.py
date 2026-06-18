@@ -59,6 +59,7 @@ from .brain_constants import (
     ZSCORE_STATS_KEY_STD,
 )
 from .dal import GraphDAL, NodeDAL, LogsDAL, VectorDAL
+from .db_backends.sqlite import commit_unless_batched
 
 
 # ── Lexical bridge — Haiku-generated query expansion ───────────────
@@ -690,7 +691,16 @@ class BrainRecallMixin:
             with self.write_lock:
                 stored = vdal.store_batch(rows, model=model)
                 if stored:
-                    self.conn.commit()  # commit-ok: vector backfill under write_lock
+                    # Gate on conn.in_batch — NOT an unconditional commit. A bare
+                    # self.conn.commit() here releases ALL open SAVEPOINTs, which
+                    # silently broke a content-rewriting absorb run inside a
+                    # brain_batch: the embed drain backfilled the survivor's
+                    # re-embedded vector mid-merge and its commit killed
+                    # `absorb_sp`, so the later RELEASE threw `no such savepoint`
+                    # and the merge no-op'd while the batch reported ok. When a
+                    # batch/savepoint envelope owns self.conn (in_batch=True), the
+                    # owner commits; standalone backfill commits as before.
+                    commit_unless_batched(self.conn)
             return stored
 
         # 1. Primary vectors — nodes missing _primary for the active model
