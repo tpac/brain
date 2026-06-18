@@ -36,8 +36,18 @@ class BrainRememberMixin:
 
     # Fields that are control parameters, not node metadata.
     # These are consumed by remember()/revise() logic and should never be stored.
+    # `connections` and `auto_connect` are RETIRED remember() params (the params
+    # were removed 2026-06-18): `connect_to` replaced store-time edge creation,
+    # and the co_accessed-on-remember behavior `auto_connect` gated was deleted
+    # 2026-05-31. Both names stay here as legacy-caller swallow guards —
+    # `validate_field` silently accepts unknown kwargs, so a stray
+    # `connections=` / `auto_connect=` (still passed by some test call sites)
+    # would otherwise land as junk KV metadata. A stray `connections=` is ALSO
+    # logged loudly in remember() (event 'remember_connections_retired'), since
+    # it once had a store-time side effect worth tracking; `auto_connect` was a
+    # pure toggle, so swallowing it silently is harmless.
     _CONTROL_FIELDS = frozenset({
-        'connections', 'auto_connect', 'skip_embedding',
+        'connections', 'auto_connect',
         'reason', 'updates', 'connect_to',
     })
 
@@ -762,7 +772,6 @@ class BrainRememberMixin:
 
     def remember(self, type: str, title: str, content: Optional[str] = None,
                  locked: bool = False,
-                 connections: Optional[List[Dict[str, Any]]] = None,
                  emotion: float = 0, emotion_label: str = 'neutral',
                  emotion_source: str = 'auto', project: Optional[str] = None,
                  confidence: float = 1.0,
@@ -788,12 +797,6 @@ class BrainRememberMixin:
                  change_impacts: Optional[List[Dict[str, str]]] = None,
                  source_attribution: Optional[str] = None,
                  scope: Optional[str] = None,
-                 # DEPRECATED (2026-05-31): co_accessed-on-remember was removed.
-                 # co_accessed is now created ONLY on recall (judge-selected
-                 # Hebbian co-activation), matching its post-Phase-5 meaning.
-                 # Retained as an inert no-op for caller compatibility (also
-                 # filtered via _CONTROL_FIELDS) — it no longer gates anything.
-                 auto_connect: bool = True,
                  connect_to: Optional[List[Any]] = None,
                  # v29 / Phase B: source_refs anchors the node to trace events.
                  # Sparse by design (1-3 refs typical). Each ref is an 8-char
@@ -825,6 +828,22 @@ class BrainRememberMixin:
 
         node_id = self._generate_id(type)
         ts = self.now()
+
+        # `connections` was a store-time edge param, retired 2026-06-18 —
+        # `connect_to` fully replaced it. _CONTROL_FIELDS still swallows it so
+        # it can't pollute node metadata, but a caller still passing real edge
+        # data is a bug we want to SEE, not silently drop. Log it loudly (errors
+        # table) — this is the write boundary every remember-path (remember /
+        # remember_batch / direct) flows through. Guard on truthiness, not key
+        # presence: a stray `connections=None` / `[]` is not an edge-creation
+        # attempt, so don't fire a spurious retirement error for it.
+        _legacy = extra_fields.get('connections')
+        if _legacy:
+            _n = len(_legacy) if isinstance(_legacy, (list, tuple)) else '?'
+            self._log_error(
+                'remember_connections_retired',
+                ValueError('remember(connections=...) is retired — use connect_to'),
+                'node %s dropped %s legacy connection(s)' % (node_id[:8], _n))
 
         # ══════════════════════════════════════════════════════════════
         # v6: AUTO-ENRICHMENT — make every node rich by default
@@ -998,19 +1017,6 @@ class BrainRememberMixin:
                     'co_anchored_autoedge', e,
                     'co_anchored auto-edge for node %s (%d refs)' % (
                         node_id[:12], len(source_refs)))
-
-        # Create connections
-        if connections:
-            for conn in connections:
-                target_id = conn.get('target_id')
-                relation = conn.get('relation', 'related')
-                weight = conn.get('weight', 0.5)
-                if target_id:
-                    try:
-                        self.connect(node_id, target_id, relation, weight)
-                    except (ValueError, Exception) as e:
-                        self._log_error('remember_connection', e,
-                                        'connecting %s → %s' % (node_id[:8], target_id[:8]))
 
         # connect_to: title-resolved typed edges. When called standalone (not
         # from a batch), there are no siblings — only catalog fallback applies.
@@ -1943,15 +1949,6 @@ class BrainRememberMixin:
         for spec in nodes:
             if isinstance(spec, dict):
                 ct_spec = spec.pop('connect_to', None)
-                # Disable inner remember()'s conversation-context auto_connect.
-                # The batch owns sibling connection logic (deferred connect_to +
-                # auto_connect-each-other below). Inner auto_connect creates
-                # co_accessed edges in the WRONG direction relative to typed
-                # connect_to (sibling-to-sibling), which causes get_edge_id to
-                # return the existing edge and the typed relation gets attached
-                # with the physical direction reversed. Caller can still opt in
-                # explicitly per node via spec['auto_connect'] = True.
-                spec.setdefault('auto_connect', False)
             else:
                 ct_spec = None
             result = self.remember(**spec, ctx=ctx)

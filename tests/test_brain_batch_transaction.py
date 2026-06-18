@@ -310,23 +310,30 @@ class TestBrainBatchTransaction(BrainTestBase):
         self.assertIsNone(self._node_id('co-rb-B'),
                           "co-rb-B (and its co_anchored edge) must roll back with the batch")
 
-    def test_connections_op_single_commit(self):
-        """A remember op carrying an explicit `connections` list routes through the
-        untyped connect() helper, which must defer its commit. Regression for the
-        connect() F3 gap (connect_typed was patched in Phase 1, connect() was not)."""
+    def test_connections_op_in_batch_retired_no_edge_single_commit(self):
+        """Evolved contract (2026-06-18): the `connections=` store-time edge param
+        was retired (connect_to replaced it). A brain_batch remember op carrying it
+        now materializes NO edge, yet the batch still commits exactly once. Pins the
+        BATCH dispatch path (brain_batch op -> _handle_remember -> remember()); the
+        direct-call retirement contract is covered by
+        test_core.py::test_remember_connections_param_retired_is_loud_not_silent.
+        Was: asserted the connections edge PERSISTED via the now-removed connect()
+        store path (assertGreater(.., 0))."""
         self.brain.remember(type='rule', title='conns-target', content='target')
         tgt = self._node_id('conns-target')
         r, commits = self._commit_count([
             {"op": "remember", "type": "rule", "title": "conns-src",
-             "content": "has explicit connections",
+             "content": "carries the retired connections param",
              "connections": [{"target_id": tgt, "relation": "tests"}]},
         ])
         self.assertTrue(r['ok'])
+        # Retired param must not trigger an extra self-commit inside the batch.
         self.assertEqual(commits, 1,
-                         "explicit connections (connect()) self-committed inside the batch; got %d" % commits)
+                         "batch must commit exactly once; got %d" % commits)
         src = self._node_id('conns-src')
-        self.assertGreater(self._tests_relation_count(src, tgt, 'tests'), 0,
-                           "the explicit connection edge should persist")
+        # connections= is retired — the edge must NOT be created (was >0).
+        self.assertEqual(self._tests_relation_count(src, tgt, 'tests'), 0,
+                         "retired connections= must NOT materialize an edge")
 
     def test_mixed_op_batch_single_commit(self):
         """Core contract: a batch mixing remember + connect + disconnect + archive

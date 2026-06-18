@@ -846,7 +846,6 @@ def seed_baby_brain(brain):
             continue
 
         fields = {k: v for k, v in node.items() if k != "slug"}
-        fields["auto_connect"] = False  # edges declared below, not auto-discovered
         result = brain.remember(**fields)
         slug_to_id[slug] = result["id"]
         nodes_created += 1

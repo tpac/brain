@@ -257,9 +257,10 @@ class IntegrationUnit:
         """Build the dispatch function S2 encoders use for brain_batch calls.
 
         Shared across consolidation/community/future encoders. Sets
-        `encoding_source` at the top level (handler cascades to each op)
-        and forces `skip_embedding=True` on remember/revise (ONNX multi-
-        thread spin guard — vectors filled by backfill_vectors() later).
+        `encoding_source` at the top level (handler cascades to each op).
+        Vectors are filled asynchronously by the embed_queue worker, so the
+        encoder never embeds inline (the old `skip_embedding` ONNX spin guard
+        is gone — embedding moved off the write path).
 
         Args:
             archive_guard: Optional set of node IDs that archive ops are
@@ -283,10 +284,6 @@ class IntegrationUnit:
             if isinstance(cmd_args, dict):
                 cmd_args.setdefault('encoding_source', encoding_source)
 
-            if cmd in ('remember', 'remember_batch', 'revise', 'revise_batch') \
-                    and isinstance(cmd_args, dict):
-                cmd_args['skip_embedding'] = True
-
             if cmd == 'brain_batch' and isinstance(cmd_args, dict):
                 if archive_guard is not None:
                     surviving_ops = []
@@ -304,10 +301,6 @@ class IntegrationUnit:
                                 continue
                         surviving_ops.append(op)
                     cmd_args['operations'] = surviving_ops
-
-                for op in cmd_args.get('operations', []):
-                    if isinstance(op, dict) and op.get('op') in ('remember', 'revise'):
-                        op['skip_embedding'] = True
 
             entry = COMMAND_TABLE.get(cmd)
             if entry:

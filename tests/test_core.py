@@ -196,21 +196,64 @@ class TestSilentFailures(BrainTestBase):
             "SELECT COUNT(*) FROM debug_log WHERE event_type = 'error'"
         ).fetchone()[0]
 
-    def test_remember_with_bad_connection_logs_error(self):
-        """remember() with invalid connection target creates the node but logs the edge error.
-        add_relation() validates that both nodes exist and raises ValueError.
-        remember() catches this and logs it — the node itself is still created."""
+    def test_remember_connections_param_retired_is_loud_not_silent(self):
+        """The store-time remember(connections=...) edge param was removed
+        (2026-06-18; connect_to replaced it). A stray `connections=` must NOT be
+        silently swallowed: the node is still created, no edge is materialized,
+        the value is NOT stored as junk metadata, and it is logged LOUDLY
+        (source='remember_connections_retired') so a lingering caller is visible.
+        Replaces the old test_remember_with_bad_connection_logs_error, which
+        exercised the now-dead store path."""
+        before = self._get_error_count()
         result = self.brain.remember(
             type='decision',
-            title='Auth: Clerk for passwordless login via magic links',
-            content='Clerk handles auth flow. Magic links for login, no passwords.',
-            connections=[{'target_id': 'nonexistent_node_id_xyz', 'relation': 'related'}]
+            title='Legacy connections kwarg must be loud, not silent',
+            content='Passing the retired connections= param.',
+            connections=[{'target_id': 'nonexistent_node_id_xyz', 'relation': 'related'}],
         )
-        # Node should be created despite bad connection
-        self.assertIsNotNone(result.get('id'))
-        # The edge should NOT exist (target doesn't exist)
+        node_id = result.get('id')
+        # Node is still created — the retired param is inert, not fatal.
+        self.assertIsNotNone(node_id)
+        # The store-time edge path is dead — no edge to the target.
         from servers.dal import GraphDAL
-        self.assertFalse(GraphDAL(self.brain.conn).edge_exists(result['id'], 'nonexistent_node_id_xyz'))
+        self.assertFalse(
+            GraphDAL(self.brain.conn).edge_exists(node_id, 'nonexistent_node_id_xyz'))
+        # Loud: an error row was logged tagged with our source.
+        loud = self.brain.logs_conn.execute(
+            "SELECT COUNT(*) FROM debug_log WHERE event_type='error' "
+            "AND source='remember_connections_retired'").fetchone()[0]
+        self.assertEqual(loud, 1)
+        self.assertGreater(self._get_error_count(), before)
+        # NOT swallowed into node metadata as junk (read-side connections edge
+        # field is unaffected — we check the raw KV store, not the rich node).
+        junk = self.brain.conn.execute(
+            "SELECT COUNT(*) FROM node_metadata_kv WHERE node_id=? AND key='connections'",
+            (node_id,)).fetchone()[0]
+        self.assertEqual(junk, 0)
+
+    def test_remember_auto_connect_param_retired_swallowed_not_junk(self):
+        """The `auto_connect` param was removed (2026-06-18) — the
+        co_accessed-on-remember behavior it gated was deleted 2026-05-31. Many
+        existing tests still pass `auto_connect=False`; the _CONTROL_FIELDS
+        swallow guard keeps those working by dropping the kwarg silently (it was
+        a pure toggle, no side effect, so unlike `connections` it is NOT logged
+        loudly). This pins the swallow: node created, value NOT stored as junk
+        KV metadata, no error logged."""
+        before = self._get_error_count()
+        result = self.brain.remember(
+            type='decision',
+            title='Retired auto_connect kwarg is swallowed cleanly',
+            content='Passing the retired auto_connect= param.',
+            auto_connect=False,
+        )
+        node_id = result.get('id')
+        self.assertIsNotNone(node_id)
+        junk = self.brain.conn.execute(
+            "SELECT COUNT(*) FROM node_metadata_kv WHERE node_id=? AND key='auto_connect'",
+            (node_id,)).fetchone()[0]
+        self.assertEqual(junk, 0)
+        # Silent (not loud) — auto_connect had no side effect worth flagging.
+        self.assertEqual(self._get_error_count(), before)
 
     # test_consciousness_signal_error_does_not_crash removed — function deleted
 

@@ -158,10 +158,9 @@ def _generate_remember_batch_schema():
         ),
         "items": _CONNECT_TO_ITEM_SCHEMA,
     }
-    # auto_connect intentionally NOT in the schema. Per-node connect_to is
-    # the explicit edge surface; the old `auto_connect=True` default fired
-    # pairwise `related_to` edges with empty descriptions every batch and
-    # was removed 2026-05-24.
+    # Per-node connect_to is the only edge surface. The old `auto_connect`
+    # default fired pairwise empty-description `related_to` edges every batch;
+    # its behavior was removed 2026-05-24 and the param itself 2026-06-18.
     return {
         "name": "remember_batch",
         "description": (

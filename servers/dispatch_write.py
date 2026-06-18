@@ -464,11 +464,10 @@ def _handle_remember_batch(brain, args, graph_changes):
             cleaned['encoding_source'] = top_encoding_source
         cleaned_nodes.append(cleaned)
 
-    # 2026-05-24: auto_connect param removed from remember_batch — the
-    # pairwise `related_to` auto-connect it triggered was the source of
-    # empty-description `related_to` pollution every encoding cycle. We
-    # accept `auto_connect` in args silently (legacy callers may still send
-    # it) but drop it before forwarding.
+    # remember_batch forwards only nodes/connect_to/ctx. The retired
+    # `auto_connect` top-level arg (param removed 2026-06-18; it once triggered
+    # pairwise empty-description `related_to` pollution every encoding cycle) is
+    # dropped simply by not being forwarded — a stray one never reaches a node.
     result = brain.remember_batch(
         nodes=cleaned_nodes,
         connect_to=args.get("connect_to"),
@@ -861,11 +860,6 @@ def _handle_brain_batch(brain, args, graph_changes):
                         op_args[CALLER_SESSION_KEY] = top_session_id
                     if top_chain_id and "chain_id" not in op_args:
                         op_args["chain_id"] = top_chain_id
-                    # Same fix as remember_batch: disable inner remember()'s
-                    # conversation-context auto_connect inside batches so it
-                    # doesn't create reverse-direction co_accessed edges between
-                    # siblings before deferred connect_to runs.
-                    op_args.setdefault("auto_connect", False)
                     r = _handle_remember(brain, op_args, graph_changes)
                     _accumulate(r.pop("affected", None))
                     results.append({"op": "remember", "index": i, **r})
