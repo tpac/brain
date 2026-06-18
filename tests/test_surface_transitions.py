@@ -6,11 +6,11 @@ changes in one place but the consumer doesn't update.
 
 Stages tested:
   remember → recall (embedding roundtrip)
-  recall → build_judge_prompt (candidate fields)
+  recall → build_surface_prompt (candidate fields)
   judge output → format_judge_output (voice surface)
   correction_enrich (correction chain lookup)
   judge-selected IDs → _hebbian_strengthen (co_accessed edges)
-  recall → build_judge_prompt end-to-end (candidate format compatibility)
+  recall → build_surface_prompt end-to-end (candidate format compatibility)
 """
 
 import json

@@ -80,12 +80,6 @@ _MONTH_NAME_TO_NUM = {
 }
 
 
-def _interval_for_year(year: int) -> Tuple[int, int]:
-    s = datetime(year, 1, 1, tzinfo=timezone.utc)
-    e = datetime(year, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
-    return int(s.timestamp()), int(e.timestamp())
-
-
 def _interval_for_quarter(year: int, q: int) -> Tuple[int, int]:
     start_month = (q - 1) * 3 + 1
     end_month = q * 3

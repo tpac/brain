@@ -142,14 +142,14 @@ JUDGE_QUERIES = [
 def run_judge_eval(brain, query_spec, verbose=False):
     """Run a single query through the full pipeline including judge."""
     import anthropic
-    from servers.pipeline_contract import build_judge_prompt, CANDIDATES_FILE, JUDGE
+    from servers.pipeline_contract import build_surface_prompt, CANDIDATES_FILE, SURFACE
     from servers.pipeline_contract import enrich_candidate_metadata
 
     query = query_spec["query"]
     t0 = time.time()
 
     # Layer 1: Recall
-    result = brain.recall(query, limit=JUDGE['max_candidates'])
+    result = brain.recall(query, limit=SURFACE['max_candidates'])
     results = result.get("results", [])
     retrieval_stats = result.get("_retrieval_stats", {})
     intent = result.get("intent", "general")
@@ -157,7 +157,7 @@ def run_judge_eval(brain, query_spec, verbose=False):
     # Build candidates (same as daemon_hooks.py)
     candidates_data = []
     content_limit = CANDIDATES_FILE['content_limit']
-    for r in results[:JUDGE['max_candidates']]:
+    for r in results[:SURFACE['max_candidates']]:
         node_data = {
             "id": r.get("id", ""),
             "type": r.get("type", ""),
@@ -174,7 +174,7 @@ def run_judge_eval(brain, query_spec, verbose=False):
         candidates_data.append(node_data)
 
     # Layer 2: Build judge prompt and call Haiku
-    judge_prompt, max_tokens = build_judge_prompt(
+    judge_prompt, max_tokens = build_surface_prompt(
         candidates_data, query,
         session_context="",
         recent_messages=[],

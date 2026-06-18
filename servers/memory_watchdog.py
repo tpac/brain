@@ -145,17 +145,3 @@ class MemoryWatchdog:
         flag = ' ⚠ growth' if delta > 50 * 1024 * 1024 else ''
         self.log_fn('rss=%s (%s vs prev) threads=%d%s' % (
             _human(rss), _signed_human(delta), threads, flag))
-
-
-def get_watchdog_status(brain) -> dict:
-    """Diagnostic — read config + current RSS without instantiating.
-
-    Safe to call from the dispatch thread; doesn't start anything.
-    """
-    return {
-        'enabled': bool(brain.get_config('memory_watchdog.enabled', False)),
-        'interval_seconds': int(brain.get_config(
-            'memory_watchdog.interval_seconds', 60)),
-        'current_rss_bytes': _rss_bytes(),
-        'current_rss_human': _human(_rss_bytes()),
-    }

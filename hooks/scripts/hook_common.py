@@ -269,32 +269,6 @@ def daemon_unavailable_error(hook_name=None):
     return msg
 
 
-def get_brain():
-    """DEPRECATED: Import and instantiate Brain directly.
-
-    Loads a separate embedder model copy (~300ms). Only use in boot fallback.
-    Normal hooks should use daemon_call() and daemon_unavailable_error().
-    """
-    hook = _get_hook_name()
-    print("[brain] WARNING: %s using direct Brain() — daemon unavailable. "
-          "This loads a separate model copy." % hook, file=sys.stderr)
-    try:
-        from servers.brain import Brain
-        return Brain(db_path)
-    except Exception as e:
-        log_hook_error(hook, e, "Failed to import/init Brain")
-        return None
-
-
-def close_brain(brain):
-    """Safely close brain."""
-    if brain:
-        try:
-            brain.close()
-        except Exception as e:
-            log_hook_error(_get_hook_name(), e, "Failed to close brain", level="warning")
-
-
 # ── Daemon helpers ──
 DAEMON_HOST = "127.0.0.1"
 DAEMON_PORT = 47200 + (os.getuid() % 100)
