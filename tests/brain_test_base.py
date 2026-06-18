@@ -46,7 +46,10 @@ def _get_test_logs_conn():
     """Get a connection to the shared test logs DB."""
     db_path = _get_test_logs_db_path()
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    # timeout= is sqlite's busy-timeout: two concurrent `pytest tests/` runs
+    # share this one file, so a writer waits (up to 10s) for the other's commit
+    # instead of erroring immediately with 'database is locked'.
+    conn = sqlite3.connect(db_path, timeout=10)
     conn.execute('PRAGMA journal_mode=WAL')
     # Ensure the debug_log table exists
     conn.execute("""CREATE TABLE IF NOT EXISTS debug_log (
@@ -72,7 +75,9 @@ def _ensure_logs():
     global _logs_conn, _run_id, _run_start
     if _logs_conn is None:
         _logs_conn = _get_test_logs_conn()
-        _run_id = 'test_run_%d' % int(time.time())
+        # PID in the run id: two streams launching `pytest` in the same second
+        # would otherwise share a run_id and interleave their rows under it.
+        _run_id = 'test_run_%d_%d' % (int(time.time()), os.getpid())
         _run_start = time.time()
     return _logs_conn
 
@@ -80,7 +85,6 @@ def _ensure_logs():
 def log_test_result(test_class, test_method, status, duration_ms,
                     error_msg=None, error_type=None):
     """Log a single test result to the shared debug_log."""
-    conn = _ensure_logs()
     metadata = {
         'test_class': test_class,
         'test_method': test_method,
@@ -92,14 +96,23 @@ def log_test_result(test_class, test_method, status, duration_ms,
     if error_type:
         metadata['error_type'] = error_type
 
-    conn.execute(
-        "INSERT INTO debug_log (session_id, event_type, source, metadata, created_at) "
-        "VALUES (?, ?, ?, ?, datetime('now'))",
-        (_run_id, 'test_result', f'test:{test_class}.{test_method}',
-         json.dumps(metadata), ))
-    conn.commit()
+    # Best-effort telemetry: writing the result row must NEVER fail the test
+    # under teardown. The shared test_logs.db can be contended by a second
+    # concurrent `pytest tests/` run; if the 10s busy-timeout is still exceeded
+    # (or any other DB error), skip the row rather than erroring the test.
+    try:
+        conn = _ensure_logs()
+        conn.execute(
+            "INSERT INTO debug_log (session_id, event_type, source, metadata, created_at) "
+            "VALUES (?, ?, ?, ?, datetime('now'))",
+            (_run_id, 'test_result', f'test:{test_class}.{test_method}',
+             json.dumps(metadata), ))
+        conn.commit()
+    except Exception as _e:
+        print('[brain_test_base] test-log write skipped (%s): %s'
+              % (type(_e).__name__, _e), file=sys.stderr)
 
-    # Also accumulate for post-run encoding
+    # Also accumulate for post-run encoding (in-memory; independent of the DB write)
     _test_results.append(metadata)
 
 
@@ -264,6 +277,15 @@ class BrainTestBase(unittest.TestCase):
         # (finally), even if Brain() raises here.
         self._orig_aspects_json_path = os.environ.get('ASPECTS_JSON_PATH')
         os.environ['ASPECTS_JSON_PATH'] = os.path.join(self.tmp, 'aspects_v1.json')
+        # Isolate brain's ephemeral /tmp files (recall candidates, surface
+        # selections, encoder prompts, current-stop) into the per-test tmp dir.
+        # Two concurrent `pytest tests/` processes otherwise collide on the
+        # fixed filenames (hardcoded session_ids, fixed encoder-prompt counters)
+        # → flaky cross-process failures; and the files leaked into /tmp because
+        # tearDown only rmtree's self.tmp. Routing them here fixes both. Restored
+        # in tearDown (finally) even if Brain() raises.
+        self._orig_brain_tmp_dir = os.environ.get('BRAIN_TMP_DIR')
+        os.environ['BRAIN_TMP_DIR'] = self.tmp
         self.brain = Brain(self.db_path, skip_embedder=not self.needs_embedder)
         self.brain.reset_session_activity()
         # Auto-drain embeddings: the embed_queue worker only fires every
@@ -340,6 +362,13 @@ class BrainTestBase(unittest.TestCase):
                 os.environ.pop('ASPECTS_JSON_PATH', None)
             else:
                 os.environ['ASPECTS_JSON_PATH'] = self._orig_aspects_json_path
+        # Same discipline for BRAIN_TMP_DIR — restore before the temp dir is
+        # rmtree'd so a leaked override can't point later tests at a deleted dir.
+        if hasattr(self, '_orig_brain_tmp_dir'):
+            if self._orig_brain_tmp_dir is None:
+                os.environ.pop('BRAIN_TMP_DIR', None)
+            else:
+                os.environ['BRAIN_TMP_DIR'] = self._orig_brain_tmp_dir
 
         duration_ms = (time.time() - self._test_start) * 1000
 

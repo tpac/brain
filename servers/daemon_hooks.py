@@ -29,6 +29,7 @@ from servers.brain_voice import BrainVoice
 # Hoisted — if this import ever breaks, the daemon fails at boot instead of
 # silently degrading recall 16s in.
 from servers.embedder import embed_query
+from servers.daemon_config import brain_tmp_dir
 
 # Backwards-compatible function aliases — delegate to BrainVoice static methods
 # format_recall_results used only by MCP tool output, not by hook path
@@ -198,7 +199,7 @@ def hook_recall(brain, args, graph_changes):
 
     # Write current stop counter to tmp file — PostToolUse reads this (cross-process)
     try:
-        with open('/tmp/brain-%s-current-stop.txt' % session_id, 'w') as _f:
+        with open(os.path.join(brain_tmp_dir(), 'brain-%s-current-stop.txt' % session_id), 'w') as _f:
             _f.write(_current_stop)
     except Exception as e:
         brain._log_error('write_current_stop', e, 'hook_recall')
@@ -295,7 +296,8 @@ def hook_recall(brain, args, graph_changes):
     # Session dedup happens only at distiller stage, not here.
     try:
         from .pipeline_contract import CANDIDATES_FILE
-        candidates_path = '/tmp/brain-{}-recall-candidates.json'.format(session_id)
+        candidates_path = os.path.join(
+            brain_tmp_dir(), 'brain-{}-recall-candidates.json'.format(session_id))
         capped = results[:CANDIDATES_FILE['max_candidates']]
 
         # Batch enrichment: one call, 5 queries for all 25 nodes

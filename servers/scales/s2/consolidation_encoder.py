@@ -11,6 +11,7 @@ EVOLVE, KEEP, or SKIP for each cluster via tool calls.
 import os
 
 from servers.trace_contract import build_delta_metadata
+from servers.daemon_config import brain_tmp_dir
 
 from .base import IntegrationUnit
 from .consolidation_contract import CONSOLIDATION
@@ -178,7 +179,8 @@ class ConsolidationEncoder(IntegrationUnit):
             # Write prompt to tmp file (passive observer for dashboard)
             try:
                 import json as _json
-                prompt_path = '/tmp/brain-consolidation-prompt-%d.json' % batch_num
+                prompt_path = os.path.join(
+                    brain_tmp_dir(), 'brain-consolidation-prompt-%d.json' % batch_num)
                 with open(prompt_path, 'w') as _pf:
                     _json.dump({"batch": batch_num, "clusters": len(batch),
                                 "user_content": user_content[:50000]}, _pf)

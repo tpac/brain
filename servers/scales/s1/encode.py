@@ -16,6 +16,7 @@ import time
 from servers.scales.dispatch import load_env
 from servers.scales.runner import run_llm_loop
 from servers.trace_contract import build_delta_metadata
+from servers.daemon_config import brain_tmp_dir
 
 
 def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
@@ -155,8 +156,8 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     # bug caught in the smoke_seed_2 run where arm-A jobs read arm-B's
     # prompt files and wrongly flagged "scout_reports_absent" as failed.
     _session_safe = (session_id or 'nosession').replace('/', '_').replace(' ', '_')
-    prompt_path = "/tmp/brain-encoding-prompt-%s-%d.json" % (
-        _session_safe, counter)
+    prompt_path = os.path.join(brain_tmp_dir(), "brain-encoding-prompt-%s-%d.json" % (
+        _session_safe, counter))
     try:
         with open(prompt_path, 'w') as f:
             json.dump({
@@ -170,7 +171,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         # Legacy counter-only path for dashboards that still expect it —
         # overwrite is acceptable for dashboards, not for parallel eval.
         try:
-            with open("/tmp/brain-encoding-prompt-%d.json" % counter, 'w') as f:
+            with open(os.path.join(brain_tmp_dir(), "brain-encoding-prompt-%d.json" % counter), 'w') as f:
                 json.dump({
                     "counter": counter,
                     "session_id": session_id,
@@ -487,7 +488,7 @@ def _write_pre_traces(brain, dispatch_fn, messages, user_content, counter, sessi
         dispatch_fn('trace_append', {
             'chain_id': enc_chain, 'scale': 's1', 'event_type': 'O',
             'ref_type': 'encoding_prompt',
-            'ref_id': '/tmp/brain-encoding-prompt-%d.json' % counter,
+            'ref_id': os.path.join(brain_tmp_dir(), 'brain-encoding-prompt-%d.json' % counter),
             'summary': '%d turns, %d chars context, interaction: encoding-agent-v3' % (
                 turn_count, len(user_content)),
             'session_id': session_id})

@@ -97,6 +97,7 @@ class IsolatedBrain:
         # rmtree'd on exit, so a leaked override would point at a deleted dir.
         self._orig_brain_db_dir = os.environ.get('BRAIN_DB_DIR')
         self._orig_aspects_json_path = os.environ.get('ASPECTS_JSON_PATH')
+        self._orig_brain_tmp_dir = os.environ.get('BRAIN_TMP_DIR')
 
         # Aspect isolation. If the caller already pinned ASPECTS_JSON_PATH
         # (e.g. run_aspect_cycles_on_clone.py points it at its own work file),
@@ -119,6 +120,10 @@ class IsolatedBrain:
         if pin_aspects:
             os.environ['ASPECTS_JSON_PATH'] = os.path.join(
                 self.db_dir, 'aspects_v1.json')
+        # Route brain's ephemeral /tmp files into this isolated run's dir so
+        # concurrent eval/test processes don't collide on fixed filenames and
+        # the files are cleaned up with the temp dir (see daemon_config.brain_tmp_dir).
+        os.environ['BRAIN_TMP_DIR'] = self.db_dir
 
         # Create isolated Brain instance
         import sys
@@ -189,6 +194,11 @@ class IsolatedBrain:
                 os.environ.pop('ASPECTS_JSON_PATH', None)
             else:
                 os.environ['ASPECTS_JSON_PATH'] = self._orig_aspects_json_path
+        if hasattr(self, '_orig_brain_tmp_dir'):
+            if self._orig_brain_tmp_dir is None:
+                os.environ.pop('BRAIN_TMP_DIR', None)
+            else:
+                os.environ['BRAIN_TMP_DIR'] = self._orig_brain_tmp_dir
         if self.cleanup and self.db_dir:
             shutil.rmtree(self.db_dir, ignore_errors=True)
         return False

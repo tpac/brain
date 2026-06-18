@@ -13,10 +13,12 @@ attaches `_corrections` automatically.
 Interaction: 'surface' in interactions table. Prompt is learnable.
 """
 
+import os
 import threading
 from datetime import datetime, timezone
 from collections import OrderedDict
 
+from servers.daemon_config import brain_tmp_dir
 # Hoisted: any embedder API drift fails at daemon boot, not 16s into hook_recall.
 from servers.embedder import embed_batch
 from servers import embedder as _embedder
@@ -164,8 +166,8 @@ def surface_selected_path(session_id, stop_counter):
     proven bug class (a test once wrote the counter-less format and
     Hebbian silently read nothing: file_missing on every Stop).
     """
-    return '/tmp/brain-%s-%d-surface-selected.json' % (
-        session_id, stop_counter)
+    return os.path.join(brain_tmp_dir(), 'brain-%s-%d-surface-selected.json' % (
+        session_id, stop_counter))
 
 # The model used by the S1 surface step. Single source of truth — read by:
 #   - surface.py:_call_surface (the actual selection call)

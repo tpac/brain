@@ -127,6 +127,26 @@ _IS_WORKTREE = _is_worktree_checkout(REPO_ROOT)
 
 # ─── Path Helpers ───
 
+def brain_tmp_dir() -> str:
+    """Root dir for brain's ephemeral per-session/per-run files — recall
+    candidates, surface selections, encoder/consolidation prompts, the
+    current-stop marker. Honors BRAIN_TMP_DIR, defaults to /tmp.
+
+    Production leaves BRAIN_TMP_DIR unset → /tmp, so the daemon and every
+    cross-process reader (hooks, dashboard) resolve the SAME path. Tests and
+    eval set it to a per-run temp dir so two concurrent test processes don't
+    collide on fixed filenames (hardcoded session_ids, fixed encoder-prompt
+    counters) and so the files are cleaned up with the temp dir instead of
+    leaking into /tmp.
+
+    NOT for the daemon DISCOVERY paths (socket/pid/lock/status/maintenance) —
+    those are the well-known uid-keyed rendezvous hooks and the statusline must
+    find, and stay at /tmp regardless. NOT for user-facing post-mortem artifacts
+    (mcp-crash, diagnose) — those want a fixed, findable location too.
+    """
+    return os.environ.get('BRAIN_TMP_DIR', '/tmp')
+
+
 def get_daemon_addr():
     """Get (host, port) for TCP daemon connection."""
     return (DAEMON_HOST, DAEMON_PORT)

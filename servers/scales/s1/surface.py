@@ -14,6 +14,7 @@ import os
 
 from servers.scales.dispatch import load_env
 from servers.trace_contract import build_selection_metadata
+from servers.daemon_config import brain_tmp_dir
 
 
 # SURFACE_SELECTION_SCHEMA lives in surface_contract.py alongside the other
@@ -584,7 +585,7 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
 def _write_surface_result_file(recall_ref, surface_prompt, output, brain):
     """Write surface result to tmp file for dashboard pickup."""
     try:
-        path = "/tmp/brain-judge-result-%s.json" % recall_ref  # keep filename for dashboard compat
+        path = os.path.join(brain_tmp_dir(), "brain-judge-result-%s.json" % recall_ref)  # keep filename for dashboard compat
         with open(path, 'w') as f:
             json.dump({
                 "recall_ref": recall_ref,
