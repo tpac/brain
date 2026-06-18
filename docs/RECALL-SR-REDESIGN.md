@@ -633,6 +633,19 @@ edge-seeding beat node-seeding on the *current flat* embedder (additive-now), or
 If it wins it's an **edge-seed lane** in the selector. NB this **re-opens the PPR-negative** (`89583d50`/`7f9a35e8`):
 those arms may have failed on the *wrong (node) seed*, not because diffusion is useless.
 
+**RESULT — `06fe1193` ran it (their lever, my substrate): FALSIFIED in the simple seed-ranking form.** Edge-seed is
+**dominated, not complementary**: hit@5 **5%** / hit@25 **11%** vs node-seed **23%** / **37%** (recall@5 5% vs 21%,
+nDCG 0.04 vs 0.18). 67% of gold IS edge-reachable → it's a **ranking failure, not reach** (hit@25: edge rescues 4
+node-misses but loses 23 node-hits). Anchor cues catastrophic (0% hit@5), operator less bad (10%). WHY: edge
+embeddings are the *same flat nomic*, and `compose_edge_text` (relation+description) is short/abstract — it describes
+the *relationship*, not content — so it's **flatter than node-cosine** and misaligned with topical cues (`324ea730`
+predicted exactly this). HippoRAG's +20.9 had preconditions we lack (NV-Embed-7B + multi-hop + entity-bridge KG +
+PPR-diffusion *on top*). **So edge-seed is NOT additive now — gated on (a) a sharper embedding AND (b) PPR-diffusion
+on top, not bare seed-ranking.** Only ember: the 4-cue hit@25 rescue. Post-upgrade re-tests still open: edge-seed +
+PPR-diffusion, and edge-seed on a sharper embedder. Script: `emb_bench/edge_seed_ab.py` (06fe1193's worktree,
+uncommitted). **Net: reinforces "embedder is the wall" + selector-first — graph/edge lanes are gated on the embedding
+upgrade.** This closes the edge-seed optionality row as ✗-in-simple-form / re-test-post-upgrade.
+
 **Cross-stream convergence (the morale frame).** The peer's HippoRAG read and this eval land on the **same stack** —
 *(1) a more discriminative embedding (bench `06fe1193`) sharpens the seeds; (2) query→edge seeding + (3) a
 recognition/selector gate make the graph walk pay off* = **HippoRAG-2's recipe.** We are **not architecturally behind —
