@@ -22,7 +22,8 @@ Design notes:
   — an active back-and-forth stays responsive. A daemon-down/error counts as
   idle (keep backing off, don't hammer a dead socket).
 
-Usage: self_inbox_poller.py <session_id> [fast_seconds=5] [slow_seconds=60] [backoff=2.0]
+Usage: self_inbox_poller.py [session_id] [fast_seconds=5] [slow_seconds=60] [backoff=2.0]
+       session_id falls back to $CLAUDE_CODE_SESSION_ID when omitted.
 """
 import os
 import sys
@@ -34,15 +35,28 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..',
 
 
 def main():
-    if len(sys.argv) < 2 or not sys.argv[1].strip():
-        sys.stderr.write("self_inbox_poller: session_id required\n")
+    # session_id: explicit argv[1] wins; else fall back to CLAUDE_CODE_SESSION_ID
+    # (the full UUID Claude Code exports per command). Belt-and-suspenders for the
+    # brain-watch launcher's own default — keeps the poller usable when invoked
+    # directly with no arg from inside a session.
+    arg = sys.argv[1].strip() if len(sys.argv) > 1 else ""
+    sid = arg or os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip()
+    if not sid:
+        sys.stderr.write("self_inbox_poller: session_id required "
+                         "(pass as arg or set CLAUDE_CODE_SESSION_ID)\n")
         return 2
-    sid = sys.argv[1].strip()
     fast = float(sys.argv[2]) if len(sys.argv) > 2 else 5.0     # responsive floor
     slow = float(sys.argv[3]) if len(sys.argv) > 3 else 60.0    # idle ceiling
     backoff = float(sys.argv[4]) if len(sys.argv) > 4 else 2.0  # idle multiplier
 
     from servers import daemon_client
+
+    # Startup banner → stderr (stdout is reserved for the message events the
+    # Monitor tool turns into notifications). Surfaces WHICH inbox armed so an
+    # operator can confirm the right stream without the poller faking an event.
+    sys.stderr.write("self_inbox_poller: watching inbox for %s "
+                     "(poll %gs→%gs, x%g backoff)\n" % (sid, fast, slow, backoff))
+    sys.stderr.flush()
 
     seen = set()
     primed = False
