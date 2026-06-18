@@ -68,7 +68,7 @@ const TIPS = {
   'dropped':    'Candidates considered but not surfaced',
   // section headers
   'cost & provenance': 'What this run cost and which prompt version produced it',
-  'graph Δ':    'Nodes this run created / revised / connected / archived — the change to memory',
+  'graph Δ':    'Nodes this run created / revised / archived — the change to memory (edges are their own edge events)',
   'outcomes':   'Unit-specific tally of what the run decided (e.g. merged, kept, consolidated)',
   'output (what Anchor saw)': 'The exact additionalContext block this recall injected into Anchor',
   'field deltas': 'Per-field old → new values changed by this revise',
@@ -139,7 +139,7 @@ function _fmtMs(ms) {
 const _DELTA_KNOWN = new Set([
   'actions', 'write_actions', 'rounds', 'inputs_processed', 'outcomes',
   'rejection_skipped', 'journal_entry', 'action_details', 'read_calls',
-  'final_text', 'errors', 'created', 'revised', 'connected', 'archived',
+  'final_text', 'errors', 'created', 'revised', 'archived', 'classifications',
   'elapsed_ms', 'input_tokens', 'output_tokens', 'cache_read_tokens',
   'cache_creation_tokens', 'truncated', 'interaction_version',
   'human_identity', 'agent_identity',
@@ -181,7 +181,7 @@ function _renderDelta(ev, m) {
   // Op-attributed node lists — each id navigable to the graph.
   const lanes = [
     ['created', '#33ff88'], ['revised', '#ffaa33'],
-    ['connected', '#7eb8ff'], ['archived', '#888'],
+    ['archived', '#888'],
   ];
   let nodeBody = '';
   for (const [k, c] of lanes) {

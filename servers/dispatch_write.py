@@ -172,29 +172,30 @@ def _emit_revise_trace(brain, node_id, reason, encoding_source, deltas,
         revises join the encoder's chain for grouped querying).
       - Otherwise fall back to a date-based per-scale chain
         (`{scale}-{YYYYMMDD}-revise`) so direct/operator revises group by day.
+
+    FAILURE-ISOLATED: the whole body is wrapped (a revise inside a brain_batch
+    runs in the batch transaction — a trace error here must log loudly, not
+    raise and roll back the revise it was recording).
     """
     warnings = warnings or []
     if not deltas and not warnings:
         return  # nothing to record
 
-    from .trace_contract import build_revise_metadata
-
-    scale, chain_id = _infer_scale_and_chain(brain, encoding_source, chain_id_override)
-
-    metadata = build_revise_metadata(
-        node_id=node_id, reason=reason,
-        encoding_source=encoding_source,
-        deltas=deltas, warnings=warnings)
-
-    parts = []
-    if deltas:
-        parts.append('revised %d field(s): %s' % (
-            len(deltas), ', '.join(d['field'] for d in deltas)))
-    if warnings:
-        parts.append('%d warning(s)' % len(warnings))
-    summary = '; '.join(parts) if parts else 'revise no-op'
-
     try:
+        from .trace_contract import build_revise_metadata
+        scale, chain_id = _infer_scale_and_chain(
+            brain, encoding_source, chain_id_override)
+        metadata = build_revise_metadata(
+            node_id=node_id, reason=reason,
+            encoding_source=encoding_source,
+            deltas=deltas, warnings=warnings)
+        parts = []
+        if deltas:
+            parts.append('revised %d field(s): %s' % (
+                len(deltas), ', '.join(d['field'] for d in deltas)))
+        if warnings:
+            parts.append('%d warning(s)' % len(warnings))
+        summary = '; '.join(parts) if parts else 'revise no-op'
         brain._trace_dal.append(
             chain_id=chain_id,
             scale=scale,
@@ -207,44 +208,51 @@ def _emit_revise_trace(brain, node_id, reason, encoding_source, deltas,
         )
     except Exception as e:
         brain._log_error('revise_trace_emit', e,
-                         'failed to emit trace for revise of %s' % node_id[:8])
+                         'failed to emit trace for revise of %s' % str(node_id)[:8])
 
 
 def _emit_edge_revise_trace(brain, edge_id, relation, reason, encoding_source,
                             deltas, warnings=None,
-                            chain_id_override='', session_id=''):
+                            chain_id_override='', session_id='',
+                            source_id='', target_id=''):
     """Emit an edge_relation_revised trace event.
 
     Mirrors _emit_revise_trace for nodes. Same emit-on-deltas-or-warnings
     behavior, same scale inference, same chain_id strategy. ref_id encodes
     the (edge_id, relation) tuple as f"{edge_id}:{relation}".
 
-    Used by the connect upsert path (deltas show create-via-INSERT or
-    field-preserving update) and the disconnect path (deltas show the
-    archived flag flip).
+    source_id/target_id carry the directional pair into the metadata so the
+    edge is reconstructable from the trace alone (edge_id is a one-way hash).
+
+    Used by every edge path: the connect upsert (deltas show create-via-INSERT
+    or field-preserving update), connect_batch, revise_edge, the connect_to /
+    co_anchored paths (via _emit_edge_traces), and disconnect (archived flip).
+
+    FAILURE-ISOLATED: the ENTIRE body is wrapped — scale/chain inference and
+    metadata build included, not just the append — so a trace-layer error logs
+    loudly and returns. Trace emission is observability; it must NEVER raise
+    into the caller and roll back the graph write that produced the edge.
     """
     warnings = warnings or []
     if not deltas and not warnings:
         return  # nothing to record
 
-    from .trace_contract import build_edge_revise_metadata
-
-    scale, chain_id = _infer_scale_and_chain(brain, encoding_source, chain_id_override)
-
-    metadata = build_edge_revise_metadata(
-        edge_id=edge_id, relation=relation, reason=reason,
-        encoding_source=encoding_source,
-        deltas=deltas, warnings=warnings)
-
-    parts = []
-    if deltas:
-        parts.append('%d field(s): %s' % (
-            len(deltas), ', '.join(d['field'] for d in deltas)))
-    if warnings:
-        parts.append('%d warning(s)' % len(warnings))
-    summary = '; '.join(parts) if parts else 'edge revise no-op'
-
     try:
+        from .trace_contract import build_edge_revise_metadata
+        scale, chain_id = _infer_scale_and_chain(
+            brain, encoding_source, chain_id_override)
+        metadata = build_edge_revise_metadata(
+            edge_id=edge_id, relation=relation, reason=reason,
+            encoding_source=encoding_source,
+            source_id=source_id, target_id=target_id,
+            deltas=deltas, warnings=warnings)
+        parts = []
+        if deltas:
+            parts.append('%d field(s): %s' % (
+                len(deltas), ', '.join(d['field'] for d in deltas)))
+        if warnings:
+            parts.append('%d warning(s)' % len(warnings))
+        summary = '; '.join(parts) if parts else 'edge revise no-op'
         brain._trace_dal.append(
             chain_id=chain_id,
             scale=scale,
@@ -258,7 +266,56 @@ def _emit_edge_revise_trace(brain, edge_id, relation, reason, encoding_source,
     except Exception as e:
         brain._log_error('edge_revise_trace_emit', e,
                          'failed to emit trace for edge %s:%s' % (
-                             edge_id[:12], relation))
+                             str(edge_id)[:12], relation))
+
+
+def _affected(created=None, revised=None, archived=None):
+    """Build the authoritative node-lifecycle split a write handler returns.
+
+    Sits at the TOP LEVEL of a handler's return (sibling to `result`), so it
+    reaches the trace substrate — the runner copies it onto each action and
+    the daemon forwards it verbatim — without ever entering the agent-facing
+    payload (only `result` is formatted back to the model). NODE lifecycle
+    only; edges are directional `edge_relation_revised` events, not a flat
+    list here. Replaces the runner's tool-name `_split_action_ids` heuristic
+    with attribution from the layer that actually knows the op.
+    """
+    return {'created': list(created or []),
+            'revised': list(revised or []),
+            'archived': list(archived or [])}
+
+
+def _emit_edge_traces(brain, made, encoding_source,
+                      chain_id_override='', session_id='',
+                      reason='connect_to'):
+    """Emit one directional edge_relation_revised trace per made edge.
+
+    `made` entries are self-contained {src_id, target_id, relation, edge_id,
+    deltas} produced by brain._apply_connect_to (connect_to) and remember()'s
+    co_anchored path. This is the single seam where remember()-internal edges
+    join the same edge-trace writer the explicit connect ops use — closing the
+    gap where those edges emitted nothing. Each _emit_edge_revise_trace call is
+    failure-isolated, so one bad entry never stops the rest or the write.
+    """
+    for e in made or []:
+        if not isinstance(e, dict) or not e.get('edge_id'):
+            continue
+        _emit_edge_revise_trace(
+            brain, e['edge_id'], e.get('relation', ''),
+            reason, encoding_source,
+            e.get('deltas', []),
+            chain_id_override=chain_id_override,
+            session_id=session_id,
+            source_id=e.get('src_id', ''),
+            target_id=e.get('target_id', ''))
+
+
+def _resolve_archived_by(op_spec, top_encoding_source):
+    """Attribution fallback for batch archive/absorb/disconnect ops:
+    op-level encoding_source → op-level archived_by → batch encoding_source →
+    'unknown'. One source so the three _op_* helpers can't drift."""
+    return (op_spec.get('encoding_source') or op_spec.get('archived_by')
+            or top_encoding_source or 'unknown')
 
 
 def _handle_remember(brain, args, graph_changes):
@@ -303,11 +360,31 @@ def _handle_remember(brain, args, graph_changes):
         result.setdefault('warnings', []).append(reason_warning)
     # ctx is cached on Brain; remember's record_remember mutation persists
     # via the autosave loop (no per-call save).
-    node_id = result.get("id", "?")[:8] if isinstance(result, dict) else "?"
+    full_id = result.get("id", "") if isinstance(result, dict) else ""
+    node_id = full_id[:8] if full_id else "?"
     graph_changes.append(
         "REMEMBER: [%s] %s (%s...)" % (
             args.get("type", "?"), args.get("title", "")[:50], node_id))
-    return {"ok": True, "result": result}
+    # Edges remember() materialized emit directional edge traces. Both
+    # made-lists are already src-tagged + carry edge_id/deltas (connect_to via
+    # _apply_connect_to, co_anchored via remember()), so no re-deriving here.
+    enc_src = args.get('encoding_source', '')
+    chain = args.get('chain_id', '')
+    sess = caller_session(args)
+    ctr = result.get('connect_to_result') if isinstance(result, dict) else None
+    if ctr and ctr.get('created'):
+        _emit_edge_traces(brain, ctr['created'], enc_src,
+                          chain_id_override=chain, session_id=sess,
+                          reason='connect_to')
+    # pop: co_anchored is an automatic internal edge, not agent-facing like
+    # connect_to_result — consume it for tracing, keep it out of the payload.
+    co_anchored = result.pop('co_anchored_made', None) if isinstance(result, dict) else None
+    if co_anchored:
+        _emit_edge_traces(brain, co_anchored, enc_src,
+                          chain_id_override=chain, session_id=sess,
+                          reason='co_anchored (shared episodic anchor)')
+    return {"ok": True, "result": result,
+            "affected": _affected(created=[full_id] if full_id else None)}
 
 
 def _handle_remember_batch(brain, args, graph_changes):
@@ -372,7 +449,27 @@ def _handle_remember_batch(brain, args, graph_changes):
     if reason_warnings and isinstance(result, dict):
         result.setdefault('warnings', []).extend(reason_warnings)
     graph_changes.append("REMEMBER_BATCH: %d nodes" % result.get("nodes_created", 0))
-    return {"ok": True, "result": result}
+    enc_src = args.get('encoding_source', '')
+    chain = args.get('chain_id', '')
+    sess = caller_session(args)
+    # `connect_to_made` is the brain method's edge record — consumed here for
+    # edge traces, then dropped so it doesn't bloat the agent-facing payload
+    # (the edges live in edge_relation_revised events now).
+    made = result.pop('connect_to_made', None) if isinstance(result, dict) else None
+    _emit_edge_traces(brain, made, enc_src, chain_id_override=chain,
+                      session_id=sess, reason='connect_to')
+    # co_anchored edges fire inside each per-node remember(); collect + pop them
+    # off the per-node results so they're traced but stay out of the payload.
+    co_anchored = []
+    for node_r in (result.get('results') or []):
+        if isinstance(node_r, dict):
+            co_anchored.extend(node_r.pop('co_anchored_made', None) or [])
+    _emit_edge_traces(brain, co_anchored, enc_src, chain_id_override=chain,
+                      session_id=sess, reason='co_anchored (shared episodic anchor)')
+    created_ids = [r.get('id') for r in (result.get('results') or [])
+                   if isinstance(r, dict) and r.get('id')]
+    return {"ok": True, "result": result,
+            "affected": _affected(created=created_ids)}
 
 
 def _handle_revise(brain, args, graph_changes):
@@ -437,7 +534,8 @@ def _handle_revise(brain, args, graph_changes):
 
     graph_changes.append("REVISE: [%s] %s" % (
         result.get("type", "?"), result.get("title", "")[:50]))
-    return {"ok": True, "result": result}
+    return {"ok": True, "result": result,
+            "affected": _affected(revised=[node_id])}
 
 
 def _handle_revise_batch(brain, args, graph_changes):
@@ -489,8 +587,10 @@ def _handle_revise_batch(brain, args, graph_changes):
     # Includes warnings so audit history captures attempted-but-rejected ops.
     chain_id_override = args.get('chain_id', '')
     session_id = caller_session(args)
+    revised_ids = []
     for row, spec in zip(result.get('results', []), resolved):
         if row.get('status') == 'revised':
+            revised_ids.append(row['node_id'])
             _emit_revise_trace(
                 brain, row['node_id'], spec.get('reason', ''),
                 spec.get('encoding_source', '') or top_encoding_source or '',
@@ -500,7 +600,85 @@ def _handle_revise_batch(brain, args, graph_changes):
                 session_id=session_id,
             )
 
-    return {"ok": True, "result": result}
+    return {"ok": True, "result": result,
+            "affected": _affected(revised=revised_ids)}
+
+
+def _op_archive(brain, op_spec, top_encoding_source, graph_changes):
+    """brain_batch `archive` op — soft-archive a node (guards, edges, vectors,
+    audit all handled by archive_node). Returns archive_node's result plus the
+    node-lifecycle `affected` split. Batch-only op (no standalone tool), hence
+    a `_op_*` helper rather than a `_handle_*` handler."""
+    node_id = op_spec.get("node_id")
+    archived_by = _resolve_archived_by(op_spec, top_encoding_source)
+    r = brain.archive_node(
+        node_id, archived_by=archived_by, reason=op_spec.get('reason', ''))
+    if r.get('ok'):
+        graph_changes.append("ARCHIVE: %s" % node_id[:8])
+        r["affected"] = _affected(archived=[node_id])
+    return r
+
+
+def _op_absorb(brain, op_spec, top_encoding_source, graph_changes):
+    """brain_batch `absorb` op — lossless merge: fold absorbed INTO survivor,
+    then archive absorbed (transfer-by-default: source_refs, edges,
+    access_count, KV — so a merge can't silently drop what the imperative
+    revise+connect+archive path did). survivor may be locked; absorbed must
+    not be. affected: survivor revised (content rewritten) + absorbed
+    archived, so a merge-only run is no longer invisible to S2."""
+    survivor_id = op_spec.get("survivor_id")
+    absorbed_id = op_spec.get("absorbed_id")
+    archived_by = _resolve_archived_by(op_spec, top_encoding_source)
+    # Revise-op style: every non-control key is a survivor field override
+    # (content, title, confidence, situation, ...), forwarded to absorb()'s
+    # updates — same mental model as the revise op.
+    _CONTROL = {'op', 'survivor_id', 'absorbed_id', 'prune_edges',
+                'drop_fields', 'archived_by', 'encoding_source', 'reason',
+                'session_id', 'chain_id'}
+    field_updates = {k: v for k, v in op_spec.items() if k not in _CONTROL}
+    r = brain.absorb(
+        survivor_id, absorbed_id, updates=field_updates or None,
+        archived_by=archived_by, reason=op_spec.get('reason', ''),
+        prune_edges=op_spec.get('prune_edges'),
+        drop_fields=op_spec.get('drop_fields'))
+    if r.get('ok'):
+        graph_changes.append("ABSORB: %s <- %s" % (
+            survivor_id[:8], absorbed_id[:8]))
+        r["affected"] = _affected(revised=[survivor_id], archived=[absorbed_id])
+    return r
+
+
+def _op_disconnect(brain, op_spec, top_encoding_source, top_session_id, args,
+                   graph_changes):
+    """brain_batch `disconnect` op — soft-archive ONE relation on an edge
+    (other relations on the same edge survive; archived row kept for
+    forensics/recovery). Emits the archived-flag-flip edge trace. Edge-only —
+    no node lifecycle, so no `affected`."""
+    # Resolve endpoints — mirrors _handle_connect/_handle_connect_batch. Without
+    # this, short/title ids passed by an encoder miss get_edge_id (silent no-op)
+    # and the edge trace records unresolved ids inconsistent with other edges.
+    source_id = _resolve_id(brain, op_spec.get("source_id", ""))
+    target_id = _resolve_id(brain, op_spec.get("target_id", ""))
+    relation = op_spec.get("relation")
+    archived_by = _resolve_archived_by(op_spec, top_encoding_source)
+    gdal = brain._graph
+    edge_id = gdal.get_edge_id(source_id, target_id)
+    # remove_relation gates its own commit on conn.in_batch (True here) →
+    # deferred to the batch's single COMMIT.
+    gdal.remove_relation(source_id, target_id, relation, archived_by=archived_by)
+    graph_changes.append("DISCONNECT: %s -[%s]-> %s" % (
+        source_id[:8], relation, target_id[:8]))
+    # Emit edge_relation_revised trace capturing the archived flag flip.
+    if edge_id:
+        _emit_edge_revise_trace(
+            brain, edge_id, relation,
+            op_spec.get('reason', '') or args.get('reason', ''),
+            archived_by,
+            deltas=[{'field': 'archived', 'old': 0, 'new': 1}],
+            chain_id_override=args.get('chain_id', ''),
+            session_id=top_session_id,
+            source_id=source_id, target_id=target_id)
+    return {"ok": True}
 
 
 def _handle_brain_batch(brain, args, graph_changes):
@@ -542,6 +720,18 @@ def _handle_brain_batch(brain, args, graph_changes):
     # can resolve. NEW wins on title collision (sibling beats catalog).
     sibling_map = {}  # lowercased title → new node_id
     deferred_connects = []  # [(src_node_id, connect_to_spec)]
+
+    # Node-lifecycle Δ aggregated across all sub-ops — the authoritative
+    # `affected` the batch returns at top level (the runner reads it for the
+    # encoding_run delta; the agent never sees it). Popped off each sub-result
+    # so the per-op `results` array stays the agent-facing shape it always was.
+    agg = {'created': [], 'revised': [], 'archived': []}
+
+    def _accumulate(aff):
+        if aff:
+            agg['created'].extend(aff.get('created') or [])
+            agg['revised'].extend(aff.get('revised') or [])
+            agg['archived'].extend(aff.get('archived') or [])
 
     # Wrap the whole batch in ONE SQLite transaction. Sub-handlers and DAL
     # writers gate their commits on brain.conn.in_batch (commit_unless_batched);
@@ -641,6 +831,7 @@ def _handle_brain_batch(brain, args, graph_changes):
                     # siblings before deferred connect_to runs.
                     op_args.setdefault("auto_connect", False)
                     r = _handle_remember(brain, op_args, graph_changes)
+                    _accumulate(r.pop("affected", None))
                     results.append({"op": "remember", "index": i, **r})
                     # Capture for sibling_map + deferred resolution
                     if r.get("ok"):
@@ -660,6 +851,7 @@ def _handle_brain_batch(brain, args, graph_changes):
                     if top_session_id and CALLER_SESSION_KEY not in op_args:
                         op_args[CALLER_SESSION_KEY] = top_session_id
                     r = _handle_revise(brain, op_args, graph_changes)
+                    _accumulate(r.pop("affected", None))
                     results.append({"op": "revise", "index": i, **r})
 
                 elif op == "connect":
@@ -669,97 +861,27 @@ def _handle_brain_batch(brain, args, graph_changes):
                     if top_session_id and CALLER_SESSION_KEY not in op_args:
                         op_args[CALLER_SESSION_KEY] = top_session_id
                     r = _handle_connect(brain, op_args, graph_changes)
+                    _accumulate(r.pop("affected", None))
                     results.append({"op": "connect", "index": i, **r})
 
                 elif op == "archive":
-                    # node_id presence guaranteed by the BATCH_OP_SPECS
-                    # pre-check above.
-                    node_id = op_spec.get("node_id")
-                    # Unified archive path — handles guards, edges, vectors, audit.
-                    # Fallback chain mirrors disconnect: op-level encoding_source
-                    # → op-level archived_by → top-level encoding_source →
-                    # 'unknown'. Lets top-level brain_batch tagging cascade to
-                    # archive audit without per-op injection.
-                    archived_by = op_spec.get('encoding_source') or \
-                        op_spec.get('archived_by') or \
-                        top_encoding_source or 'unknown'
-                    reason = op_spec.get('reason', '')
-                    r = brain.archive_node(
-                        node_id, archived_by=archived_by, reason=reason)
-                    if r.get('ok'):
-                        graph_changes.append("ARCHIVE: %s" % node_id[:8])
+                    # node_id presence guaranteed by the BATCH_OP_SPECS pre-check.
+                    r = _op_archive(brain, op_spec, top_encoding_source, graph_changes)
+                    _accumulate(r.pop("affected", None))
                     results.append({"op": "archive", "index": i, **r})
 
                 elif op == "absorb":
-                    # Lossless merge: fold absorbed INTO survivor, then archive
-                    # absorbed. Transfer-by-default (source_refs, edges,
-                    # access_count, KV) so a merge can't silently drop info the
-                    # imperative revise+connect+archive path did (node 988de522).
-                    # survivor may be locked; absorbed must not be.
                     # id presence guaranteed by the BATCH_OP_SPECS pre-check.
-                    survivor_id = op_spec.get("survivor_id")
-                    absorbed_id = op_spec.get("absorbed_id")
-                    archived_by = op_spec.get('encoding_source') or \
-                        op_spec.get('archived_by') or \
-                        top_encoding_source or 'unknown'
-                    # Revise-op style: every non-control key is a survivor
-                    # field override (content, title, confidence, situation,
-                    # ...), forwarded to absorb()'s updates. Same mental
-                    # model as the revise op — an agent writes the same shape.
-                    _CONTROL = {'op', 'survivor_id', 'absorbed_id',
-                                'prune_edges', 'drop_fields', 'archived_by',
-                                'encoding_source', 'reason',
-                                'session_id', 'chain_id'}
-                    field_updates = {k: v for k, v in op_spec.items()
-                                     if k not in _CONTROL}
-                    r = brain.absorb(
-                        survivor_id, absorbed_id,
-                        updates=field_updates or None,
-                        archived_by=archived_by,
-                        reason=op_spec.get('reason', ''),
-                        prune_edges=op_spec.get('prune_edges'),
-                        drop_fields=op_spec.get('drop_fields'))
-                    if r.get('ok'):
-                        graph_changes.append("ABSORB: %s <- %s" % (
-                            survivor_id[:8], absorbed_id[:8]))
+                    r = _op_absorb(brain, op_spec, top_encoding_source, graph_changes)
+                    _accumulate(r.pop("affected", None))
                     results.append({"op": "absorb", "index": i, **r})
 
                 elif op == "disconnect":
-                    # Soft-archive a specific relation on an edge. Other relations
-                    # on the same edge survive. v25 — archived row preserved for
-                    # forensics/recovery; reads filter via JOIN.
-                    # Lets ABSORB encoders prune survivor edges that don't fit
-                    # the new framing after revise.
                     # field presence guaranteed by the BATCH_OP_SPECS pre-check.
-                    source_id = op_spec.get("source_id")
-                    target_id = op_spec.get("target_id")
-                    relation = op_spec.get("relation")
-                    archived_by = op_spec.get('encoding_source') or \
-                        op_spec.get('archived_by') or \
-                        top_encoding_source or 'unknown'
-                    gdal = brain._graph
-                    edge_id = gdal.get_edge_id(source_id, target_id)
-                    # remove_relation gates its own commit on conn.in_batch
-                    # (True here) → deferred to the batch's single COMMIT.
-                    gdal.remove_relation(
-                        source_id, target_id, relation, archived_by=archived_by)
-                    graph_changes.append("DISCONNECT: %s -[%s]-> %s" % (
-                        source_id[:8], relation, target_id[:8]))
-
-                    # Emit edge_relation_revised trace event capturing the
-                    # archived flag flip. Mirrors connect upsert trace shape.
-                    if edge_id:
-                        _emit_edge_revise_trace(
-                            brain, edge_id, relation,
-                            op_spec.get('reason', '') or args.get('reason', ''),
-                            archived_by,
-                            deltas=[{'field': 'archived',
-                                     'old': 0, 'new': 1}],
-                            chain_id_override=args.get('chain_id', ''),
-                            session_id=top_session_id,
-                        )
-
-                    results.append({"op": "disconnect", "index": i, "ok": True})
+                    r = _op_disconnect(brain, op_spec, top_encoding_source,
+                                       top_session_id, args, graph_changes)
+                    _accumulate(r.pop("affected", None))
+                    results.append({"op": "disconnect", "index": i, **r})
 
                 else:
                     # Invalid op name — log loudly. Sonnet sometimes invents
@@ -787,16 +909,21 @@ def _handle_brain_batch(brain, args, graph_changes):
         # has a visible "connect_to_failures=N" reason.
         connect_to_edges = 0
         connect_to_failed = []  # [{title, reason}]
+        connect_to_made = []    # [{src_id, target_id, relation, edge_id, deltas}]
         for src_id, ct_spec in deferred_connects:
             r = brain._apply_connect_to(src_id, ct_spec, sibling_map=sibling_map)
             connect_to_edges += len(r['created'])
+            connect_to_made.extend(r['created'])  # entries src-tagged by _apply_connect_to
             connect_to_failed.extend(r['failed'])
         if connect_to_edges:
             graph_changes.append("CONNECT_TO: %d edges" % connect_to_edges)
         if connect_to_failed:
             graph_changes.append("CONNECT_TO_FAILURES: %d" % len(connect_to_failed))
 
-        # One commit for the whole batch — all per-op writes land here.
+        # One commit for the whole batch — all per-op writes land here. Edge
+        # traces are emitted AFTER this (post-finally), never before: traces
+        # live in a different DB, so emitting pre-commit would orphan them if
+        # the batch rolled back.
         brain.conn.commit()
     except Exception as e:
         # Per-op exceptions are caught above and recorded in `results` — reaching
@@ -827,6 +954,16 @@ def _handle_brain_batch(brain, args, graph_changes):
     finally:
         brain.conn.in_batch = False
 
+    # POST-COMMIT: the batch is durable (any exception above re-raised past this
+    # point). Emit connect_to edge traces now — failure-isolated per edge, so a
+    # trace error logs loudly and can neither roll back the committed graph nor
+    # orphan a trace for an edge that didn't persist. (co_anchored edges were
+    # already traced inline by each remember op's _handle_remember.)
+    _emit_edge_traces(
+        brain, connect_to_made, top_encoding_source or '',
+        chain_id_override=args.get('chain_id', ''),
+        session_id=top_session_id, reason='connect_to')
+
     succeeded = sum(1 for r in results if r.get("ok"))
     return {"ok": True, "result": {
         "total": len(operations),
@@ -836,7 +973,8 @@ def _handle_brain_batch(brain, args, graph_changes):
         "connect_to_failures": len(connect_to_failed),
         "connect_to_failed": connect_to_failed,
         "results": results,
-    }}
+    }, "affected": _affected(
+        created=agg['created'], revised=agg['revised'], archived=agg['archived'])}
 
 
 def _handle_connect(brain, args, graph_changes):
@@ -844,9 +982,11 @@ def _handle_connect(brain, args, graph_changes):
     # specified them. None preserves existing on update (idempotent upsert).
     relation = args.get("relation", "related_to")
     encoding_source = args.get("encoding_source")  # None = preserve on update
+    src_id = _resolve_id(brain, args.get("source_id", ""))
+    tgt_id = _resolve_id(brain, args.get("target_id", ""))
     result = brain.connect_typed(
-        source_id=_resolve_id(brain, args.get("source_id", "")),
-        target_id=_resolve_id(brain, args.get("target_id", "")),
+        source_id=src_id,
+        target_id=tgt_id,
         relation=relation,
         weight=args.get("weight", 0.5),
         description=args.get("description"),
@@ -862,6 +1002,7 @@ def _handle_connect(brain, args, graph_changes):
             warnings=result.get('warnings', []),
             chain_id_override=args.get('chain_id', ''),
             session_id=caller_session(args),
+            source_id=src_id, target_id=tgt_id,
         )
 
     graph_changes.append(
@@ -899,7 +1040,8 @@ def _handle_revise_edge(brain, args, graph_changes):
             args.get("reason", ""), args.get("encoding_source") or "",
             result.get("deltas", []),
             chain_id_override=args.get("chain_id", ""),
-            session_id=caller_session(args))
+            session_id=caller_session(args),
+            source_id=source_id, target_id=target_id)
 
     graph_changes.append(
         "REVISE_EDGE: %s -[%s]-> %s" % (
@@ -953,9 +1095,11 @@ def _handle_connect_batch(brain, args, graph_changes):
             # Stage 1B: pass description/encoding_source through only when
             # specified (None → preserve existing on update).
             encoding_source = c.get("encoding_source") or top_encoding_source or None
+            src_id = _resolve_id(brain, src_raw)
+            tgt_id = _resolve_id(brain, tgt_raw)
             result = brain.connect_typed(
-                source_id=_resolve_id(brain, src_raw),
-                target_id=_resolve_id(brain, tgt_raw),
+                source_id=src_id,
+                target_id=tgt_id,
                 relation=relation,
                 weight=c.get("weight", 0.5),
                 description=c.get("description"),
@@ -972,6 +1116,7 @@ def _handle_connect_batch(brain, args, graph_changes):
                     warnings=result.get('warnings', []),
                     chain_id_override=chain_id_override,
                     session_id=session_id,
+                    source_id=src_id, target_id=tgt_id,
                 )
         except Exception as e:
             # No silent drops: a failed edge in a batch must surface, not vanish

@@ -43,7 +43,8 @@ class HealerEncoder(IntegrationUnit):
         fields_written = 0
         skipped = 0
         errors = []
-        healed_ids = []       # for journal_entry: which nodes got filled
+        healed_ids = []       # for journal_entry: which nodes got filled (short)
+        revised_ids = []      # full ids → delta `revised` (structured Δ, was empty)
         field_counter = {}    # for outcomes: which fields got written most
         batches = 0
 
@@ -80,11 +81,13 @@ class HealerEncoder(IntegrationUnit):
                     continue
 
                 proposal = by_full.get(nid) or by_short.get(nid[:8])
-                written = self._store_fields(nid, healing, proposal)
+                written, full_id = self._store_fields(nid, healing, proposal)
                 if written > 0:
                     nodes_healed += 1
                     fields_written += written
                     healed_ids.append(nid[:8])
+                    if full_id:
+                        revised_ids.append(full_id)
                     for field in ('question', 'situation', 'reasoning'):
                         if healing.get(field):
                             field_counter[field] = field_counter.get(field, 0) + 1
@@ -125,6 +128,11 @@ class HealerEncoder(IntegrationUnit):
                        outcomes=outcomes,
                        journal_entry=journal_entry,
                        errors=errors,
+                       # Healer writes via dispatch('revise') in a hand-rolled
+                       # loop (not run_llm_loop), so it passes the revised ids
+                       # explicitly — without this the structured Δ was empty
+                       # and every heal lived only in the journal counter-string.
+                       revised=revised_ids,
                        nodes_healed=nodes_healed,
                        fields_written=fields_written,
                    ))
@@ -257,7 +265,9 @@ class HealerEncoder(IntegrationUnit):
         already had content are rejected and logged. Prevents the renegade-
         healer pattern (overwriting good data with freshly-generated text).
 
-        Returns count of fields written.
+        Returns (count of fields written, full_id) — full_id lets the caller
+        record the revised node in the delta's structured Δ. (0, None) on
+        no-op or failure.
         """
         fields_to_write = {}
 
@@ -276,13 +286,13 @@ class HealerEncoder(IntegrationUnit):
             fields_to_write[field] = value
 
         if not fields_to_write:
-            return 0
+            return 0, None
 
         # Resolve short node ID
         ndal = self.brain._nodes
         full_id = ndal.resolve_id(node_id) if len(node_id) < 16 else node_id
         if not full_id:
-            return 0
+            return 0, None
 
         try:
             revise_args = {
@@ -296,9 +306,9 @@ class HealerEncoder(IntegrationUnit):
             else:
                 self.brain.revise(**revise_args)
 
-            return len(fields_to_write)
+            return len(fields_to_write), full_id
 
         except Exception as e:
             self.brain._log_error(self.NAME, e,
                                   'storing fields for %s' % node_id[:8])
-            return 0
+            return 0, None

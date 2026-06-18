@@ -953,6 +953,10 @@ class BrainRememberMixin:
         # input is a no-op. Failures are logged but don't fail the write —
         # invalid refs degrade gracefully at recall (S2Healer cleans
         # dangling refs in a future pass).
+        # Edges co_anchored creates are surfaced (like connect_to) so the
+        # dispatch handler emits a directional edge_relation_revised trace —
+        # co_anchored is a first-class typed edge, not a soft/derived one.
+        co_anchored_made = []
         if source_refs:
             try:
                 self._source_refs.add_source_refs(node_id, source_refs)
@@ -979,11 +983,16 @@ class BrainRememberMixin:
                         if sibling_id != node_id:
                             siblings.add(sibling_id)
                 for sibling_id in siblings:
-                    graph_dal.add_relation(
+                    _r = graph_dal.add_relation(
                         node_id, sibling_id, 'co_anchored',
                         description='shared episodic anchor',
                         encoding_source='dispatch:co_anchored',
                     )
+                    co_anchored_made.append({
+                        'src_id': node_id, 'target_id': sibling_id,
+                        'relation': 'co_anchored',
+                        'edge_id': (_r or {}).get('edge_id'),
+                        'deltas': (_r or {}).get('deltas', [])})
             except Exception as e:
                 self._log_error(
                     'co_anchored_autoedge', e,
@@ -1109,6 +1118,10 @@ class BrainRememberMixin:
         # create) are DIFFERENT things — don't read one as the other.
         if connect_to_result is not None:
             result['connect_to_result'] = connect_to_result
+        # co_anchored edges this remember() materialized (src-tagged, with
+        # edge_id+deltas) — the dispatch handler emits their edge traces.
+        if co_anchored_made:
+            result['co_anchored_made'] = co_anchored_made
         return result
 
     # ═══════════════════════════════════════════════════════════════
@@ -1820,12 +1833,16 @@ class BrainRememberMixin:
         the surrounding write path.
 
         Returns a dict:
-            {'created': [{'target_id', 'relation'}, ...],
+            {'created': [{'src_id', 'target_id', 'relation', 'edge_id', 'deltas'}, ...],
              'failed':  [{'title', 'reason'}, ...]}
-        Every failure carries a caller-facing `reason` so the write response
-        can show WHY an edge didn't form — not just a count, and not only on
-        the dashboard. Callers derive counts via len(). The encoder still gets
-        its "tried N, failed M" signal from these lengths.
+        Each `created` entry is self-contained (src_id tagged here, so callers
+        don't re-derive it) and carries the edge_id + add_relation deltas so the
+        caller can emit a directional `edge_relation_revised` trace (connect_to
+        edges used to be the one edge path that emitted nothing). Every failure
+        carries a caller-facing `reason` so the write response can show WHY an
+        edge didn't form — not just a count, and not only on the dashboard.
+        Callers derive counts via len(). The encoder still gets its
+        "tried N, failed M" signal from these lengths.
 
         Input flexibility: a JSON-string that parses to a list is accepted
         (callers sometimes stringify the array) — the coercion is visible via
@@ -1874,9 +1891,12 @@ class BrainRememberMixin:
                 continue
             for rel, desc in relation_pairs:
                 try:
-                    self.connect_typed(src_id, target_id, relation=rel,
+                    edge_res = self.connect_typed(src_id, target_id, relation=rel,
                                        weight=0.6, description=desc)
-                    created.append({'target_id': target_id, 'relation': rel})
+                    created.append({'src_id': src_id, 'target_id': target_id,
+                                    'relation': rel,
+                                    'edge_id': (edge_res or {}).get('edge_id'),
+                                    'deltas': (edge_res or {}).get('deltas', [])})
                 except Exception as e:
                     reason = "connect_typed failed: %s" % str(e)[:120]
                     failed.append({'title': str(title_query)[:80], 'reason': reason})
@@ -1945,10 +1965,14 @@ class BrainRememberMixin:
                     deferred_connects.append((result['id'], ct_spec))
 
         # Pass 2: resolve per-node connect_to with full sibling_map populated.
+        # Collect each made edge (with its src_id) so the dispatch handler can
+        # emit a directional edge_relation_revised trace per edge.
         connect_to_failed = []  # [{title, reason}] across all nodes
+        connect_to_made = []    # [{src_id, target_id, relation, edge_id, deltas}]
         for src_id, ct_spec in deferred_connects:
             r = self._apply_connect_to(src_id, ct_spec, sibling_map=sibling_map)
             connections_created += len(r['created'])
+            connect_to_made.extend(r['created'])  # entries are src-tagged by _apply_connect_to
             connect_to_failed.extend(r['failed'])
 
         # Fuzzy-match connect_to titles
@@ -1988,9 +2012,14 @@ class BrainRememberMixin:
                 for node_id in created_ids:
                     for rel, desc in relation_pairs:
                         try:
-                            self.connect_typed(node_id, match['id'], relation=rel,
+                            edge_res = self.connect_typed(node_id, match['id'], relation=rel,
                                               weight=0.6, description=desc)
                             connections_created += 1
+                            connect_to_made.append({
+                                'src_id': node_id, 'target_id': match['id'],
+                                'relation': rel,
+                                'edge_id': (edge_res or {}).get('edge_id'),
+                                'deltas': (edge_res or {}).get('deltas', [])})
                         except Exception as _e:
                             self._log_error('batch_connect_to', _e, 'connecting %s → %s' % (node_id[:8], match['id'][:8]))
 
@@ -1998,6 +2027,7 @@ class BrainRememberMixin:
             'nodes_created': len(created_ids),
             'results': results,
             'connections_created': connections_created,
+            'connect_to_made': connect_to_made,
             'connect_to_failures': len(connect_to_failed),
             'connect_to_failed': connect_to_failed,
         }

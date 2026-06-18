@@ -341,10 +341,13 @@ class TestEdgeReviseContract:
                 scale, err)
 
     def test_edge_revise_metadata_shape_exists(self):
-        """EDGE_REVISE_METADATA_SHAPE is exported with the expected keys."""
+        """EDGE_REVISE_METADATA_SHAPE is exported with the expected keys.
+
+        source_id/target_id carry the directional pair so an edge is
+        reconstructable from the trace alone (edge_id is a one-way hash)."""
         from servers.trace_contract import EDGE_REVISE_METADATA_SHAPE
-        expected_keys = {'edge_id', 'relation', 'reason',
-                         'encoding_source', 'deltas', 'warnings'}
+        expected_keys = {'edge_id', 'source_id', 'target_id', 'relation',
+                         'reason', 'encoding_source', 'deltas', 'warnings'}
         assert set(EDGE_REVISE_METADATA_SHAPE.keys()) == expected_keys, (
             "EDGE_REVISE_METADATA_SHAPE keys: %s, expected: %s" % (
                 set(EDGE_REVISE_METADATA_SHAPE.keys()), expected_keys))

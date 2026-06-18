@@ -19,7 +19,13 @@ from servers.trace_contract import (
     build_selection_metadata,
     validate_trace_metadata,
 )
-from servers.scales.runner import _split_action_ids
+
+# NOTE: the node-lifecycle split is no longer derived in the runner
+# (`_split_action_ids` was deleted). Each dispatch write handler returns the
+# authoritative `affected` dict; that attribution is tested end-to-end against a
+# real brain in tests/test_connect_to_intra_batch.py. This file covers the
+# builder shape + aggregation (created/revised/archived — edges are their own
+# directional edge_relation_revised events, not a flat `connected` list).
 
 
 # ═════════════════════════════════════════════════════════════
@@ -77,6 +83,18 @@ class TestBuildDeltaMetadata:
         assert m['actions'] == 7
         assert m['clusters_processed'] == 5
 
+    def test_classifications_first_class_and_capped(self):
+        # AspectIntegration's structured Δ is a validated first-class field
+        # (not smuggled through **extras), and is capped loud-in-data.
+        from servers.trace_contract import DELTA_CLASSIFICATIONS_LIMIT
+        assert 'classifications' in DELTA_METADATA_SHAPE
+        assert build_delta_metadata()['classifications'] == []
+        cls = [{'category': 'node_types', 'value': 't%d' % i, 'aspects': ['x']}
+               for i in range(DELTA_CLASSIFICATIONS_LIMIT + 3)]
+        m = build_delta_metadata(classifications=cls)
+        assert len(m['classifications']) == DELTA_CLASSIFICATIONS_LIMIT + 1
+        assert m['classifications'][-1] == {'_truncated': 3}
+
     def test_outcomes_dict_passthrough(self):
         m = build_delta_metadata(outcomes={'consolidate': 2, 'evolve': 1, 'keep': 4})
         assert m['outcomes']['consolidate'] == 2
@@ -90,84 +108,29 @@ class TestBuildDeltaMetadata:
         assert m['errors'] == []
 
 
-class TestSplitActionIds:
-    """The op-attributed split that replaced the legacy, brain_batch-blind
-    runner delta. created/revised feed S2; this is the regression guard for
-    the exact bug — brain_batch revises/connects must not vanish."""
-
-    def test_brain_batch_routes_by_op_not_tool(self):
-        # The legacy writer had no brain_batch branch, so these all vanished.
-        # absorb is special: it enriches the survivor (a revision) AND archives
-        # the folded-in original — two affected nodes routed to two buckets.
-        result = {'results': [
-            {'op': 'remember', 'ok': True, 'result': {'id': 'c0de0001'}},
-            {'op': 'revise',   'ok': True, 'result': {'id': 'c0de0002'}},
-            {'op': 'connect',  'ok': True, 'result': {'id': 'c0de0003'}},
-            {'op': 'absorb',   'ok': True, 'survivor_id': 'c0de0004',
-             'absorbed_id': 'c0de0006'},
-            {'op': 'archive',  'ok': True, 'node_id': 'c0de0005'},
-        ]}
-        s = _split_action_ids('brain_batch', result)
-        assert s['created'] == ['c0de0001']
-        # revise result + absorb survivor (its content is rewritten on merge)
-        assert s['revised'] == ['c0de0002', 'c0de0004']
-        assert s['connected'] == ['c0de0003']
-        # absorbed original (folded in + archived) + standalone archive
-        assert s['archived'] == ['c0de0006', 'c0de0005']
-        # no vestigial 'absorbed' bucket — absorb's survivor is a revision
-        assert 'absorbed' not in s
-
-    def test_brain_batch_skips_failed_ops(self):
-        result = {'results': [
-            {'op': 'remember', 'ok': True,  'result': {'id': 'aaaa0001'}},
-            {'op': 'revise',   'ok': False, 'error': 'boom'},
-        ]}
-        s = _split_action_ids('brain_batch', result)
-        assert s['created'] == ['aaaa0001']
-        assert s['revised'] == []
-
-    def test_homogeneous_tools_route_by_name(self):
-        rb = {'results': [{'id': 'n1'}, {'result': {'id': 'n2'}}]}
-        assert _split_action_ids('remember_batch', rb)['created'] == ['n1', 'n2']
-        assert _split_action_ids('revise_batch', rb)['revised'] == ['n1', 'n2']
-        assert _split_action_ids('connect_batch', rb)['connected'] == ['n1', 'n2']
-
-    def test_single_tool_top_level_id(self):
-        assert _split_action_ids('remember', {'id': 'solo1'})['created'] == ['solo1']
-
-    def test_non_dict_result_is_safe(self):
-        s = _split_action_ids('brain_batch', None)
-        assert s == {'created': [], 'revised': [], 'connected': [], 'archived': []}
-
-    def test_absorb_with_only_survivor_routes_to_revised(self):
-        # Defensive: an absorb result missing absorbed_id still records the
-        # survivor as revised (never silently drops it).
-        s = _split_action_ids('brain_batch', {'results': [
-            {'op': 'absorb', 'ok': True, 'survivor_id': 'su00'},
-        ]})
-        assert s['revised'] == ['su00']
-        assert s['archived'] == []
-
-
 class TestDeltaSplitAggregation:
-    """build_delta_metadata aggregates the per-action split into the delta —
-    so the single unified delta carries what S2 reads."""
+    """build_delta_metadata aggregates the per-action node-lifecycle split
+    (created/revised/archived) into the delta — so the single unified delta
+    carries what S2 reads. The split itself is now the dispatch handler's
+    authoritative `affected`, copied onto each action by the runner. Edges are
+    NOT here — they're directional edge_relation_revised events."""
 
-    def test_aggregates_created_revised_connected_from_actions(self):
+    def test_aggregates_created_revised_from_actions(self):
         m = build_delta_metadata(action_details=[
-            {'tool': 'brain_batch', 'created': ['a'], 'revised': ['b'], 'connected': ['c']},
-            {'tool': 'remember_batch', 'created': ['d', 'e'], 'revised': [], 'connected': []},
+            {'tool': 'brain_batch', 'created': ['a'], 'revised': ['b']},
+            {'tool': 'remember_batch', 'created': ['d', 'e'], 'revised': []},
         ])
         assert m['created'] == ['a', 'd', 'e']
         assert m['revised'] == ['b']
-        assert m['connected'] == ['c']
+        # `connected` is no longer a delta field — edges live in edge events.
+        assert 'connected' not in m
 
     def test_aggregates_archived_from_actions(self):
         # The absorb-fix bucket: a merge-only run records its survivors
         # (revised) and folded-in originals (archived) on the unified delta.
         m = build_delta_metadata(action_details=[
             {'tool': 'brain_batch', 'created': [], 'revised': ['surv1'],
-             'connected': [], 'archived': ['orig1', 'orig2']},
+             'archived': ['orig1', 'orig2']},
         ])
         assert m['revised'] == ['surv1']
         assert m['archived'] == ['orig1', 'orig2']
@@ -181,7 +144,8 @@ class TestDeltaSplitAggregation:
 
     def test_empty_defaults(self):
         m = build_delta_metadata()
-        assert m['created'] == [] and m['revised'] == [] and m['connected'] == []
+        assert m['created'] == [] and m['revised'] == [] and m['archived'] == []
+        assert 'connected' not in m
 
 
 class TestDeltaCostProvenance:
@@ -222,10 +186,11 @@ class TestValidateTraceMetadata:
     def test_unified_shape_passes(self):
         assert validate_trace_metadata('delta', 'encoding_run', build_delta_metadata())[0]
 
-    def test_legacy_runner_shape_is_rejected(self):
-        # The exact shape the deleted runner writer produced.
+    def test_partial_payload_is_rejected(self):
+        # A present-but-incomplete encoding_run payload is caught at the
+        # chokepoint (the hole that once let two shapes coexist).
         ok, err = validate_trace_metadata('delta', 'encoding_run', {
-            'created': [], 'revised': [], 'connected': [], 'elapsed_ms': 5})
+            'created': [], 'revised': [], 'elapsed_ms': 5})
         assert not ok
         assert 'missing required keys' in err
 

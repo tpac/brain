@@ -76,7 +76,7 @@ class TestCommunityDetectionContract(unittest.TestCase):
     def test_absorb_survivor_reaches_community_candidacy(self):
         """Cross-scale coupling pinned by the absorb-bucket fix.
 
-        `_split_action_ids` now routes an absorb's survivor into the delta's
+        The dispatch `absorb` op now routes an absorb's survivor into the delta's
         `revised` bucket (it's content-rewritten). `_read_s1_delta` seeds
         community candidacy (`new_node_ids`) from `created` + `revised`, so an
         absorb survivor now reaches community detection — an intended but

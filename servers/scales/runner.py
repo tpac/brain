@@ -31,78 +31,12 @@ from .dispatch import make_scale_dispatch
 ANTHROPIC_CLIENT_TIMEOUT = 600.0
 
 
-# Op → bucket for brain_batch's per-op results (each item carries its own `op`).
-# `absorb` is deliberately absent — it touches TWO nodes (an enriched survivor +
-# an archived original), so _split_action_ids routes its two ids explicitly
-# rather than through this one-op-one-bucket map.
-_OP_BUCKET = {'remember': 'created', 'revise': 'revised', 'connect': 'connected',
-              'archive': 'archived'}
-# Homogeneous tools — route every result id by the tool name.
-_TOOL_BUCKET = {'remember': 'created', 'remember_batch': 'created',
-                'revise': 'revised', 'revise_batch': 'revised',
-                'connect': 'connected', 'connect_batch': 'connected'}
-
-
-def _split_action_ids(tool, result):
-    """Attribute one write action's affected node ids to created/revised/
-    connected/archived buckets.
-
-    `result` is the inner handler result dict. brain_batch carries per-op
-    results — route each by its own `op` (this is the brain_batch-awareness the
-    old legacy writer lacked). Homogeneous *_batch / single tools route by tool
-    name. Best-effort: created/revised carry node ids (consumed by S2 community
-    + consolidation); connected/archived are observability + the S2 view.
-
-    `absorb` is the one op that touches TWO nodes: it rewrites the survivor's
-    content (a revision) and archives the absorbed original. So it splits into
-    two buckets — survivor → revised, absorbed_id → archived — instead of one.
-    Pre-fix it dumped the survivor into an `absorbed` bucket that nothing read,
-    and the archived original was lost entirely; that gap is why both the S2
-    consolidation view and the S1E encoding view went blind to absorbs.
-    """
-    out = {'created': [], 'revised': [], 'connected': [], 'archived': []}
-    if not isinstance(result, dict):
-        return out
-
-    def _item_id(item):
-        if not isinstance(item, dict):
-            return None
-        if item.get('id'):
-            return item['id']
-        inner = item.get('result')
-        if isinstance(inner, dict) and inner.get('id'):
-            return inner['id']
-        return item.get('node_id')
-
-    if tool == 'brain_batch':
-        for item in (result.get('results') or []):
-            if not isinstance(item, dict) or not item.get('ok', True):
-                continue
-            op = item.get('op')
-            if op == 'absorb':
-                # Two affected nodes: the enriched survivor (its content is
-                # rewritten — a revision) and the archived original.
-                if item.get('survivor_id'):
-                    out['revised'].append(item['survivor_id'])
-                if item.get('absorbed_id'):
-                    out['archived'].append(item['absorbed_id'])
-                continue
-            bucket = _OP_BUCKET.get(op)
-            if bucket:
-                nid = _item_id(item)
-                if nid:
-                    out[bucket].append(nid)
-        return out
-
-    bucket = _TOOL_BUCKET.get(tool)
-    if bucket:
-        if result.get('id'):
-            out[bucket].append(result['id'])
-        for item in (result.get('results') or []):
-            nid = _item_id(item)
-            if nid:
-                out[bucket].append(nid)
-    return out
+# The created/revised/archived node-lifecycle split is no longer re-derived
+# here from tool names. Each dispatch write handler returns the authoritative
+# `affected` dict (it knows its op + has the brain result, incl. connect_to
+# edges the old tool-name heuristic couldn't see). The runner just reads it off
+# the dispatch return — see _dispatch_tool_uses. Edges are not in `affected`;
+# they're directional edge_relation_revised traces emitted by the handlers.
 
 
 def run_in_background(name, brain_db_path, session_id, counter, lock,
@@ -128,9 +62,9 @@ def run_in_background(name, brain_db_path, session_id, counter, lock,
 
     The delta trace is written by the scale's own run_fn via build_delta_metadata
     (the unified shape). This wrapper does NOT write one — a previous version did,
-    producing a SECOND, brain_batch-blind `encoding_run` delta per cycle (revised/
-    connected always empty). That legacy writer was removed; the runner only owns
-    thread lifecycle now.
+    producing a SECOND, brain_batch-blind `encoding_run` delta per cycle (the
+    structured node-lifecycle split was always empty). That legacy writer was
+    removed; the runner only owns thread lifecycle now.
     """
     def _thread_fn():
         t0 = time.time()
@@ -381,7 +315,12 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             action_summary = tu.input.get("title", tu.input.get("query",
                 tu.input.get("node_id", "")))[:60]
             result_ids = []
-            split = {'created': [], 'revised': [], 'connected': [], 'archived': []}
+            # Authoritative node-lifecycle split — the dispatch handler returned
+            # it as a TOP-LEVEL `affected` (sibling of `result`), computed where
+            # the op + brain result are both known. build_delta_metadata
+            # aggregates created/revised/archived over these; S2 reads them.
+            affected = result.get("affected") if result.get("ok") else None
+            affected = affected if isinstance(affected, dict) else {}
             if result.get("ok"):
                 r = result.get("result", {})
                 if isinstance(r, dict):
@@ -397,20 +336,11 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                     for item in r:
                         if isinstance(item, dict) and item.get("id"):
                             result_ids.append(item["id"])
-                # Op-attributed split — computed HERE while the rich per-op
-                # result is still in hand (action_details flattens to node_ids
-                # and loses op attribution). brain_batch routes by each op's
-                # `op`; homogeneous tools route by tool name. This is what
-                # build_delta_metadata aggregates and S2 reads.
-                s = _split_action_ids(tu.name, r if isinstance(r, dict) else {})
-                split = {'created': s['created'], 'revised': s['revised'],
-                         'connected': s['connected'], 'archived': s['archived']}
             actions.append({"tool": tu.name, "summary": action_summary,
                             "node_ids": result_ids,
-                            "created": split['created'],
-                            "revised": split['revised'],
-                            "connected": split['connected'],
-                            "archived": split['archived'],
+                            "created": affected.get("created") or [],
+                            "revised": affected.get("revised") or [],
+                            "archived": affected.get("archived") or [],
                             "input": tu.input})
             _log("  [%s] %s" % (tu.name, action_summary))
         return tool_results, tool_uses

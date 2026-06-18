@@ -104,7 +104,7 @@ function _remember(events) {
 function _learn(events) {
   const m = _deltaMeta(events) || {};
   const c = (m.created || []).length, r = (m.revised || []).length,
-        k = (m.connected || []).length, a = (m.archived || []).length;
+        a = (m.archived || []).length;
   let title;
   if (c && r)      title = 'Learned ' + _plural(c, 'new thing') + ' and refined ' + r;
   else if (c)      title = 'Learned ' + _plural(c, 'new thing');
@@ -114,7 +114,6 @@ function _learn(events) {
   const bits = [];
   if (c) bits.push(_plural(c, 'new memory', 'new memories'));
   if (r) bits.push(r + ' updated');
-  if (k) bits.push(k + ' linked');
   if (a) bits.push(a + ' archived');
   return {
     title,

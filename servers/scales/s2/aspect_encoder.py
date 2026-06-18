@@ -126,6 +126,15 @@ class AspectEncoder(IntegrationUnit):
             len(accepted), multi_count, len(rejected),
             ', '.join('%s=%d' % kv for kv in sorted(per_aspect_primary.items())))
 
+        # Structured Δ for Aspect. It mutates aspects_v1.json, not the graph,
+        # so created/revised/archived don't apply — the real change record is
+        # WHICH string routed to WHICH aspect(s). Carried in `classifications`
+        # (extras) so the per-classification decision survives, not just counts.
+        classifications_made = [
+            {'category': c['category'], 'value': c['value'], 'aspects': c['aspects']}
+            for c in accepted
+        ]
+
         self.trace('delta', 'aspect_classified',
                    '%d classified, %d rejected' % (len(accepted), len(rejected)),
                    metadata=build_delta_metadata(
@@ -140,6 +149,7 @@ class AspectEncoder(IntegrationUnit):
                        },
                        journal_entry=journal,
                        errors=[r['reason'] for r in rejected[:5]],
+                       classifications=classifications_made,
                    ))
 
         return {

@@ -153,7 +153,7 @@ def _deconstruct_consolidation_ops(meta: dict):
     Two id sources, by reliability:
       • survivors (enriched) + archived (folded-in): prefer the ok-gated
         top-level `revised`/`archived` buckets that build_delta_metadata
-        populates (runner._split_action_ids routes absorb→survivor to `revised`,
+        populates (the dispatch `absorb` op returns affected survivor→`revised`,
         absorbed→`archived`, and SKIPS failed ops). Fall back to deconstructing
         the recorded op INPUT for pre-fix historical deltas, whose buckets are
         empty. The op INPUT is what was *requested*, so it isn't ok-gated — the

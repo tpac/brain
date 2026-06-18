@@ -233,15 +233,28 @@ DELTA_METADATA_SHAPE = {
     'final_text':        str,     # raw agent text, first 2KB
     'errors':            list,    # first 5 errors
     # Op-attributed node-id lists — the structured Δ that S2 reads (community
-    # detection, consolidation catalog-blindness). Derived from action_details,
-    # brain_batch-aware (an op's bucket comes from its `op`, not the tool name).
-    # Before unification these lived on a SECOND, legacy delta written by the
-    # scale runner that was blind to brain_batch — so revised/connected were
-    # always empty. They belong on the one unified delta now.
+    # detection, consolidation catalog-blindness). Authoritative split returned
+    # by the dispatch write handlers (`affected`), aggregated here over
+    # action_details. NODE lifecycle only — edges are NOT in this delta.
+    #
+    # Edges: every FIRST-CLASS typed edge — explicit connect / connect_batch /
+    # revise_edge / disconnect / connect_to / co_anchored — is its own
+    # directional `edge_relation_revised` event carrying
+    # source_id/target_id/relation, so a flat directionless `connected` node-id
+    # list (a two-sided-era vestige that couldn't represent a v22
+    # single-direction edge) was removed. SOFT/derived edges (co_accessed,
+    # emergent_bridge) are intentionally NOT traced — they're recomputable and
+    # excluded from the graph views (dashboard, S2 decisions). So "reconstruct
+    # the graph from traces" means the first-class typed graph, not the soft layer.
     'created':           list,    # node ids created this run
     'revised':           list,    # node ids revised this run (incl. absorb survivors — content rewritten)
-    'connected':         list,    # node ids touched by connect ops (observability)
     'archived':          list,    # node ids archived this run (incl. absorb's folded-in originals)
+    # AspectIntegration's structured Δ. Aspect mutates aspects_v1.json, not the
+    # graph, so created/revised/archived don't apply — the real change record is
+    # WHICH string routed to WHICH aspect(s): [{category, value, aspects}, ...].
+    # First-class (validated + dashboard-known + capped) rather than smuggled
+    # through **extras. Empty [] for every non-aspect delta.
+    'classifications':   list,
     # Cost & provenance of producing this Δ (all int, default 0). elapsed_ms +
     # token counts let you trend encoder latency/cost over time — and, paired
     # with interaction_version, compare cost across prompt versions — straight
@@ -260,6 +273,7 @@ DELTA_METADATA_SHAPE = {
 
 DELTA_FINAL_TEXT_LIMIT = 2000
 DELTA_ERROR_LIST_LIMIT = 5
+DELTA_CLASSIFICATIONS_LIMIT = 200  # cap aspect's per-item Δ (cold-start runs can be large)
 
 
 def build_delta_metadata(*,
@@ -269,7 +283,8 @@ def build_delta_metadata(*,
                          action_details=None, read_calls=None,
                          final_text='',
                          errors=None,
-                         created=None, revised=None, connected=None, archived=None,
+                         created=None, revised=None, archived=None,
+                         classifications=None,
                          elapsed_ms=0, input_tokens=0, output_tokens=0,
                          cache_read_tokens=0, cache_creation_tokens=0,
                          truncated=0, interaction_version=0,
@@ -285,12 +300,14 @@ def build_delta_metadata(*,
     etc.). Useful for observability — answering "what did the encoder ask
     for that the catalog didn't already give it?" without parsing logs.
 
-    created/revised/connected/archived default to an aggregation over
-    action_details (each write action carries its own op-attributed split,
-    stamped by the runner where the rich per-op result is still available).
+    created/revised/archived default to an aggregation over action_details
+    (each write action carries its own op-attributed split — the `affected`
+    dict the dispatch handler returned, copied onto the action by the runner).
     Pass them explicitly only to override. This is the structured Δ S2 reads
     — `revised` includes absorb survivors and `archived` their folded-in
-    originals, so a merge-only consolidation run is no longer invisible.
+    originals, so a merge-only consolidation run is no longer invisible. Edges
+    are out of scope here (see the shape comment) — they live in directional
+    `edge_relation_revised` events.
 
     Returns a dict ready to pass as the metadata kwarg to a trace writer.
     """
@@ -304,6 +321,14 @@ def build_delta_metadata(*,
             if isinstance(a, dict):
                 out.extend(a.get(key) or [])
         return out
+
+    def _cap(items, limit):
+        # Loud-in-data truncation for a dict-list (can't append a string marker
+        # like cap_list_loud): keep `limit`, append a sentinel naming the drop.
+        items = list(items or [])
+        if len(items) <= limit:
+            return items
+        return items[:limit] + [{'_truncated': len(items) - limit}]
 
     metadata = {
         'actions':           int(actions or 0),
@@ -319,8 +344,8 @@ def build_delta_metadata(*,
         'errors':            cap_list_loud(errors, DELTA_ERROR_LIST_LIMIT),
         'created':           _agg('created', created),
         'revised':           _agg('revised', revised),
-        'connected':         _agg('connected', connected),
         'archived':          _agg('archived', archived),
+        'classifications':   _cap(classifications, DELTA_CLASSIFICATIONS_LIMIT),
         'elapsed_ms':            int(elapsed_ms or 0),
         'input_tokens':          int(input_tokens or 0),
         'output_tokens':         int(output_tokens or 0),
@@ -472,11 +497,17 @@ def build_revise_metadata(*, node_id, reason, encoding_source='',
 # (edge_id, relation) tuple. ref_id encoding: f"{edge_id}:{relation}".
 #
 # Single ref_type covers both create-via-upsert and update-via-upsert from
-# `connect()`, plus archive via polymorphic `archive` op. Empty `old` in a
-# delta means the field was just created; populated `old` means update.
+# `connect()` / `connect_to`, plus archive via polymorphic `archive` op. Empty
+# `old` in a delta means the field was just created; populated `old` = update.
+#
+# source_id/target_id make the edge SELF-DESCRIBING: the directional pair is in
+# the trace itself, so the graph's edges are reconstructable from the trace
+# substrate alone — without joining the live edges table to invert edge_id.
 
 EDGE_REVISE_METADATA_SHAPE = {
     'edge_id':         str,    # physical edge id (deterministic from source+target)
+    'source_id':       str,    # edge actor (directional — source acts on target)
+    'target_id':       str,    # edge acted-upon
     'relation':        str,    # which specific relation on that edge
     'reason':          str,    # human-readable reason (required at API)
     'encoding_source': str,    # who made the change
@@ -486,6 +517,7 @@ EDGE_REVISE_METADATA_SHAPE = {
 
 
 def build_edge_revise_metadata(*, edge_id, relation, reason, encoding_source='',
+                               source_id='', target_id='',
                                deltas=None, warnings=None):
     """Build trace metadata for an edge_relation revise event.
 
@@ -493,11 +525,19 @@ def build_edge_revise_metadata(*, edge_id, relation, reason, encoding_source='',
     connect-upsert outcomes (empty `old` = create, populated `old` = update)
     and polymorphic archive (deltas show archived flag flipping).
 
-    Used by daemon_dispatch handlers for `connect` and `archive` (when
-    archive targets an edge_relation).
+    source_id/target_id carry the directional pair so the edge is
+    reconstructable from the trace alone (edge_id is a one-way hash of the
+    pair — not invertible without the live edges table).
+
+    Used by daemon_dispatch handlers for `connect`, `connect_batch`,
+    `revise_edge`, `disconnect`, the `connect_to` and `co_anchored` paths
+    (via _emit_edge_traces), and polymorphic `archive` (when archive targets
+    an edge_relation).
     """
     return {
         'edge_id':         edge_id,
+        'source_id':       source_id or '',
+        'target_id':       target_id or '',
         'relation':        relation,
         'reason':          reason or '',
         'encoding_source': encoding_source or '',

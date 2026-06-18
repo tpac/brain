@@ -373,5 +373,113 @@ class TestBrainBatchIntraBatch(BrainTestBase):
         self.assertEqual(rel_to_target.get(existing['id']), 'grounds')
 
 
+def _edge_traces(brain):
+    """edge_relation_revised trace events (parsed metadata) from the test
+    brain's logs db — the directional edge substrate that, with node-lifecycle
+    deltas, makes the graph reconstructable from traces alone."""
+    import json
+    rows = brain.logs_conn.execute(
+        "SELECT metadata FROM trace_events "
+        "WHERE event_type='delta' AND ref_type='edge_relation_revised'"
+    ).fetchall()
+    return [json.loads(r[0]) for r in rows if r[0]]
+
+
+class TestBrainBatchAffectedAndEdgeTraces(BrainTestBase):
+    """Phase 0 contract: dispatch write handlers return the authoritative
+    node-lifecycle `affected` split, and EVERY edge (including connect_to)
+    emits a directional edge_relation_revised trace. Together — nodes from
+    `affected`, edges from edge events — the graph is reconstructable from the
+    trace substrate alone. `connected` (a directionless two-sided-era vestige)
+    is gone."""
+    needs_embedder = True
+
+    def test_brain_batch_returns_affected_node_lifecycle(self):
+        existing = self.brain.remember(type='fact', title='Affected existing',
+                                       content='Gets revised in the batch.')
+        doomed = self.brain.remember(type='fact', title='Affected doomed',
+                                     content='Gets archived in the batch.')
+        r = _dispatch(self.brain, 'brain_batch', {'operations': [
+            {'op': 'remember', 'type': 'principle', 'title': 'Affected new',
+             'content': 'A freshly created node.'},
+            {'op': 'revise', 'node_id': existing['id'], 'reason': 'test',
+             'content': 'Revised body.'},
+            {'op': 'archive', 'node_id': doomed['id'], 'reason': 'test'},
+        ]})
+        self.assertTrue(r['ok'], r)
+        aff = r['affected']
+        new_id = r['result']['results'][0]['result']['id']
+        self.assertEqual(aff['created'], [new_id])
+        self.assertIn(existing['id'], aff['revised'])
+        self.assertIn(doomed['id'], aff['archived'])
+        # `connected` is gone — edges are not node lifecycle.
+        self.assertNotIn('connected', aff)
+
+    def test_absorb_affected_survivor_revised_absorbed_archived(self):
+        # Pins the `affected` attribution — survivor→revised, absorbed→archived
+        # — which holds regardless of field overrides. (The content-override-
+        # in-batch savepoint bug this test originally side-stepped was fixed in
+        # 47dbc41; its own regression test lives in test_absorb.py.)
+        surv = self.brain.remember(type='fact', title='Absorb survivor',
+                                   content='Stays as the survivor.')
+        absorbed = self.brain.remember(type='fact', title='Absorb folded',
+                                       content='Folded into the survivor.')
+        r = _dispatch(self.brain, 'brain_batch', {'operations': [
+            {'op': 'absorb', 'survivor_id': surv['id'],
+             'absorbed_id': absorbed['id'], 'reason': 'test merge'},
+        ]})
+        self.assertTrue(r['ok'], r)
+        sub = r['result']['results'][0]
+        self.assertTrue(sub.get('ok'), sub)
+        aff = r['affected']
+        self.assertIn(surv['id'], aff['revised'])
+        self.assertIn(absorbed['id'], aff['archived'])
+
+    def test_connect_to_emits_directional_edge_trace(self):
+        r = _dispatch(self.brain, 'brain_batch', {'operations': [
+            {'op': 'remember', 'type': 'principle', 'title': 'Edge-trace target',
+             'content': 'Anchor node.'},
+            {'op': 'remember', 'type': 'fact', 'title': 'Edge-trace source',
+             'content': 'Links to the anchor.',
+             'connect_to': [{'title': 'Edge-trace target', 'relation': 'grounds',
+                             'why': 'connect_to must leave a directional edge trace'}]},
+        ]})
+        self.assertTrue(r['ok'], r)
+        results = r['result']['results']
+        tgt_id = results[0]['result']['id']
+        src_id = results[1]['result']['id']
+        match = [m for m in _edge_traces(self.brain)
+                 if m.get('source_id') == src_id
+                 and m.get('target_id') == tgt_id
+                 and m.get('relation') == 'grounds']
+        self.assertEqual(len(match), 1,
+                         "connect_to edge must emit exactly one directional "
+                         "edge_relation_revised trace (was the silent path)")
+
+    def test_co_anchored_edge_emits_directional_trace(self):
+        """co_anchored (shared episodic anchor, source_refs overlap) is a
+        first-class typed edge — it must leave a directional edge trace too,
+        not just connect_to. Two nodes sharing a source_ref → the second
+        co_anchors to the first."""
+        ref = 'aaaaaaaa'  # 8-char hex source-ref id
+        a = _dispatch(self.brain, 'remember', {
+            'type': 'fact', 'title': 'Anchor A', 'content': 'first',
+            'source_refs': [ref]})
+        b = _dispatch(self.brain, 'remember', {
+            'type': 'fact', 'title': 'Anchor B', 'content': 'second',
+            'source_refs': [ref]})
+        a_id = a['result']['id']
+        b_id = b['result']['id']
+        # co_anchored fired on B's write, linking B → A.
+        match = [m for m in _edge_traces(self.brain)
+                 if m.get('source_id') == b_id
+                 and m.get('target_id') == a_id
+                 and m.get('relation') == 'co_anchored']
+        self.assertEqual(len(match), 1,
+                         "co_anchored edge must emit a directional edge_relation_revised trace")
+        # And it must NOT leak co_anchored_made into the agent-facing payload.
+        self.assertNotIn('co_anchored_made', b['result'])
+
+
 if __name__ == '__main__':
     unittest.main()
