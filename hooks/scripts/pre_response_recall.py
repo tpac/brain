@@ -20,33 +20,63 @@ sys.stderr.write("[recall-hook %s] import: %dms\n" % (_ts(), (time.time() - _t0)
 
 APPROVE = json.dumps({"decision": "approve"})
 
+# Answers with fewer meaningful chars than this register the turn but skip the
+# recall + Haiku surface (register_only). A bare answer carries no recall signal.
+SHORT_MESSAGE_MAX_LEN = 5
+
 hook_input = get_hook_input()
 user_message = hook_input.get("prompt", "") or hook_input.get("message", "")
 
-# Skip short, slash, or bang messages
-if not user_message or len(user_message) < 5 or user_message.startswith("/") or user_message.startswith("!"):
-    brain_debug("recall: skipped (short/slash/bang)")
+# Slash / bang / empty (incl. whitespace-only) are genuinely non-conversational —
+# slash commands, /watch wakeups, bang. Skip the daemon entirely; they correctly
+# read as heartbeats at Stop (no user_message trace, never encoded).
+if not user_message.strip() or user_message.startswith("/") or user_message.startswith("!"):
+    brain_debug("recall: skipped (slash/bang/empty)")
     print(APPROVE)
     sys.exit(0)
+
+# Short real answers ("yes", "ok", "no") ARE conversational but carry no recall
+# signal. Register the turn (user_message trace + conversational classification)
+# WITHOUT the recall + Haiku surface, via register_only. Dropping them entirely
+# (the old `len < 5` skip) misfiled the turn as a heartbeat and lost the
+# operator's words — often the highest-signal turns (approvals/decisions).
+# Measure stripped length so " ok " counts as 2, not 4. See
+# daemon_hooks.hook_recall register-only fast path.
+register_only = len(user_message.strip()) < SHORT_MESSAGE_MAX_LEN
 
 
 def main():
     t0 = time.time()
     if not daemon_available():
+        # Register-only is best-effort: there's nothing to recall, so a down
+        # daemon must fail SILENT (approve) — not surface the recall-unavailable
+        # banner for a bare "yes". Worst case the turn goes unregistered, which
+        # is exactly the old pre-fix behavior, not a regression.
+        if register_only:
+            print(APPROVE)
+            sys.exit(0)
         err = daemon_unavailable_error("recall")
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": err}}))
         sys.exit(0)
 
-    # Call daemon — it handles Layer 1 + Layer 2 judge + Layer 3 graph expand
+    # Call daemon — it handles Layer 1 + Layer 2 judge + Layer 3 graph expand.
+    # register_only does no Haiku/recall (just a trace write), so it fails fast
+    # rather than carrying the 20s Haiku-tail budget on the prompt path.
     resp = daemon_call_raw("hook_recall", {
         "prompt": hook_input.get("prompt", ""),
         "message": hook_input.get("message", ""),
         "session_id": hook_input.get("session_id", ""),
-    }, timeout=20.0)  # Slightly under hook timeout (21s) to avoid race
-                       # 2026-05-02: bumped 14→20 to cover Haiku tail latency
-                       # under load. See FRAME-DESIGN.md and node 2340b053.
+        "register_only": register_only,  # short answers: register turn, skip recall+Haiku
+    }, timeout=4.0 if register_only else 20.0)  # 20s covers Haiku tail latency
+                       # under load (2026-05-02, 14→20). See FRAME-DESIGN.md
+                       # and node 2340b053. register_only needs none of it.
 
     if not resp.get("ok"):
+        # Register-only failure is best-effort too — approve silently rather than
+        # surface RECALL FAILED for a turn that had nothing to recall.
+        if register_only:
+            print(APPROVE)
+            sys.exit(0)
         err_msg = resp.get("error", "unknown error")
         # daemon_call_raw already logged this failure to hook_errors (single
         # source of truth). We only render the user-facing message here.

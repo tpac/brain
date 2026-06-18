@@ -203,6 +203,22 @@ def hook_recall(brain, args, graph_changes):
     except Exception as e:
         brain._log_error('write_current_stop', e, 'hook_recall')
 
+    # ── Register-only fast path ──
+    # Short answers ("yes", "ok", "no") that the client routes here with
+    # register_only=True. The turn IS conversational and is now fully registered:
+    # the user_message S0 trace + last_recall_stop are written ABOVE, and the
+    # daemon reset last_user_activity (the clock is gated on cmd=='hook_recall',
+    # which this still is). We skip ONLY the expensive recall + Haiku surface,
+    # which carry no signal on a 3-char reply. WITHOUT this branch the client
+    # dropped the whole turn before reaching the daemon: no user_message trace,
+    # the turn misclassified as a /watch heartbeat at Stop, and the operator's
+    # words lost — often the highest-signal turns (approvals/decisions). brain.save()
+    # persists the session/ctx mutations made above. See trace_contract S0 TURN
+    # CLASSIFICATION and pre_response_recall.py.
+    if args.get("register_only"):
+        brain.save()
+        return {"json": {"decision": "approve"}, "session_id": session_id}
+
     # ── Explicit feedback detection ──
     # If the user says "useful", "not useful", "garbage", etc., process it as
     # feedback on the most recent ask_operator recall. This is ground truth.

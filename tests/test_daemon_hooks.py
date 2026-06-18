@@ -64,6 +64,58 @@ class TestHookRecallOutput(BrainTestBase):
         self.assertEqual(len(rows), 1)
         self.assertIn("operator prompt here", rows[0][0])
 
+    def test_register_only_registers_turn_but_skips_recall_and_surface(self):
+        """Short answers ('yes') routed with register_only=True must REGISTER the
+        turn — user_message S0 trace + conversational classification
+        (last_recall_stop == stop_counter) — while skipping the expensive recall
+        and Haiku surface. The pre-fix client dropped these turns entirely (no
+        trace, misfiled as a heartbeat); the regression here is that registration
+        happens without paying for recall/surface."""
+        sid = 'test-register-only'
+        with patch('servers.daemon_hooks._run_surface') as mock_surface, \
+                patch.object(self.brain, 'recall') as mock_recall:
+            result = hook_recall(self.brain, {"prompt": "yes", "session_id": sid,
+                                              "register_only": True}, [])
+        # registered: user_message trace written...
+        rows = self.brain.logs_conn.execute(
+            "SELECT summary FROM trace_events WHERE scale='s0' "
+            "AND session_id=? AND ref_type='user_message'", (sid,)).fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertIn("yes", rows[0][0])
+        # ...and classified conversational (so Stop writes assistant_message, not heartbeat)
+        ctx = self.brain.get_or_create_session(sid)
+        self.assertEqual(ctx.last_recall_stop, ctx.stop_counter)
+        # ...but recall + Haiku surface were NOT run (the efficiency win)
+        mock_recall.assert_not_called()
+        mock_surface.assert_not_called()
+        self.assertEqual(result["json"].get("decision"), "approve")
+
+    def test_register_only_turn_is_conversational_through_stop(self):
+        """Downstream proof: a register-only turn classifies conversational at
+        Stop — post_response_common writes the assistant_message half (NOT a
+        heartbeat), so the Scribe sees both halves of a short exchange.
+
+        The assert_not_called pair pins this to the register-only branch: turn
+        classification (last_recall_stop) is set unconditionally upstream, so the
+        Stop assertions alone would pass even if the branch were deleted. Without
+        the branch, recall/surface WOULD run on 'yes' — so these two assertions
+        are what make the test fail if register-only regresses."""
+        sid = 'test-register-only-stop'
+        with patch('servers.daemon_hooks._run_surface') as mock_surface, \
+                patch.object(self.brain, 'recall') as mock_recall:
+            hook_recall(self.brain, {"prompt": "yes", "session_id": sid,
+                                     "register_only": True}, [])
+        # branch-dependent: register-only must skip the expensive K stages
+        mock_recall.assert_not_called()
+        mock_surface.assert_not_called()
+        post_response_common(self.brain, sid, "yes", "ok, shipping it")
+        refs = [r[0] for r in self.brain.logs_conn.execute(
+            "SELECT ref_type FROM trace_events WHERE scale='s0' "
+            "AND session_id=?", (sid,)).fetchall()]
+        self.assertIn('user_message', refs)        # the short answer registered
+        self.assertIn('assistant_message', refs)   # reply registered (conversational)
+        self.assertNotIn('heartbeat', refs)        # NOT misfiled as a wakeup
+
     @patch('servers.daemon_hooks._run_surface', side_effect=_mock_run_surface)
     def test_hook_recall_returns_additional_context(self, mock_surface):
         """When results exist and surface selects, returns {'json': {'additionalContext': str}}."""
