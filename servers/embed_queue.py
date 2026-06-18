@@ -538,36 +538,47 @@ def _drain_once(brain) -> None:
         # closing the lock cascade: foreground MCP writes via
         # `brain.conn` no longer compete with temporal extraction for
         # the WAL writer slot.
-        try:
-            from servers.temporal_extraction import backfill_entity_dates
-            brain.conn_bg_writer.execute('BEGIN IMMEDIATE')
+        #
+        # Skip while a brain_batch envelope is open on brain.conn: an
+        # independent BEGIN IMMEDIATE on conn_bg_writer can't acquire the WAL
+        # writer slot and busy-waits the full busy_timeout. In production this
+        # never triggers — the bg-writer serializes behind the foreground batch
+        # via write_lock, so in_batch is already clear by the time it gets here.
+        # It fires only when the drain runs synchronously on the batch thread
+        # (the test harness's post-write drain on an in-batch sub-op), where
+        # write_lock is reentrant. Temporal extraction is loss-tolerant by
+        # contract, so deferring it until the envelope closes is safe.
+        if not getattr(brain.conn, 'in_batch', False):
             try:
-                stats = backfill_entity_dates(
-                    brain, node_batch, edge_batch,
-                    conn=brain.conn_bg_writer)
-                total_intervals += int(stats.get('intervals_written', 0) or 0)
-                brain.conn_bg_writer.commit()
-            except Exception as inner:
+                from servers.temporal_extraction import backfill_entity_dates
+                brain.conn_bg_writer.execute('BEGIN IMMEDIATE')
                 try:
-                    brain.conn_bg_writer.rollback()
-                except Exception as re:
+                    stats = backfill_entity_dates(
+                        brain, node_batch, edge_batch,
+                        conn=brain.conn_bg_writer)
+                    total_intervals += int(stats.get('intervals_written', 0) or 0)
+                    brain.conn_bg_writer.commit()
+                except Exception as inner:
                     try:
-                        brain._log_error(
-                            'bg_writer_drain_rollback_failed', re,
-                            'rollback after temporal drain exception failed')
-                    except Exception:
-                        print('[embed_queue] rollback failed and log failed: '
-                              '%s' % re, file=sys.stderr)
-                raise inner
-        except Exception as e:
-            try:
-                brain._log_error(
-                    'bg_writer_drain_temporal', e,
-                    'temporal batch dropped: nodes=%d edges=%d' %
-                    (len(node_batch), len(edge_batch)))
-            except Exception as le:
-                print('[embed_queue] temporal extraction error: %s '
-                      '(log failed: %s)' % (e, le), file=sys.stderr)
+                        brain.conn_bg_writer.rollback()
+                    except Exception as re:
+                        try:
+                            brain._log_error(
+                                'bg_writer_drain_rollback_failed', re,
+                                'rollback after temporal drain exception failed')
+                        except Exception:
+                            print('[embed_queue] rollback failed and log failed: '
+                                  '%s' % re, file=sys.stderr)
+                    raise inner
+            except Exception as e:
+                try:
+                    brain._log_error(
+                        'bg_writer_drain_temporal', e,
+                        'temporal batch dropped: nodes=%d edges=%d' %
+                        (len(node_batch), len(edge_batch)))
+                except Exception as le:
+                    print('[embed_queue] temporal extraction error: %s '
+                          '(log failed: %s)' % (e, le), file=sys.stderr)
 
         # ─── Edge embedding phase ──────────────────────────────────
         # Re-embed edges whose embedding was invalidated (NULLed) by a
