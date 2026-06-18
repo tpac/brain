@@ -160,7 +160,14 @@ def sweep(corpus_hash: str, surface: str, variance: int, label: str,
         work_qid = os.path.join(work_root, qid)
         if os.path.isdir(work_qid):
             shutil.rmtree(work_qid)
-        shutil.copytree(src, work_qid)
+        # Skip brain-*.json scratch dumps (encoding-prompt / surface-selected /
+        # judge-result / recall-candidates): since BRAIN_TMP_DIR now routes
+        # ephemeral files into the brain dir, the build phase drops them in the
+        # corpus dir. The frozen work copy should hold only the DB snapshot, not
+        # build-time scratch. (brain.db / brain.db-wal / brain.db-shm don't match
+        # the 'brain-*.json' pattern, so the DB is copied intact.)
+        shutil.copytree(src, work_qid,
+                        ignore=shutil.ignore_patterns('brain-*.json'))
 
         brain = create_fresh_eval_brain(path=work_qid, wipe=False)
         if surface != "active":

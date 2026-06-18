@@ -147,15 +147,15 @@ def brain_tmp_dir() -> str:
     with the temp dir instead of leaking into /tmp.
 
     The EVAL path is wired the same way: the longmem harness sets BRAIN_TMP_DIR
-    to the per-item brain dir (fresh_brain.create_fresh_eval_brain, alongside
-    BRAIN_DB_DIR — the single seam every brain-building harness funnels
-    through), and the eval glob readers honor the same env protocol —
-    eval/longmem/artifacts.py (encoding-prompt / surface-selected / judge-result),
-    eval/frame_replay.py (surface-selected readback), eval/encoder_prompt_ab_eval.py
-    + eval/s1s_ab_wiring_check.py (encoding-prompt), scripts/replay_surface.py
-    (recall-candidates / judge-result), scripts/profile_spread.py (surface-selected).
-    So concurrent eval runs are isolated — each item's ephemeral dumps land in
-    its own dir and readers never cross-copy another run's files.
+    to the per-item brain dir at a single seam (fresh_brain.create_fresh_eval_brain,
+    alongside BRAIN_DB_DIR — every brain-building harness funnels through it),
+    and the eval/script glob readers honor the same env protocol (inline
+    os.environ.get, or this helper where the module already imports servers).
+    To enumerate the readers, grep 'BRAIN_TMP_DIR' and 'brain_tmp_dir' across
+    eval/ and scripts/ — they are NOT listed here because a hand-maintained
+    inventory rots (this docstring already did once). So concurrent eval runs
+    are isolated: each item's ephemeral dumps land in its own dir and readers
+    never cross-copy another run's files.
 
     NOT for the daemon DISCOVERY paths (socket/pid/lock/status/maintenance) —
     those are the well-known uid-keyed rendezvous hooks and the statusline must
