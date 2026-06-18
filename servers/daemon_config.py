@@ -132,12 +132,25 @@ def brain_tmp_dir() -> str:
     candidates, surface selections, encoder/consolidation prompts, the
     current-stop marker. Honors BRAIN_TMP_DIR, defaults to /tmp.
 
-    Production leaves BRAIN_TMP_DIR unset → /tmp, so the daemon and every
-    cross-process reader (hooks, dashboard) resolve the SAME path. Tests and
-    eval set it to a per-run temp dir so two concurrent test processes don't
-    collide on fixed filenames (hardcoded session_ids, fixed encoder-prompt
-    counters) and so the files are cleaned up with the temp dir instead of
-    leaking into /tmp.
+    Production leaves BRAIN_TMP_DIR unset → /tmp. The seam is wired on BOTH
+    sides for the production path: the daemon WRITES via this helper, and the
+    out-of-process READERS honor the same env protocol — the PostToolUse hook
+    (hooks/scripts/post_tool_trace.py, current-stop) and the dashboard
+    (dashboard/queries/recalls.py judge-result, dashboard/server.py
+    consolidation-prompt). Those readers are deliberately servers-decoupled, so
+    they read os.environ.get('BRAIN_TMP_DIR','/tmp') directly rather than import
+    this — keep them in sync if the default ever changes.
+
+    BrainTestBase + IsolatedBrain set it to a per-test/run temp dir so two
+    concurrent test processes don't collide on fixed filenames (hardcoded
+    session_ids, fixed encoder-prompt counters) and the files are cleaned up
+    with the temp dir instead of leaking into /tmp.
+
+    NOT YET wired for the EVAL path: the longmem/frame_replay/encoder-prompt-AB
+    glob readers (eval/) still hardcode /tmp, and the eval harness does not set
+    BRAIN_TMP_DIR. So concurrent eval-run isolation is a follow-up — do NOT set
+    BRAIN_TMP_DIR for an eval run until those readers are routed (they'd read
+    /tmp while the writers relocate). See the 2026-06-18 review.
 
     NOT for the daemon DISCOVERY paths (socket/pid/lock/status/maintenance) —
     those are the well-known uid-keyed rendezvous hooks and the statusline must

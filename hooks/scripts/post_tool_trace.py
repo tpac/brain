@@ -44,7 +44,12 @@ def _build_summary(tool_name, tool_input):
 def _read_current_stop(session_id):
     """Read current stop counter from tmp file written by recall hook."""
     try:
-        path = "/tmp/brain-%s-current-stop.txt" % session_id
+        # BRAIN_TMP_DIR env protocol — must match the daemon-side WRITER
+        # (servers.daemon_config.brain_tmp_dir(); default /tmp). This hook is a
+        # separate process, so it honors the same env var to locate the file;
+        # otherwise a relocated tmp root would silently break stop-chain linkage.
+        path = os.path.join(os.environ.get('BRAIN_TMP_DIR', '/tmp'),
+                            "brain-%s-current-stop.txt" % session_id)
         if os.path.exists(path):
             with open(path) as f:
                 return f.read().strip()

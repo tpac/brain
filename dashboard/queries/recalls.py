@@ -18,7 +18,12 @@ from ..query import safe_query
 
 def read_judge_file(recall_ref: str):
     """Read judge data from the temp file the hook writes."""
-    path = "/tmp/brain-judge-result-%s.json" % recall_ref
+    # BRAIN_TMP_DIR env protocol — must match the WRITER
+    # (servers.daemon_config.brain_tmp_dir(); default /tmp). The dashboard is a
+    # separate, deliberately servers-decoupled process, so it reads the same env
+    # var directly rather than importing servers.
+    path = os.path.join(os.environ.get('BRAIN_TMP_DIR', '/tmp'),
+                        "brain-judge-result-%s.json" % recall_ref)
     if not os.path.exists(path):
         return None, None
     try:

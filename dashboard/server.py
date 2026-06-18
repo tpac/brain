@@ -314,9 +314,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._json(500, {"error": str(e), "trace": traceback.format_exc()})
 
     def _serve_consolidation_prompt(self, batch: int):
-        # The S2 consolidation encoder writes its prompt to /tmp before
-        # invoking Sonnet. The dashboard reads that file straight through.
-        prompt_path = "/tmp/brain-consolidation-prompt-%d.json" % batch
+        # The S2 consolidation encoder writes its prompt before invoking Sonnet;
+        # the dashboard reads it straight through. Honor the BRAIN_TMP_DIR env
+        # protocol (servers.daemon_config.brain_tmp_dir(); default /tmp) so the
+        # reader follows the writer when the tmp root is relocated.
+        prompt_path = os.path.join(os.environ.get('BRAIN_TMP_DIR', '/tmp'),
+                                   "brain-consolidation-prompt-%d.json" % batch)
         if not os.path.exists(prompt_path):
             return self._json(404, {"error": "No prompt file for batch %d" % batch})
         try:
