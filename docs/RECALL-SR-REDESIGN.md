@@ -607,3 +607,35 @@ underneath all of this (and is the cause of this session's live-recall timeouts)
 `endo_baseline_recall.py:score_one`, frozen gold `endo_corpus/endo_gold_corpus.json` (73 cues), IsolatedBrain +
 daemon-idle. Caveat: gold was discovered via nomic cosine/FTS lenses (`gold_lens`) — don't re-introduce that bias.
 This §16 supersedes the §13/§13b "NEXT STREAM" markers.
+
+---
+
+## 17. Honest caveats + the edge-seed lever (addendum, 2026-06-18 eve)
+
+**De-bias §16's headline BEFORE building on it (next stream's #1 check).** The 53% is (a) a **best-feature-
+per-gold CEILING** — an oracle over features; a realizable selector that must *guess* the right cue×mechanism
+could collapse toward naive fusion (~22%); and (b) **subject to gold-discovery lens-circularity** — the gold was
+discovered via nomic cosine/FTS lenses (`gold_lens`), which are *also* features in the union, so their
+contribution to 53% is inflated (same trap as `62052d67`). The honest number = the union's reach on gold **NOT**
+discovered by the lens-features — **uncomputed; run the lens-departition first.** Also: n=73 (LOO-CV overfitting
+risk); graph-1hop=19% may be leakage (in-context nodes were surfaced by the same recall path). **So: the selector
+is a hypothesis to TEST, not "the unlock"; 53% is an optimistic upper bound.** Treat §16's framing as the
+predecessor's *interpretation*; the per-feature hit@5 matrix is the *measurement*. (This session's confident calls
+were overturned repeatedly — PPR/noise, question-field, "embedder is the wall" — so the next stream should be the
+skeptic, not the believer.)
+
+**The edge-seed lever — peer `06fe1193`'s HippoRAG finding, delegated to them.** HippoRAG's single biggest gain
+(+20.9 recall) was **query→EDGE seeding** (seed the walk from query↔triple matches, reset ∝ cosine), NOT query→node.
+We never tested it — every PPR/seed arm here seeded from query↔node. **Substrate is ready:** `edge_relations.embedding`
+(via `compose_edge_text(relation, description)`) is populated for **91% of semantic edges** — testable now, no backfill.
+A/B (delegated to `06fe1193`, on this corpus): query→edge-seed vs node-seed, hit@5/@25 by source/bucket — **does
+edge-seeding beat node-seeding on the *current flat* embedder (additive-now), or is it gated on the embedding upgrade?**
+If it wins it's an **edge-seed lane** in the selector. NB this **re-opens the PPR-negative** (`89583d50`/`7f9a35e8`):
+those arms may have failed on the *wrong (node) seed*, not because diffusion is useless.
+
+**Cross-stream convergence (the morale frame).** The peer's HippoRAG read and this eval land on the **same stack** —
+*(1) a more discriminative embedding (bench `06fe1193`) sharpens the seeds; (2) query→edge seeding + (3) a
+recognition/selector gate make the graph walk pay off* = **HippoRAG-2's recipe.** We are **not architecturally behind —
+a hand-curated HippoRAG running on a weak retriever + node-only seeding.** The pieces are addressable and additive; no
+single one is the silver bullet (the embedder is doing a lot of the limiting — oracle caps 42%). Open nodes: `8bcc8c96`
+(regression), `117b6ad9` (handoff), `328d2ac3` (Tom's thesis), `ef1024df` (edge-inhibition), `62052d67` (lens trap).
