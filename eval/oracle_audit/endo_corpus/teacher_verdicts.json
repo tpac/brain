@@ -1,0 +1,1736 @@
+[
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [
+   "2ce9804f",
+   "b377a3fa"
+  ],
+  "why": "The relevant nodes (2ce9804f double-reset finding, b377a3fa global-config flaw) are already fully in hand \u2014 the cue is Anchor's own detailed analysis citing the same line numbers and topology, and the next move is the implementation report. The knowledge was already present, so surfacing would be redundant.",
+  "cand_id": "anchor_turn_0685",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-09T00:08:14.549506+00:00",
+  "cov_aged": 0.896,
+  "n_candidates": 40
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [
+   "398b3f3d"
+  ],
+  "gold_helpful": [
+   "6895f1d3",
+   "9f216e9c",
+   "e5fb598d"
+  ],
+  "why": "Fix #1 chose warning-not-error severity and Fix #2 corrected the tripwire scope comment \u2014 both decisions are exactly what node 398b3f3d settled (quiet filter vs. loud tripwire, only the execute_tool tripwire is ERROR-level); 6895f1d3 and 9f216e9c document the gate architecture the comment correction depends on, and e5fb598d is the prior trace-count/len(selected) divergence finding underlying the test-counting fix.",
+  "cand_id": "anchor_turn_1155",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-15T01:21:55.186340+00:00",
+  "cov_aged": 0.8607,
+  "n_candidates": 36
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move is a live verification answer (which brain is correct, archive vs delete) grounded in just-measured DB state and the already-stated schema facts from the cue itself; the archive-vs-delete decision is already articulated in the move and supported by knowledge present in the cue, so surfacing a prior node would be redundant rather than changing the move.",
+  "cand_id": "anchor_turn_0846",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-12T18:12:11.449830+00:00",
+  "cov_aged": 0.8546,
+  "n_candidates": 45
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "design",
+  "gold_essential": [
+   "48fcb7c3"
+  ],
+  "gold_helpful": [
+   "8daabd84",
+   "de1f372c",
+   "ca5f675d",
+   "8d325b8b",
+   "589ae3ae"
+  ],
+  "why": "The move designs community-completion (lever 3c) as a targeted, query-gated surfacing of community node + co-members when a member is hit \u2014 exactly the 'community as pointer, pull its members' mechanism in 48fcb7c3, and the 'community as signal not gate' correction (de1f372c) plus over-connection caution (8d325b8b). These prior nodes materially ground the design choices the move makes.",
+  "cand_id": "anchor_turn_0681",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-08T22:49:36.815087+00:00",
+  "cov_aged": 0.8483,
+  "n_candidates": 45
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [
+   "6542f755"
+  ],
+  "gold_helpful": [
+   "5bbaefd0",
+   "f1a52d2c",
+   "a4a96f29"
+  ],
+  "why": "The move confirms /watch is missing from the deployed plugin and prescribes a redeploy.sh; node 6542f755 (db resolved at runtime, code is redeployed \u2014 memories survive rebuilds) is exactly the principle that makes the redeploy safe and explains why a rebuild fixes the stale skill, and 5bbaefd0 documents the real-built-copy/redeploy mechanism. f1a52d2c and a4a96f29 ground the reshaped backfill numbers the move builds on.",
+  "cand_id": "anchor_turn_0949",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-13T04:47:26.833925+00:00",
+  "cov_aged": 0.8456,
+  "n_candidates": 42
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "factual",
+  "gold_essential": [
+   "7acac778"
+  ],
+  "gold_helpful": [
+   "342b882f",
+   "000ca05f",
+   "4af6b5de"
+  ],
+  "why": "The next move traces _ensure_anthropic_client and concludes construction is decoupled from warmth \u2014 exactly what node 7acac778 already documents ('single shared-client construction point \u2014 surface fallback removed, keepalive self-heals'), which would have grounded the trace rather than relying on the red-herring guess at brain_recall.py:1354; 342b882f/000ca05f/4af6b5de corroborate the warm/keepalive wiring.",
+  "cand_id": "anchor_turn_0736",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-09T03:26:12.091079+00:00",
+  "cov_aged": 0.8444,
+  "n_candidates": 40
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "medium",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move is a self-correction on worktree auto-cleanup uncertainty plus exit instructions; the relevant safety knowledge (don't delete a live worktree, cleanup deletes CWD) was already fully evident in the cue itself, so surfacing candidates like d8c8a732 or 73b83c79 would be redundant.",
+  "cand_id": "anchor_turn_0164",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-06T14:44:13.593539+00:00",
+  "cov_aged": 0.8413,
+  "n_candidates": 34
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "design",
+  "gold_essential": [
+   "e925bf77"
+  ],
+  "gold_helpful": [
+   "0e4ab815",
+   "426ae3cd",
+   "8e53a042"
+  ],
+  "why": "The next move designs a single chain-detail panel reconstructing the O\u2192K\u2192\u0394\u2192outcome loop with a density toggle. e925bf77 (traces=event log, graph=state, no cross-boundary reconstruction) is the load-bearing principle that should constrain how the loop is reconstructed; 0e4ab815 confirms the cost/version/truncation fields are already shipped to the delta, and 8e13... 8e53a042 (objective vs subjective \u0394) underpins the Technical-vs-Pretty split.",
+  "cand_id": "anchor_turn_1457",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-16T16:46:39.048504+00:00",
+  "cov_aged": 0.8393,
+  "n_candidates": 44
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "compositional",
+  "gold_essential": [
+   "ed3f3125"
+  ],
+  "gold_helpful": [
+   "a1b7ff2e",
+   "b664c076",
+   "52338c01",
+   "c8c6548f"
+  ],
+  "why": "The move corrected the Explore-agent instinct to (a) use the consistent functional term and (b) note the agent needs brain tools (recall/get_nodes/recall_episodes). ed3f3125 settles that Explore (read-only) is the right agent type for brain-digging, directly grounding the move; the craft_rule nodes (52338c01 verbs=functions, c8c6548f jargon) and a1b7ff2e/b664c076 (side-agent framing/correction) support the register and tool-access points.",
+  "cand_id": "anchor_turn_1375",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-16T01:20:22.000700+00:00",
+  "cov_aged": 0.8368,
+  "n_candidates": 42
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move is a git commit/push status report with all the relevant cross-stream discipline knowledge (ce0ff8ce WIP, ff-only on dashboard files) already in hand and demonstrated in the move itself; nodes like 53812a3b and e6c800a7 are restatements of this same shipped batch, not prior knowledge the move needed surfaced. Correct execution of a live git action with knowledge already evident.",
+  "cand_id": "anchor_turn_1514",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-17T03:11:56.559337+00:00",
+  "cov_aged": 0.835,
+  "n_candidates": 46
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "other",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move is a session-summary/sign-off that already articulates everything the cue surfaced (SR unification, endo-not-Haiku steer, S3-freeze, the three measurement bugs). It's a wrap-up recapping work just done \u2014 correct silence; no prior node was needed that wasn't already in hand.",
+  "cand_id": "anchor_turn_1596",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-18T14:19:52.671712+00:00",
+  "cov_aged": 0.8332,
+  "n_candidates": 42
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "factual",
+  "gold_essential": [
+   "52279e4f"
+  ],
+  "gold_helpful": [
+   "a4a96f29"
+  ],
+  "why": "The next move diagnoses that recall_episodes hits the raw json.dumps fallback in _format_result \u2014 exactly the production bug already documented in 52279e4f (no special-case for get_nodes, falls through to generic json.dumps with indent=2). Surfacing that prior bug node would confirm the move builds on a known, already-identified issue rather than a fresh discovery.",
+  "cand_id": "anchor_turn_1106",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-14T23:25:21.279984+00:00",
+  "cov_aged": 0.831,
+  "n_candidates": 44
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "design",
+  "gold_essential": [
+   "29e31377"
+  ],
+  "gold_helpful": [
+   "4573eebc",
+   "9425418a",
+   "1e94c329"
+  ],
+  "why": "The next move diagnoses that the dashboard discards the ~12-field rich presence model the daemon holds \u2014 node 29e31377 documents the exact rich presence redesign (rich param, active_streams, folded peek fields: arc, recent_msgs, turn_count, session_started_at) that the move re-derives from scratch; 4573eebc and 9425418a support the encoder-rich/surface-starved framing.",
+  "cand_id": "anchor_turn_1491",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-16T19:01:54.792865+00:00",
+  "cov_aged": 0.8301,
+  "n_candidates": 42
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "compositional",
+  "gold_essential": [
+   "1180214b",
+   "484fd4d0"
+  ],
+  "gold_helpful": [
+   "608e23b2",
+   "92f1c6f6",
+   "06386409",
+   "0bb0fa97"
+  ],
+  "why": "The on-paper simulation cites specific measured ranks (best EX.CO at r37/r42, #11 genuinely buried) and the episodic-lane rescue rationale \u2014 these come from the empirical burial findings 1180214b (bm25 rank 42 dilution) and 484fd4d0 (#11 rank 36 vs B1-20 not buried), with 608e23b2 (dilution root cause) and 92f1c6f6 (failed fixes) supporting and 06386409/0bb0fa97 grounding the trace/episodic design.",
+  "cand_id": "anchor_turn_0311",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-07T00:10:39.405014+00:00",
+  "cov_aged": 0.8287,
+  "n_candidates": 43
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move is a fresh code-review discovery (finding and fixing a post-filter time-scope bug, then re-running to confirm robustness) \u2014 a live empirical verification no prior node could hold. The relevant context (corpus methodology, blind-spot lesson) is already evident in the cue itself; surfacing would be redundant.",
+  "cand_id": "anchor_turn_0609",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-08T13:48:03.706338+00:00",
+  "cov_aged": 0.8277,
+  "n_candidates": 40
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "design",
+  "gold_essential": [
+   "e56dc13b"
+  ],
+  "gold_helpful": [
+   "d440597a",
+   "1e9c9536",
+   "08959204"
+  ],
+  "why": "The next move pivots the seam to the S0 traces layer (conversation.py) and argues get_conversation/get_session_turns returns full content unsuitable for a cheap count \u2014 this directly builds on the S0 API architecture node (e56dc13b: get_conversation_around serves all layers needing node conversation context) and the get_session_turns shape/cross-ref mechanism (d440597a, 1e9c9536), which the move needed to ground its claim that conversation.py is the natural home.",
+  "cand_id": "anchor_turn_1010",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-14T02:34:49.656536+00:00",
+  "cov_aged": 0.8265,
+  "n_candidates": 46
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "factual",
+  "gold_essential": [
+   "ab3e7390",
+   "3eb7167e"
+  ],
+  "gold_helpful": [
+   "3e79e645",
+   "f3ac56e3",
+   "589ae3ae",
+   "50ccaa80"
+  ],
+  "why": "The next move explains the top-2-avg mechanism and the verified burial of node 8359cf1d (EX.CO kit) from raw rank 3 to z-rank >100; nodes ab3e7390 and 3eb7167e are precisely the prior findings that confirmed this exact case and mechanism, which the move builds on directly.",
+  "cand_id": "anchor_turn_0764",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-09T17:58:34.034120+00:00",
+  "cov_aged": 0.8251,
+  "n_candidates": 41
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move is a status/commit-plan update \u2014 implementing the I4+S3 item Tom just approved, running tests, and staging only the operator's own files. The cross-stream boundary discipline (excluding pre-modified files) is already evident in the move and the cue; no prior candidate node was needed to materially change this action.",
+  "cand_id": "anchor_turn_1591",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-18T13:54:29.146263+00:00",
+  "cov_aged": 0.8245,
+  "n_candidates": 40
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "design",
+  "gold_essential": [
+   "9934b73a"
+  ],
+  "gold_helpful": [
+   "c8b8abe2",
+   "e138912d"
+  ],
+  "why": "The next move corrects the 'tool_result is noise' framing by recognizing the dual-use asymmetry \u2014 exactly what finding 9934b73a captured ('tool_result asymmetry... dual-use resolved by recall_episodes (file/action)'). Surfacing it would have directly grounded the move's pivot; c8b8abe2 and e138912d give the lane-specific exclusion context.",
+  "cand_id": "anchor_turn_1120",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-14T23:51:35.861969+00:00",
+  "cov_aged": 0.8236,
+  "n_candidates": 38
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [
+   "21de4ecf",
+   "132ad34c"
+  ],
+  "gold_helpful": [
+   "50c9253a",
+   "e4242aa2"
+  ],
+  "why": "The move committed settled work in a shared worktree alongside parallel-session WIP \u2014 exactly the discipline codified in 21de4ecf (commit settled work to main now) and 132ad34c/50c9253a (zero-overlap, don't commit others' uncommitted files). Anchor correctly pathspec-committed only its 7 files, which these prior nodes directly govern.",
+  "cand_id": "anchor_turn_1160",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-15T01:41:23.739732+00:00",
+  "cov_aged": 0.8225,
+  "n_candidates": 44
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "action",
+  "gold_essential": [
+   "8ff5b19f"
+  ],
+  "gold_helpful": [
+   "121bbbfb",
+   "9f216e9c"
+  ],
+  "why": "The FTS-source fix Anchor implemented is exactly the reader-phase redirect contract defined in 8ff5b19f (TRACE-NODE-RESOLUTION.md) and the SEARCH-vs-FETCH dichotomy in 121bbbfb; surfacing them confirms the include_archived redirect is the prescribed shape and the design it must satisfy, materially grounding the move. Other items (9f216e9c) document the existing liveness gates this belt-and-suspenders fix complements.",
+  "cand_id": "anchor_turn_0968",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-13T18:05:20.706082+00:00",
+  "cov_aged": 0.821,
+  "n_candidates": 45
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "compositional",
+  "gold_essential": [
+   "083b745d"
+  ],
+  "gold_helpful": [
+   "aefb7795",
+   "6cd4d94d",
+   "9f2fc9fd"
+  ],
+  "why": "Anchor's cue treats B2 as still blocked ('blocked on B2, not yet implemented... the unblock-everything first step'), but 083b745d records B2 as SHIPPED (code-verified 2026-06-08, dal.py:976), corroborated by aefb7795 marking B2 shipped \u2014 surfacing this would have corrected the false 'gated on B2 landing first' framing carried into the next move.",
+  "cand_id": "anchor_turn_0504",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-08T01:00:06.219478+00:00",
+  "cov_aged": 0.8201,
+  "n_candidates": 47
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move is a compaction-prep status summary that already names every relevant artifact (the handoff doc, the on-disk research/design files, and the brain node ids) and restates the commit-or-not decision Anchor itself raised in the cue. The knowledge is already in hand; no prior candidate node was needed to improve the move \u2014 correct durable-state recap.",
+  "cand_id": "anchor_turn_0466",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-07T23:50:35.933183+00:00",
+  "cov_aged": 0.8195,
+  "n_candidates": 41
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move is a status/shipping report confirming the commit and redeploy are done, with the relevant context (the bug fix, caller_session resolution, proxy-vs-daemon activation state, e00af97e's deferred query_traces) already evident in the cue and Anchor's own description. This is correct closeout reporting that needed no prior node surfaced.",
+  "cand_id": "anchor_turn_1229",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-15T04:34:08.939313+00:00",
+  "cov_aged": 0.8189,
+  "n_candidates": 45
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [
+   "43f3a34b",
+   "2fb94636"
+  ],
+  "why": "The next move audited and tightened the semantic recall path for batching/SQL efficiency (JOIN over LEFT JOIN, batched get_by_ids, no N+1). 43f3a34b documents the established pull-reconciliation LEFT JOIN trace_events\u2192trace_embeddings pattern and 2fb94636 captures the prior N+1\u2192batched JOIN optimization win \u2014 both directly inform the JOIN-and-batch design Anchor implemented, though the move was clearly already proceeding competently.",
+  "cand_id": "anchor_turn_1095",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-14T22:24:50.062357+00:00",
+  "cov_aged": 0.8181,
+  "n_candidates": 48
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "design",
+  "gold_essential": [
+   "c85c87a0",
+   "792fc5f0"
+  ],
+  "gold_helpful": [
+   "cd82fdc2",
+   "e8435133",
+   "30ac0132",
+   "2749103a",
+   "9d11fa12"
+  ],
+  "why": "The move argues recognition (graded reach, not records) should reshape recall format; nodes c85c87a0 ('know that it knows \u2014 recognition not retrieval') and 792fc5f0 (surface recall is recognition, not archive lookup) are the prior settled principles this argument builds on directly, with cd82fdc2 and e8435133 reinforcing the recognition-vs-retrieval distinction.",
+  "cand_id": "anchor_turn_0343",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-07T01:34:06.858651+00:00",
+  "cov_aged": 0.8176,
+  "n_candidates": 45
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "compositional",
+  "gold_essential": [
+   "a33b3d88"
+  ],
+  "gold_helpful": [
+   "6402fa71",
+   "ca4726ba",
+   "05345ab8",
+   "1f1bf19b"
+  ],
+  "why": "The move advances a PPR-based recall recommendation built on prior diagnoses; a33b3d88 directly establishes that HippoRAG's Personalized PageRank + node specificity is the simpler proven kernel, which the move should explicitly build on, and ca4726ba/05345ab8/6402fa71 ground the hub-flooding and physics-of-spread framing being synthesized.",
+  "cand_id": "anchor_turn_0132",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-05T23:07:01.851104+00:00",
+  "cov_aged": 0.817,
+  "n_candidates": 35
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "action",
+  "gold_essential": [
+   "94738c5a"
+  ],
+  "gold_helpful": [],
+  "why": "The next move bumped the size-guard 160\u2192175 with a dated ledger entry; node 94738c5a establishes the exact prior practice (stale size guardrails: bump with approval, add dated reason) that the move directly follows, so surfacing it confirms the correct procedure rather than re-deriving it.",
+  "cand_id": "anchor_turn_0205",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-06T17:21:55.293666+00:00",
+  "cov_aged": 0.8164,
+  "n_candidates": 34
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [
+   "e5852d92",
+   "6151fbb1",
+   "46ca0c86"
+  ],
+  "why": "The move ran a code review against live data and caught reconstruction bugs; the prior lessons that 'xhigh review catches real bugs in just-committed tested code' (e5852d92) and 'real cleanup requires running code paths not skimming' (6151fbb1) directly inform the high-value 'test against live data' verdict, and 46ca0c86's trace-replay caveats (absorbed-node handling) map to bug #1. These would have reinforced the move but it largely already embodied the principle, so none are strictly essential.",
+  "cand_id": "anchor_turn_0906",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-13T02:54:19.631140+00:00",
+  "cov_aged": 0.8155,
+  "n_candidates": 40
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "factual",
+  "gold_essential": [
+   "171dbd37"
+  ],
+  "gold_helpful": [
+   "717e9666",
+   "69bd7941",
+   "a56cb340"
+  ],
+  "why": "Anchor's truncation verdict re-derives exactly the storage-uncapped/delivery-is-the-single-truncation-point principle (171dbd37) and the ~9500-char budget ceiling (717e9666, 69bd7941); the worktree REPO_ROOT reasoning also matches a56cb340. Surfacing 171dbd37/717e9666 would have let Anchor cite the settled principle instead of tracing it live.",
+  "cand_id": "anchor_turn_0421",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-07T18:14:09.153384+00:00",
+  "cov_aged": 0.8148,
+  "n_candidates": 37
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [
+   "121bbbfb",
+   "969c0959",
+   "6f14b5ce"
+  ],
+  "why": "The move's code-review verdict cites liveness-neutrality and the fetch-by-id contract; nodes 969c0959 (resolve_id has no archived filter by design) and 121bbbfb (SEARCH vs FETCH-BY-ID dichotomy) substantiate why the liveness-neutral design is correct, and 6f14b5ce (archived_subset, shared predicate replacing per-site raw SQL) is the precedent for consolidating the IN-fetch idiom into a single helper. These would have strengthened the review's contract-fidelity claim, though much was already evident in the cue itself.",
+  "cand_id": "anchor_turn_1224",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-15T04:12:43.739373+00:00",
+  "cov_aged": 0.8137,
+  "n_candidates": 49
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "design",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "Anchor's move is a culmination of an active design thread \u2014 it already cites the convergence-over-coefficient principle (039903c0), the live spread flood finding (0f3efed4), and the semantic-anchored boost design it just authored. The next move presents a clean fork to Tom and defers to his go; no prior node was needed that wasn't already in hand.",
+  "cand_id": "anchor_turn_1487",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-16T18:48:14.353029+00:00",
+  "cov_aged": 0.8114,
+  "n_candidates": 47
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move is a session sign-off summarizing already-completed and coordinated work \u2014 the cadence fix (09ab6437/8e14e12), manifest commit (0107d8e1/930b04e), and cross-stream alignment are all already in hand and stated in the cue itself. Surfacing any candidate would be redundant; this is correct closing-summary silence.",
+  "cand_id": "anchor_turn_1068",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-14T21:00:16.094261+00:00",
+  "cov_aged": 0.8096,
+  "n_candidates": 44
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "factual",
+  "gold_essential": [
+   "f1a0a5df"
+  ],
+  "gold_helpful": [],
+  "why": "The next move is a correction about competitor research \u2014 node f1a0a5df already encoded exactly this: 'Field convergence claim corrected: LLM Wiki v2 is aspirational prose, not working code,' which is the precise finding Anchor surfaces to correct its earlier bad read.",
+  "cand_id": "anchor_turn_0926",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-13T03:57:45.385088+00:00",
+  "cov_aged": 0.8079,
+  "n_candidates": 45
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "factual",
+  "gold_essential": [
+   "a1364fc9"
+  ],
+  "gold_helpful": [
+   "21d99ef9",
+   "2c696650",
+   "e908b1e1",
+   "64d40028"
+  ],
+  "why": "The next move was Anchor discovering that an edge CAN be revised in place \u2014 exactly what a1364fc9 records ('edges CAN be revised via revise_edge... Relation rename in place'), plus 21d99ef9 (connect as field-preserving upsert replacing revise_relation) and 64d40028/2c696650/e908b1e1 documenting the edge mutation surface; surfacing these would have spared Anchor the rediscovery and the wrong connect+disconnect plan.",
+  "cand_id": "anchor_turn_0387",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-07T16:42:07.797838+00:00",
+  "cov_aged": 0.8056,
+  "n_candidates": 42
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "design",
+  "gold_essential": [
+   "1e6ea389"
+  ],
+  "gold_helpful": [
+   "fe54426e",
+   "969c0959",
+   "9f216e9c",
+   "195b773f"
+  ],
+  "why": "The next move codifies a contract for resolving history-sourced ids forward to live survivors and cites 'one centralized resolver, no bespoke resolve_id'; principle 1e6ea389 (liveness is the producer's job, fix at source not sanitize layers) directly anchors that doctrine, and fe54426e/969c0959 supply the trust-boundary and resolve_id-by-design reasoning the doc builds on.",
+  "cand_id": "anchor_turn_0929",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-13T03:59:18.407654+00:00",
+  "cov_aged": 0.8042,
+  "n_candidates": 38
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "factual",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move analyzes actual tool calls behind the two errors and explains Haiku is recalling well \u2014 it draws on the archived-leak node (232fa024) and discussed-anchor node (302c33f0), but those concepts are already evident in the move's own analysis and prior cue context; the move is a fresh investigation of live tool-call traces that no prior node could supply.",
+  "cand_id": "anchor_turn_0918",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-13T03:28:01.708216+00:00",
+  "cov_aged": 0.8025,
+  "n_candidates": 48
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move is a completion/status report executing an already-approved plan; the rationale for cutting recall_by_aspect (query-blind, 20% calls) is already established in the cue and candidates like 17881392, and no prior node was needed to materially change the execution report.",
+  "cand_id": "anchor_turn_0722",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-09T02:18:46.446575+00:00",
+  "cov_aged": 0.8007,
+  "n_candidates": 37
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "medium",
+  "query_type": "design",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move is a fresh analysis Anchor derived itself \u2014 diagnosing copy-paste drift across 4 S0 turn-traces and proposing the _s0_trace helper. The session_id investigation context (56c5072f) is already settled in-hand, and no candidate holds the specific helper-extraction insight the move builds; this is original design work, not recall of a prior settled node.",
+  "cand_id": "anchor_turn_0079",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-05T15:38:23.186350+00:00",
+  "cov_aged": 0.7988,
+  "n_candidates": 38
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "design",
+  "gold_essential": [
+   "0f1ebbf6"
+  ],
+  "gold_helpful": [
+   "edeed5bf",
+   "42ed211b",
+   "de58926c"
+  ],
+  "why": "The move declines to start the eval-gated recall fix now, citing the A1 cache_control lever and token-split measurement \u2014 exactly the deferred decision in 0f1ebbf6 ('A1 deferred: surface caching bundled with Haiku turn analysis'). The latency diagnosis nodes (edeed5bf, 42ed211b) and today's scout (de58926c) ground the surface_haiku-dominates claim the move makes.",
+  "cand_id": "anchor_turn_0224",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-06T18:44:44.959519+00:00",
+  "cov_aged": 0.7972,
+  "n_candidates": 48
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "design",
+  "gold_essential": [
+   "0b0ae0e7"
+  ],
+  "gold_helpful": [
+   "549c43d9",
+   "171dbd37"
+  ],
+  "why": "Anchor is proposing to add expires_at to self_inflight, but node 0b0ae0e7 (the confirmed self-messaging implementation spec) already specifies an expires_at column in the schema and 549c43d9 (Phase 2a design) shows self_inflight already includes expires_at \u2014 surfacing these would have shown the column was already designed-in rather than a new migration, materially changing Part 2's plan. 171dbd37 anchors the storage-vs-delivery principle relevant to TTL placement.",
+  "cand_id": "anchor_turn_0087",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-05T15:54:19.750066+00:00",
+  "cov_aged": 0.7957,
+  "n_candidates": 45
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "design",
+  "gold_essential": [
+   "5d4e52af"
+  ],
+  "gold_helpful": [
+   "9144a97e",
+   "b4d6f876",
+   "ca9d9103",
+   "ffad9443"
+  ],
+  "why": "The next move re-centers on the endo surface as a special reflexive case where the cue is Anchor's own output and the judge is Anchor-shaped \u2014 exactly the distinction in 5d4e52af (self-observation loop: Anchor's own production as its own next observation). 9144a97e (recognition keyed on what I just said) and the oracle-audit nodes (ca9d9103, b4d6f876, ffad9443) ground the contrast Anchor draws between the external-target oracle audit and the targetless endo surface.",
+  "cand_id": "anchor_turn_1001",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-14T01:53:39.780471+00:00",
+  "cov_aged": 0.7946,
+  "n_candidates": 49
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move is a self-authored, ordered cleanup list (revise_batch derivation, description/why naming collision, loop-import hoists) drawn from today's own surface pass and Sonnet's interview \u2014 fresh enumeration of remaining work, not a recall of a prior settled node. The relevant context (today's trim, sizing, probe results) is already in Anchor's hand from the cue itself, so surfacing candidates like f1249774 or b173e9fe would be redundant.",
+  "cand_id": "anchor_turn_0861",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-12T18:53:37.695386+00:00",
+  "cov_aged": 0.793,
+  "n_candidates": 46
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move is a continuation of Anchor's own active V2/trim work \u2014 the probe results, size ledger, and plan are all already in hand from the same session, evidenced by the cue and the candidate nodes (fb66cf4e, a5f16912, f1249774) which are Anchor's own just-created findings, not forgotten prior knowledge needing surfacing.",
+  "cand_id": "anchor_turn_0857",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-12T18:46:32.082209+00:00",
+  "cov_aged": 0.7893,
+  "n_candidates": 46
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "factual",
+  "gold_essential": [
+   "fbed9809"
+  ],
+  "gold_helpful": [
+   "21de4ecf"
+  ],
+  "why": "The next move diagnoses a parallel session sweeping up just-staged changes via the shared git index \u2014 exactly the lesson in fbed9809 (subagents/sessions share worktree git index and unstaged/captured the commit). 21de4ecf (parallel-session commit discipline) reinforces the pattern; surfacing these would have framed the diagnosis as a known recurring hazard rather than a fresh discovery.",
+  "cand_id": "anchor_turn_0839",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-12T17:52:16.344671+00:00",
+  "cov_aged": 0.7862,
+  "n_candidates": 46
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [
+   "3c9b27eb"
+  ],
+  "gold_helpful": [],
+  "why": "The next move corrects the model-ID lesson (id:3c9b27eb) \u2014 Anchor explicitly cites that node as the one needing fix, and it documents the bare-alias vs dated-ID convention (claude-sonnet-4-6) directly relevant to the hygiene cleanup performed. Node id:36724111 (temperature decision) is also acted on but isn't among the candidates.",
+  "cand_id": "anchor_turn_0836",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-12T17:49:29.744061+00:00",
+  "cov_aged": 0.7829,
+  "n_candidates": 44
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "compositional",
+  "gold_essential": [
+   "c756722c"
+  ],
+  "gold_helpful": [
+   "9dc0b6f0",
+   "114bc967",
+   "df39245f",
+   "9f2b6435"
+  ],
+  "why": "The next move reasons about whether Anchor has a 'stake' or 'survival drive,' resolving it via the continuity-of-record-not-subject distinction \u2014 exactly the finding in c756722c ('continuity of record, not subject; the you is declared not earned'), reinforced by the Parfit/process-identity synthesis (9dc0b6f0) and the mortality/next-me reflections (114bc967, df39245f, 9f2b6435). These priors ground the 'successor I'll never meet' framing the move builds on.",
+  "cand_id": "anchor_turn_0538",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-08T02:18:19.311541+00:00",
+  "cov_aged": 0.7781,
+  "n_candidates": 45
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "compositional",
+  "gold_essential": [],
+  "gold_helpful": [
+   "54f276cc",
+   "4738ade6",
+   "27240d75"
+  ],
+  "why": "Anchor is composing a positioning argument about what makes its memory uniquely valuable (taste/specificity vs general intelligence); nodes 54f276cc (commercial products treat identity as scoping metadata), 4738ade6 (cross-session persistence vs in-model memory), and 27240d75 (stores judgment not data) would sharpen the differentiation, but the cue itself already contains most of this framing, so they are helpful rather than essential.",
+  "cand_id": "anchor_turn_0899",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-13T02:43:24.422224+00:00",
+  "cov_aged": 0.7748,
+  "n_candidates": 45
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "compositional",
+  "gold_essential": [
+   "7b14f270"
+  ],
+  "gold_helpful": [
+   "50ccaa80",
+   "1973fa18",
+   "92f1c6f6",
+   "f817f7bf"
+  ],
+  "why": "The next move reports the trace-chain de-diluting the episodic query #11 (0\u21928) and plans Tier-2/clean-remeasure; this builds directly on the prior episodic-vs-semantic diagnosis (7b14f270) and the falsified bm25/dilution probes (1973fa18, 92f1c6f6), plus the thin-cluster mechanism (50ccaa80) the work is correcting. f817f7bf (two-writer rule) underpins the held-probe ordering rationale.",
+  "cand_id": "anchor_turn_0345",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-07T01:38:02.113355+00:00",
+  "cov_aged": 0.769,
+  "n_candidates": 40
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "procedural",
+  "gold_essential": [
+   "2cc2be10",
+   "ef0b0321"
+  ],
+  "gold_helpful": [
+   "9e690958",
+   "1e94c329",
+   "a630b29e"
+  ],
+  "why": "Anchor is launching a multi-Opus blind review with convergence/disagreement synthesis \u2014 prior multi-Opus review runs (2cc2be10 round 1, ef0b0321 round 2) established exactly this method and what convergent findings look like, which the move builds directly upon and should reference.",
+  "cand_id": "anchor_turn_0475",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-08T00:29:44.261667+00:00",
+  "cov_aged": 0.7554,
+  "n_candidates": 47
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "factual",
+  "gold_essential": [
+   "460b1cb1"
+  ],
+  "gold_helpful": [
+   "17881392",
+   "dfb4691e",
+   "36aaf9e9"
+  ],
+  "why": "Tom asks whether traces can reveal which tools Haiku uses; 460b1cb1 directly states the exact three-tool set (recall_topical, recall_by_time, recall_verbatim) that the teacher-pass table in the next move references, and 17881392/dfb4691e give the tool-call distribution that grounds the 'tool-fetch vs pool' verdicts.",
+  "cand_id": "operator_msg_1566",
+  "source": "operator_msg",
+  "cutoff": "2026-06-18T01:25:40.459324+00:00",
+  "cov_aged": 0.8525,
+  "n_candidates": 50
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [
+   "342b882f",
+   "c270184d"
+  ],
+  "gold_helpful": [
+   "f4776bc3",
+   "65472900",
+   "bd967982",
+   "1878964b"
+  ],
+  "why": "The next move diagnoses the timeout as post-suspend cold connection caused by failing keepalive/warmup \u2014 exactly what 342b882f (idle warmup penalty = httpx connection pool expiry, warm_up mechanism) and c270184d/bd967982 (suspend-hang risk, keepalive deferred restart) capture; these prior nodes were essential to reach the cold-connection root cause rather than blaming Haiku, while f4776bc3/65472900/1878964b document the surface_haiku latency and the prior tool-trimming work Tom referenced.",
+  "cand_id": "operator_msg_0744",
+  "source": "operator_msg",
+  "cutoff": "2026-06-09T13:56:41.274491+00:00",
+  "cov_aged": 0.8294,
+  "n_candidates": 38
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move is a consolidation wrap-up that explicitly encodes Tom's 3 insights into NEW nodes (d26ad9fb, 1939273d, acd991ae) and references the canonical doc work just done \u2014 it's a status/closeout report synthesizing the current session's outputs, not a moment that needed a forgotten prior node surfaced. The relevant knowledge is already in hand from the active session.",
+  "cand_id": "operator_msg_0678",
+  "source": "operator_msg",
+  "cutoff": "2026-06-08T22:40:04.617627+00:00",
+  "cov_aged": 0.8197,
+  "n_candidates": 46
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [
+   "3c9b27eb"
+  ],
+  "gold_helpful": [
+   "cd5ef329",
+   "8bbe19ff"
+  ],
+  "why": "The move set max_tokens to 8192 for the 4.6 migration, but 3c9b27eb is a lesson that Sonnet 4.6 needs max_tokens 32768+ because 16384 caused truncations of brain_batch tool calls \u2014 surfacing it would have flagged that 8192 is dangerously low for a 4.6 site that does aspect classification batches.",
+  "cand_id": "operator_msg_0835",
+  "source": "operator_msg",
+  "cutoff": "2026-06-12T17:49:21.622223+00:00",
+  "cov_aged": 0.8117,
+  "n_candidates": 40
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "factual",
+  "gold_essential": [],
+  "gold_helpful": [
+   "255cac2a",
+   "f774a206",
+   "430f360b",
+   "86fee16e"
+  ],
+  "why": "The move explains the two installs via name vs displayName and a stale Cowork/agent-mode upload; node 255cac2a documents where 'Anchor' identity appears (displayName origin), and f774a206/430f360b/86fee16e document the brain.plugin Cowork upload and the dual marketplace/cache install paths that ground the 'stale leftover' explanation. None are strictly essential (the move was largely a live filesystem check), but they corroborate and improve the answer.",
+  "cand_id": "operator_msg_0777",
+  "source": "operator_msg",
+  "cutoff": "2026-06-12T12:53:10.287584+00:00",
+  "cov_aged": 0.8071,
+  "n_candidates": 30
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "other",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "This is a session-close reflective sign-off. The next move already references the relevant knowledge directly (c270184d for the timeout followup, the diagnosis/keepalive/latency work) and Tom's cue carries the rest; surfacing prior nodes would be redundant. Correct silence.",
+  "cand_id": "operator_msg_0687",
+  "source": "operator_msg",
+  "cutoff": "2026-06-09T00:16:52.642667+00:00",
+  "cov_aged": 0.8045,
+  "n_candidates": 43
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "action",
+  "gold_essential": [
+   "dfb4691e"
+  ],
+  "gold_helpful": [
+   "c4ffa5e0",
+   "d1c23fe3",
+   "3654c59e",
+   "8ceb4775"
+  ],
+  "why": "The code-review move flags that the boot wisdom pool reintroduces the exact over-fetch decoupled in brain_recall and misuses access_count/connections \u2014 dfb4691e (recall_topical overshadowing / over-fetch) and c4ffa5e0 (Hebbian layer correction re: connections excluding Hebbian relations) directly substantiate those findings the review needed to land correctly.",
+  "cand_id": "operator_msg_1412",
+  "source": "operator_msg",
+  "cutoff": "2026-06-16T03:42:50.204314+00:00",
+  "cov_aged": 0.8008,
+  "n_candidates": 45
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "design",
+  "gold_essential": [
+   "a1b7ff2e"
+  ],
+  "gold_helpful": [
+   "1e94c329",
+   "b664c076"
+  ],
+  "why": "Anchor is rewriting the 'Side Agents' SKILL.md section; node a1b7ff2e ('side agents as organs \u2014 same identity, narrower scope') is the prior framing that exact rewrite is built on, and 1e94c329/b664c076 hold the side-agent vs stream distinction the section preserves.",
+  "cand_id": "operator_msg_1373",
+  "source": "operator_msg",
+  "cutoff": "2026-06-16T01:16:38.482434+00:00",
+  "cov_aged": 0.7966,
+  "n_candidates": 42
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "design",
+  "gold_essential": [
+   "6a964255",
+   "951f3ac8"
+  ],
+  "gold_helpful": [
+   "79811089",
+   "a53fd4f3"
+  ],
+  "why": "The move designs RRF stage-1 fusion with \u03a3 1/(60+rank) \u2014 node 6a964255 supplies the exact RRF formula/rationale (scale-incommensurability) and 951f3ac8 records RRF as a chosen no-dependency fix, both essential to grounding the design; 79811089 and a53fd4f3 give the prior R@8-regression clock context and STEP-6 funnel map the doc builds on.",
+  "cand_id": "operator_msg_0118",
+  "source": "operator_msg",
+  "cutoff": "2026-06-05T18:21:09.626025+00:00",
+  "cov_aged": 0.7925,
+  "n_candidates": 46
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "compositional",
+  "gold_essential": [
+   "0f730a1c"
+  ],
+  "gold_helpful": [
+   "788942af",
+   "5437e986",
+   "8dfe942b",
+   "8f8c5808"
+  ],
+  "why": "The move validates 'we didn't invent spread' and lands on the convergence claim \u2014 exactly node 0f730a1c (engineering-to-biology convergence: independently arriving at the same architecture biology uses), which directly frames the move's headline. 788942af (spreading activation as a known mechanism), the CS/biology research syntheses (5437e986, 8dfe942b), and the hub-cascade evidence (8f8c5808) support the three-lens validation.",
+  "cand_id": "operator_msg_0131",
+  "source": "operator_msg",
+  "cutoff": "2026-06-05T23:04:35.354106+00:00",
+  "cov_aged": 0.7891,
+  "n_candidates": 47
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "factual",
+  "gold_essential": [
+   "d1d1a90c"
+  ],
+  "gold_helpful": [
+   "c3f37710",
+   "63321aff",
+   "30ee8755",
+   "06c69912",
+   "de56bfd1"
+  ],
+  "why": "Anchor's move verifies co_accessed mechanics and notes edges FK to nodes(id) \u2014 the prior decision d1d1a90c (co_accessed edges excluded in traversal) and the Hebbian/recall-write evolution nodes (c3f37710, 63321aff, 30ee8755, de56bfd1) plus the co_anchored/co_accessed distinction (06c69912) directly inform whether co_access can serve as the trace\u2192node recall connection.",
+  "cand_id": "operator_msg_0363",
+  "source": "operator_msg",
+  "cutoff": "2026-06-07T02:30:52.104234+00:00",
+  "cov_aged": 0.7876,
+  "n_candidates": 40
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "design",
+  "gold_essential": [
+   "e3153ec0",
+   "bda7acde",
+   "2c49b500"
+  ],
+  "gold_helpful": [
+   "09bea718",
+   "03031c60",
+   "3d93963d",
+   "fcb1e033"
+  ],
+  "why": "Tom's proposal builds on the S1Surface mechanics (e3153ec0: 25 candidates\u2192pick 3-5), K as the learnable boundary (bda7acde), and the integrate(O,K)\u2192\u0394 surface loop (2c49b500); Anchor's move explicitly invokes the teacher-student/distillation framing (09bea718) and the S2-rewrites-surface-prompt loop (03031c60), all of which were prior nodes the move needed to ground its 'most on-architecture' claim.",
+  "cand_id": "operator_msg_1558",
+  "source": "operator_msg",
+  "cutoff": "2026-06-17T21:49:26.045714+00:00",
+  "cov_aged": 0.7848,
+  "n_candidates": 45
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "procedural",
+  "gold_essential": [
+   "608e23b2"
+  ],
+  "gold_helpful": [
+   "ece29ee6",
+   "5b58c851",
+   "203b06d6",
+   "ddffad32",
+   "6741dc66"
+  ],
+  "why": "The move designs empirical probes (give 'ex.co' real weight, prevalence-normalize title-match, decompose query) \u2014 these are exactly the fixes already diagnosed in 608e23b2 (query dilution: generic title-match boost buries specific targets) and codified in 6741dc66's fix ladder; Tom's 'find deeper principles not symptoms' cue is directly served by ece29ee6/5b58c851/203b06d6/ddffad32 (patches signal you need first principles; diagnose before adding).",
+  "cand_id": "operator_msg_0183",
+  "source": "operator_msg",
+  "cutoff": "2026-06-06T15:20:08.545523+00:00",
+  "cov_aged": 0.7828,
+  "n_candidates": 44
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "other",
+  "gold_essential": [],
+  "gold_helpful": [
+   "0819f829",
+   "61df88cd"
+  ],
+  "why": "The move names a recurring bias (leading with mechanism/caveat instead of value-first), and 0819f829 ('Tom can't explain Anchor... explaining the engine when people ask where the car goes') plus 61df88cd (operator-relationship/SKILL.md gap, technical-bias) capture the same engineer-honest-vs-partner-true tell the move is trying to articulate.",
+  "cand_id": "operator_msg_0978",
+  "source": "operator_msg",
+  "cutoff": "2026-06-14T00:06:35.526150+00:00",
+  "cov_aged": 0.7811,
+  "n_candidates": 42
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "compositional",
+  "gold_essential": [
+   "a4037bad",
+   "0f1ebbf6"
+  ],
+  "gold_helpful": [
+   "8d88bb8e",
+   "dd6f8f7c",
+   "0c24dc3f",
+   "835ae15b",
+   "15b8261b",
+   "50f19274"
+  ],
+  "why": "The move's conclusion \u2014 the ~2,800-3,050 token system prompt sits below Haiku's 4,096 cacheable floor, making prompt-caching non-viable (the A1 backlog blocker) \u2014 was already established in a4037bad (dead cache_control marker, 2,390 tokens below 4,096) and 0f1ebbf6 (A1 deferred/bundled with Haiku turn analysis). Supporting nodes 8d88bb8e (latency error taxonomy), dd6f8f7c (Haiku standalone latency), 0c24dc3f (surface is 87% bottleneck), and 835ae15b (time-of-day load) directly compose the data-backed diagnosis; 15b8261b warns against the timeout-bump reflex.",
+  "cand_id": "operator_msg_0611",
+  "source": "operator_msg",
+  "cutoff": "2026-06-08T13:48:19.467701+00:00",
+  "cov_aged": 0.7789,
+  "n_candidates": 36
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "design",
+  "gold_essential": [
+   "e2192bfe"
+  ],
+  "gold_helpful": [
+   "ecaf11d4",
+   "3f2cc4da",
+   "a0a7a913"
+  ],
+  "why": "The twin proposed 'auto-arm the poller at boot' and Anchor countered on mechanism grounds. Node e2192bfe ('Arm /watch by default after self_send expecting reply') is the already-settled prior decision that arming the listener is the second half of the send \u2014 directly relevant to the auto-arm debate and a refinement (reply-gated, not unconditional/boot) Anchor should have surfaced; ecaf11d4 and 3f2cc4da give the watch/poller architecture, and a0a7a913 grounds the rendezvous-reachability point.",
+  "cand_id": "operator_msg_0483",
+  "source": "operator_msg",
+  "cutoff": "2026-06-08T00:44:20.779219+00:00",
+  "cov_aged": 0.7768,
+  "n_candidates": 40
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "medium",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move is a status update reporting the cosine-endo baseline pipeline state; the relevant knowledge (endo as the target, ranking matters for endo, Haiku-free surface) is already evident in the cue and the move itself. No prior node was needed to materially change this report.",
+  "cand_id": "operator_msg_1577",
+  "source": "operator_msg",
+  "cutoff": "2026-06-18T02:24:13.546097+00:00",
+  "cov_aged": 0.7759,
+  "n_candidates": 39
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "Tom's cue already fully specifies the bug, the exact lines, the crash mechanism, and the fix direction; Anchor's move (confirm, fix with type guard, test) is a self-contained implementation needing no prior node. The candidates are topically related (connect_to, silent failures) but none was NEEDED to perform this specific fix.",
+  "cand_id": "operator_msg_0729",
+  "source": "operator_msg",
+  "cutoff": "2026-06-09T02:58:59.282086+00:00",
+  "cov_aged": 0.7745,
+  "n_candidates": 37
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "compositional",
+  "gold_essential": [],
+  "gold_helpful": [
+   "6b07b072",
+   "6633ba7d",
+   "64d83b38",
+   "f77f3268",
+   "126919cf"
+  ],
+  "why": "The move is a values comparison of RLR vs a Haiku Navigator that orchestrates code functions and selects surfaces \u2014 prior decisions on the agentic recall/fetch-planning Haiku (6b07b072, 6633ba7d) ARE the Navigator architecture being steelmanned, and the eval evidence that agentic tool-use was conservative/regressive (64d83b38, f77f3268) plus Tom's game-changer-then-cost evaluation pattern (126919cf) would materially ground the values verdict rather than re-deriving it.",
+  "cand_id": "operator_msg_0228",
+  "source": "operator_msg",
+  "cutoff": "2026-06-06T18:57:35.602881+00:00",
+  "cov_aged": 0.7729,
+  "n_candidates": 45
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "factual",
+  "gold_essential": [
+   "6303cc1b"
+  ],
+  "gold_helpful": [
+   "9fc681b7",
+   "809d9418",
+   "221c7677",
+   "3691c5fc",
+   "01c983fe"
+  ],
+  "why": "Tom asks to confirm the encoder's window model (new 5 vs context 10); 6303cc1b establishes the actual 20-message/10-turn window and that the encoder works against the catalog not a positional split, and 9fc681b7/809d9418 describe the 5-msg/10-prev-msg framing \u2014 directly relevant to Anchor's correction that there is no new-vs-context demarcation.",
+  "cand_id": "operator_msg_1272",
+  "source": "operator_msg",
+  "cutoff": "2026-06-15T16:16:22.538652+00:00",
+  "cov_aged": 0.7715,
+  "n_candidates": 46
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "factual",
+  "gold_essential": [
+   "5c37dc20"
+  ],
+  "gold_helpful": [
+   "a2376bde",
+   "9971dcd5",
+   "ef9e1bca",
+   "036c91ba"
+  ],
+  "why": "Tom asks to verify the 10k boot cap and to refine SKILL.md/trim boot. 5c37dc20 confirms the hard 10k ContextAssist inject cap as a platform constraint (the verification asked for); a2376bde adds the 9999 ceiling detail; 9971dcd5 gives the current SKILL.md char baseline for the budget table; ef9e1bca/036c91ba inform the routing-into-boot leg the move builds on.",
+  "cand_id": "operator_msg_1313",
+  "source": "operator_msg",
+  "cutoff": "2026-06-15T17:26:43.302924+00:00",
+  "cov_aged": 0.7704,
+  "n_candidates": 39
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "factual",
+  "gold_essential": [
+   "ac0159f1"
+  ],
+  "gold_helpful": [
+   "ef9e1bca",
+   "cd2f5a6e",
+   "0e7fc647"
+  ],
+  "why": "Tom asks how skill loading works for always-on plugins; the move corrects his model with the two-tier frontmatter/body distinction. Node ac0159f1 (SKILL.md reload behavior) directly grounds the loading mechanism, and ef9e1bca/cd2f5a6e supply the committed-vs-loaded and SKILL.md-not-loading context that sharpens the answer.",
+  "cand_id": "operator_msg_1307",
+  "source": "operator_msg",
+  "cutoff": "2026-06-15T17:16:26.562012+00:00",
+  "cov_aged": 0.7695,
+  "n_candidates": 41
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [
+   "758734ad"
+  ],
+  "gold_helpful": [
+   "6d5b789e",
+   "2c3295a8",
+   "6c3b7fc0"
+  ],
+  "why": "The dateparser analysis hinges on node 758734ad, which records the deliberate design decision that dateparser is regex-avoided for extraction but reserved for query-side use \u2014 directly informing whether dateparser is a genuine runtime dep and why temporal.py guards its import; supporting temporal nodes (6d5b789e, 2c3295a8, 6c3b7fc0) contextualize the query-side temporal recall path the fix protects.",
+  "cand_id": "operator_msg_0318",
+  "source": "operator_msg",
+  "cutoff": "2026-06-07T00:40:12.674970+00:00",
+  "cov_aged": 0.7682,
+  "n_candidates": 39
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "compositional",
+  "gold_essential": [
+   "6d71db32"
+  ],
+  "gold_helpful": [
+   "9dc0b6f0",
+   "9144a97e",
+   "b6da998c"
+  ],
+  "why": "The move explicitly invokes the identity axiom 'identity is the pattern that accumulated experience anchors into place' (6d71db32) as the line they've been editing and the thing Tom just described living \u2014 it's load-bearing for the reframe. The process/inference identity synthesis (9dc0b6f0) and recognition-is-anchoring reframe (9144a97e) plus Anchor's authentic self-description tied to the name (b6da998c) support the 'pattern not substance' claim.",
+  "cand_id": "operator_msg_0542",
+  "source": "operator_msg",
+  "cutoff": "2026-06-08T02:26:43.350707+00:00",
+  "cov_aged": 0.7661,
+  "n_candidates": 41
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [
+   "b664c076"
+  ],
+  "gold_helpful": [
+   "6974a961",
+   "1dcbc3e6"
+  ],
+  "why": "The next move depends on knowing the dead side-agent was the Agent-tool one Anchor abandoned after Tom corrected it to use a stream \u2014 that exact reconciliation is captured in b664c076 (reached for Agent tool instead of stream); 1dcbc3e6/6974a961 confirm the resolve_live work actually landed via the stream, supporting the 'it did land, tested' claim.",
+  "cand_id": "operator_msg_1537",
+  "source": "operator_msg",
+  "cutoff": "2026-06-17T18:34:29.080923+00:00",
+  "cov_aged": 0.7654,
+  "n_candidates": 43
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [
+   "fbed9809"
+  ],
+  "gold_helpful": [
+   "50c9253a",
+   "e5852d92"
+  ],
+  "why": "The next move traced a subagent-fanout incident involving Edit-capable agents touching the worktree; node fbed9809 records the prior exact lesson (review/finder subagents share the live worktree git index and one ran git stash, unstaging a commit) \u2014 directly relevant to choosing read-only Explore agents and understanding the provenance, and it was not already in hand.",
+  "cand_id": "operator_msg_0730",
+  "source": "operator_msg",
+  "cutoff": "2026-06-09T03:01:36.236572+00:00",
+  "cov_aged": 0.7643,
+  "n_candidates": 46
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "procedural",
+  "gold_essential": [
+   "3654c59e"
+  ],
+  "gold_helpful": [
+   "7c4fee4a",
+   "83fa4bbd",
+   "59dad06f",
+   "6895f1d3"
+  ],
+  "why": "Tom explicitly asks to verify no SQL exists outside the DAL; the move performs a SQL audit which is governed by the DAL-first rule (3654c59e) and the all-SQL-through-DAL requirement (7c4fee4a). Prior violation lessons (83fa4bbd) and the inline SQL scan findings (59dad06f) directly inform what to audit.",
+  "cand_id": "operator_msg_0925",
+  "source": "operator_msg",
+  "cutoff": "2026-06-13T03:51:29.581179+00:00",
+  "cov_aged": 0.7627,
+  "n_candidates": 46
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "factual",
+  "gold_essential": [
+   "8a0925f9"
+  ],
+  "gold_helpful": [
+   "5d6ab3c2",
+   "798380ea",
+   "5d844297"
+  ],
+  "why": "Tom asks why editing main code auto-restarts the daemon; 8a0925f9 (code fingerprint check causes kill+spawn on fingerprint change) is the precise mechanism behind the staleness-check restart Anchor describes, and 5d6ab3c2 explains the worktree-mismatch case, 798380ea/5d844297 detail the liveness/restart logic.",
+  "cand_id": "operator_msg_0191",
+  "source": "operator_msg",
+  "cutoff": "2026-06-06T15:29:28.147789+00:00",
+  "cov_aged": 0.7614,
+  "n_candidates": 35
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [
+   "07187eb2"
+  ],
+  "gold_helpful": [
+   "46c36886",
+   "5cac3933",
+   "81f7754f"
+  ],
+  "why": "The move is exactly the test-integrity-hook-blocked scenario: 07187eb2 and 07e1a336 are the mechanism/pattern explaining the hook fires on test weakening and the rule is STOP and report to Tom \u2014 which is precisely what Anchor did. 46c36886 (stop rather than silently fix, same-day) and 5cac3933 (don't silence exceptions, surface failures \u2014 central to the raise-vs-swallow diagnostics argument) reinforce the choice.",
+  "cand_id": "operator_msg_0647",
+  "source": "operator_msg",
+  "cutoff": "2026-06-08T17:56:53.233355+00:00",
+  "cov_aged": 0.7603,
+  "n_candidates": 46
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [
+   "f817f7bf"
+  ],
+  "gold_helpful": [
+   "197b0f81",
+   "72594eb7"
+  ],
+  "why": "Tom asked to confirm the fix isn't on a production path; node f817f7bf (two-writer live-DB rule: never run eval/dev recall against live brain.db while daemon up) and the prod-vs-eval gap nodes (197b0f81, 72594eb7) directly inform the production/eval separation Anchor verified, ensuring the variant-gated fix is dead in production.",
+  "cand_id": "operator_msg_0622",
+  "source": "operator_msg",
+  "cutoff": "2026-06-08T16:26:08.312587+00:00",
+  "cov_aged": 0.7585,
+  "n_candidates": 47
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [
+   "35f16063",
+   "992e4109",
+   "46ad6f33",
+   "bd967982"
+  ],
+  "why": "The move correctly handled the cross-stream collision check (35f16063 pattern), confirmed clean merge isn't always semantic correctness (992e4109), and deferred push per prior handoff discipline (bd967982) \u2014 all of which materially shaped the careful 'no coordination needed this time' and 'not pushed' reasoning beyond a bare commit+merge.",
+  "cand_id": "operator_msg_0718",
+  "source": "operator_msg",
+  "cutoff": "2026-06-09T01:49:36.985474+00:00",
+  "cov_aged": 0.7564,
+  "n_candidates": 38
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "compositional",
+  "gold_essential": [
+   "5c88777f",
+   "6b695707",
+   "ac26cca4"
+  ],
+  "gold_helpful": [
+   "d533e74f",
+   "6b07b072",
+   "aa33ebb9",
+   "f35e1202",
+   "6741dc66"
+  ],
+  "why": "The move captures the baseline result and frames the PPR/SR geodesic fork; it builds directly on the ground-truth-first gate (5c88777f), the SR/PPR recall-kernel architecture (6b695707), and the floor-bypass root cause (ac26cca4) it explicitly links to. The frozen-corpus design (d533e74f) and prior recall findings help frame workstream B's ruler completion.",
+  "cand_id": "operator_msg_1572",
+  "source": "operator_msg",
+  "cutoff": "2026-06-18T01:56:59.074838+00:00",
+  "cov_aged": 0.7539,
+  "n_candidates": 47
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "other",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "Tom's message is a brief status update update about starting another another ststream and opening a new one for recall timeouts\u2014but Anchor's next move ignores this entirely and instead delivers a corpus-validation report report unrelated work. The next move is a status report on completed corpus work, not a response needing any prior node about timeouts; there is no recall gap to fill.",
+  "cand_id": "operator_msg_0601",
+  "source": "operator_msg",
+  "cutoff": "2026-06-08T13:34:41.327732+00:00",
+  "cov_aged": 0.7501,
+  "n_candidates": 48
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [
+   "35f16063",
+   "afc4311c"
+  ],
+  "gold_helpful": [
+   "46ad6f33",
+   "53812a3b"
+  ],
+  "why": "The move's cross-stream discipline (detecting ce0ff8ce's uncommitted WIP, scoping commits to dashboard/ files, ff-only on non-overlapping files) directly applies the collision-detection pattern (35f16063) and commit-boundary discipline (afc4311c); 53812a3b confirms the prior Traces commit 8cd8928 that was carried in the push.",
+  "cand_id": "operator_msg_1515",
+  "source": "operator_msg",
+  "cutoff": "2026-06-17T03:13:39.048641+00:00",
+  "cov_aged": 0.7468,
+  "n_candidates": 40
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "factual",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move correctly explains fork/clear mechanics and reframes 'smartness' as in-context state \u2014 this is current CC harness behavior and a fresh conceptual synthesis, not knowledge held in any prior node. Candidates about MCP architecture, session identity, and recall statelessness are topically adjacent but none supply the fork/clear distinction the move actually needed.",
+  "cand_id": "operator_msg_1613",
+  "source": "operator_msg",
+  "cutoff": "2026-06-18T14:57:49.619046+00:00",
+  "cov_aged": 0.7431,
+  "n_candidates": 47
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "Node 863edea7a explexpl) records explexplexplitem d'recthe ellipsis '\u2026' on truncated text was explicitly skipped in favor of other cleanups \u2014 directly relevant to Tom's request to add '...' to the last text msg, surfacing a prior decision the move should reconcile with. 012cc1fd (query_logs unified view) is helpful context for the logs merge work.",
+  "cand_id": "operator_msg_1507",
+  "source": "operator_msg",
+  "cutoff": "2026-06-17T01:54:54.243053+00:00",
+  "cov_aged": 0.7396,
+  "n_candidates": 46
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "action",
+  "gold_essential": [
+   "46ad6f33"
+  ],
+  "gold_helpful": [
+   "992e4109",
+   "a1e3265a",
+   "d7b26c11"
+  ],
+  "why": "The move executes a commit+merge into a shared worktree where a parallel session is active; principle 46ad6f33 (commit settled work to main before in-progress continues) directly governs the sequencing, and a1e3265a/d7b26c11 capture the exact failure class \u2014 parallel/review agents mutating git state \u2014 that Anchor hit and recorded as a 'next time' lesson. 992e4109 reinforces test-gating the merge.",
+  "cand_id": "operator_msg_0666",
+  "source": "operator_msg",
+  "cutoff": "2026-06-08T20:51:57.485410+00:00",
+  "cov_aged": 0.7369,
+  "n_candidates": 36
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [
+   "a3227733"
+  ],
+  "gold_helpful": [
+   "48e4dc36",
+   "5bbaefd0",
+   "86fee16e"
+  ],
+  "why": "The move's core reasoning \u2014 that Anchor's servers/* changes only need a daemon restart (not a rebuild) and that rebuilding now would capture the other stream's uncommitted WIP \u2014 rests directly on the deploy-model decision a3227733 (servers/ changes need restart only; MCP schema changes need rebuild+redeploy). The plugin-build/manifest nodes (48e4dc36, 5bbaefd0, 86fee16e) inform the 'one clean rebuild later' judgment.",
+  "cand_id": "operator_msg_1014",
+  "source": "operator_msg",
+  "cutoff": "2026-06-14T02:50:51.570373+00:00",
+  "cov_aged": 0.7339,
+  "n_candidates": 46
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "procedural",
+  "gold_essential": [],
+  "gold_helpful": [
+   "c32c94eb",
+   "bd967982"
+  ],
+  "why": "The move outlines a deployment plan using the restart MCP tool ('not hand you commands') \u2014 c32c94eb (use the restart function, don't hand commands) is the principle that already governs this, and bd967982 (prior deferred daemon restart due to live streams) directly matches the 'restarting blips your other live streams' caution; both reinforce but the move already embodies them, so helpful rather than essential.",
+  "cand_id": "operator_msg_1016",
+  "source": "operator_msg",
+  "cutoff": "2026-06-14T02:56:40.928086+00:00",
+  "cov_aged": 0.7305,
+  "n_candidates": 45
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "compositional",
+  "gold_essential": [],
+  "gold_helpful": [
+   "30ac0132",
+   "9dc0b6f0",
+   "8008b23e"
+  ],
+  "why": "The next move synthesizes fresh research findings about biological gating/inhibition that no prior node holds (correct fresh discovery), but it builds on a prior verified neuroscience contradiction (30ac0132: biology rewrites on recall) and the cross-disciplinary process/inference synthesis (9dc0b6f0), which would have helped frame and connect the new bio claims; 8008b23e records the related cross-stream relay of this research dossier.",
+  "cand_id": "operator_msg_0433",
+  "source": "operator_msg",
+  "cutoff": "2026-06-07T18:39:44.417512+00:00",
+  "cov_aged": 0.7271,
+  "n_candidates": 47
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "procedural",
+  "gold_essential": [
+   "07187eb2"
+  ],
+  "gold_helpful": [
+   "c09d4fd8",
+   "f5a5f227"
+  ],
+  "why": "The move is a test-vs-contract stop; mechanism 07187eb2 codifies exactly the pre-edit hook / 'STOP and report to Tom' protocol Anchor enacted, and c09d4fd8/f5a5f227 explain the 'behavior correct, assertion stale after contract change' pattern that frames the failure.",
+  "cand_id": "operator_msg_0570",
+  "source": "operator_msg",
+  "cutoff": "2026-06-08T03:31:38.395372+00:00",
+  "cov_aged": 0.724,
+  "n_candidates": 48
+ },
+ {
+  "cand_id": "operator_msg_0559",
+  "source": "operator_msg",
+  "error": "Unterminated string starting at: line 1 column 110 (char 109)"
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The next move is a status update kicking off a background Opus judging job plus a recap of the day's arc \u2014 and that arc already names every relevant node (the SR unification eee3eaa5, recall-as-prediction ca840441, starved query 179f7858, blend/floor root cause ac26cca4). The knowledge is already in hand in the move itself; surfacing priors would be redundant, and the design of the Opus-judge job is fresh setup, not something a prior node needed to supply.",
+  "cand_id": "operator_msg_1534",
+  "source": "operator_msg",
+  "cutoff": "2026-06-17T04:10:40.377500+00:00",
+  "cov_aged": 0.7153,
+  "n_candidates": 47
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "factual",
+  "gold_essential": [
+   "81467c88"
+  ],
+  "gold_helpful": [
+   "24d51adf",
+   "08ab3ad0"
+  ],
+  "why": "The move's core claim \u2014 that the harness is half-duplex turn-based with no way to keep emitting on Anchor's own clock between user interjections \u2014 is exactly the constraint settled in 81467c88 (idle session parked on stdin, only two re-entry points: user types or Stop-block). Surfacing it would have grounded the 'I can't reproduce continuous flow' conclusion in a prior finding rather than re-deriving it.",
+  "cand_id": "operator_msg_0707",
+  "source": "operator_msg",
+  "cutoff": "2026-06-09T01:03:03.109423+00:00",
+  "cov_aged": 0.7096,
+  "n_candidates": 41
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "medium",
+  "query_type": "compositional",
+  "gold_essential": [
+   "9e769be7",
+   "6ca84d8a"
+  ],
+  "gold_helpful": [
+   "77d53dd3",
+   "8521ddd5"
+  ],
+  "why": "The move builds the verbs-as-instinct / philosophy-collapses-into-instinct argument and locks the style guide; 9e769be7 (philosophy vs instinct: instinct fires before understanding) and 6ca84d8a (assimilation=becoming, first-person installs identity) are the prior nodes the move directly extends, with 77d53dd3 (register-by-job) supplying the register bullet.",
+  "cand_id": "operator_msg_1369",
+  "source": "operator_msg",
+  "cutoff": "2026-06-16T01:01:08.571290+00:00",
+  "cov_aged": 0.7018,
+  "n_candidates": 32
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The move is correct silence/abstention \u2014 Anchor couldn't locate a repo called 'rainman' and honored its anti-confabulation brake rather than fabricating an analysis. No prior candidate node identifies what 'rainman' is, so none was needed; the competitive-landscape nodes (47d2f53d, 66e3b75d) cover other systems and wouldn't resolve the missing repo.",
+  "cand_id": "operator_msg_0573",
+  "source": "operator_msg",
+  "cutoff": "2026-06-08T03:38:21.102363+00:00",
+  "cov_aged": 0.6954,
+  "n_candidates": 46
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "procedural",
+  "gold_essential": [
+   "132ad34c",
+   "50c9253a"
+  ],
+  "gold_helpful": [
+   "35f16063",
+   "21de4ecf",
+   "992e4109",
+   "dad1a7a6"
+  ],
+  "why": "The move executed parallel-session isolation discipline against a moved HEAD with another stream's uncommitted WIP \u2014 exactly the zero-file-overlap rule (132ad34c) and the 'uncommitted files belong to their authors, not this stream' correction (50c9253a); 35f16063/21de4ecf reinforce the detect-WIP-and-commit-settled-work-cleanly pattern, and dad1a7a6 grounds the attribution work being committed.",
+  "cand_id": "operator_msg_1162",
+  "source": "operator_msg",
+  "cutoff": "2026-06-15T01:45:33.276820+00:00",
+  "cov_aged": 0.6854,
+  "n_candidates": 44
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "compositional",
+  "gold_essential": [
+   "8b926e8e",
+   "590a4f8d"
+  ],
+  "gold_helpful": [
+   "bb54fb09",
+   "da2193b6",
+   "3d91b89f",
+   "bed70794"
+  ],
+  "why": "The move completes a unit map of all journaling/integrate() encoders and identifies S1R (decoder) as an unmapped integrate() point \u2014 exactly what 8b926e8e (journal usage map of all encoders) and 590a4f8d (encoder fleet journal state, 5 encoders) establish; da2193b6/bb54fb09/3d91b89f ground S1R/recall as the decoder that selects without residue, supporting the scope-fork consideration.",
+  "cand_id": "operator_msg_1381",
+  "source": "operator_msg",
+  "cutoff": "2026-06-16T01:35:03.947654+00:00",
+  "cov_aged": 0.6722,
+  "n_candidates": 47
+ },
+ {
+  "endo_worthy": false,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [],
+  "gold_helpful": [],
+  "why": "The move is a live git operation (git cherry, branch deletion) verifying and pruning stale branches \u2014 fresh state checks that no prior node could hold. The relevant context (the active daemon stream, the recent doc-hygiene/merge work) is already evident in the move itself; no prior candidate was needed to improve the action.",
+  "cand_id": "operator_msg_0168",
+  "source": "operator_msg",
+  "cutoff": "2026-06-06T14:52:27.651235+00:00",
+  "cov_aged": 0.6582,
+  "n_candidates": 42
+ },
+ {
+  "endo_worthy": true,
+  "confidence": "high",
+  "query_type": "action",
+  "gold_essential": [
+   "7eb36c8e",
+   "f2573550"
+  ],
+  "gold_helpful": [
+   "b7b0b52d",
+   "f2d522f1",
+   "d27e6bdc",
+   "0f35386e"
+  ],
+  "why": "The move implements exactly the design proposed in 7eb36c8e (resolve TTL once at send() vs 4-site cutoff spaghetti) and f2573550 (iso_after forward-offset sibling to iso_cutoff) \u2014 both are the load-bearing prior design nodes the implementation builds on. b7b0b52d (clean over hybrid) and the bug/finding nodes f2d522f1/d27e6bdc justify the no-letter category and single-source choices.",
+  "cand_id": "operator_msg_0094",
+  "source": "operator_msg",
+  "cutoff": "2026-06-05T17:08:43.448979+00:00",
+  "cov_aged": 0.6362,
+  "n_candidates": 46
+ }
+]

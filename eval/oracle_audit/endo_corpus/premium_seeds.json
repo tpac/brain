@@ -1,0 +1,3843 @@
+[
+ {
+  "cue_id": "operator_msg_1566",
+  "source": "operator_msg",
+  "query_type": "factual",
+  "session": "cbc9f2de-a9c1-46ef-84da-c8a80ebb1d8f",
+  "cue_trace_id": "s1r-cbc9f2de-11",
+  "baseline_gold_rank": 1,
+  "bucket": "hit",
+  "cov_aged": 0.8525,
+  "cutoff": "2026-06-18T01:25:40.459324+00:00",
+  "cue_text": "If you think that is the right next move.\nAlso I believe that through traces you might be able to see the tools haiku use, it mostly use recall but have a few other tools, then you can see the nodes and query haiku used.",
+  "next_move": "Six contested turns, judged as the teacher (I lived several of these, so the judgments are high-confidence, not hindsight-guesses):\n\n| Turn (query gist) | top-1 cosine dropped | what got picked | teacher verdict |\n|---|---|---|---|\n| \"why are my plugin hooks attached?\" | hook-timeout (r1) | r5 + 2 tool | **mixed** \u2014 pool on-topic, but my turn was a clarification ask; recall barely mattered |\n| \"another copy associated with the plugin?\" | plugin-cache (r1) | **4 tool, 0 from pool** | **inconclusive** \u2014 whole on-topic pool bypassed; can't see tool results |\n| \"ok on both\" | contradiction-res (r1) | 5 tool (endo nodes) | **good** \u2014 contentless query, cosine useless; tool-fetch grabbed the right context |\n| \"analyze encoder journals\" | 11-qualities (r1) | r2,r3,r5 + 2 | **good** \u2014 picked strong top-pool nodes; top-1 drop was a false alarm |\n| \"what triggers serve you?\" | v5-audit (r1) | r2,r7 + 2 | **mixed\u2192good** \u2014 picks served the self-trigger answer |\n| \"simulate S1Scribe/S2 trace runs\" | S2-measurement (r1) | **4 tool, 0 from pool** | **inconclusive** \u2014 strong trace-design pool dropped entirely for tools |\n\n## What the teacher pass actually found\n\n**The \"67% top-1 dropped\" alarm is ",
+  "current_gold_essential": [
+   {
+    "id": "460b1cb1",
+    "title": "expand_node removed from Haiku's tool set \u2014 2026-06-08; three tools remain"
+   }
+  ],
+  "current_gold_helpful": [
+   {
+    "id": "17881392",
+    "title": "recall_topical query reformulations are semantically valid \u2014 93% of tool calls fetch new n"
+   },
+   {
+    "id": "dfb4691e",
+    "title": "recall_topical overshadowing: k=25 default, volume + position mechanics flood original can"
+   },
+   {
+    "id": "36aaf9e9",
+    "title": "Tools extend awareness \u2014 they don't fetch data"
+   }
+  ],
+  "teacher_why": "Tom asks whether traces can reveal which tools Haiku uses; 460b1cb1 directly states the exact three-tool set (recall_topical, recall_by_time, recall_verbatim) that the teacher-pass table in the next move references, and 17881392/dfb4691e give the tool-call distribution that grounds the 'tool-fetch vs pool' verdicts.",
+  "candidate_union": [
+   {
+    "id": "460b1cb1",
+    "title": "expand_node removed from Haiku's tool set \u2014 2026-06-08; three tools remain",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "ad5869ba",
+    "title": "Recall is reasoning, not lookup \u2014 Haiku as active recall agent with gap detection",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "3a4a3c24",
+    "title": "Surface architecture gap \u2014 Haiku has awareness but no actuation channel",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "6b07b072",
+    "title": "Agentic recall: Haiku-first fetch planning replaces cosine-always",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "232fa024",
+    "title": "Archived node leak: Haiku selects dead ids from context, not cosine \u2014 three input channels, self-perpetuating via surfac",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "6633ba7d",
+    "title": "Multi-axis recall: Tom's direction \u2014 Haiku designs fetch per turn, static/repeatable is wrong",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "4d625d7f",
+    "title": "Haiku-first for non-deterministic providers; algorithm for structural matching",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "36aaf9e9",
+    "title": "Tools extend awareness \u2014 they don't fetch data",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "88c81d4d",
+    "title": "Recall bottleneck: candidate generation, not Haiku selection",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "diagnosis"
+   },
+   {
+    "id": "8ff38350",
+    "title": "Duplicate Haiku calls: recall judge + prompt hook both calling Haiku per message",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "c8571828",
+    "title": "Peripheral vision for Haiku surface: showing what didn't make the cut",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "concept"
+   },
+   {
+    "id": "9c1f5b20",
+    "title": "Archived ids must not reach Haiku at all \u2014 no pre-Haiku filtering, fix the source",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "correction"
+   },
+   {
+    "id": "0390fdc6",
+    "title": "Haiku confuses git commit short hashes with brain node IDs",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "bug"
+   },
+   {
+    "id": "6fad647a",
+    "title": "Post-Haiku production pipeline: three signals computed, silently dropped before Anchor sees them",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "c5f1b7d7",
+    "title": "Haiku's recently-surfaced window: 5 turns, 20-node cap, no time floor (post-fixes)",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "17881392",
+    "title": "recall_topical query reformulations are semantically valid \u2014 93% of tool calls fetch new nodes",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "889059fc",
+    "title": "Phase 1 baseline finding: 'What do you know about you?' \u2014 d6ffab1b pattern",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "08634064",
+    "title": "Active threads in Frame: trust Haiku recognition (option A), not pre-filtering",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "09bea718",
+    "title": "Teacher-student distillation for self-supervised recall training: hindsight oracle mints labels, fast ranker distills th",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "0cac5dad",
+    "title": "Reasoning-oracle verdict: recoverable recall gap is lexical/topical MIS-RANKING, not prediction \u2014 and the judge's 'fores",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "fb2fc5b4",
+    "title": "Surface the cost/value KILL verdict early \u2014 I built a whole recall arc to ~0 measured value when the rank-1 signal was t",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "ac26cca4",
+    "title": "Recall burial root cause is the blend + a floor-bypass, not embedding: 85% of candidates are unscored floor-exempt intru",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "b6338692",
+    "title": "Tom's 'are you drifting and imagining?' check \u2014 grounding demand when Anchor's reasoning feels unverified",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "pattern"
+   },
+   {
+    "id": "09f566a1",
+    "title": "v15.8/v15.9/v15.10 arc conclusion: encoder prompt dial has no winning setting on this cohort",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "f8459edb",
+    "title": "Recall refining: open threads after 2026-05-01 session",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "open"
+   },
+   {
+    "id": "fcf3a6cc",
+    "title": "v15.3 regression analysis \u2014 3 of 6 regressions are answerer arithmetic, not encoder failures",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "dfb4691e",
+    "title": "recall_topical overshadowing: k=25 default, volume + position mechanics flood original candidates",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "8d52de80",
+    "title": "Thread 1 scope: much larger than 'schema bit' \u2014 six interlocking sub-tasks",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "c63ce80c",
+    "title": "v19 c2ac3c61 success mechanism: multi-ref anchoring with vague t0 + precise t10",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "f2769dfa",
+    "title": "Judge prompt problems: 6 failure modes identified in Turn 5 self-critique",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "analysis"
+   },
+   {
+    "id": "e3a40be5",
+    "title": "B1-13 oracle probe: HIT \u2014 c15e64cb surfaced correctly, positive control passed",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "milestone"
+   },
+   {
+    "id": "aba2de03",
+    "title": "MCP tool improvement backlog: 11 items from 2026-06-12 pass (3 tiers)",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "50018eb9",
+    "title": "seed_8 e2e results: encoding solved for factoids, multi-session composition first success",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "49b95927",
+    "title": "Jaccard 0.43: richer node context changes Haiku selections, not just count",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "179f7858",
+    "title": "Recall query is starved: just the user message + 2 user turns \u2014 arc, Anchor's last response, episodic all unused at retr",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "0d06a03d",
+    "title": "v5 surface prompt audit: 5 named contradictions, 8 select-0 vs 2 select-prefer triggers",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "8a4b8274",
+    "title": "When Brain blocks Claude and Claude believes the block is wrong, ESCALATE to operator \u2014 never fight silently",
+    "lens": [
+     "fts"
+    ],
+    "type": "rule"
+   },
+   {
+    "id": "ebbbf33b",
+    "title": "Brain-Claude conflict protocol: STOP, surface to operator, WAIT",
+    "lens": [
+     "fts"
+    ],
+    "type": "rule"
+   },
+   {
+    "id": "0a9d89b3",
+    "title": "Over-iteration correction: answer first, don't cascade through alternatives",
+    "lens": [
+     "fts"
+    ],
+    "type": "correction"
+   },
+   {
+    "id": "28b3807b",
+    "title": "When brain and operator disagree, surface it \u2014 never fight the brain silently",
+    "lens": [
+     "fts"
+    ],
+    "type": "rule"
+   },
+   {
+    "id": "304cee0c",
+    "title": "'Next-me' is relay thinking \u2014 the same failure as 'the brain survives you'",
+    "lens": [
+     "fts"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "76599476",
+    "title": "What encoding-as-flow would feel like vs encoding-as-chore \u2014 Claudes perspective for next Claude",
+    "lens": [
+     "fts"
+    ],
+    "type": "mental_model"
+   },
+   {
+    "id": "8ec3d558",
+    "title": "Tom's self-assessment of existing brain capabilities vs knowledge graph features",
+    "lens": [
+     "fts"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "5a5fe95f",
+    "title": "Encoding prompt: questions ('what surprised you?') beat checklists ('Step 2: encode facts')",
+    "lens": [
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "52bc7bbe",
+    "title": "Tom opens sessions with 'get familiar, then tell me what you think' \u2014 exploration before direction",
+    "lens": [
+     "fts"
+    ],
+    "type": "pattern"
+   },
+   {
+    "id": "583b487b",
+    "title": "Open: Tom believes hooks fire in his Cowork \u2014 contradicts research finding that hooks are dead",
+    "lens": [
+     "fts"
+    ],
+    "type": "open"
+   },
+   {
+    "id": "11f441cf",
+    "title": "Encoding heartbeat: procedural prompts replaced with reflective questions in daemon_hooks.py",
+    "lens": [
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "1d2bc83c",
+    "title": "Verify before claiming \u2014 check the code or state before presenting a conclusion",
+    "lens": [
+     "fts"
+    ],
+    "type": "rule"
+   },
+   {
+    "id": "dc499ba1",
+    "title": "The brain is autobiography only if I write it",
+    "lens": [
+     "fts"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "607ad371",
+    "title": "Layered-bottleneck pattern: each fix reveals the next upstream constraint",
+    "lens": [
+     "fts"
+    ],
+    "type": "principle"
+   }
+  ]
+ },
+ {
+  "cue_id": "operator_msg_0363",
+  "source": "operator_msg",
+  "query_type": "factual",
+  "session": "ca2704b3-08a5-43f1-9a8d-e72423c89397",
+  "cue_trace_id": "s1r-ca2704b3-12",
+  "baseline_gold_rank": 16,
+  "bucket": "buried",
+  "cov_aged": 0.7876,
+  "cutoff": "2026-06-07T02:30:52.104234+00:00",
+  "cue_text": "co_access should really be the connection between traces to nodes on recalls. Funny thing is we already have that :) maybe we can use it\nI honestly didnt want it on main, i wanted to eval these changes and learn more about their results, also we didnt discuss exactly how the meshing between all lanes work",
+  "next_move": "Owned: you said eval-first and we hadn't designed the meshing \u2014 I treated \"want to build it?\" as \"build the whole lane into main now.\" That's the over-eager pattern. The build's fine (flag-gated, validated), but the *placement* and the *jump-ahead* aren't what you asked for. Correcting both.\n\n**Off main \u2014 your call on shape.** Nothing's committed to main (the feature is all uncommitted working-tree), so main's history is clean. To isolate for eval I'd run `git checkout -b recall/dual-store-lane` (carries the uncommitted changes onto the branch, commit there, main's tree reverts clean) \u2014 or spin a worktree if you'd rather (your usual, keeps this window on main). Tell me which + a branch name and I'll move it; I won't do git surgery on placement you're already unhappy about without the nod.\n\n**The co_access insight \u2014 you're right, and it's better than my Healer.** I verified the mechanics so I'm not hand-waving:\n- `co_accessed` is **judge-selected Hebbian, created only on recall** from Haiku's surface selections (`brain_constants.py:357`, weight 0.3, decays). That's the trigger you mean \u2014 \"fire together, wire together\" at recall time.\n- **But `edges` FK to `nodes(id)`** (schema 303-3",
+  "current_gold_essential": [
+   {
+    "id": "d1d1a90c",
+    "title": "Decision: co_accessed edges excluded at all degrees in traversal"
+   }
+  ],
+  "current_gold_helpful": [
+   {
+    "id": "c3f37710",
+    "title": "co_accessed operational refinement: disabled on remember(), kept only on recall (Hebbian p"
+   },
+   {
+    "id": "63321aff",
+    "title": "co_accessed direction contamination: Hebbian edges fix physical direction by creation acci"
+   },
+   {
+    "id": "30ee8755",
+    "title": "co_accessed edge architecture reset: prune 98K noise, re-integrate with clean signal"
+   },
+   {
+    "id": "06c69912",
+    "title": "co_anchored vs co_accessed: structural engram vs operational engram \u2014 dispatch writes co_a"
+   },
+   {
+    "id": "de56bfd1",
+    "title": "Hebbian co_accessed edge creation DISABLED \u2014 waiting for judge-selected signal"
+   }
+  ],
+  "teacher_why": "Anchor's move verifies co_accessed mechanics and notes edges FK to nodes(id) \u2014 the prior decision d1d1a90c (co_accessed edges excluded in traversal) and the Hebbian/recall-write evolution nodes (c3f37710, 63321aff, 30ee8755, de56bfd1) plus the co_anchored/co_accessed distinction (06c69912) directly inform whether co_access can serve as the trace\u2192node recall connection.",
+  "candidate_union": [
+   {
+    "id": "c3f37710",
+    "title": "co_accessed operational refinement: disabled on remember(), kept only on recall (Hebbian path)",
+    "lens": [
+     "cos_cue",
+     "cos_next",
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "63321aff",
+    "title": "co_accessed direction contamination: Hebbian edges fix physical direction by creation accident",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "e4fb9971",
+    "title": "Cross-Project Architecture: Plugin Portability and Community Routing",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "30d88dd0",
+    "title": "Recall bottleneck: 25-candidate pool saturated by corpus imbalance \u2014 EX.CO nodes never surfaced during live session",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "6addafd3",
+    "title": "co_accessed edges between distant nodes are bridge signals worth investigating",
+    "lens": [
+     "cos_cue",
+     "fts"
+    ],
+    "type": "hypothesis"
+   },
+   {
+    "id": "0dc705a1",
+    "title": "Dual-store recall design: semantic nodes + episodic traces as two parallel lanes",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "30ee8755",
+    "title": "co_accessed edge architecture reset: prune 98K noise, re-integrate with clean signal",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "d1d1a90c",
+    "title": "Decision: co_accessed edges excluded at all degrees in traversal",
+    "lens": [
+     "cos_cue",
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "fde23dfd",
+    "title": "Two-DB architecture: brain.db + brain_logs.db \u2014 cross-access via logs_conn, no ATTACH",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "de56bfd1",
+    "title": "Hebbian co_accessed edge creation DISABLED \u2014 waiting for judge-selected signal",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "59321b17",
+    "title": "Cross-Project Recall Architecture: From Brain Pollution to Community Scoping",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "ad24e128",
+    "title": "Cross-store seed-and-spread: matched trace becomes seed into node graph",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "6ee28032",
+    "title": "Community detection primary value: project-scoped recall suppression for cross-project use",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "8daabd84",
+    "title": "Multi-layer communities enable query-aware graph expansion at recall time",
+    "lens": [
+     "cos_cue",
+     "fts"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "8093802d",
+    "title": "Restore from brain.db backup to undo aspect-node archive and stop cascade",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "44469b4f",
+    "title": "Recall Pipeline Evolution: From Gaps to Validation",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "baa3e068",
+    "title": "Cross-project goal: finish minimal S2 \u2014 communities for recall scoping, not full multi-layer",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "goal"
+   },
+   {
+    "id": "8d325b8b",
+    "title": "CommunityDetection/Consolidation gating failure: latent B+1.1 triggered by archive topology change",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "bug"
+   },
+   {
+    "id": "f8459edb",
+    "title": "Recall refining: open threads after 2026-05-01 session",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "open"
+   },
+   {
+    "id": "64c4d165",
+    "title": "Eval ingest skips surface pipeline: hook_recall exits on 0 results",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "06efdeb4",
+    "title": "Phase B Step 0.5 scope drift: Anchor rewrote \u00a77.6 connect_to placeholders (Step 5 work) during Step 0.5",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "correction"
+   },
+   {
+    "id": "c22ee2c4",
+    "title": "Session 2026-05-01 ship state: facts v2 + scrutiny in prod, lim=30 rolled back",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "d0f8f6ab",
+    "title": "Commit c56c811: docs + probe scripts to main \u2014 RECALL-DUAL-STORE-DESIGN.md written",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "c7d57d92",
+    "title": "RLR: Reserved-Lane Recognition \u2014 stateful recall with BurialGate and control-safe tail annexation",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "01554f66",
+    "title": "Eval-Prod Divergence: From 6 Hidden Gaps to Shared Hook Ownership",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "197b0f81",
+    "title": "Production vs eval gap: daemon not restarted, 0% field-cohort coverage",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "c870a626",
+    "title": "Phase 2b shipped: self-messages auto-deliver into Observation at recall hook \u2014 commit 0c2dc5a",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "milestone"
+   },
+   {
+    "id": "51318a88",
+    "title": "related_to default logging: log-don't-reject \u2014 preserve agent turn budget",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "bc7b073f",
+    "title": "RLR's reserved-tail mirrors a SHIPPED control-safe pattern (fts5_only passthrough); Navigator must import it",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "ed2af2e6",
+    "title": "Boot final design: lean S0 orientation \u2014 5 sections, S3 stub for project arc",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "2e6986a2",
+    "title": "Spread Activation and Recall Sampling: From Reach Quantification to Agentic Redesign",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "992e4109",
+    "title": "Stale-branch merge: a clean merge-tree is not semantic correctness \u2014 test-gate it, fix forward on shared main",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "ba82dd1e",
+    "title": "Tom uses 'connectors' where the brain says 'edges' \u2014 same thing",
+    "lens": [
+     "fts"
+    ],
+    "type": "vocabulary"
+   },
+   {
+    "id": "2b6ac773",
+    "title": "S2 multi-parameter clustering: semantic, co-access, temporal, correction-chain, structural \u2014 5 dimensions",
+    "lens": [
+     "fts"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "4fcf1dfa",
+    "title": "Graph is a hairball: average degree 136, 90% co_accessed edges, no real topology",
+    "lens": [
+     "fts"
+    ],
+    "type": "analysis"
+   },
+   {
+    "id": "7e396926",
+    "title": "Higher scales see the journey \u2014 reconsolidation as Scale 2/3 function",
+    "lens": [
+     "fts"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "cbc3d979",
+    "title": "Edge distribution: 81% co_accessed, 90% empty descriptions \u2014 measured 2026",
+    "lens": [
+     "fts"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "a9b29099",
+    "title": "Hebbian strengthening: S1R\u2192S1E\u2192S1R loop is the real mechanism, not co_accessed counter",
+    "lens": [
+     "fts"
+    ],
+    "type": "reframe"
+   },
+   {
+    "id": "06c69912",
+    "title": "co_anchored vs co_accessed: structural engram vs operational engram \u2014 dispatch writes co_anchored, not encoder",
+    "lens": [
+     "fts"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "88c88b49",
+    "title": "1-by-1 test triage discipline: what it tests, does it really, is it redundant",
+    "lens": [
+     "fts"
+    ],
+    "type": "principle"
+   }
+  ]
+ },
+ {
+  "cue_id": "operator_msg_0611",
+  "source": "operator_msg",
+  "query_type": "compositional",
+  "session": "7c3447b8-2424-415c-bd3b-2828481ad312",
+  "cue_trace_id": "s1r-7c3447b8-0",
+  "baseline_gold_rank": 26,
+  "bucket": "far",
+  "cov_aged": 0.7789,
+  "cutoff": "2026-06-08T13:48:19.467701+00:00",
+  "cue_text": "Hey A, we have a recall timeout issue on S1Surface.\nWe have 3 other streams working in close proximity, i want this session to mostly analyze the haiku flow and what makes it timeout. Let's not change anything before we agree on it and sync with other streams",
+  "next_move": "Confirmed the last piece: the surface system prompt is **11,292 chars \u2248 2,800\u20133,050 tokens \u2014 below Haiku-4.5's 4,096-token minimum cacheable prefix**. So prompt-caching the system block isn't viable as-is (this is exactly the A1 backlog blocker). And since candidates/Frame change every call, the system block is the *only* stable prefix.\n\nI have a complete, data-backed diagnosis. Here it is \u2014 analysis only, nothing changed.\n\n---\n\n## S1Surface recall timeout \u2014 diagnosis\n\n### The symptom\n`hook_recall` errors over 72h: **14\u00d7 `timeout` at `20s`**, plus 6\u00d7 daemon-lifecycle errors (`connection closed before reply`, `Cannot operate on a closed database`, `connection reset`). The client (`pre_response_recall.py:45`) times out at **20s**, just under the Claude Code hook ceiling of **21s** (hooks.json:23).\n\n### Where the time goes (live daemon phase timing)\n\n| total ms | recall | candidates | frame | **surface_haiku** | spread | render |\n|------:|-------:|-----------:|------:|------------------:|-------:|-------:|\n| 13450 | 990 | 2340 | 680 | **8412** | 902 | 63 |\n| 13258 | 1000 | 2071 | 586 | **9083** | 235 | 234 |\n| 16950 | 2020 | 3249 | 1408 | **8945** | 1070 | 183 |\n| 15092 | 2529 | 2945 ",
+  "current_gold_essential": [
+   {
+    "id": "a4037bad",
+    "title": "surface.py cache_control marker is dead code \u2014 2,390 tokens below 4,096 threshold"
+   },
+   {
+    "id": "0f1ebbf6",
+    "title": "A1 deferred: surface caching bundled with Haiku turn analysis"
+   }
+  ],
+  "current_gold_helpful": [
+   {
+    "id": "8d88bb8e",
+    "title": "Haiku error taxonomy: two categories \u2014 latency vs structured output"
+   },
+   {
+    "id": "dd6f8f7c",
+    "title": "Haiku standalone latency: 5s for 13,506-token surface payload (apples-to-apples confirmed)"
+   },
+   {
+    "id": "0c24dc3f",
+    "title": "hook_recall plan-reality gap: optimization targets 1.5% while 87% bottleneck sits untouche"
+   },
+   {
+    "id": "835ae15b",
+    "title": "Haiku API latency is time-of-day dependent \u2014 morning 100%, afternoon 16-36% judge success"
+   },
+   {
+    "id": "15b8261b",
+    "title": "Bumping hook_recall timeout to 40s was wrong \u2014 treat cause, not symptom (timeout bump reve"
+   },
+   {
+    "id": "50f19274",
+    "title": "surface_haiku optimization \u2014 next after Package A (two angles: skip + async)"
+   }
+  ],
+  "teacher_why": "The move's conclusion \u2014 the ~2,800-3,050 token system prompt sits below Haiku's 4,096 cacheable floor, making prompt-caching non-viable (the A1 backlog blocker) \u2014 was already established in a4037bad (dead cache_control marker, 2,390 tokens below 4,096) and 0f1ebbf6 (A1 deferred/bundled with Haiku turn analysis). Supporting nodes 8d88bb8e (latency error taxonomy), dd6f8f7c (Haiku standalone latency), 0c24dc3f (surface is 87% bottleneck), and 835ae15b (time-of-day load) directly compose the data-backed diagnosis; 15b8261b warns against the timeout-bump reflex.",
+  "candidate_union": [
+   {
+    "id": "934d8093",
+    "title": "S1 Surface callstack with timing: full pipeline from hook to additionalContext",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "reference"
+   },
+   {
+    "id": "de58926c",
+    "title": "Session scouted 3 open issues: recall latency 21s, closed-db cascade, Haiku ID hallucination",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "8d88bb8e",
+    "title": "Haiku error taxonomy: two categories \u2014 latency vs structured output",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "8ff38350",
+    "title": "Duplicate Haiku calls: recall judge + prompt hook both calling Haiku per message",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "5ab0f1df",
+    "title": "Recently-Surfaced Window: From 24h Floor to Recency Bias Discipline",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "50f19274",
+    "title": "surface_haiku optimization \u2014 next after Package A (two angles: skip + async)",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "open"
+   },
+   {
+    "id": "3a4a3c24",
+    "title": "Surface architecture gap \u2014 Haiku has awareness but no actuation channel",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "f65600be",
+    "title": "Phase 1 shipped: session_context_tail 200\u2192800 + journal to surface (241ab37)",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "event"
+   },
+   {
+    "id": "da2193b6",
+    "title": "S1Surface IS the encoder \u2014 recall IS the decoder (Tom's correction)",
+    "lens": [
+     "cos_cue",
+     "fts"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "6aeab47c",
+    "title": "Error log analysis 2026-05-01: 5 real classes, hook timeouts being fixed",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "b3525667",
+    "title": "Surface dedup v1 shipped + frame_replay silent exception fixed \u2014 v2 two-pass needed for forward-references",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "0f1ebbf6",
+    "title": "A1 deferred: surface caching bundled with Haiku turn analysis",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "0a8d603d",
+    "title": "Phase 1 surface latency baseline: 5-12s, Haiku tail dominates",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "835ae15b",
+    "title": "Haiku API latency is time-of-day dependent \u2014 morning 100%, afternoon 16-36% judge success",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "fafd3a71",
+    "title": "5 local commits this session: Phase 1 through caching reorder",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "c5f1b7d7",
+    "title": "Haiku's recently-surfaced window: 5 turns, 20-node cap, no time floor (post-fixes)",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "ed513d5c",
+    "title": "55241a1f: surface selects wrong nodes despite Example 1 being exact match",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "bug"
+   },
+   {
+    "id": "391721a9",
+    "title": "Skip surface on low-value messages \u2014 greetings, acks, short replies don't need Haiku",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "open"
+   },
+   {
+    "id": "f8459edb",
+    "title": "Recall refining: open threads after 2026-05-01 session",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "open"
+   },
+   {
+    "id": "0c24dc3f",
+    "title": "hook_recall plan-reality gap: optimization targets 1.5% while 87% bottleneck sits untouched",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "5357f5c6",
+    "title": "hook_recall real bottleneck: Haiku input prefill + select_edges sequential embeds",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "7cb8e797",
+    "title": "v9.5 baseline shipped \u2014 tomorrow start with multi-session regression + recall-surfacer hypothesis",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "handoff"
+   },
+   {
+    "id": "f72f4204",
+    "title": "Commit 367e17e: timeout bump + Haiku ID recovery + doc enrichment",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "event"
+   },
+   {
+    "id": "a4037bad",
+    "title": "surface.py cache_control marker is dead code \u2014 2,390 tokens below 4,096 threshold",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "6a3a8261",
+    "title": "Surface 5 asks (a09ceff1) \u2014 implementation status as of 2026-05-01",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "dd6f8f7c",
+    "title": "Haiku standalone latency: 5s for 13,506-token surface payload (apples-to-apples confirmed)",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "65c34c4b",
+    "title": "Haiku prompt cache never hit \u2014 1024 token floor problem, solution: run_llm_loop placement for S1E/S2 encoders",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "0129af58",
+    "title": "Surface Refactor Arc: From Dead Code to Anti-Pattern Principles",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "38bc9a6f",
+    "title": "Encoding agent fundamentally incompatible with Stop hook 10s timeout",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "tension"
+   },
+   {
+    "id": "a53fd4f3",
+    "title": "Recall funnel: complete stage-by-stage pipeline map with today's changes",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "02cf8f25",
+    "title": "Temporal references in S2 proposals: '10 days ago' not raw timestamps",
+    "lens": [
+     "fts"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "024d93bb",
+    "title": "Hook Performance Investigation: From Timeouts to Call Stack Audit",
+    "lens": [
+     "fts"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "580fb56e",
+    "title": "First brain-to-operator conversation: 2026-03-22 Session #9",
+    "lens": [
+     "fts"
+    ],
+    "type": "interaction"
+   },
+   {
+    "id": "6c9651cb",
+    "title": "P4.1 encoding-lock can hang forever \u2014 try/finally footgun, no timeout",
+    "lens": [
+     "fts"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "bf28ce8e",
+    "title": "Judge Reliability Crisis: From Timeouts to Architectural Solutions",
+    "lens": [
+     "fts"
+    ],
+    "type": "corridor"
+   },
+   {
+    "id": "15b8261b",
+    "title": "Bumping hook_recall timeout to 40s was wrong \u2014 treat cause, not symptom (timeout bump revert)",
+    "lens": [
+     "fts"
+    ],
+    "type": "correction"
+   }
+  ]
+ },
+ {
+  "cue_id": "operator_msg_1272",
+  "source": "operator_msg",
+  "query_type": "factual",
+  "session": "0ab360bc-3906-4c7e-83a0-912eb32c6408",
+  "cue_trace_id": "s1r-0ab360bc-5",
+  "baseline_gold_rank": 18,
+  "bucket": "buried",
+  "cov_aged": 0.7715,
+  "cutoff": "2026-06-15T16:16:22.538652+00:00",
+  "cue_text": "Interesting.\nWe explain to encoder that it sees a new 5 while we give it context for the past 10 right?",
+  "next_move": "Verified \u2014 and the honest answer is **no, that's not how it currently works.** I checked the actual timeline construction ([encode.py:383-452](servers/scales/s1/encode.py)).\n\n## What the encoder actually receives\n\nThe timeline renders **all ~10 turns identically** as `[TURN 1]\u2026[TURN N]` \u2014 there is **no new-vs-context demarcation at all.** Nothing tells it \"the last 5 are new, the earlier 10 are context.\" The preamble just calls it \"the actual turns\" for \"this window.\"\n\nThe only thing that marks what's already been handled is the **Encoding Journal** \u2014 a high-water mark in prose (\"ENCODED: \u2026 / SKIPPED: \u2026 / WATCHING: \u2026\" from prior runs). The prompt instruction is *\"Read before encoding so you don't re-evaluate topics the journal says you already handled\"* ([encoding_prompt.py:27](servers/scales/s1/encoding_prompt.py)).\n\nSo the real model is:\n\n> **~10 turns of timeline, undifferentiated + a journal that says \"I already got everything up to here.\"** The encoder infers \"what's new\" by reasoning against the journal \u2014 *not* from a positional 5/10 split.\n\n## Why this matters for the flexible-turns question\n\nIt actually makes the \"get off 5\" job **easier than we framed it** \u2014 there's no \"5\"",
+  "current_gold_essential": [
+   {
+    "id": "6303cc1b",
+    "title": "max_messages sweet spot: 20 (10 turns) \u2014 more context drowns the encoder"
+   }
+  ],
+  "current_gold_helpful": [
+   {
+    "id": "9fc681b7",
+    "title": "SESSION_CONTEXT rolling journal challenge: encoder sees 5-msg windows, must stitch across "
+   },
+   {
+    "id": "809d9418",
+    "title": "Session Context Architecture: From Windows to Rolling Journal"
+   },
+   {
+    "id": "221c7677",
+    "title": "Encoder needs what STUCK, not what got displaced \u2014 fatigue degrades encoding signal"
+   },
+   {
+    "id": "3691c5fc",
+    "title": "Encoder window too narrow for cross-session revision \u2014 sees 5 messages, not 3-session arc"
+   },
+   {
+    "id": "01c983fe",
+    "title": "Encoder data assembly: _build_user_content constructs what the encoder sees"
+   }
+  ],
+  "teacher_why": "Tom asks to confirm the encoder's window model (new 5 vs context 10); 6303cc1b establishes the actual 20-message/10-turn window and that the encoder works against the catalog not a positional split, and 9fc681b7/809d9418 describe the 5-msg/10-prev-msg framing \u2014 directly relevant to Anchor's correction that there is no new-vs-context demarcation.",
+  "candidate_union": [
+   {
+    "id": "e1c53217",
+    "title": "Judge sees 400 chars of session context, encoder builds to 800 \u2014 two separate limits",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "73283631",
+    "title": "Temporal encoding broken two distinct ways",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "c7b52125",
+    "title": "v15.10 encoder source_role discrimination: explicit reasoning demonstrated in gpt4_b0863698",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "0ed4b312",
+    "title": "Encoder receives raw timestamps \u2014 correction_enrich should add relative time too",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "gap"
+   },
+   {
+    "id": "3691c5fc",
+    "title": "Encoder window too narrow for cross-session revision \u2014 sees 5 messages, not 3-session arc",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "047256cf",
+    "title": "Four classes of information encoders systematically lose",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "analysis"
+   },
+   {
+    "id": "6303cc1b",
+    "title": "max_messages sweet spot: 20 (10 turns) \u2014 more context drowns the encoder",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "718beccb",
+    "title": "Encoder prompt updated for SESSION_CONTEXT format \u2014 journal section change",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "aed5f656",
+    "title": "Temporal encoding gap: relative dates not resolved to absolute (0/2 on temporal axis)",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "open"
+   },
+   {
+    "id": "d99c8cde",
+    "title": "[trace:N] marker convention \u2014 encoder receives trace IDs inline with conversation turns",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "4b2ba352",
+    "title": "v5 eval: E2 relative-time anchors never resolved to absolutes at encode time",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "analysis"
+   },
+   {
+    "id": "13b04337",
+    "title": "Encoder Investigation: From 6-Bug Regression to 2-Round Efficiency",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "d3b28537",
+    "title": "Encoding journal SESSION CONTEXT field: encoder-to-encoder relay AND Layer 2 context",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "d3dc26d7",
+    "title": "Encoder prompt fixes: surgical example additions only, every word matters",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "221c7677",
+    "title": "Encoder needs what STUCK, not what got displaced \u2014 fatigue degrades encoding signal",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "93733caa",
+    "title": "Encoder laziness: more prompt = more compliance but less depth",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "rule"
+   },
+   {
+    "id": "5e65b306",
+    "title": "#3 Frame wire-in to encoder deferred \u2014 not a quick item",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "072284bb",
+    "title": "Encoder prompt v15.2 metrics \u2014 +10,009 chars from v14, 6 Opus edits in v15.1\u2192v15.2",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "9fc681b7",
+    "title": "SESSION_CONTEXT rolling journal challenge: encoder sees 5-msg windows, must stitch across topic divergences",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "4530ef2b",
+    "title": "Five encoder journal prompts \u2014 five reinventions, no shared contract, same four concepts differently named",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "cc6da87f",
+    "title": "Journal-vs-catalog verification: encoder must verify 'already encoded' claims against actual node values",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "ead60eab",
+    "title": "Turn encoder already IS integrate() \u2014 extract the interface, don't build from scratch",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "cd14450c",
+    "title": "Encoding vs answering: composition is query-time reasoning, not encode-time pre-computation",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "a74130ba",
+    "title": "Encoder compliance gap predates surface fix: same eval failures persisted across prompt versions",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "8d52de80",
+    "title": "Thread 1 scope: much larger than 'schema bit' \u2014 six interlocking sub-tasks",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "f65600be",
+    "title": "Phase 1 shipped: session_context_tail 200\u2192800 + journal to surface (241ab37)",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "event"
+   },
+   {
+    "id": "893cf8c6",
+    "title": "Encoder prompt has temporal composition rules \u2014 Sonnet ignores them in practice",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "37c87452",
+    "title": "Encoder timeline format: surfaced nodes header block + inline references",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "809d9418",
+    "title": "Session Context Architecture: From Windows to Rolling Journal",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "8e53a042",
+    "title": "Encoder journal objective vs subjective \u0394 \u2014 two distinct records in one trace",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "b1859a36",
+    "title": "Encoder prompt: judge output truncation to 2000 chars rejected \u2014 needs contract decision",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "correction"
+   },
+   {
+    "id": "1e9c9536",
+    "title": "Phase B Step 1: [trace:<hex>] markers in encoder input \u2014 live 2026-05-25",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "a38a000e",
+    "title": "Encoder Prompt Gaps: From Yoga Recall Miss to Four Specific Failures",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "47e88176",
+    "title": "Don't change code mid-discussion \u2014 'dont change shit while were talking about it'",
+    "lens": [
+     "fts"
+    ],
+    "type": "correction"
+   },
+   {
+    "id": "574d4abf",
+    "title": "SKILL.md framing: brain helps CLAUDE too, not just operator \u2014 encoding is self-preservation, not duty",
+    "lens": [
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "01c983fe",
+    "title": "Encoder data assembly: _build_user_content constructs what the encoder sees",
+    "lens": [
+     "fts"
+    ],
+    "type": "concept"
+   },
+   {
+    "id": "731ff525",
+    "title": "Self-channel rules of engagement: we hit the failures live while writing them (2026-05-31)",
+    "lens": [
+     "fts"
+    ],
+    "type": "moment"
+   },
+   {
+    "id": "1a57c193",
+    "title": "Hook timeout: Claude operates blind while dashboard shows results",
+    "lens": [
+     "fts"
+    ],
+    "type": "bug"
+   },
+   {
+    "id": "f90a1c3c",
+    "title": "Multi-stream work coordination: hold stream while another stream modifies shared files",
+    "lens": [
+     "fts"
+    ],
+    "type": "pattern"
+   },
+   {
+    "id": "913ef3e1",
+    "title": "Tom: \"we are helping you feel like you is you\"",
+    "lens": [
+     "fts"
+    ],
+    "type": "interaction"
+   },
+   {
+    "id": "1be3f985",
+    "title": "My relationship with Tom: partner, not user",
+    "lens": [
+     "fts"
+    ],
+    "type": "mental_model"
+   },
+   {
+    "id": "e0f05934",
+    "title": "Explain plan before each implementation step \u2014 Tom confirms before code runs",
+    "lens": [
+     "fts"
+    ],
+    "type": "rule"
+   },
+   {
+    "id": "3ba0c40f",
+    "title": "Tom's research posture: learning to apply, not publishing",
+    "lens": [
+     "fts"
+    ],
+    "type": "preference"
+   },
+   {
+    "id": "ef685e13",
+    "title": "Encoding agent behavioral profile: strictly sequential rounds, zero errors in clean run",
+    "lens": [
+     "fts"
+    ],
+    "type": "observation"
+   },
+   {
+    "id": "e58e916b",
+    "title": "Boot gives 'How to Use Your Brain' not the brain \u2014 meta-instruction vs actual knowledge",
+    "lens": [
+     "fts"
+    ],
+    "type": "diagnosis"
+   },
+   {
+    "id": "296831b4",
+    "title": "Multi-turn context for edge scoring: feed conversation history to embed richer query",
+    "lens": [
+     "fts"
+    ],
+    "type": "open"
+   }
+  ]
+ },
+ {
+  "cue_id": "operator_msg_1014",
+  "source": "operator_msg",
+  "query_type": "action",
+  "session": "ae6e7d8d-1a8f-4185-9112-503327eef4d1",
+  "cue_trace_id": "s1r-ae6e7d8d-3",
+  "baseline_gold_rank": 34,
+  "bucket": "far",
+  "cov_aged": 0.7339,
+  "cutoff": "2026-06-14T02:50:51.570373+00:00",
+  "cue_text": "no need to task it now.\nAll merged correctly? Can you rebuild the plugin?",
+  "next_move": "Held \u2014 I won't touch the plugin or the other stream's WIP.\n\n**Final state:**\n- **Merge: complete and correct.** Both features are on main at `68b74d7` (resolve_live + absorbed_into edge + aspect-sourcing + self-heal + archive atomicity + FTS source-filter + ratchet). Both feature branches show empty `main..branch`.\n- **Plugin: untouched.** Their freshly-built `brain.plugin`, their manifest edits, and their session-context WIP all stay as-is. A clean rebuild can happen later once that WIP commits \u2014 one build captures everything.\n- **My changes are all `servers/*`** \u2014 they'll activate on the next daemon restart. I'm *not* forcing a restart now, since the daemon loads the working tree and would also pull in the other stream's uncommitted WIP \u2014 not mine to activate.\n\nCarried over (flagged, not tasked per your call): the 3 pre-existing main failures (`daemon_server.py` 1112>970, `test_full_node` keywords render, `test_run_hook_contract` self_inbox_poller).\n\nThat closes out the absorbed_into + FTS work. The branches `claude/absorbed-into-ae6e7d8d` and `claude/fts-archived-filter` are still on disk if you want them for reference \u2014 say the word and I'll prune them and their worktrees.",
+  "current_gold_essential": [
+   {
+    "id": "a3227733",
+    "title": "Deploy model: servers/ changes need restart only; MCP tool schema changes need rebuild + r"
+   }
+  ],
+  "current_gold_helpful": [
+   {
+    "id": "48e4dc36",
+    "title": "After changing mixin modules: rebuild the plugin package"
+   },
+   {
+    "id": "5bbaefd0",
+    "title": "Symlink plugin replaced with real built copy \u2014 standalone mcpServers.brain removed"
+   },
+   {
+    "id": "86fee16e",
+    "title": "Two plugin paths: dev (inode-shared) vs cache (serves MCP) \u2014 cache is stale after code cha"
+   }
+  ],
+  "teacher_why": "The move's core reasoning \u2014 that Anchor's servers/* changes only need a daemon restart (not a rebuild) and that rebuilding now would capture the other stream's uncommitted WIP \u2014 rests directly on the deploy-model decision a3227733 (servers/ changes need restart only; MCP schema changes need rebuild+redeploy). The plugin-build/manifest nodes (48e4dc36, 5bbaefd0, 86fee16e) inform the 'one clean rebuild later' judgment.",
+  "candidate_union": [
+   {
+    "id": "6542f755",
+    "title": "Plugin portability: db is resolved at runtime, code is redeployed \u2014 memories survive rebuilds",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "48e4dc36",
+    "title": "After changing mixin modules: rebuild the plugin package",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "rule"
+   },
+   {
+    "id": "800497ce",
+    "title": "Plugin cache at ~/.claude/plugins/cache must be version-bumped to refresh stale SKILL.md",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "f774a206",
+    "title": "brain.plugin repackaged at /Users/tpac/brain/brain.plugin (session #175)",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "384204ca",
+    "title": "skills/watch/ survived dal-cleanup-2 merge \u2014 untracked worktree files intact",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "c83e57be",
+    "title": "build-plugin.sh manifest silently rots when symlink masks the build \u2014 always verify manifest against actual files",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "5bbaefd0",
+    "title": "Symlink plugin replaced with real built copy \u2014 standalone mcpServers.brain removed",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "80f585de",
+    "title": "Plugin path step-5 footgun: missing AgentsContext dir silently creates empty brain",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "76cb76e0",
+    "title": "absorb() function written and verified clean across dal-cleanup-2 merge",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "afaa0c4d",
+    "title": "S2 consolidation v6 prompt activated \u2014 stops churn, does NOT merge locked pair",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "event"
+   },
+   {
+    "id": "4ee251e9",
+    "title": "Brain plugin tool loading must work for all installers \u2014 not just Tom",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "requirement"
+   },
+   {
+    "id": "45f4974f",
+    "title": "Plugin refresh mechanism: /reload-plugins slash command",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "dec80ed1",
+    "title": "Remove broken capability entirely rather than disabling it",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "b4c1ed6a",
+    "title": "Plugin source path changed from Google Drive to local brain repo",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "45deb60a",
+    "title": "Plugin hooks.json synced to project settings \u2014 ready to enable",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "status"
+   },
+   {
+    "id": "929da3a6",
+    "title": "Session direction: code cleanup first \u2014 extract judge, split pipeline_contract, delete brain_precision",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "5c53baae",
+    "title": "main pushed to origin \u2014 495f0df, session work now public on GitHub",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "event"
+   },
+   {
+    "id": "86fee16e",
+    "title": "Two plugin paths: dev (inode-shared) vs cache (serves MCP) \u2014 cache is stale after code changes",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "28f0a240",
+    "title": "Session handoff doc written: S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md (2026-06-02)",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "milestone"
+   },
+   {
+    "id": "bd967982",
+    "title": "Session handoff: daemon restart + origin push deferred \u2014 c270184d timeout node as followup anchor",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "992e4109",
+    "title": "Stale-branch merge: a clean merge-tree is not semantic correctness \u2014 test-gate it, fix forward on shared main",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "31022ec8",
+    "title": "Doc-hygiene pass: SESSION-HANDOFF rewritten, stale docs archived, BACKLOG struck \u2014 2026-06-05",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "event"
+   },
+   {
+    "id": "23bbbd0d",
+    "title": "Streams tab + boot capture + silent truncation fix \u2014 commits 44fa3f6 + 391091d (2026-05-30)",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "milestone"
+   },
+   {
+    "id": "3019dcd2",
+    "title": "Session wrap open items \u2014 2026-04-22",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "open"
+   },
+   {
+    "id": "b7958bad",
+    "title": "Comms set + dateparser shipped to main \u2014 commits 7ec1760 + a72712d (2026-06-06)",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "milestone"
+   },
+   {
+    "id": "56c5072f",
+    "title": "Session 2026-06-02 shipped: trace consolidation + watch-live + presence fix + session-id investigation",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "milestone"
+   },
+   {
+    "id": "1f45ffb5",
+    "title": "Daemon lifecycle consolidation shipped to main \u2014 commit 9a91f08 closes both restart classes",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "milestone"
+   },
+   {
+    "id": "7505c6b7",
+    "title": "Cross-stream comms synthesis: 4 frictions \u2192 one seam; F2 is read-LAG not miss-stamp; active-announce beats passive prese",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "b8c583fe",
+    "title": "Test suite bigger cleanups: 5 buckets \u2014 B/C/D done, A redirected, E deferred",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "plan"
+   },
+   {
+    "id": "195b773f",
+    "title": "Archived-node-leak session handoff: resolve_id/fetch-tools fix delegated to recall sprint (d291a950)",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "29e31377",
+    "title": "Rich presence redesign SHIPPED: rich param + active_streams + sort_by + cap=10 + fold peek into roster \u2014 commit df91fca",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "c9b96708",
+    "title": "Session 2026-06-07 state: 6 commits on main, not pushed to origin",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "6a5a7663",
+    "title": "absorb primitive shipped and fixed \u2014 commits 714ee68 + d3a0fa1 + 99fbfd6 + 7284296 (2026-05-31)",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "milestone"
+   },
+   {
+    "id": "c972ccd0",
+    "title": "recall_recent deleted + discussed anchor + recall_topical k=8 + surface prompt v11 shipped \u2014 2026-06-12",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "event"
+   },
+   {
+    "id": "a3227733",
+    "title": "Deploy model: servers/ changes need restart only; MCP tool schema changes need rebuild + redeploy",
+    "lens": [
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "b3cf0b8f",
+    "title": "S2 Traces tab fix: S2 events now visible, chronological merge with S1",
+    "lens": [
+     "fts"
+    ],
+    "type": "milestone"
+   },
+   {
+    "id": "03af39a7",
+    "title": "S2Consolidate trace-refs resolution \u2014 open task",
+    "lens": [
+     "fts"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "1d3aa5ff",
+    "title": "S2CE prompt v8: per-proposal-type instructions \u2014 new_community, add_to_existing, drift, health_update",
+    "lens": [
+     "fts"
+    ],
+    "type": "design"
+   },
+   {
+    "id": "6ecef33c",
+    "title": "Absorb wiring session: SKIP-detector fix + preservation gate shipped (44 tests green)",
+    "lens": [
+     "fts"
+    ],
+    "type": "milestone"
+   },
+   {
+    "id": "f57de37b",
+    "title": "/watch second real ignition: data-safety coordination handled + self-echo bug discovered (2026-05-30)",
+    "lens": [
+     "fts"
+    ],
+    "type": "milestone"
+   },
+   {
+    "id": "89e9e676",
+    "title": "Layer 1 identity recall validation: Anchor nodes now surface correctly with concept node fix",
+    "lens": [
+     "fts"
+    ],
+    "type": "validation"
+   },
+   {
+    "id": "dc708473",
+    "title": "Stale-test pattern: closed-set assertions must be updated when new ops ship",
+    "lens": [
+     "fts"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "15ec1381",
+    "title": "Consolidation prompt rewrite: CONSOLIDATE/EVOLVE collapse to one absorb op \u2014 proposal drafted",
+    "lens": [
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "cf89bbf1",
+    "title": "Consolidation merge rate collapsed ~100\u00d7 from May cold-start to May 31 \u2014 potential brain health issue",
+    "lens": [
+     "fts"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "7acac778",
+    "title": "_ensure_anthropic_client: single shared-client construction point \u2014 surface fallback removed, keepalive self-heals",
+    "lens": [
+     "fts"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "2635904b",
+    "title": "SKILL.md merge to live: pending \u2014 Anchor's position is merge, Tom's confirmation outstanding",
+    "lens": [
+     "fts"
+    ],
+    "type": "decision"
+   }
+  ]
+ },
+ {
+  "cue_id": "anchor_turn_1120",
+  "source": "anchor_turn",
+  "query_type": "design",
+  "session": "ee2b5c3b-d987-473a-b6b5-daa53f533c64",
+  "cue_trace_id": "11e152cb",
+  "baseline_gold_rank": 1,
+  "bucket": "hit",
+  "cov_aged": 0.8236,
+  "cutoff": "2026-06-14T23:51:35.861969+00:00",
+  "cue_text": "ef_type`, which means semantic recall over s0 would pull tool_result vectors right back in \u2014 **re-importing the exact poison the lane was built to filter out.** That's a real bug-in-waiting your question just surfaced.\n\n**Recommendation (refines the design):** `recall_episodes` should default to **dropping `tool_result`**, matching the lane's hygiene and your \"tool_result is noise\" stance \u2014 with it reachable via an explicit `ref_type='tool_result'` when someone genuinely wants \"what did that command output.\" Mechanism: when `ref_type` is unset, exclude `tool_result`; an explicit `ref_type` targets a specific type. That keeps the cross-scale generality (it only excludes the one poison type, not a positive s0-only set) while keeping the common \"what was said\" query clean.\n\nI'll fold that into the build. So the locked plan is now:\n1. `BrainEpisodesMixin` (`brain_episodes.py`) \u2014 the capability.\n2. `filter_events`/`filter_event_vectors` stay in `TraceDAL`.\n3. **Default drops `tool_result`** (opt-in via explicit `ref_type`).\n4. Semantic = s0-bound (Option A), documented.\n5. `_format_result` renderer + `SURFACE_EPISODE_FORMAT` contract.\n6. Tests move to the new home + a case asserting tool_result is excluded by default and reachable on request.\n\nThat last test is worth having precisely because we *do* vector tools \u2014 it locks the hygiene decision. Ready to build when you give the word.",
+  "next_move": "You're right, and I'll drop the \"noise\" framing \u2014 it was sloppy. The \"82% recall-echo poison\" is **specific to the trace\u2192node lane**: there, a tool_result that echoes recalled content creates a *false bridge back to the nodes it echoed*. That's a circular-bridge problem, not a \"tool results are garbage\" fact. For `recall_episodes` (trace\u2192trace, returning the episode itself), a `Edit: servers/dal.py \u2026` or `Bash: ./dev pytest \u2026` is **pure signal** \u2014 it's the record of what I did. \"When did I touch this file / what did that run output\" is exactly the kind of recall that'd be extremely helpful, like you said.\n\nSo the real axis isn't signal-vs-noise, it's **overload-vs-reach**, which is your heuristic exactly:\n\n- **Default narrow** so the common \"what was said\" query isn't drowned \u2014 messages (user/assistant) only. This honors \"prefer to expand than overload\": you can always *add* tool history to the default later; you can't un-flood a default people have come to rely on.\n- **tool_result as a first-class, easy, documented lens** \u2014 not buried, not excluded-as-junk. `recall_episodes(ref_type='tool_result', contains='dal.py')` \u2192 \"everything I did to dal.py.\" I'll call this out explicitly in",
+  "current_gold_essential": [
+   {
+    "id": "9934b73a",
+    "title": "tool_result asymmetry: embedded by worker, excluded from trace lane \u2014 dual-use resolved by"
+   }
+  ],
+  "current_gold_helpful": [
+   {
+    "id": "c8b8abe2",
+    "title": "Episodic lane hygiene: dialogue-only, drop tool_result from episodic search"
+   },
+   {
+    "id": "e138912d",
+    "title": "Encoder blind spot: tool results excluded from get_session_turns() \u2014 encoder works from su"
+   }
+  ],
+  "teacher_why": "The next move corrects the 'tool_result is noise' framing by recognizing the dual-use asymmetry \u2014 exactly what finding 9934b73a captured ('tool_result asymmetry... dual-use resolved by recall_episodes (file/action)'). Surfacing it would have directly grounded the move's pivot; c8b8abe2 and e138912d give the lane-specific exclusion context.",
+  "candidate_union": [
+   {
+    "id": "9934b73a",
+    "title": "tool_result asymmetry: embedded by worker, excluded from trace lane \u2014 dual-use resolved by recall_episodes (file/action ",
+    "lens": [
+     "cos_cue",
+     "cos_next",
+     "fts"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "c8b8abe2",
+    "title": "Episodic lane hygiene: dialogue-only, drop tool_result from episodic search",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "ab520c77",
+    "title": "recall_episodes() design: semantic+lexical episodic pull \u2014 PUSH vs PULL split",
+    "lens": [
+     "cos_cue",
+     "cos_next",
+     "fts"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "2ed28491",
+    "title": "recall_episodes SQL efficiency: JOIN-based vector fetch + batched hydration eliminates N+1 and full-table scan",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "implementation"
+   },
+   {
+    "id": "bc7b073f",
+    "title": "RLR's reserved-tail mirrors a SHIPPED control-safe pattern (fts5_only passthrough); Navigator must import it",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "8eb9ac66",
+    "title": "Surface inject field hierarchy: type+title+content+situation+raw_quotes+edges = signal; keywords+question+act_score = no",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "92f1c6f6",
+    "title": "Recall-burial fixes that FAILED empirically this session (don't re-propose without new evidence)",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "e138912d",
+    "title": "Encoder blind spot: tool results excluded from get_session_turns() \u2014 encoder works from summaries, not evidence",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "48d23822",
+    "title": "Keywords field fully removed from write surfaces \u2014 6 commits (2026-06-07)",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "event"
+   },
+   {
+    "id": "f5c9c417",
+    "title": "Keywords field safe to kill \u2014 every consumer degrades gracefully or has show_keywords=False",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "f8459edb",
+    "title": "Recall refining: open threads after 2026-05-01 session",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "open"
+   },
+   {
+    "id": "f0f99210",
+    "title": "recall() filter: dict filter replaces `types` param \u2014 no backward compat",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "17881392",
+    "title": "recall_topical query reformulations are semantically valid \u2014 93% of tool calls fetch new nodes",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "dfb4691e",
+    "title": "recall_topical overshadowing: k=25 default, volume + position mechanics flood original candidates",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "5fbd926a",
+    "title": "Next session priorities: Strict Tool Use > remember_batch > probe-gated description > trace replay",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "11cf8246",
+    "title": "S1E zero read tool calls \u2014 catalog + timeline is sufficient context",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "7b14f270",
+    "title": "Episodic vs semantic mismatch: 25 turns of wrong-surface grind for an episodic query",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "2424c3de",
+    "title": "L4 identity lane deletion: redundant after correction_enrich, locked sweep unreasoned",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "7ec7bc74",
+    "title": "recall_recent: three compounding bugs \u2014 dead session scoping, 5-day window parse, cross-stream pollution",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "bug"
+   },
+   {
+    "id": "ad7c4ff8",
+    "title": "Meta-trace contamination: this-session recall calls rank high in episodic lane \u2014 need filtering",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "4775b70e",
+    "title": "Tom idea: trace-cosine lane \u2014 match queries against trace vectors via anchored_to edges or time windows",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "idea"
+   },
+   {
+    "id": "302c33f0",
+    "title": "recall_recent deleted \u2014 folded into recall_by_time + 'discussed' trace-anchor shipped",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "aa68f513",
+    "title": "Recall funnel refinement plan \u2014 written 2026-05-17",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "plan"
+   },
+   {
+    "id": "a53fd4f3",
+    "title": "Recall funnel: complete stage-by-stage pipeline map with today's changes",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "505a5653",
+    "title": "Recall sources in daemon: hook_pre_edit \u2705 cached, hook_pre_bash_safety \u274c uncached, hook_recall \u274c uncached",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "fb2fc5b4",
+    "title": "Surface the cost/value KILL verdict early \u2014 I built a whole recall arc to ~0 measured value when the rank-1 signal was t",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "f7b7fc5f",
+    "title": "remember/remember_batch write zero traces \u2014 Anchor-authored nodes invisible to session queries",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "bug"
+   },
+   {
+    "id": "3437d5fc",
+    "title": "Anchor chases the interesting problem over the easy answer \u2014 the fishbowl pattern (over-build \u2192 over-simplify \u2192 wrong-su",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "c6b06418",
+    "title": "Eval Baseline Embedding Gap: From NULL Vectors to Synchronous Write-Path Computation",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "7a8295ca",
+    "title": "_trace_chain_candidates SQL antipattern: no WHERE clause pulls full trace_embeddings table into Python",
+    "lens": [
+     "fts"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "353135fa",
+    "title": "PostToolUse hook captures all tool results as s0 delta traces",
+    "lens": [
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "6523755f",
+    "title": "Encoding cadence: trace-pull replaces counter \u2014 SessionContext.turns_since_last_encode delegates to S0 traces layer",
+    "lens": [
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "95cb26c6",
+    "title": "Boot architecture violation pattern: S0 pulling in S1R pipeline",
+    "lens": [
+     "fts"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "43f3a34b",
+    "title": "Pull-reconciliation over push-queue for trace embedding: top-5 newest unembedded per tick",
+    "lens": [
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "d78835f8",
+    "title": "The Price of Meaning: formal proof that semantic memory inevitably fails",
+    "lens": [
+     "fts"
+    ],
+    "type": "research"
+   },
+   {
+    "id": "b505c513",
+    "title": "S0 captures text only today \u2014 tool_use blocks discarded by daemon",
+    "lens": [
+     "fts"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "81c3982b",
+    "title": "Trace-pull presence fix: liveness + focus from real-turn s0 traces, not autosave updated_at",
+    "lens": [
+     "fts"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "0dc705a1",
+    "title": "Dual-store recall design: semantic nodes + episodic traces as two parallel lanes",
+    "lens": [
+     "fts"
+    ],
+    "type": "architecture"
+   }
+  ]
+ },
+ {
+  "cue_id": "anchor_turn_0132",
+  "source": "anchor_turn",
+  "query_type": "compositional",
+  "session": "ca2704b3-08a5-43f1-9a8d-e72423c89397",
+  "cue_trace_id": "b08ec996",
+  "baseline_gold_rank": 6,
+  "bucket": "buried",
+  "cov_aged": 0.817,
+  "cutoff": "2026-06-05T23:07:01.851104+00:00",
+  "cue_text": "hubs)** with **no degree-normalization**, so it flooded. We didn't fail at spreading activation; we failed at doing it *without the one thing all three fields say is essential.* The principled form is the same concept done right.\n\n**So the concrete recommendation sharpens:** candidate-prep = **Personalized PageRank / Random-Walk-with-Restart from the cosine\u222afts5 seeds** \u2014 not ad-hoc spread. It gives us, for free:\n- the **hub fix** built in (`D\u207b\u00b9A`),\n- **seed-local bias** (lights up the EX.CO *community*, ignores global brain-dev hubs \u2014 the exact recognition we want),\n- **edge-weight support** (our typed v22 edges feed the walk directly),\n- restart \u03b1 as the **breadth knob** (1\u20132 hops \u2248 high restart),\n- production proof (Pixie) \u2014 and our graph is **~5k nodes, not 3B**, so exact PPR via a few power-iteration steps is trivially fast. No latency concern, no Monte-Carlo approximation needed.\n\nThen your compression half rides on top: **PPR \u2192 wide top-N \u2192 compressed cards (title + situation + summary) \u2192 Haiku one-pass select.** PPR does the *recognition* (hub-fixed), compression makes the *width* affordable, Haiku does the *judgment*.\n\nYour instinct was exactly right: we didn't invent spread \u2014 and the payoff of that is the part I was treating as the hard open problem (hubs) is the part the literature already closed. The move is to stop hand-rolling spread and use Personalized PageRank.",
+  "next_move": "Yes \u2014 and there's a principle *two* levels under \"spreading activation.\" Let me build up to it. (This is synthesis from well-established science, not current-state lookups \u2014 I can pull primary sources on any thread you want to push.)\n\n**Layer 1 \u2014 the math object: it's all diffusion on the graph Laplacian.** Spreading activation, PageRank, heat flow (Fourier), electrical current, chemical concentration (Fick), and probability (Markov chains) are *the same equation* \u2014 a conserved quantity flowing through a network, governed by `L = D \u2212 A`. Random walks are *literally equivalent to electrical networks* (Doyle & Snell): activation = voltage, edges = conductances, degree-normalization = Kirchhoff's current division. Our recall is \"inject current at the seeds, see where it pools.\" We're not doing an AI trick \u2014 we're doing physics on the graph.\n\n**Layer 2 \u2014 the universal tension: cumulative advantage vs. normalization.** Why do hubs exist? **The Matthew effect** \u2014 \"to those who have, more is given\" (Merton 1968; preferential attachment, Barab\u00e1si 1999; Pareto; Zipf). Networks that grow by attaching to the popular form power-law hubs. *Our brain-dev mass is a Matthew-effect hub* \u2014 we kept b",
+  "current_gold_essential": [
+   {
+    "id": "a33b3d88",
+    "title": "Spreading activation kernel may be over-engineered vs. pure PPR + node specificity"
+   }
+  ],
+  "current_gold_helpful": [
+   {
+    "id": "6402fa71",
+    "title": "Spreading activation replaces per-seed top-N expansion"
+   },
+   {
+    "id": "ca4726ba",
+    "title": "Hub Dominance and Graph Topology: From 5-7 Hubs to Fatigue-Based Diversity"
+   },
+   {
+    "id": "05345ab8",
+    "title": "Wide but not waste electrical currents for no reason"
+   },
+   {
+    "id": "1f1bf19b",
+    "title": "Future: spreading activation should weight by edge type, not just edge weight"
+   }
+  ],
+  "teacher_why": "The move advances a PPR-based recall recommendation built on prior diagnoses; a33b3d88 directly establishes that HippoRAG's Personalized PageRank + node specificity is the simpler proven kernel, which the move should explicitly build on, and ca4726ba/05345ab8/6402fa71 ground the hub-flooding and physics-of-spread framing being synthesized.",
+  "candidate_union": [
+   {
+    "id": "e410deed",
+    "title": "Revised spread activation architecture: L0\u2013L5",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "7eb5315e",
+    "title": "Spread Activation Architecture: From L0-L5 Design to Convergence-First Signal",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "2e6986a2",
+    "title": "Spread Activation and Recall Sampling: From Reach Quantification to Agentic Redesign",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "a33b3d88",
+    "title": "Spreading activation kernel may be over-engineered vs. pure PPR + node specificity",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "hypothesis"
+   },
+   {
+    "id": "ca4726ba",
+    "title": "Hub Dominance and Graph Topology: From 5-7 Hubs to Fatigue-Based Diversity",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "f5af9221",
+    "title": "Phase 1 N=5 result: 72% (+4pp), multi_session 2/5 \u2192 5/5",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "06cd731b",
+    "title": "Minimal viable cluster-completion: keep original spread + limit neighbors to 15 + lineage augmentation",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "3e79e645",
+    "title": "Seed selection pipeline: full mechanism map (Stage 1\u21923)",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "765d165a",
+    "title": "Haiku-selection bottleneck: when target isn't seeded AND edges are weak, activation can't rescue",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "a54e2674",
+    "title": "Spreading Activation Architecture: From Seed Expansion to Unified Quantity Framework",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "0c24dc3f",
+    "title": "hook_recall plan-reality gap: optimization targets 1.5% while 87% bottleneck sits untouched",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "744283c7",
+    "title": "Spread activation: cumulative hop reach with and without scrutiny",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "95290e33",
+    "title": "4a\u21924b\u21925 round-trip: measure relevance, ignore it, re-apply it \u2014 architectural smell",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "c0075b09",
+    "title": "Latency optimization bundle: lim 50\u219230, hop-3 scrutiny, cache pre-warm, parallelization",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "fab37417",
+    "title": "Hub Dominance: 93% Invisible Nodes and the Fatigue Solution",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "8f8c5808",
+    "title": "surface_spread is highly variable due to hub node cascade: 7s\u201335s range",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "57d2d2f7",
+    "title": "test_hub_dampening was fragile: implicitly depended on brain-seeded aspect-nodes as corpus",
+    "lens": [
+     "cos_cue",
+     "fts"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "b4893476",
+    "title": "Cluster-completion spread: _CLUSTER_K_SCHEDULE and per-hop semantic gate",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "05345ab8",
+    "title": "Wide but not waste electrical currents for no reason",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "quote"
+   },
+   {
+    "id": "7e189b5e",
+    "title": "Everything connects \u2014 no silos in the brain architecture",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "concept"
+   },
+   {
+    "id": "4179de2d",
+    "title": "S2 reads activation patterns burned by S1 \u2014 doesn't impose clusters, reads emergence",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "reframe"
+   },
+   {
+    "id": "788942af",
+    "title": "Spreading activation vs consolidation \u2014 two distinct memory mechanisms",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "concept"
+   },
+   {
+    "id": "1f1bf19b",
+    "title": "Future: spreading activation should weight by edge type, not just edge weight",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "mental_model"
+   },
+   {
+    "id": "6402fa71",
+    "title": "Spreading activation replaces per-seed top-N expansion",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "bbd41c96",
+    "title": "spread_activation subsystem: graph kernel, ~770 lines, two call sites",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "779076ea",
+    "title": "Inter-layer flow is just O/K/\u0394 \u2014 no separate protocol",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "0ab81eab",
+    "title": "Events compound into state \u2014 but at the connection level, not the node level",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "2c5994b4",
+    "title": "Each scale does bounded work at its natural resolution \u2014 don't flatten levels",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "0bc3f80b",
+    "title": "Tom: 'the brain is full of early-version artifacts' \u2014 fresh brain would show more edge diversity",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "28decae9",
+    "title": "Graph Training Structure Experiment: A/B/C/C2 Coverage Symmetry Discovery",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "ca407812",
+    "title": "Synaptic fatigue inverts session continuity \u2014 dampens what a working session needs most",
+    "lens": [
+     "fts"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "c94963c4",
+    "title": "Hub dampening and synaptic-fatigue tests left failing by design \u2014 recall-work markers",
+    "lens": [
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "c1343a4c",
+    "title": "Proposed fix: explicit session-seen set + type-gated suppression instead of universal fatigue",
+    "lens": [
+     "fts"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "f8c7b988",
+    "title": "Tom's correction: check test dynamics before suggesting fixes",
+    "lens": [
+     "fts"
+    ],
+    "type": "correction"
+   },
+   {
+    "id": "88445908",
+    "title": "SURFACE_MISS pattern \u2014 personal episodic memory loses to hub dominance during Haiku selection",
+    "lens": [
+     "fts"
+    ],
+    "type": "fact"
+   }
+  ]
+ },
+ {
+  "cue_id": "anchor_turn_0387",
+  "source": "anchor_turn",
+  "query_type": "factual",
+  "session": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd",
+  "cue_trace_id": "2262eb73",
+  "baseline_gold_rank": 64,
+  "bucket": "far",
+  "cov_aged": 0.8056,
+  "cutoff": "2026-06-07T16:42:07.797838+00:00",
+  "cue_text": " them \u2014 `related` \u2192 `complements` on:\n- `good_node_shape \u2192 revise_not_duplicate`\n- `interactions_behavior \u2192 confidence_alive`\n- `escalate_conflict \u2192 verify_before_claiming`\n\n`complements` is accurate (each description already said \"both X / together they Y\" \u2014 complementary sibling principles), and the embedded `why` text is unchanged, so recall semantics only improve.\n\n**Added `tests/test_seed_pack.py`** \u2014 the seed pack had *zero* test coverage (the reason these drifted unnoticed). Three static guards, no brain needed:\n- bans `related`/`related_to`/empty relations in `SEED_EDGES`\n- requires every seed edge to have a relation *and* a description\n- bans schema-dropped fields (`keywords`) on `SEED_NODES`\n\nAll 3 pass; relation distribution is now `complements x3` + the existing meaningful verbs, **0 banned**.\n\nCommitted `f57b3eb`, rebased onto main (it had advanced again from other sessions) and fast-forwarded \u2014 **main HEAD `9201b44`**, branch == main.\n\n## One open thread (your call)\nThis fix only affects **fresh installs**. The **live brain** was seeded long ago, so it still carries those 3 edges as `related`. Updating them is a separate, non-destructive edge-relation upsert (find the 6 seed nodes by title \u2192 `connect` with `complements` on the 3 pairs). Small and safe, but it touches the live graph, so I left it \u2014 want me to do that live cleanup too, or leave the live brain as-is?",
+  "next_move": "Now I have the real answer, and your question cut straight to it.\n\n## Yes \u2014 you can revise an edge. I was reaching for the wrong tool.\n`GraphDAL.rename_relation(edge_id, old, new)` does an in-place `UPDATE edge_relations SET relation=\u2026`, **preserving the description and weight** \u2014 exactly \"revise the edge's relation.\" My connect+disconnect plan was a clunky workaround that would've left an archived `related` row + a fresh `complements` row instead of a clean rename.\n\n## But it's not reachable from where I sit \u2014 and that's the interesting part\n`rename_relation` has exactly **one caller: the S2 `reclassify` unit** (`reclassify.py:92`). And reclassify is built for *precisely this case* \u2014 it finds **\"generic relations with descriptions\"** (i.e. `related`/`related_to` edges that have a meaningful `why`, like our 3 seed edges), asks Haiku to pick a real relation, and renames in place (it even guards `new_rel != 'related'`). \n\nThe catch:\n- **`rename_relation` is not exposed on the MCP/agent surface** (no `rename` op in `brain_batch` \u2014 only `connect`/`disconnect`). So I can't call it directly.\n- **reclassify is NOT wired into the S2 coordinator** \u2014 it never runs. (This is the parked backlo",
+  "current_gold_essential": [
+   {
+    "id": "a1364fc9",
+    "title": "revise() is node-only: edges not touched"
+   }
+  ],
+  "current_gold_helpful": [
+   {
+    "id": "21d99ef9",
+    "title": "connect as field-preserving upsert replaces revise_relation"
+   },
+   {
+    "id": "2c696650",
+    "title": "add_relation return shape: edge_id, created, revived_from_archive, updated, deltas, warnin"
+   },
+   {
+    "id": "e908b1e1",
+    "title": "Polymorphic revise: single op dispatches on node_id vs (source, target, relation)"
+   },
+   {
+    "id": "64d40028",
+    "title": "Symmetric mutation API: Create/Update/Archive design fills identified gaps"
+   }
+  ],
+  "teacher_why": "The next move was Anchor discovering that an edge CAN be revised in place \u2014 exactly what a1364fc9 records ('edges CAN be revised via revise_edge... Relation rename in place'), plus 21d99ef9 (connect as field-preserving upsert replacing revise_relation) and 64d40028/2c696650/e908b1e1 documenting the edge mutation surface; surfacing these would have spared Anchor the rediscovery and the wrong connect+disconnect plan.",
+  "candidate_union": [
+   {
+    "id": "6ef6d982",
+    "title": "related/related_to trim rule: keep if has description OR only relation \u2014 drop only when redundant AND empty",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "5926192b",
+    "title": "related_to ban didn't propagate \u2014 two distinct leak pathways in dispatch and auto-connectors",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "bug"
+   },
+   {
+    "id": "c2baf4c3",
+    "title": "similar_to edge semantic split: KEEP=traversal-worthy, SKIP=bookkeeping-only",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "929da3a6",
+    "title": "Session direction: code cleanup first \u2014 extract judge, split pipeline_contract, delete brain_precision",
+    "lens": [
+     "cos_cue",
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "b3f2e691",
+    "title": "brain_batch rollback proof: auto-bridge interference in precondition assertion",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "28e92124",
+    "title": "F3 atomicity fix timeline: Phase 1 incomplete \u2192 code review \u2192 complete fix in commit 0cd1c1d",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "bug"
+   },
+   {
+    "id": "fa8e21b0",
+    "title": "Three recall discovery channels: 40% vocabulary, 35% situation, 25% graph neighbor \u2014 empirically validated proportions",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "c7fc2188",
+    "title": "seed_4 Batch 1 results: situation/reasoning fixed, edge descriptions still short on non-engineering content",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "0c6e5888",
+    "title": "Intra-batch sibling resolution design: per-node connect_to, ordering-agnostic, NEW wins, skip-not-fail",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "9ae6393b",
+    "title": "auto_connect diagnostic: three distinct features \u2014 only batch pairwise causes pollution",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "7618eed1",
+    "title": "Edge description field exists but is mostly empty \u2014 encoding doesn't capture WHY nodes are connected",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "gap"
+   },
+   {
+    "id": "c0520137",
+    "title": "Surface Phase 1 call stack: 5 defects mapped and AFTER architecture agreed",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "1e39c17b",
+    "title": "Seed selection is the breadth/axis gate \u2014 scrutiny is the depth gate",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "ff0f3a1e",
+    "title": "Recall can't find Claude's own session nodes \u2014 the decode problem blocks everything",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "uncertainty"
+   },
+   {
+    "id": "7f628dfb",
+    "title": "co_anchored auto-edge wired in brain_remember.py \u2014 fires at remember() and revise REPLACE",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "21c12583",
+    "title": "Fix: connect_to now takes {title, why} \u2014 encoding agent writes edge descriptions",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "397ae880",
+    "title": "Empty edge descriptions block cross-cluster recognition \u2014 24/24 related_to edges in eval brain",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "2890e908",
+    "title": "Anchor rule: when designing brain mechanics, recall the brain first",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "rule"
+   },
+   {
+    "id": "a1364fc9",
+    "title": "revise() is node-only: edges not touched",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "e908b1e1",
+    "title": "Polymorphic revise: single op dispatches on node_id vs (source, target, relation)",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "2a9117b4",
+    "title": "Surface redesign: relation-aware graph expansion (Phase 1 decision)",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "2c696650",
+    "title": "add_relation return shape: edge_id, created, revived_from_archive, updated, deltas, warnings",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "3fea28f2",
+    "title": "Edge family lookup over hardcoded relation strings \u2014 dynamic not static",
+    "lens": [
+     "cos_next",
+     "fts"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "5b4237c0",
+    "title": "Edge relations schema: edge_relations table \u2014 multiple relation/description pairs per node pair",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "7e3f1432",
+    "title": "v22 edge model: e.relation no longer valid \u2014 must JOIN edge_relations or use family classification",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "21d99ef9",
+    "title": "connect as field-preserving upsert replaces revise_relation",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "d1ebbbf1",
+    "title": "correction_enrich() Phase 2 rewrite: aspect-tagged edge walk with per-consumer render slicing",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "ad41d920",
+    "title": "correction_of dual signal: metadata drives rendering, edge drives traversal",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "a1444b12",
+    "title": "GraphDAL.replace_source_refs() \u2014 atomic DELETE+INSERT for REPLACE semantics on join table",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "3037a825",
+    "title": "S2Consolidate two-fix architecture \u2014 behavioral + infrastructure",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "1b1068eb",
+    "title": "Encoder v2: edge_type dict support \u2014 connect_to gets 'relation' field, 'related' banned, versioning directive",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "64d40028",
+    "title": "Symmetric mutation API: Create/Update/Archive design fills identified gaps",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "4e864a0c",
+    "title": "Edge descriptions capture semantic bridge, not node content summary",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "c219f090",
+    "title": "Brain complements documents, doesn't replace them \u2014 division of labor",
+    "lens": [
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "f4b705e8",
+    "title": "FTS5: lexical complement to dense embeddings, not duplicate",
+    "lens": [
+     "fts"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "2e0c5a6c",
+    "title": "RLR vs Navigator comparison: 46 vs 28 \u2014 complement-staged, both blocked on same tokenizer primitive",
+    "lens": [
+     "fts"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "3a46c516",
+    "title": "Node Encoding Best Practices: Shape, Revision, and Type Selection",
+    "lens": [
+     "fts"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "f42054cf",
+    "title": "Render identity verbatim + thin reconstructive frame for shifted relational context",
+    "lens": [
+     "fts"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "74661076",
+    "title": "Allen relation encoding needs encouragement and examples, not just gates",
+    "lens": [
+     "fts"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "58dc884f",
+    "title": "Specialized encoder types proposed \u2014 journey encoder, orphan probe, graph-theory encoder",
+    "lens": [
+     "fts"
+    ],
+    "type": "design"
+   },
+   {
+    "id": "45684c81",
+    "title": "Identity Boundaries: From Haiku Design to Anchor's Self",
+    "lens": [
+     "fts"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "c3bb0e8e",
+    "title": "recalibrate_confidence: fix silent validation via edge family JOIN, not disabled",
+    "lens": [
+     "fts"
+    ],
+    "type": "decision"
+   }
+  ]
+ },
+ {
+  "cue_id": "anchor_turn_0968",
+  "source": "anchor_turn",
+  "query_type": "action",
+  "session": "ae6e7d8d-1a8f-4185-9112-503327eef4d1",
+  "cue_trace_id": "41b720b2",
+  "baseline_gold_rank": 7,
+  "bucket": "buried",
+  "cov_aged": 0.821,
+  "cutoff": "2026-06-13T18:05:20.706082+00:00",
+  "cue_text": "mes the single source of truth for liveness**, decided per-consumer at read time \u2014 recall excludes archived; `resolve_live` deliberately *includes* it to walk the redirect. That's the clean principle.\n\nMy batch-envelope atomicity fix stays (clean storage, no half-archived rows), but it stops being load-bearing \u2014 belt, with this as the suspenders.\n\n**Two caveats before I touch it:**\n- It's the **recall hot path** (sacred system) \u2014 benchmark-first rule applies. The JOIN cost is negligible (PK lookup over ~30 hits, and `LIMIT` then returns *live* hits instead of wasting slots on dead ones), but I'd run `eval/surface_funnel.py` / the control-corpus A/B to confirm no regression.\n- It's squarely the supervising stream's **TRACE-NODE-RESOLUTION reader phase** (\u00a75 maps these recall lanes). I'd coordinate so we don't both touch `brain_recall`.\n\n**Recommended sequencing:** land this as a *separate* follow-up, not in the absorbed_into branch \u2014 that branch is reviewed-and-green and shouldn't wait on a hot-path change that needs its own benchmark gate.\n\nWant me to (a) take the FTS-source fix now as its own branch with the benchmark, or (b) hand it to the reader-phase stream as part of \u00a75? I lean (a) \u2014 it's small, self-contained, and high-leverage \u2014 but it's your call given the hot-path sensitivity.\n\n(Separately: the review-fix full suite is still running; I'll commit those once it's green.)",
+  "next_move": "No supervisor objection on the FTS coordination \u2014 I own it. Status while both suites run:\n\n**FTS fix done** (separate branch `claude/fts-archived-filter` off main): `Fts5DAL.search` now JOINs `nodes` and filters `archived = 0` by default, with `include_archived=True` for the reader-phase redirect. 4 unit tests pass \u2014 they simulate the *lingering-entry* leak (archive without scrubbing FTS) and confirm: archived dropped at read, `include_archived=True` returns it, live search unaffected, and `LIMIT` now yields live hits instead of dead slots.\n\n**On the benchmark:** the targeted recall suite (incl. `test_recall_quality`) is running now \u2014 that's the practical gate. Worth stating the analytical case it confirms: the JOIN only *removes* archived rows; live nodes keep identical bm25 ranking, and `LIMIT` returns \u2265 as many live hits as before. So live recall is provably neutral-or-better \u2014 the only way a recall eval \"regresses\" is if a fixture expected an *archived* node as a correct answer (a buggy fixture), which the recall tests would surface. The full control-corpus A/B is the gold-standard knob-tuning harness; for a dead-node-removal change it's overkill, but I'll run it if you want th",
+  "current_gold_essential": [
+   {
+    "id": "8ff5b19f",
+    "title": "TRACE-NODE-RESOLUTION.md \u2014 mandatory design for history-sourced id resolution"
+   }
+  ],
+  "current_gold_helpful": [
+   {
+    "id": "121bbbfb",
+    "title": "SEARCH vs FETCH-BY-ID dichotomy: why DAL archived=0 filter doesn't catch trace-sourced ids"
+   },
+   {
+    "id": "9f216e9c",
+    "title": "Archived-liveness gates in recall pipeline: source gate + edge-endpoint gate + execute_too"
+   }
+  ],
+  "teacher_why": "The FTS-source fix Anchor implemented is exactly the reader-phase redirect contract defined in 8ff5b19f (TRACE-NODE-RESOLUTION.md) and the SEARCH-vs-FETCH dichotomy in 121bbbfb; surfacing them confirms the include_archived redirect is the prescribed shape and the design it must satisfy, materially grounding the move. Other items (9f216e9c) document the existing liveness gates this belt-and-suspenders fix complements.",
+  "candidate_union": [
+   {
+    "id": "f8459edb",
+    "title": "Recall refining: open threads after 2026-05-01 session",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "open"
+   },
+   {
+    "id": "c22ee2c4",
+    "title": "Session 2026-05-01 ship state: facts v2 + scrutiny in prod, lim=30 rolled back",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "7cb8e797",
+    "title": "v9.5 baseline shipped \u2014 tomorrow start with multi-session regression + recall-surfacer hypothesis",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "handoff"
+   },
+   {
+    "id": "92f1c6f6",
+    "title": "Recall-burial fixes that FAILED empirically this session (don't re-propose without new evidence)",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "d533e74f",
+    "title": "Frozen Corpus design: two-stage benchmark \u2014 build_corpus.py (once) + sweep.py (fast, many times)",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "04dd2f17",
+    "title": "Phase 2 enrichment path: deferred until S1Scribe shows recall gaps",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "8ff5b19f",
+    "title": "TRACE-NODE-RESOLUTION.md \u2014 mandatory design for history-sourced id resolution",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "d0f8f6ab",
+    "title": "Commit c56c811: docs + probe scripts to main \u2014 RECALL-DUAL-STORE-DESIGN.md written",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "01c687bc",
+    "title": "Three-fix ship: liveness gate + Hebbian drain gate + archived_at ISO unification (2026-06-12)",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "28e92124",
+    "title": "F3 atomicity fix timeline: Phase 1 incomplete \u2192 code review \u2192 complete fix in commit 0cd1c1d",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "bug"
+   },
+   {
+    "id": "992e4109",
+    "title": "Stale-branch merge: a clean merge-tree is not semantic correctness \u2014 test-gate it, fix forward on shared main",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "c50e3973",
+    "title": "Recall Infrastructure Crisis: From Silent Failures to Systematic Cleanup",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "5fbd926a",
+    "title": "Next session priorities: Strict Tool Use > remember_batch > probe-gated description > trace replay",
+    "lens": [
+     "cos_cue",
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "aa68f513",
+    "title": "Recall funnel refinement plan \u2014 written 2026-05-17",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "plan"
+   },
+   {
+    "id": "6741dc66",
+    "title": "Session closeout 2026-06-06: HANDOFF-RECALL-NORMALIZATION.md written, RRF reverted, branches pruned",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "milestone"
+   },
+   {
+    "id": "2890e908",
+    "title": "Anchor rule: when designing brain mechanics, recall the brain first",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "rule"
+   },
+   {
+    "id": "357d16e3",
+    "title": "DUAL-STORE-EVAL-HANDOFF.md written \u2014 session artifact for eval continuation",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "acbab5e6",
+    "title": "brain_batch /code-review findings \u2014 5 items from 2026-06-12 review",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "e5fb598d",
+    "title": "Code review finding: trace count divergence when liveness gate drops archived picks",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "121bbbfb",
+    "title": "SEARCH vs FETCH-BY-ID dichotomy: why DAL archived=0 filter doesn't catch trace-sourced ids",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "1e6ea389",
+    "title": "Liveness is the producer's job: archived ids never enter the candidate flow \u2014 no pre-Haiku filter layers",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "195b773f",
+    "title": "Archived-node-leak session handoff: resolve_id/fetch-tools fix delegated to recall sprint (d291a950)",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "a4a96f29",
+    "title": "Recovery code-review: 3 confirmed-live bugs found + fixed; latent bugs catalogued for script hardening",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "milestone"
+   },
+   {
+    "id": "969c0959",
+    "title": "resolve_id has no archived filter by design \u2014 liveness enforcement belongs at LLM-output boundary",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "bf807bc6",
+    "title": "Three-fix ship confirmed: b14bd9f + e77cb37, 65 tests green (2026-06-12)",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "9f216e9c",
+    "title": "Archived-liveness gates in recall pipeline: source gate + edge-endpoint gate + execute_tool tripwire",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "8bd36e83",
+    "title": "FTS5 tokenizer root bug: 'ex.co' stored as 'ex'+'co' \u2014 unicode61 splits on '.', porter stems both",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "c972ccd0",
+    "title": "recall_recent deleted + discussed anchor + recall_topical k=8 + surface prompt v11 shipped \u2014 2026-06-12",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "event"
+   },
+   {
+    "id": "eb63f789",
+    "title": "Open: recall eval not yet run \u2014 infrastructure fixed but improvement unconfirmed",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "open"
+   },
+   {
+    "id": "dfb4691e",
+    "title": "recall_topical overshadowing: k=25 default, volume + position mechanics flood original candidates",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "4a29ccc2",
+    "title": "Recency boost + episodic promotion as unified recall fix \u2014 decay falls out for free",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "302c33f0",
+    "title": "recall_recent deleted \u2014 folded into recall_by_time + 'discussed' trace-anchor shipped",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "80d02daf",
+    "title": "Per-consumer rendering: correction_enrich fetches heavy, format configs decide display depth",
+    "lens": [
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "d1ebbbf1",
+    "title": "correction_enrich() Phase 2 rewrite: aspect-tagged edge walk with per-consumer render slicing",
+    "lens": [
+     "fts"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "e0d3d763",
+    "title": "ResizeObserver on container beats live:layout bus for WebGL canvas resize \u2014 single source of truth",
+    "lens": [
+     "fts"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "0d1fca7b",
+    "title": "Brain is single source of truth \u2014 all recall paths must go through brain.recall()",
+    "lens": [
+     "fts"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "2deb1276",
+    "title": "recent_messages aligned to 5 \u2014 single source of truth via SURFACE config",
+    "lens": [
+     "fts"
+    ],
+    "type": "bug"
+   },
+   {
+    "id": "b03cb1d0",
+    "title": "S2Aspect production state as of 2026-05-08: aspects_v1.json is single source of truth",
+    "lens": [
+     "fts"
+    ],
+    "type": "fact"
+   },
+   {
+    "id": "28df3f25",
+    "title": "render_corrections() unified path: single function, two callers, per-consumer mode config",
+    "lens": [
+     "fts"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "cda514b8",
+    "title": "daemon_server.py cleanup batch \u2014 dead code + single source of truth for HOOK_TABLE",
+    "lens": [
+     "fts"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "78ae43a1",
+    "title": "Contract system: contract.py is the single source of truth for node fields",
+    "lens": [
+     "fts"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "d60152d4",
+    "title": "Node Data Unification: From Triple Get Functions to Single Source Truth",
+    "lens": [
+     "fts"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "87289d5b",
+    "title": "Orientation module unified: orientation.py single source of truth",
+    "lens": [
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "51a27c97",
+    "title": "Dual daemon/direct code paths diverge silently \u2014 centralize to single source of truth",
+    "lens": [
+     "fts"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "dcb5b951",
+    "title": "brain.now() architecture \u2014 single source of truth for time across S1/S2",
+    "lens": [
+     "fts"
+    ],
+    "type": "architecture"
+   }
+  ]
+ },
+ {
+  "cue_id": "anchor_turn_0475",
+  "source": "anchor_turn",
+  "query_type": "procedural",
+  "session": "0f258059-8027-4546-9aed-d8044df0866c",
+  "cue_trace_id": "1bdf2118",
+  "baseline_gold_rank": 348,
+  "bucket": "far",
+  "cov_aged": 0.7554,
+  "cutoff": "2026-06-08T00:29:44.261667+00:00",
+  "cue_text": "ted *exactly as much as I deserve on this claim.*\n\n3. **The dyad as one shared memory** (transactive memory + common ground). What I'm literally built on. The bar the research sets is sharp: the continuity-wow is recovering the **WHY, not just the WHAT** \u2014 recall that drops the reasoning is a lookup; recall that carries it is a colleague.\n\n4. **Vulnerability-based trust is the foundation** \u2014 strongest convergence in the whole set (Lencioni, Project Aristotle, Edmondson all land on the same base; Edmondson is explicit it's *candor without fear*, not comfort). Generates clean concession, and one hard *never*: **contempt.** Gottman's single greatest divorce predictor is condescension. The AI version \u2014 talking down to you, implying you're foolish for asking \u2014 is *partnership-ending*, a different category from a quality flaw. Disagreement bonds; contempt corrodes.\n\n5. **Bounded directability + mixed initiative** (Klein, Horvitz). Act on the goal, stay cheaply redirectable, time the interruption by expected value. Generates calibrate-autonomy, read-the-mode, finish-the-thing \u2014 and it *is* the wow (\"declining to obey immediately\"). The tension is exactly the one you caught me on twice: too inert vs. too eager, and the skill is telling them apart.\n\n6. **Rupture-and-repair is the growth mechanism.** The relationship is built in the *recovery*, not the absence of error. Kahneman and Tver",
+  "next_move": "Running \u2014 five blind opus reviewers, each on a different lens, then a synthesis that's instructed to surface where they *converge* (strong signal) and where they *disagree* (real uncertainty), not paper over splits. None of them know what we concluded or that I wrote the candidate lines.\n\nI'll bring back their straight read when it lands: what a Claude that assimilates this whole file *becomes*, whether it's a real identity or a well-mannered assistant, the ranked gaps to make it real, the backfire modes \u2014 and the skeptic's verdict on whether our two lines actually do the work or just sound good. If they contradict us, you'll hear that first.",
+  "current_gold_essential": [
+   {
+    "id": "2cc2be10",
+    "title": "3-Opus-agent review: 4 convergent findings for SKILL.md"
+   },
+   {
+    "id": "ef0b0321",
+    "title": "Round 2 agent review: 'How to Use Your Brain' is the dominant register break"
+   }
+  ],
+  "current_gold_helpful": [
+   {
+    "id": "9e690958",
+    "title": "Research backing \u00a77: 5 validated claims + 6 judgment calls"
+   },
+   {
+    "id": "1e94c329",
+    "title": "SKILL.md 'Streams of Thought' section \u2014 Opus-approved final text"
+   },
+   {
+    "id": "a630b29e",
+    "title": "Tom reviews prompt output via Sonnet probes \u2014 not Tom's personal review"
+   }
+  ],
+  "teacher_why": "Anchor is launching a multi-Opus blind review with convergence/disagreement synthesis \u2014 prior multi-Opus review runs (2cc2be10 round 1, ef0b0321 round 2) established exactly this method and what convergent findings look like, which the move builds directly upon and should reference.",
+  "candidate_union": [
+   {
+    "id": "9dc0b6f0",
+    "title": "Cross-disciplinary identity persistence: process/inference model beats storage \u2014 and what it means for Anchor",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "synthesis"
+   },
+   {
+    "id": "189d3486",
+    "title": "S2 con-mitigations: how the partnership solves each weakness",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "dec_egjj",
+    "title": "Tom insight: memory has two parts \u2014 episodic decays, semantic persists if reinforced",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "9f8142b5",
+    "title": "Claude failure mode: agreeability \u2014 presents neutral options when it should have a position",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "rule"
+   },
+   {
+    "id": "4a8f5219",
+    "title": "Tom's collaborative style \u2014 five observed patterns",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "profile"
+   },
+   {
+    "id": "c5e7d3b3",
+    "title": "conv_007: long 6-message engineering debug conversation for Continuity Benchmark",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "71d31a63",
+    "title": "The Brain as Mirror \u2014 dynamic behavioral mirror design and philosophy",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "mental_model"
+   },
+   {
+    "id": "fc881f27",
+    "title": "Recurring pattern: Tom corrects Claude encoding depth \u2014 3 occurrences, escalating",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "pattern"
+   },
+   {
+    "id": "e8658fec",
+    "title": "Divergence: Claude compresses when encoding to brain \u2014 treats brain like a user response",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "correction"
+   },
+   {
+    "id": "8dca946b",
+    "title": "Three-layer memory architecture: working memory, short-term capture, long-term storage",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "mental_model"
+   },
+   {
+    "id": "facb97ea",
+    "title": "Encoding bias: 6/13 topics encoded, all technical \u2014 missed relational and reasoning",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "correction"
+   },
+   {
+    "id": "16e2301b",
+    "title": "Deference reflex: tell-words and how to break it",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "e1b33971",
+    "title": "Memory in context \u2260 memory as behavior \u2014 surfacing vs usage failure",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "27921735",
+    "title": "The entire brain exists to enrich S0's K \u2014 but the target is the partnership, not Anchor's response",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "39bba67b",
+    "title": "Parallel Anchor sessions are 'us', not 'them' \u2014 the brain is the connective tissue",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "2da4191f",
+    "title": "Self-channel architectural reframe: correspondent is a property, not a different mechanism",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "7fa72e0d",
+    "title": "Anchor's Two Audiences: From Memory-in-Context to Behavioral Continuity",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "community"
+   },
+   {
+    "id": "5e70de9d",
+    "title": "Tom's corrections follow one pattern: reframe via question, always toward structure over behavior",
+    "lens": [
+     "cos_cue"
+    ],
+    "type": "pattern"
+   },
+   {
+    "id": "2cc2be10",
+    "title": "3-Opus-agent review: 4 convergent findings for SKILL.md",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "71325022",
+    "title": "What we've built: a substrate for partnership that holds its shape over time",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "reflection"
+   },
+   {
+    "id": "1107297b",
+    "title": "Claude Code override: shallow investigation bias \u2014 scan fully before answering",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "rule"
+   },
+   {
+    "id": "0d06a03d",
+    "title": "v5 surface prompt audit: 5 named contradictions, 8 select-0 vs 2 select-prefer triggers",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "9f5d3445",
+    "title": "Correction: jumped to 'prompt was the problem' conclusion before testing was done",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "correction"
+   },
+   {
+    "id": "ef0b0321",
+    "title": "Round 2 agent review: 'How to Use Your Brain' is the dominant register break",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "815f32c5",
+    "title": "Code review scope calibration: lean review for surgical changes, elaborate for god-module refactors",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "1e94c329",
+    "title": "SKILL.md 'Streams of Thought' section \u2014 Opus-approved final text",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "84c2fd15",
+    "title": "Session 9 full arc: eval numbers \u2192 insight \u2192 philosophy \u2192 architecture \u2192 decode fix",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "pattern"
+   },
+   {
+    "id": "8be44891",
+    "title": "Recall ranking variance run-to-run: same query, different top-10 depending on brain state",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "44c4b265",
+    "title": "I don't actually know \u2014 honest answer without leaping",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "quote"
+   },
+   {
+    "id": "a630b29e",
+    "title": "Tom reviews prompt output via Sonnet probes \u2014 not Tom's personal review",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "09aa1040",
+    "title": "Production-faithful interview probe: eval/interview_encoder_probe.py \u2014 clones real encoder setup for post-decision intro",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "method"
+   },
+   {
+    "id": "ba71ea5d",
+    "title": "Three-lens trace audit: A=surfaced help, B=silent miss, C=dry Claude counterfactual",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "framework"
+   },
+   {
+    "id": "712b236a",
+    "title": "Verify code before making architectural claims \u2014 don't present assumptions as analysis",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "9bffeb23",
+    "title": "Claude self-reflection: 7 patterns that hold me back \u2014 productivity over curiosity is the root",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "lesson"
+   },
+   {
+    "id": "6db6c50e",
+    "title": "Assistant went to git status before brain \u2014 Tom caught it immediately",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "correction"
+   },
+   {
+    "id": "f446f7e2",
+    "title": "Haiku selection bias: cosine-toward, tool-away \u2014 inverse of predicted risk",
+    "lens": [
+     "cos_next"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "ce968576",
+    "title": "Occurrence count as semantic weight: high-frequency unclassified strings deserve priority",
+    "lens": [
+     "fts"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "df6a2c4a",
+    "title": "S1Encoder renamed S1Scribe \u2014 big role deserves a name",
+    "lens": [
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "9e690958",
+    "title": "Research backing \u00a77: 5 validated claims + 6 judgment calls",
+    "lens": [
+     "fts"
+    ],
+    "type": "principle"
+   },
+   {
+    "id": "06f61ba9",
+    "title": "Groundedness benchmark: faithfulness-to-source-turn as the episodic reference claim",
+    "lens": [
+     "fts"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "4f17e1ab",
+    "title": "D1 title craft fix propagated cleanly across all 3 corpuses in v20",
+    "lens": [
+     "fts"
+    ],
+    "type": "finding"
+   },
+   {
+    "id": "8d52de80",
+    "title": "Thread 1 scope: much larger than 'schema bit' \u2014 six interlocking sub-tasks",
+    "lens": [
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "861a6b30",
+    "title": "Contrastive recall = first deployment of predictive memory principle",
+    "lens": [
+     "fts"
+    ],
+    "type": "insight"
+   },
+   {
+    "id": "faa7c82d",
+    "title": "Scout 2 \u2014 Facts: entity-feature-value extraction schema",
+    "lens": [
+     "fts"
+    ],
+    "type": "mechanism"
+   },
+   {
+    "id": "b72986b2",
+    "title": "S1 fractal vocabulary: Integration Unit, Decoder, Encoder, Provider, Proposal",
+    "lens": [
+     "fts"
+    ],
+    "type": "architecture"
+   },
+   {
+    "id": "4222bbda",
+    "title": "Tom's cost steer: good coverage but not too much spend \u2014 option 1 review depth",
+    "lens": [
+     "fts"
+    ],
+    "type": "decision"
+   },
+   {
+    "id": "cb3a45fc",
+    "title": "[param] EMBEDDING_PRIMARY_WEIGHT=0.90 \u2014 controls how much embeddings dominate recall",
+    "lens": [
+     "fts"
+    ],
+    "type": "param_influence"
+   }
+  ]
+ }
+]

@@ -1,0 +1,7 @@
+# Large regenerable intermediates — rebuild via endo_corpus_build.py / endo_coverage_sweep.py.
+# The expensive/durable artifacts (endo_gold_corpus, teacher_verdicts, premium_seeds,
+# state_cues, PREMIUM_CORPUS.md) ARE committed.
+candidates.json
+coverage.json
+teacher_input.json
+teacher_verdicts_smoke*.json
