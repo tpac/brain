@@ -59,22 +59,27 @@ import anthropic  # noqa: E402
 from servers.scales.s1.surface_contract import (  # noqa: E402
     SURFACE_MODEL, build_surface_prompt,
 )
+from servers.daemon_config import brain_tmp_dir  # noqa: E402
 
 
 def _latest_candidates_file() -> str:
-    paths = glob.glob('/tmp/brain-*-recall-candidates.json')
+    # Honor BRAIN_TMP_DIR via brain_tmp_dir() so we read where the daemon WROTE
+    # (matches the WRITER; default /tmp).
+    tmp_dir = brain_tmp_dir()
+    paths = glob.glob(os.path.join(tmp_dir, 'brain-*-recall-candidates.json'))
     paths = [p for p in paths if os.path.getsize(p) > 1000]  # skip stub files
     if not paths:
-        raise SystemExit('No candidates file found in /tmp/')
+        raise SystemExit('No candidates file found in %s' % tmp_dir)
     paths.sort(key=os.path.getmtime, reverse=True)
     return paths[0]
 
 
 def _latest_judge_result_file() -> str:
-    paths = glob.glob('/tmp/brain-judge-result-*.json')
+    tmp_dir = brain_tmp_dir()
+    paths = glob.glob(os.path.join(tmp_dir, 'brain-judge-result-*.json'))
     paths = [p for p in paths if os.path.getsize(p) > 1000]  # skip stub files
     if not paths:
-        raise SystemExit('No judge-result file found in /tmp/')
+        raise SystemExit('No judge-result file found in %s' % tmp_dir)
     paths.sort(key=os.path.getmtime, reverse=True)
     return paths[0]
 

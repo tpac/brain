@@ -347,6 +347,11 @@ class EvalArtifactsDumper:
         """
         import glob
         import shutil
+        # BRAIN_TMP_DIR env protocol — must match the daemon-side WRITERS
+        # (servers.daemon_config.brain_tmp_dir(); default /tmp). The eval harness
+        # sets this per-run (fresh_brain.create_fresh_eval_brain) so concurrent
+        # runs don't cross-copy each other's per-call dumps.
+        tmp_dir = os.environ.get('BRAIN_TMP_DIR', '/tmp')
         out_dir = self.run_dir / 'agent_calls'
         out_dir.mkdir(exist_ok=True)
         encoder_n = 0
@@ -354,7 +359,7 @@ class EvalArtifactsDumper:
         errors = 0
         for sid in (session_ids or []):
             # Encoder dumps — one per encoding window (counter stops 5, 10, ...)
-            for src in glob.glob(f'/tmp/brain-encoding-prompt-{sid}-*.json'):
+            for src in glob.glob(os.path.join(tmp_dir, f'brain-encoding-prompt-{sid}-*.json')):
                 try:
                     name = os.path.basename(src).replace(
                         f'brain-encoding-prompt-{sid}-', f's1e_{sid[:8]}_stop')
@@ -364,7 +369,7 @@ class EvalArtifactsDumper:
                     errors += 1
             # Surface dumps — one per query (typically 1 per item but eval may
             # have multiple if the query phase re-fires).
-            for src in glob.glob(f'/tmp/brain-{sid}-*-surface-selected.json'):
+            for src in glob.glob(os.path.join(tmp_dir, f'brain-{sid}-*-surface-selected.json')):
                 try:
                     name = os.path.basename(src).replace(
                         f'brain-{sid}-', f'surface_{sid[:8]}_')
@@ -373,7 +378,7 @@ class EvalArtifactsDumper:
                 except Exception:
                     errors += 1
             # Judge results — agentic surface tool-trace + final selection
-            for src in glob.glob(f'/tmp/brain-judge-result-{sid}*.json'):
+            for src in glob.glob(os.path.join(tmp_dir, f'brain-judge-result-{sid}*.json')):
                 try:
                     name = os.path.basename(src).replace(
                         f'brain-judge-result-{sid}', f'judge_{sid[:8]}')

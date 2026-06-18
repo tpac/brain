@@ -492,9 +492,12 @@ def _collect_prompt_snapshots(session_id: str, counters: List[int]) -> List[Dict
     # Use FULL session_id — 16-char truncation collided between jobs whose
     # session_ids shared a common prefix (e.g. smoke-conv_001_architecture-*).
     sess_safe = (session_id or 'nosession').replace('/', '_').replace(' ', '_')
+    # BRAIN_TMP_DIR env protocol — must match the WRITER
+    # (servers.daemon_config.brain_tmp_dir(); default /tmp).
+    tmp_dir = os.environ.get('BRAIN_TMP_DIR', '/tmp')
     out = []
     for c in counters:
-        path = f"/tmp/brain-encoding-prompt-{sess_safe}-{c}.json"
+        path = os.path.join(tmp_dir, f"brain-encoding-prompt-{sess_safe}-{c}.json")
         try:
             data = json.loads(Path(path).read_text(encoding="utf-8"))
         except Exception as e:

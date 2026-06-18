@@ -68,6 +68,7 @@ def _capture_one(brain, ctx, spec):
     from servers.scales.s1.surface import run_surface
     from servers.pipeline_contract import CANDIDATES_FILE
     from servers.scales.s1.surface_contract import select_edges
+    from servers.daemon_config import brain_tmp_dir
     import numpy as np
 
     qid = spec["id"]
@@ -145,9 +146,11 @@ def _capture_one(brain, ctx, spec):
     surface_ms = (time.time() - t1) * 1000
 
     # Read back what surface saved (selected_ids file). The path encodes
-    # session + stop_counter — both written by run_surface.
-    selected_path = "/tmp/brain-%s-%d-surface-selected.json" % (
-        ctx.session_id, ctx.stop_counter)
+    # session + stop_counter — both written by run_surface. Honor BRAIN_TMP_DIR
+    # via brain_tmp_dir() so the readback matches the WRITER under an isolated
+    # eval run (concurrent runs don't collide on /tmp).
+    selected_path = os.path.join(brain_tmp_dir(), "brain-%s-%d-surface-selected.json" % (
+        ctx.session_id, ctx.stop_counter))
     selected_ids = []
     if os.path.exists(selected_path):
         try:

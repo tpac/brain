@@ -346,7 +346,10 @@ def main():
 
     # Load transcripts — pick diverse sizes, skip huge ones (>100K chars)
     import glob
-    all_files = glob.glob('/tmp/brain-encoding-prompt-*.json')
+    # BRAIN_TMP_DIR env protocol — must match the WRITER
+    # (servers.daemon_config.brain_tmp_dir(); default /tmp).
+    tmp_dir = os.environ.get('BRAIN_TMP_DIR', '/tmp')
+    all_files = glob.glob(os.path.join(tmp_dir, 'brain-encoding-prompt-*.json'))
     sized_files = []
     for f in all_files:
         with open(f) as fh:
@@ -363,7 +366,7 @@ def main():
         prompt_files = [f for f, _ in sized_files[:args.transcripts]]
 
     if not prompt_files:
-        print("ERROR: No encoding prompt files found in /tmp/")
+        print("ERROR: No encoding prompt files found in %s" % tmp_dir)
         sys.exit(1)
 
     print("=" * 110)

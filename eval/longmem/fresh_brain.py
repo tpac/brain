@@ -64,6 +64,14 @@ def create_fresh_eval_brain(path: str = EVAL_BRAIN_DIR, wipe: bool = True):
         os.makedirs(path, exist_ok=True)
 
     os.environ["BRAIN_DB_DIR"] = path
+    # Route brain's ephemeral /tmp files (encoding-prompt, surface-selected,
+    # judge-result, recall-candidates) into this per-item brain dir so two
+    # concurrent eval runs don't collide on fixed /tmp filenames and cross-copy
+    # each other's per-call dumps. Mirrors tests/isolated_brain.py; the eval
+    # artifact readers honor the same BRAIN_TMP_DIR env protocol. Set alongside
+    # BRAIN_DB_DIR (and left set on the eval process, same as it) — every
+    # brain-building harness funnels through here, so this is the single seam.
+    os.environ["BRAIN_TMP_DIR"] = path
     db_path = os.path.join(path, "brain.db")
 
     import sys

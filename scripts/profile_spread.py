@@ -36,11 +36,14 @@ if ROOT not in sys.path:
 
 from servers.scales.dispatch import load_env  # noqa: E402
 load_env()
+from servers.daemon_config import brain_tmp_dir  # noqa: E402
 
 
 def _latest_surface_selected_seeds() -> list[str]:
     """Most recent surface-selected file → list of full node IDs."""
-    paths = glob.glob('/tmp/brain-*-surface-selected.json')
+    # Honor BRAIN_TMP_DIR via brain_tmp_dir() so we read where the daemon WROTE
+    # (matches the WRITER; default /tmp).
+    paths = glob.glob(os.path.join(brain_tmp_dir(), 'brain-*-surface-selected.json'))
     if not paths:
         return []
     paths.sort(key=os.path.getmtime, reverse=True)
