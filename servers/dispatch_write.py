@@ -288,26 +288,51 @@ def _affected(created=None, revised=None, archived=None):
 def _emit_edge_traces(brain, made, encoding_source,
                       chain_id_override='', session_id='',
                       reason='connect_to'):
-    """Emit one directional edge_relation_revised trace per made edge.
+    """Emit directional edge_relation_revised traces for a list of made edges.
 
     `made` entries are self-contained {src_id, target_id, relation, edge_id,
     deltas} produced by brain._apply_connect_to (connect_to) and remember()'s
     co_anchored path. This is the single seam where remember()-internal edges
-    join the same edge-trace writer the explicit connect ops use — closing the
-    gap where those edges emitted nothing. Each _emit_edge_revise_trace call is
-    failure-isolated, so one bad entry never stops the rest or the write.
+    join the same edge-trace substrate the explicit connect ops use — closing
+    the gap where those edges emitted nothing.
+
+    ONE append_batch (single commit on the logs DB) for the whole list instead
+    of N per-edge appends — scale/chain are loop-invariant here, so they're
+    resolved once. Failure-isolated as a unit: a logs-side error logs loudly
+    and returns; it never raises into / rolls back the graph write that
+    produced these edges (the write already committed by the time we emit).
+    Edges with empty deltas (idempotent re-connect — no change) are skipped:
+    nothing to record, by design.
     """
-    for e in made or []:
-        if not isinstance(e, dict) or not e.get('edge_id'):
-            continue
-        _emit_edge_revise_trace(
-            brain, e['edge_id'], e.get('relation', ''),
-            reason, encoding_source,
-            e.get('deltas', []),
-            chain_id_override=chain_id_override,
-            session_id=session_id,
-            source_id=e.get('src_id', ''),
-            target_id=e.get('target_id', ''))
+    rows = [e for e in (made or [])
+            if isinstance(e, dict) and e.get('edge_id') and (e.get('deltas') or [])]
+    if not rows:
+        return
+    try:
+        from .trace_contract import build_edge_revise_metadata
+        scale, chain_id = _infer_scale_and_chain(
+            brain, encoding_source, chain_id_override)
+        events = []
+        for e in rows:
+            deltas = e.get('deltas') or []
+            relation = e.get('relation', '')
+            events.append({
+                'chain_id': chain_id, 'scale': scale, 'event_type': 'delta',
+                'ref_type': 'edge_relation_revised',
+                'ref_id': '%s:%s' % (e['edge_id'], relation),
+                'summary': '%d field(s): %s' % (
+                    len(deltas), ', '.join(d['field'] for d in deltas)),
+                'metadata': build_edge_revise_metadata(
+                    edge_id=e['edge_id'], relation=relation, reason=reason,
+                    encoding_source=encoding_source,
+                    source_id=e.get('src_id', ''), target_id=e.get('target_id', ''),
+                    deltas=deltas),
+                'session_id': session_id,
+            })
+        brain._trace_dal.append_batch(events)
+    except Exception as ex:
+        brain._log_error('edge_traces_emit', ex,
+                         'failed to batch-emit %d edge traces' % len(rows))
 
 
 def _resolve_archived_by(op_spec, top_encoding_source):
@@ -325,6 +350,10 @@ def _handle_remember(brain, args, graph_changes):
     # it doesn't land in node_metadata_kv as silent metadata. Loads ctx for
     # per-session record_remember + add_to_segment routing inside remember().
     ctx, args = _pop_session_ctx(brain, args)
+    # chain_id is likewise a control field (trace grouping, NOT a node field).
+    # remember() routes unknown kwargs to node_metadata_kv, so an un-popped
+    # chain_id would leak onto the node — pop it here, use it only for traces.
+    chain_id = args.pop('chain_id', '') if isinstance(args, dict) else ''
 
     # v29 / Phase B Step 4 — validate source_refs shape at the write boundary.
     refs = args.get('source_refs')
@@ -369,19 +398,18 @@ def _handle_remember(brain, args, graph_changes):
     # made-lists are already src-tagged + carry edge_id/deltas (connect_to via
     # _apply_connect_to, co_anchored via remember()), so no re-deriving here.
     enc_src = args.get('encoding_source', '')
-    chain = args.get('chain_id', '')
     sess = caller_session(args)
     ctr = result.get('connect_to_result') if isinstance(result, dict) else None
     if ctr and ctr.get('created'):
         _emit_edge_traces(brain, ctr['created'], enc_src,
-                          chain_id_override=chain, session_id=sess,
+                          chain_id_override=chain_id, session_id=sess,
                           reason='connect_to')
     # pop: co_anchored is an automatic internal edge, not agent-facing like
     # connect_to_result — consume it for tracing, keep it out of the payload.
     co_anchored = result.pop('co_anchored_made', None) if isinstance(result, dict) else None
     if co_anchored:
         _emit_edge_traces(brain, co_anchored, enc_src,
-                          chain_id_override=chain, session_id=sess,
+                          chain_id_override=chain_id, session_id=sess,
                           reason='co_anchored (shared episodic anchor)')
     return {"ok": True, "result": result,
             "affected": _affected(created=[full_id] if full_id else None)}
@@ -713,6 +741,12 @@ def _handle_brain_batch(brain, args, graph_changes):
     # accidentally scoped by the ambient identity. Sub-handlers read it via
     # caller_session(); remember additionally pops it through _pop_session_ctx.
     top_session_id = caller_session(args)
+    # The batch's trace chain — injected into each sub-op so node_revised /
+    # edge_relation_revised / co_anchored traces join the encoder's chain
+    # instead of scattering to a date-fallback chain. Sub-handlers treat
+    # chain_id as control (revise via DISPATCH_KEYS, remember pops it, connect
+    # passes explicit kwargs) so it never leaks onto a node.
+    top_chain_id = args.get('chain_id', '')
     results = []
 
     # Sibling-aware connect_to: defer per-op connect_to from `remember` ops
@@ -825,6 +859,8 @@ def _handle_brain_batch(brain, args, graph_changes):
                         op_args["encoding_source"] = top_encoding_source
                     if top_session_id and CALLER_SESSION_KEY not in op_args:
                         op_args[CALLER_SESSION_KEY] = top_session_id
+                    if top_chain_id and "chain_id" not in op_args:
+                        op_args["chain_id"] = top_chain_id
                     # Same fix as remember_batch: disable inner remember()'s
                     # conversation-context auto_connect inside batches so it
                     # doesn't create reverse-direction co_accessed edges between
@@ -850,6 +886,8 @@ def _handle_brain_batch(brain, args, graph_changes):
                         op_args["encoding_source"] = top_encoding_source
                     if top_session_id and CALLER_SESSION_KEY not in op_args:
                         op_args[CALLER_SESSION_KEY] = top_session_id
+                    if top_chain_id and "chain_id" not in op_args:
+                        op_args["chain_id"] = top_chain_id
                     r = _handle_revise(brain, op_args, graph_changes)
                     _accumulate(r.pop("affected", None))
                     results.append({"op": "revise", "index": i, **r})
@@ -860,6 +898,8 @@ def _handle_brain_batch(brain, args, graph_changes):
                         op_args["encoding_source"] = top_encoding_source
                     if top_session_id and CALLER_SESSION_KEY not in op_args:
                         op_args[CALLER_SESSION_KEY] = top_session_id
+                    if top_chain_id and "chain_id" not in op_args:
+                        op_args["chain_id"] = top_chain_id
                     r = _handle_connect(brain, op_args, graph_changes)
                     _accumulate(r.pop("affected", None))
                     results.append({"op": "connect", "index": i, **r})

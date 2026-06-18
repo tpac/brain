@@ -480,6 +480,36 @@ class TestBrainBatchAffectedAndEdgeTraces(BrainTestBase):
         # And it must NOT leak co_anchored_made into the agent-facing payload.
         self.assertNotIn('co_anchored_made', b['result'])
 
+    def test_batch_subop_traces_join_chain_and_chain_id_not_leaked(self):
+        """A brain_batch sub-op's edge traces join the batch's chain_id (not a
+        date-fallback chain), AND chain_id — a control field — must not leak
+        onto the created node's metadata."""
+        ref = 'bbbbbbbb'
+        self.brain.remember(type='fact', title='Chain anchor', content='pre',
+                            source_refs=[ref])  # so the batch node co_anchors to it
+        chain = 's1e-testchain-7'
+        r = _dispatch(self.brain, 'brain_batch', {
+            'chain_id': chain,
+            'operations': [
+                {'op': 'remember', 'type': 'fact', 'title': 'Chain B',
+                 'content': 'b', 'source_refs': [ref]},
+            ]})
+        self.assertTrue(r['ok'], r)
+        nid = r['result']['results'][0]['result']['id']
+        # (a) chain_id must NOT have leaked into node metadata.
+        kv = self.brain._meta_kv.get_all_bulk([nid]).get(nid, {})
+        self.assertNotIn('chain_id', kv,
+                         "chain_id is a control field — must not land on the node")
+        # (b) the co_anchored edge trace joined the batch chain (not date-fallback).
+        rows = self.brain.logs_conn.execute(
+            "SELECT chain_id FROM trace_events "
+            "WHERE ref_type='edge_relation_revised' AND metadata LIKE ?",
+            ('%' + nid + '%',)).fetchall()
+        self.assertTrue(rows, "expected an edge trace for the co_anchored edge")
+        self.assertTrue(all(row[0] == chain for row in rows),
+                        "batch sub-op edge traces must join the batch chain_id, got %s"
+                        % [row[0] for row in rows])
+
 
 if __name__ == '__main__':
     unittest.main()
