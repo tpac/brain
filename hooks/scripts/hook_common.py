@@ -214,12 +214,24 @@ def mark_hook_errors_surfaced(error_ids):
 
 
 def get_hook_input():
-    """Parse HOOK_INPUT from environment (set by bash shim)."""
+    """Parse HOOK_INPUT from environment (set by bash shim).
+
+    Backfills `session_id` from CLAUDE_CODE_SESSION_ID (the env var Claude Code
+    exports in every hook process) when the payload omits it. Some events —
+    notably WorktreeCreate — don't carry session_id in their JSON, and the daemon
+    is a separate launchd process that can't read the hook's env; without this the
+    daemon would fall back to the last-writer-wins singleton and mis-attribute
+    per-session state to the wrong stream."""
     try:
-        return json.loads(os.environ.get("HOOK_INPUT", "{}"))
+        data = json.loads(os.environ.get("HOOK_INPUT", "{}"))
     except Exception as e:
         log_hook_error(_get_hook_name(), e, "Failed to parse HOOK_INPUT", level="warning")
         return {}
+    if isinstance(data, dict) and not data.get("session_id"):
+        env_sid = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+        if env_sid:
+            data["session_id"] = env_sid
+    return data
 
 
 def daemon_unavailable_error(hook_name=None):

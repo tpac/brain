@@ -97,7 +97,7 @@ class TestSessionContextPersistence:
         with pytest.raises(SessionContextCorrupt):
             SessionContext.load(self.brain.logs_conn, 'corrupt-sess')
         # the brain caller catches the signal and degrades gracefully (no crash)
-        assert self.brain.session_env_for('corrupt-sess') == {'cwd': '', 'branch': ''}
+        assert self.brain.session_env_for('corrupt-sess') == {'cwd': '', 'branch': '', 'worktree': ''}
 
     def test_save_updates_existing(self):
         from servers.session_context import SessionContext
@@ -111,16 +111,33 @@ class TestSessionContextPersistence:
         assert loaded.stop_counter == 15
 
     def test_save_and_load_cwd_branch(self):
-        # cwd/branch are session identity (fed from the boot hook) — they must
-        # round-trip through the JSON blob like the other fields.
+        # cwd/branch/worktree are session identity (fed from the boot hook) — they
+        # must round-trip through the JSON blob like the other fields.
         from servers.session_context import SessionContext
         ctx = SessionContext(session_id='env-test')
         ctx.cwd = '/work/tree/x'
         ctx.branch = 'claude/x'
+        ctx.worktree = 'emb-bench'
         ctx.save(self.brain.logs_conn)
         loaded = SessionContext.load(self.brain.logs_conn, 'env-test')
         assert loaded.cwd == '/work/tree/x'
         assert loaded.branch == 'claude/x'
+        assert loaded.worktree == 'emb-bench'
+
+    def test_set_env_mutator(self):
+        # set_env is the single per-session env stamper. cwd/branch refresh only on
+        # a non-empty value; worktree uses a None sentinel so '' can CLEAR it
+        # (WorktreeRemove) distinct from "leave unchanged".
+        from servers.session_context import SessionContext
+        ctx = SessionContext(session_id='setenv-test')
+        ctx.set_env(cwd='/a', branch='b', worktree='wt')
+        assert (ctx.cwd, ctx.branch, ctx.worktree) == ('/a', 'b', 'wt')
+        ctx.set_env(cwd='', branch='')               # empty → leave cwd/branch
+        assert (ctx.cwd, ctx.branch) == ('/a', 'b')
+        ctx.set_env(cwd='/c')                          # worktree None → unchanged
+        assert ctx.worktree == 'wt'
+        ctx.set_env(worktree='')                       # '' → explicit clear
+        assert ctx.worktree == ''
 
     def test_reset_session_activity_stamps_cwd(self):
         # boot feeds cwd → a NEW session's reset stamps cwd + derived branch.
@@ -130,6 +147,66 @@ class TestSessionContextPersistence:
         after = SessionContext.load(self.brain.logs_conn, 'env-sess')
         assert after.cwd == '/work/tree/y'          # stamped from the boot feed
         assert after.branch                          # derived (real branch or 'unknown')
+
+    def test_worktree_from_gitdir_marker(self):
+        # Unit-test the git-dir parser against the loose-marker edge cases — a repo
+        # whose OWN path contains a 'worktrees' segment. Anchored on
+        # '.git/worktrees/' + last-occurrence split, so neither a main tree nor a
+        # linked tree under such a path mis-resolves. (A bare '/worktrees/' marker
+        # mis-parsed both — the bug this test pins.)
+        from servers.brain import Brain
+        f = Brain._worktree_from_gitdir
+        assert f('.git') == ''                                             # main, relative
+        assert f('/Users/t/brain/.git') == ''                             # main, absolute (subdir)
+        assert f('/Users/t/brain/.git/worktrees/emb-bench') == 'emb-bench'  # linked
+        assert f('/x/worktrees/repo/.git') == ''                          # main UNDER worktrees/
+        assert f('/x/worktrees/repo/.git/worktrees/wt1') == 'wt1'          # linked UNDER worktrees/
+
+    def test_detect_git_env_and_stamp_worktree_real(self):
+        # Real verification of boot-time derivation: build a temp repo + linked
+        # worktree, confirm detect_git_env returns (branch, worktree) — '' worktree
+        # for the main tree, the NAME for the linked checkout, and (‘unknown’, None)
+        # on git failure (None lets set_env KEEP a known worktree on a flaky
+        # resume) — then that reset_session_activity stamps it onto the session.
+        import shutil, subprocess, tempfile, os
+        if not shutil.which('git'):
+            pytest.skip('git not available')
+        root = tempfile.mkdtemp()
+        try:
+            repo = os.path.join(root, 'repo')
+            os.makedirs(repo)
+            def git(*a):
+                subprocess.run(['git', '-C', repo, *a], check=True,
+                               capture_output=True, text=True)
+            git('init', '-q')
+            git('config', 'user.email', 't@t')
+            git('config', 'user.name', 't')
+            git('commit', '--allow-empty', '-m', 'init', '-q')
+            wt = os.path.join(root, 'wt-emb-bench')
+            git('worktree', 'add', '-q', '-b', 'feature', wt)
+
+            assert self.brain.detect_git_env(repo)[1] == ''             # main tree → ''
+            assert self.brain.detect_git_env(wt)[1] == 'wt-emb-bench'   # linked → name
+            assert self.brain.detect_git_env('/no/such/dir') == ('unknown', None)  # failed → keep
+
+            self.brain.reset_session_activity(session_id='wt-sess', cwd=wt)
+            assert self.brain.session_env_for('wt-sess')['worktree'] == 'wt-emb-bench'
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_resume_git_failure_preserves_worktree(self):
+        # REGRESSION: a re-boot whose git probe fails must NOT wipe a worktree the
+        # session already had. detect_git_env returns worktree=None on failure, and
+        # set_env's None-sentinel leaves the field unchanged.
+        from servers.session_context import SessionContext
+        ctx = SessionContext(session_id='wt-resume')
+        ctx.boot_time = self.brain.now()       # mark booted → next reset is a RESUME
+        ctx.worktree = 'feature-x'
+        ctx.save(self.brain.logs_conn)
+        self.brain._session_contexts['wt-resume'] = ctx
+        # cwd that git can't resolve → detect_git_env → (‘unknown’, None)
+        self.brain.reset_session_activity(session_id='wt-resume', cwd='/no/such/dir')
+        assert self.brain.session_env_for('wt-resume')['worktree'] == 'feature-x'
 
     def test_reset_session_activity_resume_preserves_state(self):
         # REGRESSION: a re-boot of an already-booted session is a RESUME — it must

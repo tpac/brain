@@ -610,35 +610,77 @@ class Brain(
             return ''
         return self.get_config('session_context_' + session_id, '') or ''
 
-    def detect_git_branch(self, cwd: str) -> str:
-        """Current git branch for a worktree path. Environment-NEUTRAL — the
-        daemon is fed `cwd` from the boot hook and runs git on it; it does not
-        assume a Claude context. Single source for branch detection (boot
-        session-env stamp + the WorktreeCreate hook). 'unknown' on any failure."""
+    def _run_git(self, cwd: str, *args: str):
+        """Run `git -C cwd <args>`; return stripped stdout, or None on any failure
+        (no cwd, non-zero exit, timeout, exception). Single source for the daemon's
+        env-NEUTRAL git shelling — branch + worktree detection both route through
+        it, so timeout / error-logging / hardening live in one place."""
         if not cwd:
-            return 'unknown'
+            return None
         try:
             import subprocess
             r = subprocess.run(
-                ["git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"],
+                ["git", "-C", cwd, *args],
                 capture_output=True, text=True, timeout=5)
             if r.returncode == 0:
-                return r.stdout.strip() or 'unknown'
+                return r.stdout.strip()
         except Exception as e:
             try:
-                self._log_error('git_branch_detect', e, 'detect_git_branch')
+                self._log_error('git_run', e, 'git ' + ' '.join(args))
             except Exception:
                 pass
-        return 'unknown'
+        return None
+
+    @staticmethod
+    def _worktree_from_gitdir(gitdir: str) -> str:
+        """Linked-worktree name from a git-dir string, or '' for the main tree.
+
+        A linked worktree's git-dir ends '<repo>/.git/worktrees/<name>'; the main
+        tree's is plain '.git' (or an absolute '<repo>/.git' from a subdir).
+        Anchored on '.git/worktrees/' (NOT a bare '/worktrees/') and split on the
+        LAST occurrence, so a repo whose own path contains a 'worktrees' segment
+        can't false-match — neither a main tree at '/x/worktrees/repo/.git' nor a
+        linked tree under it."""
+        marker = ".git/worktrees/"
+        if marker not in gitdir:
+            return ''
+        return gitdir.split(marker)[-1].split("/", 1)[0].strip()
+
+    def detect_git_branch(self, cwd: str) -> str:
+        """Current git branch for a path. Env-NEUTRAL — fed `cwd`, runs git on it.
+        'unknown' on any failure. Used standalone by the WorktreeCreate hook; boot
+        uses detect_git_env (one call covers branch + worktree)."""
+        return self._run_git(cwd, "rev-parse", "--abbrev-ref", "HEAD") or 'unknown'
+
+    def detect_git_env(self, cwd: str):
+        """Branch + worktree from ONE git call — the boot path's combined probe
+        (one fork+exec per SessionStart instead of two). Returns (branch, worktree):
+
+          - git failed / not a repo → ('unknown', None). worktree=None is the
+            'detection failed — keep what we have' signal: set_env leaves the field
+            unchanged, so a transient git hiccup on resume can't wipe a known
+            worktree. (branch keeps its long-standing 'unknown' on failure.)
+          - main working tree        → (branch, '')    ('' clears a stale worktree)
+          - linked worktree          → (branch, name)
+
+        `git rev-parse --abbrev-ref HEAD --git-dir` prints branch on line 1,
+        git-dir on line 2."""
+        out = self._run_git(cwd, "rev-parse", "--abbrev-ref", "HEAD", "--git-dir")
+        if out is None:
+            return ('unknown', None)
+        lines = out.splitlines()
+        branch = (lines[0].strip() if lines else '') or 'unknown'
+        gitdir = lines[1].strip() if len(lines) > 1 else ''
+        return (branch, self._worktree_from_gitdir(gitdir))
 
     def session_env_for(self, session_id: str) -> dict:
-        """Per-session env (cwd, branch) for a stream — fed in at boot from the
-        Claude side, surfaced in peek so streams identify where each other work.
-        Reads the live cached SessionContext if present, else the persisted row.
-        Empty strings when unknown. Mirrors session_context_for's per-session
+        """Per-session env (cwd, branch, worktree) for a stream — fed in at boot
+        from the Claude side, surfaced in peek so streams identify where each other
+        work. Reads the live cached SessionContext if present, else the persisted
+        row. Empty strings when unknown. Mirrors session_context_for's per-session
         pattern (no global key — parallel sessions don't clobber)."""
         if not session_id:
-            return {'cwd': '', 'branch': ''}
+            return {'cwd': '', 'branch': '', 'worktree': ''}
         ctx = self._session_contexts.get(session_id)
         if ctx is None:
             from .session_context import SessionContext, SessionContextCorrupt
@@ -649,8 +691,8 @@ class Brain(
                                 'session_env_for session=%s' % (session_id or '')[:8])
                 ctx = None
         if ctx is None:
-            return {'cwd': '', 'branch': ''}
-        return {'cwd': ctx.cwd, 'branch': ctx.branch}
+            return {'cwd': '', 'branch': '', 'worktree': ''}
+        return {'cwd': ctx.cwd, 'branch': ctx.branch, 'worktree': ctx.worktree}
 
     def get_recent_encoding_journal(self, session_id: str, max_chars: int = 1500) -> str:
         """Read the most recent portion of the encoder's per-session journal.
@@ -940,9 +982,10 @@ class Brain(
         sid = session_id or uuid.uuid4().hex
         self._cached_session_id = sid
         from .session_context import SessionContext, SessionContextCorrupt
-        # Derive branch BEFORE the lock — detect_git_branch may shell out to git,
-        # and we don't want to hold write_lock across a subprocess.
-        branch = self.detect_git_branch(cwd) if cwd else ''
+        # Derive branch + worktree in ONE git call BEFORE the lock (don't hold
+        # write_lock across a subprocess). detect_git_env returns worktree=None on
+        # git failure, so a transient hiccup on resume can't wipe a known worktree.
+        branch, worktree = self.detect_git_env(cwd) if cwd else ('', None)
         # The whole read-decide-write must be atomic under write_lock — same
         # double-checked-locking discipline as get_or_create_session. Doing the
         # resume read outside the lock lets two concurrent boots of the SAME
@@ -971,11 +1014,11 @@ class Brain(
                 # embeddings/ids are the SessionContext defaults).
                 ctx = SessionContext(session_id=sid)
             ctx.boot_time = self.now()
-            # cwd/branch are session IDENTITY (where this stream works), fed in
-            # from the boot hook. Surfaced via session_env_for / peek.
+            # cwd/branch/worktree are session IDENTITY (where this stream works),
+            # fed in from the boot hook and stamped through the session object's
+            # single env mutator. Surfaced via session_env_for / peek.
             if cwd:
-                ctx.cwd = cwd
-                ctx.branch = branch
+                ctx.set_env(cwd=cwd, branch=branch, worktree=worktree)
             # XXX deprecated singleton fallback for un-threaded callers (see
             # brain.session_id property + _log_error/_log_warning). C-refactor
             # threads session_id through every call site and drops this write.

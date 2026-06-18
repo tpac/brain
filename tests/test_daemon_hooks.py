@@ -14,7 +14,10 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from tests.brain_test_base import BrainTestBase
-from servers.daemon_hooks import hook_recall, post_response_common
+from servers.daemon_hooks import (
+    hook_recall, post_response_common,
+    hook_worktree_context, hook_worktree_cleanup,
+)
 
 
 # Realistic output matching format_surface_output_activation() in surface_contract.py
@@ -345,6 +348,51 @@ class TestEncodingGate(BrainTestBase):
         with self._patched_rib():
             self.assertIn('encoding started', self._fire_stop('busy-B'))
             self.assertEqual([s['session_id'] for s in self.spawned], ['busy-B'])
+
+
+class TestWorktreeHooks(BrainTestBase):
+    """WorktreeCreate/Remove write the per-session worktree identity and NEVER
+    emit context on stdout. Claude Code consumes a WorktreeCreate hook's stdout
+    as the new worktree path, so the `[BRAIN] GIT CONTEXT` block that used to
+    print here got chdir'd into → the `ENOENT chdir '<repo>' -> '[/BRAIN]'`."""
+
+    needs_embedder = False
+
+    def test_worktree_create_stamps_session_and_emits_no_output(self):
+        sid = 'wt-create-sess'
+        self.brain.reset_session_activity(session_id=sid, cwd='/tmp')  # boot first
+        result = hook_worktree_context(
+            self.brain,
+            {"session_id": sid, "name": "emb-bench", "cwd": "/tmp"}, [])
+        # NO stdout leak — empty output, no [BRAIN] marker for CC to chdir into.
+        self.assertEqual(result["output"], "")
+        # Recorded on the SESSION OBJECT, not the old global config key.
+        self.assertEqual(self.brain.session_env_for(sid)["worktree"], "emb-bench")
+        self.assertEqual(self.brain.get_config("current_worktree", "SENTINEL"), "SENTINEL")
+        # Persisted immediately (not just cached): a fresh load from logs_conn sees it.
+        from servers.session_context import SessionContext
+        reloaded = SessionContext.load(self.brain.logs_conn, sid)
+        self.assertEqual(reloaded.worktree, "emb-bench")
+
+    def test_worktree_remove_clears_session_worktree(self):
+        sid = 'wt-remove-sess'
+        self.brain.reset_session_activity(session_id=sid, cwd='/tmp')
+        hook_worktree_context(self.brain, {"session_id": sid, "name": "emb-bench", "cwd": "/tmp"}, [])
+        self.assertEqual(self.brain.session_env_for(sid)["worktree"], "emb-bench")
+        result = hook_worktree_cleanup(self.brain, {"session_id": sid}, [])
+        self.assertEqual(result["output"], "")
+        self.assertEqual(self.brain.session_env_for(sid)["worktree"], "")
+
+    def test_worktree_create_without_session_id_is_safe(self):
+        # No session_id → must NOT touch any session: never fall back to the
+        # singleton (which would mis-attribute the worktree to another stream) and
+        # never create a phantom row. Asserts the invariant, not just output==''.
+        from unittest.mock import patch
+        with patch.object(self.brain, 'get_or_create_session',
+                          wraps=self.brain.get_or_create_session) as m:
+            result = hook_worktree_context(self.brain, {"name": "x", "cwd": "/tmp"}, [])
+        self.assertEqual(result["output"], "")
+        m.assert_not_called()
 
 
 if __name__ == '__main__':

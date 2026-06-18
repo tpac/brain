@@ -1,4 +1,4 @@
-"""WorktreeRemove — clears worktree context from brain config.
+"""WorktreeRemove — clears the per-session worktree identity in brain.
 Thin client: sends hook_worktree_cleanup to daemon, falls back to direct Python.
 """
 import sys, os

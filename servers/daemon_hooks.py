@@ -1251,44 +1251,54 @@ def hook_post_bash_host_check(brain, args, graph_changes):
 
 
 def hook_worktree_context(brain, args, graph_changes):
-    """WorktreeCreate — tracks git branch/worktree info in brain."""
-    worktree_name = args.get("name", "unknown")
+    """WorktreeCreate — stamps the per-session worktree/branch identity.
+
+    MUST NOT write to stdout: Claude Code consumes a WorktreeCreate hook's STDOUT
+    as the new worktree path. A previous version printed a `[BRAIN] GIT CONTEXT`
+    block here, so CC tried to chdir into the trailing `[/BRAIN]` marker → the
+    `ENOENT chdir '<repo>' -> '[/BRAIN]'` failure. Output stays empty; the context
+    is recorded on the session object only.
+    """
+    session_id = args.get("session_id", "")
+    worktree_name = args.get("name", "")
     cwd = args.get("cwd", "")
 
     # Detect git branch from cwd — single source (also used by the per-session
     # boot env stamp); env-neutral, 'unknown' on any failure.
     branch = brain.detect_git_branch(cwd)
 
-    # current_worktree is still read (hook_worktree_cleanup). current_branch /
-    # current_cwd were write-only dead config — no reader anywhere — so they're
-    # dropped; per-session cwd/branch (SessionContext, surfaced in peek) is the
-    # live source now.
-    brain.set_config("current_worktree", worktree_name)
+    # Per-session identity — replaces the global current_worktree config, which was
+    # last-writer-wins across parallel streams. session_id is backfilled from
+    # CLAUDE_CODE_SESSION_ID by get_hook_input, so it's reliably present; the guard
+    # stays defensive — never fall back to the singleton. Persist immediately under
+    # write_lock (reentrant): set_env only mutates memory, and logs_conn writes
+    # must be serialized (see get_or_create_session).
+    if session_id:
+        with brain.write_lock:
+            ctx = brain.get_or_create_session(session_id)
+            ctx.set_env(cwd=cwd, branch=branch, worktree=worktree_name)
+            ctx.save(brain.logs_conn)
 
     try:
         brain.scan_host_environment()
     except Exception as e:
         brain._log_error('scan_host_environment', e, 'hook_worktree_context')
 
-    graph_changes.append("WORKTREE: created %s (branch: %s)" % (worktree_name, branch))
-
-    output_lines = [
-        "[BRAIN] GIT CONTEXT:",
-        "  Worktree: " + worktree_name,
-        "  Branch: " + branch,
-        "  CWD: " + cwd,
-        "[/BRAIN]",
-    ]
-
+    graph_changes.append("WORKTREE: created %s (branch: %s)" % (worktree_name or '(unnamed)', branch))
     brain.save()
-    return {"output": "\n".join(output_lines)}
+    return {"output": ""}
 
 
 def hook_worktree_cleanup(brain, args, graph_changes):
-    """WorktreeRemove — clears worktree context from brain config."""
-    old_worktree = brain.get_config("current_worktree", "")
-    brain.set_config("current_worktree", "")
+    """WorktreeRemove — clears the per-session worktree identity."""
+    session_id = args.get("session_id", "")
+    old_worktree = ""
+    if session_id:
+        with brain.write_lock:
+            ctx = brain.get_or_create_session(session_id)
+            old_worktree = ctx.worktree
+            ctx.set_env(worktree="")
+            ctx.save(brain.logs_conn)
     if old_worktree:
         graph_changes.append("WORKTREE: removed %s" % old_worktree)
-    brain.save()
     return {"output": ""}

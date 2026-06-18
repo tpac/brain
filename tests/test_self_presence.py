@@ -63,6 +63,22 @@ class TestSelfPresence(BrainTestBase):
         # the rendered line reflects exactly the streams returned
         self.assertIn('streams of thought live: %d' % len(out['streams']), out['line'])
 
+    def test_build_presence_rich_carries_worktree(self):
+        # rich=True roster must forward the per-session worktree — the "where is
+        # each stream working" surface. peek exposes it; the rich projection (which
+        # re-copies peek's fields) must too, or the field ships invisible.
+        from servers.session_context import SessionContext
+        self._save_stream('streamWT00', focus='worktree work')
+        ctx = SessionContext(session_id='streamWT00')
+        ctx.cwd = '/Users/t/brain/.claude/worktrees/emb-bench'
+        ctx.branch = 'emb-bench-eval'
+        ctx.worktree = 'emb-bench'
+        ctx.save(self.brain.logs_conn)
+        out = presence.build_presence(self.brain, my_session_id='other', limit=10, rich=True)
+        entry = next(s for s in out['streams'] if s['session_id'] == 'streamWT00')
+        self.assertEqual(entry['worktree'], 'emb-bench')
+        self.assertEqual(entry['cwd'], '/Users/t/brain/.claude/worktrees/emb-bench')
+
     def test_peek_returns_full_focus(self):
         # peek drills into the full session ARC (session_context_for), a
         # separate source from the roster's trace-derived one-line focus.
@@ -94,20 +110,23 @@ class TestSelfPresence(BrainTestBase):
         self.assertEqual(p['liveness'], 'active')
 
     def test_peek_returns_session_env_cwd_branch(self):
-        # cwd/branch live on the session object (fed from the boot hook) and are
-        # surfaced in peek so streams can tell where each other is working.
+        # cwd/branch/worktree live on the session object (fed from the boot hook)
+        # and are surfaced in peek so streams can tell where each other is working.
         from servers.session_context import SessionContext
         ctx = SessionContext(session_id='streamENV0')
         ctx.cwd = '/Users/tom/brain/.claude/worktrees/foo'
         ctx.branch = 'claude/foo-123'
+        ctx.worktree = 'foo'
         ctx.save(self.brain.logs_conn)
         p = presence.peek(self.brain, 'streamENV0')
         self.assertEqual(p['cwd'], '/Users/tom/brain/.claude/worktrees/foo')
         self.assertEqual(p['branch'], 'claude/foo-123')
+        self.assertEqual(p['worktree'], 'foo')
         # absent ⇒ empty strings, never missing keys (degrades, never half-shaped)
         miss = presence.peek(self.brain, 'no-such-stream')
         self.assertEqual(miss['cwd'], '')
         self.assertEqual(miss['branch'], '')
+        self.assertEqual(miss['worktree'], '')
 
     def test_peek_empty_path_has_all_keys(self):
         # Contract: peek's empty/error path (no stream_id → _empty_peek) must

@@ -81,6 +81,12 @@ class SessionContext:
         # tell where each other is working. Stable for the session's life.
         self.cwd: str = ''
         self.branch: str = ''
+        # The linked worktree this stream works in (CC WorktreeCreate `name`),
+        # or '' for the main working tree. Per-session — replaces the global
+        # `current_worktree` config that was last-writer-wins across parallel
+        # streams (two streams in different worktrees clobbered each other).
+        # Stamped at boot (derived from cwd) and refreshed on WorktreeCreate/Remove.
+        self.worktree: str = ''
         # Segment / conversation-shift state. Were brain_meta keys
         # (`segment_*_{session_id}`); moved here 2026-05-17 because those
         # writes on the hook_recall hot path were saturating brain.db
@@ -206,6 +212,27 @@ class SessionContext:
         """Return this session's activity record for a node, or empty dict."""
         return self.node_activity.get(node_id, {})
 
+    def set_env(self, cwd: str = '', branch: str = '', worktree=None) -> None:
+        """Stamp the Claude-side session env — where this stream is working.
+
+        Single mutator for the per-session identity fed in from the boot hook and
+        the WorktreeCreate/Remove hooks (the daemon never introspects Claude). The
+        per-session replacement for the global cwd/branch/worktree config that was
+        last-writer-wins across parallel streams.
+
+        cwd/branch refresh only on a truthy value — falsy (''/None) leaves the
+        existing value, so a failed detection never clobbers a known one. worktree
+        is three-state: None leaves it unchanged (detection failed — keep what we
+        have), '' CLEARS it (main tree, or WorktreeRemove), a name SETS it. That
+        None-vs-'' distinction is why detect_git_env returns None on git failure.
+        """
+        if cwd:
+            self.cwd = cwd
+        if branch:
+            self.branch = branch
+        if worktree is not None:
+            self.worktree = worktree
+
     def save(self, conn: sqlite3.Connection):
         """Save session context to DB. Creates or updates.
 
@@ -223,6 +250,7 @@ class SessionContext:
             'boot_time': self.boot_time,
             'cwd': self.cwd,
             'branch': self.branch,
+            'worktree': self.worktree,
             'segment_id': self.segment_id,
             'segment_embeddings': self.segment_embeddings,
             'segment_node_ids': self.segment_node_ids,
@@ -255,6 +283,7 @@ class SessionContext:
             ctx.boot_time = data.get('boot_time', '') or ''
             ctx.cwd = data.get('cwd', '') or ''
             ctx.branch = data.get('branch', '') or ''
+            ctx.worktree = data.get('worktree', '') or ''
             ctx.segment_id = int(data.get('segment_id', 0))
             ctx.segment_embeddings = list(data.get('segment_embeddings', []) or [])
             ctx.segment_node_ids = list(data.get('segment_node_ids', []) or [])

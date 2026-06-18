@@ -1,5 +1,11 @@
-"""WorktreeCreate — tracks git branch/worktree info in brain.
+"""WorktreeCreate — records the per-session worktree/branch in brain.
 Thin client: sends hook_worktree_context to daemon, falls back to direct Python.
+
+NEVER print to stdout here. Claude Code consumes a WorktreeCreate hook's STDOUT as
+the new worktree path ("redirect any other output to stderr so it doesn't interfere
+with the path"). A prior version printed the daemon's `[BRAIN]` context block, which
+CC then tried to chdir into → the `ENOENT chdir '<repo>' -> '[/BRAIN]'` failure. The
+daemon records to the session object; this client emits nothing.
 """
 import sys, os
 
@@ -10,11 +16,7 @@ hook_input = get_hook_input()
 
 def main():
     if daemon_available():
-        resp = daemon_call_raw("hook_worktree_context", hook_input, timeout=5.0)
-        if resp.get("ok"):
-            output = resp.get("result", {}).get("output", "")
-            if output:
-                print(output)
+        daemon_call_raw("hook_worktree_context", hook_input, timeout=5.0)
     else:
         daemon_unavailable_error("worktree_context")
 

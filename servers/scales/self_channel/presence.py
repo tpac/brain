@@ -97,6 +97,7 @@ def build_presence(brain, my_session_id='', limit=None, rich=False,
                 entry['recent_msgs'] = pk.get('recent_msgs', [])
                 entry['cwd'] = pk.get('cwd', '')
                 entry['branch'] = pk.get('branch', '')
+                entry['worktree'] = pk.get('worktree', '')
                 entry['session_started_at'] = pk.get('session_started_at', '')
                 entry['pending_inbox_count'] = pk.get('pending_inbox_count', 0)
             live.append(entry)
@@ -108,11 +109,11 @@ def build_presence(brain, my_session_id='', limit=None, rich=False,
 
 def _empty_peek(session_id=''):
     # MUST carry every key the full peek() return does (degrades, never
-    # half-shaped) — including turn_count/cwd/branch — so bracket-access
+    # half-shaped) — including turn_count/cwd/branch/worktree — so bracket-access
     # consumers never KeyError. test_peek_empty_path_has_all_keys locks this.
     return {'session_id': session_id, 'short': session_id[:8] if session_id else '',
             'focus': '', 'recent_msgs': [], 'turn_count': 0,
-            'cwd': '', 'branch': '', 'session_started_at': '',
+            'cwd': '', 'branch': '', 'worktree': '', 'session_started_at': '',
             'last_active_at': '', 'liveness': 'lost', 'pending_inbox_count': 0,
             'found': False}
 
@@ -145,6 +146,7 @@ def peek(brain, session_id, msg_limit=2):
         'turn_count': act.get('turn_count', 0),
         'cwd': env.get('cwd', ''),
         'branch': env.get('branch', ''),
+        'worktree': env.get('worktree', ''),
         'session_started_at': act.get('started_at', '') or '',
         'last_active_at': last_active,
         'liveness': liveness,
