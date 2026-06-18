@@ -377,11 +377,16 @@ class EvalArtifactsDumper:
                     surface_n += 1
                 except Exception:
                     errors += 1
-            # Judge results — agentic surface tool-trace + final selection
-            for src in glob.glob(os.path.join(tmp_dir, f'brain-judge-result-{sid}*.json')):
+            # Judge results — agentic surface tool-trace + final selection.
+            # The WRITER (surface.py) names these from recall_ref =
+            # session_id[:8]-stop (daemon_hooks.py), NOT the full session_id —
+            # so glob on the 8-char prefix to match. A full-sid glob never
+            # matches (sid is ~18 chars: "query-"+uuid.hex[:12]) and silently
+            # captures zero judge dumps.
+            for src in glob.glob(os.path.join(tmp_dir, f'brain-judge-result-{sid[:8]}*.json')):
                 try:
                     name = os.path.basename(src).replace(
-                        f'brain-judge-result-{sid}', f'judge_{sid[:8]}')
+                        f'brain-judge-result-{sid[:8]}', f'judge_{sid[:8]}')
                     shutil.copy2(src, out_dir / name)
                     surface_n += 1
                 except Exception:
