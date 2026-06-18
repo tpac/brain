@@ -250,5 +250,74 @@ class TestBrainConnectionsAreBatchAware(BrainTestBase):
                              "brain.%s.in_batch must default False" % attr)
 
 
+class TestEmbedDrainRespectsBatchEnvelope(BrainTestBase):
+    """The embed_queue temporal phase opens an independent BEGIN IMMEDIATE on
+    brain.conn_bg_writer. While a brain_batch envelope is open on brain.conn,
+    that second connection can't acquire the WAL writer slot and busy-waits the
+    full busy_timeout — a ~30s self-deadlock when the drain runs synchronously
+    on the batch thread (BrainTestBase drains embed_queue after each wrapped
+    write, and brain_batch sub-ops call those wrapped writes). The temporal
+    phase must skip when conn.in_batch is set, exactly as commit_unless_batched
+    gates the vector phase's commit. Regression for the 'endless suite' fix.
+    """
+    needs_embedder = True
+
+    def _spy_bg_writer_begins(self):
+        """Shadow conn_bg_writer.execute with a spy recording BEGIN IMMEDIATE
+        attempts. Returns (begins_list, restore_callable)."""
+        begins = []
+        orig = self.brain.conn_bg_writer.execute
+
+        def _spy(sql, *a, **k):
+            if isinstance(sql, str) and 'BEGIN IMMEDIATE' in sql.upper():
+                begins.append(sql)
+            return orig(sql, *a, **k)
+
+        self.brain.conn_bg_writer.execute = _spy
+        return begins, lambda: self.brain.conn_bg_writer.__dict__.pop(
+            'execute', None)
+
+    def test_temporal_phase_skipped_when_in_batch(self):
+        from servers import embed_queue
+        # remember()'s auto-drain empties the queue; re-arm it so _drain_once
+        # reaches the temporal phase (which only runs with a non-empty batch).
+        nid = self.brain.remember(type='fact', title='envelope probe',
+                                  content='seen on 2024-03-15')['id']
+        embed_queue.enqueue(nid)
+
+        begins, restore = self._spy_bg_writer_begins()
+        self.brain.conn.in_batch = True
+        try:
+            embed_queue._drain_once(self.brain)
+        finally:
+            self.brain.conn.in_batch = False
+            restore()
+
+        self.assertEqual(
+            begins, [],
+            "temporal phase opened BEGIN IMMEDIATE on conn_bg_writer while a "
+            "brain_batch envelope was open — reintroduces the 30s deadlock")
+
+    def test_temporal_phase_runs_when_not_in_batch(self):
+        # Inverse: the guard must not over-fire. Outside a batch the temporal
+        # phase still opens its own envelope (also proves the spy is wired).
+        from servers import embed_queue
+        nid = self.brain.remember(type='fact', title='no-envelope probe',
+                                  content='seen on 2024-03-15')['id']
+        embed_queue.enqueue(nid)
+
+        self.assertFalse(getattr(self.brain.conn, 'in_batch', False))
+        begins, restore = self._spy_bg_writer_begins()
+        try:
+            embed_queue._drain_once(self.brain)
+        finally:
+            restore()
+
+        self.assertTrue(
+            begins,
+            "temporal phase should open its BEGIN IMMEDIATE envelope when no "
+            "brain_batch is active")
+
+
 if __name__ == '__main__':
     unittest.main()
