@@ -6,7 +6,7 @@ This contract defines:
 - How the node catalog is built (build_node_catalog)
 
 Node formatting uses render_rich_node() from servers.contract.
-Interaction: 'encoding_agent' in interactions table. Prompt is learnable.
+Interaction: 's1e' in interactions table. Prompt is learnable.
 """
 
 from servers.contract import render_rich_node

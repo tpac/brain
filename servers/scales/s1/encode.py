@@ -2,7 +2,7 @@
 
 Scale: S1 (Turn integration, every 5th stop)
 Chain: s1e (encode)
-Interaction: 'encoding_agent' in interactions table (learnable boundary)
+Interaction: 's1e' in interactions table (learnable boundary; 'encoding_agent' was the legacy name)
 
 Triggered by: encoding gate in hook_post_response_track (daemon_hooks.py)
 Reads: traces (conversation turns), brain nodes (catalog), interactions table
@@ -74,7 +74,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         return {"skipped": True, "reason": "no messages"}
 
     # 2. Build prompt (from interactions table — learnable boundary)
-    enc_interaction = brain.get_interaction('s1e') or brain.get_interaction('encoding_agent')
+    enc_interaction = brain.get_interaction('s1e')
     enc_instructions = enc_interaction.get('template', '') if enc_interaction else ''
     system_prompt = _build_system_prompt(prompt_instructions=enc_instructions or None)
     user_preamble, user_content, catalog_text, catalog_ids = _build_user_content(
