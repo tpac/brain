@@ -2779,6 +2779,100 @@ class GraphDAL:
         """ % exempt_clause, [ts, archived_by] + exempt)
         return cur.rowcount
 
+    def reconcile_community_membership(self,
+                                       encoding_source='s2:community_repair'):
+        """Restorer: back-fill `community_member` edges for ORPHANED communities.
+
+        A community declares its members in two places that can silently
+        diverge: the `community_members` metadata string AND the actual
+        `community_member` edges. The community encoder (Haiku) sometimes
+        creates the node + metadata but omits the edge field entirely — or
+        used the retired `connections=` param (dropped by remember()'s guard).
+        The node then claims N members with ZERO edges: a structural
+        inconsistency nothing else catches, because the declared list is the
+        only diffable intent (community is the only encoder that records its
+        expected structure as data). See also `archive_dangling_edges` — same
+        per-cycle integrity-restorer pattern.
+
+        Scope is deliberately the ZERO-edge case only. A community with SOME
+        member edges is left alone: a partial gap is far more likely intentional
+        drift (a member was disconnected) than omission, and re-adding from the
+        possibly-stale metadata would resurrect a removed member. Omission is
+        all-or-nothing at the encoder (one `connect_to` field for all members),
+        so it always presents as zero edges — exactly what this targets.
+
+        Idempotent: once edges exist the community is skipped. Archived/missing
+        declared members are skipped (legitimate drift, not omission).
+
+        Caller must hold brain.write_lock (writes via add_relation).
+        Returns {communities_healed, edges_backfilled, details: [(cid, n), ...]}.
+        """
+        import re
+        # 1. Declared members per live community (id -> {member_id: label}).
+        #    Anchor the id match to a segment start (^ or comma) so an 8-hex
+        #    token inside a member's TITLE can't be mistaken for a member id.
+        declared = {}
+        for cid, val in self.conn.execute(
+                "SELECT kv.node_id, kv.value FROM node_metadata_kv kv "
+                "JOIN nodes n ON n.id = kv.node_id "
+                "WHERE kv.key = 'community_members' "
+                "AND n.type = 'community' AND n.archived = 0").fetchall():
+            members = {}
+            for mt in re.finditer(r'(?:^|,)\s*([0-9a-f]{8})\s*:\s*([^,]*)',
+                                  val or ''):
+                members[mt.group(1)] = mt.group(2).strip()
+            if members:
+                declared[cid] = members
+        if not declared:
+            return {'communities_healed': 0, 'edges_backfilled': 0,
+                    'details': []}
+
+        # 2. Communities that ALREADY have >=1 active community_member edge —
+        #    skip them entirely (partial gap == drift, not omission).
+        edged = set()
+        for (src,) in self.conn.execute(
+                "SELECT DISTINCT e.source_id FROM edges e "
+                "JOIN edge_relations er ON er.edge_id = e.edge_id "
+                "WHERE er.relation = 'community_member' "
+                "AND er.archived = 0").fetchall():
+            edged.add(src)
+
+        orphans = {cid: ms for cid, ms in declared.items() if cid not in edged}
+        if not orphans:
+            return {'communities_healed': 0, 'edges_backfilled': 0,
+                    'details': []}
+
+        # 3. Which declared members are LIVE (skip archived/missing targets —
+        #    a declared member that was archived is drift, not an omission).
+        all_members = sorted({m for ms in orphans.values() for m in ms})
+        live = set()
+        for i in range(0, len(all_members), 400):
+            chunk = all_members[i:i + 400]
+            rows = self.conn.execute(
+                "SELECT id FROM nodes WHERE archived = 0 AND id IN (%s)"
+                % ','.join('?' * len(chunk)), chunk).fetchall()
+            live.update(r[0] for r in rows)
+
+        # 4. Back-fill the gap on orphaned communities only.
+        healed = edges = 0
+        details = []
+        for cid, members in orphans.items():
+            live_missing = [(m, lbl) for m, lbl in members.items() if m in live]
+            if not live_missing:
+                continue
+            for mid, label in live_missing:
+                desc = ((label or 'community member')
+                        + ' — member edge restored by membership '
+                          'reconciliation')[:200]
+                self.add_relation(cid, mid, 'community_member',
+                                  description=desc, weight=0.6,
+                                  encoding_source=encoding_source)
+                edges += 1
+            healed += 1
+            details.append((cid, len(live_missing)))
+        return {'communities_healed': healed, 'edges_backfilled': edges,
+                'details': details}
+
     def has_edge_between(self, source_ids, target_ids,
                          relations=None,
                          include_archived: bool = False) -> bool:
