@@ -969,7 +969,8 @@ class TraceDAL:
 
     def get_by_ref_type(self, ref_type: str, scale: str = '',
                         hours: Optional[int] = 24, limit: int = 100,
-                        session_id: str = '') -> List[Dict[str, Any]]:
+                        session_id: str = '', ref_id: str = '',
+                        chain_suffix: str = '') -> List[Dict[str, Any]]:
         """Get events filtered by ref_type.
 
         Use: "all corrections", "all recall_hits", "all encoding_runs".
@@ -977,6 +978,11 @@ class TraceDAL:
         recency purely via `limit` + `ORDER BY created_at DESC`).
         Pass session_id to scope results to a single session — required for
         per-session reads (e.g. surface's recently-surfaced dedup list).
+        Pass ref_id to scope to a single subject (e.g. journal notes about one
+        node — `ref_type='journal_note', ref_id=<node>`).
+        Pass chain_suffix to scope to chains ENDING in '-{suffix}' — the S2 unit
+        identity lives in the chain suffix (`s2-{ts}-{unit}`). LIMIT then bounds
+        the per-unit result, not the global stream.
         """
         conditions = ['ref_type = ?']
         params: List[Any] = [ref_type]
@@ -989,6 +995,17 @@ class TraceDAL:
         if session_id:
             conditions.append('session_id = ?')
             params.append(session_id)
+        if ref_id:
+            conditions.append('ref_id = ?')
+            params.append(ref_id)
+        if chain_suffix:
+            # Match chains ending in '-{suffix}'. Escape LIKE metachars so a '_'
+            # in a unit name (community_detection) matches literally, not as a
+            # single-char wildcard.
+            esc = (chain_suffix.replace('\\', '\\\\')
+                   .replace('%', '\\%').replace('_', '\\_'))
+            conditions.append("chain_id LIKE ? ESCAPE '\\'")
+            params.append('%-' + esc)
         where = ' AND '.join(conditions)
 
         rows = self.conn.execute(

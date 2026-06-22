@@ -23,7 +23,7 @@ revising its interaction entry.
 import json
 import os
 import time
-from datetime import date, datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta
 
 
 # Single shared Anthropic client timeout — see scales/runner.py.
@@ -146,10 +146,27 @@ class IntegrationUnit:
     def chain_id(self):
         """Generate trace chain ID for this run.
 
-        Format: {scale}-{YYYYMMDD}-{name}
-        S2 chains are date-based, not session-based.
+        Format: {scale}-{YYYYMMDDHHMMSS}-{name}
+        S2 chains are time-based (not session-based) and stamped ONCE per
+        run, then cached: every trace() in this run shares one chain_id,
+        while two runs of the same unit get distinct ids. Seconds (not just
+        date) make notes groupable per-run — date-only collapsed every
+        same-day run of a unit onto one id, breaking "last K runs"
+        continuity. A unit can't run twice within one second (min-interval
+        gating is in minutes), so seconds is collision-free.
+
+        Two parts are LOAD-BEARING — do not split the timestamp into its own
+        dash-segment: `_last_run_timestamp` suffix-matches `LIKE '%-{name}'`
+        and the dashboard's `_unit_slug_from_chain` reads `split('-', 2)[2]`
+        as the unit slug. One combined timestamp segment + trailing `-{name}`
+        keeps both intact.
         """
-        return '%s-%s-%s' % (self.SCALE, date.today().strftime('%Y%m%d'), self.NAME)  # clock-ok — S2 idle-cycle chain id uses the date the cycle ran
+        if not getattr(self, '_chain_id', None):
+            self._chain_id = '%s-%s-%s' % (
+                self.SCALE,
+                datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S'),  # clock-ok — S2 idle-cycle chain id; UTC to align with created_at + avoid DST-rollback second repeats
+                self.NAME)
+        return self._chain_id
 
     def trace(self, event_type, ref_type, summary, ref_id='', metadata=None):
         """Write a trace event for this unit's current run.

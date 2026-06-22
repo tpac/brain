@@ -82,8 +82,10 @@ def _query_s2_unit_runs(unit_keyword: str, hours: int, delta_columns: str,
         warn(component, '%s logs_db pull failed' % unit_keyword, exc=e)
         return []
 
-    # A unit's chain_id is shared by every run on the same day
-    # (s2-{date}-{unit}), so one chain holds many O/K/delta triples. Keying
+    # Historical chain_ids are shared by every run on the same day
+    # (s2-{date}-{unit}); new chains are per-run unique (s2-{ts}-{unit},
+    # seconds-stamped), but this code still serves the date-based historical
+    # rows where one chain holds many O/K/delta triples. Keying
     # O/K by chain_id alone collapses all runs onto a single (oldest) O/K
     # pair — which made every consolidation/community card show identical
     # cluster counts. Instead build a per-chain, time-ordered O/K list and
@@ -476,8 +478,9 @@ def query_community_runs(hours: int = 24):
 def query_healer_runs(hours: int = 24, limit: int = 30):
     """S2 Healer passes — one card per `healer_generated` delta event.
 
-    Healer can run multiple times per day; the chain_id is `s2-{date}-healer`,
-    so chains aren't unique per pass. Pair each delta with its nearest
+    Healer can run multiple times per day; historical chain_ids are
+    `s2-{date}-healer` (not unique per pass) — new ones are seconds-stamped
+    and unique, but this serves the historical rows. Pair each delta with its nearest
     preceding O/K events in the same chain via a single forward pass —
     different enough from consolidation/community that sharing the helper
     would distort it.

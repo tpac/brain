@@ -1450,6 +1450,9 @@ LOG_INDEXES = [
     # B-tree just to sort — every drain tick. With it the planner walks
     # the index in DESC order and short-circuits after LIMIT matches.
     'CREATE INDEX IF NOT EXISTS idx_trace_scope_created ON trace_events(scale, ref_type, created_at)',
+    # journal-note subject pulls: WHERE ref_type='journal_note' AND ref_id=?
+    # ORDER BY created_at — the hotspot/subject query (N notes on one node).
+    'CREATE INDEX IF NOT EXISTS idx_trace_ref_subject ON trace_events(ref_type, ref_id, created_at)',
     # v9.2: session_state
     'CREATE INDEX IF NOT EXISTS idx_session_state_session ON session_state(session_id)',
     # self channel — drain/peek filter by address + expires_at; reap by expires_at;

@@ -531,13 +531,15 @@ class BrainRecallMixin:
     def query_traces(self, scale: str = '', hours: int = 24,
                      event_type: str = '', chain_id: str = '',
                      session_id: str = '', session_ids=None,
-                     ref_type: str = '',
+                     ref_type: str = '', ref_id: str = '', chain_suffix: str = '',
                      grouped: bool = False, limit: int = 100):
         """Query trace events — the fractal learning loop data.
 
         Modes:
         - chain_id set: return single chain with all events
-        - ref_type set: filter events by ref_type
+        - ref_type set: filter events by ref_type (+ optional ref_id to scope to
+          one subject, chain_suffix to scope to one S2 unit's chains, session_id
+          to scope to one session, hours=None to disable the time window)
         - grouped=True + session_id: return chains grouped with nested events
         - session_ids (list) set: cross-session pull; hours ignored
         - session_id (str) set: single-session pull; hours ignored
@@ -547,7 +549,8 @@ class BrainRecallMixin:
             return {'chain': self._trace_dal.get_chain(chain_id)}
         if ref_type:
             return {'events': self._trace_dal.get_by_ref_type(
-                ref_type=ref_type, scale=scale, hours=hours, limit=limit)}
+                ref_type=ref_type, scale=scale, hours=hours, limit=limit,
+                session_id=session_id, ref_id=ref_id, chain_suffix=chain_suffix)}
         if grouped and session_id:
             return {'chains': self._trace_dal.get_chains(
                 session_id=session_id, scale=scale, hours=hours, limit=limit)}
@@ -556,6 +559,51 @@ class BrainRecallMixin:
         return {'events': self._trace_dal.get_recent(
             scale=scale, hours=hours, event_type=event_type,
             session_id=session_id, session_ids=session_ids, limit=limit)}
+
+    def journal_notes(self, *, subject: str = '', scale: str = '',
+                      session_id: str = '', unit: str = '',
+                      k=None, limit: int = 200):
+        """Read encoder journal notes — through the trace API, never raw SQL.
+
+        Composes query_traces(ref_type='journal_note', ...) — the public door;
+        TraceDAL stays underneath it. Two modes:
+        • subject set → every note ABOUT that subject (ref_id), newest first
+          (the hotspot view: N notes on one subject).
+        • else → continuity: notes from the last K note-bearing RUNS of an
+          encoder, scoped by scale + (session_id for S1 | unit for S2). K
+          defaults to JOURNAL_CONTINUITY_RUNS[encoder] (s1e / unit) → DEFAULT.
+
+        Runs group by chain_id (per-run-unique at both scales). Returns note
+        dicts {tag, note, subject, chain_id, created_at}, newest first.
+        Subject→title resolution is left to the render layer — it avoids a
+        heavy get_node per note here, and the consumer already holds the node.
+        """
+        from .trace_contract import (JOURNAL_CONTINUITY_RUNS,
+                                      JOURNAL_CONTINUITY_RUNS_DEFAULT)
+        events = self.query_traces(
+            ref_type='journal_note', scale=scale, ref_id=subject,
+            session_id=session_id, chain_suffix=unit, hours=None, limit=limit,
+        ).get('events', [])
+        if not subject:  # continuity: keep notes from the most recent K runs
+            if k is None:
+                key = 's1e' if scale == 's1' else unit
+                k = JOURNAL_CONTINUITY_RUNS.get(key, JOURNAL_CONTINUITY_RUNS_DEFAULT)
+            seen, kept = [], []
+            for e in events:                       # created_at DESC
+                ch = e.get('chain_id') or ''
+                if ch not in seen:
+                    if len(seen) >= k:
+                        break
+                    seen.append(ch)
+                kept.append(e)
+            events = kept
+        return [{
+            'tag': (e.get('metadata') or {}).get('tag', ''),
+            'note': (e.get('metadata') or {}).get('note', ''),
+            'subject': e.get('ref_id', ''),
+            'chain_id': e.get('chain_id', ''),
+            'created_at': e.get('created_at', ''),
+        } for e in events]
 
     def query_outcomes(self, chain_id: str = '', scale: str = '',
                        hours: int = 168):

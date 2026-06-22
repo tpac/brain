@@ -41,14 +41,14 @@ ERROR_SPIKE_MIN_CURRENT     = 5     # Need ≥5 errors in current hour to flag
 ERROR_SPIKE_RATIO           = 3.0   # current ≥ prior × this → flag
 ERROR_SPIKE_HIGH_RATIO      = 10.0  # ratio ≥ this → high
 
-# Known S2 unit identifiers. Chain ids look like `s2-{YYYYMMDD}-{unit}` —
-# we split on '-' and key by the unit slug. Adding a new unit means
-# extending this map (the dashboard SHOULD flag drift the moment a unit
-# stops firing; if a new unit is added but not listed here, it just
-# stays unflagged — fail safe).
-# Source: chain_id substrings observed in trace_events. The slug after
-# `s2-{YYYYMMDD}-` is what we key on. `revise` is excluded — it's a
-# sub-operation (S2 units write `s2-{date}-revise` chains when they
+# Known S2 unit identifiers. Chain ids look like `s2-{YYYYMMDDHHMMSS}-{unit}`
+# (older rows: `s2-{YYYYMMDD}-{unit}`); we split on '-' and key by the unit
+# slug. The slug is `split('-', 2)[2]`, so it's format-agnostic — the longer
+# timestamp segment doesn't shift it. Adding a new unit means extending this
+# map (the dashboard SHOULD flag drift the moment a unit stops firing; if a
+# new unit is added but not listed here, it just stays unflagged — fail safe).
+# Source: chain_id substrings observed in trace_events. `revise` is excluded —
+# it's a sub-operation (S2 units write `s2-{ts}-revise` chains when they
 # revise nodes/edges), not a top-level unit.
 KNOWN_S2_UNITS = {
     'consolidation':           'S2 Consolidation',

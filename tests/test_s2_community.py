@@ -31,8 +31,13 @@ class TestIntegrationUnitContract(unittest.TestCase):
             unit.run()
 
     def test_chain_id_format(self):
+        """Per-run chain id: s2-{YYYYMMDDHHMMSS}-{name}. Seconds (not just
+        date) so same-day runs are distinct → notes group per-run. One
+        combined timestamp segment + trailing -{name} keep the load-bearing
+        consumers intact: `_last_run_timestamp` suffix-matches `%-{name}` and
+        the dashboard slug parser reads `split('-', 2)[2]`. Stamped once per
+        run and cached so every trace in a run shares one chain_id."""
         from servers.scales.s2.base import IntegrationUnit
-        from datetime import date
 
         class TestUnit(IntegrationUnit):
             NAME = 'test_op'
@@ -40,8 +45,26 @@ class TestIntegrationUnitContract(unittest.TestCase):
 
         unit = TestUnit(brain=None)
         chain = unit.chain_id()
-        today = date.today().strftime('%Y%m%d')
-        self.assertEqual(chain, 's2-%s-test_op' % today)
+        self.assertRegex(chain, r'^s2-\d{14}-test_op$')        # one timestamp segment
+        self.assertTrue(chain.endswith('-test_op'))            # _last_run_timestamp LIKE '%-name'
+        self.assertEqual(chain.split('-', 2)[2], 'test_op')    # dashboard slug parser
+        self.assertEqual(unit.chain_id(), chain)               # stable within a run (cached)
+
+    def test_chain_id_is_real_recent_timestamp(self):
+        """The 14-digit segment is an actual recent UTC run-time — not a
+        constant or a wrong strftime that merely yields 14 digits. Guards the
+        timestamp-correctness axis the shape regex alone can't (e.g. a revert
+        to date-only would be 8 digits and fail strptime here)."""
+        from datetime import datetime, timezone
+        from servers.scales.s2.base import IntegrationUnit
+
+        class TestUnit(IntegrationUnit):
+            NAME = 'test_op'
+            SCALE = 's2'
+
+        ts = TestUnit(brain=None).chain_id().split('-', 2)[1]
+        parsed = datetime.strptime(ts, '%Y%m%d%H%M%S').replace(tzinfo=timezone.utc)
+        self.assertLess(abs((datetime.now(timezone.utc) - parsed).total_seconds()), 120)
 
     def test_chain_id_different_scale(self):
         from servers.scales.s2.base import IntegrationUnit

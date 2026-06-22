@@ -83,7 +83,8 @@ REF_TYPES = {
     ("s1", "delta"):   ["additionalContext",       # what reached Anchor
                          "encoding_run",            # what the encoder produced
                          "node_revised",            # field-level revise emitted by S1 encoder
-                         "edge_relation_revised"],  # connect upsert / archive emitted by S1 encoder
+                         "edge_relation_revised",   # connect upsert / archive emitted by S1 encoder
+                         "journal_note"],           # S1 Scribe residue — one note (subject=ref_id) per row
     ("s1", "outcome"): ["correction",         # Tom corrected something that was recalled
                          "recall_hit"],        # node was recalled in a future turn
 
@@ -118,7 +119,8 @@ REF_TYPES = {
                          "healer_generated",        # S2 Healer: missing fields generated + stored
                          "aspect_classified",       # S2 AspectIntegration: candidates merged into aspects_v1.json
                          "node_revised",            # field-level revise emitted by S2 units (healer, consolidation)
-                         "edge_relation_revised"],  # connect upsert / archive emitted by S2 units
+                         "edge_relation_revised",   # connect upsert / archive emitted by S2 units
+                         "journal_note"],           # S2 unit residue (consolidation, community) — one note per row
     ("s2", "outcome"): ["recall_improved",      # community nodes improved recall
                          "operator_reviewed"],   # Tom reviewed S2 output
 
@@ -209,7 +211,7 @@ CHAIN_PREFIXES = {
     "s0":         "s0-{session_short}-{stop}",        # one chain per stop — messages + tools
     "s1_recall":  "s1r-{session_short}-{stop}",       # surface for this stop
     "s1_encode":  "s1e-{session_short}-{stop}",       # encoding run triggered at this stop
-    "s2":         "s2-{date}-{operation}",              # date=YYYYMMDD, operation=community/dedup/etc
+    "s2":         "s2-{datetime}-{operation}",          # datetime=YYYYMMDDHHMMSS (seconds, per-run — see s2/base.py chain_id), operation=community/consolidation/etc
     "s3":         "s3-{date}-{operation}",             # date=YYYYMMDD, operation=synthesis/meta/etc
     "s4":         "s4-{date}-{topic}",                 # date=YYYYMMDD, topic=what was researched
 }
@@ -361,6 +363,160 @@ def build_delta_metadata(*,
     return metadata
 
 
+# ── JOURNAL NOTE METADATA SHAPE ──
+# A journal note is a Δ written as its OWN trace event (event_type='delta',
+# ref_type='journal_note'): the residue of a run's integrate() — the why, the
+# friction, the doubt, the surprise. SEPARATE from the run's objective ops-delta
+# (encoding_run / consolidated / ...): the ops-delta records what the hands did,
+# the note records what the mind did. Per run = 1 ops-delta + 0..N notes, ALL
+# sharing the run's chain_id — which is per-run-unique at BOTH scales (S1
+# `s1e-{session}-{stop}`, S2 `s2-{YYYYMMDDHHMMSS}-{unit}`), so the read groups
+# runs by chain_id with no separate run_id field.
+#
+# The SUBJECT lives in the trace's ref_id, NOT here — a node id / cluster / tool /
+# input the note is about. It's the load-bearing index (N notes on one ref_id =
+# a hotspot) and the quality gate (can't name a subject → not a note). Notes are
+# s1/s2 scale → never embedded (EAGER_TRACE_SCALES=('s0',)) → unreachable by
+# recall()/recall_episodes(); the only door is the traces-module notes() query.
+
+JOURNAL_NOTE_METADATA_SHAPE = {
+    'note': str,    # the prose: the why / friction / doubt / surprise (required)
+    'tag':  str,    # one open word for the KIND of thing (friction, doubt, ...); '' when absent
+}
+
+JOURNAL_NOTE_LIMIT = 600   # a note is terse residue, not an essay — capped loud like other delta text
+JOURNAL_TAG_LIMIT = 40     # 'one word' — cap drift loud rather than let a sentence become a grouping key
+
+
+def build_journal_note_metadata(*, note, tag=''):
+    """Build trace metadata for one journal note (ref_type='journal_note').
+
+    The SUBJECT is the trace's ref_id, supplied by the writer — not here.
+    `note` is the prose (required, non-empty — the same gate the parser
+    applies); `tag` is one open word, '' when the encoder gave none. Both are
+    capped loud via cap_text_loud, like every other delta text field. Raises
+    ValueError on an empty note so the builder and parser AGREE on validity —
+    the write path only feeds parser-validated notes and isolates per-note
+    write errors, so this fires solely on direct misuse, never normal flow.
+    """
+    note = (note or '').strip()
+    if not note:
+        raise ValueError('journal note requires non-empty prose (got empty note)')
+    return {
+        'note': cap_text_loud(note, JOURNAL_NOTE_LIMIT),
+        'tag':  cap_text_loud((tag or '').strip(), JOURNAL_TAG_LIMIT),
+    }
+
+
+# ── JOURNAL REVIEW BLOCK + PARSER (single source for all journaling encoders) ──
+# §7.1/§7.3: one shared instruction block (roles-free — a bar to clear, not
+# buckets to fill); each encoder appends ONLY its own examples + subject
+# vocabulary via render_journal_review_block(). The encoder emits one note per
+# line as `tag · subject · note`; the write path calls parse_journal_notes() to
+# split them into rows. Single source here so the five encoders can't re-diverge
+# into the five reinventions this redesign is removing.
+
+JOURNAL_NOTE_DELIMITER = '·'
+
+JOURNAL_REVIEW_INSTRUCTION = (
+    "**Your review — a note to your next self about what the brain can't see "
+    "on its own.**\n\n"
+    "Two tests before any line:\n"
+    "• *Reconstruction* — could a future run rebuild this by reading the brain? "
+    "If yes, don't write it.\n"
+    "• *Successor* — would your next self or the operator be worse off not "
+    "knowing it? If no, don't write it.\n\n"
+    "Anchor every note to **what it's about** — a node, a cluster, a tool, or an "
+    "input you were handed. **If you can't name what it's about, it isn't a "
+    "note.**\n\n"
+    "Add **one word** for the kind of thing it is — your word, whatever fits. "
+    "*(friction, doubt, surprise, dead-end — examples, not a list.)*\n\n"
+    "Note what stood out — good or bad. **A clean run is an empty review** — "
+    "never manufacture notes, and never restate what you did (that's the "
+    "trace's job).\n\n"
+    "Format — one note per line, `tag %s subject %s note`:\n"
+) % (JOURNAL_NOTE_DELIMITER, JOURNAL_NOTE_DELIMITER)
+
+
+def render_journal_review_block(examples):
+    """Shared review instruction + this encoder's own examples (§7.3).
+
+    `examples` is a short block of `tag · subject · note` lines using the
+    encoder's own subject vocabulary (S1: nodes/turns · Consolidation:
+    clusters/survivors · Community: communities). One source, per-encoder slot.
+    """
+    return JOURNAL_REVIEW_INSTRUCTION + "```\n" + (examples or '').strip() + "\n```\n"
+
+
+def parse_journal_notes(text):
+    """Parse an encoder's review section into notes.
+
+    One note per line: `tag · subject · note`, split on '·' with maxsplit=2 so
+    a '·' inside the prose is safe (it all stays in `note`).
+      • 3 fields → (tag, subject, note)
+      • 2 fields → (subject, note) with tag='' — tag is optional
+      • no delimiter, or empty subject/note → MALFORMED
+    Blank lines and markdown headers (`#`-prefixed, e.g. the `## Review`
+    header) are skipped silently. Malformed lines are NOT silently dropped —
+    they're returned so the caller logs loud (loud-by-default).
+
+    Returns (notes, malformed): notes is a list of {'tag','subject','note'};
+    malformed is a list of the raw offending lines.
+    """
+    notes, malformed = [], []
+    for raw in (text or '').splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if JOURNAL_NOTE_DELIMITER not in line:
+            # No delimiter: a markdown header (e.g. the `## Review` title) is
+            # structural — skip silently. Anything else is a malformed note,
+            # surfaced loud (never silently dropped). A delimiter-bearing line
+            # is ALWAYS a note candidate even if it starts with '#', so a
+            # subject like a `#1234` issue id isn't eaten by the header skip.
+            if line.startswith('#'):
+                continue
+            malformed.append(raw)
+            continue
+        parts = [p.strip() for p in line.split(JOURNAL_NOTE_DELIMITER, 2)]
+        if len(parts) == 3:
+            tag, subject, note = parts
+        else:  # delimiter present + maxsplit=2 → exactly 2 parts here
+            tag, subject, note = '', parts[0], parts[1]
+        if not subject or not note:
+            malformed.append(raw)
+            continue
+        notes.append({'tag': tag, 'subject': subject, 'note': note})
+    return notes, malformed
+
+
+# Per-encoder continuity window: how many of an encoder's most recent
+# note-bearing runs the "where things stand" read pulls into the next run's
+# prompt. Bounds the READ, never storage — notes are append-only and retained
+# (§2.7); a 9th run simply doesn't read the 1st's note, which still exists for
+# the operator + future miner. A contract constant, NOT interaction-tunable
+# (Tom's call): continuity depth is a structural property of each encoder's
+# cadence, not a knob S2 should self-tune. Keys are the encoder identity used by
+# notes() (S1 chain prefix `s1e`; S2 unit NAME). Unlisted encoders use DEFAULT.
+JOURNAL_CONTINUITY_RUNS = {
+    's1e':                 5,   # S1 Scribe — every 5th Stop; a session spans several runs
+    'consolidation':       3,   # S2 idle units run far apart; 3 is enough for cross-run escalation
+    'community_detection': 3,
+}
+JOURNAL_CONTINUITY_RUNS_DEFAULT = 3
+
+
+# Residue ref_types: encoder *notes*, not integration deltas. Consumers that
+# read per-run integration deltas (S2 idle-gating `_last_run_timestamp`, the
+# dashboard run-card queries) must EXCLUDE these — a journal_note shares the
+# run's chain_id + event_type='delta', so an unfiltered `event_type='delta'`
+# pull would otherwise scoop notes and miscount them as runs. Single source for
+# the ops-delta-vs-residue partition; exclusion-style so it stays
+# behavior-preserving (everything that isn't residue still counts) and
+# forward-compatible (add a residue type here, every consumer excludes it).
+RESIDUE_REF_TYPES = ('journal_note',)
+
+
 # ── METADATA PAYLOAD VALIDATION (the chokepoint guard) ──
 # validate_trace_event() checks the (scale, event_type, ref_type) envelope.
 # It historically said nothing about the metadata PAYLOAD — which is exactly
@@ -378,6 +534,7 @@ METADATA_REQUIRED_BY_REF_TYPE = {
     'community_enriched': DELTA_METADATA_SHAPE,  # S2 community
     'healer_generated':   DELTA_METADATA_SHAPE,  # S2 healer
     'aspect_classified':  DELTA_METADATA_SHAPE,  # S2 aspect integration
+    'journal_note':       JOURNAL_NOTE_METADATA_SHAPE,  # encoder residue (one note per row)
 }
 
 

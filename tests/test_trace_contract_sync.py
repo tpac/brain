@@ -449,3 +449,140 @@ class TestS0TurnClassification:
         # pair — guards the Phase-1 repoint as genuinely zero-behavior-change.
         from servers.trace_contract import CONVERSATIONAL_REF_TYPES
         assert set(CONVERSATIONAL_REF_TYPES) == {'user_message', 'assistant_message'}
+
+
+# ═══════════════════════════════════════════════════════
+# Journal note contract (encoder residue — journal redesign Phase 2)
+# ═══════════════════════════════════════════════════════
+
+class TestJournalNoteContract:
+    """The journal_note event contract: residue notes written as their own
+    delta trace events, separate from the run's objective ops-delta. The
+    subject lives in ref_id; metadata carries {note, tag}. Registered for
+    s1 + s2 delta only — never s0 (notes are an encoder concern, and keeping
+    them off s0 is part of the recall guard: s1/s2 traces aren't embedded)."""
+
+    def test_registered_for_s1_and_s2_delta(self):
+        from servers.trace_contract import REF_TYPES
+        for scale in ('s1', 's2'):
+            assert 'journal_note' in REF_TYPES[(scale, 'delta')], (
+                "journal_note missing from (%s, delta): %s" % (
+                    scale, REF_TYPES[(scale, 'delta')]))
+
+    def test_not_registered_for_s0(self):
+        from servers.trace_contract import validate_trace_event
+        ok, _ = validate_trace_event('s0', 'delta', 'journal_note')
+        assert not ok
+
+    def test_validate_accepts_journal_note(self):
+        from servers.trace_contract import validate_trace_event
+        for scale in ('s1', 's2'):
+            ok, err = validate_trace_event(scale, 'delta', 'journal_note')
+            assert ok, "Validation failed for (%s, delta, journal_note): %s" % (
+                scale, err)
+
+    def test_metadata_shape_keys(self):
+        from servers.trace_contract import JOURNAL_NOTE_METADATA_SHAPE
+        assert set(JOURNAL_NOTE_METADATA_SHAPE.keys()) == {'note', 'tag'}
+
+    def test_build_defaults_tag_empty(self):
+        from servers.trace_contract import build_journal_note_metadata
+        m = build_journal_note_metadata(note='merged a1/b2 but unsure')
+        assert m == {'note': 'merged a1/b2 but unsure', 'tag': ''}
+
+    def test_build_strips_tag(self):
+        from servers.trace_contract import build_journal_note_metadata
+        assert build_journal_note_metadata(note='x', tag='  doubt ')['tag'] == 'doubt'
+
+    def test_metadata_requires_note(self):
+        from servers.trace_contract import validate_trace_metadata
+        ok, err = validate_trace_metadata('delta', 'journal_note', {'tag': 'doubt'})
+        assert not ok and 'note' in err
+
+    def test_metadata_accepts_well_formed(self):
+        from servers.trace_contract import (build_journal_note_metadata,
+                                            validate_trace_metadata)
+        m = build_journal_note_metadata(
+            note='the temporal scout misread a number', tag='friction')
+        ok, err = validate_trace_metadata('delta', 'journal_note', m)
+        assert ok, err
+
+    def test_build_rejects_empty_note(self):
+        # Builder and parser must AGREE that an empty note is invalid.
+        import pytest
+        from servers.trace_contract import build_journal_note_metadata
+        for bad in ('', '   ', None):
+            with pytest.raises(ValueError):
+                build_journal_note_metadata(note=bad)
+
+    def test_build_caps_long_note_and_tag(self):
+        # note/tag are capped loud like every other delta text field.
+        from servers.trace_contract import build_journal_note_metadata
+        m = build_journal_note_metadata(note='x' * 800, tag='y' * 200)
+        assert len(m['note']) < 800   # capped
+        assert len(m['tag']) < 200    # capped
+
+
+class TestJournalNoteParser:
+    """parse_journal_notes splits an encoder review section into rows;
+    render_journal_review_block assembles the shared instruction + per-encoder
+    examples. Single source for all journaling encoders (§7.1/§7.3)."""
+
+    def test_three_field_line(self):
+        from servers.trace_contract import parse_journal_notes
+        notes, bad = parse_journal_notes('friction · temporal-scout · misread a number')
+        assert bad == []
+        assert notes == [{'tag': 'friction', 'subject': 'temporal-scout',
+                          'note': 'misread a number'}]
+
+    def test_two_field_line_tag_optional(self):
+        from servers.trace_contract import parse_journal_notes
+        notes, bad = parse_journal_notes('nodes a1/b2 · merged but unsure')
+        assert bad == []
+        assert notes == [{'tag': '', 'subject': 'nodes a1/b2',
+                          'note': 'merged but unsure'}]
+
+    def test_delimiter_in_note_preserved(self):
+        # maxsplit=2 keeps any '·' inside the prose in the note field.
+        from servers.trace_contract import parse_journal_notes
+        notes, _ = parse_journal_notes('surprise · recall · old · beat fresh — odd')
+        assert notes[0]['note'] == 'old · beat fresh — odd'
+
+    def test_no_delimiter_is_malformed(self):
+        from servers.trace_contract import parse_journal_notes
+        notes, bad = parse_journal_notes('this line has no delimiter')
+        assert notes == [] and len(bad) == 1
+
+    def test_empty_subject_or_note_malformed(self):
+        from servers.trace_contract import parse_journal_notes
+        notes, bad = parse_journal_notes('friction ·  · ')
+        assert notes == [] and len(bad) == 1
+
+    def test_headers_and_blanks_skipped(self):
+        from servers.trace_contract import parse_journal_notes
+        notes, bad = parse_journal_notes('## Review\n\nfriction · scout · misfired\n')
+        assert bad == [] and len(notes) == 1
+
+    def test_render_block_has_instruction_and_fenced_examples(self):
+        from servers.trace_contract import (render_journal_review_block,
+                                            JOURNAL_REVIEW_INSTRUCTION)
+        block = render_journal_review_block('doubt · cluster-7 · members drifted')
+        assert JOURNAL_REVIEW_INSTRUCTION.split('\n')[0] in block
+        assert 'doubt · cluster-7 · members drifted' in block
+        assert block.count('```') == 2
+
+    def test_hash_subject_not_dropped(self):
+        # A delimiter-bearing line whose subject starts with '#' (e.g. an issue
+        # id) must parse — not be eaten by the markdown-header skip.
+        from servers.trace_contract import parse_journal_notes
+        notes, bad = parse_journal_notes('#49019 · still unresolved after refresh')
+        assert bad == []
+        assert notes == [{'tag': '', 'subject': '#49019',
+                          'note': 'still unresolved after refresh'}]
+
+    def test_markdown_headers_skipped_not_malformed(self):
+        # Header lines (no delimiter, '#'-prefixed) are structural — skipped
+        # silently, never logged as malformed.
+        from servers.trace_contract import parse_journal_notes
+        notes, bad = parse_journal_notes('## Review\n### Notes')
+        assert notes == [] and bad == []
