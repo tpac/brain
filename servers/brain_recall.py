@@ -605,6 +605,46 @@ class BrainRecallMixin:
             'created_at': e.get('created_at', ''),
         } for e in events]
 
+    def write_journal_notes(self, *, final_text, chain_id, scale, session_id=''):
+        """Write door — the mirror of journal_notes (read). Extract the
+        encoder's `## Review` fenced block from its final text, parse it, and
+        write each note as its own journal_note trace row (event_type='delta',
+        ref_id=subject), all sharing the run's chain_id. Returns the count.
+
+        No-op (returns 0) when there's no review block — every run today, until
+        a prompt emits the section. Loud + isolated: malformed lines, and notes
+        with no subject or unbuildable metadata, are logged via _log_warning and
+        skipped — one bad note never sinks the rest. Subject is required at write
+        (the load-bearing index — a note with no subject isn't a note, #7).
+        """
+        from .trace_contract import (extract_review_block, parse_journal_notes,
+                                      build_journal_note_metadata)
+        block = extract_review_block(final_text)
+        if not block:
+            return 0
+        notes, malformed = parse_journal_notes(block)
+        for raw in malformed:
+            self._log_warning('journal_note_malformed', raw[:200])
+        events = []
+        for n in notes:
+            subject = (n.get('subject') or '').strip()
+            if not subject:
+                self._log_warning('journal_note_no_subject', str(n)[:200])
+                continue
+            try:
+                meta = build_journal_note_metadata(note=n['note'], tag=n.get('tag', ''))
+            except ValueError as e:
+                self._log_warning('journal_note_build_failed', '%s | %s' % (e, str(n)[:160]))
+                continue
+            events.append({
+                'chain_id': chain_id, 'scale': scale, 'event_type': 'delta',
+                'ref_type': 'journal_note', 'ref_id': subject,
+                'summary': n['note'][:80], 'metadata': meta, 'session_id': session_id,
+            })
+        if events:
+            self._trace_dal.append_batch(events)
+        return len(events)
+
     def query_outcomes(self, chain_id: str = '', scale: str = '',
                        hours: int = 168):
         """Query outcome events — the learning signal."""

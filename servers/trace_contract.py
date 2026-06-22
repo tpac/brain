@@ -490,6 +490,40 @@ def parse_journal_notes(text):
     return notes, malformed
 
 
+JOURNAL_REVIEW_MARKER = '## Review'   # the section heading the encoder emits; the
+                                      # write path keys on it. Kept in sync with the
+                                      # prompt structure (§7.2) — #8 wires the prompt.
+
+
+def extract_review_block(text):
+    """Pull the notes block out of an encoder's final text: find the
+    `## Review` section and return the content of its first fenced ``` block.
+
+    Returns '' when there's no review section or no fence — so a run that
+    doesn't journal (every run today, until a prompt emits the section)
+    yields zero notes. Extracting ONLY the fence (not the whole section)
+    keeps surrounding prose — which may carry a stray '·' — from being
+    mis-parsed as malformed notes.
+    """
+    if not text:
+        return ''
+    idx = text.find(JOURNAL_REVIEW_MARKER)
+    if idx == -1:
+        return ''
+    after = text[idx + len(JOURNAL_REVIEW_MARKER):]
+    open_fence = after.find('```')
+    if open_fence == -1:
+        return ''
+    rest = after[open_fence + 3:]
+    nl = rest.find('\n')           # skip an optional language tag on the fence line
+    if nl != -1:
+        rest = rest[nl + 1:]
+    close_fence = rest.find('```')
+    if close_fence == -1:
+        return ''
+    return rest[:close_fence].strip()
+
+
 # Per-encoder continuity window: how many of an encoder's most recent
 # note-bearing runs the "where things stand" read pulls into the next run's
 # prompt. Bounds the READ, never storage — notes are append-only and retained

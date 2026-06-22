@@ -87,3 +87,89 @@ class TestJournalNotesRead(BrainTestBase):
                        'n%d' % i, 'consol %d' % i)
         out = self.brain.journal_notes(scale='s2', unit='community_detection', limit=2)
         assert {n['note'] for n in out} == {'community'}
+
+
+class TestJournalNotesWrite(BrainTestBase):
+    """brain.write_journal_notes() — the write door. Extracts the encoder's
+    ## Review fenced block, parses it, writes journal_note rows. Mirror of the
+    read door; round-trips through brain.journal_notes."""
+    needs_embedder = False
+
+    def test_write_then_read_roundtrip(self):
+        final = (
+            "Encoded 3 nodes, merged 1.\n\n"
+            "## Review\n"
+            "```\n"
+            "friction · temporal-scout · misread a number again — 3rd run\n"
+            "doubt · nodeA · merged but unsure the claims match\n"
+            "```\n"
+        )
+        n = self.brain.write_journal_notes(
+            final_text=final, chain_id='s2-20260101000005-consolidation', scale='s2')
+        assert n == 2
+        out = self.brain.journal_notes(scale='s2', unit='consolidation', k=5)
+        assert {x['subject'] for x in out} == {'temporal-scout', 'nodeA'}
+        assert {x['tag'] for x in out} == {'friction', 'doubt'}
+
+    def test_no_op_without_review_section(self):
+        n = self.brain.write_journal_notes(
+            final_text="Encoded 3 nodes. No review here.",
+            chain_id='s2-20260101000006-consolidation', scale='s2')
+        assert n == 0
+
+    def test_prose_outside_fence_not_parsed(self):
+        # Review #4: prose before the fence with a stray '·' must NOT become a
+        # malformed note — only the fenced block is parsed.
+        final = (
+            "## Review\n"
+            "Some reflection · with a stray middot in prose, not a note.\n"
+            "```\n"
+            "surprise · recall-ranking · IDF boost helped, unexpectedly\n"
+            "```\n"
+        )
+        n = self.brain.write_journal_notes(
+            final_text=final, chain_id='s2-20260101000007-consolidation', scale='s2')
+        assert n == 1
+        out = self.brain.journal_notes(scale='s2', unit='consolidation', k=5)
+        assert {x['note'] for x in out} == {'IDF boost helped, unexpectedly'}
+
+    def test_malformed_line_in_fence_isolated(self):
+        # One good note + one delimiter-less line: the good note is written, the
+        # malformed one skipped (logged loud), the batch survives.
+        final = (
+            "## Review\n"
+            "```\n"
+            "doubt · nodeX · a real note\n"
+            "this line has no delimiter and is malformed\n"
+            "```\n"
+        )
+        n = self.brain.write_journal_notes(
+            final_text=final, chain_id='s2-20260101000008-consolidation', scale='s2')
+        assert n == 1
+        out = self.brain.journal_notes(scale='s2', unit='consolidation', k=5)
+        assert {x['note'] for x in out} == {'a real note'}
+
+
+class TestJournalNotesRecallGuard(BrainTestBase):
+    """journal_note must never leak into Anchor's recall. Structural guard:
+    EAGER_TRACE_SCALES=('s0',) means s1/s2 traces are never embedded, so they
+    can't surface in recall() (node + s0-trace vectors) or recall_episodes()
+    (s0-scoped). Locked here so a future scope change can't silently break it."""
+    needs_embedder = False
+
+    def test_journal_note_scales_never_embedded(self):
+        from servers.embed_queue import EAGER_TRACE_SCALES
+        # journal_note rides on s1/s2; the embed worker only ever pulls s0.
+        assert EAGER_TRACE_SCALES == ('s0',)
+        assert 's1' not in EAGER_TRACE_SCALES and 's2' not in EAGER_TRACE_SCALES
+
+    def test_journal_note_absent_from_recall_episodes(self):
+        # A real s2 journal_note with a unique marker must not surface in
+        # recall_episodes (which scans s0 only).
+        self.brain._trace_dal.append(
+            chain_id='s2-20260101000009-consolidation', scale='s2',
+            event_type='delta', ref_type='journal_note', ref_id='nodeZ',
+            summary='zebra-unique-marker',
+            metadata=build_journal_note_metadata(note='zebra-unique-marker note'))
+        res = self.brain.recall_episodes(contains='zebra-unique-marker')
+        assert 'zebra-unique-marker' not in str(res)
