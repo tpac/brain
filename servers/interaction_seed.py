@@ -410,8 +410,9 @@ def seed_interactions(brain):
                      created_by=created_by)
 
     # Encoder agents — prompts seeded from sibling .py files.
-    # 'encoding_agent' is the legacy name; 's1e' is current. The runtime
-    # reads 's1e' first and falls back to 'encoding_agent' (see s1/encode.py).
+    # 's1e' is the current name (only 's1e' is seeded / read at runtime).
+    # 'encoding_agent' was the legacy name; its DB rows are inert history and
+    # the runtime fallback to it was removed (see s1/encode.py).
     _register('s1e', S1E_PROMPT, S1E_CONFIG_V1, 'anchor')
     _register('s2_community_enrichment', S2_COMMUNITY_PROMPT,
               S2_COMMUNITY_ENRICHMENT_CONFIG_V1, 's2:community_detection')

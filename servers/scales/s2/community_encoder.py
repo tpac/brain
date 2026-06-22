@@ -210,6 +210,35 @@ class CommunityEncoder(IntegrationUnit):
                        corridors_filtered=len(corridors),
                    ))
 
+        # Membership restorer: a community can silently end up declaring N
+        # members in `community_members` metadata while holding ZERO edges —
+        # Haiku sometimes creates the node but omits the edge field (or used
+        # the retired `connections=`, dropped by the guard). No other check
+        # catches it (the declared list is the only diffable intent), so
+        # back-fill the gap from the declaration and surface it loudly. Runs
+        # every cycle; self-quiets once edges exist (idempotent).
+        try:
+            with self.brain.write_lock:
+                recon = self.brain._graph.reconcile_community_membership()
+            if recon['edges_backfilled']:
+                # Auto-heal event → _log_warning (not _log_error): it's a
+                # repaired inconsistency, not a failure, and warning-level
+                # keeps the error-triage view clean. Still loud/surfaced.
+                self.brain._log_warning(
+                    'community_membership_backfilled',
+                    'community declared members but held 0 edges — back-filled',
+                    'back-filled %d member edge(s) across %d orphaned '
+                    'community(ies): %s' % (
+                        recon['edges_backfilled'], recon['communities_healed'],
+                        ', '.join('%s+%d' % (c[:8], n)
+                                  for c, n in recon['details'][:10])))
+                print('[s2ce] membership reconcile: +%d edge(s) across %d '
+                      'community(ies)' % (recon['edges_backfilled'],
+                                          recon['communities_healed']), flush=True)
+        except Exception as e:
+            self.brain._log_error('community_membership_reconcile', e,
+                                  'membership restorer failed')
+
         return result
 
     # ══════════════════════════════════════════════════════════
