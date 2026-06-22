@@ -2827,15 +2827,20 @@ class GraphDAL:
             return {'communities_healed': 0, 'edges_backfilled': 0,
                     'details': []}
 
-        # 2. Communities that ALREADY have >=1 active community_member edge —
-        #    skip them entirely (partial gap == drift, not omission).
+        # 2. Communities that ALREADY have >=1 active community_member edge,
+        #    in EITHER direction — skip them (partial gap == drift, not
+        #    omission). get_community_members reads membership both ways
+        #    (historical mix of community->member and legacy member->community
+        #    edges), so this orphan check must too — else a legacy-direction
+        #    community is falsely flagged as orphan every cycle.
         edged = set()
-        for (src,) in self.conn.execute(
-                "SELECT DISTINCT e.source_id FROM edges e "
+        for src, tgt in self.conn.execute(
+                "SELECT e.source_id, e.target_id FROM edges e "
                 "JOIN edge_relations er ON er.edge_id = e.edge_id "
                 "WHERE er.relation = 'community_member' "
                 "AND er.archived = 0").fetchall():
             edged.add(src)
+            edged.add(tgt)
 
         orphans = {cid: ms for cid, ms in declared.items() if cid not in edged}
         if not orphans:
@@ -2857,7 +2862,11 @@ class GraphDAL:
         healed = edges = 0
         details = []
         for cid, members in orphans.items():
-            live_missing = [(m, lbl) for m, lbl in members.items() if m in live]
+            # Skip self: community_members occasionally echoes the community's
+            # own id, and add_relation has no self-edge guard (the LLM path
+            # does, via _apply_connect_to exclude_self).
+            live_missing = [(m, lbl) for m, lbl in members.items()
+                            if m in live and m != cid]
             if not live_missing:
                 continue
             for mid, label in live_missing:

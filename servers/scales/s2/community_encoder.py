@@ -221,9 +221,12 @@ class CommunityEncoder(IntegrationUnit):
             with self.brain.write_lock:
                 recon = self.brain._graph.reconcile_community_membership()
             if recon['edges_backfilled']:
-                self.brain._log_error(
+                # Auto-heal event → _log_warning (not _log_error): it's a
+                # repaired inconsistency, not a failure, and warning-level
+                # keeps the error-triage view clean. Still loud/surfaced.
+                self.brain._log_warning(
                     'community_membership_backfilled',
-                    RuntimeError('community declared members but held 0 edges'),
+                    'community declared members but held 0 edges — back-filled',
                     'back-filled %d member edge(s) across %d orphaned '
                     'community(ies): %s' % (
                         recon['edges_backfilled'], recon['communities_healed'],

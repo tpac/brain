@@ -95,6 +95,33 @@ class TestCommunityMembershipReconcile(BrainTestBase):
         self.assertEqual(second['edges_backfilled'], 0)
         self.assertEqual(second['communities_healed'], 0)
 
+    def test_skips_legacy_direction_community(self):
+        # A community whose member edge points member->community (legacy
+        # direction) is NOT an orphan: get_community_members reads both
+        # directions, so the orphan check must too. Otherwise it false-fires
+        # every cycle and re-adds a no-op edge.
+        m = self._member('legacy')
+        cid = self._community('LegacyDir', [m])
+        self.brain.connect(m, cid, relation='community_member', weight=0.6)  # member->community
+
+        recon = self._reconcile()
+
+        self.assertEqual(recon['communities_healed'], 0)
+        # No forward (source=cid) edge was created — the legacy edge counts.
+        self.assertEqual(self._member_edges(cid), set())
+
+    def test_skips_self_referential_member(self):
+        # If community_members echoes the community's own id, no cid->cid loop.
+        m = self._member('real')
+        cid = self._community('SelfRef', [m])
+        self.brain._meta_kv.set(
+            cid, 'community_members', '%s: real, %s: self-echo' % (m, cid))
+
+        recon = self._reconcile()
+
+        self.assertEqual(self._member_edges(cid), {m})   # real member only
+        self.assertEqual(recon['edges_backfilled'], 1)   # self-id skipped
+
 
 if __name__ == '__main__':
     unittest.main()
