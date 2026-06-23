@@ -335,17 +335,19 @@ class IntegrationUnit:
     def _last_run_timestamp(self):
         """Find this unit's most recent completed run timestamp.
 
-        Returns ISO timestamp string, or '' if never run.
-        Only counts runs that wrote a delta trace — incomplete runs
-        (encoder hung, timed out) don't have deltas and are skipped.
+        Returns ISO timestamp string, or '' if never run. Counts only REAL
+        integration deltas — residue (journal_note) is excluded, so a run that
+        only journaled doesn't read as a completed integration. Goes through the
+        trace API (query_traces), not raw SQL; chain_suffix scopes to this unit's
+        chains and now escapes the '_' in names like community_detection.
         """
+        from ...trace_contract import RESIDUE_REF_TYPES
         try:
-            row = self.brain.logs_conn.execute(
-                "SELECT created_at FROM trace_events "
-                "WHERE scale = ? AND event_type = 'delta' AND chain_id LIKE ? "
-                "ORDER BY created_at DESC LIMIT 1",
-                (self.SCALE, '%%-' + self.NAME)).fetchone()
-            return row[0] if row else ''
+            res = self.brain.query_traces(
+                scale=self.SCALE, event_type='delta', chain_suffix=self.NAME,
+                exclude_ref_types=list(RESIDUE_REF_TYPES), hours=None, limit=1)
+            events = res.get('events', [])
+            return events[0]['created_at'] if events else ''
         except Exception as e:
             # Log to brain errors (not just stderr) so repeated failures
             # surface via consciousness. A broken _last_run_timestamp makes

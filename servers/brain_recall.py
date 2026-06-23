@@ -532,6 +532,7 @@ class BrainRecallMixin:
                      event_type: str = '', chain_id: str = '',
                      session_id: str = '', session_ids=None,
                      ref_type: str = '', ref_id: str = '', chain_suffix: str = '',
+                     exclude_ref_types=None,
                      grouped: bool = False, limit: int = 100):
         """Query trace events — the fractal learning loop data.
 
@@ -543,7 +544,9 @@ class BrainRecallMixin:
         - grouped=True + session_id: return chains grouped with nested events
         - session_ids (list) set: cross-session pull; hours ignored
         - session_id (str) set: single-session pull; hours ignored
-        - default: return flat recent events (hours-bound)
+        - default: return flat recent events (hours-bound; + optional chain_suffix
+          to scope to one S2 unit, exclude_ref_types to drop residue like
+          journal_note, hours=None to disable the window)
         """
         if chain_id:
             return {'chain': self._trace_dal.get_chain(chain_id)}
@@ -558,7 +561,8 @@ class BrainRecallMixin:
         # get_recent raises ValueError if both are set; we don't second-guess.
         return {'events': self._trace_dal.get_recent(
             scale=scale, hours=hours, event_type=event_type,
-            session_id=session_id, session_ids=session_ids, limit=limit)}
+            session_id=session_id, session_ids=session_ids, limit=limit,
+            chain_suffix=chain_suffix, exclude_ref_types=exclude_ref_types)}
 
     def journal_notes(self, *, subject: str = '', scale: str = '',
                       session_id: str = '', unit: str = '',
