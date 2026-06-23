@@ -468,6 +468,10 @@ def parse_journal_notes(text):
         line = raw.strip()
         if not line:
             continue
+        if line[0] in '-*•':       # tolerate a leading markdown bullet (LLMs
+            line = line[1:].lstrip()   # list-format their review); keep the tag clean
+            if not line:
+                continue
         if JOURNAL_NOTE_DELIMITER not in line:
             # No delimiter: a markdown header (e.g. the `## Review` title) is
             # structural — skip silently. Anything else is a malformed note,
@@ -499,28 +503,32 @@ def extract_review_block(text):
     """Pull the notes block out of an encoder's final text: find the
     `## Review` section and return the content of its first fenced ``` block.
 
-    Returns '' when there's no review section or no fence — so a run that
-    doesn't journal (every run today, until a prompt emits the section)
-    yields zero notes. Extracting ONLY the fence (not the whole section)
-    keeps surrounding prose — which may carry a stray '·' — from being
-    mis-parsed as malformed notes.
+    Three-valued so the writer can tell the cases apart and stay loud:
+      • **None** — no `## Review` section, or a marker with no parseable fence
+        (missing open/close fence). The caller distinguishes "no section" from
+        "format drift" by re-checking `JOURNAL_REVIEW_MARKER in text`.
+      • **''** — a fenced review that's empty (a legit clean run: "nothing to
+        note"), distinct from drift.
+      • **str** — the fence content, ready for `parse_journal_notes`.
+    Extracting ONLY the fence (not the whole section) keeps surrounding prose —
+    which may carry a stray '·' — from being mis-parsed as malformed notes.
     """
     if not text:
-        return ''
+        return None
     idx = text.find(JOURNAL_REVIEW_MARKER)
     if idx == -1:
-        return ''
+        return None
     after = text[idx + len(JOURNAL_REVIEW_MARKER):]
     open_fence = after.find('```')
     if open_fence == -1:
-        return ''
+        return None
     rest = after[open_fence + 3:]
     nl = rest.find('\n')           # skip an optional language tag on the fence line
     if nl != -1:
         rest = rest[nl + 1:]
     close_fence = rest.find('```')
     if close_fence == -1:
-        return ''
+        return None
     return rest[:close_fence].strip()
 
 

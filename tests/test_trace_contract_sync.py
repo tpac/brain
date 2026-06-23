@@ -586,3 +586,22 @@ class TestJournalNoteParser:
         from servers.trace_contract import parse_journal_notes
         notes, bad = parse_journal_notes('## Review\n### Notes')
         assert notes == [] and bad == []
+
+    def test_leading_markdown_bullet_stripped(self):
+        # LLMs list-format their review; a leading '-'/'*'/'•' must not become
+        # part of the tag (the future miner's grouping key).
+        from servers.trace_contract import parse_journal_notes
+        for bullet in ('- ', '* ', '• '):
+            notes, bad = parse_journal_notes(bullet + 'friction · nodeA · misread')
+            assert bad == []
+            assert notes == [{'tag': 'friction', 'subject': 'nodeA', 'note': 'misread'}]
+
+    def test_extract_review_block_none_vs_empty(self):
+        # None = no section / broken fence (drift); '' = empty fence (clean run);
+        # str = content. The writer keys its loud-vs-quiet decision on this.
+        from servers.trace_contract import extract_review_block
+        assert extract_review_block('no marker here') is None
+        assert extract_review_block('## Review\nbare line, no fence') is None
+        assert extract_review_block('## Review\n```\nunclosed') is None
+        assert extract_review_block('## Review\n```\n```\n') == ''
+        assert extract_review_block('## Review\n```\nfriction · a · b\n```') == 'friction · a · b'

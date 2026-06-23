@@ -104,18 +104,33 @@ class TestJournalNotesWrite(BrainTestBase):
             "doubt · nodeA · merged but unsure the claims match\n"
             "```\n"
         )
-        n = self.brain.write_journal_notes(
+        r = self.brain.write_journal_notes(
             final_text=final, chain_id='s2-20260101000005-consolidation', scale='s2')
-        assert n == 2
+        assert r['written'] == 2 and r['status'] == 'ok'
         out = self.brain.journal_notes(scale='s2', unit='consolidation', k=5)
         assert {x['subject'] for x in out} == {'temporal-scout', 'nodeA'}
         assert {x['tag'] for x in out} == {'friction', 'doubt'}
 
-    def test_no_op_without_review_section(self):
-        n = self.brain.write_journal_notes(
+    def test_no_review_section_warns_loud(self):
+        # No `## Review` at all → loud signal (not a silent 0), distinct status.
+        r = self.brain.write_journal_notes(
             final_text="Encoded 3 nodes. No review here.",
             chain_id='s2-20260101000006-consolidation', scale='s2')
-        assert n == 0
+        assert r == {'written': 0, 'malformed': 0, 'status': 'no_review_section'}
+
+    def test_marker_present_but_no_fence_warns(self):
+        # `## Review` present but no fenced block → format drift, distinct status.
+        r = self.brain.write_journal_notes(
+            final_text="## Review\nfriction · nodeA · misread (no fence!)\n",
+            chain_id='s2-20260101000066-consolidation', scale='s2')
+        assert r['status'] == 'no_review_extracted' and r['written'] == 0
+
+    def test_empty_fenced_review_is_clean_not_drift(self):
+        # `## Review` with an empty fence = a legit clean run, NOT drift.
+        r = self.brain.write_journal_notes(
+            final_text="## Review\n```\n```\n",
+            chain_id='s2-20260101000067-consolidation', scale='s2')
+        assert r == {'written': 0, 'malformed': 0, 'status': 'empty_review'}
 
     def test_prose_outside_fence_not_parsed(self):
         # Review #4: prose before the fence with a stray '·' must NOT become a
@@ -127,9 +142,9 @@ class TestJournalNotesWrite(BrainTestBase):
             "surprise · recall-ranking · IDF boost helped, unexpectedly\n"
             "```\n"
         )
-        n = self.brain.write_journal_notes(
+        r = self.brain.write_journal_notes(
             final_text=final, chain_id='s2-20260101000007-consolidation', scale='s2')
-        assert n == 1
+        assert r['written'] == 1
         out = self.brain.journal_notes(scale='s2', unit='consolidation', k=5)
         assert {x['note'] for x in out} == {'IDF boost helped, unexpectedly'}
 
@@ -143,11 +158,23 @@ class TestJournalNotesWrite(BrainTestBase):
             "this line has no delimiter and is malformed\n"
             "```\n"
         )
-        n = self.brain.write_journal_notes(
+        r = self.brain.write_journal_notes(
             final_text=final, chain_id='s2-20260101000008-consolidation', scale='s2')
-        assert n == 1
+        assert r['written'] == 1 and r['malformed'] == 1
         out = self.brain.journal_notes(scale='s2', unit='consolidation', k=5)
         assert {x['note'] for x in out} == {'a real note'}
+
+    def test_bullet_prefixed_notes_write_clean_tags(self):
+        # LLMs love bullet lists; a leading '- '/'* ' must not pollute the tag.
+        final = ("## Review\n```\n"
+                 "- friction · nodeA · misread again\n"
+                 "* doubt · nodeB · unsure the merge is coherent\n"
+                 "```\n")
+        r = self.brain.write_journal_notes(
+            final_text=final, chain_id='s2-20260101000009-consolidation', scale='s2')
+        assert r['written'] == 2
+        out = self.brain.journal_notes(scale='s2', unit='consolidation', k=5)
+        assert {x['tag'] for x in out} == {'friction', 'doubt'}   # not '- friction'
 
 
 class TestJournalNotesRecallGuard(BrainTestBase):

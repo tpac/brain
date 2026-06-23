@@ -611,43 +611,89 @@ class BrainRecallMixin:
 
     def write_journal_notes(self, *, final_text, chain_id, scale, session_id=''):
         """Write door — the mirror of journal_notes (read). Extract the
-        encoder's `## Review` fenced block from its final text, parse it, and
-        write each note as its own journal_note trace row (event_type='delta',
-        ref_id=subject), all sharing the run's chain_id. Returns the count.
+        encoder's `## Review` fenced block, parse it, and write each note as its
+        own journal_note trace row (event_type='delta', ref_id=subject), all
+        sharing the run's chain_id.
 
-        No-op (returns 0) when there's no review block — every run today, until
-        a prompt emits the section. Loud + isolated: malformed lines, and notes
-        with no subject or unbuildable metadata, are logged via _log_warning and
-        skipped — one bad note never sinks the rest. Subject is required at write
-        (the load-bearing index — a note with no subject isn't a note, #7).
+        Returns a structured result so the caller (and the trace) can see what
+        happened: `{'written': int, 'malformed': int, 'status': str}` where
+        status is one of:
+          • 'ok'                 — a non-empty review processed (counts tell the rest)
+          • 'empty_review'       — a fenced review that was empty (a legit clean run)
+          • 'no_review_section'  — the encoder emitted no `## Review` at all
+          • 'no_review_extracted'— `## Review` present but no parseable fence (drift)
+          • 'error'              — an unexpected failure (isolated; see below)
+
+        LOUD BY DEFAULT — nothing is dropped silently. The encoder is expected
+        to ALWAYS emit a `## Review` section (empty fence on a clean run), so a
+        missing section or a broken fence is real drift and gets a warning. A
+        malformed line, a subject-less note, or unbuildable metadata each logs
+        loud and is skipped — one bad note never sinks the rest. If notes parsed
+        but none survived, that's an accidental full drop → loud. The whole body
+        is failure-isolated: any unexpected error is logged loud and swallowed —
+        a journal write must never break or roll back the encoder's actual run.
         """
         from .trace_contract import (extract_review_block, parse_journal_notes,
-                                      build_journal_note_metadata)
-        block = extract_review_block(final_text)
-        if not block:
-            return 0
-        notes, malformed = parse_journal_notes(block)
-        for raw in malformed:
-            self._log_warning('journal_note_malformed', raw[:200])
-        events = []
-        for n in notes:
-            subject = (n.get('subject') or '').strip()
-            if not subject:
-                self._log_warning('journal_note_no_subject', str(n)[:200])
-                continue
-            try:
-                meta = build_journal_note_metadata(note=n['note'], tag=n.get('tag', ''))
-            except ValueError as e:
-                self._log_warning('journal_note_build_failed', '%s | %s' % (e, str(n)[:160]))
-                continue
-            events.append({
-                'chain_id': chain_id, 'scale': scale, 'event_type': 'delta',
-                'ref_type': 'journal_note', 'ref_id': subject,
-                'summary': n['note'][:80], 'metadata': meta, 'session_id': session_id,
-            })
-        if events:
-            self._trace_dal.append_batch(events)
-        return len(events)
+                                      build_journal_note_metadata,
+                                      JOURNAL_REVIEW_MARKER)
+        try:
+            block = extract_review_block(final_text)
+            if block is None:
+                if JOURNAL_REVIEW_MARKER in (final_text or ''):
+                    self._log_warning(
+                        'journal_note_no_review_extracted',
+                        'chain=%s: %r present but no parseable fenced block'
+                        % (chain_id, JOURNAL_REVIEW_MARKER))
+                    return {'written': 0, 'malformed': 0,
+                            'status': 'no_review_extracted'}
+                self._log_warning(
+                    'journal_note_no_review_section',
+                    'chain=%s: encoder final_text (%d chars) has no %r section'
+                    % (chain_id, len(final_text or ''), JOURNAL_REVIEW_MARKER))
+                return {'written': 0, 'malformed': 0, 'status': 'no_review_section'}
+            if block == '':
+                # Fenced review present but empty — the legit "clean run, nothing
+                # to note" case. Visible (debug), not an alarm.
+                self.log_debug('journal_note_empty_review', 'write_journal_notes',
+                               chain_id=chain_id)
+                return {'written': 0, 'malformed': 0, 'status': 'empty_review'}
+
+            notes, malformed = parse_journal_notes(block)
+            for raw in malformed:
+                self._log_warning('journal_note_malformed',
+                                  'chain=%s: %s' % (chain_id, raw[:200]))
+            events = []
+            for n in notes:
+                subject = (n.get('subject') or '').strip()
+                if not subject:
+                    self._log_warning('journal_note_no_subject',
+                                      'chain=%s: %s' % (chain_id, str(n)[:200]))
+                    continue
+                try:
+                    meta = build_journal_note_metadata(note=n['note'],
+                                                       tag=n.get('tag', ''))
+                except ValueError as e:
+                    self._log_warning('journal_note_build_failed',
+                                      'chain=%s: %s | %s' % (chain_id, e, str(n)[:160]))
+                    continue
+                events.append({
+                    'chain_id': chain_id, 'scale': scale, 'event_type': 'delta',
+                    'ref_type': 'journal_note', 'ref_id': subject,
+                    'summary': meta['note'][:80], 'metadata': meta,
+                    'session_id': session_id,
+                })
+            if events:
+                self._trace_dal.append_batch(events)
+            if notes and not events:
+                self._log_warning(
+                    'journal_note_all_dropped',
+                    'chain=%s: parsed %d notes but wrote 0 (all failed subject/build)'
+                    % (chain_id, len(notes)))
+            return {'written': len(events), 'malformed': len(malformed),
+                    'status': 'ok'}
+        except Exception as e:
+            self._log_error('journal_note_write_failed', e, 'chain=%s' % chain_id)
+            return {'written': 0, 'malformed': 0, 'status': 'error'}
 
     def query_outcomes(self, chain_id: str = '', scale: str = '',
                        hours: int = 168):
