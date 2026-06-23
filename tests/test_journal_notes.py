@@ -173,3 +173,52 @@ class TestJournalNotesRecallGuard(BrainTestBase):
             metadata=build_journal_note_metadata(note='zebra-unique-marker note'))
         res = self.brain.recall_episodes(contains='zebra-unique-marker')
         assert 'zebra-unique-marker' not in str(res)
+
+
+class TestGatingExcludesResidue(BrainTestBase):
+    """S2 idle-gating counts REAL integration deltas, not residue notes — so a
+    run that only journaled doesn't read as a completed integration. Routed
+    through query_traces(exclude_ref_types=...), not raw SQL (#11)."""
+    needs_embedder = False
+
+    def _unit(self):
+        from servers.scales.s2.base import IntegrationUnit
+
+        class U(IntegrationUnit):
+            NAME = 'consolidation'
+            SCALE = 's2'
+        return U(self.brain)
+
+    def test_query_traces_exclude_ref_types(self):
+        ta = self.brain._trace_dal
+        ta.append(chain_id='s2-20260101000010-consolidation', scale='s2',
+                  event_type='delta', ref_type='consolidated', summary='ran')
+        ta.append(chain_id='s2-20260101000010-consolidation', scale='s2',
+                  event_type='delta', ref_type='journal_note', ref_id='nodeA',
+                  summary='note', metadata=build_journal_note_metadata(note='a note'))
+        events = self.brain.query_traces(
+            scale='s2', event_type='delta', chain_suffix='consolidation',
+            exclude_ref_types=['journal_note'], hours=None)['events']
+        assert {e['ref_type'] for e in events} == {'consolidated'}
+
+    def test_last_run_timestamp_excludes_journal_note(self):
+        import time
+        ta = self.brain._trace_dal
+        ta.append(chain_id='s2-20260101000010-consolidation', scale='s2',
+                  event_type='delta', ref_type='consolidated', summary='ran')
+        ops_ts = self.brain.query_traces(
+            ref_type='consolidated', scale='s2',
+            chain_suffix='consolidation', hours=None)['events'][0]['created_at']
+        time.sleep(0.01)  # journal_note lands strictly later
+        ta.append(chain_id='s2-20260101000010-consolidation', scale='s2',
+                  event_type='delta', ref_type='journal_note', ref_id='nodeA',
+                  summary='note', metadata=build_journal_note_metadata(note='a later note'))
+        # Must be the ops-delta's time, NOT the later journal_note's.
+        assert self._unit()._last_run_timestamp() == ops_ts
+
+    def test_last_run_timestamp_empty_when_only_notes(self):
+        self.brain._trace_dal.append(
+            chain_id='s2-20260101000011-consolidation', scale='s2',
+            event_type='delta', ref_type='journal_note', ref_id='nodeB',
+            summary='note', metadata=build_journal_note_metadata(note='only a note'))
+        assert self._unit()._last_run_timestamp() == ''  # no real integration yet

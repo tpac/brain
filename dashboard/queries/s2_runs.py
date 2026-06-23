@@ -20,6 +20,14 @@ from ..db import brain_db_path, fetch_by_id, logs_db_path, ro_connect
 from ..log import warn
 
 
+# Mirror of servers/trace_contract.RESIDUE_REF_TYPES. The dashboard disconnection
+# contract forbids importing servers.* (see queries/aspects.py), so we replicate.
+# These ref_types are encoder *residue* (journal_note), event_type='delta' on the
+# unit's chain — the run-card delta query excludes them so notes don't show up as
+# phantom runs.
+_RESIDUE_REF_TYPES = ('journal_note',)
+
+
 def _fetch_ok_deltas(conn, unit_keyword: str, hours: int, delta_columns: str,
                      ok_extra_columns: str = ''):
     """Pull (delta_rows, ok_by_chain) for a given S2 unit from logs_db.
@@ -33,11 +41,13 @@ def _fetch_ok_deltas(conn, unit_keyword: str, hours: int, delta_columns: str,
     are string-keyed.
     """
     since = utc_cutoff(hours=hours)
+    excl = ','.join(['?'] * len(_RESIDUE_REF_TYPES))
     delta_rows = conn.execute(
         "SELECT %s FROM trace_events WHERE chain_id LIKE ? "
-        "AND event_type = 'delta' AND created_at > ? ORDER BY created_at DESC"
-        % delta_columns,
-        ('%' + unit_keyword + '%', since),
+        "AND event_type = 'delta' AND (ref_type IS NULL OR ref_type NOT IN (%s)) "
+        "AND created_at > ? ORDER BY created_at DESC"
+        % (delta_columns, excl),
+        ('%' + unit_keyword + '%', *_RESIDUE_REF_TYPES, since),
     ).fetchall()
     ok_select = "chain_id, event_type, summary, created_at"
     if ok_extra_columns:

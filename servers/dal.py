@@ -722,10 +722,11 @@ class TraceDAL:
                 'created_at': r[7], 'session_id': r[8] or ''})
         return results
 
-    def get_recent(self, scale: str = '', hours: int = 24,
+    def get_recent(self, scale: str = '', hours: Optional[int] = 24,
                    event_type: str = '', session_id: str = '',
                    session_ids: Optional[List[str]] = None,
-                   limit: int = 100) -> List[Dict[str, Any]]:
+                   limit: int = 100, chain_suffix: str = '',
+                   exclude_ref_types: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Get recent trace events, optionally filtered by scale/type/session.
 
         Session filtering — three modes:
@@ -765,15 +766,26 @@ class TraceDAL:
             conditions.append('session_id = ?')
             params.append(session_id)
         else:
-            conditions.append('created_at > ?')
-            params.append(iso_cutoff(hours=hours))
+            if hours is not None:    # None = no time window (caller bounds via limit)
+                conditions.append('created_at > ?')
+                params.append(iso_cutoff(hours=hours))
         if scale:
             conditions.append('scale = ?')
             params.append(scale)
         if event_type:
             conditions.append('event_type = ?')
             params.append(event_type)
-        where = ' AND '.join(conditions)
+        if chain_suffix:
+            conditions.append("chain_id LIKE ? ESCAPE '\\'")
+            params.append(self._like_suffix_param(chain_suffix))
+        if exclude_ref_types:
+            # Exclude residue (journal_note) so "recent integration deltas"
+            # don't count encoder notes. NULL ref_type is kept (treated as
+            # non-residue), not dropped by NOT IN.
+            ph = ','.join(['?'] * len(exclude_ref_types))
+            conditions.append('(ref_type IS NULL OR ref_type NOT IN (%s))' % ph)
+            params.extend(exclude_ref_types)
+        where = ' AND '.join(conditions) if conditions else '1=1'
         rows = self.conn.execute(
             'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, created_at, session_id '
             'FROM trace_events WHERE %s ORDER BY created_at DESC LIMIT ?' % where,
@@ -967,6 +979,15 @@ class TraceDAL:
         result = [chains[cid] for cid in chain_order[:limit]]
         return result
 
+    @staticmethod
+    def _like_suffix_param(suffix: str) -> str:
+        """LIKE param matching chains ENDING in '-{suffix}', with LIKE metachars
+        in the suffix escaped so a '_' in a unit name (community_detection)
+        matches literally, not as a single-char wildcard. Pair with the clause
+        `chain_id LIKE ? ESCAPE '\\'`."""
+        esc = suffix.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+        return '%-' + esc
+
     def get_by_ref_type(self, ref_type: str, scale: str = '',
                         hours: Optional[int] = 24, limit: int = 100,
                         session_id: str = '', ref_id: str = '',
@@ -999,13 +1020,8 @@ class TraceDAL:
             conditions.append('ref_id = ?')
             params.append(ref_id)
         if chain_suffix:
-            # Match chains ending in '-{suffix}'. Escape LIKE metachars so a '_'
-            # in a unit name (community_detection) matches literally, not as a
-            # single-char wildcard.
-            esc = (chain_suffix.replace('\\', '\\\\')
-                   .replace('%', '\\%').replace('_', '\\_'))
             conditions.append("chain_id LIKE ? ESCAPE '\\'")
-            params.append('%-' + esc)
+            params.append(self._like_suffix_param(chain_suffix))
         where = ' AND '.join(conditions)
 
         rows = self.conn.execute(
