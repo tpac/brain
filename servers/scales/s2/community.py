@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from .community_decoder import CommunityDecoder
 from .community_encoder import CommunityEncoder
 from .community_contract import COMMUNITY_DETECTION
-from .rejection_table import filter_rejected, get_proposed_ids, record_rejections
+from .rejection_table import filter_rejected, record_rejections
 
 
 class CommunityDetection(CommunityDecoder):
@@ -163,6 +163,9 @@ class CommunityDetection(CommunityDecoder):
         community_state = decode_result['community_state']
 
         if not raw_proposals:
+            # Decoder examined the pending nodes and proposed nothing → none
+            # placed → mark them all unplaceable so they rest next cycle.
+            self._mark_unplaced_pending(decode_result.get('pending_probes', []))
             return {'actions': 0, 'proposals': 0,
                     'communities': len(community_state)}
 
@@ -180,20 +183,19 @@ class CommunityDetection(CommunityDecoder):
                                  'raw_total': len(raw_proposals),
                                  'surviving': len(proposals)})
 
-        # Phase 2: mark unplaceable the pending nodes the decoder examined but
-        # no SURVIVING proposal places. They sleep — excluded from future
-        # decodes — until their 1-hop neighborhood fingerprint moves (an edge
-        # forms, or a neighbor joins a community). Runs before the
-        # 'all suppressed' early-return so a fully-suppressed cycle still marks.
-        pending_probes = decode_result.get('pending_probes', [])
-        if pending_probes:
-            covered = set()
-            for p in proposals:
-                if p.get('type') in ('new_community', 'add_to_existing'):
-                    covered.update(get_proposed_ids(p))
-            to_mark = [pr for pr in pending_probes if pr['node_id'] not in covered]
-            if to_mark:
-                self._mark_unplaceable(to_mark)
+        # Encode (only if anything survived filtering).
+        encode_result = None
+        if proposals:
+            encoder = CommunityEncoder(
+                self.brain, self.dispatch, self.config)
+            encode_result = encoder.run(proposals, community_state)
+
+        # Phase 2: mark unplaceable the pending nodes NOT actually placed into a
+        # community this cycle. Read AFTER encode via get_communities_for, so it
+        # observes real placement — correct under corridor-drop, quota deferral,
+        # and encoder skips (none of which place a node). A marked node sleeps
+        # until its 1-hop neighborhood fingerprint moves.
+        self._mark_unplaced_pending(decode_result.get('pending_probes', []))
 
         if not proposals:
             return {'actions': 0, 'proposals': 0,
@@ -201,11 +203,6 @@ class CommunityDetection(CommunityDecoder):
                     'suppressed': suppressed_count,
                     'communities': len(community_state),
                     'skipped': 'all proposals suppressed'}
-
-        # Encode
-        encoder = CommunityEncoder(
-            self.brain, self.dispatch, self.config)
-        encode_result = encoder.run(proposals, community_state)
 
         if not encode_result:
             return {'actions': 0, 'proposals': len(proposals),
@@ -226,19 +223,42 @@ class CommunityDetection(CommunityDecoder):
             },
         }
 
-    def _mark_unplaceable(self, probes):
-        """Record `unplaceable` rejections for pending nodes nothing placed.
-
-        One row per node: drop the node's prior unplaceable fingerprint first
-        (proposed_ids is the JSON [node_id]) so s2_rejections keeps a single
-        current row per node, not one per historical neighborhood-state. The
-        fresh fingerprint encodes the node's current 1-hop neighborhood, so a
-        later edge/membership change yields a different fingerprint that no
-        longer matches — re-eligible for examination.
+    def _mark_unplaced_pending(self, probes):
+        """Mark unplaceable the pending nodes that did NOT land in any community
+        this cycle. Placement is read AFTER the encoder ran (get_communities_for),
+        so corridor-dropped, quota-deferred, and encoder-skipped nodes — none of
+        which were actually placed — are correctly marked rather than shielded
+        (which would leave them pending every cycle, defeating the rest gate).
         """
-        for pr in probes:
-            self.brain.conn.execute(
-                "DELETE FROM s2_rejections "
-                "WHERE proposal_type = 'unplaceable' AND proposed_ids = ?",
-                (json.dumps([pr['node_id']]),))
-        record_rejections(self.brain, probes)
+        if not probes:
+            return
+        ids = [pr['node_id'] for pr in probes]
+        placed = self.brain._graph.get_communities_for(ids)  # {id: [communities]}
+        to_mark = [pr for pr in probes if not placed.get(pr['node_id'])]
+        if to_mark:
+            self._mark_unplaceable(to_mark)
+
+    def _mark_unplaceable(self, probes):
+        """Record `unplaceable` rejections, one current row per node.
+
+        Holds write_lock — this is a foreground write on the shared brain.conn,
+        same as every other S2 writer; without it the DELETE+INSERT can
+        interleave with a concurrent client brain_batch on the connection. Drops
+        each node's prior unplaceable fingerprint in a single batched DELETE
+        (one scan, not one per node) before recording the fresh one, so
+        s2_rejections keeps one row per node, not one per historical
+        neighborhood-state. Lock + single record_rejections commit make the
+        DELETE+INSERT atomic.
+        """
+        if not probes:
+            return
+        keys = [json.dumps([pr['node_id']]) for pr in probes]
+        with self.brain.write_lock:
+            for i in range(0, len(keys), 400):
+                chunk = keys[i:i + 400]
+                ph = ','.join('?' * len(chunk))
+                self.brain.conn.execute(
+                    "DELETE FROM s2_rejections "
+                    "WHERE proposal_type = 'unplaceable' AND proposed_ids IN (%s)" % ph,
+                    chunk)
+            record_rejections(self.brain, probes)

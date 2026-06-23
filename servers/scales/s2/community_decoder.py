@@ -129,8 +129,7 @@ class CommunityDecoder(IntegrationUnit):
         # reach, since ~28% of nodes never cluster. (The marking itself lives
         # in the pipeline, which sees which pending nodes a surviving proposal
         # actually places.)
-        node_to_comm = {m: c['id'] for c in community_state
-                        for m in c.get('members', [])}
+        node_to_comm = self._node_to_comm(community_state)
         neighbors = self._load_neighbors(unplaced)
         probes = [{'type': 'unplaceable', 'node_id': nid,
                    'neighborhood': self._neighborhood_str(nid, neighbors, node_to_comm)}
@@ -190,6 +189,20 @@ class CommunityDecoder(IntegrationUnit):
     # Phase 2: unplaceable-marking helpers
     # ══════════════════════════════════════════════════════════
 
+    def _node_to_comm(self, community_state):
+        """Map each node to a deterministic sorted-join of ALL its community
+        ids. NOT a dict last-wins comprehension: a node in >1 community would
+        then take whichever community community_state listed last, and the
+        SELECT behind community_state has no ORDER BY — so the mapping (and the
+        node's fingerprint) could flip between runs and wake it spuriously.
+        Sorting all of a node's communities makes it order-independent.
+        """
+        nc = {}
+        for c in community_state:
+            for m in c.get('members', []):
+                nc.setdefault(m, set()).add(c['id'])
+        return {m: ','.join(sorted(cids)) for m, cids in nc.items()}
+
     def _load_neighbors(self, node_ids):
         """neighbor-id set per node, both edge directions, active non-noise.
 
@@ -203,8 +216,13 @@ class CommunityDecoder(IntegrationUnit):
             return result
         try:
             noise = set(self.brain.aspects.relations_in(['noise', 'generic_relation']))
-        except Exception:
+        except Exception as e:
+            # Don't swallow: an empty noise set INCLUDES Hebbian co_accessed edges
+            # in the fingerprint, churning it for most nodes. Log so the (rare)
+            # transient churn is visible rather than a silent spurious-wakeup wave.
             noise = set()
+            self.brain._log_error('s2_community_noise_aspect_load', e,
+                                  'unplaceable fingerprint may churn this cycle')
         ids = list(node_ids)
         for i in range(0, len(ids), 400):
             chunk = ids[i:i + 400]

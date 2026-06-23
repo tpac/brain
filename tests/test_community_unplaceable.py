@@ -94,6 +94,39 @@ class TestCommunityUnplaceable(BrainTestBase):
         nbrs = unit._load_neighbors({x})
         self.assertEqual(nbrs[x], {a, b})       # both directions
 
+    # ── marking is by ACTUAL placement, not predicted ────────────────
+    def test_mark_unplaced_pending_skips_actually_placed(self):
+        # A pending node the encoder actually placed must NOT be marked; one
+        # left unplaced (corridor-dropped / quota-deferred / skipped) must be.
+        unit = CommunityDetection(self.brain)
+        placed, orphan = self._node('placed'), self._node('orphan')
+        comm = self.brain.remember(type='community', title='C', content='c',
+                                   encoding_source='s2:community_detection')['id']
+        self.brain.connect(comm, placed, relation='community_member', weight=0.6)
+
+        probes = [{'type': 'unplaceable', 'node_id': placed, 'neighborhood': ''},
+                  {'type': 'unplaceable', 'node_id': orphan, 'neighborhood': ''}]
+        unit._mark_unplaced_pending(probes)
+
+        def marked(nid):
+            return self.brain.conn.execute(
+                "SELECT COUNT(*) FROM s2_rejections "
+                "WHERE proposal_type='unplaceable' AND proposed_ids=?",
+                (json.dumps([nid]),)).fetchone()[0]
+        self.assertEqual(marked(placed), 0)    # in a community → not marked
+        self.assertEqual(marked(orphan), 1)    # not placed → marked
+
+    # ── node_to_comm is order-independent (multi-membership) ──────────
+    def test_node_to_comm_deterministic_multi_membership(self):
+        d = CommunityDecoder(self.brain)
+        cs1 = [{'id': 'commA', 'members': ['x', 'y']},
+               {'id': 'commB', 'members': ['x']}]
+        cs2 = list(reversed(cs1))
+        m1, m2 = d._node_to_comm(cs1), d._node_to_comm(cs2)
+        self.assertEqual(m1, m2)                       # community_state order irrelevant
+        self.assertEqual(m1['x'], 'commA,commB')       # all communities, sorted
+        self.assertEqual(m1['y'], 'commA')
+
     # ── decoder rests when the backlog is fully marked ───────────────
     def test_decoder_rests_when_all_unplaced_marked(self):
         unit = CommunityDetection(self.brain)
