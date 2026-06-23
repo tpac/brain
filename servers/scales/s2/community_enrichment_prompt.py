@@ -141,8 +141,9 @@ Reject: `{op: "revise", node_id: "<node_id>", reason: "drift rejected", _sys_dri
 
 ## HEALTH UPDATE
 
-Dead (int_frac<5%): `{op: "archive", node_id: "<community_id>", reason: "dead — members dispersed"}`
-Degrading: `{op: "revise", node_id: "<community_id>", reason: "health update", community_maturity: "forming"}`
+Low cohesion (internal fraction has fallen low) — JUDGE, don't auto-archive:
+  • Truly dispersed, no coherent thread left → `{op: "archive", node_id: "<community_id>", reason: "<why it's no longer a real cluster>"}`
+  • Still a real-but-loose cluster (the shared thread is intact, just diluted as the graph grew) → KEEP it: reject in the journal with a one-line reason. A loose community is not a dead one.
 Maturing: `{op: "revise", node_id: "<community_id>", reason: "corridor maturing", community_maturity: "active"}`
 
 ## MERGE
