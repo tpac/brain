@@ -17,14 +17,14 @@ that fired every idle cycle (87% doing zero work) into a cheap no-op when
 nothing has changed.
 """
 
-import json
 import time as _time
 from datetime import datetime, timezone
 
 from .community_decoder import CommunityDecoder
 from .community_encoder import CommunityEncoder
 from .community_contract import COMMUNITY_DETECTION
-from .rejection_table import filter_rejected, record_rejections
+from .rejection_table import (
+    filter_rejected, record_rejections, clear_unplaceable_rejections)
 
 
 class CommunityDetection(CommunityDecoder):
@@ -252,13 +252,6 @@ class CommunityDetection(CommunityDecoder):
         """
         if not probes:
             return
-        keys = [json.dumps([pr['node_id']]) for pr in probes]
         with self.brain.write_lock:
-            for i in range(0, len(keys), 400):
-                chunk = keys[i:i + 400]
-                ph = ','.join('?' * len(chunk))
-                self.brain.conn.execute(
-                    "DELETE FROM s2_rejections "
-                    "WHERE proposal_type = 'unplaceable' AND proposed_ids IN (%s)" % ph,
-                    chunk)
+            clear_unplaceable_rejections(self.brain, probes)
             record_rejections(self.brain, probes)

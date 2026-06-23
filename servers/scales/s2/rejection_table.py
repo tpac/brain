@@ -46,9 +46,11 @@ from ...contract import VALID_BATCH_OPS
 def compute_fingerprint(proposal):
     """Stable fingerprint for a proposal.
 
-    - add_to_existing: node_id + community_id + affinity_tier
-      (tier captures the regime where encoder judgment would change:
-      borderline <0.40, moderate <0.65, strong >=0.65)
+    - add_to_existing: node_id + top community id + affinity_tier, read
+      from communities[0] (the decoder sorts candidates by affinity desc,
+      so [0] is the strongest — the dominant input to the place/skip
+      judgment). Tier captures the regime where encoder judgment would
+      change: borderline <0.40, moderate <0.65, strong >=0.65.
     - new_community: top 40% of representative IDs (structural hubs
       define cluster identity; peripheral member changes don't
       invalidate the rejection)
@@ -59,7 +61,14 @@ def compute_fingerprint(proposal):
     ptype = proposal.get('type', '')
 
     if ptype == 'add_to_existing':
-        aff = proposal.get('affinity', 0)
+        # The decoder carries candidate communities in `communities`
+        # (sorted by affinity desc) — NOT top-level community_id/affinity.
+        # Reading those absent keys collapsed every fingerprint to
+        # 'add:<node>::borderline', so one rejection suppressed the node
+        # into ALL communities at ALL tiers forever. Fingerprint the
+        # strongest candidate instead.
+        top = (proposal.get('communities') or [{}])[0]
+        aff = top.get('affinity', 0)
         if aff >= 0.65:
             tier = 'strong'
         elif aff >= 0.40:
@@ -68,7 +77,7 @@ def compute_fingerprint(proposal):
             tier = 'borderline'
         raw = 'add:%s:%s:%s' % (
             proposal.get('node_id', ''),
-            proposal.get('community_id', ''),
+            top.get('id', ''),
             tier)
 
     elif ptype == 'new_community':
@@ -156,6 +165,11 @@ def get_proposed_ids(proposal):
         ids.extend(proposal['members'])
     if proposal.get('community_id'):
         ids.append(proposal['community_id'])
+    # add_to_existing carries its target communities under `communities`,
+    # not community_id — capture them for S3 analysis too.
+    for c in proposal.get('communities', []):
+        if isinstance(c, dict) and c.get('id'):
+            ids.append(c['id'])
     if proposal.get('larger_id'):
         ids.append(proposal['larger_id'])
     if proposal.get('smaller_id'):
@@ -262,6 +276,31 @@ def record_rejections(brain, proposals, integration_unit='s2:community_detection
     return count
 
 
+def clear_unplaceable_rejections(brain, proposals):
+    """Drop each proposal's current `unplaceable` rejection row, batched
+    (one DELETE scan per chunk, not one per node).
+
+    Paired with record_rejections to keep s2_rejections at one unplaceable row
+    per node. The fingerprint is neighborhood-derived, so a re-mark writes a
+    NEW fingerprint — the stale row can't be REPLACEd on the fingerprint PK; it
+    must be deleted by (proposal_type, proposed_ids). proposed_ids matches what
+    record_rejections wrote for an unplaceable proposal: json.dumps([node_id]).
+
+    Does NOT commit: the caller holds write_lock and record_rejections' commit
+    closes the DELETE+INSERT as one transaction.
+    """
+    if not proposals:
+        return
+    keys = [json.dumps([p['node_id']]) for p in proposals]
+    for i in range(0, len(keys), 400):
+        chunk = keys[i:i + 400]
+        ph = ','.join('?' * len(chunk))
+        brain.conn.execute(
+            "DELETE FROM s2_rejections "
+            "WHERE proposal_type = 'unplaceable' AND proposed_ids IN (%s)" % ph,
+            chunk)
+
+
 # ═══════════════════════════════════════════════════════════════
 # MATCHER — proposal → encoder action
 # ═══════════════════════════════════════════════════════════════
@@ -319,7 +358,15 @@ def match_proposals_to_actions(sent_proposals, action_details):
                     continue
                 for i, p in enumerate(sent_proposals):
                     if p.get('type') == 'add_to_existing':
-                        if p.get('community_id') == src and p.get('node_id') == tgt:
+                        # Candidate communities live in `communities` (the
+                        # proposal carries no top-level community_id). The
+                        # encoder connects the node to one of them — match on
+                        # node_id + any candidate, else a real placement is
+                        # mis-stamped as a rejection and its acted-on count lost.
+                        cand_ids = {c.get('id')
+                                    for c in p.get('communities', [])
+                                    if isinstance(c, dict)}
+                        if p.get('node_id') == tgt and src in cand_ids:
                             acted_idx.add(i)
                     elif p.get('type') == 'drift':
                         if p.get('node_id') == tgt:
@@ -380,7 +427,8 @@ def sort_proposals_by_priority(proposals):
         if ptype == 'new_community':
             confidence = p.get('internal_fraction', 0)
         elif ptype == 'add_to_existing':
-            confidence = p.get('affinity', 0)
+            # Affinity lives in communities[0] (sorted desc), not top-level.
+            confidence = (p.get('communities') or [{}])[0].get('affinity', 0)
         elif ptype == 'merge_communities':
             confidence = p.get('overlap_pct', 0)
         elif ptype == 'health_update':
