@@ -60,6 +60,31 @@ COMMUNITY_DETECTION = {
     'cross_cutting_min_degree': 15,
     'cross_cutting_max_top_affinity': 0.35,
 
+    # ── Community health seam (2026-06-23) ──
+    # Replaces the old single 0.05 'dead' threshold + the 'degrading' nag.
+    # ONE tunable (the review zone) + ONE structural fact (disconnected):
+    #   typed int_frac < low_cohesion_threshold → the community is loose enough
+    #       to act on. Within that zone:
+    #         · DISCONNECTED (no internal edge of any real-cohesion relation —
+    #           see non_cohesion_relations) → deterministic auto-archive: no
+    #           encoder round, no rejection fingerprint, so it can never get
+    #           stuck "suppressed but undead". A structural fact, not a tuned
+    #           number — and counting ALL relations (incl. similar_to) means a
+    #           community cohesive only via similar_to is NOT auto-archived.
+    #         · otherwise → encoder JUDGES archive-or-keep (the review surface).
+    # The threshold is a pure volume dial — int_frac is low population-wide
+    # (median ~0.49, p10 ~0.22), so it stays conservative; above ~0.15 it would
+    # sweep in normal communities. 'degrading' is gone (zero-value churn).
+    'low_cohesion_threshold': 0.10,  # typed int_frac below this → act on it
+    # Relations that do NOT count as internal cohesion for the disconnected
+    # check: Hebbian co-access, structural membership/bridge edges, dream
+    # artifacts, and pure-generic 'related'. Everything else (similar_to,
+    # synthesizes, and all typed relations) counts — so a community linked only
+    # by these is "disconnected" → safe to auto-archive.
+    'non_cohesion_relations': (
+        'co_accessed', 'emergent_bridge', 'community_member',
+        'dream_observation', 'dreamed_from', 'related', 'related_to'),
+
     # ── Encoder ──
     # Haiku 4.5 after A/B eval proved it outperforms Sonnet 4.6 on this task
     # (Sonnet 4.6 couldn't complete 2 rounds without max_tokens truncation or

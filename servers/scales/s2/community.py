@@ -159,14 +159,27 @@ class CommunityDetection(CommunityDecoder):
         if decode_result.get('skipped'):
             return {'actions': 0, 'skipped': decode_result['skipped']}
 
+        # Deterministic seam (2026-06-23): archive communities whose internal
+        # cohesion fell below the hard floor BEFORE the encoder sees anything —
+        # no encoder round, no rejection fingerprint, so they can't get stuck
+        # suppressed-but-undead. Mirrors _heal_graph's 0-member sweep.
+        archived_ids = self._auto_archive_dead(
+            decode_result.get('auto_archive_dead', []))
+
         raw_proposals = decode_result['proposals']
         community_state = decode_result['community_state']
+        if archived_ids:
+            community_state = [c for c in community_state
+                               if c['id'] not in archived_ids]
+            raw_proposals = self._drop_proposals_for_archived(
+                raw_proposals, archived_ids)
 
         if not raw_proposals:
             # Decoder examined the pending nodes and proposed nothing → none
             # placed → mark them all unplaceable so they rest next cycle.
             self._mark_unplaced_pending(decode_result.get('pending_probes', []))
             return {'actions': 0, 'proposals': 0,
+                    'auto_archived': len(archived_ids),
                     'communities': len(community_state)}
 
         # Filter through rejection table — suppress re-proposals
@@ -201,6 +214,7 @@ class CommunityDetection(CommunityDecoder):
             return {'actions': 0, 'proposals': 0,
                     'raw_proposals': len(raw_proposals),
                     'suppressed': suppressed_count,
+                    'auto_archived': len(archived_ids),
                     'communities': len(community_state),
                     'skipped': 'all proposals suppressed'}
 
@@ -208,6 +222,7 @@ class CommunityDetection(CommunityDecoder):
             return {'actions': 0, 'proposals': len(proposals),
                     'raw_proposals': len(raw_proposals),
                     'suppressed': suppressed_count,
+                    'auto_archived': len(archived_ids),
                     'error': 'enrichment failed'}
 
         return {
@@ -215,6 +230,7 @@ class CommunityDetection(CommunityDecoder):
             'proposals': len(proposals),
             'raw_proposals': len(raw_proposals),
             'suppressed': suppressed_count,
+            'auto_archived': len(archived_ids),
             'communities': len(community_state),
             'details': {
                 'rounds': encode_result.get('rounds', 0),
@@ -222,6 +238,69 @@ class CommunityDetection(CommunityDecoder):
                 'write_actions': encode_result.get('write_actions', 0),
             },
         }
+
+    def _auto_archive_dead(self, dead_list):
+        """Deterministically archive communities below the hard cohesion floor.
+
+        These have essentially no internal edges left — not clusters anymore.
+        Archived in code (no encoder round, no rejection fingerprint) so a
+        community can never get stuck suppressed-but-undead: this is the seam
+        below the encoder's low-cohesion judgment band. Mirrors _heal_graph's
+        deterministic 0-member sweep, but keyed on int_frac (computed in the
+        community decoder, not available in consolidation's _heal_graph).
+        Returns the set of archived community ids.
+        """
+        archived = []
+        for d in dead_list or []:
+            r = self.brain.archive_node(
+                d['id'], archived_by=self.ENCODING_SOURCE,
+                reason='dead — internal cohesion %.2f below floor' % d['int_frac'])
+            if r.get('ok'):
+                archived.append(d)
+                print('[s2cd] auto-archived dead community "%s" (%s, int_frac %.2f)'
+                      % (d['title'][:50], d['id'][:8], d['int_frac']), flush=True)
+        if archived:
+            self.trace('O', 'heal_archive',
+                       'Auto-archived %d dead communities (int_frac < floor): %s' % (
+                           len(archived),
+                           ', '.join('%s (%.2f)' % (a['title'][:30], a['int_frac'])
+                                     for a in archived[:5])),
+                       metadata={'auto_archived': archived})
+        return {a['id'] for a in archived}
+
+    def _drop_proposals_for_archived(self, proposals, archived_ids):
+        """Drop/trim proposals that target a community archived this cycle.
+
+        The decoder builds add/drift/merge/health proposals before the
+        dead-floor sweep runs, so some can reference a community we just
+        archived. Re-pointing a node into an archived community would create a
+        dangling edge; this removes those refs before the encoder sees them.
+        """
+        if not archived_ids:
+            return proposals
+        kept = []
+        for p in proposals:
+            t = p.get('type')
+            if t == 'health_update' and p.get('community_id') in archived_ids:
+                continue
+            if t == 'merge_communities' and (
+                    p.get('larger_id') in archived_ids
+                    or p.get('smaller_id') in archived_ids):
+                continue
+            if t == 'add_to_existing':
+                comms = [c for c in p.get('communities', [])
+                         if c.get('id') not in archived_ids]
+                if not comms:
+                    continue
+                p = {**p, 'communities': comms}
+            elif t == 'drift':
+                foreign = [f for f in p.get('foreign', [])
+                           if f.get('id') not in archived_ids]
+                if not foreign:
+                    continue
+                p = {**p, 'foreign': foreign}
+            kept.append(p)
+        return kept
 
     def _mark_unplaced_pending(self, probes):
         """Mark unplaceable the pending nodes that did NOT land in any community
