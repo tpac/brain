@@ -40,7 +40,7 @@ ALLOWED = {
     'dispatch_observability.py': 4,       # exception: observability writes
     'dispatch_ops.py': 1,
     'recall_write_queue.py': 3,           # exception: bg-writer connection (off foreground), batched
-    'scales/s2/rejection_table.py': 1,
+    'scales/s2/rejection_table.py': 2,    # exception: owns all s2_rejections SQL — record_rejections INSERT + clear_unplaceable_rejections DELETE (relocated out of community.py)
     'scales/self_channel/signal.py': 4,   # exception: parallel-stream file (SelfChannelDAL out of this effort)
     # temporal_extraction.py: 0 — entity_dates writes migrated to EntityDatesDAL (Phase 5)
 }
