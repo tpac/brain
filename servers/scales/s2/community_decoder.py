@@ -31,6 +31,7 @@ from .community_contract import (
     COMMUNITY_DETECTION,
     COMMUNITY_METADATA_KEYS,
 )
+from .rejection_table import filter_rejected
 from servers.embedder import cosine_similarity
 
 
@@ -112,20 +113,44 @@ class CommunityDecoder(IntegrationUnit):
         all_active = set(r[0] for r in self.brain.conn.execute(
             "SELECT id FROM nodes WHERE archived = 0 AND type != 'community'"
         ).fetchall())
-        unplaced_count = len(all_active - already_placed)
+        unplaced = all_active - already_placed
+        unplaced_count = len(unplaced)
 
         if unplaced_count == 0:
             return {'proposals': [], 'skipped': 'all nodes placed'}
 
-        # Build s1_delta for compat with _decode interface
+        # ── Phase 2: unplaceable-marking gate ───────────────────────────
+        # A node that was examined and couldn't be placed is marked
+        # "unplaceable", fingerprinted on its 1-hop neighborhood (each neighbor
+        # + that neighbor's community). filter_rejected drops nodes whose
+        # fingerprint is unchanged since they were marked, so `pending` is just
+        # the genuinely new-or-moved nodes. When none remain the whole decode
+        # rests — the old rest condition `unplaced_count == 0` could never
+        # reach, since ~28% of nodes never cluster. (The marking itself lives
+        # in the pipeline, which sees which pending nodes a surviving proposal
+        # actually places.)
+        node_to_comm = {m: c['id'] for c in community_state
+                        for m in c.get('members', [])}
+        neighbors = self._load_neighbors(unplaced)
+        probes = [{'type': 'unplaceable', 'node_id': nid,
+                   'neighborhood': self._neighborhood_str(nid, neighbors, node_to_comm)}
+                  for nid in unplaced]
+        pending, _suppressed = filter_rejected(self.brain, probes)
+        if not pending:
+            return {'proposals': [],
+                    'skipped': 'all %d unplaced nodes marked unplaceable' % unplaced_count}
+
+        # Build s1_delta for compat with _decode interface. Cluster detection
+        # still scans the full unplaced set (a pending node may cluster with an
+        # already-marked one); `pending` drives only the gate and the marking.
         s1_delta = {
             'encoding_runs': [],
-            'new_node_ids': all_active - already_placed,
+            'new_node_ids': unplaced,
         }
 
         self.trace('O', 's1_delta',
-                   '%d unplaced nodes, %d communities' % (
-                       unplaced_count, len(community_state)))
+                   '%d pending of %d unplaced, %d communities' % (
+                       len(pending), unplaced_count, len(community_state)))
 
         _t_decode = time.time()  # clock-ok — idle-cycle wall-clock duration
         decode_result = self._decode(s1_delta, community_state, is_cold_start=False)
@@ -158,7 +183,57 @@ class CommunityDecoder(IntegrationUnit):
             'community_state': community_state,
             's1_delta': s1_delta,
             'unplaced_count': unplaced_count,
+            'pending_probes': pending,
         }
+
+    # ══════════════════════════════════════════════════════════
+    # Phase 2: unplaceable-marking helpers
+    # ══════════════════════════════════════════════════════════
+
+    def _load_neighbors(self, node_ids):
+        """neighbor-id set per node, both edge directions, active non-noise.
+
+        A cheap 1-hop load for the unplaceable fingerprint — not the typed
+        adjacency _decode builds. Noise/generic relations (e.g. Hebbian
+        co_accessed) are excluded so they can't churn a node's placeability
+        fingerprint and wake it spuriously.
+        """
+        result = {nid: set() for nid in node_ids}
+        if not result:
+            return result
+        try:
+            noise = set(self.brain.aspects.relations_in(['noise', 'generic_relation']))
+        except Exception:
+            noise = set()
+        ids = list(node_ids)
+        for i in range(0, len(ids), 400):
+            chunk = ids[i:i + 400]
+            ph = ','.join('?' * len(chunk))
+            rows = self.brain.conn.execute(
+                "SELECT e.source_id, e.target_id, er.relation "
+                "FROM edges e JOIN edge_relations er ON er.edge_id = e.edge_id "
+                "WHERE er.archived = 0 "
+                "AND (e.source_id IN (%s) OR e.target_id IN (%s))" % (ph, ph),
+                chunk + chunk).fetchall()
+            for src, tgt, rel in rows:
+                if rel in noise:
+                    continue
+                if src in result:
+                    result[src].add(tgt)
+                if tgt in result:
+                    result[tgt].add(src)
+        return result
+
+    def _neighborhood_str(self, nid, neighbors, node_to_comm):
+        """Stable 1-hop fingerprint basis for a node: each neighbor + that
+        neighbor's community ('' if unplaced), sorted. It changes iff the node
+        gains/loses an edge or a neighbor's community assignment flips — the
+        only things that change whether the node can cluster or attach.
+        compute_fingerprint() hashes this into the rejection fingerprint.
+        """
+        items = sorted((nbr, node_to_comm.get(nbr, ''))
+                       for nbr in neighbors.get(nid, ()))
+        return ';'.join('%s>%s' % (nbr, comm) for nbr, comm in items)
 
     # ══════════════════════════════════════════════════════════
     # _read_s1_delta

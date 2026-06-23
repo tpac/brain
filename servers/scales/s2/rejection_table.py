@@ -128,6 +128,19 @@ def compute_fingerprint(proposal):
             parts = members
         raw = 'consol:' + ':'.join(parts)
 
+    elif ptype == 'unplaceable':
+        # A node the decoder examined and couldn't place into any community.
+        # The fingerprint is the node's 1-hop neighborhood — each neighbor +
+        # that neighbor's community (or '' if unplaced) — the only inputs that
+        # decide placeability (cluster membership and add-to-existing affinity
+        # are both edge-local). When the node gains/loses an edge OR a neighbor
+        # joins a community, this string changes, the fingerprint changes, and
+        # the node falls out of suppression to be re-examined. Likelihood-based
+        # re-examination, not time-based.
+        raw = 'unplaceable:%s:%s' % (
+            proposal.get('node_id', ''),
+            proposal.get('neighborhood', ''))
+
     else:
         raw = '%s:%s' % (ptype, proposal.get('node_id', ''))
 

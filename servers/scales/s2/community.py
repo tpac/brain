@@ -17,13 +17,14 @@ that fired every idle cycle (87% doing zero work) into a cheap no-op when
 nothing has changed.
 """
 
+import json
 import time as _time
 from datetime import datetime, timezone
 
 from .community_decoder import CommunityDecoder
 from .community_encoder import CommunityEncoder
 from .community_contract import COMMUNITY_DETECTION
-from .rejection_table import filter_rejected
+from .rejection_table import filter_rejected, get_proposed_ids, record_rejections
 
 
 class CommunityDetection(CommunityDecoder):
@@ -179,6 +180,21 @@ class CommunityDetection(CommunityDecoder):
                                  'raw_total': len(raw_proposals),
                                  'surviving': len(proposals)})
 
+        # Phase 2: mark unplaceable the pending nodes the decoder examined but
+        # no SURVIVING proposal places. They sleep — excluded from future
+        # decodes — until their 1-hop neighborhood fingerprint moves (an edge
+        # forms, or a neighbor joins a community). Runs before the
+        # 'all suppressed' early-return so a fully-suppressed cycle still marks.
+        pending_probes = decode_result.get('pending_probes', [])
+        if pending_probes:
+            covered = set()
+            for p in proposals:
+                if p.get('type') in ('new_community', 'add_to_existing'):
+                    covered.update(get_proposed_ids(p))
+            to_mark = [pr for pr in pending_probes if pr['node_id'] not in covered]
+            if to_mark:
+                self._mark_unplaceable(to_mark)
+
         if not proposals:
             return {'actions': 0, 'proposals': 0,
                     'raw_proposals': len(raw_proposals),
@@ -209,3 +225,20 @@ class CommunityDetection(CommunityDecoder):
                 'write_actions': encode_result.get('write_actions', 0),
             },
         }
+
+    def _mark_unplaceable(self, probes):
+        """Record `unplaceable` rejections for pending nodes nothing placed.
+
+        One row per node: drop the node's prior unplaceable fingerprint first
+        (proposed_ids is the JSON [node_id]) so s2_rejections keeps a single
+        current row per node, not one per historical neighborhood-state. The
+        fresh fingerprint encodes the node's current 1-hop neighborhood, so a
+        later edge/membership change yields a different fingerprint that no
+        longer matches — re-eligible for examination.
+        """
+        for pr in probes:
+            self.brain.conn.execute(
+                "DELETE FROM s2_rejections "
+                "WHERE proposal_type = 'unplaceable' AND proposed_ids = ?",
+                (json.dumps([pr['node_id']]),))
+        record_rejections(self.brain, probes)
