@@ -276,6 +276,31 @@ def record_rejections(brain, proposals, integration_unit='s2:community_detection
     return count
 
 
+def clear_unplaceable_rejections(brain, proposals):
+    """Drop each proposal's current `unplaceable` rejection row, batched
+    (one DELETE scan per chunk, not one per node).
+
+    Paired with record_rejections to keep s2_rejections at one unplaceable row
+    per node. The fingerprint is neighborhood-derived, so a re-mark writes a
+    NEW fingerprint — the stale row can't be REPLACEd on the fingerprint PK; it
+    must be deleted by (proposal_type, proposed_ids). proposed_ids matches what
+    record_rejections wrote for an unplaceable proposal: json.dumps([node_id]).
+
+    Does NOT commit: the caller holds write_lock and record_rejections' commit
+    closes the DELETE+INSERT as one transaction.
+    """
+    if not proposals:
+        return
+    keys = [json.dumps([p['node_id']]) for p in proposals]
+    for i in range(0, len(keys), 400):
+        chunk = keys[i:i + 400]
+        ph = ','.join('?' * len(chunk))
+        brain.conn.execute(
+            "DELETE FROM s2_rejections "
+            "WHERE proposal_type = 'unplaceable' AND proposed_ids IN (%s)" % ph,
+            chunk)
+
+
 # ═══════════════════════════════════════════════════════════════
 # MATCHER — proposal → encoder action
 # ═══════════════════════════════════════════════════════════════
