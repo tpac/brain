@@ -33,13 +33,9 @@ class CommunityEncoder(IntegrationUnit):
     O_SOURCES = ['community_proposals']
     K_SOURCES = ['llm_enrichment', 'journal_notes']
 
-    # Legacy journal RETIRED (2026-06-24 journal redesign Phase 5): residue now
-    # flows to journal_note trace rows via brain.write_journal_notes, read back
-    # via _load_journal_notes_prefix. Empty JOURNAL_MARKERS makes the inherited
-    # _load_journal_prefix / _save_journal no-ops — we use the note contract.
-    # (The old s2_community_journal brain_meta blob is orphaned; it's retired
-    # with the shared base methods in the post-S1E legacy sweep.)
-    JOURNAL_MARKERS = ()
+    # Residue flows to journal_note trace rows via brain.write_journal_notes,
+    # read back via _load_journal_notes_prefix (the note contract). The old
+    # s2_community_journal brain_meta blob is orphaned and no longer read.
 
     def __init__(self, brain, dispatch_fn=None, config=None):
         super().__init__(brain, dispatch_fn)

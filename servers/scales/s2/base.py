@@ -110,17 +110,6 @@ class IntegrationUnit:
     O_SOURCES = []               # e.g. ['graph_nodes', 'graph_edges']
     K_SOURCES = []               # e.g. ['leidenalg', 'resolution_param']
 
-    # Journal contract — continuity between stateless runs. Subclass that
-    # produces agent output with structured section markers overrides these.
-    # Empty JOURNAL_MARKERS = unit skips journaling (load returns '', save
-    # is a no-op). Config key defaults to `s2_{NAME}_journal`; override
-    # JOURNAL_KEY to preserve continuity when NAME doesn't match existing key.
-    JOURNAL_MARKERS = ()          # e.g. ('CONSOLIDATED:', 'OBSERVATIONS:')
-    JOURNAL_LABEL = ''            # e.g. 'CONSOLIDATION JOURNAL'
-    JOURNAL_RUN_HEADER = ''       # e.g. 'Consolidation Run'
-    JOURNAL_KEY = ''              # '' = derive from NAME
-    JOURNAL_MAX_CHARS = 14000
-
     def __init__(self, brain, dispatch_fn=None):
         """Initialize with brain instance and optional dispatch.
 
@@ -192,34 +181,12 @@ class IntegrationUnit:
 
     # ── Shared S2 infrastructure ──
 
-    @property
-    def journal_key(self):
-        """Config key for this unit's journal in brain_meta."""
-        return self.JOURNAL_KEY or ('s2_%s_journal' % self.NAME)
-
-    def _load_journal_prefix(self):
-        """Return the journal section for the encoder's user_content.
-
-        Empty string when the unit doesn't journal (JOURNAL_MARKERS unset)
-        or has never written one. Tails at JOURNAL_MAX_CHARS so old runs
-        roll off naturally.
-        """
-        if not self.JOURNAL_MARKERS:
-            return ''
-        journal = self.brain.get_config(self.journal_key) or ''
-        label = self.JOURNAL_LABEL or ('%s JOURNAL' % self.NAME.upper())
-        if not journal:
-            return '%s: First run — no previous encoding.\n\n' % label
-        return '%s:\n%s\n\n' % (label, journal[-self.JOURNAL_MAX_CHARS:])
-
     def _load_journal_notes_prefix(self):
-        """Residue continuity (the NEW journal): render the last K note-bearing
+        """Residue continuity (the journal): render the last K note-bearing
         runs' notes into a prompt prefix. The read counterpart to the encoder's
         write_journal_notes(). Scoped by this unit (scale + NAME); K defaults
         from JOURNAL_CONTINUITY_RUNS. Empty string when there are no recent
-        notes — a clean history adds nothing. Replaces _load_journal_prefix for
-        units on the note contract; the legacy blob is retired per-unit by
-        clearing JOURNAL_MARKERS.
+        notes — a clean history adds nothing.
         """
         from servers.trace_contract import render_journal_notes_prefix
         # Failure-isolated, mirroring write_journal_notes: a transient logs.db
@@ -265,64 +232,6 @@ class IntegrationUnit:
             system_prompt = system_prompt.replace(old, new)
         return (system_prompt.rstrip() + "\n\n## When you're done\n\n"
                 + render_journal_review_block() + '\n\nThen write "DONE".')
-
-    def _save_journal(self, final_text):
-        """Extract journal entry from encoder final_text and persist it.
-
-        Returns the extracted entry (also embedded in delta trace metadata).
-        Unit skips when JOURNAL_MARKERS is empty. Logs a brain error when
-        final_text has content but no known marker fires — agent-drift
-        signal visible to the operator.
-        """
-        if not self.JOURNAL_MARKERS:
-            return ''
-        entry = self._extract_journal_entry(final_text)
-        if not entry:
-            if final_text and final_text.strip():
-                self.brain._log_error(
-                    's2_%s_journal_extraction' % self.NAME,
-                    ValueError('no journal markers found in %d-char final_text'
-                               % len(final_text)),
-                    'agent drifted from prompt format — first 200 chars: %s'
-                    % final_text[:200])
-            return ''
-
-        existing = self.brain.get_config(self.journal_key) or ''
-        header_prefix = self.JOURNAL_RUN_HEADER or ('%s Run' % self.NAME.capitalize())
-        run_header = '--- %s %s ---' % (header_prefix, self.brain.now()[:10])
-        new_journal = existing + '\n' + run_header + '\n' + entry
-
-        if len(new_journal) > self.JOURNAL_MAX_CHARS:
-            cutpoint = new_journal.find(
-                '--- %s' % header_prefix,
-                len(new_journal) - self.JOURNAL_MAX_CHARS)
-            if cutpoint > 0:
-                new_journal = new_journal[cutpoint:]
-
-        self.brain.set_config(self.journal_key, new_journal.strip())
-        return entry
-
-    def _extract_journal_entry(self, final_text):
-        """Isolate the journal section from a full encoder response.
-
-        Two strategies, in order:
-          1. If the text contains a `---` separator, everything after it is
-             journal. This matches prompts that explicitly separate narrative
-             from journal.
-          2. Otherwise scan for the first appearance of any JOURNAL_MARKERS
-             token and take from there to end.
-        Returns '' when neither strategy fires.
-        """
-        if not final_text:
-            return ''
-        if '---' in final_text:
-            _, journal_part = final_text.split('---', 1)
-            return journal_part.strip()
-        for marker in self.JOURNAL_MARKERS:
-            idx = final_text.find(marker)
-            if idx >= 0:
-                return final_text[idx:].strip()
-        return ''
 
     def _make_encoder_dispatch(self, archive_guard=None):
         """Build the dispatch function S2 encoders use for brain_batch calls.

@@ -25,11 +25,8 @@ class ConsolidationEncoder(IntegrationUnit):
     O_SOURCES = ['consolidation_proposals']
     K_SOURCES = ['llm_enrichment', 'journal_notes']
 
-    # Legacy journal RETIRED (2026-06-23 journal redesign Phase 3): residue now
-    # flows to journal_note trace rows via brain.write_journal_notes, read back
-    # via _load_journal_notes_prefix. Empty JOURNAL_MARKERS makes the inherited
-    # _load_journal_prefix / _save_journal no-ops — we use the note contract.
-    JOURNAL_MARKERS = ()
+    # Residue flows to journal_note trace rows via brain.write_journal_notes,
+    # read back via _load_journal_notes_prefix (the note contract).
 
     def __init__(self, brain, dispatch_fn=None, config=None):
         super().__init__(brain, dispatch_fn)
@@ -226,7 +223,7 @@ class ConsolidationEncoder(IntegrationUnit):
                     # the last (latent the moment max_clusters_per_run exceeds the
                     # batch size). Per-batch, sharing this run's chain_id, groups
                     # them as one run's notes. Failure-isolated — never breaks the
-                    # run. Legacy brain_meta journal retired (JOURNAL_MARKERS=()).
+                    # run.
                     self.brain.write_journal_notes(
                         final_text=batch_text, chain_id=self.chain_id(),
                         scale=self.SCALE, session_id='')
