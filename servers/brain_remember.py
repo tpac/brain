@@ -1341,9 +1341,6 @@ class BrainRememberMixin:
             embed_queue.enqueue(node_id)
         except Exception as e:
             self._log_error('embed_enqueue_revise', e, 'enqueue %s' % node_id[:12])
-        from .dal import VectorDAL
-        _vdal = self._vec_dal
-        embedding_updated = False
 
         # Re-index TF-IDF from title + new_content (keywords column dropped
         # 2026-05-24 along with the broken auto-extractor)
@@ -1481,7 +1478,6 @@ class BrainRememberMixin:
             'title': title,
             'revised_at': ts,
             'content_length': len(new_content),
-            'embedding_updated': embedding_updated,
             'fields_updated': fields_updated,
             'deltas': deltas,
             'warnings': warnings,
