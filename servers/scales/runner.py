@@ -129,7 +129,7 @@ def run_in_background(name, brain_db_path, session_id, counter, lock,
 
 def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                  user_content, tools, dispatch_fn, log_fn=None,
-                 user_preamble=None):
+                 user_preamble=None, get_nodes_config=None):
     """Generic LLM tool loop — call model, process tool_use, dispatch, repeat.
 
     Used by all scale encode agents. Scale-specific logic is in what
@@ -158,6 +158,13 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         user_preamble: Optional stable string to prefix the user content with
             its own 1h cache breakpoint. Use for instructions/format that
             don't change per call. None disables (single-block user content).
+        get_nodes_config: Optional render_rich_node config dict. When set, the
+            caller's `get_nodes` tool results render through render_rich_node
+            with THIS config at every batch size — overriding _format_result's
+            batch-size heuristic and (critically) its <=3-node raw-JSON escape
+            hatch, which dumps full _corrections and can explode an encoder's
+            context. None = default batch-size-driven rendering. Consumers with
+            tight token budgets (S2 encoders) pass their own lean config.
 
     Returns:
         dict with: rounds, actions, write_actions, action_details,
@@ -305,7 +312,9 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             result = dispatch_fn(tu.name, tu.input)
             from servers import brain_mcp
             if result.get("ok"):
-                result_text = brain_mcp._format_result(tu.name, result.get("result", {}))
+                result_text = brain_mcp._format_result(
+                    tu.name, result.get("result", {}),
+                    get_nodes_config=get_nodes_config)
             else:
                 result_text = "ERROR: %s" % result.get("error", "Unknown")
             tool_results.append({

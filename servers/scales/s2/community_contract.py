@@ -220,14 +220,15 @@ COMMUNITY_METADATA_KEYS = {
 # Per representative: ~600-800 chars
 # 5 reps per community: ~3-4K chars
 # 15 communities per batch: ~45-60K chars for representatives alone
-# Plus edge signatures, sample edges, metadata → fits in Sonnet 200K
+# Plus edge signatures, sample edges, metadata → fits in Haiku's 200K window
 # ═══════════════════════════════════════════════════════════════
 
 # Used when encoder calls get_nodes() to inspect specific members
 S2CE_NODE_FORMAT = {
-    'content_limit': 300,       # Gist, not full content
-    'edge_limit': 4,            # Relations matter — keep 4 with descriptions
+    'content_limit': 800,       # Generous gist — the encoder needs real member content to write a quality narrative
+    'edge_limit': 5,            # Relations matter — keep 5 with descriptions
     'metadata_limit': 150,      # Key metadata only
+    'correction_render': 'balanced',  # relation verb + edge desc + 150-char excerpt; NOT heavy (the per-node correction firehose that blew the context to 217K)
     'time_format': 'relative',  # "2d ago" not "2026-04-09"
 }
 

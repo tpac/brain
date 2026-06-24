@@ -842,7 +842,7 @@ def handle_tools_list(request_id):
     return make_response(request_id, {"tools": TOOLS})
 
 
-def _format_result(tool_name, result):
+def _format_result(tool_name, result, get_nodes_config=None):
     """Format tool result for MCP output.
 
     - recall: structured text (same format as hooks) for readability.
@@ -851,23 +851,44 @@ def _format_result(tool_name, result):
       Medium batches (<=10) use GET_NODES_BALANCED_FORMAT.
       Large batches (>10) use GET_NODES_COMPACT_FORMAT.
       Prevents tool_result explosion in encoder contexts.
+      `get_nodes_config` (from run_llm_loop) overrides the whole heuristic:
+      render every node through render_rich_node with that config at ANY batch
+      size — including <=3, which otherwise dumps raw JSON (full _corrections)
+      and can blow an encoder's context to hundreds of K. Consumers with tight
+      budgets (S2 encoders) pass their own lean config.
     - All other tools: JSON dump.
     """
-    if tool_name == "get_nodes" and isinstance(result, dict) and result:
-        # result is {node_id: rich_node_dict, ...}
-        rich_nodes = [v for v in result.values() if isinstance(v, dict) and v.get('id')]
+    if tool_name == "get_nodes" and result:
+        # Two shapes reach here: the dispatch handler (_handle_get_nodes) returns
+        # a LIST of rich nodes (+ {"id","error"} entries for unresolved ids) —
+        # this is the path every encoder and Anchor's MCP get_nodes take;
+        # brain.get_node(ids) returns a {node_id: rich_node} dict. Handle both,
+        # or the render branch silently no-ops and dumps the raw firehose.
+        if isinstance(result, dict):
+            candidates = list(result.values())
+        elif isinstance(result, list):
+            candidates = result
+        else:
+            candidates = []
+        rich_nodes = [v for v in candidates
+                      if isinstance(v, dict) and v.get('id') and 'error' not in v]
         if rich_nodes:
             from servers.contract import (
                 render_rich_node,
                 GET_NODES_SMALL_MAX, GET_NODES_MEDIUM_MAX,
                 GET_NODES_BALANCED_FORMAT, GET_NODES_COMPACT_FORMAT,
             )
-            n = len(rich_nodes)
-            if n <= GET_NODES_SMALL_MAX:
-                # Small batch — preserve full JSON for Anchor/targeted lookups
-                return json.dumps(result, indent=2, default=str)
-            config = GET_NODES_BALANCED_FORMAT if n <= GET_NODES_MEDIUM_MAX \
-                else GET_NODES_COMPACT_FORMAT
+            if get_nodes_config is not None:
+                # Caller-declared config — render at every batch size, no
+                # raw-JSON escape hatch (the source of the encoder blowup).
+                config = get_nodes_config
+            else:
+                n = len(rich_nodes)
+                if n <= GET_NODES_SMALL_MAX:
+                    # Small batch — preserve full JSON for Anchor/targeted lookups
+                    return json.dumps(result, indent=2, default=str)
+                config = GET_NODES_BALANCED_FORMAT if n <= GET_NODES_MEDIUM_MAX \
+                    else GET_NODES_COMPACT_FORMAT
             lines = []
             for node in rich_nodes:
                 lines.append(render_rich_node(node, config))
