@@ -215,7 +215,21 @@ class ConsolidationEncoder(IntegrationUnit):
                 total_result['write_actions'] += result.get('write_actions', 0)
                 total_result['action_details'].extend(
                     result.get('action_details', []))
-                total_result['final_text'] = result.get('final_text', '')
+                batch_text = result.get('final_text', '')
+                if batch_text:
+                    total_result['final_text'] += '\n--- batch %d ---\n%s' % (
+                        batch_num, batch_text)
+                    # Residue review → journal_note rows, PER BATCH (mirrors
+                    # community_encoder). write_journal_notes keys on the FIRST
+                    # `## Review` fence, so a single post-loop write over an
+                    # overwritten final_text would drop every batch's notes but
+                    # the last (latent the moment max_clusters_per_run exceeds the
+                    # batch size). Per-batch, sharing this run's chain_id, groups
+                    # them as one run's notes. Failure-isolated — never breaks the
+                    # run. Legacy brain_meta journal retired (JOURNAL_MARKERS=()).
+                    self.brain.write_journal_notes(
+                        final_text=batch_text, chain_id=self.chain_id(),
+                        scale=self.SCALE, session_id='')
 
                 # Log truncation errors
                 for trunc in result.get('truncations', []):
@@ -229,15 +243,6 @@ class ConsolidationEncoder(IntegrationUnit):
                 print('[s2-consolidation] BATCH %d FAILED: %s' % (batch_num, e), flush=True)
                 self.brain._log_error(self.NAME, e,
                                       'encode batch %d' % batch_num)
-
-        # Residue review → journal_note trace rows (the new journal). Shares
-        # this run's chain_id so the notes group with the run's ops-delta.
-        # write_journal_notes is failure-isolated — a journal write never breaks
-        # the run. Legacy brain_meta journal is retired (JOURNAL_MARKERS=()).
-        if total_result['final_text']:
-            self.brain.write_journal_notes(
-                final_text=total_result['final_text'],
-                chain_id=self.chain_id(), scale=self.SCALE, session_id='')
 
         return total_result
 
@@ -265,10 +270,6 @@ class ConsolidationEncoder(IntegrationUnit):
         members (prevents encoder drift archiving unrelated nodes).
         """
         return self._make_encoder_dispatch(archive_guard=valid_archive_ids)
-
-    # Journal save/load is inherited from IntegrationUnit.
-    # Class attributes JOURNAL_MARKERS / JOURNAL_LABEL / JOURNAL_RUN_HEADER
-    # configure the pattern; base owns the logic.
 
     # ══════════════════════════════════════════════════════════
     # Cluster formatting (text rendering for Sonnet)

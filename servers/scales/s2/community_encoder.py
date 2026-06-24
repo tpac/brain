@@ -31,15 +31,15 @@ class CommunityEncoder(IntegrationUnit):
     ENCODING_SOURCE = 's2:community_detection'
 
     O_SOURCES = ['community_proposals']
-    K_SOURCES = ['llm_enrichment', 'community_journal']
+    K_SOURCES = ['llm_enrichment', 'journal_notes']
 
-    # Journal contract (see IntegrationUnit.JOURNAL_* for semantics).
-    # JOURNAL_KEY is pinned explicitly to preserve the existing brain_meta
-    # entry that predates this unit's rename ('community' → 'community_detection').
-    JOURNAL_MARKERS = ('ACCEPTED:', 'REJECTED:', 'CORRIDORS:', 'OBSERVATIONS:')
-    JOURNAL_LABEL = 'COMMUNITY JOURNAL'
-    JOURNAL_RUN_HEADER = 'S2C Run'
-    JOURNAL_KEY = 's2_community_journal'
+    # Legacy journal RETIRED (2026-06-24 journal redesign Phase 5): residue now
+    # flows to journal_note trace rows via brain.write_journal_notes, read back
+    # via _load_journal_notes_prefix. Empty JOURNAL_MARKERS makes the inherited
+    # _load_journal_prefix / _save_journal no-ops — we use the note contract.
+    # (The old s2_community_journal brain_meta blob is orphaned; it's retired
+    # with the shared base methods in the post-S1E legacy sweep.)
+    JOURNAL_MARKERS = ()
 
     def __init__(self, brain, dispatch_fn=None, config=None):
         super().__init__(brain, dispatch_fn)
@@ -204,7 +204,6 @@ class CommunityEncoder(IntegrationUnit):
                        outcomes=outcomes,
                        rejection_skipped=result.get('rejection_skipped_count', 0),
                        invalid_op_failures=result.get('invalid_op_failures', 0),
-                       journal_entry=result.get('journal_entry', ''),
                        action_details=action_details,
                        final_text=final_text,
                        corridors_filtered=len(corridors),
@@ -286,6 +285,14 @@ class CommunityEncoder(IntegrationUnit):
                                     len(family_lines), '\n'.join(family_lines)))
             system_prompt = system_prompt + families_section
 
+        # Journal section is contract-owned, injected at runtime (like ## Edge
+        # Families above): the shared review block is appended, never baked into
+        # the registered prompt. No legacy_heading — the v20 body revise removed
+        # the old `## Journal` section outright (it was mid-prompt, with YOUR ROLE
+        # after it, so it couldn't be stripped-to-end like consolidation's), and
+        # community has no continuity-read line in the system prompt to relabel.
+        system_prompt = self._inject_review_block(system_prompt)
+
         if not os.environ.get('ANTHROPIC_API_KEY'):
             load_env()
 
@@ -295,8 +302,8 @@ class CommunityEncoder(IntegrationUnit):
         from .base import ANTHROPIC_CLIENT_TIMEOUT
         client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
 
-        # Journal text — continuity between stateless runs, rendered by base.
-        journal_prefix = self._load_journal_prefix()
+        # Residue continuity — the last few runs' review notes, rendered by base.
+        journal_prefix = self._load_journal_notes_prefix()
 
         # Batch proposals
         batch_size = self.config.get('max_proposals_per_call', 15)
@@ -355,6 +362,16 @@ class CommunityEncoder(IntegrationUnit):
                 if batch_text:
                     total_result['final_text'] += '\n--- batch %d ---\n%s' % (
                         batch_num, batch_text)
+                    # Residue review → journal_note rows, PER BATCH. Community
+                    # appends each batch's final_text (unlike consolidation, which
+                    # overwrites), and extract_review_block keys on the FIRST
+                    # `## Review` fence — so a single post-loop write would drop
+                    # every batch's notes but the first. Writing per batch, all
+                    # sharing this run's chain_id, groups them as one run's notes.
+                    # Failure-isolated — a journal write never breaks the run.
+                    self.brain.write_journal_notes(
+                        final_text=batch_text, chain_id=self.chain_id(),
+                        scale=self.SCALE, session_id='')
 
                 # Log truncation errors to brain errors table
                 for trunc in result.get('truncations', []):
@@ -381,12 +398,6 @@ class CommunityEncoder(IntegrationUnit):
                 self.trace('delta', 'community_enriched',
                            'batch %d/%d FAILED: %s' % (batch_num, total_batches, str(e)[:80]))
 
-        # Save journal from last batch's final text. Also return the
-        # extracted entry in the result so the delta trace carries it.
-        total_result['journal_entry'] = ''
-        if total_result['final_text']:
-            total_result['journal_entry'] = self._save_journal(total_result['final_text']) or ''
-
         return total_result
 
     # ══════════════════════════════════════════════════════════
@@ -410,10 +421,6 @@ class CommunityEncoder(IntegrationUnit):
         members from a tracked batch).
         """
         return self._make_encoder_dispatch()
-
-    # Journal save/load is inherited from IntegrationUnit.
-    # Class attributes JOURNAL_MARKERS / JOURNAL_LABEL / JOURNAL_RUN_HEADER /
-    # JOURNAL_KEY configure the pattern; base owns the logic.
 
     # ══════════════════════════════════════════════════════════
     # Relevant community lookup
