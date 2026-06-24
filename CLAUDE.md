@@ -42,11 +42,11 @@ Recall hot path is read-only at SQLite — writes enqueue to `recall_write_queue
 
 **Activity tracking (S2 gating):** Two distinct timestamps. `last_activity` resets on every daemon command (general bookkeeping). `last_user_activity` resets only on `hook_recall` — i.e. real `UserPromptSubmit` events. S2 maintenance gates on `last_user_activity` so Anchor's tool use between prompts doesn't keep the idle clock alive.
 
-**Lifecycle is owned by launchd** (`com.brain.daemon`: `KeepAlive`, `RunAtLoad`, runs `start-daemon.sh`). `daemon_client.ensure_daemon()` (boot hook) and `recover_daemon()` only PING and, when a (re)start is needed, route it through `launchctl kickstart -k` (`_launchd_kickstart()`), serialized under the fcntl singleton lock — they never `Popen` a competing process alongside launchd. Direct spawn survives only as the no-launchd fallback. **Do NOT add another spawner**: launchd + a Popen-ing `ensure_daemon` + the internal supervisor all restarting at once was the Errno-48 boot-race (fixed 2026-06-04, `78693a3`). **Maintenance mode:** `touch /tmp/brain-maintenance-{uid}.lock` prevents auto-restart during VACUUM, schema changes, bulk deletes. Remove the lock when done.
+**Lifecycle is owned by launchd** (`com.brain.daemon`: `KeepAlive`, `RunAtLoad`, runs `start-daemon.sh`). `daemon_client.ensure_daemon()` (boot hook) and `recover_daemon()` only PING and, when a (re)start is needed, route it through `launchctl kickstart -k` (`_launchd_kickstart()`), serialized under the fcntl singleton lock — they never `Popen` a competing process alongside launchd. Direct spawn survives only as the no-launchd fallback. **Do NOT add another spawner**: launchd + a Popen-ing `ensure_daemon` + the internal supervisor all restarting at once is a boot-race. **Maintenance mode:** `touch /tmp/brain-maintenance-{uid}.lock` prevents auto-restart during VACUUM, schema changes, bulk deletes. Remove the lock when done.
 
 The dashboard (`dashboard/`) is a passive observer — reads from the same DBs + brain's ephemeral tmp files (e.g. `brain-judge-result-*.json`, `brain-consolidation-prompt-*.json`), never writes. Those tmp files live under `daemon_config.brain_tmp_dir()` (`$BRAIN_TMP_DIR`, default `/tmp`); the dashboard is a deliberately servers-decoupled process, so it honors the same `BRAIN_TMP_DIR` env protocol directly to find them.
 
-**Memory watchdog** (`servers/memory_watchdog.py`): opt-in RSS + thread-count sampler. One config key (`memory_watchdog.enabled`), off by default, read at daemon start. Enable when something feels off (RSS climbing, threads accumulating) and the next leak will show up in daemon.log without instrumenting allocations. Past leak: 2026-04-26 grew to 4.6 GB in 4 hours — the watchdog exists so the next leak doesn't require scrambling for profiling. The watchdog is intentionally cheap-only: no in-process tracemalloc, no allocation tracking. A previous version had those (snapshot every 30s, 25-frame depth) and turned every recall into a 5-min spin because the recall hot path is allocation-heavy. If you need allocation-level profiling, run a one-shot script or attach `py-spy`/`lldb` to the live daemon — don't bake a profiler into the watchdog.
+**Memory watchdog** (`servers/memory_watchdog.py`): opt-in RSS + thread-count sampler (`memory_watchdog.enabled`, off by default). Enable when RSS/threads climb — the next leak shows up in daemon.log. Keep it **cheap-only**: no in-process tracemalloc/allocation tracking (a prior version did that and turned every recall into a 5-min spin). For allocation profiling, attach `py-spy`/`lldb` to the live daemon — don't bake a profiler in.
 
 ## Scale 0: Exchange
 
@@ -200,7 +200,7 @@ client.messages.create(
 
 **Key constraint:** apply `output_config` on EVERY round of an agentic loop, not just the final one. Round 1 can return text (when Haiku skips tools), and that text path is unprotected without schema enforcement. `tools` and `output_config` coexist on the same API call — Haiku can tool-use OR finalize-with-JSON, never drift to prose.
 
-Sonnet call sites (S2 reclassify, S2 base, S1 Scribe encoder) use tool-use shape rather than `output_config`. The old blocker is gone: `brain_batch`'s nested schema IS a `oneOf` discriminated union per op-type as of 2026-06-12 (derived from `contract.BATCH_OP_SPECS`), so enabling Strict Tool Use on those call sites is unblocked — verify Anthropic's current strict-mode JSON Schema keyword subset (`oneOf` vs `anyOf`, `const`) against live docs before flipping it on.
+Sonnet call sites (S2 reclassify, S2 base, S1 Scribe encoder) use tool-use shape rather than `output_config`. The old blocker is gone: `brain_batch`'s nested schema IS a `oneOf` discriminated union per op-type (derived from `contract.BATCH_OP_SPECS`), so enabling Strict Tool Use on those call sites is unblocked — verify Anthropic's current strict-mode JSON Schema keyword subset (`oneOf` vs `anyOf`, `const`) against live docs before flipping it on.
 
 ## Frame — the structured prior
 
@@ -247,7 +247,7 @@ S2 operates when the operator is idle. It sees the full graph, not just one turn
 
 **S2 Coordinator** (`scales/s2/coordinator.py`): the daemon polls `brain.run_maintenance_if_due(last_user_activity)` every few seconds. Brain owns the "is it time?" decision (idle threshold + min interval; last-run timestamp persisted in `brain_meta`). When due, the coordinator runs units in order — each checks its own traces to decide whether to fire.
 
-**Per-unit idle-gating is each unit's own responsibility** (2026-05-29). The coordinator firing ≠ a unit doing work. A unit whose expensive step (a graph scan) isn't gated will re-derive the same fixed point every cycle — Community and Consolidation both ran full O(graph) scans every ~15 min, 24/7, ~87% producing nothing. Each now persists its own last-run timestamp (`s2_<unit>_last_run_ts` in `brain_meta`) and skips unless the graph changed since then. Consolidation does one cold-start then incremental (`changed @ all.T`), stamping its cutoff only *after* the encoder completes so a mid-run failure retries. When adding an S2 unit with a non-trivial scan, gate it the same way. See `docs/S2-GATING-AND-TEST-CLEANUP-HANDOFF.md`.
+**Per-unit idle-gating is each unit's own responsibility.** The coordinator firing ≠ a unit doing work. A unit whose expensive step (a graph scan) isn't gated will re-derive the same fixed point every cycle — Community and Consolidation both ran full O(graph) scans every ~15 min, 24/7, ~87% producing nothing. Each now persists its own last-run timestamp (`s2_<unit>_last_run_ts` in `brain_meta`) and skips unless the graph changed since then. Consolidation does one cold-start then incremental (`changed @ all.T`), stamping its cutoff only *after* the encoder completes so a mid-run failure retries. When adding an S2 unit with a non-trivial scan, gate it the same way. See `docs/S2-GATING-AND-TEST-CLEANUP-HANDOFF.md`.
 
 | Unit | What it does | Status |
 |------|---|---|
@@ -283,7 +283,7 @@ Three files, same pattern as the shipped units. Subclass `IntegrationUnit` in `s
 
 Register in `coordinator.py` units list. Trace chain: `s2-{YYYYMMDDHHMMSS}-{unit_name}` (per-run unique — one timestamp segment). Contract file defines config + data shapes.
 
-**brain_batch op vocabulary is closed**: `remember`, `revise`, `connect`, `disconnect`, `archive`, `absorb` (absorb = lossless merge — folds one node into another transfer-by-default, then archives the absorbed; see `docs/S2-ABSORB-OP-DESIGN.md`). The single source is `BATCH_OP_SPECS` in `servers/contract.py` (per-op required fields + property fragments + branch descriptions; `VALID_BATCH_OPS` derives from it). Three consumers stay in sync by construction: the `brain_mcp` oneOf discriminated schema (`_build_brain_batch_op_items` — one branch per op, `const` discriminator), the dispatcher's per-op required pre-check in `dispatch_write._handle_brain_batch`, and the S2 rejection-table invalid-op detector. Invalid op names log as `brain_batch_invalid_op`. Adding an op means adding a `BATCH_OP_SPECS` entry and wiring the dispatcher branch; `tests/test_brain_batch_op_contract.py` pins the derivations. Any brain_batch schema/description change must re-run `eval/mcp_batch_probe.py` (behavioral dimensions) + `eval/mcp_schema_gate.py` (IsolatedBrain production-faithful gate) before daemon restart — probe-certified 2026-06-12.
+**brain_batch op vocabulary is closed**: `remember`, `revise`, `connect`, `disconnect`, `archive`, `absorb` (absorb = lossless merge — folds one node into another transfer-by-default, then archives the absorbed; see `docs/S2-ABSORB-OP-DESIGN.md`). The single source is `BATCH_OP_SPECS` in `servers/contract.py` (per-op required fields + property fragments + branch descriptions; `VALID_BATCH_OPS` derives from it). Three consumers stay in sync by construction: the `brain_mcp` oneOf discriminated schema (`_build_brain_batch_op_items` — one branch per op, `const` discriminator), the dispatcher's per-op required pre-check in `dispatch_write._handle_brain_batch`, and the S2 rejection-table invalid-op detector. Invalid op names log as `brain_batch_invalid_op`. Adding an op means adding a `BATCH_OP_SPECS` entry and wiring the dispatcher branch; `tests/test_brain_batch_op_contract.py` pins the derivations. Any brain_batch schema/description change must re-run `eval/mcp_batch_probe.py` (behavioral dimensions) + `eval/mcp_schema_gate.py` (IsolatedBrain production-faithful gate) before daemon restart.
 
 ## Shared Infrastructure
 
@@ -392,14 +392,13 @@ The brain bundles its own Python at `venv/bin/python` (3.11.11). That's the inte
 
 Hooks source `brain-env.sh` transitively via `resolve-brain-db.sh`; the daemon launcher picks the same Python explicitly. Don't add new hook scripts that skip `brain-env.sh`.
 
-### Deploying a change — restart vs redeploy
+### Deploying a change
 
-The daemon runs `servers/*` straight from the **repo working tree it launched from** (not a copy), so which deploy step you need depends on what you touched:
+The daemon runs `servers/*` from the repo, so:
+- **`servers/*`** → daemon **restart** (`restart` MCP tool / `restart-daemon.sh`); live this session.
+- **`hooks/`, `brain_mcp.py`, `SKILL.md`, manifests** → **`./redeploy.sh`** (commit first) **+ new session**.
 
-- **`servers/*`** (recall, encoding, scales, `brain.py`, DAL, scoring, contracts) → a **daemon restart** suffices; code goes live in the current session. Restart via the `restart` MCP tool or `hooks/scripts/restart-daemon.sh`.
-- **`hooks/`, `servers/brain_mcp.py` (the MCP surface), `skills/*/SKILL.md`, or a manifest** (`hooks.json`, `.mcp.json`, `.claude-plugin/plugin.json`) → run **`./redeploy.sh`**: it rebuilds the installed plugin copy from `git ls-files` (**commit first — it builds from committed files, refuses a dirty tree**), prunes-then-unzips (no orphan drift), smoke-tests that both entrypoints import, then restarts the daemon. These surfaces are read once at session/plugin load, so they also need a **new session** — the current one keeps the old copy.
-
-**Never** gate a deploy-restart with the maintenance lock (`/tmp/brain-maintenance-{uid}.lock`) — it makes the daemon **skip startup** (its job is to keep the daemon *down* during VACUUM / schema migrations / bulk deletes). The restart paths above bring it back; the lock keeps it down.
+Don't gate a deploy-restart with the maintenance lock — it makes the daemon skip startup.
 
 ### `BRAIN_DEV_MODE` — opt out of end-user safety nets
 
@@ -471,7 +470,7 @@ You are the sole maintainer of code quality, architecture, and cleanliness.
 - Don't manually run boot scripts (hooks handle this)
 - Don't construct DB paths (read the boot output)
 - `systemMessage` is a dead channel — use `additionalContext`
-- **Never spawn `Brain(db_path=DB)` in a test/bench/eval script against the live `brain.db` while the daemon is running.** Two Python processes with their own writer connections will eventually corrupt an index (observed 2026-04-19: `idx_nodes_activation` out of sync, REINDEX required). Instead: (a) stop the daemon with the maintenance lock `touch /tmp/brain-maintenance-{uid}.lock` and `launchctl unload`, (b) use `daemon_client.send_command` to dispatch through TCP, or (c) run against an `IsolatedBrain` copy under `tests/isolated_brain.py`.
+- **Never spawn `Brain(db_path=DB)` in a test/bench/eval script against the live `brain.db` while the daemon is running.** Two Python processes with their own writer connections will eventually corrupt an index. Instead: (a) stop the daemon with the maintenance lock `touch /tmp/brain-maintenance-{uid}.lock` and `launchctl unload`, (b) use `daemon_client.send_command` to dispatch through TCP, or (c) run against an `IsolatedBrain` copy under `tests/isolated_brain.py`.
 - **Discussion IS the work** — do not touch Edit/Write tools during design conversations. Wait for an explicit go signal.
 - **Trace the pipeline before changing it** — the decode→encode pipeline has coupled stages. Don't change one stage without understanding the full flow.
 - **Encoding depends on decoding** — if the surfacer fails, the encoder gets no context. A broken decode pipeline silently breaks encoding.
