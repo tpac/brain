@@ -1,0 +1,12 @@
+# Test-only dependencies — NOT part of the plugin deployment.
+#
+# build-plugin.sh ships only requirements.txt + the runtime dirs (servers/,
+# hooks/, skills/, bin/, dashboard/) via `git ls-files`; it never ships tests/
+# or pytest.ini. Nothing here reaches the packaged plugin or the deployed venv.
+#
+# Install into the bundled venv (the interpreter the daemon/tests use):
+#     bin/uv pip install --python venv/bin/python -r requirements-test.txt
+# or, equivalently, run through the dev wrapper after installing.
+
+pytest==9.0.3
+pytest-timeout==2.4.0   # per-test wall-clock backstop — see `timeout` in pytest.ini
