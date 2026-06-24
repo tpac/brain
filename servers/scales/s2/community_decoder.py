@@ -183,6 +183,7 @@ class CommunityDecoder(IntegrationUnit):
             's1_delta': s1_delta,
             'unplaced_count': unplaced_count,
             'pending_probes': pending,
+            'auto_archive_dead': decode_result.get('auto_archive_dead', []),
         }
 
     # ══════════════════════════════════════════════════════════
@@ -484,8 +485,26 @@ class CommunityDecoder(IntegrationUnit):
                         drift_candidates[nid]['foreign'].append(
                             ('new_cluster_%d' % cid, 'new cluster', foreign_aff))
 
-        # Step 5d: Community health
+        # Step 5d: Community health seam (2026-06-23). ONE tunable + ONE fact.
+        #   typed int_frac < low_cohesion → the community is loose enough to act
+        #     on. Within that zone:
+        #       · DISCONNECTED (no internal edge of any real-cohesion relation)
+        #         → deterministic auto-archive (returned as auto_archive_dead;
+        #         the orchestrator writes it. No encoder round, no rejection
+        #         fingerprint → can't get stuck "suppressed but undead"; and the
+        #         all-relation check means a similar_to-cohesive community is NOT
+        #         archived — closes the typed-int_frac blind spot).
+        #       · otherwise → 'dead' encoder proposal: the encoder JUDGES
+        #         archive-or-keep (prompt frames it as "low cohesion"; internal
+        #         signal stays 'dead' so the fingerprint/matcher are unchanged).
+        #   corridor_maturing → unchanged.
+        # The old 'degrading' signal is GONE: it fired every cycle on diffused-
+        # but-alive communities and the encoder's rote maturity='forming' never
+        # cleared the trigger (creation-frozen baseline) → zero-value churn.
+        low_cohesion = self.config.get('low_cohesion_threshold', 0.10)
+        non_cohesion = self.config.get('non_cohesion_relations', ())
         community_health_updates = []
+        auto_archive_dead = []
         for comm in community_state:
             if not comm['members']:
                 continue
@@ -505,22 +524,22 @@ class CommunityDecoder(IntegrationUnit):
                 self.brain.conn, comm['id'],
                 'community_maturity', type='str')
 
-            if int_frac < 0.05 and len(ms) > 0:
-                # Community's members have no internal edges — it's dead.
-                # Encoder should archive it.
-                community_health_updates.append({
-                    'community': comm,
-                    'old_fraction': old_frac,
-                    'new_fraction': int_frac,
-                    'signal': 'dead',
-                })
-            elif old_frac > 0 and int_frac < old_frac * 0.7:
-                community_health_updates.append({
-                    'community': comm,
-                    'old_fraction': old_frac,
-                    'new_fraction': int_frac,
-                    'signal': 'degrading',
-                })
+            if int_frac < low_cohesion:
+                if self._community_disconnected(ms, non_cohesion):
+                    # No internal cohesion of any kind — structurally dead.
+                    auto_archive_dead.append({
+                        'id': comm['id'],
+                        'title': comm['title'],
+                        'int_frac': round(int_frac, 3),
+                    })
+                else:
+                    # Loose but still internally linked — the encoder judges.
+                    community_health_updates.append({
+                        'community': comm,
+                        'old_fraction': old_frac,
+                        'new_fraction': int_frac,
+                        'signal': 'dead',
+                    })
             elif old_maturity == 'corridor' and int_frac > 0.3:
                 community_health_updates.append({
                     'community': comm,
@@ -655,7 +674,38 @@ class CommunityDecoder(IntegrationUnit):
             'proposals': proposals,
             'stats': stats,
             'cluster_summaries': cluster_summaries,
+            'auto_archive_dead': auto_archive_dead,
         }
+
+    def _community_disconnected(self, members, non_cohesion=()):
+        """True if the members share NO internal edge carrying a real-cohesion
+        relation — i.e. they have no semantic link at all, only (at most)
+        structural/Hebbian edges (`non_cohesion`: co_accessed, community_member,
+        related, ...). This is the deterministic 'truly dead' signal: a
+        structural fact, not a tuned int_frac. It counts edges over ALL
+        relations (unlike typed int_frac, which drops generic_relation/noise) —
+        that's what closes the blind spot: a community held together by
+        similar_to is NOT disconnected and is routed to the encoder, not
+        auto-archived.
+
+        TODO(v25-dal): a one-off internal-edge existence check; no DAL method
+        fits and this is the only caller. Raw SELECT with archived=0, mirroring
+        _build_typed_adjacency / _sample_internal_edges in this file.
+        """
+        ms = list(members)
+        if len(ms) < 2:
+            return True  # 0 or 1 member can't carry an internal edge
+        ph = ','.join('?' * len(ms))
+        params = ms + ms
+        excl = ''
+        if non_cohesion:
+            excl = ' AND er.relation NOT IN (%s)' % ','.join('?' * len(non_cohesion))
+            params = ms + ms + list(non_cohesion)
+        row = self.brain.conn.execute(
+            "SELECT 1 FROM edges e JOIN edge_relations er ON er.edge_id = e.edge_id "
+            "WHERE er.archived = 0 AND e.source_id IN (%s) AND e.target_id IN (%s)%s "
+            "LIMIT 1" % (ph, ph, excl), params).fetchone()
+        return row is None
 
     # ── Step 1 ──
 
