@@ -13,7 +13,7 @@ narratives, situations, and metadata via tool calls.
 import os
 
 from .base import IntegrationUnit
-from .community_contract import COMMUNITY_DETECTION
+from .community_contract import COMMUNITY_DETECTION, S2CE_NODE_FORMAT
 from servers.trace_contract import build_delta_metadata
 
 from .rejection_table import (
@@ -341,6 +341,7 @@ class CommunityEncoder(IntegrationUnit):
                         user_content=user_content,
                         tools=tools,
                         dispatch_fn=dispatch_fn,
+                        get_nodes_config=S2CE_NODE_FORMAT,
                         log_fn=lambda msg: print('[s2ce] %s' % msg, flush=True)),
                     log_fn=lambda msg: print('[s2ce] %s' % msg, flush=True))
 

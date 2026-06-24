@@ -98,7 +98,7 @@ class TestMCPRoundTrip(BrainTestBase):
             "node_id": n["id"], "content": "Revised content", "reason": "test"
         })
         self.assertIn("id", result)
-        self.assertTrue(result.get("embedding_updated") or result.get("revised_at"))
+        self.assertTrue(result.get("revised_at"))
         # Verify content changed
         row = self.brain.conn.execute(
             "SELECT content FROM nodes WHERE id = ?", (n["id"],)).fetchone()
