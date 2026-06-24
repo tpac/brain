@@ -9,6 +9,7 @@ EVOLVE, KEEP, or SKIP for each cluster via tool calls.
 """
 
 import os
+import time
 
 from servers.trace_contract import build_delta_metadata
 from servers.daemon_config import brain_tmp_dir
@@ -68,8 +69,12 @@ class ConsolidationEncoder(IntegrationUnit):
         # for suppression. journal_entry is likewise gone — residue is its own
         # journal_note rows now.
         self.trace('delta', 'consolidated',
-                   '%d actions (%d writes) in %d rounds for %d clusters' % (
-                       actions, write_actions, rounds, len(clusters)),
+                   '%d actions (%d writes) in %d rounds for %d clusters, '
+                   '%dms, %d→%d tok' % (
+                       actions, write_actions, rounds, len(clusters),
+                       result.get('elapsed_ms', 0),
+                       result.get('input_tokens', 0),
+                       result.get('output_tokens', 0)),
                    metadata=build_delta_metadata(
                        actions=actions,
                        write_actions=write_actions,
@@ -78,6 +83,11 @@ class ConsolidationEncoder(IntegrationUnit):
                        action_details=result.get('action_details', []),
                        final_text=final_text,
                        clusters_processed=len(clusters),
+                       elapsed_ms=result.get('elapsed_ms', 0),
+                       input_tokens=result.get('input_tokens', 0),
+                       output_tokens=result.get('output_tokens', 0),
+                       cache_read_tokens=result.get('cache_read_tokens', 0),
+                       cache_creation_tokens=result.get('cache_creation_tokens', 0),
                    ))
 
         return result
@@ -160,6 +170,13 @@ class ConsolidationEncoder(IntegrationUnit):
             'rounds': 0, 'actions': 0, 'write_actions': 0,
             'action_details': [], 'final_text': '',
         }
+        # Cost/latency telemetry — tokens summed across batches via
+        # _sum_telemetry, elapsed measured by a wall-clock timer around the whole
+        # batch loop, so a multi-batch consolidation records true total cost
+        # instead of one batch's or zero. Mirrors the S1 Scribe delta; before
+        # this, run()'s build_delta_metadata omitted them and every production
+        # `consolidated` delta read elapsed_ms=0, output_tokens=0 (the gap).
+        _t0 = time.time()
 
         for batch_idx in range(0, len(clusters), batch_size):
             batch = clusters[batch_idx:batch_idx + batch_size]
@@ -212,6 +229,7 @@ class ConsolidationEncoder(IntegrationUnit):
                 total_result['write_actions'] += result.get('write_actions', 0)
                 total_result['action_details'].extend(
                     result.get('action_details', []))
+                self._sum_telemetry(total_result, result)
                 batch_text = result.get('final_text', '')
                 if batch_text:
                     total_result['final_text'] += '\n--- batch %d ---\n%s' % (
@@ -241,6 +259,7 @@ class ConsolidationEncoder(IntegrationUnit):
                 self.brain._log_error(self.NAME, e,
                                       'encode batch %d' % batch_num)
 
+        total_result['elapsed_ms'] = int((time.time() - _t0) * 1000)
         return total_result
 
     # ══════════════════════════════════════════════════════════

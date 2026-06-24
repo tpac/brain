@@ -15,9 +15,12 @@ from servers.trace_contract import (
     DELTA_ERROR_LIST_LIMIT,
     SELECTION_METADATA_SHAPE,
     SELECTION_CONTENT_LIMIT,
+    LLM_ENCODER_DELTA_REF_TYPES,
+    METADATA_REQUIRED_BY_REF_TYPE,
     build_delta_metadata,
     build_selection_metadata,
     validate_trace_metadata,
+    check_delta_telemetry,
 )
 
 # NOTE: the node-lifecycle split is no longer derived in the runner
@@ -295,3 +298,223 @@ class TestLiveWritersUseBuilders:
     def test_surfacer_uses_build_selection_metadata(self, path):
         assert _file_calls(path, 'build_selection_metadata'), (
             f"{path} does not call build_selection_metadata — selection trace shape will drift")
+
+
+# ═════════════════════════════════════════════════════════════
+# LLM-encoder telemetry guard (2026-06-24 S2 telemetry gap fix)
+# ═════════════════════════════════════════════════════════════
+
+class TestCheckDeltaTelemetry:
+    """The loud check: an LLM-encoder delta that ran the model AND did work
+    (actions>0) yet recorded output_tokens==0 is the silent telemetry-threading
+    gap. Pure detector — fires for the 5 LLM-encoder ref_types, stays silent for
+    everything else (markers, no-LLM/no-work runs, non-encoder ref_types)."""
+
+    def test_fires_on_gap(self):
+        # rounds>0, actions>0, output_tokens==0 — the gap.
+        m = build_delta_metadata(rounds=1, actions=2, output_tokens=0)
+        warn = check_delta_telemetry('consolidated', m)
+        assert warn and 'output_tokens=0' in warn
+
+    def test_silent_when_output_tokens_present(self):
+        # The positive contract: an LLM-encoder delta with rounds>0 carries
+        # output_tokens>0 → no flag. (This is what the Task A fix guarantees.)
+        m = build_delta_metadata(rounds=1, actions=2, output_tokens=50)
+        assert check_delta_telemetry('consolidated', m) is None
+
+    def test_silent_on_zero_actions(self):
+        # No work → no proof the model produced consumable output. Covers BOTH
+        # no-op runs AND the all-LLM-calls-failed case (healer's rounds counts
+        # batches attempted) — an LLM failure is logged elsewhere, not here.
+        m = build_delta_metadata(rounds=3, actions=0, output_tokens=0)
+        assert check_delta_telemetry('healer_generated', m) is None
+
+    def test_silent_on_rounds_zero(self):
+        # The early-out / no-clusters path — the LLM never ran.
+        m = build_delta_metadata(rounds=0, actions=0, output_tokens=0)
+        assert check_delta_telemetry('consolidated', m) is None
+
+    def test_silent_on_non_encoder_ref_type(self):
+        # Selection deltas / additionalContext have no LLM round to measure.
+        m = build_delta_metadata(rounds=1, actions=2, output_tokens=0)
+        assert check_delta_telemetry('additionalContext', m) is None
+        assert check_delta_telemetry('node_revised', m) is None
+
+    def test_silent_on_bare_marker_and_non_dict(self):
+        # Bare early-out markers write metadata=None; never flag them.
+        assert check_delta_telemetry('consolidated', None) is None
+        assert check_delta_telemetry('consolidated', "not a dict") is None
+
+    def test_fires_for_every_llm_encoder_ref_type(self):
+        for rt in LLM_ENCODER_DELTA_REF_TYPES:
+            m = build_delta_metadata(rounds=1, actions=1, output_tokens=0)
+            assert check_delta_telemetry(rt, m) is not None, rt
+
+    def test_scope_matches_unified_delta_ref_types(self):
+        # The guard's scope must be exactly the ref_types whose payload is the
+        # unified DELTA_METADATA_SHAPE — keeps the two lists from drifting (a new
+        # LLM encoder added to one must be added to the other).
+        unified = {rt for rt, schema in METADATA_REQUIRED_BY_REF_TYPE.items()
+                   if schema is DELTA_METADATA_SHAPE}
+        assert set(LLM_ENCODER_DELTA_REF_TYPES) == unified
+
+
+class _TelStubBrain:
+    """Captures _log_error — the errors-view sink the guard targets."""
+    def __init__(self):
+        self.errors = []
+
+    def _log_error(self, source, exc, context=''):
+        self.errors.append((source, str(exc), context))
+
+
+class TestTraceBoundaryTelemetryGuard:
+    """IntegrationUnit.trace() is the single S2 delta write boundary — the guard
+    fires there so every S2 unit (and every FUTURE one) is covered for free.
+    Loud, never blocking: the trace is still written when the gap fires."""
+
+    def _unit(self):
+        from servers.scales.s2.base import IntegrationUnit
+
+        class _U(IntegrationUnit):
+            NAME = 'consolidation'
+            SCALE = 's2'
+            ENCODING_SOURCE = 's2:consolidation'
+
+        captured = []
+        u = _U(brain=_TelStubBrain(),
+               dispatch_fn=lambda cmd, data: captured.append((cmd, data)))
+        u._chain_id = 's2-test-consolidation'  # pin → no datetime stamp
+        return u, captured
+
+    def test_fires_and_logs_on_gap(self):
+        u, captured = self._unit()
+        u.trace('delta', 'consolidated', 'summary',
+                metadata=build_delta_metadata(rounds=1, actions=2, output_tokens=0))
+        assert len(u.brain.errors) == 1
+        source, msg, _ = u.brain.errors[0]
+        assert source == 's2_consolidation_telemetry_gap'
+        assert 'output_tokens=0' in msg
+        # Loud, never block — the trace write still happened.
+        assert len(captured) == 1
+
+    def test_silent_when_telemetry_present(self):
+        u, captured = self._unit()
+        u.trace('delta', 'consolidated', 'summary',
+                metadata=build_delta_metadata(rounds=1, actions=2, output_tokens=80))
+        assert u.brain.errors == []
+        assert len(captured) == 1
+
+    def test_silent_on_bare_marker(self):
+        # The "No clusters to process" early-out writes no payload.
+        u, captured = self._unit()
+        u.trace('delta', 'consolidated', 'No clusters to process')
+        assert u.brain.errors == []
+
+    def test_silent_on_non_delta_event(self):
+        # The guard is delta-only; an O/K event with gappy-looking numbers is
+        # never an LLM-encoder delta.
+        u, _ = self._unit()
+        u.trace('K', 'consolidation_proposals', 'observed',
+                metadata={'rounds': 1, 'actions': 2, 'output_tokens': 0})
+        assert u.brain.errors == []
+
+
+def _build_delta_call_has_kwarg(path, kwarg):
+    """True if the file passes `kwarg=` to any build_delta_metadata(...) call."""
+    import os
+    import ast
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, path)) as f:
+        tree = ast.parse(f.read())
+
+    found = [False]
+
+    class Visitor(ast.NodeVisitor):
+        def visit_Call(self, node):
+            name = None
+            if isinstance(node.func, ast.Attribute):
+                name = node.func.attr
+            elif isinstance(node.func, ast.Name):
+                name = node.func.id
+            if name == 'build_delta_metadata':
+                for kw in node.keywords:
+                    if kw.arg == kwarg:
+                        found[0] = True
+            self.generic_visit(node)
+
+    Visitor().visit(tree)
+    return found[0]
+
+
+class TestEncodersThreadTelemetry:
+    """Every LLM encoder must thread cost/latency telemetry into its delta —
+    the recurrence guard for the S2 gap. An encoder that copy-pastes
+    build_delta_metadata without these kwargs fails here before the silent
+    elapsed_ms=0/output_tokens=0 reaches production traces."""
+
+    @pytest.mark.parametrize('path', ENCODERS_USING_DELTA_BUILDER)
+    def test_encoder_threads_output_tokens(self, path):
+        assert _build_delta_call_has_kwarg(path, 'output_tokens'), (
+            f"{path} calls build_delta_metadata without an output_tokens kwarg — "
+            "the production delta would record output_tokens=0 (telemetry gap)")
+
+    @pytest.mark.parametrize('path', ENCODERS_USING_DELTA_BUILDER)
+    def test_encoder_threads_elapsed_ms(self, path):
+        assert _build_delta_call_has_kwarg(path, 'elapsed_ms'), (
+            f"{path} calls build_delta_metadata without an elapsed_ms kwarg — "
+            "encoder latency would be unmeasurable from production traces")
+
+
+class TestSharedTelemetryHelpers:
+    """read_usage (runner) + IntegrationUnit._sum_telemetry (base) are the
+    single source for the SDK usage-field mapping and the cross-batch
+    accumulator — reused by run_llm_loop, base._call_llm, and the 3 multi-batch
+    S2 encoders, so the field names live in exactly one place."""
+
+    def test_read_usage_maps_sdk_field_names(self):
+        from servers.scales.runner import read_usage, USAGE_FIELDS
+
+        class _Usage:
+            input_tokens = 10
+            output_tokens = 20
+            cache_read_input_tokens = 30
+            cache_creation_input_tokens = 40
+
+        class _Resp:
+            usage = _Usage()
+
+        u = read_usage(_Resp())
+        assert u == {'input_tokens': 10, 'output_tokens': 20,
+                     'cache_read_tokens': 30, 'cache_creation_tokens': 40}
+        assert set(u) == set(USAGE_FIELDS)
+
+    def test_read_usage_none_and_missing_are_zero(self):
+        from servers.scales.runner import read_usage, USAGE_FIELDS
+        zero = {f: 0 for f in USAGE_FIELDS}
+        assert read_usage(None) == zero          # no response (pre-call baseline)
+
+        class _Bare:
+            pass
+
+        assert read_usage(_Bare()) == zero       # response with no .usage
+
+    def test_sum_telemetry_accumulates_over_usage_fields(self):
+        from servers.scales.s2.base import IntegrationUnit
+        u = IntegrationUnit.__new__(IntegrationUnit)   # method uses no self state
+        total = {}
+        u._sum_telemetry(total, {'input_tokens': 1, 'output_tokens': 2,
+                                 'cache_read_tokens': 3, 'cache_creation_tokens': 4})
+        u._sum_telemetry(total, {'input_tokens': 10, 'output_tokens': 20,
+                                 'cache_read_tokens': 30, 'cache_creation_tokens': 40})
+        assert total == {'input_tokens': 11, 'output_tokens': 22,
+                         'cache_read_tokens': 33, 'cache_creation_tokens': 44}
+
+    def test_sum_telemetry_coerces_missing_and_none(self):
+        from servers.scales.s2.base import IntegrationUnit
+        from servers.scales.runner import USAGE_FIELDS
+        u = IntegrationUnit.__new__(IntegrationUnit)
+        total = {}
+        u._sum_telemetry(total, {'output_tokens': None})  # None → 0
+        u._sum_telemetry(total, {})                       # missing keys → 0
+        assert total == {f: 0 for f in USAGE_FIELDS}

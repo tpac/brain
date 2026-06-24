@@ -76,7 +76,7 @@ class AspectEncoder(IntegrationUnit):
 
         aspects = self._load_aspects()
         user_content = self._format_prompt(aspects, proposals)
-        result = self._call_llm('s2_aspects', user_content)
+        result, telemetry = self._call_llm('s2_aspects', user_content)
 
         if result is None:
             err = 'LLM call failed'
@@ -136,7 +136,11 @@ class AspectEncoder(IntegrationUnit):
         ]
 
         self.trace('delta', 'aspect_classified',
-                   '%d classified, %d rejected' % (len(accepted), len(rejected)),
+                   '%d classified, %d rejected, %dms, %d→%d tok' % (
+                       len(accepted), len(rejected),
+                       telemetry.get('elapsed_ms', 0),
+                       telemetry.get('input_tokens', 0),
+                       telemetry.get('output_tokens', 0)),
                    metadata=build_delta_metadata(
                        actions=len(classifications),
                        write_actions=len(accepted),
@@ -150,6 +154,11 @@ class AspectEncoder(IntegrationUnit):
                        journal_entry=journal,
                        errors=[r['reason'] for r in rejected[:5]],
                        classifications=classifications_made,
+                       elapsed_ms=telemetry.get('elapsed_ms', 0),
+                       input_tokens=telemetry.get('input_tokens', 0),
+                       output_tokens=telemetry.get('output_tokens', 0),
+                       cache_read_tokens=telemetry.get('cache_read_tokens', 0),
+                       cache_creation_tokens=telemetry.get('cache_creation_tokens', 0),
                    ))
 
         return {

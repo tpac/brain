@@ -44,6 +44,22 @@ def caller_session(args):
     return args.get('session_id') or args.get(CALLER_SESSION_KEY) or ''
 
 
+def sender_id(args):
+    """The caller's OWN canonical id for attributing a self-message it SENDS.
+
+    The authoritative id (`caller_session` — the proxy-stamped full session) WINS
+    over an explicit `from_session` arg. That ordering is the fix, not an accident:
+    a caller can pass `from_session` as the 8-char SHORT (the form Anchor sees in
+    rendered messages and presence lines), and storing a short corrupts attribution
+    and seeds the self_send resolver's false-ambiguity — the courier ends up
+    holding one stream under two id formats (db79e0c1 / brain node 41c6ebed). The
+    explicit arg is honored only HEADLESS, when the proxy stamped no caller session.
+
+    Distinct from `caller_session`, which keeps the raw `session_id`-first
+    precedence the read tools that scope BY an explicit id rely on."""
+    return caller_session(args) or args.get('from_session', '') or ''
+
+
 def _pop_session_ctx(brain, args):
     """Resolve the calling session's ctx, popping BOTH identity keys.
 

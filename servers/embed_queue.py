@@ -477,7 +477,14 @@ def _drain_trace_embeddings_once(brain) -> None:
 
 
 def _drain_once(brain) -> None:
-    """Drain queues in BATCHES until empty.
+    """Drain each queued id once per call, in BATCHES.
+
+    Processes every queued id NOT already attempted this drain, then returns.
+    Ids re-enqueued mid-drain — an edge-embed retry when the embedder isn't
+    ready, or the failure path below — deliberately stay in the queue for the
+    NEXT _drain_once rather than being re-consumed here (re-consuming them spun
+    the loop forever on a persistent failure). The worker loop re-picks them on
+    its next tick. So the queues are NOT guaranteed empty on return.
 
     Holds brain.write_lock per-batch so cold-start (~20K entities at
     first boot) doesn't block other writers for the full drain. Each
@@ -494,20 +501,33 @@ def _drain_once(brain) -> None:
     total_edge_vectors = 0
     total_intervals = 0
     batches = 0
+    # Ids already attempted in THIS drain. A batch can be re-enqueued mid-drain —
+    # by the edge-embed retry (backfill_edge_embeddings re-queues when the
+    # embedder isn't ready) or the failure path below. Re-enqueue means "retry on
+    # a LATER drain", so we must not re-consume it within this `while True`, or a
+    # persistent failure (embedder unavailable) spins the loop forever. Tracking
+    # what we've attempted lets re-enqueued ids sit in the queue for the next
+    # _drain_once instead.
+    processed_nodes: Set[str] = set()
+    processed_edges: Set[str] = set()
 
     while True:
-        # Pull one batch out of the queues under the queue lock.
+        # Pull one batch out of the queues under the queue lock — only ids not
+        # already attempted this drain.
         with _lock:
-            if not _queue and not _edge_queue:
+            fresh_nodes = _queue - processed_nodes
+            fresh_edges = _edge_queue - processed_edges
+            if not fresh_nodes and not fresh_edges:
                 break
-            node_batch = []
-            edge_batch = []
-            while _queue and len(node_batch) < DRAIN_BATCH_SIZE:
-                node_batch.append(_queue.pop())
-            remaining_budget = DRAIN_BATCH_SIZE - len(node_batch)
-            while _edge_queue and remaining_budget > 0:
-                edge_batch.append(_edge_queue.pop())
-                remaining_budget -= 1
+            node_batch = list(fresh_nodes)[:DRAIN_BATCH_SIZE]
+            budget = DRAIN_BATCH_SIZE - len(node_batch)
+            edge_batch = list(fresh_edges)[:budget] if budget > 0 else []
+            # Remove what we took from the live queues and mark it attempted, so
+            # a mid-drain re-enqueue stays queued for the NEXT drain.
+            _queue.difference_update(node_batch)
+            _edge_queue.difference_update(edge_batch)
+            processed_nodes.update(node_batch)
+            processed_edges.update(edge_batch)
         if not node_batch and not edge_batch:
             break
 
@@ -592,8 +612,9 @@ def _drain_once(brain) -> None:
             except Exception as e:
                 # Re-enqueue so a transient failure doesn't permanently drop the
                 # batch — the rows stay NULL (recall live-fallback) until a later
-                # drain retries. Unlike the temporal phase's loss-semantic, a
-                # missing edge embedding is a silent perf regression, not a no-op.
+                # drain retries. Safe to re-enqueue into the live queue: the
+                # process-once guard above won't re-consume these ids within the
+                # current drain, so a persistent failure can't spin the loop.
                 for _eid in edge_batch:
                     enqueue_edge(_eid)
                 try:

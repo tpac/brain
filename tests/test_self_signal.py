@@ -165,12 +165,50 @@ class TestSelfSignal(BrainTestBase):
 
     def test_resolve_short_matches_recent_sender(self):
         """A stream that messaged me but isn't in the live roster is still
-        reply-able by its short id — its from_session is in the courier."""
-        signal.send(self.brain, from_session='dorm12345678',
+        reply-able by its short id — its (full-UUID) from_session is in the courier,
+        so the 8-char prefix resolves to it."""
+        full = 'dabc1234-5678-4abc-8def-000000000001'
+        signal.send(self.brain, from_session=full,
                     address=self_contract.address_for_stream('me'), body='hi')
-        addr, err = signal.resolve_to(self.brain, 'dorm1234')
+        addr, err = signal.resolve_to(self.brain, full[:8])
         self.assertIsNone(err)
-        self.assertEqual(addr, self_contract.address_for_stream('dorm12345678'))
+        self.assertEqual(addr, self_contract.address_for_stream(full))
+
+    def test_resolve_short_and_full_of_one_session_not_ambiguous(self):
+        """Regression (live 2026-06-24): a prefix mapping to ONE logical session
+        must resolve, even when the courier holds BOTH the full session id AND a
+        leaked 8-char short form. The short is not a full session id, so the
+        candidate filter excludes it — only the full matches, so it resolves rather
+        than reading as two 'live streams'. The original bug printed the same prefix
+        twice: \"'37a32ee9' matches 2 live streams (37a32ee9, 37a32ee9)\"."""
+        full = '37a32ee9-9770-46ac-ab03-0a87b6762647'
+        short = full[:8]                                   # '37a32ee9'
+        # The leaked short + the canonical full, both in the courier for one stream.
+        signal.send(self.brain, from_session=full,
+                    address=self_contract.address_for_stream('me'), body='from full')
+        signal.send(self.brain, from_session=short,
+                    address=self_contract.address_for_stream('me'), body='from short')
+        addr, err = signal.resolve_to(self.brain, short)
+        self.assertIsNone(err, "a unique session under a prefix must resolve, not error")
+        # Resolves to the canonical FULL form (the deliverable address), not the short.
+        self.assertEqual(addr, self_contract.address_for_stream(full))
+
+    def test_resolve_genuine_ambiguity_names_full_ids(self):
+        """Two DISTINCT full sessions sharing a prefix ARE ambiguous — and the
+        error must name the FULL session ids, not truncated 8-char prefixes, or the
+        'use the full session id to disambiguate' instruction is impossible to act
+        on (you'd be handed the very prefix that's ambiguous)."""
+        a = 'dddddddd-1111-4aaa-8bbb-000000000001'
+        b = 'dddddddd-2222-4aaa-8bbb-000000000002'
+        signal.send(self.brain, from_session=a,
+                    address=self_contract.address_for_stream('me'), body='from a')
+        signal.send(self.brain, from_session=b,
+                    address=self_contract.address_for_stream('me'), body='from b')
+        addr, err = signal.resolve_to(self.brain, 'dddddddd')
+        self.assertIsNone(addr)
+        self.assertIn(a, err)        # FULL ids named — actionable
+        self.assertIn(b, err)
+        self.assertIn('matches 2 live streams', err)
 
     # ── Phase 2b: render + delivery-into-Observation ──
 
@@ -219,6 +257,90 @@ class TestSelfSignal(BrainTestBase):
         block, n = signal.drain_and_render(self.brain, 'NOBODY-HOME')
         self.assertEqual(n, 0)
         self.assertEqual(block, "")
+
+
+class TestResolveStream(BrainTestBase):
+    """The shared stream-reference resolver — full id / id-prefix → canonical full
+    id. The single 'name a stream' path behind self_send's target AND self_peek;
+    returns (full_id | None, error), tool-agnostic so every caller can wrap it."""
+    needs_embedder = False
+
+    def test_full_id_passes_through_even_when_not_live(self):
+        """A full session UUID is canonical — honored without a roster hit (it
+        drains within TTL even if the target isn't awake this instant)."""
+        full = 'abcdef01-2345-6789-abcd-ef0123456789'
+        fid, err = signal.resolve_stream(self.brain, full)
+        self.assertIsNone(err)
+        self.assertEqual(fid, full)
+
+    def test_short_unique_recent_sender_resolves_to_full(self):
+        full = 'dabc1234-5678-4abc-8def-000000000002'
+        signal.send(self.brain, from_session=full,
+                    address=self_contract.address_for_stream('me'), body='hi')
+        fid, err = signal.resolve_stream(self.brain, full[:8])
+        self.assertIsNone(err)
+        self.assertEqual(fid, full)
+
+    def test_short_and_full_of_one_session_resolves_to_full(self):
+        """The courier holding BOTH the canonical full id and a leaked 8-char short
+        (one stream, two strings) resolves to the full: the short is not a full
+        session id, so the candidate filter drops it — no phantom ambiguity."""
+        full = '37a32ee9-9770-46ac-ab03-0a87b6762647'
+        signal.send(self.brain, from_session=full,
+                    address=self_contract.address_for_stream('me'), body='full')
+        signal.send(self.brain, from_session=full[:8],
+                    address=self_contract.address_for_stream('me'), body='short')
+        fid, err = signal.resolve_stream(self.brain, full[:8])
+        self.assertIsNone(err)
+        self.assertEqual(fid, full)
+
+    def test_same_full_in_roster_and_courier_resolves_once(self):
+        """The SAME stream surfacing from BOTH the roster and the courier must dedup
+        to one match, not read as ambiguous — dict.fromkeys carries this (the
+        is_session_id filter alone wouldn't collapse the identical id twice)."""
+        full = 'aaaaaaaa-1111-4222-8333-444444444444'
+        self.brain.stamp_boot_liveness(full)              # → present_streams (roster)
+        signal.send(self.brain, from_session=full,         # → recent courier sender
+                    address=self_contract.address_for_stream('me'), body='x')
+        fid, err = signal.resolve_stream(self.brain, full[:8])
+        self.assertIsNone(err)
+        self.assertEqual(fid, full)
+
+    def test_caller_excluded_from_own_resolution(self):
+        """A caller can't resolve a prefix to its OWN id — you can't address
+        yourself (the inbox drops from_session == to_session, so it'd never
+        deliver). exclude_session removes the caller from the candidate pool."""
+        me = 'cafe1234-5678-4abc-8def-000000000003'
+        signal.send(self.brain, from_session=me,
+                    address=self_contract.address_for_stream('someone'), body='x')
+        fid, err = signal.resolve_stream(self.brain, me[:8], exclude_session=me)
+        self.assertIsNone(fid)
+        self.assertIn('no live stream matches', err)
+
+    def test_genuine_ambiguity_names_full_ids_tool_agnostic(self):
+        """Distinct full ids sharing a prefix ARE ambiguous — the error names the
+        FULL ids and carries NO tool prefix (self_peek wraps the same resolver)."""
+        a = 'dddddddd-1111-4aaa-8bbb-000000000001'
+        b = 'dddddddd-2222-4aaa-8bbb-000000000002'
+        signal.send(self.brain, from_session=a,
+                    address=self_contract.address_for_stream('me'), body='a')
+        signal.send(self.brain, from_session=b,
+                    address=self_contract.address_for_stream('me'), body='b')
+        fid, err = signal.resolve_stream(self.brain, 'dddddddd')
+        self.assertIsNone(fid)
+        self.assertIn(a, err)
+        self.assertIn(b, err)
+        self.assertNotIn('self_send', err)
+
+    def test_no_match_is_loud(self):
+        fid, err = signal.resolve_stream(self.brain, 'nobodyhome')
+        self.assertIsNone(fid)
+        self.assertIn('no live stream matches', err)
+
+    def test_empty_ref_rejected(self):
+        fid, err = signal.resolve_stream(self.brain, '')
+        self.assertIsNone(fid)
+        self.assertIn('empty', err)
 
 
 class TestPeekInbox(BrainTestBase):
