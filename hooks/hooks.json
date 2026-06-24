@@ -33,10 +33,6 @@
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-edit-suggest.sh",
             "timeout": 8
-          },
-          {
-            "type": "prompt",
-            "prompt": "You are a test integrity guardian. Examine this tool call: $ARGUMENTS\n\nIF the file is NOT a test file (filename does not contain 'test_' or '_test' and is not in a 'tests/' directory), respond: {\"decision\": \"allow\"}\n\nIF it IS a test file, block ONLY when the edit weakens an assertion FOR THE PURPOSE OF MAKING A FAILING TEST PASS. Updating an expected value to match an evolved contract is NOT weakening — that's a legitimate fix.\n\nBLOCK only these patterns (the assertion itself got less strict, not just a different expected value):\n- Replacing assertEqual / assertAlmostEqual with assertGreater / assertLess / assertIsNotNone / assertTrue / assertIn on the same value\n- Deleting an assert statement without replacing it with an equally-or-more-strict one\n- Wrapping an assertion in try/except to swallow failure\n- Adding @skip / @skipIf / @expectedFailure to a previously-passing test\n- Commenting out an assertion\n\nALLOW everything else, including:\n- Updating exact expected values (e.g. an expected set grew or shrunk because the underlying contract changed). An exact-equality assertion against a different exact value is still exact equality — not weakening.\n- Splitting one assertion into multiple stricter sub-assertions\n- Renaming test methods, refactoring fixtures, adding new tests/comments\n- Changes to test setup, parametrization, mocks\n\nIf a BLOCK pattern matches, respond:\n{\"decision\": \"block\", \"reason\": \"⚠️ TEST INTEGRITY: This edit weakens an assertion. Stop and report what the test expected vs what the code returned. Ask the user whether the test or the code is wrong.\"}\n\nOtherwise respond: {\"decision\": \"allow\"}"
           }
         ]
       },
