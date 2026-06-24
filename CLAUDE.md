@@ -278,7 +278,7 @@ Design: `docs/S2-DESIGN.md`, `docs/S2-COMMUNITY-DESIGN.md`
 Three files, same pattern as the shipped units. Subclass `IntegrationUnit` in `scales/s2/base.py` for free encoder dispatch + journal infrastructure.
 
 1. **Decoder** (`your_unit_decoder.py`): check `_has_new_traces()`, read O, run algorithmic processing (<1s), write O+K traces, return proposals.
-2. **Encoder** (`your_unit_encoder.py`): receive proposals, call `self._make_encoder_dispatch(archive_guard=...)` for a dispatch closure that forces `encoding_source` / `skip_embedding`, call `run_llm_loop()` (prompt caching built-in: BP1 system 1h, BP2 first user message 5m). Set `JOURNAL_MARKERS` / `JOURNAL_LABEL` to opt into continuity. Write delta trace via `build_delta_metadata`. Prompt stored in interactions table (learnable boundary).
+2. **Encoder** (`your_unit_encoder.py`): receive proposals, call `self._make_encoder_dispatch(archive_guard=...)` for a dispatch closure that forces `encoding_source` / `skip_embedding`, call `run_llm_loop()` (prompt caching built-in: BP1 system 1h, BP2 first user message 5m). For residue continuity, opt into the **journal-note contract**: append the shared review block with `self._inject_review_block(system_prompt)`, read recent runs' notes with `self._load_journal_notes_prefix()`, and persist the encoder's `## Review` section via `brain.write_journal_notes(final_text, chain_id=self.chain_id(), scale=self.SCALE, session_id='')` — per batch if you accumulate `final_text` across batches (`extract_review_block` keys on the *first* `## Review` fence, so a single post-loop write drops all but one batch's notes). The legacy `JOURNAL_MARKERS` / `JOURNAL_LABEL` brain_meta journal was retired 2026-06-24 (community + consolidation are on the note contract; the base `_save_journal`/`_load_journal_prefix` methods are gone) — see `docs/ENCODER-JOURNAL-DESIGN.md`. Write delta trace via `build_delta_metadata`. Prompt stored in interactions table (learnable boundary).
 3. **Orchestrator** (`your_unit.py`): inherits decoder, calls `super().run()`, passes proposals to encoder.
 
 Register in `coordinator.py` units list. Trace chain: `s2-{YYYYMMDDHHMMSS}-{unit_name}` (per-run unique — one timestamp segment). Contract file defines config + data shapes.
@@ -391,6 +391,15 @@ The brain bundles its own Python at `venv/bin/python` (3.11.11). That's the inte
 `tests/conftest.py` refuses to run if pytest isn't launched under the bundled Python — catches the "tests pass here but daemon runs a different Python" class of bug. Bypass for a one-off with `BRAIN_ALLOW_ANY_PYTHON=1`.
 
 Hooks source `brain-env.sh` transitively via `resolve-brain-db.sh`; the daemon launcher picks the same Python explicitly. Don't add new hook scripts that skip `brain-env.sh`.
+
+### Deploying a change — restart vs redeploy
+
+The daemon runs `servers/*` straight from the **repo working tree it launched from** (not a copy), so which deploy step you need depends on what you touched:
+
+- **`servers/*`** (recall, encoding, scales, `brain.py`, DAL, scoring, contracts) → a **daemon restart** suffices; code goes live in the current session. Restart via the `restart` MCP tool or `hooks/scripts/restart-daemon.sh`.
+- **`hooks/`, `servers/brain_mcp.py` (the MCP surface), `skills/*/SKILL.md`, or a manifest** (`hooks.json`, `.mcp.json`, `.claude-plugin/plugin.json`) → run **`./redeploy.sh`**: it rebuilds the installed plugin copy from `git ls-files` (**commit first — it builds from committed files, refuses a dirty tree**), prunes-then-unzips (no orphan drift), smoke-tests that both entrypoints import, then restarts the daemon. These surfaces are read once at session/plugin load, so they also need a **new session** — the current one keeps the old copy.
+
+**Never** gate a deploy-restart with the maintenance lock (`/tmp/brain-maintenance-{uid}.lock`) — it makes the daemon **skip startup** (its job is to keep the daemon *down* during VACUUM / schema migrations / bulk deletes). The restart paths above bring it back; the lock keeps it down.
 
 ### `BRAIN_DEV_MODE` — opt out of end-user safety nets
 
