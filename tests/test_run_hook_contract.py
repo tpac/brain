@@ -19,7 +19,14 @@ _HOOKS_DIR = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts")
 # Scripts in hooks/scripts/ that are NOT event hooks — shared infra
 # (hook_common defines run_hook) and standalone utilities. The run_hook
 # contract does not apply to these.
-_NON_EVENT = {"hook_common.py", "agent-bridge.py", "extract-session-log.py"}
+_NON_EVENT = {
+    "hook_common.py", "agent-bridge.py", "extract-session-log.py",
+    # Monitor-launched long-running poller for /watch-live — an infinite
+    # peek loop, not a Claude Code event hook. It has its own resilience
+    # model (transient errors → stderr, loop continues); run_hook is a
+    # once-and-return error boundary that doesn't fit a never-returning poller.
+    "self_inbox_poller.py",
+}
 
 
 def _event_hook_paths():
