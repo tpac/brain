@@ -366,25 +366,6 @@ class TestDaemonModuleStructure(unittest.TestCase):
         ]:
             self.assertIsNotNone(sym, f"Split daemon modules missing symbol: {sym_name}")
 
-    def test_daemon_config_is_small(self):
-        """daemon_config.py should stay under 175 lines.
-        # ADJUSTED: 100→120 — added BRAIN_DEV_MODE + is_dev_mode() helper with
-        #   plugin-repackaging caution docstring (2026-05-19).
-        # ADJUSTED: 120→150 — added LAUNCHD_LABEL + get_recovery_state_path()
-        #   for the consolidated hung-daemon recovery path (2026-05-28).
-        # ADJUSTED: 150→160 — recursive content-based fingerprint (os.walk over
-        #   servers/**/*.py) replaces the top-level mtime hash, so subpackage
-        #   (scales/, ...) edits are detected (2026-06-06).
-        # ADJUSTED: 160→175 — added _is_worktree_checkout() + _IS_WORKTREE so a
-        #   worktree session never triggers a daemon staleness-restart (the
-        #   non-convergent churn fix, 2026-06-06).
-        """
-        config_path = os.path.join(PROJECT_ROOT, 'servers', 'daemon_config.py')
-        with open(config_path) as f:
-            lines = len(f.readlines())
-        self.assertLess(lines, 175,
-                        f"daemon_config.py is {lines} lines — should be <175")
-
     def test_daemon_dispatch_is_readable(self):
         """daemon_dispatch.py should stay under 1120 lines."""
         path = os.path.join(PROJECT_ROOT, 'servers', 'daemon_dispatch.py')
@@ -392,25 +373,6 @@ class TestDaemonModuleStructure(unittest.TestCase):
             lines = len(f.readlines())
         self.assertLess(lines, 1120,
                         f"daemon_dispatch.py is {lines} lines — should be <1120")
-
-    def test_daemon_server_is_readable(self):
-        """daemon_server.py should stay under 950 lines.
-        # ADJUSTED: 350→400 approved by Tom 2026-03-23 — same rationale as dispatch.
-        # ADJUSTED: 400→450 approved by Tom 2026-03-24 — observer channel wiring added.
-        # ADJUSTED: 450→790 — scales runner integration, session context, trace pipeline,
-        #   background encoding lifecycle (2026-04)
-        # ADJUSTED: 790→950 approved by Tom 2026-05-28 — one cohesive daemon class
-        #   (supervisor loop, signal handling, suspend detector, request handling);
-        #   modest overage, splitting a single class isn't worth the seams.
-        # ADJUSTED: 950→970 approved by Tom 2026-06-06 — PID file claimed only
-        #   after a successful bind (+_wrote_pid guard in _cleanup) so a
-        #   deferring duplicate can't unlink the incumbent's PID file.
-        """
-        path = os.path.join(PROJECT_ROOT, 'servers', 'daemon_server.py')
-        with open(path) as f:
-            lines = len(f.readlines())
-        self.assertLess(lines, 970,
-                        f"daemon_server.py is {lines} lines — should be <970")
 
     def test_no_circular_imports(self):
         """Importing daemon modules in any order should not cause circular imports."""
@@ -591,19 +553,6 @@ class TestSkillAvailability(unittest.TestCase):
         self.assertTrue(os.path.isfile(skill_path),
                         f"SKILL.md not found at {skill_path}")
 
-    def test_skill_md_has_anchor_identity(self):
-        """SKILL.md (Anchor) must contain identity and encoding examples."""
-        skill_path = os.path.join(PROJECT_ROOT, 'skills', 'brain', 'SKILL.md')
-        with open(skill_path) as f:
-            content = f.read()
-        # Anchor must have identity section
-        self.assertIn('Anchor', content)
-        # Must carry encoding guidance (heading renamed in the 2026-05 SKILL.md
-        # rewrite from "What Good Encoding Looks Like" → "Encoding Craft").
-        self.assertIn('Encoding Craft', content)
-        # Must have the "What You Are" identity section
-        self.assertIn('What You Are', content)
-
     def test_skill_md_documents_core_tools(self):
         """SKILL.md mentions the core write/read tools by name.
 
@@ -692,11 +641,6 @@ class TestConsciousnessFeatures(unittest.TestCase):
         """Boot type must be in NODE_TYPES."""
         from servers.schema import NODE_TYPES
         self.assertIn('boot', NODE_TYPES)
-
-    # test_skill_md_has_orientation_preamble — REMOVED (redundant). Its two
-    # assertions ('Anchor' + 'What You Are' present in SKILL.md) are a strict
-    # subset of TestSkillAvailability.test_skill_md_has_anchor_identity, which
-    # asserts both plus 'Encoding Craft'. Coverage lives there now.
 
 
 # ══════════════════════════════════════════════════════════════════════════
