@@ -17,7 +17,7 @@ even though the handler succeeded. test_self_dispatch.py locks this.
 """
 
 from servers.scales.self_channel import presence, signal
-from servers.dispatch_common import caller_session
+from servers.dispatch_common import caller_session, sender_id
 
 
 def _handle_self_presence(brain, args, graph_changes):
@@ -43,9 +43,16 @@ def _handle_self_peek(brain, args, graph_changes):
     """Look into one stream of thought — its current focus. Read-only.
 
     args.stream_id = the TARGET stream to peek (distinct from the caller's
-    session_id, so peeking never collides with the caller identity).
+    session_id, so peeking never collides with the caller identity) — a full
+    session id OR an id-prefix (the 8-char short you see in a message), resolved to
+    the full id via signal.resolve_stream (the same resolver self_send's target
+    uses). A prefix that doesn't resolve uniquely falls through to an empty
+    (found:false) peek — a peek is a glance, not a delivery, so a miss is "nobody
+    there", never a hard error.
     """
-    return {"ok": True, "result": presence.peek(brain, args.get('stream_id', '') or '')}
+    ref = args.get('stream_id', '') or ''
+    full_id, _ = signal.resolve_stream(brain, ref, exclude_session=caller_session(args))
+    return {"ok": True, "result": presence.peek(brain, full_id or ref)}
 
 
 def _handle_self_send(brain, args, graph_changes):
@@ -53,19 +60,22 @@ def _handle_self_send(brain, args, graph_changes):
 
     args.to           = target: id-prefix, full session id, or 'broadcast'.
     args.body         = the message.
-    args.from_session = caller's session id for attribution (falls back to session_id).
+    args.from_session = OPTIONAL attribution override; the proxy-stamped caller id
+                        wins over it (see sender_id) so a short can't be stored as
+                        the sender — honored only headless.
     args.refs         = optional.
 
     `to` resolves gracefully (signal.resolve_to): canonical id / broadcast pass
     through; the 8-char short (an id-prefix) matches the live roster; ambiguous or
     no match is a LOUD error so silence is never mistaken for delivery.
     """
-    address, error = signal.resolve_to(brain, args.get('to', '') or '')
+    sid = sender_id(args)
+    address, error = signal.resolve_to(brain, args.get('to', '') or '', exclude_session=sid)
     if error:
         return {"ok": False, "error": error}
     return {"ok": True, "result": signal.send(
         brain,
-        from_session=args.get('from_session', '') or caller_session(args),
+        from_session=sid,
         address=address,
         body=args.get('body', '') or '',
         refs=args.get('refs'))}
@@ -92,10 +102,11 @@ def _handle_self_outbox(brain, args, graph_changes):
     """Delivery status of the caller's SENT messages — who's drained each, and
     whether a directed target is still pending. Read-only (sender-side receipt).
 
-    args.from_session = caller's session id (falls back to session_id).
+    args.from_session = OPTIONAL; the proxy-stamped caller id wins (see sender_id),
+                        so you read YOUR OWN outbox — honored only headless.
     args.limit        = optional cap (default 20).
     """
     return {"ok": True, "result": signal.outbox(
         brain,
-        from_session=args.get('from_session', '') or caller_session(args),
+        from_session=sender_id(args),
         limit=args.get('limit', 20))}

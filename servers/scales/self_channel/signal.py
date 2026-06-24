@@ -87,40 +87,75 @@ def _recent_sender_ids(brain):
     return [r[0] for r in rows]
 
 
-def resolve_to(brain, to):
-    """Resolve an MCP `to` to a delivery address, gracefully — returns
-    (address, error) with exactly one non-None.
+def resolve_stream(brain, ref, exclude_session=''):
+    """Resolve a stream REFERENCE to its canonical FULL session id — the single
+    resolver every "name a stream" caller routes through (self_send's target,
+    self_peek, and any future fuzzy reference). Returns (full_id, None) on a unique
+    match, (None, error) on ambiguity / no match. Errors name FULL ids so "use the
+    full session id" is actionable.
 
-    'broadcast' and a full session UUID are canonical, honored directly (a UUID
-    works even when the target isn't in the live roster this instant — it drains
-    within TTL). A shorter form — the 8-char short you see in a message (an
-    id-prefix) — is matched against the LIVE roster: unique → that stream;
-    ambiguous → names the candidates; none → loud (which usefully says the stream
-    is dormant/lost, so silence is never mistaken for delivery)."""
+    A full session UUID is canonical, honored directly (works even when the target
+    isn't in the live roster this instant — it drains within TTL). Anything shorter
+    is an id-PREFIX (the 8-char short you see in a message) matched against the live
+    set: live roster ∪ recent courier senders. The roster alone misses a stream
+    gone dormant since it messaged you, but its from_session lingers in the courier,
+    so you can always reply-by-short to someone who reached you.
+
+    Candidates are filtered to is_session_id-shaped ids — only a canonical full
+    UUID is a resolvable stream. That filter (not a bare `if s`) is the structural
+    guard against id contamination: a short / non-UUID `from_session` that leaked
+    into the courier (db79e0c1 — now stopped at the write boundary by sender_id)
+    simply never enters the pool, so it can't read as a phantom second match (the
+    '37a32ee9 matches 2' bug) NOR silently merge into a different stream. No full
+    UUID is a prefix of another (same length), so every surviving multi-match is
+    GENUINE ambiguity; dict.fromkeys still collapses the same id arriving from both
+    the roster AND the courier. `exclude_session` drops the caller itself — you
+    can't address yourself (the inbox filters from_session == to_session, so a
+    self-directed message would never drain).
+
+    NOT handled here: 'broadcast' (a delivery address, not a stream — resolve_to
+    owns that). Fuzzy refs (a partial worktree/branch label) are the natural next
+    match dimension — the candidate pool already carries those via the rich peek —
+    and slot in right where the prefix match is, with the same ambiguity contract."""
+    ref = (ref or '').strip()
+    if not ref:
+        return None, "empty stream reference"
+    if self_contract.is_session_id(ref):
+        return ref, None
+    window = self_contract.ROSTER_LIVE_WINDOW_MIN + self_contract.ROSTER_LOST_GRACE_MIN
+    candidates = [r.get('session_id', '')
+                  for r in brain.present_streams(
+                      exclude_session=exclude_session, window_min=window, limit=50)]
+    candidates += _recent_sender_ids(brain)
+    matches = list(dict.fromkeys(
+        s for s in candidates
+        if self_contract.is_session_id(s) and s != exclude_session and s.startswith(ref)))
+    if len(matches) == 1:
+        return matches[0], None
+    if len(matches) > 1:
+        # GENUINE ambiguity — distinct full ids sharing this prefix. Name the FULL
+        # ids: the prefix is exactly what's ambiguous, so echoing it can't help.
+        return None, ("'%s' matches %d live streams (%s) — use the full session id "
+                      "to disambiguate" % (ref, len(matches), ", ".join(matches)))
+    return None, ("no live stream matches '%s' — it may be dormant or lost. Use its "
+                  "full session id, or self_presence to see who's live." % ref)
+
+
+def resolve_to(brain, to, exclude_session=''):
+    """Resolve an MCP self_send `to` to a delivery ADDRESS, gracefully — returns
+    (address, error) with exactly one non-None. 'broadcast' is the only non-stream
+    target; every other form is a stream reference handed to resolve_stream (full
+    id / id-prefix) and wrapped as a directed address. `exclude_session` (the
+    sender) is dropped from the candidate pool — you can't send to yourself."""
     to = (to or '').strip()
     if not to:
         return None, "self_send: empty 'to'"
     if to == 'broadcast':
         return self_contract.ADDR_BROADCAST, None
-    if self_contract.is_session_id(to):
-        return self_contract.address_for_stream(to), None
-    window = self_contract.ROSTER_LIVE_WINDOW_MIN + self_contract.ROSTER_LOST_GRACE_MIN
-    # Candidate pool for short-id resolution: live roster ∪ recent courier
-    # senders. The roster alone misses a stream that's gone dormant since
-    # messaging you — but its from_session is still in the courier, so you can
-    # always reply-by-short to someone who reached you. (Full UUID handled above.)
-    candidates = [r.get('session_id', '')
-                  for r in brain.present_streams(window_min=window, limit=50)]
-    candidates += _recent_sender_ids(brain)
-    matches = list(dict.fromkeys(s for s in candidates if s and s.startswith(to)))
-    if len(matches) == 1:
-        return self_contract.address_for_stream(matches[0]), None
-    if len(matches) > 1:
-        return None, ("self_send: '%s' matches %d live streams (%s) — use the full "
-                      "session id to disambiguate"
-                      % (to, len(matches), ", ".join(s[:8] for s in matches)))
-    return None, ("self_send: no live stream matches '%s' — it may be dormant or lost. "
-                  "Use its full session id, or self_presence to see who's live." % to)
+    full_id, error = resolve_stream(brain, to, exclude_session=exclude_session)
+    if error:
+        return None, "self_send: " + error
+    return self_contract.address_for_stream(full_id), None
 
 
 # The pending-inbox SELECT — the SINGLE source for drain (consume-once) and peek
