@@ -212,6 +212,60 @@ class IntegrationUnit:
             return '%s: First run — no previous encoding.\n\n' % label
         return '%s:\n%s\n\n' % (label, journal[-self.JOURNAL_MAX_CHARS:])
 
+    def _load_journal_notes_prefix(self):
+        """Residue continuity (the NEW journal): render the last K note-bearing
+        runs' notes into a prompt prefix. The read counterpart to the encoder's
+        write_journal_notes(). Scoped by this unit (scale + NAME); K defaults
+        from JOURNAL_CONTINUITY_RUNS. Empty string when there are no recent
+        notes — a clean history adds nothing. Replaces _load_journal_prefix for
+        units on the note contract; the legacy blob is retired per-unit by
+        clearing JOURNAL_MARKERS.
+        """
+        from servers.trace_contract import render_journal_notes_prefix
+        # Failure-isolated, mirroring write_journal_notes: a transient logs.db
+        # read error must never abort an otherwise-valid encode — degrade to
+        # no continuity, log loud.
+        try:
+            notes = self.brain.journal_notes(scale=self.SCALE, unit=self.NAME)
+            return render_journal_notes_prefix(notes)
+        except Exception as e:
+            self.brain._log_error('s2_%s_journal_read' % self.NAME, e,
+                                  'residue continuity read failed — encoding without it')
+            return ''
+
+    def _inject_review_block(self, system_prompt, legacy_heading=None, relabels=None):
+        """Inject the shared residue-review block into a registered prompt at
+        runtime — the WRITE-side counterpart to _load_journal_notes_prefix, and
+        the same pattern encoders use for `## Edge Families`. The block is
+        single-sourced in trace_contract and never baked into the registered
+        prompt, so it iterates in one place and every unit on the note contract
+        gets it live (consolidation now; community/S1E later).
+
+        - legacy_heading: if the registered prompt still carries a pre-redesign
+          journal section, its heading — everything from there is stripped.
+          Expected-but-absent is logged LOUD (drift: the registered prompt
+          changed shape, so the legacy section would survive and the review
+          block would double up).
+        - relabels: [(old, new), ...] per-encoder body fixups (e.g. relabel a
+          continuity-read line). A no-match here is a benign cosmetic no-op.
+        """
+        from servers.trace_contract import render_journal_review_block
+        if legacy_heading:
+            cut = system_prompt.find(legacy_heading)
+            if cut != -1:
+                system_prompt = system_prompt[:cut].rstrip()
+            else:
+                self.brain._log_error(
+                    's2_%s_prompt_transform' % self.NAME,
+                    ValueError('legacy journal heading %r absent from registered '
+                               'prompt — not stripped; review block will double '
+                               'up' % legacy_heading),
+                    'prompt drift — re-check the registered %s prompt' % self.NAME)
+        for old, new in (relabels or []):
+            system_prompt = system_prompt.replace(old, new)
+        return (system_prompt.rstrip() + "\n\n## When you're done\n\n"
+                + render_journal_review_block() + '\n\nThen write "DONE".')
+
     def _save_journal(self, final_text):
         """Extract journal entry from encoder final_text and persist it.
 

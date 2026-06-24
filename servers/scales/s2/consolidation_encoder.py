@@ -23,12 +23,13 @@ class ConsolidationEncoder(IntegrationUnit):
     ENCODING_SOURCE = 's2:consolidation'
 
     O_SOURCES = ['consolidation_proposals']
-    K_SOURCES = ['llm_enrichment', 'consolidation_journal']
+    K_SOURCES = ['llm_enrichment', 'journal_notes']
 
-    # Journal contract (see IntegrationUnit.JOURNAL_* for semantics)
-    JOURNAL_MARKERS = ('CONSOLIDATED:', 'EVOLVED:', 'KEPT:', 'SKIPPED:', 'OBSERVATIONS:')
-    JOURNAL_LABEL = 'CONSOLIDATION JOURNAL'
-    JOURNAL_RUN_HEADER = 'Consolidation Run'
+    # Legacy journal RETIRED (2026-06-23 journal redesign Phase 3): residue now
+    # flows to journal_note trace rows via brain.write_journal_notes, read back
+    # via _load_journal_notes_prefix. Empty JOURNAL_MARKERS makes the inherited
+    # _load_journal_prefix / _save_journal no-ops — we use the note contract.
+    JOURNAL_MARKERS = ()
 
     def __init__(self, brain, dispatch_fn=None, config=None):
         super().__init__(brain, dispatch_fn)
@@ -62,18 +63,13 @@ class ConsolidationEncoder(IntegrationUnit):
         rounds = result.get('rounds', 0)
         final_text = result.get('final_text', '') or ''
 
-        # Outcome vocab — count markers in the final text. The encoder
-        # emits structured markers (CONSOLIDATED:, EVOLVED:, KEPT:,
-        # SKIPPED:) one per cluster decision. Counting markers is the
-        # cleanest proxy at this layer; orchestrator's edge-diff SKIP
-        # detection is authoritative for suppression bookkeeping.
-        outcomes = {
-            'consolidate': final_text.count('CONSOLIDATED:'),
-            'evolve':      final_text.count('EVOLVED:'),
-            'keep':        final_text.count('KEPT:'),
-            'skip':        final_text.count('SKIPPED:'),
-        }
-
+        # No marker-count `outcomes`: the CONSOLIDATED:/EVOLVED:/KEPT:/SKIPPED:
+        # markers retired with the legacy journal, so counting them would report
+        # all-zeros (a silent-lie the dashboard would render). The accurate
+        # per-op effect is the delta's created/revised/archived (auto-aggregated
+        # from action_details); the orchestrator's edge-diff is authoritative
+        # for suppression. journal_entry is likewise gone — residue is its own
+        # journal_note rows now.
         self.trace('delta', 'consolidated',
                    '%d actions (%d writes) in %d rounds for %d clusters' % (
                        actions, write_actions, rounds, len(clusters)),
@@ -82,8 +78,6 @@ class ConsolidationEncoder(IntegrationUnit):
                        write_actions=write_actions,
                        rounds=rounds,
                        inputs_processed=len(clusters),
-                       outcomes=outcomes,
-                       journal_entry=result.get('journal_entry', ''),
                        action_details=result.get('action_details', []),
                        final_text=final_text,
                        clusters_processed=len(clusters),
@@ -138,6 +132,20 @@ class ConsolidationEncoder(IntegrationUnit):
                 1) if '## Edge Families' in system_prompt else (
                 system_prompt + '\n\n## Edge Families\n\n' + '\n'.join(family_lines))
 
+        # Journal section is contract-owned, injected at runtime (like ## Edge
+        # Families above): strip the legacy section, relabel the continuity-read
+        # line, append the shared review block. The mechanism lives in base so
+        # community/S1E inherit it — only the per-encoder anchors live here.
+        system_prompt = self._inject_review_block(
+            system_prompt,
+            legacy_heading='## Encoding Journal',
+            relabels=[
+                ('- **CONSOLIDATION JOURNAL** — what previous runs decided. Your continuity.',
+                 '- **RECENT REVIEW NOTES** — residue your recent runs flagged (doubt, '
+                 'friction, surprise); empty if they were clean. Your continuity.'),
+                ('Round 2: journal + DONE.', 'Round 2: review + DONE.'),
+            ])
+
         if not os.environ.get('ANTHROPIC_API_KEY'):
             load_env()
 
@@ -146,8 +154,8 @@ class ConsolidationEncoder(IntegrationUnit):
         from .base import ANTHROPIC_CLIENT_TIMEOUT
         client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
 
-        # Journal text — continuity between stateless runs, rendered by base.
-        journal_prefix = self._load_journal_prefix()
+        # Residue continuity — the last few runs' review notes, rendered by base.
+        journal_prefix = self._load_journal_notes_prefix()
 
         # Batch clusters
         batch_size = self.config.get('max_proposals_per_call', 10)
@@ -222,11 +230,14 @@ class ConsolidationEncoder(IntegrationUnit):
                 self.brain._log_error(self.NAME, e,
                                       'encode batch %d' % batch_num)
 
-        # Save journal from last batch's final text. Capture the entry
-        # so the delta trace carries it alongside brain_meta.
-        total_result['journal_entry'] = ''
+        # Residue review → journal_note trace rows (the new journal). Shares
+        # this run's chain_id so the notes group with the run's ops-delta.
+        # write_journal_notes is failure-isolated — a journal write never breaks
+        # the run. Legacy brain_meta journal is retired (JOURNAL_MARKERS=()).
         if total_result['final_text']:
-            total_result['journal_entry'] = self._save_journal(total_result['final_text']) or ''
+            self.brain.write_journal_notes(
+                final_text=total_result['final_text'],
+                chain_id=self.chain_id(), scale=self.SCALE, session_id='')
 
         return total_result
 

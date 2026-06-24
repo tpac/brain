@@ -418,34 +418,67 @@ def build_journal_note_metadata(*, note, tag=''):
 
 JOURNAL_NOTE_DELIMITER = '·'
 
+# Self-grounding by design (no `brain`/`trace`/`operator`/agent-verb/identity
+# tokens): the block means the same dropped into any host prompt or standing
+# alone, so a host-prompt edit can't silently shift the journal, and the block
+# is testable in isolation. EAGER by intent (2026-06-23, Tom): no value-filter
+# gate — capture residue freely; dedupe/mine later. The earlier "two tests"
+# (reconstruction/successor) were removed as over-correction against the OLD
+# journal's restatement disease, not an evidenced need. Iterate from LIVE
+# results, not synthetic probes (which can't reproduce the encoder's lived run).
 JOURNAL_REVIEW_INSTRUCTION = (
-    "**Your review — a note to your next self about what the brain can't see "
-    "on its own.**\n\n"
-    "Two tests before any line:\n"
-    "• *Reconstruction* — could a future run rebuild this by reading the brain? "
-    "If yes, don't write it.\n"
-    "• *Successor* — would your next self or the operator be worse off not "
-    "knowing it? If no, don't write it.\n\n"
-    "Anchor every note to **what it's about** — a node, a cluster, a tool, or an "
-    "input you were handed. **If you can't name what it's about, it isn't a "
-    "note.**\n\n"
-    "Add **one word** for the kind of thing it is — your word, whatever fits. "
-    "*(friction, doubt, surprise, dead-end — examples, not a list.)*\n\n"
-    "Note what stood out — good or bad. **A clean run is an empty review** — "
-    "never manufacture notes, and never restate what you did (that's the "
-    "trace's job).\n\n"
-    "Format — one note per line, `tag %s subject %s note`:\n"
+    "Your review — a short note to the next run of this work, about what you "
+    "noticed that won't be visible in what you did.\n"
+    "What you changed is already recorded automatically; don't restate it. This "
+    "note is only for what your actions don't capture — a doubt, a friction, a "
+    "surprise, a pattern forming.\n\n"
+    "Name what each note is about: a specific thing you touched, a tool or input "
+    "you were handed, or the run itself.\n\n"
+    "Add one word for the kind of thing it is — your word, whatever fits "
+    "(friction, doubt, surprise, dead-end — examples, not a list).\n\n"
+    "Put your notes under a `## Review` heading, inside a fenced code block — "
+    "one note per line as `tag %s subject %s note`. A clean run is an empty "
+    "fence — leave it empty rather than saying there's nothing to note.\n\n"
+    "Your time is precious — we already log your actions automatically; no need "
+    "to rephrase. Stay sharp."
 ) % (JOURNAL_NOTE_DELIMITER, JOURNAL_NOTE_DELIMITER)
 
 
-def render_journal_review_block(examples):
-    """Shared review instruction + this encoder's own examples (§7.3).
+def render_journal_review_block(examples=''):
+    """The shared review block — self-contained (output structure + close folded
+    in), identical for every encoder.
 
-    `examples` is a short block of `tag · subject · note` lines using the
-    encoder's own subject vocabulary (S1: nodes/turns · Consolidation:
-    clusters/survivors · Community: communities). One source, per-encoder slot.
+    `examples` is optional and ships empty by default: a positive example
+    anchors *what to notice*, which for residue we deliberately leave open. A
+    per-encoder caller may pass its own `tag · subject · note` examples later if
+    a unit proves to need them, appended as a fenced block.
     """
-    return JOURNAL_REVIEW_INSTRUCTION + "```\n" + (examples or '').strip() + "\n```\n"
+    block = JOURNAL_REVIEW_INSTRUCTION
+    if examples and examples.strip():
+        block += "\n\n```\n" + examples.strip() + "\n```\n"
+    return block
+
+
+def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES'):
+    """Render journal_notes() output into a prompt prefix — the READ side of
+    the journal (residue continuity). Shared single source so every encoder
+    (S2 units now, S1E later) feeds continuity the same way.
+
+    `notes` is the list of {tag, subject, note, ...} dicts journal_notes()
+    returns (newest first, already bounded to the last K note-bearing runs).
+    Returns '' when there are none, so a clean history adds nothing to the
+    prompt — no "first run, no notes" filler. Each line mirrors the write
+    format `tag · subject · note`.
+    """
+    if not notes:
+        return ''
+    lines = ['%s — residue your recent runs flagged, for continuity (not a '
+             'to-do list):' % label]
+    for n in notes:
+        tag = (n.get('tag') or '').strip()
+        head = ('%s · ' % tag) if tag else ''
+        lines.append('- %s%s · %s' % (head, n.get('subject', ''), n.get('note', '')))
+    return '\n'.join(lines) + '\n\n'
 
 
 def parse_journal_notes(text):
