@@ -543,6 +543,12 @@ def render_rich_node(node, config=None):
     meta_limit = cfg.get('metadata_limit', 300)
     skip_keys = set((
         'metadata_created_at',
+        # keywords is a DEAD field — dropped from write surfaces in schema v28
+        # (the dedicated render block below was removed then). But pre-v28 nodes
+        # still carry it as metadata KV, and the generic KV loop would otherwise
+        # resurface it as "Keywords: ..." — re-displaying a field we retired.
+        # Skip it so the v28 "keywords off the rendered surface" decision holds.
+        'keywords',
         # situation is rendered at top-level (line above) — skip here to
         # avoid double-display. kv is canonical; promotion to top-level
         # keeps code callers ergonomic.
