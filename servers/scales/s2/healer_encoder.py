@@ -7,6 +7,7 @@ Uses the s2_healer interaction (learnable prompt in interactions table).
 """
 
 import json
+import time
 
 from servers.trace_contract import build_delta_metadata
 
@@ -47,6 +48,13 @@ class HealerEncoder(IntegrationUnit):
         revised_ids = []      # full ids → delta `revised` (structured Δ, was empty)
         field_counter = {}    # for outcomes: which fields got written most
         batches = 0
+        # Cost/latency telemetry — tokens summed across per-batch LLM calls via
+        # _sum_telemetry, elapsed by a wall-clock timer around the loop. Healer
+        # uses _call_llm (a plain messages.create), not run_llm_loop, so the
+        # per-call telemetry comes from _call_llm's tuple return. Before this, the
+        # healer_generated delta omitted them (elapsed_ms=0/output_tokens=0).
+        tel_totals = {}
+        _t0 = time.time()
 
         batch_size = self.config['max_nodes_per_call']
         for batch_start in range(0, len(proposals), batch_size):
@@ -59,7 +67,8 @@ class HealerEncoder(IntegrationUnit):
             by_short = {p['node_id'][:8]: p for p in batch}
 
             user_content = self._format_batch(batch)
-            result = self._call_llm('s2_healer', user_content)
+            result, call_tel = self._call_llm('s2_healer', user_content)
+            self._sum_telemetry(tel_totals, call_tel)
 
             if result is None:
                 errors.append('LLM call failed for batch %d' % batches)
@@ -117,9 +126,14 @@ class HealerEncoder(IntegrationUnit):
         }
         outcomes.update(field_counter)  # question/situation/reasoning counts
 
+        elapsed_ms = int((time.time() - _t0) * 1000)
+
         self.trace('delta', 'healer_generated',
-                   '%d nodes healed, %d fields written, %d skipped' % (
-                       nodes_healed, fields_written, skipped),
+                   '%d nodes healed, %d fields written, %d skipped, '
+                   '%dms, %d→%d tok' % (
+                       nodes_healed, fields_written, skipped, elapsed_ms,
+                       tel_totals.get('input_tokens', 0),
+                       tel_totals.get('output_tokens', 0)),
                    metadata=build_delta_metadata(
                        actions=nodes_healed + skipped,
                        write_actions=fields_written,
@@ -135,6 +149,11 @@ class HealerEncoder(IntegrationUnit):
                        revised=revised_ids,
                        nodes_healed=nodes_healed,
                        fields_written=fields_written,
+                       elapsed_ms=elapsed_ms,
+                       input_tokens=tel_totals.get('input_tokens', 0),
+                       output_tokens=tel_totals.get('output_tokens', 0),
+                       cache_read_tokens=tel_totals.get('cache_read_tokens', 0),
+                       cache_creation_tokens=tel_totals.get('cache_creation_tokens', 0),
                    ))
 
         return {

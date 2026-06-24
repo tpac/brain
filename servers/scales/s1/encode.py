@@ -238,6 +238,25 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         # production traces (the whole point of interactions-as-K-store).
         enc_iid = (enc_interaction or {}).get('id')
         enc_ver = (enc_interaction or {}).get('version', 0)
+        enc_metadata = build_delta_metadata(
+            actions=result.get('actions', 0),
+            write_actions=result.get('write_actions', 0),
+            rounds=result.get('rounds', 0),
+            inputs_processed=len(messages),
+            outcomes=outcomes,
+            journal_entry=journal_entry,
+            action_details=action_details,
+            read_calls=result.get('read_calls', []),
+            final_text=final_text,
+            elapsed_ms=result.get('elapsed_ms', 0),
+            input_tokens=result.get('input_tokens', 0),
+            output_tokens=result.get('output_tokens', 0),
+            cache_read_tokens=result.get('cache_read_tokens', 0),
+            cache_creation_tokens=result.get('cache_creation_tokens', 0),
+            truncated=len(result.get('truncations', []) or []),
+            interaction_version=enc_ver,
+            stop_counter=counter,
+        )
         dispatch_fn('trace_append', {
             'chain_id': enc_chain, 'scale': 's1', 'event_type': 'delta',
             'ref_type': 'encoding_run',
@@ -249,27 +268,19 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
                 result.get('elapsed_ms', 0),
                 result.get('input_tokens', 0),
                 result.get('output_tokens', 0)),
-            'metadata': build_delta_metadata(
-                actions=result.get('actions', 0),
-                write_actions=result.get('write_actions', 0),
-                rounds=result.get('rounds', 0),
-                inputs_processed=len(messages),
-                outcomes=outcomes,
-                journal_entry=journal_entry,
-                action_details=action_details,
-                read_calls=result.get('read_calls', []),
-                final_text=final_text,
-                elapsed_ms=result.get('elapsed_ms', 0),
-                input_tokens=result.get('input_tokens', 0),
-                output_tokens=result.get('output_tokens', 0),
-                cache_read_tokens=result.get('cache_read_tokens', 0),
-                cache_creation_tokens=result.get('cache_creation_tokens', 0),
-                truncated=len(result.get('truncations', []) or []),
-                interaction_version=enc_ver,
-                stop_counter=counter,
-            ),
+            'metadata': enc_metadata,
             'session_id': session_id,
         })
+        # Loud-at-the-write-boundary: same telemetry guard IntegrationUnit.trace
+        # applies to the S2 encoders — but encoding_run is S1E's delta, written
+        # via dispatch (not IntegrationUnit), so the check lives here too. brain
+        # is in scope; logs to the errors view. S1E already threads telemetry, so
+        # this is a regression guard (it stays silent on a healthy run).
+        from servers.trace_contract import check_delta_telemetry
+        _tel_warn = check_delta_telemetry('encoding_run', enc_metadata)
+        if _tel_warn:
+            brain._log_error('s1e_telemetry_gap', ValueError(_tel_warn),
+                             'delta trace missing LLM telemetry')
 
         result['profile'] = profile
         if muster_summary is not None:

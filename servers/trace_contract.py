@@ -646,6 +646,60 @@ def validate_trace_metadata(event_type, ref_type, metadata):
     return True, ""
 
 
+# ── LLM-ENCODER TELEMETRY GUARD (loud at the write boundary) ──
+# A delta produced by an agent that actually called an LLM MUST carry the
+# cost/latency telemetry build_delta_metadata accepts (elapsed_ms + token
+# counts). These are the ref_types of those deltas — one per LLM encoder.
+# (Selection deltas, node/edge_revised, and bare early-out markers are NOT
+# here: they have no LLM round to measure.)
+LLM_ENCODER_DELTA_REF_TYPES = (
+    'encoding_run',        # S1 Scribe
+    'consolidated',        # S2 consolidation
+    'community_enriched',  # S2 community
+    'healer_generated',    # S2 healer
+    'aspect_classified',   # S2 aspect integration
+)
+
+
+def check_delta_telemetry(ref_type, metadata):
+    """Detect an LLM-encoder delta that ran the model AND did work, yet
+    recorded output_tokens==0 — the silent telemetry-threading gap where an
+    encoder built its delta without passing run_llm_loop's / the API response's
+    token counts to build_delta_metadata (the 2026-06-24 fleet-wide S2 gap).
+
+    Returns a one-line warning string for the caller to log via
+    brain._log_error / _log_warning, or None when there's nothing to flag. Pure
+    — no logger here (this and build_delta_metadata are contract functions; the
+    WRITE boundary owns logging, per "loud at the write boundary"; TraceDAL, the
+    other chokepoint, can't reach the errors table mid-append).
+
+    Returns None (no flag), by design, for:
+      • non-LLM-encoder ref_types (selection deltas, node/edge_revised, markers);
+      • bare markers / no payload (metadata None or not a dict — the early-out
+        "No clusters to process" traces);
+      • no-work runs (actions==0). actions>0 — not rounds>0 alone — is the
+        load-bearing guard. The model can't emit a tool call or a parsed JSON
+        result without spending output tokens, so actions>0 with
+        output_tokens==0 is an UNAMBIGUOUS wiring gap. Gating on actions>0 also
+        excludes the all-LLM-calls-failed case (e.g. healer, whose `rounds`
+        counts batches ATTEMPTED — a run where every call raised has rounds>0
+        but actions==0; that's an LLM failure, already logged, not a telemetry
+        gap, so it must not cry wolf here).
+    """
+    if ref_type not in LLM_ENCODER_DELTA_REF_TYPES:
+        return None
+    if not isinstance(metadata, dict):
+        return None
+    rounds = metadata.get('rounds') or 0
+    actions = metadata.get('actions') or 0
+    output_tokens = metadata.get('output_tokens') or 0
+    if rounds > 0 and actions > 0 and output_tokens == 0:
+        return ('%s delta ran %d round(s) with %d action(s) but recorded '
+                'output_tokens=0 — LLM telemetry not threaded into '
+                'build_delta_metadata' % (ref_type, rounds, actions))
+    return None
+
+
 # ── SELECTION METADATA SHAPE ──
 # Decode-style units (S1R) don't have LLM rounds or write actions — they
 # select from candidates. Sibling shape keeps them typed correctly and

@@ -39,6 +39,31 @@ ANTHROPIC_CLIENT_TIMEOUT = 600.0
 # they're directional edge_relation_revised traces emitted by the handlers.
 
 
+# Canonical token-usage telemetry field names — the keys run_llm_loop returns,
+# base._call_llm returns, and build_delta_metadata accepts. Defined once so the
+# SDK-attribute mapping (below) and the encoders' cross-batch accumulator
+# (IntegrationUnit._sum_telemetry) read the same field set and can't drift.
+USAGE_FIELDS = ('input_tokens', 'output_tokens',
+                'cache_read_tokens', 'cache_creation_tokens')
+
+
+def read_usage(response):
+    """Map an Anthropic response's `.usage` onto USAGE_FIELDS (all int, 0 when
+    the attribute or the whole usage object is absent).
+
+    Single source for the SDK attribute names so run_llm_loop's per-round
+    tracking and base._call_llm's single-shot path read them identically — an
+    SDK field rename is fixed in one place. `read_usage(None)` returns the
+    all-zero dict (the no-response / pre-call telemetry baseline)."""
+    usage = getattr(response, 'usage', None)
+    return {
+        'input_tokens':          getattr(usage, 'input_tokens', 0) or 0,
+        'output_tokens':         getattr(usage, 'output_tokens', 0) or 0,
+        'cache_read_tokens':     getattr(usage, 'cache_read_input_tokens', 0) or 0,
+        'cache_creation_tokens': getattr(usage, 'cache_creation_input_tokens', 0) or 0,
+    }
+
+
 def run_in_background(name, brain_db_path, session_id, counter, lock,
                       run_fn, encoding_source='encoder:sonnet', on_complete=None):
     """Run a scale agent in a background thread.
@@ -200,19 +225,15 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
     def _track_usage(resp, round_num, ttft_ms=None, total_ms=None):
         nonlocal total_input_tokens, total_output_tokens
         nonlocal total_cache_creation, total_cache_read
-        out_this_round = 0
-        in_this_round = 0
-        cr_this_round = 0
-        cw_this_round = 0
-        if hasattr(resp, 'usage'):
-            in_this_round = getattr(resp.usage, 'input_tokens', 0) or 0
-            out_this_round = getattr(resp.usage, 'output_tokens', 0) or 0
-            cr_this_round = getattr(resp.usage, 'cache_read_input_tokens', 0) or 0
-            cw_this_round = getattr(resp.usage, 'cache_creation_input_tokens', 0) or 0
-            total_input_tokens += in_this_round
-            total_output_tokens += out_this_round
-            total_cache_creation += cw_this_round
-            total_cache_read += cr_this_round
+        u = read_usage(resp)
+        in_this_round = u['input_tokens']
+        out_this_round = u['output_tokens']
+        cr_this_round = u['cache_read_tokens']
+        cw_this_round = u['cache_creation_tokens']
+        total_input_tokens += in_this_round
+        total_output_tokens += out_this_round
+        total_cache_creation += cw_this_round
+        total_cache_read += cr_this_round
         per_round_stats.append({
             'round': round_num,
             'ttft_ms': ttft_ms,

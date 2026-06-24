@@ -27,7 +27,9 @@ from datetime import datetime, timezone, timedelta
 
 
 # Single shared Anthropic client timeout — see scales/runner.py.
-from ..runner import ANTHROPIC_CLIENT_TIMEOUT  # noqa: F401 — re-export for callers
+# USAGE_FIELDS / read_usage: the canonical token-telemetry contract shared with
+# run_llm_loop, so _call_llm and _sum_telemetry don't re-derive it.
+from ..runner import ANTHROPIC_CLIENT_TIMEOUT, USAGE_FIELDS, read_usage  # noqa: F401 — re-export for callers
 
 
 # Per-batch retry policy for transient API errors. The SDK's built-in
@@ -174,6 +176,25 @@ class IntegrationUnit:
         Uses direct TraceDAL when running inline (dispatch is None).
         Uses dispatch('trace_append', ...) when running in background.
         """
+        # Loud-at-the-write-boundary: an LLM-encoder delta that ran + did work
+        # but recorded no output tokens means telemetry wasn't threaded into the
+        # delta. Every S2 unit writes its delta through here, so a NEW unit that
+        # forgets telemetry is caught for free — the recurrence guard for the
+        # 2026-06-24 S2 telemetry gap. The detector is the pure contract function
+        # (no logger); logging lives here, where the brain is reachable (the
+        # other chokepoint, TraceDAL.append, can't write the errors table
+        # mid-append without risking the brain_batch commit).
+        if event_type == 'delta' and metadata is not None:
+            from servers.trace_contract import check_delta_telemetry
+            warn = check_delta_telemetry(ref_type, metadata)
+            if warn:
+                try:
+                    self.brain._log_error(
+                        's2_%s_telemetry_gap' % self.NAME, ValueError(warn),
+                        'delta trace missing LLM telemetry')
+                except Exception:
+                    pass
+
         trace_data = {
             'chain_id': self.chain_id(),
             'scale': self.SCALE,
@@ -493,6 +514,15 @@ class IntegrationUnit:
         """
         return self.brain.get_interaction_config(name)
 
+    def _sum_telemetry(self, total, result):
+        """Accumulate one batch's token telemetry from `result` into `total`
+        (in place), over the canonical USAGE_FIELDS. Shared by the multi-batch
+        S2 encoders (consolidation / community / healer) so the per-batch
+        summation lives in one place. elapsed_ms is NOT summed — each encoder
+        wall-clocks its whole batch loop once."""
+        for f in USAGE_FIELDS:
+            total[f] = total.get(f, 0) + (result.get(f) or 0)
+
     def _call_llm(self, interaction_name, user_content):
         """Call LLM with a learnable prompt from interactions table.
 
@@ -505,7 +535,15 @@ class IntegrationUnit:
             user_content: String content for the user message
 
         Returns:
-            Parsed JSON from the LLM response, or None on failure.
+            (parsed_json, telemetry): parsed_json is the JSON parsed from the
+            LLM response (None on failure); telemetry is a dict
+            {elapsed_ms, input_tokens, output_tokens, cache_read_tokens,
+            cache_creation_tokens} for the call — zeros when the call never ran
+            or failed before a usage report. Single-shot encoders (healer,
+            aspect) thread this into their delta trace via build_delta_metadata,
+            so their production deltas stop recording elapsed_ms=0/output_tokens=0
+            (this is run_llm_loop's per-call telemetry, hand-built here because
+            this path uses a plain messages.create, not the loop).
         """
         import anthropic
         from ..dispatch import load_env
@@ -516,15 +554,20 @@ class IntegrationUnit:
         model = config.get('model', 'claude-haiku-4-5')
         max_tokens = config.get('max_tokens', 4096)
 
+        # read_usage(None) is the all-zero token baseline — reused on the
+        # no-prompt early return and the pre-usage failure path.
+        telemetry = {'elapsed_ms': 0, **read_usage(None)}
+
         if not system_prompt:
             print('[%s] WARNING: no interaction prompt for %s' % (
                 self.NAME, interaction_name), flush=True)
-            return None
+            return None, telemetry
 
         # Ensure API key
         if not os.environ.get('ANTHROPIC_API_KEY'):
             load_env()
 
+        t0 = time.time()
         try:
             client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
             response = client.messages.create(
@@ -533,13 +576,17 @@ class IntegrationUnit:
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_content}])
 
+            telemetry = {'elapsed_ms': int((time.time() - t0) * 1000),
+                         **read_usage(response)}
+
             raw = response.content[0].text.strip()
-            return self._extract_json(raw)
+            return self._extract_json(raw), telemetry
 
         except Exception as e:
             print('[%s] LLM call failed: %s' % (self.NAME, e), flush=True)
             self.brain._log_error(self.NAME, e, 'LLM call for %s' % interaction_name)
-            return None
+            telemetry['elapsed_ms'] = int((time.time() - t0) * 1000)
+            return None, telemetry
 
     @staticmethod
     def _extract_json(text):

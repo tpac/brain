@@ -11,6 +11,7 @@ narratives, situations, and metadata via tool calls.
 """
 
 import os
+import time
 
 from .base import IntegrationUnit
 from .community_contract import COMMUNITY_DETECTION, S2CE_NODE_FORMAT
@@ -193,9 +194,13 @@ class CommunityEncoder(IntegrationUnit):
             outcomes[ptype] = outcomes.get(ptype, 0) + 1
 
         self.trace('delta', 'community_enriched',
-                   'COMPLETE: %d actions (%d writes) in %d rounds, %d stamped' % (
+                   'COMPLETE: %d actions (%d writes) in %d rounds, %d stamped, '
+                   '%dms, %d→%d tok' % (
                        actions, write_actions, rounds,
-                       result.get('rejection_skipped_count', 0)),
+                       result.get('rejection_skipped_count', 0),
+                       result.get('elapsed_ms', 0),
+                       result.get('input_tokens', 0),
+                       result.get('output_tokens', 0)),
                    metadata=build_delta_metadata(
                        actions=actions,
                        write_actions=write_actions,
@@ -208,6 +213,11 @@ class CommunityEncoder(IntegrationUnit):
                        action_details=action_details,
                        final_text=final_text,
                        corridors_filtered=len(corridors),
+                       elapsed_ms=result.get('elapsed_ms', 0),
+                       input_tokens=result.get('input_tokens', 0),
+                       output_tokens=result.get('output_tokens', 0),
+                       cache_read_tokens=result.get('cache_read_tokens', 0),
+                       cache_creation_tokens=result.get('cache_creation_tokens', 0),
                    ))
 
         # Membership restorer: a community can silently end up declaring N
@@ -304,6 +314,12 @@ class CommunityEncoder(IntegrationUnit):
             'rounds': 0, 'actions': 0, 'write_actions': 0,
             'action_details': [], 'final_text': '',
         }
+        # Cost/latency telemetry — tokens summed across batches via
+        # _sum_telemetry, elapsed by a wall-clock timer around the whole batch
+        # loop. Mirrors S1 Scribe / consolidation; before this, run()'s
+        # build_delta_metadata omitted them and every production
+        # `community_enriched` delta read elapsed_ms=0, output_tokens=0 (the gap).
+        _t0 = time.time()
         current_state = list(community_state)
 
         # Need a decoder instance to refresh community state between batches
@@ -350,6 +366,7 @@ class CommunityEncoder(IntegrationUnit):
                 total_result['write_actions'] += result.get('write_actions', 0)
                 total_result['action_details'].extend(
                     result.get('action_details', []))
+                self._sum_telemetry(total_result, result)
                 # Append journal from each batch (don't overwrite previous batches)
                 batch_text = result.get('final_text', '')
                 if batch_text:
@@ -380,6 +397,8 @@ class CommunityEncoder(IntegrationUnit):
                                       'encode batch %d' % batch_num)
                 self.trace('delta', 'community_enriched',
                            'batch %d/%d FAILED: %s' % (batch_num, total_batches, str(e)[:80]))
+
+        total_result['elapsed_ms'] = int((time.time() - _t0) * 1000)
 
         # Save journal from last batch's final text. Also return the
         # extracted entry in the result so the delta trace carries it.
