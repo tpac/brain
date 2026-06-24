@@ -477,7 +477,14 @@ def _drain_trace_embeddings_once(brain) -> None:
 
 
 def _drain_once(brain) -> None:
-    """Drain queues in BATCHES until empty.
+    """Drain each queued id once per call, in BATCHES.
+
+    Processes every queued id NOT already attempted this drain, then returns.
+    Ids re-enqueued mid-drain — an edge-embed retry when the embedder isn't
+    ready, or the failure path below — deliberately stay in the queue for the
+    NEXT _drain_once rather than being re-consumed here (re-consuming them spun
+    the loop forever on a persistent failure). The worker loop re-picks them on
+    its next tick. So the queues are NOT guaranteed empty on return.
 
     Holds brain.write_lock per-batch so cold-start (~20K entities at
     first boot) doesn't block other writers for the full drain. Each
