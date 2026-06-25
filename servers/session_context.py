@@ -115,14 +115,6 @@ class SessionContext:
         """Increment stop counter. Called by the Stop hook."""
         self.stop_counter += 1
 
-    def turns_since_last_encode(self, brain) -> int:
-        """Conversational turns since this session's last encode — the cadence the
-        S1 Scribe gates on, read live from traces. Delegates to the S0 traces
-        layer; the session object holds no trace-schema knowledge. Replaces the
-        persisted conversational_count, which desynced across resume."""
-        from servers.scales.s0.conversation import turns_since_last_encode
-        return turns_since_last_encode(brain, self.session_id)
-
     # ── Chain ID generators ──
 
     def s0_chain(self) -> str:

@@ -30,6 +30,23 @@ def scribe_is_starved(turns_since: int) -> bool:
     starvation (fires at 20, 25, 30… not every turn) so the error log isn't spammed."""
     return turns_since >= SCRIBE_STARVATION_TURNS and turns_since % ENCODE_EVERY == 0
 
+
+# ── Idle-tail trigger (the second clause of the Scribe gate) ──
+# A session that goes quiet below the ENCODE_EVERY threshold would otherwise
+# never have its last turns encoded (the 5+ trigger never fires, and the Stop
+# hook is gone). The poll-driven reactor catches that tail: once a session has
+# been idle this long AND has more than SCRIBE_TAIL_MIN_TURNS unencoded turns,
+# fire one final encode. An hour is long enough that it only ever fires on a
+# genuinely abandoned session; the >2-turns guard skips trivial tails not worth
+# a Sonnet call.
+SCRIBE_TAIL_IDLE_SECONDS = 3600
+SCRIBE_TAIL_MIN_TURNS = 2
+
+# The reactor only sees sessions present within this wall-clock window, so it
+# must outrun the tail threshold — otherwise a session that just crossed 1h idle
+# would age out of the candidate set before the tail could fire. +30 min margin.
+SCRIBE_CANDIDATE_WINDOW_MIN = SCRIBE_TAIL_IDLE_SECONDS // 60 + 30
+
 # ═══════════════════════════════════════════════════════════════
 # ENCODING AGENT CONFIG
 # ═══════════════════════════════════════════════════════════════

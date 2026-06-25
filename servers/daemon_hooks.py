@@ -16,12 +16,8 @@ for hooks that need structured JSON output (recall, pre-edit, pre-bash, pre-comp
 import json
 import os
 import re
-import threading
 import time
 from datetime import datetime
-
-# Encoding agent: at most 1 running at a time. Non-blocking acquire — skip if busy.
-_encoding_lock = threading.Lock()
 
 # ── Constants (canonical definitions in brain_voice.py) ──
 
@@ -631,11 +627,13 @@ def post_response_common(brain, session_id, user_message, assistant_response):
 
 
 def hook_post_response_track(brain, args, graph_changes):
-    """Stop event — store exchange, write traces, Hebbian strengthening, gate encoder.
+    """Stop event — store the exchange, write S0 traces, deliver self-messages.
 
-    Flow:
-    1. Shared post-response path (post_response_common)
-    2. Gate encoding agent (every 5th stop, background thread) — prod-only
+    The S1 Scribe is NO LONGER triggered here. Encoding cadence moved to the
+    daemon's poll loop (brain.scribe_due → daemon._run_scribe_poll): the Stop
+    hook just records the turn — keeping the trace log, the cadence's source of
+    truth, current — and delivers pending self-messages. One trigger owner (the
+    poll) means no hook/poll double-fire race.
     """
     ctx = post_response_common(
         brain,
@@ -644,101 +642,6 @@ def hook_post_response_track(brain, args, graph_changes):
         args.get("last_assistant_message", "") or "",
     )
     session_id = ctx.session_id
-    encoding_status = ""
-    # acquired_for_spawn tracks the window between lock.acquire() and the
-    # successful return of run_unit_in_background (which transfers lock ownership
-    # to the spawned thread, whose finally releases it). If we acquire but
-    # then fail before the transfer (import error, Thread.start() raises),
-    # the outer finally below recovers the lock — otherwise the lock would
-    # be held indefinitely and ALL future encoding cycles would silently skip.
-    acquired_for_spawn = False
-    try:
-        # Fail-safe default False: if the flag is somehow unset (restart, or
-        # post_response_common didn't run), treat the turn as NON-conversational
-        # so the Scribe is NOT fired on an unknown/heartbeat turn.
-        if not getattr(ctx, 'last_turn_conversational', False):
-            # Heartbeat (wakeup re-arm): not a conversational turn, so it didn't
-            # advance the integration cadence — skip the Scribe gate entirely.
-            encoding_status = "heartbeat — not a turn, encoder gate skipped"
-        else:
-            # Gate on conversational turns since the last encode — read LIVE from
-            # traces (turns_since_last_encode), not a maintained counter. The old
-            # conversational_count desynced across resume/restart (boot reset it),
-            # starving the Scribe; the trace log never desyncs. LEVEL trigger
-            # (>= N): a run skipped because the lock is busy isn't lost — the next
-            # turn re-checks and fires. `counter` (the stop sequence) still names
-            # the s1e chain / prompt file uniquely.
-            counter = ctx.stop_counter
-            from .scales.s1.encode_contract import ENCODE_EVERY, scribe_is_starved
-            turns_since = ctx.turns_since_last_encode(brain)
-            if scribe_is_starved(turns_since):
-                # Loud signal — the Scribe should have fired at ENCODE_EVERY but the
-                # backlog kept growing. This is the observability gap that hid a 20h
-                # encode-drought; surface it to the brain error log (→ dashboard).
-                brain._log_error(
-                    'scribe_starvation',
-                    RuntimeError('%d conversational turns since last encode — Scribe '
-                                 'not completing runs (lock wedged or encoder erroring)' % turns_since),
-                    'session=%s' % session_id)
-
-            if turns_since >= ENCODE_EVERY:
-                if not _encoding_lock.acquire(blocking=False):
-                    encoding_status = "encoding skipped (previous still running)"
-                    print("[brain-hooks] Encoding agent skipped — previous run still active", flush=True)
-                else:
-                    acquired_for_spawn = True
-                    from .scales.runner import run_unit_in_background
-                    from .scales.s1.scribe import S1Scribe
-                    # Count the encode toward the S2 activity gate on COMPLETION
-                    # (not dispatch) and only when it actually wrote material —
-                    # S2 is meaningful only post-encoding, and a dispatched-then-
-                    # failed/empty run produces nothing to consolidate. The
-                    # callback closes over THIS brain (the daemon's); the encode
-                    # now runs in-process on the SAME brain, so this is the brain
-                    # the gate reads.
-                    def _count_encode(write_actions, _b=brain):
-                        if write_actions > 0:
-                            _b.activity.record_encode_run()
-                    # In-process Scribe: runs on the daemon's own brain (writes
-                    # via _make_encoder_dispatch under write_lock — so revises
-                    # carry the s1e run chain — and embed via the async queue).
-                    # No throwaway Brain copy, no TCP. The background thread keeps
-                    # the Stop hook non-blocking.
-                    scribe = S1Scribe(brain, session_id=session_id, counter=counter)
-                    run_unit_in_background(
-                        scribe, name='s1e', lock=_encoding_lock,
-                        on_complete=_count_encode)
-                    # Thread.start() returned → ownership transferred. Thread's
-                    # finally is now responsible for the release.
-                    acquired_for_spawn = False
-                    encoding_status = "encoding started (background)"
-            else:
-                encoding_status = "encoding %d/%d" % (turns_since, ENCODE_EVERY)
-    except Exception as e:
-        brain._log_error('encoding_agent_gate', e, 'Stop hook')
-        encoding_status = "encoding error: %s" % str(e)[:50]
-    finally:
-        # Recovery release: we acquired the lock but never successfully
-        # handed ownership to a background thread. Without this release,
-        # the daemon's encoder would be permanently jammed.
-        if acquired_for_spawn:
-            release_err = None
-            try:
-                _encoding_lock.release()
-            except Exception as _re:
-                release_err = _re
-            if release_err is None:
-                brain._log_error(
-                    'encoding_lock_leak_recovered',
-                    RuntimeError("encoding lock acquired but spawn failed; released to prevent permanent jam"),
-                    'session=%s counter=%s' % (session_id, ctx.stop_counter))
-            else:
-                # Release itself failed — lock state is now corrupt.
-                # Log loudly so we know the jam is real, not "recovered".
-                brain._log_error(
-                    'encoding_lock_release_failed', release_err,
-                    'session=%s counter=%s — lock state corrupt, encoder may be permanently jammed' %
-                    (session_id, ctx.stop_counter))
 
     # Self-message delivery — the SOLE path (Stop-only, 2026-06-04). The
     # prominent Stop block reliably reaches the model; the old PreToolUse
@@ -756,14 +659,14 @@ def hook_post_response_track(brain, args, graph_changes):
                     brain, ctx, event_type='K', ref_type='self_message',
                     summary='delivered %d self-message(s) via Stop block' % _n)
                 brain.save()
-                return {"output": "(stored + %s)" % encoding_status,
+                return {"output": "(stored)",
                         "decision": "block", "reason": _block}
         except Exception as _self_err:
             brain._log_error('self_delivery_stop', _self_err,
                              'Stop self-message delivery (session=%s)' % session_id)
 
     brain.save()
-    return {"output": "(stored + %s)" % encoding_status}
+    return {"output": "(stored)"}
 
 
 

@@ -73,6 +73,11 @@ class BrainDaemon:
         # Write serialization lives on the brain (brain.write_lock) — see
         # Brain.__init__. Daemon acquires it via _locked_exec / autosave.
         self._pool = ThreadPoolExecutor(max_workers=THREAD_POOL_SIZE)
+        # S1 Scribe single-flight: at most one encode at a time across all
+        # sessions. The daemon owns encode concurrency now that the Scribe is
+        # poll-driven (brain.scribe_due decides; this lock serializes; the encode
+        # thread releases it). threading.Lock (not RLock) → cross-thread release.
+        self._encode_lock = threading.Lock()
         self._restart_count = 0
         # Only the instance that actually binds the port writes the PID file —
         # so a duplicate that defers (DuplicateDaemonError) never claims it, and
@@ -482,6 +487,7 @@ class BrainDaemon:
         """Main event loop — accept connections, dispatch to thread pool."""
         last_idle_check = time.time()
         self._s2_running = False
+        self._scribe_poll_running = False
         while self.running:
             # Check idle timeout every ~10 iterations (not every loop)
             now = time.time()
@@ -498,6 +504,16 @@ class BrainDaemon:
                 if not self._s2_running:
                     self._s2_running = True
                     self._pool.submit(self._run_idle_maintenance)
+
+                # S1 Scribe reactor — poll for a session whose encode is due
+                # (mid-session ENCODE_EVERY turns, or the idle tail). Distinct
+                # from idle maintenance: the Scribe fires DURING active sessions,
+                # gated per-session, not on the global idle clock. The poll task
+                # returns fast (the encode runs on its own thread); the flag just
+                # prevents poll-task pile-up if the pool is momentarily saturated.
+                if not self._scribe_poll_running:
+                    self._scribe_poll_running = True
+                    self._pool.submit(self._run_scribe_poll)
 
                 # Shutdown after long idle
                 if IDLE_TIMEOUT_SECONDS > 0 and idle > IDLE_TIMEOUT_SECONDS:
@@ -963,6 +979,55 @@ class BrainDaemon:
                 pass
         finally:
             self._s2_running = False
+
+    def _run_scribe_poll(self):
+        """Poll for a session whose S1 Scribe is due and fire it. Thread pool.
+
+        Single-flight via _encode_lock — one encode at a time across sessions.
+        A busy lock makes this a cheap no-op: the skipped session isn't lost, it
+        re-qualifies and drains on a later poll (most-overdue first — the
+        multi-session "queue"). The daemon owns concurrency; brain.scribe_due()
+        owns the decision (who's due) via higher session functions. The encode
+        runs on its own thread (run_unit_in_background), so this poll returns
+        fast; the encode thread releases _encode_lock when it completes.
+        """
+        spawned = False
+        acquired = False
+        try:
+            if not self._encode_lock.acquire(blocking=False):
+                return  # an encode is already running
+            acquired = True
+            due = self.brain.scribe_due()
+            if not due:
+                return
+            from servers.scales.s1.scribe import S1Scribe
+            from servers.scales.runner import run_unit_in_background
+
+            def _count_encode(write_actions, _b=self.brain):
+                # Count toward the S2 activity gate only when material was
+                # written — S2 is meaningful only post-encoding.
+                if write_actions > 0:
+                    _b.activity.record_encode_run()
+
+            scribe = S1Scribe(self.brain, session_id=due['session_id'],
+                              counter=due['counter'])
+            run_unit_in_background(scribe, name='s1e', lock=self._encode_lock,
+                                   on_complete=_count_encode)
+            spawned = True  # lock ownership transferred to the encode thread
+        except Exception as e:
+            try:
+                self.brain._log_error('scribe_poll', e, 'Scribe reactor poll')
+            except Exception:
+                pass
+        finally:
+            # Release the encode lock only if we acquired it but did NOT hand it
+            # to an encode thread (nothing due, or an error before spawn).
+            if acquired and not spawned:
+                try:
+                    self._encode_lock.release()
+                except Exception:
+                    pass
+            self._scribe_poll_running = False
 
     def _handle_signal(self, signum, frame):
         self._log("Received signal {}".format(signum))
