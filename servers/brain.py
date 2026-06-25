@@ -1638,6 +1638,22 @@ class Brain(
     def _maintenance_set_last_run_ts(self, ts: float) -> None:
         self.set_config('s2_last_run_ts', str(ts))
 
+    def backfill_community_structural(self) -> int:
+        """One-shot maintenance: re-derive + stamp the structural fields
+        (size / internal_fraction / is_corridor / dominant_type) for EVERY live
+        community from its member edges.
+
+        The per-encode algorithmic Δ only stamps communities a run actually
+        touches, so this corrects the existing backlog (or re-derives in bulk
+        after any mass edge change). Idempotent — re-running just re-derives the
+        same values. Returns the count stamped. See
+        docs/COMMUNITY-METADATA-DENORMALIZATION.md.
+        """
+        from .scales.s2.community_encoder import CommunityEncoder
+        from .scales.s2.community_contract import COMMUNITY_DETECTION
+        return CommunityEncoder(
+            self, None, COMMUNITY_DETECTION).backfill_all_communities()
+
     def run_maintenance_if_due(self, now: Optional[float] = None
                                ) -> Optional[Dict[str, Any]]:
         """Run S2 maintenance iff idle, min-interval, and activity conditions are met.

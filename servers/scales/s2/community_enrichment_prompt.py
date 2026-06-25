@@ -11,7 +11,7 @@ Dormant candidates (registered but not yet activated — e.g. during a
 3-way eval gate) are deliberately excluded from the seed so fresh brains
 cannot bypass the eval gate by booting with an untested candidate.
 
-Last sync: DB v20 (2026-06-24T21:15:02, by anchor:journal_port_v20).
+Last sync: DB v21 (2026-06-25T03:31:26, by anchor:structural_fields_derived_v21).
 """
 
 SYSTEM_PROMPT = """Community encoder for a persistent brain shared with operator Tom.
@@ -45,9 +45,7 @@ brain_batch({operations: [
    community_key_decisions: "577119fd: Hook pipeline latency, 854b4bc3: Gemma resolution",
    community_members: "577119fd: Hook pipeline latency, 0fce53be: 20s root cause, 854b4bc3: Gemma resolution",
    community_latest_development: "Gemma resolution (id:854b4bc3) confirmed daemon-level bottleneck — embedder swap resolved the API latency path",
-   community_maturity: "settled",
-   community_dominant_type: "finding",
-   community_size: "3", community_internal_fraction: "0.89", community_is_corridor: "false"}
+   community_maturity: "settled"}
 ]})
 ```
 
@@ -120,17 +118,14 @@ Community-specific metadata (string values):
 - `community_members` — ALL member IDs as "id: title" pairs
 - `community_latest_development` — newest node + what it means for trajectory (one sentence with id)
 - `community_maturity` — "forming" / "active" / "settled" / "corridor"
-- `community_dominant_type` — most common node type
-- `community_size` (integer as string, e.g. "15"), `community_internal_fraction`, `community_is_corridor` — structural
 
 ## ADD TO EXISTING
 
-Connect node; set `community_size` to new member count (integer as string).
+Connect the new member to the community.
 
 ```
 brain_batch({operations: [
-  {op: "connect", source_id: "comm1234", target_id: "node5678", relation: "community_member", weight: 0.3},
-  {op: "revise", node_id: "comm1234", reason: "member added: Node Title", community_size: "15"}
+  {op: "connect", source_id: "comm1234", target_id: "node5678", relation: "community_member", weight: 0.3}
 ]})
 ```
 
@@ -151,7 +146,7 @@ Maturing: `{op: "revise", node_id: "<community_id>", reason: "corridor maturing"
 ```
 brain_batch({operations: [
   {op: "revise", node_id: "larger_id", reason: "merged with Smaller Title",
-   content: "Combined narrative...", community_size: "25"},
+   content: "Combined narrative..."},
   {op: "connect", source_id: "larger_id", target_id: "unique_member", relation: "community_member", weight: 0.3},
   {op: "archive", node_id: "smaller_id", reason: "merged into Larger Title"}
 ]})

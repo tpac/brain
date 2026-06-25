@@ -62,6 +62,10 @@ class CommunityEncoder(IntegrationUnit):
                              if p['type'] in ('new_community', 'add_to_existing',
                                               'drift', 'health_update',
                                               'merge_communities')]
+        # Community ids that existed BEFORE the agent ran — used after, to
+        # find the ones it created (live now, absent here) for the structural
+        # stamp.
+        pre_community_ids = {c['id'] for c in community_state}
         if not encoder_proposals:
             self.trace('delta', 'community_enriched', 'No actionable proposals')
             return {'actions': 0, 'write_actions': 0, 'rounds': 0,
@@ -222,9 +226,11 @@ class CommunityEncoder(IntegrationUnit):
         # catches it (the declared list is the only diffable intent), so
         # back-fill the gap from the declaration and surface it loudly. Runs
         # every cycle; self-quiets once edges exist (idempotent).
+        reconciled_ids = []
         try:
             with self.brain.write_lock:
                 recon = self.brain._graph.reconcile_community_membership()
+            reconciled_ids = [cid for cid, _ in recon.get('details', [])]
             if recon['edges_backfilled']:
                 # Auto-heal event → _log_warning (not _log_error): it's a
                 # repaired inconsistency, not a failure, and warning-level
@@ -244,7 +250,127 @@ class CommunityEncoder(IntegrationUnit):
             self.brain._log_error('community_membership_reconcile', e,
                                   'membership restorer failed')
 
+        # Second, ALGORITHMIC Δ: derive + stamp the structural fields from the
+        # now-final edge state (post-agent, post-reconcile). These are pure
+        # counts over community_member edges — the agent no longer writes them
+        # (it guessed blind and they drifted). Runs here precisely so it reads
+        # the agent's new edges + reconcile's backfills. Failure-isolated — a
+        # stamp failure never breaks the run.
+        try:
+            self._stamp_structural_fields(
+                encoder_proposals, pre_community_ids, reconciled_ids)
+        except Exception as e:
+            self.brain._log_error('community_structural_stamp', e,
+                                  'structural stamp failed')
+
         return result
+
+    def _stamp_structural_fields(self, encoder_proposals,
+                                 pre_community_ids, reconciled_ids):
+        """Per-encode Δ: stamp the structural fields for every community this
+        run touched, derived from the final member edges.
+
+        Touched = created (live now, absent before) + added-to / merged /
+        health-updated / drifted-into (from the proposals) + reconcile-healed.
+        Existing wrong values self-heal as their community is next touched; the
+        one-time fill corrects the rest. Gate-safe: community-node metadata
+        revises are ignored by the idle gate (type='community') and create no
+        edges. See docs/COMMUNITY-METADATA-DENORMALIZATION.md.
+        """
+        touched = set(reconciled_ids)
+        for p in encoder_proposals:
+            t = p.get('type')
+            if t == 'health_update' and p.get('community_id'):
+                touched.add(p['community_id'])
+            elif t == 'merge_communities' and p.get('larger_id'):
+                touched.add(p['larger_id'])
+            elif t == 'add_to_existing':
+                touched.update(c['id'] for c in p.get('communities', [])
+                               if c.get('id'))
+            elif t == 'drift':
+                touched.update(f['id'] for f in p.get('foreign', [])
+                               if f.get('id'))
+
+        # Newly-created communities OF THIS UNIT: live now, absent before the
+        # run. Source-filtered to match pre_community_ids (the decoder's
+        # _read_community_state reads only this unit's communities) — else a
+        # community authored elsewhere is absent from pre and would read as
+        # "new" (and get re-stamped) every cycle.
+        new_ids = {r[0] for r in self.brain.conn.execute(
+            "SELECT id FROM nodes WHERE type = 'community' AND archived = 0 "
+            "AND encoding_source = ?", (self.ENCODING_SOURCE,)).fetchall()}
+        touched.update(new_ids - pre_community_ids)
+        return self._stamp_ids(touched)
+
+    def _stamp_ids(self, community_ids):
+        """Derive + stamp the structural fields for the given communities (the
+        ones still live), via one brain_batch of revise ops. Shared by the
+        per-encode Δ and the one-time backfill. Returns the count stamped.
+        """
+        from .community_structural import compute_community_structural
+
+        ids = sorted({c for c in community_ids if c})
+        if not ids:
+            return 0
+        # Keep only currently-live communities — a merge's smaller / a health
+        # archive may have removed some, and we never stamp an archived node.
+        placeholders = ','.join('?' * len(ids))
+        live = {r[0] for r in self.brain.conn.execute(
+            "SELECT id FROM nodes WHERE type = 'community' AND archived = 0 "
+            "AND id IN (%s)" % placeholders, ids).fetchall()}
+        ids = [c for c in ids if c in live]
+        if not ids:
+            return 0
+
+        derived = compute_community_structural(self.brain, ids)
+        ops = []
+        for cid, fields in derived.items():
+            op = {
+                'op': 'revise',
+                'node_id': cid,
+                'reason': 'structural fields derived from member edges',
+                'community_size': str(fields['community_size']),
+                'community_internal_fraction':
+                    str(fields['community_internal_fraction']),
+                'community_is_corridor':
+                    'true' if fields['community_is_corridor'] else 'false',
+            }
+            if fields['community_dominant_type']:
+                op['community_dominant_type'] = fields['community_dominant_type']
+            ops.append(op)
+        if not ops:
+            return 0
+
+        dispatch_fn = self._make_dispatch()
+        dispatch_fn('brain_batch', {
+            'operations': ops,
+            'encoding_source': self.ENCODING_SOURCE,
+        })
+        # Bare marker (no build_delta_metadata payload) — the contract lets
+        # delta ref_types double as markers; a partial dict would trip the
+        # required-keys guard. The count lives in the summary string.
+        self.trace('delta', 'community_enriched',
+                   'STRUCTURAL STAMP: %d communities (size/int_frac/is_corridor/'
+                   'dominant_type derived from edges)' % len(ops))
+        print('[s2ce] structural stamp: %d communities' % len(ops), flush=True)
+        return len(ops)
+
+    def backfill_all_communities(self, chunk=100):
+        """One-time fill: stamp the structural fields for EVERY live community
+        from its edges. The per-encode Δ only touches communities a run acted
+        on; this corrects the existing backlog of Haiku-authored values in one
+        pass. Chunked so each brain_batch transaction stays modest. Idempotent —
+        re-running just re-derives the same values. Returns the count stamped.
+        """
+        live_ids = [r[0] for r in self.brain.conn.execute(
+            "SELECT id FROM nodes WHERE type = 'community' "
+            "AND archived = 0").fetchall()]
+        total = 0
+        for i in range(0, len(live_ids), chunk):
+            total += self._stamp_ids(live_ids[i:i + chunk])
+        print('[s2ce] backfill complete: %d communities stamped' % total,
+              flush=True)
+        return total
 
     # ══════════════════════════════════════════════════════════
     # _encode — S2 Community Encoder agent via run_llm_loop

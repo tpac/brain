@@ -118,6 +118,36 @@ COMMUNITY_DETECTION = {
 
 
 # ═══════════════════════════════════════════════════════════════
+# CORRIDOR CLASSIFICATION (shared: decoder + structural helper)
+# ═══════════════════════════════════════════════════════════════
+#
+# A "corridor" is a low-cohesion cluster that bridges areas of the graph
+# rather than forming a tight community. The decoder classifies corridors
+# when it validates/summarizes fresh clusters; the structural helper
+# classifies them again when it stamps community_is_corridor post-encode.
+# Both MUST use the same rule — else the stamped flag would disagree with
+# the decoder's own computation. One named source so they can't drift.
+CORRIDOR_INTERNAL_FRACTION_MAX = 0.20  # int_frac strictly below this …
+CORRIDOR_MIN_SIZE = 3                   # … AND member count strictly above this → corridor
+
+
+# ═══════════════════════════════════════════════════════════════
+# COHESION ADJACENCY FILTERS (shared: decoder + structural helper)
+# ═══════════════════════════════════════════════════════════════
+#
+# The typed-edge adjacency that internal/external cohesion is computed over
+# excludes structural/Hebbian edges (not semantic cohesion) and edges whose
+# aspect is noise/generic. The decoder builds this adjacency for its own fresh
+# computation; the structural helper builds it (scoped) when stamping. Both
+# MUST exclude the same relations/aspects — else the stamped cohesion metrics
+# disagree with the decoder's. One named source so the parity-critical filters
+# can't drift. (The SQL JOIN structure stays in each builder; the parity test
+# guards that.)
+ADJACENCY_EXCLUDED_RELATIONS = ('co_accessed', 'emergent_bridge', 'community_member')
+ADJACENCY_SKIP_ASPECTS = ('generic_relation', 'noise')
+
+
+# ═══════════════════════════════════════════════════════════════
 # COMMUNITY ENRICHMENT LLM CONFIG
 # (stored in interactions table as 's2_community_enrichment' parameters)
 # ═══════════════════════════════════════════════════════════════
