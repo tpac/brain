@@ -141,6 +141,11 @@
       <option value="dashboard">Dashboard</option>
       <option value="client">Client (JS)</option>
     </select>
+    <select id="log-level" class="toolbar-select" onchange="loadLogs()" title="Filter by severity">
+      <option value="all">All levels</option>
+      <option value="error">Errors</option>
+      <option value="warning">Warnings</option>
+    </select>
     <select id="error-hours" class="toolbar-select" onchange="loadLogs()">
       <option value="1">1h</option>
       <option value="6">6h</option>

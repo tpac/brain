@@ -1,11 +1,13 @@
-"""Unified errors view — pulls from every component that records errors.
+"""Unified logs view — pulls from every component that records errors AND
+warnings.
 
-Sources: brain `debug_log` and `hook_errors` (incl. DAEMON_DOWN — written by
-both the hook-side detector and the MCP health monitor). Each source
-contributes a row with a uniform shape so the UI can render them in one feed.
-(`conflict_log` and `brain_telemetry` were removed in schema v21 — querying
-them only ever warned loudly into the dashboard's own error ring, so those
-dead sources are gone.)
+Sources: brain `debug_log` (event_type='error' and 'warning') and `hook_errors`
+(any level — incl. DAEMON_DOWN, written by both the hook-side detector and the
+MCP health monitor). Each source contributes a row with a uniform shape so the
+UI can render them in one feed; the per-row `level` ('error'/'warning'/...) lets
+the Logs tab colour and filter by severity. (`conflict_log` and
+`brain_telemetry` were removed in schema v21 — querying them only ever warned
+loudly into the dashboard's own error ring, so those dead sources are gone.)
 
 Each row carries full `error` / `context` / `traceback` text (capped, not
 list-truncated) so the Logs tab's click-to-expand can show the whole story —
@@ -44,12 +46,18 @@ _ERR_CAP, _CTX_CAP, _TB_CAP = 2000, 1000, 6000
 
 def _shape_brain(r):
     meta = _decode_meta(r[3])
+    event_type = r[4] if len(r) > 4 else 'error'
+    # _log_error stores the text under 'error'; _log_warning under 'message'.
+    # Fall back to the raw metadata blob only if neither is present.
+    message = meta.get('error') or meta.get('message') or (r[3] or '')
     return {
         'source': 'brain', 'component': r[2], 'timestamp': r[1],
-        'error': (meta.get('error', r[3] or ''))[:_ERR_CAP],
+        'error': message[:_ERR_CAP],
         'context': (meta.get('context', '') or '')[:_CTX_CAP],
         'traceback': (meta.get('traceback', '') or '')[:_TB_CAP],
-        'level': meta.get('level', 'error') or 'error',
+        # Warnings carry event_type='warning' with no metadata level; errors
+        # default to 'error'. An explicit metadata level, if ever set, wins.
+        'level': meta.get('level') or event_type or 'error',
     }
 
 
@@ -67,8 +75,8 @@ def _shape_hook(r):
 # error source is a deliberate one-line addition here.
 _SOURCES = [
     (logs_db_path,
-     "SELECT id, created_at, source, metadata FROM debug_log "
-     "WHERE event_type='error' AND created_at > ? "
+     "SELECT id, created_at, source, metadata, event_type FROM debug_log "
+     "WHERE event_type IN ('error', 'warning') AND created_at > ? "
      "ORDER BY created_at DESC LIMIT ?",
      _shape_brain, 'brain debug_log'),
     (logs_db_path,
