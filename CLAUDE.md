@@ -57,7 +57,7 @@ Hooks are S0's observation points — all logic lives in the daemon, hooks are t
 - `UserPromptSubmit` → triggers S1R (recall + surface → additionalContext)
 - `PreToolUse(Edit|Write)` → surfaces rules before file edits
 - `PreToolUse(Bash)` → safety check for destructive commands
-- `Stop` → writes S0 traces, gates S1 Scribe (every 5th stop)
+- `Stop` → writes S0 traces (the S1 Scribe fires from the daemon poll, not here)
 - `PreCompact` → saves brain before context loss
 - `PostCompact` → re-boots context after compaction
 - `SessionEnd` → session synthesis + save
@@ -218,7 +218,7 @@ Design: `docs/RECALL-OVERVIEW.md` (historical detail: `docs/archive/FRAME-DESIGN
 
 ## Scale 1: Turn
 
-S1 integrates across turns — **S1 Decoder** selects what's relevant on every user prompt; **S1 Scribe** encodes what matters every 5th Stop.
+S1 integrates across turns — **S1 Decoder** selects what's relevant on every user prompt; **S1 Scribe** encodes what matters on a cadence (every 5+ turns, or the idle tail).
 
 ### S1 Decoder
 
@@ -234,9 +234,9 @@ Design: `docs/RECALL-OVERVIEW.md` for the full pipeline
 
 ### S1 Scribe
 
-Triggered every 5th Stop. Sonnet sees the session's conversation + the surface-selected nodes from those turns + the encoding journal + the session arc, then encodes via the standard write path (`remember_batch`, `revise_batch`, `connect_batch`, `brain_batch`, `recall_batch`, `get_nodes`). Edge relations are open text — the encoder uses any verb that fits (extends, corrects, depends_on, implements, etc.). Not a closed list.
+Runs **in-process** on the daemon's brain as `S1Scribe` — an `IntegrationUnit`, the same fractal shape as the S2 units (no background-thread Brain copy, no TCP). **Poll-triggered** by the daemon (`brain.scribe_due`), not the Stop hook: it fires every 5+ conversational turns while a session is actively conversing, OR on the idle tail (a session quiet past `SCRIBE_TAIL_IDLE_SECONDS` with unencoded turns) — single-flight across sessions, with a per-session retry cooldown. Sonnet sees the session's conversation + the surface-selected nodes + the encoding journal + the session arc, then encodes via the standard write path (`remember_batch`, `revise_batch`, `connect_batch`, `brain_batch`, `recall_batch`, `get_nodes`). Its writes are anchored to the **conversation's time** (`push_conversation_anchor`), so a delayed (tail / post-restart) encode stamps nodes + traces at the conversation, not the wall-clock poll moment. Edge relations are open text — any verb that fits (extends, corrects, depends_on, implements, etc.). Not a closed list.
 
-Files: `scales/s1/encode.py`, `scales/s1/encode_contract.py`
+Files: `scales/s1/scribe.py`, `scales/s1/encode.py`, `scales/s1/encode_contract.py`
 Traces: `s1e-{session_short}-{stop}` (O: encoding prompt, K: node catalog, Δ: encoding actions)
 Interaction: `encoding_agent` — learnable boundary
 Truncation logged to brain errors table via `run_llm_loop`.
@@ -326,10 +326,11 @@ Run `test_contract_sync.py` after modifying ANY brain API layer. The contract fl
 ### Dispatch + Runner
 
 Shared by all scale agents, scale-agnostic:
-- `scales/dispatch.py` — TCP dispatch factory (reads local, writes via daemon).
-- `scales/runner.py` — background thread lifecycle + generic LLM tool loop. `run_llm_loop` builds requests with two `cache_control` breakpoints (BP1 system 1h, BP2 initial user content 5m). Returns per-round profile, token counts, cache totals, `read_calls`, `write_actions`, `truncations`.
+- `scales/dispatch.py` — env loading + the canonical write-command classification (`WRITE_COMMANDS` / `ATTRIBUTED_WRITE_COMMANDS`) the attribution chokepoint reads. No dispatch factory — both S1 and S2 run in-process now; the legacy bg-thread + TCP write-back path is retired.
+- `scales/s2/base.py::_make_encoder_dispatch` — the ONE encoder dispatch S1 Scribe and the S2 units share. It stamps `encoding_source` + the unit's run `chain_id` via `apply_encoder_attribution`, so encoder revises join the run's chain (`s1e-{session}-{stop}` / `s2-{ts}-{unit}`), never a date fallback.
+- `scales/runner.py` — in-process worker-thread lifecycle (`run_unit_in_background`) + generic LLM tool loop. `run_llm_loop` builds requests with two `cache_control` breakpoints (BP1 system 1h, BP2 initial user content 5m). Returns per-round profile, token counts, cache totals, `read_calls`, `write_actions`, `truncations`.
 
-S2 plugs in the same way S1 does.
+S2 plugs in the same way S1 does — both are in-process `IntegrationUnit`s driven by the daemon poll.
 
 ### SessionContext + parallel sessions
 
