@@ -183,7 +183,9 @@ class HealerEncoder(IntegrationUnit):
                 node.get('type', ''), node.get('confidence', ''),
                 'yes' if node.get('locked') else 'no'))
 
-            # What needs healing
+            metadata = node.get('_metadata', {})
+
+            # What needs healing (the empty slots)
             needs = []
             if p.get('needs_question'):
                 needs.append('question')
@@ -193,24 +195,38 @@ class HealerEncoder(IntegrationUnit):
                 needs.append('reasoning')
             lines.append('NEEDS: %s' % ', '.join(needs))
 
+            # Explicit per-field filled/empty status. NEEDS (above) lists the
+            # empty slots; this shows EVERY healable field's state in one place
+            # with the FILLED content inline, so Haiku can't mistake a filled
+            # field for an empty one and regenerate it. (The unsolicited-field
+            # guard in _store_fields rejects an overwrite either way; showing
+            # the state plainly prevents the wasted generation up front.)
+            # Sourced identically to the decoder's needs_* computation —
+            # situation top-level, question/reasoning from _metadata, all
+            # canonical node_metadata_kv values — so status and content agree.
+            field_values = {
+                'question': metadata.get('question', ''),
+                'situation': node.get('situation', ''),
+                'reasoning': metadata.get('reasoning', ''),
+            }
+            lines.append('FIELD STATUS (regenerate ONLY the EMPTY ones; '
+                         'never overwrite a FILLED one):')
+            for field in ('question', 'situation', 'reasoning'):
+                if p.get('needs_' + field):
+                    lines.append('  %s: EMPTY' % field)
+                else:
+                    lines.append('  %s: FILLED — %s' % (field, field_values[field]))
+
             # Content
             lines.append('')
             lines.append('CONTENT:')
             lines.append(node.get('content', ''))
 
-            # Existing fields (so Haiku doesn't regenerate what exists)
-            if node.get('situation'):
-                lines.append('EXISTING SITUATION: %s' % node['situation'])
-
-            metadata = node.get('_metadata', {})
-            if metadata.get('reasoning'):
-                lines.append('EXISTING REASONING: %s' % metadata['reasoning'])
+            # Voice quotes — grounding for the generated fields.
             if metadata.get('user_raw_quote'):
                 lines.append('OPERATOR SAID: "%s"' % metadata['user_raw_quote'])
             if metadata.get('anchor_raw_quote'):
                 lines.append('ASSISTANT SAID: "%s"' % metadata['anchor_raw_quote'])
-            if metadata.get('question'):
-                lines.append('EXISTING QUESTION: %s' % metadata['question'])
 
             # Corrections — heavy slice via the unified render_corrections().
             # Single source of truth (contract.py:render_corrections) — same
