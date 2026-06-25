@@ -1852,13 +1852,27 @@ def format_surface_output_activation(node_activation, field_activation,
     selected_why = selected_why or {}
     selected_mode = selected_mode or {}
 
-    # Rank by (activation, mean_field_activation) — the second key breaks
-    # ties cleanly when many nodes hit saturation at 1.0.
+    # Rank the inject. Two modes (BRAIN_SURFACE_RANK_MODE, default 'activation'):
+    #   'activation' — (node_activation, mean_field_activation): the historical
+    #                  default. node_activation saturates (tanh, :1154) so this
+    #                  ranks by graph CONNECTIVITY once many nodes hit 1.0.
+    #   'cosine'     — (mean_field_activation, node_activation): rank by honest
+    #                  query relevance; activation only breaks ties. Spread still
+    #                  expands the pool + allocates budget — we just stop letting
+    #                  connectivity bury relevance at the inject point.
+    # Inject-precision A/B (finding 29f0f385): 'activation' buried essentials at
+    # rank ~36 / 81% noise; cosine-rank put them at ~4 / 55% noise. Flag-gated,
+    # off by default — production byte-identical until flipped after the A/B.
+    import os
+    _cosine_rank = os.environ.get('BRAIN_SURFACE_RANK_MODE', 'activation').lower() == 'cosine'
+
     def sort_key(item):
         nid, act = item
         fa = field_activation.get(nid, {})
         mean_fa = (sum(fa.values()) / len(fa)) if fa else 0.0
-        return (act, mean_fa, nid)  # nid as stable final tiebreaker
+        if _cosine_rank:
+            return (mean_fa, act, nid)   # relevance primary, activation tiebreak
+        return (act, mean_fa, nid)       # activation primary (historical default)
 
     ranked = sorted(node_activation.items(), key=sort_key, reverse=True)
 
