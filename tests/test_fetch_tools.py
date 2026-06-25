@@ -126,20 +126,34 @@ def env():
         yield env
 
 
-def _event_count(b, event_type, source=None) -> int:
-    """Count debug_log rows of an event_type (optionally a specific source).
-    The copied logs db carries historical rows, so the discussed-anchor tests
-    assert on the DELTA across a single call. event_type='error' is the loud,
-    dashboard-surfaced severity; 'warning' is the quiet §6 signal — asserting
-    on these (not on the deleted 'fetch_by_time_archived_leak' string, which
-    now has zero writers) is what makes the 'quiet' check non-tautological."""
+def _event_ids(b, event_type, source=None) -> set:
+    """Set of debug_log row ids for an event_type (optionally a specific source).
+
+    The discussed-anchor tests assert on what a single recall_by_time call
+    WROTE — but the global COUNT(*) delta is not a safe proxy for that. The
+    `env` brain copies the ~410MB production logs db (>50MB), so the first
+    _log_error/_log_warning of the call triggers `Brain._check_logs_db_size`,
+    which DELETEs every debug_log row older than 7 days mid-call. A global
+    count then drifts by however many old rows happened to age past that
+    cutoff since the baseline snapshot — nondeterministic, and observed to
+    flip the sign of the delta day to day (proven flaky 2026-06-25).
+
+    `debug_log.id` is INTEGER PRIMARY KEY AUTOINCREMENT, so ids are monotonic
+    and never reused. Set-differencing this across a call yields EXACTLY the
+    rows that call inserted, immune to the prune (a DELETE removes old, low
+    ids; it can never produce a new one). event_type='error' is the loud,
+    dashboard-surfaced severity; 'warning' is the quiet §6 signal — diffing
+    these (not the deleted 'fetch_by_time_archived_leak' string, which now has
+    zero writers) is what keeps the 'quiet' check non-tautological."""
     if source is not None:
-        return b.logs_conn.execute(
-            "SELECT COUNT(*) FROM debug_log WHERE event_type=? AND source=?",
-            (event_type, source)).fetchone()[0]
-    return b.logs_conn.execute(
-        "SELECT COUNT(*) FROM debug_log WHERE event_type=?",
-        (event_type,)).fetchone()[0]
+        rows = b.logs_conn.execute(
+            "SELECT id FROM debug_log WHERE event_type=? AND source=?",
+            (event_type, source)).fetchall()
+    else:
+        rows = b.logs_conn.execute(
+            "SELECT id FROM debug_log WHERE event_type=?",
+            (event_type,)).fetchall()
+    return {r[0] for r in rows}
 
 
 class TestRecallTopical:
@@ -222,14 +236,15 @@ class TestRecallByTimeDiscussed:
         # appear if resolve_live actually redirected). Quietness = no loud
         # error row added by this call (event_type='error' is what the
         # dashboard surfaces); a routine redirect logs nothing.
-        err_before = _event_count(b, 'error')
+        err_before = _event_ids(b, 'error')
         results = recall_by_time(b, start_when='May 2007',
                                  end_when='June 2007', time_anchor='discussed')
         ids = {r.get('id') for r in results}
         assert src not in ids, "absorbed source must not surface"
         assert live in ids, "survivor must surface in place of the absorbed node"
-        assert _event_count(b, 'error') == err_before, \
-            "routine redirect must not write a loud error row"
+        new_errs = _event_ids(b, 'error') - err_before
+        assert not new_errs, \
+            "routine redirect must not write a loud error row (new ids=%s)" % sorted(new_errs)
 
     def test_discussed_anchor_drops_orphan_quietly(self, env):
         # An archived node with NO survivor pointer is a true orphan: dropped,
@@ -256,16 +271,18 @@ class TestRecallByTimeDiscussed:
             "'2006-07-15T12:00:00+00:00')",
             (_json.dumps([src, ctrl]),))
         b.logs_conn.commit()
-        err_before = _event_count(b, 'error')
-        warn_before = _event_count(b, 'warning', 'fetch_by_time_orphans_dropped')
+        err_before = _event_ids(b, 'error')
+        warn_before = _event_ids(b, 'warning', 'fetch_by_time_orphans_dropped')
         results = recall_by_time(b, start_when='July 2006',
                                  end_when='August 2006', time_anchor='discussed')
         ids = {r.get('id') for r in results}
         assert src not in ids, "true orphan must be dropped"
         assert ctrl in ids, "live sibling must still surface (positive control)"
-        assert _event_count(b, 'error') == err_before, \
-            "orphan drop must not write a loud error row"
-        assert _event_count(b, 'warning', 'fetch_by_time_orphans_dropped') > warn_before, \
+        new_errs = _event_ids(b, 'error') - err_before
+        assert not new_errs, \
+            "orphan drop must not write a loud error row (new ids=%s)" % sorted(new_errs)
+        new_warns = _event_ids(b, 'warning', 'fetch_by_time_orphans_dropped') - warn_before
+        assert new_warns, \
             "orphan drop must be COUNTED via a low-severity warning (§6)"
 
 
