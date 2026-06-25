@@ -30,8 +30,11 @@ from .base import IntegrationUnit
 from .community_contract import (
     COMMUNITY_DETECTION,
     COMMUNITY_METADATA_KEYS,
+    ADJACENCY_EXCLUDED_RELATIONS,
+    ADJACENCY_SKIP_ASPECTS,
 )
 from .rejection_table import filter_rejected
+from .community_structural import structural_metrics
 from servers.embedder import cosine_similarity
 
 
@@ -362,7 +365,7 @@ class CommunityDecoder(IntegrationUnit):
             for name, aspect in self.brain.aspects.all().items()
             for relation in aspect.edge_relations
         }
-        skip_fams = {'generic_relation', 'noise'}
+        skip_fams = set(ADJACENCY_SKIP_ASPECTS)
 
         # Step 1: Typed adjacency (ALL nodes — placed nodes' edges matter)
         edges_by_node, typed_neighbors = self._build_typed_adjacency(
@@ -509,13 +512,7 @@ class CommunityDecoder(IntegrationUnit):
             if not comm['members']:
                 continue
             ms = comm['members']
-            internal = sum(1 for n in ms
-                           for nbr, _, _ in edges_by_node.get(n, [])
-                           if nbr in ms) // 2
-            external = sum(1 for n in ms
-                           for nbr, _, _ in edges_by_node.get(n, [])
-                           if nbr not in ms)
-            int_frac = internal / (internal + external) if (internal + external) else 0
+            int_frac = structural_metrics(ms, edges_by_node)['internal_fraction']
 
             old_frac = read_community_meta(
                 self.brain.conn, comm['id'],
@@ -633,21 +630,15 @@ class CommunityDecoder(IntegrationUnit):
         for cid, members in sorted(valid_clusters.items(),
                                     key=lambda x: -len(x[1]))[:30]:
             ms = set(members)
-            internal = sum(1 for n in ms
-                           for nbr, _, _ in edges_by_node.get(n, [])
-                           if nbr in ms) // 2
-            external = sum(1 for n in ms
-                           for nbr, _, _ in edges_by_node.get(n, [])
-                           if nbr not in ms)
-            int_frac = internal / (internal + external) if (internal + external) else 0
+            metrics = structural_metrics(ms, edges_by_node)
             edge_sig = self._compute_edge_signature(members, edges_by_node)
 
             cluster_summaries.append({
                 'cluster_id': cid,
                 'size': len(members),
-                'internal_edges': internal,
-                'external_edges': external,
-                'internal_fraction': round(int_frac, 3),
+                'internal_edges': metrics['internal'],
+                'external_edges': metrics['external'],
+                'internal_fraction': round(metrics['internal_fraction'], 3),
                 'edge_signature': edge_sig,
                 'is_corridor': cid in corridors,
             })
@@ -715,6 +706,7 @@ class CommunityDecoder(IntegrationUnit):
         # raw with archived=0; consider GraphDAL.iter_semantic_edges()
         # if a second caller appears.
         edges_by_node = defaultdict(list)
+        excl = ','.join('?' * len(ADJACENCY_EXCLUDED_RELATIONS))
         rows = self.brain.conn.execute("""
             SELECT e.source_id, e.target_id, er.relation
             FROM edges e
@@ -724,9 +716,8 @@ class CommunityDecoder(IntegrationUnit):
             JOIN nodes nt ON nt.id = e.target_id AND nt.archived = 0
                 AND nt.type != 'community'
             WHERE er.archived = 0
-            AND er.relation NOT IN (
-                'co_accessed', 'emergent_bridge', 'community_member')
-        """).fetchall()
+            AND er.relation NOT IN (%s)
+        """ % excl, tuple(ADJACENCY_EXCLUDED_RELATIONS)).fetchall()
 
         for src, tgt, rel in rows:
             fam = rel_to_fam.get(rel, 'unclassified')
@@ -850,21 +841,15 @@ class CommunityDecoder(IntegrationUnit):
                 continue
 
             ms = set(members)
-            internal = sum(1 for n in ms
-                           for nbr, _, _ in edges_by_node.get(n, [])
-                           if nbr in ms) // 2
-            external = sum(1 for n in ms
-                           for nbr, _, _ in edges_by_node.get(n, [])
-                           if nbr not in ms)
+            metrics = structural_metrics(ms, edges_by_node)
 
-            if internal < 2:
+            if metrics['internal'] < 2:
                 dissolved += 1
                 continue
 
             valid[cid] = ms
 
-            int_frac = internal / (internal + external) if (internal + external) else 0
-            if int_frac < 0.20 and len(members) > 3:
+            if metrics['is_corridor']:
                 corridors.add(cid)
 
         return valid, corridors, dissolved

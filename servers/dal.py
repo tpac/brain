@@ -2993,6 +2993,46 @@ class GraphDAL:
             'created_at': r[3], 'confidence': r[4], 'locked': r[5],
         } for r in rows]
 
+    def get_members_bulk(self, community_ids, include_archived: bool = False):
+        """Members of MANY communities via community_member edges, batched.
+
+        Bulk sibling of get_community_members: same bidirectional walk (the
+        historical community->member and legacy member->community mix) and the
+        same EDGE_ROW_SHAPE subset, but for a list of communities in one pass.
+        Returns {community_id: [member dict, ...]}; communities with no member
+        edges are simply absent (caller treats as empty). DISTINCT collapses a
+        member reachable via edges in both directions.
+        """
+        ids = [c for c in (community_ids or []) if c]
+        if not ids:
+            return {}
+        archived_clause = '' if include_archived else 'AND er.archived = 0'
+        out = {}
+        # Chunk to stay within SQLite's bind-variable limit.
+        for i in range(0, len(ids), 400):
+            chunk = ids[i:i + 400]
+            placeholders = ','.join('?' * len(chunk))
+            sql = """
+                SELECT DISTINCT c.id AS community_id,
+                                member.id, member.type, member.title,
+                                member.created_at, member.confidence, member.locked
+                FROM nodes c
+                JOIN edges e ON (e.source_id = c.id OR e.target_id = c.id)
+                JOIN edge_relations er ON er.edge_id = e.edge_id
+                    AND er.relation = 'community_member' %s
+                JOIN nodes member ON member.id = CASE
+                    WHEN e.source_id = c.id THEN e.target_id
+                    ELSE e.source_id END
+                    AND member.archived = 0 AND member.type != 'community'
+                WHERE c.id IN (%s) AND c.type = 'community' AND c.archived = 0
+            """ % (archived_clause, placeholders)
+            for r in self.conn.execute(sql, chunk).fetchall():
+                out.setdefault(r[0], []).append({
+                    'id': r[1], 'type': r[2], 'title': r[3],
+                    'created_at': r[4], 'confidence': r[5], 'locked': r[6],
+                })
+        return out
+
     def get_communities_for(self, node_ids,
                             include_archived: bool = False,
                             require_active_community: bool = True):
