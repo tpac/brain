@@ -373,6 +373,27 @@ class TestScribeReactor(unittest.TestCase):
         self.assertNotIn('sX', cap['fake']._scribe_failures)
         self.assertEqual(cap['encode_runs'], 1)
 
+    def test_poll_clears_cooldown_on_zero_write_completion(self):
+        # A COMPLETED encode that wrote nothing still advanced the cadence
+        # (encoding_prompt was written) — so it must clear the cooldown too, or
+        # its next legit re-fire would false-trip scribe_repeated_failure. It
+        # must NOT count toward the S2 gate (no material written).
+        def sd(now=None, skip_sessions=None):
+            return {'session_id': 'sX', 'counter': 1}
+        cap = self._poll(sd, failures={'sX': 2})
+        cap['on_complete'](0)                                # completed, 0 writes
+        self.assertNotIn('sX', cap['fake']._scribe_attempts)
+        self.assertNotIn('sX', cap['fake']._scribe_failures)
+        self.assertEqual(cap['encode_runs'], 0)              # no S2-gate credit
+
+    def test_poll_prunes_orphaned_failures(self):
+        # _scribe_failures is kept keyed to live _scribe_attempts — an entry for
+        # a session no longer being attempted is dropped (no unbounded leak).
+        def sd(now=None, skip_sessions=None):
+            return None                                      # nothing due this poll
+        cap = self._poll(sd, failures={'ghost': 5})          # ghost not in attempts
+        self.assertNotIn('ghost', cap['fake']._scribe_failures)
+
     @staticmethod
     def _iso(now, ago_s):
         import datetime

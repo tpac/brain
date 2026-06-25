@@ -512,7 +512,12 @@ class BrainDaemon:
                 # last ran — the brain_meta record survives.
                 if not self._s2_running:
                     self._s2_running = True
-                    self._pool.submit(self._run_idle_maintenance)
+                    try:
+                        self._pool.submit(self._run_idle_maintenance)
+                    except Exception:
+                        # submit can raise on pool shutdown/saturation; clear the
+                        # flag so the next tick retries instead of wedging S2.
+                        self._s2_running = False
 
                 # S1 Scribe reactor — poll for a session whose encode is due
                 # (mid-session ENCODE_EVERY turns, or the idle tail). Distinct
@@ -1023,6 +1028,11 @@ class BrainDaemon:
             horizon = SCRIBE_CANDIDATE_WINDOW_MIN * 60
             self._scribe_attempts = {s: t for s, t in self._scribe_attempts.items()
                                      if now - t < horizon}
+            # Keep _scribe_failures keyed to live attempts — a session aged out
+            # of _scribe_attempts has no live cooldown, so its failure count is
+            # stale (otherwise _scribe_failures would leak entries forever).
+            self._scribe_failures = {s: f for s, f in self._scribe_failures.items()
+                                     if s in self._scribe_attempts}
             # Cooling = attempted within the cooldown → exclude from selection so
             # a failing (still-"due") session can't monopolize the poll.
             cooling = {s for s, t in self._scribe_attempts.items()
@@ -1057,15 +1067,20 @@ class BrainDaemon:
             from servers.scales.runner import run_unit_in_background
 
             def _count_encode(write_actions, _sid=sid):
-                # A real encode (wrote material) advances the S2 gate AND clears
-                # this session's cooldown/failure state (the cadence reset already
-                # prevents an immediate re-fire — clearing just avoids a stale
-                # cooldown). A 0-write outcome leaves the cooldown to bound a
-                # skip loop.
+                # on_complete fires only when the encode COMPLETED — a crash
+                # skips it (run_unit_in_background's except). So any call here
+                # means the cadence advanced (encoding_prompt was written), even
+                # for a 0-write encode. Clear the cooldown/failure state
+                # unconditionally — only a genuine crash (no on_complete) leaves
+                # the session cooling, which is exactly what should bound the
+                # retry. (Clearing only on write>0 falsely escalated a healthy
+                # 0-write encode on its next legit re-fire.) record_encode_run
+                # stays gated on write_actions — the S2 gate cares only about
+                # material actually written.
+                self._scribe_attempts.pop(_sid, None)
+                self._scribe_failures.pop(_sid, None)
                 if write_actions > 0:
                     self.brain.activity.record_encode_run()
-                    self._scribe_attempts.pop(_sid, None)
-                    self._scribe_failures.pop(_sid, None)
 
             scribe = S1Scribe(self.brain, session_id=sid, counter=due['counter'])
             run_unit_in_background(scribe, name='s1e', lock=self._encode_lock,
