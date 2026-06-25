@@ -933,10 +933,17 @@ class Brain(
         from datetime import datetime as _datetime
         from .scales.s1.encode_contract import (
             ENCODE_EVERY, SCRIBE_TAIL_IDLE_SECONDS, SCRIBE_TAIL_MIN_TURNS,
-            SCRIBE_CANDIDATE_WINDOW_MIN, scribe_is_starved)
+            SCRIBE_CANDIDATE_WINDOW_MIN, SCRIBE_ACTIVE_WINDOW_SECONDS,
+            scribe_is_starved)
+        from .brain_constants import MAINTENANCE_BOOT_GRACE_SECONDS
         from .scales.s0.conversation import turns_since_last_encode
 
         now = now if now is not None else _time.time()
+        # Boot-grace: don't sweep/encode during the daemon's warmup after a
+        # (re)start — let it settle, and don't flush backlogs the instant it
+        # comes up. Same settle window the S2 maintenance gate uses.
+        if now - getattr(self, '_boot_time', now) < MAINTENANCE_BOOT_GRACE_SECONDS:
+            return None
         skip = skip_sessions or ()
         best = None  # (turns, session_id, counter) — highest turns = most overdue
 
@@ -962,15 +969,19 @@ class Brain(
                 except Exception:
                     pass
 
-            five_plus = turns >= ENCODE_EVERY
-            tail = False
-            if not five_plus and turns > SCRIBE_TAIL_MIN_TURNS:
-                try:
-                    idle = now - _datetime.fromisoformat(
-                        stream.get('updated_at', '')).timestamp()
-                except (ValueError, TypeError):
-                    idle = 0.0
-                tail = idle > SCRIBE_TAIL_IDLE_SECONDS
+            # Idle (wall-clock) since this session's last turn gates BOTH
+            # clauses: 5+ fires only while ACTIVELY conversing (recent turn);
+            # the tail only once the session has gone quiet. A session in
+            # between waits for the tail — or re-qualifies for 5+ on its next
+            # turn. This is what stops a restart from sweeping every recent
+            # session's backlog at once.
+            try:
+                idle = now - _datetime.fromisoformat(
+                    stream.get('updated_at', '')).timestamp()
+            except (ValueError, TypeError):
+                idle = 0.0
+            five_plus = turns >= ENCODE_EVERY and idle < SCRIBE_ACTIVE_WINDOW_SECONDS
+            tail = turns > SCRIBE_TAIL_MIN_TURNS and idle > SCRIBE_TAIL_IDLE_SECONDS
             if not (five_plus or tail):
                 continue
 

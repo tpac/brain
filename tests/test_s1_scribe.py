@@ -100,6 +100,38 @@ def test_chain_aware_is_attributed_plus_revise_edge():
     assert CHAIN_AWARE_WRITES == ATTRIBUTED_WRITE_COMMANDS | {'revise_edge'}
 
 
+# ── conversation-time anchor (delayed encodes stamp at the conversation) ──
+
+def test_conversation_anchor_overrides_iso_now_thread_locally():
+    """The Scribe wraps a (possibly delayed) encode in push_conversation_anchor
+    so its writes stamp at the conversation's time, not the wall-clock poll
+    moment. iso_now() must honor the anchor on THIS thread, let an explicit at=
+    win, never leak to other threads, and revert on clear."""
+    import threading
+    import datetime
+    from servers.clock import (iso_now, push_conversation_anchor,
+                               clear_conversation_anchor)
+
+    anchor = datetime.datetime(2020, 5, 17, 12, 0, 0,
+                               tzinfo=datetime.timezone.utc)
+    try:
+        push_conversation_anchor(anchor)
+        # bare iso_now() on THIS thread resolves to the anchor
+        assert iso_now().startswith('2020-05-17T12:00:00')
+        # an explicit at= still wins over the anchor
+        assert iso_now(at=datetime.datetime(
+            1999, 1, 1, tzinfo=datetime.timezone.utc)).startswith('1999-01-01')
+        # another thread is unaffected — no cross-thread leak
+        seen = {}
+        t = threading.Thread(target=lambda: seen.update(ts=iso_now()))
+        t.start(); t.join()
+        assert not seen['ts'].startswith('2020-05-17'), 'anchor leaked across threads'
+    finally:
+        clear_conversation_anchor()
+    # cleared → back to wall-clock (definitely not 2020)
+    assert not iso_now().startswith('2020-05-17')
+
+
 class TestScribeInProcessAttribution(BrainTestBase):
     """End-to-end: a revise through the Scribe's in-process dispatch lands its
     node_revised trace on the s1e run chain — not dispatch_write's

@@ -39,7 +39,37 @@ from __future__ import annotations
 import datetime as _dt
 import re as _re
 import sys as _sys
+import threading as _threading
 from typing import Any, Iterable, Optional
+
+
+# ─── Conversation-time anchor (thread-local) ─────────────────────────────
+# A delayed encoder — the S1 Scribe firing on the idle tail or sweeping a
+# session after a restart — must stamp the nodes + traces it writes at the
+# CONVERSATION's time, not the wall-clock moment the poll happened to run
+# (otherwise an hours-old conversation lands in "today"). The Scribe wraps its
+# encode in this anchor; bare iso_now() ON THAT THREAD then resolves to the
+# conversation's notional now. Thread-local, so it never leaks into the
+# daemon's own writes or a parallel encode (single-flight already serializes
+# encodes, but the isolation is the contract). Null by default → wall-clock
+# everywhere else, unchanged.
+_conv_anchor = _threading.local()
+
+
+def push_conversation_anchor(at: Optional[_dt.datetime]) -> None:
+    """Set the thread-local conversation-time anchor (a datetime, or None to
+    clear). Subsequent bare ``iso_now()`` calls on THIS thread resolve to it."""
+    _conv_anchor.value = at
+
+
+def clear_conversation_anchor() -> None:
+    """Drop the thread-local anchor — bare iso_now() returns to wall-clock.
+    Always call in a finally so a pool thread doesn't carry a stale anchor."""
+    _conv_anchor.value = None
+
+
+def _conversation_anchor() -> Optional[_dt.datetime]:
+    return getattr(_conv_anchor, 'value', None)
 
 
 # ─── Public API ─────────────────────────────────────────────────────────
@@ -93,8 +123,15 @@ def iso_now(at: Optional[_dt.datetime] = None) -> str:
                 ts = iso_now()                            # wall-clock (default)
                 ts = iso_now(at=conversation_now(msgs))   # eval-anchored
 
+    When ``at`` is omitted, a thread-local conversation anchor (set by the S1
+    Scribe around a delayed encode via ``push_conversation_anchor``) is used if
+    present, before falling back to wall-clock — so a tail / restart-swept
+    encode stamps at the conversation's time. An explicit ``at`` always wins.
+
     See ``iso_cutoff`` for the WHERE-clause companion.
     """
+    if at is None:
+        at = _conversation_anchor()
     base = at if at is not None else _dt.datetime.now(_dt.timezone.utc)
     return base.astimezone(_dt.timezone.utc).isoformat()
 

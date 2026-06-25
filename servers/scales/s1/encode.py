@@ -91,24 +91,27 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     if muster_enabled is None:
         muster_enabled = True
 
+    # Conversation-time anchor — the date THIS conversation thinks it's
+    # happening (eval reads the [Current date: ...] prefix; production reads
+    # SessionContext start; falls back to operator wall-clock). Computed ONCE,
+    # whether or not muster runs: the temporal scout reads it AND the encode's
+    # writes are anchored to it (push_conversation_anchor, before the LLM loop)
+    # so a DELAYED encode — the idle tail, or a restart sweeping an older
+    # session — stamps nodes + traces at the CONVERSATION's time, not the
+    # wall-clock poll moment. See servers/clock.py + brain memory 6d5b789e.
+    from servers.clock import (conversation_now, push_conversation_anchor,
+                               clear_conversation_anchor)
+    _sess_obj = brain.get_or_create_session(session_id)
+    conv_dt = conversation_now(
+        messages=messages,
+        session_started_at=getattr(_sess_obj, 'started_at', None),
+        brain=brain)
+
     muster_summary = None
     if muster_enabled:
         try:
             from servers.scales.s1.scouts.muster import (
                 build_muster_context, run_muster)
-            # conversation_now resolves the date THIS conversation thinks
-            # it's happening: eval replay reads [Current date: ...] prefix;
-            # production reads SessionContext.created_at; falls back to
-            # operator wall-clock. Critical for temporal scout — without it,
-            # "today/yesterday" in historical conversations resolve to NOW.
-            # See servers/clock.py + brain memory 6d5b789e.
-            from servers.clock import conversation_now
-            session_ctx_obj = brain.get_or_create_session(session_id)
-            conv_started = getattr(session_ctx_obj, 'started_at', None)
-            conv_dt = conversation_now(
-                messages=messages,
-                session_started_at=conv_started,
-                brain=brain)
             muster_ctx = build_muster_context(
                 brain=brain, messages=messages, session_id=session_id,
                 counter=counter,
@@ -192,6 +195,11 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     _log("calling Sonnet with %d tools, %d chars context..." % (len(tools), len(user_content)))
     _log("PROFILE so far: %s" % " → ".join("%s:%dms" % (n, t) for n, t in profile))
 
+    # Anchor the encode's writes to the conversation's time (conv_dt above) for
+    # the LLM loop + post-processing: node created_at and the encode's trace
+    # timestamps resolve to the conversation, not the wall-clock poll moment.
+    # Cleared in finally so this pool thread never carries a stale anchor.
+    push_conversation_anchor(conv_dt)
     try:
         result = run_llm_loop(
             client=client,
@@ -292,6 +300,8 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         profile_str = " → ".join("%s:%dms" % (n, t) for n, t in profile)
         print('[s1e] ERROR: Sonnet API call failed: %s PROFILE: %s' % (e, profile_str), flush=True)
         return {"error": str(e), "profile": profile}
+    finally:
+        clear_conversation_anchor()
 
 
 # ── S1-Specific Helpers ──

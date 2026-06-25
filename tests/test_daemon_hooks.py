@@ -250,14 +250,17 @@ class TestScribeReactor(unittest.TestCase):
     no DB, no SQL.
     """
 
-    def _due(self, streams, turns_map, now=1_000_000.0, skip=None):
+    def _due(self, streams, turns_map, now=1_000_000.0, skip=None, boot_time=0.0):
         """Brain.scribe_due bound to a fake brain whose two higher session
-        functions are stubbed (present_streams + turns_since_last_encode)."""
+        functions are stubbed (present_streams + turns_since_last_encode).
+        boot_time defaults ancient (past the boot-grace); pass ~now to test it."""
         import types
         from unittest.mock import patch
         from servers.brain import Brain
 
         class FakeBrain:
+            _boot_time = 0.0   # ancient → past the boot-grace window
+
             def present_streams(self, window_min, limit):
                 return streams
 
@@ -267,9 +270,11 @@ class TestScribeReactor(unittest.TestCase):
             def _log_error(self, *a, **k):
                 pass
 
+        fb = FakeBrain()
+        fb._boot_time = boot_time
         with patch('servers.scales.s0.conversation.turns_since_last_encode',
                    side_effect=lambda brain, sid: turns_map.get(sid, 0)):
-            return Brain.scribe_due(FakeBrain(), now=now, skip_sessions=skip)
+            return Brain.scribe_due(fb, now=now, skip_sessions=skip)
 
     def _poll(self, scribe_due_fn, attempts=None, failures=None):
         """Drive BrainDaemon._run_scribe_poll against a fake daemon (scribe_due
@@ -434,6 +439,35 @@ class TestScribeReactor(unittest.TestCase):
         due = self._due(
             [{'session_id': 'recent', 'updated_at': self._iso(now, 120)}],
             {'recent': SCRIBE_TAIL_MIN_TURNS + 1}, now=now)
+        self.assertIsNone(due)
+
+    def test_5plus_not_swept_when_session_gone_quiet(self):
+        # The fix for "picks up tons of old conversations": a session with 5+
+        # unencoded turns but idle past the active window is NOT 5+-encoded — it
+        # waits for the 1h tail. The same session within the window DOES fire,
+        # proving the bound is what gates it, not the turn count.
+        from servers.scales.s1.encode_contract import (
+            ENCODE_EVERY, SCRIBE_ACTIVE_WINDOW_SECONDS)
+        now = 1_000_000.0
+        stale = self._iso(now, SCRIBE_ACTIVE_WINDOW_SECONDS + 60)  # quiet, under 1h
+        self.assertIsNone(
+            self._due([{'session_id': 'quiet', 'updated_at': stale}],
+                      {'quiet': ENCODE_EVERY + 3}, now=now),
+            '5+ must not sweep a session that has gone quiet')
+        fresh = self._iso(now, 10)
+        self.assertEqual(
+            self._due([{'session_id': 'active', 'updated_at': fresh}],
+                      {'active': ENCODE_EVERY + 3}, now=now)['session_id'],
+            'active', 'an actively-conversing 5+ session still fires')
+
+    def test_boot_grace_suppresses_the_poll(self):
+        # Just after a (re)start, the poll is a no-op for the settle window — no
+        # backlog flush the instant the daemon comes up.
+        from servers.scales.s1.encode_contract import ENCODE_EVERY
+        now = 1_000_000.0
+        due = self._due(
+            [{'session_id': 'active', 'updated_at': self._iso(now, 10)}],
+            {'active': ENCODE_EVERY + 3}, now=now, boot_time=now)   # just booted
         self.assertIsNone(due)
 
     def test_poll_single_flight_skips_when_encode_running(self):

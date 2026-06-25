@@ -42,6 +42,15 @@ def scribe_is_starved(turns_since: int) -> bool:
 SCRIBE_TAIL_IDLE_SECONDS = 3600
 SCRIBE_TAIL_MIN_TURNS = 2
 
+# The 5+ clause fires only for a session whose last turn is within this window —
+# i.e. one ACTIVELY conversing. Without it, the poll would `5+`-encode every
+# recently-present session (90-min window) regardless of how long ago it went
+# quiet — a backlog sweep, worst on restart. A session that goes quiet below the
+# active window waits for the 1h idle tail instead (and re-qualifies for `5+`
+# the moment it takes another turn). This is the "is this a live conversation?"
+# bound the old Stop-hook trigger had implicitly (it only fired on a turn).
+SCRIBE_ACTIVE_WINDOW_SECONDS = 600
+
 # The reactor only sees sessions present within this wall-clock window, so it
 # must outrun the tail threshold — otherwise a session that just crossed 1h idle
 # would age out of the candidate set before the tail could fire. +30 min margin.
