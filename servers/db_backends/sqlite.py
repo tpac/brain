@@ -30,9 +30,11 @@ Pragma reasoning (see CLAUDE.md for the full table):
 
 from __future__ import annotations
 
+import gzip
 import os
+import shutil
 import sqlite3
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 
 
 # ─── Transaction discipline ───────────────────────────────────────────
@@ -126,6 +128,29 @@ def apply_pragmas(conn: sqlite3.Connection) -> None:
 # connections — no shared state, no contention with the worker, no
 # lock plumbing across the module boundary.
 
+# Maintenance must yield FAST under contention. The daemon's primary
+# connections wait up to busy_timeout=30s for the lock — correct for a
+# user-facing write that must not be dropped. A background ANALYZE or
+# checkpoint has no such obligation: if it can't get the lock quickly it
+# should give up and let the next cycle retry. With the 30s default,
+# `PRAGMA optimize` on a hot DB blocked ~80s (multiple internal ANALYZE
+# statements, each waiting the full timeout) and starved the foreground.
+# Cap maintenance connections far lower so a contended op fails in seconds.
+_MAINTENANCE_BUSY_TIMEOUT_MS = 5000
+
+
+def _connect_maintenance(db_path: str, timeout_s: Optional[float] = None) -> sqlite3.Connection:
+    """Open a connection for a background maintenance op with a short
+    busy_timeout — it yields fast under contention instead of blocking
+    the foreground writers. Applies the standard pragma set, then lowers
+    busy_timeout from the 30s default to the maintenance cap."""
+    if timeout_s is None:
+        timeout_s = _MAINTENANCE_BUSY_TIMEOUT_MS / 1000.0
+    conn = sqlite3.connect(db_path, timeout=timeout_s)
+    apply_pragmas(conn)
+    conn.execute('PRAGMA busy_timeout = %d' % _MAINTENANCE_BUSY_TIMEOUT_MS)
+    return conn
+
 
 def checkpoint(db_path: str) -> Dict[str, Any]:
     """`PRAGMA wal_checkpoint(TRUNCATE)` — flush WAL into the DB and
@@ -138,9 +163,8 @@ def checkpoint(db_path: str) -> Dict[str, Any]:
     """
     wal_path = db_path + '-wal'
     size_before = _file_size_or_zero(wal_path)
-    conn = sqlite3.connect(db_path, timeout=30.0)
+    conn = _connect_maintenance(db_path)
     try:
-        apply_pragmas(conn)
         row = conn.execute('PRAGMA wal_checkpoint(TRUNCATE)').fetchone()
     finally:
         conn.close()
@@ -161,9 +185,8 @@ def optimize(db_path: str) -> Dict[str, Any]:
     Cheap to run periodically (no-op for stable tables); expensive
     queries become quietly faster as statistics catch up to reality.
     """
-    conn = sqlite3.connect(db_path, timeout=30.0)
+    conn = _connect_maintenance(db_path)
     try:
-        apply_pragmas(conn)
         conn.execute('PRAGMA optimize')
     finally:
         conn.close()
@@ -178,9 +201,8 @@ def stats(db_path: str) -> Dict[str, Any]:
     wal_size = _file_size_or_zero(db_path + '-wal')
     shm_size = _file_size_or_zero(db_path + '-shm')
 
-    conn = sqlite3.connect(db_path, timeout=10.0)
+    conn = _connect_maintenance(db_path)
     try:
-        apply_pragmas(conn)
         page_count = conn.execute('PRAGMA page_count').fetchone()[0]
         page_size = conn.execute('PRAGMA page_size').fetchone()[0]
         freelist = conn.execute('PRAGMA freelist_count').fetchone()[0]
@@ -195,6 +217,62 @@ def stats(db_path: str) -> Dict[str, Any]:
         'freelist_pages': freelist,
         'pages_in_use_pct': round(
             (page_count - freelist) / max(1, page_count) * 100, 1),
+    }
+
+
+def backup_snapshot(db_path: str, dest_gz_path: str,
+                    pages: int = 4000, sleep_s: float = 0.05) -> Dict[str, Any]:
+    """Consistent, gzip-compressed snapshot of a LIVE SQLite DB.
+
+    Uses SQLite's online backup API — NOT a file copy. `cp` of a live
+    WAL-mode DB can capture a torn state (DB file + a partial WAL the
+    copy missed); the backup API produces a transactionally-consistent
+    snapshot with no such hazard. It copies in page batches (`pages`)
+    with a `sleep_s` pause between batches, yielding the read lock so the
+    daemon's writers aren't starved during the copy. If a write lands
+    mid-copy SQLite re-copies the changed pages — correctness preserved.
+
+    The snapshot lands in a temp .db, is gzipped to a `.part` file, then
+    atomically renamed to `dest_gz_path` — so the canonical .gz appears
+    only once fully written. A mid-gzip crash (disk full, process kill)
+    never leaves a truncated .gz that list_backups would treat as a valid
+    snapshot. Both intermediates are removed on every exit path. Returns
+    raw/compressed sizes + ratio for observability.
+    """
+    tmp_db = dest_gz_path + '.tmp.db'
+    part_gz = dest_gz_path + '.part'
+    try:
+        src = sqlite3.connect(db_path, timeout=_MAINTENANCE_BUSY_TIMEOUT_MS / 1000.0)
+        try:
+            apply_pragmas(src)
+            dst = sqlite3.connect(tmp_db)
+            try:
+                src.backup(dst, pages=pages, sleep=sleep_s)
+            finally:
+                dst.close()
+        finally:
+            src.close()
+
+        raw_bytes = _file_size_or_zero(tmp_db)
+        with open(tmp_db, 'rb') as f_in, \
+                gzip.open(part_gz, 'wb', compresslevel=6) as f_out:
+            shutil.copyfileobj(f_in, f_out, length=1024 * 1024)
+        os.replace(part_gz, dest_gz_path)   # atomic publish
+    finally:
+        # Always clear intermediates. On success tmp_db is stale and
+        # part_gz was renamed away (both removes no-op); on any failure
+        # this prevents orphaned ~hundreds-of-MB temp files accumulating.
+        for tmp in (tmp_db, part_gz):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+
+    gz_bytes = _file_size_or_zero(dest_gz_path)
+    return {
+        'raw_bytes': raw_bytes,
+        'gz_bytes': gz_bytes,
+        'ratio': round(gz_bytes / max(1, raw_bytes), 3),
     }
 
 

@@ -208,6 +208,50 @@ class TestSchedulerFiresOps(unittest.TestCase):
         self.assertTrue(any('ERR db_maintenance_checkpoint' in s for s in logged),
                         "Expected ERR log, got: %s" % logged)
 
+    def test_failed_op_reschedules_by_interval_not_hot_retry(self):
+        """Regression: a failing op must advance its schedule by one full
+        interval, NOT retry every tick. The original bug stamped the
+        last-run timestamp only on success, so a contended `database is
+        locked` stayed perpetually 'due' and the 30s tick loop hammered an
+        80s-blocking optimize back-to-back for ~20 min — starving recall
+        and tripping DAEMON_DOWN. Fix: stamp on attempt, so a long interval
+        means the failed op waits that interval before its next attempt."""
+        fired = {'count': 0}
+
+        class AlwaysFailsBackend:
+            def apply_pragmas(self, conn):
+                pass
+            def checkpoint(self, p):
+                fired['count'] += 1
+                raise RuntimeError('database is locked')
+            def optimize(self, p):
+                return {}
+            def stats(self, p):
+                return {}
+
+        m = DBMaintenance(
+            log_fn=lambda msg: None,
+            log_error_fn=lambda origin, exc, ctx: None,
+            checkpoint_interval_s=999.0,   # long: due once, then not again
+            optimize_interval_s=999.0,
+            tick_interval_s=0.05,          # many ticks within the window
+        )
+        m._backend = AlwaysFailsBackend()
+        m.register('test', '/dev/null')
+        m.start()
+        try:
+            # ~16 ticks elapse here. Pre-fix this would fire ~16 times
+            # (every tick, since failure left it 'due'). Post-fix it fires
+            # exactly once — the attempt stamp pushes the next run 999s out.
+            time.sleep(0.8)
+        finally:
+            m.stop()
+
+        self.assertEqual(fired['count'], 1,
+                         "Failed op should fire once then wait the full "
+                         "interval, not hot-retry every tick. Got %d fires."
+                         % fired['count'])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -45,6 +45,7 @@ class BackendOps(Protocol):
 # Default cadences (seconds). Override per-DB via register() if needed.
 _DEFAULT_CHECKPOINT_INTERVAL_S = 5 * 60
 _DEFAULT_OPTIMIZE_INTERVAL_S = 30 * 60
+_DEFAULT_BACKUP_INTERVAL_S = 24 * 60 * 60   # daily rolling snapshot
 # Worker wakes every ~30s and checks "is anything due". Short enough to
 # stay responsive to shutdown; long enough that the scheduler is cheap.
 _TICK_INTERVAL_S = 30.0
@@ -82,19 +83,38 @@ class DBMaintenance:
         # Resolve backend lazily so unit tests can monkey-patch.
         self._backend = None
 
-    def register(self, name: str, db_path: str) -> None:
+    def register(self, name: str, db_path: str,
+                 backup_dir: Optional[str] = None,
+                 backup_interval_s: Optional[float] = None,
+                 backup_keep: Optional[Dict[str, int]] = None) -> None:
         """Add a database to the maintenance schedule.
 
         `name` is for log readability ('brain', 'brain_logs'). `db_path`
         is what the backend operates on. Subsequent registers with the
-        same name replace the entry (idempotent boot)."""
+        same name replace the entry (idempotent boot).
+
+        When `backup_dir` is given, the DB is also snapshotted (compressed,
+        GFS-pruned) every `backup_interval_s` into that dir. `backup_keep`
+        is `{'daily': N, 'weekly': N, 'monthly': N}` (defaults applied by
+        db_backup). The backup clock is seeded from the newest existing
+        snapshot so a daemon restart doesn't re-snapshot a just-backed-up
+        DB — no persisted scheduler state needed."""
         self._registered = [r for r in self._registered if r['name'] != name]
-        self._registered.append({
+        entry: Dict = {
             'name': name,
             'db_path': db_path,
             'last_checkpoint_at': 0.0,
             'last_optimize_at': 0.0,
-        })
+        }
+        if backup_dir:
+            from . import db_backup
+            entry['backup_dir'] = backup_dir
+            entry['backup_interval_s'] = backup_interval_s or _DEFAULT_BACKUP_INTERVAL_S
+            entry['backup_keep'] = backup_keep or dict(db_backup._DEFAULT_KEEP)
+            age = db_backup.seconds_since_last_backup(db_path, backup_dir)
+            entry['last_backup_at'] = (
+                time.time() - age) if age != float('inf') else 0.0
+        self._registered.append(entry)
 
     def start(self) -> None:
         if self._running:
@@ -138,19 +158,50 @@ class DBMaintenance:
                 self._run_op(backend, entry, 'checkpoint', now)
             if now - entry['last_optimize_at'] >= self._optimize_interval_s:
                 self._run_op(backend, entry, 'optimize', now)
+            if (entry.get('backup_dir') and
+                    now - entry.get('last_backup_at', 0.0) >= entry['backup_interval_s']):
+                self._run_backup(entry, now)
 
     def _run_op(self, backend, entry: Dict, op_name: str, now: float) -> None:
+        # Stamp the attempt time BEFORE running, not on success. A failed
+        # op (e.g. a contended `database is locked`) must reschedule to the
+        # next interval — not stay "due" and retry every tick. Stamping on
+        # success turned a transient lock into a hot retry loop that ran an
+        # 80s lock-hammer back-to-back for ~20 min, starving foreground
+        # recall and tripping DAEMON_DOWN. See git log for the incident.
+        entry['last_%s_at' % op_name] = now
         t0 = time.time()
         try:
             result = getattr(backend, op_name)(entry['db_path'])
             took_ms = int((time.time() - t0) * 1000)
-            entry['last_%s_at' % op_name] = now
             self._log('%s %s ok in %dms: %s' % (
                 op_name, entry['name'], took_ms, _short(result)))
         except Exception as e:
             took_ms = int((time.time() - t0) * 1000)
             self._report_error(
                 'db_maintenance_%s' % op_name, e,
+                'db=%s took=%dms' % (entry['name'], took_ms))
+
+    def _run_backup(self, entry: Dict, now: float) -> None:
+        # Attempt-stamp first, same discipline as _run_op: a failed backup
+        # waits the full interval rather than re-snapshotting every tick.
+        entry['last_backup_at'] = now
+        t0 = time.time()
+        try:
+            from . import db_backup
+            keep = entry['backup_keep']
+            result = db_backup.backup_database(
+                entry['db_path'], entry['backup_dir'],
+                keep_daily=keep.get('daily', 7),
+                keep_weekly=keep.get('weekly', 4),
+                keep_monthly=keep.get('monthly', 3))
+            took_ms = int((time.time() - t0) * 1000)
+            self._log('backup %s ok in %dms: %s' % (
+                entry['name'], took_ms, _short(result)))
+        except Exception as e:
+            took_ms = int((time.time() - t0) * 1000)
+            self._report_error(
+                'db_maintenance_backup', e,
                 'db=%s took=%dms' % (entry['name'], took_ms))
 
     def _report_error(self, origin: str, e: Exception, context: str) -> None:

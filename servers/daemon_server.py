@@ -249,20 +249,31 @@ class BrainDaemon:
             self._memory_watchdog = None
 
         # DB maintenance — WAL checkpoint every 5 min, PRAGMA optimize
-        # every 30 min, on brain.db and brain_logs.db. Lives in its own
-        # backend-agnostic scheduler (servers/db_maintenance.py) that
-        # calls into db_backends.current for SQLite-specific work; if
-        # we ever migrate off SQLite, only the backend module changes.
-        # Always-on (no config gate) — periodic checkpointing caps WAL
-        # growth, which directly reduces writer-slot wait time. Failures
-        # caught + logged via brain._log_error; loop never dies.
+        # every 30 min, plus a daily compressed rolling backup, on
+        # brain.db and brain_logs.db. Lives in its own backend-agnostic
+        # scheduler (servers/db_maintenance.py) that calls into
+        # db_backends.current for SQLite-specific work; if we ever migrate
+        # off SQLite, only the backend module changes. Always-on (no
+        # config gate) — periodic checkpointing caps WAL growth, which
+        # directly reduces writer-slot wait time. Failures caught + logged
+        # via brain._log_error; loop never dies.
+        #
+        # Auto-backups land in a `backups/` subdir beside the DBs (keeps
+        # the rolling snapshots out of the cluttered top-level dir) under
+        # GFS retention (7 daily + 4 weekly + 3 monthly per DB). These are
+        # distinct from the named pre-destructive-op `.bak` files a human
+        # makes by hand — this scheduler only manages its own snapshots.
         try:
             from .db_maintenance import DBMaintenance
+            backup_dir = os.path.join(
+                os.path.dirname(self.brain.db_path), 'backups')
             self._db_maintenance = DBMaintenance(
                 log_fn=self._log,
                 log_error_fn=getattr(self.brain, '_log_error', None))
-            self._db_maintenance.register('brain', self.brain.db_path)
-            self._db_maintenance.register('brain_logs', self.brain.logs_db_path)
+            self._db_maintenance.register(
+                'brain', self.brain.db_path, backup_dir=backup_dir)
+            self._db_maintenance.register(
+                'brain_logs', self.brain.logs_db_path, backup_dir=backup_dir)
             self._db_maintenance.start()
         except Exception as _dm_e:
             # Scheduler must never block daemon startup.
