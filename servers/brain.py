@@ -907,17 +907,23 @@ class Brain(
                 pass
             return {}
 
-    def scribe_due(self, now: Optional[float] = None) -> Optional[Dict[str, Any]]:
+    def scribe_due(self, now: Optional[float] = None,
+                   skip_sessions=None) -> Optional[Dict[str, Any]]:
         """Decide whether any active session's S1 Scribe is due to encode — the
         poll-driven cadence trigger (mid-session ENCODE_EVERY turns, or the idle
         tail). The daemon polls this every few seconds; it owns spawning + the
-        single-flight lock, this method only DECIDES.
+        single-flight lock + the per-session retry cooldown, this method only
+        DECIDES.
 
         Reads only higher session functions — `present_streams` (who's awake +
         each one's last-turn time) and `turns_since_last_encode` (per-session
         cadence count) — never SQL/DAL directly. Wall-clock is correct here
         (presence + idle are real-time "is the operator away", like
         run_maintenance_if_due), so it's exempt from the conversation_now rule.
+
+        `skip_sessions` (set) — sessions the daemon is cooling down after a recent
+        attempt; excluded from selection so a session whose encode keeps failing
+        (and thus stays "due") can't monopolize the poll and starve the others.
 
         Returns the MOST-OVERDUE due session's {'session_id', 'counter'} so a
         multi-session backlog drains one-per-poll (most-behind first); None when
@@ -931,12 +937,13 @@ class Brain(
         from .scales.s0.conversation import turns_since_last_encode
 
         now = now if now is not None else _time.time()
+        skip = skip_sessions or ()
         best = None  # (turns, session_id, counter) — highest turns = most overdue
 
         for stream in self.present_streams(
                 window_min=SCRIBE_CANDIDATE_WINDOW_MIN, limit=50):
             sid = stream.get('session_id', '')
-            if not sid:
+            if not sid or sid in skip:
                 continue
             turns = turns_since_last_encode(self, sid)
             if turns <= 0:

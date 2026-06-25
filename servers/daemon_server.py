@@ -78,6 +78,15 @@ class BrainDaemon:
         # poll-driven (brain.scribe_due decides; this lock serializes; the encode
         # thread releases it). threading.Lock (not RLock) → cross-thread release.
         self._encode_lock = threading.Lock()
+        # Per-session Scribe retry cooldown. A failed/skipped encode never resets
+        # the cadence, so the session stays "due" — without this the ~5s poll
+        # would re-fire it every tick. {session_id: last-attempt epoch}; a
+        # successful encode pops its entry. _scribe_failures counts re-fires that
+        # never advanced (wedged encode) → loud escalation. GIL makes the dict
+        # set/pop atomic; the cooldown is advisory, so the poll-thread rebuild vs
+        # encode-thread pop race is benign.
+        self._scribe_attempts = {}
+        self._scribe_failures = {}
         self._restart_count = 0
         # Only the instance that actually binds the port writes the PID file —
         # so a duplicate that defers (DuplicateDaemonError) never claims it, and
@@ -513,7 +522,13 @@ class BrainDaemon:
                 # prevents poll-task pile-up if the pool is momentarily saturated.
                 if not self._scribe_poll_running:
                     self._scribe_poll_running = True
-                    self._pool.submit(self._run_scribe_poll)
+                    try:
+                        self._pool.submit(self._run_scribe_poll)
+                    except Exception:
+                        # submit can raise if the pool is shutting down/saturated;
+                        # clear the flag so the next tick retries instead of
+                        # wedging the reactor permanently.
+                        self._scribe_poll_running = False
 
                 # Shutdown after long idle
                 if IDLE_TIMEOUT_SECONDS > 0 and idle > IDLE_TIMEOUT_SECONDS:
@@ -991,26 +1006,68 @@ class BrainDaemon:
         runs on its own thread (run_unit_in_background), so this poll returns
         fast; the encode thread releases _encode_lock when it completes.
         """
+        import time as _time
+        from servers.scales.s1.encode_contract import (
+            SCRIBE_RETRY_COOLDOWN_SECONDS, SCRIBE_MAX_FAILED_RETRIES,
+            SCRIBE_CANDIDATE_WINDOW_MIN)
         spawned = False
         acquired = False
         try:
             if not self._encode_lock.acquire(blocking=False):
                 return  # an encode is already running
             acquired = True
-            due = self.brain.scribe_due()
+            now = _time.time()
+
+            # Prune attempts older than the candidate window — those sessions
+            # have aged out of consideration anyway (keeps the dicts bounded).
+            horizon = SCRIBE_CANDIDATE_WINDOW_MIN * 60
+            self._scribe_attempts = {s: t for s, t in self._scribe_attempts.items()
+                                     if now - t < horizon}
+            # Cooling = attempted within the cooldown → exclude from selection so
+            # a failing (still-"due") session can't monopolize the poll.
+            cooling = {s for s, t in self._scribe_attempts.items()
+                       if now - t < SCRIBE_RETRY_COOLDOWN_SECONDS}
+
+            due = self.brain.scribe_due(now=now, skip_sessions=cooling)
             if not due:
                 return
+            sid = due['session_id']
+
+            # Re-firing a session we already attempted (past its cooldown but
+            # STILL due) means the prior attempt never advanced the cadence — the
+            # encode is crashing or skipping. Count + escalate loudly: the
+            # starvation alarm can't catch this (turns is frozen at a fixed value,
+            # so its `% ENCODE_EVERY` rate-limit never trips).
+            if sid in self._scribe_attempts:
+                fails = self._scribe_failures.get(sid, 0) + 1
+                self._scribe_failures[sid] = fails
+                if fails >= SCRIBE_MAX_FAILED_RETRIES:
+                    try:
+                        self.brain._log_error(
+                            'scribe_repeated_failure',
+                            RuntimeError('session %s re-fired %d times without '
+                                         'advancing the encode cadence — encode '
+                                         'is crashing or skipping' % (sid[:8], fails)),
+                            'check s1e_* errors; turns_since_last_encode is stuck')
+                    except Exception:
+                        pass
+            self._scribe_attempts[sid] = now
+
             from servers.scales.s1.scribe import S1Scribe
             from servers.scales.runner import run_unit_in_background
 
-            def _count_encode(write_actions, _b=self.brain):
-                # Count toward the S2 activity gate only when material was
-                # written — S2 is meaningful only post-encoding.
+            def _count_encode(write_actions, _sid=sid):
+                # A real encode (wrote material) advances the S2 gate AND clears
+                # this session's cooldown/failure state (the cadence reset already
+                # prevents an immediate re-fire — clearing just avoids a stale
+                # cooldown). A 0-write outcome leaves the cooldown to bound a
+                # skip loop.
                 if write_actions > 0:
-                    _b.activity.record_encode_run()
+                    self.brain.activity.record_encode_run()
+                    self._scribe_attempts.pop(_sid, None)
+                    self._scribe_failures.pop(_sid, None)
 
-            scribe = S1Scribe(self.brain, session_id=due['session_id'],
-                              counter=due['counter'])
+            scribe = S1Scribe(self.brain, session_id=sid, counter=due['counter'])
             run_unit_in_background(scribe, name='s1e', lock=self._encode_lock,
                                    on_complete=_count_encode)
             spawned = True  # lock ownership transferred to the encode thread
@@ -1021,12 +1078,19 @@ class BrainDaemon:
                 pass
         finally:
             # Release the encode lock only if we acquired it but did NOT hand it
-            # to an encode thread (nothing due, or an error before spawn).
+            # to an encode thread (nothing due, or an error before spawn). A
+            # failed release means the lock state is corrupt and the encoder is
+            # jammed — log loud, don't swallow.
             if acquired and not spawned:
                 try:
                     self._encode_lock.release()
-                except Exception:
-                    pass
+                except Exception as _re:
+                    try:
+                        self.brain._log_error(
+                            'scribe_lock_release_failed', _re,
+                            'encode lock release failed — encoder may be jammed')
+                    except Exception:
+                        pass
             self._scribe_poll_running = False
 
     def _handle_signal(self, signum, frame):

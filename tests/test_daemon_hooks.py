@@ -171,8 +171,8 @@ class TestTurnClassification(BrainTestBase):
     """post_response_common classifies each stop: conversational (a real prompt
     ran recall this stop → last_recall_stop == stop_counter) vs heartbeat (a
     /watch wakeup re-arm, recall skipped client-side). It advances stop_counter
-    (the per-stop SEQUENCE → unique chain IDs), sets last_turn_conversational
-    (the Stop gate's heartbeat-skip), and writes the right s0 trace type. The
+    (the per-stop SEQUENCE → unique chain IDs), records last_turn_conversational
+    (the classification), and writes the right s0 trace type. The
     Scribe's CADENCE is no longer a counter here — it's derived live from the
     user_message traces (see test_turns_since_last_encode_trace_pull); a heartbeat
     writes a `heartbeat` trace, not a user_message, so it can't drag the cadence.
@@ -199,7 +199,7 @@ class TestTurnClassification(BrainTestBase):
         ctx.last_recall_stop = ctx.stop_counter   # simulate hook_recall having run this stop
         post_response_common(self.brain, sid, "a real operator prompt", "a response")
         self.assertEqual(ctx.stop_counter, seq_before + 1)           # sequence advances
-        self.assertTrue(ctx.last_turn_conversational)                # gate will treat as a turn
+        self.assertTrue(ctx.last_turn_conversational)                # classified conversational
         refs = self._s0_refs(sid)
         self.assertIn('assistant_message', refs)
         self.assertNotIn('heartbeat', refs)
@@ -210,7 +210,7 @@ class TestTurnClassification(BrainTestBase):
         seq_before = ctx.stop_counter
         post_response_common(self.brain, sid, "/watch skill body", "(watching — inbox empty)")
         self.assertEqual(ctx.stop_counter, seq_before + 1)           # sequence advances → unique chain IDs
-        self.assertFalse(ctx.last_turn_conversational)               # gate skips it
+        self.assertFalse(ctx.last_turn_conversational)               # classified heartbeat
         refs = self._s0_refs(sid)
         self.assertIn('heartbeat', refs)
         self.assertNotIn('user_message', refs)                       # no user_message → cadence untouched
@@ -250,7 +250,7 @@ class TestScribeReactor(unittest.TestCase):
     no DB, no SQL.
     """
 
-    def _due(self, streams, turns_map, now=1_000_000.0):
+    def _due(self, streams, turns_map, now=1_000_000.0, skip=None):
         """Brain.scribe_due bound to a fake brain whose two higher session
         functions are stubbed (present_streams + turns_since_last_encode)."""
         import types
@@ -269,7 +269,104 @@ class TestScribeReactor(unittest.TestCase):
 
         with patch('servers.scales.s0.conversation.turns_since_last_encode',
                    side_effect=lambda brain, sid: turns_map.get(sid, 0)):
-            return Brain.scribe_due(FakeBrain(), now=now)
+            return Brain.scribe_due(FakeBrain(), now=now, skip_sessions=skip)
+
+    def _poll(self, scribe_due_fn, attempts=None, failures=None):
+        """Drive BrainDaemon._run_scribe_poll against a fake daemon (scribe_due
+        stubbed, run_unit_in_background patched to release the lock = instant
+        completion). Returns a dict with the spawned units, the captured
+        on_complete, logged error sources, and the fake daemon for inspection."""
+        import threading
+        import types
+        from unittest.mock import patch
+        from servers.daemon_server import BrainDaemon
+        cap = {'spawned': [], 'logged': [], 'on_complete': None, 'encode_runs': 0}
+
+        def fake_run(unit, name, lock, on_complete=None):
+            cap['spawned'].append(unit)
+            cap['on_complete'] = on_complete
+            lock.release()   # mimic the encode thread's finally
+
+        def _record_encode():
+            cap['encode_runs'] += 1
+
+        fake = types.SimpleNamespace(
+            _encode_lock=threading.Lock(),
+            _scribe_poll_running=True,
+            _scribe_attempts=dict(attempts or {}),
+            _scribe_failures=dict(failures or {}),
+            brain=types.SimpleNamespace(
+                scribe_due=scribe_due_fn,
+                _log_error=lambda *a, **k: cap['logged'].append(a[0] if a else None),
+                activity=types.SimpleNamespace(record_encode_run=_record_encode)),
+        )
+        with patch('servers.scales.runner.run_unit_in_background',
+                   side_effect=fake_run):
+            BrainDaemon._run_scribe_poll(fake)
+        cap['fake'] = fake
+        return cap
+
+    def test_scribe_due_skips_cooldown_sessions(self):
+        # par-B is more overdue but cooling down → par-A is picked instead (a
+        # failing/cooling session can't monopolize the poll).
+        from servers.scales.s1.encode_contract import ENCODE_EVERY
+        now = 1_000_000.0
+        due = self._due(
+            [{'session_id': 'par-A', 'updated_at': self._iso(now, 10)},
+             {'session_id': 'par-B', 'updated_at': self._iso(now, 10)}],
+            {'par-A': ENCODE_EVERY, 'par-B': ENCODE_EVERY + 4}, now=now,
+            skip={'par-B'})
+        self.assertEqual(due['session_id'], 'par-A')
+
+    def test_poll_records_attempt_and_first_poll_has_empty_cooldown(self):
+        seen = {}
+
+        def sd(now=None, skip_sessions=None):
+            seen['skip'] = set(skip_sessions or ())
+            return {'session_id': 'sX', 'counter': 1}
+        cap = self._poll(sd)
+        self.assertEqual(seen['skip'], set())               # nothing cooling yet
+        self.assertIn('sX', cap['fake']._scribe_attempts)   # attempt recorded
+        self.assertEqual([u.session_id for u in cap['spawned']], ['sX'])
+
+    def test_poll_cools_down_a_recently_attempted_session(self):
+        import time
+        # sX attempted just now → must be in the skip set scribe_due receives.
+        seen = {}
+
+        def sd(now=None, skip_sessions=None):
+            seen['skip'] = set(skip_sessions or ())
+            return None
+        self._poll(sd, attempts={'sX': time.time()})
+        self.assertIn('sX', seen['skip'])
+
+    def test_poll_escalates_repeated_failure(self):
+        import time
+        from servers.scales.s1.encode_contract import (
+            SCRIBE_RETRY_COOLDOWN_SECONDS, SCRIBE_MAX_FAILED_RETRIES)
+        # sX attempted past its cooldown and STILL due (cadence never advanced)
+        # → a re-fire that didn't progress → failures climbs; at threshold, loud.
+        old = time.time() - SCRIBE_RETRY_COOLDOWN_SECONDS - 10
+
+        def sd(now=None, skip_sessions=None):
+            return {'session_id': 'sX', 'counter': 1}   # not cooling → re-fired
+        cap = self._poll(sd, attempts={'sX': old},
+                         failures={'sX': SCRIBE_MAX_FAILED_RETRIES - 1})
+        self.assertEqual(cap['fake']._scribe_failures['sX'],
+                         SCRIBE_MAX_FAILED_RETRIES)
+        self.assertIn('scribe_repeated_failure', cap['logged'])
+
+    def test_poll_clears_cooldown_on_successful_encode(self):
+        # on_complete(write_actions>0) clears the session's cooldown + failure
+        # state (and counts the encode toward the S2 gate).
+        def sd(now=None, skip_sessions=None):
+            return {'session_id': 'sX', 'counter': 1}
+        cap = self._poll(sd, failures={'sX': 1})
+        self.assertIn('sX', cap['fake']._scribe_attempts)   # recorded on fire
+        cap['on_complete'](3)                                # encode wrote material
+        self.assertNotIn('sX', cap['fake']._scribe_attempts)
+        self.assertNotIn('sX', cap['fake']._scribe_failures)
+        self.assertEqual(cap['encode_runs'], 1)
 
     @staticmethod
     def _iso(now, ago_s):

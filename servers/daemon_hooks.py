@@ -574,8 +574,11 @@ def post_response_common(brain, session_id, user_message, assistant_response):
     # conversational iff a real UserPromptSubmit ran hook_recall THIS stop (which
     # sets last_recall_stop). A /watch wakeup skips recall client-side, so its
     # stop never matches → heartbeat. Heartbeats are recorded for observability
-    # but never enter the conversation stream and never tick the Scribe counter.
-    # last_turn_conversational is read by the Stop hook's encoder gate below.
+    # but never enter the conversation stream and never tick the Scribe cadence.
+    # last_turn_conversational records the classification on the ctx (diagnostic
+    # / potential consumers). The Scribe cadence itself no longer reads it — the
+    # poll-driven reactor derives the count from traces (turns_since_last_encode
+    # counts s0 user_message turns), which heartbeats never write.
     is_conversational = (ctx.last_recall_stop == ctx.stop_counter)
     ctx.last_turn_conversational = is_conversational
 
@@ -620,8 +623,9 @@ def post_response_common(brain, session_id, user_message, assistant_response):
     # (incl. heartbeats) so S0/S1 chain IDs stay unique. The integration CADENCE
     # the Scribe gates on is NOT a counter here — it's derived live from traces
     # (turns_since_last_encode counts s0 user_message turns), so there's nothing
-    # to tick on this path. last_turn_conversational (set above) is what the Stop
-    # gate uses to skip heartbeats. See trace_contract S0 TURN CLASSIFICATION.
+    # to tick on this path. Heartbeats are excluded structurally: they write no
+    # user_message trace, so they can't advance that count. See trace_contract
+    # S0 TURN CLASSIFICATION.
     ctx.increment_stop()
     return ctx
 

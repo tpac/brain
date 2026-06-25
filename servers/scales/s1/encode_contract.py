@@ -47,6 +47,22 @@ SCRIBE_TAIL_MIN_TURNS = 2
 # would age out of the candidate set before the tail could fire. +30 min margin.
 SCRIBE_CANDIDATE_WINDOW_MIN = SCRIBE_TAIL_IDLE_SECONDS // 60 + 30
 
+# The reactor re-evaluates every few seconds. A session whose encode FAILS or
+# SKIPS never advances the cadence, so it stays "due" — without a guard the poll
+# would re-fire it every tick (a tight machine-paced retry the old human-paced
+# Stop gate never had). The reactor records each attempt and won't re-fire the
+# same session within this cooldown — bounding a failing session to one retry per
+# interval, and giving the poll the cheap per-session gate it otherwise lacks. A
+# SUCCESSFUL encode clears the entry immediately (the cadence reset already
+# prevents a re-fire), so healthy sessions are never throttled.
+SCRIBE_RETRY_COOLDOWN_SECONDS = 120
+
+# Consecutive re-fires of the same session WITHOUT the cadence advancing means
+# the encode is wedged (crashing before its encoding_prompt trace, or skipping).
+# Escalate loudly at this count — the starvation alarm can't see this case (turns
+# is frozen at a fixed value, so its `% ENCODE_EVERY` rate-limit never trips).
+SCRIBE_MAX_FAILED_RETRIES = 3
+
 # ═══════════════════════════════════════════════════════════════
 # ENCODING AGENT CONFIG
 # ═══════════════════════════════════════════════════════════════

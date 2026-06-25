@@ -49,7 +49,15 @@ class S1Scribe(IntegrationUnit):
     def chain_id(self):
         """S1's run chain — ``s1e-{session_short}-{stop}`` — from the single
         source (SessionContext.s1e_chain), NOT S2's time-based format. Cached
-        per run like the base, so every write in this run shares one chain."""
+        per run like the base, so every write in this run shares one chain.
+
+        This format ends in ``-{stop}`` (a number), not ``-{NAME}`` like the base
+        chain. That's fine: those base couplings — ``_last_run_timestamp``'s
+        ``LIKE '%-{NAME}'`` and the dashboard slug parser — only fire for S2 units
+        run by the coordinator's ``_has_new_traces`` gating. S1Scribe is triggered
+        by ``brain.scribe_due`` (the poll), never the coordinator, so it doesn't
+        flow through either consumer; its cadence is the trace-derived
+        ``turns_since_last_encode``."""
         if not getattr(self, '_chain_id', None):
             from servers.session_context import SessionContext
             self._chain_id = SessionContext(
