@@ -52,9 +52,13 @@ SCRIBE_TAIL_MIN_TURNS = 2
 SCRIBE_ACTIVE_WINDOW_SECONDS = 600
 
 # The reactor only sees sessions present within this wall-clock window, so it
-# must outrun the tail threshold — otherwise a session that just crossed 1h idle
-# would age out of the candidate set before the tail could fire. +30 min margin.
-SCRIBE_CANDIDATE_WINDOW_MIN = SCRIBE_TAIL_IDLE_SECONDS // 60 + 30
+# must outrun the tail threshold (1h) — otherwise a session that crossed 1h idle
+# would age out before the tail could fire. Set to 5h so a tail survives a normal
+# same-day work pause (lunch, a meeting, a short sleep) + a daemon restart, not
+# just a bare margin. NOT longer: we stamp writes at now() (transaction-time, not
+# the conversation's time), so resurrecting a genuinely-stale conversation would
+# date its nodes "today" — the unbounded catch-up is bi-temporal work (deferred).
+SCRIBE_CANDIDATE_WINDOW_MIN = 300   # 5 hours
 
 # The reactor re-evaluates every few seconds. A session whose encode FAILS or
 # SKIPS never advances the cadence, so it stays "due" — without a guard the poll
