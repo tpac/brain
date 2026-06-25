@@ -403,12 +403,12 @@ Don't gate a deploy-restart with the maintenance lock — it makes the daemon sk
 
 ### Recovering a hung daemon
 
-A hung-but-alive daemon (e.g. post host-suspend, where pre-sleep Anthropic sockets can be left half-open and block worker threads forever) is recovered **reactively**, never by pre-emptive self-kill:
+A hung-but-alive daemon (e.g. post host-suspend, where pre-sleep Anthropic sockets can be left half-open and block worker threads) is recovered reactively:
 - `daemon_client.ensure_daemon()` pings at session start; an unresponsive daemon is force-restarted via `launchctl kickstart -k` (kills the corpse, launchd respawns).
 - The MCP health monitor (`brain_mcp._health_monitor`) pings every 2s during a session and calls `recover_daemon()` (same kickstart) after ~20s of failure.
 - launchd `KeepAlive` respawns if the process actually exits.
 
-There is **no `BRAIN_DEV_MODE` and no wall-clock suspend detector** — the old detector SIGTERM'd the daemon on every laptop wake (healthy or not), and the reactive nets already cover the genuinely-hung case. To pause auto-recovery while debugging a live daemon (e.g. under `py-spy` / `lldb`), use the maintenance lock (`touch /tmp/brain-maintenance-{uid}.lock`), which `ensure_daemon` already honors.
+To pause auto-recovery while debugging a live daemon (e.g. under `py-spy` / `lldb`), use the maintenance lock (`touch /tmp/brain-maintenance-{uid}.lock`), which `ensure_daemon` honors.
 
 ### Test Integrity
 

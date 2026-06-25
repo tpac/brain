@@ -873,14 +873,10 @@ class BrainDaemon:
     def _autosave_loop(self):
         """Periodically save brain if dirty + flush SessionContexts + health check + thread monitor.
 
-        A hung daemon (e.g. post host-suspend, where pre-sleep Anthropic
-        sockets can be left half-open and block worker threads forever) is
-        recovered reactively by the ping-based nets — `ensure_daemon` at
-        session start and the MCP health monitor during a session — both of
-        which force-restart via `launchctl kickstart -k`. This loop no
-        longer second-guesses wall-clock jumps to pre-emptively SIGTERM:
-        that fired on every laptop wake (healthy or not) and the recovery
-        path already covers the genuinely-hung case.
+        Recovering a hung daemon is not this loop's job — that's reactive,
+        via the ping-based nets (`ensure_daemon` at session start, the MCP
+        health monitor during a session), both force-restarting through
+        `launchctl kickstart -k`.
         """
         while self.running:
             time.sleep(AUTOSAVE_INTERVAL_SECONDS)
