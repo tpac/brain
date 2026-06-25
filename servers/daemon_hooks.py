@@ -687,23 +687,26 @@ def hook_post_response_track(brain, args, graph_changes):
                     print("[brain-hooks] Encoding agent skipped — previous run still active", flush=True)
                 else:
                     acquired_for_spawn = True
-                    from .scales.runner import run_in_background
-                    from .scales.s1.encode import run_encoding
+                    from .scales.runner import run_unit_in_background
+                    from .scales.s1.scribe import S1Scribe
                     # Count the encode toward the S2 activity gate on COMPLETION
                     # (not dispatch) and only when it actually wrote material —
                     # S2 is meaningful only post-encoding, and a dispatched-then-
                     # failed/empty run produces nothing to consolidate. The
-                    # callback closes over THIS brain (the daemon's, which the
-                    # gate reads) — the encoder thread runs on a separate
-                    # read_brain, so it can't record there. Same process, so the
-                    # closure is valid across the thread.
+                    # callback closes over THIS brain (the daemon's); the encode
+                    # now runs in-process on the SAME brain, so this is the brain
+                    # the gate reads.
                     def _count_encode(write_actions, _b=brain):
                         if write_actions > 0:
                             _b.activity.record_encode_run()
-                    run_in_background(
-                        name='s1e', brain_db_path=brain.db_path,
-                        session_id=session_id, counter=counter,
-                        lock=_encoding_lock, run_fn=run_encoding,
+                    # In-process Scribe: runs on the daemon's own brain (writes
+                    # via _make_encoder_dispatch under write_lock — so revises
+                    # carry the s1e run chain — and embed via the async queue).
+                    # No throwaway Brain copy, no TCP. The background thread keeps
+                    # the Stop hook non-blocking.
+                    scribe = S1Scribe(brain, session_id=session_id, counter=counter)
+                    run_unit_in_background(
+                        scribe, name='s1e', lock=_encoding_lock,
                         on_complete=_count_encode)
                     # Thread.start() returned → ownership transferred. Thread's
                     # finally is now responsible for the release.

@@ -76,6 +76,30 @@ class TestIntegrationUnitContract(unittest.TestCase):
         unit = S3Unit(brain=None)
         self.assertTrue(unit.chain_id().startswith('s3-'))
 
+    def test_encoder_dispatch_threads_run_chain_into_writes(self):
+        """_make_encoder_dispatch stamps the unit's run chain on writes — so
+        their revise/edge traces join the run's chain instead of the date-
+        fallback phantom ("S2 revise") unit. brain_batch with empty operations
+        returns before touching the brain, so the stamped args are observable
+        with a FakeBrain that only carries a write_lock."""
+        import threading
+        from servers.scales.s2.base import IntegrationUnit
+
+        class TestUnit(IntegrationUnit):
+            NAME = 'test_op'
+            SCALE = 's2'
+            ENCODING_SOURCE = 's2:test_op'
+
+        class FakeBrain:
+            write_lock = threading.RLock()
+
+        unit = TestUnit(brain=FakeBrain())
+        dispatch = unit._make_encoder_dispatch()
+        args = {'operations': []}
+        dispatch('brain_batch', args)
+        self.assertEqual(args.get('chain_id'), unit.chain_id())
+        self.assertEqual(args.get('encoding_source'), 's2:test_op')
+
 
 class TestCommunityDetectionContract(unittest.TestCase):
     """Test CommunityDetection declares its O/K sources."""

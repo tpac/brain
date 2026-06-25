@@ -30,6 +30,38 @@ from datetime import datetime, timezone, timedelta
 # USAGE_FIELDS / read_usage: the canonical token-telemetry contract shared with
 # run_llm_loop, so _call_llm and _sum_telemetry don't re-derive it.
 from ..runner import ANTHROPIC_CLIENT_TIMEOUT, USAGE_FIELDS, read_usage  # noqa: F401 — re-export for callers
+from ..dispatch import ATTRIBUTED_WRITE_COMMANDS
+
+
+# Writes whose handlers emit chain-bearing traces (node_revised /
+# edge_relation_revised). They must carry the unit's run chain_id so those
+# traces join the run's chain instead of dispatch_write's date-based
+# '{scale}-{date}-revise' fallback — the phantom "S2 revise" / "S1 revise" unit.
+# Derived from the attributed writes + revise_edge (one source, so a new
+# attributed write becomes chain-aware for free — the house pattern).
+CHAIN_AWARE_WRITES = ATTRIBUTED_WRITE_COMMANDS | {'revise_edge'}
+
+
+def apply_encoder_attribution(cmd, cmd_args, *, encoding_source, run_chain_id):
+    """Stamp scale-agent attribution onto an outgoing write's args — the single
+    chokepoint both facts flow through:
+
+    - ``encoding_source`` on attributed writes (who minted the node/edge),
+    - ``run_chain_id`` on chain-bearing writes (which run's chain its trace
+      joins).
+
+    ``setdefault``, so an explicitly-supplied value wins. Mutates ``cmd_args``
+    in place; a no-op on non-dict args and on reads (get_nodes / recall_batch
+    are in neither set — they carry no attribution, and a chain_id on a read is
+    meaningless). This is make_scale_dispatch's rule, now that the in-process
+    encoder dispatch is the one factory S1 Scribe and the S2 units share.
+    """
+    if not isinstance(cmd_args, dict):
+        return
+    if cmd in ATTRIBUTED_WRITE_COMMANDS:
+        cmd_args.setdefault('encoding_source', encoding_source)
+    if run_chain_id and cmd in CHAIN_AWARE_WRITES:
+        cmd_args.setdefault('chain_id', run_chain_id)
 
 
 # Per-batch retry policy for transient API errors. The SDK's built-in
@@ -280,10 +312,16 @@ class IntegrationUnit:
         brain = self.brain
         encoding_source = self.ENCODING_SOURCE
         unit_name = self.NAME
+        # The run chain — s1e-{session}-{stop} for the Scribe, s2-{ts}-{unit}
+        # for S2 units — stamped on writes so their revise/edge traces join THIS
+        # run instead of the date-fallback chain. Computed once; chain_id() is
+        # cached on the unit.
+        run_chain_id = self.chain_id()
 
         def dispatch(cmd, cmd_args):
-            if isinstance(cmd_args, dict):
-                cmd_args.setdefault('encoding_source', encoding_source)
+            apply_encoder_attribution(
+                cmd, cmd_args,
+                encoding_source=encoding_source, run_chain_id=run_chain_id)
 
             if cmd == 'brain_batch' and isinstance(cmd_args, dict):
                 if archive_guard is not None:

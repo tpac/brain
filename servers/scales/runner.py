@@ -152,6 +152,59 @@ def run_in_background(name, brain_db_path, session_id, counter, lock,
     threading.Thread(target=_thread_fn, daemon=True, name=name).start()
 
 
+def run_unit_in_background(unit, name, lock, on_complete=None):
+    """Run an in-process integration unit on a daemon worker thread.
+
+    The in-process counterpart to run_in_background: the unit runs on the
+    daemon's OWN brain and writes through its `_make_encoder_dispatch` (direct,
+    under brain.write_lock; vectors via the async embed_queue) — no throwaway
+    Brain copy, no TCP round-trip. Used by S1 Scribe now that it's converged
+    onto the in-process IntegrationUnit pattern the S2 units already use.
+
+    Owns only thread lifecycle: it runs unit.run(), invokes on_complete with the
+    run's write_actions (so callers can gate on "actually wrote material" — e.g.
+    the S2 activity counter), and releases `lock` in finally so a crash can't
+    wedge the encoder. Mirrors run_in_background's contract; the caller transfers
+    lock ownership to this thread exactly as before.
+    """
+    def _thread_fn():
+        t0 = time.time()
+        try:
+            print("[%s] STARTING" % name, flush=True)
+            result = unit.run()
+            elapsed_ms = int((time.time() - t0) * 1000)
+            actions = result.get('actions', 0) if isinstance(result, dict) else 0
+            print("[%s] DONE: %d actions in %dms" % (name, actions, elapsed_ms), flush=True)
+
+            if on_complete is not None:
+                try:
+                    write_actions = (result.get('write_actions', 0)
+                                     if isinstance(result, dict) else 0)
+                    on_complete(write_actions)
+                except Exception as _oce:
+                    try:
+                        unit.brain._log_error(
+                            'scale_runner_on_complete', _oce,
+                            '%s on_complete callback failed' % name)
+                    except Exception:
+                        pass
+        except Exception as e:
+            elapsed_ms = int((time.time() - t0) * 1000)
+            print("[%s] FAILED after %dms: %s" % (name, elapsed_ms, e), flush=True)
+            # Background thread crash — the encoder silently stopped producing.
+            # Surface it the same way run_in_background does.
+            try:
+                unit.brain._log_error(
+                    'scale_runner_thread_crash', e,
+                    '%s thread died after %dms' % (name, elapsed_ms))
+            except Exception:
+                pass
+        finally:
+            lock.release()
+
+    threading.Thread(target=_thread_fn, daemon=True, name=name).start()
+
+
 def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                  user_content, tools, dispatch_fn, log_fn=None,
                  user_preamble=None, get_nodes_config=None):

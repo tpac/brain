@@ -290,19 +290,24 @@ class TestEncodingGate(BrainTestBase):
         return out.get('output', '')
 
     def _patched_rib(self):
-        """Patch run_in_background to NOT spawn a Sonnet thread, but to honor
-        the real lock contract: ownership transfers to the 'thread', which
+        """Patch the in-process unit runner to NOT spawn a Sonnet thread, but to
+        honor the real lock contract: ownership transfers to the 'thread', which
         releases on completion. We simulate instant completion by releasing
         immediately — so the next turn sees a free lock, exactly as prod does
-        once an encode finishes."""
+        once an encode finishes.
+
+        S1 Scribe runs in-process now: the Stop-hook gate spawns an S1Scribe via
+        run_unit_in_background(unit, name, lock, on_complete) — NOT the legacy
+        run_in_background. Identity comes off the unit (unit.session_id /
+        unit.counter)."""
         from unittest.mock import patch
         self.spawned = []
 
-        def fake(name, brain_db_path, session_id, counter, lock,
-                 run_fn, on_complete=None):
-            self.spawned.append({'session_id': session_id, 'counter': counter})
+        def fake(unit, name, lock, on_complete=None):
+            self.spawned.append({'session_id': unit.session_id,
+                                 'counter': unit.counter})
             lock.release()   # mimic the background thread's finally
-        return patch('servers.scales.runner.run_in_background', side_effect=fake)
+        return patch('servers.scales.runner.run_unit_in_background', side_effect=fake)
 
     def test_fires_at_threshold_and_skips_below(self):
         from servers.scales.s1.encode_contract import ENCODE_EVERY
