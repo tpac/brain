@@ -145,9 +145,16 @@ export async function loadLogs() {
   const feed = document.getElementById('feed-logs');
   if (!feed) return;
   const src = document.getElementById('log-source').value;
+  const level = document.getElementById('log-level').value;
   const hours = document.getElementById('error-hours').value;
   let entries = await _fetchEntries();
   if (src && src !== 'all') entries = entries.filter(e => e.source === src);
+  // 'error' folds in critical (both error-class); 'warning' is exact.
+  if (level && level !== 'all') {
+    entries = entries.filter(e =>
+      level === 'error' ? (e.level === 'error' || e.level === 'critical')
+                        : e.level === level);
+  }
 
   _groups = _group(entries);
 
@@ -155,7 +162,7 @@ export async function loadLogs() {
   // the page scroll and the scroll position inside an expanded <pre> traceback
   // the operator is reading. Expand toggles re-render a single card directly
   // (not via loadLogs), so skipping here never strands them.
-  const fp = [src, hours, entries.length, _groups.length,
+  const fp = [src, level, hours, entries.length, _groups.length,
     _groups[0] && _groups[0].rep.timestamp].join('|');
   if (fp === _lastLogFp) return;
   _lastLogFp = fp;
@@ -165,9 +172,10 @@ export async function loadLogs() {
     ' · ' + _groups.length + ' type' + (_groups.length === 1 ? '' : 's');
 
   if (!_groups.length) {
-    const hours = document.getElementById('error-hours').value;
+    const qualifier = (level !== 'all' ? escapeHtml(level) + ' ' : '')
+      + (src !== 'all' ? escapeHtml(src) + ' ' : '');
     feed.innerHTML = '<div style="color:#5a8a5a;text-align:center;padding:40px;font-size:12px">'
-      + 'No ' + (src === 'all' ? '' : escapeHtml(src) + ' ') + 'logs in the last ' + escapeHtml(hours) + 'h. '
+      + 'No ' + qualifier + 'logs in the last ' + escapeHtml(hours) + 'h. '
       + 'The substrate is loud-by-default — a blank panel here means quiet, not broken.</div>';
     return;
   }
