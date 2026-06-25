@@ -646,7 +646,7 @@ def hook_post_response_track(brain, args, graph_changes):
     session_id = ctx.session_id
     encoding_status = ""
     # acquired_for_spawn tracks the window between lock.acquire() and the
-    # successful return of run_in_background (which transfers lock ownership
+    # successful return of run_unit_in_background (which transfers lock ownership
     # to the spawned thread, whose finally releases it). If we acquire but
     # then fail before the transfer (import error, Thread.start() raises),
     # the outer finally below recovers the lock — otherwise the lock would

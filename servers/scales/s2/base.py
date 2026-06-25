@@ -53,8 +53,8 @@ def apply_encoder_attribution(cmd, cmd_args, *, encoding_source, run_chain_id):
     ``setdefault``, so an explicitly-supplied value wins. Mutates ``cmd_args``
     in place; a no-op on non-dict args and on reads (get_nodes / recall_batch
     are in neither set — they carry no attribution, and a chain_id on a read is
-    meaningless). This is make_scale_dispatch's rule, now that the in-process
-    encoder dispatch is the one factory S1 Scribe and the S2 units share.
+    meaningless). The in-process encoder dispatch is the one factory S1 Scribe
+    and the S2 units share, so the attribution rule lives here, once.
     """
     if not isinstance(cmd_args, dict):
         return
@@ -148,12 +148,12 @@ class IntegrationUnit:
         """Initialize with brain instance and optional dispatch.
 
         Args:
-            brain: Brain instance. When running inline (idle hook),
-                   this is the daemon's brain with direct DB access.
-                   When running via run_in_background, this is a
-                   read-only copy.
-            dispatch_fn: Optional dispatch function for TCP writes.
-                         None when running inline with direct DB access.
+            brain: Brain instance — the daemon's brain. Units run in-process
+                   with direct DB access (writes serialize under
+                   brain.write_lock via _make_encoder_dispatch).
+            dispatch_fn: Optional pre-built dispatch. None (the norm) means
+                         build the in-process encoder dispatch in
+                         _make_encoder_dispatch.
         """
         self.brain = brain
         self.dispatch = dispatch_fn

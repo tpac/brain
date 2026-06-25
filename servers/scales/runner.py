@@ -1,21 +1,17 @@
-"""Scale runner infrastructure — background thread lifecycle for scale agents.
+"""Scale runner infrastructure — background-thread lifecycle + the LLM tool loop.
 
-Every scale agent (S1 encode, S2 session encode, future scales) follows
-the same lifecycle:
-1. Create read-only Brain instance
-2. Create dispatch function (reads local, writes via TCP)
-3. Call the scale's run function
-4. Write delta trace
-5. Release lock, close brain
-
-This module provides the generic lifecycle. Scale-specific logic lives
-in each scale's module (scales/s1/encode.py, scales/s2/encode.py, etc.).
+Scale agents (S1 Scribe, the S2 units, future scales) run IN-PROCESS on the
+daemon's brain on a background worker thread, so a slow encode never blocks the
+hook / coordinator that launched it. `run_unit_in_background` owns that thread
+lifecycle (run the unit, fire on_complete, release the lock); the unit writes
+through its own `_make_encoder_dispatch` under brain.write_lock. The generic
+`run_llm_loop` (the call → tool_use → dispatch loop with prompt caching) lives
+here too. Scale-specific logic lives in each scale's module (scales/s1/scribe.py
++ encode.py, scales/s2/*).
 """
 
 import time
 import threading
-
-from .dispatch import make_scale_dispatch
 
 
 # Hard upper bound on any single Anthropic SDK call (S1 surface, S1
@@ -64,108 +60,21 @@ def read_usage(response):
     }
 
 
-def run_in_background(name, brain_db_path, session_id, counter, lock,
-                      run_fn, encoding_source='encoder:sonnet', on_complete=None):
-    """Run a scale agent in a background thread.
-
-    Args:
-        name: Scale name for logging (e.g. 's1e', 's2')
-        brain_db_path: Path to brain.db
-        session_id: Session ID from SessionContext
-        counter: Stop counter value
-        lock: threading.Lock for mutual exclusion (one agent at a time)
-        run_fn: Scale's run function: run_fn(brain, dispatch_fn, counter, session_id) -> dict
-        encoding_source: encoding_source value for new nodes
-        on_complete: optional callback(write_actions: int) invoked AFTER a
-            successful run, in this background thread. The run executes against
-            a throwaway read_brain (writes go via TCP), so a caller that needs
-            to record on ITS OWN brain (e.g. S1E counting encode runs toward the
-            S2 gate on brain.activity) passes a closure over that brain here —
-            same process, so the closure is valid across the thread. Receives
-            write_actions so the caller can gate on "actually wrote material".
-            Never called if run_fn raised.
-
-    The delta trace is written by the scale's own run_fn via build_delta_metadata
-    (the unified shape). This wrapper does NOT write one — a previous version did,
-    producing a SECOND, brain_batch-blind `encoding_run` delta per cycle (the
-    structured node-lifecycle split was always empty). That legacy writer was
-    removed; the runner only owns thread lifecycle now.
-    """
-    def _thread_fn():
-        t0 = time.time()
-        read_brain = None
-        try:
-            print("[%s] STARTING (counter=%d)" % (name, counter), flush=True)
-            from servers.brain import Brain
-            # skip_embedder=True: background threads don't embed directly.
-            # Writes go through daemon TCP (single-writer rule) where the
-            # daemon's main thread handles embedding. Loading ONNX in a
-            # background thread causes inter-thread spinning on macOS.
-            read_brain = Brain(brain_db_path, skip_embedder=True)
-
-            dispatch = make_scale_dispatch(read_brain, encoding_source=encoding_source)
-
-            result = run_fn(read_brain, dispatch, counter, session_id)
-            elapsed_ms = int((time.time() - t0) * 1000)
-            actions = result.get('actions', 0) if isinstance(result, dict) else 0
-            print("[%s] DONE: %d actions in %dms" % (name, actions, elapsed_ms), flush=True)
-
-            # Completion hook — runs on the CALLER's brain (closure), not the
-            # throwaway read_brain. Gated on write_actions so it reflects real
-            # written material. Guarded so a callback error never crashes the
-            # thread or masks the run.
-            if on_complete is not None:
-                try:
-                    write_actions = (result.get('write_actions', 0)
-                                     if isinstance(result, dict) else 0)
-                    on_complete(write_actions)
-                except Exception as _oce:
-                    if read_brain:
-                        try:
-                            read_brain._log_error(
-                                'scale_runner_on_complete', _oce,
-                                '%s on_complete callback failed' % name)
-                        except Exception:
-                            pass
-
-        except Exception as e:
-            elapsed_ms = int((time.time() - t0) * 1000)
-            print("[%s] FAILED after %dms: %s" % (name, elapsed_ms, e), flush=True)
-            # Background thread crash — the scale encoder silently stopped
-            # producing. Surface so operators see recurring failures the
-            # same way they see S2 coordinator crashes.
-            if read_brain:
-                try:
-                    read_brain._log_error(
-                        'scale_runner_thread_crash', e,
-                        '%s thread died after %dms' % (name, elapsed_ms))
-                except Exception:
-                    pass
-        finally:
-            if read_brain:
-                try:
-                    read_brain.close()
-                except Exception:
-                    pass
-            lock.release()
-
-    threading.Thread(target=_thread_fn, daemon=True, name=name).start()
-
-
 def run_unit_in_background(unit, name, lock, on_complete=None):
     """Run an in-process integration unit on a daemon worker thread.
 
-    The in-process counterpart to run_in_background: the unit runs on the
-    daemon's OWN brain and writes through its `_make_encoder_dispatch` (direct,
-    under brain.write_lock; vectors via the async embed_queue) — no throwaway
-    Brain copy, no TCP round-trip. Used by S1 Scribe now that it's converged
-    onto the in-process IntegrationUnit pattern the S2 units already use.
+    The unit runs on the daemon's OWN brain and writes through its
+    `_make_encoder_dispatch` (direct, under brain.write_lock; vectors via the
+    async embed_queue). The background thread keeps a slow encode from blocking
+    the hook / coordinator that launched it. Used by S1 Scribe and any future
+    in-process scale unit. (Replaced the legacy out-of-process path — a
+    throwaway Brain copy writing back over TCP.)
 
     Owns only thread lifecycle: it runs unit.run(), invokes on_complete with the
     run's write_actions (so callers can gate on "actually wrote material" — e.g.
     the S2 activity counter), and releases `lock` in finally so a crash can't
-    wedge the encoder. Mirrors run_in_background's contract; the caller transfers
-    lock ownership to this thread exactly as before.
+    wedge the encoder. The caller acquires the lock and transfers ownership to
+    this thread.
     """
     def _thread_fn():
         t0 = time.time()
@@ -192,7 +101,8 @@ def run_unit_in_background(unit, name, lock, on_complete=None):
             elapsed_ms = int((time.time() - t0) * 1000)
             print("[%s] FAILED after %dms: %s" % (name, elapsed_ms, e), flush=True)
             # Background thread crash — the encoder silently stopped producing.
-            # Surface it the same way run_in_background does.
+            # Surface it so operators see recurring failures (same as the S2
+            # coordinator's crash logging).
             try:
                 unit.brain._log_error(
                     'scale_runner_thread_crash', e,

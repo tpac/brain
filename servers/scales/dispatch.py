@@ -1,22 +1,18 @@
-"""Scale dispatch infrastructure — TCP communication and agent dispatch factory.
+"""Scale dispatch infrastructure — env loading + the write-command classification.
 
-Shared by all scale agents (S1 encode, S2 session encode, future scales).
+Shared by all scale agents (S1 Scribe, the S2 units, future scales). Both now
+run IN-PROCESS on the daemon's brain and write through
+`scales/s2/base.py::_make_encoder_dispatch`, which calls COMMAND_TABLE handlers
+directly under `brain.write_lock` (the same lock daemon_server.py uses for
+client requests, so cross-writer serialization is guaranteed).
 
-Two write paths exist:
-
-1. **In-process (S2 encoder running in the daemon's pool)** — calls
-   COMMAND_TABLE handlers directly under `brain.write_lock` (acquired in
-   `scales/s2/base.py::_make_encoder_dispatch`). Same lock that
-   daemon_server.py uses for client requests, so cross-writer
-   serialization is guaranteed.
-2. **Out-of-process (S1 encode subprocess, future scales)** — calls
-   `daemon_tcp_send` here, which dispatches via the daemon and therefore
-   goes through `_locked_exec` → `brain.write_lock`.
-
-Either way, every write hits the same lock.
+This module no longer holds a dispatch factory. The legacy out-of-process path
+— a background-thread `Brain(skip_embedder=True)` copy writing back over TCP via
+`daemon_tcp_send` + `make_scale_dispatch` — was retired when S1 Scribe converged
+onto the in-process pattern (S1 was its last user). What remains: `load_env` and
+the canonical write-command CLASSIFICATION the attribution chokepoint reads.
 """
 
-import json
 import os
 
 
@@ -50,36 +46,11 @@ def load_env():
         return
 
 
-def daemon_tcp_send(cmd, args):
-    """Send a command to the daemon via TCP.
-
-    Used by background threads that must not write to DB directly
-    (single-writer rule). Returns {"ok": bool, "result": ...}.
-    """
-    import socket
-    port = 47200 + (os.getuid() % 100)
-    msg = json.dumps({"cmd": cmd, "args": args}) + "\n"
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(30)
-    try:
-        s.connect(("127.0.0.1", port))
-        s.sendall(msg.encode())
-        data = b""
-        while True:
-            chunk = s.recv(65536)
-            if not chunk:
-                break
-            data += chunk
-            if b"\n" in data:
-                break
-        return json.loads(data.decode().strip()) if data else {"ok": False, "error": "empty"}
-    except Exception as e:
-        return {"ok": False, "error": "daemon TCP: %s" % e}
-    finally:
-        s.close()
-
-
-# Commands that must go through daemon TCP (all writes)
+# The write commands a scale agent can issue — the canonical classification read
+# by the attribution chokepoint (s2/base.apply_encoder_attribution) and the
+# contract test (test_contract_sync Layer 5: must be a subset of COMMAND_TABLE).
+# (Formerly also the "route via TCP" set, back when out-of-process scale agents
+# existed.)
 WRITE_COMMANDS = {
     'remember', 'remember_batch', 'revise', 'revise_batch',
     'connect', 'connect_batch', 'brain_batch',
@@ -96,33 +67,3 @@ WRITE_COMMANDS = {
 # mislabelled brain_batch encodes and hid them from the dashboard's encoder view).
 NON_ATTRIBUTED_WRITES = {'enrich', 'trace_append', 'set_config'}
 ATTRIBUTED_WRITE_COMMANDS = WRITE_COMMANDS - NON_ATTRIBUTED_WRITES
-
-
-def make_scale_dispatch(read_brain, encoding_source='encoder:sonnet'):
-    """Create a dispatch function for a scale agent.
-
-    Reads use local read_brain (no lock contention).
-    Writes go through daemon TCP (single-writer rule).
-    encoding_source is set on all remember/revise calls.
-
-    Args:
-        read_brain: Brain instance for read operations (background thread's copy)
-        encoding_source: encoding_source value for new/revised nodes
-
-    Returns:
-        dispatch(cmd, args) -> dict
-    """
-    from servers.daemon_dispatch import COMMAND_TABLE, check_unknown_keys
-
-    def dispatch(cmd, cmd_args):
-        if cmd in ATTRIBUTED_WRITE_COMMANDS:
-            cmd_args.setdefault('encoding_source', encoding_source)
-        if cmd in WRITE_COMMANDS:
-            return daemon_tcp_send(cmd, cmd_args)
-        entry = COMMAND_TABLE.get(cmd)
-        if entry:
-            check_unknown_keys(cmd, entry, cmd_args, read_brain)
-            return entry.handler(read_brain, cmd_args, [])
-        return {"ok": False, "error": "Unknown command: %s" % cmd}
-
-    return dispatch
