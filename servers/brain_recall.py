@@ -911,10 +911,16 @@ class BrainRecallMixin:
                 if f not in nodes_table_fields and not f.startswith('_')
             ]
 
+            # edge_context's only source (_edge_descriptions) lives on edges,
+            # not kv — gate find_missing on edge existence so edgeless nodes
+            # don't clog the batch and starve the edged ones (see find_missing).
+            needs_edge_filter = '_edge_descriptions' in group_config.get('fields', [])
+
             try:
                 missing = vdal.find_missing(
                     vector_type, batch_size, model=model, node_ids=node_ids,
-                    source_kv_keys=kv_source_keys if kv_source_keys else None)
+                    source_kv_keys=kv_source_keys if kv_source_keys else None,
+                    require_described_edge=needs_edge_filter)
                 if not missing:
                     continue
 
@@ -931,6 +937,15 @@ class BrainRecallMixin:
                         for field in group_config.get('fields', []):
                             if field == '_emergent':
                                 continue  # Emergent: any KV field not in other groups
+                            if field == '_edge_descriptions':
+                                # Edge context: descriptions live on edges, not the
+                                # node. Mirrors the write-time handler in
+                                # _compute_group_vectors (brain_remember.py) — same
+                                # helper, same defaults (both directions; noise/
+                                # archived/short-desc filtering centralized in the DAL).
+                                for desc in self._graph.get_edge_descriptions_for(node['id']):
+                                    parts.append(desc[:EMBEDDING_FIELD_CHAR_LIMIT])
+                                continue
                             val = field_values.get(field)
                             if val and val.strip():
                                 parts.append(val[:EMBEDDING_FIELD_CHAR_LIMIT])

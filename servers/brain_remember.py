@@ -1644,7 +1644,7 @@ class BrainRememberMixin:
                     # min_length, and the weight-ordered LIMIT.
                     try:
                         descriptions = self._graph.get_edge_descriptions_for(
-                            node_id, min_length=10, limit=5)
+                            node_id, limit=5)
                         for desc in descriptions:
                             parts.append(desc[:EMBEDDING_FIELD_CHAR_LIMIT])
                     except Exception as _e:

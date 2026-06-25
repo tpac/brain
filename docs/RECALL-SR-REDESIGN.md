@@ -690,8 +690,8 @@ exist (the missing foundation the §17 caveats kept hitting).
 
 **18.1 The grounding diagnosis (`brain_recall.py` STEP 6, mapped 2026-06-22). The headline: the graph is DARK at scoring time.**
 - **WIRED:** cosine over 6 field-groups (title 1.0, blend[title+content] 0.85, high_meta[situation, quotes]
-  0.70, other_meta[reasoning, correction_pattern, source_context] 0.40, edge_context[edge *descriptions*]
-  0.55, **question 0.90**); FTS5 lexical; idf2 title boost (**additive**); session fatigue (mult `×(1−r)`,
+  0.70, other_meta[reasoning, correction_pattern, source_context] 0.40, edge_context[edge *descriptions*,
+  per-node, offline-backfilled] 0.55, **question 0.90**); FTS5 lexical; idf2 title boost (**additive**); session fatigue (mult `×(1−r)`,
   `r=count/(count+K)`, `K=10/(1+deg/10)`); **critical (mult `×3.0` — 100%-FP slot-squatter, `00f3b008`)**;
   situation (**additive** `+0.2·sim` when sim≥0.30); context-mismatch (mult `×0.7`); project (pre-filter).
 - **COLLECTED-BUT-DORMANT:** recency(created_at), last_accessed, access_count, confidence —
@@ -746,7 +746,7 @@ proven law (18.2). The 5-operator / 3-job / 3-support / 4-status vocabulary is w
 | `+act` | **situational reinstatement** | project+files+libs+task × `situation` | matched | reach | ○ | encoding-specificity |
 | `+act` | episodic reinstatement | prompt × source_refs/episodes→nodes | matched | reach | ○ | CLS replay bridge |
 | `+act` | prior-pull expansion | prior-pulls × edge-neighbors | matched | reach | ○ | — |
-| `+act` | edge-description match | prompt × edge_context | matched | reorder | ● | (NOT traversal) |
+| `+act` | edge-description match | prompt × edge_context | matched | reorder | ● | (NOT traversal; per-node vector, offline-backfilled) |
 | `÷norm` | token-IDF (idf2) | prompt-tokens × title | matched | reorder | ● | self-information |
 | `÷norm` | **community-mass (Tom)** | communities + clustering-algebra | group | reorder | ○ | divisive norm |
 | `÷norm` | degree/fan | edge-degree | group | reorder | ◐ (tunes fatigue-K only) | ACT-R fan |

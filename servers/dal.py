@@ -2366,6 +2366,12 @@ EDGE_ROW_SHAPE = {
 # community_member is NOT in this default — it's real thematic context,
 # just not migrated by consolidation (see ABSORB_EXCLUDED_RELATIONS).
 DEFAULT_EXCLUDED_RELATIONS = frozenset(['co_accessed', 'emergent_bridge'])
+# Minimum edge-description length to feed the edge_context embedding. Single
+# source of truth shared by GraphDAL.get_edge_descriptions_for (the text
+# producer) and VectorDAL.find_missing (the backfill candidate filter) — the
+# two MUST agree, or find_missing queues edgeless/short-desc nodes that yield
+# no text, and they starve the edged nodes out of the backfill batch forever.
+EDGE_CONTEXT_MIN_DESC_LENGTH = 10
 
 # Relations absorb() must NOT migrate to the survivor. Community placement
 # is the community unit's judged decision (affinity gate ≥0.25 + encoder
@@ -3098,7 +3104,7 @@ class GraphDAL:
         return {r[0]: r[1] for r in rows}
 
     def get_edge_descriptions_for(self, node_id: str,
-                                  min_length: int = 10,
+                                  min_length: int = EDGE_CONTEXT_MIN_DESC_LENGTH,
                                   exclude_relations=None,
                                   include_archived: bool = False,
                                   limit: int = 5):
@@ -3998,7 +4004,8 @@ class VectorDAL:
                      model: Optional[str] = None,
                      node_ids: Optional[set] = None,
                      require_kv_keys_any: Optional[List[str]] = None,
-                     source_kv_keys: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+                     source_kv_keys: Optional[List[str]] = None,
+                     require_described_edge: bool = False) -> List[Dict[str, Any]]:
         """Find active nodes whose vector for `vector_type` is missing or stale.
 
         A row is "present" only if it has a non-null embedding AND (if `model`
@@ -4057,6 +4064,27 @@ class VectorDAL:
                 'WHERE kv.node_id = n.id AND kv.key IN (%s) '
                 "AND kv.value IS NOT NULL AND kv.value != '')" % ph)
             params.extend(require_kv_keys_any)
+
+        if require_described_edge:
+            # edge_context group: its only source is _edge_descriptions, which
+            # lives on edges, not node_metadata_kv — so require_kv_keys_any can't
+            # gate it. Without this clause the edgeless nodes (no described edge,
+            # never get a vector) sit at the front of the last_accessed queue
+            # forever and starve the edged nodes. Mirror
+            # GraphDAL.get_edge_descriptions_for's eligibility filter EXACTLY
+            # (same exclusions, same min length) so "eligible" ⇔ "yields text".
+            excl = sorted(DEFAULT_EXCLUDED_RELATIONS | {'community_member'})
+            excl_ph = ','.join('?' * len(excl))
+            where.append(
+                'EXISTS (SELECT 1 FROM edges e '
+                'JOIN edge_relations er ON er.edge_id = e.edge_id '
+                'WHERE (e.source_id = n.id OR e.target_id = n.id) '
+                'AND er.archived = 0 '
+                'AND er.relation NOT IN (%s) '
+                'AND er.description IS NOT NULL '
+                'AND length(er.description) > ?)' % excl_ph)
+            params.extend(excl)
+            params.append(EDGE_CONTEXT_MIN_DESC_LENGTH)
 
         sql = ('SELECT n.id, n.title, n.content FROM nodes n '
                'WHERE ' + ' AND '.join(where) +
