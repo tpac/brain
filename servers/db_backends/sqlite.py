@@ -242,9 +242,8 @@ def backup_snapshot(db_path: str, dest_gz_path: str,
     tmp_db = dest_gz_path + '.tmp.db'
     part_gz = dest_gz_path + '.part'
     try:
-        src = sqlite3.connect(db_path, timeout=_MAINTENANCE_BUSY_TIMEOUT_MS / 1000.0)
+        src = _connect_maintenance(db_path)
         try:
-            apply_pragmas(src)
             dst = sqlite3.connect(tmp_db)
             try:
                 src.backup(dst, pages=pages, sleep=sleep_s)

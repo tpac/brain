@@ -110,7 +110,9 @@ class DBMaintenance:
             from . import db_backup
             entry['backup_dir'] = backup_dir
             entry['backup_interval_s'] = backup_interval_s or _DEFAULT_BACKUP_INTERVAL_S
-            entry['backup_keep'] = backup_keep or dict(db_backup._DEFAULT_KEEP)
+            # Merge any override onto the defaults so all three tiers are
+            # always present — _run_backup can then read keys directly.
+            entry['backup_keep'] = {**db_backup._DEFAULT_KEEP, **(backup_keep or {})}
             age = db_backup.seconds_since_last_backup(db_path, backup_dir)
             entry['last_backup_at'] = (
                 time.time() - age) if age != float('inf') else 0.0
@@ -192,9 +194,9 @@ class DBMaintenance:
             keep = entry['backup_keep']
             result = db_backup.backup_database(
                 entry['db_path'], entry['backup_dir'],
-                keep_daily=keep.get('daily', 7),
-                keep_weekly=keep.get('weekly', 4),
-                keep_monthly=keep.get('monthly', 3))
+                keep_daily=keep['daily'],
+                keep_weekly=keep['weekly'],
+                keep_monthly=keep['monthly'])
             took_ms = int((time.time() - t0) * 1000)
             self._log('backup %s ok in %dms: %s' % (
                 entry['name'], took_ms, _short(result)))

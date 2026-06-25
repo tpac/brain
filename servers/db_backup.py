@@ -76,12 +76,13 @@ def select_retained(timestamps: List[datetime],
     of the most recent N periods. A snapshot is retained if any tier
     selects it."""
     retained: Set[datetime] = set()
+    ordered = sorted(timestamps, reverse=True)   # sort once, reuse per tier
 
     def pick(key_fn, keep_n: int) -> None:
         if keep_n <= 0:
             return
         newest_per_period: Dict = {}
-        for ts in sorted(timestamps, reverse=True):
+        for ts in ordered:
             k = key_fn(ts)
             if k not in newest_per_period:   # newest first → first wins
                 newest_per_period[k] = ts
@@ -132,8 +133,9 @@ def seconds_since_last_backup(db_path: str, backup_dir: str,
 
 
 def backup_database(db_path: str, backup_dir: str, *,
-                    keep_daily: int = 7, keep_weekly: int = 4,
-                    keep_monthly: int = 3,
+                    keep_daily: int = _DEFAULT_KEEP['daily'],
+                    keep_weekly: int = _DEFAULT_KEEP['weekly'],
+                    keep_monthly: int = _DEFAULT_KEEP['monthly'],
                     now: Optional[datetime] = None) -> Dict:
     """Snapshot `db_path` into `backup_dir` (compressed), then prune to the
     GFS retained set. Returns snapshot diagnostics + kept/deleted counts."""
