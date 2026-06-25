@@ -873,53 +873,17 @@ class BrainDaemon:
     def _autosave_loop(self):
         """Periodically save brain if dirty + flush SessionContexts + health check + thread monitor.
 
-        Also detects host-suspend events (laptop sleep). When the OS suspends
-        the process, time.sleep() returns immediately on wake but the wall
-        clock has jumped far past the sleep interval. TCP sockets opened
-        before suspend may be in inconsistent states post-wake — the
-        empirical signature is a CLOSED Anthropic socket whose FIN was
-        never delivered to httpx, leaving worker threads blocked in recv()
-        forever. Process appears alive (PID + lock + listener intact),
-        threadpool fills with hung calls, daemon becomes unresponsive.
-        Detection triggers a clean SIGTERM so cleanup runs (PID + lock
-        files removed) and auto-restart spawns fresh.
+        A hung daemon (e.g. post host-suspend, where pre-sleep Anthropic
+        sockets can be left half-open and block worker threads forever) is
+        recovered reactively by the ping-based nets — `ensure_daemon` at
+        session start and the MCP health monitor during a session — both of
+        which force-restart via `launchctl kickstart -k`. This loop no
+        longer second-guesses wall-clock jumps to pre-emptively SIGTERM:
+        that fired on every laptop wake (healthy or not) and the recovery
+        path already covers the genuinely-hung case.
         """
-        # Threshold: gap (wall - expected) must exceed this for a sleep event.
-        # 90s is well above legitimate jitter (GC pause, brain.save() under
-        # heavy load) but well below any plausible sleep duration.
-        _SUSPEND_GAP_THRESHOLD = 90.0
-        _last_wall = time.time()
         while self.running:
             time.sleep(AUTOSAVE_INTERVAL_SECONDS)
-            _now_wall = time.time()
-            _wall_delta = _now_wall - _last_wall
-            _last_wall = _now_wall
-            _gap = _wall_delta - AUTOSAVE_INTERVAL_SECONDS
-            if _gap > _SUSPEND_GAP_THRESHOLD:
-                from .daemon_config import is_dev_mode
-                _dev = is_dev_mode()
-                self._log(
-                    "HOST SUSPEND DETECTED: wall +%.0fs vs expected %ds — "
-                    "Anthropic sockets opened pre-suspend may be hung.%s" % (
-                        _wall_delta, AUTOSAVE_INTERVAL_SECONDS,
-                        " (BRAIN_DEV_MODE — staying alive, no SIGTERM)"
-                        if _dev else " Sending SIGTERM to self for clean restart."))
-                try:
-                    self.brain._log_error(
-                        'daemon_host_suspend_detected',
-                        RuntimeError('wall_gap=%.0fs dev_mode=%s' % (_wall_delta, _dev)),
-                        'autosave loop saw wall-clock jump')
-                except Exception:
-                    pass
-                if _dev:
-                    # Skip the kill — developer is in control. Reset _last_wall
-                    # so we don't re-fire every iteration on the same gap.
-                    continue
-                try:
-                    os.kill(os.getpid(), signal.SIGTERM)
-                except Exception as _e:
-                    self._log("self-SIGTERM failed: %s" % _e)
-                return  # Exit loop; signal handler completes shutdown.
             if self.dirty:
                 if self.brain.write_lock.acquire(timeout=5.0):
                     try:

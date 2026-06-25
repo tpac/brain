@@ -401,19 +401,14 @@ The daemon runs `servers/*` from the repo, so:
 
 Don't gate a deploy-restart with the maintenance lock — it makes the daemon skip startup.
 
-### `BRAIN_DEV_MODE` — opt out of end-user safety nets
+### Recovering a hung daemon
 
-The daemon ships safety nets that auto-restart it on detected failures (host-suspend detector → SIGTERM-self; future hung-corpse force-kill). End users want these; developers debugging the daemon do not — an autokill rips the subject out from under `py-spy dump` / `lldb`.
+A hung-but-alive daemon (e.g. post host-suspend, where pre-sleep Anthropic sockets can be left half-open and block worker threads forever) is recovered **reactively**, never by pre-emptive self-kill:
+- `daemon_client.ensure_daemon()` pings at session start; an unresponsive daemon is force-restarted via `launchctl kickstart -k` (kills the corpse, launchd respawns).
+- The MCP health monitor (`brain_mcp._health_monitor`) pings every 2s during a session and calls `recover_daemon()` (same kickstart) after ~20s of failure.
+- launchd `KeepAlive` respawns if the process actually exits.
 
-Set `BRAIN_DEV_MODE=1` in your shell rc (`~/.zshrc` or equivalent). The detectors still log loudly when they would have fired, but take no action — you control the lifecycle.
-
-```bash
-export BRAIN_DEV_MODE=1
-```
-
-**Plugin repackaging checklist must include unsetting this.** End-user environments need the safety nets — most users will see a hung daemon as a broken plugin, not a debuggable process. The repackager's job is to ensure the shipped artifact runs without `BRAIN_DEV_MODE` set. CI for the plugin should verify `BRAIN_DEV_MODE` is not exported.
-
-The flag is read via `servers.daemon_config.is_dev_mode()`. Add new dev-mode gates by calling that function — don't read the env var directly.
+There is **no `BRAIN_DEV_MODE` and no wall-clock suspend detector** — the old detector SIGTERM'd the daemon on every laptop wake (healthy or not), and the reactive nets already cover the genuinely-hung case. To pause auto-recovery while debugging a live daemon (e.g. under `py-spy` / `lldb`), use the maintenance lock (`touch /tmp/brain-maintenance-{uid}.lock`), which `ensure_daemon` already honors.
 
 ### Test Integrity
 

@@ -2138,9 +2138,8 @@ class Brain(
         Why it matters: the S1 surface Haiku call reuses self.anthropic_client's
         connection pool across the daemon's worker threads. After the daemon
         sits idle, that pool's keep-alive sockets expire — the server FINs idle
-        connections (the same stale-socket shape the host-suspend detector
-        guards against in daemon_server._autosave_loop) — and the next recall
-        pays a fresh TLS+DNS handshake. Phase-timer data shows this as inflated
+        connections (the same stale-socket shape a post-host-sleep wake can
+        leave behind) — and the next recall pays a fresh TLS+DNS handshake. Phase-timer data shows this as inflated
         surface_haiku after idle: median ~6s warm vs ~10s after >60m idle, while
         local DB/embedder phases stay flat (so it's the connection, not compute).
 

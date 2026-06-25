@@ -28,7 +28,6 @@ class EncoderEvalProbesTest(unittest.TestCase):
     def setUpClass(cls):
         cls.tmpdir = tempfile.mkdtemp(prefix='encoder_eval_probes_test_')
         os.environ['BRAIN_DB_DIR'] = cls.tmpdir + '/'
-        os.environ['BRAIN_DEV_MODE'] = '1'
         cls.brain = Brain(db_path=os.path.join(cls.tmpdir, 'brain.db'))
 
     @classmethod

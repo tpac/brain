@@ -69,14 +69,6 @@ for _dir in hooks skills bin; do
   while IFS= read -r _f; do FILES+=("$_f"); done <<< "$_files"
 done
 
-# End-user artifacts must ship without the developer safety-net opt-out (see the
-# repackaging checklist in CLAUDE.md). BRAIN_DEV_MODE is a runtime env var, not a
-# packaged file — but warn if it's set in the building shell so it's never assumed
-# to be the shipped default.
-if [ -n "${BRAIN_DEV_MODE:-}" ]; then
-  echo "WARNING: BRAIN_DEV_MODE is set in this shell — end-user installs must run without it."
-fi
-
 # Verify all files exist before packing
 missing=0
 for f in "${FILES[@]}"; do

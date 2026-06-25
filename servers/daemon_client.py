@@ -443,10 +443,9 @@ def restart_daemon(db_path: str = None) -> bool:
 # ─── Hung-daemon recovery ───
 #
 # A daemon that hangs after host sleep ("corpse") keeps its port bound but
-# services nothing, so launchd's crash-respawn never fires and the daemon's
-# own in-process suspend detector can't act (no thread is scheduled to send
-# the SIGTERM). Recovery must come from OUTSIDE the frozen process: force it
-# to die and let launchd respawn it. Every recovery caller — the MCP health
+# services nothing, so launchd's crash-respawn never fires and nothing
+# inside the frozen process can rescue it. Recovery must come from OUTSIDE
+# the frozen process: force it to die and let launchd respawn it. Every recovery caller — the MCP health
 # monitor and the recall hook — routes through recover_daemon(); shared
 # cooldown + circuit-breaker state (one /tmp file) keeps them from fighting.
 
