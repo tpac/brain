@@ -1,4 +1,27 @@
-# RECALL-SR — recall as a Successor-Representation predictive map
+# RECALL — from the SR/PPR thesis to the Layered Activation Field (LAF)
+
+> ## ⟦ CURRENT STATE — read this first (2026-06-24) ⟧
+> This doc is a **journal** of the recall-redesign arc, not a static spec. It records a real evolution
+> through three framings, and **the head is now historical.** Live direction = **§18 (LAF)**.
+>
+> **Live design — LAF (Layered Activation Field):** recall as a shared **log-additive activation field**
+> over nodes, read out at the end (not retrieve-then-rank). Two regimes:
+> - **FIND = lean set-union** of a few complementary signals (`_primary` + FTS + title/voice). Read-side
+>   reach saturates **~54–58%**; more fields/graph add no unique reach (§18.15). Union by *membership*,
+>   not RRF-ranking (RRF dilutes — §18.13).
+> - **RANK = a per-query SELECTOR** — NOT uniform fusion (dilutes below raw `_primary`, §18.13) and NOT a
+>   trained model (overfit on our flat/small data, §17). Leading shape: **DAT-style LLM-judged per-query
+>   weighting + max-over-fields** (ColBERT MaxSim), via the Haiku surface we already run (§18.17).
+> - The **~42% residual** (cosine-far gold) is **encode-gap / next-move** — a separate workstream.
+>
+> **Numbers:** baseline **19% hit@5 / 33% @25**; raw `_primary` 21/37 (the pipeline *net-buries* — §18.12);
+> best-field **oracle ceiling 51% @25** — the prize is how much of that a realizable selector captures.
+>
+> **Reading guide:** **§0–12 = the SR/PPR thesis — largely FALSIFIED at §13b** (PPR-standalone < cosine;
+> the embedder limits abstract relevance). Read it for the *why-not*, not the plan. **§13b–17** = the
+> falsification arc + the multi-cue "integration thesis" (§15) + the selector reframe (§16, caveated §17).
+> **§18 = LAF (live); §18.17 = the live next-step** (prototype the selector). Earlier "▶ NEXT STREAM
+> STARTS HERE" markers (§13, §13b, §16) are **superseded** by §18.
 
 **Written:** 2026-06-17 (Anchor + Tom, session `ce0ff8ce` arc continued in a fresh stream).
 **Status:** design / direction. Nothing built yet — this is the synthesized thesis and the staging.
@@ -9,7 +32,7 @@ surface, episodic/temporal recall, query composition, or "should we train someth
 surface — this is the kernel it inherits), `ORACLE-AUDIT-SPEC.md` (the eval instrument),
 `RECALL-DUAL-STORE-DESIGN.md`, `RECALL-TEMPORAL-ANCHOR-SPEC.md`, `HANDOFF-RECALL-NORMALIZATION.md`.
 
-> **The one-line thesis.** Relevance is *flow from your current state through a stable relational
+> **The one-line thesis** *(historical — the SR/PPR framing; largely falsified at §13b, see CURRENT STATE).* Relevance is *flow from your current state through a stable relational
 > geometry.* Put all the "where am I now" in the **seeds** (an orthogonal basis of state anchors,
 > convergence-combined, learned-gated by next-turn prediction); put all the "how the brain connects"
 > in a **static, symmetric-normalized, aspect-weighted transition matrix P** (corrections directional +
@@ -652,3 +675,380 @@ recognition/selector gate make the graph walk pay off* = **HippoRAG-2's recipe.*
 a hand-curated HippoRAG running on a weak retriever + node-only seeding.** The pieces are addressable and additive; no
 single one is the silver bullet (the embedder is doing a lot of the limiting — oracle caps 42%). Open nodes: `8bcc8c96`
 (regression), `117b6ad9` (handoff), `328d2ac3` (Tom's thesis), `ef1024df` (edge-inhibition), `62052d67` (lens trap).
+
+---
+
+## 18. LAF — the Layered Activation Field: grounded cue→layer catalog, the algebra, the MVP (Anchor + Tom, 2026-06-22)
+
+**What this is.** §15's integration thesis ("all cues, typed operations, one coherent architecture"), now
+(a) **grounded against the actual scoring code**, (b) given a composition **algebra** + a coherence
+**grammar**, and (c) reduced to a measurement-first **MVP**. LAF = recall as a shared **activation field**
+over nodes, shaped by a stack of bounded, **log-additive**, control-safe operators, read out at the end.
+Retrieval is the *readout*, not the mechanism. It reconciles §16/§17: the learned selector isn't replaced —
+it sits ON TOP as "learn the layer weights," but only after the parity harness + clean gold + control-gate
+exist (the missing foundation the §17 caveats kept hitting).
+
+**18.1 The grounding diagnosis (`brain_recall.py` STEP 6, mapped 2026-06-22). The headline: the graph is DARK at scoring time.**
+- **WIRED:** cosine over 6 field-groups (title 1.0, blend[title+content] 0.85, high_meta[situation, quotes]
+  0.70, other_meta[reasoning, correction_pattern, source_context] 0.40, edge_context[edge *descriptions*]
+  0.55, **question 0.90**); FTS5 lexical; idf2 title boost (**additive**); session fatigue (mult `×(1−r)`,
+  `r=count/(count+K)`, `K=10/(1+deg/10)`); **critical (mult `×3.0` — 100%-FP slot-squatter, `00f3b008`)**;
+  situation (**additive** `+0.2·sim` when sim≥0.30); context-mismatch (mult `×0.7`); project (pre-filter).
+- **COLLECTED-BUT-DORMANT:** recency(created_at), last_accessed, access_count, confidence —
+  `recall_scoring.py:unified_score()` is built but **deferred because the multiplicative stack regressed
+  R@8 by −10pts** (the receipt that justifies log-additive + a control-gate).
+- **ABSENT from scoring:** spread activation / traversal (removed 2026-04-14, moved post-surface,
+  `pre_response_recall.py`); communities; source_refs/episodic (trace-lane flag-OFF); **correction edges
+  (metadata-only — walked for enrichment via `correction_enrich`, never scored)**; co-access Hebbian (disabled).
+- **Algebra today = entangled additive+multiplicative** (the anti-pattern LAF replaces). `question` IS
+  scored (0.90) → the Premium Corpus "not scored" claim is **stale** (verify-before-claiming win).
+- ⇒ **Today's recall = embedding + lexical + a few entangled scalar multipliers.** The entire hand-curated
+  graph is unused where it could discriminate. Every *structural* LAF layer is **greenfield**.
+
+**18.2 The unifying law (carry from `104fc874`).** `signal÷prevalence` = divisive normalization =
+Bayes-optimal efficient coding (Carandini-Heeger) = IDF (self-information) = ACT-R fan = PMI. **ONE `÷norm`
+operator at multiple scales:** token (idf2 ●), **cluster (community-mass ○ — Tom)**, degree (fan ◐), and —
+new in 18.3 — **TIME (temporal distinctiveness)**. Several "separate mechanisms" collapse into this one op.
+
+**18.3 Tom's reclassifications (2026-06-22) — three are structural, not cosmetic:**
+1. **`+act` IS bio-grounded — the LLM is the lower perceptual cortex.** Cosine/graph are *higher* association
+   functions reading LLM-extracted features. lexical/cosine = **R1 cued activation** (recognition floor,
+   `9efadb3a`) over a perceptual front-end — not un-biological, the cortical-association layer.
+2. **`situation` generalizes to the work-situation.** It's a cue *about the situation* → expand the
+   match-target to **project + open files + libraries + task**, not just the prompt. The situation layer =
+   **contextual reinstatement** (encoding-specificity / context-dependent memory): match current work-context
+   against nodes' `situation` descriptors. **Unifies the `situation` field-layer with the `work-context`
+   seed → one layer** — and it's the engine for "recall while I work, before tool-use, on turn-finish."
+3. **Recency is RELATIVE, not absolute → reclassify `+act`→`÷norm`(time).** Salience = recency ÷
+   **temporal-density of the candidate span**, not decay-vs-now. "EX.CO mentioned once long ago" (temporally
+   isolated) beats many co-temporal community-siblings. = **isolation / von-Restorff effect** + temporal
+   distinctiveness (SIMPLE; Brown/Neath/Chater) → folds recency into signal÷prevalence. **Hypothesis: this is
+   WHY absolute-recency `unified_score` regressed −10pts — it decayed instead of normalizing-by-density.**
+   Distinctiveness predicts no such regression. ▶ test in MVP.
+4. (minor) communities carry **clustering algebra** (cohesion, within-community centrality, boundary-spanning)
+   beyond membership. Fields: **keywords removed**; **episodes (S0 turns) are a distinct match-surface** from
+   distilled quotes — usable as an episodic `+act` source.
+
+**18.4 The coherence grammar (PROPOSED — Tom holding open pending online research on graph+function fusion
+architectures).** Every cue-usage decomposes onto closed vocabularies, so the catalog is a table not a sprawl:
+> `LAYER = ⟨ SOURCE, SUPPORT∈{matched,group,field}, OPERATOR∈{+act,÷norm,−inhib,→spread,⟳plast}, JOB∈{reach,reorder,clear}, STATUS∈{●wired,◐dormant,○absent,⚠broken} ⟩`
+
+A *combination* = a row with multiple SOURCE cues. Operators trace to the research families; `÷norm` is the
+proven law (18.2). The 5-operator / 3-job / 3-support / 4-status vocabulary is what makes the capture coherent.
+
+**18.5 The layer catalog (grouped by operator, status grounded to 18.1).**
+
+| Operator | Layer | SOURCE | SUPPORT | JOB | STATUS | bio |
+|---|---|---|---|---|---|---|
+| `+act` | lexical-semantic core | prompt × {title,blend} | matched | reach | ● | R1 cued activation |
+| `+act` | field-surface match | prompt × {situation, question 0.90} | matched | reorder | ● | — |
+| `+act` | FTS5 rare-token | prompt-tokens × FTS5 | matched(5) | reach | ● | — |
+| `+act` | **situational reinstatement** | project+files+libs+task × `situation` | matched | reach | ○ | encoding-specificity |
+| `+act` | episodic reinstatement | prompt × source_refs/episodes→nodes | matched | reach | ○ | CLS replay bridge |
+| `+act` | prior-pull expansion | prior-pulls × edge-neighbors | matched | reach | ○ | — |
+| `+act` | edge-description match | prompt × edge_context | matched | reorder | ● | (NOT traversal) |
+| `÷norm` | token-IDF (idf2) | prompt-tokens × title | matched | reorder | ● | self-information |
+| `÷norm` | **community-mass (Tom)** | communities + clustering-algebra | group | reorder | ○ | divisive norm |
+| `÷norm` | degree/fan | edge-degree | group | reorder | ◐ (tunes fatigue-K only) | ACT-R fan |
+| `÷norm` | **temporal distinctiveness (Tom)** | created_at ÷ pool temporal-density | group | reorder | ○ (was ◐ absolute) | von-Restorff/SIMPLE |
+| `−inhib` | session fatigue | prior-pulls | field | clear | ● (behavior unverified, `00ed3f3d`) | habituation |
+| `−inhib` | **correction-LTD** | corrects/supersedes edges | target node | reorder | ○ (metadata-only today) | LTD/anti-Hebbian |
+| `−inhib` | context/superseded gate | personal_context ●, evolution_status ○ | matched | clear | ◐ | schema-forgetting |
+| `−inhib` | critical (current) | critical flag | matched | reorder | ●⚠ pathological ×3.0 | — |
+| `→spread` | spread activation | seeds × edges | field | reach | ○ (moved post-surface) | CA3 completion |
+| `⟳plast` | co-access Hebbian | co_accessed | edge weights | reorder | ○ disabled | LTP |
+
+**18.6 The MVP (Anchor's recommendation, 2026-06-22) — the measurement harness, NOT a feature.**
+The capability every prior attempt lacked is *artifact-free measurement of an added layer* — so that's the MVP.
+Three pieces:
+1. **Log-additive composition engine + PARITY proof.** Re-express the wired signals (lexical, idf2, situation,
+   fatigue, critical) as log-additive layers over the activation field; prove the engine reproduces production
+   rankings on a control set. → the control baseline; **untangles the mixed algebra + de-pathologizes
+   `critical ×3.0` into a bounded log term — production value even if LAF goes nowhere.**
+2. **3-case instrument: hand-built TRUE gold + frozen control set.** 3 cases spanning reach / reorder /
+   work-context; the true gold = every node that *should* surface (not teacher-minted). The control set IS the
+   control-safety gate made concrete. (Avoids §17's lens-circularity by hand-building, not lens-discovering.)
+3. **ONE dark-graph layer, chosen BY the cases** (bottom-up, not top-down): study the 3 through the engine,
+   add the dark signal that would've surfaced each true gold (community-÷norm / correction-LTD / situational-
+   reinstatement / temporal-distinctiveness), measure marginal lift + control-safety.
+
+**Pass/fail:** the new layer lifts the 3 true-golds' rank **without scrambling the control set.**
+**Why this & not alternatives:** vs build-all-layers = the spray-and-pray we reject (unmeasurable); vs
+pick-best-layer-top-down = violates bottom-up + can't separate lift from artifact without the parity baseline;
+vs research-architecture-first = **the MVP is research-INDEPENDENT** (parity engine + 3-case instrument +
+control-gate are needed under *any* fusion architecture) → **build it WHILE researching architectures.** The
+selector (§16) sits on top later as "learn the layer weights" — the MVP is its missing, artifact-free foundation.
+
+**18.7 RESULT — piece 1 built + PASSED: log-additive recomposition is control-safe (2026-06-22).**
+Built `eval/laf/log_additive_scorer.py` (pure engine) + `eval/laf/parity_harness.py`. **Non-invasive** — never
+touches the recall hot path: reconstructs base/critical/mismatch from what `recall()` already returns and backs
+out the hidden additive layer (idf2+situation, post-multiplier) as a residual. Ran over the 30-query control set
+(`eval/oracle_audit/control_gold_result.json`, 750 candidates) on an IsolatedBrain copy.
+
+| KPI | production | log-additive | verdict |
+|---|---|---|---|
+| extraction faithfulness (residual health) | — | **750/750 ok, 0 negative, 0 oversized** | extraction proven faithful |
+| top-5 overlap | (ref) | **0.987** | ~identical surfaced top-5 |
+| Kendall tau | (ref) | **0.927** | strong rank agreement |
+| essential-gold @5 | 0.661 | **0.678** | +1.7pp — no regression (slight lift) |
+| essential-gold @25 | 0.867 | 0.867 | identical |
+
+**Reading.** Recomposing production's entangled `(base+idf2)·C·M + situation` as independent log-additive layers
+`base·C·M·(1+additive/base_ref)` preserves the surfaced ranking and does **not** degrade essential coverage —
+it nudges it up (the additive boost was slightly over-helping low-base nodes; multiplicative tempers it). **The
+log-additive algebra lock (§18.4) is empirically validated as control-safe.** The residual back-out (0 anomalies
+across 750 diverse candidates) means base+idf2+situation+critical+mismatch FULLY account for production scoring —
+nothing unmodeled. **Honest scope:** this measures RE-RANKING within production's returned top-25 (the
+control-safety baseline), NOT reach — top-25 overlap=1.0 is structural; n=30. Testing a NEW layer's effect on
+reach (piece 3) needs scoring the fuller pre-cut candidate pool (bigger limit, or a gated `_feature_vector`
+expose on recall). **Next: piece 2** — 3 hand-built true-gold cases (reach / reorder / work-context).
+
+**18.8 — Baseline on the endo corpus + the reach=reorder unification (2026-06-23).**
+*Pivot from §18.7's "hand-built 3 cases":* Tom — reuse the existing frozen gold, don't re-mint. The endo 73-cue
+corpus IS in-tree (`eval/oracle_audit/endo_corpus/`, full harness alongside). Baseline ran
+(`eval/laf/baseline_review.py`, reusing `endo_baseline_recall.score_corpus`): **hit@5 19% / hit@25 33% /
+nDCG@5 0.16** — reproduces §16's recorded number; self-checks clean (fatigue-isolated, cutoff, no-truncation).
+design weakest (14%), compositional best (27%). Per-case review (gold + `teacher_why` + live top-5) in
+`eval/laf/baseline_review.md`. First two cases reviewed with Tom confirm the **gold is narrow** — on
+Disease-A cases the surfaced top-5 is often genuinely relevant while scoring hit@5=0, so relevance-rated@5
+will read above 19% (the "thoughts not answers" frame; the surfaced cluster is a *good pull* the gold-only
+metric calls a miss). Silver = `gold_helpful`, already in the corpus.
+
+**Reach dominates ranking:** ~half the cues are flat MISS (gold not in the 120-pool at all); buried-in-pool
+(rank 6–25) is the smaller slice. hit@25 33% vs hit@5 19% ⇒ ~14pp sits in-pool mis-ranked (the cheap reorder
+win); the rest is reach. *(Superseded — §18.12/§18.15: much of this "reach gap" is pipeline-burial + field-fusion-recoverable; read-side reach actually saturates ~54–58%, and the lever turned out to be RANK, not reach.)*
+
+**THE UNIFICATION (Tom, this session): reach and reorder are ONE mechanism — *activation too low* — with two
+entry points.** The reach/reorder split is an artifact of the pre-cut pool; in a true field (activation over
+the whole graph) every node has an activation and a layer that adds activation moves it up regardless of where
+it started. **Load-bearing caveat** (brain already proved it, `e75dcf6d`/`3e2c73eb`): on a flat embedder NO
+cosine-reweighting breaks *either* disease — the oracle caps at 42% (can't separate twins → the reorder
+ceiling), and a selector over cosine-features can reorder but *can't reach* a cosine-far gold (scored ~0). So
+both diseases hit the *same* cosine ceiling and both are broken by the *same family* — the **structural layers**
+(graph-edge expansion, community, episodic; + lexical idf2 for reorder). Only the entry differs:
+- **reach** = structure as **activation** — light a dark node (gold is 1-hop from an in-field node, co-temporal, or co-community)
+- **reorder** = structure as **discrimination** — separate near-twins (community-mass ÷norm, edge corroboration)
+
+Same field, same math, same lever. Not "two diseases, one architecture" — **one disease, two entry points.**
+Known reach signal: graph-1hop-from-in-context carries ~19% of golds (`8bcc8c96`; verify the §17 leakage flag
+in the miss-analysis).
+
+**18.9 — The method: the LAF build loop (so single-example dives don't lose the goal).**
+*North star:* a new recall whose layered field beats baseline (19% hit@5) toward the realizable ceiling
+(~53%, `8bcc8c96`) across all 73 cues — by the best **combination** of log-additive layers, each earned by
+measured marginal lift without scrambling controls.
+
+*The reframe that keeps us on track:* **the unit of work is a LAYER, not an example.** Examples DISCOVER and
+DEBUG layers; the corpus JUDGES them. Never ship a layer on single-example evidence; never discover one from
+aggregate numbers alone (they hide the mechanism). Both halves required.
+
+- **Phase A — Diagnose at scale (once):** the miss-analysis. Classify every miss by what would reach/reorder it
+  (graph-1hop / co-community / co-temporal / source-ref / encode-gap). Output = a PRIORITIZED layer menu
+  ("build layer X → fixes N cases → ceiling Y") + the encode-gap residual no read-layer can fix.
+- **Phase B — The layer loop (per candidate, biggest-impact first):** (1) discover on 1 example, triangulate on
+  2–3 (the "same activation field" check — real failure mode, same layer helps, not a one-off); (2) build the
+  layer (log-additive → composes onto the stack); (3) corpus A/B (layer ON vs OFF on top of the kept stack):
+  lifts targets AND doesn't scramble controls (the control-safety gate); (4) keep / refine / kill. Marginal lift
+  always measured on top of the kept stack → optimize the COMBINATION, not isolated wins.
+- **Phase C — Converge:** stop when marginal lift flattens or near the ceiling; residual = encode-gap (separate workstream).
+
+*The guardrail:* at any moment we can name (a) which layer, (b) why (which Phase-A miss-class), (c) its measured
+marginal contribution. The example is the means; the layer-combination beating baseline is the goal.
+
+**18.10 — Reverse-look + the field-activation probe (2026-06-23).**
+*The reverse-look method (Tom):* for a far-miss gold, reconstruct its **encoding context** (community, `situation`,
+`question`, connections) — that context IS the gold's ideal cue (reinstatement operationalized, `cfff6201`). The
+gap between the *actual* cue and that encoding-state is the recall problem; reverse-look also reveals empirically
+what the cue-ledger *should* be. Built `eval/laf/field_activation_probe.py` + reverse-look via `get_nodes`.
+
+Findings (3 far-miss golds: `0f730a1c`/spread-cue, `d1d1a90c`/co_access-cue, `6a964255`+`951f3ac8`/RRF-cue):
+- **The gold's encoding-HOME ≠ the cue's surfaced cluster** (surprise — it overturned my graph-1hop guess).
+  `0f730a1c` (convergence principle) lives in the *Identity Rendering* community; the cue surfaces the *Spread*
+  cluster — so graph/community from the surface can't reach it. **Cross-domain abstraction = the hardest class.**
+- **The `question`-field hypothesis was mostly WRONG** — reaches **1 of 4** golds (`d1d1a90c`: question rank 1,
+  reasoning 2, other_meta 2). For `0f730a1c` question(53)≈primary(45); for `6a964255` question(4592) is
+  catastrophic. `8bcc8c96`'s "multi-field is a dead end (aggregate)" largely holds; `question` is a **narrow,
+  gated** lever, not the headline. (Firewall working: I read the question *text* as matching; the cosine disagreed.)
+- **Three reach classes:** (A) cross-domain abstraction (`0f730a1c`, hardest, flat-embedder-bound); (B)
+  pipeline-buried-but-field-reachable (`d1d1a90c`, raw `_primary` rank 7, question/reasoning top-5); (C)
+  true-cosine-far (`6a964255`, `_primary` 1556, nothing reaches).
+- **Episodic is thin/dead for old golds:** `source_turn_id` null on 3/4; `traces_before=0` for Mar/Apr golds
+  (`d1d1a90c`, `951f3ac8`), 57k–80k for May/June. Traces start ~April → pre-April golds can't use the dynamic
+  episodic methods. The working reverse-look signal is the gold's own `situation`/`question` + community theme,
+  NOT its (mostly-absent) trace anchors — sharpens the source-ref-is-sparse point even on the reverse side.
+
+**18.11 — The fusion architecture: flexible operators (+ − / * block algo) without losing measurability.**
+Tom's question: how do we build fusion flexible enough to apply different effects between layers? Answer — two
+ideas do all the work:
+- **In log-activation space the operator palette collapses to addition.** `*`(amplify)→`+log`; `/`(÷norm)→`−log`;
+  `−`(inhibit)→`−log`; `block`→`−∞`. So `* / − block` are ALL "emit a Δlog, sum them" — **commutative,
+  attributable, control-safe** (the locked log-additive algebra, §18.4). The ONE operator that does NOT fit
+  log-sum is linear-`+`/OR (reach) → that's a *separate* regime.
+- **Two regimes** (= `1c4cdedf`: add=OR=recall, mult=AND=precision; the RRF-find + mult-rank thesis):
+  - **FIND** (membership / reach / OR): `field = ⋃ find_layers` (set-union by *membership*; NOT RRF-*ranking* — RRF dilutes, §18.13). Monotonic — adding a find-layer
+    can't drop what's found. This is where the 51% reach ceiling (§18.12) is captured.
+  - **RANK** (order / discriminate / AND): `score(n) = Σ rank_layers(n)` in log-space. `*///−/block` all live here.
+- **"algo" is first-class:** a layer = any `fn(node, ctx) → candidate-set (FIND) | Δlog∈ℝ∪{−∞} (RANK)`. Cosine,
+  graph-walk, PPR, cross-encoder reranker, learned selector — all plug in identically. The engine never inspects
+  *how* a layer computes; PPR (falsified *standalone*) becomes one RANK-layer whose smear others correct.
+- **Shared field, NO layer-to-layer piping** (the anti-spaghetti choice): layers each contribute to ONE shared
+  log-activation; "effects between layers" emerge as the *net* (a `+` raises, a `−` dims — "high question-match
+  raises it, other factors dim it" happens mechanically, no layer knowing another). Order-independent → measurable.
+- **Safety guarantee:** every layer's marginal contribution is one isolable number in the log-sum, no matter how
+  exotic its algo → full flexibility *without* losing measurability. The scramble-prone operators are the hard
+  ones (`block`=−∞, big `−`inhibit) — they get the most control-gate scrutiny (they're today's `critical ×3.0` /
+  floor pathologies). FIND-union is monotonic-safe.
+
+**18.12 — Burial-decomp RESULT — validates §18.11 + refines §18.8 (2026-06-23).** `eval/laf/burial_decomp.py`,
+73-cue corpus, essential gold, three rankers on the identical corpus:
+
+| ranker | hit@5 | hit@25 |
+|---|---|---|
+| pipeline (today's `brain.recall`) | 19% | 33% |
+| raw `_primary` cosine | **21%** | **37%** |
+| best-field (ORACLE over all field-vectors) | **32%** | **51%** |
+
+- **(1) The pipeline is net-NEGATIVE vs raw `_primary`** (19<21, 33<37). It **buries 5** cosine-reachable golds
+  (`0363` prim7→pipeNone, `0836` prim5→None, `1491`/`0929` prim8→None) and **rescues only 2** (idf2/FTS: `0318`
+  51→17, `0764` 26→20). The multi-group z-average + idf2/FTS flooding net-bury. **"Fix the fusion" is a real
+  lever, not a 3-case mirage** — there's ~2pp free just dropping to raw `_primary`.
+- **(2) Field-fusion headroom is large + genuinely multi-field:** best-field **51% hit@25** (+18pp over pipeline)
+  ≈ `8bcc8c96`'s 53% realizable-union, independently arrived at. Reach @25-where-`_primary`-can't spreads across
+  `_situation`×3, user/anchor quotes×3, title/reasoning/question×1 — **no single field carries it** ⇒ the *stack*
+  is the right shape.
+- **CAVEAT (the firewall):** best-field is an **ORACLE** — picks the right field per gold *with hindsight*. 51% is
+  the **ceiling, not deployable**. The `_primary`→best-field gap (37→51 @25) is the *prize*; the realizable
+  fraction is whatever a selector/fusion captures without hindsight (the build). Small N (73), mild lens caveat.
+- **Validates §18.11:** the pipeline's net-loss IS the average-buries pathology the independent-layer model fixes
+  — a weak field emits ~0 Δlog and can't drag a strong `_primary` down. **Refines §18.8's "reach dominates":**
+  much of the apparent reach-gap is *pipeline-burial* + *field-fusion-recoverable*; only the residual (e.g.
+  `6a964255` raw `_primary` rank 1556) is *true* reach.
+- **Next:** build a *realizable* FIND-union over field-activations (deployable approximation of best-field),
+  measure how much of the 51% ceiling it captures **without scrambling controls** (the control-gate watching the
+  burial-prone operators).
+
+**18.13 — Patchy FIND-union RESULT: uniform fusion DILUTES; the ceiling needs a selector (2026-06-23).**
+`eval/laf/rrf_union_patch.py`, 73-cue corpus, essential gold — deployable (hindsight-free) RRF fusions vs oracle:
+
+| ranker | hit@5 | hit@25 |
+|---|---|---|
+| pipeline (today) | 19% | 33% |
+| raw `_primary` | 21% | 37% |
+| best-field (ORACLE) | 32% | 51% |
+| rrf_all | 16% | 29% |
+| rrf_core (semantic fields) | 14% | 33% |
+| rrf_max (each node by own best field) | 19% | 29% |
+
+**ALL uniform fusions are WORSE than raw `_primary`** — sum, curated-sum, max all DILUTE below 21/37, none near
+the 51% oracle. Confirms `8bcc8c96` on the LAF substrate: **the unlock is a SELECTOR, not uniform fusion.** A gold
+strong in ONE field is drowned by nodes mediocre in MANY (sum) or by the crowd of every-node's-best-field (max);
+the 51% oracle is a hindsight artifact (knowing *which* gold) no hindsight-free combine realizes. **SALVAGE:** the
+union still wins as a POOL — gold in *some* field's top-25 = 51% vs pipeline's 33% → **FIND-union = reach pool
+(+18pp); RANK = selector.** Kills the easy "RRF the fields" path.
+
+**18.14 — Reach matrix RESULT: graph-1hop apparently dominates reach, fields are redundant — but graph is
+hairball-suspect (2026-06-23).** `eval/laf/reach_matrix.py`, 73-cue corpus, REVERSE per-gold reach across every
+signal (field-vectors + FTS + graph-1hop + episodic). **UNION reach @25 (≥1 signal) = 58%** (vs field-only 51%,
+pipeline 33% — FTS+graph add +7pp).
+
+| signal | reach@25 | UNIQUE@25 | best-for |
+|---|---|---|---|
+| **graph1hop** (binary reach-flag) | **24** | **3** | **14** |
+| _primary | 27 | 0 | 4 |
+| high_meta | 17 | 0 | 10 |
+| title | 16 | 1 | 6 |
+| situation / _situation | 15 / 15 | 0 | 3 |
+| content | 14 | 0 | 4 |
+| question | 13 | 0 | 4 |
+| **FTS** | 13 | **2** | 4 |
+| reasoning / other_meta | 11 / 11 | 0 | 1 / 5 |
+| anchor/user quotes | 9 / 6 | 0 / 1 | 5 / 3 |
+| episodic | 0 | 0 | 0 |
+
+**Two structural findings, both gated by one caveat:**
+1. **graph-1hop is apparently the biggest reach signal** (best-for 14, reaches 24, 3 UNIQUE); FTS adds 2 unique.
+   Almost everything else has **0 UNIQUE** → **the field-vectors are REDUNDANT for reach** (they reach the same
+   golds). First read of "layer more or less": keep `_primary` + graph + FTS; extra field-vectors add ~no unique reach.
+2. **BUT the graph signal is hairball-suspect:** the edge graph is **79% co_accessed** (`d1d1a90c`'s exact
+   decision — co_accessed excluded from traversal *because* it floods). My graph-1hop used ALL edges → "1-hop from
+   top-25" is likely mostly usage-noise, not semantic reach. AND this **entangles finding (1):** broad-graph
+   covering the fields' golds is plausibly WHY they show 0 unique — typing the graph may restore field uniqueness.
+
+**episodic = 0 coverage** — the `recall_episodes` bridge returned no usable episodes in IsolatedBrain (a bug, not
+a real zero) → untested, to fix.
+
+**The decisive next test:** TYPED graph-1hop (semantic edges only, exclude co_accessed). Does the biggest reach
+signal survive de-noising (→ graph+FTS+`_primary` is the reach union, fields redundant) or collapse (→ fields
+regain uniqueness, hairball was the inflation)? **The combination principle is provisional until this resolves.**
+Fix the episodic bridge in parallel.
+
+**18.15 — Typed-graph test RESOLVES §18.14: graph's reach advantage was co_accessed hairball (2026-06-23).**
+Re-ran `reach_matrix.py` with graph-1hop typed — excluding the 9 `noise`-aspect relations (`co_accessed`,
+`community_member`, `emergent_bridge`, `temporal_sequence`, `dream_*`, …, via `brain.aspects.by_name('noise')`):
+
+| | reach@25 | UNIQUE@25 |
+|---|---|---|
+| graph1hop (untyped, all edges) | 24 | 3 |
+| graph1hop_typed (noise excluded) | **16** | **0** |
+
+**The hairball was real.** Typing drops graph 24→16 reach and **3→0 unique** — ALL of graph's *unique* reach (and a
+third of its total) ran through `noise` edges. **Vindicates `d1d1a90c`** (co_accessed excluded *because* it floods).
+De-noised, **graph-1hop is reach-REDUNDANT (0 unique)** — its 16 golds are all reached by fields/FTS too.
+
+**Corrected reach picture:** the ONLY unique-reach signals are **FTS (2), title (1), user_raw_quote (1)**. Every
+field-vector AND typed-graph = 0 unique → mutually redundant FOR REACH. Read-side reach saturates ~54–58% union on
+a *handful* of complementary signals (`_primary` + FTS + title/voice); the ~42% residual (e.g. `6a964255`) no
+read-signal reaches → encode-gap / next-move (§16's 14%+22%, out of read-scope). **episodic STILL 0 coverage**
+after the time-bound fix → genuine `recall_episodes`-in-IsolatedBrain blocker, untested.
+
+**The underlying principle (layer more or less):**
+- **REACH needs FEW layers** — `_primary` + FTS + title/voice ≈ saturate the read-reachable ~54-58%. MORE
+  field-vectors or (de-noised) graph do NOT widen reach (all 0-unique). *Layer fewer* on FIND.
+- **The leverage is RANK, not reach** — the field that ranks a gold best VARIES per gold (best-for: high_meta 10,
+  title 6, content/question/`_primary` 4 each); uniform fusion dilutes (§18.13). So the win is a per-gold
+  **field-SELECTOR within the reach pool** — `8bcc8c96`'s selector, now substrate-confirmed as the real lever
+  (not more reach signals, not graph, not episodic).
+- The ~42% residual is encode-side / next-move — a separate workstream, not a read-layer.
+
+**Next:** the rank-selector over field-vectors (which field per gold) within the FIND pool (`_primary` + FTS +
+title/voice). Separately: debug the `recall_episodes` IsolatedBrain bridge before episodic can be measured at all.
+
+**18.16 — Deep-research salvage (truncated by spend limit) — the selector might not need training (2026-06-24).**
+A deep-research run on LAF inspirations hit the org spend limit mid-synthesis (104 agents / 2.9M tokens). Only 3
+claims survived 3-0 adversarial verification (the "refuted" ones had incomplete voting — spend-limit failures, NOT
+genuine refutations — so disregard them; this is a partial salvage, not the full report):
+- **WHY RRF dilutes (mechanism, arXiv 2210.11934):** RRF is rank-only — it discards score magnitude/distribution.
+  A gold strong-in-ONE-signal contributes the same rank-1 weight as any rank-1, so it's drowned by nodes
+  mediocre-but-present in MANY. This is the mechanistic confirmation of §18.13's measured dilution.
+- **DAT — Dynamic Alpha Tuning (arXiv 2503.23013):** a per-query fusion weight α(q) for dense vs BM25, replacing
+  a fixed α — set by an **LLM rating the TOP-1 result of each retriever**, normalized `α = Sv/(Sv+Sb)`, with hard
+  overrides (perfect single-signal hit → route fully to it; double-zero → fallback).
+- **Takeaway for the LAF selector (directly applicable):** the per-query selector may **not need a trained
+  model.** An LLM-rated, per-query, top-1-effectiveness weighting (DAT-style) is cheap, query-conditioned, and
+  **dodges the overfit-on-flat-embedder + small-corpus risk** we flagged — and we ALREADY run an LLM (Haiku
+  surface) in the loop. This is the leading selector design to prototype. Fuller lit synthesis pending a
+  re-run on ample budget (do not treat as exhaustive).
+
+**18.17 — Selector design direction (research-informed, 2026-06-24).** Synthesis from the (truncated)
+deep-research + established IR knowledge — what the rank-selector should be. NOT a verified lit report (the
+workflow died at synthesis); confidence-tagged: `[verified]` survived adversarial check, `[established]`
+well-known, connections are Anchor's. Three sources converge on one shape:
+- **RANK = per-query-weighted MAX over fields, NOT average.** ColBERT's MaxSim (best-matching part wins,
+  summed; never pooled-to-one-vector) is the principled form of our best-field oracle (§18.12, 51%) —
+  averaging fields IS the dilution we measured (§18.13/15). So the RANK operator is max/best-field; the
+  selector picks the weighting per query. `[established]`
+- **The selector = LLM-judged per-query weighting (DAT-style, §18.16), NOT a trained model.** The Haiku
+  surface we ALREADY run rates the top-1 of each signal/field per query → per-query weights, with hard
+  overrides (perfect single hit → route fully; double-zero → fallback). Cheap, query-conditioned, and
+  **dodges the overfit-on-flat-embedder + small-corpus risk** (§17). `[verified-DAT + connection]`
+- **FIND stays lean** (§18.15: `_primary` + FTS + title/voice ≈ saturate reach); the selector ranks within
+  that pool; an optional cross-encoder rerank is the precision layer after. `[established]`
+
+**Don't-reinvent / pitfalls:** RRF is rank-only → discards score magnitude → dilutes (arXiv 2210.11934);
+learning-to-rank / MoE-routing need labels + training we lack (overfit on flat/small); QPP predictors
+correlate weakly with real performance (prior, not decider); HippoRAG-PPR is embedder-gated (§13b/§17). The
+agent-memory landscape (Mem0/Letta/Zep/GraphRAG) is retrieve-then-rank / graph-summary — **none do a
+per-query signal-selector**, so it's under-explored, not a reinvention.
+
+**Prototype first:** Haiku-judged per-query field-weighting (DAT-style) + max-composition, measured on the
+73-cue corpus against the control-gate. (Full lit synthesis pending a budget-capped re-run — direction, not proof.)
