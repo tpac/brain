@@ -106,6 +106,33 @@ class TestConsolidationScanGate(BrainTestBase):
         self.assertIn(fact_id, changed)
         self.assertNotIn(comm_id, changed)  # consolidation scans non-community only
 
+    def test_access_mark_excluded_only_revise_enters_change_set(self):
+        # Fix (2026-06-26): _get_changed_node_ids keys on created_at/revised_at,
+        # NOT updated_at. A recalled node gets updated_at bumped by the
+        # recall_write_queue access drain — that must NOT pull it into the
+        # change set, or the incremental scan re-checks the whole graph every
+        # cycle AND drops the node's suppression edge out of the reviewed set
+        # (settled pairs re-surface). Only a real revise (revised_at) re-enters.
+        d = self._decoder()
+        access_id = self.brain.remember(type='fact', title='accessed', content='c')['id']
+        revise_id = self.brain.remember(type='fact', title='revised', content='c')['id']
+        untouched_id = self.brain.remember(type='fact', title='untouched', content='c')['id']
+        time.sleep(0.02)
+        cutoff = datetime.now(timezone.utc).isoformat()
+        time.sleep(0.02)
+        after = datetime.now(timezone.utc).isoformat()
+        # Mirror the recall access drain (recall_write_queue): updated_at only.
+        self.brain.conn.execute(
+            "UPDATE nodes SET updated_at = ? WHERE id = ?", (after, access_id))
+        # Mirror a real revise(): revised_at moves.
+        self.brain.conn.execute(
+            "UPDATE nodes SET revised_at = ? WHERE id = ?", (after, revise_id))
+        self.brain.conn.commit()
+        changed = d._get_changed_node_ids(cutoff)
+        self.assertIn(revise_id, changed)        # revise re-enters
+        self.assertNotIn(access_id, changed)     # access-only must NOT (the fix)
+        self.assertNotIn(untouched_id, changed)  # untouched stays out
+
 
 class TestConsolidationStampTiming(BrainTestBase):
     """Orchestrator-level: the cutoff advances ONLY after a run completes."""

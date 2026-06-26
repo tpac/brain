@@ -269,8 +269,10 @@ def drain_once(brain) -> None:
             # Atomic +1 per (node, session) pair via executemany. The
             # `archived = 0` filter makes the UPDATE a silent no-op on
             # archived nodes (race between enqueue and drain — intended,
-            # not an error). Activation bump (0.1) matches
-            # NodeDAL.mark_accessed's hardcoded boost.
+            # not an error). Activation bump is a fixed 0.1 per recall. This
+            # drain is the sole access-mark writer and bumps updated_at — which
+            # is why consolidation's incremental scan keys on revised_at, not
+            # updated_at (see consolidation_decoder._get_changed_node_ids).
             conn.executemany(
                 'UPDATE nodes SET '
                 '    access_count = access_count + 1, '

@@ -87,11 +87,11 @@ class ConsolidationDecoder(IntegrationUnit):
         scan_stats['scan_ms'] = int((time.time() - scan_started) * 1000)
 
         self.trace('O', 'consolidation_candidates',
-                   'Scanned %d nodes, found %d pairs above %.2f (suppressed %d, %s %dms)' % (
+                   'Scanned %d nodes, found %d pairs above %.2f (%d reviewed, %s %dms)' % (
                        scan_stats['nodes_scanned'],
                        scan_stats['pairs_found'],
                        self.config['similarity_threshold'],
-                       scan_stats.get('suppressed_pairs', 0),
+                       scan_stats.get('reviewed_nodes', 0),
                        scan_stats.get('mode', '?'),
                        scan_stats['scan_ms']),
                    metadata=scan_stats)
@@ -286,9 +286,6 @@ class ConsolidationDecoder(IntegrationUnit):
         already_reviewed = set()
         if suppression:
             already_reviewed = self.brain._graph.nodes_touched_by_relations(suppression)
-        # Retain per-pair suppression set for backward-compat with legacy
-        # edges — drops to {} once the state check does the heavy lifting.
-        suppressed = set()
 
         content_mat = np.stack(content_vecs)
         title_mat = np.stack(title_vecs)
@@ -311,7 +308,7 @@ class ConsolidationDecoder(IntegrationUnit):
                 if a in already_reviewed and b in already_reviewed:
                     continue
                 key = (min(a, b), max(a, b))
-                if key not in suppressed and key not in pair_set:
+                if key not in pair_set:
                     pair_set.add(key)
                     t_sim = float(title_sim[y, x]) if (a in has_title and b in has_title) else 0.0
                     pairs.append((a, b, float(content_sim[y, x]), t_sim))
@@ -326,7 +323,7 @@ class ConsolidationDecoder(IntegrationUnit):
                     if a in already_reviewed and b in already_reviewed:
                         continue
                     key = (min(a, b), max(a, b))
-                    if key not in suppressed and key not in pair_set:
+                    if key not in pair_set:
                         if a in has_title and b in has_title:
                             pair_set.add(key)
                             c_sim = float(content_sim[y, x])
@@ -392,7 +389,6 @@ class ConsolidationDecoder(IntegrationUnit):
             'pairs_found': len(unique_pairs),
             'reviewed_nodes': len(already_reviewed),
             'unreviewed_nodes': len(content_vecs) - len(already_reviewed),
-            'suppressed_pairs': len(suppressed),
             'mode': mode,
         }
         if mode == 'incremental':
@@ -403,10 +399,16 @@ class ConsolidationDecoder(IntegrationUnit):
     def _get_changed_node_ids(self, since_iso):
         """Node IDs created or revised since the cutoff, from node timestamps.
 
-        Uses nodes.created_at/updated_at — NOT S1E encoding_run traces — so it
-        catches nodes touched by Anchor's MCP tools and other S2 units, not
-        just the S1 Scribe. Community nodes are excluded (consolidation scans
-        non-community nodes only). Empty cutoff returns the full active set.
+        Keys on created_at/revised_at — NOT updated_at. updated_at is bumped by
+        the recall access-mark drain (recall_write_queue), so keying on it would
+        pull every *recalled* node into the change-set: that both defeats the
+        incremental scan (a busy brain re-scans most of the graph each cycle) and
+        — via the `already_reviewed.difference_update(changed_ids)` in
+        _scan_embeddings — drops a recalled node's suppression edge out of the
+        reviewed set, so settled pairs re-surface every cycle. revised_at moves
+        only on a real revise()/absorb — exactly when re-checking for new
+        near-duplicates is warranted. Community nodes are excluded (consolidation
+        scans non-community nodes only). Empty cutoff returns the full active set.
         """
         c = self.brain.conn
         if not since_iso:
@@ -416,7 +418,7 @@ class ConsolidationDecoder(IntegrationUnit):
             return {r[0] for r in rows}
         rows = c.execute(
             "SELECT id FROM nodes WHERE archived = 0 AND type != 'community' "
-            "AND (created_at > ? OR updated_at > ?)",
+            "AND (created_at > ? OR revised_at > ?)",
             (since_iso, since_iso)).fetchall()
         return {r[0] for r in rows}
 

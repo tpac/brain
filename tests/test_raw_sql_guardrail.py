@@ -92,7 +92,7 @@ class TestRawSqlGuardrail(unittest.TestCase):
             self.assertTrue(DML_RE.search(s), f"should flag: {s!r}")
         ignores = [
             "self.conn.execute('SELECT * FROM t')",
-            "self._nodes.update_field(nid, 'x', 1)",   # DAL method, not raw execute
+            "self._graph.add_relation(a, b, 'rel')",   # DAL method, not raw execute
             "log = 'we INSERT later'",                  # not an execute call
         ]
         for s in ignores:

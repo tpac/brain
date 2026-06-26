@@ -2045,94 +2045,17 @@ class NodeDAL:
 
     # --- Writes ---
 
-    # Allowed columns for update_field — whitelist prevents SQL injection
-    _UPDATABLE_FIELDS = frozenset({
-        'content', 'content_summary', 'confidence', 'locked', 'archived',
-        'critical', 'revised_at', 'updated_at', 'encoding_source',
-        'encoding_version', 'evolution_status', 'resolved_at', 'resolved_by',
-    })
-
-    def update_field(self, node_id: str, field: str, value) -> None:
-        """Update a single field on a node. Field must be in whitelist.
-        Automatically sets updated_at."""
-        if field not in self._UPDATABLE_FIELDS:
-            raise ValueError("Cannot update field '%s' — not in whitelist" % field)
-        self.conn.execute(
-            'UPDATE nodes SET %s = ?, updated_at = ? WHERE id = ?' % field,
-            (value, _now(), node_id))
-        commit_unless_batched(self.conn)
-
-    def update_confidence(self, node_id: str, confidence: float) -> None:
-        """Update a node's confidence score."""
-        self.conn.execute(
-            'UPDATE nodes SET confidence = ?, updated_at = ? WHERE id = ?',
-            (confidence, _now(), node_id)
-        )
-        commit_unless_batched(self.conn)
-
-    def set_critical(self, node_id: str, critical: bool = True) -> None:
-        """Mark a node as critical."""
-        self.conn.execute(
-            'UPDATE nodes SET critical = ?, updated_at = ? WHERE id = ?',
-            (1 if critical else 0, _now(), node_id)
-        )
-        commit_unless_batched(self.conn)
-
-    def unlock(self, node_id: str) -> None:
-        """Unlock a node."""
-        self.conn.execute(
-            'UPDATE nodes SET locked = 0, updated_at = ? WHERE id = ?',
-            (_now(), node_id)
-        )
-        commit_unless_batched(self.conn)
-
-    def update_type(self, node_id: str, new_type: str, title_prefix_old: str = '',
-                    title_prefix_new: str = '') -> None:
-        """Change a node's type, optionally updating title prefix."""
-        if title_prefix_old and title_prefix_new:
-            self.conn.execute(
-                "UPDATE nodes SET type = ?, title = REPLACE(title, ?, ?), updated_at = ? WHERE id = ?",
-                (new_type, title_prefix_old, title_prefix_new, _now(), node_id)
-            )
-        else:
-            self.conn.execute(
-                'UPDATE nodes SET type = ?, updated_at = ? WHERE id = ?',
-                (new_type, _now(), node_id)
-            )
-        commit_unless_batched(self.conn)
-
-    def append_content(self, node_id: str, text: str) -> None:
-        """Append text to a node's content."""
-        self.conn.execute(
-            'UPDATE nodes SET content = content || ?, updated_at = ? WHERE id = ?',
-            (text, _now(), node_id)
-        )
-        commit_unless_batched(self.conn)
-
-    def set_evolution_status(self, node_id: str, status: str) -> None:
-        """Set evolution_status on a node."""
-        self.conn.execute(
-            "UPDATE nodes SET evolution_status = ? WHERE id = ?",
-            (status, node_id)
-        )
-        commit_unless_batched(self.conn)
-
     def delete(self, node_id: str) -> None:
         """Hard delete a node (use archive() for soft delete)."""
         self.conn.execute('DELETE FROM nodes WHERE id = ?', (node_id,))
         commit_unless_batched(self.conn)
 
-    def mark_accessed(self, node_id: str, activation_boost: float = 0.1) -> None:
-        """Update access tracking fields on a node."""
-        ts = _now()
-        self.conn.execute(
-            'UPDATE nodes SET access_count = access_count + 1, '
-            'activation = MIN(1.0, activation + ?), '
-            'recency_score = 1.0, last_accessed = ?, updated_at = ? WHERE id = ?',
-            (activation_boost, ts, ts, node_id)
-        )
-
     # get_metadata removed 2026-04-13 — old node_metadata table dropped, use MetadataDAL (KV).
+    # NodeDAL write-helpers (update_field/update_confidence/set_critical/unlock/
+    # update_type/append_content/set_evolution_status/mark_accessed) removed
+    # 2026-06-26 — dead since the revise()-is-the-only-content-path invariant
+    # (b2f97fb1); content/title/confidence/critical/locked go through
+    # brain_remember's revise, access goes through recall_write_queue's drain.
     # delete_for_node removed 2026-05-30 (DAL cleanup Phase 0) — was a dup of
     # VectorDAL.delete_for_node (node_enrichments is the vector table, owned by
     # VectorDAL); had zero callers.
