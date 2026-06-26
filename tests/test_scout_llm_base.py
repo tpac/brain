@@ -42,6 +42,9 @@ def _mock_anthropic_response(text, input_tokens=100, output_tokens=50,
 
 def _mock_client(response_text):
     client = MagicMock()
+    # run_llm_scout binds per-request timeout/retries via with_options before
+    # calling create — make it a pass-through so the configured create is hit.
+    client.with_options.return_value = client
     client.messages.create.return_value = _mock_anthropic_response(response_text)
     return client
 
@@ -121,6 +124,7 @@ class TestHappyPath(BrainTestBase):
             llm_output, input_tokens=500, output_tokens=20,
             cache_read=300, cache_create=100)
         client = MagicMock()
+        client.with_options.return_value = client
         client.messages.create.return_value = resp
         out = scout_base.run_llm_scout(
             'quote', self.brain, _shared_prefix(),
@@ -147,6 +151,7 @@ class TestSystemPromptAssembly(BrainTestBase):
                 json.dumps({"candidates": [], "scanned": {"turns": 0}}))
 
         client = MagicMock()
+        client.with_options.return_value = client
         client.messages.create.side_effect = capture
 
         scout_base.run_llm_scout(
@@ -172,6 +177,7 @@ class TestSystemPromptAssembly(BrainTestBase):
                 json.dumps({"candidates": [], "scanned": {"turns": 0}}))
 
         client = MagicMock()
+        client.with_options.return_value = client
         client.messages.create.side_effect = capture
 
         prefix = _shared_prefix()
@@ -184,6 +190,28 @@ class TestSystemPromptAssembly(BrainTestBase):
         self.assertEqual(messages[0]['role'], 'user')
         # Content blocks match the shared prefix exactly (no extra task block)
         self.assertEqual(len(messages[0]['content']), len(prefix))
+
+    def test_per_request_timeout_and_no_retries_are_bound(self):
+        """Regression guard: the scout's timeout_seconds must be bound onto
+        THIS request (with_options) + retries disabled — otherwise the shared
+        client inherits the SDK ~600s default and a stalled scout becomes a
+        ghost thread. timeout_seconds was dead config until this was wired."""
+        client = MagicMock()
+        client.with_options.return_value = client
+        client.messages.create.return_value = _mock_anthropic_response(
+            json.dumps({"candidates": [], "scanned": {"turns": 0}}))
+
+        with patch.object(scout_base, '_load_interaction', return_value={
+            'template': 'quote task',
+            'parameters': {'category_statement': 'x',
+                           'model': 'claude-haiku-4-5',
+                           'timeout_seconds': 25},
+        }):
+            scout_base.run_llm_scout(
+                'quote', self.brain, _shared_prefix(),
+                anthropic_client=client)
+
+        client.with_options.assert_called_once_with(timeout=25.0, max_retries=0)
 
 
 class TestFailurePaths(BrainTestBase):
@@ -214,6 +242,7 @@ class TestFailurePaths(BrainTestBase):
 
     def test_api_error_captures_stub_and_latency(self):
         client = MagicMock()
+        client.with_options.return_value = client
         client.messages.create.side_effect = RuntimeError('network down')
         out = scout_base.run_llm_scout(
             'quote', self.brain, _shared_prefix(),

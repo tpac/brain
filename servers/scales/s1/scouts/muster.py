@@ -37,14 +37,16 @@ from . import contract as sc
 from .runners import SCOUT_RUNNERS
 
 
-# Per-scout wall-clock deadline. When muster provides a shared Anthropic
-# client (the typical path), this is the EFFECTIVE upper bound on any
-# scout — the client's internal timeout is the SDK default (~600s) which
-# is much longer. A scout's own `timeout_seconds` in its interaction
-# parameters only applies if the scout builds its own client instead.
-#
-# 90s covers: algo scout (<1s), Haiku scouts (~2-5s each). Generous
-# buffer for tail latency before we stub the scout as timed-out.
+# Muster wall-clock BACKSTOP (shared, not per-scout). Each fut.result()
+# waits against one t0+timeout deadline, so the whole muster — not each
+# scout — is bounded by this; a single stalling scout can consume the
+# full budget. The PRIMARY per-scout bound now lives in base.run_llm_scout,
+# which binds each LLM scout's `timeout_seconds` (default 25s) +
+# max_retries=0 onto the request via with_options — so a stalled LLM scout
+# aborts at ~25s and its ghost thread dies there, not at the SDK ~600s
+# ceiling. This 90s only fires in the unusual case where that per-request
+# timeout doesn't (e.g. an algo scout blocked on something other than the
+# Anthropic SDK). The name says "per-scout" for historical reasons.
 MUSTER_PER_SCOUT_TIMEOUT_S = 90.0
 
 

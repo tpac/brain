@@ -30,13 +30,19 @@ returns a normalized envelope.
 
 ## Timeouts
 
-Muster enforces a wall-clock deadline (MUSTER_PER_SCOUT_TIMEOUT_S,
-default 90s) on each scout via future.result(timeout=...). When muster
-provides the Anthropic client (the typical path), the scout's own
-`timeout_seconds` parameter does NOT apply — the SDK default (600s)
-is in effect for the request, but muster's deadline fires first.
-The `timeout_seconds` parameter only takes effect when `anthropic_client
-is None` and this runner builds its own client.
+Two layers, belt-and-suspenders:
+- Per-request (primary): this runner binds the scout's `timeout_seconds`
+  (default 25s) + max_retries=0 onto the create call via
+  client.with_options, so the bound applies even when muster shares ONE
+  client across scouts (the typical path). A stalled scout aborts at
+  `timeout_seconds` with APITimeoutError (caught below as api_error)
+  instead of running to the SDK ceiling (~600s), becoming an abandoned
+  ghost thread that returns a truncated body and logs a misleading
+  json_parse long after muster gave up on it.
+- Muster wall-clock (backstop): MUSTER_PER_SCOUT_TIMEOUT_S (default 90s)
+  is a shared deadline across the parallel scouts (muster.py). With the
+  per-request bound in place this only fires if the SDK timeout itself
+  doesn't (e.g. a non-LLM scout blocked on something else).
 
 ## What this does NOT do
 
@@ -174,6 +180,18 @@ def run_llm_scout(
         import anthropic
         anthropic_client = anthropic.Anthropic(timeout=timeout_seconds)
 
+    # Bind the scout's own timeout + disable retries on THIS request.
+    # Muster shares one client across scouts (for cache warmth) created
+    # WITHOUT a per-request timeout — without with_options the shared-client
+    # path inherits the SDK's ~600s default and `timeout_seconds` is dead
+    # config. with_options shares the underlying http pool (cache benefit
+    # preserved) but bounds this request: a stalled scout aborts at
+    # `timeout_seconds` rather than running to the SDK ceiling as an
+    # abandoned ghost thread. max_retries=0 keeps the bound hard — scouts
+    # are best-effort, muster handles a miss.
+    call_client = anthropic_client.with_options(
+        timeout=timeout_seconds, max_retries=0)
+
     # 5. API call
     t0 = time.time()
     api_kwargs = {
@@ -190,7 +208,7 @@ def run_llm_scout(
             },
         }
     try:
-        response = anthropic_client.messages.create(**api_kwargs)
+        response = call_client.messages.create(**api_kwargs)
     except Exception as e:
         elapsed = int((time.time() - t0) * 1000)
         _log(f'API call failed in {elapsed}ms: {type(e).__name__}: {e}')
