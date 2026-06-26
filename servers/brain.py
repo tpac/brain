@@ -1781,8 +1781,17 @@ class Brain(
             if self._check_rate_limit(source, fingerprint):
                 return  # suppressed
 
-            tb = traceback.format_exception(type(error), error, error.__traceback__)
-            tb_short = ''.join(tb[-3:]) if len(tb) > 3 else ''.join(tb)
+            # error=None is a valid call (callers logging a condition, not an
+            # exception). Guard the traceback build — None has no __traceback__,
+            # and accessing it would raise AttributeError that the outer except
+            # swallows to stderr, so the debug_log INSERT below never runs and
+            # the error never surfaces at boot / in the dashboard.
+            if error is not None:
+                tb = traceback.format_exception(type(error), error,
+                                                error.__traceback__)
+                tb_short = ''.join(tb[-3:]) if len(tb) > 3 else ''.join(tb)
+            else:
+                tb_short = ''
 
             _sid = (ctx.session_id if ctx is not None else self.session_id) or 'unknown'
             # Write to logs DB

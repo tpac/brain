@@ -68,6 +68,23 @@ class TestErrorLogging(BrainTestBase):
         self.assertTrue(len(errors) > 0, 'Should have logged error')
         self.assertEqual(errors[0]['source'], 'test_source')
 
+    def test_log_error_none_surfaces_in_db(self):
+        """error=None must still reach debug_log (not just stderr).
+
+        Regression: callers log a *condition* with error=None (e.g.
+        brain_remember 'group_vectors_skip'). Building the traceback from
+        None.__traceback__ raised AttributeError, which the method's own
+        except swallowed to stderr — so the row never hit debug_log and
+        the failure was invisible at boot / in the dashboard.
+        """
+        self.brain._log_error('test_none_src', None, 'none ctx')
+
+        errors = self.brain.get_recent_errors(hours=1)
+        match = [e for e in errors if e['source'] == 'test_none_src']
+        self.assertTrue(match, 'error=None must surface in debug_log')
+        self.assertEqual(match[0]['type'], 'NoneType')
+        self.assertEqual(match[0]['context'], 'none ctx')
+
     def test_log_warning_writes_to_db(self):
         """_log_warning writes a non-blocking signal with event_type='warning'."""
         self.brain._log_warning("test_warn_source", "test warning message", "warn ctx")
