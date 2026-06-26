@@ -66,8 +66,11 @@ const TIPS = {
   'candidates': 'Memories scored as recall candidates before selection',
   'selected':   'Memories chosen to surface to Anchor this turn — the actual recall',
   'dropped':    'Candidates considered but not surfaced',
+  'outcome':    'Did this recall serve context to Anchor (served) or surface nothing (empty)',
+  'truncated':  'Rounds whose response was cut at max_tokens',
   // section headers
   'cost & provenance': 'What this run cost and which prompt version produced it',
+  'phase timing': 'Per-phase wall-clock breakdown of the recall (the queryable form of hook_phase_timing)',
   'graph Δ':    'Nodes this run created / revised / archived — the change to memory (edges are their own edge events)',
   'outcomes':   'Unit-specific tally of what the run decided (e.g. merged, kept, consolidated)',
   'output (what Anchor saw)': 'The exact additionalContext block this recall injected into Anchor',
@@ -147,16 +150,16 @@ const _DELTA_KNOWN = new Set([
 
 // ── per-shape renderers ─────────────────────────────────────────────────────
 
-function _renderDelta(ev, m) {
-  let h = '';
-
-  // Cost & provenance — the lane that turns Traces into a hardening cockpit.
+// Shared agent-run cost lane (the build_run_telemetry field-set + K provenance).
+// Used by BOTH _renderDelta (encoders) and _renderSelection (Surface), so the
+// cost block renders identically wherever an agent spent tokens — the render
+// mirror of the one trace_contract.build_run_telemetry that produces the data.
+// Returns the chip HTML; the per-shape `truncated` banner stays with each caller
+// (a delta truncation is a corrupted write; a selection truncation is a
+// cut-short pick — different wording).
+function _runCostLane(ev, m) {
   let cost = '';
   if (m.rounds != null)            cost += _stat('rounds', m.rounds);
-  if (m.actions != null)           cost += _stat('actions', m.actions);
-  if (m.write_actions != null)     cost += _stat('writes', m.write_actions, '#33ff88');
-  if (m.inputs_processed != null)  cost += _stat('inputs', m.inputs_processed);
-  if (m.rejection_skipped)         cost += _stat('rej.skipped', m.rejection_skipped, '#ffaa33');
   if (m.elapsed_ms != null)        cost += _stat('elapsed', _fmtMs(m.elapsed_ms));
   if (m.input_tokens != null)      cost += _stat('tok in', m.input_tokens);
   if (m.output_tokens != null)     cost += _stat('tok out', m.output_tokens);
@@ -164,6 +167,20 @@ function _renderDelta(ev, m) {
   if (m.cache_creation_tokens)     cost += _stat('cache wr', m.cache_creation_tokens);
   if (m.interaction_version)       cost += _stat('K v', m.interaction_version, '#ffaa33');
   if (ev.interaction_id)           cost += _stat('K id', ev.interaction_id);   // truthy: hide 0/null, matching K v
+  return cost;
+}
+
+function _renderDelta(ev, m) {
+  let h = '';
+
+  // Cost & provenance — the lane that turns Traces into a hardening cockpit.
+  // Delta-specific loop stats first, then the shared run-cost lane.
+  let cost = '';
+  if (m.actions != null)           cost += _stat('actions', m.actions);
+  if (m.write_actions != null)     cost += _stat('writes', m.write_actions, '#33ff88');
+  if (m.inputs_processed != null)  cost += _stat('inputs', m.inputs_processed);
+  if (m.rejection_skipped)         cost += _stat('rej.skipped', m.rejection_skipped, '#ffaa33');
+  cost += _runCostLane(ev, m);
   if (m.truncated) {
     cost += '<span style="display:inline-block;background:#3a0e0e;border:1px solid #c33;'
       + 'border-radius:3px;padding:1px 6px;margin:0 4px 4px 0;color:#ff7777;font-size:10px;'
@@ -269,7 +286,23 @@ function _renderSelection(ev, m) {
   if (m.candidates_considered != null) stats += _stat('candidates', m.candidates_considered);
   if (Array.isArray(m.selected)) stats += _stat('selected', m.selected.length, '#33ff88');
   if (Array.isArray(m.dropped))  stats += _stat('dropped', m.dropped.length, '#888');
+  if (m.outcome) stats += _stat('outcome', m.outcome,
+                                m.outcome === 'served' ? '#33ff88' : '#ffaa33');
   h += _section('selection', stats);
+
+  // Cost & provenance — Surface is an LLM agent too; its K trace now carries
+  // the shared run-cost block. Same lane as the encoders (only present on the
+  // K event, which carries the telemetry; the Δ additionalContext event won't).
+  let cost = _runCostLane(ev, m);
+  if (m.truncated) cost += _stat('truncated', m.truncated, '#ff7777');
+  if (cost) h += _section('cost & provenance', cost);
+
+  // Per-phase latency — the structured form of the hook_phase_timing string.
+  if (Array.isArray(m.phase_timing) && m.phase_timing.length) {
+    const chips = m.phase_timing
+      .map(p => _stat(p.phase, _fmtMs(p.ms))).join('');
+    h += _section('phase timing', chips);
+  }
 
   if (m.selected && m.selected.length) {
     h += _section('selected', m.selected.map(s =>

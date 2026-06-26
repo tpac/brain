@@ -17,10 +17,13 @@ from servers.trace_contract import (
     SELECTION_CONTENT_LIMIT,
     LLM_ENCODER_DELTA_REF_TYPES,
     METADATA_REQUIRED_BY_REF_TYPE,
+    RUN_TELEMETRY_FIELDS,
     build_delta_metadata,
     build_selection_metadata,
+    build_run_telemetry,
     validate_trace_metadata,
     check_delta_telemetry,
+    check_surface_telemetry,
 )
 
 # NOTE: the node-lifecycle split is no longer derived in the runner
@@ -182,6 +185,48 @@ class TestDeltaCostProvenance:
             assert k in DELTA_METADATA_SHAPE
 
 
+class TestBuildRunTelemetry:
+    """The shared agent-run cost block — one builder for the cost+loop field-set
+    that BOTH the encoder delta and the Surface K trace build through, so the two
+    can't drift into separate field-sets."""
+
+    def test_emits_every_run_telemetry_field_int_typed(self):
+        m = build_run_telemetry()
+        for f in RUN_TELEMETRY_FIELDS:
+            assert f in m, f"missing {f}"
+            assert m[f] == 0 and isinstance(m[f], int)
+        assert set(m) == set(RUN_TELEMETRY_FIELDS)  # nothing extra leaks in
+
+    def test_values_passthrough(self):
+        m = build_run_telemetry(elapsed_ms=120, rounds=2, truncated=1,
+                                input_tokens=500, output_tokens=30,
+                                cache_read_tokens=400, cache_creation_tokens=10)
+        assert m == {'elapsed_ms': 120, 'rounds': 2, 'truncated': 1,
+                     'input_tokens': 500, 'output_tokens': 30,
+                     'cache_read_tokens': 400, 'cache_creation_tokens': 10}
+
+    def test_none_coerced_to_zero_int(self):
+        m = build_run_telemetry(elapsed_ms=None, rounds=None, input_tokens=None)
+        assert m['elapsed_ms'] == 0 and m['rounds'] == 0 and m['input_tokens'] == 0
+
+    def test_shared_definition_is_subset_of_delta_shape(self):
+        # The shared-definition contract: every run-telemetry field is a
+        # first-class key of the encoder delta (build_delta_metadata sources
+        # them THROUGH build_run_telemetry). If a field is added to one, this
+        # fails until it's in DELTA_METADATA_SHAPE too — no silent drift.
+        for f in RUN_TELEMETRY_FIELDS:
+            assert f in DELTA_METADATA_SHAPE, f"{f} not in DELTA_METADATA_SHAPE"
+
+    def test_delta_cost_block_matches_builder(self):
+        # build_delta_metadata's cost fields are exactly what build_run_telemetry
+        # produces for the same inputs — proving the refactor didn't fork them.
+        kw = dict(elapsed_ms=15257, rounds=2, truncated=0, input_tokens=31327,
+                  output_tokens=1017, cache_read_tokens=9, cache_creation_tokens=3)
+        d = build_delta_metadata(**kw)
+        t = build_run_telemetry(**kw)
+        assert {f: d[f] for f in RUN_TELEMETRY_FIELDS} == t
+
+
 class TestValidateTraceMetadata:
     """The payload contract guard at the chokepoint — the hole that let two
     encoding_run shapes coexist undetected."""
@@ -299,6 +344,20 @@ class TestLiveWritersUseBuilders:
         assert _file_calls(path, 'build_selection_metadata'), (
             f"{path} does not call build_selection_metadata — selection trace shape will drift")
 
+    def test_surface_threads_run_telemetry(self):
+        # Surface must build its cost block through the shared builder, map usage
+        # via read_usage, and guard it — the wiring that closes the cost gap. If
+        # any is dropped, surface silently regresses to no/zero telemetry.
+        path = 'servers/scales/s1/surface.py'
+        assert _file_calls(path, 'read_usage'), (
+            f"{path} does not call read_usage — surface would record zero tokens")
+        assert _file_calls(path, 'build_run_telemetry'), (
+            f"{path} does not call build_run_telemetry — surface cost telemetry "
+            "would not reach the K trace")
+        assert _file_calls(path, 'check_surface_telemetry'), (
+            f"{path} does not call check_surface_telemetry — a zero-token "
+            "regression could land silently")
+
 
 # ═════════════════════════════════════════════════════════════
 # LLM-encoder telemetry guard (2026-06-24 S2 telemetry gap fix)
@@ -357,6 +416,39 @@ class TestCheckDeltaTelemetry:
         unified = {rt for rt, schema in METADATA_REQUIRED_BY_REF_TYPE.items()
                    if schema is DELTA_METADATA_SHAPE}
         assert set(LLM_ENCODER_DELTA_REF_TYPES) == unified
+
+
+class TestCheckSurfaceTelemetry:
+    """The surface-side analog of check_delta_telemetry. Surface is the one LLM
+    agent that writes its cost into a K trace (surface_selected), not a delta.
+    Haiku ALWAYS emits output (the selection JSON, even an empty one), so unlike
+    the delta guard there's no actions>0 gate — rounds>0 with output_tokens==0 is
+    an unambiguous wiring gap on its own."""
+
+    def test_fires_on_gap(self):
+        warn = check_surface_telemetry({'rounds': 1, 'output_tokens': 0})
+        assert warn and 'output_tokens=0' in warn
+
+    def test_silent_when_output_tokens_present(self):
+        assert check_surface_telemetry({'rounds': 1, 'output_tokens': 9}) is None
+
+    def test_silent_on_rounds_zero(self):
+        # Haiku never ran (e.g. an API failure on round 0 returned 0 rounds).
+        assert check_surface_telemetry({'rounds': 0, 'output_tokens': 0}) is None
+
+    def test_silent_on_non_dict(self):
+        assert check_surface_telemetry(None) is None
+        assert check_surface_telemetry("nope") is None
+
+    def test_fires_on_real_k_metadata_with_zero_tokens(self):
+        # A K-trace cost block built from empty telemetry (the regression we
+        # guard against) has rounds=0 → silent; but a real run that recorded a
+        # round yet zero output is the gap.
+        from servers.trace_contract import build_run_telemetry
+        gap = build_run_telemetry(rounds=1, output_tokens=0)
+        assert check_surface_telemetry(gap) is not None
+        good = build_run_telemetry(rounds=1, output_tokens=42)
+        assert check_surface_telemetry(good) is None
 
 
 class _TelStubBrain:

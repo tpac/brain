@@ -11,9 +11,12 @@ Writes: S1 traces (O/K/Δ), tmp files for Hebbian + dashboard
 
 import json
 import os
+import time
 
 from servers.scales.dispatch import load_env
-from servers.trace_contract import build_selection_metadata
+from servers.scales.runner import read_usage, USAGE_FIELDS
+from servers.trace_contract import (
+    build_selection_metadata, build_run_telemetry, check_surface_telemetry)
 from servers.daemon_config import brain_tmp_dir
 
 
@@ -60,8 +63,10 @@ def _call_surface(brain, candidates_data, user_message,
                   recent_messages, session_id, result, frame=''):
     """Call Haiku to surface relevant nodes from candidates.
 
-    Returns: (surfaced_dict, surface_prompt, max_tokens, interaction_id)
+    Returns: (surfaced_dict, surface_prompt, max_tokens, interaction_id, telemetry)
         surfaced_dict has 'selected' list. Empty on failure.
+        telemetry is the shared run-cost dict (build_run_telemetry kwargs:
+        token counts + elapsed_ms + rounds + truncated) for the K trace.
 
     Surface variant gating (2026-05-10):
       BRAIN_SURFACE_VARIANT=v4 (default) — current path, single Haiku call,
@@ -118,7 +123,7 @@ def _call_surface(brain, candidates_data, user_message,
         # before final selection. Tool-fetched candidates are appended to
         # `candidates_data` in place so the downstream short_to_full
         # mapping resolves them.
-        raw, tool_trace = _call_surface_agentic(
+        raw, tool_trace, telemetry = _call_surface_agentic(
             client, brain, candidates_data, surface_instructions,
             user_content, max_tokens, session_id, SURFACE_MODEL)
         # Attach tool trace to brain for the caller to write into K trace.
@@ -131,12 +136,21 @@ def _call_surface(brain, candidates_data, user_message,
         except Exception:
             pass
     else:
+        _t0 = time.time()
         api_resp = client.messages.create(
             model=SURFACE_MODEL,
             max_tokens=max_tokens,
             system=surface_instructions,
             messages=[{"role": "user", "content": user_content}])
         raw = api_resp.content[0].text.strip()
+        # Cost telemetry — single Haiku call, built through the shared builder
+        # (the one construction point). read_usage maps .usage onto the token
+        # field-set; one round; truncated if Haiku hit max_tokens mid-selection.
+        telemetry = build_run_telemetry(
+            **read_usage(api_resp),
+            elapsed_ms=int((time.time() - _t0) * 1000),
+            rounds=1,
+            truncated=1 if getattr(api_resp, 'stop_reason', None) == 'max_tokens' else 0)
 
     # Parse JSON — robust to the three shapes Haiku sometimes returns:
     #   (a) bare JSON: {"selected": [...]}
@@ -157,7 +171,7 @@ def _call_surface(brain, candidates_data, user_message,
     elif surfaced is None:
         surfaced = {"selected": []}
 
-    return surfaced, surface_prompt, max_tokens, interaction_id
+    return surfaced, surface_prompt, max_tokens, interaction_id, telemetry
 
 
 def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
@@ -166,8 +180,10 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
     """Agentic surface call: Haiku may use fetch tools to extend the candidate
     pool before final JSON selection.
 
-    Returns: (raw_final_text, tool_trace) where tool_trace is a list of
-    per-round dicts {round, tool_calls: [...]} for trace observability.
+    Returns: (raw_final_text, tool_trace, telemetry) where tool_trace is a list
+    of per-round dicts {round, tool_calls: [...]} for trace observability, and
+    telemetry is the shared run-cost dict (build_run_telemetry kwargs) summed
+    across the loop's Haiku rounds.
 
     Mutates `candidates_data` IN PLACE — tool-fetched candidates are appended
     so the downstream short_to_full ID mapping (in run_surface) can resolve them.
@@ -192,6 +208,20 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
     messages = [{"role": "user", "content": user_content}]
     tool_trace = []
     raw_final = ''
+
+    # Cost telemetry — summed across rounds (the agentic loop calls Haiku up to
+    # max_rounds times) over the canonical USAGE_FIELDS, then built through the
+    # shared builder (one construction point, same as v4 + the encoders).
+    _t0 = time.time()
+    usage_total = {f: 0 for f in USAGE_FIELDS}
+    rounds_used = 0
+    truncated = 0
+
+    def _telemetry():
+        return build_run_telemetry(
+            **usage_total,
+            elapsed_ms=int((time.time() - _t0) * 1000),
+            rounds=rounds_used, truncated=truncated)
 
     # Anthropic Structured Outputs runs on EVERY round, alongside tools.
     # When Haiku tool-uses, the schema doesn't apply to tool_use blocks;
@@ -230,7 +260,15 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
         except Exception as e:
             brain._log_error('surface_agentic_api', e,
                               'agentic Haiku call round=%d' % round_idx)
-            return raw_final, tool_trace
+            return raw_final, tool_trace, _telemetry()
+
+        # Accumulate cost across rounds before processing this response.
+        rounds_used += 1
+        _u = read_usage(api_resp)
+        for _k in USAGE_FIELDS:
+            usage_total[_k] += _u[_k]
+        if getattr(api_resp, 'stop_reason', None) == 'max_tokens':
+            truncated += 1
 
         stop_reason = api_resp.stop_reason
         round_record = {'round': round_idx, 'stop_reason': stop_reason,
@@ -307,7 +345,7 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
         messages.append({"role": "user", "content": tool_results})
         tool_trace.append(round_record)
 
-    return raw_final, tool_trace
+    return raw_final, tool_trace, _telemetry()
 
 
 def _parse_surfacer_json(raw):
@@ -468,13 +506,26 @@ def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
 def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
                   graph_neighbors, additional_context, enriched, results,
                   recall_ref, interaction_id, session_id, expansion=None,
-                  frame=''):
+                  frame='', telemetry=None, pt=None):
     """Write S1 surface traces: O (candidates), K (surfaced), Δ (additionalContext).
 
     `expansion` carries activation data from spread_activation when present —
     we attach per-node activation values and the kernel's per-hop trace to
     the K-event metadata so dashboards / S3 can see which nodes lit up and
     by how much, not just which were surfaced.
+
+    `telemetry` is the run-cost dict from _call_surface (build_run_telemetry
+    kwargs). It's emitted FLAT into the K-event metadata via build_run_telemetry
+    — the same shared cost block the encoder delta carries — so Surface's
+    input/output tokens + cache + elapsed_ms are queryable from traces, closing
+    the long-standing surface cost-telemetry gap. Guarded by
+    check_surface_telemetry so it can't silently regress to zeros.
+
+    `pt` (optional PhaseTimer): when supplied, its per-phase breakdown is
+    snapshotted into the K trace as `phase_timing` — the structured, queryable
+    form of the hook_phase_timing debug string. The K trace also records an
+    `outcome` flag (served / empty) so a turn that surfaced nothing is
+    distinguishable from one that did, without cross-referencing other logs.
     """
     recall_chain = ctx.s1r_chain()
 
@@ -544,6 +595,39 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
         # Kernel trace — hops, new nodes, threshold applied, edges transmitted
         activation_meta['kernel_trace'] = kernel_trace
 
+    # K-event metadata — built as a local so the telemetry guard can inspect it
+    # before the write (loud-at-the-write-boundary). The shared run-cost block
+    # (build_run_telemetry) sits flat alongside the rich tool_trace/kernel_trace,
+    # so Surface now carries BOTH cost and loop detail — the gap this closes.
+    k_metadata = {
+        'selected': sel_detail, 'expanded': exp_detail,
+        **frame_meta, **activation_meta,
+        # Agentic surface tool trace (v5 only; empty for v4). Stashed by
+        # _call_surface_agentic on the brain instance so we don't change the
+        # run_surface signature.
+        'tool_trace': (getattr(brain, '_surface_tool_traces', {}) or {}).get(session_id) or [],
+        'surface_variant': os.environ.get('BRAIN_SURFACE_VARIANT', 'v4'),
+        # telemetry is already a complete build_run_telemetry dict from both
+        # surface paths; spread it flat (fallback to the all-zero block on None).
+        **(telemetry or build_run_telemetry()),
+        # Per-phase latency (structured, queryable — the hook_phase_timing debug
+        # string's data) + the run outcome. 'served' when context reached Anchor,
+        # 'empty' when nothing surfaced. ('timeout' is deferred — the daemon
+        # can't observe a client abandoning the recall.)
+        'phase_timing': pt.snapshot() if pt is not None else [],
+        'outcome': 'served' if additional_context else 'empty',
+    }
+    # Loud guard — Haiku ran but recorded 0 output tokens means the cost
+    # telemetry wasn't threaded. Log, don't block (write the full payload
+    # regardless), same contract as the encoder check_delta_telemetry.
+    _tel_warn = check_surface_telemetry(k_metadata)
+    if _tel_warn:
+        try:
+            brain._log_error('surface_telemetry_missing',
+                             RuntimeError(_tel_warn), 'K trace write boundary')
+        except Exception:
+            pass
+
     # Batch all three trace writes in one transaction
     brain._trace_dal.append_batch([
         dict(chain_id=recall_chain, scale='s1', event_type='O',
@@ -557,13 +641,7 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
              summary='%d surfaced, %d expanded, %d activated' % (
                  len(selected_ids), len(graph_neighbors),
                  activation_meta.get('activation_count', 0)),
-             metadata={'selected': sel_detail, 'expanded': exp_detail,
-                       **frame_meta, **activation_meta,
-                       # Agentic surface tool trace (v5 only; empty for v4).
-                       # Stashed by _call_surface_agentic on the brain instance
-                       # so we don't change the run_surface signature.
-                       'tool_trace': (getattr(brain, '_surface_tool_traces', {}) or {}).get(session_id) or [],
-                       'surface_variant': os.environ.get('BRAIN_SURFACE_VARIANT', 'v4')},
+             metadata=k_metadata,
              session_id=session_id),
         dict(chain_id=recall_chain, scale='s1', event_type='delta',
              ref_type='additionalContext',
@@ -679,7 +757,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
             pt.mark(label)
 
     # Call Haiku selector (unchanged — picks ≤5 from 25 candidates)
-    surfaced, surface_prompt, max_tokens, interaction_id = _call_surface(
+    surfaced, surface_prompt, max_tokens, interaction_id, telemetry = _call_surface(
         brain, candidates_data, user_message, recent_messages,
         session_id, result, frame=frame)
     _mark('surface_haiku')
@@ -694,7 +772,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
             _write_traces(brain, ctx, candidates_data, set(), [], [],
                           None, enriched, results,
                           recall_ref, interaction_id, session_id,
-                          frame=frame)
+                          frame=frame, telemetry=telemetry, pt=pt)
         except Exception as e:
             brain._log_error('trace_s1_surface_empty', e, 'S1 surface trace (no selection)')
         _write_surface_result_file(recall_ref, surface_prompt, "(no selection)", brain)
@@ -832,7 +910,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
                       graph_neighbors_compat, additional_context,
                       enriched, results,
                       recall_ref, interaction_id, session_id,
-                      expansion=expansion, frame=frame)
+                      expansion=expansion, frame=frame, telemetry=telemetry, pt=pt)
     except Exception as e:
         brain._log_error('trace_s1_surface', e, 'S1 surface trace capture')
 

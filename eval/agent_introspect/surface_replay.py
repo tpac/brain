@@ -141,7 +141,10 @@ def replay_one(run_dir: Path, qid: str, system_prompt: str,
 
     t0 = time.time()
     try:
-        surfaced, used_prompt, max_tokens, interaction_id = _call_surface(
+        # 5-tuple: _call_surface now also returns run-cost telemetry (token
+        # counts + elapsed_ms + rounds). This replay computes its own
+        # elapsed_ms below; the telemetry is absorbed but unused here.
+        surfaced, used_prompt, max_tokens, interaction_id, _telemetry = _call_surface(
             brain, candidates_data, query, recent_messages,
             session_id=f'replay-{qid}', result={}, frame=frame)
         elapsed_ms = int((time.time() - t0) * 1000)

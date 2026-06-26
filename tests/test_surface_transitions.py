@@ -408,12 +408,18 @@ class TestSelectionLivenessGate(BrainTestBase):
         ]
 
         # Canned Haiku selection: both the live node and the archived one.
+        # 5-tuple matches the real _call_surface contract (the trailing dict is
+        # the run-cost telemetry the K trace now carries; this wiring test
+        # doesn't assert on it).
         def _fake_call_surface(brain, cands, user_message, recent_messages,
                                sid, result, frame=''):
             return ({'selected': [
                 {'id': live['id'][:8], 'why': 'relevant'},
                 {'id': dead['id'][:8], 'why': 'stale'},
-            ]}, 'prompt', 100, None)
+            ]}, 'prompt', 100, None,
+                {'input_tokens': 50, 'output_tokens': 10, 'cache_read_tokens': 0,
+                 'cache_creation_tokens': 0, 'elapsed_ms': 5, 'rounds': 1,
+                 'truncated': 0})
 
         orig = surface_mod._call_surface
         surface_mod._call_surface = _fake_call_surface
@@ -431,6 +437,59 @@ class TestSelectionLivenessGate(BrainTestBase):
                 dead['id'][:8], on_disk,
                 'archived node reached the surfaced-ids file — '
                 'liveness gate is not wired into run_surface')
+        finally:
+            surface_mod._call_surface = orig
+            if os.path.exists(path):
+                os.remove(path)
+
+    def test_run_surface_writes_cost_telemetry_to_k_trace(self):
+        """Cost-telemetry gap closer: a real run_surface threads _call_surface's
+        run-cost dict (input/output tokens + elapsed_ms + rounds) FLAT into the
+        surface_selected K trace via build_run_telemetry, and records the
+        served/empty outcome — so surface cost is queryable from traces, not
+        absent (the gap that made the recall-timeout diagnosis painful)."""
+        from servers.scales.s1 import surface as surface_mod
+        from servers.scales.s1.surface_contract import surface_selected_path
+
+        node = self.brain.remember(type='test', title='tel_node', content='c',
+                                   auto_connect=False,
+                                   encoding_source='anchor:test')
+        session_id = 'test-surface-telemetry'
+        ctx = self.brain.get_or_create_session(session_id)
+        candidates_data = [
+            {'id': node['id'], 'title': 'tel_node', 'type': 'test', 'score': 0.9}]
+
+        # Canned Haiku selection + KNOWN telemetry (the 5-tuple contract). The
+        # read_usage→telemetry mapping inside _call_surface is covered by the
+        # builder/guard unit tests; this asserts the threading into the K trace.
+        def _fake_call_surface(brain, cands, user_message, recent_messages,
+                               sid, result, frame=''):
+            return ({'selected': [{'id': node['id'][:8], 'why': 'relevant'}]},
+                    'prompt', 100, None,
+                    {'input_tokens': 1234, 'output_tokens': 56,
+                     'cache_read_tokens': 7, 'cache_creation_tokens': 0,
+                     'elapsed_ms': 88, 'rounds': 1, 'truncated': 0})
+
+        orig = surface_mod._call_surface
+        surface_mod._call_surface = _fake_call_surface
+        path = surface_selected_path(session_id, ctx.stop_counter)
+        try:
+            surface_mod.run_surface(
+                self.brain, ctx, candidates_data, 'user msg', [], {},
+                'enriched query', [], 'test-tel-ref', session_id, None,
+                query_vec=None)
+            evts = self.brain._trace_dal.get_by_ref_type(
+                'surface_selected', scale='s1', hours=None, session_id=session_id)
+            self.assertTrue(evts, 'no surface_selected K trace written')
+            meta = evts[0]['metadata']
+            self.assertEqual(meta.get('input_tokens'), 1234)
+            self.assertEqual(meta.get('output_tokens'), 56)
+            self.assertEqual(meta.get('cache_read_tokens'), 7)
+            self.assertEqual(meta.get('elapsed_ms'), 88)
+            self.assertEqual(meta.get('rounds'), 1)
+            # Phase 4 fold-ins also land on the K trace.
+            self.assertIn(meta.get('outcome'), ('served', 'empty'))
+            self.assertIn('phase_timing', meta)   # [] when pt not threaded (this path)
         finally:
             surface_mod._call_surface = orig
             if os.path.exists(path):
