@@ -76,18 +76,25 @@ class BrainConnectionsMixin:
         # kind matches the prefix used at recall time (_desc_vecs_batched);
         # a mismatched prefix would break the read path's cosine score. Keep the
         # description each blob was computed from for the concurrency guard below.
-        pending = []  # (edge_id, relation, description, blob)
+        # Compose all texts, then embed in ONE batch — fastembed batches far
+        # better than N single-text calls (mirrors backfill_vectors._store_batch;
+        # ~10x on a bulk re-embed). Keep the description each blob was computed
+        # from for the concurrency guard on write.
+        triples = []  # (edge_id, relation, description, text)
         for edge_id, relation, description in rows:
             text = self.aspects.compose_edge_text(relation, description or '')
-            if not text:
-                continue
-            try:
-                blobs = _embedder.embed_batch([text], kind='document')
-                if blobs and blobs[0]:
-                    pending.append((edge_id, relation, description, blobs[0]))
-            except Exception as e:
-                self._log_error('edge_embedding_backfill', e,
-                                '%s/%s' % (str(edge_id)[:12], relation))
+            if text:
+                triples.append((edge_id, relation, description, text))
+        if not triples:
+            return 0
+        try:
+            blobs = _embedder.embed_batch([t[3] for t in triples], kind='document')
+        except Exception as e:
+            self._log_error('edge_embedding_backfill', e, 'batch of %d' % len(triples))
+            return 0
+        pending = [(eid, rel, desc, blob)            # (edge_id, relation, description, blob)
+                   for (eid, rel, desc, _t), blob in zip(triples, blobs)
+                   if blob]
         if not pending:
             return 0
         # Write under write_lock (fast) — mirrors backfill_vectors' self-locking.
