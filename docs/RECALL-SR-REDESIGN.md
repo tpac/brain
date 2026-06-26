@@ -1,27 +1,31 @@
 # RECALL — from the SR/PPR thesis to the Layered Activation Field (LAF)
 
-> ## ⟦ CURRENT STATE — read this first (2026-06-24) ⟧
+> ## ⟦ CURRENT STATE — read this first (2026-06-26) ⟧
 > This doc is a **journal** of the recall-redesign arc, not a static spec. It records a real evolution
-> through three framings, and **the head is now historical.** Live direction = **§18 (LAF)**.
+> through four framings, and **the head is now historical.** Live direction = **§18.18 (the settling engine)**.
 >
-> **Live design — LAF (Layered Activation Field):** recall as a shared **log-additive activation field**
-> over nodes, read out at the end (not retrieve-then-rank). Two regimes:
-> - **FIND = lean set-union** of a few complementary signals (`_primary` + FTS + title/voice). Read-side
->   reach saturates **~54–58%**; more fields/graph add no unique reach (§18.15). Union by *membership*,
->   not RRF-ranking (RRF dilutes — §18.13).
-> - **RANK = a per-query SELECTOR** — NOT uniform fusion (dilutes below raw `_primary`, §18.13) and NOT a
->   trained model (overfit on our flat/small data, §17). Leading shape: **DAT-style LLM-judged per-query
->   weighting + max-over-fields** (ColBERT MaxSim), via the Haiku surface we already run (§18.17).
-> - The **~42% residual** (cosine-far gold) is **encode-gap / next-move** — a separate workstream.
+> **Live design — recall as a SETTLING ACTIVATION FIELD** (Tom's biological dynamical-fusion vision; supersedes
+> the §18.17 selector framing). One shared per-node activation; operator-fields add **z-scored, gained** signals to a
+> `base`; a **softmax-in-loop recurrence** lets graph corroboration feed back and **settle** to a fixed point; read
+> out the settled field (α-entmax only at the commit). **A new cue = one z-scored term + a gain — influence IS the gain.**
+> - **Operators (built + verified):** MaxSim (max cos over 6 field-groups) · temporal-distinctiveness (created_at,
+>   von-Restorff) · typed-graph-spread (degree-norm, noise-excluded). Next: prev-turn, query-conditioned aspect
+>   weighting, per-node-type field, episodic.
+> - **Stability:** the naive α-entmax-every-step recurrence COLLAPSES (wandering single node); the **Hopfield-contractive
+>   form** (softmax in-loop + raw spread + sparse-only-at-readout) **settles 73/73** (§18.18).
 >
-> **Numbers:** baseline **19% hit@5 / 33% @25**; raw `_primary` 21/37 (the pipeline *net-buries* — §18.12);
-> best-field **oracle ceiling 51% @25** — the prize is how much of that a realizable selector captures.
+> **Numbers (73-cue endo, IsolatedBrain):** pipeline 19/33 · raw `_primary` 21/37 · MaxSim-6grp 19/34 · LAF settling 16/38.
+> **ABLATION + REVIEW (§18.18 / §18.18.1):** harness code-reviewed & hardened — **gate 27 pass / 0 / 0**. Converged numbers:
+> maxsim 19/34 · +temporal 16/38 (temporal = query-independent +4@25, **ARTIFACT-SUSPECT**) · MaxSim dilutes below raw
+> `_primary` 21/37. **Graph's effect is still UNMEASURED on a converged field**: fixing the scale made graph *matter* but
+> per-iteration z-score is anti-convergent (`f04f6db7`) — next is a FIXED-scale spread. **No relevance-driven win yet — on a
+> now-verified harness, for understood reasons.** Architecture validated (settles, extensible, MEASURABLE). **▶ NEXT STREAM =
+> §18.18.1**: fixed-scale re-ablate · temporal shuffled-gold control · hub-dampening (b.1) · new cue fields (`220a2808`).
 >
-> **Reading guide:** **§0–12 = the SR/PPR thesis — largely FALSIFIED at §13b** (PPR-standalone < cosine;
-> the embedder limits abstract relevance). Read it for the *why-not*, not the plan. **§13b–17** = the
-> falsification arc + the multi-cue "integration thesis" (§15) + the selector reframe (§16, caveated §17).
-> **§18 = LAF (live); §18.17 = the live next-step** (prototype the selector). Earlier "▶ NEXT STREAM
-> STARTS HERE" markers (§13, §13b, §16) are **superseded** by §18.
+> **Reading guide:** **§0–12 = the SR/PPR thesis — largely FALSIFIED at §13b** (PPR-standalone < cosine; the embedder
+> limits abstract relevance). **§13b–17 + §18–18.17** = falsification arc + multi-cue "integration thesis" (§15) +
+> the selector reframe (§16–18.17, **now superseded**). **§18.18 = LIVE** (the settling field). All earlier
+> "▶ NEXT STREAM" markers and the §18.17 selector are superseded by §18.18.
 
 **Written:** 2026-06-17 (Anchor + Tom, session `ce0ff8ce` arc continued in a fresh stream).
 **Status:** design / direction. Nothing built yet — this is the synthesized thesis and the staging.
@@ -1052,3 +1056,130 @@ per-query signal-selector**, so it's under-explored, not a reinvention.
 
 **Prototype first:** Haiku-judged per-query field-weighting (DAT-style) + max-composition, measured on the
 73-cue corpus against the control-gate. (Full lit synthesis pending a budget-capped re-run — direction, not proof.)
+
+---
+
+## 18.18 — The settling engine: recall as a converged activation field (Anchor + Tom, 2026-06-26)
+
+The selector framing (§18.17) was **superseded** by Tom's *biological dynamical-fusion* vision: not reach→selector/sort,
+but **one activation field that settles** — operator-fields push/pull on a shared per-node activation, iterate to a fixed
+point, read out the settled state. Built, verified, measured this session. Files: `eval/laf/{verify_substrate,operators,field_recall}.py`.
+
+**The engine (`field_recall.py`).**
+```
+base = Σₖ gainₖ · zscore(opₖ)                       # operator-experts, summed at LOGIT level, commensurate
+a₀   = softmax(τ · base)                             # contractive init
+aₜ₊₁ = softmax( τ · (base + λ · spread(aₜ)) )        # settle: graph corroboration feeds back
+       until ‖Δa‖₁ < ε                               # ~1.7 iters, converges
+readout: rank by settled a (hit@k) ; commit = α-entmax(a)   # sparsity ONLY at readout, not in the loop
+```
+Three verified operators (`operators.py`): **MaxSim** = maxₖ cos(q, field-groupₖ) over 6 live groups (best field wins);
+**temporal-distinctiveness** = 1/(1+temporal-neighbours) on `created_at` (query-INDEPENDENT node-prior, von-Restorff —
+NOT recency, NOT revised_at); **typed-graph-spread** = degree-normalized undirected flow over noise-aspect-excluded edges.
+
+**Believability first (`verify_substrate.py`) — Tom's mandate.** Every source + operator must pass liveness ·
+input-dependence (catches the recency=1.000 constant class) · invariant · independent-recompute (cosine from raw bytes,
+NOT the pipeline's self-report) · baseline re-derivation, BEFORE any number is trusted. The baseline (19/33) is a
+*suspect*, re-derived not assumed — reproduced **19/33 exactly**, proving the IsolatedBrain substrate faithful.
+
+**Two bugs the method caught (not luck):**
+- **edge_context dead** — a 0.55-weighted scoring group with **0 rows brain-wide, forever**. Cause: computed at
+  write-time (before a node has edges) + the backfill catch-up path lacked the `_edge_descriptions` handler. Revived by
+  sibling stream `e7188c02` (main `ebb58ad`): 4490 vectors, now the 6th MaxSim group. (My first diagnosis "never
+  implemented" was an **overclaim**, corrected by a surfaced memory — verify-don't-assert applies to one's OWN findings. `a197ad0f`)
+- **`NEG=-1e30` poisoned α-entmax** — a finite mask sentinel blew up the bisection bracket → entmax returned
+  near-uniform regardless of temperature. The **sweep** caught it (identical results across scales 4→128 = the tell). Fix: `-np.inf`.
+
+**The instability + the fix (the core result, `114c2deb`).**
+- **Naive recurrence is UNSTABLE.** `a_{t+1} = α-entmax(base + λ·z(spread(aₜ)))` collapses to a **single wandering node**,
+  never converges, at every temperature. The in-loop z-score of an increasingly-sparse spread manufactures a fresh outlier
+  each step; no damping → traveling-bump (the Q3 instability, empirically hit).
+- **Fix = 2+3 (Hopfield-contractive form):** **softmax in-loop** (dense, contractive — the proven-to-settle nonlinearity),
+  **raw spread, no in-loop z-score** (kills the self-amplification), **α-entmax only at readout** (sparsity is the COMMIT
+  rule, not the dynamics). → **settles 73/73 in ~1.7 iters.** This corrects §18.16/17: α-entmax is readout, not in-loop.
+
+**First measured result (73-cue endo, IsolatedBrain):**
+| ranker | hit@5 | hit@25 |
+|---|---|---|
+| pipeline (recorded) | 19% | 33% |
+| raw `_primary` | 21% | 37% |
+| MaxSim-6grp alone | ~20% | 34% (dilutes below `_primary`) |
+| **LAF settling (2+3)** | **16%** | **38%** |
+
+The settled field **recovers MaxSim's dilution and beats both baselines @25** (+1pp over `_primary`, +5pp over pipeline)
+at a **precision@5 cost** (16 < 21). **Honest read: the architecture is validated (settles, extensible, measurable);
+the number is NOT a win yet.** `τ` is the commit-sparsity knob (ranking-invariant — softmax is monotonic); **`gain_graph`
+is the @5↔@25 dial.**
+
+**Mechanism vs `_primary` — ABLATION RESULT (2026-06-26, the controlled measurement falsified the graph story).**
+Per-operator toggle, same harness (`field_recall.py --ablate`):
+| config | hit@5 | hit@25 |
+|---|---|---|
+| full (ms+temp+graph) | 16% | 38% |
+| − graph (ms+temp) | 16% | 38% |
+| − temporal (ms+graph) | 19% | 34% |
+| maxsim only (ms) | 19% | 34% |
+- **Graph "inert" was a SCALE BUG (resolved); the real crux is convergence-vs-commensurability** (`f04f6db7`). Toggling graph
+  moved hit@k by 0 because the 2+3 raw spread was **~0.3% of base** (verified gterm.std/base.std=0.0034). After fixing the
+  scale, the scale-swept ablation showed both extremes fail: **raw spread → converges but inert; per-iteration z-scored
+  spread → graph MATTERS (toggling now changes hit@k) but the field never converges** (graph configs run to max_iters=20 —
+  the per-iter z-score injects unit-variance every step so ‖Δa‖ never →0; anti-convergent). **Fix to try (FIXED-scale
+  spread):** scale raw spread by a CONSTANT computed once (≈ std(base)/std(spread₀)), keep softmax-in-loop, so it is
+  commensurate at the operating point AND diminishes as the field settles → converges; add light damping
+  (`a←(1−η)a+η·softmax`) only if it still wanders. So we have NOT yet measured graph's effect on a converged field.
+- **Temporal carries the entire LAF-vs-MaxSim delta** (−3pp @5, +4pp @25) — the operator dismissed as "near-flat"; z-scoring
+  gave the tiny-raw signal teeth. **BUT temporal is query-INDEPENDENT** → it reshuffles the same nodes every query → its @25
+  lift is a **corpus-artifact candidate** (gold happens to be temporally distinctive here), not relevance. Needs a
+  shuffled-gold control to confirm real-vs-artifact.
+- **MaxSim dilutes**: maxsim-only 19/34 < raw `_primary` 21/37. So the "+1pp @25" decomposes as `_primary 37 → MaxSim −3 →
+  temporal +4 = 38` — i.e. a query-independent (suspect) prior over a diluting field. **No real relevance-driven win yet.**
+- Harness trust: `maxsim-only` 19/34 reproduces the independent gate MaxSim-6grp measurement exactly.
+
+**Extensibility — the payoff (a new cue = one z-scored term + a gain):**
+- **Influence = the gain coefficient.** z-scoring standardizes every operator to unit variance, so `gainₖ` is the *pure*
+  influence dial (scale already normalized out). A deliberately-weaker cue (e.g. **previous-turn cosine**) is just
+  `gain_prev=0.3` vs `gain_ms=1.0` — ~4 lines (embed prev-turn, one z-scored term, one gain). Even at low gain it can still
+  *decide* a node it's the only signal for (additive base + settle) — "raise AND dim in parallel".
+- **Hub dampening:** (b.1) **fan-effect ÷norm** — `÷degreeᵝ` / `÷log-degree` (the §18.2 law at graph scale; trying first);
+  (b.3) **aspect-weighted edges** — up-weight diagnostic relations (`corrects`, identity), down-weight generic. Compose.
+- **Query-conditioned aspect weighting (Tom):** cosine(cue, aspect-meaning) → rank aspects per query → weight node
+  aspect-membership accordingly. "Who are you Anchor" ranks **identity** top; "what's left to do" ranks **active_thread** top.
+  Makes aspect influence query-dependent (not a fixed up-weight).
+- **Per-node-type activation field (Tom):** a field per node-type, gained by cue↔type cosine — the cue routes attention to
+  the relevant types. Now measurable per-field.
+- **Episodic layer:** query→trace-embedding cosine→linked nodes, as another base operator. Bridge returns 0 in
+  IsolatedBrain (fix first); `source_refs` sparse pre-April.
+
+**Ceiling-lever (sibling `e7188c02`, bug `e6f0edc8`) — NOT verified by me.** nomic-Q embedder is
+**batch-composition-dependent**: fastembed pads each batch to its longest text; int8-quant output shifts ~1.5–2% with
+padding length → a systematic **~2–3% batch-padding noise floor on every query↔doc cosine** (query small-batch vs docs
+large-backfill-batch). Common-mode (doesn't change LAF-vs-baseline) but a candidate contributor to the 0.54–0.63
+flat-discrimination band — possibly part of the "flat embedder ceiling" (§13b) is a *fixable artifact*. Re-measure when fixed.
+
+**18.18.1 — POST-REVIEW STATE + ▶ NEXT STREAM STARTS HERE (2026-06-26).**
+The harness was code-reviewed (high effort) and hardened — fixes in `eval/laf/{operators,field_recall,verify_substrate}.py`:
+α-entmax `α≤1→softmax` guard; null/empty-`created_at` now excluded from eligibility (was wrongly eligible — `'' <= cutoff`);
+`qv=None` cues skipped; **T5 baseline-reproduction is now a HARD FAIL at ±2pp** (was a no-op warn — the gate's master check
+didn't gate); **T8 verifies the von-Restorff DIRECTION** via an independent neighbour recompute (was tautological with the
+non-constant check); T6 batched its per-node SQL + embeds once; MaxSim's **unweighted-max coverage bias documented** (more-
+enriched nodes get more "max lottery tickets"; edge_context's 71% makes it active; real fix = the weighted/"smarter fields"
+step). **Gate: 27 pass / 0 warn / 0 FAIL** — substrate + operators trustworthy. Refuted finder claims: T3 recompute is sound
+(max|Δ|=0.0005, `embedding_similarity` IS raw `_primary` cosine); `primary_field` intentionally reproduces the recorded
+raw-`_primary` 21/37 reference.
+
+**Trustworthy CONVERGED numbers (73-cue endo):** maxsim-only 19/34 · +temporal 16/38 (temporal = query-independent +4@25,
+ARTIFACT-SUSPECT). Graph's signal is UNCONVERGED → not bankable (apparent +2@25/−4@5, helps @25 only with temporal). MaxSim
+dilutes below raw `_primary` (21/37). **NO relevance-driven win yet — but on a now-verified harness, for understood reasons.**
+
+**▶ Next stream, in order (experiments parked for a future session):**
+1. **Fix the spread scaling** — FIXED-scale (node `f04f6db7`), re-ablate: does graph contribute when commensurate AND converged?
+2. **Temporal shuffled-gold control** — is the +4@25 real or a corpus artifact? If artifact, drop temporal.
+3. **Hub-dampening (b.1)** — fan-effect ÷norm (`÷degreeᵝ`/`÷log-deg`) for graph's @5 cost; + aspect-weighted edges.
+4. **New cue fields** (node `220a2808`): prev-turn (low gain), query-conditioned aspect weighting (cue↔aspect cosine →
+   "who are you"→identity, "what's left"→active_thread), per-node-type field, episodic — each a z-scored term + a gain,
+   measured as marginal lift via `eval/laf/field_recall.py --ablate`.
+
+**Pull for context:** `15d62a95` (math/design), `076799d0` (settling-system reframe), `da67f5aa`+`f04f6db7` (graph-scaling arc),
+`220a2808` (new-cue design), `a197ad0f` (verify-don't-assert lesson). The discipline that held all session: **every number
+traces to a verified component — verify the HARNESS, not just the data** (it caught a dead group, a finite-sentinel entmax
+bug, and two of my own mechanism overclaims).
