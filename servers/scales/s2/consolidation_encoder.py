@@ -119,40 +119,13 @@ class ConsolidationEncoder(IntegrationUnit):
             print('[s2-consolidation] WARNING: no enrichment prompt', flush=True)
             return None
 
-        # Inject edge aspects (Step 8 of unified-aspects). Same data the old
-        # s2_edge_families interaction held, now read from brain.aspects.
-        # Skip the two no-signal aspects (generic_relation, noise) and any
-        # aspect with empty edge_relations (node-only — irrelevant to a
-        # cluster-merge prompt).
-        family_lines = []
-        for name, aspect in sorted(self.brain.aspects.all().items()):
-            if name in ('generic_relation', 'noise'):
-                continue
-            if not aspect.edge_relations:
-                continue
-            family_lines.append('- **%s**: %s' % (
-                name, ', '.join(list(aspect.edge_relations[:8]))))
-        if family_lines:
-            system_prompt = system_prompt.replace(
-                '## Edge Families',
-                '## Edge Families (loaded from brain.aspects — %d aspects)\n\n%s' % (
-                    len(family_lines), '\n'.join(family_lines)),
-                1) if '## Edge Families' in system_prompt else (
-                system_prompt + '\n\n## Edge Families\n\n' + '\n'.join(family_lines))
-
-        # Journal section is contract-owned, injected at runtime (like ## Edge
-        # Families above): strip the legacy section, relabel the continuity-read
-        # line, append the shared review block. The mechanism lives in base so
-        # community/S1E inherit it — only the per-encoder anchors live here.
-        system_prompt = self._inject_review_block(
-            system_prompt,
-            legacy_heading='## Encoding Journal',
-            relabels=[
-                ('- **CONSOLIDATION JOURNAL** — what previous runs decided. Your continuity.',
-                 '- **RECENT REVIEW NOTES** — residue your recent runs flagged (doubt, '
-                 'friction, surprise); empty if they were clean. Your continuity.'),
-                ('Round 2: journal + DONE.', 'Round 2: review + DONE.'),
-            ])
+        # Prompt closers — all single-sourced in base/contract, identical
+        # across S2/S1 encoders: the edge-aspect vocabulary, then the residue
+        # review block, then the run closure (terminal-turn + DONE). Closure is
+        # appended LAST and is independent of the review block.
+        system_prompt = self._inject_edge_aspects(system_prompt)
+        system_prompt = self._inject_review_block(system_prompt)
+        system_prompt = self._append_closure(system_prompt)
 
         if not os.environ.get('ANTHROPIC_API_KEY'):
             load_env()

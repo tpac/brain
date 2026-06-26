@@ -253,38 +253,39 @@ class IntegrationUnit:
                                   'residue continuity read failed — encoding without it')
             return ''
 
-    def _inject_review_block(self, system_prompt, legacy_heading=None, relabels=None):
-        """Inject the shared residue-review block into a registered prompt at
-        runtime — the WRITE-side counterpart to _load_journal_notes_prefix, and
-        the same pattern encoders use for `## Edge Families`. The block is
-        single-sourced in trace_contract and never baked into the registered
-        prompt, so it iterates in one place and every unit on the note contract
-        gets it live (consolidation now; community/S1E later).
+    def _inject_edge_aspects(self, system_prompt):
+        """Append the edge-relation aspect vocabulary so the encoder picks
+        specific relations over generic ones. Shared single source across
+        S2/S1 encoders — same inject pattern as _inject_review_block. The block
+        (skip set + heading + render) lives in servers.aspects; here we just
+        feed it brain.aspects and append. No-op append when there's nothing
+        to show.
+        """
+        from servers.aspects import render_edge_aspects_block
+        block = render_edge_aspects_block(self.brain.aspects.all())
+        return system_prompt.rstrip() + ('\n\n' + block if block else '')
 
-        - legacy_heading: if the registered prompt still carries a pre-redesign
-          journal section, its heading — everything from there is stripped.
-          Expected-but-absent is logged LOUD (drift: the registered prompt
-          changed shape, so the legacy section would survive and the review
-          block would double up).
-        - relabels: [(old, new), ...] per-encoder body fixups (e.g. relabel a
-          continuity-read line). A no-match here is a benign cosmetic no-op.
+    def _inject_review_block(self, system_prompt):
+        """Append the shared residue-review block — the WRITE-side counterpart
+        to _load_journal_notes_prefix. The block is single-sourced in
+        trace_contract (`render_journal_review_block`) and never baked into the
+        registered prompt, so it iterates in one place and every encoder on the
+        note contract gets it live. Concern = the review CONTENT only; the
+        terminal-turn/DONE closure is a SEPARATE inject (`_append_closure`), so
+        removing or relocating the review never drags the closure with it.
         """
         from servers.trace_contract import render_journal_review_block
-        if legacy_heading:
-            cut = system_prompt.find(legacy_heading)
-            if cut != -1:
-                system_prompt = system_prompt[:cut].rstrip()
-            else:
-                self.brain._log_error(
-                    's2_%s_prompt_transform' % self.NAME,
-                    ValueError('legacy journal heading %r absent from registered '
-                               'prompt — not stripped; review block will double '
-                               'up' % legacy_heading),
-                    'prompt drift — re-check the registered %s prompt' % self.NAME)
-        for old, new in (relabels or []):
-            system_prompt = system_prompt.replace(old, new)
-        return (system_prompt.rstrip() + "\n\n## When you're done\n\n"
-                + render_journal_review_block() + '\n\nThen write "DONE".')
+        return system_prompt.rstrip() + "\n\n" + render_journal_review_block()
+
+    def _append_closure(self, system_prompt):
+        """Append the run's CLOSURE (terminal-turn definition + `## Review`
+        placement + DONE) as the LAST block of the prompt. Single-sourced in
+        trace_contract (`render_prompt_closure`), independent of the review
+        block. Call this AFTER all other prompt assembly so DONE is genuinely
+        last.
+        """
+        from servers.trace_contract import render_prompt_closure
+        return system_prompt.rstrip() + "\n\n" + render_prompt_closure()
 
     def _make_encoder_dispatch(self, archive_guard=None):
         """Build the dispatch function S2 encoders use for brain_batch calls.

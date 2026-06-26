@@ -501,6 +501,30 @@ def render_journal_review_block(examples=''):
     return block
 
 
+def render_prompt_closure():
+    """The run's CLOSURE — separate concern from the review block. Defines the
+    terminal turn the way the runner does (a reply with no tool call IS the
+    final one), places the review on it whether the encoder acted or not, and
+    carries the `DONE` stop signal. Injected as the LAST block of the prompt,
+    independent of the review block — so removing or relocating the review never
+    drags the closure with it. References the `## Review` artifact by name; it
+    does NOT define it (that's render_journal_review_block's job).
+
+    The no-tool-call branch is the fix for the no-action batch: an all-reject /
+    nothing-to-change reply terminates the loop on its first turn, and that turn
+    must still carry the review (an empty fence on a clean run).
+    """
+    return (
+        "## Finishing\n\n"
+        "You're done when your reply makes no tool call — that final reply is the "
+        "only place your review goes. Two ways to get there, both ending the same:\n"
+        "- You made tool calls: after the results come back, your next reply is the final one.\n"
+        "- You made no tool call at all (nothing needed changing): then this reply is "
+        "already the final one.\n\n"
+        'End that final reply with your `## Review`, then write "DONE".'
+    )
+
+
 def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES'):
     """Render journal_notes() output into a prompt prefix — the READ side of
     the journal (residue continuity). Shared single source so every encoder

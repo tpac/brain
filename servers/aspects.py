@@ -57,6 +57,35 @@ REQUIRED_ASPECTS: tuple = (
 )
 
 
+# ─────────────────────────────────────────────────────────────────
+# Edge-aspect prompt block — single source for every encoder that offers the
+# edge-relation vocabulary in its prompt (S2 consolidation + community via
+# IntegrationUnit._inject_edge_aspects; S1E/surface may adopt). Mirrors the
+# journal block's render-fn-+-base-method split.
+# ─────────────────────────────────────────────────────────────────
+EDGE_ASPECT_PROMPT_SKIP = ('generic_relation', 'noise', 'survivor_lineage')
+
+
+def render_edge_aspects_block(aspects):
+    """Render the edge-relation aspect vocabulary as a prompt block so an encoder
+    picks specific relations over generic ones. `aspects` is the name→Aspect dict
+    from brain.aspects.all(). Skips structural/system aspects (EDGE_ASPECT_PROMPT_SKIP)
+    and node-only aspects (no edge relations); each shown aspect lists its first 8
+    relations. Returns '' when there's nothing to show.
+    """
+    lines = []
+    for name, aspect in sorted(aspects.items()):
+        if name in EDGE_ASPECT_PROMPT_SKIP or not aspect.edge_relations:
+            continue
+        lines.append('- **%s**: %s' % (
+            name, ', '.join(list(aspect.edge_relations[:8]))))
+    if not lines:
+        return ''
+    return ('## Edge Aspects (%d from brain.aspects)\n\n%s\n\n'
+            'Avoid `related_to` — pick a specific relation.' % (
+                len(lines), '\n'.join(lines)))
+
+
 class AspectContractError(Exception):
     """Raised by __getattr__ when `brain.aspects.<name>` references an aspect
     not present in aspects_v1.json.
