@@ -210,6 +210,7 @@ class CommunityEncoder(IntegrationUnit):
                        rejection_skipped=result.get('rejection_skipped_count', 0),
                        invalid_op_failures=result.get('invalid_op_failures', 0),
                        action_details=action_details,
+                       read_calls=result.get('read_calls', []),
                        final_text=final_text,
                        corridors_filtered=len(corridors),
                        elapsed_ms=result.get('elapsed_ms', 0),

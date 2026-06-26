@@ -310,6 +310,15 @@ SURFACERS_USING_SELECTION_BUILDER = [
     'servers/scales/s1/surface.py',
 ]
 
+# The encoders that drive run_llm_loop — the only ones with a per-tool action
+# loop to surface. Healer (hand-rolled dispatch) and aspect (direct
+# classification) have no run_llm_loop tool loop, so read_calls doesn't apply.
+RUN_LLM_LOOP_ENCODERS = [
+    'servers/scales/s1/encode.py',
+    'servers/scales/s2/consolidation_encoder.py',
+    'servers/scales/s2/community_encoder.py',
+]
+
 
 def _file_calls(path, fn_name):
     import os, ast
@@ -556,6 +565,15 @@ class TestEncodersThreadTelemetry:
         assert _build_delta_call_has_kwarg(path, 'elapsed_ms'), (
             f"{path} calls build_delta_metadata without an elapsed_ms kwarg — "
             "encoder latency would be unmeasurable from production traces")
+
+    @pytest.mark.parametrize('path', RUN_LLM_LOOP_ENCODERS)
+    def test_run_llm_loop_encoder_threads_read_calls(self, path):
+        # The per-tool read detail (latency_ms/result_count/error) rides on
+        # run_llm_loop's read_calls; an encoder that drops the kwarg loses it
+        # from its delta even though the loop recorded it.
+        assert _build_delta_call_has_kwarg(path, 'read_calls'), (
+            f"{path} drives run_llm_loop but doesn't thread read_calls= into "
+            "build_delta_metadata — per-tool read detail won't reach the delta")
 
 
 class TestSharedTelemetryHelpers:

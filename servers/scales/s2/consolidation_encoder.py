@@ -81,6 +81,7 @@ class ConsolidationEncoder(IntegrationUnit):
                        rounds=rounds,
                        inputs_processed=len(clusters),
                        action_details=result.get('action_details', []),
+                       read_calls=result.get('read_calls', []),
                        final_text=final_text,
                        clusters_processed=len(clusters),
                        elapsed_ms=result.get('elapsed_ms', 0),
