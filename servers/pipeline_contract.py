@@ -225,6 +225,15 @@ EMBEDDING_SKIP_FIELDS = {
 # Max chars per field when building group embedding text
 EMBEDDING_FIELD_CHAR_LIMIT = 300
 
+# Dead-handler detection floor. If backfill_vectors finds at least this many
+# ELIGIBLE candidates for a group (find_missing now filters to nodes that
+# should yield text) but stores ZERO embeddings, the group's handler built no
+# text — a dead/missing handler or a total embed failure. This is the exact
+# silent-partial that hid edge_context's 0-row bug (a configured 0.55-weighted
+# group that never produced a row). The floor avoids false trips on a 1-2 node
+# tail; rely on _log_error's rate-limiter for repeat suppression.
+EMBEDDING_DEAD_HANDLER_MIN_CANDIDATES = 5
+
 
 # ═══════════════════════════════════════════════════════════════
 # NODE TYPE EXCLUSIONS — which types are excluded from which operations

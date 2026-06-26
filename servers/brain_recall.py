@@ -792,7 +792,9 @@ class BrainRecallMixin:
         print('[backfill_vectors] started (batch_size=%d)' % batch_size, flush=True)
 
         from .dal import VectorDAL
-        from .pipeline_contract import EMBEDDING_GROUPS, EMBEDDING_SKIP_FIELDS, EMBEDDING_FIELD_CHAR_LIMIT
+        from .pipeline_contract import (EMBEDDING_GROUPS, EMBEDDING_SKIP_FIELDS,
+                                        EMBEDDING_FIELD_CHAR_LIMIT,
+                                        EMBEDDING_DEAD_HANDLER_MIN_CANDIDATES)
         from .dal_metadata import MetadataDAL
 
         vdal = self._vec_dal
@@ -959,6 +961,25 @@ class BrainRecallMixin:
                 stored = _store_batch(items, vector_type)
                 if stored:
                     result[vector_type] = stored
+
+                # Loud-by-default dead-handler trip: find_missing now filters to
+                # ELIGIBLE candidates (kv-key present / described edge), so a
+                # returned candidate is one that SHOULD yield embed text. If a
+                # batch of them produces zero stored vectors, the group's handler
+                # built no text (dead/missing handler) or every embed failed —
+                # the exact silent-partial that hid edge_context's 0-row bug.
+                # Make it scream. (Rate-limited by _log_error; self-clears once
+                # the handler produces vectors again.)
+                if len(missing) >= EMBEDDING_DEAD_HANDLER_MIN_CANDIDATES and stored == 0:
+                    # Pass a real exception (not None): _log_error reads
+                    # error.__traceback__, so None never reaches debug_log.
+                    self._log_error(
+                        'embedding_handler_dead',
+                        RuntimeError(
+                            'group %s: %d eligible candidates but 0 stored '
+                            '(%d text-items built) — handler produced no embeddings'
+                            % (vector_type, len(missing), len(items))),
+                        'embedding backfill dead-handler check')
             except Exception as e:
                 self._log_error('backfill_%s_scan' % vector_type, e,
                                 'scanning for missing %s vectors' % vector_type)

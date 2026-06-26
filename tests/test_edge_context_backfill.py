@@ -101,5 +101,49 @@ class TestEdgeContextBackfillWritesRow(BrainTestBase):
         self.assertIsNone(none_row, 'edgeless node must not get an edge_context row')
 
 
+class TestDeadHandlerTrip(BrainTestBase):
+    """The loud-by-default detector: a configured embedding group that returns
+    eligible candidates but stores zero vectors must scream. This is the alarm
+    that was MISSING when edge_context silently held 0 rows for its whole
+    history — nothing watched 'configured group produces nothing'."""
+    needs_embedder = True
+
+    def _make_edged(self, n):
+        for i in range(n):
+            a = self.brain.remember(type='fact', title='DH-A%d' % i, content='c')['id']
+            b = self.brain.remember(type='fact', title='DH-B%d' % i, content='c')['id']
+            self.brain._graph.add_relation(
+                a, b, 'extends', description='a sufficiently long edge description %d' % i)
+        self.brain.conn.commit()
+
+    def _edge_context_dead_errors(self):
+        return [e for e in self.brain.get_recent_errors(hours=1, limit=100)
+                if e.get('source') == 'embedding_handler_dead'
+                and 'edge_context' in (e.get('error', '') + e.get('context', ''))]
+
+    def test_dead_handler_trips_alert(self):
+        self._make_edged(4)  # + seed-pack edged nodes → well over the 5-candidate floor
+        self.brain.conn.execute("DELETE FROM node_enrichments WHERE vector_type='edge_context'")
+        self.brain.conn.commit()
+        # Break the handler: eligible candidates remain, but it yields no text.
+        orig = self.brain._graph.get_edge_descriptions_for
+        self.brain._graph.get_edge_descriptions_for = lambda *a, **k: []
+        try:
+            self.brain.backfill_vectors(batch_size=50)
+        finally:
+            self.brain._graph.get_edge_descriptions_for = orig
+        self.assertTrue(self._edge_context_dead_errors(),
+                        'a dead edge_context handler must log embedding_handler_dead')
+
+    def test_healthy_handler_does_not_trip(self):
+        self._make_edged(4)
+        self.brain.conn.execute("DELETE FROM node_enrichments WHERE vector_type='edge_context'")
+        self.brain.conn.commit()
+        # Real handler — produces text, stores vectors → no alarm.
+        self.brain.backfill_vectors(batch_size=50)
+        self.assertFalse(self._edge_context_dead_errors(),
+                         'a healthy handler must not false-trip the dead-handler alarm')
+
+
 if __name__ == '__main__':
     unittest.main()
