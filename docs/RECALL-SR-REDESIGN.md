@@ -20,7 +20,8 @@
 > `_primary` 21/37. **Graph's effect is still UNMEASURED on a converged field**: fixing the scale made graph *matter* but
 > per-iteration z-score is anti-convergent (`f04f6db7`) — next is a FIXED-scale spread. **No relevance-driven win yet — on a
 > now-verified harness, for understood reasons.** Architecture validated (settles, extensible, MEASURABLE). **▶ NEXT STREAM =
-> §18.18.1**: fixed-scale re-ablate · temporal shuffled-gold control · hub-dampening (b.1) · new cue fields (`220a2808`).
+> §18.18.1** — **START WITH Q4** (reverse-engineer the operator bank → ranked menu + read-side-ceiling-vs-encode-gap split),
+> which ORDERS the rest: fixed-scale re-ablate · temporal shuffled-gold control · adaptation/sequential-recall · hub-dampening · new cues (`220a2808`).
 >
 > **Reading guide:** **§0–12 = the SR/PPR thesis — largely FALSIFIED at §13b** (PPR-standalone < cosine; the embedder
 > limits abstract relevance). **§13b–17 + §18–18.17** = falsification arc + multi-cue "integration thesis" (§15) +
@@ -1171,15 +1172,44 @@ raw-`_primary` 21/37 reference.
 ARTIFACT-SUSPECT). Graph's signal is UNCONVERGED → not bankable (apparent +2@25/−4@5, helps @25 only with temporal). MaxSim
 dilutes below raw `_primary` (21/37). **NO relevance-driven win yet — but on a now-verified harness, for understood reasons.**
 
-**▶ Next stream, in order (experiments parked for a future session):**
-1. **Fix the spread scaling** — FIXED-scale (node `f04f6db7`), re-ablate: does graph contribute when commensurate AND converged?
-2. **Temporal shuffled-gold control** — is the +4@25 real or a corpus artifact? If artifact, drop temporal.
-3. **Hub-dampening (b.1)** — fan-effect ÷norm (`÷degreeᵝ`/`÷log-deg`) for graph's @5 cost; + aspect-weighted edges.
-4. **New cue fields** (node `220a2808`): prev-turn (low gain), query-conditioned aspect weighting (cue↔aspect cosine →
-   "who are you"→identity, "what's left"→active_thread), per-node-type field, episodic — each a z-scored term + a gain,
-   measured as marginal lift via `eval/laf/field_recall.py --ablate`.
+**▶ Next stream — START WITH Q4 (diagnose-before-build); it ORDERS everything else (Anchor's recommendation, 2026-06-26):**
+
+**0. FIRST — Q4 reverse-engineering (Phase-A diagnose).** Don't build any operator on a hunch; derive the priority list from
+the gold. Build a diverse operator-instance bank `⟨cue × support × operator × param-sweep⟩` (prompt / prev-turn / work-context /
+episodic cosine; graph-spread {1,2,3-hop}; temporal-÷norm {window 3/7/30}; per-aspect & per-type cosine). Per query, compute
+each gold/silver node's activation under every instance → a `[gold × operator-instance]` matrix. Then THREE analyses (NOT plain
+linear regression — the regressors are FUNCTIONS with params):
+  - **@25 → unique-reach + set-cover** (which operators non-redundantly reach golds; minimal covering union = the ceiling).
+  - **@5 → discriminative/sparse fit** (LASSO/logistic gold-vs-noise → which operator-instances + params carry the top margin).
+  - **per-context first, then aggregate** importance (respect the per-context KPI; an operator decisive for 10% of queries
+    shows as high-unique-reach, not averaged away).
+  - **held-out validation** (avoid lens-circularity, `155c6df6`: fit on one cue-slice, verify lift on another WITHOUT the gold).
+  Output = a ranked, de-redundant operator menu **+ the read-side-ceiling vs encode-gap split** (gold cosine-far under EVERY
+  cue = encode/pattern-separation residual, not a missing cue). Generalizes `8bcc8c96`/`reach_matrix`; it is the §18.9 Phase-A
+  and it answers "is read-side even where the ceiling is." Runs on per-operator activations — NO dependency on the settling engine.
+
+**Then Phase-B, in the order Q4 ranks (each earned by measured marginal lift on the kept stack, not assumed):**
+- **Fix spread scaling** — FIXED-scale (`f04f6db7`), re-ablate — only worth it if Q4 ranks graph-spread reach.
+- **Temporal shuffled-gold control** — is +4@25 real or artifact? If artifact, drop temporal.
+- **Adaptation / sequential-recall** (attractor-net) — fatigue as the DYNAMICAL traverser (settle A → adapt → move to B): the
+  engine of multi-pull + the recovery-slope KPI. Anchor's bet: ranks high — let Q4 confirm, don't assume.
+- **Pattern separation** — sparse/expansion recoding as a NON-embedder route to the discrimination ceiling (if Q4's residual
+  is large, this is the lever, not another cue).
+- **Hub-dampening (b.1)** — fan ÷norm (`÷degreeᵝ`/`÷log-deg`) + aspect-weighted edges, for graph's @5 cost.
+- **New cue fields** (`220a2808`): prev-turn (low gain), query-conditioned aspect weighting (cue↔aspect cosine →
+  "who are you"→identity, "what's left"→active_thread), per-node-type field, episodic — each a z-scored term + a gain (`--ablate`).
+- **Hebbian / offline plasticity** — S2 strengthens edges between co-recalled nodes (the offline auto-training).
+
+**Theory (2026-06-26 discussion, parked for build):**
+- **Attractor-network lens (vs RAG, which has no concept of any):** the borrowable ideas are adaptation→sequential-recall,
+  pattern-separation, Hebbian plasticity (offline learning), and energy-landscape *sculpting* as the operator design language.
+- **Runtime cost (estimate, un-instrumented):** ~200ms/recall, **~90% of it the query embed (~180ms)**; the settling field
+  itself is ~10–50ms. Deploying LAF adds ~tens of ms over a cosine sort — NOT a latency concern; full-field fine to ~10–100k nodes.
+- **The live question Q4 resolves:** is read-side where the ceiling is? (53% realizable union says headroom; the ablation's
+  query-independent "win" + the embedder batch-padding noise-floor say maybe upstream — Q4 quantifies the split.)
 
 **Pull for context:** `15d62a95` (math/design), `076799d0` (settling-system reframe), `da67f5aa`+`f04f6db7` (graph-scaling arc),
-`220a2808` (new-cue design), `a197ad0f` (verify-don't-assert lesson). The discipline that held all session: **every number
+`220a2808` (new-cue design), `a197ad0f` (verify-don't-assert lesson), `6affa824` (five-check / silent-component-death discipline).
+The discipline that held all session: **every number
 traces to a verified component — verify the HARNESS, not just the data** (it caught a dead group, a finite-sentinel entmax
 bug, and two of my own mechanism overclaims).
