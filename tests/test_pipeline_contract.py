@@ -30,7 +30,7 @@ class TestEmbeddingGroups(unittest.TestCase):
     def test_all_groups_present(self):
         self.assertEqual(set(EMBEDDING_GROUPS.keys()), {
             'title', 'blend', 'high_meta', 'other_meta', 'edge_context', 'question',
-            'field_content', 'field_situation', 'field_reasoning',
+            'field_content', 'field_reasoning',
             'field_user_raw_quote', 'field_anchor_raw_quote',
         })
 
@@ -41,7 +41,7 @@ class TestEmbeddingGroups(unittest.TestCase):
             'title', 'blend', 'high_meta', 'other_meta', 'edge_context', 'question'
         })
         self.assertEqual(field, {
-            'field_content', 'field_situation', 'field_reasoning',
+            'field_content', 'field_reasoning',
             'field_user_raw_quote', 'field_anchor_raw_quote'
         })
 

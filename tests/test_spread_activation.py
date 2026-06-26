@@ -62,6 +62,16 @@ class TestEmbeddingGroupsExtension(unittest.TestCase):
         for t in field_vector_types():
             self.assertIn(t, FIELD_VECTOR_FALLBACK)
 
+    def test_situation_served_by_legacy_situation_vector(self):
+        # Dedup: situation has no field-cohort vector; the kernel resolves it
+        # to the legacy `_situation` vector first (then high_meta). There must
+        # be no `field_situation` group writing a duplicate `situation` vector.
+        from servers.pipeline_contract import FIELD_VECTOR_FALLBACK, EMBEDDING_GROUPS
+        self.assertEqual(FIELD_VECTOR_FALLBACK['situation'][0], '_situation')
+        self.assertNotIn('field_situation', EMBEDDING_GROUPS)
+        self.assertFalse(any(g.get('vector_type') == 'situation'
+                             for g in EMBEDDING_GROUPS.values()))
+
 
 class TestEnrichedEdgeText(unittest.TestCase):
     """Edge text composition (post-v26): relation + description only.
