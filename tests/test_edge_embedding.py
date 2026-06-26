@@ -16,7 +16,7 @@ Properties locked:
    stored embedding (so the worker re-embeds); backfill produces a new vector.
 
 3. **Stability across partner-title revisions.** Composed edge text is INTRINSIC
-   (`[relation] description family: meaning`, no partner title), so revising a
+   (`[relation] description`, no partner title), so revising a
    partner node's title does NOT invalidate the edge embedding.
 
 4. **Excluded relations skip embedding.** `co_accessed` / `emergent_bridge` are
@@ -96,7 +96,7 @@ class TestEdgeEmbedding(BrainTestBase):
 
     def test_partner_title_revision_does_not_stale_embedding(self):
         """Revising a partner node's title must not change the edge embedding —
-        composed text is intrinsic to (relation, description, family), no partner
+        composed text is intrinsic to (relation, description), no partner
         title. A node revise does not invalidate the edge, so a re-run of the
         worker is a no-op (embedding already non-NULL)."""
         a, b = self._create_pair(title_a='Original A', title_b='Original B')

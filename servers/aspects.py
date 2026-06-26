@@ -430,35 +430,35 @@ class AspectRegistry:
     def compose_edge_text(self, relation: str, description: str) -> str:
         """Compose the canonical text embedded as an edge's semantic identity.
 
-        Pattern: "[<relation>] <description> family: <meaning>"
+        Pattern: "[<relation>] <description>"
 
-        INTRINSIC to the edge — does NOT include partner node title. The
-        partner's content lives in its own stored embedding; including it
-        here would (a) couple the edge embedding to the partner's title
-        (cascade-stale on node revise) and (b) double-count partner signal.
+        INTRINSIC to the edge — does NOT include:
+          - the partner node title: would couple the edge embedding to the
+            partner (cascade-stale on node revise) and double-count its signal.
+          - the relation's aspect-family `meaning`: that text is verbose
+            classifier guidance authored for AspectIntegration; baked into
+            every edge it dominated the (much shorter) description in the
+            embedded string and blunted the per-edge disambiguation that
+            embedding the description was meant to provide. The family meaning
+            still lives in `aspects_v1.json` and feeds the classifier — it is
+            simply not part of the edge's embedding geometry.
 
-        Stable per `(relation, description, family meaning)` triple, so a
-        single embedding can be stored on `edge_relations.embedding`
-        (schema v26+) and reused across partner revisions.
+        Stable per `(relation, description)` pair, so a single embedding can be
+        stored on `edge_relations.embedding` (schema v26+) and reused across
+        partner revisions.
 
         Used by:
-          - `GraphDAL.add_relation` (write path) — compute + store at write
-          - `surface_contract._compose_enriched_edge_text` (legacy read
-            path, falls through to live compose when stored embedding NULL)
+          - `GraphDAL.add_relation` (write path) — invalidate + async re-embed
+          - `surface_contract` (read-path embed fallback when stored blob NULL)
           - `scripts/backfill_edge_embeddings.py` (one-shot migration)
         """
         rel = (relation or '').strip()
         desc = (description or '').strip()
-        family_aspect = self.by_edge_relation(rel) if rel else None
-        meaning = (family_aspect.meaning or '') if family_aspect else ''
-
         parts = []
         if rel:
             parts.append('[%s]' % rel)
         if desc:
             parts.append(desc)
-        if meaning:
-            parts.append('family: ' + meaning)
         return ' '.join(parts)
 
     def type_meaning_map(self) -> dict:
