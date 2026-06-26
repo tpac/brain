@@ -278,6 +278,47 @@ DELTA_ERROR_LIST_LIMIT = 5
 DELTA_CLASSIFICATIONS_LIMIT = 200  # cap aspect's per-item Δ (cold-start runs can be large)
 
 
+# ── AGENT-RUN TELEMETRY (the shared cost+loop field-set) ──
+# The cost of producing ONE agent run — an encoder Δ OR a Surface selection.
+# Every agent that drives an LLM loop spends the same currency: wall-clock,
+# rounds, output truncation, and the four token counts. Defined ONCE here so
+# the encoder delta (build_delta_metadata) and the Surface K trace build their
+# cost block through the same builder and can never drift into two field-sets.
+#
+# Kept FLAT on purpose (not a nested sub-object): the dashboard cost lane, the
+# loud telemetry guards, and DELTA_METADATA_SHAPE already read these as
+# top-level keys, so flat = zero consumer migration. This unifies the
+# DEFINITION (one builder) the way runner.USAGE_FIELDS unified the SDK attribute
+# NAMES — two different concerns, each single-sourced. (USAGE_FIELDS stays in
+# runner.py next to read_usage, the SDK mapper; this is the trace-payload set.)
+RUN_TELEMETRY_FIELDS = (
+    'elapsed_ms', 'rounds', 'truncated',
+    'input_tokens', 'output_tokens',
+    'cache_read_tokens', 'cache_creation_tokens',
+)
+
+
+def build_run_telemetry(*, elapsed_ms=0, rounds=0, truncated=0,
+                        input_tokens=0, output_tokens=0,
+                        cache_read_tokens=0, cache_creation_tokens=0):
+    """Build the shared agent-run cost block (a flat dict of RUN_TELEMETRY_FIELDS).
+
+    Used by build_delta_metadata (encoders) and the Surface K-trace writer.
+    All int, default 0 — `truncated` is a count of rounds cut at max_tokens,
+    `rounds` the number of LLM calls, the rest wall-clock + token spend. Spread
+    flat into the surrounding metadata dict; never nest it.
+    """
+    return {
+        'elapsed_ms':            int(elapsed_ms or 0),
+        'rounds':                int(rounds or 0),
+        'truncated':             int(truncated or 0),
+        'input_tokens':          int(input_tokens or 0),
+        'output_tokens':         int(output_tokens or 0),
+        'cache_read_tokens':     int(cache_read_tokens or 0),
+        'cache_creation_tokens': int(cache_creation_tokens or 0),
+    }
+
+
 def build_delta_metadata(*,
                          actions=0, write_actions=0, rounds=0,
                          inputs_processed=0, outcomes=None,
@@ -335,7 +376,7 @@ def build_delta_metadata(*,
     metadata = {
         'actions':           int(actions or 0),
         'write_actions':     int(write_actions or 0),
-        'rounds':            int(rounds or 0),
+        # 'rounds' is emitted by build_run_telemetry below (shared cost block).
         'inputs_processed':  int(inputs_processed or 0),
         'outcomes':          dict(outcomes or {}),
         'rejection_skipped': int(rejection_skipped or 0),
@@ -348,12 +389,13 @@ def build_delta_metadata(*,
         'revised':           _agg('revised', revised),
         'archived':          _agg('archived', archived),
         'classifications':   _cap(classifications, DELTA_CLASSIFICATIONS_LIMIT),
-        'elapsed_ms':            int(elapsed_ms or 0),
-        'input_tokens':          int(input_tokens or 0),
-        'output_tokens':         int(output_tokens or 0),
-        'cache_read_tokens':     int(cache_read_tokens or 0),
-        'cache_creation_tokens': int(cache_creation_tokens or 0),
-        'truncated':             int(truncated or 0),
+        # Shared cost+loop block (elapsed_ms/rounds/truncated + token counts) —
+        # one builder so the encoder Δ and the Surface K trace can't drift.
+        **build_run_telemetry(
+            elapsed_ms=elapsed_ms, rounds=rounds, truncated=truncated,
+            input_tokens=input_tokens, output_tokens=output_tokens,
+            cache_read_tokens=cache_read_tokens,
+            cache_creation_tokens=cache_creation_tokens),
         'interaction_version':   int(interaction_version or 0),
     }
     # Extras preserved for per-unit fields (can't collide with shared keys).
@@ -457,6 +499,30 @@ def render_journal_review_block(examples=''):
     if examples and examples.strip():
         block += "\n\n```\n" + examples.strip() + "\n```\n"
     return block
+
+
+def render_prompt_closure():
+    """The run's CLOSURE — separate concern from the review block. Defines the
+    terminal turn the way the runner does (a reply with no tool call IS the
+    final one), places the review on it whether the encoder acted or not, and
+    carries the `DONE` stop signal. Injected as the LAST block of the prompt,
+    independent of the review block — so removing or relocating the review never
+    drags the closure with it. References the `## Review` artifact by name; it
+    does NOT define it (that's render_journal_review_block's job).
+
+    The no-tool-call branch is the fix for the no-action batch: an all-reject /
+    nothing-to-change reply terminates the loop on its first turn, and that turn
+    must still carry the review (an empty fence on a clean run).
+    """
+    return (
+        "## Finishing\n\n"
+        "You're done when your reply makes no tool call — that final reply is the "
+        "only place your review goes. Two ways to get there, both ending the same:\n"
+        "- You made tool calls: after the results come back, your next reply is the final one.\n"
+        "- You made no tool call at all (nothing needed changing): then this reply is "
+        "already the final one.\n\n"
+        'End that final reply with your `## Review`, then write "DONE".'
+    )
 
 
 def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES'):
@@ -697,6 +763,36 @@ def check_delta_telemetry(ref_type, metadata):
         return ('%s delta ran %d round(s) with %d action(s) but recorded '
                 'output_tokens=0 — LLM telemetry not threaded into '
                 'build_delta_metadata' % (ref_type, rounds, actions))
+    return None
+
+
+# Surface (the S1 decoder) is the one LLM agent that is NOT a delta encoder: it
+# spends tokens selecting from candidates and writes its cost into the K trace
+# (ref_type 'surface_selected'), not a delta. Same silent-regression risk as the
+# encoders had pre-2026-06-24 — this is its guard. Unlike the encoder case there
+# is no `actions` gate: Haiku ALWAYS emits output (the selection JSON, even an
+# empty {"selected":[]}), so rounds>0 with output_tokens==0 is an unambiguous
+# wiring gap on its own.
+SURFACE_TELEMETRY_REF_TYPE = 'surface_selected'
+
+
+def check_surface_telemetry(metadata):
+    """Detect a Surface K trace that ran Haiku yet recorded output_tokens==0 —
+    the surface-side analog of check_delta_telemetry (the cost telemetry was
+    not threaded from read_usage into build_run_telemetry into the K trace).
+
+    Returns a one-line warning string for the caller to log via
+    brain._log_error, or None when there's nothing to flag. Pure — the write
+    boundary owns logging (same contract as check_delta_telemetry).
+    """
+    if not isinstance(metadata, dict):
+        return None
+    rounds = metadata.get('rounds') or 0
+    output_tokens = metadata.get('output_tokens') or 0
+    if rounds > 0 and output_tokens == 0:
+        return ('surface_selected K trace ran %d Haiku round(s) but recorded '
+                'output_tokens=0 — surface cost telemetry not threaded into '
+                'the K trace metadata' % rounds)
     return None
 
 

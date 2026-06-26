@@ -294,7 +294,10 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         tool_uses = [b for b in response_obj.content if b.type == "tool_use"]
         tool_results = []
         for tu in tool_uses:
+            _tu_t0 = time.time()
             result = dispatch_fn(tu.name, tu.input)
+            latency_ms = int((time.time() - _tu_t0) * 1000)
+            error = None if result.get("ok") else result.get("error", "Unknown")
             from servers import brain_mcp
             if result.get("ok"):
                 result_text = brain_mcp._format_result(
@@ -330,12 +333,37 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                     for item in r:
                         if isinstance(item, dict) and item.get("id"):
                             result_ids.append(item["id"])
+            # Per-tool result_count — how many result items the call returned
+            # (read hits; write op-results). Self-contained count off the result
+            # shape; doesn't touch the result_ids parse above. recall_batch
+            # returns a list of {query, results} groups, so sum the nested hits
+            # rather than count queries; a flat list (get_nodes) counts itself.
+            result_count = 0
+            if result.get("ok"):
+                _r = result.get("result")
+                if isinstance(_r, dict):
+                    _rl = _r.get("results")
+                    result_count = len(_rl) if isinstance(_rl, list) else (1 if _r.get("id") else 0)
+                elif isinstance(_r, list):
+                    if _r and all(isinstance(x, dict) and isinstance(x.get("results"), list)
+                                  for x in _r):
+                        result_count = sum(len(x["results"]) for x in _r)
+                    else:
+                        result_count = len(_r)
+            # Per-tool detail (latency_ms/result_count/error) rides on every
+            # action record, so action_details (writes) + read_calls (reads) —
+            # already threaded into build_delta_metadata by the run_llm_loop
+            # encoders — gain the same per-call observability Surface's
+            # tool_trace has. `input` is the args.
             actions.append({"tool": tu.name, "summary": action_summary,
                             "node_ids": result_ids,
                             "created": affected.get("created") or [],
                             "revised": affected.get("revised") or [],
                             "archived": affected.get("archived") or [],
-                            "input": tu.input})
+                            "input": tu.input,
+                            "latency_ms": latency_ms,
+                            "result_count": result_count,
+                            "error": error})
             _log("  [%s] %s" % (tu.name, action_summary))
         return tool_results, tool_uses
 

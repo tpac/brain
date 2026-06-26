@@ -1758,110 +1758,86 @@ class Brain(
 
     # log_conflict + resolve_conflict REMOVED 2026-04-05 — conflict_log table dropped
 
+    def _log_event(self, event_type: str, source: str, *,
+                   metadata: Dict[str, Any], file_level: str, file_text: str,
+                   file_detail: str = '', fingerprint: Optional[str] = None,
+                   ctx=None):
+        """Shared policy + write path for a debug_log row.
+
+        Owns the cross-cutting policy that `_log_error` / `_log_warning`
+        share: optional rate-limiting (skipped when `fingerprint is None`),
+        the logs-db size check, per-session attribution, the human-readable
+        file-log mirror, and the stderr last-resort fallback. The SQL lives
+        in the DAL (`self._logs_dal.write_event`). The public loggers build
+        their payload and call here — one INSERT path, so a per-type footgun
+        (e.g. an error=None traceback) can't silently skip the write.
+
+        Parallel-session attribution: hot-path callers (hook_recall, S1
+        encode, MCP dispatch) pass `ctx` for correct session attribution;
+        callers without it fall back to the deprecated `self.session_id`
+        singleton (last-writer-wins, but log attribution is informational).
+        """
+        try:
+            if fingerprint is not None and self._check_rate_limit(source, fingerprint):
+                return  # suppressed
+            _sid = (ctx.session_id if ctx is not None else self.session_id) or 'unknown'
+            self._check_logs_db_size()
+            self._logs_dal.write_event(event_type, source, metadata, session_id=_sid)
+            self._write_to_file_log(file_level, source, file_text, file_detail)
+        except Exception:
+            # Last resort — can't even log. Print to stderr.
+            print('brain: %s in %s: %s' % (event_type, source, file_text),
+                  file=sys.stderr)
+
     def _log_error(self, source: str, error: Exception, context: str = '',
                    ctx=None):
         """Log an error to brain_logs.db + brain.log with rate limiting.
 
-        Replaces silent `except: pass` blocks. Errors are stored in the logs DB
-        and surfaced at boot via consciousness signals.
-
-        Parallel-session attribution: callers in hot paths (hook_recall,
-        S1 encode, MCP dispatch) can pass `ctx` for correct session
-        attribution on the log row. Callers without ctx fall back to the
-        deprecated `self.session_id` singleton — last-writer-wins under
-        parallel sessions, but log attribution is informational only.
+        Replaces silent `except: pass` blocks. Errors are stored in the logs
+        DB and surfaced at boot. `error=None` is a valid call — callers log a
+        *condition* (not an exception); the traceback build is guarded so the
+        write still proceeds (None has no __traceback__).
         """
-        try:
-            import traceback
-            error_str = str(error)
-            error_type = type(error).__name__
-
-            # Rate limit check — compute fingerprint
-            fingerprint = '%s:%s:%s' % (source, error_type, error_str[:100])
-            if self._check_rate_limit(source, fingerprint):
-                return  # suppressed
-
-            # error=None is a valid call (callers logging a condition, not an
-            # exception). Guard the traceback build — None has no __traceback__,
-            # and accessing it would raise AttributeError that the outer except
-            # swallows to stderr, so the debug_log INSERT below never runs and
-            # the error never surfaces at boot / in the dashboard.
-            if error is not None:
-                tb = traceback.format_exception(type(error), error,
-                                                error.__traceback__)
-                tb_short = ''.join(tb[-3:]) if len(tb) > 3 else ''.join(tb)
-            else:
-                tb_short = ''
-
-            _sid = (ctx.session_id if ctx is not None else self.session_id) or 'unknown'
-            # Write to logs DB
-            self._check_logs_db_size()
-            self.logs_conn.execute('''
-                INSERT INTO debug_log
-                  (session_id, event_type, source, metadata, created_at)
-                VALUES (?, 'error', ?, ?, ?)
-            ''', (
-                _sid,
-                source,
-                json.dumps({
-                    'error': error_str,
-                    'type': error_type,
-                    'context': context,
-                    'traceback': tb_short[:500],
-                }),
-                self.now()
-            ))
-
-            # Write to human-readable log file
-            self._write_to_file_log('ERROR', source,
-                '%s: %s' % (error_type, error_str),
-                tb_short)
-        except Exception:
-            # Last resort — can't even log the error. Print to stderr.
-            print('brain: error in %s: %s (context: %s)' % (source, error, context),
-                  file=sys.stderr)
+        import traceback
+        error_str = str(error)
+        error_type = type(error).__name__
+        if error is not None:
+            tb = traceback.format_exception(type(error), error, error.__traceback__)
+            tb_short = ''.join(tb[-3:]) if len(tb) > 3 else ''.join(tb)
+        else:
+            tb_short = ''
+        self._log_event(
+            'error', source,
+            metadata={
+                'error': error_str,
+                'type': error_type,
+                'context': context,
+                'traceback': tb_short[:500],
+            },
+            file_level='ERROR',
+            file_text='%s: %s' % (error_type, error_str),
+            file_detail=tb_short,
+            fingerprint='%s:%s:%s' % (source, error_type, error_str[:100]),
+            ctx=ctx,
+        )
 
     def _log_warning(self, source: str, message: str, context: str = '',
                      ctx=None):
         """Log a non-blocking warning to brain_logs.db + brain.log.
 
-        For signals that are worth surfacing but aren't errors — empty-husk
-        required aspect, auto-heal events, deprecated path used, etc. Different
-        from _log_error: takes a string message rather than an Exception, and
-        writes event_type='warning' so consumers can distinguish signal severity.
-
-        Rate-limited via the same machinery as _log_error. `ctx` parameter
-        works the same way (per-session attribution; falls back to singleton).
+        For signals worth surfacing but not errors — empty-husk required
+        aspect, auto-heal events, deprecated path used, etc. Writes
+        event_type='warning' so consumers can distinguish severity.
         """
-        try:
-            # Rate limit check — compute fingerprint
-            fingerprint = '%s:warning:%s' % (source, message[:100])
-            if self._check_rate_limit(source, fingerprint):
-                return  # suppressed
-
-            _sid = (ctx.session_id if ctx is not None else self.session_id) or 'unknown'
-            # Write to logs DB
-            self._check_logs_db_size()
-            self.logs_conn.execute('''
-                INSERT INTO debug_log
-                  (session_id, event_type, source, metadata, created_at)
-                VALUES (?, 'warning', ?, ?, ?)
-            ''', (
-                _sid,
-                source,
-                json.dumps({
-                    'message': message,
-                    'context': context,
-                }),
-                self.now()
-            ))
-
-            # Write to human-readable log file
-            self._write_to_file_log('WARNING', source, message, context)
-        except Exception:
-            # Last resort — can't even log. Print to stderr.
-            print('brain: warning in %s: %s (context: %s)' % (source, message, context),
-                  file=sys.stderr)
+        self._log_event(
+            'warning', source,
+            metadata={'message': message, 'context': context},
+            file_level='WARNING',
+            file_text=message,
+            file_detail=context,
+            fingerprint='%s:warning:%s' % (source, message[:100]),
+            ctx=ctx,
+        )
 
     def get_recent_errors(self, hours: int = 24, limit: int = 10) -> List[Dict[str, Any]]:
         """Get recent errors from brain_logs.db via DAL."""
@@ -1871,14 +1847,14 @@ class Brain(
             return []
 
     def log_debug(self, event_type: str, source: str, **kwargs) -> Dict[str, Any]:
-        """Log a debug event to brain_logs.db + brain.log."""
+        """Log a debug event to brain_logs.db + brain.log.
+
+        Lightweight path (no rate-limit; caller-supplied event_type; returns a
+        status dict), so it doesn't share _log_event — but the SQL still routes
+        through the DAL writer rather than raw logs_conn.execute.
+        """
         try:
-            ts = self.now()
-            self.logs_conn.execute('''
-                INSERT INTO debug_log
-                  (session_id, event_type, source, metadata, created_at)
-                VALUES (?, ?, ?, ?, ?)
-            ''', ('unknown', event_type, source, json.dumps(kwargs), ts))
+            self._logs_dal.write_event(event_type, source, kwargs, session_id='unknown')
             # Also write to file log for non-error events
             self._write_to_file_log('DEBUG', source, '%s: %s' % (event_type, json.dumps(kwargs)[:200]))
             return {'logged': True}

@@ -32,7 +32,7 @@ DML_RE = re.compile(
 # DAL phase. Lower a number when its sites get migrated; bump (with a why) only
 # for a genuine new exception.
 ALLOWED = {
-    'brain.py': 6,
+    'brain.py': 3,                        # _log_error/_log_warning/log_debug INSERTs migrated to LogsDAL.write_event (2026-06-26); remaining: _check_logs_db_size prune DELETEs (2) + 1 INSERT
     'brain_assembly.py': 5,               # exception: health-check / integrity audit + ping
     'brain_connections.py': 1,
     'brain_remember.py': 10,              # pending: deferred 3c; archive_node's inline edge UPDATE moved to GraphDAL.delete_node_edges (2026-06-14)

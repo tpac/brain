@@ -124,14 +124,9 @@ EMBEDDING_GROUPS = {
         'always_compute': False,
         'cohort': 'field',
     },
-    # Situation alone — split from `high_meta`.
-    'field_situation': {
-        'weight': 0.0,
-        'fields': ['situation'],
-        'vector_type': 'situation',
-        'always_compute': False,
-        'cohort': 'field',
-    },
+    # situation has NO field-cohort vector: it's served by the legacy dedicated
+    # `_situation` vector (full-text, shared with recall's situation-boost) via
+    # FIELD_VECTOR_FALLBACK['situation']. One situation vector, two consumers.
     # Reasoning alone — split from `other_meta`.
     'field_reasoning': {
         'weight': 0.0,
@@ -167,7 +162,7 @@ EMBEDDING_GROUPS = {
 FIELD_VECTOR_FALLBACK = {
     'title':              ['title'],  # no fallback needed — always computed
     'content':            ['_primary'],
-    'situation':          ['high_meta'],
+    'situation':          ['_situation', 'high_meta'],
     'reasoning':          ['other_meta'],
     'user_raw_quote':     ['high_meta'],
     'anchor_raw_quote':   ['high_meta'],
@@ -192,10 +187,11 @@ def vectors_affected_by(field_name: str) -> set:
     so embed_queue's backfill creates fresh ones.
 
     Derived from EMBEDDING_GROUPS — single source of truth. Special case:
-    `_situation` derives directly from node_metadata_kv['situation'] (the
-    EMBEDDING_GROUPS entry for it lives under group `field_situation` /
-    `high_meta` already, so the special case is just for the legacy
-    `_situation` vector_type that doesn't appear there).
+    `_situation` derives from node_metadata_kv['situation'] but is NOT an
+    EMBEDDING_GROUPS entry (it's the legacy dedicated situation vector, written
+    by its own backfill scan), so it's added explicitly. Updating `situation`
+    also invalidates `high_meta` (which blends situation + quotes); there is no
+    longer a `field_situation`/`situation` vector to invalidate.
 
     Used by `brain.revise()` to invalidate stale vectors. Without this,
     `VectorDAL.find_missing()` skips rows that exist (text in kv changed

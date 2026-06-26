@@ -181,5 +181,94 @@ class TestPerRoundStats(unittest.TestCase):
         self.assertEqual(result['final_text'], 'ok')
 
 
+class TestPerToolDetail(unittest.TestCase):
+    """run_llm_loop records per-tool latency_ms / result_count / error on every
+    action record (input = the args), so action_details (writes) and read_calls
+    (reads) — already threaded into build_delta_metadata by the run_llm_loop
+    encoders — gain the same per-call observability Surface's tool_trace has.
+    Option A: extend the existing action record, no new delta field."""
+
+    def _dispatch(self, name, args):
+        # Production-faithful shapes (see servers/dispatch_read.py):
+        #   recall_batch → {'result': [{'query', 'results':[...]}, ...]} (groups)
+        #   get_nodes    → {'result': [node, node, ...]}                 (flat)
+        #   remember     → {'result': {'id': ...}}                       (one id)
+        #   boom         → {'ok': False, 'error': ...}
+        # WRITE_TOOLS routes 'remember' → action_details, reads → read_calls.
+        if name == 'recall_batch':
+            return {'ok': True, 'result': [
+                {'query': 'q1', 'results': [{'id': 'a'}, {'id': 'b'}]},
+                {'query': 'q2', 'results': [{'id': 'c'}]},
+            ]}
+        if name == 'get_nodes':
+            return {'ok': True, 'result': [{'id': 'x'}, {'id': 'y'}]}
+        if name == 'remember':
+            return {'ok': True, 'result': {'id': 'n1'},
+                    'affected': {'created': ['n1']}}
+        if name == 'boom':
+            return {'ok': False, 'error': 'kaboom'}
+        return {'ok': True, 'result': {}}
+
+    def _run(self, scripted):
+        return run_llm_loop(
+            client=FakeClient(scripted), model='claude-test', max_tokens=4096,
+            max_rounds=3, system_prompt='S', user_content='U', tools=[],
+            dispatch_fn=self._dispatch, log_fn=lambda m: None)
+
+    def test_read_and_write_carry_per_tool_detail(self):
+        r0 = FakeMessage(
+            content=[
+                FakeBlock(type='tool_use', id='t1', name='recall_batch',
+                          input={'queries': ['x']}),
+                FakeBlock(type='tool_use', id='t2', name='get_nodes',
+                          input={'node_ids': ['x', 'y']}),
+                FakeBlock(type='tool_use', id='t3', name='remember',
+                          input={'title': 'A', 'content': 'c'}),
+            ],
+            stop_reason='tool_use', usage=FakeUsage())
+        r1 = FakeMessage(content=[FakeBlock(type='text', text='done')],
+                         stop_reason='end_turn', usage=FakeUsage())
+        result = self._run([FakeStream(r0), FakeStream(r1)])
+
+        reads = {r['tool']: r for r in result['read_calls']}
+        self.assertEqual(set(reads), {'recall_batch', 'get_nodes'})
+
+        # recall_batch → per-query groups: result_count = SUM of nested hits
+        # (2 + 1 = 3), NOT the number of queries (would be 2).
+        rb = reads['recall_batch']
+        self.assertEqual(rb['result_count'], 3)
+        self.assertIsNone(rb['error'])
+        self.assertIsInstance(rb['latency_ms'], int)
+        self.assertGreaterEqual(rb['latency_ms'], 0)
+        self.assertEqual(rb['input'], {'queries': ['x']})  # args captured
+
+        # get_nodes → flat result list: result_count = its length (2)
+        self.assertEqual(reads['get_nodes']['result_count'], 2)
+
+        # write tool → action_details, result_count = 1
+        writes = result['action_details']
+        self.assertEqual(len(writes), 1)
+        wr = writes[0]
+        self.assertEqual(wr['tool'], 'remember')
+        self.assertEqual(wr['result_count'], 1)
+        self.assertIsNone(wr['error'])
+        self.assertIsInstance(wr['latency_ms'], int)
+
+    def test_failed_tool_records_error_and_zero_count(self):
+        r0 = FakeMessage(
+            content=[FakeBlock(type='tool_use', id='t1', name='boom',
+                               input={'q': 1})],
+            stop_reason='tool_use', usage=FakeUsage())
+        r1 = FakeMessage(content=[FakeBlock(type='text', text='done')],
+                         stop_reason='end_turn', usage=FakeUsage())
+        result = self._run([FakeStream(r0), FakeStream(r1)])
+
+        reads = result['read_calls']  # 'boom' isn't a WRITE_TOOL
+        self.assertEqual(len(reads), 1)
+        self.assertEqual(reads[0]['error'], 'kaboom')
+        self.assertEqual(reads[0]['result_count'], 0)
+        self.assertIsInstance(reads[0]['latency_ms'], int)
+
+
 if __name__ == '__main__':
     unittest.main()

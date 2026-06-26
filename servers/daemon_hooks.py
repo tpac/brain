@@ -116,6 +116,17 @@ class PhaseTimer:
         self._phases.append((label, int((now - self._last) * 1000)))
         self._last = now
 
+    def snapshot(self) -> list:
+        """Per-phase breakdown captured so far, as a JSON-friendly list of
+        {phase, ms} dicts (marks recorded after this call aren't included).
+
+        The structured, queryable form of the same data the final log() line
+        renders into the unqueryable 'hook_phase_timing' string — surface
+        writes it into its K trace so 'which phase ate the budget' is a query,
+        not a log grep. Empty list when the timer is disabled.
+        """
+        return [{'phase': label, 'ms': ms} for label, ms in self._phases]
+
     def log(self, brain, hook_name: str, **extras) -> None:
         """Emit one debug line. extras land as key=value pairs at the end."""
         if not self._enabled:

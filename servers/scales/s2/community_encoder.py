@@ -210,6 +210,7 @@ class CommunityEncoder(IntegrationUnit):
                        rejection_skipped=result.get('rejection_skipped_count', 0),
                        invalid_op_failures=result.get('invalid_op_failures', 0),
                        action_details=action_details,
+                       read_calls=result.get('read_calls', []),
                        final_text=final_text,
                        corridors_filtered=len(corridors),
                        elapsed_ms=result.get('elapsed_ms', 0),
@@ -400,30 +401,13 @@ class CommunityEncoder(IntegrationUnit):
             print('[s2ce] WARNING: no enrichment prompt', flush=True)
             return None
 
-        # Inject edge aspects (Step 12 of unified-aspects). Same skip pattern
-        # as consolidation_encoder + surface — generic_relation/noise excluded
-        # from the prompt, node-only aspects skipped (no edge_relations).
-        family_lines = []
-        for name, aspect in sorted(self.brain.aspects.all().items()):
-            if name in ('generic_relation', 'noise'):
-                continue
-            if not aspect.edge_relations:
-                continue
-            family_lines.append('- **%s**: %s' % (
-                name, ', '.join(list(aspect.edge_relations[:8]))))
-        if family_lines:
-            families_section = ('\n\n## Edge Families (from brain.aspects — %d aspects)\n\n%s\n\n'
-                                'Avoid `related_to`. Pick specific types.' % (
-                                    len(family_lines), '\n'.join(family_lines)))
-            system_prompt = system_prompt + families_section
-
-        # Journal section is contract-owned, injected at runtime (like ## Edge
-        # Families above): the shared review block is appended, never baked into
-        # the registered prompt. No legacy_heading — the v20 body revise removed
-        # the old `## Journal` section outright (it was mid-prompt, with YOUR ROLE
-        # after it, so it couldn't be stripped-to-end like consolidation's), and
-        # community has no continuity-read line in the system prompt to relabel.
+        # Prompt closers — all single-sourced in base/contract, identical
+        # across S2/S1 encoders: the edge-aspect vocabulary, then the residue
+        # review block, then the run closure (terminal-turn + DONE). Closure is
+        # appended LAST and is independent of the review block.
+        system_prompt = self._inject_edge_aspects(system_prompt)
         system_prompt = self._inject_review_block(system_prompt)
+        system_prompt = self._append_closure(system_prompt)
 
         if not os.environ.get('ANTHROPIC_API_KEY'):
             load_env()

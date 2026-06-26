@@ -56,7 +56,9 @@ with IsolatedBrain() as env:
         user_content, max_tokens = build_surface_prompt(cands, qrec['q']['query'])
         t0 = time.time()
         try:
-            raw, tool_trace = _call_surface_agentic(
+            # 3-tuple: _call_surface_agentic now also returns run-cost
+            # telemetry (summed across rounds); unused in this ablation.
+            raw, tool_trace, _telemetry = _call_surface_agentic(
                 client, b, cands, prompts[version], user_content,
                 max_tokens, 'ablation-%d' % version, SURFACE_MODEL)
         except Exception as e:

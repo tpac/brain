@@ -1596,8 +1596,12 @@ class BrainRememberMixin:
                                         EMBEDDING_FIELD_CHAR_LIMIT)
 
         if not embedder.is_ready():
-            self._log_error('group_vectors_skip', None,
-                            'embedder not ready — skipping group vectors for %s' % node_id[:8])
+            # A condition, not an exception — but boot-worthy (a node stored
+            # without its group vectors silently degrades recall), so log it as
+            # an error with a real type/message rather than a bare None.
+            self._log_error('group_vectors_skip',
+                            RuntimeError('embedder not ready — group vectors skipped'),
+                            'node %s stored without group vectors' % node_id[:8])
             return
 
         # Build field value lookup: all available fields for this node
