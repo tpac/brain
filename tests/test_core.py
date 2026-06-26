@@ -85,6 +85,45 @@ class TestErrorLogging(BrainTestBase):
         self.assertEqual(match[0]['type'], 'NoneType')
         self.assertEqual(match[0]['context'], 'none ctx')
 
+    def test_log_error_unraised_exception_captures_type(self):
+        """A constructed-but-unraised exception (the group_vectors_skip pattern)
+        captures its real type/message — the chosen alternative to error=None."""
+        self.brain._log_error('test_cond_src',
+                              RuntimeError('embedder not ready'), 'cond ctx')
+
+        errors = self.brain.get_recent_errors(hours=1)
+        match = [e for e in errors if e['source'] == 'test_cond_src']
+        self.assertTrue(match, 'condition logged as error must surface')
+        self.assertEqual(match[0]['type'], 'RuntimeError')
+        self.assertEqual(match[0]['error'], 'embedder not ready')
+
+    def test_loggers_commit_durably_to_separate_connection(self):
+        """The unified loggers route through LogsDAL.write_event, which commits
+        via commit_unless_batched — so rows are durable and visible to a SEPARATE
+        connection (the dashboard's), not just the brain's own logs_conn.
+
+        Regression guard for the old raw-SQL path, which never committed and rode
+        on a later writer's commit to persist.
+        """
+        import sqlite3 as _sqlite3
+        self.brain._log_error('test_durable_err', ValueError('boom'), 'c')
+        self.brain._log_warning('test_durable_warn', 'heads up', 'c')
+
+        reader = _sqlite3.connect(self.brain.logs_db_path)
+        try:
+            rows = reader.execute(
+                "SELECT source, event_type FROM debug_log "
+                "WHERE source IN ('test_durable_err', 'test_durable_warn')"
+            ).fetchall()
+        finally:
+            reader.close()
+
+        seen = {src: et for src, et in rows}
+        self.assertEqual(seen.get('test_durable_err'), 'error',
+                         'error must be committed + visible cross-connection')
+        self.assertEqual(seen.get('test_durable_warn'), 'warning',
+                         'warning must be committed + visible cross-connection')
+
     def test_log_warning_writes_to_db(self):
         """_log_warning writes a non-blocking signal with event_type='warning'."""
         self.brain._log_warning("test_warn_source", "test warning message", "warn ctx")

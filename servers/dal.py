@@ -56,34 +56,40 @@ class LogsDAL:
     #         latency_ms, brain_reachable, metadata, created_at
     # Errors use event_type='error' with details in metadata JSON.
 
+    def write_event(self, event_type: str, source: str,
+                    metadata: Dict[str, Any], session_id: str = "") -> None:
+        """Single INSERT path for debug_log rows (error / warning / debug).
+
+        Owns the SQL + the batch-aware commit gate; the caller owns the
+        policy and builds `metadata`. Brain._log_event (and the typed
+        delegators below) route here so there is exactly ONE debug_log
+        writer — a per-type footgun can't silently skip the INSERT, and
+        every log row commits immediately (durable + visible to the
+        dashboard's separate connection) unless inside a batch.
+        """
+        self.conn.execute(
+            'INSERT INTO debug_log (session_id, event_type, source, metadata, created_at) '
+            'VALUES (?, ?, ?, ?, ?)',
+            (session_id, event_type, source, json.dumps(metadata), iso_now())
+        )
+        commit_unless_batched(self.conn)
+
     def write_error(self, source: str, error: str, context: str = "",
                     traceback_str: str = "", session_id: str = "") -> None:
         """Write an error to the debug_log table."""
-        now = iso_now()
-        metadata = json.dumps({
+        self.write_event('error', source, {
             'error': error[:500],
             'type': 'Exception',
             'context': context[:500],
             'traceback': traceback_str[:500] if traceback_str else '',
-        })
-        self.conn.execute(
-            'INSERT INTO debug_log (session_id, event_type, source, metadata, created_at) '
-            'VALUES (?, ?, ?, ?, ?)',
-            (session_id, 'error', source, metadata, now)
-        )
-        commit_unless_batched(self.conn)
+        }, session_id=session_id)
 
     def write_debug(self, source: str, message: str, session_id: str = "",
                     metadata: Optional[Dict] = None) -> None:
         """Write a debug entry to the debug_log table."""
-        now = iso_now()
-        meta_json = json.dumps(metadata) if metadata else json.dumps({'message': message[:500]})
-        self.conn.execute(
-            'INSERT INTO debug_log (session_id, event_type, source, metadata, created_at) '
-            'VALUES (?, ?, ?, ?, ?)',
-            (session_id, 'debug', source, meta_json, now)
-        )
-        commit_unless_batched(self.conn)
+        self.write_event('debug', source,
+                         metadata if metadata else {'message': message[:500]},
+                         session_id=session_id)
 
     # ── hook_errors ──
     # The daemon-independent error table the dashboard + boot read. In-process
