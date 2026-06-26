@@ -37,8 +37,8 @@ class BrainConnectionsMixin:
         row still NULL, so the brief pre-drain window is harmless. Returns the
         number of relations embedded.
 
-        Layer note: lives here (not GraphDAL) because the compute needs
-        brain.aspects (family meaning) + the embedder. GraphDAL stays storage-only.
+        Layer note: lives here (not GraphDAL) because the compute needs the
+        embedder + brain.aspects.compose_edge_text. GraphDAL stays storage-only.
         """
         ids = [e for e in (edge_ids or []) if e]
         if not ids:

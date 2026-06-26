@@ -28,7 +28,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-NOISE = ('co_accessed', 'emergent_bridge')
+# Tie the noise set to the contract (matches backfill_edge_embeddings' own
+# filter) rather than re-typing it — see CLAUDE.md "Contract-first".
+from servers.dal import DEFAULT_EXCLUDED_RELATIONS  # noqa: E402
+NOISE = tuple(sorted(DEFAULT_EXCLUDED_RELATIONS))
 CHUNK = 800
 
 
@@ -50,6 +53,15 @@ def main():
     brain = Brain.get_instance(db_path)
     if not embedder.is_ready():
         embedder.embed_batch(['warm'], kind='document')
+
+    # Backup before the destructive NULL pass (CLAUDE.md: "Backup before
+    # destructive DB operations ... No exceptions."). WAL-safe snapshot via the
+    # same path the daemon's scheduler uses; cheap insurance for re-runs.
+    from servers import db_backup
+    backup = db_backup.backup_database(
+        db_path, os.path.join(os.path.dirname(db_path), 'backups'))
+    print('backup: %s (%d bytes gz)' % (backup.get('dest'), backup.get('gz_bytes', 0)),
+          flush=True)
 
     ph = ','.join('?' * len(NOISE))
     n_active = _count(brain, '')

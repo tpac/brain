@@ -91,5 +91,25 @@ class TestFindMissingKvFilter(BrainTestBase):
             self.assertIn(nid, ids)
 
 
+    def test_whitespace_only_value_is_not_eligible(self):
+        """A whitespace-only kv value yields no embed text (the text-builder
+        uses `val.strip()`), so find_missing must exclude it via trim() — else
+        it clogs the batch AND false-trips the dead-handler alarm. Locks the
+        filter<->builder alignment."""
+        ws = self._make_node('Whitespace')
+        self.brain.conn.execute(
+            "INSERT OR REPLACE INTO node_metadata_kv (node_id, key, value) "
+            "VALUES (?, ?, ?)", (ws, 'situation', '   '))
+        real = self._make_node('RealSituation', situation='When debugging the daemon')
+        self.brain.conn.commit()
+
+        vdal = VectorDAL(self.brain.conn)
+        ids = {r['id'] for r in vdal.find_missing(
+            'high_meta', limit=20, source_kv_keys=['situation'])}
+        self.assertIn(real, ids, 'a real situation value must be eligible')
+        self.assertNotIn(ws, ids,
+                         'whitespace-only kv value must be excluded (trim semantics)')
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -4062,7 +4062,11 @@ class VectorDAL:
             where.append(
                 'EXISTS (SELECT 1 FROM node_metadata_kv kv '
                 'WHERE kv.node_id = n.id AND kv.key IN (%s) '
-                "AND kv.value IS NOT NULL AND kv.value != '')" % ph)
+                # trim() mirrors the text-builder's `val.strip()` — a
+                # whitespace-only value is NOT eligible (it yields no embed
+                # text), so it neither clogs the batch nor false-trips the
+                # dead-handler alarm. Keeps "eligible <=> yields text" exact.
+                "AND kv.value IS NOT NULL AND trim(kv.value) != '')" % ph)
             params.extend(require_kv_keys_any)
 
         if require_described_edge:

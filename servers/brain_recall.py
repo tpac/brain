@@ -962,23 +962,30 @@ class BrainRecallMixin:
                 if stored:
                     result[vector_type] = stored
 
-                # Loud-by-default dead-handler trip: find_missing now filters to
-                # ELIGIBLE candidates (kv-key present / described edge), so a
-                # returned candidate is one that SHOULD yield embed text. If a
-                # batch of them produces zero stored vectors, the group's handler
-                # built no text (dead/missing handler) or every embed failed —
-                # the exact silent-partial that hid edge_context's 0-row bug.
-                # Make it scream. (Rate-limited by _log_error; self-clears once
-                # the handler produces vectors again.)
-                if len(missing) >= EMBEDDING_DEAD_HANDLER_MIN_CANDIDATES and stored == 0:
-                    # Pass a real exception (not None): _log_error reads
-                    # error.__traceback__, so None never reaches debug_log.
+                # Loud-by-default dead-handler trip. Two gates keep it precise so
+                # it only fires on the real silent-partial that hid edge_context's
+                # 0-row bug, not on healthy edge cases:
+                #  (a) the group must have an ELIGIBILITY FILTER (kv-key or
+                #      described-edge) — only then is a returned candidate a
+                #      guarantee it SHOULD yield text. An unfiltered group like
+                #      field_content can return nodes with empty content that
+                #      legitimately build nothing.
+                #  (b) ZERO text built (`not items`), not merely zero stored — a
+                #      transient embed failure (embed_batch returns []) builds
+                #      items but stores 0; that's an embedder problem, not a dead
+                #      handler, and would mis-fire the alarm.
+                # Pass a real exception (not None): _log_error reads
+                # error.__traceback__, so None never reaches debug_log.
+                has_eligibility_filter = bool(kv_source_keys) or needs_edge_filter
+                if (has_eligibility_filter
+                        and len(missing) >= EMBEDDING_DEAD_HANDLER_MIN_CANDIDATES
+                        and not items):
                     self._log_error(
                         'embedding_handler_dead',
                         RuntimeError(
-                            'group %s: %d eligible candidates but 0 stored '
-                            '(%d text-items built) — handler produced no embeddings'
-                            % (vector_type, len(missing), len(items))),
+                            'group %s: %d eligible candidates but built no embed '
+                            'text — handler is dead/missing'
+                            % (vector_type, len(missing))),
                         'embedding backfill dead-handler check')
             except Exception as e:
                 self._log_error('backfill_%s_scan' % vector_type, e,
