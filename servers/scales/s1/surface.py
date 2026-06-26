@@ -14,7 +14,7 @@ import os
 import time
 
 from servers.scales.dispatch import load_env
-from servers.scales.runner import read_usage, USAGE_FIELDS
+from servers.scales.runner import read_usage, sum_usage
 from servers.trace_contract import (
     build_selection_metadata, build_run_telemetry, check_surface_telemetry)
 from servers.daemon_config import brain_tmp_dir
@@ -210,10 +210,10 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
     raw_final = ''
 
     # Cost telemetry — summed across rounds (the agentic loop calls Haiku up to
-    # max_rounds times) over the canonical USAGE_FIELDS, then built through the
-    # shared builder (one construction point, same as v4 + the encoders).
+    # max_rounds times) via the shared sum_usage, then built through the shared
+    # builder (one construction point, same as v4 + the encoders).
     _t0 = time.time()
-    usage_total = {f: 0 for f in USAGE_FIELDS}
+    usage_total = read_usage(None)   # all-zero baseline of the right keys
     rounds_used = 0
     truncated = 0
 
@@ -264,9 +264,7 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
 
         # Accumulate cost across rounds before processing this response.
         rounds_used += 1
-        _u = read_usage(api_resp)
-        for _k in USAGE_FIELDS:
-            usage_total[_k] += _u[_k]
+        sum_usage(usage_total, read_usage(api_resp))
         if getattr(api_resp, 'stop_reason', None) == 'max_tokens':
             truncated += 1
 

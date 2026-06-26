@@ -425,13 +425,14 @@ class CommunityEncoder(IntegrationUnit):
         batch_size = self.config.get('max_proposals_per_call', 15)
         total_result = {
             'rounds': 0, 'actions': 0, 'write_actions': 0,
-            'action_details': [], 'final_text': '',
+            'action_details': [], 'read_calls': [], 'final_text': '',
         }
-        # Cost/latency telemetry — tokens summed across batches via
-        # _sum_telemetry, elapsed by a wall-clock timer around the whole batch
-        # loop. Mirrors S1 Scribe / consolidation; before this, run()'s
-        # build_delta_metadata omitted them and every production
-        # `community_enriched` delta read elapsed_ms=0, output_tokens=0 (the gap).
+        # Cost/latency telemetry — loop counts, per-tool records, and tokens are
+        # folded per batch by the shared _accumulate_run; elapsed by a wall-clock
+        # timer around the whole batch loop. Mirrors S1 Scribe / consolidation;
+        # before this, run()'s build_delta_metadata omitted them and every
+        # production `community_enriched` delta read elapsed_ms=0,
+        # output_tokens=0 (the gap).
         _t0 = time.time()
         current_state = list(community_state)
 
@@ -474,35 +475,11 @@ class CommunityEncoder(IntegrationUnit):
                         log_fn=lambda msg: print('[s2ce] %s' % msg, flush=True)),
                     log_fn=lambda msg: print('[s2ce] %s' % msg, flush=True))
 
-                total_result['rounds'] += result.get('rounds', 0)
-                total_result['actions'] += result.get('actions', 0)
-                total_result['write_actions'] += result.get('write_actions', 0)
-                total_result['action_details'].extend(
-                    result.get('action_details', []))
-                self._sum_telemetry(total_result, result)
-                # Append journal from each batch (don't overwrite previous batches)
-                batch_text = result.get('final_text', '')
-                if batch_text:
-                    total_result['final_text'] += '\n--- batch %d ---\n%s' % (
-                        batch_num, batch_text)
-                    # Residue review → journal_note rows, PER BATCH. Community
-                    # appends each batch's final_text (unlike consolidation, which
-                    # overwrites), and extract_review_block keys on the FIRST
-                    # `## Review` fence — so a single post-loop write would drop
-                    # every batch's notes but the first. Writing per batch, all
-                    # sharing this run's chain_id, groups them as one run's notes.
-                    # Failure-isolated — a journal write never breaks the run.
-                    self.brain.write_journal_notes(
-                        final_text=batch_text, chain_id=self.chain_id(),
-                        scale=self.SCALE, session_id='')
-
-                # Log truncation errors to brain errors table
-                for trunc in result.get('truncations', []):
-                    self.brain._log_error(
-                        's2ce_truncation',
-                        'max_tokens truncation: round %d used %s/%s output tokens' % (
-                            trunc['round'], trunc['output_tokens'], trunc['max_tokens']),
-                        'batch %d — tool call likely corrupted, community data may be lost' % batch_num)
+                # Accumulate + per-batch journal + truncation logging — shared
+                # multi-batch body (see IntegrationUnit._fold_batch_result).
+                self._fold_batch_result(
+                    total_result, result, batch_num, 's2ce_truncation',
+                    trunc_detail='tool call likely corrupted, community data may be lost')
 
                 # Refresh community state for next batch
                 current_state = decoder._read_community_state()

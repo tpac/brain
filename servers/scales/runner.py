@@ -38,8 +38,9 @@ ANTHROPIC_CLIENT_TIMEOUT = 600.0
 
 # Canonical token-usage telemetry field names — the keys run_llm_loop returns,
 # base._call_llm returns, and build_delta_metadata accepts. Defined once so the
-# SDK-attribute mapping (below) and the encoders' cross-batch accumulator
-# (IntegrationUnit._sum_telemetry) read the same field set and can't drift.
+# SDK-attribute mapping (read_usage) and the accumulator (sum_usage, reused by
+# run_llm_loop, IntegrationUnit._accumulate_run, and the surface loop) read the
+# same field set and can't drift.
 USAGE_FIELDS = ('input_tokens', 'output_tokens',
                 'cache_read_tokens', 'cache_creation_tokens')
 
@@ -59,6 +60,20 @@ def read_usage(response):
         'cache_read_tokens':     getattr(usage, 'cache_read_input_tokens', 0) or 0,
         'cache_creation_tokens': getattr(usage, 'cache_creation_input_tokens', 0) or 0,
     }
+
+
+def sum_usage(total, usage):
+    """Accumulate one `usage` dict's USAGE_FIELDS into `total`, in place
+    (defensive on missing/None), and return `total`.
+
+    The single token-accumulator primitive — one definition reused by
+    run_llm_loop's per-round tracking, IntegrationUnit's per-batch run
+    accumulation, and the surface agentic loop, so the "sum the four token
+    fields" loop exists exactly once. Start `total` from read_usage(None) (the
+    all-zero baseline) for a clean dict of the right keys."""
+    for f in USAGE_FIELDS:
+        total[f] = total.get(f, 0) + (usage.get(f) or 0)
+    return total
 
 
 def run_unit_in_background(unit, name, lock, on_complete=None):
@@ -170,15 +185,15 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
 
     t0 = time.time()
     profile = []
-    total_input_tokens = 0
-    total_output_tokens = 0
-    total_cache_creation = 0
-    total_cache_read = 0
+    # Token totals as a dict over USAGE_FIELDS, accumulated via the shared
+    # sum_usage primitive. read_usage(None) is the all-zero baseline of the
+    # right keys; the per-round breakdown derives from per_round_stats.
+    usage_total = read_usage(None)
 
     # Per-round diagnostic data so we can answer "where did r1's 100s go".
-    # Each entry: {round, ttft_ms, total_ms, output_tokens, input_tokens,
-    # cache_read, cache_creation}. ttft_ms isolates server prefill (largely
-    # invariant in generation cost) from the actual token-by-token output.
+    # Each entry: {round, ttft_ms, total_ms} + USAGE_FIELDS (read_usage's keys).
+    # ttft_ms isolates server prefill (largely invariant in generation cost)
+    # from the actual token-by-token output.
     per_round_stats = []
 
     def _step(name):
@@ -187,32 +202,16 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
     truncations = []
 
     def _track_usage(resp, round_num, ttft_ms=None, total_ms=None):
-        nonlocal total_input_tokens, total_output_tokens
-        nonlocal total_cache_creation, total_cache_read
         u = read_usage(resp)
-        in_this_round = u['input_tokens']
-        out_this_round = u['output_tokens']
-        cr_this_round = u['cache_read_tokens']
-        cw_this_round = u['cache_creation_tokens']
-        total_input_tokens += in_this_round
-        total_output_tokens += out_this_round
-        total_cache_creation += cw_this_round
-        total_cache_read += cr_this_round
-        per_round_stats.append({
-            'round': round_num,
-            'ttft_ms': ttft_ms,
-            'total_ms': total_ms,
-            'output_tokens': out_this_round,
-            'input_tokens': in_this_round,
-            'cache_read': cr_this_round,
-            'cache_creation': cw_this_round,
-        })
+        sum_usage(usage_total, u)
+        per_round_stats.append({'round': round_num, 'ttft_ms': ttft_ms,
+                                'total_ms': total_ms, **u})
         if getattr(resp, 'stop_reason', None) == 'max_tokens':
             _log("WARNING: max_tokens hit (round %d, %s/%d output tokens) — response truncated" % (
-                round_num, out_this_round, max_tokens))
+                round_num, u['output_tokens'], max_tokens))
             truncations.append({
                 'round': round_num,
-                'output_tokens': out_this_round,
+                'output_tokens': u['output_tokens'],
                 'max_tokens': max_tokens,
             })
 
@@ -391,11 +390,12 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
     # is read from cache at 0.1× cost; cache_creation_input_tokens is written
     # at 1.25× (5min TTL) or 2× (1h TTL) cost. Report all three so the
     # operator can see hit ratio over many runs.
-    total_cache_pool = total_cache_creation + total_cache_read
-    hit_rate = (total_cache_read / total_cache_pool * 100) if total_cache_pool else 0.0
+    total_cache_pool = usage_total['cache_creation_tokens'] + usage_total['cache_read_tokens']
+    hit_rate = (usage_total['cache_read_tokens'] / total_cache_pool * 100) if total_cache_pool else 0.0
     _log("Rounds: %d | Actions: %d (writes: %d, reads: %d) | Tokens: %d fresh / %d cached-read / %d cached-write / %d out | hit=%.0f%% | Profile: %s" % (
         rounds + 1, len(actions), len(write_actions), len(read_calls),
-        total_input_tokens, total_cache_read, total_cache_creation, total_output_tokens,
+        usage_total['input_tokens'], usage_total['cache_read_tokens'],
+        usage_total['cache_creation_tokens'], usage_total['output_tokens'],
         hit_rate,
         ', '.join('%s=%dms' % (n, t) for n, t in profile)))
 
@@ -416,8 +416,8 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             out_tok,
             ('%.0ftok/s' % gen_rate) if gen_rate is not None else '?',
             rd.get('input_tokens') or 0,
-            rd.get('cache_read') or 0,
-            rd.get('cache_creation') or 0))
+            rd.get('cache_read_tokens') or 0,
+            rd.get('cache_creation_tokens') or 0))
 
     return {
         "rounds": rounds + 1,
@@ -431,9 +431,7 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         "final_text": final_text or '',
         "profile": profile,
         "elapsed_ms": int((time.time() - t0) * 1000),
-        "input_tokens": total_input_tokens,
-        "output_tokens": total_output_tokens,
-        "cache_creation_tokens": total_cache_creation,
-        "cache_read_tokens": total_cache_read,
+        # USAGE_FIELDS keys match the four token return keys exactly.
+        **usage_total,
         "truncations": truncations,
     }

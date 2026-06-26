@@ -27,9 +27,10 @@ from datetime import datetime, timezone, timedelta
 
 
 # Single shared Anthropic client timeout — see scales/runner.py.
-# USAGE_FIELDS / read_usage: the canonical token-telemetry contract shared with
-# run_llm_loop, so _call_llm and _sum_telemetry don't re-derive it.
-from ..runner import ANTHROPIC_CLIENT_TIMEOUT, USAGE_FIELDS, read_usage  # noqa: F401 — re-export for callers
+# read_usage / sum_usage: the canonical token-telemetry contract shared with
+# run_llm_loop, so _call_llm and _accumulate_run don't re-derive it. read_usage
+# + sum_usage are also re-exported here for the encoder subclasses (e.g. healer).
+from ..runner import ANTHROPIC_CLIENT_TIMEOUT, read_usage, sum_usage  # noqa: F401 — re-export for callers
 from ..dispatch import ATTRIBUTED_WRITE_COMMANDS
 
 
@@ -462,14 +463,53 @@ class IntegrationUnit:
         """
         return self.brain.get_interaction_config(name)
 
-    def _sum_telemetry(self, total, result):
-        """Accumulate one batch's token telemetry from `result` into `total`
-        (in place), over the canonical USAGE_FIELDS. Shared by the multi-batch
-        S2 encoders (consolidation / community / healer) so the per-batch
-        summation lives in one place. elapsed_ms is NOT summed — each encoder
-        wall-clocks its whole batch loop once."""
-        for f in USAGE_FIELDS:
-            total[f] = total.get(f, 0) + (result.get(f) or 0)
+    def _accumulate_run(self, total, result):
+        """Fold one run_llm_loop result batch into `total` (in place): the loop
+        counts (rounds / actions / write_actions), the per-tool records
+        (action_details + read_calls — both carry per-tool latency/result_count),
+        and token telemetry (via the shared sum_usage). The single multi-batch
+        accumulator, shared by the consolidation and community encoders so the
+        batch-fold loop lives in one place.
+
+        Per-unit fields (final_text formatting, unit-specific counters) stay in
+        each encoder. elapsed_ms is NOT summed — each encoder wall-clocks its
+        whole batch loop once. `total` must pre-init action_details/read_calls
+        to []."""
+        total['rounds'] += result.get('rounds', 0)
+        total['actions'] += result.get('actions', 0)
+        total['write_actions'] += result.get('write_actions', 0)
+        total['action_details'].extend(result.get('action_details') or [])
+        total['read_calls'].extend(result.get('read_calls') or [])
+        sum_usage(total, result)
+
+    def _fold_batch_result(self, total, result, batch_num, trunc_source,
+                           trunc_detail='tool call likely corrupted'):
+        """Process one batch's run_llm_loop result for a multi-batch encoder:
+        accumulate it into `total` (via _accumulate_run), append this batch's
+        final_text, persist its review notes as journal_note rows PER BATCH, and
+        log any max_tokens truncation. The shared per-batch body for the
+        consolidation + community encoders, so the loop logic lives in one place;
+        per-unit steps (state refresh, progress traces) stay in each loop.
+
+        Per-batch journal write (not post-loop): extract_review_block keys on the
+        FIRST `## Review` fence, so a single post-loop write over the accumulated
+        final_text would drop every batch's notes but the first. Writing per
+        batch, all sharing this run's chain_id, groups them as one run's notes.
+        The journal write is failure-isolated by the caller's per-batch
+        try/except (a journal hiccup never aborts the run)."""
+        self._accumulate_run(total, result)
+        batch_text = result.get('final_text', '')
+        if batch_text:
+            total['final_text'] += '\n--- batch %d ---\n%s' % (batch_num, batch_text)
+            self.brain.write_journal_notes(
+                final_text=batch_text, chain_id=self.chain_id(),
+                scale=self.SCALE, session_id='')
+        for trunc in result.get('truncations', []):
+            self.brain._log_error(
+                trunc_source,
+                'max_tokens truncation: round %d used %s/%s output tokens' % (
+                    trunc['round'], trunc['output_tokens'], trunc['max_tokens']),
+                'batch %d — %s' % (batch_num, trunc_detail))
 
     def _call_llm(self, interaction_name, user_content):
         """Call LLM with a learnable prompt from interactions table.

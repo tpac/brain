@@ -11,7 +11,7 @@ import time
 
 from servers.trace_contract import build_delta_metadata
 
-from .base import IntegrationUnit
+from .base import IntegrationUnit, read_usage, sum_usage
 from .healer_contract import HEALER
 
 
@@ -49,11 +49,13 @@ class HealerEncoder(IntegrationUnit):
         field_counter = {}    # for outcomes: which fields got written most
         batches = 0
         # Cost/latency telemetry — tokens summed across per-batch LLM calls via
-        # _sum_telemetry, elapsed by a wall-clock timer around the loop. Healer
-        # uses _call_llm (a plain messages.create), not run_llm_loop, so the
-        # per-call telemetry comes from _call_llm's tuple return. Before this, the
-        # healer_generated delta omitted them (elapsed_ms=0/output_tokens=0).
-        tel_totals = {}
+        # the shared sum_usage, elapsed by a wall-clock timer around the loop.
+        # Healer uses _call_llm (a plain messages.create), not run_llm_loop, so
+        # the per-call telemetry comes from _call_llm's tuple return (just
+        # elapsed + tokens — no run loop to fold, so sum_usage not _accumulate_run).
+        # Before this, the healer_generated delta omitted them (elapsed_ms=0/
+        # output_tokens=0).
+        tel_totals = read_usage(None)
         _t0 = time.time()
 
         batch_size = self.config['max_nodes_per_call']
@@ -68,7 +70,7 @@ class HealerEncoder(IntegrationUnit):
 
             user_content = self._format_batch(batch)
             result, call_tel = self._call_llm('s2_healer', user_content)
-            self._sum_telemetry(tel_totals, call_tel)
+            sum_usage(tel_totals, call_tel)
 
             if result is None:
                 errors.append('LLM call failed for batch %d' % batches)

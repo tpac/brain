@@ -577,10 +577,11 @@ class TestEncodersThreadTelemetry:
 
 
 class TestSharedTelemetryHelpers:
-    """read_usage (runner) + IntegrationUnit._sum_telemetry (base) are the
-    single source for the SDK usage-field mapping and the cross-batch
-    accumulator — reused by run_llm_loop, base._call_llm, and the 3 multi-batch
-    S2 encoders, so the field names live in exactly one place."""
+    """read_usage + sum_usage (runner) are the single source for the SDK
+    usage-field mapping and the token accumulator — reused by run_llm_loop's
+    per-round tracking, IntegrationUnit._accumulate_run's per-batch fold,
+    base._call_llm, and the surface agentic loop, so the field names and the
+    "sum the four token fields" loop each live in exactly one place."""
 
     def test_read_usage_maps_sdk_field_names(self):
         from servers.scales.runner import read_usage, USAGE_FIELDS
@@ -609,22 +610,44 @@ class TestSharedTelemetryHelpers:
 
         assert read_usage(_Bare()) == zero       # response with no .usage
 
-    def test_sum_telemetry_accumulates_over_usage_fields(self):
-        from servers.scales.s2.base import IntegrationUnit
-        u = IntegrationUnit.__new__(IntegrationUnit)   # method uses no self state
-        total = {}
-        u._sum_telemetry(total, {'input_tokens': 1, 'output_tokens': 2,
-                                 'cache_read_tokens': 3, 'cache_creation_tokens': 4})
-        u._sum_telemetry(total, {'input_tokens': 10, 'output_tokens': 20,
-                                 'cache_read_tokens': 30, 'cache_creation_tokens': 40})
+    def test_sum_usage_accumulates_over_usage_fields(self):
+        from servers.scales.runner import sum_usage, read_usage
+        total = read_usage(None)   # all-zero baseline
+        sum_usage(total, {'input_tokens': 1, 'output_tokens': 2,
+                          'cache_read_tokens': 3, 'cache_creation_tokens': 4})
+        sum_usage(total, {'input_tokens': 10, 'output_tokens': 20,
+                          'cache_read_tokens': 30, 'cache_creation_tokens': 40})
         assert total == {'input_tokens': 11, 'output_tokens': 22,
                          'cache_read_tokens': 33, 'cache_creation_tokens': 44}
 
-    def test_sum_telemetry_coerces_missing_and_none(self):
-        from servers.scales.s2.base import IntegrationUnit
-        from servers.scales.runner import USAGE_FIELDS
-        u = IntegrationUnit.__new__(IntegrationUnit)
-        total = {}
-        u._sum_telemetry(total, {'output_tokens': None})  # None → 0
-        u._sum_telemetry(total, {})                       # missing keys → 0
+    def test_sum_usage_coerces_missing_and_none(self):
+        from servers.scales.runner import sum_usage, USAGE_FIELDS
+        total = {}                                  # empty start: .get defends
+        sum_usage(total, {'output_tokens': None})   # None → 0
+        sum_usage(total, {})                         # missing keys → 0
         assert total == {f: 0 for f in USAGE_FIELDS}
+
+    def test_accumulate_run_folds_counts_tokens_and_read_calls(self):
+        # The multi-batch fold shared by consolidation + community. Critically,
+        # it folds read_calls across batches — without that, the S2 encoders'
+        # read_calls= threading is inert (total_result never gains the key).
+        from servers.scales.s2.base import IntegrationUnit
+        u = IntegrationUnit.__new__(IntegrationUnit)   # method uses no self state
+        total = {'rounds': 0, 'actions': 0, 'write_actions': 0,
+                 'action_details': [], 'read_calls': [],
+                 'input_tokens': 0, 'output_tokens': 0,
+                 'cache_read_tokens': 0, 'cache_creation_tokens': 0}
+        u._accumulate_run(total, {
+            'rounds': 1, 'actions': 2, 'write_actions': 1,
+            'action_details': [{'tool': 'remember'}],
+            'read_calls': [{'tool': 'recall_batch', 'result_count': 3}],
+            'input_tokens': 100, 'output_tokens': 10})
+        u._accumulate_run(total, {
+            'rounds': 1, 'actions': 1, 'write_actions': 1,
+            'action_details': [{'tool': 'revise'}],
+            'read_calls': [{'tool': 'get_nodes', 'result_count': 2}],
+            'input_tokens': 50, 'output_tokens': 5})
+        assert total['rounds'] == 2 and total['actions'] == 3 and total['write_actions'] == 2
+        assert [a['tool'] for a in total['action_details']] == ['remember', 'revise']
+        assert [r['tool'] for r in total['read_calls']] == ['recall_batch', 'get_nodes']
+        assert total['input_tokens'] == 150 and total['output_tokens'] == 15
