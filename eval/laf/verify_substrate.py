@@ -157,11 +157,10 @@ def t5_baseline(g, brain, corpus):
     n = len(corpus)
     p5, p25 = h5 / n, h25 / n
     g.info("re-derived BASELINE: hit@5 %.0f%%  hit@25 %.0f%%  (%d/%d gold-not-in-pool)" % (p5*100, p25*100, miss, n))
-    near = abs(p5 - 0.19) <= 0.04 and abs(p25 - 0.33) <= 0.04
-    g.check("re-derived baseline reproduces recorded 19%/33%", near,
+    near = abs(p5 - 0.19) <= 0.02 and abs(p25 - 0.33) <= 0.02
+    g.check("re-derived baseline reproduces recorded 19%/33% (±2pp — HARD FAIL)", near,
             "got %.0f%%/%.0f%% — %s" % (p5*100, p25*100,
-            "reproducible" if near else "DIVERGES → recorded baseline was a different/buggy substrate"),
-            warn=not near)
+            "reproducible" if near else "DIVERGES → substrate is NOT faithful; no LAF number is trustworthy"))
 
 
 def t6_maxsim(g, brain, corpus, master, idx, mats):
@@ -182,14 +181,17 @@ def t6_maxsim(g, brain, corpus, master, idx, mats):
     g.check("MaxSim is input-dependent (≠ constant)", ta != tb, "two unrelated queries share %d/10 top" % len(ta & tb))
 
     # A/B signal: MaxSim-ranking vs _primary-ranking, full-field, cutoff-filtered.
-    ca = np.array([brain.conn.execute("SELECT created_at FROM nodes WHERE id=?", (nid,)).fetchone()[0] or ""
-                   for nid in master])
+    _ca = dict(brain.conn.execute("SELECT id, created_at FROM nodes").fetchall())   # one query, not N
+    ca = np.array([_ca.get(nid) or "" for nid in master])
+    qv_cache = {c["id"]: query_vec(c["query"]) for c in corpus}                      # embed each cue once
     def hits(score_fn):
         h5 = h25 = 0
         for c in corpus:
-            q = query_vec(c["query"])
+            q = qv_cache[c["id"]]
+            if q is None:
+                continue                                          # unembeddable cue → miss
             s = np.nan_to_num(score_fn(q), nan=NEG)
-            s = np.where(ca <= c["cutoff"], s, NEG)               # cutoff eligibility
+            s = np.where((ca != "") & (ca <= c["cutoff"]), s, NEG)   # cutoff eligibility (empty excluded)
             order = np.argsort(-s)
             gold = {idx[gid] for gid in c["gold_essential"] if gid in idx}
             h5 += int(bool(gold & set(order[:5].tolist())))
@@ -238,27 +240,43 @@ def t7_graph_spread(g, brain, master, idx):
 
 
 def t8_temporal(g, brain, master):
-    print("\n== T8 · operator: temporal-distinctiveness (liveness · isolated≠crowd · non-constant) ==")
+    print("\n== T8 · operator: temporal-distinctiveness (liveness · INDEPENDENT direction · degeneracy) ==")
+    WINDOW = 7.0
     ca_map = dict(brain.conn.execute("SELECT id, created_at FROM nodes").fetchall())
     days = parse_days([ca_map.get(nid, "") for nid in master])
     elig = ~np.isnan(days)
-    dist = temporal_distinctiveness(days, elig)
+    dist = temporal_distinctiveness(days, elig, WINDOW)
     nz = dist[dist > 0]
     g.check("temporal produces values", nz.size > 0, "%d nodes scored" % nz.size)
-    # the recency=1.000 guard: a node-prior that's constant is dead
-    g.check("temporal is NOT constant (the recency=1.000 guard)", float(nz.std()) > 1e-6,
-            "std=%.4f  range=[%.3f, %.3f]" % (float(nz.std()), float(nz.min()), float(nz.max())))
-    # von-Restorff: the most-isolated node outscores the most-crowded
+
+    # Direction check, INDEPENDENT (not 1/dist, which is circular with the operator): recount
+    # each node's neighbours straight from `days`, then confirm the node the operator ranks
+    # most-isolated genuinely has fewer real neighbours than the one it ranks most-crowded.
+    valid = days[elig]
+    def real_neighbours(i):
+        return int(np.sum(np.abs(valid - days[i]) <= WINDOW)) - 1        # −1 excludes self
     i_iso = int(np.argmax(dist))
-    crowd = np.where(dist > 0, dist, np.inf)
-    i_crowd = int(np.argmin(crowd))
-    nb_iso = 1.0 / dist[i_iso] - 1.0
-    nb_crowd = 1.0 / dist[i_crowd] - 1.0
-    g.check("isolated node beats co-temporal crowd (von-Restorff)", dist[i_iso] > dist[i_crowd],
-            "isolated: %.0f temporal-neighbors (dist %.3f)  vs crowd: %.0f (dist %.3f)"
-            % (nb_iso, dist[i_iso], nb_crowd, dist[i_crowd]))
-    g.info("distribution: %.0f%% of nodes are distinctive (≤2 temporal neighbors)"
-           % (100.0 * float(np.mean(nz >= 1.0/3.0))))
+    i_crowd = int(np.argmin(np.where(dist > 0, dist, np.inf)))
+    nb_iso, nb_crowd = real_neighbours(i_iso), real_neighbours(i_crowd)
+    g.check("operator's 'isolated' node independently HAS fewer neighbours (von-Restorff direction)",
+            nb_iso < nb_crowd,
+            "isolated %d real neighbours  vs crowd %d  (recounted from created_at, not from dist)"
+            % (nb_iso, nb_crowd))
+
+    # DEGENERACY gate — the check the old `std > 1e-6` missed. von-Restorff needs ISOLATED nodes
+    # to exist; on a burst-created corpus every node sits in a dense temporal crowd, so the field
+    # is functionally constant and the `_z` step reinflates that micro-variance into a pure
+    # query-independent NOISE prior. An operator that separates ~nothing must not be trusted to
+    # move the fused score, even though it is technically "non-constant" and "live".
+    frac_distinctive = float(np.mean(nz >= 1.0 / 3.0)) if nz.size else 0.0   # ≥1/3 ⇔ ≤2 neighbours
+    cv = float(nz.std() / nz.mean()) if nz.size and nz.mean() > 1e-12 else 0.0
+    g.check("temporal is NON-DEGENERATE (separates nodes, not z-amplified noise)",
+            frac_distinctive >= 0.01,
+            "%.1f%% of nodes distinctive (≤2 neighbours), CV=%.3f, range=[%.4f, %.4f]%s"
+            % (frac_distinctive * 100, cv, float(nz.min()), float(nz.max()),
+               "" if frac_distinctive >= 0.01 else
+               " — DEGENERATE on this corpus: contributes NOISE, do NOT trust its fused lift"),
+            warn=frac_distinctive < 0.01)
 
 
 def main():

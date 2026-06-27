@@ -1107,10 +1107,12 @@ NOT the pipeline's self-report) · baseline re-derivation, BEFORE any number is 
 | MaxSim-6grp alone | ~20% | 34% (dilutes below `_primary`) |
 | **LAF settling (2+3)** | **16%** | **38%** |
 
-The settled field **recovers MaxSim's dilution and beats both baselines @25** (+1pp over `_primary`, +5pp over pipeline)
-at a **precision@5 cost** (16 < 21). **Honest read: the architecture is validated (settles, extensible, measurable);
-the number is NOT a win yet.** `τ` is the commit-sparsity knob (ranking-invariant — softmax is monotonic); **`gain_graph`
-is the @5↔@25 dial.**
+**Honest read (corrected after the T8 degeneracy finding, 2026-06-26): NOT a win — LAF currently UNDER-performs raw
+`_primary` (21/37).** The only config that reaches 38 @25 is `full`/`−graph` (temporal ON), and that +1pp over `_primary`
+@25 is the temporal **artifact** (see the ablation below), bought at a **−5pp @5 cost** (16 < 21). Strip the artifact
+(maxsim-only, 19/34) and LAF loses to `_primary` on BOTH k. What IS validated: the field **settles** (Banach contraction,
+~1.6 iters), is extensible, and is measurable. `τ` is the commit-sparsity knob (ranking-invariant — softmax monotonic);
+`gain_graph` would be the @5↔@25 dial IF graph were live — it isn't (the f04f6db7 scale bug, still unfixed).
 
 **Mechanism vs `_primary` — ABLATION RESULT (2026-06-26, the controlled measurement falsified the graph story).**
 Per-operator toggle, same harness (`field_recall.py --ablate`):
@@ -1128,10 +1130,13 @@ Per-operator toggle, same harness (`field_recall.py --ablate`):
   spread):** scale raw spread by a CONSTANT computed once (≈ std(base)/std(spread₀)), keep softmax-in-loop, so it is
   commensurate at the operating point AND diminishes as the field settles → converges; add light damping
   (`a←(1−η)a+η·softmax`) only if it still wanders. So we have NOT yet measured graph's effect on a converged field.
-- **Temporal carries the entire LAF-vs-MaxSim delta** (−3pp @5, +4pp @25) — the operator dismissed as "near-flat"; z-scoring
-  gave the tiny-raw signal teeth. **BUT temporal is query-INDEPENDENT** → it reshuffles the same nodes every query → its @25
-  lift is a **corpus-artifact candidate** (gold happens to be temporally distinctive here), not relevance. Needs a
-  shuffled-gold control to confirm real-vs-artifact.
+- **Temporal carries the entire LAF-vs-MaxSim delta** (−3pp @5, +4pp @25) — and the hardened T8 gate (2026-06-26)
+  CONFIRMS it is a corpus **artifact**, not relevance: on this burst-created brain **0% of nodes are temporally
+  distinctive** (every node has hundreds of neighbours within ±7d; field range [0.0008, 0.0024], CV 0.235 —
+  functionally constant). The `_z` step reinflates that micro-variance into a unit-variance, **query-INDEPENDENT** noise
+  prior that flips ~2 cues out of top-5 and ~3 into top-25. NOT a signal. **Action: drop temporal, or replace
+  von-Restorff with an operator that has structure on a burst corpus. A shuffled-gold control would re-confirm, but
+  T8's 0%-distinctive already settles it.**
 - **MaxSim dilutes**: maxsim-only 19/34 < raw `_primary` 21/37. So the "+1pp @25" decomposes as `_primary 37 → MaxSim −3 →
   temporal +4 = 38` — i.e. a query-independent (suspect) prior over a diluting field. **No real relevance-driven win yet.**
 - Harness trust: `maxsim-only` 19/34 reproduces the independent gate MaxSim-6grp measurement exactly.
@@ -1158,21 +1163,30 @@ large-backfill-batch). Common-mode (doesn't change LAF-vs-baseline) but a candid
 flat-discrimination band — possibly part of the "flat embedder ceiling" (§13b) is a *fixable artifact*. Re-measure when fixed.
 
 **18.18.1 — POST-REVIEW STATE + ▶ NEXT STREAM STARTS HERE (2026-06-26).**
-The harness was code-reviewed (high effort) and hardened — fixes in `eval/laf/{operators,field_recall,verify_substrate}.py`:
-α-entmax `α≤1→softmax` guard; null/empty-`created_at` now excluded from eligibility (was wrongly eligible — `'' <= cutoff`);
-`qv=None` cues skipped; **T5 baseline-reproduction is now a HARD FAIL at ±2pp** (was a no-op warn — the gate's master check
-didn't gate); **T8 verifies the von-Restorff DIRECTION** via an independent neighbour recompute (was tautological with the
-non-constant check); T6 batched its per-node SQL + embeds once; MaxSim's **unweighted-max coverage bias documented** (more-
-enriched nodes get more "max lottery tickets"; edge_context's 71% makes it active; real fix = the weighted/"smarter fields"
-step). **Gate: 27 pass / 0 warn / 0 FAIL** — substrate + operators trustworthy. Refuted finder claims: T3 recompute is sound
-(max|Δ|=0.0005, `embedding_similarity` IS raw `_primary` cosine); `primary_field` intentionally reproduces the recorded
-raw-`_primary` 21/37 reference.
+The believability gate is hardened (`eval/laf/verify_substrate.py` + `field_recall.py`, committed this session):
+- **T8 catches operator DEGENERACY** — it WARNs when <1% of nodes are distinctive, and recomputes the von-Restorff
+  direction independently from `created_at` (not `1/dist`, which is circular). A plain `std > 1e-6` / `argmax>argmin`
+  check is blind to a functionally-constant field — which is exactly what temporal is on this corpus.
+- **T5 baseline reproduction is a HARD FAIL at ±2pp** (was a ±4pp soft-warn that never gated). Reproduces 19/33 exactly.
+- **Eligibility excludes empty `created_at`** (`'' <= cutoff` is lexicographically true → undated nodes silently
+  admitted); `run_corpus` prints the 63-with-gold / 10-zero-gold split and skips unembeddable cues; `alpha_entmax`
+  guards α≤1. T3 recompute is sound (median|Δ|=0.0002, max|Δ|=0.0005; `embedding_similarity` IS raw `_primary` cosine).
+**Gate now: 26 pass · 1 WARN · 0 FAIL** — and the 1 WARN (temporal degenerate) is the honest signal, not noise to clear.
+The substrate IS faithful (cosine recompute, baseline reproduces, gold intact); what is NOT trustworthy is any
+*temporal-driven* number.
 
-**Trustworthy CONVERGED numbers (73-cue endo):** maxsim-only 19/34 · +temporal 16/38 (temporal = query-independent +4@25,
-ARTIFACT-SUSPECT). Graph's signal is UNCONVERGED → not bankable (apparent +2@25/−4@5, helps @25 only with temporal). MaxSim
-dilutes below raw `_primary` (21/37). **NO relevance-driven win yet — but on a now-verified harness, for understood reasons.**
+**Trustworthy CONVERGED numbers (73-cue endo, hardened harness):** raw `_primary` **21/37 = the bar** · maxsim-only 19/34 ·
+full LAF 16/38. **temporal's +4@25 is ARTIFACT-CONFIRMED (T8: 0% distinctive), graph is INERT (the f04f6db7 scale bug,
+unfixed).** Strip the noise and the realizable engine is **maxsim-only 19/34 — which LOSES to `_primary` on both k.**
+**No relevance-driven win, and `_primary` is the bar to beat.** The settling MECHANISM is validated (Banach contraction,
+converges); no read-side operator built so far beats plain cosine — converging with `89583d50` (every read-side lever <
+cosine; the embedder/encoding is the wall).
 
-**▶ Next stream — START WITH Q4 (diagnose-before-build); it ORDERS everything else (Anchor's recommendation, 2026-06-26):**
+**✅ Q4 was EXECUTED 2026-06-27** (`reach_matrix.py`, full multi-cue bank) — and it inverted the plan: **the gold corpus
+is CIRCULAR, so operators must not be built on it. ◀ CURRENT DIRECTION IS §18.19.** Q4 did confirm the
+read-side-ceiling-vs-encode-gap framing (44/73 gold-not-in-pool; ceiling upstream), but the load-bearing finding is that
+the gold itself is lens-minted (§18.19). The Q4 spec below is what `reach_matrix.py` implements; the Phase-B list remains
+the operator backlog, now GATED on the lens-independent corpus.
 
 **0. FIRST — Q4 reverse-engineering (Phase-A diagnose).** Don't build any operator on a hunch; derive the priority list from
 the gold. Build a diverse operator-instance bank `⟨cue × support × operator × param-sweep⟩` (prompt / prev-turn / work-context /
@@ -1213,3 +1227,71 @@ linear regression — the regressors are FUNCTIONS with params):
 The discipline that held all session: **every number
 traces to a verified component — verify the HARNESS, not just the data** (it caught a dead group, a finite-sentinel entmax
 bug, and two of my own mechanism overclaims).
+
+---
+
+## 18.19 — The corpus is circular → lens-independent re-mint (Anchor + Tom, 2026-06-27). ◀ START HERE
+
+**Q4 was executed (the `reach_matrix.py` full multi-cue bank) and it inverted the plan: don't build operators yet — the
+gold corpus is circular, so every reach number measures the minting lenses, not helpfulness.**
+
+**The verdict (`4942bd35`):** the endo gold is **100% lens-minted by {cos_cue, cos_next, fts}** (0 hand-added), **60%
+cos_next-ONLY**. So the 71% ceiling + the 8-lane build menu (`25576087`) are artifacts. The corpus CANNOT rank mechanisms
+(cosine-family lanes are credited circularly) and is BLIND to any mechanism that finds relevance the 3 lenses missed.
+`prompt×_primary` reaches exactly its own lens's 37%. (Confirms the long-standing suspicion `d32d671a`/`62052d67`.)
+
+**3 silent-deaths caught en route (all in the HARNESS, none in the data):** the §18.18.1 hardening was claimed-but-never-
+committed (`fdc6ac66`); the T8 gate was tautological, certifying a functionally-dead temporal operator (`95a58231`); the
+episodic lane returned silent-0 from a swallowed `AttributeError`, NOT a thin substrate (`8fbe480e` — 48k trace_embeddings
+are present). The discipline laddered: verify the harness → verify the REVIEW of the harness (`3159ea2e`) → verify the
+CORPUS (the target itself).
+
+**THE BUILD (locked): a lens-independent gold corpus.** A blind reason-then-retrieve Opus judge (operationalizes
+`155c6df6`/`5603dc33`): sees the recall-moment + the ACTUAL outcome, BLIND to what production recalled; reasons
+needed-knowledge from the outcome FIRST, then wide lens-tagged search (`created_at ≤ cutoff`), classifies by REASONED
+HELPFULNESS not topic-proximity, logs encode-gaps. Files: `scratchpad/gold_judge_protocol.md`, pilots in
+`scratchpad/pilot_cards/` (engineering) + `scratchpad/diverse_cards/` (preference).
+
+**Calibration (locked via Opus-reviewer adjudication):**
+- **essential = STRICT**: "its absence hurt / it would have CHANGED the move" — NOT "would strengthen" (that re-admits
+  topic-proximity). The strongest essential CORRECTS a wrong assumption (`a35ed242` beats a confirming node).
+- **echo-test by CONTENT-PRESENCE**: drop any node whose content is already in the recall_moment (same-session echoes),
+  regardless of timestamp.
+- **content-graft guard**: `created_at ≤ cutoff` is necessary NOT sufficient — a node's CONTENT can be edited post-cutoff
+  (`anchor_0387`: `a1364fc9` said the OPPOSITE at the cutoff). The judge must reason about what the node SAID then.
+  (revised_at path partially fixed `f3e9e16`; historical grafts remain — confirm scope.)
+- **gap split**: `missing_node` vs `missing_facet`; encode-gaps carry their negative-search receipts.
+- **worthiness filter**: DROP cues the judge marks not-worthwhile (same-session echo / no memory needed).
+
+**Pilots done:**
+- **Engineering (8 cues, `98c8dd53`):** overlap(old_gold ∩ new_essential) = **1/8** — empirical proof the old gold measured
+  circularity, not helpfulness. Caught same-session echoes + the content-graft time-leak.
+- **Diverse/preference (6 hand-authored cues, `7181615f`):** the judges nailed all 6 answers, BUT Tom's preferences are
+  systematically UNDER-ENCODED as retrievable nodes — the crisp rules live in CLAUDE.md/MEMORY.md, the brain holds only the
+  failure-instances. (error-handling / architecture / what-upsets-me are well-encoded; questions=curiosity / no-rush /
+  cap-heavy-ops are gaps.)
+
+**Corpus scope (LOCKED — hybrid):** engineering re-mint of the 73 (drop low-value → ~55–65) **+** a diverse slice (~20
+preference/identity cues). The brain is a brain-dev monoculture, so world/personal-fact recall is untestable — the diverse
+slice is bounded to identity/relationship + working-style/preference. Cues may be hand-authored by Tom (the purest
+anti-circularity: human cue + human gold, no lens, no outcome-anchor needed).
+
+**▶ NEXT STEPS (in order):**
+1. **Source the diverse slice** — ~15 more identity/relationship + working-style cues (Tom hand-authors / node-anchor from
+   `moment`/`reflection`/`craft_rule`/feedback nodes back to the turns where they should have surfaced).
+2. **Fold calibration into the protocol file** (strict-essential, content-presence echo-test, content-graft guard,
+   gap-split, search-receipts).
+3. **Scale the judge** over the full ~75–85 cues — **a Workflow, ~10M tokens, EXPLICIT GO required.**
+4. **Then Phase-B operators**, measured trap-proof on the new corpus, priority:
+   - **query-segmentation (`9c46c291`)** — cosine each prompt segment (split `\n`/`.`) + the whole, union = the query-side
+     dual of MaxSim (ColBERT late-interaction); cheap, deterministic, query-intrinsic; fixes blob-dilution.
+   - **mint missing preference nodes (`7181615f`)** — encode Tom's CLAUDE.md/MEMORY.md rules as retrievable nodes so recall
+     can serve "how Tom works."
+   - the §18.18.1 Phase-B backlog (fixed-scale spread, temporal shuffled-gold control, episodic Method-2 encode-timing,
+     pattern-separation, hub-dampening, Hebbian).
+5. **Brain-integrity side-fix:** confirm the `revised_at`/content-graft path (`f3e9e16` scope) — content edited without a
+   revised_at bump corrupts any time-based reasoning.
+
+**Pull for context:** `4942bd35` (circular gold — the pivot), `98c8dd53` (engineering pilot + content-graft), `7181615f`
+(diverse pilot + preference under-encoding), `9c46c291` (segmentation operator), `25576087` (the now-invalidated build
+menu), `155c6df6`/`5603dc33` (corpus methodology), `3159ea2e` (verify-the-review lesson).

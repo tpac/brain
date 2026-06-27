@@ -69,6 +69,8 @@ def alpha_entmax(scores, alpha=1.5, iters=50):
     α=1 → softmax (dense); α=2 → sparsemax; 1.5 sits between. −inf scores → exact 0.
     Hand-rolled (no entmax dep). Shift-equivariant, so we subtract max(z) for stability.
     """
+    if alpha <= 1.0:                      # α=1 IS softmax; 1/(α-1) is singular — guard the limit
+        return softmax(np.asarray(scores, dtype=np.float64))
     s = np.asarray(scores, dtype=np.float64)
     fin = np.isfinite(s)
     out = np.zeros_like(s)
@@ -174,16 +176,26 @@ def ranked_ids(a, master):
 
 
 def run_corpus(eng, corpus, qvs, eligs):
-    """One full-corpus pass at eng.cfg. Returns aggregate hit-rate + settling stats."""
+    """One full-corpus pass at eng.cfg. Returns aggregate hit-rate + settling stats.
+    hit@k is over ALL cues (an unembeddable cue counts as a miss — no query, no recall),
+    so the denominator stays comparable to the baselines; iters/support average over the
+    cues actually run."""
     h5 = h25 = 0
-    it = conv = supp = 0
+    it = conv = supp = skipped = scored = 0
     n = len(corpus)
     for c in corpus:
-        a, diag = eng.recall(qvs[c["id"]], eligs[c["id"]])
+        qv = qvs[c["id"]]
+        if qv is None:
+            skipped += 1
+            continue
+        a, diag = eng.recall(qv, eligs[c["id"]])
         m = score_one(ranked_ids(a, eng.master), c["gold_essential"], c.get("gold_helpful", []))
         h5 += m["hit5_ess"]; h25 += m["hit25_ess"]
         it += diag["iters"]; conv += int(diag["converged"]); supp += diag["support"]
-    return {"h5": h5/n, "h25": h25/n, "iters": it/n, "conv": conv, "supp": supp/n, "n": n}
+        scored += 1
+    d = scored or 1
+    return {"h5": h5/n, "h25": h25/n, "iters": it/d, "conv": conv, "supp": supp/d,
+            "n": n, "skipped": skipped}
 
 
 def main():
@@ -207,6 +219,9 @@ def main():
           % (cfg.alpha, cfg.gain_maxsim, cfg.gain_temporal, cfg.gain_graph, cfg.hops, cfg.max_iters))
 
     corpus = load_corpus()
+    n_zero = sum(1 for c in corpus if not c.get("gold_essential"))
+    print("corpus: %d cues (%d with essential-gold, %d zero-gold = structural misses on hit@k_ess)"
+          % (len(corpus), len(corpus) - n_zero, n_zero))
     with IsolatedBrain() as env:
         brain = env.brain
         brain.recall(query="warm", limit=1)
@@ -215,9 +230,11 @@ def main():
         master = eng.master
         _ca = dict(brain.conn.execute("SELECT id, created_at FROM nodes").fetchall())
         ca = np.array([_ca.get(n, "") for n in master])
-        # precompute query vectors + eligibility once (so a sweep doesn't re-embed)
+        # precompute query vectors + eligibility once (so a sweep doesn't re-embed).
+        # eligibility EXCLUDES empty created_at: "" <= cutoff is lexicographically true, which
+        # would silently admit undated nodes into every cue's pool.
         qvs = {c["id"]: query_vec(c["query"]) for c in corpus}
-        eligs = {c["id"]: ca <= c["cutoff"] for c in corpus}
+        eligs = {c["id"]: (ca != "") & (ca <= c["cutoff"]) for c in corpus}
 
         print("\n  baselines:  pipeline 19%/33%   raw _primary 21%/37%   (hit@5 / hit@25)")
         if args.ablate:
