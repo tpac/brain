@@ -1,12 +1,4 @@
 {
   "version": "0.0.1",
-  "configurations": [
-    {
-      "name": "brain-dashboard",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["dashboard/brain_dashboard_standalone.py"],
-      "autoPort": true,
-      "port": 47303
-    }
-  ]
+  "configurations": []
 }
