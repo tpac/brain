@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.brain.dashboard</string>
+
+	<!-- Reference copy. The live copy is installed at
+	     ~/Library/LaunchAgents/com.brain.dashboard.plist (launchd reads it
+	     from there). Thin by design: all start logic lives in the in-repo
+	     launcher (hooks/scripts/start-dashboard.sh), which sources
+	     brain-env.sh and execs the venv Python.
+
+	     This makes the brain dashboard a launchd-owned GLOBAL SINGLETON —
+	     KeepAlive guarantees exactly one process, ever, on port 47303,
+	     shared by every Claude Code session. Open it at
+	     http://localhost:47303. It is NOT a per-chat preview server; do not
+	     add it back to .claude/launch.json. -->
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/tpac/brain/hooks/scripts/start-dashboard.sh</string>
+	</array>
+
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>BRAIN_DB_DIR</key>
+		<string>/Users/tpac/AgentsContext/brain</string>
+		<key>DASHBOARD_PORT</key>
+		<string>47303</string>
+	</dict>
+
+	<key>KeepAlive</key>
+	<true/>
+
+	<key>RunAtLoad</key>
+	<true/>
+
+	<key>StandardOutPath</key>
+	<string>/Users/tpac/AgentsContext/brain/dashboard.log</string>
+
+	<key>StandardErrorPath</key>
+	<string>/Users/tpac/AgentsContext/brain/dashboard.log</string>
+
+	<key>WorkingDirectory</key>
+	<string>/Users/tpac/brain</string>
+
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+</dict>
+</plist>

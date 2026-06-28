@@ -35,7 +35,8 @@ from .queries import (
 )
 
 # Dashboard listens here. Override with DASHBOARD_PORT env var (eval brains
-# usually run a second dashboard on a different port).
+# usually run a second dashboard on a different port). The launchd singleton
+# (com.brain.dashboard) sets DASHBOARD_PORT=47303 explicitly.
 DASHBOARD_PORT = int(os.environ.get("DASHBOARD_PORT", 47303))
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
