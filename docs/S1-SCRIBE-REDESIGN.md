@@ -1,0 +1,332 @@
+# S1 Scribe — Whole-Encoder Redesign
+
+**Status:** design / pickup spec. Captured 2026-06-28. **Nothing built yet.** This is
+the master spine for reopening the S1 Scribe (S1E) encoder *as a whole* — input
+architecture + journal/residue + the empirical refinements its own journals asked
+for. Highest-risk encoder (live recall path, feeds the Frame), so it's eval-gated and
+goes last.
+
+## How to use this doc
+
+This is the **entry point**. It consolidates and sequences three threads that turned
+out to be one piece of work. Two sub-docs hold the deep detail; don't duplicate them,
+read them for the gory parts:
+
+- **`docs/ENCODE-ON-IDLE.md`** — the input-architecture research (sandwich layout,
+  per-turn provenance ledger, glossary+reference, XML compartments, task-at-end) +
+  the idle-flush mechanism + the effort/thinking analysis. **Parts 3–4 are the spine
+  of the input reframe.**
+- **`docs/ENCODER-JOURNAL-DESIGN.md`** — the journal→residue substrate (the `## Review`
+  note contract, the two-feed split, storage, the phased plan). Phases 0/2/3/5 are
+  SHIPPED for the S2 encoders; Phase 4 (S1E) is what this doc covers.
+
+**Why a third doc:** the scope opened from "port the journal to S1E" to "rebuild what
+the encoder receives and how." That holistic view has no home in either sub-doc. This
+doc is that home. When a decision here refines a sub-doc, the sub-doc is still the
+detail-of-record; this doc is the unified plan.
+
+---
+
+## 1. The core realization — these are ONE change, not three
+
+Three threads collapse into one because they share substrate:
+
+1. **Journal port** (residue `## Review` channel for S1E).
+2. **Input-architecture reframe** ("inline everything into the conversation" — the
+   provenance ledger + sandwich).
+3. **The empirical refinements** the journals surfaced (below).
+
+They're entangled at the seam: the journal's **action feed** ("what I already
+encoded") *is* the provenance ledger. Building the journal port against the *current*
+block structure would build the action feed once, then tear it out when the ledger
+lands. So we do them together, within the new input architecture. (Backing:
+`aa1f3ece` two-feed split; `82f563d4` journal=judgment-half / provenance=factual-half;
+`c9444a17` Tom's inline-everything direction.)
+
+**Governing principle** (`5de09c90`, `ce333a73`): *the agent writes only residue;
+everything factual is rendered from traces algorithmically.* The encoder narrates what
+its mind did (doubt, friction, surprise); it never restates what its hands did — the
+trace already has that.
+
+---
+
+## 2. The data map — what we feed the encoder (today vs. target)
+
+Tom's directive: *"We provide a lot of data, but also not enough. Map what we provide
+to the encoder."* Here it is. Source for "today" = code read of
+`encode.py:_build_user_content` + `s0/conversation.py:get_conversation`.
+
+### What the encoder receives TODAY
+
+| Stream | Provided? | Source | Notes |
+|---|---|---|---|
+| System prompt (role, rules, examples) | ✅ | `s1e` interaction | top, 1h cache |
+| Section-legend preamble | ✅ | `encode.py` | top |
+| Encoding journal (prose blob) | ✅ | `brain_meta` `encoding_journal_{sid}` | **retiring** — blob, truncated at 2000 chars |
+| Session context (the arc) | ✅ | `session_context_{sid}` | keep (load-bearing for recall) |
+| Node catalog (full rich nodes) | ✅ **but only Haiku-surfaced nodes** | `build_node_catalog` from judge outputs | the glossary, but narrow |
+| Scout reports (facts / quote / temporal) | ✅ | muster | temporal scout ~100% noise (see §4) |
+| Conversation timeline (USER/ASSISTANT text + `[trace:hex]` + per-turn `SURFACED:` refs) | ✅ | `get_conversation` | **messages only** |
+
+### What the encoder is BLIND to today — the gaps
+
+| Missing stream | Why it matters | Target home |
+|---|---|---|
+| **Tool uses (Edit/Bash/MCP/Read/…) + results** | The encoder encoding a coding/work session can't see what was *done* — only what was *said*. `get_conversation` returns `role∈{user,assistant}` only. **Confirmed gap.** | inline in the timeline, at real position |
+| **encoded(S1S) per turn** — nodes prior runs wrote, anchored to each turn | Today only via journal prose (drifts, often truncated/empty). The encoder dedups by *assertion*, not verification → confident false-skips (§4). | provenance, inline per turn (ground truth from `source_refs`) |
+| **encoded(Anchor)** — nodes Anchor wrote directly via MCP mid-conversation | Encoder can't see them unless they were also Haiku-surfaced → re-encodes, or misses what Anchor missed. | provenance, inline per turn (`encoding_source='anchor'`) |
+| **endo-surfaced memories** (PreToolUse / Stop recall) | The endo system (soon) recalls memories right before Anchor acts. Those recalls are part of what happened and must reach the encoder. | inline **before the tool use** they preceded (§3) |
+
+### The target: the timeline becomes the full *lived sequence*
+
+Not "messages + a catalog beside them." The timeline is the conversation **as it
+actually unfolded**, in temporal order, with everything inline at its real position:
+
+```
+user message
+  → Haiku surfaced: id:.. id:..        (what recall gave Anchor this turn)
+assistant message (text)
+  → endo surfaced: id:..               (recalled right before the next action)
+  → tool use: Edit foo.py / Bash …     (what Anchor DID)
+  → tool result: (terse)
+  → endo surfaced: id:..
+  → tool use: …
+provenance for this turn:
+  encoded(S1S): —   encoded(Anchor): id:7f3e
+```
+
+This single model answers all three of Tom's asks at once: **tool uses** become a
+timeline element; **endo memories** inline *before the tool use* that triggered them;
+**"nodes they encoded"** become the per-turn provenance lines. "Inline everything
+within the conversation," in full.
+
+### Consequence: the glossary catalog must expand
+
+Today the catalog is built **only** from Haiku-surface selections. But the new
+timeline references nodes by `id:` from *four* sources — Haiku surface, endo, prior
+encodes (S1S), and Anchor's direct writes. **Every node referenced anywhere in the
+timeline must exist once in the catalog** so the `id:` refs dereference. So the
+catalog scan widens: union of {Haiku-surfaced} ∪ {endo-surfaced} ∪ {encoded this
+session} ∪ {Anchor-authored this session}, deduplicated, full-rich once at top.
+(Glossary+reference rule from `ENCODE-ON-IDLE` §3: bodies live once in the catalog;
+the timeline carries only `id:` refs — never re-inline bodies, or the prompt bloats.)
+
+### "In terms of guidance"
+
+Tom: these streams need **guidance**, not just exposure. The prompt must teach what
+each means and how to act on it:
+- **Tool uses** → encode the durable *outcome/decision*, not the mechanics (a `git
+  push` is not a node; the architectural choice it shipped might be). Same
+  ephemeral-vs-durable judgment the encoder already does well (§4 #6/#7).
+- **encoded(S1S)/encoded(Anchor)** → "already captured — *revise* if later turns
+  reframe it; don't duplicate." NOT "done, don't touch" (`ENCODE-ON-IDLE` constraint).
+- **endo-surfaced** → "this is what was recalled before that action" — context for why
+  Anchor did what it did; not a mandate to link.
+- **Provenance ≠ mandate** → showing "node X surfaced on turns 3,4,7" must not nudge
+  dense `source_refs`/over-linking.
+
+---
+
+## 3. Target input architecture (the skeleton)
+
+Top→bottom is the sandwich (load-bearing content on both strong ends; nothing
+load-bearing in the dead middle — lost-in-the-middle, `ENCODE-ON-IDLE` §3). XML tags
+for compartments.
+
+| # | Section | Position | Cache | Role |
+|---|---|---|---|---|
+| 1 | System: role + encoding rules + format + how-to-read | top (strong) | 1h | stable "how to encode" — **first person (§5)** |
+| 2 | Preamble: section legend + "read before acting" | top | 1h | teaches the layout once |
+| 3 | `<continuity>`: residue notes (last K runs) + session arc | early | 5m | priors — what prior runs flagged / what the session is about |
+| 4 | `<node_catalog>`: full rich nodes, once — **widened union (§2)** | early-mid (must precede refs) | 5m | the glossary everything dereferences by `id:` |
+| 5 | `<timeline>`: the full lived sequence (messages + tool uses + recalls + provenance) | bulk; newest last → strong end | 5m | data + emergent boundary |
+| 6 | `<task>`: encode-what's-new + "list unencoded turns first" + `final` line | very end (strongest) | mostly 1h; `final` dynamic | the actionable query |
+
+Key properties (all from `ENCODE-ON-IDLE` §3–4, reaffirmed):
+- **Emergent boundary, not a counted one.** Turns whose provenance shows no
+  `encoded(S1S)/encoded(Anchor)` are the unencoded tail — visible at a glance, no
+  hard-coded "5." Makes turn-count flexibility a non-issue (a 2-turn idle flush and a
+  9-turn run read identically).
+- **Task last** (~30% quality lift on complex multi-doc inputs) + **ground-before-act**
+  ("list the unencoded turns, then encode") binds the model to the data before writing.
+- **Endo is stream-extensible & future.** Design the timeline to inline endo before
+  tool use now; the first build may ship without the endo line if endo isn't live —
+  don't block the other streams on it. **VERIFY endo's launch status before sequencing.**
+
+---
+
+## 4. The empirical refinements — what the encoder told us it needs
+
+Two sources, mined this session: **120 S2 residue notes** (10 days, S2 watching S1's
+output) + **950 of 1,255 S1E historical journals** (10 weeks, S1's own voice). The
+load-bearing evidence (recurrence rates + representative quotes) is captured below;
+the census is reproducible by re-running the journal mine over `encoding_run` traces.
+
+### The format itself buries the signal (storage findings, S1E mine)
+- **37% of S1E journals are completely empty** — the encoder ran, said nothing.
+- **52% are hard-truncated at 2000 chars.** Order is `ENCODED→SKIPPED→WATCHING`, so the
+  **highest-signal section (WATCHING) is what truncation eats** — only 294/950 retain
+  any. The trace-restatement survives; the residue dies. The note contract fixes this
+  for free (separate trace rows, residue-first, no 2000-char blob).
+
+### The convergence: one blindness, seen from both ends
+- **S2 view** — S1 *confidently creates dupes*: *"730f9d02 encoded 'No catalog node
+  describes LAF as an architecture' — yet 9a3017ea is the foundational LAF node with 59
+  edges… confidently wrong."*
+- **S1 view** — S1 *confidently skips real gaps*: "already in catalog" in **56% of
+  SKIPPED**; explicit doubt appears in **1 of 532** sections.
+- **Smoking gun** — across 824 residue sections: **0 wish-language, ~1 blindness-
+  language.** The format has no slot for "what I lacked / couldn't verify," so the
+  encoder launders structural blindness into confident prose.
+- **Root:** no trustworthy view of what's already in the graph → both false-skip and
+  false-create. **Fixed by the provenance ledger + widened glossary (§2–3) AND the
+  residue channel (§6) — the two halves of one fix.**
+
+### The refinements table
+
+| # | Signal | Evidence | Fix / strand |
+|---|---|---|---|
+| R1 | **Temporal scout fires on non-dates** (line #s, %s, arxiv IDs, "may") | **~73% of all SKIPPED**, stable 10 weeks; ~8 garbage candidates/run | **Gate the scout** — require a date-shaped token, not a bare integer. Or demote it. **High-ROI, semi-independent of the prompt reframe** — could land first. |
+| R2 | **Confident "already covered" skip, never doubted** | 56% skip / 0.2% doubt | provenance ledger + widened glossary (§2–3): verification, not assertion |
+| R3 | **prose-not-graph** — states a relation in content, never draws the edge | ~8–10 S2 runs ("semantic in prose but not in graph", "encoder should have drawn this") | examples + task framing: pull toward structuralizing relations it names. Same family as the temporal-structure gap (`893cf8c6`: dates in prose, not `event_time`/`anchored_to`) |
+| R4 | **No slot for friction/doubt** → laundering | 0 wish / ~1 blindness across 824 | the residue `## Review` channel (§6) — *this is the empirical case for it* |
+| R5 | **WATCHING collapsed into a next-session TODO list** | 57% of WATCHING is "if it recurs / next session" | split the residue slot: "thread forming" vs "open loop / handoff" — DECIDE shape (§7) |
+| R6 | **Quote scout redundancy** — quote already inside an encoded node | 67 neg / 44 pos | dedup quote candidates against what's being written, or fold into node encoding |
+| R7 | **Catalog too narrow** (Haiku-surfaced only) | R2 + the LAF dupe | widen catalog to the union (§2) |
+
+### Bonus (not S1-redesign, but the residue caught it)
+- **Decoder suppression bug:** consolidation residue repeatedly: *"the decoder ignores
+  existing `similar_to` suppression at this cosine level (0.916) … no edge-adding
+  strategy will fix it."* Re-proposes settled pairs regardless of edges. Separate fix,
+  worth a ticket. Proof the residue channel earns its keep.
+- **Seed-duplicate proliferation** (operator action): locked seed dups 4→10 across
+  runs, "minting every batch." Needs an operator unlock/stop-locking decision.
+- **Stale edge descriptions** when content is revised (the "74% vs 71%" edge) — vector/
+  edge healer territory.
+
+---
+
+## 5. Other S1E changes
+
+- **First-person voice** (`accf5172`, Tom's directive): the prompt frames the scribe as
+  a third-person archivist ("a future reader who will wake with zero memory"). Tom
+  wants **"I am Anchor, encoding my own memory"** — first person throughout, even
+  though it's Sonnet for now. Audit the whole prompt for "Anchor" (3rd person) → "I".
+- **Terminal-flush `final` semantics** (`ENCODE-ON-IDLE` Change 1): the encoder is
+  trained to *defer* ambiguous material to "next run" — exactly wrong for an idle/tail
+  flush where there may be no next run. Add `run_encoding(..., final: bool)` →
+  one run-context line that suppresses deferral on a terminal flush. **VERIFY:** is
+  encode-on-idle (idle trigger) already live while `final` is unbuilt? If so, idle
+  flushes are currently deferring the material they exist to capture — a latent bug.
+- **Cadence wording** (Change 2, trivial): "You run every 5 messages" is wrong (every
+  ~5 turns ≈ 10 messages, 20-msg window, and idle-flush breaks "every 5" entirely).
+  Reword cadence-agnostic.
+
+---
+
+## 6. The journal / residue changes (S1E half of Phase 4)
+
+Detail in `ENCODER-JOURNAL-DESIGN.md`; the S1E-specific deltas:
+
+- **Two feeds, never conflated** (`aa1f3ece`):
+  - **Residue feed** → `<continuity>`: `brain.journal_notes(scale='s1', session_id=…)`
+    → `render_journal_notes_prefix()`, last K=5 runs (`JOURNAL_CONTINUITY_RUNS['s1e']`).
+  - **Action feed** → the **provenance ledger** in `<timeline>` (§2–3). NOT a separate
+    "recently encoded" block — that's the conflation the architecture forbids.
+- **Write residue:** swap `_save_journal()` (the prose blob) → `brain.write_journal_
+  notes(final_text, chain_id='s1e-{sid}-{stop}', scale='s1', session_id=sid)`. The
+  encoder emits a `## Review` fenced block (`tag · subject · note`); contract parses +
+  writes one `journal_note` trace row per note. Inject the shared review block +
+  closure at runtime in `encode.py` (call `trace_contract.render_journal_review_block`
+  / `render_prompt_closure` directly — `encode.py` is standalone, no `self`; the S2
+  base methods are thin wrappers over the same module fns).
+- **Drop `journal_entry`** from the S1E delta metadata (S2 already did).
+- **Keep `_save_session_context()`** (the arc) unchanged — it's load-bearing for recall.
+- **Cut the Frame's `## Recent moves` slot** (`frame.py:_render_recent_moves` +
+  `brain.get_recent_encoding_journal`) — *atomically with the blob-write removal*, or
+  the Frame strands on a no-longer-written key. Replacement-before-removal (`e78cfba6`,
+  `6494d789`): the provenance ledger is the inline replacement; only cut the Frame slot
+  once the inline version is verified. **This also removes "Recent moves" from the boot
+  Frame** — intended (recent-moves is encoder continuity, not Anchor's identity prior;
+  boot keeps wisdom + current focus), but a visible boot change worth a heads-up.
+
+---
+
+## 7. Open decisions (need Tom / need a probe)
+
+1. **Sequence the temporal-scout fix (R1) first?** It's ~73% of the encoder's per-run
+   triage tax, stable 10 weeks, and semi-independent of the big reframe — a cheap
+   standalone win. Land before the architecture, or fold in?
+2. **WATCHING split (R5):** one residue slot, or split "thread forming" vs "open loop /
+   handoff"? (Affects the `## Review` slot semantics for S1E.)
+3. **Endo launch status:** is endo live? Determines whether the first build inlines the
+   endo stream or ships stream-extensible-but-empty.
+4. **`final`/idle-flush gap:** verify current live state (§5) — possible latent bug.
+5. **Effort off vs adaptive-low** (`ENCODE-ON-IDLE` §Effort): OPEN. Old 24-trial probe
+   said forced thinking bought nothing for the *old* encoder; never tested adaptive-low,
+   predates the provenance-heavier input. Post-build eval arm, not a blocker.
+6. **Tool-result verbosity:** how terse? (Token budget — bodies in glossary, results
+   summarized.) Tune at build.
+
+---
+
+## 8. Eval gate (from this session's measurement-validity audit)
+
+Build → **then** A/B old-vs-new on the Frozen Corpus (Tom's ordering). The harness is
+**half-ready**:
+
+- **Trustworthy** for: encode-coverage (ENCODE_MISS), recall-conditional pass rate,
+  token cost — **iff** run with `--variance ≥3` (defaults to n=1, the C4=1.00 trap) and
+  A/B'd over the **same qids** via `build_corpus --interaction-override s1e=<old>` vs
+  `s1e=<new>`.
+- **Must BUILD (3 of 6 gate dims are absent):**
+  1. **Arc still produced** (binary) — the design's #1 guardrail; *nothing* inspects
+     `session_context_{sid}` today.
+  2. **Notes residue-only** (no trace-restatement) — no harness reads `## Review`.
+  3. **Notes not over-produced** (empty on clean runs).
+- **Traps:** `s1_encode_eval.py` is a **dry-run mechanics meter** — never a quality gate.
+  `encoder_eval`'s regression-halt is **hardcoded to v22/v19** → inert on a new version,
+  re-pin first. The brain-native `realchat_oracle.json` corpus **isn't on disk** →
+  default LongMemEval measures generic QA, not partnership texture; build it if we want
+  to test what the residue exists to capture.
+
+**Activate only if** arc-production holds and encode-coverage doesn't regress.
+
+---
+
+## 9. Approach & build sequence
+
+**Architecture-first** (the sections share substrate — refining them independently =
+rework, e.g. the action-feed-built-twice trap):
+
+1. **Lock the skeleton** (this doc → a finalized §3 spec): every stream assigned to a
+   section, what's inline vs referenced, the widened catalog, the guidance per stream.
+   Mark scope/deferrals (endo, effort).
+2. **Build section-by-section against the locked skeleton** — catalog/glossary widening,
+   provenance ledger renderer (incl. tool uses + endo placeholder), `<continuity>`,
+   `<task>` block, residue write, voice pass, `final` semantics. They **land together**
+   as the v-next `s1e` prompt (register **DORMANT**, don't activate).
+3. **Build the 3 missing eval dims** (§8) against the new output.
+4. **Eval once** — A/B old vs new, `--variance ≥3`, same qids.
+5. **Activate atomically** only if the gate passes: `set_interaction_active` →
+   `./dev sync-prompts` → cut the Frame slot → restart. (Prompt-change discipline:
+   register DORMANT → eval → activate → sync; never sync a dormant candidate.)
+
+Possible early standalone win: **R1 temporal-scout gating** before the reframe (cheap,
+high-ROI, low-risk) — pending decision §7.1.
+
+---
+
+## Backing brain nodes
+
+- Input architecture: `823c0d3e` (provenance ledger), `07d269a8` (sandwich layout),
+  `82f563d4` (judgment/factual split), `286178b7` (ENCODE-ON-IDLE doc), `c9444a17`
+  (Tom's inline direction).
+- Journal/residue: `aa1f3ece` (two feeds), `5de09c90` / `ce333a73` (residue principle),
+  `233a7d10` (K constant), `6494d789` / `e78cfba6` (Q4 replacement-before-removal),
+  `4e96bcb3` (journal design doc).
+- Refinements: `893cf8c6` (temporal prose-not-structure), `f703bd9f` (examples are
+  load-bearing), `accf5172` (first-person voice), `eaf833c5` (more signal ≠ better —
+  the counter-pressure: widen with care).
+- Eval: this session's audit (longmem trustworthy on recall dims; 3 journal dims
+  unbuilt; `s1_encode_eval` dry-run; version-pinned stops).
