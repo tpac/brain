@@ -186,7 +186,7 @@ the census is reproducible by re-running the journal mine over `encoding_run` tr
 
 | # | Signal | Evidence | Fix / strand |
 |---|---|---|---|
-| R1 | **Temporal scout fires on non-dates** (line #s, %s, arxiv IDs, "may") | **~73% of all SKIPPED**, stable 10 weeks; ~8 garbage candidates/run | **Gate the scout** — require a date-shaped token, not a bare integer. Or demote it. **High-ROI, semi-independent of the prompt reframe** — could land first. |
+| R1 | **Temporal scout fires on non-dates** (line #s, %s, arxiv IDs, "may") | **~73% of all SKIPPED**, stable 10 weeks; ~8 garbage candidates/run | ✅ **SHIPPED** (standalone, ahead of the reframe). Two layers, both library-aligned (no reinvention): dropped dateparser's `'timestamp'` parser (read any number as a Unix epoch — the bare-number engine) via the `PARSERS` setting, + tightened `_looks_like_date` from `has_digit_word` to `_DATE_SHAPE_RE` (year / numeric-date / ordinal / digit-relative). `line 47`/`73%`/`PID`/`arxiv` → EMPTY; real dates + relatives unaffected. Residuals (not R1, encoder-backstopped): bare year-shaped numbers (`2000 chars` — kept by choice, preserves `in 2024` refs), modal `may`, keyword-glue (`73% now`). |
 | R2 | **Confident "already covered" skip, never doubted** | 56% skip / 0.2% doubt | provenance ledger + widened glossary (§2–3): verification, not assertion |
 | R3 | **prose-not-graph** — states a relation in content, never draws the edge | ~8–10 S2 runs ("semantic in prose but not in graph", "encoder should have drawn this") | examples + task framing: pull toward structuralizing relations it names. Same family as the temporal-structure gap (`893cf8c6`: dates in prose, not `event_time`/`anchored_to`) |
 | R4 | **No slot for friction/doubt** → laundering | 0 wish / ~1 blindness across 824 | the residue `## Review` channel (§6) — *this is the empirical case for it* |
@@ -254,9 +254,10 @@ Detail in `ENCODER-JOURNAL-DESIGN.md`; the S1E-specific deltas:
 
 ## 7. Open decisions (need Tom / need a probe)
 
-1. **Sequence the temporal-scout fix (R1) first?** It's ~73% of the encoder's per-run
-   triage tax, stable 10 weeks, and semi-independent of the big reframe — a cheap
-   standalone win. Land before the architecture, or fold in?
+1. ~~**Sequence the temporal-scout fix (R1) first?**~~ ✅ RESOLVED — landed standalone
+   ahead of the reframe (see §4 R1). dateparser `PARSERS` drop + `_DATE_SHAPE_RE` gate;
+   green at 127 scout/temporal tests. Bare year-shaped numbers kept (preserves `in 2024`
+   refs); revisit only if the noise/recall balance argues otherwise.
 2. **WATCHING split (R5):** one residue slot, or split "thread forming" vs "open loop /
    handoff"? (Affects the `## Review` slot semantics for S1E.)
 3. **Endo launch status:** is endo live? Determines whether the first build inlines the
@@ -312,8 +313,9 @@ rework, e.g. the action-feed-built-twice trap):
    `./dev sync-prompts` → cut the Frame slot → restart. (Prompt-change discipline:
    register DORMANT → eval → activate → sync; never sync a dormant candidate.)
 
-Possible early standalone win: **R1 temporal-scout gating** before the reframe (cheap,
-high-ROI, low-risk) — pending decision §7.1.
+~~Possible early standalone win: R1 temporal-scout gating~~ ✅ DONE — R1 landed
+standalone (dateparser `PARSERS` drop + `_DATE_SHAPE_RE` gate). The reframe (steps 1–5)
+is the remaining work.
 
 ---
 

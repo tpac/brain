@@ -289,12 +289,27 @@ _SENTENCE_SPLIT_RE = re.compile(r'(?<=[.!?])\s+')
 # ─── Filtering ────────────────────────────────────────────────────────────
 
 
+# A digit token only counts toward "is a date" if it carries date SHAPE: a
+# 4-digit year, an ISO/slash numeric date, an ordinal day, or a digit
+# relative ("5 days ago"). A bare integer (line numbers, %s, PIDs, arxiv
+# ids, section numbers) is NOT a date — the old gate accepted any
+# digit-bearing token, which is ~73% of the scout's SKIPPED triage tax.
+_DATE_SHAPE_RE = re.compile(
+    r'\b(?:19|20)\d{2}\b'                       # 4-digit year 1900-2099
+    r'|\b\d{1,4}[/-]\d{1,2}(?:[/-]\d{1,4})?\b'  # 2026-06-28, 5/28/2026, 6/28
+    r'|\b\d{1,2}(?:st|nd|rd|th)\b'              # 5th, 21st
+    r'|\b\d+\s*(?:day|week|month|year)s?\b',    # "5 days", "2 weeks" relatives
+    re.IGNORECASE,
+)
+
+
 def _looks_like_date(phrase: str) -> bool:
     """Gate a dateparser match against noise.
 
-    Accepts phrases that contain a digit, a temporal keyword, a month name,
-    or a weekday paired with a modifier. Rejects time-of-day phrases and
-    bare function words.
+    Accepts phrases carrying a date-shaped token (year / numeric date /
+    ordinal / digit-relative), a temporal keyword, a month name, or a
+    weekday paired with a modifier. Rejects time-of-day phrases, bare
+    integers, and bare function words.
     """
     p = phrase.lower().strip()
     if not p:
@@ -302,12 +317,12 @@ def _looks_like_date(phrase: str) -> bool:
     if _TIME_ONLY_RE.match(p):
         return False
     words = set(re.split(r'[\s,]+', p))
-    has_digit_word = any(any(c.isdigit() for c in w) for w in words)
+    has_date_shape = bool(_DATE_SHAPE_RE.search(p))
     has_keyword = bool(words & _TEMPORAL_KEYWORDS)
     has_month = bool(words & _MONTHS)
     has_weekday = bool(words & _WEEKDAYS)
     has_modifier = bool(words & _DATE_MODIFIERS)
-    return has_digit_word or has_keyword or has_month or (has_weekday and has_modifier)
+    return has_date_shape or has_keyword or has_month or (has_weekday and has_modifier)
 
 
 def _trim_trailing_noise(phrase: str) -> str:
@@ -458,6 +473,11 @@ def _extract_candidates_from_text(
     settings = {
         'RELATIVE_BASE': base_date,
         'PREFER_DATES_FROM': 'past',
+        # Drop dateparser's 'timestamp' parser: it reads the first 10 digits
+        # of any number as a Unix epoch, turning line numbers, PIDs, and
+        # arxiv ids into "dates" — the dominant scout false-positive source.
+        # Keep the date-shaped parsers (default list minus 'timestamp').
+        'PARSERS': ['relative-time', 'custom-formats', 'absolute-time'],
     }
 
     raw = search_dates(text, settings=settings) or []

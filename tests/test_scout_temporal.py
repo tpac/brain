@@ -56,6 +56,28 @@ class TestFilterHelpers(unittest.TestCase):
         self.assertFalse(t._looks_like_date(''))
         self.assertFalse(t._looks_like_date('   '))
 
+    def test_looks_like_date_rejects_bare_numbers(self):
+        # R1: a bare integer is not a date. Line numbers, percentages, PIDs,
+        # versions, arxiv ids, section numbers, token/char counts all carry
+        # digits but no date shape. Must reject — the old `has_digit_word`
+        # gate accepted every one of these.
+        self.assertFalse(t._looks_like_date('47'))
+        self.assertFalse(t._looks_like_date('73'))
+        self.assertFalse(t._looks_like_date('61167'))
+        self.assertFalse(t._looks_like_date('v22'))
+        self.assertFalse(t._looks_like_date('2305.12345'))
+        self.assertFalse(t._looks_like_date('3.2'))
+        self.assertFalse(t._looks_like_date('4096'))
+
+    def test_looks_like_date_accepts_date_shapes(self):
+        # Date-shaped digit tokens still pass: 4-digit year, ISO/slash
+        # numeric date, ordinal day, and digit relatives.
+        self.assertTrue(t._looks_like_date('2026'))
+        self.assertTrue(t._looks_like_date('2026-06-28'))
+        self.assertTrue(t._looks_like_date('5/28/2026'))
+        self.assertTrue(t._looks_like_date('March 5th'))
+        self.assertTrue(t._looks_like_date('2 weeks ago'))
+
     def test_trim_trailing_noise(self):
         self.assertEqual(t._trim_trailing_noise('2 weeks ago at the'),
                          '2 weeks ago')
@@ -362,6 +384,50 @@ class TestFailurePaths(BrainTestBase):
         self.assertEqual(out['candidates'], [])
         self.assertTrue(any(e['type'] == 'missing_interaction'
                             for e in out['_errors']))
+
+
+class TestBareNumberFalsePositives(unittest.TestCase):
+    """R1 end-to-end: digit-bearing non-dates must emit NO anchor, real
+    dates and relatives must still emit. Two-layer fix — dropping
+    dateparser's 'timestamp' parser (which reads bare digit runs as Unix
+    epochs) plus the _looks_like_date date-shape gate."""
+
+    BASE = dt.datetime(2026, 6, 28)
+
+    NEGATIVES = [
+        'see line 47 for the bug',
+        'coverage is 73%',
+        'we shipped v22 to prod',
+        'the daemon PID 61167 restarted',
+        'read arxiv 2305.12345 on this',
+        'refactored section 3.2 of the doc',
+        'the cache is 4096 tokens wide',
+    ]
+
+    POSITIVES = [
+        'we discussed this 2026-06-28',
+        'the meeting is March 5',
+        'shipped on March 5 2026',
+        'the deadline is 5/28/2026',
+        'that was 5 days ago',
+        'three weeks ago we decided',
+        'last Tuesday we shipped',
+        'I saw it yesterday',
+    ]
+
+    def test_negatives_emit_no_anchor(self):
+        for text in self.NEGATIVES:
+            cands = t._extract_candidates_from_text(text, self.BASE)
+            self.assertEqual(
+                cands, [],
+                'expected no temporal anchor for %r, got %r'
+                % (text, [c['phrase_clean'] for c in cands]))
+
+    def test_positives_emit_anchor(self):
+        for text in self.POSITIVES:
+            cands = t._extract_candidates_from_text(text, self.BASE)
+            self.assertTrue(
+                cands, 'expected a temporal anchor for %r, got none' % text)
 
 
 if __name__ == '__main__':
