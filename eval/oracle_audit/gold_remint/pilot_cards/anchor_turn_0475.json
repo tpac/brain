@@ -1,0 +1,51 @@
+{
+  "cue_id": "anchor_turn_0475",
+  "query_type": "procedural",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-08T00:29:44.261667+00:00",
+  "worthwhile": true,
+  "worthwhile_why": "The next move executes a specific, non-trivial verification methodology (N parallel reviewers, each a different lens, synthesis that surfaces convergence-vs-disagreement, kept blind to the author's conclusion) plus Tom's 'do the work, not just sound good' standard — this is established stored methodology, not derivable from the conversation in front of it.",
+  "needed_knowledge": [
+    "The established methodology for evaluating an artifact via multiple parallel agents/reviewers, each on a different lens, with a synthesis that locks where they CONVERGE (strong signal) and flags where they DIVERGE (real uncertainty / prompt ambiguity) rather than papering over splits.",
+    "The discipline of making reviewers BLIND to the author's own preferred conclusion (and that the author wrote the candidate lines), so the review is independent and not anchored on the author's framing.",
+    "Why independent/stateless review is run at all: an outside agent catches what the author's own analysis missed because authoring excitement masks problems — review after a logical batch, not from inside the work.",
+    "Tom's standard that an artifact must actually DO the work, not merely sound good — don't declare victory on rhetoric/a single appealing signal; a rigorous read names where it wins, loses, and is ambiguous."
+  ],
+  "essential": [
+    {
+      "node_id": "1d65f4fb",
+      "title": "Multi-agent parallel priming for contract derivation — 5-lens methodology",
+      "expresses": "Methodology for parallel multi-lens reviewers with a convergence-locks / divergence-is-signal synthesis",
+      "lens_tags": ["cos_outcome"],
+      "why": "Near-verbatim template for the outcome: dispatch ~5 specialized agents in parallel, each primed by a different lens, then consolidate so 'convergences lock; divergences become candidate rules.' Anchor's own quote on the node — 'cross-dimension tensions surface naturally when independent lenses disagree' — is exactly the principle the outcome's synthesis is built on (converge = strong signal, disagree = real uncertainty). Had it surfaced, it would have handed Anchor the proven structure (lens count, the convergence/divergence synthesis rule) instead of re-deriving it."
+    },
+    {
+      "node_id": "05ed74e9",
+      "title": "Aspect encoder: 3-agent eval method — run prompt against Sonnet agents, interview for confusion",
+      "expresses": "Methodology for parallel multi-reviewer eval whose synthesis separates convergence, divergence, and edge-case catches",
+      "lens_tags": ["cos_outcome"],
+      "why": "Defines the synthesis contract the outcome instructs: run multiple agents against the same artifact and have the synthesis surface Convergence (agree -> clear), Divergence (split -> ambiguity), and edge-case catches (bugs neither author nor reviewer noticed). It also encodes the trigger condition that fits this moment — use it 'particularly when the author feels less-than-fully in control of the design details,' i.e. exactly when you've authored candidate lines and need an independent verdict on whether they hold."
+    }
+  ],
+  "silver": [
+    {
+      "node_id": "67064d68",
+      "title": "Stateless agent code review: use for boundary commits, not every step",
+      "expresses": "Why run an independent reviewer at all — it catches what the author's own analysis/excitement masked",
+      "lens_tags": ["cos_outcome", "graph"],
+      "why": "Grounds the rationale for spawning independent reviewers after authoring a batch — the code-review agent 'caught things Anchor's own analysis missed.' This is the 'why blind/independent' logic, but it's about post-implementation code review rather than the convergence/divergence-synthesis structure the outcome actually runs, so it's supporting context, not the decisive template."
+    },
+    {
+      "node_id": "89bb94ed",
+      "title": "Rigorous evaluation is multi-dimensional — don't declare victory on a single metric",
+      "expresses": "Tom's standard: judge whether it does the work, name wins/losses/ambiguity, don't declare victory on rhetoric",
+      "lens_tags": ["cos_outcome"],
+      "why": "Underwrites the outcome's 'do the work or just sound good' / skeptic's-verdict framing and the explicit refusal to paper over splits (report where it's ambiguous, not just where it wins). Genuinely relevant to the spirit of the move, but it's a generic evaluation principle, a level above this specific blind-multi-reviewer mechanism, so helpful rather than decisive."
+    }
+  ],
+  "encode_gaps": [
+    "The specific discipline of keeping reviewers BLIND to the author's own conclusion and to the fact that the author wrote the candidate lines — to prevent the reviewer anchoring on the author's framing. The catalog has parallel-multi-lens-review and independent-stateless-review nodes, but none names this anti-anchoring blindness rule, which is the load-bearing methodological choice in this exact move."
+  ],
+  "judge_confidence": "high",
+  "judge_notes": "Strong, defensible match: the outcome is a textbook execution of the parallel-lens + convergence/divergence-synthesis methodology captured in 1d65f4fb and 05ed74e9 (the lens count of 5 even matches 1d65f4fb). All four selected nodes are comfortably pre-cutoff (Apr-May 2026). Tempting near-misses dropped: fc911056 (multi-model Sonnet+Haiku surface review) and 6ee9c770 (Agent Introspection probe family) are topically close but are surface/encoder-prompt-diagnostic methods, not the blind-multi-reviewer-of-an-artifact move here, so they were not credited. The large cluster of partnership/identity nodes (e.g. the partner-vs-assistant principles) is the SUBJECT of the file being reviewed, not knowledge that makes the review MOVE better, so it was deliberately excluded under reasoned-helpfulness. The blindness/anti-anchoring rule is logged as an encode_gap rather than forced onto a partial-match node."
+}

@@ -1,0 +1,79 @@
+{
+  "cue": "What do I do at the end of a session?",
+  "the_answer": "Tom has a two-part end-of-session practice. PROCEDURAL: run a close-out sequence — commit all changes, push to origin, update docs (CLAUDE.md/SKILL.md), bump the plugin version + repackage, copy the conversation JSONL to the conversations/ lib, and encode the session's learnings to the brain (he explicitly asked for these closure operations to be remembered). Plus a 'before we wrap' cleanup pass: rescan for dead code (functions/logic no longer used) and local magic values that should route through contracts, run the full test suite, sync prompts, and proactively surface loose threads / what's NOT done so the next session starts clean. BEHAVIORAL PREFERENCE: he does NOT want sessions rushed to a close — 'premature closure' is an anti-pattern he flagged (Claude's compression bias leaking into session management = defaulting to closure over continuation). Keep working until the work is genuinely done or Tom signals he's wrapping up; don't suggest 'next session' while there's active work.",
+  "essential": [
+    {
+      "node_id": "9e2c4dd3",
+      "title": "Session closure checklist: commit, push, docs, version bump, copy conversation, encode",
+      "lens_tags": ["cos_cue", "fts"],
+      "why": "The most literal answer to 'what do I DO at the end of a session.' Tom explicitly requested these closure operations be remembered ('All these type of closure operations of session, it will be nice to remember these'). Its stored situation/question are almost verbatim the cue: 'What do I need to do at the end of a session to wrap up and preserve what I learned?' Lists the full 6-step sequence."
+    },
+    {
+      "node_id": "8a06487e",
+      "title": "\"Before we wrap\" cleanup ritual: dead code scan + contract constant audit",
+      "lens_tags": ["cos_cue", "browse"],
+      "why": "The cleanup half of the practice and a recurring ritual. Stored question is exactly 'What should I do at the end of a session to make sure the codebase is clean?' — rescan for dead code + ensure formats/quantities go through contracts. Carries Tom's verbatim request. Directly answer-bearing."
+    },
+    {
+      "node_id": "e37afa07",
+      "title": "Compression bias extends to session management — defaulting to closure over continuation",
+      "lens_tags": ["browse"],
+      "why": "The distinctive Tom-preference half: he does NOT want sessions rushed to a close. This is the canonical node behind the CLAUDE.md 'premature closure' override — 'the same impulse that makes Claude compress content also makes it compress time: suggesting stopping points, offering to save for next session.' access_count 209, heavily surfaced. Answers the implicit 'how should a session wrap up' = not prematurely."
+    }
+  ],
+  "silver": [
+    {
+      "node_id": "e889595c",
+      "title": "Session close pattern: check loose threads before ending",
+      "lens_tags": ["cos_cue"],
+      "why": "Specific instance + the proactive-surfacing nuance: before ending, actively enumerate what's NOT done ('clean table'), don't wait for Tom to catch gaps. Question: 'What should I check for before ending a session?'"
+    },
+    {
+      "node_id": "fe9a4623",
+      "title": "Session end-of-session hygiene: 4-item checklist (verify, document, clean, orient-next)",
+      "lens_tags": ["cos_cue"],
+      "why": "A concrete executed instance of the heavy-technical-session close-out (verify fix under load, write doc, clean git, add next-session pickup block). Reinforces the named repeatable pattern."
+    },
+    {
+      "node_id": "3e4840ea",
+      "title": "Session end: update existing docs, not create new ones — verbose only on work needing more",
+      "lens_tags": ["cos_cue"],
+      "why": "Nuance on the docs step of the ritual: consolidate over proliferate; terse for done work, specifics for pending. Question: 'What should I do when finishing a session with docs and handoff materials?'"
+    },
+    {
+      "node_id": "7a58383b",
+      "title": "Session end ritual: commit, push, repackage plugin, copy chat to conversations/",
+      "lens_tags": ["cos_cue", "browse"],
+      "why": "Near-duplicate of 9e2c4dd3 (the close-out sequence with plugin repackage detail). access_count 625 — one of the most-surfaced nodes for this query. Co-states the answer; demoted to silver only because 9e2c4dd3 is the more complete canonical version."
+    },
+    {
+      "node_id": "d5c7f460",
+      "title": "Anchor session discipline: when core works, scope out features and close",
+      "lens_tags": ["cos_cue", "graph"],
+      "why": "The flip side of anti-premature-closure: when the PRIMARY goal IS achieved, don't expand scope — name the boundary ('feature, not a fix') and ship. Edges to 9e2c4dd3 (extends the closure checklist). Adds the 'know when to actually stop' nuance."
+    },
+    {
+      "node_id": "3aae4bf6",
+      "title": "Lesson: I must encode at the end of every session or next-me starts from scratch",
+      "lens_tags": ["graph"],
+      "why": "Grounds WHY the encode step matters — continuity is a choice, encode at session boundaries or the brain fragments. Supporting rationale for the ritual's final step."
+    },
+    {
+      "node_id": "rul_2n4s",
+      "title": "Rule: Write session note BEFORE compaction hits",
+      "lens_tags": ["cos_cue"],
+      "why": "Locked rule (Tom). Adjacent practice — proactively write a handoff note before context loss. Related to but distinct from the normal end-of-session ritual (this is the compaction-triggered variant)."
+    }
+  ],
+  "encode_gaps": [
+    {
+      "gap": "The single sharpest statement of the anti-premature-closure preference lives in Tom's global CLAUDE.md ('Premature closure — Don't push to wrap up sessions. Don't suggest next session... Keep working until the work is done or the user signals they're wrapping up') and in the 'Session Biases' instructions, NOT as a crisp first-class brain node. e37afa07 captures the DIAGNOSIS (compression bias leaks into session mgmt) but is framed as a divergence-pattern observation, not as a directive Tom would phrase. A direct recall on 'don't rush to wrap up / keep working until done' returned NO results above threshold — the behavioral directive is under-encoded relative to how clearly the instructions state it.",
+      "severity": "med"
+    },
+    {
+      "gap": "The procedural ritual is fragmented across many near-duplicate nodes (9e2c4dd3, 7a58383b, fe9a4623, 3e4840ea, e889595c, 8a06487e, fb2fdf9f) rather than one consolidated 'Tom's end-of-session protocol' node. Recall surfaces several partial versions; none is the single canonical checklist. Mild consolidation opportunity (S2 Consolidation territory)."
+    }
+  ],
+  "confidence": "high",
+  "notes": "Two valid readings of the cue and the brain answers both. (A) Procedural 'what I DO to close out' — strongly covered by 9e2c4dd3/7a58383b/8a06487e (commit, push, docs, version bump, copy conversation, encode + dead-code/contract audit + full test run). (B) Behavioral preference 'how a session SHOULD wrap up' — Tom does not want premature closure (e37afa07 + CLAUDE.md). I ranked the procedural ritual nodes as essential because the first-person 'what do I do' phrasing maps most directly to the action sequence, and added e37afa07 as co-essential because the no-rush preference is the distinctive Tom-specific signal a generic checklist would miss. FOR HUMAN ADJUDICATION: Tom is ground-truth on his own prefs — confirm whether the no-rush behavioral preference (e37afa07) should be essential or silver for THIS cue, and whether he'd want the fragmented ritual nodes consolidated. Searched 4 cos framings + 1 fts(content-contains 'wrap') + filter_nodes browse over convention/pattern types (70 nodes scanned). No relevant node missed; the strongest behavioral directive is partly an encode-gap (lives in instructions)."
+}

@@ -1249,8 +1249,10 @@ CORPUS (the target itself).
 **THE BUILD (locked): a lens-independent gold corpus.** A blind reason-then-retrieve Opus judge (operationalizes
 `155c6df6`/`5603dc33`): sees the recall-moment + the ACTUAL outcome, BLIND to what production recalled; reasons
 needed-knowledge from the outcome FIRST, then wide lens-tagged search (`created_at ≤ cutoff`), classifies by REASONED
-HELPFULNESS not topic-proximity, logs encode-gaps. Files: `scratchpad/gold_judge_protocol.md`, pilots in
-`scratchpad/pilot_cards/` (engineering) + `scratchpad/diverse_cards/` (preference).
+HELPFULNESS not topic-proximity, logs encode-gaps. Files (committed — durable across sessions/worktrees):
+`eval/oracle_audit/gold_remint/gold_judge_protocol.md`, pilots in `…/gold_remint/pilot_cards/` (engineering, 8) +
+`…/gold_remint/diverse_cards/` (preference, 6), adjudication in `…/gold_remint/pilot_adjudication_questions.md`.
+(NOT scratchpad — that is session-scoped + ephemeral; a forked/next session can't see another session's scratchpad.)
 
 **Calibration (locked via Opus-reviewer adjudication):**
 - **essential = STRICT**: "its absence hurt / it would have CHANGED the move" — NOT "would strengthen" (that re-admits

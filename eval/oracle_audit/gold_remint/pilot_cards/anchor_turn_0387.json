@@ -1,0 +1,32 @@
+{
+  "cue_id": "anchor_turn_0387",
+  "query_type": "factual",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-07T16:42:07.797838+00:00",
+  "worthwhile": true,
+  "worthwhile_why": "The next move hinged on knowledge a memory system should hold — that a clean in-place edge-relation rename primitive (GraphDAL.rename_relation) exists, that the S2 'reclassify' unit is built precisely for renaming generic-related-with-description edges and is its sole caller, and that reclassify is parked/not wired into the coordinator. Anchor admits it was 'reaching for the wrong tool' (connect+disconnect) and had to discover the truth by reading source code; recalled memory of these facts would have made the move materially better.",
+  "needed_knowledge": [
+    "A clean in-place primitive to revise an edge's relation exists (GraphDAL.rename_relation does UPDATE edge_relations SET relation=..., preserving description and weight) — the correct alternative to the connect+disconnect workaround Anchor was planning.",
+    "The S2 'reclassify' unit is built for exactly this case: it finds generic 'related'/'related_to' edges that carry a meaningful description, asks Haiku to pick a real relation, and renames in place (guards new_rel != 'related'); it is the sole caller of rename_relation.",
+    "reclassify is parked / NOT wired into the S2 coordinator — it never runs in production (so it won't autonomously clean the live seed edges).",
+    "rename_relation is not exposed on the MCP/agent surface (no 'rename' op in brain_batch — only connect/disconnect), so an agent cannot call it directly."
+  ],
+  "essential": [],
+  "silver": [
+    {
+      "node_id": "544bafaf",
+      "title": "LLM reclassification complete: 2,621 edges → 120 specific types by Sonnet",
+      "expresses": "Precedent that renaming generic 'related' edges to real relations is done as an in-place UPDATE (not delete+recreate), with the explicit 'UPDATE not DELETE — description still carries meaning' safety design — the in-place-rename principle Anchor was missing.",
+      "lens_tags": ["cos_outcome", "fts"],
+      "why": "Anchor's wrong instinct was archive-the-related-row + create-a-complements-row. This node's core lesson ('UPDATE not DELETE; if Sonnet suggested a bad relation the description still carries meaning') is exactly the in-place rename framing that should have steered the move away from connect+disconnect, and it points at the edge-reclassification machinery. Helpful, not decisive: it's a one-off 2026-04 migration, doesn't name the live reclassify unit or rename_relation, and doesn't touch the MCP-surface-exposure question."
+    }
+  ],
+  "encode_gaps": [
+    "GraphDAL.rename_relation exists as a clean in-place edge-relation revise primitive (UPDATE preserving description + weight) — not encoded as a node at the cutoff.",
+    "The S2 reclassify unit (reclassify.py) is built for renaming generic-related-with-description edges via Haiku and is the sole caller of rename_relation — not encoded at the cutoff.",
+    "reclassify is parked / not wired into the S2 coordinator and never runs — not encoded at the cutoff.",
+    "rename_relation is not on the MCP/agent surface (no 'rename' op in brain_batch) — not encoded at the cutoff."
+  ],
+  "judge_confidence": "high",
+  "judge_notes": "Timestamp reconciliation was the crux and is unusually clear here. The topically-nearest node, a1364fc9 ('revise() is node-only: edges not touched'), has created_at 2026-05-04 (pre-cutoff) BUT its CURRENT content references commit 5c5204e (2026-06-07) and the revise_edge op — content grafted on AFTER the cutoff (its get_node revised_at of 2026-05-04 was not bumped when the body was edited). At the recall moment (16:42 on 2026-06-07) this node's content was its original form: 'edges are NON-revisable; paths are disconnect / archive / decay' — which would have CONFIRMED Anchor's connect+disconnect instinct, not corrected it. So a1364fc9 is dropped: judged by its state at the cutoff it is not even silver. Three nodes that look like direct hits are disqualifying FUTURE LEAKAGE: dedd977a ('revise_edge op...') created 2026-06-07T19:44:48 (~3h after cutoff); 6ad62f8e ('rename_relation: clean edge-revise primitive... not exposed on MCP') and 7b6b9301 (S2/embedding architecture) are both src:recovery:trace_reconstruct dated 2026-06-07 and their content describes the gap as RESOLVED by commit 5c5204e plus a later follow-up commit 427a2a3 — i.e. they are the Δ this very conversation produced, encoded afterward, not pre-existing K. Conclusion: the decisive knowledge was discovered by code-reading in this turn (reclassify.py:92) and encoded later; at the cutoff it was a genuine ENCODE GAP, not a recall miss. essential is therefore empty. The one legitimate pre-cutoff helper is the 2026-04 Sonnet reclassification migration (544bafaf; decision twin 42713711, created 2026-04-09) — silver. Adjacent-but-dropped pre-cutoff nodes: 6ef6d982 (related/related_to trim rule — about trimming, not renaming), a01a101e/d8178e32/a05cdf48 (S2 edge-family classifier design — about grouping relations into families, not renaming individual edges or the rename primitive)."
+}

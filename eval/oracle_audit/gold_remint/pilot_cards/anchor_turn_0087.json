@@ -1,0 +1,88 @@
+{
+  "cue_id": "anchor_turn_0087",
+  "query_type": "design",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-05T15:54:19.750066+00:00",
+  "worthwhile": true,
+  "worthwhile_why": "The next move (1) consolidates the S0 self_message recording bug into one shared helper that binds the per-turn trace invariants, and (2) designs config-driven per-message TTLs for the self-channel. Both rest on prior, non-in-context knowledge: the codebase's engineering convention for 'fix by consolidation, close the class, not a patch', the established get_config/'parameters not decisions' config pattern, and the self-channel schema design that already anticipated expires_at. Not a same-session echo and not generic.",
+  "needed_knowledge": [
+    "The S0 turn-trace recording substrate in daemon_hooks.py: the four per-turn traces (user_message, assistant_message, heartbeat, self_message) each must bind the same invariants (chain_id, scale='s0', session_id=ctx.session_id), and the self_message append was the one omitting session_id, breaking recipient-session attribution.",
+    "The codebase principle that a recurring/structural bug should be fixed by consolidation (extract one helper, close the whole CLASS) rather than patching the single failing site — the exact 'solidify, no spaghetti, consolidated in correct places' value Tom asked for.",
+    "The established config convention: runtime-tunable values via get_config(key, default) with documented defaults, framed as 'make parameters not decisions' (e.g. boost_rule=1.3) — the pattern the Part-2 BROADCAST_TTL_HOURS/DIRECTED_TTL_HOURS config-driven plan is modeled on.",
+    "The self-channel message/TTL architecture: expires_at was already part of the self_inflight/self_messages schema design, broadcast vs directed addressing semantics, and the distinct message types (Letter/Signal/Presence) — bearing on Tom's 'per-type TTL / more types / different scenarios' framing and the 'add expires_at via migration' decision.",
+    "The fact that a fresh worktree venv is runtime-only (no pytest), so tests on this branch require installing pytest via the bundled bin/uv — which the outcome did verbatim ('worktree venv is runtime-only, so I installed pytest==9.0.3 ... via the bundled bin/uv')."
+  ],
+  "essential": [
+    {
+      "node_id": "451e7a91",
+      "title": "Class-of-bug fix: close the full concurrency surface, not just the tested path",
+      "expresses": "The consolidate/close-the-class engineering principle the next move enacts",
+      "lens_tags": ["cos_outcome"],
+      "why": "The outcome fixes the recording bug 'by consolidation, not a patch' — extracting one _s0_trace helper that binds chain_id/scale/session_id across all four S0 turn-traces, closing the whole 'forgot a turn-invariant' class. This node IS that principle ('find one unguarded writer -> audit all writers to the same resource -> fix all at once'). Surfacing it directly validates and shapes the chosen approach Tom explicitly asked for ('solidify it... consolidated in correct places... no spaghetti'), turning an instinct into a named, previously-Tom-approved pattern."
+    },
+    {
+      "node_id": "dec_bq3n",
+      "title": "Brain scoring config system: boost/penalty params in brain_meta (boost_rule, etc.); make parameters not decisions",
+      "expresses": "The get_config/'parameters not decisions' convention the Part-2 config-driven TTL plan builds on",
+      "lens_tags": ["cos_outcome"],
+      "why": "Part 2 proposes config-driven TTLs and the prompt explicitly cites the get_config('boost_rule', 1.3) pattern as precedent. This is the canonical encoded statement of that exact convention and example. Surfacing it grounds the config-key design (documented defaults, runtime-tunable) in established practice rather than inventing it, and answers 'where do the values live / why config not constants' — materially strengthening the elaborated plan."
+    }
+  ],
+  "silver": [
+    {
+      "node_id": "549c43d9",
+      "title": "Phase 2 self-channel directed signal — design proposed (self_inflight ... created_at, expires_at)",
+      "expresses": "Self-channel TTL/schema architecture; expires_at extension point",
+      "lens_tags": ["cos_cue", "cos_outcome"],
+      "why": "Part 2's central proposal is adding expires_at to self_inflight. This Phase-2 design already lists self_inflight(... created_at, expires_at) in the original schema, so the column was anticipated. Bears directly on the 'schema migration to add expires_at' decision (was it always meant to exist?) — relevant and helpful, but Anchor already had the live contract comment in front of it, so not decisive."
+    },
+    {
+      "node_id": "8f7df29d",
+      "title": "Three self-channel message formats: Letter (absorb), Signal (act), Presence (just know)",
+      "expresses": "Self-channel message types — input to Tom's 'more types with different TTLs' question",
+      "lens_tags": ["cos_cue"],
+      "why": "Tom asked 'Are there more types with different TTLs?' This node enumerates the message types/intents (Letter/Signal/Presence) that a per-type TTL policy would key on. Useful for scoping the 'different scenarios' config, but the Part-2 plan only needed broadcast-vs-directed, so it's supporting context rather than the unlock."
+    },
+    {
+      "node_id": "8a9010f5",
+      "title": "hook_recall phase timing: config-gated via phase_timing.enabled, default on",
+      "expresses": "Second instance of the config-with-documented-default convention",
+      "lens_tags": ["cos_outcome"],
+      "why": "Reinforces the get_config(key, default) pattern (Tom explicitly asked 'it's configurable right?'), the same shape as the proposed *_ttl_hours keys with documented defaults. Corroborates dec_bq3n; on its own not decisive."
+    },
+    {
+      "node_id": "60dfd488",
+      "title": "S2 scheduling thresholds in brain_constants.py — policy/threshold -> brain_constants.py",
+      "expresses": "Where policy/threshold defaults live (config-home decision)",
+      "lens_tags": ["cos_outcome"],
+      "why": "Part 2 decides where documented TTL defaults live ('self_contract.py - documented policy home'). This node states the existing rule ('if it's policy/threshold/decision -> brain_constants.py'); it both informs and lightly tensions the chosen home, making it genuinely relevant to the placement call but not decisive."
+    },
+    {
+      "node_id": "8faf767e",
+      "title": "S1 Recall Chain (S1R) Complete Call Stack",
+      "expresses": "The trace-write pattern (chain_id/scale/session_id per trace) and the daemon_hooks file the recording fix touches",
+      "lens_tags": ["cos_outcome", "fts"],
+      "why": "Documents the trace-append pattern in daemon_hooks.py ('Each trace: chain_id=..., scale='s1', session_id=session_id') — the same triad the new _s0_trace helper binds, in the same file. Orients to where/how traces are written, but it's the S1R path, not the four S0 turn-traces, so it wouldn't hand Anchor the consolidation directly."
+    },
+    {
+      "node_id": "b505c513",
+      "title": "S0 captures text only today — tool_use blocks discarded by daemon",
+      "expresses": "Locates the S0 trace-write site in daemon_hooks.py (the code being consolidated)",
+      "lens_tags": ["cos_outcome"],
+      "why": "Points at the S0 assistant-message write (daemon_hooks.py:534-538) — the neighbourhood of the recording bug being fixed. Useful for locating the code, but the node is about tool-use capture, not the session_id invariant or the multi-trace consolidation, so it's adjacent support."
+    },
+    {
+      "node_id": "218614e7",
+      "title": "dispatch_self.py envelope protocol missing — self-channel calls succeed but appear as 'Unknown daemon error'",
+      "expresses": "Self-channel recording/contract bug + the 'unit-tested, integration-uncovered contract violation' pattern",
+      "lens_tags": ["cos_cue"],
+      "why": "Closest prior self-channel 'recording/contract' bug; its correction pattern ('inner functions pass; dispatch-layer contract violation invisible until full integration exercised') rhymes with the self_message-omits-session_id class. Relevant as the nearest precedent, but it is a different bug (envelope, not session_id), so it informs the mindset more than the specific fix."
+    }
+  ],
+  "encode_gaps": [
+    "The specific S0 self_message recording bug being fixed here: the self_message append in daemon_hooks.py omitted session_id, so cross-stream deliveries weren't attributed to the recipient session — and the structural fix is one _s0_trace(brain, ctx, ...) helper binding chain_id/scale/session_id for all four S0 turn-traces (user_message/assistant_message/heartbeat/self_message). No node expresses this bug or the consolidation site.",
+    "A fresh worktree venv is runtime-only (no pytest); to run tests on a worktree branch you must install pytest (and pytest-timeout) via the bundled bin/uv. The outcome did exactly this, but no brain node encodes the gotcha (closest is c796bbb9, which is about main's bundled-venv pytest setup, not the worktree-is-runtime-only fact)."
+  ],
+  "judge_confidence": "high",
+  "judge_notes": "Crux call: the self-channel-mechanics nodes (Phase 2 design, message formats, prior self-channel bugs) are topically NEAREST the conversation, but the two genuinely decisive nodes are the cross-cutting engineering conventions — 451e7a91 (close-the-class, not patch) and dec_bq3n (config 'parameters not decisions') — because the outcome's two concrete moves are a consolidation refactor and a config-driven TTL design, which those nodes directly shape and legitimize (matching Tom's explicit 'consolidate/no-spaghetti' ask). Self-channel schema/type nodes are credited as silver: relevant to the expires_at/per-type-TTL plan but Anchor already had the live contract in front of it. The single most-needed item — the exact self_message-omits-session_id recording bug and its one-helper consolidation — has no node and is the primary encode_gap; the worktree-venv-runtime-only fact (which the outcome acted on verbatim) is the second gap, present in operator memory but not the brain. Stayed blind to production recall; all candidates verified created_at <= cutoff."
+}

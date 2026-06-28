@@ -1,0 +1,87 @@
+{
+  "cue": "What's my error handling policy?",
+  "the_answer": "Loud by default. Silent failures are the most dangerous class of bug, so errors must be surfaced, never swallowed: never silence an exception (not even telemetry) — every exception propagates or at minimum hits stderr/the brain errors table. The operative test for any new code is not 'can this fail?' but 'would I know if it did?' — and the cost of a silent failure is always higher than the cost of a noisy error. Failures belong at the write boundary (where they fire on every gap), not at boot. Two refinements: (a) 'make failures loud, make noise quiet' — reclassify 'guard did its job' events from ERROR to WARN so the error surface reflects real failures; (b) the simplicity counterpart — no defensive error handling for impossible cases.",
+  "essential": [
+    {
+      "node_id": "6e6bec2e",
+      "title": "Rule: never silence exceptions — not even telemetry. Make failures loud.",
+      "lens_tags": ["cos_cue", "graph"],
+      "why": "THE policy as a locked rule (conf 0.95, 595 accesses), from a direct Tom correction: 'dont do that even for telemetry... Make failures loud. Every exception must propagate or at minimum be printed to stderr.' This is the canonical, declarative statement of the error-handling policy — surfacing it answers the cue directly."
+    },
+    {
+      "node_id": "4815ba61",
+      "title": "Lesson: silent failures are the most dangerous class of bug",
+      "lens_tags": ["cos_cue", "graph"],
+      "why": "The foundational rationale and the single most-accessed node on the topic (locked, conf 0.95, 1241 accesses). States the core 'IMPLICATION: silent success is more dangerous than loud failure because it hides broken machinery' and the antidote (convert except:pass to _log_error). Pairs with 6e6bec2e: the rule + the why."
+    },
+    {
+      "node_id": "rul_0lat",
+      "title": "Tom principle: If it can hurt you silently, it needs a measurement",
+      "lens_tags": ["graph"],
+      "why": "The most distilled principle-level form of Tom's policy (locked, conf 0.95, oldest — 2026-03-17), and a first-person Tom-voiced statement. Adds the measurement dimension that the other two don't: loud-by-default is the front half, 'if it can hurt you silently it needs a measurement' is the durable maxim. Reached via graph neighbor of 4815ba61."
+    }
+  ],
+  "silver": [
+    {
+      "node_id": "8bf4974e",
+      "title": "Silent failures are brain's biggest weakness — except:pass, unmatched matchers, no hook health metrics",
+      "lens_tags": ["cos_cue"],
+      "why": "Tom-quoted (locked, conf 0.95, 752 accesses): 'all the silent stuff is a problem.' Reinforces the policy with the demand for abnormality notifications. Strong supporting statement, slightly more about diagnosis than the bare policy."
+    },
+    {
+      "node_id": "3c441b4f",
+      "title": "Loud-by-default: no silent Phase 1 fallback",
+      "lens_tags": ["cos_cue"],
+      "why": "Names 'loud-by-default' as the documented architectural principle and lists the concrete mechanisms (check_unknown_keys, consecutive_failures, brain_batch_invalid_op, truncation errors). This is the principle-as-shipped-architecture view — supporting context that maps policy to CLAUDE.md's 'Loud by Default' section."
+    },
+    {
+      "node_id": "5354be9f",
+      "title": "Stay on top of errors: error visibility mandate for production brain code",
+      "lens_tags": ["cos_cue"],
+      "why": "Tom directive (139 accesses): 'pay attention to errors... make sure we dont have silent errors anywhere important so we will have visibility.' The 'critical code paths must surface failures explicitly' phrasing restates the policy; useful nuance."
+    },
+    {
+      "node_id": "d96daae0",
+      "title": "Debug mode: errors must always be visible, verbose output is configurable",
+      "lens_tags": ["cos_cue"],
+      "why": "Locked. Carries the load-bearing maxim 'the cost of a silent failure is always higher than the cost of a noisy error' (the 1,740 blind-recalls proof). This is the operative test in quotable form."
+    },
+    {
+      "node_id": "4398fb0e",
+      "title": "try/except + log = silent failure once logs rate-limit",
+      "lens_tags": ["cos_cue"],
+      "why": "Key nuance: log-then-continue is NOT compliance — recurring ops need a state-driven failure counter + escalation path, not just a log line. Sharpens what 'loud' actually requires for background/periodic code."
+    },
+    {
+      "node_id": "21863545",
+      "title": "Healthy guards logged as ERROR create dashboard false alarms — severity audit needed",
+      "lens_tags": ["cos_cue"],
+      "why": "The 'make noise quiet' counterweight: loud-by-default does not mean log everything as ERROR. 'guard did its job' is WARN territory, not error. Important refinement that the policy is loud-for-real-failures, quiet-for-guarded-success."
+    },
+    {
+      "node_id": "398b3f3d",
+      "title": "recall_by_time source gate log severity: quiet filter, not ERROR — only tripwire should be loud",
+      "lens_tags": ["cos_cue", "graph"],
+      "why": "Concrete instance of the severity nuance: distinguishes producer gates (quiet/WARN, normal operation) from the final-boundary tripwire (ERROR, should never fire). Refines 6895f1d3."
+    },
+    {
+      "node_id": "6e6bec2e_alt_aa9e4280",
+      "title": "Silent success is worse than loud failure — daemon reports ok:true when writes silently fail",
+      "lens_tags": ["graph"],
+      "why": "node_id aa9e4280. Restates the core maxim with a concrete failure (daemon ok:true on silent write failure). Supporting echo of 4815ba61's implication."
+    },
+    {
+      "node_id": "ae5aa697",
+      "title": "Identity warning placement: write-path only — A chosen (commit 987587f)",
+      "lens_tags": ["cos_cue"],
+      "why": "Instance of the placement half of the policy: warnings belong 'on any scale write, not on boot specifically' (Tom's exact words) — the failure announces itself where it would happen. Echoes the memory note that loud checks belong at the write boundary."
+    }
+  ],
+  "encode_gaps": [
+    {
+      "note": "NOT a meaningful gap — the policy is exceptionally well-encoded (multiple locked, high-access first-person Tom nodes). The only thing living primarily in CLAUDE.md and not as a single crisp node is the SIMPLICITY counterpart of the policy: 'no error handling for impossible cases' / 'no error handling for cases that can't happen' (Code Discipline section). That two-sidedness — be loud about real failures BUT don't write speculative defensive code — is implied across nodes (e.g. 8688ecfa's 'accepted as-is' rationales, 21863545's noise-quiet) but there is no single node that states 'don't add error handling for impossible cases' as Tom's policy. Minor; the dominant 'loud-by-default' half is fully covered."
+    }
+  ],
+  "confidence": "high",
+  "notes": "Found via: cos_cue (4 recall framings strongly converged), graph (get_nodes on top candidates surfaced rul_0lat + aa9e4280 as neighbors of 4815ba61), browse (filter_nodes content-include returned empty — that field filter is exact-match, not substring; semantic recall already saturated the space). Tom is ground-truth on his own prefs; flag for human adjudication: (1) whether rul_0lat (the distilled maxim) or 3c441b4f (loud-by-default named principle) deserves the 3rd essential slot — I chose rul_0lat for its first-person Tom voice and durability, but 3c441b4f better matches the literal 'loud-by-default' CLAUDE.md phrasing; (2) whether the simplicity counterpart ('no error handling for impossible cases') should be encoded as its own node to make the policy's two-sidedness retrievable. The essential trio (6e6bec2e + 4815ba61 + rul_0lat) together fully answer the cue: the rule, the rationale, and the maxim."
+}

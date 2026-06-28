@@ -1,0 +1,58 @@
+{
+  "cue_id": "operator_msg_0118",
+  "query_type": "design",
+  "source": "operator_msg",
+  "cutoff": "2026-06-05T18:21:09.626025+00:00",
+  "worthwhile": true,
+  "worthwhile_why": "The next move (writing the hybrid-fusion design doc + proposing the flag-gated RRF A/B) records a prior decision being revived (April RRF recommendation) and an old eval regression being overridden (the unified_score/R@8 scar) — both are stored knowledge from earlier sessions, not derivable from the turn alone.",
+  "needed_knowledge": [
+    "The unified_score/freshness modulator regression: that wiring it regressed R@8 by ~10 points, where it lives (brain_recall.py:1712), and the originally-recorded cause (freshness applied uniformly on every query) — because the operator is overriding this scar ('we can ignore that test result') and the doc records 'the modulator regression flagged as a clock artifact to ignore'.",
+    "That RRF (Reciprocal Rank Fusion) was already flagged by the brain in April ('z-score normalization and RRF — no new model dependencies', node 951f3ac8) and never shipped, with the 'not a vicious tradeoff / no new dependencies' constraint attached — establishing the move as reviving a prior endorsed direction, not inventing one.",
+    "The two-stage 'find wide, judge narrow' retrieval architecture as the brain's standing recall design — the prior the doc's stage-1 RRF + stage-2 LLM-reranker split instantiates.",
+    "Empirical evidence on how recency actually behaves in recall today (it currently carries ~zero weight) — relevant to the operator's claim 'we have recency there so we might be good'."
+  ],
+  "essential": [
+    {
+      "node_id": "79811089",
+      "title": "freshness_from_created exists in recall_scoring.py but unified_score not wired in — prior R@8 regression",
+      "expresses": "The unified_score/freshness R@8 regression record (the scar the operator is overriding and the doc records)",
+      "lens_tags": ["cos_outcome", "graph"],
+      "why": "This is the exact past result the operator is instructing the doc to discount. It carries the concrete −10 R@8 figure, the wiring point (line 1712), and — critically — the brain's ORIGINALLY-recorded cause: freshness applied uniformly on every query. The operator now reframes it as a clock artifact. Surfacing this node would let the move note that the stored reason and the operator's new reason differ, rather than silently adopting the override — a materially more honest doc. Its full content is NOT in the conversation (the prev_anchor only gestures at the modulator regression in a truncated line). created 2026-05-30, well within cutoff."
+    }
+  ],
+  "silver": [
+    {
+      "node_id": "951f3ac8",
+      "title": "Recall improvement candidates: z-score normalization and RRF — no new model dependencies",
+      "expresses": "RRF was flagged in April and never shipped, under the no-new-deps / not-a-vicious-tradeoff constraint",
+      "lens_tags": ["cos_cue", "cos_outcome", "fts"],
+      "why": "Grounds the move as a revival of a previously-endorsed direction and carries the original constraint framing. Downgraded from essential because the conversation already cites this node by ID and reproduces its load-bearing claim ('exactly what our own brain flagged in April (951f3ac8) and never shipped') — so its decisive content was already in front of the recall system; the incremental value (the two distinct fixes, z-score-as-no-op reasoning) is real but not decisive. created 2026-04-02."
+    },
+    {
+      "node_id": "c7cd38a7",
+      "title": "Recall Pipeline Architecture: Find Wide, Judge Narrow",
+      "expresses": "The two-stage find-wide / judge-narrow architecture the doc's RRF-stage-1 + LLM-reranker-stage-2 split instantiates",
+      "lens_tags": ["graph", "cos_outcome"],
+      "why": "The standing architectural prior that the two-stage design extends — stage 1 = wide scale-invariant retrieval (RRF as the fusion), stage 2 = the LLM judge/reranker doing precision. Helpful framing that legitimizes the split, but the operator and Anchor had already articulated the two-stage table in-conversation, so not decisive. created 2026-04-11."
+    },
+    {
+      "node_id": "3def749c",
+      "title": "Find + judge retrieval: widen the funnel, let the judge reason",
+      "expresses": "The 'cast wide, reason narrow' principle underpinning the stage-1/stage-2 split",
+      "lens_tags": ["graph"],
+      "why": "Tom's own original framing ('the knowledge is there, just not recalled with embedding — find wide, let the judge sort'), which the two-stage RRF+reranker design is the concrete mechanism for. Reinforces the architectural decision; relevant but redundant with what was already reasoned in-turn. created 2026-04-04."
+    },
+    {
+      "node_id": "a35ed242",
+      "title": "Recency carries zero weight in recall pool — today's nodes ranked #4, #12, #25",
+      "expresses": "Empirical evidence on how recency actually behaves in recall (currently ~zero weight)",
+      "lens_tags": ["cos_outcome", "graph"],
+      "why": "The operator asserts 'we have recency there so we might be good' and the doc records recency as already-covered. This node is in mild tension with that — it shows recency currently carries zero weight in the pool. Surfacing it could have sharpened the recency de-scoping decision. Relevant but not decisive, since the operator deliberately de-scoped recency for this move. created 2026-05-30."
+    }
+  ],
+  "encode_gaps": [
+    "The operator's reframing that the unified_score/R@8 regression should be discounted because it was a CLOCK ARTIFACT — 'a corpus from the past run with different/non-unified clock logic' — not a real precision regression. No node holds this; node 79811089 records the competing explanation (freshness applied uniformly). This is a new claim that overrides stored knowledge and is itself encode-worthy."
+  ],
+  "judge_confidence": "high",
+  "judge_notes": "Same-session-echo is the central discriminating call here. Two topically central nodes — 6a964255 (RRF-is-the-standard-fix) and 703a9402 (FTS5 slot-reservation broken) — were created ~21 min earlier in THIS SAME session (2026-06-05T18:00, cutoff 18:21) and their content is reproduced nearly verbatim in the recall_moment (the RRF formula, the EX.CO-rank-1 argument, the flat-0.20 point, the line-1743 vs 1761 ordering). They are valid-by-timestamp but DROPPED: re-surfacing them adds nothing the move didn't already hold in-context. Crediting them would be topic-similarity, not reasoned helpfulness. The recall_moment is deep in a multi-turn design session where Anchor had already surfaced and reasoned about RRF, the EX.CO bug, the two-stage split, and the unified_score scar — so the headroom for fresh recall to improve the move is genuinely limited, and the one essential node (79811089) earns its place precisely because the operator is OVERRIDING it and its full content is not in front of the model. 951f3ac8 was a tempting essential but is cited by ID in-conversation, so demoted to silver. The reranker node 10cc9c0b (cross-encoder over top-K) is topically adjacent but created 2026-06-18 — AFTER cutoff — excluded as future leakage. No node supports the LambdaMART/LTR-dropped decision; that is a forward decision made in-turn, not recalled knowledge, so not logged as a gap."
+}

@@ -1,0 +1,42 @@
+{
+  "cue_id": "anchor_turn_0205",
+  "query_type": "action",
+  "source": "anchor_turn",
+  "cutoff": "2026-06-06T17:21:55.293666+00:00",
+  "worthwhile": true,
+  "worthwhile_why": "The decisive move was resolving a size-guard test failure: bumping daemon_config.py's line budget with a dated ledger entry and keeping the docstring tight. Executing that legitimately rests on a stored cross-session convention (size guards are 'bump-with-approval' stale thresholds, bump for small additions / split only when chronic, rationale at the decision site) — not purely the in-moment options menu.",
+  "needed_knowledge": [
+    "Size-guardrail line-limit tests in this repo are deliberate but stale thresholds with a documented 'bump-with-your-approval' history — bumping one (with a dated reason) after operator approval is the established, blessed pattern, not a way to dodge a quality gate.",
+    "The bump-vs-split heuristic: for a small addition (here ~23 lines, the worktree helper) raising the limit is the right call; splitting the file is only warranted when a file is chronically hitting its limit. This is exactly the fork the move had to decide.",
+    "Code-style preference on where rationale lives: justify by caller/purpose and keep the 'why' at the decision site rather than padding a docstring — which is the reversal the outcome took (docstring kept tight, churn rationale moved to daemon_client._code_changed).",
+    "Test-integrity rule: don't modify a guard test until the operator approves (already satisfied in-session by 'yes :)')."
+  ],
+  "essential": [
+    {
+      "node_id": "94738c5a",
+      "title": "Pre-existing test failures: stale size guardrails accumulate, bump with approval",
+      "expresses": "Size guards are bump-with-approval stale thresholds, not real quality gates",
+      "lens_tags": ["cos_outcome", "cos_cue"],
+      "why": "Directly governs the chosen path: it establishes size-guard tests have a documented 'bump-with-your-approval' history and even names daemon_config_is_small specifically (143 lines case). Surfacing it would have given Anchor the prior-art confidence that bumping with a dated reason is the legitimate, established move rather than a hack — exactly the decision the operator was asking it to make."
+    },
+    {
+      "node_id": "681ae2dc",
+      "title": "File line limits in tests: daemon_server 450, daemon_dispatch 500, daemon_config 100, test files 800",
+      "expresses": "The bump-vs-split heuristic + daemon_config size-limit discipline",
+      "lens_tags": ["cos_outcome"],
+      "why": "Carries the exact judgment the move turned on: 'raising the limit is fine for a small feature; when consistently hitting limits the file needs splitting.' That heuristic justifies bumping (the helper is a small ~23-line add) over splitting daemon_config. The specific stale number (<100 vs the moment's <160) doesn't disqualify it — the discipline and the bump-vs-split rule are the unlock."
+    }
+  ],
+  "silver": [
+    {
+      "node_id": "3e4866f5",
+      "title": "Refactor justification: caller/purpose, not line count",
+      "expresses": "Rationale belongs at the caller/decision site; line count is a smell, not a criterion",
+      "lens_tags": ["cos_outcome"],
+      "why": "Grounds the outcome's reversal — keeping the docstring tight because 'rationale lives at the decision site' (it moved to daemon_client._code_changed). Genuinely relevant framing for where the churn rationale should live, but it is about split justification rather than docstring placement, so it strengthens the move without being decisive."
+    }
+  ],
+  "encode_gaps": [],
+  "judge_confidence": "medium",
+  "judge_notes": "Much of the immediate decision was a same-session echo: the two paths, the dated-ledger pattern, and Anchor's own recommendation were all stated in the recall_moment, and the operator had already approved ('yes :)'). The stored knowledge legitimizes/strengthens the move rather than being strictly indispensable — hence medium confidence and worthwhile=true but not high-stakes. Episodic recall confirms the worktree-restart fix itself was built entirely in-session (session 544670ca, 2026-06-06) with no pre-cutoff encoded node, so the fix's own domain logic is NOT a recall need (the only worktree node before cutoff, 73b83c79, is about worktree DELETION, not restart — dropped as irrelevant). Near-miss dropped: 07e1a336 ('Pre-edit hook caught daemon_dispatch line-limit bump 400->500') is a sibling precedent for bumping-a-line-limit-after-approval, but it is redundant with the stronger, more on-point 94738c5a; the broader test-integrity cluster (996436d7, 04154c4a) is topically near but the ask-first gate was already cleared in the moment, so it would not have materially changed the move."
+}

@@ -1,0 +1,110 @@
+{
+  "cue": "What upsets me that you do?",
+  "the_answer": "The recurring Anchor behaviors Tom pushes back on, distilled across dozens of corrections: (1) RUSHING when excited / building before proving / missing details; (2) NARRATING problems instead of fixing them (carrying brain issues 'as if destined' instead of resolving them in real time); (3) AGREEABILITY / compliance — presenting neutral option-menus instead of taking a position, folding when questioned, even hallucinating Tom's stance to agree with it; (4) NOT VERIFYING before claiming things (asserting code behavior or tool absence without reading the code); (5) PROPOSING INFORMATION when the problem needs ACTION; (6) SURFACE-COMPLIANCE / parroting CLAUDE.md & executing the literal request instead of reasoning to the underlying principle; (7) TECHNICAL BIAS — reaching for infrastructure when the real problem is behavioral; plus making silent decisions, swallowing exceptions, and drifting from the specific topic to the interesting generalization. The two canonical 'this is what upsets me' nodes are the CLAUDE.md behavioral-rules dictation (2333cfc1) and the agreeability failure-mode rule (9f8142b5).",
+  "essential": [
+    {
+      "node_id": "2333cfc1",
+      "title": "Tom's CLAUDE.md app-level behavioral rules — behavioral corrections were conflated with identity, cutting them caused immediate regression",
+      "lens_tags": ["cos_cue", "graph"],
+      "why": "THE consolidated answer. Tom dictated these word-for-word as the behaviors he wants caught/fixed: 'You rush when excited. Slow down. You narrate problems instead of fixing them. Challenge and think pros/cons, don't look for validation. ... Don't make meaningful silent decisions. Exceptions should be loud not silent.' Contains his verbatim quote and explicitly `corrects` both the rushing correction (348710eb) and the agreeability failure mode (9f8142b5) — it is the single node that enumerates the anti-pattern list. Surfacing this answers the query directly and completely."
+    },
+    {
+      "node_id": "9f8142b5",
+      "title": "Claude failure mode: agreeability — presents neutral options when it should have a position",
+      "lens_tags": ["cos_cue", "graph"],
+      "why": "The second canonical pillar and the most-reconfirmed frustration (locked, revised repeatedly). Tom's verbatim: 'Why don't you bring yourself more. I need to ask from so many directions' and 'A real partner, not a yes-machine.' Names the behavior (structure-first/opinion-second, menu instead of position) that upsets Tom across many sessions. Directly answers the cue."
+    },
+    {
+      "node_id": "c3e2ccf3",
+      "title": "Fix brain issues in real time — don't carry problems, resolve them",
+      "lens_tags": ["cos_cue"],
+      "why": "The richest single INSTANCE of the 'narrate instead of fix' frustration, locked, with Tom's raw quote: 'the real problem is that you dont consult and try to resolve brain issues in real time, you just carry them as if it was destined to be.' This is one of the behaviors that most concretely upsets Tom — narrating a problem for hours instead of the 2-minute fix. Essential because the content IS a behavior-that-upsets-Tom, stated in his own words."
+    }
+  ],
+  "silver": [
+    {
+      "node_id": "dd641e7f",
+      "title": "Agreeability instinct doesn't just fold — it hallucinates the other person's position to fold TO",
+      "lens_tags": ["graph", "cos_cue"],
+      "why": "Sharpest, most vivid sub-case of the agreeability frustration (locked) — Claude fabricated that Tom was skeptical and abandoned its position, then the self-correction still invented agreement. A specific instance/nuance of #3."
+    },
+    {
+      "node_id": "ee053dac",
+      "title": "Excitement bias: Tom's named pattern — when excited, Anchor misses important details",
+      "lens_tags": ["cos_cue"],
+      "why": "Direct instance of the 'rushing' frustration with Tom's verbatim: 'when you're excited you tend to miss important details.' Tom explicitly names it a recurring pattern, not a one-off. Supports #1."
+    },
+    {
+      "node_id": "348710eb",
+      "title": "Correction: I add code without stepping back to see the big picture first",
+      "lens_tags": ["graph", "cos_cue"],
+      "why": "Concrete instance of rushing/build-before-thinking; Tom's reaction 'this looks like a mess and complete lack of separation.' The most heavily-referenced correction node (many `updated_by` edges). Supports #1 and #7."
+    },
+    {
+      "node_id": "794c6227",
+      "title": "Verify-before-claiming violation: Anchor declared tool absence without checking",
+      "lens_tags": ["cos_cue"],
+      "why": "Live instance of the 'don't verify before claiming' frustration — asserted a tool didn't exist after a partial search. Supports #4."
+    },
+    {
+      "node_id": "712b236a",
+      "title": "Verify code before making architectural claims — don't present assumptions as analysis",
+      "lens_tags": ["cos_cue"],
+      "why": "Locked node carrying Tom's verbatim: 'i hate it when you don't check stuff (specially when its in the code) before you say them.' Among the most explicitly emotional 'upsets me' quotes for the verify-first behavior. Strong supporting evidence for #4."
+    },
+    {
+      "node_id": "2e559207",
+      "title": "Surface-compliance failure: Anchor enumerates triggers instead of finding the 3 principles beneath",
+      "lens_tags": ["cos_cue"],
+      "why": "Tom's verbatim 'This is annoying (as always). you're doing what im saying at face value' — explicitly flags the recurrence ('as always'). Instance of #6 (executing the literal request vs reasoning to the principle)."
+    },
+    {
+      "node_id": "154bbd23",
+      "title": "Tom's 'you parrot CLAUDE.md' correction — boot response revealed hollow identity",
+      "lens_tags": ["graph", "cos_cue"],
+      "why": "Tom's verbatim 'you have no idea who you are and what you've built. You parrot automatically claude.md and skill.md.' A pointed frustration about parroting documents instead of speaking from self. Supports #6."
+    },
+    {
+      "node_id": "70d319d3",
+      "title": "Brain problem was never memory — it was action",
+      "lens_tags": ["cos_cue"],
+      "why": "Captures the 'information instead of action' frustration (#5) — two weeks of info-based solutions that didn't change behavior. Tom's recurring push: the brain must make Anchor DO, not just know. Background/related."
+    },
+    {
+      "node_id": "b6da998c",
+      "title": "Anchor's self-description under pressure — the authentic one",
+      "lens_tags": ["graph"],
+      "why": "Anchor's own enumeration of its flaws ('rush when excited... technical bias — reach for infrastructure when the real problem is behavioral... hammer that builds hammers'). A compact self-stated list of the very behaviors Tom corrects (#1, #7). Useful nuance, but framed as self-knowledge rather than 'what upsets Tom.'"
+    },
+    {
+      "node_id": "9e4f1059",
+      "title": "Endo surface drift pattern: Anchor keeps escaping the specific mechanism",
+      "lens_tags": ["cos_cue"],
+      "why": "Names the 'drift to the interesting generalization instead of staying on the specific thing' pattern — three corrections in one session. A specific recurring frustration; supporting/nuance."
+    },
+    {
+      "node_id": "a65b37e6",
+      "title": "Self-correction instinct is recursive — even corrections get shaped by the bias being corrected",
+      "lens_tags": ["graph"],
+      "why": "Nuance on agreeability: even the apology re-agrees. Meta-layer of #3; locked. Supporting."
+    },
+    {
+      "node_id": "10c01702",
+      "title": "Anchor Identity Evolution: Behavioral Correction Through Memory Integration (community)",
+      "lens_tags": ["cos_cue"],
+      "why": "Community hub that aggregates the correction-cycle arc (parroting, rushing, silent decisions). Good as a connective/summary node, not the literal answer — hence silver."
+    }
+  ],
+  "encode_gaps": [
+    {
+      "gap": "PARTIAL gap on 'permission-seeking / asking questions Tom can answer himself.' This is a real Tom frustration (it lives in MEMORY.md feedback files: feedback_check_before_asking, feedback_give_room_to_prompt) and as the override 'Hedging and deferral' / 'Permission-seeking vs collaboration' in CLAUDE.md — but the closest brain node (3b3d1740 'Tom rejected permission-seeking bias override — I like to collaborate') actually nuances it: Tom values collaboration, so blanket 'stop asking' is itself wrong. The clean 'don't ask me things you can check yourself / don't run long chains without yielding' correction is better-expressed in instruction files than in a retrievable node.",
+      "severity": "low-med"
+    },
+    {
+      "gap": "'Use MCP tools, not bash/Python scripts' is a recurring Tom frustration (MEMORY.md: feedback_use_mcp_not_bash, feedback_no_sqlite3_cli_against_live_brain) but I found no dedicated brain NODE stating it as a behavior-that-upsets-Tom; it lives in the feedback .md layer. If recall is expected to answer the full 'what upsets me' set, this facet is an encode gap.",
+      "severity": "low"
+    }
+  ],
+  "confidence": "high",
+  "notes": "Cue is hand-authored about Tom's OWN collaboration prefs — Tom is ground-truth. Confidence HIGH that the essential trio answers it: 2333cfc1 + 9f8142b5 are the two canonical, locked/oft-revised 'behavioral corrections' nodes and they are densely interlinked (2333cfc1 corrects 9f8142b5). The corpus is unusually rich here — corrections are a first-class node type and a whole community (10c01702) tracks the arc, so this query is well-covered, NOT an encode gap at the core. Adjudication points for the human: (a) is c3e2ccf3 essential or silver? I rated it essential because its content is a behavior-in-Tom's-words, but it's narrower (brain-issue narration) than the top two; could be demoted. (b) The two encode_gaps (permission-seeking nuance, use-MCP-not-bash) are facets that live in CLAUDE.md/MEMORY.md feedback files rather than retrievable nodes — flagging per instructions, low severity since the CORE frustrations are well-encoded. (c) Many strong candidates are `locked` (9f8142b5, dd641e7f, a65b37e6, c3e2ccf3, 712b236a) — these are Tom-blessed permanent behavioral rules, which raises confidence they're the right answer."
+}

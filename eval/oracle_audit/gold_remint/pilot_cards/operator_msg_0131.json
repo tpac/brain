@@ -1,0 +1,66 @@
+{
+  "cue_id": "operator_msg_0131",
+  "query_type": "compositional",
+  "source": "operator_msg",
+  "cutoff": "2026-06-05T23:04:35.354106+00:00",
+  "worthwhile": true,
+  "worthwhile_why": "The next move validates the spread-activation method across cog-sci, graph-CS, and practical lenses and concludes the hub fix is degree-normalization with three names. Much of the validation is web/literature, but the move is materially strengthened by stored knowledge the brain already holds: a prior mapping of the kernel to Personalized PageRank / HippoRAG with degree-based seed mass (the exact 'degree-normalization is the fix' conclusion), Tom's own grounding of spreading activation as a known associative-memory concept, and the internal history that spread was removed for hub flooding and a degree/access signal already exists ('the base-level activation you said we already have'). Not a same-session echo.",
+  "needed_knowledge": [
+    "Spreading activation is a known/borrowed concept, not invented here — it maps to associative-memory retrieval in cognitive science (validates 'I don't think we invented the spread concept').",
+    "The kernel maps to Personalized PageRank / Random Walk with Restart, and the hub fix is degree-normalization (seed mass / transition weighting ~ 1/degree) — the same fix the graph-CS lens reaches as P = D^-1 A.",
+    "The brain's own history: graph spread was removed/deprecated because seeding from top-cosine hubs flooded the dense cluster — the hub problem is already diagnosed internally, so the 'make-or-break hub-dampening I flagged isn't ours to invent'.",
+    "The degree/access base-level signal already exists in the brain (degree-aware fatigue / hub dampening) — maps to ACT-R base-level activation (recency+frequency) 'you said we already have'."
+  ],
+  "essential": [
+    {
+      "node_id": "a33b3d88",
+      "title": "Spreading activation kernel may be over-engineered vs. pure PPR + node specificity",
+      "expresses": "The kernel maps to Personalized PageRank / HippoRAG with node-specificity (degree) weighting — degree-normalization is the fix",
+      "lens_tags": ["cos_outcome", "graph"],
+      "why": "This is the brain's prior recognition that its spread kernel IS Personalized PageRank with degree/specificity weighting — the exact graph-CS conclusion the move reaches (PPR/RWR, hub fix built into the math via degree-normalization). Surfacing it would have let the move say 'we already mapped this to PPR/HippoRAG' instead of re-deriving, and sharpened the 'didn't invent it' thesis on the graph-CS lens specifically."
+    },
+    {
+      "node_id": "ce4787f1",
+      "title": "Three gaps in Anchor's memory substrate vs. field patterns",
+      "expresses": "Degree-normalization as the hub fix, stated explicitly: HippoRAG PPR seed mass = 1/degree(seed); equal seed mass lets hubs accumulate transitively (the 93%-never-recalled problem)",
+      "lens_tags": ["graph", "cos_outcome"],
+      "why": "Gap B names the precise mechanism the outcome calls the universal hub fix — seed mass = 1/degree(seed), i.e. degree-normalized activation that prevents hubs dominating. It is the brain's own prior statement of 'P = D^-1 A / activation divides among links', so its presence would have directly grounded the move's headline claim rather than leaving it to fresh web derivation."
+    }
+  ],
+  "silver": [
+    {
+      "node_id": "788942af",
+      "title": "Spreading activation vs consolidation — two distinct memory mechanisms",
+      "expresses": "Spreading activation is a known concept from associative-memory retrieval (cog-sci lens), not invented here",
+      "lens_tags": ["cos_outcome", "cos_cue"],
+      "why": "Tom's own correction grounding spreading activation as the established associative-memory mechanism directly supports 'I don't think we invented the spread concept' on the biology/cog-sci lens. Helpful and on-target, but the outcome's specific citations (Collins & Loftus 1975, the fan effect / ACT-R) come from web literature, so it strengthens rather than decides the move."
+    },
+    {
+      "node_id": "9e28cd30",
+      "title": "Recall graph spread removed 2026-04-14 (commit 3d02f21): rationale and failure condition",
+      "expresses": "Internal history: graph spread was removed; the hub/flooding concern is already part of the brain's recall reasoning",
+      "lens_tags": ["cos_cue", "fts"],
+      "why": "Grounds the move's framing that the hub-dampening 'make-or-break' is not new to the project — the brain already debated removing/restoring spread around exactly this concern. Context that strengthens the 'not ours to invent' line; not decisive for the cross-lens academic validation itself."
+    },
+    {
+      "node_id": "237e01c0",
+      "title": "Modulation tunables: HUB_DEGREE_THRESHOLD, IDENTITY boosts, RECENCY_BOOST",
+      "expresses": "The brain already has a degree/access base-level signal (degree-aware fatigue + recency) — maps to ACT-R base-level activation 'you said we already have'",
+      "lens_tags": ["fts", "browse"],
+      "why": "Concretely confirms the degree/recency signal the move credits the brain with already having (the ACT-R base-level mapping). Useful evidence that the 'we already have it' claim is backed by real constants, but secondary to the core three-lens mapping."
+    },
+    {
+      "node_id": "394f85d6",
+      "title": "Hub dampening tradeoff: penalizing access_count hurts genuine high-use nodes",
+      "expresses": "Internal hub-dominance history and why naive access-count dampening fails — context for why degree-normalization (not access penalty) is the right hub fix",
+      "lens_tags": ["cos_outcome"],
+      "why": "Supports the move's hub-fix focus by showing the brain already learned that crude hub penalties backfire, which is exactly why the degree-normalized (PPR) framing the outcome lands on is the better answer. Relevant background, not the validation itself."
+    }
+  ],
+  "encode_gaps": [
+    "The specific cognitive-science citations the move relies on — Collins & Loftus (1975) spreading activation and Anderson/ACT-R's fan effect / base-level activation — are not encoded as nodes; the brain holds the general 'spreading activation is a known concept' framing but not these named sources or the fan-effect = degree-division mapping.",
+    "No single node states the three-way convergence explicitly (cog-sci spreading activation == graph-CS PPR/RWR == the brain's own hub-dampening, all unified by degree-normalization). The pieces exist separately (a33b3d88, ce4787f1, 788942af) but the unifying 'one fix, three names' synthesis the move produces is not itself encoded."
+  ],
+  "judge_confidence": "high",
+  "judge_notes": "Strong, well-connected prior material: the brain has repeatedly grounded its mechanisms in external research across exactly these three lenses (id:349edbf9 graph-systems survey naming PPR/HippoRAG/Leiden; id:9efadb3a neuropsych R1-R5; id:ec2b4c1c Hippocampal Indexing Theory; id:c89def51 / id:7e6d033d competitive maps). I held a33b3d88 and ce4787f1 as essential because they encode the exact degree-normalization-is-the-hub-fix claim the graph-CS column lands on, mapped to PPR/HippoRAG — the most load-bearing unlock. Tempting-but-dropped: id:349edbf9 (graph-systems anti-patterns survey) is topically very near and names PPR/HippoRAG, but it is a tooling-design survey, not the degree-normalization/hub-fix claim, so it would not have changed the move's substance (wrong altitude). The biology lens is the weakest brain-coverage area — the named cog-sci sources are an encode gap, so this remains partly a web/literature move; that is why only the graph-CS mapping rises to essential while the cog-sci grounding (788942af) is silver. The internal-history nodes (9e28cd30, 237e01c0, 394f85d6) are real context the move leans on ('the hub-dampening I flagged', 'the base-level activation you said we already have') but support framing rather than the cross-lens validation."
+}
