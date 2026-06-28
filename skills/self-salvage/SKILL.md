@@ -44,6 +44,26 @@ history:
 2. **State** — 2–3 lines: where we are, what's *locked*, what's *open*.
 3. **Next** — the immediate task and the *first concrete action*.
 4. **Trust recall** — name the load-bearing node ids; the boot Frame + recall surface them.
+5. **Point to scratch (optional)** — if useful *throwaway* notes live in this session's scratchpad, paste its
+   absolute path (`/private/tmp/.../<this-session-uuid>/scratchpad/`); the next me reads them directly, no commit.
+   Ephemeral — good for *soon-after* continuation only.
+
+## What survives, and where — don't commit throwaways
+Sort artifacts by tier *before* deciding what persists:
+- **Durable / load-bearing** — decisions, methods, the judge protocol, the design-doc head → **git or the
+  brain**. The next me needs these long-term; they must survive.
+- **Throwaway-but-useful-soon** — pilot cards, intermediate runs, working notes → **leave in scratchpad and
+  point to it**. Do NOT commit them; git is not a junk drawer, and a throwaway in history is noise forever.
+- **Pure throwaway** → leave it; forget it.
+
+The scratchpad **persists on disk** after a session ends (`/private/tmp/…/<session-uuid>/scratchpad/`); another
+session *can* read it **by absolute path** — it's only missing at the *default* path because that's keyed to each
+session's own uuid (a fork gets its own empty one). So hand off tier-2 notes by putting that absolute path in the
+bootstrap prompt — not by committing them.
+
+**Caveat:** scratch is ephemeral (the OS clears /tmp on reboot / after days idle). The pointer is good for
+*soon-after* continuation only. **Never put a scratch path in a brain node or the design doc** — a stale path is a
+footgun. It belongs solely in the ephemeral bootstrap prompt, as short-lived as the thing it points to.
 
 ## Running it
 1. Name the next task in one line.
