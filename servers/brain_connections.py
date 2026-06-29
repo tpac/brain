@@ -120,8 +120,9 @@ class BrainConnectionsMixin:
         """Add a relation between two nodes (idempotent upsert).
 
         Stage 1B: add_relation is field-preserving — repeated calls do NOT
-        auto-strengthen weight (use GraphDAL.strengthen_relation() for Hebbian
-        bumps), and unspecified fields preserve existing values on update.
+        auto-strengthen weight (Hebbian co-access bumps are applied off the
+        recall hot path by recall_write_queue._apply_hebbian_pairs), and
+        unspecified fields preserve existing values on update.
 
         Args:
             source_id: Source node ID
@@ -150,8 +151,9 @@ class BrainConnectionsMixin:
 
         Stage 1B: field-preserving upsert. None defaults mean 'preserve existing
         on update' — pass empty string '' explicitly if you want to clear a
-        field. Repeated calls do NOT auto-strengthen weight; use
-        GraphDAL.strengthen_relation() for Hebbian bumps.
+        field. Repeated calls do NOT auto-strengthen weight; Hebbian co-access
+        bumps are applied off the recall hot path by
+        recall_write_queue._apply_hebbian_pairs.
 
         Args:
             source_id: Source node ID

@@ -345,8 +345,12 @@ class TestTraceDAL:
         events = self.dal.get_recent(scale='s0', hours=1, limit=5)
         assert len(events) <= 5
 
-    def test_get_chains_for_session(self):
-        """get_chains_for_session returns unique chain IDs."""
+    def test_chains_scoped_to_session(self):
+        """Chains are queryable scoped to a session, deduped by chain_id.
+
+        (get_chains_for_session was removed in the DAL Phase-A cleanup; the live
+        session-scoped chain query is get_chains(session_id=...).)
+        """
         self.dal.append(chain_id='chain-a', scale='s0', event_type='K',
                         session_id='sess-1')
         self.dal.append(chain_id='chain-a', scale='s0', event_type='delta',
@@ -356,7 +360,7 @@ class TestTraceDAL:
         self.dal.append(chain_id='chain-c', scale='s0', event_type='K',
                         session_id='sess-2')
 
-        chains = self.dal.get_chains_for_session('sess-1')
+        chains = {c['chain_id'] for c in self.dal.get_chains(session_id='sess-1')}
         assert 'chain-a' in chains
         assert 'chain-b' in chains
         assert 'chain-c' not in chains

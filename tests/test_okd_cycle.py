@@ -192,8 +192,10 @@ class TestCrossScaleTraceIntegrity(unittest.TestCase):
                 ref_type='surface_selected', summary='5 nodes selected',
                 session_id=session_id)
 
-            # Query by session — both scales present
-            all_chains = trace.get_chains_for_session(session_id)
+            # Query by session — both scales present (get_chains is the live
+            # session-scoped query; get_chains_for_session was removed in the
+            # DAL Phase-A cleanup).
+            all_chains = {c['chain_id'] for c in trace.get_chains(session_id=session_id)}
             self.assertIn('s0-test-1', all_chains)
             self.assertIn('s1r-test-1', all_chains)
 

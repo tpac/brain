@@ -201,10 +201,6 @@ class CachedVectorDAL:
         with self._sql_lock:
             return self._inner.get_coverage_stats()
 
-    def count(self) -> int:
-        """Total vector row count from cache."""
-        return self._cache.stats()['total_rows']
-
     # ── Diagnostics ─────────────────────────────────────────────────
 
     def cache_stats(self) -> Dict[str, Any]:

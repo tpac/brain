@@ -407,14 +407,6 @@ def hook_recall(brain, args, graph_changes):
         pt.log(brain, 'hook_recall', n_results=0)
         return {"json": {"decision": "approve"}}
 
-    # Gap detection: log gaps for trend analysis
-    if gap:
-        try:
-            from .dal import LogsDAL
-            LogsDAL(brain.logs_conn).log_gap(gap['query'], gap.get('top_score', 0), session_id)
-        except Exception as e:
-            brain._log_error('hook_recall_gap_log', e, 'Failed to log recall gap')
-
     brain.save()
 
     # ── S1 Surface: push relevant memories into awareness ──

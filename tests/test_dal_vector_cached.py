@@ -194,11 +194,6 @@ class TestParity:
         c = sorted(cached.get_for_node('n1'), key=lambda r: r['vector_type'])
         assert i == c
 
-    def test_count(self, brain_db):
-        inner = VectorDAL(brain_db)
-        cached = CachedVectorDAL(brain_db)
-        assert inner.count() == cached.count()
-
 
 # ═══════════════════════════════════════════════════════════════
 # Write-through: SQL is truth, cache reflects after SQL commits
@@ -226,17 +221,22 @@ class TestWriteThrough:
         ]
         n = cached.store_batch(rows)
         assert n == 3
-        cnt = cached.count()
+        # Cache reflects the batched writes exactly as the DB does (per-node
+        # parity — count() was removed in the DAL Phase-A cleanup).
         inner = VectorDAL(brain_db)
-        assert cnt == inner.count()
+        for nid in ('n3', 'n4', 'n5'):
+            assert (sorted(cached.get_for_node(nid), key=lambda r: r['vector_type'])
+                    == sorted(inner.get_for_node(nid), key=lambda r: r['vector_type']))
 
     def test_none_embedding_skipped_everywhere(self, brain_db):
         cached = CachedVectorDAL(brain_db)
-        before = cached.count()
         cached.store('nX', '_primary', 'text', None)
-        assert cached.count() == before
+        # None embedding is skipped — nX gets no NON-NULL vector in cache or DB
+        # (count() measured `embedding IS NOT NULL`; it was removed in the DAL
+        # Phase-A cleanup, so assert the same property via get_for_node).
         inner = VectorDAL(brain_db)
-        assert inner.count() == before
+        assert [r for r in cached.get_for_node('nX') if r['embedding'] is not None] == []
+        assert [r for r in inner.get_for_node('nX') if r['embedding'] is not None] == []
 
     def test_delete_for_node_drops_from_cache(self, brain_db):
         cached = CachedVectorDAL(brain_db)

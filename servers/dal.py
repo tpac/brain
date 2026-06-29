@@ -10,7 +10,7 @@ Usage in brain.py:
     self._logs = LogsDAL(self.logs_conn)
     self._meta = BrainMetaDAL(self.conn)
 
-    self._logs.write_error("source", "error msg", "context")
+    self._logs.write_event("error", "source", {"error": "error msg"})
     errors = self._logs.get_recent_errors(hours=24)
 
 Incrementally adoptable: brain.py can migrate one table at a time.
@@ -74,23 +74,6 @@ class LogsDAL:
         )
         commit_unless_batched(self.conn)
 
-    def write_error(self, source: str, error: str, context: str = "",
-                    traceback_str: str = "", session_id: str = "") -> None:
-        """Write an error to the debug_log table."""
-        self.write_event('error', source, {
-            'error': error[:500],
-            'type': 'Exception',
-            'context': context[:500],
-            'traceback': traceback_str[:500] if traceback_str else '',
-        }, session_id=session_id)
-
-    def write_debug(self, source: str, message: str, session_id: str = "",
-                    metadata: Optional[Dict] = None) -> None:
-        """Write a debug entry to the debug_log table."""
-        self.write_event('debug', source,
-                         metadata if metadata else {'message': message[:500]},
-                         session_id=session_id)
-
     # ── hook_errors ──
     # The daemon-independent error table the dashboard + boot read. In-process
     # callers (e.g. the MCP health monitor) route here so the hook_errors write
@@ -135,15 +118,6 @@ class LogsDAL:
                 'created_at': created_at,
             })
         return results
-
-    def get_error_count(self, hours: int = 24) -> int:
-        """Count errors in the last N hours."""
-        row = self.conn.execute(
-            "SELECT COUNT(*) FROM debug_log WHERE event_type = 'error' "
-            "AND created_at > ?",
-            (iso_cutoff(hours=hours),)
-        ).fetchone()
-        return row[0] if row else 0
 
     # ── access_log — REMOVED 2026-04-05 ──
     # Table dropped. 415K rows, 151K/day writes, never used for anything meaningful.
@@ -935,13 +909,6 @@ class TraceDAL:
             params + [limit]).fetchall()
         return [(r[0], r[1]) for r in rows if r[1]]
 
-    def get_chains_for_session(self, session_id: str) -> List[str]:
-        """Get all chain IDs from a session."""
-        rows = self.conn.execute(
-            'SELECT DISTINCT chain_id FROM trace_events WHERE session_id = ? ORDER BY created_at ASC',
-            (session_id,)).fetchall()
-        return [r[0] for r in rows]
-
     def append_outcome(self, chain_id: str, scale: str, ref_type: str, ref_id: str,
                        summary: str, session_id: str = '') -> int:
         """Append an outcome event to an existing chain. Called later when
@@ -1412,24 +1379,6 @@ class TraceDAL:
         commit_unless_batched(self.conn)
         return len(prepared)
 
-    def get_embeddings(self, trace_ids: List[str]) -> Dict[str, bytes]:
-        """Batch fetch trace embeddings by id (v29: 8-char hex). Missing ids
-        absent from result. Rejects int input loudly per v29 contract."""
-        if not trace_ids:
-            return {}
-        for tid in trace_ids:
-            if not isinstance(tid, str):
-                raise ValueError(
-                    "get_embeddings: trace_ids must be strings, got "
-                    "%s (%r). v29 trace ids are 8-char hex." % (
-                        type(tid).__name__, tid))
-        placeholders = ','.join('?' * len(trace_ids))
-        rows = self.conn.execute(
-            'SELECT trace_id, vector FROM trace_embeddings '
-            'WHERE trace_id IN (%s)' % placeholders,
-            list(trace_ids)).fetchall()
-        return {r[0]: r[1] for r in rows}
-
     def find_unembedded(self, limit: int, scales: List[str],
                         ref_types: List[str],
                         since: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -1553,30 +1502,6 @@ class BrainMetaDAL:
         )
         commit_unless_batched(self.conn)
 
-    def get_json(self, key: str, default: Any = None) -> Any:
-        """Get a JSON-decoded config value."""
-        raw = self.get(key, "")
-        if not raw:
-            return default
-        try:
-            return json.loads(raw)
-        except (json.JSONDecodeError, TypeError):
-            return default
-
-    def set_json(self, key: str, value: Any) -> None:
-        """Set a JSON-encoded config value."""
-        self.set(key, json.dumps(value))
-
-    def increment(self, key: str) -> int:
-        """Increment a counter and return new value."""
-        current = self.get(key, "0")
-        try:
-            new_val = int(current) + 1
-        except (ValueError, TypeError):
-            new_val = 1
-        self.set(key, str(new_val))
-        return new_val
-
 
 class NodeDAL:
     """Access layer for brain.db nodes table.
@@ -1661,13 +1586,6 @@ class NodeDAL:
         ).fetchone()
         return row[0] if row else None
 
-    def exists(self, node_id: str) -> bool:
-        """Check if a node exists."""
-        row = self.conn.execute(
-            'SELECT id FROM nodes WHERE id = ?', (node_id,)
-        ).fetchone()
-        return row is not None
-
     def archived_subset(self, node_ids) -> set:
         """Return the subset of `node_ids` that are archived.
 
@@ -1694,18 +1612,6 @@ class NodeDAL:
     # below (read the edge, prefer/merge with the kv value) without touching
     # `resolve_live`'s walk.
     _SURVIVOR_META_KEY = '_sys_archived_survivor_id'
-
-    def _live_status(self, node_id: str) -> Optional[str]:
-        """Liveness of a single node: 'live', 'archived', or None if missing.
-
-        Single-id probe (used by tests and one-off callers). `resolve_live`
-        uses the batched `_live_status_bulk` on its hot path.
-        """
-        row = self.conn.execute(
-            'SELECT archived FROM nodes WHERE id = ?', (node_id,)).fetchone()
-        if row is None:
-            return None
-        return 'archived' if row[0] == 1 else 'live'
 
     def _live_status_bulk(self, node_ids) -> Dict[str, str]:
         """Batched `_live_status`: {id: 'live'|'archived'} for the ids that
@@ -2255,39 +2161,6 @@ class GraphDAL:
         """Count total edges."""
         row = self.conn.execute('SELECT COUNT(*) FROM edges').fetchone()
         return row[0] if row else 0
-
-    def get_edge(self, source_id: str, target_id: str) -> Optional[Dict[str, Any]]:
-        """Get edge between two nodes (checks both directions — single-direction storage).
-
-        Returns edge dict with edge_id, direction, and relations list.
-        """
-        row = self.conn.execute(
-            'SELECT edge_id, source_id, target_id, weight, co_access_count, last_strengthened '
-            'FROM edges WHERE (source_id = ? AND target_id = ?) '
-            'OR (source_id = ? AND target_id = ?)',
-            (source_id, target_id, target_id, source_id)
-        ).fetchone()
-        if not row:
-            return None
-
-        edge_id = row[0]
-        direction = 'outgoing' if row[1] == source_id else 'incoming'
-        relations = self.get_relations(edge_id)
-
-        return {
-            'edge_id': edge_id, 'weight': row[3],
-            'co_access_count': row[4], 'last_strengthened': row[5],
-            'direction': direction, 'relations': relations,
-        }
-
-    def edge_exists(self, source_id: str, target_id: str) -> bool:
-        """Check if edge exists in either direction."""
-        row = self.conn.execute(
-            'SELECT 1 FROM edges WHERE (source_id = ? AND target_id = ?) '
-            'OR (source_id = ? AND target_id = ?)',
-            (source_id, target_id, target_id, source_id)
-        ).fetchone()
-        return row is not None
 
     def get_edge_id(self, source_id: str, target_id: str) -> Optional[str]:
         """Get edge_id for a pair (checks both directions)."""
@@ -3224,9 +3097,10 @@ class GraphDAL:
                                   fresh row; PK forces row reuse, trace events
                                   capture the lifecycle)
 
-        Auto-strengthen behavior dropped (Stage 1B Option α). Use the
-        sibling `strengthen_relation()` method for Hebbian weight bumps —
-        encoder-explicit connect calls are now idempotent.
+        Auto-strengthen behavior dropped (Stage 1B Option α). Hebbian co-access
+        weight bumps are applied off the recall hot path by
+        recall_write_queue._apply_hebbian_pairs — encoder-explicit connect
+        calls are now idempotent.
 
         Field-preservation rule (active row branch): caller passes _UNSET
         (the default) for a field → existing value preserved. Caller passes
@@ -3390,54 +3264,6 @@ class GraphDAL:
                     pass
 
         return result
-
-    def strengthen_relation(self, source_id, target_id, relation):
-        """Hebbian strengthening — bump weight on existing active relation.
-
-        Used by callers that want to record co-access / repeated reinforcement
-        without changing description or encoding_source. Replaces the implicit
-        auto-strengthen behavior that used to live inside add_relation().
-
-        Behavior:
-          - Active row exists → bump weight by LEARNING_RATE * 0.5 (capped at MAX_WEIGHT)
-          - Archived row exists → no-op (won't resurrect via Hebbian)
-          - No row → no-op
-
-        Returns:
-            {'strengthened': bool, 'old_weight': float|None, 'new_weight': float|None}
-        """
-        from .brain_constants import LEARNING_RATE, MAX_WEIGHT
-
-        edge_id = self.get_edge_id(source_id, target_id)
-        if not edge_id:
-            return {'strengthened': False, 'old_weight': None, 'new_weight': None}
-
-        row = self.conn.execute(
-            'SELECT weight FROM edge_relations '
-            'WHERE edge_id = ? AND relation = ? AND archived = 0',
-            (edge_id, relation)
-        ).fetchone()
-        if not row:
-            return {'strengthened': False, 'old_weight': None, 'new_weight': None}
-
-        old_weight = row[0]
-        new_weight = min(MAX_WEIGHT, old_weight + LEARNING_RATE * 0.5)
-        if new_weight == old_weight:
-            return {'strengthened': False, 'old_weight': old_weight,
-                    'new_weight': old_weight}
-
-        ts = _now()
-        self.conn.execute(
-            'UPDATE edge_relations SET weight = ?, created_at = ? '
-            'WHERE edge_id = ? AND relation = ?',
-            (new_weight, ts, edge_id, relation))
-        self._update_aggregate_weight(edge_id)
-        self.conn.execute(
-            'UPDATE edges SET last_strengthened = ? WHERE edge_id = ?',
-            (ts, edge_id))
-        commit_unless_batched(self.conn)
-        return {'strengthened': True, 'old_weight': old_weight,
-                'new_weight': new_weight}
 
     def get_relations(self, edge_id, include_archived: bool = False):
         """Get active relations for an edge by edge_id.
@@ -3952,12 +3778,6 @@ class VectorDAL:
             'total_nodes': total_nodes,
             'by_type': {r[0]: r[1] for r in by_type},
         }
-
-    def count(self) -> int:
-        """Count total vectors."""
-        return self.conn.execute(
-            'SELECT COUNT(*) FROM node_enrichments WHERE embedding IS NOT NULL'
-        ).fetchone()[0]
 
 
 class EntityDatesDAL:

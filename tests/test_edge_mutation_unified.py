@@ -1,11 +1,12 @@
 """Unified edge mutation contract tests (Stage 1B).
 
 Mirrors tests/test_revise_unified.py for the edge side of the contract.
-Covers GraphDAL.add_relation upsert + strengthen_relation, the dispatch
-handlers' trace emission, and the wrapper layer (connect / connect_typed).
+Covers GraphDAL.add_relation upsert, the dispatch handlers' trace emission,
+and the wrapper layer (connect / connect_typed). (The Hebbian co-access bump
+lives in recall_write_queue._apply_hebbian_pairs — covered by test_bg_writer.)
 
   Class A — Connect upsert behavior
-  Class B — strengthen_relation (Hebbian)
+  Class B — (removed) strengthen_relation unit tests — see test_bg_writer
   Class C — Auto-strengthen dropped (regression guard)
   Class D — Edge trace events emitted via dispatch
   Class E — Field preservation through wrappers
@@ -13,7 +14,7 @@ handlers' trace emission, and the wrapper layer (connect / connect_typed).
 
 The unified contract:
   - add_relation is field-preserving upsert with sentinel pattern
-  - No auto-strengthen — explicit GraphDAL.strengthen_relation() for Hebbian
+  - No auto-strengthen — Hebbian bumps live in recall_write_queue
   - Archived row → revive with passed values + defaults (semantic fresh row)
   - Each mutation emits 1 (delta, edge_relation_revised) trace event
   - connect_typed wrapper passes None=preserve through to add_relation
@@ -264,72 +265,11 @@ class TestConnectUpsertBehavior(BrainTestBase):
 # Class B — strengthen_relation (Hebbian)
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestStrengthenRelation(BrainTestBase):
-    needs_embedder = False
-
-    def test_strengthen_active_row_bumps_weight(self):
-        """Active row → weight bumped by LEARNING_RATE * 0.5."""
-        from servers.dal import GraphDAL
-        from servers.brain_constants import LEARNING_RATE
-        gdal = GraphDAL(self.brain.conn)
-        a = _make_node(self.brain)
-        b = _make_node(self.brain)
-
-        gdal.add_relation(a, b, 'co_accessed', weight=0.1)
-        result = gdal.strengthen_relation(a, b, 'co_accessed')
-
-        self.assertTrue(result['strengthened'])
-        self.assertEqual(result['old_weight'], 0.1)
-        self.assertAlmostEqual(result['new_weight'],
-                               0.1 + LEARNING_RATE * 0.5, places=6)
-
-    def test_strengthen_at_max_weight_no_op(self):
-        """Weight already at MAX_WEIGHT → no-op (returns strengthened=False)."""
-        from servers.dal import GraphDAL
-        from servers.brain_constants import MAX_WEIGHT
-        gdal = GraphDAL(self.brain.conn)
-        a = _make_node(self.brain)
-        b = _make_node(self.brain)
-
-        gdal.add_relation(a, b, 'co_accessed', weight=MAX_WEIGHT)
-        result = gdal.strengthen_relation(a, b, 'co_accessed')
-
-        self.assertFalse(result['strengthened'])
-        self.assertEqual(result['old_weight'], MAX_WEIGHT)
-        self.assertEqual(result['new_weight'], MAX_WEIGHT)
-
-    def test_strengthen_archived_row_no_op(self):
-        """Archived row → strengthen no-ops (won't resurrect via Hebbian)."""
-        from servers.dal import GraphDAL
-        gdal = GraphDAL(self.brain.conn)
-        a = _make_node(self.brain)
-        b = _make_node(self.brain)
-
-        gdal.add_relation(a, b, 'co_accessed', weight=0.5)
-        gdal.remove_relation(a, b, 'co_accessed', archived_by='test')
-
-        result = gdal.strengthen_relation(a, b, 'co_accessed')
-        self.assertFalse(result['strengthened'])
-        self.assertIsNone(result['old_weight'])
-
-    def test_strengthen_missing_row_no_op(self):
-        """No row → strengthen no-ops (returns False, no error)."""
-        from servers.dal import GraphDAL
-        a = _make_node(self.brain)
-        b = _make_node(self.brain)
-
-        result = GraphDAL(self.brain.conn).strengthen_relation(
-            a, b, 'never_existed')
-        self.assertFalse(result['strengthened'])
-        self.assertIsNone(result['old_weight'])
-        self.assertIsNone(result['new_weight'])
-
-    def test_strengthen_missing_edge_no_op(self):
-        """Missing physical edge entirely → strengthen no-ops."""
-        from servers.dal import GraphDAL
-        result = GraphDAL(self.brain.conn).strengthen_relation(
-            'nonexistent_a', 'nonexistent_b', 'extends')
-        self.assertFalse(result['strengthened'])
+# TestStrengthenRelation removed in the DAL Phase-A cleanup: GraphDAL.
+# strengthen_relation was deleted (the Hebbian co-access bump is inlined in
+# recall_write_queue._apply_hebbian_pairs). The bump/cap/no-op behavior is
+# covered there by tests/test_bg_writer.py::TestHebbianDrainProducesEdges
+# (test_drain_strengthens_existing_co_accessed_edge).
 
 
 # ═══════════════════════════════════════════════════════════════════════

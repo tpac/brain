@@ -407,7 +407,7 @@ def _apply_hebbian_pairs(brain, conn,
     from .dal import GraphDAL, NodeDAL
 
     co_default_weight = EDGE_TYPES['co_accessed']['defaultWeight']
-    delta = LEARNING_RATE * 0.5  # matches strengthen_relation's bump magnitude
+    delta = LEARNING_RATE * 0.5  # canonical Hebbian co-access bump magnitude
     gdal = GraphDAL(conn)
 
     # Liveness gate — never create/strengthen co_accessed edges touching an

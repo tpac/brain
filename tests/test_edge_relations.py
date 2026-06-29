@@ -119,8 +119,9 @@ class T2_MultiRelation(BrainTestBase):
 
     def test_same_relation_idempotent(self):
         """Stage 1B (Option α): re-connecting the same relation is idempotent.
-        Repeated connect does NOT auto-strengthen weight — Hebbian bumps go
-        through GraphDAL.strengthen_relation(). A later description replaces the
+        Repeated connect does NOT auto-strengthen weight — Hebbian co-access
+        bumps are applied off the recall hot path by
+        recall_write_queue._apply_hebbian_pairs. A later description replaces the
         earlier one (field-preserving upsert), and the pair stays a single row.
         """
         a, b = self._create_pair()
@@ -215,7 +216,10 @@ class T4_EdgeQuery(BrainTestBase):
         rel_types = {r['relation'] for r in rels}
         self.assertEqual(rel_types, {'extends', 'corrects'})
 
-    def test_get_edge_includes_relations(self):
+    def test_edge_id_and_relations(self):
+        # get_edge was removed in the DAL Phase-A cleanup; the live path is
+        # get_edge_id (the pair → edge_id lookup) + get_relations (relations
+        # attached to that edge).
         a = self.brain.remember(type='decision', title='Node A', content='A',
                                 auto_connect=False)['id']
         b = self.brain.remember(type='decision', title='Node B', content='B',
@@ -225,15 +229,14 @@ class T4_EdgeQuery(BrainTestBase):
 
         from servers.dal import GraphDAL
         dal = GraphDAL(self.brain.conn)
-        edge = dal.get_edge(a, b)
-        self.assertIn('relations', edge)
-        self.assertIn('edge_id', edge)
-        self.assertIn('direction', edge)
-        self.assertEqual(len(edge['relations']), 1)
-        self.assertEqual(edge['relations'][0]['relation'], 'extends')
+        edge_id = dal.get_edge_id(a, b)
+        self.assertIsNotNone(edge_id)
+        rels = dal.get_relations(edge_id)
+        self.assertEqual(len(rels), 1)
+        self.assertEqual(rels[0]['relation'], 'extends')
 
-    def test_get_edge_either_direction(self):
-        """get_edge should find the edge regardless of query direction."""
+    def test_edge_id_either_direction(self):
+        """get_edge_id finds the same edge regardless of query direction."""
         a = self.brain.remember(type='decision', title='Node A', content='A',
                                 auto_connect=False)['id']
         b = self.brain.remember(type='decision', title='Node B', content='B',
@@ -242,18 +245,12 @@ class T4_EdgeQuery(BrainTestBase):
 
         from servers.dal import GraphDAL
         dal = GraphDAL(self.brain.conn)
-        # Query as (a, b) — outgoing
-        edge1 = dal.get_edge(a, b)
-        self.assertIsNotNone(edge1)
-        self.assertEqual(edge1['direction'], 'outgoing')
-
-        # Query as (b, a) — incoming
-        edge2 = dal.get_edge(b, a)
-        self.assertIsNotNone(edge2)
-        self.assertEqual(edge2['direction'], 'incoming')
-
-        # Same edge_id
-        self.assertEqual(edge1['edge_id'], edge2['edge_id'])
+        eid_ab = dal.get_edge_id(a, b)
+        eid_ba = dal.get_edge_id(b, a)
+        self.assertIsNotNone(eid_ab)
+        self.assertIsNotNone(eid_ba)
+        # Single-direction storage: either query order resolves to one edge.
+        self.assertEqual(eid_ab, eid_ba)
 
 
 class T6_HebbianPreservation(BrainTestBase):

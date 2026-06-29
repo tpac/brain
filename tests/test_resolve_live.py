@@ -120,7 +120,7 @@ def test_real_archived_node_redirects_to_live_survivor(env, ndal):
     assert out['live'] == [terminal]
     assert src not in out['live']
     # terminal really is live
-    assert ndal._live_status(terminal) == 'live'
+    assert ndal._live_status_bulk([terminal]).get(terminal) == 'live'
 
 
 def test_real_chain_a_b_c_to_live_terminal(env, ndal):
@@ -137,9 +137,10 @@ def test_real_chain_a_b_c_to_live_terminal(env, ndal):
     assert out['redirected'] == {a: c}      # input → FINAL terminal, not first hop
     assert out['orphans'] == []
     # b is genuinely an intermediate archived hop, not the terminal
-    assert ndal._live_status(a) == 'archived'
-    assert ndal._live_status(b) == 'archived'
-    assert ndal._live_status(c) == 'live'
+    statuses = ndal._live_status_bulk([a, b, c])
+    assert statuses.get(a) == 'archived'
+    assert statuses.get(b) == 'archived'
+    assert statuses.get(c) == 'live'
 
 
 def test_real_corpus_resolution_report(env, ndal, capsys):
@@ -161,8 +162,9 @@ def test_real_corpus_resolution_report(env, ndal, capsys):
     # Every source falls into exactly one bucket, disjointly.
     assert len(redirected) + len(orphans) + len(passthrough) == len(sources)
     # Passthrough sources really are live.
+    passthrough_status = ndal._live_status_bulk(passthrough)
     for s in passthrough:
-        assert ndal._live_status(s) == 'live'
+        assert passthrough_status.get(s) == 'live'
 
     with capsys.disabled():
         print(

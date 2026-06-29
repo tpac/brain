@@ -1,6 +1,6 @@
 """DAL methods for episodic references (v27 substrate; v29 trace_id hex).
 
-  - TraceDAL: store_embeddings / get_embeddings / find_unembedded
+  - TraceDAL: store_embeddings / find_unembedded
   - SourceRefDAL: add_source_refs / get_source_refs / get_nodes_referencing
 
 Pure-DAL tests: in-memory SQLite, no live Brain, no embedder.
@@ -60,11 +60,25 @@ class TraceEmbeddingsDALTest(unittest.TestCase):
     def tearDown(self):
         self.conn.close()
 
+    def _read_embeddings(self, ids):
+        """Direct-SQL readback of stored trace embeddings ({trace_id: vector}).
+
+        Replaces the removed TraceDAL.get_embeddings readback helper; these
+        tests verify store_embeddings (live), not the deleted getter.
+        """
+        if not ids:
+            return {}
+        ph = ','.join('?' * len(ids))
+        rows = self.conn.execute(
+            'SELECT trace_id, vector FROM trace_embeddings WHERE trace_id IN (%s)' % ph,
+            list(ids)).fetchall()
+        return {r[0]: r[1] for r in rows}
+
     def test_store_and_get_single(self):
         n = self.dal.store_embeddings(
             [('00000001', b'\x01\x02', 'tom said hi')], model='nomic')
         self.assertEqual(n, 1)
-        got = self.dal.get_embeddings(['00000001'])
+        got = self._read_embeddings(['00000001'])
         self.assertEqual(got, {'00000001': b'\x01\x02'})
 
     def test_store_skips_null_vectors(self):
@@ -75,13 +89,13 @@ class TraceEmbeddingsDALTest(unittest.TestCase):
             model='nomic')
         self.assertEqual(n, 2)
         self.assertEqual(
-            set(self.dal.get_embeddings(['00000001', '00000002', '00000003']).keys()),
+            set(self._read_embeddings(['00000001', '00000002', '00000003']).keys()),
             {'00000001', '00000003'})
 
     def test_store_replaces_on_conflict(self):
         self.dal.store_embeddings([('00000001', b'\xaa', 'first')], model='nomic')
         self.dal.store_embeddings([('00000001', b'\xbb', 'second')], model='nomic')
-        got = self.dal.get_embeddings(['00000001'])
+        got = self._read_embeddings(['00000001'])
         self.assertEqual(got['00000001'], b'\xbb')
 
     def test_text_truncation_500_chars(self):
@@ -91,10 +105,6 @@ class TraceEmbeddingsDALTest(unittest.TestCase):
             "SELECT text FROM trace_embeddings WHERE trace_id = '00000007'"
         ).fetchone()
         self.assertEqual(len(row[0]), 500)
-
-    def test_get_embeddings_empty(self):
-        self.assertEqual(self.dal.get_embeddings([]), {})
-        self.assertEqual(self.dal.get_embeddings(['nonexistent']), {})
 
     def test_find_unembedded_returns_newest_first(self):
         t1 = _seed_trace(self.conn, summary='first')

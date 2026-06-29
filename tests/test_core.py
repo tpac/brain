@@ -166,27 +166,16 @@ class TestDAL(unittest.TestCase):
         shutil.rmtree(self.tmp)
 
     def test_logs_write_read_errors(self):
-        self.logs.write_error("src", "err", "ctx")
+        # write_event is the single live debug_log writer (the typed
+        # write_error delegator was removed in the DAL Phase-A cleanup).
+        self.logs.write_event('error', 'src', {'error': 'err', 'context': 'ctx'})
         errors = self.logs.get_recent_errors(hours=1)
         self.assertEqual(len(errors), 1)
         self.assertEqual(errors[0]['source'], 'src')
 
-    def test_logs_error_count(self):
-        self.logs.write_error("a", "e1")
-        self.logs.write_error("b", "e2")
-        self.assertEqual(self.logs.get_error_count(hours=1), 2)
-
     def test_meta_get_set(self):
         self.meta.set("key", "value")
         self.assertEqual(self.meta.get("key"), "value")
-
-    def test_meta_json(self):
-        self.meta.set_json("j", {"a": [1, 2]})
-        self.assertEqual(self.meta.get_json("j"), {"a": [1, 2]})
-
-    def test_meta_increment(self):
-        self.assertEqual(self.meta.increment("ctr"), 1)
-        self.assertEqual(self.meta.increment("ctr"), 2)
 
     # test_meta_session_activity removed 2026-05-23: targeted
     # BrainMetaDAL.get_session_activity() which was deliberately deleted in
@@ -272,8 +261,8 @@ class TestSilentFailures(BrainTestBase):
         self.assertIsNotNone(node_id)
         # The store-time edge path is dead — no edge to the target.
         from servers.dal import GraphDAL
-        self.assertFalse(
-            GraphDAL(self.brain.conn).edge_exists(node_id, 'nonexistent_node_id_xyz'))
+        self.assertIsNone(
+            GraphDAL(self.brain.conn).get_edge_id(node_id, 'nonexistent_node_id_xyz'))
         # Loud: an error row was logged tagged with our source.
         loud = self.brain.logs_conn.execute(
             "SELECT COUNT(*) FROM debug_log WHERE event_type='error' "
@@ -411,8 +400,8 @@ class TestDALPatternEnforcement(unittest.TestCase):
         """Mixin files should use self._meta (BrainMetaDAL) not raw brain_meta SQL.
 
         brain_meta is a key-value config store. All access should go through
-        BrainMetaDAL.get(), .set(), .get_json(), .set_json(), .increment().
-        Direct INSERT/SELECT on brain_meta bypasses validation and timestamps.
+        BrainMetaDAL.get() / .set(). Direct INSERT/SELECT on brain_meta
+        bypasses validation and timestamps.
         """
         import re as re_mod
         violations = []
