@@ -1486,9 +1486,10 @@ class TraceDAL:
 class SessionStateDAL:
     """Access layer for session_state table in brain_logs.db.
 
-    First-class session-scoped data: fatigue, journal, context, counters.
-    Keyed by (session_id, key, node_id). Replaces scattered in-memory
-    dicts and brain_meta config keys.
+    Backs SessionContext's save/load/seed: each session collapses to a single
+    `_session_context` JSON blob row, keyed by (session_id, key, node_id).
+    get/set are the read/upsert pair; ensure_default seeds without clobbering
+    a racing thread's already-mutated row.
     """
 
     def __init__(self, conn: sqlite3.Connection):
@@ -1527,106 +1528,6 @@ class SessionStateDAL:
             'INSERT OR IGNORE INTO session_state '
             '(session_id, key, node_id, value, updated_at) VALUES (?, ?, ?, ?, ?)',
             (session_id, key, node_id, value, iso_now()))
-        commit_unless_batched(self.conn)
-
-    def recently_updated(self, key: str, cutoff_iso: str,
-                         exclude_session: str = '', limit: int = 5) -> list:
-        """Sessions whose `key` row updated since `cutoff_iso`, newest first.
-
-        Returns [{'session_id', 'updated_at'}]. The caller computes the cutoff
-        (wall-clock vs conversation-time is the caller's policy, not the DAL's).
-        """
-        rows = self.conn.execute(
-            "SELECT session_id, updated_at FROM session_state "
-            "WHERE key = ? AND updated_at > ? AND session_id != ? "
-            "ORDER BY updated_at DESC LIMIT ?",
-            (key, cutoff_iso, exclude_session or '', limit)).fetchall()
-        return [{'session_id': r[0], 'updated_at': r[1]} for r in rows]
-
-    def sessions_by_message_count(self, key: str, min_messages: int,
-                                  limit: int = 5) -> list:
-        """Session ids whose `key` row JSON has message_count >= min_messages,
-        newest first. Returns [session_id].
-        """
-        rows = self.conn.execute(
-            "SELECT session_id FROM session_state WHERE key = ? "
-            "AND CAST(COALESCE(json_extract(value, '$.message_count'), 0) AS INTEGER) >= ? "
-            "ORDER BY updated_at DESC LIMIT ?",
-            (key, min_messages, limit)).fetchall()
-        return [r[0] for r in rows]
-
-    def increment(self, session_id: str, key: str, node_id: str) -> int:
-        """Increment a counter value. Returns new count."""
-        from datetime import datetime, timezone
-        ts = iso_now()
-        self.conn.execute(
-            """INSERT INTO session_state (session_id, key, node_id, value, updated_at)
-               VALUES (?, ?, ?, '1', ?)
-               ON CONFLICT(session_id, key, node_id)
-               DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT),
-                            updated_at = excluded.updated_at""",
-            (session_id, key, node_id, ts))
-        commit_unless_batched(self.conn)
-        row = self.conn.execute(
-            "SELECT value FROM session_state WHERE session_id = ? AND key = ? AND node_id = ?",
-            (session_id, key, node_id)).fetchone()
-        return int(row[0]) if row else 1
-
-    def load_all(self, session_id: str, key: str) -> Dict[str, str]:
-        """Load all values for a key in a session. Returns {node_id: value}."""
-        rows = self.conn.execute(
-            "SELECT node_id, value FROM session_state WHERE session_id = ? AND key = ?",
-            (session_id, key)).fetchall()
-        return {r[0]: r[1] for r in rows}
-
-    def load_fatigue(self, session_id: str) -> Dict[str, int]:
-        """Load fatigue counts for a session. Returns {node_id: count}.
-
-        Supports both formats:
-        - New: single JSON blob row (node_id='', value=JSON)
-        - Legacy: per-node rows (node_id=X, value=count)
-        """
-        # Try new JSON blob format first
-        row = self.conn.execute(
-            "SELECT value FROM session_state "
-            "WHERE session_id = ? AND key = 'fatigue' AND node_id = ''",
-            (session_id,)).fetchone()
-        if row and row[0]:
-            try:
-                return {k: int(v) for k, v in json.loads(row[0]).items()}
-            except (json.JSONDecodeError, ValueError, AttributeError):
-                pass
-
-        # Fall back to legacy per-node rows
-        rows = self.conn.execute(
-            "SELECT node_id, CAST(value AS INTEGER) FROM session_state "
-            "WHERE session_id = ? AND key = 'fatigue' AND node_id != ''",
-            (session_id,)).fetchall()
-        return {r[0]: r[1] for r in rows}
-
-    def save_fatigue(self, session_id: str, fatigue: Dict[str, int]):
-        """Save fatigue dict as a single JSON blob. Replaces per-node rows."""
-        from datetime import datetime, timezone
-        ts = iso_now()
-        self.conn.execute(
-            """INSERT INTO session_state (session_id, key, node_id, value, updated_at)
-               VALUES (?, 'fatigue', '', ?, ?)
-               ON CONFLICT(session_id, key, node_id)
-               DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
-            (session_id, json.dumps(fatigue), ts))
-        # Clean up legacy per-node rows for this session
-        self.conn.execute(
-            "DELETE FROM session_state WHERE session_id = ? AND key = 'fatigue' AND node_id != ''",
-            (session_id,))
-        commit_unless_batched(self.conn)
-
-    def cleanup_old_sessions(self, keep_last_n: int = 5):
-        """Remove session_state for old sessions, keeping the N most recent."""
-        self.conn.execute(
-            """DELETE FROM session_state WHERE session_id NOT IN (
-                SELECT DISTINCT session_id FROM session_state
-                ORDER BY updated_at DESC LIMIT ?
-            )""", (keep_last_n,))
         commit_unless_batched(self.conn)
 
 
