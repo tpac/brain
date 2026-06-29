@@ -599,15 +599,15 @@ def _build_tools():
          "rich": {"type": "boolean", "description": "Default false → bounded, batch-size-aware view. true → complete view (all edges + heavy correction K/V) for every node. Use sparingly on large batches — it is the firehose.", "default": False}}}},
 
     {"name": "get_trace",
-     "description": "Point-lookup a single trace_event by id. Returns a bounded view by default — header (scale/event_type/ref_type/when) + body + a metadata gist (big values elided). Pass rich=true for the complete row incl. full metadata (an s2 trace can be ~140KB). Use to expand a node's source_refs, verify a quote's verbatim source, or look up a captured moment. For batch lookups use get_traces.",
+     "description": "Point-lookup a single trace_event by id. Returns the event rendered for reading — header + body + a metadata gist; rich=true for the full verbatim metadata. Common pull: expand a node's source_refs, or verify a quote's exact source (reach for rich=true if the source is a large field). For many ids use get_traces; to SEARCH by scale/type/time use query_traces.",
      "inputSchema": {"type": "object", "required": ["trace_id"], "properties": {
          "trace_id": {"type": "string", "description": "trace_event.id — 8-char hex string (v29). Legacy integer ids are accepted for back-compat (coerced to canonical hex via printf('%08x'))."},
-         "rich": {"type": "boolean", "description": "Default false → bounded (body + metadata gist). true → complete row incl. full metadata. Reach for it when you need the verbatim payload.", "default": False}}}},
+         "rich": {"type": "boolean", "description": "Default false → bounded (body + metadata gist). true → the full verbatim row.", "default": False}}}},
 
     {"name": "get_traces",
-     "description": "Batch trace_event point lookup. Pass up to 50 trace ids; returns bounded rows by default (body + metadata gist), rich=true for full rows. Missing ids silently skipped. Natural use: expanding node.source_refs at render or audit time, fetching a known set of cross-session episodes.",
+     "description": "Batch point-lookup, up to 50 ids — the natural way to expand a node's source_refs in one call. Bounded rows by default; rich=true for full metadata. Missing ids skipped.",
      "inputSchema": {"type": "object", "required": ["trace_ids"], "properties": {
-         "rich": {"type": "boolean", "description": "Default false → bounded rows. true → full metadata per row (heavy — an s2 row can be ~140KB).", "default": False},
+         "rich": {"type": "boolean", "description": "Default false → bounded rows. true → full metadata per row.", "default": False},
          "trace_ids": {"type": "array", "description": "Array of trace_event ids — each an 8-char hex string (v29). Legacy integer ids are accepted for back-compat.", "items": {"type": "string"}}}}},
 
     {"name": "recall_batch",
@@ -681,7 +681,7 @@ def _build_tools():
 
     # ── Traces & Interactions ──
     {"name": "query_traces",
-     "description": "Query the fractal trace system — O/K/Δ/outcome events at every scale (s0-s4). Use to inspect what happened: what was observed, what knowledge was selected, what changed, what the outcome was. Filter by scale, event_type, ref_type, session_id (single), session_ids (multi), or retrieve a full chain by chain_id. Use grouped=true with session_id to get chains with nested events. session_id and session_ids are authoritative — when either is set, the `hours` window is ignored so historical sessions don't silently empty. Pass one or the other, not both. Traces are the learning loop — higher scales read lower scales' traces.",
+     "description": "Search the fractal trace substrate — O (observed) / K (selected) / delta (changed) / outcome events at each scale. Pick the scale for the layer you want: s0 = raw conversation — for any s0 pull, incl. what you did with tools, use recall_episodes (the conversational lens; pass ref_type='tool_result' there); s1 = per-turn (ref_type recall = candidates pulled, surface_selected = the few that won, encoding_run = what the Scribe encoded, …); s2 = idle integration (consolidation_proposals, community_enriched, healer_proposals, …). ref_type is open-text — these are examples, not the full set. Common pull: what got encoded → scale='s1', ref_type='encoding_run'. Time & scope: `hours` bounds the window (default 24); session_id/session_ids are authoritative and ignore `hours` (full history for that stream — pass one, not both); chain_id pulls one full chain; grouped=true nests events by chain.",
      "inputSchema": {"type": "object", "properties": {
          "scale": {"type": "string", "description": "Filter by scale: 's0' (exchange), 's1' (turn), 's2' (session), 's3' (sleep), 's4' (growth). Empty = all."},
          "event_type": {"type": "string", "description": "Filter by type: 'O' (observation), 'K' (knowledge), 'delta' (changes), 'outcome'. Empty = all."},
@@ -692,7 +692,7 @@ def _build_tools():
          "grouped": {"type": "boolean", "description": "If true + session_id, return chains grouped with nested events instead of flat list.", "default": False},
          "hours": {"type": "integer", "description": "Look back window in hours (default 24). Ignored when session_id or session_ids is set.", "default": 24},
          "limit": {"type": "integer", "description": "Max results (default 100)", "default": 100},
-         "rich": {"type": "boolean", "description": "Default false → bounded rows (body + metadata gist; summary-only past ~20 rows). true → full metadata per row. Traces store full prompts/contexts — leave false unless you need a specific row's verbatim payload.", "default": False}}}},
+         "rich": {"type": "boolean", "description": "Default false → bounded rows (metadata gist; summary-only past ~20 rows). true → full metadata per row — when you need a row's verbatim payload.", "default": False}}}},
 
     {"name": "recall_episodes",
      "description": "Episodic recall over the trace substrate — the brain's universal record of the whole fractal (S0 exchanges, S1 runs, S2 runs). Search/filter trace_events and get the actual episodes back, verbatim, with attribution (which stream, when, who spoke). The decode-over-traces sibling of `recall` (which searches distilled nodes): use this for 'what did I — or another stream — actually SAY/DO about X, lately', where the answer is raw recent activity, not an encoded memory. Two needles, composable: `query` (semantic — ranks by meaning against existing trace embeddings) and/or `contains` (exact substring over summary+metadata). Defaults to conversation (messages); pass ref_type='tool_result' to recall what you DID with files/commands, or ref_type=['user_message','assistant_message','tool_result'] for the interleaved said+did timeline. NOTE: semantic `query` currently covers s0 conversation; other scales fall back to time order. Returns full episode records (incl. metadata.content), newest-first, or relevance-ranked when `query` is set.",
