@@ -946,3 +946,115 @@ def validate_trace_event(scale, event_type, ref_type=""):
                 ref_type, scale, event_type, REF_TYPES[key])
 
     return True, ""
+
+
+# ── TRACE RENDERING ──
+# Mirrors contract.py's node-render layer. brain.query_traces / get_trace /
+# get_traces return full rows (the data layer — S2 units read them
+# programmatically); the MCP layer renders bounded text via render_trace +
+# these configs, never a raw json.dumps. recall_episodes shares this renderer.
+#
+# The heavy field is `metadata` — s2 K/delta rows reach ~140KB. Bounding it is
+# the lever here, exactly as the edge tail was for get_nodes. `rich=true` opts
+# into the full row.
+
+TRACE_BODY_CHARS = 280          # body cap (was brain_constants.EPISODE_RENDER_BODY_CHARS)
+TRACE_BULK_BODY_CHARS = 200     # tighter body cap for bulk pulls (>TRACE_BULK_MAX rows)
+TRACE_GIST_VALUE_CHARS = 80     # per-key value cap in gist metadata
+TRACE_GIST_MAX_KEYS = 8         # keys shown in gist before "+N more"
+TRACE_BULK_MAX = 20             # above this many rows, default drops to summary-only
+
+# Default for a focused pull (get_trace, small query): body + metadata gist
+# (key=value, big values elided to "<N chars>" so a 140KB blob can't leak).
+TRACE_COMPACT_FORMAT = {'body_limit': TRACE_BODY_CHARS, 'metadata_mode': 'gist',
+                        'show_scale': True}
+# Many rows (large query_traces/get_traces): summary only, no metadata.
+TRACE_BULK_FORMAT = {'body_limit': TRACE_BULK_BODY_CHARS, 'metadata_mode': 'none', 'show_scale': True}
+# rich=true opt-in: the complete row — full body + full metadata.
+TRACE_FULL_FORMAT = {'body_limit': None, 'metadata_mode': 'full', 'show_scale': True}
+# recall_episodes (conversational): matches its historic render — body only, no
+# scale/event_type chrome (it's always s0 conversation).
+TRACE_EPISODE_FORMAT = {'body_limit': TRACE_BODY_CHARS, 'metadata_mode': 'none',
+                        'show_scale': False}
+
+
+def _render_trace_metadata(meta, mode):
+    """Render a trace row's metadata dict. 'gist' = key=value with big values
+    elided to "<N chars>" (kills the blob, keeps the shape); 'full' = complete.
+    'content' is rendered as the body, never repeated here."""
+    items = [(k, v) for k, v in meta.items()
+             if k != 'content' and v not in (None, '', [], {})]
+    if not items:
+        return []
+    if mode == 'full':
+        import json as _json
+        out = ['  metadata:']
+        for k, v in items:
+            sval = v if isinstance(v, str) else _json.dumps(v, default=str)
+            out.append('    %s: %s' % (k, sval))
+        return out
+    # gist
+    bits = []
+    for k, v in items[:TRACE_GIST_MAX_KEYS]:
+        sval = v if isinstance(v, str) else str(v)
+        bits.append('%s=<%d chars>' % (k, len(sval)) if len(sval) > TRACE_GIST_VALUE_CHARS
+                    else '%s=%s' % (k, sval))
+    line = '  ' + '  '.join(bits)
+    if len(items) > TRACE_GIST_MAX_KEYS:
+        line += '  +%d more' % (len(items) - TRACE_GIST_MAX_KEYS)
+    return [line]
+
+
+def render_trace(row, config=None):
+    """Render one trace_event row to text — the single trace renderer.
+
+    The MCP trace tools (query_traces / get_traces / get_trace) and
+    recall_episodes all route through here, mirroring how render_rich_node is
+    the one node renderer. Body source: metadata['content'] (conversational
+    episodes) falls back to summary (structural traces). `metadata` is bounded
+    per config.metadata_mode.
+    """
+    from servers.contract import _truncate
+    cfg = {**TRACE_COMPACT_FORMAT, **(config or {})}
+    meta = row.get('metadata')
+    if not isinstance(meta, dict):
+        meta = {}
+
+    sid = (row.get('session_id') or '')[:8]
+    score = row.get('_score')
+    score_str = ' %.2f' % score if isinstance(score, (int, float)) else ''
+    ref_type = row.get('ref_type') or ''
+    if ref_type == 'assistant_message':
+        label = meta.get('agent_identity') or 'Anchor'
+    elif ref_type == 'user_message':
+        label = meta.get('human_identity') or 'Operator'
+    elif ref_type == 'tool_result':
+        label = meta.get('tool') or 'tool_result'
+    else:
+        label = ref_type or '?'
+    when = (row.get('created_at') or '')[:16].replace('T', ' ')
+
+    # Middle segments: [scale event_type] then ref_type (unless it IS the label)
+    mids = []
+    if cfg.get('show_scale'):
+        mids.append('%s %s' % (row.get('scale') or '?', row.get('event_type') or '?'))
+    if ref_type and ref_type != label:
+        mids.append(ref_type)
+    mid_str = (' · ' + ' '.join(mids)) if mids else ''
+    # The leading [sid score] bracket is omitted entirely when a trace has
+    # neither (session-less S2 system traces, grouped events) — no empty "[]".
+    inner = (sid + score_str).strip()
+    bracket = '[%s] ' % inner if inner else ''
+    tid = row.get('id') or ''
+    tid_str = ' (trace:%s)' % tid if tid else ''
+    header = '%s%s · %s%s%s' % (bracket, label, when, mid_str, tid_str)
+
+    lines = [header]
+    body = (meta.get('content') or row.get('summary') or '').strip()
+    if body:
+        blim = cfg.get('body_limit')
+        body = _truncate(body, blim) if blim else body
+        lines.append('  ' + body.replace('\n', '\n  '))
+    if cfg.get('metadata_mode', 'gist') != 'none':
+        lines.extend(_render_trace_metadata(meta, cfg['metadata_mode']))
+    return '\n'.join(lines)

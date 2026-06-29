@@ -599,13 +599,15 @@ def _build_tools():
          "rich": {"type": "boolean", "description": "Default false → bounded, batch-size-aware view. true → complete view (all edges + heavy correction K/V) for every node. Use sparingly on large batches — it is the firehose.", "default": False}}}},
 
     {"name": "get_trace",
-     "description": "Point-lookup a single trace_event by id. Returns the full row (chain_id, scale, event_type, ref_type, summary, metadata, session_id, created_at). Use this to expand a node's source_refs, verify a quote's verbatim source, or look up a specific captured moment when you have its id. For batch lookups use get_traces.",
+     "description": "Point-lookup a single trace_event by id. Returns a bounded view by default — header (scale/event_type/ref_type/when) + body + a metadata gist (big values elided). Pass rich=true for the complete row incl. full metadata (an s2 trace can be ~140KB). Use to expand a node's source_refs, verify a quote's verbatim source, or look up a captured moment. For batch lookups use get_traces.",
      "inputSchema": {"type": "object", "required": ["trace_id"], "properties": {
-         "trace_id": {"type": "string", "description": "trace_event.id — 8-char hex string (v29). Legacy integer ids are accepted for back-compat (coerced to canonical hex via printf('%08x'))."}}}},
+         "trace_id": {"type": "string", "description": "trace_event.id — 8-char hex string (v29). Legacy integer ids are accepted for back-compat (coerced to canonical hex via printf('%08x'))."},
+         "rich": {"type": "boolean", "description": "Default false → bounded (body + metadata gist). true → complete row incl. full metadata. Reach for it when you need the verbatim payload.", "default": False}}}},
 
     {"name": "get_traces",
-     "description": "Batch trace_event point lookup. Pass up to 50 trace ids; returns full rows in ascending-id order, missing ids silently skipped. Natural use: expanding node.source_refs at render or audit time, fetching a known set of cross-session episodes.",
+     "description": "Batch trace_event point lookup. Pass up to 50 trace ids; returns bounded rows by default (body + metadata gist), rich=true for full rows. Missing ids silently skipped. Natural use: expanding node.source_refs at render or audit time, fetching a known set of cross-session episodes.",
      "inputSchema": {"type": "object", "required": ["trace_ids"], "properties": {
+         "rich": {"type": "boolean", "description": "Default false → bounded rows. true → full metadata per row (heavy — an s2 row can be ~140KB).", "default": False},
          "trace_ids": {"type": "array", "description": "Array of trace_event ids — each an 8-char hex string (v29). Legacy integer ids are accepted for back-compat.", "items": {"type": "string"}}}}},
 
     {"name": "recall_batch",
@@ -689,7 +691,8 @@ def _build_tools():
          "ref_type": {"type": "string", "description": "Filter by ref_type: 'correction', 'recall_hit', 'encoding_run', 'tool_result', etc."},
          "grouped": {"type": "boolean", "description": "If true + session_id, return chains grouped with nested events instead of flat list.", "default": False},
          "hours": {"type": "integer", "description": "Look back window in hours (default 24). Ignored when session_id or session_ids is set.", "default": 24},
-         "limit": {"type": "integer", "description": "Max results (default 100)", "default": 100}}}},
+         "limit": {"type": "integer", "description": "Max results (default 100)", "default": 100},
+         "rich": {"type": "boolean", "description": "Default false → bounded rows (body + metadata gist; summary-only past ~20 rows). true → full metadata per row. Traces store full prompts/contexts — leave false unless you need a specific row's verbatim payload.", "default": False}}}},
 
     {"name": "recall_episodes",
      "description": "Episodic recall over the trace substrate — the brain's universal record of the whole fractal (S0 exchanges, S1 runs, S2 runs). Search/filter trace_events and get the actual episodes back, verbatim, with attribution (which stream, when, who spoke). The decode-over-traces sibling of `recall` (which searches distilled nodes): use this for 'what did I — or another stream — actually SAY/DO about X, lately', where the answer is raw recent activity, not an encoded memory. Two needles, composable: `query` (semantic — ranks by meaning against existing trace embeddings) and/or `contains` (exact substring over summary+metadata). Defaults to conversation (messages); pass ref_type='tool_result' to recall what you DID with files/commands, or ref_type=['user_message','assistant_message','tool_result'] for the interleaved said+did timeline. NOTE: semantic `query` currently covers s0 conversation; other scales fall back to time order. Returns full episode records (incl. metadata.content), newest-first, or relevance-ranked when `query` is set.",
@@ -880,6 +883,24 @@ def _render_nodes(rich_nodes, config):
     return "\n".join(lines)
 
 
+def _select_trace_config(n, rich):
+    """Pick the render_trace config for an n-row trace result — the trace
+    analog of _select_node_config. `rich` opts into the full row; otherwise
+    a focused pull renders compact (body + metadata gist) and a bulk pull
+    (> TRACE_BULK_MAX rows) drops to summary-only to protect context."""
+    from servers.trace_contract import (
+        TRACE_FULL_FORMAT, TRACE_COMPACT_FORMAT, TRACE_BULK_FORMAT, TRACE_BULK_MAX)
+    if rich:
+        return TRACE_FULL_FORMAT
+    return TRACE_BULK_FORMAT if n > TRACE_BULK_MAX else TRACE_COMPACT_FORMAT
+
+
+def _render_traces(rows, config):
+    """Render a list of trace rows to text via the single trace renderer."""
+    from servers.trace_contract import render_trace
+    return "\n\n".join(render_trace(r, config) for r in rows if isinstance(r, dict))
+
+
 def _format_result(tool_name, result, get_nodes_config=None, rich=False):
     """Format tool result for MCP output.
 
@@ -942,6 +963,65 @@ def _format_result(tool_name, result, get_nodes_config=None, rich=False):
             lines.append(render_skinny_node(n))
         return "\n".join(lines)
 
+    # Trace tools — render via the single trace renderer (trace_contract),
+    # never raw json.dumps. brain.query_traces/get_trace/get_traces return full
+    # rows at the data layer; bounded here, rich=true for the full row.
+    if tool_name in ("get_trace", "get_traces", "query_traces") and result:
+        if tool_name == "get_trace":
+            rows = [result] if isinstance(result, dict) else []
+        elif tool_name == "get_traces":
+            rows = result if isinstance(result, list) else []
+        elif isinstance(result, dict) and isinstance(result.get("chains"), list):
+            # grouped — a chain header + its events, per chain. get_chains'
+            # events carry their own id but scale/session_id are chain-level,
+            # so propagate those onto each event before rendering (render_trace
+            # expects a full row).
+            chains = result["chains"]
+            cfg = _select_trace_config(
+                sum(len(c.get("events", [])) for c in chains), rich)
+            blocks = []
+            for c in chains:
+                # Render from copies with chain-level scale/session_id filled in
+                # (get_chains events carry neither) — never mutate the caller's
+                # dicts. An event's own value, if present, wins (after **ev).
+                merged = [{"scale": c.get("scale"), "session_id": c.get("session_id"), **ev}
+                          for ev in c.get("events", []) if isinstance(ev, dict)]
+                blocks.append('═══ chain %s · %s · %s · %d event%s ═══\n%s' % (
+                    c.get("chain_id") or "?", c.get("scale") or "?",
+                    (c.get("session_id") or "?")[:8],
+                    len(merged), "" if len(merged) == 1 else "s",
+                    _render_traces(merged, cfg)))
+            return "\n\n".join(blocks) if blocks else "No chains found."
+        else:
+            rows = (result.get("chain") or result.get("events") or []) \
+                if isinstance(result, dict) else []
+        rows = [r for r in rows if isinstance(r, dict)]
+        if rows:
+            return _render_traces(rows, _select_trace_config(len(rows), rich))
+        # else fall through → json.dumps shows the small/empty shape
+
+    if tool_name == "recall_batch" and isinstance(result, list):
+        # Per-query results through the SAME recall formatter single recall
+        # uses — not a raw dump.
+        from servers.brain_voice import BrainVoice
+        out = []
+        for entry in result:
+            if not isinstance(entry, dict):
+                continue
+            out.append('▸ "%s"' % entry.get("query", "?"))
+            if entry.get("error"):
+                out.append("  error: %s" % entry["error"])
+            else:
+                res = entry.get("results", [])
+                if res:
+                    lines = []
+                    BrainVoice.format_recall_results(res, lines)
+                    out.extend(("  " + ln) if ln else "" for ln in lines)
+                else:
+                    out.append("  No results found.")
+            out.append("")
+        return "\n".join(out)
+
     if tool_name == "recall" and isinstance(result, dict):
         from servers.brain_voice import BrainVoice
         results = result.get("results", [])
@@ -996,7 +1076,9 @@ def _format_result(tool_name, result, get_nodes_config=None, rich=False):
         return "\n".join(lines)
 
     if tool_name == "recall_episodes" and isinstance(result, dict):
-        from servers.brain_constants import EPISODE_RENDER_BODY_CHARS
+        # Shares the single trace renderer (TRACE_EPISODE_FORMAT keeps the
+        # conversational framing: body only, no scale/event_type chrome).
+        from servers.trace_contract import render_trace, TRACE_EPISODE_FORMAT
         eps = result.get("episodes", [])
         if not eps:
             return "No episodes found."
@@ -1004,21 +1086,7 @@ def _format_result(tool_name, result, get_nodes_config=None, rich=False):
             len(eps), "" if len(eps) == 1 else "s",
             result.get("ranked_by", "time")), ""]
         for e in eps:
-            meta = e.get("metadata") or {}
-            rt = e.get("ref_type", "")
-            if rt == "assistant_message":
-                who = meta.get("agent_identity") or "Anchor"
-            elif rt == "user_message":
-                who = meta.get("human_identity") or "Operator"
-            else:                       # tool_result etc. → surface the tool
-                who = meta.get("tool") or rt or "?"
-            score = " %.2f" % e["_score"] if e.get("_score") is not None else ""
-            out.append("[%s%s] %s · %s · %s (trace:%s)" % (
-                (e.get("session_id") or "")[:8], score, who,
-                (e.get("created_at") or "")[:16].replace("T", " "),
-                rt or "?", e.get("id", "")))
-            body = (meta.get("content") or e.get("summary") or "").strip()
-            out.append("  " + body[:EPISODE_RENDER_BODY_CHARS].replace("\n", "\n  "))
+            out.append(render_trace(e, TRACE_EPISODE_FORMAT))
             out.append("")
         return "\n".join(out)
 

@@ -958,25 +958,27 @@ class TraceDAL:
         where = ' AND '.join(conditions)
 
         rows = self.conn.execute(
-            'SELECT chain_id, scale, event_type, ref_type, ref_id, summary, metadata, created_at, session_id '
+            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, created_at, session_id '
             'FROM trace_events WHERE %s ORDER BY created_at DESC' % where,
             params).fetchall()
 
         # Group by chain_id, preserve order of first appearance.
         # A chain belongs to one session; we record the session_id from
-        # the first event seen in each chain.
+        # the first event seen in each chain. Per-event `id` is included so a
+        # grouped view stays drillable (get_trace by id); scale/session_id are
+        # chain-level (the render layer propagates them onto events).
         chains = {}
         chain_order = []
         for r in rows:
-            cid = r[0]
+            cid = r[1]
             if cid not in chains:
-                chains[cid] = {'chain_id': cid, 'scale': r[1],
-                               'session_id': r[8] or '', 'events': []}
+                chains[cid] = {'chain_id': cid, 'scale': r[2],
+                               'session_id': r[9] or '', 'events': []}
                 chain_order.append(cid)
             chains[cid]['events'].append({
-                'event_type': r[2], 'ref_type': r[3] or '', 'ref_id': r[4] or '',
-                'summary': r[5] or '', 'metadata': self._decode_metadata(r[6]),
-                'created_at': r[7]})
+                'id': r[0], 'event_type': r[3], 'ref_type': r[4] or '', 'ref_id': r[5] or '',
+                'summary': r[6] or '', 'metadata': self._decode_metadata(r[7]),
+                'created_at': r[8]})
 
         # Reverse events within each chain to chronological order
         for cid in chain_order:
