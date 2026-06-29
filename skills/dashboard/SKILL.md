@@ -9,38 +9,34 @@ The dashboard is the brain's **read-only observer UI** — graph, traces, live
 decode/encode, streams, logs — served on a fixed local port (47303 by default,
 `$DASHBOARD_PORT` to override). It is a **singleton**: one process, shared by every
 session (like the daemon). You never launch one per chat — you ensure the single
-one is up, then open it. Two processes fighting one fixed port is exactly the leak
-this design exists to prevent, so the ping-first check below is mandatory.
+one is up, then open it. The first `/dashboard` **installs** the singleton; from then on launchd keeps it
+alive and `/dashboard` just opens it.
 
 When invoked:
 
-1. **Resolve the port** — use `$DASHBOARD_PORT` if set; else read `DASHBOARD_PORT` from `~/.config/brain/env` (the single user-editable place); else default `47303`. This is the same value every launch path resolves, so you ping the port the dashboard actually bound.
-
-2. **Is it already up? (ping first — never skip this)**
+1. **Ensure the dashboard is running** — run the ensure script (idempotent; it
+   handles port resolution, first-run install, restart, and waiting):
    ```bash
-   curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$PORT/"
+   "$CLAUDE_PLUGIN_ROOT/hooks/scripts/ensure-dashboard.sh"   # installed plugin
+   # or, from the brain repo root:  hooks/scripts/ensure-dashboard.sh
    ```
-   `200` → it's running; go straight to step 4.
+   - already up → no-op;
+   - down + first run (macOS) → **installs the launchd singleton** (materializes
+     the plist for this machine + loads it); launchd's RunAtLoad + KeepAlive keep
+     it up across reboots/crashes thereafter;
+   - down + already installed → kickstarts it;
+   - non-macOS → detached fallback (no boot persistence yet).
 
-3. **Only if it's NOT up, start it** (detached, so it outlives this command):
-   - Resolve the launcher and assign it: `LAUNCHER="$CLAUDE_PLUGIN_ROOT/bin/brain-dashboard"`
-     in an installed plugin, or `LAUNCHER="bin/brain-dashboard"` from the brain repo
-     root — set `$LAUNCHER` to whichever exists.
-   - Start it detached: `nohup "$LAUNCHER" >/dev/null 2>&1 &` — `nohup` is portable
-     (macOS + Linux); do NOT lead with `setsid` (it's Linux-only, absent on macOS).
-   - Poll the curl check from step 2 for up to ~10s until it returns `200`.
-   - On a machine with the `com.brain.dashboard` launchd service the dashboard is
-     already up, so this branch won't run — that's expected.
+   It exits 0 once the dashboard answers (waits up to ~15s; if it blocks the tool,
+   run it in the background and poll). On non-zero exit, surface
+   `$BRAIN_DB_DIR/dashboard.log` rather than failing silently.
 
-4. **Open it in the operator's browser:**
-   - macOS: `open "http://127.0.0.1:$PORT/"`
-   - Linux: `xdg-open "http://127.0.0.1:$PORT/"`
-   - **Always also print the URL** as a clickable link — if the open command is
-     unavailable (headless / remote host), the link is the operator's way in.
+2. **Open it in the operator's browser** (port 47303 by default, or the port the
+   script reported):
+   - macOS: `open "http://127.0.0.1:47303/"`
+   - Linux: `xdg-open "http://127.0.0.1:47303/"`
+   - **Always also print the URL** as a clickable link — if `open`/`xdg-open` is
+     unavailable (headless / remote), the link is the operator's way in.
 
-5. **Report** — confirm it's open at `http://localhost:$PORT`, and say whether it
-   was already running or you started it.
-
-If the dashboard can't be reached and won't start, surface the daemon/port state
-(`lsof -iTCP:$PORT`) rather than failing silently — a dead dashboard usually means
-the daemon or the launcher couldn't bind, not that the URL is wrong.
+3. **Report** — confirm it's open at `http://localhost:47303`, and whether it was
+   already up, **just installed** (first run), or restarted.
