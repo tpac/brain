@@ -1584,7 +1584,7 @@ This is closer to a **structured prediction / combinatorial selection problem** 
 
 The current brain has several spots where multiple vectors get collapsed into one — losing information that aggregation could preserve:
 
-- **Field cohort** ([`pipeline_contract.py:120-160`](servers/pipeline_contract.py:120)) — per-field vectors (content, situation, reasoning, user_quote, anchor_quote) exist but are at **weight=0** in recall. Used only by the surface activation kernel. **Could be promoted** to participate in scoring via max-sim across per-field vectors — each field becomes its own pathway.
+- **Field cohort** ([`pipeline_contract.py:120-160`](servers/pipeline_contract.py:120)) — per-field vectors (content, reasoning, user_quote, anchor_quote; situation is served by the dedicated `_situation` vector via fallback, not a field cohort) exist but are at **weight=0** in recall. Used only by the surface activation kernel. **Could be promoted** to participate in scoring via max-sim across per-field vectors — each field becomes its own pathway.
 - **`edge_context`** ([`pipeline_contract.py:98-104`](servers/pipeline_contract.py:98)) — *all* of a node's edge descriptions concatenated into one vector at weight 0.55. A node with many edges produces a muddy vector. **Could be split** per-edge with aggregation (max or top-K) instead.
 - **Community nodes with many member nodes** — the member nodes themselves aren't directly recall-anchored to the community node. A community node's source_summary could max-sim across its members' anchoring traces (a level of indirection past v1's scope).
 

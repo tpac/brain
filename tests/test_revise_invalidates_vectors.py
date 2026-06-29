@@ -30,13 +30,13 @@ class TestVectorsAffectedBy(unittest.TestCase):
         self.assertIn('_primary', result)
         self.assertIn('content', result)
 
-    def test_situation_invalidates_three_vectors(self):
-        # situation feeds: legacy `_situation` (kv-derived), legacy `high_meta`
-        # blend, and field-cohort `situation`
+    def test_situation_invalidates_two_vectors(self):
+        # situation feeds the dedicated `_situation` vector (kv-derived) and the
+        # `high_meta` blend. There is NO field-cohort `situation` vector —
+        # situation is served by `_situation` via FIELD_VECTOR_FALLBACK (one
+        # vector, two consumers), so only these two go stale on a situation edit.
         result = vectors_affected_by('situation')
-        self.assertIn('_situation', result)
-        self.assertIn('high_meta', result)
-        self.assertIn('situation', result)
+        self.assertEqual(result, {'_situation', 'high_meta'})
 
     def test_user_raw_quote_invalidates_high_meta_and_field(self):
         result = vectors_affected_by('user_raw_quote')
@@ -95,19 +95,20 @@ class TestReviseInvalidatesVectors(BrainTestBase):
             type='fact', title='Test situation invalidation',
             content='Initial content.', situation='When this old situation applies')
         nid = node['id']
-        # Seed all situation-affected vectors as if backfill had populated them
-        self._seed_vectors(nid, ['_situation', 'high_meta', 'situation', 'title', '_primary'])
+        # Seed the situation-affected vectors as if backfill had populated them.
+        # There is no field-cohort `situation` vector — situation is served by
+        # `_situation` via FIELD_VECTOR_FALLBACK — so only `_situation` and the
+        # `high_meta` blend go stale on a situation edit.
+        self._seed_vectors(nid, ['_situation', 'high_meta', 'title', '_primary'])
         before = self._vector_types_for_node(nid)
         self.assertIn('_situation', before)
         self.assertIn('high_meta', before)
-        self.assertIn('situation', before)
 
         self.brain.revise(node_id=nid, situation='Updated situation text', reason='test')
 
         after = self._vector_types_for_node(nid)
         self.assertNotIn('_situation', after, 'situation revise must drop _situation')
         self.assertNotIn('high_meta', after, 'situation revise must drop high_meta blend')
-        self.assertNotIn('situation', after, 'situation revise must drop field-cohort situation')
         # Untouched vectors remain
         self.assertIn('title', after, 'title vector must NOT be invalidated by situation revise')
         self.assertIn('_primary', after, '_primary must NOT be invalidated by situation revise')
@@ -146,14 +147,14 @@ class TestReviseInvalidatesVectors(BrainTestBase):
             type='quote', title='Test', content='c',
             user_raw_quote='old quote')
         nid = node['id']
-        self._seed_vectors(nid, ['high_meta', 'user_raw_quote', 'situation', '_primary'])
+        self._seed_vectors(nid, ['high_meta', 'user_raw_quote', '_situation', '_primary'])
 
         self.brain.revise(node_id=nid, user_raw_quote='new quote', reason='test')
 
         after = self._vector_types_for_node(nid)
         self.assertNotIn('high_meta', after)
         self.assertNotIn('user_raw_quote', after)
-        self.assertIn('situation', after, 'field-cohort situation unaffected by quote change')
+        self.assertIn('_situation', after, 'dedicated _situation vector unaffected by quote change')
         self.assertIn('_primary', after)
 
     def test_revise_unknown_field_invalidates_nothing(self):
