@@ -1486,19 +1486,18 @@ class NodeDAL:
         This is the bare DB row — no metadata, no corrections, no connections.
         For the full assembled node, use brain.get_node().
 
-        Uses PRAGMA table_info to get column names dynamically,
-        then SELECT * to get all values. New columns automatically included.
-        Boolean fields (locked, archived, critical) coerced to Python bool.
+        Column names come from the query cursor's .description (SELECT *), so
+        new columns are automatically included. Boolean fields (locked,
+        archived, critical) coerced to Python bool.
         """
-        row = self.conn.execute(
-            'SELECT * FROM nodes WHERE id = ?', (node_id,)
-        ).fetchone()
+        cur = self.conn.execute(
+            'SELECT * FROM nodes WHERE id = ?', (node_id,))
+        row = cur.fetchone()
         if not row:
             return None
 
-        # Get column names from cursor description
-        cols = [desc[0] for desc in self.conn.execute(
-            'SELECT * FROM nodes LIMIT 0').description]
+        # Column names from the live query cursor — no throwaway LIMIT 0 probe.
+        cols = [desc[0] for desc in cur.description]
         d = dict(zip(cols, row))
 
         # Coerce booleans (SQLite stores as 0/1 or NULL)
@@ -1520,11 +1519,12 @@ class NodeDAL:
         if not node_ids:
             return {}
         ph = ','.join('?' * len(node_ids))
-        cols = [desc[0] for desc in self.conn.execute(
-            'SELECT * FROM nodes LIMIT 0').description]
-        rows = self.conn.execute(
+        cur = self.conn.execute(
             'SELECT * FROM nodes WHERE id IN (%s)' % ph,
-            list(node_ids)).fetchall()
+            list(node_ids))
+        # Column names from the live query cursor — no throwaway LIMIT 0 probe.
+        cols = [desc[0] for desc in cur.description]
+        rows = cur.fetchall()
         out: Dict[str, Dict[str, Any]] = {}
         for row in rows:
             d = dict(zip(cols, row))

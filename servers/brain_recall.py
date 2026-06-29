@@ -1041,11 +1041,14 @@ class BrainRecallMixin:
                 tfidf_dal = self._tfidf
                 tfidf_node_ids = tfidf_dal.get_nodes_matching_terms(unique_terms)
                 _node_dal = self._nodes
-                for nid in tfidf_node_ids[:50]:
-                    if nid not in all_seeds:
-                        node = _node_dal.get_naked_node(nid)
-                        if node and not node.get('archived'):
-                            all_seeds[nid] = node
+                # Batch-fetch the not-yet-seen seed candidates in one query
+                # instead of N get_naked_node calls (C1 / H2).
+                _cand_ids = [nid for nid in tfidf_node_ids[:50] if nid not in all_seeds]
+                _bulk = _node_dal.get_bulk(_cand_ids)
+                for nid in _cand_ids:
+                    node = _bulk.get(nid)
+                    if node and not node.get('archived'):
+                        all_seeds[nid] = node
             except Exception as _e:
                 self._log_error("recall", _e, "fetching seed node details from database")
 
@@ -2105,17 +2108,23 @@ class BrainRecallMixin:
         # v8.8: Vocab nodes go to separate list — they're connectors, not primary results
         final_results = []
         vocab_context = []
+        # Pre-batch the embedding-only nodes (those not already cached in
+        # keyword_nodes) into one query instead of N get_naked_node calls
+        # (C1 / H2). The per-node post-processing below is unchanged.
+        _hydrate_ids = [sr['node_id'] for sr in scored_results
+                        if sr['node_id'] not in keyword_nodes]
+        try:
+            _hydrated = self._nodes.get_bulk(_hydrate_ids) if _hydrate_ids else {}
+        except Exception as e:
+            self._log_error("recall_hydrate", e,
+                            "Failed to bulk-hydrate %d nodes" % len(_hydrate_ids))
+            _hydrated = {}
         for sr in scored_results:
             nid = sr['node_id']
             node = keyword_nodes.get(nid)
             if not node:
-                # Node came from embedding-only path — fetch from DB via DAL
-                try:
-                    _node_dal = self._nodes
-                    node = _node_dal.get_naked_node(nid)
-                except Exception as e:
-                    self._log_error("recall_hydrate", e, "Failed to hydrate node %s" % nid[:8])
-                    continue
+                # Node came from embedding-only path — pre-batched above.
+                node = _hydrated.get(nid)
 
             if node:
                 node['effective_activation'] = sr['blended_score']
@@ -2394,9 +2403,10 @@ class BrainRecallMixin:
             fts5_dal = self._fts
             node_ids = fts5_dal.search(query, limit)
             _ndal = self._nodes
+            _bulk = _ndal.get_bulk(node_ids)
             results = []
             for nid in node_ids:
-                node = _ndal.get_naked_node(nid)
+                node = _bulk.get(nid)
                 if node and not node.get('archived'):
                     results.append(node)
             return results
@@ -2475,9 +2485,11 @@ class BrainRecallMixin:
         params.append(limit)
 
         _ndal = self._nodes
+        _ids = [row[0] for row in self.conn.execute(sql, params).fetchall()]
+        _bulk = _ndal.get_bulk(_ids)
         results = []
-        for row in self.conn.execute(sql, params).fetchall():
-            node = _ndal.get_naked_node(row[0])
+        for nid in _ids:
+            node = _bulk.get(nid)
             if node:
                 node['spread_activation'] = node.get('activation', 0)
                 node['effective_activation'] = node.get('activation', 0)
