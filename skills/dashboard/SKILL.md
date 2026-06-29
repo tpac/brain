@@ -31,12 +31,18 @@ When invoked:
    run it in the background and poll). On non-zero exit, surface
    `$BRAIN_DB_DIR/dashboard.log` rather than failing silently.
 
-2. **Open it in the operator's browser** (port 47303 by default, or the port the
-   script reported):
-   - macOS: `open "http://127.0.0.1:47303/"`
-   - Linux: `xdg-open "http://127.0.0.1:47303/"`
-   - **Always also print the URL** as a clickable link — if `open`/`xdg-open` is
-     unavailable (headless / remote), the link is the operator's way in.
+2. **Open it** — two ways, both pointing at the SAME running singleton (never a
+   second server), port 47303 by default:
+   - **In a Claude pane** (when the operator wants it inside Claude): navigate the
+     Claude-in-Chrome browser straight to the URL —
+     `mcp__Claude_in_Chrome__navigate { url: "http://127.0.0.1:47303/" }`. Shows
+     the live singleton in a pane directly — no spawn, no launch.json. If the
+     Chrome extension isn't connected (the call errors), say so and fall back to
+     the browser below.
+   - **In the system browser** (default / fallback): macOS `open
+     "http://127.0.0.1:47303/"`, Linux `xdg-open "http://127.0.0.1:47303/"`.
+   - **Always also print the URL** as a clickable link — the operator's way in if
+     neither opener is available.
 
 3. **Report** — confirm it's open at `http://localhost:47303`, and whether it was
    already up, **just installed** (first run), or restarted.
