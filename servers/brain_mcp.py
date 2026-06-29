@@ -587,14 +587,16 @@ def _build_tools():
          "top_k": {"type": "integer", "description": "Return top K matches (default 1)", "default": 1}}}},
 
     {"name": "get_node",
-     "description": "Get a node by its exact ID. Returns full content, type, title, confidence, connections, metadata. Use when you already have a node ID from recall or find_node_by_title.",
+     "description": "Get a node by its exact ID. Returns a bounded view by default — full content + situation + the top edges + correction gist — enough to drill one memory. Pass rich=true for the complete view (every edge, full correction K/V: reasoning + raw quotes). Use when you already have a node ID from recall or find_node_by_title.",
      "inputSchema": {"type": "object", "required": ["node_id"], "properties": {
-         "node_id": {"type": "string", "description": "Full node ID"}}}},
+         "node_id": {"type": "string", "description": "Full node ID"},
+         "rich": {"type": "boolean", "description": "Default false → bounded view (full content + top-8 edges + correction gist). true → complete view: all edges + heavy correction K/V. Reach for it when drilling one node deeply.", "default": False}}}},
 
     {"name": "get_nodes",
-     "description": "Get multiple nodes by ID in one call. Returns full content, connections, metadata for each.",
+     "description": "Get multiple nodes by ID in one call. Bounded by default and batch-size-aware (small batches keep full content + top edges; large batches compact to a gist) so a multi-node pull never floods the turn. Pass rich=true for the complete view of each.",
      "inputSchema": {"type": "object", "required": ["node_ids"], "properties": {
-         "node_ids": {"type": "array", "description": "Array of node IDs to fetch", "items": {"type": "string"}}}}},
+         "node_ids": {"type": "array", "description": "Array of node IDs to fetch", "items": {"type": "string"}},
+         "rich": {"type": "boolean", "description": "Default false → bounded, batch-size-aware view. true → complete view (all edges + heavy correction K/V) for every node. Use sparingly on large batches — it is the firehose.", "default": False}}}},
 
     {"name": "get_trace",
      "description": "Point-lookup a single trace_event by id. Returns the full row (chain_id, scale, event_type, ref_type, summary, metadata, session_id, created_at). Use this to expand a node's source_refs, verify a quote's verbatim source, or look up a specific captured moment when you have its id. For batch lookups use get_traces.",
@@ -614,7 +616,7 @@ def _build_tools():
          "limit": {"type": "integer", "description": "Max results per query (default 5)", "default": 5}}}},
 
     {"name": "filter_nodes",
-     "description": "Structured query: filter nodes by any structural field (type, encoding_source, locked, confidence, etc.). Use for bulk lookups that semantic recall can't do — 'all corrections', 'nodes by encoder', 'low confidence nodes'. Returns full rich nodes (content, metadata, corrections, connections) by default — one call enriches all results. If no include/exclude/lt/gt given, lists all distinct values for discovery.",
+     "description": "Structured query: filter nodes by any structural field (type, encoding_source, locked, confidence, etc.). Use for bulk lookups that semantic recall can't do — 'all corrections', 'nodes by encoder', 'low confidence nodes'. Returns enriched nodes (content, situation, top edges, correction gist) by default — one batched call, rendered bounded by batch size so a 50-node result never floods the turn. Set rich=false for a skinny id/title/type list (discovery scans, feeding IDs to other ops).",
      "inputSchema": {"type": "object", "required": ["field"], "properties": {
          "field": {"type": "string", "description": "Column to filter on (type, encoding_source, locked, confidence, project, etc.)"},
          "include": {"type": "array", "items": {"type": "string"}, "description": "Show only nodes where field matches one of these values"},
@@ -624,7 +626,7 @@ def _build_tools():
          "limit": {"type": "integer", "description": "Max results (default 50, max 200)", "default": 50},
          "sort_by": {"type": "string", "description": "Sort column: created_at (default), confidence, access_count, title", "default": "created_at"},
          "sort_order": {"type": "string", "description": "asc or desc (default)", "default": "desc"},
-         "rich": {"type": "boolean", "description": "Default true — returns full rich nodes. Set false for skinny shape (id/title/type/confidence/created_at only), useful for discovery scans or feeding IDs to other ops.", "default": True}}}},
+         "rich": {"type": "boolean", "description": "Default true — enriched nodes (content + situation + bounded edges/corrections per node). false → skinny shape (id/title/type/confidence/created_at), for discovery scans or feeding IDs to other ops. This is a data flag (enriched vs skinny); the enriched render is always bounded by batch size — for one node's complete view, get_node it with rich=true.", "default": True}}}},
 
     {"name": "clear_errors",
      "description": "Clear hook errors and optionally debug log entries. Use to clean up after investigating issues.",
@@ -842,29 +844,64 @@ def handle_tools_list(request_id):
     return make_response(request_id, {"tools": TOOLS})
 
 
-def _format_result(tool_name, result, get_nodes_config=None):
+def _select_node_config(n, rich, get_nodes_config):
+    """Pick the render_rich_node config for an n-node fetch result.
+
+    Precedence: an explicit caller config (internal encoders, via
+    run_llm_loop's get_nodes_config) wins outright — that channel is how a
+    consumer declares its own representation and must never be second-guessed.
+    Otherwise the MCP `rich` opt-in lifts to the full view at any size, and the
+    default de-stuffs by batch size: small pulls stay readable (full content,
+    bounded edges/corrections), large pulls compact to protect context.
+    """
+    from servers.contract import (
+        GET_NODES_SMALL_MAX, GET_NODES_MEDIUM_MAX,
+        GET_NODES_SMALL_FORMAT, GET_NODES_FULL_FORMAT,
+        GET_NODES_BALANCED_FORMAT, GET_NODES_COMPACT_FORMAT,
+    )
+    if get_nodes_config is not None:
+        return get_nodes_config
+    if rich:
+        return GET_NODES_FULL_FORMAT
+    if n <= GET_NODES_SMALL_MAX:
+        return GET_NODES_SMALL_FORMAT
+    if n <= GET_NODES_MEDIUM_MAX:
+        return GET_NODES_BALANCED_FORMAT
+    return GET_NODES_COMPACT_FORMAT
+
+
+def _render_nodes(rich_nodes, config):
+    """Render a list of rich-node dicts to text via the single formatter."""
+    from servers.contract import render_rich_node
+    lines = []
+    for node in rich_nodes:
+        lines.append(render_rich_node(node, config))
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _format_result(tool_name, result, get_nodes_config=None, rich=False):
     """Format tool result for MCP output.
 
     - recall: structured text (same format as hooks) for readability.
-    - get_nodes: batch-size-aware rendering via contract.py configs.
-      Small batches (<=3) keep raw JSON for Anchor drill-downs.
-      Medium batches (<=10) use GET_NODES_BALANCED_FORMAT.
-      Large batches (>10) use GET_NODES_COMPACT_FORMAT.
-      Prevents tool_result explosion in encoder contexts.
-      `get_nodes_config` (from run_llm_loop) overrides the whole heuristic:
-      render every node through render_rich_node with that config at ANY batch
-      size — including <=3, which otherwise dumps raw JSON (full _corrections)
-      and can blow an encoder's context to hundreds of K. Consumers with tight
-      budgets (S2 encoders) pass their own lean config.
+    - get_node / get_nodes / filter_nodes: rendered through render_rich_node,
+      NEVER a raw dict dump. brain.get_node is the data layer (always full);
+      trimming is a representation choice that lives here. Default de-stuffs by
+      batch size (small = full content + bounded edges/corrections; large =
+      compact). `rich=True` (MCP opt-in) renders the full view. A caller-
+      declared `get_nodes_config` (run_llm_loop / S2 encoders) overrides both —
+      it is the encoder's own representation channel and wins at any size.
     - All other tools: JSON dump.
     """
-    if tool_name == "get_nodes" and result:
-        # Two shapes reach here: the dispatch handler (_handle_get_nodes) returns
-        # a LIST of rich nodes (+ {"id","error"} entries for unresolved ids) —
-        # this is the path every encoder and Anchor's MCP get_nodes take;
-        # brain.get_node(ids) returns a {node_id: rich_node} dict. Handle both,
-        # or the render branch silently no-ops and dumps the raw firehose.
-        if isinstance(result, dict):
+    # Node-fetch tools render through the single formatter — never a raw dump.
+    if tool_name in ("get_node", "get_nodes") and result:
+        # Normalize every shape to a list of rich-node dicts:
+        #  - get_node         → one node dict (has 'id')
+        #  - get_nodes (list) → [rich node | {"id","error"}]  (dispatch handler)
+        #  - get_nodes (dict) → {node_id: rich node}          (brain.get_node)
+        if tool_name == "get_node":
+            candidates = [result] if isinstance(result, dict) else []
+        elif isinstance(result, dict):
             candidates = list(result.values())
         elif isinstance(result, list):
             candidates = result
@@ -873,28 +910,37 @@ def _format_result(tool_name, result, get_nodes_config=None):
         rich_nodes = [v for v in candidates
                       if isinstance(v, dict) and v.get('id') and 'error' not in v]
         if rich_nodes:
-            from servers.contract import (
-                render_rich_node,
-                GET_NODES_SMALL_MAX, GET_NODES_MEDIUM_MAX,
-                GET_NODES_BALANCED_FORMAT, GET_NODES_COMPACT_FORMAT,
-            )
-            if get_nodes_config is not None:
-                # Caller-declared config — render at every batch size, no
-                # raw-JSON escape hatch (the source of the encoder blowup).
-                config = get_nodes_config
-            else:
-                n = len(rich_nodes)
-                if n <= GET_NODES_SMALL_MAX:
-                    # Small batch — preserve full JSON for Anchor/targeted lookups
-                    return json.dumps(result, indent=2, default=str)
-                config = GET_NODES_BALANCED_FORMAT if n <= GET_NODES_MEDIUM_MAX \
-                    else GET_NODES_COMPACT_FORMAT
-            lines = []
-            for node in rich_nodes:
-                lines.append(render_rich_node(node, config))
-                lines.append("")
-            return "\n".join(lines)
+            config = _select_node_config(len(rich_nodes), rich, get_nodes_config)
+            return _render_nodes(rich_nodes, config)
         # Fall through if result shape is unexpected
+
+    # filter_nodes: structural query → {nodes, total_count}. Enriched nodes
+    # (rich=True data path) render bounded by batch size — never the raw dump
+    # that made a 50-node rich filter a multi-hundred-KB firehose. Skinny nodes
+    # (rich=False discovery path) render one-line-per-node. The MCP render
+    # opt-in does not apply here: a multi-node scan is bounded by design — one
+    # node's full view is a get_node away.
+    if tool_name == "filter_nodes" and isinstance(result, dict) and "nodes" in result:
+        nodes = result.get("nodes", [])
+        total = result.get("total_count", len(nodes))
+        if not nodes:
+            return "No nodes matched. (%d total)" % total
+        header = "%d node%s (of %d total)" % (
+            len(nodes), "" if len(nodes) == 1 else "s", total)
+        # Enriched nodes carry 'connections' (get_node always attaches it);
+        # skinny nodes never do — a reliable discriminator.
+        rich_nodes = [n for n in nodes
+                      if isinstance(n, dict) and n.get('id') and 'connections' in n]
+        if rich_nodes:
+            config = _select_node_config(len(rich_nodes), False, None)
+            return header + "\n\n" + _render_nodes(rich_nodes, config)
+        # Skinny discovery shape — bounded one-liner per node (surfaces the
+        # filtered field value; see contract.render_skinny_node).
+        from servers.contract import render_skinny_node
+        lines = [header, ""]
+        for n in nodes:
+            lines.append(render_skinny_node(n))
+        return "\n".join(lines)
 
     if tool_name == "recall" and isinstance(result, dict):
         from servers.brain_voice import BrainVoice
@@ -993,7 +1039,11 @@ def handle_tools_call(request_id, params):
 
         resp = daemon_send(tool_name, arguments)
         if resp.get("ok"):
-            result_text = _format_result(tool_name, resp["result"])
+            # `rich` is the MCP render opt-in for get_node/get_nodes (full view).
+            # filter_nodes' own `rich` is a data-layer flag handled in dispatch;
+            # its render is always bounded, so passing it here is harmless.
+            result_text = _format_result(
+                tool_name, resp["result"], rich=bool(arguments.get("rich", False)))
             return make_response(request_id, {
                 "content": [{"type": "text", "text": result_text}]
             })

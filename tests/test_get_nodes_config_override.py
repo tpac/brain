@@ -17,6 +17,14 @@ Fix: _format_result handles BOTH list and dict shapes; with get_nodes_config
 set it renders via render_rich_node at every batch size. The community encoder
 passes S2CE_NODE_FORMAT (content 800, edges 5, corrections 'balanced').
 
+2026-06-28 — the <=3 raw-JSON escape hatch is GONE entirely. get_node /
+get_nodes / filter_nodes always render through render_rich_node (representation
+is a render concern; brain.get_node stays the always-full data layer). Default
+de-stuffs by batch size (small = full content + bounded edges/corrections via
+GET_NODES_SMALL_FORMAT); the MCP `rich=true` opt-in renders the full view
+(GET_NODES_FULL_FORMAT). get_nodes_config still overrides both — encoders are
+never blocked.
+
 Pure-function tests — _format_result + render_rich_node take a result value,
 no brain/embedder.
 
@@ -108,17 +116,85 @@ class TestGetNodesConfigOverride(unittest.TestCase):
 
     # ── production (list) shape ──────────────────────────────────────
 
-    def test_default_small_batch_list_still_raw_json(self):
-        """<=3 nodes, no config → raw JSON (Anchor drill-down). Production
-        shape is a LIST, so the dump is a JSON array."""
+    def test_default_small_batch_bounded_not_raw(self):
+        """NEW CONTRACT (2026-06-28): <=3 nodes, no config, rich=false →
+        bounded render (GET_NODES_SMALL_FORMAT), NOT the old raw-JSON firehose.
+        Full content stays (content is the signal you fetched for); heavy
+        correction K/V is dropped (balanced corrections)."""
         result = _dispatch_list(1)
-        out = _format_result("get_nodes", result)          # config=None
-        self.assertTrue(_is_raw_json(out))                   # raw list dump
-        parsed = json.loads(out)
-        self.assertEqual(parsed[0]["id"], "hub00000")
-        # Firehose: full content + heavy correction K/V present.
-        self.assertIn("CONTENT_TAIL_SENTINEL", out)
-        self.assertIn("ANCHOR_QUOTE_SENTINEL", out)
+        out = _format_result("get_nodes", result)            # config=None, rich=False
+        self.assertFalse(_is_raw_json(out))                  # rendered, not raw
+        self.assertIn("Hub member", out)
+        self.assertIn("CONTENT_TAIL_SENTINEL", out)          # full content kept
+        self.assertIn("A correction", out)                   # correction gist present
+        self.assertNotIn("ANCHOR_QUOTE_SENTINEL", out)       # heavy K/V dropped
+        self.assertNotIn("REASONING_SENTINEL", out)
+        self.assertNotIn("USER_QUOTE_SENTINEL", out)
+
+    def test_rich_small_batch_full_view(self):
+        """rich=true → GET_NODES_FULL_FORMAT: full content + ALL edges + heavy
+        correction K/V (the deliberate firehose), still rendered (not raw)."""
+        result = _dispatch_list(1)
+        out = _format_result("get_nodes", result, rich=True)
+        self.assertFalse(_is_raw_json(out))
+        self.assertIn("CONTENT_TAIL_SENTINEL", out)          # full content
+        self.assertIn("ANCHOR_QUOTE_SENTINEL", out)          # heavy K/V present
+        self.assertIn("REASONING_SENTINEL", out)
+        self.assertIn("OVERFLOW_EDGE_SENTINEL", out)         # all edges (edge_limit None)
+        # Full view is strictly larger than the bounded default.
+        self.assertGreater(len(out), len(_format_result("get_nodes", result)))
+
+    def test_get_node_single_renders(self):
+        """get_node (single dict, not a list) takes the same render path —
+        bounded by default, full under rich=true. Never a raw dump."""
+        node = _hub_node("solo0001")
+        out = _format_result("get_node", node)               # rich=False
+        self.assertFalse(_is_raw_json(out))
+        self.assertIn("Hub member", out)
+        self.assertIn("CONTENT_TAIL_SENTINEL", out)          # full content
+        self.assertNotIn("ANCHOR_QUOTE_SENTINEL", out)       # balanced default
+        rich_out = _format_result("get_node", node, rich=True)
+        self.assertIn("ANCHOR_QUOTE_SENTINEL", rich_out)     # heavy K/V under rich
+
+    def test_filter_nodes_enriched_renders_bounded(self):
+        """filter_nodes enriched result ({nodes, total_count}) renders bounded —
+        never the raw dump that made a 50-node rich filter a firehose. The MCP
+        render opt-in does NOT lift it (multi-node scan is bounded by design)."""
+        result = {"nodes": [_hub_node("flt%05d" % i) for i in range(2)],
+                  "total_count": 2}
+        out = _format_result("filter_nodes", result, rich=True)   # rich ignored here
+        self.assertFalse(_is_raw_json(out))
+        self.assertIn("2 nodes (of 2 total)", out)
+        self.assertEqual(out.count("Hub member"), 2)
+        self.assertNotIn("ANCHOR_QUOTE_SENTINEL", out)       # bounded, no heavy K/V
+
+    def test_filter_nodes_skinny_one_liners(self):
+        """Skinny shape (no 'connections') → compact one-line-per-node, with
+        the filtered field value surfaced for discovery."""
+        result = {"nodes": [
+            {"id": "skin0001", "title": "Skinny one", "type": "decision",
+             "confidence": 0.9, "created_at": "2026-06-20T00:00:00+00:00",
+             "encoding_source": "anchor"}], "total_count": 1}
+        out = _format_result("filter_nodes", result)
+        self.assertFalse(_is_raw_json(out))
+        self.assertIn("Skinny one", out)
+        self.assertIn("encoding_source=anchor", out)         # filtered field shown
+        self.assertNotIn("Content:", out)                    # no rich body
+
+    def test_filter_nodes_skinny_bounds_long_field(self):
+        """A long-valued filtered field (e.g. field='content') is TRUNCATED in
+        the skinny one-liner — the discovery scan stays bounded, not the
+        firehose the raw-JSON path would have dumped."""
+        result = {"nodes": [
+            {"id": "skin0002", "title": "Long field node", "type": "fact",
+             "confidence": 0.9, "created_at": "2026-06-20T00:00:00+00:00",
+             "content": "X" * 5000 + " LONGFIELD_TAIL_SENTINEL"}],
+            "total_count": 1}
+        out = _format_result("filter_nodes", result)
+        self.assertFalse(_is_raw_json(out))
+        self.assertIn("Long field node", out)
+        self.assertNotIn("LONGFIELD_TAIL_SENTINEL", out)     # tail truncated
+        self.assertLess(len(out), 400)                       # bounded, not 5000+
 
     def test_default_large_batch_list_renders(self):
         """REGRESSION GUARD for the dead branch: a >10-node LIST with no config
