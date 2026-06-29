@@ -27,6 +27,61 @@ detail-of-record; this doc is the unified plan.
 
 ---
 
+## Prompt rewrite — DRAFTED 2026-06-29 (full section-by-section walk)
+
+The complete v-next `s1e` prompt is drafted (first-person throughout) →
+**[docs/S1E-PROMPT-v-next-DRAFT.md](S1E-PROMPT-v-next-DRAFT.md)** (NOT live; review →
+register DORMANT → eval-gate → activate).
+
+**Decisions locked this session:**
+- **Voice** — first person throughout, *including node content* ("When I paraphrase", not "Anchor"). The graph heals toward it; existing 3rd-person nodes are acceptable drift. Quotes stay verbatim.
+- **Verbs** — action lines use `remember`/`revise`/`connect`; "encoding" only as the activity/role noun, never an action verb.
+- **Priority** — remember→revise→connect *by weight* (supersedes connect-first `1a79b7dd`).
+- **"meaning"** replaces "insight" as the deeper-layer word; **details → meaning** is the core capture rule.
+- **New `thought` field** — the scribe's own read on a node (≠ `content`, ≠ `reasoning`); selective, quality-gated.
+- **Open fields refined** — field-name-as-encoding-prompt (`753ad314`); name specifically; `thought` is the promoted example.
+- **Edges** — R3 inverse rule: a relationship named in prose → draw the edge ("the graph walks on edges, not content").
+- **Quality gate** — "encode what earns its place — new AND useful" (supersedes "Don't be too conservative" `08867ee7`); + "my bar runs high, I correct for it" details+thought reinforcement; list now includes **formulas + the principle/concept each points to**.
+- **Timeline** — XML lived-sequence (`<turn>/<user>/<assistant>/<actions>/<provenance>`); pulls light, action-tools carry cues; every id ref carries a 1-line «tag», full body once in the catalog; empty provenance line = unencoded turn.
+- **Catalog** — widened union: surfaced ∪ encoded-this-session ∪ Anchor-authored ∪ **endo (empty stub fn now)**.
+- **Continuity** — residue (contract-injected) + arc. **Review notes / residue are SESSION-BOUND** — within-session, run-to-run continuity only; the s1e continuity read filters by `session_id` (last K runs *in this session*), distinct from S2's genuinely run-based read (S2 has no sessions). **Scope decomposition:** cross-session = the **graph substrate** (nodes/edges) + **wisdom** (Frame's "What I've learned"); session-scoped = the **catalog** (a per-run *view* into the graph, recomputed each run), the **arc**, and the **residue**. The Frame is mixed — wisdom cross-session, arc session-bound. The defer-fix rides on the **substrate** being cross-session, not the catalog view.
+- **Defer fix** — *don't defer into a gap*: continuity runs through the graph (catalog→revise), not the sliding window. **The `final` flag is DROPPED** — with no deferral, nothing to suppress on a terminal pass.
+- **Mechanism separation** (don't mix): **suppress** (already-captured, cross-session) / **correct** (replace the wrong) / **supersede** (keep BOTH, old valid-as-of-date) / **open** (genuinely unresolved — scoped to purpose, not a catch-all).
+- **Residue close** — `## Review` (judgment half) + closure are contract-injected; `ENCODED` → trace/provenance; arc written separately.
+- Section-3: four flavors (count fix), WATCHING→residue, trace→`trace="…"` attribute.
+- Fixes: precision enum `explicit|relative|approximate`; "Five"→"Six" instincts; cadence-agnostic Speed.
+
+**Open flags (resolve before registration):**
+1. **`final` flag drop** — confirm we cut the planned `run_encoding(…, final)` build item (superseded by the no-defer reframe).
+2. **trace vocabulary** — `[trace:<hex>]` still in some KEEP blocks; unify to the `trace="…"` attribute model.
+3. **"encode" as action-verb** sweep — a few KEEP lines ("encode the correction triple") still use it.
+4. **§7.6 example selection** — revisit which five (recall timed out mid-session); verify first-person node-content rewrite.
+5. **"the next me / future me"** vs one-continuous-self (`b659ca7a`) — consistency check (section 1 confirmed as-is).
+6. **Frame** — Recent-moves removal (Frame-side half), replacement-before-removal. [ledger item]
+
+**Next session — pickup plan** (the prompt *design* is done; what remains is build + eval. The handoff is these three artifacts: this checkpoint, the draft, and the encoded decisions — no fork needed):
+
+0. **Orient** — read the draft + this checkpoint. Don't re-walk the prompt; build *to* it.
+1. **Close the cheap flags** → produces the final draft to register:
+   - ②/③ **just do** — trace-vocab unify (`[trace:<hex>]`→`trace="…"`), the "encode"-as-action-verb sweep.
+   - ④ **needs Tom** — §7.6 example selection (dig the authoring provenance, decide whether those five are right, verify the first-person node-content rewrite reads well).
+   - ⑤ quick consistency check ("the next me" vs one-continuous-self).
+2. **Build the code half** — the major engineering, where the eval-risk lives. Input + prompt are **coupled** (the new prompt describes input the code must produce) → they move together; **parameterize so the eval can A/B new-vs-old without flipping live**:
+   - **Lived-sequence timeline** — extend the S0 conversation API to surface `tool_result` events (captured, just unsurfaced), interleaved with messages.
+   - **Provenance ledger** — per-turn `surfaced/encoded(S1S)/encoded(Anchor)` via the `node_source_refs` reverse-lookup.
+   - **Widened catalog** — the union (surfaced ∪ encoded-this-session ∪ Anchor-authored ∪ **endo empty-stub fn**), id+«tag» references.
+   - **Residue wiring** — `## Review` + closure contract-injected for s1e; **session-scoped** continuity read (`session_id`-filtered, distinct from S2's run-based).
+   - Tests per piece.
+3. **Register the draft DORMANT** — do NOT `sync-prompts` until the gate passes (dormant candidates must not leak to the seed).
+4. **Build the 3 missing eval dims** (§8: arc-still-produced · notes-residue-only · notes-not-over-produced) + the Frozen-Corpus A/B setup.
+5. **Eval A/B** — old vs new, `--variance ≥3`, same qids. The gate.
+6. **Activate atomically** iff the gate holds: `set_interaction_active` → `./dev sync-prompts` → cut the Frame "Recent moves" slot (⑥, replacement-before-removal) → restart.
+
+**Scope honesty:** steps 2–6 span several sessions; a realistic *next* session does step 1 + starts step 2.
+**Operational:** the daemon was flaky this session (recall timed out twice) — health-check at boot, `restart` if recall keeps failing.
+
+---
+
 ## 1. The core realization — these are ONE change, not three
 
 Three threads collapse into one because they share substrate:
