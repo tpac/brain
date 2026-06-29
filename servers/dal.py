@@ -3146,7 +3146,7 @@ class GraphDAL:
 
         elif existing[3] == 0:
             # Branch 2: Active row → field-preserving UPDATE
-            old_desc, old_weight, old_es, _archived = existing
+            old_desc, old_weight, _old_es, _archived = existing
             updates = {}
             if desc_specified and description != old_desc:
                 updates['description'] = description
@@ -3156,10 +3156,15 @@ class GraphDAL:
                 updates['weight'] = weight
                 result['deltas'].append({
                     'field': 'weight', 'old': old_weight, 'new': weight})
-            if es_specified and encoding_source != old_es:
-                updates['encoding_source'] = encoding_source
-                result['deltas'].append({
-                    'field': 'encoding_source', 'old': old_es, 'new': encoding_source})
+            # encoding_source is the CREATOR mark — set once at birth (the INSERT
+            # and revive branches), never rewritten on an active-row update. A
+            # connect re-touch (anchor re-asserting an edge, the encoder
+            # re-linking one) updates description/weight but must NOT relabel who
+            # created the edge: the column is a denormalized cache of the
+            # creation event the trace log recorded, so a later overwrite would
+            # make it drift from that event. Deliberate re-attribution is
+            # rename_relation's job (it always rewrites encoding_source), not the
+            # connect upsert's — so es_specified is intentionally ignored here.
 
             if updates:
                 set_clause = ', '.join('%s = ?' % k for k in updates)

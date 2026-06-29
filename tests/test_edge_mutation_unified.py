@@ -603,5 +603,214 @@ class TestEdgeCases(BrainTestBase):
         self.assertEqual(row['description'], big)
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# Class G — Creator attribution (encoding_source), creation-only
+#
+# encoding_source is the CREATOR mark — set once at birth, never rewritten on an
+# edit or re-connect. It's a denormalized cache of the creation event the trace
+# log recorded, so a later overwrite would make it drift from that event. Two
+# birth points, both defaulting an absent source to 'anchor' (the convention's
+# "direct via MCP"; the encoder pre-stamps its own source upstream):
+#   - nodes: remember() INSERT defaults `encoding_source or 'anchor'`
+#   - edges: the connect handlers default `encoding_source or 'anchor'`, applied
+#     on add_relation's CREATE branch only — an active-row update preserves it.
+# connect_to edges inherit their just-created node's source via _apply_connect_to
+# (always fresh, so create-only is automatic).
+#
+# Regression guards for: edges landing '' on create (the reported bug), the
+# re-connect clobber, and the revise_batch node-relabel — the two clobbers the
+# earlier proxy-stamp approach introduced.
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestCreatorAttribution(BrainTestBase):
+    needs_embedder = False
+
+    # ── connect_to edges inherit the (just-created) node's creator ──
+
+    def test_remember_connect_to_defaults_to_anchor(self):
+        """remember(connect_to=) with no source → edge tagged 'anchor'.
+        The reported bug: this edge used to land encoding_source ''."""
+        target = _make_node(self.brain, title='Target alpha')
+        res = self.brain.remember(
+            type='concept', title='Source alpha', content='c',
+            connect_to=[{'title': target, 'relation': 'extends', 'why': 'because'}])
+        row = _get_edge_relation_row(self.brain, res['id'], target, 'extends')
+        self.assertIsNotNone(row, "connect_to edge should exist")
+        self.assertEqual(row['encoding_source'], 'anchor')
+
+    def test_remember_connect_to_not_empty_regression(self):
+        """Regression: a connect_to edge must never carry encoding_source ''."""
+        target = _make_node(self.brain, title='Target gamma')
+        res = self.brain.remember(
+            type='concept', title='Source gamma', content='c',
+            connect_to=[{'title': target, 'relation': 'extends', 'why': 'w'}])
+        row = _get_edge_relation_row(self.brain, res['id'], target, 'extends')
+        self.assertNotEqual(row['encoding_source'], '')
+
+    def test_remember_connect_to_inherits_explicit_source(self):
+        """connect_to edges inherit the node's explicit source — the encoder's
+        edges become 'encoder:sonnet', not 'anchor' and not ''."""
+        target = _make_node(self.brain, title='Target beta')
+        res = self.brain.remember(
+            type='concept', title='Source beta', content='c',
+            encoding_source='encoder:sonnet',
+            connect_to=[{'title': target, 'relation': 'grounds', 'why': 'w'}])
+        row = _get_edge_relation_row(self.brain, res['id'], target, 'grounds')
+        self.assertEqual(row['encoding_source'], 'encoder:sonnet')
+
+    def test_remember_batch_per_node_connect_to_anchor(self):
+        target = _make_node(self.brain, title='Target delta')
+        res = self.brain.remember_batch(nodes=[
+            {'type': 'concept', 'title': 'Batch src', 'content': 'c',
+             'connect_to': [{'title': target, 'relation': 'extends', 'why': 'w'}]},
+        ])
+        src = res['results'][0]['id']
+        row = _get_edge_relation_row(self.brain, src, target, 'extends')
+        self.assertEqual(row['encoding_source'], 'anchor')
+
+    def test_remember_batch_per_node_connect_to_inherits_source(self):
+        target = _make_node(self.brain, title='Target delta2')
+        res = self.brain.remember_batch(nodes=[
+            {'type': 'concept', 'title': 'Batch src2', 'content': 'c',
+             'encoding_source': 's2:consolidation',
+             'connect_to': [{'title': target, 'relation': 'extends', 'why': 'w'}]},
+        ])
+        src = res['results'][0]['id']
+        row = _get_edge_relation_row(self.brain, src, target, 'extends')
+        self.assertEqual(row['encoding_source'], 's2:consolidation')
+
+    def test_remember_batch_top_level_connect_to_anchor(self):
+        """The batch-wide connect_to mechanism (LIKE-resolved title) also tags."""
+        tgt = _make_node(self.brain, title='ZZZUniqueTopTarget')
+        res = self.brain.remember_batch(
+            nodes=[{'type': 'concept', 'title': 'Top src', 'content': 'c'}],
+            connect_to=['ZZZUniqueTopTarget'])
+        src = res['results'][0]['id']
+        row = _get_edge_relation_row(self.brain, src, tgt, 'related')
+        self.assertIsNotNone(row, "top-level connect_to edge should exist")
+        self.assertEqual(row['encoding_source'], 'anchor')
+
+    def test_brain_batch_remember_connect_to_defaults_to_anchor(self):
+        """brain_batch remember+connect_to with NO top-level source → edge
+        'anchor' (the deferred connect_to falls back to 'anchor' — no proxy)."""
+        from servers.daemon_dispatch import _handle_brain_batch
+        target = _make_node(self.brain, title='Target epsilon')
+        r = _handle_brain_batch(self.brain, {
+            'operations': [
+                {'op': 'remember', 'type': 'concept', 'title': 'BB src',
+                 'content': 'c',
+                 'connect_to': [{'title': target, 'relation': 'extends',
+                                 'why': 'w'}]},
+            ],
+        }, [])
+        src = r['result']['results'][0]['result']['id']
+        row = _get_edge_relation_row(self.brain, src, target, 'extends')
+        self.assertEqual(row['encoding_source'], 'anchor')
+
+    # ── standalone connect/connect_batch: 'anchor' on create ──
+
+    def test_handle_connect_defaults_to_anchor_on_create(self):
+        """Direct connect with no source → fresh edge tagged 'anchor'
+        (via _handle_connect's `or 'anchor'`, not a proxy stamp)."""
+        from servers.daemon_dispatch import _handle_connect
+        a = _make_node(self.brain)
+        b = _make_node(self.brain)
+        _handle_connect(self.brain, {
+            'source_id': a, 'target_id': b, 'relation': 'extends',
+            'description': 'w', 'reason': 'r',
+        }, [])
+        row = _get_edge_relation_row(self.brain, a, b, 'extends')
+        self.assertEqual(row['encoding_source'], 'anchor')
+
+    def test_connect_batch_defaults_to_anchor(self):
+        from servers.daemon_dispatch import _handle_connect_batch
+        a = _make_node(self.brain)
+        b = _make_node(self.brain)
+        _handle_connect_batch(self.brain, {
+            'connections': [{'source_id': a, 'target_id': b,
+                             'relation': 'extends', 'description': 'w'}],
+        }, [])
+        row = _get_edge_relation_row(self.brain, a, b, 'extends')
+        self.assertEqual(row['encoding_source'], 'anchor')
+
+    def test_brain_batch_connect_op_defaults_to_anchor(self):
+        """brain_batch connect op with NO top-level source → 'anchor'."""
+        from servers.daemon_dispatch import _handle_brain_batch
+        a = _make_node(self.brain)
+        b = _make_node(self.brain)
+        _handle_brain_batch(self.brain, {
+            'operations': [
+                {'op': 'connect', 'source_id': a, 'target_id': b,
+                 'relation': 'extends', 'description': 'w'},
+            ],
+        }, [])
+        row = _get_edge_relation_row(self.brain, a, b, 'extends')
+        self.assertEqual(row['encoding_source'], 'anchor')
+
+    # ── creation-only: an active-row update never relabels the creator ──
+
+    def test_handle_connect_preserves_source_on_reconnect(self):
+        """Re-connecting an existing edge updates description but must NOT
+        relabel its creator — the clobber the proxy-stamp approach introduced."""
+        from servers.daemon_dispatch import _handle_connect
+        a = _make_node(self.brain)
+        b = _make_node(self.brain)
+        # Born from the encoder
+        _handle_connect(self.brain, {
+            'source_id': a, 'target_id': b, 'relation': 'extends',
+            'description': 'orig', 'reason': 'init',
+            'encoding_source': 'encoder:sonnet',
+        }, [])
+        # Anchor re-connects with no source — must preserve 'encoder:sonnet'
+        _handle_connect(self.brain, {
+            'source_id': a, 'target_id': b, 'relation': 'extends',
+            'description': 'updated', 'reason': 'reconnect',
+        }, [])
+        row = _get_edge_relation_row(self.brain, a, b, 'extends')
+        self.assertEqual(row['encoding_source'], 'encoder:sonnet',
+                         "re-connect must preserve the original creator")
+        self.assertEqual(row['description'], 'updated')
+
+    def test_add_relation_creator_immutable_on_update(self):
+        """add_relation: an active-row update preserves encoding_source even
+        when an explicit, DIFFERENT source is passed (creator set once)."""
+        from servers.dal import GraphDAL
+        gdal = GraphDAL(self.brain.conn)
+        a = _make_node(self.brain)
+        b = _make_node(self.brain)
+        gdal.add_relation(a, b, 'extends', description='orig',
+                          encoding_source='encoder:sonnet')
+        # Pass a different source on update — must be ignored (preserved)
+        gdal.add_relation(a, b, 'extends', description='new',
+                          encoding_source='anchor')
+        row = _get_edge_relation_row(self.brain, a, b, 'extends')
+        self.assertEqual(row['encoding_source'], 'encoder:sonnet',
+                         "active-row update must not relabel the creator")
+        self.assertEqual(row['description'], 'new')
+
+    # ── revise_batch must not relabel a node's creator (leak guard) ──
+
+    def test_revise_batch_does_not_clobber_node_source(self):
+        """A bulk-edit must not rewrite a node's creator. The dispatch layer
+        injects encoding_source for trace attribution, but revise_batch must
+        never write it onto the node — the HIGH-severity leak the review found."""
+        from servers.daemon_dispatch import _handle_revise_batch
+        r = self.brain.remember(type='concept', title='Encoder node',
+                                content='c', encoding_source='encoder:sonnet')
+        nid = r['id']
+        # Anchor revise_batch — dispatch injects top-level 'anchor' into each spec
+        _handle_revise_batch(self.brain, {
+            'encoding_source': 'anchor',
+            'revisions': [{'node_id': nid, 'reason': 'typo fix',
+                           'title': 'Encoder node (fixed)'}],
+        }, [])
+        row = self.brain.conn.execute(
+            "SELECT encoding_source, title FROM nodes WHERE id = ?",
+            (nid,)).fetchone()
+        self.assertEqual(row[0], 'encoder:sonnet',
+                         "revise_batch must not relabel the node's creator")
+        self.assertEqual(row[1], 'Encoder node (fixed)')
+
+
 if __name__ == '__main__':
     unittest.main()

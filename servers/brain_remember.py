@@ -1028,7 +1028,8 @@ class BrainRememberMixin:
             # edge didn't — connect_to is fail-soft, but no longer silent to
             # the caller (it used to surface only on the dashboard).
             connect_to_result = self._apply_connect_to(
-                node_id, connect_to, sibling_map=None)
+                node_id, connect_to, sibling_map=None,
+                encoding_source=encoding_source or 'anchor')
 
         # co_accessed-on-remember REMOVED (2026-05-31). It connected a new node
         # to recently-written nodes by temporal write-adjacency — pre-Phase-5
@@ -1831,12 +1832,22 @@ class BrainRememberMixin:
 
         return target_id, relation_pairs, None
 
-    def _apply_connect_to(self, src_id, connect_to_spec, sibling_map=None):
+    def _apply_connect_to(self, src_id, connect_to_spec, sibling_map=None,
+                          encoding_source=None):
         """Resolve and create edges for each connect_to entry from src_id.
 
         Each entry is independent — failures on one don't affect others.
         All failures log loudly; the function never raises and never blocks
         the surrounding write path.
+
+        encoding_source: provenance for the edges minted here — the creating
+        node's resolved source (e.g. 'anchor' for a direct-MCP remember,
+        'encoder:sonnet' for the Scribe). These edges hang off a node created
+        in the same write, so they share its provenance. Passed through to
+        connect_typed; None means preserve-existing (the legacy behavior, which
+        on a fresh edge fell to the '' default — the bug this closes). The MCP
+        proxy can't reach these edges (they're minted inside remember()), so the
+        source is threaded here from the caller rather than stamped at the proxy.
 
         Returns a dict:
             {'created': [{'src_id', 'target_id', 'relation', 'edge_id', 'deltas'}, ...],
@@ -1898,7 +1909,8 @@ class BrainRememberMixin:
             for rel, desc in relation_pairs:
                 try:
                     edge_res = self.connect_typed(src_id, target_id, relation=rel,
-                                       weight=0.6, description=desc)
+                                       weight=0.6, description=desc,
+                                       encoding_source=encoding_source)
                     created.append({'src_id': src_id, 'target_id': target_id,
                                     'relation': rel,
                                     'edge_id': (edge_res or {}).get('edge_id'),
@@ -1946,6 +1958,10 @@ class BrainRememberMixin:
         # agnostic resolution (B can connect_to A even if declared first).
         sibling_map = {}
         deferred_connects = []  # [(node_id, ct_spec)]
+        # node_id → the node's resolved encoding_source, so connect_to edges
+        # (resolved in pass 2, below) inherit the provenance of the node they
+        # hang off — 'anchor' for direct-MCP, 'encoder:sonnet' for the Scribe.
+        node_sources = {}
         for spec in nodes:
             if isinstance(spec, dict):
                 ct_spec = spec.pop('connect_to', None)
@@ -1955,6 +1971,7 @@ class BrainRememberMixin:
             results.append(result)
             if result.get('id'):
                 created_ids.append(result['id'])
+                node_sources[result['id']] = spec.get('encoding_source') or 'anchor'
                 title = (spec.get('title') or '').lower()
                 if title:
                     sibling_map[title] = result['id']
@@ -1967,7 +1984,9 @@ class BrainRememberMixin:
         connect_to_failed = []  # [{title, reason}] across all nodes
         connect_to_made = []    # [{src_id, target_id, relation, edge_id, deltas}]
         for src_id, ct_spec in deferred_connects:
-            r = self._apply_connect_to(src_id, ct_spec, sibling_map=sibling_map)
+            r = self._apply_connect_to(
+                src_id, ct_spec, sibling_map=sibling_map,
+                encoding_source=node_sources.get(src_id, 'anchor'))
             connections_created += len(r['created'])
             connect_to_made.extend(r['created'])  # entries are src-tagged by _apply_connect_to
             connect_to_failed.extend(r['failed'])
@@ -2010,7 +2029,8 @@ class BrainRememberMixin:
                     for rel, desc in relation_pairs:
                         try:
                             edge_res = self.connect_typed(node_id, match['id'], relation=rel,
-                                              weight=0.6, description=desc)
+                                              weight=0.6, description=desc,
+                                              encoding_source=node_sources.get(node_id, 'anchor'))
                             connections_created += 1
                             connect_to_made.append({
                                 'src_id': node_id, 'target_id': match['id'],
@@ -2067,9 +2087,18 @@ class BrainRememberMixin:
             reason = spec.get('reason', '')
             content = spec.get('content')
 
-            # Extract all fields except node_id/reason/content for updates
+            # Extract field updates. Excludes node_id/reason/content (handled
+            # explicitly) AND the dispatch control keys — mirroring standalone
+            # revise()'s DISPATCH_KEYS reservation. `encoding_source` in
+            # particular is the immutable CREATOR mark, not a revisable field:
+            # the dispatch layer injects it for trace attribution, but a revise
+            # must never write it onto the node, or a bulk-edit would silently
+            # relabel who created the memory. (chain_id/session_id/_caller_session
+            # are trace/identity control, never node fields.)
+            _REVISE_CONTROL = ('node_id', 'reason', 'content', 'encoding_source',
+                               'chain_id', 'session_id', '_caller_session')
             updates = {k: v for k, v in spec.items()
-                       if k not in ('node_id', 'reason', 'content') and v is not None}
+                       if k not in _REVISE_CONTROL and v is not None}
 
             try:
                 result = self.revise(node_id=node_id, content=content,

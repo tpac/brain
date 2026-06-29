@@ -945,7 +945,12 @@ def _handle_brain_batch(brain, args, graph_changes):
         connect_to_failed = []  # [{title, reason}]
         connect_to_made = []    # [{src_id, target_id, relation, edge_id, deltas}]
         for src_id, ct_spec in deferred_connects:
-            r = brain._apply_connect_to(src_id, ct_spec, sibling_map=sibling_map)
+            # The src node was created by a remember op in this batch, which
+            # inherited top_encoding_source (or 'anchor' for direct MCP) — give
+            # its connect_to edges the same provenance.
+            r = brain._apply_connect_to(
+                src_id, ct_spec, sibling_map=sibling_map,
+                encoding_source=top_encoding_source or 'anchor')
             connect_to_edges += len(r['created'])
             connect_to_made.extend(r['created'])  # entries src-tagged by _apply_connect_to
             connect_to_failed.extend(r['failed'])
@@ -1012,10 +1017,15 @@ def _handle_brain_batch(brain, args, graph_changes):
 
 
 def _handle_connect(brain, args, graph_changes):
-    # Stage 1B: pass description/encoding_source through only when caller
-    # specified them. None preserves existing on update (idempotent upsert).
+    # Resolve the edge's CREATOR. The encoder pre-stamps args['encoding_source']
+    # at its dispatch boundary (apply_encoder_attribution); a direct-MCP connect
+    # arrives with none — and an unstamped write reaching this handler IS anchor
+    # by definition (every other writer stamps upstream). So `or 'anchor'` mirrors
+    # the node birth default (remember(): `encoding_source or 'anchor'`). This is
+    # applied at CREATE only — add_relation preserves encoding_source on an
+    # active-row update — so re-connecting an existing edge never relabels it.
     relation = args.get("relation", "related_to")
-    encoding_source = args.get("encoding_source")  # None = preserve on update
+    encoding_source = args.get("encoding_source") or 'anchor'
     src_id = _resolve_id(brain, args.get("source_id", ""))
     tgt_id = _resolve_id(brain, args.get("target_id", ""))
     result = brain.connect_typed(
@@ -1126,9 +1136,12 @@ def _handle_connect_batch(brain, args, graph_changes):
                 'keys=%s' % sorted(c.keys()))
             continue
         try:
-            # Stage 1B: pass description/encoding_source through only when
-            # specified (None → preserve existing on update).
-            encoding_source = c.get("encoding_source") or top_encoding_source or None
+            # Resolve the edge's CREATOR (per-row → batch-level → 'anchor'),
+            # mirroring _handle_connect. Applied at CREATE only — add_relation
+            # preserves encoding_source on an active-row update — so a re-connect
+            # never relabels an existing edge.
+            encoding_source = (c.get("encoding_source")
+                               or top_encoding_source or 'anchor')
             src_id = _resolve_id(brain, src_raw)
             tgt_id = _resolve_id(brain, tgt_raw)
             result = brain.connect_typed(
