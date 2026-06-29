@@ -695,12 +695,6 @@ class BrainRecallMixin:
             self._log_error('journal_note_write_failed', e, 'chain=%s' % chain_id)
             return {'written': 0, 'malformed': 0, 'status': 'error'}
 
-    def query_outcomes(self, chain_id: str = '', scale: str = '',
-                       hours: int = 168):
-        """Query outcome events — the learning signal."""
-        return self._trace_dal.get_outcomes(
-            chain_id=chain_id, scale=scale, hours=hours)
-
     def count_traces(self, field: str, scale: str = '', hours: int = 24):
         """Count trace events grouped by a field."""
         return self._trace_dal.count_by(field=field, scale=scale, hours=hours)

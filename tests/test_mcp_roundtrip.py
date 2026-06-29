@@ -322,21 +322,6 @@ class TestMCPRoundTrip(BrainTestBase):
         ids = {r['id'] for r in result}
         self.assertEqual(ids, {a, b})
 
-    def test_query_outcomes(self):
-        """query_outcomes returns the outcome events for a chain. Write one,
-        then read it back — stronger than the old isinstance-list smoke check."""
-        self.brain._trace_dal.append(
-            chain_id="roundtrip-oc", scale="s1", event_type="O",
-            ref_type="recall", summary="seed for outcome")
-        self.brain._trace_dal.append_outcome(
-            chain_id="roundtrip-oc", scale="s1", ref_type="correction",
-            ref_id="node-xyz", summary="operator corrected this")
-        result = self._dispatch("query_outcomes", {"chain_id": "roundtrip-oc"})
-        self.assertIsInstance(result, list)
-        self.assertGreaterEqual(len(result), 1)
-        self.assertTrue(
-            any(o.get("ref_type") == "correction" for o in result),
-            "appended correction outcome not returned by query_outcomes")
 
     def test_count_traces(self):
         """count_traces returns {event_type: int}. Append two known events and

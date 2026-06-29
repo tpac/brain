@@ -681,10 +681,10 @@ def _build_tools():
 
     # ── Traces & Interactions ──
     {"name": "query_traces",
-     "description": "Search the fractal trace substrate — O (observed) / K (selected) / delta (changed) / outcome events at each scale. Pick the scale for the layer you want: s0 = raw conversation — for any s0 pull, incl. what you did with tools, use recall_episodes (the conversational lens; pass ref_type='tool_result' there); s1 = per-turn (ref_type recall = candidates pulled, surface_selected = the few that won, encoding_run = what the Scribe encoded, …); s2 = idle integration (consolidation_proposals, community_enriched, healer_proposals, …). ref_type is open-text — these are examples, not the full set. Common pull: what got encoded → scale='s1', ref_type='encoding_run'. Time & scope: `hours` bounds the window (default 24); session_id/session_ids are authoritative and ignore `hours` (full history for that stream — pass one, not both); chain_id pulls one full chain; grouped=true nests events by chain.",
+     "description": "Search the fractal trace substrate — O (observed) / K (selected) / delta (changed) events at each scale. Pick the scale for the layer you want: s0 = raw conversation — for any s0 pull, incl. what you did with tools, use recall_episodes (the conversational lens; pass ref_type='tool_result' there); s1 = per-turn (ref_type recall = candidates pulled, surface_selected = the few that won, encoding_run = what the Scribe encoded, …); s2 = idle integration (consolidation_proposals, community_enriched, healer_proposals, …). ref_type is open-text — these are examples, not the full set. Common pull: what got encoded → scale='s1', ref_type='encoding_run'. Time & scope: `hours` bounds the window (default 24); session_id/session_ids are authoritative and ignore `hours` (full history for that stream — pass one, not both); chain_id pulls one full chain; grouped=true nests events by chain.",
      "inputSchema": {"type": "object", "properties": {
          "scale": {"type": "string", "description": "Filter by scale: 's0' (exchange), 's1' (turn), 's2' (session), 's3' (sleep), 's4' (growth). Empty = all."},
-         "event_type": {"type": "string", "description": "Filter by type: 'O' (observation), 'K' (knowledge), 'delta' (changes), 'outcome'. Empty = all."},
+         "event_type": {"type": "string", "description": "Filter by type: 'O' (observation), 'K' (knowledge), 'delta' (changes). Empty = all."},
          "chain_id": {"type": "string", "description": "Get all events in a specific chain. Overrides other filters."},
          "session_id": {"type": "string", "description": "Single-session filter. Authoritative — hours window ignored when set. Combine with grouped=true for chain-grouped results."},
          "session_ids": {"type": "array", "items": {"type": "string"}, "description": "Multi-session filter (cross-session pulls). Authoritative — hours window ignored. Mutually exclusive with session_id."},
@@ -702,19 +702,12 @@ def _build_tools():
          "session_id": {"type": "string", "description": "Single stream (session) filter. Mutually exclusive with session_ids. Default: all streams."},
          "session_ids": {"type": "array", "items": {"type": "string"}, "description": "Multi-stream filter (cross-session pulls). Mutually exclusive with session_id."},
          "scale": {"type": "string", "description": "Trace scale: 's0' (conversation — default, the 'what was said' layer), 's1', 's2'… Empty = all scales.", "default": "s0"},
-         "event_type": {"type": "string", "description": "Filter by event type: 'O', 'K', 'delta', 'outcome'. Empty = all."},
+         "event_type": {"type": "string", "description": "Filter by event type: 'O', 'K', 'delta'. Empty = all."},
          "ref_type": {"type": ["string", "array"], "items": {"type": "string"}, "description": "One ref_type (str) or several (array). UNSET = conversation default sourced from the trace-contract dial (user/assistant messages — drops tool_result, heartbeats, structural deltas) at s0; all types at other scales. Pass 'tool_result' for the 'what I did' lens, or ['user_message','assistant_message','tool_result'] for the interleaved said+did timeline."},
          "younger_than": {"type": "string", "description": "Only episodes more recent than this. ISO timestamp or relative shorthand ('30m','2h','3d','1w')."},
          "older_than": {"type": "string", "description": "Only episodes older than this. ISO timestamp or relative shorthand. With no session scope and no younger_than, a default 7-day lower bound is applied (bounds the scan)."},
          "sort_order": {"type": "string", "description": "'desc' (latest first, default) or 'asc' (oldest first). Ignored when `query` is set — then results are relevance-ranked.", "default": "desc"},
          "limit": {"type": "integer", "description": "Max episodes returned (default 10, capped at 500).", "default": 10}}}},
-
-    {"name": "query_outcomes",
-     "description": "Query outcome events — the learning signal. Outcomes are added retrospectively when we learn what happened next (corrections, future recalls). Use to find which chains got corrected vs validated.",
-     "inputSchema": {"type": "object", "properties": {
-         "chain_id": {"type": "string", "description": "Get outcomes for a specific chain."},
-         "scale": {"type": "string", "description": "Filter by scale. Empty = all."},
-         "hours": {"type": "integer", "description": "Look back window in hours (default 168 = 7 days)", "default": 168}}}},
 
     {"name": "count_traces",
      "description": "Count trace events grouped by a field. Use for quick overview: 'how many corrections?', 'events per type', 'chains per scale'.",

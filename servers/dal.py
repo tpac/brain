@@ -909,15 +909,6 @@ class TraceDAL:
             params + [limit]).fetchall()
         return [(r[0], r[1]) for r in rows if r[1]]
 
-    def append_outcome(self, chain_id: str, scale: str, ref_type: str, ref_id: str,
-                       summary: str, session_id: str = '') -> int:
-        """Append an outcome event to an existing chain. Called later when
-        we learn what happened (correction, recall, revision)."""
-        return self.append(
-            chain_id=chain_id, scale=scale, event_type='outcome',
-            ref_type=ref_type, ref_id=ref_id, summary=summary,
-            session_id=session_id)
-
     def get_chains(self, session_id: str = '', scale: str = '',
                    hours: int = 24, limit: int = 50) -> List[Dict[str, Any]]:
         """Get complete chains grouped, with all events and metadata.
@@ -1020,32 +1011,6 @@ class TraceDAL:
             'FROM trace_events WHERE %s ORDER BY created_at DESC LIMIT ?' % where,
             params + [limit]).fetchall()
 
-        return [self._row_to_event(r) for r in rows]
-
-    def get_outcomes(self, chain_id: str = '', scale: str = '',
-                     hours: int = 168) -> List[Dict[str, Any]]:
-        """Get outcome events, optionally for a specific chain or scale.
-
-        Use: S3 checks which S1 chains got corrected vs validated.
-        Default 168h = 7 days.
-        """
-        conditions = ["event_type = 'outcome'", 'created_at > ?']
-        params = [iso_cutoff(hours=hours)]
-        if chain_id:
-            conditions.append('chain_id = ?')
-            params.append(chain_id)
-        if scale:
-            conditions.append('scale = ?')
-            params.append(scale)
-        where = ' AND '.join(conditions)
-
-        rows = self.conn.execute(
-            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, created_at '
-            'FROM trace_events WHERE %s ORDER BY created_at DESC' % where,
-            params).fetchall()
-
-        # event_type is pinned to 'outcome' by the WHERE; selecting it back lets
-        # this share the canonical row mapping rather than hand-stamping it.
         return [self._row_to_event(r) for r in rows]
 
     def count_by(self, field: str, scale: str = '', hours: int = 24) -> Dict[str, int]:

@@ -141,15 +141,6 @@ def _handle_recall_episodes(brain, args, graph_changes):
         return {"ok": False, "error": str(e)}
 
 
-def _handle_query_outcomes(brain, args, graph_changes):
-    """Query outcome events — the learning signal."""
-    result = brain.query_outcomes(
-        chain_id=args.get("chain_id", ""),
-        scale=args.get("scale", ""),
-        hours=args.get("hours", 168))
-    return {"ok": True, "result": result}
-
-
 def _handle_count_traces(brain, args, graph_changes):
     """Count trace events grouped by a field."""
     result = brain.count_traces(

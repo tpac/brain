@@ -28,7 +28,7 @@ from .dispatch_read import (
 from .dispatch_observability import (
     _handle_trace_append, _handle_get_trace, _handle_get_traces, _handle_query_traces,
     _handle_recall_episodes,
-    _handle_query_outcomes, _handle_count_traces, _handle_query_logs,
+    _handle_count_traces, _handle_query_logs,
     _handle_clear_errors, _handle_log_debug, _handle_list_interactions,
     _handle_get_interaction, _handle_set_interaction_active, _handle_register_interaction,
 )
@@ -93,7 +93,6 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "clear_errors":          CmdEntry(_handle_clear_errors,        is_write=True,  marks_dirty=False),
     "query_traces":          CmdEntry(_handle_query_traces,        is_write=False, marks_dirty=False),
     "recall_episodes":       CmdEntry(_handle_recall_episodes,     is_write=False, marks_dirty=False),
-    "query_outcomes":        CmdEntry(_handle_query_outcomes,      is_write=False, marks_dirty=False),
     "count_traces":          CmdEntry(_handle_count_traces,        is_write=False, marks_dirty=False),
     "list_interactions":     CmdEntry(_handle_list_interactions,   is_write=False, marks_dirty=False),
     "get_interaction":       CmdEntry(_handle_get_interaction,     is_write=False, marks_dirty=False),

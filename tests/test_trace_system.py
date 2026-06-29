@@ -46,8 +46,6 @@ class TestTraceContract:
         assert self.validate('s1', 'K', 'node_catalog') == (True, '')
         assert self.validate('s1', 'delta', 'additionalContext') == (True, '')
         assert self.validate('s1', 'delta', 'encoding_run') == (True, '')
-        assert self.validate('s1', 'outcome', 'correction') == (True, '')
-        assert self.validate('s1', 'outcome', 'recall_hit') == (True, '')
 
     def test_rejects_bad_scale(self):
         ok, _ = self.validate('raw', 'K', '')
@@ -63,6 +61,10 @@ class TestTraceContract:
         ok, _ = self.validate('s0', 'message', '')
         assert not ok
         ok, _ = self.validate('s1', 'recall', '')
+        assert not ok
+        # 'outcome' event_type was removed in the DAL Phase-A cleanup (the
+        # dormant outcome arm) — it must now be rejected.
+        ok, _ = self.validate('s1', 'outcome', 'correction')
         assert not ok
 
     def test_rejects_bad_ref_type(self):
@@ -83,8 +85,10 @@ class TestTraceContract:
             assert s in self.SCALES, "Scale %s missing from SCALES" % s
 
     def test_all_event_types_defined(self):
-        for et in ('O', 'K', 'delta', 'outcome'):
+        for et in ('O', 'K', 'delta'):
             assert et in self.EVENT_TYPES, "Event type %s missing" % et
+        # 'outcome' removed in the DAL Phase-A cleanup (dormant outcome arm).
+        assert 'outcome' not in self.EVENT_TYPES
 
     def test_s2_ref_types(self):
         """S2 (Graph) ref_types are valid."""
@@ -107,8 +111,6 @@ class TestTraceContract:
         # as the canonical post-merge ref_type.
         assert self.validate('s2', 'delta', 'consolidated') == (True, '')
         assert self.validate('s2', 'delta', 'confidence_adjust') == (True, '')
-        assert self.validate('s2', 'outcome', 'recall_improved') == (True, '')
-        assert self.validate('s2', 'outcome', 'operator_reviewed') == (True, '')
 
     def test_s3_ref_types(self):
         """S3 (Reasoning) ref_types are valid."""
@@ -120,8 +122,6 @@ class TestTraceContract:
         assert self.validate('s3', 'delta', 'abstract_insight') == (True, '')
         assert self.validate('s3', 'delta', 'resolved_question') == (True, '')
         assert self.validate('s3', 'delta', 'meta_optimization') == (True, '')
-        assert self.validate('s3', 'outcome', 'adopted') == (True, '')
-        assert self.validate('s3', 'outcome', 'rejected') == (True, '')
 
     def test_s4_ref_types(self):
         """S4 (Growth) ref_types are valid."""
@@ -130,8 +130,6 @@ class TestTraceContract:
         assert self.validate('s4', 'K', 'stale_decisions') == (True, '')
         assert self.validate('s4', 'delta', 'research_finding') == (True, '')
         assert self.validate('s4', 'delta', 'cross_project') == (True, '')
-        assert self.validate('s4', 'outcome', 'adopted') == (True, '')
-        assert self.validate('s4', 'outcome', 'rejected') == (True, '')
 
 
 # ═══════════════════════════════════════════════════════
@@ -365,20 +363,6 @@ class TestTraceDAL:
         assert 'chain-b' in chains
         assert 'chain-c' not in chains
 
-    def test_append_outcome(self):
-        """append_outcome writes an outcome event to existing chain."""
-        self.dal.append(chain_id='outcome-test', scale='s1', event_type='O',
-                        ref_type='recall', summary='original')
-        self.dal.append_outcome(
-            chain_id='outcome-test', scale='s1',
-            ref_type='correction', ref_id='node-123',
-            summary='Tom corrected this')
-
-        chain = self.dal.get_chain('outcome-test')
-        assert len(chain) == 2
-        assert chain[1]['event_type'] == 'outcome'
-        assert chain[1]['ref_type'] == 'correction'
-
 
 # ═══════════════════════════════════════════════════════
 # A1: New query methods
@@ -453,17 +437,18 @@ class TestGetByRefType:
             yield
 
     def test_filters_by_ref_type(self):
-        """Only returns events with matching ref_type."""
-        self.dal.append(chain_id='c1', scale='s1', event_type='outcome',
-                        ref_type='correction', summary='corrected')
-        self.dal.append(chain_id='c2', scale='s1', event_type='outcome',
-                        ref_type='recall_hit', summary='recalled')
-        self.dal.append(chain_id='c3', scale='s1', event_type='delta',
-                        ref_type='additionalContext', summary='surfaced')
+        """Only returns events with matching ref_type (seed-robust via tag —
+        IsolatedBrain carries real encoding_run/recall traces)."""
+        tag = 'reffilter_%s' % id(self)
+        self.dal.append(chain_id='c1', scale='s1', event_type='delta',
+                        ref_type='encoding_run', summary=tag + ' encoded')
+        self.dal.append(chain_id='c2', scale='s1', event_type='O',
+                        ref_type='recall', summary=tag + ' recalled')
 
-        result = self.dal.get_by_ref_type('correction')
-        assert len(result) == 1
-        assert result[0]['summary'] == 'corrected'
+        result = self.dal.get_by_ref_type('encoding_run')
+        tagged = [r for r in result if tag in (r['summary'] or '')]
+        assert len(tagged) == 1
+        assert tagged[0]['summary'] == tag + ' encoded'
 
     def test_filters_by_scale(self):
         """Scale filter narrows results further."""
@@ -480,9 +465,9 @@ class TestGetByRefType:
 
     def test_respects_limit(self):
         for i in range(10):
-            self.dal.append(chain_id='c%d' % i, scale='s1', event_type='outcome',
-                            ref_type='correction', summary='item %d' % i)
-        result = self.dal.get_by_ref_type('correction', limit=3)
+            self.dal.append(chain_id='c%d' % i, scale='s1', event_type='delta',
+                            ref_type='encoding_run', summary='item %d' % i)
+        result = self.dal.get_by_ref_type('encoding_run', limit=3)
         assert len(result) <= 3
 
     def test_filters_by_session_id(self):
@@ -511,47 +496,6 @@ class TestGetByRefType:
         assert {'["nA"]', '["nB"]'} <= unscoped_ids
 
 
-class TestGetOutcomes:
-    """Verify get_outcomes returns outcome events."""
-
-    @pytest.fixture(autouse=True)
-    def setup_brain(self):
-        with IsolatedBrain() as env:
-            self.dal = env.brain._trace_dal
-            yield
-
-    def test_returns_outcomes_for_chain(self):
-        """Returns only outcome events for a specific chain."""
-        self.dal.append(chain_id='oc-test', scale='s1', event_type='O',
-                        ref_type='recall', summary='original')
-        self.dal.append(chain_id='oc-test', scale='s1', event_type='outcome',
-                        ref_type='correction', summary='corrected later')
-
-        result = self.dal.get_outcomes(chain_id='oc-test')
-        assert len(result) == 1
-        assert result[0]['ref_type'] == 'correction'
-
-    def test_returns_outcomes_for_scale(self):
-        """Returns all outcomes at a given scale."""
-        self.dal.append(chain_id='c1', scale='s1', event_type='outcome',
-                        ref_type='correction', summary='correction 1')
-        self.dal.append(chain_id='c2', scale='s1', event_type='outcome',
-                        ref_type='recall_hit', summary='recall hit 1')
-        self.dal.append(chain_id='c3', scale='s0', event_type='outcome',
-                        ref_type='correction', summary='s0 correction')
-
-        result = self.dal.get_outcomes(scale='s1')
-        assert len(result) == 2
-        assert all(e['scale'] == 's1' for e in result)
-
-    def test_no_outcomes_returns_empty(self):
-        """Returns empty list when no outcomes exist."""
-        self.dal.append(chain_id='no-oc', scale='s1', event_type='O',
-                        ref_type='recall', summary='no outcome here')
-        result = self.dal.get_outcomes(chain_id='no-oc')
-        assert result == []
-
-
 class TestCountBy:
     """Verify count_by aggregation."""
 
@@ -577,17 +521,19 @@ class TestCountBy:
         assert result.get('delta', 0) == 1
 
     def test_count_by_ref_type(self):
-        """Counts events grouped by ref_type."""
-        self.dal.append(chain_id='c1', scale='s1', event_type='outcome',
-                        ref_type='correction')
-        self.dal.append(chain_id='c2', scale='s1', event_type='outcome',
-                        ref_type='correction')
-        self.dal.append(chain_id='c3', scale='s1', event_type='outcome',
-                        ref_type='recall_hit')
+        """Counts events grouped by ref_type (delta vs baseline — seed-robust,
+        since IsolatedBrain may carry real encoding_run/additionalContext)."""
+        before = self.dal.count_by('ref_type', scale='s1')
+        self.dal.append(chain_id='c1', scale='s1', event_type='delta',
+                        ref_type='encoding_run')
+        self.dal.append(chain_id='c2', scale='s1', event_type='delta',
+                        ref_type='encoding_run')
+        self.dal.append(chain_id='c3', scale='s1', event_type='delta',
+                        ref_type='additionalContext')
 
-        result = self.dal.count_by('ref_type', scale='s1')
-        assert result.get('correction', 0) == 2
-        assert result.get('recall_hit', 0) == 1
+        after = self.dal.count_by('ref_type', scale='s1')
+        assert after.get('encoding_run', 0) - before.get('encoding_run', 0) == 2
+        assert after.get('additionalContext', 0) - before.get('additionalContext', 0) == 1
 
     def test_count_by_filters_scale(self):
         """Scale filter only counts matching events."""

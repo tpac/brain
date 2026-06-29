@@ -45,13 +45,12 @@ SCALES = {
 
 
 # ── EVENT TYPES ──
-# O/K/Δ/outcome — structurally identical at every scale.
+# O/K/Δ — structurally identical at every scale.
 
 EVENT_TYPES = {
     "O": "Observation — everything available at this moment",
     "K": "Knowledge — what was selected as relevant from O",
     "delta": "Changes — what was produced (the response, encoding, reorganization)",
-    "outcome": "What happened next — added retrospectively (corrections, future recalls)",
 }
 
 
@@ -69,7 +68,6 @@ REF_TYPES = {
                                               # NOT a conversational turn — see S0 TURN CLASSIFICATION.
     ("s0", "delta"):   ["assistant_message", "tool_result",
                          "node_revised", "edge_relation_revised"],
-    ("s0", "outcome"): ["correction", "follow_up"],
 
     # Scale 1: turn integration
     # Surface path (chain prefix: s1r-): O=candidates, K=surfaced picks, delta=context sent to Anchor
@@ -85,8 +83,6 @@ REF_TYPES = {
                          "node_revised",            # field-level revise emitted by S1 encoder
                          "edge_relation_revised",   # connect upsert / archive emitted by S1 encoder
                          "journal_note"],           # S1 Scribe residue — one note (subject=ref_id) per row
-    ("s1", "outcome"): ["correction",         # Tom corrected something that was recalled
-                         "recall_hit"],        # node was recalled in a future turn
 
     # Scale 2: graph integration
     # Fires during idle hook. Operates on S1's accumulated output (the graph).
@@ -121,8 +117,6 @@ REF_TYPES = {
                          "node_revised",            # field-level revise emitted by S2 units (healer, consolidation)
                          "edge_relation_revised",   # connect upsert / archive emitted by S2 units
                          "journal_note"],           # S2 unit residue (consolidation, community) — one note per row
-    ("s2", "outcome"): ["recall_improved",      # community nodes improved recall
-                         "operator_reviewed"],   # Tom reviewed S2 output
 
     # Scale 3: reasoning integration
     # Operates on S2's output (clusters, trajectories, landscapes).
@@ -134,8 +128,6 @@ REF_TYPES = {
     ("s3", "delta"):   ["abstract_insight",     # cross-cluster pattern recognized
                          "resolved_question",    # uncertainty answered
                          "meta_optimization"],   # S2 prompt/config improvement
-    ("s3", "outcome"): ["adopted",              # insight used by Tom/Anchor
-                         "rejected"],            # Tom rejected the insight
 
     # Scale 4: growth integration
     # Fires periodically (weekly). Sees full graph + external sources.
@@ -146,8 +138,6 @@ REF_TYPES = {
     ("s4", "delta"):   ["research_finding",    # new knowledge from outside
                          "decision_update",     # stale decision refreshed
                          "cross_project"],      # bridge between projects
-    ("s4", "outcome"): ["adopted",             # finding was used by Tom/Anchor
-                         "rejected"],           # Tom rejected the finding
 }
 
 
@@ -201,7 +191,7 @@ WAKE_ENVELOPE_MARKER = "<task-notification>"
 
 
 # ── CHAIN ID CONVENTIONS ──
-# chain_id groups related O/K/Δ/outcome events.
+# chain_id groups related O/K/Δ events.
 #
 # One chain per stop at S0. Everything between stop N-1 and stop N
 # (messages, tool calls) belongs to the same S0 chain.
