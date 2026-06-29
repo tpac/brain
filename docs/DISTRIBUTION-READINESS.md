@@ -1,8 +1,10 @@
 # Distribution Readiness — Sharing Anchor
 
-**Status:** Phases 2–4 mechanical pieces executed, code-reviewed, and committed
-(`0d2c1e7`); next substantive step is D-5 (seed pack). · **Started:** 2026-06-14 ·
-**Audience:** dev-facing
+**Status:** Install/launch layer **shipped + cold-validated (Layers 1–3)** as of
+2026-06-29 — see **§6b**. Near-term target is **Goal A (hand it to a trusted friend)**;
+remaining gates: depersonalize 3 non-s1e seed prompts (+ the s1e encoder prompt, owned by
+another stream), relocate `aspects_proposed.json`, and the **untested Layer-4 live install**.
+· **Started:** 2026-06-14 · **Audience:** dev-facing
 **Placement:** lives in the **private** dev repo only. This document names personal-data
 findings and internal file paths — it must **never** be copied into the public
 distribution repo.
@@ -35,9 +37,13 @@ stated reason.
 
 ## 3. Current state (grounded findings, verified 2026-06-14)
 
-> Snapshot of the original investigation. Several findings below are now **resolved** —
-> Linux degradation verified (§4 3.1), realchat data untracked (§4 1.3), dashboard
-> shipped (§4 4.1), userConfig added (§4 2.1). See §4/§6 for execution status.
+> Snapshot of the original (2026-06-14) investigation. Many findings below are now
+> **resolved** — Linux degradation (§4 3.1), realchat untracked (§4 1.3), dashboard
+> shipped (§4 4.1), userConfig (§4 2.1), and (2026-06-29, **§6b**) the dashboard
+> launchd installer + path-clean package + `userConfig.brain_path`. The
+> personalized-seed-prompts blocker is **partly** done — s1e encoder prompt is in
+> progress on another stream; **3 non-s1e prompts + `aspects_proposed.json` still
+> remain**. **§6b is the current status; read it first.**
 
 The 2026-05-01 audit (`cd4a99f`) fixed hardcoded paths, the API-key gate, and
 `.claude/settings.local.json`. **Those held.** New issues since:
@@ -290,6 +296,54 @@ no pre-stage-and-wait), with a guard that aborts unless the staged set is *exact
 session's files. See `0d2c1e7`.
 
 **Not this session:** all prompt edits (→ D-5), Phase 5 packaging, the publish.
+
+---
+
+## 6b. Session 2026-06-28/29 — install/launch layer shipped; Goal-A path
+
+This session built + validated the **install/launch layer** Phases 2–4 sketched, and
+fixed the framing: **Goal A = hand it to a trusted friend** (reversible, the real proof —
+do first) vs **Goal B = public OSS publish** (§5.4, the one-way door — later). Goal A does
+**not** need the clean-history repo or public marketplace.
+
+**Shipped + committed (main, path-scoped atomic commits):**
+- `c6d4b82` **userConfig.brain_path** — bring-your-own-brain at enable. `resolve-brain-db.sh`
+  reads `CLAUDE_PLUGIN_OPTION_BRAIN_PATH`; a not-yet-existing path is created (honored), not
+  silently dropped. (Resolves the DB-path half of open-fork #3.)
+- `b87f455` **dashboard: single launcher + env-configurable port + path-clean package** —
+  consolidated to `bin/brain-dashboard`; port = `server.py` default 47303, overridable via
+  `DASHBOARD_PORT` in `~/.config/brain/env` (the single user-editable place); plist
+  templatized → **package has no `/Users/tpac`**. `/dashboard` skill added.
+- `a11bbb9` **`/dashboard` self-installs the launchd singleton** (`hooks/scripts/ensure-dashboard.sh`):
+  first run materializes the plist for the machine + `launchctl bootstrap`; KeepAlive/RunAtLoad
+  thereafter. **This is §3.3's deferred launchd installer — now shipped for the dashboard**
+  (the daemon still Popen-fallbacks; daemon launchd self-install is optional parity).
+- `d165bce` Claude-pane open option (Claude-in-Chrome `navigate` at the singleton — no 2nd
+  server); `4990a69` `dashboard-dev` preview config (separate port) — restores the
+  screenshot/inspect UX-dev loop the singleton had cost; `20755f4` substitution-safe plist comment.
+- `4bea8e8` `docs/LIFECYCLE-LAUNCH-ARCH-PLAN.md` (lifecycle arch-review plan).
+
+**Cold-install validated — the 4-layer test (`f2a29b23`):** Layers 1–3 proven by isolated
+probes — bootstrap (uv → Python 3.11 → venv → 6 deps → model, ~14s from zero), resolve
+adopt-vs-create fork, `seed_pack` (16 generic nodes + 14 seed prompts), entry-point imports
+(`servers.brain`, `brain_mcp`, `daemon_server`). **Layer 4 — live Claude Code (daemon boot +
+MCP connect + hooks fire + recall/encode) — is UNTESTED. The key remaining unknown.**
+
+**Goal-A checklist (hand to a friend), besides the s1e encoder prompt (other stream owns it):**
+1. **Depersonalize the 3 non-s1e seed prompts** still carrying "Tom" — `servers/scales/s1/surface_contract.py`,
+   `servers/scales/s2/community_enrichment_prompt.py`, `servers/scales/s2/aspect_prompt.py`
+   (= §4 Phase 1.1/1.2 applied to these files). They seed every fresh brain's `interactions`.
+2. **Relocate `servers/scales/s2/aspects_proposed.json`** out of the shipped package — it's
+   runtime-writable (aspect decoder), so it belongs in `$BRAIN_DB_DIR` (the seed/runtime split).
+   It ships today (git-tracked under `servers/`).
+3. **Layer-4 live test** on a clean macOS account/VM — the untested integration; do *before* the friend.
+4. **Friend install** — `marketplace.json` is now a real "brain" marketplace (`source: "./"`).
+   For a *trusted* friend: hand them the repo/package + their own API key (userConfig prompts).
+   No git-history scrub needed (that's Goal B / §5.4 only).
+- **Not blocking:** daemon launchd self-install (parity with `ensure-dashboard.sh`); seed-pack
+  *quality* (D-5) — the 16 generic seeds suffice for a first friend.
+
+**Recommended order:** 1 + 2 (cheap gates) → 3 (Layer-4 test) → 4 (friend install = the Goal-A proof).
 
 ---
 
