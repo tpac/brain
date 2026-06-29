@@ -104,6 +104,12 @@ ENCODING_AGENT = {
     'node_edge_limit': 5,             # structural edges per node (with descriptions)
 }
 
+# Lived-sequence timeline (S1E code-half piece 1): how many recent s0 events to
+# pull when assembling the messages+actions interleave. Bounded by EPISODE_MAX_LIMIT
+# (=500) — recall_episodes/filter_events clamps anything larger — so 500 IS the max
+# a single pull can return; the result is then trimmed to the control arm's turn count.
+LIVED_SEQUENCE_PULL = 500
+
 
 # ═══════════════════════════════════════════════════════════════
 # NODE CATALOG — uses system format_node() with S1 config
@@ -125,6 +131,10 @@ S1_NODE_CONFIG = {
     'content_limit': ENCODING_AGENT.get('node_content_limit'),
     'edge_limit': ENCODING_AGENT.get('node_edge_limit', 5),
     'correction_render': 'heavy',
+    # encoding_source is a technical attribution field (encoder:sonnet / anchor /
+    # s2:*) — noise to the encoder, which shouldn't reason about who wrote a node.
+    # render_rich_node defaults show_encoding_source=True, so hide it explicitly.
+    'show_encoding_source': False,
 }
 
 

@@ -351,7 +351,7 @@ def _build_system_prompt(prompt_instructions=None):
     return prompt
 
 
-def _build_user_content(brain, messages, counter, session_id):
+def _build_user_content(brain, messages, counter, session_id, lived_sequence=None):
     """Assemble S1 encoding prompt: stable preamble + dynamic body.
 
     The split is deliberate for caching. The stable preamble (instructions
@@ -367,8 +367,7 @@ def _build_user_content(brain, messages, counter, session_id):
         - catalog_text: rendered catalog block (reused by muster).
         - catalog_ids: set of node ids in the catalog (reused by temporal scout).
     """
-    from servers.scales.s1.encode_contract import ENCODING_AGENT, build_node_catalog
-    import re
+    from servers.scales.s1.encode_contract import build_node_catalog
 
     # Encoding journal (session-scoped, cumulative)
     journal_key = 'encoding_journal_%s' % session_id
@@ -382,58 +381,17 @@ def _build_user_content(brain, messages, counter, session_id):
         print('[s1e] ERROR building node catalog: %s' % e, flush=True)
         node_catalog, cataloged_ids = '', set()
 
-    # Build conversation timeline with node references.
-    #
-    # Per-turn `[trace:<hex>]` markers (v29 / Phase B Step 1): each USER /
-    # ASSISTANT line carries the trace_event.id of the originating row. The
-    # encoder copies these into `source_refs` when a node anchors to that
-    # turn — see EPISODIC-REFERENCES.md §6.5 and §7.4. Sparse by design
-    # (decision 13): the encoder picks 1-3 load-bearing trace_ids per node,
-    # not the whole window. Missing/None trace_id renders as `[trace:?]`
-    # (legacy turns from pre-v29 JSONL fallback) so the encoder skips them
-    # rather than fabricating ids.
-    timeline = ""
-    turn_num = 0
-    i = 0
-
-    def _fmt_trace(tid):
-        return "[trace:%s]" % tid if tid else "[trace:?]"
-
-    while i < len(messages):
-        m = messages[i]
-        if m.get("role") == "user":
-            turn_num += 1
-            user_content = (m.get("content") or "")[:ENCODING_AGENT['message_display_limit']]
-            turn_id = m.get("id", "")
-            user_trace = m.get("trace_id")
-
-            timeline += "[TURN %d]\n" % turn_num
-            timeline += "USER %s: \"%s\" (turn_id: %s)\n" % (
-                _fmt_trace(user_trace), user_content, turn_id)
-
-            # Reference surfaced nodes by ID (full data in catalog above)
-            # Only show when there are actual node IDs — skip noise lines
-            judge_output = m.get("judge_output")
-            if judge_output and judge_output != '(no selection)':
-                ref_ids = re.findall(r'id:([a-z0-9_]{6,8})', judge_output)
-                if ref_ids:
-                    dal = brain._nodes
-                    refs = []
-                    for rid in ref_ids:
-                        title = (dal.get_title(rid) or rid)[:50]
-                        refs.append('%s ("%s")' % (rid, title))
-                    timeline += "SURFACED: %s\n" % ", ".join(refs)
-
-            # Include assistant response
-            if i + 1 < len(messages) and messages[i + 1].get("role") == "assistant":
-                asst_msg = messages[i + 1]
-                asst = (asst_msg.get("content") or "")[:ENCODING_AGENT['message_display_limit']]
-                asst_trace = asst_msg.get("trace_id")
-                timeline += "ASSISTANT %s: \"%s\"\n" % (_fmt_trace(asst_trace), asst)
-                i += 1
-
-            timeline += "\n"
-        i += 1
+    # Conversation timeline — two render modes behind an A/B flag (piece 1 of the
+    # S1E code-half rebuild; docs/S1-SCRIBE-REDESIGN.md §10.3.1):
+    #   OFF (default): markdown messages-only — the long-standing path, untouched.
+    #   ON: the XML lived sequence — messages + tool actions interleaved, read via
+    #       the existing recall_episodes door — closes the "encoder blind to tool
+    #       use" gap. Flag-off output is byte-identical to before.
+    lived = _lived_sequence_enabled() if lived_sequence is None else lived_sequence
+    if lived:
+        timeline = _render_lived_sequence_timeline(brain, session_id, messages)
+    else:
+        timeline = _render_markdown_timeline(brain, messages)
 
     # Previous session context (per-session — no global leak across parallel sessions)
     prev_context = brain.session_context_for(session_id)
@@ -463,6 +421,148 @@ def _build_user_content(brain, messages, counter, session_id):
         body += "### %s\n" % node_catalog
     body += "### Conversation Timeline\n\n%s\n" % timeline
     return preamble, body, node_catalog, cataloged_ids
+
+
+def _xml_escape(s):
+    """Escape the three XML-significant chars so message/tool text can't malform
+    the lived-sequence timeline or forge tags (e.g. a '</user>' or '<turn>'
+    substring in a user prompt, or 'Bash: a > b' / 'Grep: <svg>' in a tool cue)."""
+    return (s or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+
+def _lived_sequence_enabled():
+    """A/B flag for the lived-sequence timeline (piece 1, S1E code-half).
+
+    OFF by default. The eval flips it per arm via the env var; tests pass the
+    `lived_sequence` param to `_build_user_content` explicitly. See
+    docs/S1-SCRIBE-REDESIGN.md §10.3.1.
+    """
+    return os.environ.get('BRAIN_S1E_LIVED_SEQUENCE', '') in ('1', 'true', 'True')
+
+
+def _render_markdown_timeline(brain, messages):
+    """The long-standing messages-only timeline (the A/B control arm).
+
+    Extracted verbatim from `_build_user_content` so the lived-sequence path can
+    branch beside it; output is byte-identical to the pre-piece-1 builder.
+    Per-turn `[trace:<hex>]` markers (v29): each USER/ASSISTANT line carries the
+    trace_event.id; the encoder copies these into `source_refs` (sparse, 1-3).
+    """
+    import re
+    from servers.scales.s1.encode_contract import ENCODING_AGENT
+    timeline = ""
+    turn_num = 0
+    i = 0
+
+    def _fmt_trace(tid):
+        return "[trace:%s]" % tid if tid else "[trace:?]"
+
+    while i < len(messages):
+        m = messages[i]
+        if m.get("role") == "user":
+            turn_num += 1
+            user_content = (m.get("content") or "")[:ENCODING_AGENT['message_display_limit']]
+            turn_id = m.get("id", "")
+            user_trace = m.get("trace_id")
+
+            timeline += "[TURN %d]\n" % turn_num
+            timeline += "USER %s: \"%s\" (turn_id: %s)\n" % (
+                _fmt_trace(user_trace), user_content, turn_id)
+
+            judge_output = m.get("judge_output")
+            if judge_output and judge_output != '(no selection)':
+                ref_ids = re.findall(r'id:([a-z0-9_]{6,8})', judge_output)
+                if ref_ids:
+                    dal = brain._nodes
+                    refs = []
+                    for rid in ref_ids:
+                        title = (dal.get_title(rid) or rid)[:50]
+                        refs.append('%s ("%s")' % (rid, title))
+                    timeline += "SURFACED: %s\n" % ", ".join(refs)
+
+            if i + 1 < len(messages) and messages[i + 1].get("role") == "assistant":
+                asst_msg = messages[i + 1]
+                asst = (asst_msg.get("content") or "")[:ENCODING_AGENT['message_display_limit']]
+                asst_trace = asst_msg.get("trace_id")
+                timeline += "ASSISTANT %s: \"%s\"\n" % (_fmt_trace(asst_trace), asst)
+                i += 1
+
+            timeline += "\n"
+        i += 1
+    return timeline
+
+
+def _render_lived_sequence_timeline(brain, session_id, messages):
+    """The XML lived sequence — messages + tool actions interleaved (piece 1).
+
+    Reads through the existing `recall_episodes` door (the conversational lens
+    over s0 traces), NOT a bespoke DAL query — docs/S1-SCRIBE-REDESIGN.md §10.2.
+    Tool actions arrive as `tool_result` episodes whose `summary` already carries
+    the per-tool cue ("Edit: foo.py", "Bash: …"). Window-matched to the control
+    arm (trimmed to the same number of user turns as `messages`).
+
+    surfaced/judge_output is deliberately NOT rendered here — it belongs to the
+    <provenance> block (piece 2). Piece 1 is a pure timeline read.
+    """
+    from servers.scales.s1.encode_contract import ENCODING_AGENT, LIVED_SEQUENCE_PULL
+    lim = ENCODING_AGENT['message_display_limit']
+    n_turns = sum(1 for m in (messages or []) if m.get('role') == 'user') or 20
+
+    try:
+        episodes = brain.recall_episodes(
+            session_id=session_id,
+            ref_type=['user_message', 'assistant_message', 'tool_result'],
+            sort_order='desc', limit=LIVED_SEQUENCE_PULL)['episodes']
+    except Exception as e:
+        print('[s1e] ERROR reading lived sequence, falling back to markdown: %s' % e, flush=True)
+        return _render_markdown_timeline(brain, messages)
+
+    # Most-recent-N pulled desc; sort chronological so turns read in order.
+    episodes = sorted(episodes, key=lambda e: e.get('created_at') or '')
+
+    # Group into turns: a user_message opens a turn; the assistant_message + the
+    # tool_results before the next user_message belong to it. A leading non-user
+    # event (rare) opens an orphan turn so nothing is dropped.
+    turns = []
+    cur = None
+    for e in episodes:
+        rt = e.get('ref_type')
+        if rt == 'user_message' or cur is None:
+            cur = {'user': None, 'assistant': None, 'actions': []}
+            turns.append(cur)
+        if rt == 'user_message':
+            cur['user'] = e
+        elif rt == 'assistant_message':
+            cur['assistant'] = e
+        elif rt == 'tool_result':
+            cur['actions'].append(e)
+
+    turns = turns[-n_turns:]  # window-match the control arm
+
+    def _text(ep):
+        # Full message body lives in metadata['content'] (≤4000); `summary` is the
+        # 200-char display truncation. Mirror get_session_turns (dal.py): prefer
+        # content, fall back to summary. Truncate to the display limit, then escape.
+        meta = ep.get('metadata')
+        body = (meta.get('content') if isinstance(meta, dict) else None) or ep.get('summary') or ''
+        return _xml_escape(body[:lim])
+
+    out = ""
+    for n, t in enumerate(turns, 1):
+        out += '<turn n="%d">\n' % n
+        if t['user']:
+            out += '  <user trace="%s">%s</user>\n' % (t['user'].get('id', ''), _text(t['user']))
+        if t['assistant']:
+            out += '  <assistant trace="%s">%s</assistant>\n' % (
+                t['assistant'].get('id', ''), _text(t['assistant']))
+        if t['actions']:
+            out += '  <actions>\n'
+            for a in t['actions']:
+                # tool cues have no metadata['content'] — the summary IS the cue
+                out += '    %s\n' % _xml_escape(a.get('summary') or '')
+            out += '  </actions>\n'
+        out += '</turn>\n\n'
+    return out
 
 
 def _write_pre_traces(brain, dispatch_fn, messages, user_content, counter, session_id):

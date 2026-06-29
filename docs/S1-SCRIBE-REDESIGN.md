@@ -127,7 +127,7 @@ to the encoder."* Here it is. Source for "today" = code read of
 
 | Missing stream | Why it matters | Target home |
 |---|---|---|
-| **Tool uses (Edit/Bash/MCP/Read/…) + results** | The encoder encoding a coding/work session can't see what was *done* — only what was *said*. `get_conversation` returns `role∈{user,assistant}` only. **Confirmed gap.** | inline in the timeline, at real position |
+| **Tool uses (Edit/Bash/MCP/Read/…) + results** | The encoder encoding a coding/work session can't see what was *done* — only what was *said*. `get_conversation` returns `role∈{user,assistant}` only. **Confirmed gap — but READ-SIDE ONLY** (verified 2026-06-29, §10): the events ARE captured — `post_tool_trace.py` writes a `tool_result` S0 delta per call with a ready-made `summary` (≤500c: "Edit: foo.py", "Bash: …", "recall: …") + `{tool}` metadata, in the same `s0-{session}-{stop}` chain, timestamp-ordered. **7,856 in 7 days.** `get_session_turns` just filters them out. So piece 1 is *extend a read*, not *build capture*. | inline in the timeline, at real position |
 | **encoded(S1S) per turn** — nodes prior runs wrote, anchored to each turn | Today only via journal prose (drifts, often truncated/empty). The encoder dedups by *assertion*, not verification → confident false-skips (§4). | provenance, inline per turn (ground truth from `source_refs`) |
 | **encoded(Anchor)** — nodes Anchor wrote directly via MCP mid-conversation | Encoder can't see them unless they were also Haiku-surfaced → re-encodes, or misses what Anchor missed. | provenance, inline per turn (`encoding_source='anchor'`) |
 | **endo-surfaced memories** (PreToolUse / Stop recall) | The endo system (soon) recalls memories right before Anchor acts. Those recalls are part of what happened and must reach the encoder. | inline **before the tool use** they preceded (§3) |
@@ -371,6 +371,135 @@ rework, e.g. the action-feed-built-twice trap):
 ~~Possible early standalone win: R1 temporal-scout gating~~ ✅ DONE — R1 landed
 standalone (dateparser `PARSERS` drop + `_DATE_SHAPE_RE` gate). The reframe (steps 1–5)
 is the remaining work.
+
+---
+
+## 10. Code-half build plan (Phase 4 — detailed, verified 2026-06-29)
+
+### 10.1 Build readiness — step 0 verified
+Tool-event capture is confirmed (see the §2 gap row). The substrate already holds
+everything the new timeline needs:
+- **7,856 `tool_result` S0 deltas in 7 days** (vs 688 user_message, 573 assistant_message).
+- Each carries a ready-made **`summary`** (≤500 chars; `post_tool_trace.py:_build_summary`
+  renders per-tool cues — `Edit: foo.py`, `Bash: <cmd>`, `Read: <file>`, `recall: <query>`,
+  `Agent: <desc>`) plus `metadata={tool}`, on the same `s0-{session}-{stop}` chain as the
+  turn's messages, timestamp-ordered.
+- `get_conversation` → `_trace_dal.get_session_turns` returns `role∈{user,assistant}` only —
+  it simply filters the tool rows out.
+
+**Consequence:** every code-half piece is a **READ + RENDER over data that already exists** —
+no new capture pipeline. The biggest unknown is closed.
+
+### 10.2 Architectural law: generic trace queries, NOT bespoke DAL
+**Directive (Tom, 2026-06-29):** repurpose the generic trace-query API; do **not** write a
+dedicated DAL method per use-case. The trace DAL is generic and must be robust enough to serve
+its clients; the S0 traces layer (`conversation.py`) **composes**; callers use the door. This
+is the unification already done cleanly — extend it, don't fragment it.
+
+Lineage (load-bearing, do not re-litigate): `35cedbe1` (go through the traces layer, not DAL),
+`f2b8966a` (traces layer owns schema/contract; callers delegate), `e56dc13b` (S0 exposes its
+own API for all layers), `d1329a9f` (journal reads via `brain.query_traces`, not TraceDAL),
+`aaee405f` (coordinator uses trace-layer fns), `6523755f` (cadence = live trace-pull, not
+counters).
+
+**Concretely:** the reads go through the existing trace-layer doors — **`recall_episodes`**
+(the conversational lens over s0; pass `ref_type=['user_message','assistant_message',
+'tool_result']` for the **interleaved lived sequence**, tool events included — see §10.3.1) and
+`query_traces` / `journal_notes` — never a new bespoke read. **If a need can't be expressed by
+the existing doors, the fix is to make them more capable — never a one-off DAL query.**
+(`recall_episodes` already advertises the interleaved-with-tools mode in its docstring; this is
+the unification Tom means — repurpose it.)
+
+### 10.3 The pieces (all behind ONE A/B flag; input+prompt land together)
+
+1. **Lived-sequence timeline** (foundational — everything else references it) — §10.3.1
+   - *Read:* `brain.recall_episodes(session_id=…, ref_type=['user_message','assistant_message',
+     'tool_result'], sort_order='asc', limit=…)['episodes']` — the **existing** conversational-lens
+     door already returns the interleaved sequence as full trace records (tool_result `summary`
+     included). **No new fn, no new DAL.**
+   - *Compose+render:* `encode.py:_build_user_content` groups the flat created_at-ordered episodes
+     into turns (a `user_message` opens a turn; the `assistant_message` + the `tool_result`s before
+     the next `user_message` belong to it — the same turn-walk the current builder already does on
+     messages) and emits XML `<turn n><user trace><assistant trace><actions>{summary
+     lines}</actions></turn>`; pulls render light, action tools carry their `summary` cue verbatim.
+   - *Note:* `recall_episodes` is trace-only, so `surfaced`/judge_output is NOT here — it belongs to
+     the `<provenance>` block (piece 2), keeping piece 1 a pure timeline read.
+   - *Tests:* tool events land between their user/assistant by timestamp; turn-grouping; render snapshot.
+
+2. **Provenance ledger** (`<provenance>` per turn) — built on a NEW reusable S1 capability,
+   **NOT** a `source_refs` reverse-lookup. (Tom, 2026-06-29: `source_refs` is the encoder's
+   *sparse, judgment-based* anchor — 1–3 load-bearing turns, for recall — so it misses most of
+   what a run wrote and conflates two purposes. The factual "what did I encode around here"
+   record must come from the **encode event's own delta traces**, not the anchor choice.)
+
+   **New door: `brain.session_provenance(session_id)`** — an S1-layer capability that composes
+   `query_traces` (the public door, like `journal_notes`; no bespoke DAL) and returns the
+   surfaced + encoded record for a session, keyed to turns. Sourcing:
+   - **surfaced** ← S1R `surface_selected` traces (`query_traces(scale='s1', session_id,
+     ref_type='surface_selected')`) — per-turn, the surfacer's ground truth.
+   - **encoded(S1S)** ← S1E `encoding_run` delta traces' `created` + `revised` id-lists
+     (already recorded — `trace_contract` `DELTA_METADATA_SHAPE`, `created`/`revised`),
+     associated to turns by **proximity**: a turn's encode = the first `encoding_run` whose
+     `created_at` is after that turn. Complete — every node the run wrote, not the sparse
+     `source_refs` subset.
+   - **encoded(Anchor)** ← nodes with `encoding_source='anchor'` in the session window, placed
+     by `created_at` (the "other factor" — Anchor's direct MCP writes leave no `encoding_run`).
+
+   **Proximity association** yields the emergent boundary for free: turns after the last
+   `encoding_run` are the unencoded tail. A run covers a stretch → per-run granularity (correct;
+   encoding is a run-level act). This same function feeds **piece 3** (the widened catalog's
+   `encoded-this-session` ∪ `Anchor-authored` id-sets ARE `session_provenance`'s output) and is
+   reusable for dashboards / encode-coverage eval / "why didn't X encode" debugging — *"important
+   for many other things"* (Tom). Lives at the S1 layer; composes the generic trace door per §10.2.
+
+   **Resolved (Tom, 2026-06-29):**
+   - *Reference, don't inline (no duplicates).* `session_provenance` returns the encode-run's
+     node **ids** (references) — it references the encode cycle via the run's trace, it does NOT
+     re-write the cycle. The `<provenance>` block prints `id` refs; the **widened catalog holds
+     each node's body once** and everything dereferences to it — no inline duplication anywhere.
+     Per-run granularity (the `encoding_run` trace IS per-run) — reference the run + its ids.
+   - *Clean door.* The function must be self-evident to any reader without knowing its internals
+     ("get the S1 info attached to a trace, pull the referenced nodes by id") — same ergonomic
+     bar as `recall_episodes` / `journal_notes`.
+   - *`encoding_source` is technical and IN FLUX (Tom is reworking it) — the encoder must NEVER
+     see it.* So: (a) do NOT hard-wire `encoded(Anchor)` detection on `encoding_source`; treat
+     the Anchor-vs-S1S split as TBD pending Tom's encoding_source work. (b) The `<provenance>`
+     block renders clean `encoded(S1S)` / `encoded(Anchor)` labels — never the raw field. (c)
+     **Audit the node catalog / render to confirm `encoding_source` isn't already leaking into
+     the encoder's input** (it's technical noise; Tom: "i hope encoder doesn't see it"). Ties to
+     the encoder-visibility hide-technical-fields work.
+
+   - *Tests:* proximity association (turn maps to the run that fired after it; turns after the
+     last run = unencoded); a turn's run created+revised set renders; an Anchor direct-write
+     shows as `encoded(Anchor)`.
+
+3. **Widened catalog** (the union)
+   - `build_node_catalog` is Haiku-only (judge_outputs) today. Widen to {surfaced} ∪
+     {encoded-this-session S1S} ∪ {Anchor-authored this session} ∪ {endo (empty stub)},
+     deduped, full-rich once. The S1S/Anchor id-sets come straight from
+     `session_provenance` (piece 2) — one read serves both blocks.
+   - *Tests:* every `id` referenced anywhere in the timeline dereferences in the catalog.
+
+4. **Residue wiring** (replace the journal blob)
+   - Swap `_save_journal`/`get_config('encoding_journal_*')` → the `## Review` note contract:
+     contract-inject the review block + closure in `encode.py`
+     (`trace_contract.render_journal_review_block` / `render_prompt_closure`), parse the `##
+     Review` fence, write one `journal_note` trace per note via `brain.write_journal_notes(…,
+     scale='s1', session_id=sid)`; read last K runs **session-scoped** (`session_id`-filtered)
+     via `brain.journal_notes` (generic trace read). Drop `journal_entry` from S1E delta metadata.
+   - Cut the Frame's `## Recent moves` slot **atomically** with the blob-write removal
+     (replacement-before-removal). Keep `_save_session_context` (the arc) unchanged.
+   - *Tests:* residue round-trips (write→read prefix); session-scoping (run in A doesn't surface in B).
+
+### 10.4 Sequencing & the gate
+- One A/B flag gates new-input+new-prompt vs old, on the same corpus — input+prompt are coupled,
+  so they land together but flip together for measurement (no confound).
+- **The real Frozen-Corpus A/B cannot run until the code half exists** — the new prompt
+  references `<timeline>`/`<provenance>` the old builder doesn't produce. The code half is the
+  *gate-to-the-gate*.
+- Build order: piece 1 (foundation) → piece 2 (provenance) → piece 3 (catalog, shares piece-2
+  read) → piece 4 (residue) → §8 eval dims → Frozen-Corpus A/B (with Allen-edge composition
+  pinned as a named metric, per the temporal-trim decision).
 
 ---
 
