@@ -5,28 +5,35 @@
 	<key>Label</key>
 	<string>com.brain.dashboard</string>
 
-	<!-- Reference copy. The live copy is installed at
-	     ~/Library/LaunchAgents/com.brain.dashboard.plist (launchd reads it
-	     from there). Thin by design: all start logic lives in the in-repo
-	     launcher (hooks/scripts/start-dashboard.sh), which sources
-	     brain-env.sh and execs the venv Python.
+	<!-- TEMPLATE — NOT directly loadable as-is. The __PLUGIN_DIR__ and
+	     __BRAIN_DB_DIR__ tokens are per-machine and must be substituted at
+	     install time (the launchd installer — see
+	     docs/LIFECYCLE-LAUNCH-ARCH-PLAN.md Step 2). The live, substituted copy
+	     is installed at ~/Library/LaunchAgents/com.brain.dashboard.plist;
+	     launchd reads it from there. Do not `launchctl load` this file with the
+	     tokens unresolved.
+
+	     Launches via bin/brain-dashboard — the single dashboard launcher (also
+	     used by the /dashboard skill and the CLI). It sources brain-env.sh +
+	     resolve-brain-db.sh and execs the venv Python.
+
+	     Port: NOT pinned here. dashboard/server.py defaults to 47303; override
+	     by setting DASHBOARD_PORT in ~/.config/brain/env (the single
+	     user-editable place, sourced by brain-env.sh on every launch path).
 
 	     This makes the brain dashboard a launchd-owned GLOBAL SINGLETON —
-	     KeepAlive guarantees exactly one process, ever, on port 47303,
-	     shared by every Claude Code session. Open it at
-	     http://localhost:47303. It is NOT a per-chat preview server; do not
-	     add it back to .claude/launch.json. -->
+	     KeepAlive guarantees exactly one process, ever, shared by every Claude
+	     Code session. Open it at http://localhost:47303. It is NOT a per-chat
+	     preview server; do not add it back to .claude/launch.json. -->
 	<key>ProgramArguments</key>
 	<array>
-		<string>/Users/tpac/brain/hooks/scripts/start-dashboard.sh</string>
+		<string>__PLUGIN_DIR__/bin/brain-dashboard</string>
 	</array>
 
 	<key>EnvironmentVariables</key>
 	<dict>
 		<key>BRAIN_DB_DIR</key>
-		<string>/Users/tpac/AgentsContext/brain</string>
-		<key>DASHBOARD_PORT</key>
-		<string>47303</string>
+		<string>__BRAIN_DB_DIR__</string>
 	</dict>
 
 	<key>KeepAlive</key>
@@ -36,13 +43,13 @@
 	<true/>
 
 	<key>StandardOutPath</key>
-	<string>/Users/tpac/AgentsContext/brain/dashboard.log</string>
+	<string>__BRAIN_DB_DIR__/dashboard.log</string>
 
 	<key>StandardErrorPath</key>
-	<string>/Users/tpac/AgentsContext/brain/dashboard.log</string>
+	<string>__BRAIN_DB_DIR__/dashboard.log</string>
 
 	<key>WorkingDirectory</key>
-	<string>/Users/tpac/brain</string>
+	<string>__PLUGIN_DIR__</string>
 
 	<key>ThrottleInterval</key>
 	<integer>10</integer>
