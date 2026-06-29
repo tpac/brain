@@ -16,6 +16,24 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/brain-env.sh"
 PLUGIN_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BRAIN_SERVER_DIR="$PLUGIN_ROOT/servers"
 
+# userConfig: a brain path the user set when enabling the plugin. Claude Code
+# injects it as CLAUDE_PLUGIN_OPTION_BRAIN_PATH (casing unpinned — check both).
+# The "I already have a brain, here's where" install answer. Shell/env
+# BRAIN_DB_DIR still wins (fill only when unset), mirroring the api_key rule.
+# NOTE: reaches the daemon on the hook/Popen path; a launchd-spawned daemon
+# won't see CLAUDE_PLUGIN_OPTION_* (see docs/DISTRIBUTION-READINESS.md §2.1).
+if [ -z "${BRAIN_DB_DIR:-}" ]; then
+  BRAIN_DB_DIR="${CLAUDE_PLUGIN_OPTION_BRAIN_PATH:-${CLAUDE_PLUGIN_OPTION_brain_path:-}}"
+  if [ -n "$BRAIN_DB_DIR" ]; then
+    # Honor the chosen location even if it doesn't exist yet — create it so the
+    # resolution chain adopts it instead of silently falling through to the
+    # default brain. A typo then surfaces as an empty brain at the named path
+    # (visible), not a hidden default elsewhere.
+    mkdir -p "$BRAIN_DB_DIR" 2>/dev/null
+    export BRAIN_DB_DIR
+  fi
+fi
+
 # If BRAIN_DB_DIR already set and valid (e.g. from boot), skip resolution
 if [ -n "$BRAIN_DB_DIR" ] && [ -f "$BRAIN_DB_DIR/brain.db" ]; then
   export BRAIN_DB_DIR BRAIN_SERVER_DIR PLUGIN_ROOT
