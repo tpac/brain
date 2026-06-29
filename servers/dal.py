@@ -683,6 +683,35 @@ class TraceDAL:
                 return {}
         return meta if isinstance(meta, dict) else {}
 
+    def _row_to_event(self, r) -> Dict[str, Any]:
+        """Map ONE canonical-order trace_events row tuple → the event dict.
+
+        The single column→dict mapping for the whole DAL: every reader's SELECT
+        is realigned to feed this exact column order, so the index→field binding
+        lives in ONE place instead of ~8 hand-maintained copies that drifted into
+        subtly different orders. The SELECT feeding this MUST be exactly:
+
+            id, chain_id, scale, event_type, ref_type, ref_id,
+            summary, metadata, session_id, created_at
+
+        ref_type/ref_id/summary are ''-guarded (they're '' at write, never NULL
+        in practice — the guard keeps the dict total). metadata is decoded.
+        """
+        if len(r) != 10:
+            # Loud-by-default: a mis-arity SELECT would otherwise mis-index
+            # silently (over-select ignores extra cols; under-select IndexErrors
+            # at a confusing offset). Name the contract at the boundary instead.
+            raise ValueError(
+                "_row_to_event expects 10 columns in canonical order "
+                "(id, chain_id, scale, event_type, ref_type, ref_id, summary, "
+                "metadata, session_id, created_at), got %d" % len(r))
+        return {
+            'id': r[0], 'chain_id': r[1], 'scale': r[2], 'event_type': r[3],
+            'ref_type': r[4] or '', 'ref_id': r[5] or '', 'summary': r[6] or '',
+            'metadata': self._decode_metadata(r[7]),
+            'session_id': r[8] or '', 'created_at': r[9],
+        }
+
     def get_by_ids(self, trace_ids: List[str]) -> List[Dict[str, Any]]:
         """Point/batch lookup by trace_event.id (v29: 8-char hex strings).
         Returns rows in ascending id order (deterministic); missing ids are
@@ -706,27 +735,16 @@ class TraceDAL:
             'FROM trace_events WHERE id IN (%s) '
             'ORDER BY id ASC' % placeholders,
             list(trace_ids)).fetchall()
-        return [{
-            'id': r[0], 'chain_id': r[1], 'scale': r[2],
-            'event_type': r[3], 'ref_type': r[4] or '', 'ref_id': r[5] or '',
-            'summary': r[6] or '', 'metadata': self._decode_metadata(r[7]),
-            'session_id': r[8] or '', 'created_at': r[9],
-        } for r in rows]
+        return [self._row_to_event(r) for r in rows]
 
     def get_chain(self, chain_id: str) -> List[Dict[str, Any]]:
-        """Get all events in a trace chain, ordered by time."""
+        """Get all events in a trace chain, ordered by time. Each event is the
+        full canonical row (incl. its own chain_id — = the queried id)."""
         rows = self.conn.execute(
-            'SELECT id, scale, event_type, ref_type, ref_id, summary, metadata, created_at, session_id '
+            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, created_at '
             'FROM trace_events WHERE chain_id = ? ORDER BY created_at ASC',
             (chain_id,)).fetchall()
-        results = []
-        for r in rows:
-            results.append({
-                'id': r[0], 'scale': r[1], 'event_type': r[2],
-                'ref_type': r[3], 'ref_id': r[4], 'summary': r[5],
-                'metadata': self._decode_metadata(r[6]),
-                'created_at': r[7], 'session_id': r[8] or ''})
-        return results
+        return [self._row_to_event(r) for r in rows]
 
     def get_recent(self, scale: str = '', hours: Optional[int] = 24,
                    event_type: str = '', session_id: str = '',
@@ -793,13 +811,10 @@ class TraceDAL:
             params.extend(exclude_ref_types)
         where = ' AND '.join(conditions) if conditions else '1=1'
         rows = self.conn.execute(
-            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, created_at, session_id '
+            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, created_at '
             'FROM trace_events WHERE %s ORDER BY created_at DESC LIMIT ?' % where,
             params + [limit]).fetchall()
-        out = [{'id': r[0], 'chain_id': r[1], 'scale': r[2], 'event_type': r[3],
-                 'ref_type': r[4], 'ref_id': r[5], 'summary': r[6], 'created_at': r[7],
-                 'session_id': r[8] or ''}
-                for r in rows]
+        out = [self._row_to_event(r) for r in rows]
         # Loud-by-default: explicit session filter with zero rows is a real
         # signal (typo, archived session, wrong DB), not a quiet noop.
         if (session_id or session_ids) and not out:
@@ -893,11 +908,7 @@ class TraceDAL:
             'FROM trace_events te WHERE %s ORDER BY te.created_at %s LIMIT ?'
             % (where, order),
             params + [limit]).fetchall()
-        return [{'id': r[0], 'chain_id': r[1], 'scale': r[2], 'event_type': r[3],
-                 'ref_type': r[4] or '', 'ref_id': r[5] or '', 'summary': r[6] or '',
-                 'metadata': self._decode_metadata(r[7]), 'session_id': r[8] or '',
-                 'created_at': r[9]}
-                for r in rows]
+        return [self._row_to_event(r) for r in rows]
 
     def filter_event_vectors(self, contains: str = '', scale: str = '',
                              event_type: str = '', ref_types: Optional[List[str]] = None,
@@ -944,8 +955,10 @@ class TraceDAL:
                    hours: int = 24, limit: int = 50) -> List[Dict[str, Any]]:
         """Get complete chains grouped, with all events and metadata.
 
-        Returns: [{chain_id, scale, events: [{event_type, ref_type, summary, metadata, created_at}]}]
-        Ordered by most recent chain first.
+        Returns: [{chain_id, scale, session_id, events: [{id, event_type,
+        ref_type, ref_id, summary, metadata, created_at}]}] — chain_id/scale/
+        session_id are chain-level; each event is the chain-relative subset
+        (no chain_id/scale/session_id). Ordered by most recent chain first.
         """
         conditions = ['created_at > ?']
         params = [iso_cutoff(hours=hours)]
@@ -958,27 +971,30 @@ class TraceDAL:
         where = ' AND '.join(conditions)
 
         rows = self.conn.execute(
-            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, created_at, session_id '
+            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, created_at '
             'FROM trace_events WHERE %s ORDER BY created_at DESC' % where,
             params).fetchall()
 
         # Group by chain_id, preserve order of first appearance.
         # A chain belongs to one session; we record the session_id from
         # the first event seen in each chain. Per-event `id` is included so a
-        # grouped view stays drillable (get_trace by id); scale/session_id are
-        # chain-level (the render layer propagates them onto events).
+        # grouped view stays drillable (get_trace by id); chain_id/scale/
+        # session_id are chain-level — deliberately NOT repeated per event (the
+        # render layer propagates them onto events). The full canonical row is
+        # built once via _row_to_event, then projected to the chain-relative
+        # event subset, so the decode/guard logic still lives in one place.
+        EVENT_KEYS = ('id', 'event_type', 'ref_type', 'ref_id',
+                      'summary', 'metadata', 'created_at')
         chains = {}
         chain_order = []
         for r in rows:
-            cid = r[1]
+            ev = self._row_to_event(r)
+            cid = ev['chain_id']
             if cid not in chains:
-                chains[cid] = {'chain_id': cid, 'scale': r[2],
-                               'session_id': r[9] or '', 'events': []}
+                chains[cid] = {'chain_id': cid, 'scale': ev['scale'],
+                               'session_id': ev['session_id'], 'events': []}
                 chain_order.append(cid)
-            chains[cid]['events'].append({
-                'id': r[0], 'event_type': r[3], 'ref_type': r[4] or '', 'ref_id': r[5] or '',
-                'summary': r[6] or '', 'metadata': self._decode_metadata(r[7]),
-                'created_at': r[8]})
+            chains[cid]['events'].append({k: ev[k] for k in EVENT_KEYS})
 
         # Reverse events within each chain to chronological order
         for cid in chain_order:
@@ -1033,18 +1049,11 @@ class TraceDAL:
         where = ' AND '.join(conditions)
 
         rows = self.conn.execute(
-            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, created_at, session_id '
+            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, created_at '
             'FROM trace_events WHERE %s ORDER BY created_at DESC LIMIT ?' % where,
             params + [limit]).fetchall()
 
-        results = []
-        for r in rows:
-            results.append({
-                'id': r[0], 'chain_id': r[1], 'scale': r[2], 'event_type': r[3],
-                'ref_type': r[4] or '', 'ref_id': r[5] or '', 'summary': r[6] or '',
-                'metadata': self._decode_metadata(r[7]),
-                'created_at': r[8], 'session_id': r[9] or ''})
-        return results
+        return [self._row_to_event(r) for r in rows]
 
     def get_outcomes(self, chain_id: str = '', scale: str = '',
                      hours: int = 168) -> List[Dict[str, Any]]:
@@ -1064,17 +1073,13 @@ class TraceDAL:
         where = ' AND '.join(conditions)
 
         rows = self.conn.execute(
-            'SELECT id, chain_id, scale, ref_type, ref_id, summary, metadata, created_at '
+            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, created_at '
             'FROM trace_events WHERE %s ORDER BY created_at DESC' % where,
             params).fetchall()
 
-        results = []
-        for r in rows:
-            results.append({
-                'id': r[0], 'chain_id': r[1], 'scale': r[2], 'event_type': 'outcome',
-                'ref_type': r[3] or '', 'ref_id': r[4] or '', 'summary': r[5] or '',
-                'metadata': self._decode_metadata(r[6]), 'created_at': r[7]})
-        return results
+        # event_type is pinned to 'outcome' by the WHERE; selecting it back lets
+        # this share the canonical row mapping rather than hand-stamping it.
+        return [self._row_to_event(r) for r in rows]
 
     def count_by(self, field: str, scale: str = '', hours: int = 24) -> Dict[str, int]:
         """Count events grouped by a field.
@@ -1446,8 +1451,10 @@ class TraceDAL:
                    OPERATOR/ANCHOR sentinels and pollute the embedding
                    neighborhood that decision 19 keeps concrete.
 
-        Returns rows with id/scale/event_type/ref_type/summary/metadata/
-        session_id/created_at fields. Caller renders to text and embeds.
+        Returns full canonical trace rows (id/chain_id/scale/event_type/ref_type/
+        ref_id/summary/metadata/session_id/created_at). Caller renders to text
+        and embeds (it reads metadata/ref_type/summary; chain_id/ref_id ride
+        along for free via the shared row mapping).
         """
         if not scales:
             raise ValueError("find_unembedded: scales required")
@@ -1462,7 +1469,7 @@ class TraceDAL:
             params.append(since)
         params.append(limit)
         rows = self.conn.execute(
-            'SELECT te.id, te.scale, te.event_type, te.ref_type, '
+            'SELECT te.id, te.chain_id, te.scale, te.event_type, te.ref_type, te.ref_id, '
             '       te.summary, te.metadata, te.session_id, te.created_at '
             'FROM trace_events te '
             'LEFT JOIN trace_embeddings tem ON tem.trace_id = te.id '
@@ -1473,15 +1480,7 @@ class TraceDAL:
             'ORDER BY te.created_at DESC '
             'LIMIT ?' % (scale_ph, ref_ph, since_clause),
             params).fetchall()
-        results = []
-        for r in rows:
-            results.append({
-                'id': r[0], 'scale': r[1], 'event_type': r[2],
-                'ref_type': r[3], 'summary': r[4] or '',
-                'metadata': self._decode_metadata(r[5]),
-                'session_id': r[6] or '',
-                'created_at': r[7]})
-        return results
+        return [self._row_to_event(r) for r in rows]
 
 
 class SessionStateDAL:
