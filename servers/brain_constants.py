@@ -251,7 +251,8 @@ EPISODE_MAX_LIMIT = 500              # hard cap on a single pull
 EPISODE_DEFAULT_WINDOW_DAYS = 7      # default created_at lower bound when no session/time scope
                                      # (perf: bounds the contains LIKE scan over a big append-only table)
 EPISODE_SEMANTIC_CANDIDATE_CAP = 500  # max candidates fetched before semantic (query) re-rank
-EPISODE_RENDER_BODY_CHARS = 280      # per-episode body cap in the recall_episodes MCP render
+# EPISODE_RENDER_BODY_CHARS moved to trace_contract.TRACE_BODY_CHARS (2026-06-29) —
+# the body cap is now a shared trace-render config, not an episode-only constant.
 
 # Retrieval stats — surfacer guidance thresholds
 RETRIEVAL_LOW_CONFIDENCE = 0.35   # Top score below this → surfacer gets low-confidence warning

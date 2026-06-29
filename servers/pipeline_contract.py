@@ -202,9 +202,12 @@ def vectors_affected_by(field_name: str) -> set:
     for spec in EMBEDDING_GROUPS.values():
         if field_name in spec.get('fields', []):
             affected.add(spec['vector_type'])
-    # `_situation` is a legacy vector derived from kv['situation'] — not
-    # represented as its own EMBEDDING_GROUPS entry (the field-cohort
-    # `field_situation` covers `situation` vector_type). Add explicitly.
+    # `_situation` is the dedicated situation vector — derived from
+    # kv['situation'] by its own backfill scan, NOT an EMBEDDING_GROUPS entry,
+    # so the loop above never picks it up. There is no `field_situation` cohort:
+    # situation is served by `_situation` via FIELD_VECTOR_FALLBACK (one vector,
+    # two consumers — see EMBEDDING_GROUPS). So `_situation` + `high_meta` are
+    # the only situation-dependent vectors. Add `_situation` explicitly.
     if field_name == 'situation':
         affected.add('_situation')
     return affected

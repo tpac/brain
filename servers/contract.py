@@ -371,6 +371,38 @@ GET_NODES_COMPACT_FORMAT = {
     'time_format': 'relative',
 }
 
+# Small-batch default (<=3 nodes, rich=false): the de-stuffed drill view.
+# Content is the signal you fetched for, so it stays full; the edge tail
+# (40-76% of a well-connected node's payload, weight-sorted) and the heavy
+# correction K/V are what get bounded. This replaces the old <=3 raw-JSON
+# escape hatch — small pulls stay readable without the firehose.
+GET_NODES_SMALL_FORMAT = {
+    'content_limit': None,      # full content — content is signal, not stuffing
+    'edge_limit': 8,            # top-8 by weight: the meaningful constellation
+    'metadata_limit': 300,
+    'correction_render': 'balanced',
+    'time_format': 'relative',
+}
+
+# Full: the rich=true opt-in for get_node/get_nodes — the deliberate
+# "give me everything" drill. NOT the old raw dict dump: still curated
+# through render_rich_node (drops _sys_ fields and raw relation sub-dicts),
+# but uncapped on the dimensions that carry meaning — full content, all edges
+# (weight-sorted), and heavy correction K/V (reasoning + raw quotes).
+GET_NODES_FULL_FORMAT = {
+    'content_limit': None,      # full content
+    'edge_limit': None,         # all edges (None → no slice; see render_rich_node)
+    'metadata_limit': 400,
+    'correction_render': 'heavy',
+    'time_format': 'relative',
+}
+
+# The skinny node shape returned by NodeDAL.filter_nodes (dal.py:2038-2040)
+# when rich=False — id/title/type/confidence/created_at, plus the filtered
+# column. render_skinny_node uses this to tell the standard columns from the
+# filtered field it should surface. Keep in sync with the DAL's SELECT.
+SKINNY_NODE_FIELDS = ('id', 'title', 'type', 'confidence', 'created_at')
+
 
 def _truncate(s: str, limit: int) -> str:
     """Cap `s` at `limit` chars, ending in '…' when truncation occurred.
@@ -656,6 +688,24 @@ def render_rich_node(node, config=None):
                         ntype, target_id, time_str, rel, title, desc))
 
     return '\n'.join(lines)
+
+
+def render_skinny_node(node, extra_value_limit=120):
+    """One-line render of a skinny node (id/title/type — no content, edges, or
+    corrections). Used for filter_nodes discovery scans.
+
+    Surfaces any NON-standard field (the filtered column, e.g. encoding_source)
+    so the scan shows the value being filtered on — bounded by
+    `extra_value_limit` so a long-valued filter field (content, reasoning,
+    situation) can't turn a 50-row scan into a firehose.
+    """
+    extra = ' '.join(
+        '%s=%s' % (k, _truncate(str(v), extra_value_limit))
+        for k, v in node.items()
+        if k not in SKINNY_NODE_FIELDS and v is not None)
+    return '[%s] "%s" (id:%s)%s' % (
+        node.get('type', '?'), node.get('title', '?'),
+        (node.get('id') or '')[:8], ('  ' + extra) if extra else '')
 
 
 def generate_field_summary():

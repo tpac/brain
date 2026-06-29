@@ -13,6 +13,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # brain-env.sh sets $BRAIN_PYTHON + $PLUGIN_DIR and bootstraps the runtime.
 # 1>&2: keep bootstrap chatter off the dashboard's stdout.
 source "$ROOT/hooks/scripts/brain-env.sh" 1>&2
+# Fail fast with a clear error if the venv Python is missing — under launchd
+# (com.brain.dashboard) this avoids a confusing 10s KeepAlive respawn loop.
+if [ ! -x "${BRAIN_PYTHON:-}" ]; then
+    echo "[brain-dashboard] FATAL: venv python not executable at ${BRAIN_PYTHON:-<unset>}" >&2
+    echo "[brain-dashboard] Run: $ROOT/hooks/scripts/ensure-runtime.sh" >&2
+    exit 1
+fi
 # resolve-brain-db.sh exports BRAIN_DB_DIR for the dashboard's read-only SQLite
 # fallback (incl. the $CLAUDE_PLUGIN_DATA standard location). Best-effort —
 # never block the launch; live data still comes via the daemon socket.

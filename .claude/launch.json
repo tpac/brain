@@ -1,4 +1,13 @@
 {
   "version": "0.0.1",
-  "configurations": []
+  "configurations": [
+    {
+      "name": "dashboard-dev",
+      "runtimeExecutable": "venv/bin/python",
+      "runtimeArgs": ["dashboard/brain_dashboard_standalone.py"],
+      "port": 47304,
+      "env": { "DASHBOARD_PORT": "47304" },
+      "autoPort": false
+    }
+  ]
 }

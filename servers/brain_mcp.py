@@ -587,23 +587,27 @@ def _build_tools():
          "top_k": {"type": "integer", "description": "Return top K matches (default 1)", "default": 1}}}},
 
     {"name": "get_node",
-     "description": "Get a node by its exact ID. Returns full content, type, title, confidence, connections, metadata. Use when you already have a node ID from recall or find_node_by_title.",
+     "description": "Get a node by its exact ID. Returns a bounded view by default — full content + situation + the top edges + correction gist — enough to drill one memory. Pass rich=true for the complete view (every edge, full correction K/V: reasoning + raw quotes). Use when you already have a node ID from recall or find_node_by_title.",
      "inputSchema": {"type": "object", "required": ["node_id"], "properties": {
-         "node_id": {"type": "string", "description": "Full node ID"}}}},
+         "node_id": {"type": "string", "description": "Full node ID"},
+         "rich": {"type": "boolean", "description": "Default false → bounded view (full content + top-8 edges + correction gist). true → complete view: all edges + heavy correction K/V. Reach for it when drilling one node deeply.", "default": False}}}},
 
     {"name": "get_nodes",
-     "description": "Get multiple nodes by ID in one call. Returns full content, connections, metadata for each.",
+     "description": "Get multiple nodes by ID in one call. Bounded by default and batch-size-aware (small batches keep full content + top edges; large batches compact to a gist) so a multi-node pull never floods the turn. Pass rich=true for the complete view of each.",
      "inputSchema": {"type": "object", "required": ["node_ids"], "properties": {
-         "node_ids": {"type": "array", "description": "Array of node IDs to fetch", "items": {"type": "string"}}}}},
+         "node_ids": {"type": "array", "description": "Array of node IDs to fetch", "items": {"type": "string"}},
+         "rich": {"type": "boolean", "description": "Default false → bounded, batch-size-aware view. true → complete view (all edges + heavy correction K/V) for every node. Use sparingly on large batches — it is the firehose.", "default": False}}}},
 
     {"name": "get_trace",
-     "description": "Point-lookup a single trace_event by id. Returns the full row (chain_id, scale, event_type, ref_type, summary, metadata, session_id, created_at). Use this to expand a node's source_refs, verify a quote's verbatim source, or look up a specific captured moment when you have its id. For batch lookups use get_traces.",
+     "description": "Point-lookup a single trace_event by id. Returns the event rendered for reading — header + body + a metadata gist; rich=true for the full verbatim metadata. Common pull: expand a node's source_refs, or verify a quote's exact source (reach for rich=true if the source is a large field). For many ids use get_traces; to SEARCH by scale/type/time use query_traces.",
      "inputSchema": {"type": "object", "required": ["trace_id"], "properties": {
-         "trace_id": {"type": "string", "description": "trace_event.id — 8-char hex string (v29). Legacy integer ids are accepted for back-compat (coerced to canonical hex via printf('%08x'))."}}}},
+         "trace_id": {"type": "string", "description": "trace_event.id — 8-char hex string (v29). Legacy integer ids are accepted for back-compat (coerced to canonical hex via printf('%08x'))."},
+         "rich": {"type": "boolean", "description": "Default false → bounded (body + metadata gist). true → the full verbatim row.", "default": False}}}},
 
     {"name": "get_traces",
-     "description": "Batch trace_event point lookup. Pass up to 50 trace ids; returns full rows in ascending-id order, missing ids silently skipped. Natural use: expanding node.source_refs at render or audit time, fetching a known set of cross-session episodes.",
+     "description": "Batch point-lookup, up to 50 ids — the natural way to expand a node's source_refs in one call. Bounded rows by default; rich=true for full metadata. Missing ids skipped.",
      "inputSchema": {"type": "object", "required": ["trace_ids"], "properties": {
+         "rich": {"type": "boolean", "description": "Default false → bounded rows. true → full metadata per row.", "default": False},
          "trace_ids": {"type": "array", "description": "Array of trace_event ids — each an 8-char hex string (v29). Legacy integer ids are accepted for back-compat.", "items": {"type": "string"}}}}},
 
     {"name": "recall_batch",
@@ -614,7 +618,7 @@ def _build_tools():
          "limit": {"type": "integer", "description": "Max results per query (default 5)", "default": 5}}}},
 
     {"name": "filter_nodes",
-     "description": "Structured query: filter nodes by any structural field (type, encoding_source, locked, confidence, etc.). Use for bulk lookups that semantic recall can't do — 'all corrections', 'nodes by encoder', 'low confidence nodes'. Returns full rich nodes (content, metadata, corrections, connections) by default — one call enriches all results. If no include/exclude/lt/gt given, lists all distinct values for discovery.",
+     "description": "Structured query: filter nodes by any structural field (type, encoding_source, locked, confidence, etc.). Use for bulk lookups that semantic recall can't do — 'all corrections', 'nodes by encoder', 'low confidence nodes'. Returns enriched nodes (content, situation, top edges, correction gist) by default — one batched call, rendered bounded by batch size so a 50-node result never floods the turn. Set rich=false for a skinny id/title/type list (discovery scans, feeding IDs to other ops).",
      "inputSchema": {"type": "object", "required": ["field"], "properties": {
          "field": {"type": "string", "description": "Column to filter on (type, encoding_source, locked, confidence, project, etc.)"},
          "include": {"type": "array", "items": {"type": "string"}, "description": "Show only nodes where field matches one of these values"},
@@ -624,7 +628,7 @@ def _build_tools():
          "limit": {"type": "integer", "description": "Max results (default 50, max 200)", "default": 50},
          "sort_by": {"type": "string", "description": "Sort column: created_at (default), confidence, access_count, title", "default": "created_at"},
          "sort_order": {"type": "string", "description": "asc or desc (default)", "default": "desc"},
-         "rich": {"type": "boolean", "description": "Default true — returns full rich nodes. Set false for skinny shape (id/title/type/confidence/created_at only), useful for discovery scans or feeding IDs to other ops.", "default": True}}}},
+         "rich": {"type": "boolean", "description": "Default true — enriched nodes (content + situation + bounded edges/corrections per node). false → skinny shape (id/title/type/confidence/created_at), for discovery scans or feeding IDs to other ops. This is a data flag (enriched vs skinny); the enriched render is always bounded by batch size — for one node's complete view, get_node it with rich=true.", "default": True}}}},
 
     {"name": "clear_errors",
      "description": "Clear hook errors and optionally debug log entries. Use to clean up after investigating issues.",
@@ -677,7 +681,7 @@ def _build_tools():
 
     # ── Traces & Interactions ──
     {"name": "query_traces",
-     "description": "Query the fractal trace system — O/K/Δ/outcome events at every scale (s0-s4). Use to inspect what happened: what was observed, what knowledge was selected, what changed, what the outcome was. Filter by scale, event_type, ref_type, session_id (single), session_ids (multi), or retrieve a full chain by chain_id. Use grouped=true with session_id to get chains with nested events. session_id and session_ids are authoritative — when either is set, the `hours` window is ignored so historical sessions don't silently empty. Pass one or the other, not both. Traces are the learning loop — higher scales read lower scales' traces.",
+     "description": "Search the fractal trace substrate — O (observed) / K (selected) / delta (changed) / outcome events at each scale. Pick the scale for the layer you want: s0 = raw conversation — for any s0 pull, incl. what you did with tools, use recall_episodes (the conversational lens; pass ref_type='tool_result' there); s1 = per-turn (ref_type recall = candidates pulled, surface_selected = the few that won, encoding_run = what the Scribe encoded, …); s2 = idle integration (consolidation_proposals, community_enriched, healer_proposals, …). ref_type is open-text — these are examples, not the full set. Common pull: what got encoded → scale='s1', ref_type='encoding_run'. Time & scope: `hours` bounds the window (default 24); session_id/session_ids are authoritative and ignore `hours` (full history for that stream — pass one, not both); chain_id pulls one full chain; grouped=true nests events by chain.",
      "inputSchema": {"type": "object", "properties": {
          "scale": {"type": "string", "description": "Filter by scale: 's0' (exchange), 's1' (turn), 's2' (session), 's3' (sleep), 's4' (growth). Empty = all."},
          "event_type": {"type": "string", "description": "Filter by type: 'O' (observation), 'K' (knowledge), 'delta' (changes), 'outcome'. Empty = all."},
@@ -687,7 +691,8 @@ def _build_tools():
          "ref_type": {"type": "string", "description": "Filter by ref_type: 'correction', 'recall_hit', 'encoding_run', 'tool_result', etc."},
          "grouped": {"type": "boolean", "description": "If true + session_id, return chains grouped with nested events instead of flat list.", "default": False},
          "hours": {"type": "integer", "description": "Look back window in hours (default 24). Ignored when session_id or session_ids is set.", "default": 24},
-         "limit": {"type": "integer", "description": "Max results (default 100)", "default": 100}}}},
+         "limit": {"type": "integer", "description": "Max results (default 100)", "default": 100},
+         "rich": {"type": "boolean", "description": "Default false → bounded rows (metadata gist; summary-only past ~20 rows). true → full metadata per row — when you need a row's verbatim payload.", "default": False}}}},
 
     {"name": "recall_episodes",
      "description": "Episodic recall over the trace substrate — the brain's universal record of the whole fractal (S0 exchanges, S1 runs, S2 runs). Search/filter trace_events and get the actual episodes back, verbatim, with attribution (which stream, when, who spoke). The decode-over-traces sibling of `recall` (which searches distilled nodes): use this for 'what did I — or another stream — actually SAY/DO about X, lately', where the answer is raw recent activity, not an encoded memory. Two needles, composable: `query` (semantic — ranks by meaning against existing trace embeddings) and/or `contains` (exact substring over summary+metadata). Defaults to conversation (messages); pass ref_type='tool_result' to recall what you DID with files/commands, or ref_type=['user_message','assistant_message','tool_result'] for the interleaved said+did timeline. NOTE: semantic `query` currently covers s0 conversation; other scales fall back to time order. Returns full episode records (incl. metadata.content), newest-first, or relevance-ranked when `query` is set.",
@@ -842,29 +847,82 @@ def handle_tools_list(request_id):
     return make_response(request_id, {"tools": TOOLS})
 
 
-def _format_result(tool_name, result, get_nodes_config=None):
+def _select_node_config(n, rich, get_nodes_config):
+    """Pick the render_rich_node config for an n-node fetch result.
+
+    Precedence: an explicit caller config (internal encoders, via
+    run_llm_loop's get_nodes_config) wins outright — that channel is how a
+    consumer declares its own representation and must never be second-guessed.
+    Otherwise the MCP `rich` opt-in lifts to the full view at any size, and the
+    default de-stuffs by batch size: small pulls stay readable (full content,
+    bounded edges/corrections), large pulls compact to protect context.
+    """
+    from servers.contract import (
+        GET_NODES_SMALL_MAX, GET_NODES_MEDIUM_MAX,
+        GET_NODES_SMALL_FORMAT, GET_NODES_FULL_FORMAT,
+        GET_NODES_BALANCED_FORMAT, GET_NODES_COMPACT_FORMAT,
+    )
+    if get_nodes_config is not None:
+        return get_nodes_config
+    if rich:
+        return GET_NODES_FULL_FORMAT
+    if n <= GET_NODES_SMALL_MAX:
+        return GET_NODES_SMALL_FORMAT
+    if n <= GET_NODES_MEDIUM_MAX:
+        return GET_NODES_BALANCED_FORMAT
+    return GET_NODES_COMPACT_FORMAT
+
+
+def _render_nodes(rich_nodes, config):
+    """Render a list of rich-node dicts to text via the single formatter."""
+    from servers.contract import render_rich_node
+    lines = []
+    for node in rich_nodes:
+        lines.append(render_rich_node(node, config))
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _select_trace_config(n, rich):
+    """Pick the render_trace config for an n-row trace result — the trace
+    analog of _select_node_config. `rich` opts into the full row; otherwise
+    a focused pull renders compact (body + metadata gist) and a bulk pull
+    (> TRACE_BULK_MAX rows) drops to summary-only to protect context."""
+    from servers.trace_contract import (
+        TRACE_FULL_FORMAT, TRACE_COMPACT_FORMAT, TRACE_BULK_FORMAT, TRACE_BULK_MAX)
+    if rich:
+        return TRACE_FULL_FORMAT
+    return TRACE_BULK_FORMAT if n > TRACE_BULK_MAX else TRACE_COMPACT_FORMAT
+
+
+def _render_traces(rows, config):
+    """Render a list of trace rows to text via the single trace renderer."""
+    from servers.trace_contract import render_trace
+    return "\n\n".join(render_trace(r, config) for r in rows if isinstance(r, dict))
+
+
+def _format_result(tool_name, result, get_nodes_config=None, rich=False):
     """Format tool result for MCP output.
 
     - recall: structured text (same format as hooks) for readability.
-    - get_nodes: batch-size-aware rendering via contract.py configs.
-      Small batches (<=3) keep raw JSON for Anchor drill-downs.
-      Medium batches (<=10) use GET_NODES_BALANCED_FORMAT.
-      Large batches (>10) use GET_NODES_COMPACT_FORMAT.
-      Prevents tool_result explosion in encoder contexts.
-      `get_nodes_config` (from run_llm_loop) overrides the whole heuristic:
-      render every node through render_rich_node with that config at ANY batch
-      size — including <=3, which otherwise dumps raw JSON (full _corrections)
-      and can blow an encoder's context to hundreds of K. Consumers with tight
-      budgets (S2 encoders) pass their own lean config.
+    - get_node / get_nodes / filter_nodes: rendered through render_rich_node,
+      NEVER a raw dict dump. brain.get_node is the data layer (always full);
+      trimming is a representation choice that lives here. Default de-stuffs by
+      batch size (small = full content + bounded edges/corrections; large =
+      compact). `rich=True` (MCP opt-in) renders the full view. A caller-
+      declared `get_nodes_config` (run_llm_loop / S2 encoders) overrides both —
+      it is the encoder's own representation channel and wins at any size.
     - All other tools: JSON dump.
     """
-    if tool_name == "get_nodes" and result:
-        # Two shapes reach here: the dispatch handler (_handle_get_nodes) returns
-        # a LIST of rich nodes (+ {"id","error"} entries for unresolved ids) —
-        # this is the path every encoder and Anchor's MCP get_nodes take;
-        # brain.get_node(ids) returns a {node_id: rich_node} dict. Handle both,
-        # or the render branch silently no-ops and dumps the raw firehose.
-        if isinstance(result, dict):
+    # Node-fetch tools render through the single formatter — never a raw dump.
+    if tool_name in ("get_node", "get_nodes") and result:
+        # Normalize every shape to a list of rich-node dicts:
+        #  - get_node         → one node dict (has 'id')
+        #  - get_nodes (list) → [rich node | {"id","error"}]  (dispatch handler)
+        #  - get_nodes (dict) → {node_id: rich node}          (brain.get_node)
+        if tool_name == "get_node":
+            candidates = [result] if isinstance(result, dict) else []
+        elif isinstance(result, dict):
             candidates = list(result.values())
         elif isinstance(result, list):
             candidates = result
@@ -873,28 +931,96 @@ def _format_result(tool_name, result, get_nodes_config=None):
         rich_nodes = [v for v in candidates
                       if isinstance(v, dict) and v.get('id') and 'error' not in v]
         if rich_nodes:
-            from servers.contract import (
-                render_rich_node,
-                GET_NODES_SMALL_MAX, GET_NODES_MEDIUM_MAX,
-                GET_NODES_BALANCED_FORMAT, GET_NODES_COMPACT_FORMAT,
-            )
-            if get_nodes_config is not None:
-                # Caller-declared config — render at every batch size, no
-                # raw-JSON escape hatch (the source of the encoder blowup).
-                config = get_nodes_config
-            else:
-                n = len(rich_nodes)
-                if n <= GET_NODES_SMALL_MAX:
-                    # Small batch — preserve full JSON for Anchor/targeted lookups
-                    return json.dumps(result, indent=2, default=str)
-                config = GET_NODES_BALANCED_FORMAT if n <= GET_NODES_MEDIUM_MAX \
-                    else GET_NODES_COMPACT_FORMAT
-            lines = []
-            for node in rich_nodes:
-                lines.append(render_rich_node(node, config))
-                lines.append("")
-            return "\n".join(lines)
+            config = _select_node_config(len(rich_nodes), rich, get_nodes_config)
+            return _render_nodes(rich_nodes, config)
         # Fall through if result shape is unexpected
+
+    # filter_nodes: structural query → {nodes, total_count}. Enriched nodes
+    # (rich=True data path) render bounded by batch size — never the raw dump
+    # that made a 50-node rich filter a multi-hundred-KB firehose. Skinny nodes
+    # (rich=False discovery path) render one-line-per-node. The MCP render
+    # opt-in does not apply here: a multi-node scan is bounded by design — one
+    # node's full view is a get_node away.
+    if tool_name == "filter_nodes" and isinstance(result, dict) and "nodes" in result:
+        nodes = result.get("nodes", [])
+        total = result.get("total_count", len(nodes))
+        if not nodes:
+            return "No nodes matched. (%d total)" % total
+        header = "%d node%s (of %d total)" % (
+            len(nodes), "" if len(nodes) == 1 else "s", total)
+        # Enriched nodes carry 'connections' (get_node always attaches it);
+        # skinny nodes never do — a reliable discriminator.
+        rich_nodes = [n for n in nodes
+                      if isinstance(n, dict) and n.get('id') and 'connections' in n]
+        if rich_nodes:
+            config = _select_node_config(len(rich_nodes), False, None)
+            return header + "\n\n" + _render_nodes(rich_nodes, config)
+        # Skinny discovery shape — bounded one-liner per node (surfaces the
+        # filtered field value; see contract.render_skinny_node).
+        from servers.contract import render_skinny_node
+        lines = [header, ""]
+        for n in nodes:
+            lines.append(render_skinny_node(n))
+        return "\n".join(lines)
+
+    # Trace tools — render via the single trace renderer (trace_contract),
+    # never raw json.dumps. brain.query_traces/get_trace/get_traces return full
+    # rows at the data layer; bounded here, rich=true for the full row.
+    if tool_name in ("get_trace", "get_traces", "query_traces") and result:
+        if tool_name == "get_trace":
+            rows = [result] if isinstance(result, dict) else []
+        elif tool_name == "get_traces":
+            rows = result if isinstance(result, list) else []
+        elif isinstance(result, dict) and isinstance(result.get("chains"), list):
+            # grouped — a chain header + its events, per chain. get_chains'
+            # events carry their own id but scale/session_id are chain-level,
+            # so propagate those onto each event before rendering (render_trace
+            # expects a full row).
+            chains = result["chains"]
+            cfg = _select_trace_config(
+                sum(len(c.get("events", [])) for c in chains), rich)
+            blocks = []
+            for c in chains:
+                # Render from copies with chain-level scale/session_id filled in
+                # (get_chains events carry neither) — never mutate the caller's
+                # dicts. An event's own value, if present, wins (after **ev).
+                merged = [{"scale": c.get("scale"), "session_id": c.get("session_id"), **ev}
+                          for ev in c.get("events", []) if isinstance(ev, dict)]
+                blocks.append('═══ chain %s · %s · %s · %d event%s ═══\n%s' % (
+                    c.get("chain_id") or "?", c.get("scale") or "?",
+                    (c.get("session_id") or "?")[:8],
+                    len(merged), "" if len(merged) == 1 else "s",
+                    _render_traces(merged, cfg)))
+            return "\n\n".join(blocks) if blocks else "No chains found."
+        else:
+            rows = (result.get("chain") or result.get("events") or []) \
+                if isinstance(result, dict) else []
+        rows = [r for r in rows if isinstance(r, dict)]
+        if rows:
+            return _render_traces(rows, _select_trace_config(len(rows), rich))
+        # else fall through → json.dumps shows the small/empty shape
+
+    if tool_name == "recall_batch" and isinstance(result, list):
+        # Per-query results through the SAME recall formatter single recall
+        # uses — not a raw dump.
+        from servers.brain_voice import BrainVoice
+        out = []
+        for entry in result:
+            if not isinstance(entry, dict):
+                continue
+            out.append('▸ "%s"' % entry.get("query", "?"))
+            if entry.get("error"):
+                out.append("  error: %s" % entry["error"])
+            else:
+                res = entry.get("results", [])
+                if res:
+                    lines = []
+                    BrainVoice.format_recall_results(res, lines)
+                    out.extend(("  " + ln) if ln else "" for ln in lines)
+                else:
+                    out.append("  No results found.")
+            out.append("")
+        return "\n".join(out)
 
     if tool_name == "recall" and isinstance(result, dict):
         from servers.brain_voice import BrainVoice
@@ -950,7 +1076,9 @@ def _format_result(tool_name, result, get_nodes_config=None):
         return "\n".join(lines)
 
     if tool_name == "recall_episodes" and isinstance(result, dict):
-        from servers.brain_constants import EPISODE_RENDER_BODY_CHARS
+        # Shares the single trace renderer (TRACE_EPISODE_FORMAT keeps the
+        # conversational framing: body only, no scale/event_type chrome).
+        from servers.trace_contract import render_trace, TRACE_EPISODE_FORMAT
         eps = result.get("episodes", [])
         if not eps:
             return "No episodes found."
@@ -958,21 +1086,7 @@ def _format_result(tool_name, result, get_nodes_config=None):
             len(eps), "" if len(eps) == 1 else "s",
             result.get("ranked_by", "time")), ""]
         for e in eps:
-            meta = e.get("metadata") or {}
-            rt = e.get("ref_type", "")
-            if rt == "assistant_message":
-                who = meta.get("agent_identity") or "Anchor"
-            elif rt == "user_message":
-                who = meta.get("human_identity") or "Operator"
-            else:                       # tool_result etc. → surface the tool
-                who = meta.get("tool") or rt or "?"
-            score = " %.2f" % e["_score"] if e.get("_score") is not None else ""
-            out.append("[%s%s] %s · %s · %s (trace:%s)" % (
-                (e.get("session_id") or "")[:8], score, who,
-                (e.get("created_at") or "")[:16].replace("T", " "),
-                rt or "?", e.get("id", "")))
-            body = (meta.get("content") or e.get("summary") or "").strip()
-            out.append("  " + body[:EPISODE_RENDER_BODY_CHARS].replace("\n", "\n  "))
+            out.append(render_trace(e, TRACE_EPISODE_FORMAT))
             out.append("")
         return "\n".join(out)
 
@@ -993,7 +1107,11 @@ def handle_tools_call(request_id, params):
 
         resp = daemon_send(tool_name, arguments)
         if resp.get("ok"):
-            result_text = _format_result(tool_name, resp["result"])
+            # `rich` is the MCP render opt-in for get_node/get_nodes (full view).
+            # filter_nodes' own `rich` is a data-layer flag handled in dispatch;
+            # its render is always bounded, so passing it here is harmless.
+            result_text = _format_result(
+                tool_name, resp["result"], rich=bool(arguments.get("rich", False)))
             return make_response(request_id, {
                 "content": [{"type": "text", "text": result_text}]
             })

@@ -220,19 +220,34 @@ def test_old_datetime_now_pattern_is_still_broken(formatter, label):
 
     If this ever starts passing, SQLite's datetime() behavior changed
     (unlikely) — and the helper may no longer be necessary.
+
+    Anchored at a fixed mid-day instant on purpose — do NOT revert to
+    ``datetime.now()``. The lex bug only fires when the stored rows and
+    SQLite's space-separated cutoff share a calendar DAY: the date part has
+    to be equal for the ``'T' (0x54) > ' ' (0x20)`` trap at position 10 to
+    decide the ``>`` comparison. With wall-clock ``now()`` the 55-min-old row
+    landed on the *previous* UTC day for runs in the [00:30, 00:55) UTC band
+    (cutoff today, older row yesterday → date parts genuinely differ → bug
+    does NOT fire), and this guardrail flipped to a false failure. A frozen
+    anchor keeps every timestamp same-day so the bug fires deterministically.
     """
-    now = datetime.now(timezone.utc)
+    base = datetime(2026, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
     rows = [
-        ('fresh_10min', formatter(now - timedelta(minutes=10))),  # should be in
+        ('fresh_10min', formatter(base - timedelta(minutes=10))),  # should be in
         ('older_55min_same_hour',
-         formatter(now - timedelta(minutes=55))),  # should be OUT but bug admits it
+         formatter(base - timedelta(minutes=55))),  # should be OUT but bug admits it
     ]
     conn = _build_db_with_rows(rows)
 
-    # The old broken pattern: SQLite computes the cutoff itself.
+    # The old broken pattern. SQLite still computes the cutoff with its own
+    # datetime() — space-separated, microseconds + TZ stripped — which is what
+    # re-creates the bug; we just feed it the same fixed anchor instead of
+    # wall-clock 'now' so the result is deterministic. Derived from `base` so
+    # the rows and the cutoff can never drift apart.
+    anchor_sql = base.strftime('%Y-%m-%dT%H:%M:%S')  # '2026-06-15T12:00:00'
     broken = sorted(r[0] for r in conn.execute(
-        "SELECT label FROM t WHERE created_at > datetime('now', '-30 minutes') "
-        'ORDER BY label'
+        "SELECT label FROM t WHERE created_at > datetime(?, '-30 minutes') "
+        'ORDER BY label', (anchor_sql,)
     ).fetchall())
 
     # Bug signature: when same-day-same-hour ISO-T strings hit a space-
