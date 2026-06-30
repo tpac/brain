@@ -67,7 +67,13 @@ REF_TYPES = {
                                               # prompt, empty inbox). Recorded for observability, but
                                               # NOT a conversational turn — see S0 TURN CLASSIFICATION.
     ("s0", "delta"):   ["assistant_message", "tool_result",
-                         "node_revised", "edge_relation_revised"],
+                         "node_revised", "edge_relation_revised",
+                         "anchor_touched"],   # per-turn aggregate of what Anchor's own
+                                              # MCP tools touched this turn (created/revised/
+                                              # archived/recalled/endo) — the S0 mirror of the
+                                              # S1 encoding_run delta; feeds the encoder's
+                                              # widened catalog (trace_links). See
+                                              # build_anchor_touched_metadata.
 
     # Scale 1: turn integration
     # Surface path (chain prefix: s1r-): O=candidates, K=surfaced picks, delta=context sent to Anchor
@@ -395,6 +401,30 @@ def build_delta_metadata(*,
     return metadata
 
 
+# ── ANCHOR-TOUCHED METADATA SHAPE ──
+# The S0 mirror of the S1 encoding_run delta: one per-turn aggregate of the
+# nodes Anchor's OWN MCP tools touched this turn. Deliberately reuses the encode
+# delta's `created`/`revised`/`archived` keys so trace_links reads BOTH the S1
+# encode delta and this S0 delta through ONE parser (no second parsing path) —
+# plus read-side keys S1 has no analog for (`recalled` = deliberate get_node(s);
+# `endo` = endo-surface ids, empty until endo lands). NODE ids only (full),
+# never edges or the encoding_source field (technical, encoder-invisible).
+ANCHOR_TOUCHED_KEYS = ('created', 'revised', 'archived', 'recalled', 'endo')
+# Shape for validate_trace_metadata — every key an id-list. Derived from the
+# constant (not a second hand-written list) so the keyset can't drift.
+ANCHOR_TOUCHED_SHAPE = {k: list for k in ANCHOR_TOUCHED_KEYS}
+
+
+def build_anchor_touched_metadata(**ids):
+    """Build the anchor_touched delta metadata — a flat dict of id-lists, ONE per
+    ANCHOR_TOUCHED_KEYS (the constant drives the keyset; pass any subset). Order-
+    preserving dedup per key; never the raw encoding_source. Reuses the encode
+    delta's `created`/`revised`/`archived` key names so one reader serves both.
+    Unknown kwargs are ignored (the flush passes `**ctx.touched`, which is itself
+    keyed by ANCHOR_TOUCHED_KEYS — so they always agree)."""
+    return {k: list(dict.fromkeys(ids.get(k) or [])) for k in ANCHOR_TOUCHED_KEYS}
+
+
 # ── JOURNAL NOTE METADATA SHAPE ──
 # A journal note is a Δ written as its OWN trace event (event_type='delta',
 # ref_type='journal_note'): the residue of a run's integrate() — the why, the
@@ -666,6 +696,7 @@ METADATA_REQUIRED_BY_REF_TYPE = {
     'healer_generated':   DELTA_METADATA_SHAPE,  # S2 healer
     'aspect_classified':  DELTA_METADATA_SHAPE,  # S2 aspect integration
     'journal_note':       JOURNAL_NOTE_METADATA_SHAPE,  # encoder residue (one note per row)
+    'anchor_touched':     ANCHOR_TOUCHED_SHAPE,  # S0 per-turn Anchor action aggregate
 }
 
 

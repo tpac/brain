@@ -32,6 +32,7 @@ from .daemon_config import (
     get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
 )
 from .daemon_dispatch import COMMAND_TABLE, check_unknown_keys
+from .dispatch_common import caller_session
 
 
 class DuplicateDaemonError(Exception):
@@ -756,15 +757,28 @@ class BrainDaemon:
 
             check_unknown_keys(cmd, entry, args, self.brain)
 
+            # Caller identity for the touched accumulator — resolved BEFORE the
+            # handler runs, because handlers that pass **args to a brain method
+            # pop `_caller_session` (see dispatch_common._pop_session_ctx), so it
+            # would be gone by the time _accumulate_touched runs. caller_session
+            # prefers an explicit session_id filter, else the proxy-stamped
+            # `_caller_session` — the write tools send only the latter.
+            caller_sess = caller_session(args)
             if entry.is_write:
                 def _write():
                     result = entry.handler(self.brain, args, self.graph_changes)
                     if entry.marks_dirty:
                         self.dirty = True
                     return result
-                return self._locked_exec(_write, cmd, args)
+                result = self._locked_exec(_write, cmd, args)
             else:
-                return entry.handler(self.brain, args, self.graph_changes)
+                result = entry.handler(self.brain, args, self.graph_changes)
+            # Record what Anchor's own tools touched this turn (Piece 3a). Only
+            # Anchor's TCP calls reach _dispatch — the in-process encoder bypasses
+            # it (calls COMMAND_TABLE handlers directly via _make_encoder_dispatch)
+            # — so this is structurally Anchor-only, no encoding_source check.
+            self._accumulate_touched(caller_sess, cmd, result)
+            return result
 
         except Exception as e:
             tb = traceback.format_exc()
@@ -775,6 +789,47 @@ class BrainDaemon:
             except Exception:
                 pass
             return {"ok": False, "error": str(e)}
+
+    def _accumulate_touched(self, sess, cmd, result):
+        """Append the node ids Anchor touched this turn to the session's per-turn
+        accumulator (flushed as one `anchor_touched` S0 delta in
+        post_response_common). Writes contribute their dispatch-authoritative
+        `affected` (created/revised/archived); deliberate reads (get_node[s])
+        contribute the resolved ids they returned. `sess` is the caller identity
+        resolved before the handler ran. Failure-isolated, but LOUD: a real error
+        here is logged (the silent version once hid the session-keying bug)."""
+        if not isinstance(result, dict):
+            return
+        aff = result.get('affected')
+        is_read = cmd in ('get_node', 'get_nodes')
+        # Early-out BEFORE the session lookup, so the recall hot path (and any
+        # other non-contributing command) pays nothing.
+        if not isinstance(aff, dict) and not is_read:
+            return
+        if not sess:
+            return
+        try:
+            touched = self.brain.get_or_create_session(sess).touched
+            if isinstance(aff, dict):
+                for k in ('created', 'revised', 'archived'):
+                    ids = aff.get(k)
+                    if ids:
+                        touched[k].extend(ids)
+            elif is_read:
+                payload = result.get('result')
+                nodes = payload if isinstance(payload, list) else [payload]
+                for n in nodes:
+                    # get_nodes mixes resolved node dicts with not-found entries
+                    # {'id': <raw>, 'error': ...} — skip the latter so a bad ref
+                    # doesn't land in `recalled` as a phantom node id.
+                    if isinstance(n, dict) and n.get('id') and 'error' not in n:
+                        touched['recalled'].append(n['id'])
+        except Exception as e:
+            try:
+                self.brain._log_error('accumulate_touched', e,
+                                      'cmd=%s sess=%s' % (cmd, str(sess)[:16]))
+            except Exception:
+                pass
 
     def _dispatch_hook(self, cmd: str, args: Dict[str, Any]) -> Dict[str, Any]:
         """Dispatch hook with telemetry. Caller (_dispatch) handles locking

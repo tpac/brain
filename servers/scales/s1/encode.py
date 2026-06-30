@@ -595,8 +595,9 @@ def _turn_links(brain, session_id, turns):
     try:
         from servers.scales.s1.trace_links import gather, nodes_for_traces
         targets = [t['user'] for t in turns if t['user']]
-        surface_traces, encode_traces = gather(brain, session_id)
-        links = nodes_for_traces(surface_traces, encode_traces, targets)
+        surface_traces, encode_traces, touched_traces = gather(brain, session_id)
+        links = nodes_for_traces(surface_traces, encode_traces, targets,
+                                 touched_traces=touched_traces)
     except AttributeError:
         # Expected, quiet: a stub brain (tests) without query_traces. Degrade to
         # the piece-1 timeline (no provenance) — production brains always have it.

@@ -63,6 +63,7 @@
 | ID | What | Effort | Status |
 |---|---|---|---|
 | **F7** | Move `_SOURCE_REFS_SCHEMA` from `brain_mcp.py` to `contract.py` under new `JOIN_TABLE_FIELDS` category (parallel to STRUCTURAL / PROMOTED). Makes contract-sync test implicitly cover field registration. | ~45 min | open |
+| **F8** | Unify Anchor's per-action S0 traces under the per-turn `anchor_touched` aggregate (Piece 3a, 2026-06-29). Today `revise`/`connect` emit their own `node_revised`/`edge_relation_revised` rows on the date chain (`s0-{YYYYMMDD}-revise`) while `remember`/`get_node` emit nothing — an accident of history. Piece 3a adds a per-turn `anchor_touched` delta (stop chain) capturing all of created/revised/connected/recalled, so the same node id now lives in *two* rows (legacy per-action + new per-turn aggregate). Left as-is to avoid scope creep, but it's ugly now that the per-turn aggregate is the better convention: consider migrating the legacy per-action emissions onto the aggregate (or dropping them if the dashboard/audit consumers can read the aggregate instead). Verify no consumer depends on the date-chain granularity first. | ~1–2h | open |
 
 ### v24 experimentation thread (active)
 

@@ -124,6 +124,7 @@ def test_full_link_shape_surfaced_and_encoded_together():
         'surfaced': ['surfA', 'surfB'],
         'encoded': ['encC', 'encD'],
         'encoded_by': 'run5',
+        'authored': [], 'recalled': [], 'endo': [],  # no touched stream here
     }
 
 
@@ -137,7 +138,8 @@ def test_malformed_rows_are_survivable():
         encode_traces=[{'id': 'badrun'}],   # no chain_id → skipped
         target_traces=[_turn(5), {'id': 'orphan'}])  # orphan has no chain_id
     assert links['u5']['surfaced'] == ['ok']           # the good row survived
-    assert links['orphan'] == {'surfaced': [], 'encoded': [], 'encoded_by': None}
+    assert links['orphan'] == {'surfaced': [], 'encoded': [], 'encoded_by': None,
+                               'authored': [], 'recalled': [], 'endo': []}
 
 
 def test_runs_out_of_order_still_pick_earliest_owning_run():
@@ -152,6 +154,12 @@ def test_runs_out_of_order_still_pick_earliest_owning_run():
 
 # ── the live adapter pulls both streams via the query_traces door ──
 
+def _touched(stop, created=None, revised=None, recalled=None, endo=None, tid=None):
+    return {'id': tid or ('at%d' % stop), 'chain_id': 's0-%s-%d' % (SHORT, stop),
+            'metadata': {'created': created or [], 'revised': revised or [],
+                         'archived': [], 'recalled': recalled or [], 'endo': endo or []}}
+
+
 class _StubBrain:
     def __init__(self):
         self.calls = []
@@ -162,21 +170,79 @@ class _StubBrain:
             return {'events': [_surface(5, ['s'])]}
         if kw.get('ref_type') == 'encoding_run':
             return {'events': [_encode(5, ['e'], [])]}
+        if kw.get('ref_type') == 'anchor_touched':
+            return {'events': [_touched(5, created=['w'], recalled=['r'])]}
         return {'events': []}
 
 
-def test_gather_pulls_surface_and_encode_via_door():
+def test_gather_pulls_all_three_streams_via_door():
     brain = _StubBrain()
-    surf, enc = gather(brain, 'sess-xyz')
-    assert len(surf) == 1 and len(enc) == 1
-    # both pulls scoped to the session, scale s1, time window disabled (hours=None)
-    rts = {c['ref_type'] for c in brain.calls}
-    assert rts == {'surface_selected', 'encoding_run'}
+    surf, enc, touched = gather(brain, 'sess-xyz')
+    assert len(surf) == 1 and len(enc) == 1 and len(touched) == 1
+    # all three pulls scoped to the session, window disabled (hours=None);
+    # surface/encode at s1, anchor_touched at s0.
+    by_rt = {c['ref_type']: c for c in brain.calls}
+    assert set(by_rt) == {'surface_selected', 'encoding_run', 'anchor_touched'}
+    assert by_rt['surface_selected']['scale'] == 's1'
+    assert by_rt['anchor_touched']['scale'] == 's0'
     for c in brain.calls:
-        assert c['scale'] == 's1' and c['session_id'] == 'sess-xyz' and c['hours'] is None
+        assert c['session_id'] == 'sess-xyz' and c['hours'] is None
     # end-to-end through the pure core
-    links = nodes_for_traces(surf, enc, [_turn(5)])
+    links = nodes_for_traces(surf, enc, [_turn(5)], touched_traces=touched)
     assert links['u5']['surfaced'] == ['s'] and links['u5']['encoded'] == ['e']
+    assert links['u5']['authored'] == ['w'] and links['u5']['recalled'] == ['r']
+
+
+# ── the touched feed: anchor_touched joins 1:1 with the turn by stop ──
+
+def test_touched_authored_and_recalled_join_by_stop():
+    links = nodes_for_traces(
+        surface_traces=[], encode_traces=[],
+        target_traces=[_turn(5), _turn(6)],
+        touched_traces=[_touched(5, created=['nA'], revised=['nB'], recalled=['nC']),
+                        _touched(6, created=['nD'])])
+    assert links['u5']['authored'] == ['nA', 'nB']   # created ∪ revised
+    assert links['u5']['recalled'] == ['nC']
+    assert links['u6']['authored'] == ['nD'] and links['u6']['recalled'] == []
+
+
+def test_touched_archived_not_in_authored():
+    # archived is recorded in the delta but a gone node must not surface as authored.
+    t = {'id': 'at5', 'chain_id': 's0-%s-5' % SHORT,
+         'metadata': {'created': ['live'], 'revised': [], 'archived': ['dead'],
+                      'recalled': [], 'endo': []}}
+    links = nodes_for_traces([], [], [_turn(5)], touched_traces=[t])
+    assert links['u5']['authored'] == ['live']
+    assert 'dead' not in links['u5']['authored']
+
+
+def test_touched_absent_yields_empty_relations():
+    # No touched stream → authored/recalled/endo are empty, never missing.
+    links = nodes_for_traces([_surface(5, ['s'])], [], [_turn(5)])
+    assert links['u5']['authored'] == [] and links['u5']['endo'] == []
+
+
+def test_delta_ids_shared_parser_symmetry():
+    # The SAME parser reads the S1 encode delta and the S0 touched delta — both
+    # carry created/revised. Proven by feeding one meta dict through both lenses.
+    from servers.scales.s1.trace_links import _delta_ids
+    meta = {'created': ['a', 'b'], 'revised': ['b', 'c'], 'recalled': ['d']}
+    assert _delta_ids(meta, 'created', 'revised') == ['a', 'b', 'c']  # encode lens
+    assert _delta_ids(meta, 'recalled') == ['d']                       # touched-only lens
+    assert _delta_ids(None, 'created') == []
+
+
+def test_anchor_touched_metadata_builder_shape_and_dedup():
+    # The contract builder: all five keys present, order-preserving dedup, and it
+    # mirrors the encode delta's created/revised/archived key names (the symmetry).
+    from servers.trace_contract import (build_anchor_touched_metadata,
+                                        ANCHOR_TOUCHED_KEYS, DELTA_METADATA_SHAPE)
+    m = build_anchor_touched_metadata(created=['a', 'a', 'b'], recalled=['c'])
+    assert set(m) == set(ANCHOR_TOUCHED_KEYS)
+    assert m['created'] == ['a', 'b'] and m['recalled'] == ['c']
+    assert m['revised'] == [] and m['archived'] == [] and m['endo'] == []
+    # the shared keys are exactly the encode delta's id-list field names
+    assert {'created', 'revised', 'archived'} <= set(DELTA_METADATA_SHAPE)
 
 
 # ── render integration: <provenance> in the lived-sequence timeline (encode.py) ──

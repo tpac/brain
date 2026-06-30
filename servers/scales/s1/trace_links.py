@@ -14,6 +14,9 @@ The capability returns, per target trace, the nodes linked to it by relation:
         'surfaced':   [node_id, ...],   # what recall gave this turn  (S1R)
         'encoded':    [node_id, ...],   # what the owning run wrote    (S1E)
         'encoded_by': trace_id | None,  # the encoding_run trace; None = unencoded
+        'authored':   [node_id, ...],   # what Anchor's own tools wrote (S0, anchor_touched)
+        'recalled':   [node_id, ...],   # what Anchor deliberately looked up (S0)
+        'endo':       [node_id, ...],   # endo-surfaced this turn (S0, empty until wired)
     }
 
 Two readers, one primitive:
@@ -36,11 +39,13 @@ TWO LAYERS so it is robust to a raw trace dataset run sequentially:
   • gather(brain, session_id) — thin live adapter. Pulls the two trace streams via
     the public `query_traces` door (no bespoke DAL). Eval/tests skip it.
 
-DEFERRED: encoded(Anchor) — Anchor's direct MCP writes. Node CREATION leaves no
-trace (only revises do), so the only signal is `encoding_source='anchor'`, the
-in-flux attribution field the encoder must never see. When that rework lands a
-clean per-session creation signal, an 'anchored' relation joins this link map
-with its own source — the shape already has room for it.
+Anchor's own actions (`authored`/`recalled`) come from the S0 `anchor_touched`
+delta — a per-turn aggregate the daemon flushes at the Stop boundary (the S0
+mirror of the S1 encode delta). It reuses the encode delta's `created`/`revised`
+keys, so `_delta_ids` parses both with no second path. NOT sourced from
+`encoding_source` (in-flux, encoder-invisible) — the touched delta is captured
+structurally at dispatch, where only Anchor's TCP calls flow. `endo` rides the
+same delta when endo recall is wired.
 """
 import json
 
@@ -74,8 +79,22 @@ def _dedup(seq):
     return list(dict.fromkeys(seq))
 
 
-def nodes_for_traces(surface_traces, encode_traces, target_traces):
-    """Join S1 surface/encode traces to target traces by stop. PURE.
+def _delta_ids(meta, *keys):
+    """Node ids out of a delta's id-list fields — the ONE parser shared by the S1
+    encode delta and the S0 anchor_touched delta. Both carry the same
+    `created`/`revised`/`archived` keys (the symmetry), so neither needs its own
+    parsing path; the S0 delta just has extra keys (`recalled`/`endo`) this reads
+    on demand. Concatenates the requested keys, order-preserving dedup."""
+    out = []
+    for k in keys:
+        out.extend((meta or {}).get(k) or [])
+    return _dedup(out)
+
+
+def nodes_for_traces(surface_traces, encode_traces, target_traces,
+                     touched_traces=None):
+    """Join S1 surface/encode + S0 anchor_touched traces to target traces by
+    stop. PURE.
 
     Args:
         surface_traces: S1R `surface_selected` trace records (chain_id + ref_id).
@@ -85,12 +104,17 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces):
                         (the map key) and `chain_id` (the stop to join on).
                         Usually the turns' user_message traces; a recall layer
                         passes embedding-matched traces instead.
+        touched_traces: S0 `anchor_touched` trace records (chain_id + metadata) —
+                        what Anchor's OWN tools touched. Optional (the feed may not
+                        be wired); when omitted, authored/recalled/endo are empty.
 
     Returns:
         {target_trace_id: {'surfaced': [ids], 'encoded': [ids],
-                           'encoded_by': run_trace_id | None}}
+                           'encoded_by': run_trace_id | None,
+                           'authored': [ids], 'recalled': [ids], 'endo': [ids]}}
 
-    Node ids are returned verbatim (full ids, no truncation) — display
+    surfaced / authored / recalled / endo are 1:1 with the turn (same stop);
+    encoded is per-RUN (the owning run). Node ids verbatim (full) — display
     formatting (8-char refs) is the renderer's job, not the link's.
     """
     # surfaced, indexed by stop (1:1 with a turn; merge if a stop ever repeats).
@@ -102,14 +126,28 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces):
         bucket = surf_by_stop.setdefault(stop, [])
         bucket.extend(_surface_ids(t.get('ref_id')))
 
+    # anchor_touched, indexed by stop (1:1 with a turn, like surfaced). authored =
+    # created∪revised (live nodes Anchor wrote; archived is recorded in the trace
+    # but not surfaced as a link — the node is gone). recalled = deliberate
+    # lookups; endo = endo-surface (empty until wired). Shared _delta_ids parser.
+    touched_by_stop = {}
+    for t in (touched_traces or []):
+        stop = _stop_of(t.get('chain_id'))
+        if stop is None:
+            continue
+        meta = t.get('metadata')
+        e = touched_by_stop.setdefault(stop, {'authored': [], 'recalled': [], 'endo': []})
+        e['authored'].extend(_delta_ids(meta, 'created', 'revised'))
+        e['recalled'].extend(_delta_ids(meta, 'recalled'))
+        e['endo'].extend(_delta_ids(meta, 'endo'))
+
     # encode runs as (stop, trace_id, [created+revised]), ascending by stop.
     runs = []
     for t in encode_traces:
         stop = _stop_of(t.get('chain_id'))
         if stop is None:
             continue
-        meta = t.get('metadata') or {}
-        ids = _dedup((meta.get('created') or []) + (meta.get('revised') or []))
+        ids = _delta_ids(t.get('metadata'), 'created', 'revised')  # shared parser
         runs.append((stop, t.get('id'), ids))
     runs.sort(key=lambda r: r[0])
 
@@ -134,7 +172,13 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces):
                 if rstop >= stop:
                     encoded, encoded_by = list(rids), rtid
                     break
-        out[tid] = {'surfaced': surfaced, 'encoded': encoded, 'encoded_by': encoded_by}
+        tch = touched_by_stop.get(stop) or {} if stop is not None else {}
+        out[tid] = {
+            'surfaced': surfaced, 'encoded': encoded, 'encoded_by': encoded_by,
+            'authored': _dedup(tch.get('authored', [])),
+            'recalled': _dedup(tch.get('recalled', [])),
+            'endo': _dedup(tch.get('endo', [])),
+        }
     return out
 
 
@@ -149,11 +193,15 @@ def gather(brain, session_id, limit=500):
     most-recent traces — what the recent-turn window needs). Distinct from the
     timeline's LIVED_SEQUENCE_PULL; a reusable adapter default, not a per-piece
     constant. A consumer with a different need passes its own.
+
+    Returns (surface_traces, encode_traces, touched_traces) — the three streams
+    nodes_for_traces joins.
     """
-    surface_traces = brain.query_traces(
-        ref_type='surface_selected', scale='s1',
-        session_id=session_id, hours=None, limit=limit).get('events', [])
-    encode_traces = brain.query_traces(
-        ref_type='encoding_run', scale='s1',
-        session_id=session_id, hours=None, limit=limit).get('events', [])
-    return surface_traces, encode_traces
+    def _pull(ref_type, scale):
+        return brain.query_traces(
+            ref_type=ref_type, scale=scale,
+            session_id=session_id, hours=None, limit=limit).get('events', [])
+    surface_traces = _pull('surface_selected', 's1')
+    encode_traces = _pull('encoding_run', 's1')
+    touched_traces = _pull('anchor_touched', 's0')   # Anchor's own tool actions
+    return surface_traces, encode_traces, touched_traces

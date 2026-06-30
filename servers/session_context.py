@@ -60,6 +60,15 @@ class SessionContext:
         self.last_turn_conversational: bool = True
         self.fatigue: Dict[str, int] = {}  # {node_id: access_count} — resets between sessions
         self.edge_fatigue: Dict[str, int] = {}  # {target_node_id: surface_count} — edge rotation
+        # Per-turn "Anchor touched" accumulator — the S0 mirror of the encoder's
+        # ops-delta. Anchor's own MCP tools append node ids here as they fire
+        # (writes via dispatch `affected`, deliberate reads via get_node(s));
+        # post_response_common flushes it as one `anchor_touched` S0 delta at the
+        # turn boundary, then resets. Transient (not persisted) — a turn's touches
+        # are flushed before the next turn. Keyset driven by ANCHOR_TOUCHED_KEYS
+        # (the contract) so it can't drift from the builder it feeds via **touched.
+        from .trace_contract import ANCHOR_TOUCHED_KEYS
+        self.touched: Dict[str, list] = {k: [] for k in ANCHOR_TOUCHED_KEYS}
         # Per-session node activity — the parallel-session replacement for
         # global nodes.{activation, recency_score, last_accessed, access_count}
         # in reads that should be session-scoped (spreading-activation kernel,

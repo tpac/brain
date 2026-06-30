@@ -629,6 +629,25 @@ def post_response_common(brain, session_id, user_message, assistant_response):
     # to tick on this path. Heartbeats are excluded structurally: they write no
     # user_message trace, so they can't advance that count. See trace_contract
     # S0 TURN CLASSIFICATION.
+    # Flush the per-turn "Anchor touched" accumulator as one anchor_touched S0
+    # delta on THIS turn's chain (before increment, so the stop matches). The S0
+    # mirror of the encoder's ops-delta — feeds the encoder's widened catalog via
+    # trace_links. Snapshot-and-swap FIRST (one rebind, atomic under the GIL): a
+    # concurrent lock-free read that already holds the old dict extends a
+    # detached list, so the next turn starts clean either way — at worst a touch
+    # landing in this exact window is dropped (advisory feed; Stop fires post-turn
+    # so same-session reads aren't normally in flight). Only written when non-empty.
+    try:
+        pending, ctx.touched = ctx.touched, {k: [] for k in ctx.touched}
+        if any(pending.values()):
+            from .trace_contract import build_anchor_touched_metadata
+            meta = build_anchor_touched_metadata(**pending)
+            n = sum(len(v) for v in meta.values())
+            _s0_trace(brain, ctx, event_type='delta', ref_type='anchor_touched',
+                      summary='%d nodes touched' % n, metadata=meta)
+    except Exception as e:
+        brain._log_error('anchor_touched_flush', e, 'post_response_common')
+
     ctx.increment_stop()
     return ctx
 

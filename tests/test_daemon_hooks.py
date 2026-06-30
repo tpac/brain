@@ -556,5 +556,78 @@ class TestWorktreeHooks(BrainTestBase):
         m.assert_not_called()
 
 
+class TestAnchorTouched(BrainTestBase):
+    """The per-turn 'Anchor touched' feed (Piece 3a), driven end-to-end through
+    REAL _dispatch — never by hand-appending to ctx.touched (that shortcut stays
+    green even when the feature is fully dead, which is exactly how the original
+    feature-killer — keying on args['session_id'] instead of the proxy-stamped
+    _caller_session — slipped through). Each test exercises the production path:
+    dispatch keys the touch onto the caller's ctx; the Stop flush writes it."""
+
+    def _daemon(self):
+        from servers.daemon_server import BrainDaemon
+        d = BrainDaemon('/tmp/unused-anchor-touched.db')  # no start() → no sockets
+        d.brain = self.brain
+        return d
+
+    def _touched_rows(self, sid):
+        return self.brain.logs_conn.execute(
+            "SELECT metadata FROM trace_events WHERE scale='s0' "
+            "AND session_id=? AND ref_type='anchor_touched'", (sid,)).fetchall()
+
+    def test_write_keys_by_caller_session_then_flushes_and_resets(self):
+        # remember sends NO session_id — only _caller_session. Full path: dispatch
+        # keys the new id onto the caller's ctx (the bug: it used to key on the
+        # absent session_id → recorded nothing), then the Stop flush writes one
+        # anchor_touched delta on the turn chain and resets the accumulator.
+        import json
+        sid = 'sid-e2e'
+        d = self._daemon()
+        res = d._dispatch('remember', {'type': 'note', 'title': 'e2e',
+                                       'content': 'b', '_caller_session': sid})
+        new_id = (res.get('affected') or {}).get('created', [None])[0]
+        self.assertTrue(new_id)
+        ctx = self.brain.get_or_create_session(sid)
+        self.assertIn(new_id, ctx.touched['created'])        # keyed correctly
+
+        post_response_common(self.brain, sid, "made a node", "done")
+        rows = self._touched_rows(sid)
+        self.assertEqual(len(rows), 1)
+        self.assertIn(new_id, json.loads(rows[0][0])['created'])
+        self.assertTrue(all(not v for v in ctx.touched.values()))  # reset
+
+    def test_get_node_records_recalled(self):
+        nid = self.brain.remember(type='note', title='look me up', content='x')['id']
+        d = self._daemon()
+        d._dispatch('get_node', {'node_id': nid, '_caller_session': 'sid-read'})
+        self.assertIn(nid, self.brain.get_or_create_session('sid-read').touched['recalled'])
+
+    def test_get_nodes_skips_not_found_error_entries(self):
+        nid = self.brain.remember(type='note', title='real one', content='x')['id']
+        d = self._daemon()
+        d._dispatch('get_nodes', {'node_ids': [nid, 'bogusid0'],
+                                  '_caller_session': 'sid-batch'})
+        touched = self.brain.get_or_create_session('sid-batch').touched
+        self.assertIn(nid, touched['recalled'])
+        self.assertNotIn('bogusid0', touched['recalled'])   # error entry skipped
+
+    def test_recall_hot_path_does_not_create_session(self):
+        # A non-contributing read must early-out BEFORE get_or_create_session, so
+        # it adds no session row and no touched state on the recall hot path.
+        from unittest.mock import patch
+        d = self._daemon()
+        with patch.object(self.brain, 'get_or_create_session',
+                          wraps=self.brain.get_or_create_session) as m:
+            d._dispatch('query_traces', {'ref_type': 'recall',
+                                         '_caller_session': 'sid-hot'})
+        m.assert_not_called()
+
+    def test_no_delta_when_nothing_touched(self):
+        # A turn with no Anchor tool activity writes no anchor_touched delta.
+        sid = 'sid-empty'
+        post_response_common(self.brain, sid, "hi", "hello")
+        self.assertEqual(len(self._touched_rows(sid)), 0)
+
+
 if __name__ == '__main__':
     unittest.main()
