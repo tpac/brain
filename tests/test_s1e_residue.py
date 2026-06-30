@@ -1,0 +1,101 @@
+"""Piece 4 of the S1E code-half rebuild — residue wiring (the journal port).
+
+The S1E journal blob → the `## Review` note contract, SESSION-BOUND. Covers:
+  - the continuity READ branch in _build_user_content (flag on = notes prefix,
+    flag off = the legacy ### Encoding Journal blob);
+  - the write→read round-trip via the public doors, session-scoped (a run in
+    session A never surfaces in session B);
+  - the S1E continuity K default (5 runs, scale='s1').
+
+The system-prompt injection (write-side instructions) is covered in
+test_s1e_lived_sequence.py. See docs/S1-SCRIBE-REDESIGN.md §10.3.4.
+"""
+import os
+
+from tests.brain_test_base import BrainTestBase
+from servers.scales.s1.encode import _build_user_content
+
+# A parseable `## Review` section: a fenced ``` block of `tag · subject · note`
+# lines (the format extract_review_block requires — the review-block instructions
+# tell the encoder to emit exactly this).
+_REVIEW = (
+    "Some narrative the encoder wrote.\n\n"
+    "## Review\n```\n"
+    "watch · dedup-risk · unsure if the LAF node duplicates 9a3017ea\n"
+    "```\n"
+)
+
+
+def _review(note_line):
+    return "## Review\n```\n%s\n```\n" % note_line
+
+
+def _msgs():
+    # Minimal two-turn window; judge_output empty so the catalog stays small.
+    return [
+        {'role': 'user', 'content': 'do a thing', 'id': 'turn-0',
+         'trace_id': 'u1', 'judge_output': ''},
+        {'role': 'assistant', 'content': 'done', 'trace_id': 'a1'},
+    ]
+
+
+class TestResidueWiring(BrainTestBase):
+    needs_embedder = False
+
+    def test_session_bound_roundtrip_via_public_doors(self):
+        # Write a run's review notes scoped to session A; they read back for A,
+        # and are WALLED from session B (the S1E session-bound continuity).
+        self.brain.write_journal_notes(
+            final_text=_REVIEW, chain_id='s1e-sessAxxx-5',
+            scale='s1', session_id='sessA')
+
+        a = self.brain.journal_notes(scale='s1', session_id='sessA')
+        assert any('dedup-risk' in n['subject'] for n in a)
+        assert any(n['tag'] == 'watch' for n in a)
+
+        b = self.brain.journal_notes(scale='s1', session_id='sessB')
+        assert b == []                      # session-walled: B sees nothing of A's
+
+    def test_continuity_read_branch_uses_notes_when_lived(self):
+        # Flag-on path: _build_user_content injects the residue notes (self-labeled
+        # 'RECENT REVIEW NOTES'), NOT the legacy '### Encoding Journal' blob.
+        sid = 'sess-lived'
+        self.brain.write_journal_notes(
+            final_text=_REVIEW, chain_id='s1e-%s-3' % sid[:8],
+            scale='s1', session_id=sid)
+        _pre, body, _cat, _ids = _build_user_content(
+            self.brain, _msgs(), counter=8, session_id=sid, lived_sequence=True)
+        assert 'RECENT REVIEW NOTES' in body
+        assert 'dedup-risk' in body
+        assert '### Encoding Journal' not in body     # legacy blob heading gone
+
+    def test_continuity_read_branch_uses_blob_when_off(self):
+        # Flag-off control arm: the legacy '### Encoding Journal' blob path.
+        sid = 'sess-blob'
+        self.brain.set_config('encoding_journal_%s' % sid, '--- Run 1 ---\nold blob entry')
+        _pre, body, _cat, _ids = _build_user_content(
+            self.brain, _msgs(), counter=8, session_id=sid, lived_sequence=False)
+        assert '### Encoding Journal' in body
+        assert 'old blob entry' in body
+        assert 'RECENT REVIEW NOTES' not in body
+
+    def test_fresh_session_lived_has_no_continuity_block(self):
+        # No prior notes this session → the continuity block is simply absent
+        # (no 'first run' filler), and the encode still assembles.
+        _pre, body, _cat, _ids = _build_user_content(
+            self.brain, _msgs(), counter=1, session_id='sess-fresh', lived_sequence=True)
+        assert 'RECENT REVIEW NOTES' not in body
+        assert '### Encoding Journal' not in body
+
+    def test_s1e_continuity_k_default_is_five(self):
+        # S1E keeps the last 5 note-bearing runs of THIS session (the 's1e' K).
+        sid = 'sess-k'
+        for i in range(1, 7):  # 6 runs, one note each
+            self.brain.write_journal_notes(
+                final_text=_review("note · subj%d · run %d residue" % (i, i)),
+                chain_id='s1e-%s-%d' % (sid[:8], i), scale='s1', session_id=sid)
+        notes = self.brain.journal_notes(scale='s1', session_id=sid)
+        runs = {n['note'] for n in notes}
+        assert 'run 1 residue' not in runs          # oldest dropped (K=5)
+        assert 'run 6 residue' in runs
+        assert len({n['subject'] for n in notes}) == 5

@@ -73,12 +73,18 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         _log("no messages, skipping")
         return {"skipped": True, "reason": "no messages"}
 
+    # Resolve the A/B arm ONCE per run (env read is non-atomic across call sites;
+    # resolving here and threading down guarantees the system prompt, body, and
+    # post-process write all agree — no torn arm if the flag is toggled mid-run).
+    lived = _lived_sequence_enabled()
+
     # 2. Build prompt (from interactions table — learnable boundary)
     enc_interaction = brain.get_interaction('s1e')
     enc_instructions = enc_interaction.get('template', '') if enc_interaction else ''
-    system_prompt = _build_system_prompt(prompt_instructions=enc_instructions or None)
+    system_prompt = _build_system_prompt(
+        prompt_instructions=enc_instructions or None, lived=lived)
     user_preamble, user_content, catalog_text, catalog_ids = _build_user_content(
-        brain, messages, counter, session_id)
+        brain, messages, counter, session_id, lived_sequence=lived)
     _step("prompt(preamble=%d chars, body=%d chars)" % (
         len(user_preamble), len(user_content)))
 
@@ -218,9 +224,31 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
                     trunc['round'], trunc['output_tokens'], trunc['max_tokens']),
                 'S1E tool call likely corrupted, encoding data may be lost')
 
-        # 7. Post-process (S1-specific: journal, session context)
+        # 7. Post-process (S1-specific: journal/residue, session context)
         final_text = result.get('final_text', '')
-        journal_entry = _save_journal(brain, dispatch_fn, session_id, counter, final_text) or ''
+        enc_chain = 's1e-%s-%d' % (session_id[:8], counter)
+        if lived:
+            # New residue (Piece 4): the `## Review` note contract, SESSION-BOUND.
+            # write_journal_notes extracts the fence + writes one journal_note
+            # trace per note, all sharing enc_chain (this run); session_id walls
+            # continuity to this conversation. Replaces the legacy blob; the arc
+            # (_save_session_context) is a SEPARATE object and stays untouched.
+            #
+            # INTENTIONAL flag-on side effect: not writing the blob leaves the
+            # Frame's `## Recent moves` (which reads the legacy encoding_journal
+            # blob) empty. That's the deferred Frame-slot cut previewing — the cut
+            # lands at activation (replacement-before-removal). No eval confound:
+            # the Frozen-Corpus sweep queries with a FRESH session_id, so Recent
+            # moves is empty in BOTH arms there regardless of this flag.
+            try:
+                brain.write_journal_notes(final_text=final_text, chain_id=enc_chain,
+                                          scale='s1', session_id=session_id)
+            except Exception as e:
+                brain._log_error('s1e_journal_notes_write', e,
+                                 'residue note write failed — run otherwise intact')
+            journal_entry = ''
+        else:
+            journal_entry = _save_journal(brain, dispatch_fn, session_id, counter, final_text) or ''
         _save_session_context(brain, dispatch_fn, session_id, final_text)
 
         # 8. Delta trace — unified shape across S1E + S2 encoders.
@@ -231,7 +259,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             tool = a.get('tool', 'unknown')
             outcomes[tool] = outcomes.get(tool, 0) + 1
 
-        enc_chain = 's1e-%s-%d' % (session_id[:8], counter)
+        # enc_chain computed above (post-process) — reused here for the delta.
         # Which K version produced this Δ — the FK (interaction_id) is stamped
         # on the trace row for joins; the version number rides in metadata for
         # human-readable scanning. Lets higher scales A/B prompt versions from
@@ -326,13 +354,18 @@ def _gather_messages(brain, session_id):
     return []
 
 
-def _build_system_prompt(prompt_instructions=None):
+def _build_system_prompt(prompt_instructions=None, lived=None):
     """Build encoding agent system prompt.
 
     If prompt_instructions provided (from interactions table), uses it.
     Otherwise falls back to encoding-agent-v3.md file.
     Appends contract field summary in both cases.
+
+    `lived` is the resolved A/B arm (run_encoding resolves it once and threads it
+    in); None → read the env flag directly (tests / standalone callers).
     """
+    if lived is None:
+        lived = _lived_sequence_enabled()
     if prompt_instructions:
         prompt = prompt_instructions
     else:
@@ -348,6 +381,23 @@ def _build_system_prompt(prompt_instructions=None):
         prompt += "\n\n## Available Fields (from contract)\n\n" + generate_field_summary()
     except Exception as e:
         print('[s1e] WARNING: could not load field summary: %s' % e, flush=True)
+
+    # Residue contract (Piece 4, flag-gated): the WRITE-side instructions — tell
+    # the encoder to emit a `## Review` fence, then the closure (terminal-turn +
+    # DONE) as the LAST block. Two SEPARATE injects (the closure must not be
+    # entangled with the review block), placed at the end by design: writing the
+    # review is the encoder's final act, so its instruction sits where the action
+    # lands (recency). Contract-owned text (single source across all encoders) —
+    # never hardcoded in the s1e template, so it can't drift. Flag-off keeps the
+    # legacy blob path, so this stays absent from the control arm.
+    if lived:
+        try:
+            from servers.trace_contract import (render_journal_review_block,
+                                                 render_prompt_closure)
+            prompt = prompt.rstrip() + "\n\n" + render_journal_review_block()
+            prompt = prompt.rstrip() + "\n\n" + render_prompt_closure()
+        except Exception as e:
+            print('[s1e] WARNING: could not inject review block/closure: %s' % e, flush=True)
     return prompt
 
 
@@ -368,10 +418,6 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
         - catalog_ids: set of node ids in the catalog (reused by temporal scout).
     """
     from servers.scales.s1.encode_contract import build_node_catalog
-
-    # Encoding journal (session-scoped, cumulative)
-    journal_key = 'encoding_journal_%s' % session_id
-    journal = brain.get_config(journal_key, '') or 'First run — no previous encoding in this session.'
 
     judge_outputs = [m.get("judge_output") for m in messages if m.get("role") == "user"]
 
@@ -420,6 +466,28 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
     # Previous session context (per-session — no global leak across parallel sessions)
     prev_context = brain.session_context_for(session_id)
 
+    # Continuity — the encoder's prior residue this session (the READ side; the
+    # encoder's own prompt framing, NOT the identity Frame). New arm = the
+    # `## Review` note contract, SESSION-BOUND (scale='s1', session_id → last K=5
+    # runs in THIS conversation; never carries across sessions). Old arm = the
+    # legacy `### Encoding Journal` blob. self-labeled block either way.
+    if lived:
+        try:
+            from servers.trace_contract import render_journal_notes_prefix
+            journal_block = render_journal_notes_prefix(
+                brain.journal_notes(scale='s1', session_id=session_id))
+        except Exception as e:
+            try:
+                brain._log_error('s1e_journal_notes_read', e,
+                                 'residue continuity read failed — encoding without it')
+            except Exception:
+                pass
+            journal_block = ''
+    else:
+        blob = (brain.get_config('encoding_journal_%s' % session_id, '')
+                or 'First run — no previous encoding in this session.')
+        journal_block = "### Encoding Journal\n%s" % blob
+
     # ── Stable preamble — byte-identical across encoding cycles.
     # Cached at 1h TTL via run_llm_loop's user_preamble parameter. The
     # only constraint: nothing here may vary per cycle. Section legend
@@ -438,7 +506,8 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
 
     # ── Dynamic body — varies per cycle, 5m cache.
     body = ""
-    body += "### Encoding Journal\n%s\n\n" % journal
+    if journal_block:   # self-labeled; empty on a fresh session in the new arm
+        body += "%s\n\n" % journal_block
     if prev_context:
         body += "### Session Context\n%s\n\n" % prev_context
     if node_catalog:
