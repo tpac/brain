@@ -542,6 +542,38 @@ this. `endo` rides the same delta when wired. Legacy date-chain per-action trace
 
 ---
 
+## 11. Eval-prep — the vet-and-gate phase (next session)
+
+Code half complete. This phase = **reconcile the v-next prompt with the as-built code → register it DORMANT → build the 3 missing eval dims → run the coupled A/B gate.** Tom runs the evals; this section is the durable spec.
+
+### Decisions locked (2026-06-30)
+- **Coupled A/B, NOT split.** Run old-input+old-prompt **vs** new-input+new-prompt as one unit (no ablation isolating input-vs-prompt). Matches production; faster.
+- **Gate = no-regression, but OUTPUT = rich per-case quality detail.** The bar to flip live is "no regression on encode-coverage + recall-conditional pass, clean residue, arc still produced." But the eval must *report* detailed per-case comparison (what each arm encoded, dupes avoided, residue quality) — Tom wants to SEE the quality, not just an aggregate pass rate.
+- **Corpus:** generic LongMemEval for the no-regression gate (`--variance ≥3`, same qids via `build_corpus --interaction-override s1e=<v-next>`); add a small **encode-side dedup spot-check** for the value signal. realchat-native corpus = deferred (deeper-texture, not blocking).
+
+### ⚠ Prompt↔code reconciliation — DO FIRST (these confound the eval if unfixed)
+The v-next prompt (`docs/S1E-PROMPT-v-next-DRAFT.md`) was drafted to an *idealized* input; the code (P1–P4) built a simpler version. Each needs a decision — **fix the code to match the prompt, or fix the prompt to match the code** — before the A/B, or the new arm underperforms for alignment reasons, not quality:
+
+1. **`<provenance>` fields.** Prompt shows `surfaced / encoded(S1S) / encoded(Anchor)`. Code (`_render_provenance`) renders only `surfaced / encoded(S1S)`; Anchor's touches surface as **catalog tags** (`[anchor-authored]`/`[anchor-recalled]`), not a provenance line. → Drop `encoded(Anchor)` from the prompt's `<provenance>` and point it at the catalog tags, OR add a `touched(Anchor)` line to the render. (Lean: fix the prompt — the catalog-tag design is deliberate.)
+2. **«tag» locality NOT built.** Prompt relies throughout on "every id ref carries a 1-line «tag»" (`id:9c1d «WAL contention»`). Code renders bare `id:xxxxxxxx` (no tag). → Build the «tag» render (node-title lookup per ref) OR drop «tag» from the prompt. (This is the biggest one — the prompt's locality affordance doesn't exist.)
+3. **`<actions>` id-resolution.** Prompt shows `recall "…" → id:9c1d «tag»`; code renders the raw tool_result `summary` (`recall: <query>`), no `→ id`. → Decide whether actions resolve recalled ids inline (needs the recall→ids join) or stay summary-only.
+4. **Catalog tags unexplained.** Code emits `[anchor-authored]`/`[anchor-recalled]`/`[encoded]`; the prompt's `<node_catalog>` description doesn't teach them. → Add a one-liner explaining the tags (whatever #1 resolves to).
+
+### Open flags to close before registering (from the prompt-rewrite section above)
+final-flag-drop (confirm cut — code has none) · trace-vocab unify · "encode"-as-action-verb sweep · §7.6 example selection (needs Tom) · "next me" consistency · Frame Recent-moves removal (the activation-step cut).
+
+### Behavioral vet checklist (watch in the A/B output)
+Does the encoder, on the new arm: **dedup-via-verification** (uses catalog/provenance to NOT mint twins — the headline value) · emit a clean `## Review` fence (`tag · subject · note`, residue-only, not trace-restatement, empty on clean runs) · honor the quality gate ("new AND useful", doesn't under-encode) · **revise every contradicted field** (no half-revised nodes) · keep `source_refs` sparse (1–3) · write in first-person voice · use `thought` selectively.
+
+### Careful areas (the §8 traps)
+- **Re-pin** `encoder_eval`'s regression-halt (hardcoded v22/v19 → inert on a new version).
+- `s1_encode_eval.py` is a **dry-run mechanics meter**, never the quality gate.
+- **`--variance ≥3`** always (n=1 = the C4=1.00 trap).
+- Register the v-next prompt **DORMANT**; do NOT `sync-prompts` until the gate passes (dormant-leak guard).
+- The **preamble** (`encode.py` `_build_user_content`) is flag-on stale (names "Encoding Journal", surfaced-only catalog) — reconcile it WITH the registered prompt here (deferred from P4 review #2).
+
+---
+
 ## Backing brain nodes
 
 - Input architecture: `823c0d3e` (provenance ledger), `07d269a8` (sandwich layout),
