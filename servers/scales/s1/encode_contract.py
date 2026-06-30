@@ -137,58 +137,99 @@ S1_NODE_CONFIG = {
     'show_encoding_source': False,
 }
 
+# Provenance tags for the widened catalog (Piece 3), in PRIORITY order — a node in
+# several categories gets the FIRST/highest tag (Anchor's deliberate commit >
+# deliberate lookup > a prior run's encode; surfaced is lowest and stays untagged).
+# Single source: the encoder prompt's how-to-read names these same labels, so they
+# can't drift between the catalog and the prompt. Keys match session_node_ids.
+PROVENANCE_TAGS = (
+    ('authored', '[anchor-authored]'),
+    ('recalled', '[anchor-recalled]'),
+    ('encoded',  '[encoded]'),
+)
 
-def build_node_catalog(judge_outputs, brain):
-    """Build deduplicated node catalog from surface outputs across multiple turns.
 
-    Uses system format_node() with S1 config for full rich nodes.
-    Adds correction chain annotations on top.
+def build_node_catalog(judge_outputs, brain, extra_ids=None):
+    """Build the deduplicated rich-node catalog the encoder dereferences by id.
+
+    Uses system render_rich_node() with S1 config (full rich, corrections heavy).
 
     Args:
         judge_outputs: list of surface_output strings (one per turn, may be None)
         brain: Brain instance
+        extra_ids: optional {'encoded': set, 'authored': set, 'recalled': set} of
+            node ids to fold in alongside the Haiku-surfaced ones (Piece 3 — the
+            widened catalog, sourced from trace_links.session_node_ids). Each
+            category is tagged by provenance so the encoder reads what it already
+            wrote/looked-up vs what recall surfaced. None → surfaced-only (the
+            flag-off control arm; byte-behavior unchanged).
 
     Returns:
-        (catalog_text, node_id_set) — formatted catalog + set of IDs for reference
+        (catalog_text, node_id_set) — formatted catalog + set of IDs rendered.
     """
     import re
     conn = getattr(brain, 'conn', brain)  # tests may pass raw conn
-    # Extract all node IDs from surface outputs (pattern: id:XXXXXXXX)
-    # Supports both hex IDs (d7d1ddfa) and typed-prefix IDs (con_1c0v)
-    seen_ids = set()
+    # Surfaced ids from surface outputs (pattern: id:XXXXXXXX). Node ids are
+    # 8-char hex (v29), so these match the full ids the trace streams carry.
+    surfaced_ids = set()
     for jo in judge_outputs:
         if not jo or jo == '(no selection)':
             continue
         for match in re.finditer(r'id:([a-z0-9_]{6,8})', jo):
-            seen_ids.add(match.group(1))
+            surfaced_ids.add(match.group(1))
 
-    if not seen_ids:
+    # Provenance tag per id. A node in several categories gets the HIGHEST-signal
+    # tag (first assignment wins via setdefault): Anchor's deliberate commit >
+    # deliberate lookup > a prior run's encode > Haiku's surface bet (untagged).
+    extra_ids = extra_ids or {}
+    tag_for = {}
+
+    def _assign(ids, tag):
+        for nid in (ids or ()):
+            tag_for.setdefault(nid, tag)   # first (highest-priority) wins
+
+    for key, tag in PROVENANCE_TAGS:       # PRIORITY order (highest first)
+        _assign(extra_ids.get(key), tag)
+    _assign(surfaced_ids, '')              # surfaced: lowest priority, untagged (legacy)
+
+    all_ids = set(tag_for)
+    if not all_ids:
         return '', set()
+    # Widened iff some provenance category landed a (non-empty) tag — derived from
+    # the assignment, not a second scan of extra_ids (one source for the keyset).
+    widened = any(tag_for.values())
 
     # Skip community nodes — S2CE manages communities, S1E encodes from conversation.
-    # S1E still sees "SURFACED: community node" in the timeline but doesn't get
-    # the full content in the catalog. This prevents S1E from revising, correcting,
-    # or connecting to community nodes instead of their members.
+    # S1E still sees the community node referenced in the timeline but doesn't get
+    # its full content here, so it can't revise/correct/connect to a community node
+    # instead of its members.
     community_ids = set()
-    if seen_ids:
-        placeholders = ','.join('?' * len(seen_ids))
-        for row in conn.execute(
-                "SELECT id FROM nodes WHERE id IN (%s) AND type = 'community'" % placeholders,
-                list(seen_ids)):
-            community_ids.add(row[0])
+    placeholders = ','.join('?' * len(all_ids))
+    for row in conn.execute(
+            "SELECT id FROM nodes WHERE id IN (%s) AND type = 'community'" % placeholders,
+            list(all_ids)):
+        community_ids.add(row[0])
 
-    # Fetch + format: brain.get_node() for data, render_rich_node() for presentation
-    catalog_ids = seen_ids - community_ids
-    lines = ['Node Catalog (%d nodes surfaced this session)' % len(catalog_ids), '']
+    catalog_ids = all_ids - community_ids
+    header = ('Node Catalog (%d nodes)' % len(catalog_ids) if widened
+              else 'Node Catalog (%d nodes surfaced this session)' % len(catalog_ids))
+    lines = [header, '']
     formatted_ids = set()
+    # One batched fetch (returns {id: node}) — the widened union can be hundreds of
+    # ids, and per-id get_node would run correction_enrich + a resolve LIKE-scan
+    # each. brain.get_node(list) is the batch form.
+    rich_map = brain.get_node(list(catalog_ids)) if catalog_ids else {}
     for nid in catalog_ids:
-        node = brain.get_node(nid)
-        if node:
-            formatted = render_rich_node(node, S1_NODE_CONFIG)
-            if formatted:
-                lines.append(formatted)
-                lines.append('')
-                formatted_ids.add(nid)
+        node = rich_map.get(nid)
+        if not node:
+            continue
+        formatted = render_rich_node(node, S1_NODE_CONFIG)
+        if not formatted:
+            continue
+        tag = tag_for.get(nid)
+        lines.append('%s %s' % (tag, formatted) if tag else formatted)
+        lines.append('')
+        formatted_ids.add(nid)
 
     return '\n'.join(lines), formatted_ids
 

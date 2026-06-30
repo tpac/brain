@@ -182,6 +182,27 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces,
     return out
 
 
+def session_node_ids(encode_traces, touched_traces):
+    """Session-level UNION of the nodes the brain wrote/Anchor touched — the
+    catalog's view (vs nodes_for_traces' per-turn view). PURE. No turn keying:
+    the widened catalog wants every id that appears anywhere in the session's
+    encode + touched traces, so it can hold each body once. Same `_delta_ids`
+    parser as everywhere else.
+
+    Returns {'encoded': set, 'authored': set, 'recalled': set} — `encoded` from
+    the S1 encode runs (created∪revised), `authored`/`recalled` from the S0
+    anchor_touched deltas. `surfaced` is NOT here: the catalog already has it from
+    the Haiku judge outputs. `endo` is omitted until the stream is wired.
+    """
+    encoded, authored, recalled = set(), set(), set()
+    for t in (encode_traces or []):
+        encoded.update(_delta_ids(t.get('metadata'), 'created', 'revised'))
+    for t in (touched_traces or []):
+        authored.update(_delta_ids(t.get('metadata'), 'created', 'revised'))
+        recalled.update(_delta_ids(t.get('metadata'), 'recalled'))
+    return {'encoded': encoded, 'authored': authored, 'recalled': recalled}
+
+
 def gather(brain, session_id, limit=500):
     """Live adapter: fetch the two S1 trace streams for a session. Thin.
 

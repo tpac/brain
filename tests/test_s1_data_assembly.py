@@ -261,6 +261,47 @@ class TestBuildNodeCatalog:
         assert node_id in ids, (
             "Regex should match typed-prefix ID %s" % node_id)
 
+    # ── Piece 3: the widened catalog (surfaced ∪ encoded ∪ authored ∪ recalled) ──
+
+    def test_extra_ids_fold_in_tagged(self):
+        """authored/recalled/encoded ids fold into the catalog, each tagged."""
+        from servers.scales.s1.encode_contract import build_node_catalog
+        _insert_hex_node(self.conn, self.NODE_C, 'note', 'Recalled node', 'looked up')
+        judge = '[rule] "Test catalog rule" (id:%s)' % self.NODE_A  # surfaced
+        text, ids = build_node_catalog(
+            [judge], self.brain,
+            extra_ids={'authored': {self.NODE_B}, 'recalled': {self.NODE_C},
+                       'encoded': set()})
+        assert {self.NODE_A, self.NODE_B, self.NODE_C} <= ids   # union
+        assert '[anchor-authored]' in text and '[anchor-recalled]' in text
+
+    def test_priority_authored_beats_surfaced(self):
+        """A node both surfaced AND authored gets the higher-signal authored tag."""
+        from servers.scales.s1.encode_contract import build_node_catalog
+        judge = '[rule] "Test catalog rule" (id:%s)' % self.NODE_A
+        text, ids = build_node_catalog(
+            [judge], self.brain, extra_ids={'authored': {self.NODE_A}})
+        assert self.NODE_A in ids
+        assert '[anchor-authored]' in text          # tagged, not left untagged
+
+    def test_flag_off_surfaced_only_unchanged(self):
+        """No extra_ids → no tags, legacy header (the A/B control arm)."""
+        from servers.scales.s1.encode_contract import build_node_catalog
+        judge = '[rule] "Test catalog rule" (id:%s)' % self.NODE_A
+        text, _ = build_node_catalog([judge], self.brain)
+        assert '[anchor-' not in text and '[encoded]' not in text
+        assert 'surfaced this session' in text      # legacy header preserved
+
+    def test_community_node_skipped_even_when_in_extra(self):
+        """A community node folded via extra_ids is still skipped (S2CE owns it)."""
+        from servers.scales.s1.encode_contract import build_node_catalog
+        _insert_hex_node(self.conn, self.NODE_C, 'community', 'A community', 'narrative')
+        judge = '[rule] "Test catalog rule" (id:%s)' % self.NODE_A
+        text, ids = build_node_catalog(
+            [judge], self.brain, extra_ids={'encoded': {self.NODE_C}})
+        assert self.NODE_A in ids
+        assert self.NODE_C not in ids               # community filtered out
+
 
 class TestSaveJournal:
     """Tests for _save_journal(brain, dispatch_fn, session_id, counter, final_text)."""

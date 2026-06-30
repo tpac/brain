@@ -373,23 +373,47 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
     journal_key = 'encoding_journal_%s' % session_id
     journal = brain.get_config(journal_key, '') or 'First run — no previous encoding in this session.'
 
-    # Build node catalog from surface outputs in the visible window
     judge_outputs = [m.get("judge_output") for m in messages if m.get("role") == "user"]
+
+    # A/B flag (piece 1, docs/S1-SCRIBE-REDESIGN.md §10.3.1): OFF (default) =
+    # markdown messages-only timeline + surfaced-only catalog (the long-standing
+    # path, untouched). ON = the new input as ONE unit: the XML lived-sequence
+    # timeline (messages + tool actions + per-turn <provenance>) AND the widened
+    # catalog (surfaced ∪ encoded ∪ authored ∪ recalled, tagged). Both consume the
+    # same trace streams, gathered ONCE here and threaded into both.
+    lived = _lived_sequence_enabled() if lived_sequence is None else lived_sequence
+    streams, extra_ids = None, None
+    if lived:
+        try:
+            from servers.scales.s1.trace_links import gather, session_node_ids
+            streams = gather(brain, session_id)           # (surface, encode, touched)
+            extra_ids = session_node_ids(streams[1], streams[2])
+        except AttributeError:
+            # Stub brain (tests) without query_traces — expected, quiet. Degrade
+            # to surfaced-only catalog + self-gathering timeline.
+            streams, extra_ids = None, None
+        except Exception as e:
+            # A real failure (trace-contract drift, malformed record) — LOUD via
+            # brain.errors (the monitored surface), then degrade. Mirrors the
+            # _turn_links guard; a bare print in the daemon log is not the surface.
+            try:
+                brain._log_error('s1e_catalog_streams', e,
+                                 'trace_links gather/union failed; catalog stays surfaced-only')
+            except Exception:
+                pass
+            streams, extra_ids = None, None
+
+    # Build the rich-node catalog (widened when extra_ids is present).
     try:
-        node_catalog, cataloged_ids = build_node_catalog(judge_outputs, brain)
+        node_catalog, cataloged_ids = build_node_catalog(
+            judge_outputs, brain, extra_ids=extra_ids)
     except Exception as e:
         print('[s1e] ERROR building node catalog: %s' % e, flush=True)
         node_catalog, cataloged_ids = '', set()
 
-    # Conversation timeline — two render modes behind an A/B flag (piece 1 of the
-    # S1E code-half rebuild; docs/S1-SCRIBE-REDESIGN.md §10.3.1):
-    #   OFF (default): markdown messages-only — the long-standing path, untouched.
-    #   ON: the XML lived sequence — messages + tool actions interleaved, read via
-    #       the existing recall_episodes door — closes the "encoder blind to tool
-    #       use" gap. Flag-off output is byte-identical to before.
-    lived = _lived_sequence_enabled() if lived_sequence is None else lived_sequence
     if lived:
-        timeline = _render_lived_sequence_timeline(brain, session_id, messages)
+        timeline = _render_lived_sequence_timeline(
+            brain, session_id, messages, streams=streams)
     else:
         timeline = _render_markdown_timeline(brain, messages)
 
@@ -492,7 +516,7 @@ def _render_markdown_timeline(brain, messages):
     return timeline
 
 
-def _render_lived_sequence_timeline(brain, session_id, messages):
+def _render_lived_sequence_timeline(brain, session_id, messages, streams=None):
     """The XML lived sequence — messages + tool actions interleaved (piece 1).
 
     Reads through the existing `recall_episodes` door (the conversational lens
@@ -500,6 +524,10 @@ def _render_lived_sequence_timeline(brain, session_id, messages):
     Tool actions arrive as `tool_result` episodes whose `summary` already carries
     the per-tool cue ("Edit: foo.py", "Bash: …"). Window-matched to the control
     arm (trimmed to the same number of user turns as `messages`).
+
+    `streams` (optional) is the pre-gathered (surface, encode, touched) tuple from
+    one trace_links.gather call, threaded in so the catalog and the <provenance>
+    block share a single pull. None → _turn_links gathers its own.
 
     surfaced/judge_output is deliberately NOT rendered here — it belongs to the
     <provenance> block (piece 2). Piece 1 is a pure timeline read.
@@ -550,7 +578,7 @@ def _render_lived_sequence_timeline(brain, session_id, messages):
     # Piece 2: per-turn <provenance> — the trace↔node links (what recall surfaced
     # / what prior runs encoded, joined by stop). Guarded: any failure degrades to
     # the piece-1 timeline (no provenance), never breaks the lived arm.
-    links, frontier = _turn_links(brain, session_id, turns)
+    links, frontier = _turn_links(brain, session_id, turns, streams=streams)
 
     out = ""
     for n, t in enumerate(turns, 1):
@@ -578,7 +606,7 @@ def _short_refs(ids):
     return ' '.join('id:%s' % str(i)[:8] for i in ids)
 
 
-def _turn_links(brain, session_id, turns):
+def _turn_links(brain, session_id, turns, streams=None):
     """Compute the trace↔node link map + per-run frontier index for the window.
 
     Returns (links, frontier):
@@ -589,13 +617,17 @@ def _turn_links(brain, session_id, turns):
                  on the earlier covered turns — no 5× repetition (which the design
                  warns would nudge dense source_refs).
 
+    `streams` (optional): the pre-gathered (surface, encode, touched) tuple, so the
+    catalog and this share one gather. None → gather here.
+
     Guarded: any failure returns ({}, {}) → the timeline renders exactly as piece
     1 did. Also the path the piece-1 stub brains take (no query_traces).
     """
     try:
         from servers.scales.s1.trace_links import gather, nodes_for_traces
         targets = [t['user'] for t in turns if t['user']]
-        surface_traces, encode_traces, touched_traces = gather(brain, session_id)
+        surface_traces, encode_traces, touched_traces = (
+            streams if streams is not None else gather(brain, session_id))
         links = nodes_for_traces(surface_traces, encode_traces, targets,
                                  touched_traces=touched_traces)
     except AttributeError:

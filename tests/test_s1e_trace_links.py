@@ -16,7 +16,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from servers.scales.s1.trace_links import (  # noqa: E402
-    nodes_for_traces, gather, _stop_of, _surface_ids,
+    nodes_for_traces, gather, session_node_ids, _stop_of, _surface_ids,
 )
 
 SHORT = 'abcd1234'  # session_short in every chain id
@@ -230,6 +230,25 @@ def test_delta_ids_shared_parser_symmetry():
     assert _delta_ids(meta, 'created', 'revised') == ['a', 'b', 'c']  # encode lens
     assert _delta_ids(meta, 'recalled') == ['d']                       # touched-only lens
     assert _delta_ids(None, 'created') == []
+
+
+def test_session_node_ids_unions_encode_and_touched():
+    # The catalog's session-level view: union across all encode + touched traces,
+    # no turn keying. encoded = created∪revised over runs; authored/recalled over
+    # touched. surfaced is NOT here (the catalog has it from judge outputs).
+    ids = session_node_ids(
+        encode_traces=[_encode(5, ['e1'], ['e2']), _encode(10, ['e3'], [])],
+        touched_traces=[_touched(5, created=['a1'], revised=['a2'], recalled=['r1']),
+                        _touched(6, created=['a3'], recalled=['r1'])])  # r1 dup
+    assert ids['encoded'] == {'e1', 'e2', 'e3'}
+    assert ids['authored'] == {'a1', 'a2', 'a3'}
+    assert ids['recalled'] == {'r1'}                  # deduped across turns
+    assert 'surfaced' not in ids and 'endo' not in ids
+
+
+def test_session_node_ids_empty_streams():
+    ids = session_node_ids([], [])
+    assert ids == {'encoded': set(), 'authored': set(), 'recalled': set()}
 
 
 def test_anchor_touched_metadata_builder_shape_and_dedup():
