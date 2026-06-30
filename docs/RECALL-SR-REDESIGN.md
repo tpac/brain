@@ -1,32 +1,35 @@
 # RECALL — from the SR/PPR thesis to the Layered Activation Field (LAF)
 
-> ## ⟦ CURRENT STATE — read this first (2026-06-26) ⟧
-> This doc is a **journal** of the recall-redesign arc, not a static spec. It records a real evolution
-> through four framings, and **the head is now historical.** Live direction = **§18.18 (the settling engine)**.
+> ## ⟦ CURRENT STATE — read this first (2026-06-30) ⟧
+> Journal of the recall-redesign arc, not a static spec. **Live = §18.21 (per-field-verified LAF on the lens-independent gold).**
 >
-> **Live design — recall as a SETTLING ACTIVATION FIELD** (Tom's biological dynamical-fusion vision; supersedes
-> the §18.17 selector framing). One shared per-node activation; operator-fields add **z-scored, gained** signals to a
-> `base`; a **softmax-in-loop recurrence** lets graph corroboration feed back and **settle** to a fixed point; read
-> out the settled field (α-entmax only at the commit). **A new cue = one z-scored term + a gain — influence IS the gain.**
-> - **Operators (built + verified):** MaxSim (max cos over 6 field-groups) · temporal-distinctiveness (created_at,
->   von-Restorff) · typed-graph-spread (degree-norm, noise-excluded). Next: prev-turn, query-conditioned aspect
->   weighting, per-node-type field, episodic.
-> - **Stability:** the naive α-entmax-every-step recurrence COLLAPSES (wandering single node); the **Hopfield-contractive
->   form** (softmax in-loop + raw spread + sparse-only-at-readout) **settles 73/73** (§18.18).
+> **The pivot that reset everything (§18.19–20):** the old 73-cue gold was **100% lens-minted → circular** — every operator
+> number before 2026-06-27 measured the minting lenses, not helpfulness. Rebuilt as a **lens-independent 24-cue gold** (blind
+> Opus judges reason from the OUTCOME, brain-only; 16 Gold+ / 80 Gold; 2-judge ensemble; integrity-filtered; frozen at
+> `eval/oracle_audit/gold_remint/frozen_gold_24.json`). Two reframes: helpfulness = **three forms** (redirect/ground/enrich),
+> and gold = **pure relevance — availability is NOT subtracted** (already-surfaced is the inhibition layer's job).
 >
-> **Numbers (73-cue endo, IsolatedBrain):** pipeline 19/33 · raw `_primary` 21/37 · MaxSim-6grp 19/34 · LAF settling 16/38.
-> **ABLATION + REVIEW (§18.18 / §18.18.1):** harness code-reviewed & hardened — **gate 27 pass / 0 / 0**. Converged numbers:
-> maxsim 19/34 · +temporal 16/38 (temporal = query-independent +4@25, **ARTIFACT-SUSPECT**) · MaxSim dilutes below raw
-> `_primary` 21/37. **Graph's effect is still UNMEASURED on a converged field**: fixing the scale made graph *matter* but
-> per-iteration z-score is anti-convergent (`f04f6db7`) — next is a FIXED-scale spread. **No relevance-driven win yet — on a
-> now-verified harness, for understood reasons.** Architecture validated (settles, extensible, MEASURABLE). **▶ NEXT STREAM =
-> §18.18.1** — **START WITH Q4** (reverse-engineer the operator bank → ranked menu + read-side-ceiling-vs-encode-gap split),
-> which ORDERS the rest: fixed-scale re-ablate · temporal shuffled-gold control · adaptation/sequential-recall · hub-dampening · new cues (`220a2808`).
+> **On the honest gold the verdict INVERTS (§18.21):** operators that LOST to cosine on the circular gold now WIN. Discipline
+> (Tom): every field must **stand on its own** before layering. Verified standalone (need-collapsed, 24-cue):
+> - **MaxSim** (max cos over 6 field-groups) — healthy base (13%/20%); the nanmax-enrich-bias `794c137a` is CLEARED here (corr 0.11).
+> - **graph → rebuilt as `relational_reinstatement`** — the stored edge `weight` is a meaningless **0.5 default**, so it's
+>   replaced by **conductance = cos(cue, edge.why)**; sparse top-25 seed + 2-hop; reaches **24% @25 > MaxSim's 20%** = a REACH operator.
+> - **episodic → THREE SEPARATE layers (never consolidate)** (`episodic_ops.py`): `encoded+` / Haiku-`picked+` / Haiku-`dropped−`
+>   (÷prevalence) — each its own gain, not one "episodic" term; it's really a role×seed FAMILY (only cue-seeded built). Dropped
+>   avoids gold (safe). **OPEN: "moment" is undefined** — today a crude s0 turn ±1 cosine seam; the real similarity+boundary algo is owed.
+> - **temporal RETIRED** (0% distinct on this burst corpus); **node-types-in-edge-text FALSIFIED** (cosmetic, no reach gain).
 >
-> **Reading guide:** **§0–12 = the SR/PPR thesis — largely FALSIFIED at §13b** (PPR-standalone < cosine; the embedder
-> limits abstract relevance). **§13b–17 + §18–18.17** = falsification arc + multi-cue "integration thesis" (§15) +
-> the selector reframe (§16–18.17, **now superseded**). **§18.18 = LIVE** (the settling field). All earlier
-> "▶ NEXT STREAM" markers and the §18.17 selector are superseded by §18.18.
+> **LAYERING (the payoff):** one summed z-scored field (MaxSim + graph + episodic) → **reach@25 21% → 29% (+8pp)**, decomposed
+> **brought +8–10 ≫ lost −2–3, reinforced 5–6** — validates the one-field model (an overlapping operator earns its place by
+> bringing misses AND raising existing). **But it COSTS @5 (14% → 12–13%)** — the aux fields are reach operators that inject
+> noise into the top-5. **Reach is solved; converting reach→top-5 is the open problem** (the `8bcc8c96` selector, now over a real
+> enriched pool). Caveats: N=24 (directional); gains hand-picked, un-swept.
+>
+> **▶ NEXT:** (a) gain-sweep for the @5/@25 operating point, or (b) the @5 ranker/selector on the enriched pool. Plus: the
+> episodic **seed-axis gap** (only cue-seeded; prev-anchor / work-context seeds unbuilt) and the **moment-definition algo**.
+>
+> **Reading guide:** §0–17 = SR/PPR → falsification → integration-thesis (largely historical). §18–18.17 = LAF design + selector
+> reframe. §18.18 = settling engine. §18.19–20 = circular-gold pivot + lens-independent re-mint. **§18.21 = LIVE.**
 
 **Written:** 2026-06-17 (Anchor + Tom, session `ce0ff8ce` arc continued in a fresh stream).
 **Status:** design / direction. Nothing built yet — this is the synthesized thesis and the staging.
@@ -1299,3 +1302,115 @@ anti-circularity: human cue + human gold, no lens, no outcome-anchor needed).
 **Pull for context:** `4942bd35` (circular gold — the pivot), `98c8dd53` (engineering pilot + content-graft), `7181615f`
 (diverse pilot + preference under-encoding), `9c46c291` (segmentation operator), `25576087` (the now-invalidated build
 menu), `155c6df6`/`5603dc33` (corpus methodology), `3159ea2e` (verify-the-review lesson).
+
+---
+
+## 18.20 — The lens-independent 24-cue gold, frozen (the corpus §18.21 measures against)
+
+§18.19's re-mint executed: a stratified 24-cue third judged by **2 blind Opus judges/cue** (reason-then-retrieve,
+brain-only, conversation-window cues), classified node-level into four tiers, then an **integrity post-filter** drops
+content-graft / archived / creation-leakage before tiering. **Frozen + durable:**
+`eval/oracle_audit/gold_remint/frozen_gold_24.json` (**16 Gold+ / 80 Gold** across 24 cues; `frozen_cards_24.json` =
+the 48 judges' full reasoning, for human adjudication without re-running). Hardened method:
+`gold_remint/gold_judge_protocol.md`. Two calibration reframes from §18.19 carried in: helpfulness = **three forms**
+(redirect / ground / enrich — not strict "changed the move"), and gold = **pure relevance — availability NOT subtracted**
+(already-surfaced is the inhibition layer's job, never baked into gold). This is the instrument every §18.21 number runs on.
+*(Method+validation provenance was the abandoned `strange-newton` stream's §18.20; the gold artifact + protocol were
+preserved into this tree, the prose not — hence §18.20 is brief here.)*
+
+---
+
+## 18.21 — Per-field-verified LAF on the honest gold: the verdict inverts, reach is solved, @5 is the next wall (2026-06-30)
+
+The first operator work measured on the lens-independent gold (§18.20). Method throughout: **verify every component in
+isolation before trusting any number, and verify your OWN build** (it caught two of this session's bugs).
+
+**18.21.1 — The A/B inverts. The circular corpus was hiding the operators.** Re-baselined on the 24-cue gold
+(`eval/laf/gold24_diagnostic.py`, need-collapsed + tier-graded). On the OLD circular gold MaxSim/LAF LOST to raw `_primary`
+(19/34, 16/38 < 21/37); on the HONEST gold they WIN — pipeline 29% · raw `_primary` 25% · **MaxSim 33% · LAF 38%** hit@5,
+and Gold+@5 **4% → 17%**. hit@25 ties (~54%) ⇒ same reach, better ranking, and only honest gold can *see* a ranking gain
+(circular gold scored ranking against cosine itself). Ablation (`--ablate`): the lift is **MaxSim** (multi-field); graph
+**inert** (the scale bug), temporal's +pp is the **degeneracy artifact**.
+
+**18.21.2 — The matrix instrument + reverse-engineering (the "several activations").** `eval/laf/gold24_matrix.py` persists a
+per-(cue × gold-node × signal) matrix — one substrate, two views (scorecard / reverse-engineer), so a variation = a column
+re-weight and a new field = a column that covers golds the others miss. Four agents reverse-engineered the *mathematical*
+activation reaching each gold (pooled 98 nodes, **4/4-slice convergence** on the top operators):
+- **`cos_outcome` — 65%, PREDICTOR-GATED.** The gold is the *answer the move concludes*, cosine-near the OUTCOME, not the cue
+  (only ~28% are *truly* gated — most have a realizable rescue). This is "recall is prediction" quantified (`ca840441`).
+- Realizable rescues: **`cos_cue`-SEGMENT × multi-field** (segment the cue — the long-anchor blob dilutes; match non-content
+  fields like `anchor_raw_quote`/`title`); **graph typed-1hop from a cosine seed** (the edge `why` text often IS the need);
+  **`fts` rare token**; **episodic**; plus a **dedup/consolidation** meta-op (near-dup clusters steal slots).
+
+**18.21.3 — Per-field health audit** (`eval/laf/gold24_field_audit.py`; invariants hold: MaxSim ≥ its groups, `_primary` ==
+raw-byte cosine). 8 fields stand alone (cosine family + episodic); **graph BROKEN** (blunt 0.5-weight spread, 2% standalone)
+and **temporal DEGENERATE** (0% distinct) fail; `question` is weighted **0.90** in production yet is the weakest field (4%) —
+a wrong assumption to revisit; the MaxSim enrich-bias is cleared (0.11).
+
+**18.21.4 — Graph rebuilt → `relational_reinstatement`** (`operators.py`). The stored edge `weight` is an **uncalibrated 0.5
+default** (`add_relation` default; decay+Hebbian touch only the excluded co-access types) — `SUM(weight)` ≈ 0.5 ×
+relation-multiplicity, no relevance signal. Replaced by **conductance = cos(cue, edge.why)** using `edge_relations.embedding`
+(v26, `compose_edge_text` = "[relation] description", ~109% coverage of the non-noise graph). First build under-performed
+(1%/3%) — **my bug: a continuous seed dilutes.** Fixed config = **sparse top-25 seed + 2-hop**: **6% / 24%** — and **24% @25
+exceeds MaxSim's 20%**: a real REACH operator (reach, not @5 rank). Edge-`why` conductance is partially flat (mean 0.499, but
+14% of edges >0.6 — enough to steer). **Node-types-in-edge-text FALSIFIED** (`gold24_edge_text_probe.py`): `[stype][rel][ttype]
+desc` lifts conductance mean 0.494→0.523 / >0.6 13.8%→18.6% but reach is **unchanged** (6%/24%) — cosmetic, not worth the
+cascade-stale coupling `compose_edge_text` avoids.
+
+**18.21.5 — Episodic, three-way** (`episodic_ops.py`; `trace_links.episode_node_roles` + `gather_roles`; 27 tests green).
+Seeded from `recall_episodes(cue, older_than=cutoff)` → similar past moments, split by role: **`encoded+`** (created/revised
+there), **Haiku-`picked+`** (surfaced & selected), **Haiku-`dropped−`** (candidate not picked, ÷prevalence so a node
+*consistently* rejected across similar moments inhibits, not one cap-drop). All live (24/24 cues return episodes — the
+`8fbe480e` "0 coverage" bug stays dead). Standalone modest (picked best ~9%/16%); **dropped-inhibition is SAFE** (1.5% of mass
+on gold) and directionally correct (independently inhibited `e3a267aa`, also flagged noise by the inhibition judge).
+
+**THESE ARE THREE SEPARATE LAF LAYERS — NEVER CONSOLIDATE THEM (Tom, 2026-06-30).** `encoded+`, `picked+`, `dropped−` each get
+their **own ⟨SOURCE, OPERATOR, JOB⟩ row and their own gain** in the summed field (`+`, `+`, `−`) — they are not one "episodic"
+term. The old single `episodic_field` (which merged surfaced+encoded into one signal) is **RETIRED**; `episodic_ops.py` keeps
+them as three functions and `gold24_layer.py` gives each its own gain. And with the seed axis they **multiply**: episodic is a
+**FAMILY** of layers = {encoded, picked, dropped} × {cue, prev-anchor, work-context, …} seeds — only the three *cue*-seeded
+layers are built so far; that's a real gap, not a finished episodic.
+
+**OPEN REQUIREMENT — DEFINE "MOMENT" (Tom, 2026-06-30).** Today a moment = one s0 turn, cosine-ranked, optionally a ±1-turn
+window (`±1` beats single-turn, 6%/14% vs 4%/10%, so layering uses it). That is a **crude default behind a pluggable seam**
+(`window` + `score_fn` in `episodic_ops.py`) — **NOT the algorithm.** We still owe a real definition of a *moment*: (a) the
+**similarity metric** — how alike two moments are (flat cue↔trace cosine is the placeholder), and (b) the **boundary** — what
+turns/nodes are *included* in one moment (a single turn? a topic-bounded span? a settling neighbourhood?). Until this is
+defined, the whole episodic family runs on a stub. This is the next design call on the episodic side, Tom's to make.
+
+Separately: an **inhibition anti-gold** protocol (`inhibition_judge_protocol.md`) + a 2-cue pilot exist — the measurement
+target for the `dropped−` layer.
+
+**18.21.6 — LAYERING result (`eval/laf/gold24_layer.py`) — the payoff + the next wall.** One summed z-scored field, all-fields
+verified:
+
+| config | hit@5 | hit@25 | brought | lost | reinforced |
+|---|---|---|---|---|---|
+| maxsim (base) | 14% | 21% | — | — | — |
+| + graph | 7% | 27% | +8 | −3 | ↑2/14 |
+| + episodic | 15% | 26% | +9 | −3 | ↑6/14 |
+| + both (full) | 12% | 28% | +9 | −2 | ↑5/15 |
+| + both (lighter aux gains) | 13% | **29%** | **+10** | −2 | ↑5/15 |
+
+- **Reach works: 21% → 29% @25 (+8pp)** — and the decomposition proves it (**brought ≫ lost**, plus **reinforced 5–6**),
+  the first clean confirmation of the one-field "more, not less" model: overlap earns its place by *both* bringing misses *and*
+  raising existing gold. Episodic reinforces best.
+- **It costs @5 (14% → 12–13%).** The aux fields are REACH operators — graph alone halves @5 (14→7) while adding the most @25.
+  **Lower aux gains** recover @5 (13%) and keep the best @25 (29%): gains matter, heavy aux over-injects top-5 noise.
+- **The shape of where we are:** the stack **solves reach** (the 50%-cosine-far problem). The open problem is **converting
+  reach → top-5** — a ranker/selector over the now-real enriched pool (`8bcc8c96`'s selector, finally with substrate under it).
+
+**Files (this session, `eval/laf/`):** `gold24_diagnostic.py` (A/B + miss-diagnostic), `gold24_matrix.py` (the matrix
+primitive + episodic merge — superseded by `episodic_ops.py`), `gold24_field_audit.py` (standalone health gate),
+`gold24_graph_audit.py` + `gold24_graph_probe.py` (graph rebuild), `gold24_edge_text_probe.py` (node-types falsified),
+`episodic_ops.py` (the 3-way), `gold24_episodic_audit.py`, `gold24_layer.py` (the layering). Operators: `operators.py`
+(`relational_reinstatement`, `build_edge_conductance`). Substrate: `servers/scales/s1/trace_links.py` (`episode_node_roles`,
+`gather_roles`). Gold: `eval/oracle_audit/gold_remint/frozen_{gold,cards}_24.json`.
+
+**▶ NEXT (in order):** (1) **gain-sweep** the aux gains for the @5/@25 operating point — and treat the three episodic layers as
+**independent gains** (`pick`,`enc`,`drop`), never one "episodic" knob (Tom). (2) **the @5 ranker/selector** over the enriched
+pool — the real lever now that reach is solved. (3) **DEFINE "MOMENT"** (the open requirement in §18.21.5) — the similarity
+metric + the moment boundary — *then* expand the episodic **seed axis** (prev-anchor / work-context) so episodic becomes the
+full role×seed **family** of separate layers. (4) measure the `dropped−` layer against the **inhibition anti-gold** corpus at
+scale. All bounded by N=24 → grow the corpus (the remaining ~49 engineering + 22 diverse cues) before any number is treated as
+more than directional.
