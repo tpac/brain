@@ -475,13 +475,29 @@ the unification Tom means — repurpose it.)
    malformed-row resilience, out-of-order runs) + render integration (frontier-dedup, boundary, no
    `encoding_source` leak, guarded degrade). Full suite green (1924 passed).
 
-3. **Widened catalog** (the union)
-   - `build_node_catalog` is Haiku-only (judge_outputs) today. Widen to {surfaced} ∪
-     {encoded-this-session S1S} ∪ {Anchor-authored this session} ∪ {endo (empty stub)},
-     deduped, full-rich once. The S1S/surfaced id-sets come straight from `trace_links`
-     (piece 2 — `nodes_for_traces` returns them per trace; union across turns) — one read serves
-     both blocks. (Anchor-authored joins once the deferred seam above is sourced.)
-   - *Tests:* every `id` referenced anywhere in the timeline dereferences in the catalog.
+**Piece 3a — the `anchor_touched` feed** ✅ **SHIPPED to main `da124b1`** (live, write-on/
+read-gated). The S0 mirror of the encode delta — emerged from Tom's Q3 (the catalog must
+present nodes Anchor *personally* touched, not just Haiku-surfaced). The daemon captures, per
+turn, what Anchor's own tools touched (`created`/`revised`/`recalled`) and flushes one
+`anchor_touched` S0 delta at the Stop boundary; `trace_links` reads it as `authored`/`recalled`/
+`endo` through the same `_delta_ids` parser + stop-join. Captured at `daemon_server._dispatch`
+(structurally Anchor-only — the in-process encoder bypasses it). `ANCHOR_TOUCHED_KEYS` drives the
+builder + accumulator + validation shape. `encoded(Anchor)` is no longer a deferred seam — it's
+this. `endo` rides the same delta when wired. Legacy date-chain per-action traces left as-is
+(BACKLOG F8). Files: `trace_contract.py` (`build_anchor_touched_metadata`), `session_context.py`
+(`touched`), `daemon_server.py` (`_accumulate_touched`), `daemon_hooks.py` (flush), `trace_links.py`.
+
+3. **Widened catalog** ✅ **SHIPPED to main `8830951`** (behind `BRAIN_S1E_LIVED_SEQUENCE`;
+   flag-off byte-identical = the A/B control arm). `build_node_catalog(judge_outputs, brain,
+   extra_ids=)` folds the union {surfaced} ∪ {encoded} ∪ {authored} ∪ {recalled} in, deduped,
+   full-rich once, each tagged. `extra_ids` comes from `trace_links.session_node_ids(encode,
+   touched)` (session-level union, distinct from `nodes_for_traces`' per-turn map; same
+   `_delta_ids`). `PROVENANCE_TAGS` (contract constant) drives priority authored > recalled >
+   encoded > surfaced (surfaced untagged); community nodes skipped across all categories; one
+   batched `get_node`. `_build_user_content` gathers the streams ONCE and threads them into both
+   the catalog and the timeline's `<provenance>` (no double-pull). `endo` joins when wired.
+   - *Tests:* every `id` referenced in the timeline dereferences in the catalog (by construction —
+     provenance ids ⊆ the catalog union); tagging/priority/dedup/community-skip; flag-off unchanged.
 
 4. **Residue wiring** (replace the journal blob)
    - Swap `_save_journal`/`get_config('encoding_journal_*')` → the `## Review` note contract:
@@ -503,6 +519,12 @@ the unification Tom means — repurpose it.)
 - Build order: piece 1 (foundation) → piece 2 (provenance) → piece 3 (catalog, shares piece-2
   read) → piece 4 (residue) → §8 eval dims → Frozen-Corpus A/B (with Allen-edge composition
   pinned as a named metric, per the temporal-trim decision).
+- **STATUS (2026-06-30): the code half is COMPLETE through the catalog.** ✅ P1 lived timeline
+  (`8cc8cf1`) · ✅ P2 provenance/`trace_links` (`08420f3`) · ✅ P3a `anchor_touched` feed
+  (`da124b1`, live) · ✅ P3 widened catalog (`8830951`). All behind `BRAIN_S1E_LIVED_SEQUENCE`
+  (flag-off = byte-identical control arm), except the 3a *write* which is live (read still gated).
+  **Remaining: piece 4 (residue wiring) → §8 eval dims → the Frozen-Corpus A/B gate.** Nothing
+  activates until the gate passes.
 
 ---
 
