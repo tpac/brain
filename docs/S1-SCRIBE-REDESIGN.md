@@ -499,16 +499,29 @@ this. `endo` rides the same delta when wired. Legacy date-chain per-action trace
    - *Tests:* every `id` referenced in the timeline dereferences in the catalog (by construction —
      provenance ids ⊆ the catalog union); tagging/priority/dedup/community-skip; flag-off unchanged.
 
-4. **Residue wiring** (replace the journal blob)
-   - Swap `_save_journal`/`get_config('encoding_journal_*')` → the `## Review` note contract:
-     contract-inject the review block + closure in `encode.py`
-     (`trace_contract.render_journal_review_block` / `render_prompt_closure`), parse the `##
-     Review` fence, write one `journal_note` trace per note via `brain.write_journal_notes(…,
-     scale='s1', session_id=sid)`; read last K runs **session-scoped** (`session_id`-filtered)
-     via `brain.journal_notes` (generic trace read). Drop `journal_entry` from S1E delta metadata.
-   - Cut the Frame's `## Recent moves` slot **atomically** with the blob-write removal
-     (replacement-before-removal). Keep `_save_session_context` (the arc) unchanged.
-   - *Tests:* residue round-trips (write→read prefix); session-scoping (run in A doesn't surface in B).
+4. **Residue wiring** ✅ **SHIPPED to main `e6181e0`** (behind `BRAIN_S1E_LIVED_SEQUENCE`;
+   flag-off byte-identical = the A/B control arm). The S1E journal blob → the `## Review` note
+   contract, **SESSION-BOUND** (the S1↔S2 divergence: S1E scopes continuity by `session_id`, S2
+   by `unit`; same machinery, different arg). Three flag-gated edits in `encode.py`, all reading
+   ONE arm resolved once in `run_encoding` and threaded down (no torn arm):
+   - *Write* — `run_encoding` post-loop: `brain.write_journal_notes(final_text, chain_id=enc_chain,
+     scale='s1', session_id=sid)` (one `journal_note` trace per `## Review` note, run-grouped by
+     `enc_chain`). Flag-off keeps `_save_journal`.
+   - *Read (continuity)* — `_build_user_content`: `render_journal_notes_prefix(brain.journal_notes(
+     scale='s1', session_id=sid))`, last K=5 runs **of this session**, in the encoder's body
+     (the lowercase-frame priors slot — NOT the identity Frame). Flag-off keeps the `### Encoding
+     Journal` blob.
+   - *Write-instructions* — `_build_system_prompt`: `render_journal_review_block()` + closure
+     (`render_prompt_closure`) as the LAST block, two separate contract-owned injects (recency:
+     writing the review is the encoder's final act).
+   - **Frame `## Recent moves`: NOT cut here.** The decision (2026-06-30): the provenance ledger
+     already inlines "what happened," and Recent moves was 100% trace-restatement — so it's *cut*,
+     not re-sourced, but the cut is an **activation step** (replacement-before-removal), not P4.
+     Flag-on intentionally strands it (deferred-cut previewing); no eval confound (the sweep
+     queries a fresh session → Recent moves empty in both arms). Arc (`_save_session_context`)
+     untouched — a distinct object.
+   - *Tests:* `test_s1e_residue.py` — session-bound round-trip + session-walling + K=5; both read
+     arms; fresh-session empty; system-prompt inject + closure-last + lived-param-overrides-env.
 
 ### 10.4 Sequencing & the gate
 - One A/B flag gates new-input+new-prompt vs old, on the same corpus — input+prompt are coupled,
@@ -519,12 +532,13 @@ this. `endo` rides the same delta when wired. Legacy date-chain per-action trace
 - Build order: piece 1 (foundation) → piece 2 (provenance) → piece 3 (catalog, shares piece-2
   read) → piece 4 (residue) → §8 eval dims → Frozen-Corpus A/B (with Allen-edge composition
   pinned as a named metric, per the temporal-trim decision).
-- **STATUS (2026-06-30): the code half is COMPLETE through the catalog.** ✅ P1 lived timeline
-  (`8cc8cf1`) · ✅ P2 provenance/`trace_links` (`08420f3`) · ✅ P3a `anchor_touched` feed
-  (`da124b1`, live) · ✅ P3 widened catalog (`8830951`). All behind `BRAIN_S1E_LIVED_SEQUENCE`
-  (flag-off = byte-identical control arm), except the 3a *write* which is live (read still gated).
-  **Remaining: piece 4 (residue wiring) → §8 eval dims → the Frozen-Corpus A/B gate.** Nothing
-  activates until the gate passes.
+- **STATUS (2026-06-30): the S1E CODE HALF is COMPLETE.** ✅ P1 lived timeline (`8cc8cf1`) ·
+  ✅ P2 provenance/`trace_links` (`08420f3`) · ✅ P3a `anchor_touched` feed (`da124b1`, live) ·
+  ✅ P3 widened catalog (`8830951`) · ✅ P4 residue wiring (`e6181e0`). All behind
+  `BRAIN_S1E_LIVED_SEQUENCE` (flag-off = byte-identical control arm), except the 3a *write* which
+  is live (read still gated). **Remaining: the EVAL-PREP phase — register the v-next prompt
+  DORMANT + reconcile the preamble; build the 3 missing §8 eval dims; then the Frozen-Corpus A/B
+  gate.** Nothing activates until the gate passes. (`e6181e0` = the P4 commit, stamped at merge.)
 
 ---
 
