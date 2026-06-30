@@ -68,7 +68,7 @@ register DORMANT → eval-gate → activate).
    - ⑤ quick consistency check ("the next me" vs one-continuous-self).
 2. **Build the code half** — the major engineering, where the eval-risk lives. Input + prompt are **coupled** (the new prompt describes input the code must produce) → they move together; **parameterize so the eval can A/B new-vs-old without flipping live**:
    - **Lived-sequence timeline** — extend the S0 conversation API to surface `tool_result` events (captured, just unsurfaced), interleaved with messages.
-   - **Provenance ledger** — per-turn `surfaced/encoded(S1S)/encoded(Anchor)` via the `node_source_refs` reverse-lookup.
+   - **Provenance ledger** — per-turn `surfaced/encoded(S1S)` via the `trace_links` S1 capability (stop-join over surface/encode traces, NOT `source_refs`); encoded(Anchor) deferred. ✅ BUILT (§10.3.2).
    - **Widened catalog** — the union (surfaced ∪ encoded-this-session ∪ Anchor-authored ∪ **endo empty-stub fn**), id+«tag» references.
    - **Residue wiring** — `## Review` + closure contract-injected for s1e; **session-scoped** continuity read (`session_id`-filtered, distinct from S2's run-based).
    - Tests per piece.
@@ -426,58 +426,61 @@ the unification Tom means — repurpose it.)
      the `<provenance>` block (piece 2), keeping piece 1 a pure timeline read.
    - *Tests:* tool events land between their user/assistant by timestamp; turn-grouping; render snapshot.
 
-2. **Provenance ledger** (`<provenance>` per turn) — built on a NEW reusable S1 capability,
-   **NOT** a `source_refs` reverse-lookup. (Tom, 2026-06-29: `source_refs` is the encoder's
-   *sparse, judgment-based* anchor — 1–3 load-bearing turns, for recall — so it misses most of
-   what a run wrote and conflates two purposes. The factual "what did I encode around here"
-   record must come from the **encode event's own delta traces**, not the anchor choice.)
+2. **Provenance ledger** (`<provenance>` per turn) — ✅ **BUILT 2026-06-29** (flag-off,
+   uncommitted). Built on a NEW reusable S1 capability, **NOT** a `source_refs` reverse-lookup.
+   (Tom, 2026-06-29: `source_refs` is the encoder's *sparse, judgment-based* anchor — 1–3
+   load-bearing turns, for recall — so it misses most of what a run wrote and conflates two
+   purposes. The factual record comes from the **encode event's own delta traces**.)
 
-   **New door: `brain.session_provenance(session_id)`** — an S1-layer capability that composes
-   `query_traces` (the public door, like `journal_notes`; no bespoke DAL) and returns the
-   surfaced + encoded record for a session, keyed to turns. Sourcing:
-   - **surfaced** ← S1R `surface_selected` traces (`query_traces(scale='s1', session_id,
-     ref_type='surface_selected')`) — per-turn, the surfacer's ground truth.
-   - **encoded(S1S)** ← S1E `encoding_run` delta traces' `created` + `revised` id-lists
-     (already recorded — `trace_contract` `DELTA_METADATA_SHAPE`, `created`/`revised`),
-     associated to turns by **proximity**: a turn's encode = the first `encoding_run` whose
-     `created_at` is after that turn. Complete — every node the run wrote, not the sparse
-     `source_refs` subset.
-   - **encoded(Anchor)** ← nodes with `encoding_source='anchor'` in the session window, placed
-     by `created_at` (the "other factor" — Anchor's direct MCP writes leave no `encoding_run`).
+   **As built — `servers/scales/s1/trace_links.py` (an S1 capability, NOT a brain method).**
+   The architecture was reworked this session from the original §10.3.2 sketch (a
+   `brain.session_provenance` method, timestamp proximity). Tom's redirects:
+   - *S1 layer, not brain level.* Recall is brain-level (spans every scale); surface + encode are
+     about the **turn** → S1 territory. This is the S1 sibling of `scales/s0/conversation.py`:
+     S0 composes s0 traces → conversation; this composes s1 traces → links over those turns.
+   - *Consumer-neutral name.* It's not "provenance" (one reader's lens) — it's a **trace↔node
+     link**: `{trace_id: {surfaced:[ids], encoded:[ids], encoded_by: run_trace_id|None}}`. The
+     encoder reads a link as "already handled → revise, don't dupe"; a **recall layer** reads the
+     same link as "nodes touched around traces like this → a candidate cue lane." `<provenance>`
+     survives only as how encode.py *renders* a link.
+   - *Structural stop-join, NOT timestamp proximity.* Every chain for turn N ends `-N`
+     (`s0/s1r/s1e-{short}-N`), so `_stop_of` extracts the join key from any of them. surfaced is
+     1:1 with a turn (same stop); a turn's owning encode run = first run whose stop ≥ the turn's
+     stop; `encoded_by is None` = the unencoded tail (emergent boundary, no hard-coded "5").
+   - *Two layers → robust to a raw trace dataset run sequentially* (eval replay / sequential data):
+     **`nodes_for_traces(surface_traces, encode_traces, target_traces)`** is PURE (plain records
+     in, link map out, no brain/DB); **`gather(brain, session_id)`** is the thin live adapter over
+     the `query_traces` door (§10.2-compliant). Returns node **ids** (full); the render truncates
+     to 8-char `id:` refs that dereference into the catalog (no inline bodies anywhere).
 
-   **Proximity association** yields the emergent boundary for free: turns after the last
-   `encoding_run` are the unencoded tail. A run covers a stretch → per-run granularity (correct;
-   encoding is a run-level act). This same function feeds **piece 3** (the widened catalog's
-   `encoded-this-session` ∪ `Anchor-authored` id-sets ARE `session_provenance`'s output) and is
-   reusable for dashboards / encode-coverage eval / "why didn't X encode" debugging — *"important
-   for many other things"* (Tom). Lives at the S1 layer; composes the generic trace door per §10.2.
+   **Render (encode.py):** `<provenance>` per turn — surfaced refs + the encoded marker. A run's
+   full id-list shows once at its **frontier turn** (the last turn it covers, adjacent to the
+   boundary); covered-but-not-frontier turns show a bare `✓`; the unencoded tail shows no encoded
+   marker at all. Frontier-dedup avoids 5× repetition (which the design warns would nudge dense
+   `source_refs`). Guarded: any provenance failure degrades to the piece-1 timeline.
 
-   **Resolved (Tom, 2026-06-29):**
-   - *Reference, don't inline (no duplicates).* `session_provenance` returns the encode-run's
-     node **ids** (references) — it references the encode cycle via the run's trace, it does NOT
-     re-write the cycle. The `<provenance>` block prints `id` refs; the **widened catalog holds
-     each node's body once** and everything dereferences to it — no inline duplication anywhere.
-     Per-run granularity (the `encoding_run` trace IS per-run) — reference the run + its ids.
-   - *Clean door.* The function must be self-evident to any reader without knowing its internals
-     ("get the S1 info attached to a trace, pull the referenced nodes by id") — same ergonomic
-     bar as `recall_episodes` / `journal_notes`.
-   - *`encoding_source` is technical and IN FLUX (Tom is reworking it) — the encoder must NEVER
-     see it.* So: (a) do NOT hard-wire `encoded(Anchor)` detection on `encoding_source`; treat
-     the Anchor-vs-S1S split as TBD pending Tom's encoding_source work. (b) The `<provenance>`
-     block renders clean `encoded(S1S)` / `encoded(Anchor)` labels — never the raw field. (c)
-     **Audit the node catalog / render to confirm `encoding_source` isn't already leaking into
-     the encoder's input** (it's technical noise; Tom: "i hope encoder doesn't see it"). Ties to
-     the encoder-visibility hide-technical-fields work.
+   This same capability feeds **piece 3** (the catalog's `encoded` ∪ `surfaced` id-sets) and is
+   reusable for dashboards / encode-coverage eval / "why didn't X encode" debugging.
 
-   - *Tests:* proximity association (turn maps to the run that fired after it; turns after the
-     last run = unencoded); a turn's run created+revised set renders; an Anchor direct-write
-     shows as `encoded(Anchor)`.
+   **encoded(Anchor) — DEFERRED seam (verified).** Node *creation* leaves no trace (only revises
+   do — confirmed: no `node_created` ref_type exists), so the only signal is
+   `encoding_source='anchor'` — the in-flux attribution field the encoder must NEVER see. So the
+   Anchor-vs-S1S split is TBD pending Tom's encoding_source rework; the link shape has room for an
+   `anchored` relation to join with its own clean source later. *Leak audit (resolved c):* the
+   catalog already hides it (`S1_NODE_CONFIG show_encoding_source=False`) and the timeline renders
+   only message/tool text — `encoding_source` does not reach the encoder. A render test pins this.
+
+   *Tests (15, green):* `tests/test_s1e_trace_links.py` drives the pure composer over a synthetic
+   raw dataset (stop-join, surfaced 1:1, encoded per-run range, `encoded_by` pointer, `None` tail,
+   malformed-row resilience, out-of-order runs) + render integration (frontier-dedup, boundary, no
+   `encoding_source` leak, guarded degrade). Full suite green (1924 passed).
 
 3. **Widened catalog** (the union)
    - `build_node_catalog` is Haiku-only (judge_outputs) today. Widen to {surfaced} ∪
      {encoded-this-session S1S} ∪ {Anchor-authored this session} ∪ {endo (empty stub)},
-     deduped, full-rich once. The S1S/Anchor id-sets come straight from
-     `session_provenance` (piece 2) — one read serves both blocks.
+     deduped, full-rich once. The S1S/surfaced id-sets come straight from `trace_links`
+     (piece 2 — `nodes_for_traces` returns them per trace; union across turns) — one read serves
+     both blocks. (Anchor-authored joins once the deferred seam above is sourced.)
    - *Tests:* every `id` referenced anywhere in the timeline dereferences in the catalog.
 
 4. **Residue wiring** (replace the journal blob)

@@ -547,6 +547,11 @@ def _render_lived_sequence_timeline(brain, session_id, messages):
         body = (meta.get('content') if isinstance(meta, dict) else None) or ep.get('summary') or ''
         return _xml_escape(body[:lim])
 
+    # Piece 2: per-turn <provenance> — the trace↔node links (what recall surfaced
+    # / what prior runs encoded, joined by stop). Guarded: any failure degrades to
+    # the piece-1 timeline (no provenance), never breaks the lived arm.
+    links, frontier = _turn_links(brain, session_id, turns)
+
     out = ""
     for n, t in enumerate(turns, 1):
         out += '<turn n="%d">\n' % n
@@ -561,8 +566,87 @@ def _render_lived_sequence_timeline(brain, session_id, messages):
                 # tool cues have no metadata['content'] — the summary IS the cue
                 out += '    %s\n' % _xml_escape(a.get('summary') or '')
             out += '  </actions>\n'
+        prov = _render_provenance(links, frontier, t, n - 1)
+        if prov:
+            out += '  <provenance>%s</provenance>\n' % prov
         out += '</turn>\n\n'
     return out
+
+
+def _short_refs(ids):
+    """Node ids as 8-char `id:` refs — matches the catalog so they dereference."""
+    return ' '.join('id:%s' % str(i)[:8] for i in ids)
+
+
+def _turn_links(brain, session_id, turns):
+    """Compute the trace↔node link map + per-run frontier index for the window.
+
+    Returns (links, frontier):
+      links    — {user_trace_id: {surfaced, encoded, encoded_by}} from trace_links.
+      frontier — {encoded_by_run_id: window-index of the LAST turn that run covers},
+                 so the render shows a run's full encoded id-list once (at its
+                 frontier turn, adjacent to the unencoded boundary) and a light ✓
+                 on the earlier covered turns — no 5× repetition (which the design
+                 warns would nudge dense source_refs).
+
+    Guarded: any failure returns ({}, {}) → the timeline renders exactly as piece
+    1 did. Also the path the piece-1 stub brains take (no query_traces).
+    """
+    try:
+        from servers.scales.s1.trace_links import gather, nodes_for_traces
+        targets = [t['user'] for t in turns if t['user']]
+        surface_traces, encode_traces = gather(brain, session_id)
+        links = nodes_for_traces(surface_traces, encode_traces, targets)
+    except AttributeError:
+        # Expected, quiet: a stub brain (tests) without query_traces. Degrade to
+        # the piece-1 timeline (no provenance) — production brains always have it.
+        return {}, {}
+    except Exception as e:
+        # A real failure (trace-contract drift, malformed record) — LOUD, then
+        # degrade (mirrors the muster fallback above; brain.errors is the surface,
+        # a bare print is not). Provenance is advisory; never block the timeline.
+        try:
+            brain._log_error('s1e_provenance', e,
+                             'trace-link provenance failed; timeline renders without it')
+        except Exception:
+            pass
+        return {}, {}
+
+    frontier = {}
+    for idx, t in enumerate(turns):
+        uid = (t['user'] or {}).get('id')
+        eb = (links.get(uid) or {}).get('encoded_by') if uid else None
+        if eb:
+            frontier[eb] = idx  # ascending walk → last index wins
+    return links, frontier
+
+
+def _render_provenance(links, frontier, turn, idx):
+    """One <provenance> line for a turn: surfaced refs + the encoded marker.
+
+    surfaced is per-turn (1:1). encoded shows the owning run's full id-list at the
+    run's frontier turn, a bare `✓` on its other covered turns. A turn with no
+    owning run shows no encoded marker — that absence IS the unencoded boundary
+    the encoder looks for. Returns '' when there's nothing to show.
+    """
+    uid = (turn['user'] or {}).get('id') if turn['user'] else None
+    link = links.get(uid) if uid else None
+    if not link:
+        return ''
+    parts = []
+    if link['surfaced']:
+        parts.append('surfaced: %s' % _short_refs(link['surfaced']))
+    eb = link['encoded_by']
+    if eb:
+        # Show the run's full id-list once, at its frontier turn — but only if it
+        # has node ids: an edge-only run (just connects; `connected` isn't in the
+        # encode delta) has an empty set, so it falls through to the bare ✓ marker
+        # rather than rendering 'encoded(S1S): ' with nothing after it.
+        if frontier.get(eb) == idx and link['encoded']:
+            parts.append('encoded(S1S): %s' % _short_refs(link['encoded']))
+        else:
+            parts.append('encoded(S1S): ✓')
+    return ' | '.join(parts)
 
 
 def _write_pre_traces(brain, dispatch_fn, messages, user_content, counter, session_id):
