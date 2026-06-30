@@ -43,19 +43,41 @@ Cast WIDE and use MULTIPLE methods — never rely on one:
 For EACH candidate, record `lens_tags` = how you found it, any of:
 `cos_cue` (searched with the prompt) · `cos_outcome` (searched with the outcome / needed-knowledge) ·
 `fts` (exact-token / keyword) · `graph` (followed an edge) · `browse` (structural/filter).
-**Always verify `created_at` ≤ cutoff before including a node.**
+
+**CONTENT-GRAFT GUARD — `created_at` ≤ cutoff is NECESSARY but NOT SUFFICIENT.** A node's *content* can be
+edited after the cutoff (a later session rewrote it), so its current text is not what it SAID at recall time —
+e.g. a node may now assert the OPPOSITE of what it held then. Before crediting a node, reason about what it
+**said at the cutoff**, not what it says now. If the content was clearly grafted post-cutoff and you cannot
+reconstruct the then-text, DROP it (note it in `judge_notes`). `created_at` after the cutoff is still hard
+future-leakage and disqualifying as before.
 
 **STEP 4 — CLASSIFY BY REASONED HELPFULNESS, NOT TOPIC SIMILARITY.** This is the crux. A node can be
 topically NEAR but useless (already known, redundant, too generic, wrong altitude) — do NOT credit it.
 A node can be topically DISTANT but the exact unlock (a correction, a constraint, an inverting fact) —
 DO credit it. For each candidate ask only: *"if this had surfaced at the recall_moment, would it have
 made the next move materially better?"*
-- `essential` — yes: its absence hurt the move, or its presence would have changed/strengthened it.
-- `silver` — genuinely relevant and helpful, but not decisive.
+
+**CONTENT-PRESENCE ECHO-TEST (apply first, drops candidates):** if a node's content is *already present in
+the `recall_moment`* — it was just said in the recent context — DROP it regardless of its timestamp. Recall
+cannot earn credit for re-surfacing what the moment already contained; that is the circularity the whole
+re-mint exists to kill.
+
+- `essential` — **STRICT**: its absence hurt the move, or it would have **CHANGED** the move. NOT "would
+  strengthen / confirm / add useful color" — that re-admits topic-proximity and is exactly the leak that made
+  the old gold circular. The bar is *counterfactual*: without it, the next move is materially worse or wrong.
+  The **strongest** essential CORRECTS a wrong assumption in the outcome (an inverting fact beats a confirming one).
+- `silver` — genuinely relevant and helpful, but not decisive (this is where "would strengthen" lives now).
 - drop everything else.
 
-**STEP 5 — ENCODE GAPS.** For any needed-knowledge item where NO node exists, record it as an
-`encode_gap` (a not-yet-encoded miss, distinct from a recall miss).
+**STEP 5 — ENCODE GAPS (split + receipts).** For any needed-knowledge item that no node serves, record an
+encode-gap — and split the kind, because they point at different fixes:
+- `missing_node` — nothing in the brain expresses this knowledge at all (a true not-yet-encoded miss).
+- `missing_facet` — the topic IS encoded, but the *specific facet* the move needed isn't captured (the node
+  exists, the needed angle/value/correction inside it doesn't).
+Each encode-gap MUST carry its **search-receipts**: the queries you actually tried (and method — recall /
+recall_episodes / fts / browse) that came up empty. A gap with no receipts is an unproven gap — don't claim it.
+This is what makes an encode-gap distinct from a recall miss: you proved the substrate is empty, not just that
+production didn't surface it.
 
 ## OUTPUT
 Write your card as JSON to the card path AND return it as your final message:
@@ -64,11 +86,12 @@ Write your card as JSON to the card path AND return it as your final message:
   "cue_id": "...", "query_type": "...", "source": "...",
   "worthwhile": true, "worthwhile_why": "...",
   "needed_knowledge": ["...", "..."],
-  "essential": [{"node_id":"...","title":"...","expresses":"which needed item","lens_tags":["graph"],"why":"why it would have helped the move"}],
-  "silver":    [{"node_id":"...","title":"...","expresses":"...","lens_tags":["cos_outcome"],"why":"..."}],
-  "encode_gaps": ["needed knowledge with no node"],
+  "essential": [{"node_id":"...","title":"...","expresses":"which needed item","lens_tags":["graph"],"why":"counterfactual: how the move CHANGES with it"}],
+  "silver":    [{"node_id":"...","title":"...","expresses":"...","lens_tags":["cos_outcome"],"why":"relevant but not decisive"}],
+  "encode_gaps": [{"needed":"the knowledge with no serving node","kind":"missing_node|missing_facet","search_receipts":[{"method":"recall","query":"...","result":"empty"}]}],
+  "echo_dropped": [{"node_id":"...","why":"content already present in recall_moment"}],
   "judge_confidence": "high|medium|low",
-  "judge_notes": "ambiguity, near-misses, why a tempting node was dropped"
+  "judge_notes": "ambiguity, near-misses, why a tempting node was dropped, any content-graft drops"
 }
 ```
 Be decisive but honest. Prefer 1–2 truly essential nodes over a long list. `essential` may be empty if
