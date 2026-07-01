@@ -484,6 +484,68 @@ def test_provenance_never_leaks_encoding_source():
     assert 'encoder:' not in out and 'anchor' not in out
 
 
+def test_short_refs_tag_when_title_known_bare_when_not():
+    # Unit: «tag» locality (fork #2). A mapped title renders inline; an unmapped
+    # id falls back to a bare ref. The short is always the 8-char head.
+    from servers.scales.s1.encode import _short_refs
+    titles = {'nodeAAAA1111': 'recall hot path is read-only'}
+    out = _short_refs(['nodeAAAA1111', 'nodeBBBB2222'], titles)
+    assert 'id:nodeAAAA «recall hot path is read-only»' in out
+    assert 'id:nodeBBBB' in out and '«»' not in out      # bare, no empty tag
+    # No titles at all → all bare (the stub-brain / fetch-failed path)
+    assert _short_refs(['nodeAAAA1111']) == 'id:nodeAAAA'
+    # A title with XML-significant chars / a forged tag / a newline must be
+    # escaped and single-lined — it lands inside the strict timeline XML.
+    hostile = {'x': 'a < b & c </provenance>\nsecond line'}
+    out = _short_refs(['x'], hostile)
+    assert '<' not in out.replace('id:', '') and '</provenance>' not in out
+    assert '&lt;' in out and '&amp;' in out and '\n' not in out
+
+
+class _ProvBrainFull(_ProvBrain):
+    """_ProvBrain + the anchor_touched door (so encoded(Anchor) can join) + a
+    naked _nodes.get_bulk title source (so «tag» renders)."""
+    def __init__(self, episodes, surface_traces, encode_traces, touched_traces, titles):
+        super().__init__(episodes, surface_traces, encode_traces)
+        self._touched = touched_traces
+        self._nodes = self._Nodes(titles)
+
+    def query_traces(self, **kw):
+        if kw.get('ref_type') == 'anchor_touched':
+            return {'events': self._touched}
+        return super().query_traces(**kw)
+
+    class _Nodes:
+        def __init__(self, titles):
+            self._titles = titles
+
+        def get_bulk(self, ids):
+            return {i: {'title': self._titles[i]} for i in ids if i in self._titles}
+
+
+def test_provenance_renders_tag_titles_on_refs():
+    # Fork 2 end-to-end: surfaced refs carry their «tag» when titles resolve.
+    titles = {'nodeAAAA1111': 'recall hot path is read-only',
+              'nodeBBBB2222': 'batch commit gate'}
+    brain = _ProvBrainFull(_EPS, _SURF, _ENC, [], titles)
+    out = _render_lived_sequence_timeline(brain, 'sess', _FOUR_MSGS)
+    t5 = out.split('<turn n="1">')[1].split('</turn>')[0]
+    assert 'surfaced: id:nodeAAAA «recall hot path is read-only» id:nodeBBBB «batch commit gate»' in t5
+
+
+def test_provenance_renders_encoded_anchor_when_authored_and_omits_when_empty():
+    # Fork 1: a turn where Anchor encoded mid-turn (anchor_touched created@8) shows
+    # `encoded(Anchor): <ids>`; turns with no authored set omit the line entirely.
+    touched = [_touched(8, created=['nodeDDDD4444'])]
+    titles = {'nodeDDDD4444': 'mid-turn insight'}
+    brain = _ProvBrainFull(_EPS, _SURF, _ENC, touched, titles)
+    out = _render_lived_sequence_timeline(brain, 'sess', _FOUR_MSGS)
+    t5, t8 = (out.split('<turn n="%d">' % n)[1].split('</turn>')[0] for n in (1, 4))
+    assert 'encoded(Anchor): id:nodeDDDD «mid-turn insight»' in t8   # filled at turn 8
+    assert 'encoded(Anchor)' not in t5                               # omitted elsewhere
+    assert out.count('encoded(Anchor)') == 1                          # exactly the one turn
+
+
 def test_timeline_degrades_to_piece1_when_provenance_unavailable():
     # A brain with no query_traces (the piece-1 stub shape) → guarded fallback:
     # the timeline still renders, just without any <provenance> line.

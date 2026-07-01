@@ -87,6 +87,36 @@ class TestResidueWiring(BrainTestBase):
         assert 'RECENT REVIEW NOTES' not in body
         assert '### Encoding Journal' not in body
 
+    def test_lived_body_uses_xml_section_wrappers(self):
+        # Fork 5: the new arm wraps sections in the XML labels the v-next prompt
+        # names — <continuity>/<node_catalog>/<timeline> — NOT the legacy ###
+        # markdown headers. The session arc folds into <continuity>.
+        sid = 'sess-xml'
+        self.brain.set_config('session_context_%s' % sid, 'building S1E reconciliation')
+        self.brain.write_journal_notes(
+            final_text=_REVIEW, chain_id='s1e-%s-3' % sid[:8],
+            scale='s1', session_id=sid)
+        pre, body, _cat, _ids = _build_user_content(
+            self.brain, _msgs(), counter=8, session_id=sid, lived_sequence=True)
+        assert '<continuity>' in body and '</continuity>' in body
+        assert '<timeline>' in body and '</timeline>' in body
+        assert 'Session arc: building S1E' in body      # arc folded into continuity
+        assert 'RECENT REVIEW NOTES' in body            # residue also in continuity
+        assert '### Session Context' not in body        # legacy headers gone
+        assert '### Conversation Timeline' not in body
+        # preamble drops the section legend on the new arm (v-next system prompt
+        # owns it — two voices describing the layout would confound the A/B)
+        assert 'Encoding Journal' not in pre and 'Conversation Timeline' not in pre
+
+    def test_control_body_keeps_markdown_headers_and_legend(self):
+        # Control arm: legacy ### markdown headers, NO XML wrappers; the preamble
+        # keeps the full legacy section legend. Byte-shape unchanged.
+        pre, body, _cat, _ids = _build_user_content(
+            self.brain, _msgs(), counter=8, session_id='sess-md', lived_sequence=False)
+        assert '### Conversation Timeline' in body
+        assert '<continuity>' not in body and '<timeline>' not in body
+        assert 'Conversation Timeline' in pre and 'Encoding Journal' in pre
+
     def test_s1e_continuity_k_default_is_five(self):
         # S1E keeps the last 5 note-bearing runs of THIS session (the 's1e' K).
         sid = 'sess-k'

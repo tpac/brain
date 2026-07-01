@@ -488,31 +488,55 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
                 or 'First run — no previous encoding in this session.')
         journal_block = "### Encoding Journal\n%s" % blob
 
-    # ── Stable preamble — byte-identical across encoding cycles.
-    # Cached at 1h TTL via run_llm_loop's user_preamble parameter. The
-    # only constraint: nothing here may vary per cycle. Section legend
-    # + format expectations live here. The "ENCODING RUN N" header
-    # was removed (was metadata; not load-bearing for the encoder).
-    preamble = (
-        "You are encoding what you've just observed. The sections below give you, "
-        "in order: prior encoding work this session (Encoding Journal), what the "
-        "session is about (Session Context), nodes the brain already knows pre-"
-        "loaded for this window (Node Catalog), and the actual turns with "
-        "references to surfaced nodes (Conversation Timeline).\n\n"
-        "Read what you got before calling any tools. Put ALL operations "
-        "(remember + revise + connect) in ONE tool call. Target: 2 rounds — "
-        "one tool call, then the journal.\n"
-    )
+    # ── Stable preamble — byte-identical across encoding cycles (1h cache via
+    # run_llm_loop's user_preamble). Branches on the arm. The NEW arm's section
+    # legend + reading order live in the registered v-next system prompt (it names
+    # <continuity>/<node_catalog>/<timeline>), so the preamble here drops the legend
+    # and keeps only the operational anchor — two voices describing the layout would
+    # confound the A/B. The control arm keeps the legacy legend verbatim.
+    if lived:
+        preamble = (
+            "You are encoding what you've just observed. Read everything below "
+            "before calling any tools, then put all operations (remember + revise "
+            "+ connect) in one tool call.\n"
+        )
+    else:
+        preamble = (
+            "You are encoding what you've just observed. The sections below give you, "
+            "in order: prior encoding work this session (Encoding Journal), what the "
+            "session is about (Session Context), nodes the brain already knows pre-"
+            "loaded for this window (Node Catalog), and the actual turns with "
+            "references to surfaced nodes (Conversation Timeline).\n\n"
+            "Read what you got before calling any tools. Put ALL operations "
+            "(remember + revise + connect) in ONE tool call. Target: 2 rounds — "
+            "one tool call, then the journal.\n"
+        )
 
-    # ── Dynamic body — varies per cycle, 5m cache.
-    body = ""
-    if journal_block:   # self-labeled; empty on a fresh session in the new arm
-        body += "%s\n\n" % journal_block
-    if prev_context:
-        body += "### Session Context\n%s\n\n" % prev_context
-    if node_catalog:
-        body += "### %s\n" % node_catalog
-    body += "### Conversation Timeline\n\n%s\n" % timeline
+    # ── Dynamic body — varies per cycle, 5m cache. The NEW arm wraps each section
+    # in the XML label the v-next prompt names (<continuity> folds residue + arc;
+    # <node_catalog>; <timeline>). The control arm keeps the legacy ### markdown
+    # headers — byte-identical to the long-standing path.
+    if lived:
+        continuity = ""
+        if journal_block:   # self-labeled ("RECENT REVIEW NOTES …"); empty on a fresh session
+            continuity += journal_block
+        if prev_context:
+            continuity += "Session arc: %s\n" % prev_context
+        body = ""
+        if continuity:
+            body += "<continuity>\n%s</continuity>\n\n" % continuity
+        if node_catalog:
+            body += "<node_catalog>\n%s\n</node_catalog>\n\n" % node_catalog
+        body += "<timeline>\n%s</timeline>\n" % timeline
+    else:
+        body = ""
+        if journal_block:   # self-labeled
+            body += "%s\n\n" % journal_block
+        if prev_context:
+            body += "### Session Context\n%s\n\n" % prev_context
+        if node_catalog:
+            body += "### %s\n" % node_catalog
+        body += "### Conversation Timeline\n\n%s\n" % timeline
     return preamble, body, node_catalog, cataloged_ids
 
 
@@ -649,6 +673,25 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None):
     # the piece-1 timeline (no provenance), never breaks the lived arm.
     links, frontier = _turn_links(brain, session_id, turns, streams=streams)
 
+    # «tag» locality (fork #2): each provenance id ref carries its 1-line title so
+    # the encoder reads WHERE a node came up without scanning the catalog. Titles
+    # are fetched NAKED (cheap; the catalog already holds the rich bodies — this is
+    # a title-only lookup) in one batched get_bulk over the window's referenced ids.
+    # Guarded: a stub brain (tests, no _nodes) or any failure → bare refs, never a
+    # broken render.
+    titles = {}
+    ref_ids = set()
+    for lk in links.values():
+        ref_ids.update(lk.get('surfaced') or ())
+        ref_ids.update(lk.get('encoded') or ())
+        ref_ids.update(lk.get('authored') or ())
+    if ref_ids:
+        try:
+            titles = {nid: (row.get('title') or '')
+                      for nid, row in brain._nodes.get_bulk(list(ref_ids)).items()}
+        except Exception:
+            titles = {}
+
     out = ""
     for n, t in enumerate(turns, 1):
         out += '<turn n="%d">\n' % n
@@ -663,16 +706,32 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None):
                 # tool cues have no metadata['content'] — the summary IS the cue
                 out += '    %s\n' % _xml_escape(a.get('summary') or '')
             out += '  </actions>\n'
-        prov = _render_provenance(links, frontier, t, n - 1)
+        prov = _render_provenance(links, frontier, t, n - 1, titles)
         if prov:
             out += '  <provenance>%s</provenance>\n' % prov
         out += '</turn>\n\n'
     return out
 
 
-def _short_refs(ids):
-    """Node ids as 8-char `id:` refs — matches the catalog so they dereference."""
-    return ' '.join('id:%s' % str(i)[:8] for i in ids)
+def _short_refs(ids, titles=None):
+    """Node ids as 8-char `id:` refs, each carrying its 1-line «tag» (title) when
+    known — the locality affordance (fork #2): WHERE a node came up in the
+    timeline, complementary to the catalog's full WHAT-it-is. The 8-char short
+    still matches the catalog so a ref dereferences there; the «tag» saves the
+    scan. Falls back to a bare `id:` when no title is mapped (stub brains, or an
+    id the title fetch missed)."""
+    titles = titles or {}
+    out = []
+    for i in ids:
+        short = str(i)[:8]
+        # Escape the title + collapse whitespace: it lands inside the strict
+        # per-turn timeline XML, next to message/action text that _xml_escape()
+        # already guards — a title with '<'/'>'/'&' (or a forged '</provenance>')
+        # must not malform it, and a stray newline must not break the one-line
+        # provenance.
+        t = _xml_escape(' '.join((titles.get(i) or '').split()))
+        out.append('id:%s «%s»' % (short, t) if t else 'id:%s' % short)
+    return ' '.join(out)
 
 
 def _turn_links(brain, session_id, turns, streams=None):
@@ -722,13 +781,18 @@ def _turn_links(brain, session_id, turns, streams=None):
     return links, frontier
 
 
-def _render_provenance(links, frontier, turn, idx):
-    """One <provenance> line for a turn: surfaced refs + the encoded marker.
+def _render_provenance(links, frontier, turn, idx, titles=None):
+    """One <provenance> line for a turn: surfaced refs + the encoded markers.
 
-    surfaced is per-turn (1:1). encoded shows the owning run's full id-list at the
-    run's frontier turn, a bare `✓` on its other covered turns. A turn with no
-    owning run shows no encoded marker — that absence IS the unencoded boundary
-    the encoder looks for. Returns '' when there's nothing to show.
+    surfaced is per-turn (1:1). encoded(S1S) shows the owning run's full id-list at
+    the run's frontier turn, a bare `✓` on its other covered turns. encoded(Anchor)
+    is the turn-local set Anchor wrote mid-turn (link['authored'] = created ∪
+    revised, joined by stop) — omitted entirely when empty (the common case; only a
+    mid-turn remember()/revise() fills it, never a replayed eval corpus). A turn
+    with no owning run shows no
+    encoded(S1S) marker — that absence IS the unencoded boundary the encoder looks
+    for. `titles` maps id→title for the «tag» locality. Returns '' when there's
+    nothing to show.
     """
     uid = (turn['user'] or {}).get('id') if turn['user'] else None
     link = links.get(uid) if uid else None
@@ -736,7 +800,7 @@ def _render_provenance(links, frontier, turn, idx):
         return ''
     parts = []
     if link['surfaced']:
-        parts.append('surfaced: %s' % _short_refs(link['surfaced']))
+        parts.append('surfaced: %s' % _short_refs(link['surfaced'], titles))
     eb = link['encoded_by']
     if eb:
         # Show the run's full id-list once, at its frontier turn — but only if it
@@ -744,9 +808,13 @@ def _render_provenance(links, frontier, turn, idx):
         # encode delta) has an empty set, so it falls through to the bare ✓ marker
         # rather than rendering 'encoded(S1S): ' with nothing after it.
         if frontier.get(eb) == idx and link['encoded']:
-            parts.append('encoded(S1S): %s' % _short_refs(link['encoded']))
+            parts.append('encoded(S1S): %s' % _short_refs(link['encoded'], titles))
         else:
             parts.append('encoded(S1S): ✓')
+    # Fork 1: turn-local Anchor encodes. Omitted when empty (don't show the line if
+    # there's nothing), consistent with the surfaced/encoded omission above.
+    if link.get('authored'):
+        parts.append('encoded(Anchor): %s' % _short_refs(link['authored'], titles))
     return ' | '.join(parts)
 
 
