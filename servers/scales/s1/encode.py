@@ -198,6 +198,16 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     _log("calling Sonnet with %d tools, %d chars context..." % (len(tools), len(user_content)))
     _log("PROFILE so far: %s" % " → ".join("%s:%dms" % (n, t) for n, t in profile))
 
+    # Full-prompt capture label (eval/observability) — only computed when
+    # BRAIN_PROMPT_CAPTURE_DIR is set, so production stays a no-op. Keys the
+    # dump by arm + session + stop so control vs new (and each turn) never
+    # collide; runner.py adds round + a monotonic seq.
+    capture_label = None
+    if os.environ.get('BRAIN_PROMPT_CAPTURE_DIR'):
+        arm = 'new' if lived else 'control'
+        safe_sid = (session_id or 'nosession').replace('/', '_').replace(' ', '_')
+        capture_label = "%s__%s__stop%d" % (arm, safe_sid, counter)
+
     try:
         result = run_llm_loop(
             client=client,
@@ -209,7 +219,8 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             user_preamble=user_preamble,
             tools=tools,
             dispatch_fn=dispatch_fn,
-            log_fn=_log)
+            log_fn=_log,
+            capture_label=capture_label)
 
         _step("done")
         profile_str = " → ".join("%s:%dms" % (n, t) for n, t in profile)
