@@ -697,6 +697,74 @@ class BrainRecallMixin:
             self._log_error('journal_note_write_failed', e, 'chain=%s' % chain_id)
             return {'written': 0, 'malformed': 0, 'status': 'error'}
 
+    def write_session_arc(self, *, final_text, session_id, limit=800):
+        """Write door for the session arc — the journal mechanism's second
+        component (design §7.2: Encode → Arc → Review). Extract the encoder's
+        `## Arc` fenced one-liner and ACCUMULATE it onto the per-session
+        digest at `session_context_{session_id}` (read back by
+        session_context_for: the Frame's 'Current focus', the next encoding
+        run's context block, and recall ranking).
+
+        `limit` bounds the accumulated digest (chars); truncation drops the
+        OLDEST lines from the front — the digest is a rolling journey, newest
+        movement last. Caller passes its contract value (S1E:
+        ENCODING_AGENT['session_context_limit']).
+
+        Returns {'written': bool, 'status': str} where status is one of:
+          • 'ok'              — a non-empty arc line appended
+          • 'empty_arc'       — fenced arc present but empty (legit: nothing
+                                progressed this run)
+          • 'no_arc_section'  — no `## Arc` at all (drift — the block was
+                                injected, the encoder ignored it)
+          • 'no_arc_extracted'— `## Arc` present but no parseable fence (drift)
+          • 'error'           — unexpected failure (isolated; never breaks
+                                the encoder's run)
+
+        LOUD BY DEFAULT — an opted-in encoder is expected to ALWAYS emit
+        `## Arc` (empty fence when nothing moved), so a missing section or a
+        broken fence logs a warning. An empty fence is visible (debug), not
+        an alarm.
+        """
+        from .trace_contract import extract_arc_block, JOURNAL_ARC_MARKER
+        try:
+            if not session_id:
+                return {'written': False, 'status': 'error'}
+            block = extract_arc_block(final_text)
+            if block is None:
+                if JOURNAL_ARC_MARKER in (final_text or ''):
+                    self._log_warning(
+                        'session_arc_no_arc_extracted',
+                        'session=%s: %r present but no parseable fenced block'
+                        % (session_id[:8], JOURNAL_ARC_MARKER))
+                    return {'written': False, 'status': 'no_arc_extracted'}
+                self._log_warning(
+                    'session_arc_no_arc_section',
+                    'session=%s: encoder final_text (%d chars) has no %r section'
+                    % (session_id[:8], len(final_text or ''), JOURNAL_ARC_MARKER))
+                return {'written': False, 'status': 'no_arc_section'}
+            if block == '':
+                self.log_debug('session_arc_empty', 'write_session_arc',
+                               session_id=session_id)
+                return {'written': False, 'status': 'empty_arc'}
+            # Accumulate: newline-joined journey, oldest lines truncated from
+            # the front at a line boundary (same shape _save_session_context
+            # kept for the legacy SESSION_CONTEXT: path).
+            new_line = block.splitlines()[0].strip()  # ONE line by contract
+            existing = self.session_context_for(session_id)
+            combined = (existing + '\n' + new_line) if existing else new_line
+            if len(combined) > limit:
+                truncated = combined[len(combined) - limit:]
+                nl_idx = truncated.find('\n')
+                if 0 <= nl_idx < 60:
+                    truncated = truncated[nl_idx + 1:]
+                combined = truncated
+            self.set_config('session_context_' + session_id, combined)
+            return {'written': True, 'status': 'ok'}
+        except Exception as e:
+            self._log_error('session_arc_write_failed', e,
+                            'session=%s' % (session_id or '')[:8])
+            return {'written': False, 'status': 'error'}
+
     def count_traces(self, field: str, scale: str = '', hours: int = 24):
         """Count trace events grouped by a field."""
         return self._trace_dal.count_by(field=field, scale=scale, hours=hours)

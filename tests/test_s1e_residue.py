@@ -129,3 +129,87 @@ class TestResidueWiring(BrainTestBase):
         assert 'run 1 residue' not in runs          # oldest dropped (K=5)
         assert 'run 6 residue' in runs
         assert len({n['subject'] for n in notes}) == 5
+
+
+def _arc(line):
+    return "narrative text\n\n## Arc\n```\n%s\n```\n" % line
+
+
+class TestSessionArcWriteDoor(BrainTestBase):
+    """write_session_arc — the journal mechanism's arc component (the v26
+    arc-regression fix). Extracts the `## Arc` fence and ACCUMULATES it into
+    session_context_{sid}, which the Frame's 'Current focus', the next run's
+    context block, and recall ranking all read via session_context_for."""
+    needs_embedder = False
+
+    def test_arc_accumulates_into_session_context(self):
+        sid = 'sess-arc'
+        r1 = self.brain.write_session_arc(final_text=_arc('dashboard fix'),
+                                          session_id=sid)
+        assert r1 == {'written': True, 'status': 'ok'}
+        r2 = self.brain.write_session_arc(final_text=_arc('judge moved to daemon'),
+                                          session_id=sid)
+        assert r2['written'] is True
+        ctx = self.brain.session_context_for(sid)
+        assert ctx == 'dashboard fix\njudge moved to daemon'   # journey, newest last
+
+    def test_arc_is_session_walled(self):
+        self.brain.write_session_arc(final_text=_arc('A-only movement'),
+                                     session_id='sessA2')
+        assert self.brain.session_context_for('sessB2') in ('', None)
+
+    def test_empty_fence_is_legit_nothing_progressed(self):
+        sid = 'sess-arc-empty'
+        r = self.brain.write_session_arc(
+            final_text="text\n\n## Arc\n```\n```\n", session_id=sid)
+        assert r == {'written': False, 'status': 'empty_arc'}
+        assert self.brain.session_context_for(sid) in ('', None)
+
+    def test_missing_section_and_broken_fence_are_drift(self):
+        # An opted-in encoder always emits `## Arc` — absence/broken fence is
+        # drift, reported loud (status), never an exception.
+        sid = 'sess-arc-drift'
+        r = self.brain.write_session_arc(final_text='no arc at all DONE',
+                                         session_id=sid)
+        assert r == {'written': False, 'status': 'no_arc_section'}
+        r = self.brain.write_session_arc(final_text='## Arc\nbare, no fence',
+                                         session_id=sid)
+        assert r == {'written': False, 'status': 'no_arc_extracted'}
+        assert self.brain.session_context_for(sid) in ('', None)
+
+    def test_multiline_fence_keeps_first_line_only(self):
+        # The contract is ONE line; a drifting encoder that writes two must not
+        # flood the digest.
+        sid = 'sess-arc-multi'
+        self.brain.write_session_arc(
+            final_text="## Arc\n```\nreal movement\nspurious second line\n```",
+            session_id=sid)
+        assert self.brain.session_context_for(sid) == 'real movement'
+
+    def test_limit_truncates_oldest_from_front(self):
+        # Same rolling-journey shape as the legacy path: over-limit drops the
+        # OLDEST lines; the newest movement always survives.
+        sid = 'sess-arc-limit'
+        self.brain.write_session_arc(final_text=_arc('x' * 50), session_id=sid,
+                                     limit=40)
+        self.brain.write_session_arc(final_text=_arc('newest movement'),
+                                     session_id=sid, limit=40)
+        ctx = self.brain.session_context_for(sid)
+        assert len(ctx) <= 40
+        assert ctx == 'newest movement'             # oldest line truncated away
+
+    def test_arc_and_review_coexist_on_one_final_reply(self):
+        # §7.2: the final reply carries Arc + Review; each write door consumes
+        # only its own fence.
+        sid = 'sess-arc-both'
+        text = ('## Arc\n```\narc write-path built\n```\n\n'
+                '## Review\n```\ndoubt · arc-fence · watch for drift\n```\nDONE')
+        self.brain.write_session_arc(final_text=text, session_id=sid)
+        self.brain.write_journal_notes(final_text=text,
+                                       chain_id='s1e-%s-5' % sid[:8],
+                                       scale='s1', session_id=sid)
+        assert self.brain.session_context_for(sid) == 'arc write-path built'
+        notes = self.brain.journal_notes(scale='s1', session_id=sid)
+        assert any(n['subject'] == 'arc-fence' for n in notes)
+        # and the arc line never leaks into the notes
+        assert not any('arc write-path built' in n['note'] for n in notes)

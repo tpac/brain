@@ -521,6 +521,35 @@ def render_journal_review_block(examples=''):
     return block
 
 
+# The arc — the SECOND closing act (§7.2: Encode → Arc → Review), a journal-
+# mechanism component distinct from the review: the review is residue notes
+# (traces, per-note rows); the arc is ONE line of session orientation
+# (accumulated onto a running per-session digest that downstream readers rank
+# and orient against). Never merged into the review — different shape,
+# different reader. Self-grounding like the review block (no host-coupled
+# tokens); placement is stated HERE, not in the closure, so the closure stays
+# shared with encoders that never emit an arc. Per-encoder opt-in: injected
+# only by encoders that write a session arc (S1 Scribe today).
+JOURNAL_ARC_INSTRUCTION = (
+    "The arc — ONE line: what progressed in this stretch of work, this run.\n"
+    "It accumulates onto a running digest of the whole conversation, so write "
+    "only the new movement — never a recap of what the digest already says.\n\n"
+    "Put it under a `## Arc` heading, inside a fenced code block — a single "
+    "line, on the same final reply as the review, just before it. If nothing "
+    "meaningfully progressed, leave the fence empty.\n\n"
+    "Example: `judge reliability crisis found — 85% timeout rate`"
+)
+
+
+def render_journal_arc_block():
+    """The shared arc block — the write-side instruction for the session arc,
+    identical for every encoder that opts in. Single-sourced here (never baked
+    into a registered prompt) for the same reason as the review block: it
+    iterates in one place and every opted-in encoder gets it live.
+    """
+    return JOURNAL_ARC_INSTRUCTION
+
+
 def render_prompt_closure():
     """The run's CLOSURE — separate concern from the review block. Defines the
     terminal turn the way the runner does (a reply with no tool call IS the
@@ -617,27 +646,33 @@ JOURNAL_REVIEW_MARKER = '## Review'   # the section heading the encoder emits; t
                                       # write path keys on it. Kept in sync with the
                                       # prompt structure (§7.2) — #8 wires the prompt.
 
+JOURNAL_ARC_MARKER = '## Arc'         # the arc heading (§7.2: "Arc — ONE line: what
+                                      # progressed this run"). Its write path
+                                      # (write_session_arc) keys on it. A journal-
+                                      # mechanism component, per-encoder opt-in —
+                                      # S1 Scribe today; any S2 unit later.
 
-def extract_review_block(text):
-    """Pull the notes block out of an encoder's final text: find the
-    `## Review` section and return the content of its first fenced ``` block.
 
-    Three-valued so the writer can tell the cases apart and stay loud:
-      • **None** — no `## Review` section, or a marker with no parseable fence
+def _extract_fenced_block(text, marker):
+    """Pull a fenced block out of an encoder's final text: find the `marker`
+    section heading and return the content of its first fenced ``` block.
+
+    Three-valued so writers can tell the cases apart and stay loud:
+      • **None** — no `marker` section, or a marker with no parseable fence
         (missing open/close fence). The caller distinguishes "no section" from
-        "format drift" by re-checking `JOURNAL_REVIEW_MARKER in text`.
-      • **''** — a fenced review that's empty (a legit clean run: "nothing to
-        note"), distinct from drift.
-      • **str** — the fence content, ready for `parse_journal_notes`.
-    Extracting ONLY the fence (not the whole section) keeps surrounding prose —
-    which may carry a stray '·' — from being mis-parsed as malformed notes.
+        "format drift" by re-checking `marker in text`.
+      • **''** — a fenced block that's empty (a legit clean run), distinct
+        from drift.
+      • **str** — the fence content.
+    Extracting ONLY the fence (not the whole section) keeps surrounding prose
+    from being mis-parsed as content.
     """
     if not text:
         return None
-    idx = text.find(JOURNAL_REVIEW_MARKER)
+    idx = text.find(marker)
     if idx == -1:
         return None
-    after = text[idx + len(JOURNAL_REVIEW_MARKER):]
+    after = text[idx + len(marker):]
     open_fence = after.find('```')
     if open_fence == -1:
         return None
@@ -649,6 +684,18 @@ def extract_review_block(text):
     if close_fence == -1:
         return None
     return rest[:close_fence].strip()
+
+
+def extract_review_block(text):
+    """The `## Review` fence — content ready for `parse_journal_notes`.
+    Three-valued; see `_extract_fenced_block`."""
+    return _extract_fenced_block(text, JOURNAL_REVIEW_MARKER)
+
+
+def extract_arc_block(text):
+    """The `## Arc` fence — the run's one-line arc delta, ready for
+    `write_session_arc`. Three-valued; see `_extract_fenced_block`."""
+    return _extract_fenced_block(text, JOURNAL_ARC_MARKER)
 
 
 # Per-encoder continuity window: how many of an encoder's most recent

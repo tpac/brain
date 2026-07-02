@@ -211,8 +211,13 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             # New residue (Piece 4): the `## Review` note contract, SESSION-BOUND.
             # write_journal_notes extracts the fence + writes one journal_note
             # trace per note, all sharing enc_chain (this run); session_id walls
-            # continuity to this conversation. Replaces the legacy blob; the arc
-            # (_save_session_context) is a SEPARATE object and stays untouched.
+            # continuity to this conversation. Replaces the legacy blob. The arc
+            # is a SEPARATE object with its own journal component: the encoder
+            # emits a `## Arc` fenced one-liner (render_journal_arc_block) and
+            # write_session_arc accumulates it into session_context_{sid} —
+            # replacing the legacy SESSION_CONTEXT:-line parse, which v26's
+            # prompt no longer emits (the A/B arc-regression fix). Both write
+            # doors are failure-isolated internally.
             #
             # INTENTIONAL flag-on side effect: not writing the blob leaves the
             # Frame's `## Recent moves` (which reads the legacy encoding_journal
@@ -227,9 +232,12 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
                 brain._log_error('s1e_journal_notes_write', e,
                                  'residue note write failed — run otherwise intact')
             journal_entry = ''
+            brain.write_session_arc(
+                final_text=final_text, session_id=session_id,
+                limit=ENCODING_AGENT.get('session_context_limit', 800))
         else:
             journal_entry = _save_journal(brain, dispatch_fn, session_id, counter, final_text) or ''
-        _save_session_context(brain, dispatch_fn, session_id, final_text)
+            _save_session_context(brain, dispatch_fn, session_id, final_text)
 
         # 8. Delta trace — unified shape across S1E + S2 encoders.
         # Outcomes: count write actions by tool (remember / revise / connect / …).
@@ -362,22 +370,29 @@ def _build_system_prompt(prompt_instructions=None, lived=None):
     except Exception as e:
         print('[s1e] WARNING: could not load field summary: %s' % e, flush=True)
 
-    # Residue contract (Piece 4, flag-gated): the WRITE-side instructions — tell
-    # the encoder to emit a `## Review` fence, then the closure (terminal-turn +
-    # DONE) as the LAST block. Two SEPARATE injects (the closure must not be
-    # entangled with the review block), placed at the end by design: writing the
-    # review is the encoder's final act, so its instruction sits where the action
-    # lands (recency). Contract-owned text (single source across all encoders) —
-    # never hardcoded in the s1e template, so it can't drift. Flag-off keeps the
-    # legacy blob path, so this stays absent from the control arm.
+    # Residue contract (Piece 4, flag-gated): the WRITE-side instructions —
+    # closing acts in §7.2 order (Encode → Arc → Review), then the closure
+    # (terminal-turn + DONE) as the LAST block. THREE SEPARATE injects (the
+    # closure must not be entangled with either block), placed at the end by
+    # design: these are the encoder's final acts, so their instructions sit
+    # where the action lands (recency). The arc block is the journal
+    # mechanism's per-encoder opt-in second component — S1E opts in because it
+    # owns the session arc (`session_context_{sid}` → Frame 'Current focus');
+    # its absence was the v26 A/B gate-blocker (arc went dark on the lived
+    # arm). Contract-owned text (single source across all encoders) — never
+    # hardcoded in the s1e template, so it can't drift. Flag-off keeps the
+    # legacy SESSION_CONTEXT:-line path, so this stays absent from the
+    # control arm.
     if lived:
         try:
-            from servers.trace_contract import (render_journal_review_block,
+            from servers.trace_contract import (render_journal_arc_block,
+                                                 render_journal_review_block,
                                                  render_prompt_closure)
+            prompt = prompt.rstrip() + "\n\n" + render_journal_arc_block()
             prompt = prompt.rstrip() + "\n\n" + render_journal_review_block()
             prompt = prompt.rstrip() + "\n\n" + render_prompt_closure()
         except Exception as e:
-            print('[s1e] WARNING: could not inject review block/closure: %s' % e, flush=True)
+            print('[s1e] WARNING: could not inject arc/review block/closure: %s' % e, flush=True)
     return prompt
 
 
@@ -1137,6 +1152,11 @@ def _save_journal(brain, dispatch_fn, session_id, counter, final_text):
 
 def _save_session_context(brain, dispatch_fn, session_id, final_text):
     """Extract SESSION_CONTEXT from encoder output, append to per-session journey.
+
+    CONTROL-ARM ONLY (flag off): the lived arm's prompt emits a `## Arc` fence
+    instead of a SESSION_CONTEXT: line, written via brain.write_session_arc —
+    the journal mechanism's arc component. This legacy parse retires with the
+    flag at v26 activation.
 
     2026-05-02 (Frame Phase 2.5): writes per-session key
     `session_context_{session_id}` instead of the global `session_context`.
