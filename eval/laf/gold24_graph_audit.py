@@ -19,7 +19,7 @@ from tests.isolated_brain import IsolatedBrain                       # noqa: E40
 from servers import embedder                                          # noqa: E402
 from operators import (                                               # noqa: E402
     MAXSIM_GROUPS, query_vec, build_field_matrices, maxsim_field,
-    build_adjacency, graph_spread, build_edge_conductance, relational_reinstatement,
+    build_adjacency, graph_spread, build_edge_conductance, relational_reinstatement, edge_cos,
 )
 from gold24_diagnostic import load_cues                              # noqa: E402
 from gold24_field_audit import need_hit, ranks                       # noqa: E402
@@ -70,13 +70,13 @@ def main():
             seed_sparse[top] = np.clip(ms[top], 0.0, None)
 
             old = graph_spread((ms > np.nanpercentile(ms[np.isfinite(ms)], 90)).astype(np.float64), adj, hops=1)
-            r_cont = relational_reinstatement(qv, seed_cont, edges, N, hops=1)
-            r_sp1 = relational_reinstatement(qv, seed_sparse, edges, N, hops=1)
-            r_sp2 = relational_reinstatement(qv, seed_sparse, edges, N, hops=2)
+            r_cont = relational_reinstatement(qv, seed_cont, edges, N, hops=1, cutoff=c["cutoff"])
+            r_sp1 = relational_reinstatement(qv, seed_sparse, edges, N, hops=1, cutoff=c["cutoff"])
+            r_sp2 = relational_reinstatement(qv, seed_sparse, edges, N, hops=2, cutoff=c["cutoff"])
             combo = z(ms, elig) + 0.5 * z(r_sp1, elig)
 
             # conductance distribution this cue (is edge-why itself flat?)
-            cond = np.clip(edges[2] @ qv, 0.0, None) if edges[2].shape[0] else np.zeros(1)
+            cond = edge_cos(edges, qv, cutoff=c["cutoff"]) if edges.emat.shape[0] else np.zeros(1)
             cond_stats.append((float(cond.mean()), float(cond.std()), float(np.mean(cond > 0.6))))
 
             nc += 1

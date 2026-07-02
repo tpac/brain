@@ -5,7 +5,7 @@ The LAF episodic layer seeds from SIMILAR PAST SURFACE-MOMENTS, not from the cue
 cosine the other operators use. `recall_episodes(query=cue, older_than=cutoff, scale='s0')`
 returns past conversation traces ranked by cosine `_score` = how similar that past moment is
 to the current cue. Around each similar past moment the brain's nodes played one of three
-roles (joined structurally by stop via `trace_links.episode_node_roles`), each weighted by
+roles (joined structurally by stop via `trace_links.nodes_for_traces`), each weighted by
 that moment's `_score`:
 
   • ENCODED — nodes CREATED/REVISED in/after the moment  → +activation (what the brain learned)
@@ -48,9 +48,9 @@ Two decisions are deliberately NOT hardcoded — they are parameters with a clea
        • ('window', N) — a ±N-turn window around the matched stop is ONE moment; roles are
          unioned across stops [stop−N, stop+N] and carry the matched trace's score. This is
          the seam for "a moment is a small conversational neighbourhood, not a single turn."
-       The window is applied in `_episode_targets` by expanding each matched trace into the
-       target stops fed to `episode_node_roles`. Tom will define the real algorithm; this
-       file makes both swappable and reports the 'turn' default.
+       The window is applied in `episodic_roles` by expanding each moment into its
+       window stops for the join, then UNIONING the roles back into one per-moment
+       record. Tom will define the real algorithm; this file makes both swappable.
 
   2. SIMILARITY METRIC (`score_fn`) — how a moment's weight is computed.
        • DEFAULT — `recall_episodes`'s own cosine `_score` (cue ↔ s0-trace-embedding).
@@ -73,7 +73,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from servers.scales.s1.trace_links import (  # noqa: E402
-    gather_roles, episode_node_roles,
+    gather, nodes_for_traces, _stop_of,
 )
 
 # Default count of similar past moments to seed from (top-K by similarity).
@@ -95,121 +95,90 @@ def _expand_window(stop, window):
     """The MOMENT-WINDOW seam: the set of stops that make up ONE moment.
 
     window='turn'        → {stop}                       (one trace = one moment)
-    window=('window', N) → {stop-N, ..., stop, ..., stop+N}   (a ±N-turn neighbourhood)
+    window=('window', N) → {stop-N, ..., stop, ..., stop+N}, clamped to stops ≥ 0
+                           (a negative stop would synthesize 's0-{short}--1', whose
+                           tail rsplit-parses as POSITIVE 1 — the aliasing bug).
     """
     if window == "turn" or window is None:
         return {stop}
     if isinstance(window, (tuple, list)) and len(window) == 2 and window[0] == "window":
         n = int(window[1])
-        return set(range(stop - n, stop + n + 1))
+        return {s for s in range(stop - n, stop + n + 1) if s >= 0}
     raise ValueError("unknown moment window spec: %r (use 'turn' or ('window', N))" % (window,))
 
 
-def _stop_of_chain(chain_id):
-    """Local stop parser mirroring trace_links._stop_of (chain tail int, else None)."""
-    if not chain_id:
-        return None
-    tail = str(chain_id).rsplit("-", 1)[-1]
-    return int(tail) if tail.isdigit() else None
-
-
-def _episode_targets(episodes, window):
-    """Expand matched s0 episodes into the target 'turn' records episode_node_roles joins.
-
-    With window='turn' each episode is its own target (1:1). With a ±N window each episode
-    fans out into 2N+1 synthetic targets sharing the episode's score — so the roles at the
-    surrounding stops are folded into that ONE moment. Returns:
-        (targets, score_of_target_id)  where targets are {id, chain_id} records and
-        score_of_target_id maps each synthetic target id → its parent episode score.
-    The chain_id we synthesize reuses the episode's session_short so the stop join is exact.
-    """
-    targets = []
-    score_of = {}
-    for e in episodes:
-        chain = e.get("chain_id") or ""
-        stop = _stop_of_chain(chain)
-        if stop is None:
-            continue
-        # session_short is the middle segment of an s0 chain: s0-{short}-{stop}
-        parts = chain.split("-")
-        short = parts[1] if len(parts) >= 3 else ""
-        score = float(e.get("_score") or 0.0)
-        for s in _expand_window(stop, window):
-            tid = "%s@%d" % (e.get("id") or chain, s)
-            targets.append({"id": tid, "chain_id": "s0-%s-%d" % (short, s)})
-            # a stop reachable from multiple episodes' windows keeps the MAX score
-            score_of[tid] = max(score_of.get(tid, 0.0), score)
-    return targets, score_of
-
-
 # ─────────────────────────── the shared seed → roles pull ───────────────────────────
+# The session trace-pull bound. Episodic targets are OLD stops and gather keeps the
+# most-recent rows, so this must comfortably exceed the largest per-session stream
+# (~315 rows today) or old moments silently read empty roles.
+SESSION_TRACE_PULL = 2000
+
+
 def episodic_roles(brain, cue, cutoff, *, top=DEFAULT_TOP_MOMENTS,
                    window="turn", score_fn=default_score):
-    """Seed from similar past moments and return their per-target three-way roles.
+    """Seed from similar past moments and return ONE role record per MOMENT.
 
     The shared substrate the three operators sit on:
       1. recall_episodes(query=cue, older_than=cutoff, scale='s0', limit=top) — the
          similar PAST surface-moments, each carrying a similarity `_score`.
-      2. group episodes by session, pull each session's (recall/surface/encode) trace
-         streams via gather_roles, and join by stop via episode_node_roles.
-      3. apply the moment-window expansion (the seam) so a target = a moment.
+         An s0 turn arrives as TWO trace rows (user_message + assistant_message);
+         a moment is the TURN, so episodes are deduped to (session, stop) keeping
+         the max similarity — no double-counted evidence, no halved moment budget.
+      2. per session, gather the surface/encode/recall streams ONCE and join by
+         stop via nodes_for_traces (surfaced=picked, dropped derived).
+      3. UNION the roles across the moment's window stops into one record — the
+         documented per-moment semantics: a node picked anywhere in the moment is
+         picked (never also dropped); prevalence counts each moment once, not
+         once per stop.
 
-    Returns a list of per-moment role records:
-        [{'score': float, 'encoded': [full_ids], 'picked': [short_ids],
-          'dropped': [short_ids]}, ...]
-    Empty list when recall_episodes returns nothing (caller should retry/reword,
-    NOT treat empty as truth — see the audit harness).
+    Returns [{'score': float, 'encoded': [ids], 'picked': [ids], 'dropped': [ids]}]
+    — one record per moment. Empty list when recall_episodes returns nothing
+    (caller should retry/reword, NOT treat empty as truth — see the audit harness).
     """
     ep = brain.recall_episodes(query=cue, older_than=cutoff, scale="s0", limit=top)
     episodes = ep.get("episodes", []) if isinstance(ep, dict) else []
     if not episodes:
         return []
 
-    # window-expanded targets + their parent-moment scores
-    targets, score_of = _episode_targets(episodes, window)
-    # the score_fn seam: recompute each EPISODE's weight, then propagate to its targets
-    # (default_score just reads _score, so the default path is unchanged).
-    if score_fn is not default_score:
-        ep_score = {(e.get("id") or e.get("chain_id")): float(score_fn(e, cue, brain) or 0.0)
-                    for e in episodes}
-        # re-derive target scores under the custom metric (max over contributing episodes)
-        score_of = {}
-        for e in episodes:
-            chain = e.get("chain_id") or ""
-            stop = _stop_of_chain(chain)
-            if stop is None:
-                continue
-            parts = chain.split("-")
-            short = parts[1] if len(parts) >= 3 else ""
-            s = ep_score.get(e.get("id") or chain, 0.0)
-            for st in _expand_window(stop, window):
-                tid = "%s@%d" % (e.get("id") or chain, st)
-                score_of[tid] = max(score_of.get(tid, 0.0), s)
-
-    # group targets by session so we pull each session's trace streams once
-    by_sess = defaultdict(list)
-    sess_of_episode = {}
+    # ONE moment = one (session, stop). Dedup episode rows (turn halves, repeat
+    # matches) keeping max score — score_fn is THE similarity seam, applied here.
+    moments = {}                     # (session_id, short, stop) -> score
     for e in episodes:
-        sess_of_episode[e.get("id") or e.get("chain_id")] = e.get("session_id")
-    # map each target back to its episode's session via the id prefix
-    targets_by_sess = defaultdict(list)
-    for t in targets:
-        ep_id = t["id"].rsplit("@", 1)[0]
-        sess = sess_of_episode.get(ep_id)
-        if sess:
-            targets_by_sess[sess].append(t)
+        chain = e.get("chain_id") or ""
+        stop = _stop_of(chain)
+        parts = chain.split("-")     # s0-{short}-{stop}; short is 8-hex, never hyphenated
+        short = parts[1] if len(parts) >= 3 else ""
+        sess = e.get("session_id")
+        if stop is None or not sess:
+            continue
+        s = float(score_fn(e, cue, brain) or 0.0)
+        key = (sess, short, stop)
+        moments[key] = max(moments.get(key, 0.0), s)
+
+    by_sess = defaultdict(list)
+    for (sess, short, stop), s in moments.items():
+        by_sess[sess].append((short, stop, s))
 
     records = []
-    for sess, sess_targets in targets_by_sess.items():
-        recall_tr, surf_tr, enc_tr = gather_roles(brain, sess)
-        roles = episode_node_roles(recall_tr, surf_tr, enc_tr, sess_targets)
-        for tid, role in roles.items():
-            records.append({
-                "score": score_of.get(tid, 0.0),
-                "encoded": role.get("encoded", []),
-                "picked": role.get("picked", []),
-                "dropped": role.get("dropped", []),
-            })
+    for sess, moms in by_sess.items():
+        st = gather(brain, sess, streams=("surface", "encode", "recall"),
+                    limit=SESSION_TRACE_PULL)
+        # one target per (moment, window-stop); union back per moment below
+        targets = [{"id": "%d@%d" % (mi, ws), "chain_id": "s0-%s-%d" % (short, ws)}
+                   for mi, (short, stop, _s) in enumerate(moms)
+                   for ws in _expand_window(stop, window)]
+        links = nodes_for_traces(st["surface"], st["encode"], targets,
+                                 recall_traces=st["recall"])
+        for mi, (short, stop, s) in enumerate(moms):
+            encoded, picked, dropped = set(), set(), set()
+            for ws in _expand_window(stop, window):
+                link = links.get("%d@%d" % (mi, ws)) or {}
+                encoded.update(link.get("encoded", []))
+                picked.update(link.get("surfaced", []))   # the join's `surfaced` IS picked
+                dropped.update(link.get("dropped", []))
+            dropped -= picked        # picked-wins WITHIN the whole moment (union semantics)
+            records.append({"score": s, "encoded": sorted(encoded),
+                            "picked": sorted(picked), "dropped": sorted(dropped)})
     return records
 
 
@@ -220,7 +189,7 @@ def _short_to_full(idx):
     picked/dropped roles are recorded as 8-char short ids (what surface traces store);
     encoded roles are full ids. The master `idx` is full-id keyed, so short ids must be
     resolved. A short id that collides (two full ids share a prefix) is dropped from the
-    map (ambiguous → skip, never mis-attribute) and logged via the returned collision count.
+    map (ambiguous → skip, never mis-attribute); the collision count is returned for callers that want it (current callers ignore it — collisions are ~0 since node ids are natively 8-char).
     """
     by_short = defaultdict(list)
     for full in idx:

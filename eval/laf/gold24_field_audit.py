@@ -28,23 +28,16 @@ from tests.isolated_brain import IsolatedBrain                       # noqa: E40
 from servers import embedder                                          # noqa: E402
 from operators import (                                               # noqa: E402
     MAXSIM_GROUPS, query_vec, build_field_matrices, maxsim_field, primary_field,
-    build_adjacency, graph_spread, parse_days, temporal_distinctiveness,
+    build_adjacency, graph_spread, parse_days, temporal_distinctiveness, created_at_array,
 )
+from laf_metrics import need_hit_at                                   # noqa: E402
 from gold24_diagnostic import load_cues                              # noqa: E402
 from gold24_matrix import episodic_field                            # noqa: E402
 
 
 def need_hit(rank_of_node, cue, k):
-    """need-collapsed hit@k for one cue given {node_id: rank}."""
-    needs = defaultdict(list)
-    for nid in cue["ess"]:
-        nd = next((n for n, ids in cue["needs"].items() if nid in ids), nid)
-        needs[nd].append(nid)
-    if not needs:
-        return None
-    met = sum(1 for nids in needs.values()
-              if any((rank_of_node.get(n) or 1e9) <= k for n in nids))
-    return met / len(needs)
+    """Need-collapsed hit@k — THE shared definition (laf_metrics.need_hit_at)."""
+    return need_hit_at(rank_of_node, cue["needs"], k)
 
 
 def ranks(scores, eligible, master):
@@ -61,8 +54,7 @@ def main():
         model = embedder.stats.get("model_name") or ""
         master, idx, mats = build_field_matrices(brain, model, list(MAXSIM_GROUPS))
         adj = build_adjacency(brain, idx)
-        ca = np.array([dict(brain.conn.execute("SELECT id, created_at FROM nodes").fetchall()).get(n, "")
-                       for n in master])
+        ca = created_at_array(brain, master)
         days = parse_days(list(ca))
         N = len(master)
 

@@ -27,7 +27,7 @@ from tests.isolated_brain import IsolatedBrain                       # noqa: E40
 from servers import embedder                                          # noqa: E402
 from operators import (                                               # noqa: E402
     MAXSIM_GROUPS, query_vec, build_field_matrices, maxsim_field,
-    build_edge_conductance, relational_reinstatement,
+    build_edge_conductance, relational_reinstatement, created_at_array,
 )
 from episodic_ops import (                                            # noqa: E402
     episodic_roles, episodic_encoded, episodic_picked, episodic_dropped,
@@ -73,8 +73,7 @@ def main():
         model = embedder.stats.get("model_name") or ""
         master, idx, mats = build_field_matrices(brain, model, list(MAXSIM_GROUPS))
         N = len(master)
-        ca = np.array([dict(brain.conn.execute("SELECT id, created_at FROM nodes").fetchall()).get(nm, "")
-                       for nm in master])
+        ca = created_at_array(brain, master)
         edges = build_edge_conductance(brain, idx)
 
         # per-cue operator vectors (z-scored), computed once
@@ -89,7 +88,7 @@ def main():
             seed = np.zeros(N)
             top = np.argsort(-np.where(elig & np.isfinite(ms), ms, -np.inf))[:25]
             seed[top] = np.clip(ms[top], 0.0, None)
-            rel = relational_reinstatement(qv, seed, edges, N, hops=2)
+            rel = relational_reinstatement(qv, seed, edges, N, hops=2, cutoff=c["cutoff"])
             recs = episodic_roles(brain, c["query"], c["cutoff"], window=EPI_WINDOW)
             if not recs:
                 n_epi_empty += 1

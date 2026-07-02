@@ -105,8 +105,8 @@ def main():
             for sess, eps in by_sess.items():
                 if not sess:
                     continue
-                surf, enc = gather(brain, sess)
-                links = nodes_for_traces(surf, enc, eps)
+                st = gather(brain, sess, streams=("surface", "encode"))
+                links = nodes_for_traces(st["surface"], st["encode"], eps)
                 for tid, link in links.items():
                     for n in (link.get("surfaced", []) + link.get("encoded", [])):
                         cand[n] = cand.get(n, 0) + 1

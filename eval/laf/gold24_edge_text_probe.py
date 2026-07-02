@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "oracle_audit")
 from tests.isolated_brain import IsolatedBrain                       # noqa: E402
 from servers import embedder                                          # noqa: E402
 from operators import (                                               # noqa: E402
-    MAXSIM_GROUPS, query_vec, build_field_matrices, maxsim_field, unit, relational_reinstatement,
+    MAXSIM_GROUPS, query_vec, build_field_matrices, maxsim_field, unit, relational_reinstatement, EdgeIndex,
 )
 from gold24_diagnostic import load_cues                              # noqa: E402
 from gold24_field_audit import need_hit, ranks                       # noqa: E402
@@ -81,7 +81,7 @@ def main():
               ("edge-text variant", "cond mean", "cond>0.6", "hit@5", "hit@25"))
         for name, texts in VARIANTS.items():
             emat = emat_for(texts)
-            edges = (src, dst, emat, rel)
+            edges = EdgeIndex(src, dst, emat, rel, np.array([""] * len(rel), dtype=object))
             h5 = h25 = nc = 0
             cmean = []; chi = []
             for c in cues:

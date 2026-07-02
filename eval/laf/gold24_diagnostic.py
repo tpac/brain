@@ -140,9 +140,10 @@ def cue_scores(c, ranked):
     pos = {nid: i + 1 for i, nid in enumerate(ranked)}
     rk = {n: pos.get(n) for n in c["ess"]}
     rk_gp = {n: pos.get(n) for n in c["gplus"]}
-    need_hits = sum(1 for nids in c["needs"].values() if any((pos.get(n) or 1e9) <= 5 for n in nids))
+    from laf_metrics import need_hit_at
+    need_r5 = need_hit_at(pos, c["needs"], 5)   # None for empty-needs cue (excluded from averages)
     return {"hit5": hit_at(rk, 5), "hit25": hit_at(rk, 25), "hit5_gp": hit_at(rk_gp, 5),
-            "need_r5": need_hits / (len(c["needs"]) or 1), "ndcg5": ndcg5(ranked, c["tier_of"]),
+            "need_r5": need_r5, "ndcg5": ndcg5(ranked, c["tier_of"]),
             "source": c["source"]}
 
 
@@ -154,7 +155,7 @@ def run_ablation(eng, cues, master, ca, brain):
         pre[c["id"]] = (query_vec(c["query"]), (ca != "") & (ca <= c["cutoff"]))
 
     def agg(rows, k):
-        v = [r[k] for r in rows]
+        v = [r[k] for r in rows if r[k] is not None]   # None = unmeasurable (empty-needs cue)
         return sum(v) / len(v) if v else 0.0
 
     # ---- reference baselines ----

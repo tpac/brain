@@ -54,8 +54,8 @@ def episodic_field(brain, query, cutoff, idx, n):
     for sess, eps in by_sess.items():
         if not sess:
             continue
-        surf, enc = gather(brain, sess)
-        links = nodes_for_traces(surf, enc, eps)
+        st = gather(brain, sess, streams=("surface", "encode"))
+        links = nodes_for_traces(st["surface"], st["encode"], eps)
         score_by_tid = {e["id"]: float(e.get("_score") or 0.0) for e in eps}
         for tid, link in links.items():
             s = score_by_tid.get(tid, 0.0)

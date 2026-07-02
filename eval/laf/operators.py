@@ -13,6 +13,8 @@ wins, never the average). This is the realizable form of the §18.12 best-field 
 Next operators (separate build, after reading their substrate APIs): typed-graph-spread,
 temporal-distinctiveness ÷norm.
 """
+from collections import namedtuple
+
 import numpy as np
 
 from servers import embedder
@@ -186,42 +188,75 @@ def temporal_distinctiveness(days, eligible_mask, window_days=7.0):
 # flows from cosine-reachable seeds along the edges whose description matches the cue — the realizable
 # form of what the judges did (follow a typed edge whose `why` IS the need, from a node they found).
 
-def build_edge_conductance(brain, idx):
-    """Per-edge substrate for relational_reinstatement: (src, dst, edge_unit_matrix, relations)
-    over noise-excluded edges that HAVE a description embedding. Built once, reused per cue.
+EdgeIndex = namedtuple("EdgeIndex", "src dst emat rels created")
 
-    edge_unit_matrix[e] is the unit vector of edge e's description (compose_edge_text(relation,
-    description)); conductance = edge_unit_matrix @ qv at recall time. Edges whose endpoints lack a
-    node embedding (not in idx), self-loops, or with no description vector are dropped."""
+
+def build_edge_conductance(brain, idx):
+    """Per-edge substrate for the graph operators — an EdgeIndex namedtuple
+    (src, dst, emat, rels, created) over noise-excluded edges that HAVE a description
+    embedding. Built once, reused per cue. NAMED shape, not a bare tuple (arity drifts
+    silently; a named field extends without breaking consumers).
+
+    emat[e] is the unit vector of edge e's description (compose_edge_text(relation,
+    description)); conductance = emat @ qv at recall time. created[e] is the relation's
+    ISO created_at — REQUIRED for eval integrity: an edge written after a cue's cutoff
+    did not exist at that moment and must not conduct (the future-leak fix; 1/11 beam
+    rescues rode a hindsight edge before this mask existed). Edges whose endpoints lack
+    a node embedding (not in idx), self-loops, or with no description vector are dropped."""
     na = brain.aspects.by_name("noise")
     noise = list(na.edge_relations) if na else []
     ph = ",".join("?" * len(noise)) if noise else "''"
     rows = brain.conn.execute(
-        "SELECT e.source_id, e.target_id, er.relation, er.embedding "
+        "SELECT e.source_id, e.target_id, er.relation, er.embedding, er.created_at "
         "FROM edge_relations er JOIN edges e ON e.edge_id = er.edge_id "
         "WHERE (er.archived IS NULL OR er.archived = 0) "
         "  AND er.relation NOT IN (%s) AND er.embedding IS NOT NULL" % ph, noise).fetchall()
-    src, dst, vecs, rels = [], [], [], []
-    for s, t, rel, emb in rows:
+    src, dst, vecs, rels, created = [], [], [], [], []
+    for s, t, rel, emb, ca in rows:
         if s in idx and t in idx and s != t:
             uv = unit(emb)
             if uv is not None:
-                src.append(idx[s]); dst.append(idx[t]); vecs.append(uv); rels.append(rel)
+                src.append(idx[s]); dst.append(idx[t]); vecs.append(uv)
+                rels.append(rel); created.append(ca or "")
     src = np.asarray(src, dtype=np.int64)
     dst = np.asarray(dst, dtype=np.int64)
     emat = np.asarray(vecs, dtype=np.float32) if vecs else np.zeros((0, len(next(iter(idx), "")) or 768))
-    return src, dst, emat, rels
+    return EdgeIndex(src, dst, emat, rels, np.asarray(created, dtype=object))
 
 
-def relational_reinstatement(qv, seed, edges, n, hops=1):
+def edge_cos(edges, qv, cutoff=None):
+    """[E] cue↔edge-why conductance: clipped cos(qv, edge description vector).
+
+    THE one definition all graph probes/operators share (was copy-pasted np.clip in
+    five files). `cutoff` (ISO string) zeroes edges created after it — a zeroed edge
+    can never conduct (every follow-threshold is > 0), so post-cutoff hindsight edges
+    are dead for that cue. Empty created_at (pre-provenance edges) is treated as OLD
+    (conducts): those are early-build edges, not future leaks."""
+    if edges.emat.shape[0] == 0:
+        return np.zeros(0)
+    c = np.clip(edges.emat @ qv, 0.0, None)
+    if cutoff:
+        c = np.where((edges.created == "") | (edges.created <= cutoff), c, 0.0)
+    return c
+
+
+def created_at_array(brain, master):
+    """[N] ISO created_at strings aligned to the master index — ONE query (was a
+    full-table scan per master id inside a list comprehension in five probe files)."""
+    created = dict(brain.conn.execute("SELECT id, created_at FROM nodes").fetchall())
+    return np.array([created.get(nm, "") for nm in master])
+
+
+def relational_reinstatement(qv, seed, edges, n, hops=1, cutoff=None):
     """[N] activation spread from `seed` (a per-node cosine field) along edges, each edge weighted
     by its cue-MEANING conductance cos(qv, edge.why) — NOT the stored weight. ÷norm by conductance-
-    degree so a node fed by many weakly-matching edges can't dominate. Undirected v1."""
-    src, dst, emat, _ = edges
+    degree so a node fed by many weakly-matching edges can't dominate. Undirected v1.
+    `cutoff` masks post-cutoff edges (eval integrity — see edge_cos)."""
     out = np.zeros(n, dtype=np.float64)
-    if src.size == 0 or emat.shape[0] == 0:
+    if edges.src.size == 0 or edges.emat.shape[0] == 0:
         return out
-    cond = np.clip(emat @ qv, 0.0, None)                 # [E] cue↔edge-why match, no negatives
+    src, dst = edges.src, edges.dst
+    cond = edge_cos(edges, qv, cutoff)                   # [E] cue↔edge-why match, no negatives
     condeg = np.zeros(n, dtype=np.float64)
     np.add.at(condeg, dst, cond)
     np.add.at(condeg, src, cond)
