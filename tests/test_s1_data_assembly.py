@@ -302,6 +302,30 @@ class TestBuildNodeCatalog:
         assert self.NODE_A in ids
         assert self.NODE_C not in ids               # community filtered out
 
+    def test_noise_relations_filtered_on_lived_arm_only(self):
+        """Lived arm (extra_ids not None): noise-aspect relations (community_member,
+        co_accessed, ...) drop from rendered connections; semantic relations
+        survive. Control arm (extra_ids=None): unfiltered — byte-behavior of the
+        long-standing path preserved."""
+        from servers.scales.s1.encode_contract import build_node_catalog
+        from servers.dal_graph import GraphDAL
+        # sanity: the aspect registry classifies community_member as noise
+        noise = set(self.brain.aspects.relations_in(['noise']))
+        assert 'community_member' in noise
+        gdal = GraphDAL(self.conn)
+        gdal.add_relation(self.NODE_A, self.NODE_B, 'community_member',
+                          description='structural placement edge')
+        gdal.add_relation(self.NODE_A, self.NODE_B, 'extends',
+                          description='rule extends the lesson semantically')
+        judge = '[rule] "Test catalog rule" (id:%s)' % self.NODE_A
+
+        lived_text, _ = build_node_catalog([judge], self.brain, extra_ids={})
+        assert 'community_member' not in lived_text     # noise dropped
+        assert 'extends' in lived_text                   # semantic survives
+
+        control_text, _ = build_node_catalog([judge], self.brain)
+        assert 'community_member' in control_text        # control unfiltered
+
 
 class TestSaveJournal:
     """Tests for _save_journal(brain, dispatch_fn, session_id, counter, final_text)."""

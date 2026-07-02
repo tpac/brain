@@ -119,6 +119,31 @@ class TestHappyPath(BrainTestBase):
             self.assertIn(name, outputs)
             self.assertEqual(outputs[name]['_errors'], [])
 
+    def test_exclude_scouts_skips_runner_and_stubs_disabled(self):
+        """exclude_scouts=('quote',) — the lived arm's retirement: the quote
+        runner never executes, its slot pads with the 'disabled' stub, and the
+        other scouts run normally."""
+        ran = []
+
+        def _tracking(name, envelope):
+            def _r(brain, ctx):
+                ran.append(name)
+                return envelope
+            return _r
+
+        fake = {n: _tracking(n, _ok_envelope(n)) for n in sc.SCOUT_NAMES}
+        with patch.object(m, 'SCOUT_RUNNERS', fake):
+            _, outputs, metrics = m.run_muster(
+                _basic_ctx(self.brain), exclude_scouts=('quote',))
+        self.assertNotIn('quote', ran)                    # never executed
+        self.assertIn('temporal', ran)
+        self.assertIn('facts', ran)
+        self.assertIn('quote', outputs)                   # slot still shape-safe
+        errs = outputs['quote']['_errors']
+        self.assertTrue(any('disabled' in e.get('msg', '') for e in errs),
+                        'excluded scout must carry the disabled stub: %r' % errs)
+        self.assertEqual(outputs['quote']['candidates'], [])
+
     def test_metrics_capture_counts_and_latency(self):
         fake = _make_fake_runners({
             'quote': _ok_envelope('quote', n_candidates=3),

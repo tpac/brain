@@ -83,15 +83,17 @@ def test_surfaced_joins_by_stop():
 
 # ── encoded: per-run, the owning run closes the turn-range at/after the turn ──
 
-def test_encoded_owning_run_is_first_run_at_or_after_turn():
-    # runs at stop 5 and 10. turn 3 and 5 belong to run@5; turn 7 to run@10.
+def test_encoded_owning_run_is_first_run_strictly_after_turn():
+    # STRICT convention: turn chains stamp PRE-increment, run chains POST- —
+    # a run at stop S saw exactly the turns with chain-stop < S, never == S.
+    # runs at stop 5 and 10: turn 3 → run@5; turns 5 and 7 → run@10.
     links = nodes_for_traces(
         surface_traces=[],
         encode_traces=[_encode(5, ['c5'], ['r5'], tid='run5'),
                        _encode(10, ['c10'], [], tid='run10')],
         target_traces=[_turn(3), _turn(5), _turn(7)])
     assert links['u3']['encoded_by'] == 'run5'
-    assert links['u5']['encoded_by'] == 'run5'
+    assert links['u5']['encoded_by'] == 'run10'   # run@5 did NOT see chain-stop 5
     assert links['u7']['encoded_by'] == 'run10'
     # the run's COMPLETE node-set (created + revised), deduped & order-preserved
     assert links['u3']['encoded'] == ['c5', 'r5']
@@ -111,7 +113,7 @@ def test_unencoded_tail_has_no_owning_run():
 def test_created_and_revised_merged_and_deduped():
     links = nodes_for_traces(
         surface_traces=[],
-        encode_traces=[_encode(5, ['x', 'y'], ['y', 'z'])],  # y in both
+        encode_traces=[_encode(6, ['x', 'y'], ['y', 'z'])],  # y in both
         target_traces=[_turn(5)])
     assert links['u5']['encoded'] == ['x', 'y', 'z']
 
@@ -119,12 +121,12 @@ def test_created_and_revised_merged_and_deduped():
 def test_full_link_shape_surfaced_and_encoded_together():
     links = nodes_for_traces(
         surface_traces=[_surface(5, ['surfA', 'surfB'])],
-        encode_traces=[_encode(5, ['encC'], ['encD'], tid='run5')],
+        encode_traces=[_encode(6, ['encC'], ['encD'], tid='run6')],
         target_traces=[_turn(5)])
     assert links['u5'] == {
         'surfaced': ['surfA', 'surfB'],
         'encoded': ['encC', 'encD'],
-        'encoded_by': 'run5',
+        'encoded_by': 'run6',
         'authored': [], 'recalled': [], 'endo': [],  # no touched stream here
         'dropped': [],                               # no recall stream here
     }
@@ -172,7 +174,7 @@ class _StubBrain:
         if kw.get('ref_type') == 'surface_selected':
             return {'events': [_surface(5, ['s'])]}
         if kw.get('ref_type') == 'encoding_run':
-            return {'events': [_encode(5, ['e'], [])]}
+            return {'events': [_encode(6, ['e'], [])]}   # 6 > 5: owns turn@5 (strict)
         if kw.get('ref_type') == 'anchor_touched':
             return {'events': [_touched(5, created=['w'], recalled=['r'])]}
         return {'events': []}
@@ -424,7 +426,8 @@ class _ProvBrain:
         return {'events': []}
 
 
-# Four turns (stops 5–8). A prior run@7 covers turns 5,6,7; turn 8 is the
+# Four turns (stops 5–8). A prior run@7 covers stops 5,6 (STRICT: a run's
+# post-increment stop is > every chain-stop it saw); stops 7,8 are the
 # unencoded tail. Surface fired (only) on turn 5.
 _EPS = [
     _msg('user_message', 'u5', 5, 'turn five user', '2026-06-29T00:00:01'),
@@ -441,39 +444,72 @@ _ENC = [_encode(7, ['nodeCCCC3333'], [], tid='run7')]
 _FOUR_MSGS = [{'role': 'user'} for _ in range(4)]  # window = 4 user turns
 
 
-def test_provenance_renders_surfaced_and_encoded_at_frontier():
+def test_turns_carry_encoded_attr_and_frontier_ids():
+    # Coverage lives on the turn (encoded="true|false"); provenance carries only
+    # REAL refs — the ✓ marker is gone (Tom's 3.3). The frontier turn still shows
+    # the owning run's full id-list, once.
     brain = _ProvBrain(_EPS, _SURF, _ENC)
     out = _render_lived_sequence_timeline(brain, 'sess', _FOUR_MSGS)
-    t5, t6, t7, t8 = (out.split('<turn n="%d">' % n)[1].split('</turn>')[0]
-                      for n in range(1, 5))
-    # turn 5: surfaced (8-char refs) + covered-not-frontier ✓
+    assert '<turn n="1" encoded="true">' in out       # covered turns say so
+    assert '<turn n="2" encoded="true">' in out       # frontier is also covered
+    assert '<turn n="3" encoded="false">' in out      # first turn PAST the run
+    assert '<turn n="4" encoded="false">' in out      # the unencoded tail
+    assert '✓' not in out                              # marker retired
+    t5, t6, t7 = (out.split('<turn n="%d"' % n)[1].split('</turn>')[0]
+                  for n in range(1, 4))
     assert 'surfaced: id:nodeAAAA id:nodeBBBB' in t5
-    assert 'encoded(S1S): ✓' in t5
-    # turn 6: covered, ✓, no surfaced (surface only fired turn 5)
-    assert 'encoded(S1S): ✓' in t6 and 'surfaced:' not in t6
-    # turn 7: frontier — the run's full encoded id-list shows here, once
-    assert 'encoded(S1S): id:nodeCCCC' in t7 and '✓' not in t7
+    assert 'encoded(S1S)' not in t5                    # covered-not-frontier: no marker
+    assert 'encoded(S1S): id:nodeCCCC' in t6           # full id-list at frontier only
+    assert 'encoded(S1S)' not in t7                    # past the run: unencoded
 
 
 def test_provenance_unencoded_tail_has_no_encoded_marker():
     brain = _ProvBrain(_EPS, _SURF, _ENC)
     out = _render_lived_sequence_timeline(brain, 'sess', _FOUR_MSGS)
-    t8 = out.split('<turn n="4">')[1].split('</turn>')[0]
+    t8 = out.split('<turn n="4"')[1].split('</turn>')[0]
     # turn 8 is past the last run → no encoded marker at all (the boundary)
     assert 'encoded(S1S)' not in t8
     # full id-list appears exactly once across the whole timeline (frontier only)
     assert out.count('id:nodeCCCC') == 1
 
 
-def test_provenance_edge_only_run_shows_check_not_empty_marker():
+def test_provenance_edge_only_run_renders_no_marker_but_attr_says_covered():
     # A run that wrote only edges (connect) has empty created+revised, so encoded
-    # is [] even though encoded_by is set. The frontier turn must render the bare
-    # ✓ marker, NEVER 'encoded(S1S): ' with nothing after it.
+    # is [] even though encoded_by is set. No provenance marker renders (nothing
+    # to dereference), but the turn attr still states coverage.
     enc = [_encode(7, [], [], tid='run7')]  # edge-only run
     out = _render_lived_sequence_timeline(_ProvBrain(_EPS, [], enc), 'sess', _FOUR_MSGS)
-    assert 'encoded(S1S): </provenance>' not in out   # no dangling empty marker
-    assert 'encoded(S1S): ✓' in out                    # covered turns show ✓
-    assert 'id:' not in out                             # nothing to dereference
+    assert 'encoded(S1S)' not in out                   # no marker at all
+    assert '✓' not in out
+    assert 'id:' not in out                            # nothing to dereference
+    assert '<turn n="2" encoded="true">' in out        # coverage on the attr
+    assert '<turn n="3" encoded="false">' in out       # strictly past the run
+    assert '<turn n="4" encoded="false">' in out
+
+
+def test_encoded_turns_trimmed_unencoded_full():
+    # Already-encoded turns render as trimmed context stubs (encoded_turn_trim +
+    # ellipsis); the unencoded tail keeps full text — the scribe's actual read.
+    from servers.scales.s1.encode_contract import ENCODING_AGENT
+    trim = ENCODING_AGENT['encoded_turn_trim']
+    long_body = 'x' * (trim + 500)
+    eps = [
+        _msg('user_message', 'u5', 5, 'covered ' + long_body, '2026-06-29T00:00:01'),
+        _msg('assistant_message', 'a5', 5, 'reply five', '2026-06-29T00:00:02'),
+        _msg('user_message', 'u6', 6, 'tail ' + long_body, '2026-06-29T00:00:03'),
+        _msg('assistant_message', 'a6', 6, 'reply six', '2026-06-29T00:00:04'),
+    ]
+    enc = [_encode(6, ['nodeCCCC3333'], [], tid='run6')]   # covers stop 5 only (6 > 5)
+    msgs = [{'role': 'user'} for _ in range(2)]
+    out = _render_lived_sequence_timeline(_ProvBrain(eps, [], enc), 'sess', msgs)
+    t5 = out.split('<turn n="1"')[1].split('</turn>')[0]
+    t6 = out.split('<turn n="2"')[1].split('</turn>')[0]
+    u5 = t5.split('<other')[1].split('</other>')[0]
+    u6 = t6.split('<other')[1].split('</other>')[0]
+    assert len(u6) > len(u5)                    # tail keeps full text
+    assert '…' in u5                            # encoded turn cut is marked
+    assert u5.count('x') <= trim                # trimmed to the contract cap
+    assert u6.count('x') == trim + 500          # unencoded: untrimmed
 
 
 def test_provenance_never_leaks_encoding_source():
@@ -482,6 +518,192 @@ def test_provenance_never_leaks_encoding_source():
     out = _render_lived_sequence_timeline(brain, 'sess', _FOUR_MSGS)
     assert 'encoding_source' not in out and 'src:' not in out
     assert 'encoder:' not in out and 'anchor' not in out
+
+
+def test_short_refs_tag_when_title_known_bare_when_not():
+    # Unit: «tag» locality (fork #2). A mapped title renders inline; an unmapped
+    # id falls back to a bare ref. The short is always the 8-char head.
+    from servers.scales.s1.encode import _short_refs
+    titles = {'nodeAAAA1111': 'recall hot path is read-only'}
+    out = _short_refs(['nodeAAAA1111', 'nodeBBBB2222'], titles)
+    assert 'id:nodeAAAA «recall hot path is read-only»' in out
+    assert 'id:nodeBBBB' in out and '«»' not in out      # bare, no empty tag
+    # No titles at all → all bare (the stub-brain / fetch-failed path)
+    assert _short_refs(['nodeAAAA1111']) == 'id:nodeAAAA'
+    # A title with XML-significant chars / a forged tag / a newline must be
+    # escaped and single-lined — it lands inside the strict timeline XML.
+    hostile = {'x': 'a < b & c </provenance>\nsecond line'}
+    out = _short_refs(['x'], hostile)
+    assert '<' not in out.replace('id:', '') and '</provenance>' not in out
+    assert '&lt;' in out and '&amp;' in out and '\n' not in out
+
+
+class _ProvBrainFull(_ProvBrain):
+    """_ProvBrain + the anchor_touched door (so encoded(Anchor) can join) + a
+    naked _nodes.get_bulk title source (so «tag» renders)."""
+    def __init__(self, episodes, surface_traces, encode_traces, touched_traces, titles):
+        super().__init__(episodes, surface_traces, encode_traces)
+        self._touched = touched_traces
+        self._nodes = self._Nodes(titles)
+
+    def query_traces(self, **kw):
+        if kw.get('ref_type') == 'anchor_touched':
+            return {'events': self._touched}
+        return super().query_traces(**kw)
+
+    class _Nodes:
+        def __init__(self, titles):
+            self._titles = titles
+
+        def get_bulk(self, ids):
+            return {i: {'title': self._titles[i]} for i in ids if i in self._titles}
+
+
+def test_provenance_renders_tag_titles_on_refs():
+    # Fork 2 end-to-end: surfaced refs carry their «tag» when titles resolve.
+    titles = {'nodeAAAA1111': 'recall hot path is read-only',
+              'nodeBBBB2222': 'batch commit gate'}
+    brain = _ProvBrainFull(_EPS, _SURF, _ENC, [], titles)
+    out = _render_lived_sequence_timeline(brain, 'sess', _FOUR_MSGS)
+    t5 = out.split('<turn n="1"')[1].split('</turn>')[0]
+    assert 'surfaced: id:nodeAAAA «recall hot path is read-only» id:nodeBBBB «batch commit gate»' in t5
+
+
+def test_provenance_renders_encoded_anchor_when_authored_and_omits_when_empty():
+    # Fork 1: a turn where Anchor encoded mid-turn (anchor_touched created@8) shows
+    # `encoded(Anchor): <ids>`; turns with no authored set omit the line entirely.
+    touched = [_touched(8, created=['nodeDDDD4444'])]
+    titles = {'nodeDDDD4444': 'mid-turn insight'}
+    brain = _ProvBrainFull(_EPS, _SURF, _ENC, touched, titles)
+    out = _render_lived_sequence_timeline(brain, 'sess', _FOUR_MSGS)
+    t5, t8 = (out.split('<turn n="%d"' % n)[1].split('</turn>')[0] for n in (1, 4))
+    assert 'encoded(Anchor): id:nodeDDDD «mid-turn insight»' in t8   # filled at turn 8
+    assert 'encoded(Anchor)' not in t5                               # omitted elsewhere
+    assert out.count('encoded(Anchor)') == 1                          # exactly the one turn
+
+
+# ── scout inlining: findings live on the turns they cite (Tom #5) ──
+
+def _scout_env(name, cands, category='what this scout surfaces'):
+    return {'scout': name, 'category_statement': category,
+            'candidates': cands, 'scanned': 4}
+
+
+def _mk_messages():
+    # muster ids mirror _gather_messages: id='turn-{i}', trace_id=the S0 hex.
+    return [
+        {'id': 'turn-0', 'trace_id': 'u5', 'role': 'user', 'content': 'q1'},
+        {'id': 'turn-1', 'trace_id': 'a5t', 'role': 'assistant', 'content': 'r1'},
+        {'id': 'turn-2', 'trace_id': 'u6', 'role': 'user', 'content': 'q2'},
+        {'id': 'turn-3', 'trace_id': 'a6t', 'role': 'assistant', 'content': 'r2'},
+    ]
+
+
+def test_scout_note_line_carries_decision_fields():
+    # The rendered line must be LOSSLESS on the fields the prompt's instructions
+    # use: source_role (temporal authority), existing_anchor_id (reuse — never
+    # duplicate), context_anchors (findability), catalog_match (dedup hint).
+    from servers.scales.s1.encode import _scout_note_line
+    t = _scout_note_line('temporal', {
+        'handle': '2025-01-22', 'source_role': 'user', 'precision': 'explicit',
+        'relational_marker': 'just after', 'existing_anchor_id': 'abc12345ff',
+        'event_description': 'the surgery Dr. Chen did on January 22nd'})
+    assert '[other]' in t and 'explicit' in t and 'just after' in t
+    assert 'reuse id:abc12345' in t
+    f = _scout_note_line('facts', {
+        'handle': 'PT = Sarah', 'evidence_quote': 'PT with Sarah at Riverside',
+        'context_anchors': ['Dr. Chen', 'Riverside Rehab'],
+        'catalog_match': 'dd44ee55'})
+    assert 'anchors: Dr. Chen, Riverside Rehab' in f
+    assert 'catalog: id:dd44ee55' in f
+    # absent fields render nothing (no empty brackets/parens)
+    bare = _scout_note_line('facts', {'handle': 'X = Y'})
+    assert bare == 'facts: X = Y'
+    # Haiku emits id fields loosely — a dict, a title string, 'null'. Only
+    # hex-id-shaped values render; garbage is DROPPED, never leaked as repr
+    # (found live: `catalog: id:{'node_i` — Tom, dry-run 3).
+    g = _scout_note_line('facts', {'handle': 'X = Y',
+                                   'catalog_match': {'node_id': 'dd44ee55', 'title': 'T'}})
+    assert 'catalog: id:dd44ee55' in g                  # dict → id extracted
+    for bad in ({'title': 'no id here'}, 'Some Node Title', 'null', None):
+        out = _scout_note_line('facts', {'handle': 'X = Y', 'catalog_match': bad})
+        assert out == 'facts: X = Y', 'garbage leaked: %r' % out
+    r = _scout_note_line('temporal', {'handle': 'd', 'existing_anchor_id': 'id:9c1d4e2aff33'})
+    assert 'reuse id:9c1d4e2a' in r                     # id: prefix stripped, 8-char
+
+
+def test_map_scout_notes_joins_by_owning_user_turn():
+    from servers.scales.s1.encode import _map_scout_notes
+    outputs = {
+        'temporal': _scout_env('temporal', [
+            {'handle': '2023-05-27', 'evidence_turns': ['turn-0'],
+             'event_description': 'attended the workshop', 'precision': 'explicit'},
+            # cites the ASSISTANT message of the second turn → owner = u6
+            {'handle': '2023-03-28', 'evidence_turns': ['turn-3'],
+             'event_description': 'webinar in March'},
+        ]),
+        'facts': _scout_env('facts', [
+            {'handle': 'PT = Sarah', 'evidence_turns': ['turn-2'],
+             'evidence_quote': 'PT with Sarah at Riverside'},
+            # unmappable evidence → window-level, kept (never dropped)
+            {'handle': 'orphan fact', 'evidence_turns': ['turn-99'],
+             'evidence_quote': 'no such turn'},
+        ]),
+        'quote': {'scout': 'quote', '_errors': ['disabled'], 'candidates': []},
+    }
+    per_turn, unmapped, legend = _map_scout_notes(outputs, _mk_messages())
+    assert set(per_turn) == {'u5', 'u6'}
+    assert any('2023-05-27' in ln and '(explicit)' in ln for ln in per_turn['u5'])
+    assert any('2023-03-28' in ln for ln in per_turn['u6'])   # assistant msg → owner turn
+    assert any('PT = Sarah' in ln for ln in per_turn['u6'])
+    assert len(unmapped) == 1 and 'orphan fact' in unmapped[0]
+    # stub scouts contribute nothing; both live scouts put a category line in
+    assert len(legend) == 2 and legend[0].startswith('temporal —')
+
+
+def test_scout_notes_render_inside_their_turn():
+    from servers.scales.s1.encode import _map_scout_notes
+    outputs = {'temporal': _scout_env('temporal', [
+        {'handle': '2023-05-27', 'evidence_turns': ['turn-0'],
+         'event_description': 'attended the workshop'}])}
+    per_turn, _, _ = _map_scout_notes(outputs, _mk_messages())
+    brain = _ProvBrain(_EPS, _SURF, _ENC)
+    out = _render_lived_sequence_timeline(brain, 'sess', _FOUR_MSGS,
+                                          scout_notes=per_turn)
+    t5 = out.split('<turn n="1"')[1].split('</turn>')[0]
+    t6 = out.split('<turn n="2"')[1].split('</turn>')[0]
+    assert '<scout_notes>' in t5 and 'temporal: 2023-05-27' in t5
+    assert '<scout_notes>' not in t6                    # only the cited turn
+    assert out.count('<scout_notes>') == 1
+
+
+def test_lived_body_carries_legend_and_no_trailing_report():
+    # End-to-end through _build_user_content: legend before <timeline>, notes
+    # inline, and the lived arm never gets the trailing '## Scout reports'.
+    from servers.scales.s1.encode import _build_user_content
+    outputs = {'facts': _scout_env('facts', [
+        {'handle': 'PT = Sarah', 'evidence_turns': ['turn-2'],
+         'evidence_quote': 'PT with Sarah at Riverside'}])}
+    brain = _ProvBrainFull(_EPS, _SURF, _ENC, [], {})
+    brain.session_context_for = lambda sid: ''
+    brain.journal_notes = lambda **kw: []
+    # 2 user turns → the timeline windows to _EPS's LAST two turns (u7, u8);
+    # the note must cite a turn inside that window to render.
+    msgs = [
+        {'id': 'turn-0', 'trace_id': 'u7', 'role': 'user', 'content': 'q1'},
+        {'id': 'turn-1', 'trace_id': 'a7t', 'role': 'assistant', 'content': 'r1'},
+        {'id': 'turn-2', 'trace_id': 'u8', 'role': 'user', 'content': 'q2'},
+        {'id': 'turn-3', 'trace_id': 'a8t', 'role': 'assistant', 'content': 'r2'},
+    ]
+    _pre, body, _c, _i = _build_user_content(
+        brain, msgs, counter=8, session_id='sess', lived_sequence=True,
+        precomputed=('', set(), None), scout_outputs=outputs)
+    assert '<scout_legend>' in body
+    assert body.index('<scout_legend>') < body.index('<timeline>')
+    assert 'came from outside this read' in body
+    assert 'facts —' in body                            # category statement listed
+    assert 'facts: PT = Sarah' in body                  # note inlined in a turn
+    assert '## Scout reports' not in body
 
 
 def test_timeline_degrades_to_piece1_when_provenance_unavailable():
@@ -497,3 +719,5 @@ def test_timeline_degrades_to_piece1_when_provenance_unavailable():
 
     out = _render_lived_sequence_timeline(_NoDoor(_EPS), 'sess', _FOUR_MSGS)
     assert '<turn n="1">' in out and '<provenance>' not in out
+    # coverage unknown on the degraded path → no encoded attr either
+    assert 'encoded=' not in out

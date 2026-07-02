@@ -140,8 +140,17 @@ def build_muster_context(
 def run_muster(
     ctx: Dict[str, Any],
     timeout_s: float = MUSTER_PER_SCOUT_TIMEOUT_S,
+    exclude_scouts: Tuple[str, ...] = (),
 ) -> Tuple[str, Dict[str, Dict[str, Any]], Dict[str, Any]]:
     """Run all scouts in parallel and return the combined S1S report.
+
+    Args:
+        exclude_scouts: scout names to NOT run this cycle. Excluded scouts get
+            the standard 'disabled' stub via the SCOUT_NAMES padding, so every
+            downstream consumer stays shape-safe. The lived arm passes
+            ('quote',) — episodes recall preserves verbatim substrate, so the
+            dedicated quote scout is retired there (Tom, 2026-07-02); the
+            control arm runs the full set (production-faithful baseline).
 
     Returns:
         (formatted_report, scout_outputs_by_name, metrics)
@@ -153,6 +162,7 @@ def run_muster(
     """
     brain = ctx['brain']
     log = ctx.get('log_fn') or (lambda _: None)
+    runners = {n: r for n, r in SCOUT_RUNNERS.items() if n not in exclude_scouts}
 
     t0 = _time.time()
     outputs: Dict[str, Dict[str, Any]] = {}
@@ -173,11 +183,11 @@ def run_muster(
     # Default ThreadPoolExecutor.__exit__ blocks on shutdown — if a scout
     # is still running, we'd hang there. Python 3.9+ supports
     # shutdown(wait=False, cancel_futures=True) which we call explicitly.
-    pool = _cf.ThreadPoolExecutor(max_workers=len(SCOUT_RUNNERS))
+    pool = _cf.ThreadPoolExecutor(max_workers=max(1, len(runners)))
     try:
         futures = {
             name: pool.submit(_safe_run, name, runner, brain, ctx)
-            for name, runner in SCOUT_RUNNERS.items()
+            for name, runner in runners.items()
         }
         for name, fut in futures.items():
             remaining = max(0.0, deadline - _time.time())
@@ -211,7 +221,8 @@ def run_muster(
     # consumers can distinguish "didn't run" from "ran and found nothing".
     for name in sc.SCOUT_NAMES:
         if name not in outputs:
-            reason = 'disabled' if name not in SCOUT_RUNNERS else 'no result'
+            reason = ('disabled' if (name not in SCOUT_RUNNERS
+                                     or name in exclude_scouts) else 'no result')
             outputs[name] = _exception_stub(name, RuntimeError(reason))
 
     elapsed_ms = int((_time.time() - t0) * 1000)

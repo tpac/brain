@@ -85,6 +85,7 @@ ENCODING_AGENT = {
     'message_content_limit': 2500,    # per message stored in message_stream (both roles equally)
     'message_display_limit': 2500,    # per message in timeline (both roles — shared learnings, not just Tom's words)
     'max_messages': 20,               # last N messages (~10 turns)
+    'encoded_turn_trim': 300,         # lived arm: per-message cap on ALREADY-ENCODED turns — context stub, not the read; unencoded turns keep the full display limit
     'recall_candidates_limit': 5,     # candidates per turn (pre-attached)
     'max_rounds': 5,                  # Sonnet API round limit (target: 2-3)
     'journal_max_chars': 8000,        # encoding journal truncation limit
@@ -149,6 +150,41 @@ PROVENANCE_TAGS = (
 )
 
 
+def _filter_noise_relations(nodes_map, brain):
+    """Drop noise-aspect relations from each catalog node's connections (lived
+    arm only). The noise aspect (aspects_v1.json) is the single source for
+    structural-only relations with no semantic claim — community_member,
+    co_accessed, emergent_bridge, and the legacy S2 markers. The encoder
+    shouldn't read (or learn to imitate) plumbing edges.
+
+    Multi-relation aware: a connection survives when ANY non-noise relation
+    remains; the compat fields (relation/description = top-weight survivor)
+    re-derive so render_rich_node shows a semantic verb, never a structural one.
+    A stub brain without `aspects` degrades quietly to unfiltered (tests)."""
+    try:
+        noise = set(brain.aspects.relations_in(['noise']))
+    except AttributeError:
+        return
+    if not noise:
+        return
+    for node in nodes_map.values():
+        conns = node.get('connections')
+        if not conns:
+            continue
+        kept = []
+        for c in conns:
+            rels = [r for r in (c.get('relations') or ())
+                    if r.get('relation') not in noise]
+            if rels:
+                c['relations'] = rels
+                c['relation'] = rels[0].get('relation') or c.get('relation')
+                c['description'] = rels[0].get('description') or ''
+                kept.append(c)
+            elif not c.get('relations') and c.get('relation') not in noise:
+                kept.append(c)   # bare single-relation shape (no relations list)
+        node['connections'] = kept
+
+
 def build_node_catalog(judge_outputs, brain, extra_ids=None):
     """Build the deduplicated rich-node catalog the encoder dereferences by id.
 
@@ -169,6 +205,10 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None):
     """
     import re
     conn = getattr(brain, 'conn', brain)  # tests may pass raw conn
+    # Lived-arm gate, captured BEFORE the `or {}` normalization below: extra_ids
+    # is only ever non-None on the lived arm, and the noise-edge filter rides it
+    # (control arm renders unfiltered — byte-identical to the long-standing path).
+    lived_arm = extra_ids is not None
     # Surfaced ids from surface outputs (pattern: id:XXXXXXXX). Node ids are
     # 8-char hex (v29), so these match the full ids the trace streams carry.
     surfaced_ids = set()
@@ -219,6 +259,8 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None):
     # ids, and per-id get_node would run correction_enrich + a resolve LIKE-scan
     # each. brain.get_node(list) is the batch form.
     rich_map = brain.get_node(list(catalog_ids)) if catalog_ids else {}
+    if lived_arm:
+        _filter_noise_relations(rich_map, brain)
     for nid in catalog_ids:
         node = rich_map.get(nid)
         if not node:

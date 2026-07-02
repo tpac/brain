@@ -91,7 +91,7 @@ def test_assembly_order_and_done_last():
 
     # all three present, in order: edge aspects → review → closure
     i_edge = asm.index('## Edge Aspects')
-    i_review = asm.index('Your review')
+    i_review = asm.index('A review')
     i_closure = asm.index('## Finishing')
     assert i_edge < i_review < i_closure
     # closure is genuinely last — DONE is the final content

@@ -605,3 +605,34 @@ class TestJournalNoteParser:
         assert extract_review_block('## Review\n```\nunclosed') is None
         assert extract_review_block('## Review\n```\n```\n') == ''
         assert extract_review_block('## Review\n```\nfriction · a · b\n```') == 'friction · a · b'
+
+    def test_extract_arc_block_none_vs_empty(self):
+        # The arc extractor shares the fence machinery: same three-valued
+        # contract, keyed on `## Arc`.
+        from servers.trace_contract import extract_arc_block
+        assert extract_arc_block('no marker here') is None
+        assert extract_arc_block('## Arc\nbare line, no fence') is None
+        assert extract_arc_block('## Arc\n```\nunclosed') is None
+        assert extract_arc_block('## Arc\n```\n```\n') == ''
+        assert extract_arc_block('## Arc\n```\narc fix shipped\n```') == 'arc fix shipped'
+
+    def test_arc_and_review_extract_independently(self):
+        # A final reply carries BOTH sections (§7.2: Encode → Arc → Review);
+        # each extractor pulls only its own fence.
+        from servers.trace_contract import extract_arc_block, extract_review_block
+        text = ('narrative\n\n## Arc\n```\narc write-path built\n```\n\n'
+                '## Review\n```\ndoubt · arc-fence · one-liner may drift\n```\nDONE')
+        assert extract_arc_block(text) == 'arc write-path built'
+        assert extract_review_block(text) == 'doubt · arc-fence · one-liner may drift'
+
+    def test_render_arc_block_names_marker_and_placement(self):
+        # The arc block must teach the `## Arc` marker its writer keys on, and
+        # state its own placement (before the review) — the closure deliberately
+        # doesn't mention the arc (shared with encoders that never emit one).
+        from servers.trace_contract import (render_journal_arc_block,
+                                            render_prompt_closure,
+                                            JOURNAL_ARC_MARKER)
+        block = render_journal_arc_block()
+        assert JOURNAL_ARC_MARKER in block
+        assert 'ONE line' in block
+        assert JOURNAL_ARC_MARKER not in render_prompt_closure()

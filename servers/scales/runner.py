@@ -12,6 +12,25 @@ here too. Scale-specific logic lives in each scale's module (scales/s1/scribe.py
 
 import time
 import threading
+import os
+import json
+
+
+# Full-prompt capture (eval/observability). OFF unless BRAIN_PROMPT_CAPTURE_DIR
+# is set — production never sets it, so this is a no-op on the live path. When
+# set, run_llm_loop dumps the LITERAL per-round payload (system + messages) so
+# the actual prompt is recoverable without an unfaithful rebuild. The seq is a
+# process-monotonic tiebreaker so two captures can never overwrite each other,
+# even if the (label, round) key ever collides. See docs/S1-SCRIBE-REDESIGN.md.
+_CAPTURE_SEQ = 0
+_CAPTURE_SEQ_LOCK = threading.Lock()
+
+
+def _next_capture_seq():
+    global _CAPTURE_SEQ
+    with _CAPTURE_SEQ_LOCK:
+        _CAPTURE_SEQ += 1
+        return _CAPTURE_SEQ
 
 
 # Hard upper bound on any single Anthropic SDK call (S1 surface, S1
@@ -133,7 +152,7 @@ def run_unit_in_background(unit, name, lock, on_complete=None):
 
 def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                  user_content, tools, dispatch_fn, log_fn=None,
-                 user_preamble=None, get_nodes_config=None):
+                 user_preamble=None, get_nodes_config=None, capture_label=None):
     """Generic LLM tool loop — call model, process tool_use, dispatch, repeat.
 
     Used by all scale encode agents. Scale-specific logic is in what
@@ -225,6 +244,37 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         "cache_control": {"type": "ephemeral", "ttl": "1h"},
     }]
 
+    # Full-prompt capture: dumps the literal payload (system + messages) per
+    # round when BRAIN_PROMPT_CAPTURE_DIR is set AND a caller labels the run.
+    # No-op otherwise. Never raises into the encode path — capture failure must
+    # not break a cycle. `_cap_round` counts rounds within THIS loop; the
+    # process-monotonic seq + pid make the filename collision-proof.
+    _capture_dir = os.environ.get('BRAIN_PROMPT_CAPTURE_DIR')
+    _cap_round = [0]
+
+    def _capture_payload(msgs):
+        if not (_capture_dir and capture_label):
+            return
+        try:
+            os.makedirs(_capture_dir, exist_ok=True)
+            seq = _next_capture_seq()
+            fn = os.path.join(_capture_dir, "%s-r%d-%d-%05d.json" % (
+                capture_label, _cap_round[0], os.getpid(), seq))
+            with open(fn, 'w') as f:
+                json.dump({
+                    "label": capture_label,
+                    "round": _cap_round[0],
+                    "seq": seq,
+                    "model": model,
+                    "system": system_prompt,       # full text, not a length
+                    "messages": msgs,              # full, every content block
+                    "tools": [t.get("name") for t in (tools or [])],
+                }, f, ensure_ascii=False)
+        except Exception as _e:
+            (log_fn or (lambda *_a: None))("[capture] prompt dump failed: %s" % _e)
+        finally:
+            _cap_round[0] += 1
+
     def _create_message(msgs):
         """Create message with streaming. Returns (final_message, ttft_ms,
         total_ms). ttft_ms is the time from request issue to the first
@@ -232,6 +282,7 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         from token-by-token generation time. None if iteration fails
         (we fall back to the unmeasured path so a diagnostic glitch
         can't kill an encoder cycle)."""
+        _capture_payload(msgs)   # literal per-round payload; no-op unless capturing
         request_t0 = time.time()
         ttft_ms = None
         try:
