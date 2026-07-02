@@ -72,9 +72,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from servers.scales.s1.trace_links import (  # noqa: E402
-    gather, nodes_for_traces, _stop_of,
-)
+from servers.scales.s1.trace_links import _stop_of  # noqa: E402
 
 # Default count of similar past moments to seed from (top-K by similarity).
 DEFAULT_TOP_MOMENTS = 15
@@ -89,22 +87,6 @@ def default_score(episode, cue=None, brain=None):
     Falls back to 0.0 for an unscored episode (e.g. a time-ranked, query-less pull).
     """
     return float(episode.get("_score") or 0.0)
-
-
-def _expand_window(stop, window):
-    """The MOMENT-WINDOW seam: the set of stops that make up ONE moment.
-
-    window='turn'        → {stop}                       (one trace = one moment)
-    window=('window', N) → {stop-N, ..., stop, ..., stop+N}, clamped to stops ≥ 0
-                           (a negative stop would synthesize 's0-{short}--1', whose
-                           tail rsplit-parses as POSITIVE 1 — the aliasing bug).
-    """
-    if window == "turn" or window is None:
-        return {stop}
-    if isinstance(window, (tuple, list)) and len(window) == 2 and window[0] == "window":
-        n = int(window[1])
-        return {s for s in range(stop - n, stop + n + 1) if s >= 0}
-    raise ValueError("unknown moment window spec: %r (use 'turn' or ('window', N))" % (window,))
 
 
 # ─────────────────────────── the shared seed → roles pull ───────────────────────────
@@ -140,6 +122,15 @@ def episodic_roles(brain, cue, cutoff, *, top=DEFAULT_TOP_MOMENTS,
     if not episodes:
         return []
 
+    # window spec → ±N turns for the shared join ('turn' ≡ ±0)
+    if window == "turn" or window is None:
+        w = 0
+    elif isinstance(window, (tuple, list)) and len(window) == 2 and window[0] == "window":
+        w = int(window[1])
+    else:
+        raise ValueError("unknown moment window spec: %r (use 'turn' or ('window', N))"
+                         % (window,))
+
     # ONE moment = one (session, stop). Dedup episode rows (turn halves, repeat
     # matches) keeping max score — score_fn is THE similarity seam, applied here.
     moments = {}                     # (session_id, short, stop) -> score
@@ -155,31 +146,14 @@ def episodic_roles(brain, cue, cutoff, *, top=DEFAULT_TOP_MOMENTS,
         key = (sess, short, stop)
         moments[key] = max(moments.get(key, 0.0), s)
 
-    by_sess = defaultdict(list)
-    for (sess, short, stop), s in moments.items():
-        by_sess[sess].append((short, stop, s))
-
-    records = []
-    for sess, moms in by_sess.items():
-        st = gather(brain, sess, streams=("surface", "encode", "recall"),
-                    limit=SESSION_TRACE_PULL)
-        # one target per (moment, window-stop); union back per moment below
-        targets = [{"id": "%d@%d" % (mi, ws), "chain_id": "s0-%s-%d" % (short, ws)}
-                   for mi, (short, stop, _s) in enumerate(moms)
-                   for ws in _expand_window(stop, window)]
-        links = nodes_for_traces(st["surface"], st["encode"], targets,
-                                 recall_traces=st["recall"])
-        for mi, (short, stop, s) in enumerate(moms):
-            encoded, picked, dropped = set(), set(), set()
-            for ws in _expand_window(stop, window):
-                link = links.get("%d@%d" % (mi, ws)) or {}
-                encoded.update(link.get("encoded", []))
-                picked.update(link.get("surfaced", []))   # the join's `surfaced` IS picked
-                dropped.update(link.get("dropped", []))
-            dropped -= picked        # picked-wins WITHIN the whole moment (union semantics)
-            records.append({"score": s, "encoded": sorted(encoded),
-                            "picked": sorted(picked), "dropped": sorted(dropped)})
-    return records
+    # The role-join is the PRODUCTION function (servers/recall_laf.py:
+    # roles_for_moments) — single source for the join semantics (per-session
+    # gather, stop-keyed join, ±window union, picked-wins), so the probes
+    # measure exactly what ships (code-review 2026-07-02).
+    from servers.recall_laf import roles_for_moments
+    return [{"score": r["score"], "encoded": sorted(r["encoded"]),
+             "picked": sorted(r["picked"]), "dropped": sorted(r["dropped"])}
+            for r in roles_for_moments(brain, moments, w, SESSION_TRACE_PULL)]
 
 
 # ─────────────────────────── id-width resolution ───────────────────────────

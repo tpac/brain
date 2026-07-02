@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from tests.brain_test_base import BrainTestBase                      # noqa: E402
 from servers.recall_laf import (                                     # noqa: E402
-    DEFAULT_CONFIG, LafV1Engine, MAXSIM_VIEWS, _unit, _zscore,
+    DEFAULT_CONFIG, LafV1Engine, MAXSIM_VIEWS, _unit, _zscore, idf_scores,
 )
 
 
@@ -35,22 +35,30 @@ class TestLafEngineUnits(BrainTestBase):
         self.assertIsNone(_unit(np.zeros(2, dtype=np.float32).tobytes()))
         self.assertIsNone(_unit(None))
 
-    def test_zscore_unit_variance_and_nan_safe(self):
+    def test_zscore_unit_variance_nan_safe_and_mask(self):
         x = np.array([1.0, 2.0, 3.0, np.nan, 5.0])
         z = _zscore(x, 5)
         finite = z[np.isfinite(x)]
         self.assertAlmostEqual(float(finite.std()), 1.0, places=6)
         self.assertEqual(z[3], 0.0)          # NaN slot → neutral, not poison
+        # mask form (the laf_metrics.zscore delegation shape): masked-out
+        # entries are neutral AND excluded from the statistics
+        mask = np.array([True, True, True, True, False])
+        zm = _zscore(x, 5, mask=mask)
+        self.assertEqual(zm[4], 0.0)
+        self.assertAlmostEqual(float(zm[[0, 1, 2]].std()), 1.0, places=6)
 
-    def test_config_defaults_and_kstore_overlay(self):
-        eng = LafV1Engine()
+    def test_config_defaults_kstore_overlay_and_gain_per_field(self):
+        # one gain key per registry field — the P3 fit surface
+        for field in ('maxsim', 'pick', 'enc', 'idf', 'sit'):
+            self.assertIn('gain_' + field, DEFAULT_CONFIG)
 
         class FakeBrain:
             def get_interaction_config(self, name):
                 assert name == 'recall_laf'
                 return {'gain_pick': 0.9, 'unknown_key': 'ignored'}
 
-        cfg = eng.config(FakeBrain())
+        cfg = LafV1Engine().config(FakeBrain())
         self.assertEqual(cfg['gain_pick'], 0.9)          # override applied
         self.assertEqual(cfg['gain_enc'], DEFAULT_CONFIG['gain_enc'])
         self.assertNotIn('unknown_key', cfg)             # unknown keys dropped
@@ -58,24 +66,28 @@ class TestLafEngineUnits(BrainTestBase):
         class BrokenBrain:
             def get_interaction_config(self, name):
                 raise RuntimeError('K-store down')
+        # fresh engine (config is TTL-cached per engine); broken K-store →
+        # defaults, and the failure is logged loud when _log_error exists
+        logged = []
+        BrokenBrain._log_error = lambda self, *a: logged.append(a)
+        self.assertEqual(LafV1Engine().config(BrokenBrain()), DEFAULT_CONFIG)
+        self.assertEqual(logged[0][0], 'recall_laf_config')
 
-        self.assertEqual(eng.config(BrokenBrain()), DEFAULT_CONFIG)
-
-    def test_idf_vector_rare_token_wins(self):
-        eng = LafV1Engine()
+    def test_idf_scores_rare_token_wins(self):
         # 3 titles: row 0 has the rare token, rows 1-2 share a flood token
-        eng._title_tok = {0: frozenset({'spread_activation', 'recall'}),
-                          1: frozenset({'recall', 'notes'}),
-                          2: frozenset({'recall'})}
-        eng._title_df = {'spread_activation': 1, 'recall': 3, 'notes': 1}
-        vec = eng._idf_vector('how does spread_activation recall work', 3)
+        title_tok = {0: frozenset({'spread_activation', 'recall'}),
+                     1: frozenset({'recall', 'notes'}),
+                     2: frozenset({'recall'})}
+        title_df = {'spread_activation': 1, 'recall': 3, 'notes': 1}
+        vec = idf_scores('how does spread_activation recall work',
+                         title_tok, title_df, 3)
         self.assertGreater(vec[0], vec[1])   # rare-token title dominates
         # 'recall' hits ALL titles → idf log((3+1)/(3+1)) = 0: flood terms are
         # flattened to exactly nothing (the idf2 design), so rows 1-2 score 0
         self.assertEqual(vec[1], 0.0)
         self.assertEqual(vec[2], 0.0)
         # stopwords/short tokens contribute nothing
-        self.assertTrue(np.all(eng._idf_vector('a of to', 3) == 0.0))
+        self.assertTrue(np.all(idf_scores('a of to', title_tok, title_df, 3) == 0.0))
 
     def test_resolve_short_and_full(self):
         eng = LafV1Engine()
@@ -164,12 +176,20 @@ class TestLafFlagIntegration(unittest.TestCase):
         self.assertTrue(res['results'], 'laf recall returned nothing')
         for r in res['results']:
             self.assertEqual(r.get('_discovery'), 'laf_v1')
+            # the (0,1) range contract the champion's floors/boosts assume
             self.assertGreater(r['effective_activation'], 0.0)
             self.assertLessEqual(r['effective_activation'], 1.0)
-        # engine cached on the brain, matrices resident
+        # per-candidate field telemetry rides the result (P2 walker feed)
+        self.assertIn('_laf_fields', res)
+        some_fields = next(iter(res['_laf_fields'].values()))
+        self.assertEqual(set(some_fields), {'maxsim', 'pick', 'enc', 'idf', 'sit'})
+        # engine cached on the brain, matrices + trace blocks resident
         eng = self.brain._laf_engine
-        self.assertGreater(len(eng._master), 0)
-        self.assertIsNotNone(eng._tr_mat)
+        self.assertGreater(eng._n, 0)
+        self.assertTrue(eng._tr_blocks)
+        # laf results visible in the source breakdown telemetry
+        self.assertGreater(
+            res['_retrieval_stats']['source_breakdown'].get('laf_v1', 0), 0)
 
     def test_unknown_variant_falls_back(self):
         res = self._recall('nonexistent_variant')

@@ -20,12 +20,13 @@ import numpy as np
 def zscore(x, elig, n):
     """Standardize x over the eligible finite entries → unit variance; 0 elsewhere.
     The LAF fusion normalizer: gains stay pure influence dials only if every
-    operator field passes through this exact form."""
-    m = elig & np.isfinite(x)
-    o = np.zeros(n)
-    if int(m.sum()) > 2 and np.std(x[m]) > 1e-9:
-        o[m] = (x[m] - x[m].mean()) / x[m].std()
-    return o
+    operator field passes through this exact form.
+
+    Delegates to the PRODUCTION normalizer (servers/recall_laf.py:_zscore) with
+    the eval-side eligibility mask — single source, no eval↔production drift
+    (code-review 2026-07-02)."""
+    from servers.recall_laf import _zscore
+    return _zscore(x, n, mask=elig)
 
 
 def ranks(scores, elig, master):

@@ -70,6 +70,21 @@ class NodeDAL:
 
     # --- Reads ---
 
+    def change_key(self) -> tuple:
+        """(row count, max rowid) — cheap staleness key for node-derived caches
+        (LAF title-idf lane). Count catches deletions, rowid catches inserts;
+        pure UPDATEs are invisible — callers that care about edits pair this
+        with a TTL."""
+        return tuple(self.conn.execute(
+            'SELECT COUNT(*), COALESCE(MAX(rowid), 0) FROM nodes').fetchone())
+
+    def title_rows(self) -> List[tuple]:
+        """[(id, title)] for live titled nodes — the LAF title-idf substrate."""
+        return self.conn.execute(
+            "SELECT id, title FROM nodes "
+            "WHERE archived = 0 AND title IS NOT NULL AND title != ''"
+        ).fetchall()
+
     def get_naked_node(self, node_id: str) -> Optional[Dict[str, Any]]:
         """Get a single node row by ID. Returns all columns as a dict.
 
@@ -889,6 +904,38 @@ class VectorDAL:
         rows = self.conn.execute(sql, params).fetchall()
         return [{'node_id': r[0], 'vector_type': r[1], 'embedding': r[2]}
                 for r in rows]
+
+    def change_key(self) -> tuple:
+        """(row count, max rowid) on node_enrichments — cheap staleness key for
+        vector-derived caches (LAF field matrices). INSERT OR REPLACE bumps
+        rowid, so replaced vectors are visible; count-shrink signals deletion
+        (caller falls back to a full rebuild)."""
+        return tuple(self.conn.execute(
+            'SELECT COUNT(*), COALESCE(MAX(rowid), 0) FROM node_enrichments'
+        ).fetchone())
+
+    def vectors_since(self, rowid: int,
+                      vector_types: Optional[List[str]] = None,
+                      model: Optional[str] = None) -> List[tuple]:
+        """[(rowid, node_id, vector_type, embedding)] for enrichment rows with
+        rowid > watermark, live nodes only — the LAF incremental matrix append.
+        INSERT OR REPLACE gives updated vectors a fresh rowid, so upserts ride
+        the same watermark. Ordered by rowid so the caller's last-seen tracking
+        is monotone."""
+        sql = ('SELECT ne.rowid, ne.node_id, ne.vector_type, ne.embedding '
+               'FROM node_enrichments ne '
+               'JOIN nodes n ON n.id = ne.node_id '
+               'WHERE ne.rowid > ? AND ne.embedding IS NOT NULL '
+               'AND n.archived = 0')
+        params: List[Any] = [int(rowid)]
+        if vector_types:
+            ph = ','.join('?' * len(vector_types))
+            sql += f' AND ne.vector_type IN ({ph})'
+            params.extend(vector_types)
+        if model:
+            sql += ' AND ne.model = ?'
+            params.append(model)
+        return self.conn.execute(sql + ' ORDER BY ne.rowid', params).fetchall()
 
     def get_all_situations(self, model: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get all situation embeddings for cosine scan (recall STEP 3.5b).

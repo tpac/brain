@@ -35,13 +35,13 @@ for _g in EMBEDDING_GROUPS.values():
 
 
 def unit(blob):
-    """Decode an embedding blob → unit vector (None if absent/zero)."""
-    if blob is None:
-        return None
-    v = (np.frombuffer(blob, dtype=np.float32)
-         if isinstance(blob, (bytes, bytearray)) else np.asarray(blob, dtype=np.float32))
-    n = float(np.linalg.norm(v))
-    return (v / n) if n > 1e-9 else None
+    """Decode an embedding blob → unit vector (None if absent/zero).
+
+    Alias of the PRODUCTION normalizer (servers/recall_laf.py:_unit) so every
+    probe measures the exact function the shipped engine runs — single source,
+    no eval↔production drift (code-review 2026-07-02)."""
+    from servers.recall_laf import _unit
+    return _unit(blob)
 
 
 def query_vec(query):

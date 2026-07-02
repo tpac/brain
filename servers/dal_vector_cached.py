@@ -201,6 +201,19 @@ class CachedVectorDAL:
         with self._sql_lock:
             return self._inner.get_coverage_stats()
 
+    def change_key(self) -> tuple:
+        """Delegate — LAF matrix staleness key (one scalar SELECT)."""
+        with self._sql_lock:
+            return self._inner.change_key()
+
+    def vectors_since(self, rowid: int,
+                      vector_types: Optional[List[str]] = None,
+                      model: Optional[str] = None) -> List[tuple]:
+        """Delegate — LAF incremental matrix append (watermarked pull)."""
+        with self._sql_lock:
+            return self._inner.vectors_since(rowid, vector_types=vector_types,
+                                             model=model)
+
     # ── Diagnostics ─────────────────────────────────────────────────
 
     def cache_stats(self) -> Dict[str, Any]:

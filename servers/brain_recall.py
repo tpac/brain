@@ -1524,6 +1524,7 @@ class BrainRecallMixin:
         # boost, trace-chain lane) are gated off under the flag at their sites.
         # Flag unset / scorer failure → _laf_scores is None → champion unchanged.
         _laf_scores = None
+        _laf_fields = None
         import os as _os_laf
         if _os_laf.environ.get('BRAIN_RECALL_VARIANT', '').strip().lower() == 'laf_v1':
             try:
@@ -1531,12 +1532,15 @@ class BrainRecallMixin:
                     from .recall_laf import get_engine as _laf_get_engine
                 except ImportError:
                     from recall_laf import get_engine as _laf_get_engine
-                _laf_scores = _laf_get_engine(self).scores(
+                _laf_scores, _laf_fields = _laf_get_engine(self).scores(
                     self, query, query_vec, model=_active_model)
+                if not _laf_scores:
+                    _laf_scores = None      # empty field → champion, not zeros
             except Exception as _laf_e:
                 self._log_error('recall_laf', _laf_e,
                                 'laf_v1 scoring failed — champion fallback')
                 _laf_scores = None
+                _laf_fields = None
 
         # STEP 3: Brute-force cosine similarity against ALL stored embeddings
         # This is the core change: embeddings drive retrieval, not keywords.
@@ -1614,6 +1618,9 @@ class BrainRecallMixin:
                     if _laf_scores is not None:
                         # laf_v1: the field score IS the similarity — cosine and
                         # the lexical bridge are subsumed by the field's lanes.
+                        # RANGE CONTRACT: values are sigmoid ∈ (0,1) (validated
+                        # in recall_laf.scores) — the fatigue multiply below and
+                        # STEP 6's floors/boosts assume cosine-like magnitudes.
                         sim = _laf_scores.get(node_id, 0.0)
                     else:
                         sim = embedder.cosine_similarity(query_vec, blob)
@@ -2323,6 +2330,7 @@ class BrainRecallMixin:
                 'top_score': round(scored_results[0]['blended_score'], 3) if scored_results else 0,
                 'median_score': round(scored_results[len(scored_results)//2]['blended_score'], 3) if scored_results else 0,
                 'source_breakdown': {
+                    'laf_v1': sum(1 for sr in scored_results if sr['_source'] == 'laf_v1'),
                     'embedding_only': sum(1 for sr in scored_results if sr['_source'] == 'embedding_only'),
                     'embedding+keyword': sum(1 for sr in scored_results if sr['_source'] == 'embedding+keyword'),
                     'fts5_only': sum(1 for sr in scored_results if sr['_source'] == 'fts5_only'),
@@ -2331,6 +2339,12 @@ class BrainRecallMixin:
                 } if 'scored_results' in dir() else {},
             },
         }
+
+        # laf_v1 telemetry: per-candidate field z-scores for the top nodes —
+        # rides the result into the S1R trace so the P2 dataset walker accretes
+        # (query, per-field scores, outcome) rows in production for free.
+        if _laf_fields is not None:
+            result['_laf_fields'] = _laf_fields
 
         # Gap detection: when no results pass the relevance floor,
         # flag it so the voice layer can prompt encoding

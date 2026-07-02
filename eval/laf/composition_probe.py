@@ -29,7 +29,6 @@ latency (the number behind 'we can later optimize') and capped↔uncapped moment
 Run: ./dev python3 eval/laf/composition_probe.py
 Out: eval/laf/composition_probe.md
 """
-import math
 import os
 import re
 import sys
@@ -42,7 +41,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from tests.isolated_brain import IsolatedBrain                       # noqa: E402
 from servers import embedder                                          # noqa: E402
-from servers.brain_constants import _TITLE_BOOST_STOPWORDS            # noqa: E402
 from servers.trace_contract import CONVERSATIONAL_REF_TYPES           # noqa: E402
 import episodic_ops                                                   # noqa: E402
 from episodic_ops import (                                            # noqa: E402
@@ -59,7 +57,7 @@ OUT_MD = os.path.join(HERE, "composition_probe.md")
 
 EPI_WINDOW = ("window", 1)          # ±1-turn moments (the measured winner's window)
 G = 0.5                              # static gain for each NEW lane (fusion probe winner)
-_IDF_TOK = re.compile(r"[a-z0-9]+(?:[._][a-z0-9]+)*")   # idf2's tokenizer, verbatim
+from servers.recall_laf import _IDF_TOK  # noqa: E402 — the production tokenizer, single source
 
 
 # ───────────────────────── uncapped episodic seeding ─────────────────────────
@@ -154,24 +152,15 @@ def build_title_tokens(brain, idx):
 
 
 def idf_lane(query, title_tok, n):
-    """Production idf2 title boost as a lane: per node, Σ log-idf of the query's
-    rare tokens found in its title, normalized by the query's total idf mass."""
-    vec = np.zeros(n, dtype=np.float64)
-    q_tokens = {t for t in _IDF_TOK.findall(query.lower())
-                if len(t) >= 2 and t not in _TITLE_BOOST_STOPWORDS}
-    if not q_tokens or not title_tok:
-        return vec
-    n_titles = max(len(title_tok), 1)
-    idf = {}
-    for t in q_tokens:
-        df = sum(1 for ts in title_tok.values() if t in ts)
-        idf[t] = math.log((n_titles + 1) / (df + 1))
-    total = sum(idf.values()) or 1.0
-    for i, ts in title_tok.items():
-        m = sum(idf[t] for t in q_tokens if t in ts)
-        if m > 0:
-            vec[i] = m / total
-    return vec
+    """Production idf2 title boost as a lane — delegates to the PRODUCTION
+    formula (servers/recall_laf.py:idf_scores) so the probe measures exactly
+    what ships; single source, no drift (code-review 2026-07-02)."""
+    from servers.recall_laf import idf_scores
+    df = defaultdict(int)
+    for ts in title_tok.values():
+        for t in ts:
+            df[t] += 1
+    return idf_scores(query, title_tok, dict(df), n)
 
 
 def build_situation_matrix(brain, idx, n, model):
