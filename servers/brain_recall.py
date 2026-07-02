@@ -58,7 +58,9 @@ from .brain_constants import (
     ZSCORE_STATS_KEY_MEAN,
     ZSCORE_STATS_KEY_STD,
 )
-from .dal import GraphDAL, NodeDAL, LogsDAL, VectorDAL
+from .dal import NodeDAL, VectorDAL
+from .dal_graph import GraphDAL
+from .dal_logs import LogsDAL
 from .db_backends.sqlite import commit_unless_batched
 
 
@@ -414,7 +416,7 @@ class BrainRecallMixin:
         # ── 5. Batch fetch all connections via GraphDAL (v25) ──
         # DAL centralizes: archived=0 default, noise-relation exclusion,
         # direction detection, per-neighbor relation grouping.
-        from .dal import GraphDAL
+        from .dal_graph import GraphDAL
         connections_by_owner = GraphDAL(conn).get_connections_bulk(found_ids)
 
         for nid in found_ids:

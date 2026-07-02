@@ -49,7 +49,7 @@ def _mk(brain, title, content, locked):
 
 
 def _add_edge(brain, src, tgt, relation, desc=''):
-    from servers.dal import GraphDAL
+    from servers.dal_graph import GraphDAL
     GraphDAL(brain.conn).add_relation(src, tgt, relation, description=desc,
                                       encoding_source='anchor')
 

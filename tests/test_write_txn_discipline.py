@@ -33,7 +33,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from tests.brain_test_base import BrainTestBase
 from servers.db_backends.sqlite import BatchAwareConnection, commit_unless_batched
-from servers.dal import GraphDAL, SourceRefDAL
+from servers.dal import SourceRefDAL
+from servers.dal_graph import GraphDAL
 
 _SERVERS_DIR = os.path.join(os.path.dirname(__file__), '..', 'servers')
 

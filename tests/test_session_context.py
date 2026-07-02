@@ -92,7 +92,7 @@ class TestSessionContextPersistence:
         # silently None — the brain-holding caller catches it and logs via the
         # canonical _log_error. Absent rows still return None (test above).
         from servers.session_context import SessionContext, SessionContextCorrupt
-        from servers.dal import SessionStateDAL
+        from servers.dal_logs import SessionStateDAL
         SessionStateDAL(self.brain.logs_conn).set('corrupt-sess', '_session_context', 'not json{')
         with pytest.raises(SessionContextCorrupt):
             SessionContext.load(self.brain.logs_conn, 'corrupt-sess')

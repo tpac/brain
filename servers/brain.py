@@ -30,7 +30,8 @@ import threading
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from .schema import ensure_schema, ensure_logs_schema, migrate_logs_to_separate_db
-from .dal import LogsDAL, BrainMetaDAL
+from .dal import BrainMetaDAL
+from .dal_logs import LogsDAL
 from .db_backends.sqlite import commit_unless_batched
 from .clock import iso_cutoff, iso_now
 from .brain_recall import BrainRecallMixin
@@ -236,7 +237,7 @@ class Brain(
         # DAL instances — incremental adoption, brain.py migrates one method at a time
         self._meta = BrainMetaDAL(self.conn)
         self._logs_dal = LogsDAL(self.logs_conn)
-        from .dal import TraceDAL, InteractionDAL, SessionStateDAL
+        from .dal_logs import TraceDAL, InteractionDAL, SessionStateDAL
         self._trace_dal = TraceDAL(self.logs_conn)
         self._interaction_dal = InteractionDAL(self.logs_conn)
         # logs-bound: session_state lives in brain_logs.db, not brain.db
@@ -247,8 +248,9 @@ class Brain(
         # re-instantiating XDAL(self.conn) ad hoc. The bg-writer path
         # (recall_write_queue) constructs its own GraphDAL on conn_bg_writer —
         # the one documented exception.
-        from .dal import (NodeDAL, GraphDAL, Fts5DAL, TfIdfDAL, EntityDatesDAL,
+        from .dal import (NodeDAL, Fts5DAL, TfIdfDAL, EntityDatesDAL,
                           SourceRefDAL)
+        from .dal_graph import GraphDAL
         from .dal_metadata import MetadataDAL
         self._nodes = NodeDAL(self.conn)
         self._graph = GraphDAL(self.conn)

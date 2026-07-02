@@ -15,7 +15,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from servers.dal import TraceDAL
+from servers.dal_logs import TraceDAL
 from servers.schema import ensure_logs_schema
 
 

@@ -1230,7 +1230,7 @@ def _health_monitor():
                     if os.path.isdir(candidate):
                         db_dir = candidate
                 if db_dir and os.path.isdir(db_dir):
-                    from servers.dal import LogsDAL
+                    from servers.dal_logs import LogsDAL
                     conn = sqlite3.connect(os.path.join(db_dir, "brain_logs.db"), timeout=3)
                     try:
                         LogsDAL(conn).log_hook_error(

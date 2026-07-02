@@ -1,10 +1,10 @@
-"""Tests for LogsDAL writers in servers/dal.py.
+"""Tests for LogsDAL writers in servers/dal_logs.py.
 
 LogsDAL takes a raw sqlite connection, so these run against an in-memory DB —
 no Brain, no embedder. Fast + isolated.
 """
 import sqlite3
-from servers.dal import LogsDAL
+from servers.dal_logs import LogsDAL
 
 
 def _dal():

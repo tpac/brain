@@ -592,7 +592,7 @@ def simulate_acceptance(brain, proposals, edges_by_node, accept_rate=0.6,
     Accepted: create community nodes/edges in the DB.
     Rejected: write fingerprint to s2_rejections table.
     """
-    from servers.dal import GraphDAL
+    from servers.dal_graph import GraphDAL
 
     rng = random.Random(run_seed)
     graph_dal = GraphDAL(brain.conn)

@@ -259,13 +259,13 @@ class SessionContext:
         })
         # SessionStateDAL is the sole gateway to session_state; wrap the conn
         # we're handed (SessionContext has no Brain ref to reach a held DAL).
-        from .dal import SessionStateDAL
+        from .dal_logs import SessionStateDAL
         SessionStateDAL(conn).set(self.session_id, '_session_context', data)
 
     @classmethod
     def load(cls, conn: sqlite3.Connection, session_id: str) -> 'SessionContext':
         """Load session context from DB. Returns None if not found."""
-        from .dal import SessionStateDAL
+        from .dal_logs import SessionStateDAL
         value = SessionStateDAL(conn).get(session_id, '_session_context')
         if not value:
             return None

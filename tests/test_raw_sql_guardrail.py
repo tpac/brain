@@ -22,7 +22,7 @@ import unittest
 
 SERVERS = pathlib.Path(__file__).resolve().parent.parent / 'servers'
 # The DAL + schema layers are where raw SQL is supposed to live.
-EXCLUDE = {'dal.py', 'dal_metadata.py', 'dal_vector_cached.py', 'schema.py'}
+EXCLUDE = {'dal.py', 'dal_logs.py', 'dal_graph.py', 'dal_metadata.py', 'dal_vector_cached.py', 'schema.py'}
 DML_RE = re.compile(
     r"\.execute(?:many)?\(\s*[rfbu]*('''|\"\"\"|'|\")\s*(INSERT|UPDATE|DELETE|REPLACE)\b",
     re.IGNORECASE)

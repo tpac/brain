@@ -147,7 +147,7 @@ every Healer cycle to archive edges touching archived nodes.
 
 Files: `servers/brain_corrections.py` (`BrainCorrectionsMixin`),
 `servers/contract.py:render_corrections`,
-`servers/dal.py:GraphDAL.{get_connections_bulk,archive_dangling_edges}`,
+`servers/dal_graph.py:GraphDAL.{get_connections_bulk,archive_dangling_edges}`,
 `servers/dal_metadata.py:MetadataDAL.{get_fields_bulk,get_all_bulk}`,
 `servers/dal.py:NodeDAL.get_bulk`.
 
@@ -418,7 +418,7 @@ You are the sole maintainer of code quality, architecture, and cleanliness.
 
 **Contract-first** — Constants, field lists, limits, and config live in contract files. Never hardcode in hooks, dispatch, or surface code.
 
-**DAL-first** — Use DAL classes for database access (`dal.py`). No raw SQL in hooks, surface code, or MCP handlers.
+**DAL-first** — Use DAL classes for database access (`dal*.py`). No raw SQL in hooks, surface code, or MCP handlers.
 
 **Backup before destructive DB operations** — `cp brain.db brain.db.bak-{timestamp}` before ANY delete, bulk update, or schema migration. No exceptions.
 

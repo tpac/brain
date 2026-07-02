@@ -134,7 +134,7 @@ class TestEdgeEmbedding(BrainTestBase):
     def test_archive_clears_embedding(self):
         """Archiving a relation NULLs its embedding (parallel to node archive's
         DELETE FROM node_enrichments). Archived rows are never read."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         a, b = self._create_pair()
         self.brain.connect_typed(a, b, relation='extends', description='A extends B')
         self._backfill(a, b)
@@ -165,7 +165,7 @@ class TestEdgeEmbedding(BrainTestBase):
     def test_revive_re_embeds_after_archive(self):
         """A revived edge (add_relation Branch 3, created=True) starts NULL and
         backfill re-embeds it — archived→revived edges must not stay NULL."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         a, b = self._create_pair()
         self.brain.connect_typed(a, b, relation='extends', description='original description')
         self._backfill(a, b)

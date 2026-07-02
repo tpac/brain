@@ -70,7 +70,7 @@ def _instrumented_build_edge_coeffs(brain, brain_conn, activated_nodes,
     """Copy of _build_edge_coeffs with per-step timers feeding `timings`."""
     import os as _os
     import numpy as np
-    from servers.dal import GraphDAL
+    from servers.dal_graph import GraphDAL
     from servers.pipeline_contract import TRAVERSE_EXCLUDED_EDGES
     from servers.scales.s1.surface_contract import (
         _compose_enriched_edge_text,

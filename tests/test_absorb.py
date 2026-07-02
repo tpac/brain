@@ -53,7 +53,7 @@ class TestAbsorb(BrainTestBase):
         the community unit's judged decision (affinity gate + encoder
         accept/reject + drift detection), not a merge side effect. Semantic
         edges in the same absorb still migrate, and edges_migrated counts
-        only them. See ABSORB_EXCLUDED_RELATIONS in dal.py (audit 2026-06-12:
+        only them. See ABSORB_EXCLUDED_RELATIONS in dal_graph.py (audit 2026-06-12:
         the consolidation prompt stated this exclusion while the code
         migrated everything)."""
         survivor = self._node('survivor')

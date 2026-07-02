@@ -21,7 +21,7 @@ class TestFormatNode(BrainTestBase):
     def _add_edge(self, source_id, target_id, relation='related_to',
                   weight=0.8, description=''):
         """Insert an edge using the new multi-relation model."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         dal = GraphDAL(self.brain.conn)
         dal.add_relation(source_id, target_id, relation, description, weight)
 

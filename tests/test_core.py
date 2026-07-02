@@ -26,7 +26,8 @@ import sqlite3
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from servers.brain import Brain
-from servers.dal import LogsDAL, BrainMetaDAL
+from servers.dal import BrainMetaDAL
+from servers.dal_logs import LogsDAL
 from servers.schema import ensure_schema, ensure_logs_schema
 from tests.brain_test_base import BrainTestBase
 
@@ -260,7 +261,7 @@ class TestSilentFailures(BrainTestBase):
         # Node is still created — the retired param is inert, not fatal.
         self.assertIsNotNone(node_id)
         # The store-time edge path is dead — no edge to the target.
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         self.assertIsNone(
             GraphDAL(self.brain.conn).get_edge_id(node_id, 'nonexistent_node_id_xyz'))
         # Loud: an error row was logged tagged with our source.
@@ -453,15 +454,18 @@ class TestDALPatternEnforcement(unittest.TestCase):
         Tracks which log tables lack DAL methods. As DAL grows, lower the threshold.
         """
         from servers.schema import LOG_TABLES
+        import glob
 
-        with open(os.path.join(self.SERVERS_DIR, 'dal.py')) as f:
-            dal_source = f.read()
+        dal_source = ''
+        for path in glob.glob(os.path.join(self.SERVERS_DIR, 'dal*.py')):
+            with open(path) as f:
+                dal_source += f.read()
         uncovered = []
         for table_name in LOG_TABLES:
             if table_name not in dal_source:
                 uncovered.append(table_name)
 
-        # Current baseline: 6 tables not yet in main DAL.
+        # Current baseline: 6 tables not yet in the DAL (dal*.py).
         MAX_UNCOVERED = 6
         self.assertLessEqual(len(uncovered), MAX_UNCOVERED,
                             f'Log tables without DAL coverage: {uncovered}. '

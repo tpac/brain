@@ -30,7 +30,7 @@ if ROOT not in sys.path:
 
 # Tie the noise set to the contract (matches backfill_edge_embeddings' own
 # filter) rather than re-typing it — see CLAUDE.md "Contract-first".
-from servers.dal import DEFAULT_EXCLUDED_RELATIONS  # noqa: E402
+from servers.dal_graph import DEFAULT_EXCLUDED_RELATIONS  # noqa: E402
 NOISE = tuple(sorted(DEFAULT_EXCLUDED_RELATIONS))
 CHUNK = 800
 

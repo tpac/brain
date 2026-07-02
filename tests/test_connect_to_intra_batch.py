@@ -25,7 +25,7 @@ Locks the design contract for the sibling-aware connect_to feature:
 
 import unittest
 from tests.brain_test_base import BrainTestBase
-from servers.dal import GraphDAL
+from servers.dal_graph import GraphDAL
 from servers.daemon_dispatch import COMMAND_TABLE
 
 

@@ -43,7 +43,7 @@ class BrainConnectionsMixin:
         ids = [e for e in (edge_ids or []) if e]
         if not ids:
             return 0
-        from .dal import DEFAULT_EXCLUDED_RELATIONS
+        from .dal_graph import DEFAULT_EXCLUDED_RELATIONS
         from . import embedder as _embedder
         if not _embedder.is_ready():
             # Embedder still loading (e.g. at boot before warmup). Don't drop

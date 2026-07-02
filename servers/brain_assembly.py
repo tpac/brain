@@ -816,7 +816,8 @@ class BrainAssemblyMixin:
         - Skip pairs already in pending_consolidation
         """
         from . import embedder
-        from .dal import VectorDAL, LogsDAL
+        from .dal import VectorDAL
+        from .dal_logs import LogsDAL
         from datetime import datetime, timezone, timedelta
 
         if not embedder.is_ready():

@@ -404,7 +404,8 @@ def _apply_hebbian_pairs(brain, conn,
     pairs aren't double-counted as drained.
     """
     from .brain_constants import LEARNING_RATE, MAX_WEIGHT, EDGE_TYPES
-    from .dal import GraphDAL, NodeDAL
+    from .dal import NodeDAL
+    from .dal_graph import GraphDAL
 
     co_default_weight = EDGE_TYPES['co_accessed']['defaultWeight']
     delta = LEARNING_RATE * 0.5  # canonical Hebbian co-access bump magnitude

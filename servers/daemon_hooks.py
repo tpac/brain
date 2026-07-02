@@ -760,7 +760,7 @@ def hook_idle_maintenance(brain, args, graph_changes):
 
     # 3d. Edge decay — apply half-life decay to auto-generated edges
     try:
-        from .dal import GraphDAL
+        from .dal_graph import GraphDAL
         graph_dal = GraphDAL(brain.conn)
         decay_result = graph_dal.decay_edges()
         decayed = decay_result.get('decayed', 0)
@@ -884,7 +884,7 @@ def hook_idle_maintenance(brain, args, graph_changes):
 
     # 9. DB maintenance (prune old logs, clean orphans)
     try:
-        from servers.dal import LogsDAL
+        from servers.dal_logs import LogsDAL
         logs_dal = LogsDAL(brain.logs_conn)
         maint = logs_dal.run_maintenance(graph_conn=brain.conn)
         total_pruned = maint.get('total_pruned', 0)

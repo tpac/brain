@@ -49,7 +49,7 @@ def _make_node(brain, **kwargs):
 def _get_edge_relation_row(brain, source_id, target_id, relation,
                             include_archived=True):
     """Read a single (edge, relation) row's raw state. Returns dict or None."""
-    from servers.dal import GraphDAL
+    from servers.dal_graph import GraphDAL
     edge_id = GraphDAL(brain.conn).get_edge_id(source_id, target_id)
     if not edge_id:
         return None
@@ -100,7 +100,7 @@ class TestConnectUpsertBehavior(BrainTestBase):
 
     def test_no_row_creates_with_passed_values(self):
         """First connect creates row with all passed field values."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         a = _make_node(self.brain)
         b = _make_node(self.brain)
 
@@ -120,7 +120,7 @@ class TestConnectUpsertBehavior(BrainTestBase):
 
     def test_no_row_uses_defaults_for_omitted_fields(self):
         """Fresh INSERT uses sensible defaults for unspecified fields."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         a = _make_node(self.brain)
         b = _make_node(self.brain)
 
@@ -134,7 +134,7 @@ class TestConnectUpsertBehavior(BrainTestBase):
 
     def test_active_row_field_preserving_update(self):
         """Active row + new weight → weight updates, description preserved."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         gdal = GraphDAL(self.brain.conn)
         a = _make_node(self.brain)
         b = _make_node(self.brain)
@@ -152,7 +152,7 @@ class TestConnectUpsertBehavior(BrainTestBase):
 
     def test_active_row_no_op_when_no_fields_change(self):
         """Active row + no specified fields differ → true no-op."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         gdal = GraphDAL(self.brain.conn)
         a = _make_node(self.brain)
         b = _make_node(self.brain)
@@ -167,7 +167,7 @@ class TestConnectUpsertBehavior(BrainTestBase):
 
     def test_active_row_partial_update_only_specified(self):
         """Multi-field update touches only specified fields."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         gdal = GraphDAL(self.brain.conn)
         a = _make_node(self.brain)
         b = _make_node(self.brain)
@@ -186,7 +186,7 @@ class TestConnectUpsertBehavior(BrainTestBase):
 
     def test_archived_row_revived_with_passed_values(self):
         """Archived row + connect → revives with new values + defaults."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         gdal = GraphDAL(self.brain.conn)
         a = _make_node(self.brain)
         b = _make_node(self.brain)
@@ -211,7 +211,7 @@ class TestConnectUpsertBehavior(BrainTestBase):
 
     def test_revived_row_unspecified_fields_use_defaults(self):
         """Revive on archived row resets unspecified fields to defaults (fresh row)."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         gdal = GraphDAL(self.brain.conn)
         a = _make_node(self.brain)
         b = _make_node(self.brain)
@@ -233,7 +233,7 @@ class TestConnectUpsertBehavior(BrainTestBase):
 
     def test_multiple_relations_on_same_edge_independent(self):
         """Different relations on same (source, target) pair are independent rows."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         gdal = GraphDAL(self.brain.conn)
         a = _make_node(self.brain)
         b = _make_node(self.brain)
@@ -250,7 +250,7 @@ class TestConnectUpsertBehavior(BrainTestBase):
 
     def test_create_deltas_have_old_none(self):
         """First create: all deltas have old=None (semantic 'created from nothing')."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         a = _make_node(self.brain)
         b = _make_node(self.brain)
 
@@ -281,7 +281,7 @@ class TestAutoStrengthenDropped(BrainTestBase):
 
     def test_repeated_connect_does_not_strengthen(self):
         """Stage 1B: connect with same weight is idempotent (no auto-bump)."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         gdal = GraphDAL(self.brain.conn)
         a = _make_node(self.brain)
         b = _make_node(self.brain)
@@ -296,7 +296,7 @@ class TestAutoStrengthenDropped(BrainTestBase):
 
     def test_explicit_weight_replaces_not_bumps(self):
         """connect with weight=0.9 REPLACES the previous weight, doesn't add to it."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         gdal = GraphDAL(self.brain.conn)
         a = _make_node(self.brain)
         b = _make_node(self.brain)
@@ -319,7 +319,7 @@ class TestEdgeTraceEvents(BrainTestBase):
     def test_connect_create_emits_trace_with_create_deltas(self):
         """Fresh create via dispatch emits trace with old=None deltas."""
         from servers.daemon_dispatch import _handle_connect
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         a = _make_node(self.brain)
         b = _make_node(self.brain)
 
@@ -339,7 +339,7 @@ class TestEdgeTraceEvents(BrainTestBase):
     def test_connect_update_emits_trace_with_field_deltas(self):
         """Update via dispatch emits trace with field-level deltas."""
         from servers.daemon_dispatch import _handle_connect
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         a = _make_node(self.brain)
         b = _make_node(self.brain)
 
@@ -367,7 +367,7 @@ class TestEdgeTraceEvents(BrainTestBase):
     def test_connect_no_op_emits_no_trace(self):
         """connect with no field changes → no trace emitted."""
         from servers.daemon_dispatch import _handle_connect
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         a = _make_node(self.brain)
         b = _make_node(self.brain)
 
@@ -389,7 +389,7 @@ class TestEdgeTraceEvents(BrainTestBase):
     def test_connect_revive_emits_trace_with_create_deltas(self):
         """Connect on archived row → trace with create-style deltas (old=None)."""
         from servers.daemon_dispatch import _handle_connect
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         gdal = GraphDAL(self.brain.conn)
         a = _make_node(self.brain)
         b = _make_node(self.brain)
@@ -412,7 +412,7 @@ class TestEdgeTraceEvents(BrainTestBase):
     def test_disconnect_emits_archive_trace(self):
         """disconnect via brain_batch emits trace with archived flag flip."""
         from servers.daemon_dispatch import _handle_brain_batch, _handle_connect
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         a = _make_node(self.brain)
         b = _make_node(self.brain)
 
@@ -444,7 +444,7 @@ class TestEdgeTraceEvents(BrainTestBase):
     def test_chain_id_override_respected(self):
         """Caller-provided chain_id is used verbatim."""
         from servers.daemon_dispatch import _handle_connect
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         a = _make_node(self.brain)
         b = _make_node(self.brain)
 
@@ -461,7 +461,7 @@ class TestEdgeTraceEvents(BrainTestBase):
     def test_scale_inferred_from_encoding_source(self):
         """encoding_source='s2:foo' → trace.scale='s2'."""
         from servers.daemon_dispatch import _handle_connect
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         a = _make_node(self.brain)
         b = _make_node(self.brain)
 
@@ -551,7 +551,7 @@ class TestEdgeCases(BrainTestBase):
 
     def test_invalid_source_node_raises(self):
         """add_relation raises ValueError when source node doesn't exist."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         b = _make_node(self.brain)
         with self.assertRaises(ValueError) as cm:
             GraphDAL(self.brain.conn).add_relation(
@@ -560,7 +560,7 @@ class TestEdgeCases(BrainTestBase):
 
     def test_invalid_target_node_raises(self):
         """add_relation raises ValueError when target node doesn't exist."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         a = _make_node(self.brain)
         with self.assertRaises(ValueError) as cm:
             GraphDAL(self.brain.conn).add_relation(
@@ -569,7 +569,7 @@ class TestEdgeCases(BrainTestBase):
 
     def test_unicode_in_description_survives(self):
         """Unicode in description round-trips correctly through upsert."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         a = _make_node(self.brain)
         b = _make_node(self.brain)
         unicode_desc = 'Anchor — 持続 — émergent — 🧠'
@@ -581,7 +581,7 @@ class TestEdgeCases(BrainTestBase):
 
     def test_disconnect_nonexistent_no_error(self):
         """remove_relation on missing (source, target, relation) → no-op no error."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         # No edge exists yet — should silently no-op
         GraphDAL(self.brain.conn).remove_relation(
             'nonexistent_a', 'nonexistent_b', 'extends', archived_by='test')
@@ -589,7 +589,7 @@ class TestEdgeCases(BrainTestBase):
 
     def test_long_description_replace(self):
         """Large description (10KB) replaces cleanly through upsert."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         gdal = GraphDAL(self.brain.conn)
         a = _make_node(self.brain)
         b = _make_node(self.brain)
@@ -774,7 +774,7 @@ class TestCreatorAttribution(BrainTestBase):
     def test_add_relation_creator_immutable_on_update(self):
         """add_relation: an active-row update preserves encoding_source even
         when an explicit, DIFFERENT source is passed (creator set once)."""
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         gdal = GraphDAL(self.brain.conn)
         a = _make_node(self.brain)
         b = _make_node(self.brain)

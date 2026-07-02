@@ -11,7 +11,7 @@ Run: BRAIN_ALLOW_ANY_PYTHON=1 python3 -m pytest tests/test_session_state_dal.py 
 import sqlite3
 import pytest
 
-from servers.dal import SessionStateDAL
+from servers.dal_logs import SessionStateDAL
 
 _DDL = """CREATE TABLE session_state (
     session_id TEXT NOT NULL,

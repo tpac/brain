@@ -55,7 +55,8 @@ def get_raw_scores(brain, query, limit=20):
     Returns: (embedding_scores, keyword_scores, node_titles, node_types,
               node_confidence, node_critical, query_terms)
     """
-    from servers.dal import EmbeddingDAL, NodeDAL, TfIdfDAL, GraphDAL
+    from servers.dal import EmbeddingDAL, NodeDAL, TfIdfDAL
+    from servers.dal_graph import GraphDAL
 
     # Embed query
     expanded = brain._expand_query_with_vocabulary(query)

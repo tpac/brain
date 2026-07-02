@@ -12,7 +12,7 @@ Compares:
   2. Table-driven (new): query recall_log for pending work
 
 All imports verified: Brain (servers/brain.py), RecallPrecision (servers/brain_precision.py),
-LogsDAL (servers/dal.py). Method signatures match existing implementations.
+LogsDAL (servers/dal_logs.py). Method signatures match existing implementations.
 
 Sacred system benchmark — run BEFORE and AFTER any precision pipeline change.
 
@@ -32,7 +32,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from servers.brain import Brain
 from servers.brain_precision import RecallPrecision
-from servers.dal import LogsDAL
+from servers.dal_logs import LogsDAL
 
 
 # ── Simulation scenarios ──

@@ -8,7 +8,8 @@ which are provided by Brain.__init__.
 
 from . import embedder
 from .brain_constants import TYPE_CONFIDENCE
-from .dal import VectorDAL, ABSORB_EXCLUDED_RELATIONS
+from .dal import VectorDAL
+from .dal_graph import ABSORB_EXCLUDED_RELATIONS
 from .clock import iso_cutoff, iso_now
 from .brain_constants import (
     ENRICHMENT_NEIGHBOR_COUNT,
@@ -463,7 +464,7 @@ class BrainRememberMixin:
             # preserving each relation's weight + description.
             # community_member never migrates: placement is the community
             # unit's judged decision, not a merge side effect (see
-            # ABSORB_EXCLUDED_RELATIONS in dal.py, imported at module top).
+            # ABSORB_EXCLUDED_RELATIONS in dal_graph.py, imported at module top).
             prune = set(prune_edges or [])
             conns = self._graph.get_connections_bulk(
                 [absorbed_id]).get(absorbed_id, [])

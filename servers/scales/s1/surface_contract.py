@@ -854,7 +854,7 @@ def _build_edge_coeffs(brain, brain_conn, activated_nodes, query_vec,
     queries per recall instead of 200+). Per-owner neighbor cap enforced
     in Python.
     """
-    from servers.dal import GraphDAL
+    from servers.dal_graph import GraphDAL
     from servers.pipeline_contract import TRAVERSE_EXCLUDED_EDGES
 
     gdal = GraphDAL(brain_conn)

@@ -207,7 +207,7 @@ class T4_EdgeQuery(BrainTestBase):
         self.brain.connect_typed(a, b, relation='corrects', weight=0.7,
                                  description='A corrects B')
 
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         dal = GraphDAL(self.brain.conn)
         edge_id = dal.get_edge_id(a, b)
         self.assertIsNotNone(edge_id)
@@ -227,7 +227,7 @@ class T4_EdgeQuery(BrainTestBase):
         self.brain.connect_typed(a, b, relation='extends', weight=0.8,
                                  description='desc')
 
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         dal = GraphDAL(self.brain.conn)
         edge_id = dal.get_edge_id(a, b)
         self.assertIsNotNone(edge_id)
@@ -243,7 +243,7 @@ class T4_EdgeQuery(BrainTestBase):
                                 auto_connect=False)['id']
         self.brain.connect_typed(a, b, relation='extends', weight=0.8)
 
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         dal = GraphDAL(self.brain.conn)
         eid_ab = dal.get_edge_id(a, b)
         eid_ba = dal.get_edge_id(b, a)
@@ -292,7 +292,7 @@ class T7_Decay(BrainTestBase):
                                  description='')
 
         # Backdate co_accessed to 30 days ago (one half-life)
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         dal = GraphDAL(self.brain.conn)
         edge_id = dal.get_edge_id(a, b)
 
@@ -338,7 +338,7 @@ class T9_Cascade(BrainTestBase):
         self.brain.connect_typed(a, b, relation='extends', weight=0.8,
                                  description='A extends B')
 
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         dal = GraphDAL(self.brain.conn)
         edge_id = dal.get_edge_id(a, b)
         self.assertIsNotNone(edge_id)
@@ -396,7 +396,7 @@ class T10_BackwardCompat(BrainTestBase):
         b = self.brain.remember(type='decision', title='Node B', content='B',
                                 auto_connect=False)['id']
 
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         dal = GraphDAL(self.brain.conn)
         dal.add_relation(a, b, 'extends', 'test', 0.8, encoding_source='encoder:sonnet')
 
@@ -415,7 +415,7 @@ class T5_DanglingArchiveTimestampFormat(BrainTestBase):
     needs_embedder = False
 
     def test_archived_at_is_iso(self):
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
 
         a = self.brain.remember(type='test', title='dangle_a', content='c',
                                 auto_connect=False,
