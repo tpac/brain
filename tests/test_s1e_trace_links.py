@@ -499,8 +499,8 @@ def test_encoded_turns_trimmed_unencoded_full():
     out = _render_lived_sequence_timeline(_ProvBrain(eps, [], enc), 'sess', msgs)
     t5 = out.split('<turn n="1"')[1].split('</turn>')[0]
     t6 = out.split('<turn n="2"')[1].split('</turn>')[0]
-    u5 = t5.split('<user')[1].split('</user>')[0]
-    u6 = t6.split('<user')[1].split('</user>')[0]
+    u5 = t5.split('<other')[1].split('</other>')[0]
+    u6 = t6.split('<other')[1].split('</other>')[0]
     assert len(u6) > len(u5)                    # tail keeps full text
     assert '…' in u5                            # encoded turn cut is marked
     assert u5.count('x') <= trim                # trimmed to the contract cap
@@ -603,7 +603,7 @@ def test_scout_note_line_carries_decision_fields():
         'handle': '2025-01-22', 'source_role': 'user', 'precision': 'explicit',
         'relational_marker': 'just after', 'existing_anchor_id': 'abc12345ff',
         'event_description': 'the surgery Dr. Chen did on January 22nd'})
-    assert '[user]' in t and 'explicit' in t and 'just after' in t
+    assert '[other]' in t and 'explicit' in t and 'just after' in t
     assert 'reuse id:abc12345' in t
     f = _scout_note_line('facts', {
         'handle': 'PT = Sarah', 'evidence_quote': 'PT with Sarah at Riverside',

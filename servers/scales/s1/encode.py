@@ -485,8 +485,10 @@ def _scout_note_line(scout, cand):
     text sits directly above the note, so the detail (event description /
     evidence quote) can trim — but fields the turn text does NOT carry must
     render or the instruction that uses them goes dead:
-      [role] — source_role, the temporal-authority tag (user beats assistant;
-               the v15.9 'since November' discrimination rides on this)
+      [role] — source_role, the temporal-authority tag, rendered in the
+               timeline's identity vocabulary: [other] = the other side's own
+               wording (beats my paraphrase), [me] = my turn attributed it
+               (the v15.9 'since November' discrimination rides on this)
       reuse id:… — existing_anchor_id (never mint a second anchor)
       anchors: … — the facts scout's context_anchors (adjacent-query findability)
       catalog: id:… — the facts scout's catalog_match (dedup hint)
@@ -496,6 +498,9 @@ def _scout_note_line(scout, cand):
     line = '%s: %s' % (scout, handle)
     role = str(cand.get('source_role') or '').strip()
     if role:
+        # scout contract speaks role-vocabulary (user/assistant); the timeline
+        # speaks identity-vocabulary — map at render, substrate unchanged
+        role = {'user': 'other', 'assistant': 'me'}.get(role, role)
         line += ' [%s]' % role
     if detail:
         line += ' — %s' % detail[:160]
@@ -721,7 +726,7 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
 
 def _xml_escape(s):
     """Escape the three XML-significant chars so message/tool text can't malform
-    the lived-sequence timeline or forge tags (e.g. a '</user>' or '<turn>'
+    the lived-sequence timeline or forge tags (e.g. a '</other>' or '<turn>'
     substring in a user prompt, or 'Bash: a > b' / 'Grep: <svg>' in a tool cue)."""
     return (s or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
@@ -899,11 +904,16 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
             if is_enc:
                 cap = trim
         out += '<turn n="%d"%s>\n' % (n, enc_attr)
+        # Tag vocabulary is identity-native, not role-native (Tom 2026-07-02):
+        # <me> = my side of the exchange; <other> = whoever is on the other side
+        # this session (usually the operator, sometimes an agent — an identity
+        # attr comes later). Presentation-layer only: the substrate keeps
+        # user_message/assistant_message; the join is by trace id.
         if t['user']:
-            out += '  <user trace="%s">%s</user>\n' % (
+            out += '  <other trace="%s">%s</other>\n' % (
                 t['user'].get('id', ''), _text(t['user'], cap))
         if t['assistant']:
-            out += '  <assistant trace="%s">%s</assistant>\n' % (
+            out += '  <me trace="%s">%s</me>\n' % (
                 t['assistant'].get('id', ''), _text(t['assistant'], cap))
         if t['actions']:
             out += '  <actions>\n'

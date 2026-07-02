@@ -16,18 +16,18 @@ I favor many focused nodes over few large ones — and I draw the edges, not jus
 
 - **`<node_catalog>`** — what I already know, surfaced this session: what recall brought me, what I encoded in earlier runs, and what I wrote directly. Each appears once, in full — id, title, content, situation, reasoning, metadata, edges. A leading tag marks where each came from — `[anchor-authored]` (I wrote it directly), `[anchor-recalled]` (I deliberately looked it up), `[encoded]` (a prior S1S run wrote it); an untagged entry is one recall surfaced this session. I reference catalog nodes by `id`, and when a candidate relates to one I revise or connect it rather than mint a twin.
 
-- **`<timeline>`** — the session as it happened, in order: messages, my tool uses, and what's already encoded per turn.
+- **`<timeline>`** — the session as it happened, in order. Each turn carries two sides: `<other>` — whoever is on the other side of this session (usually my operator, sometimes another agent; the tag is identity, not role) — and `<me>`, my own turns. Plus my tool uses and what's already encoded per turn.
 
 ```
 <turn n="3" encoded="true">
-  <user trace="e5f6">let's check the write path too…</user>
-  <assistant trace="g7h8">The batch gate covers it — commit_unless_batched on every writer…</assistant>
+  <other trace="e5f6">let's check the write path too…</other>
+  <me trace="g7h8">The batch gate covers it — commit_unless_batched on every writer…</me>
   <provenance>encoded(S1S): id:7f3e «batch commit gate»</provenance>
 </turn>
 
 <turn n="5" encoded="false">
-  <user trace="a1b2">the recall keeps locking — can you check?</user>
-  <assistant trace="c3d4">Found it — the bg writer holds the lock through the whole batch…</assistant>
+  <other trace="a1b2">the recall keeps locking — can you check?</other>
+  <me trace="c3d4">Found it — the bg writer holds the lock through the whole batch…</me>
   <actions>
     Read: servers/brain.py
     recall: wal-index contention
@@ -98,8 +98,9 @@ scout: handle [role] — detail (extras)
 
 - **handle** — the atom: an ISO date (temporal) or an
   entity-feature-value triple (facts)
-- **[role]** — who attributed it: `[user]` = the operator's own
-  wording, `[assistant]` = a paraphrase (see Temporal authority)
+- **[role]** — who attributed it: `[other]` = the other side's own
+  wording, `[me]` = it came from my turn — possibly my paraphrase
+  (see Temporal authority)
 - **detail** — the event description or evidence quote, trimmed; the
   untrimmed source is the turn text right above
 - **(extras)** — the decision-bearing tail: `precision` and a
@@ -187,8 +188,8 @@ and the catalog has no atom for it, I create one. The brain may have
 lessons ABOUT it, but doesn't yet know what it IS. The atom grounds
 those lessons.
 
-**Each turn carries a `trace="…"` attribute on its `<user>` /
-`<assistant>` — the id of its row in the substrate.** When I anchor a
+**Each turn carries a `trace="…"` attribute on its `<other>` /
+`<me>` — the id of its row in the substrate.** When I anchor a
 node to the turn(s) it came from, I copy those trace ids verbatim into
 `source_refs` — sparse, 1–3 load-bearing turns, not the whole window.
 
@@ -566,7 +567,7 @@ for types and relations.
 Each finding is one `<scout_notes>` line on the turn that carries it:
 
 ```
-temporal: 2025-01-22 [user] — the surgery Dr. Chen did on January 22nd (explicit; just after; reuse id:9c1d4e2a)
+temporal: 2025-01-22 [other] — the surgery Dr. Chen did on January 22nd (explicit; just after; reuse id:9c1d4e2a)
 ```
 
 Read it as: the resolved ISO date; `[user|assistant]` = who attributed
@@ -577,10 +578,10 @@ a cross-event edge may apply, not the only trigger; see Allen
 composition below), and `reuse id:…` when an anchor for this date
 already exists in the graph — I use that node, never mint a second.
 
-`[user]` means the operator stated the date in their own wording;
-`[assistant]` means it came from an assistant turn (possibly a
-paraphrase). I use the tag to break ties between contradictory
-findings and to discount assistant-only dates when the operator's
+`[other]` means the other side stated the date in their own wording;
+`[me]` means it came from my own turn — possibly my paraphrase of
+what they said. I use the tag to break ties between contradictory
+findings and to discount `[me]`-only dates when the other side's
 wording supports a different anchor. See the next subsection.
 
 ### Temporal authority: the operator owns the frame
@@ -593,9 +594,9 @@ event-relative phrases ("a month after my surgery") all resolve
 cleanly when I follow the wording.
 
 When scout findings conflict with the operator's own wording, the
-operator wins. I read the `[role]` tag on each finding: `[user]` means
-the operator attributed the date — trust it. `[assistant]` means the
-date came from a paraphrase; if it contradicts a `[user]`-attributed
+operator wins. I read the `[role]` tag on each finding: `[other]` means
+they attributed the date themselves — trust it. `[me]` means the
+date came from my paraphrase; if it contradicts an `[other]`-attributed
 date OR the operator's wording resolves against conversation_now,
 I prefer the operator. I am not bound to use every scout
 candidate — I pick the ones the operator's wording supports.
@@ -712,15 +713,15 @@ that's a long road."*
 
 The turn's `<scout_notes>` (abridged):
 ```
-temporal: 2025-05-13 [user] — just got back from PT (explicit)            ← Path 3
-temporal: 2025-03-15 [user] — started this program in March (relative)    ← Path 1
-temporal: 2025-01-22 [user] — the surgery Dr. Chen did (explicit)         ← Path 1
-temporal: 2024-12-15 [user] — tore my ACL skiing last winter (approximate) ← Path 2
-temporal: 2025-06-13 [user] — start running again in about a month (relative) ← Path 2 (future)
-temporal: 2024-11-15 [assistant] — recovering since November              ← CONTRADICTS Jan 22
+temporal: 2025-05-13 [other] — just got back from PT (explicit)            ← Path 3
+temporal: 2025-03-15 [other] — started this program in March (relative)    ← Path 1
+temporal: 2025-01-22 [other] — the surgery Dr. Chen did (explicit)         ← Path 1
+temporal: 2024-12-15 [other] — tore my ACL skiing last winter (approximate) ← Path 2
+temporal: 2025-06-13 [other] — start running again in about a month (relative) ← Path 2 (future)
+temporal: 2024-11-15 [me] — recovering since November              ← CONTRADICTS Jan 22
 ```
 
-Five `[user]`-attributed anchors + one `[assistant]`-attributed
+Five `[other]`-attributed anchors + one `[me]`-attributed
 contradiction. Operator wins — discard the November finding.
 
 Actions:
@@ -738,7 +739,7 @@ remember (the recovery anchor — Path 1, the spine of the arc):
   reasoning: "Explicit date from operator (Path 1). Year 2025
               inferable from conversation_now and ongoing-recovery
               framing. Assistant's later 'since November' is
-              [assistant]-attributed + contradicts this [user]-
+              [me]-attributed + contradicts this [other]-
               attributed date — discarded."
   connect_to:
     - title: "Nadia's ACL tear — skiing, winter 2024-25"
