@@ -175,6 +175,58 @@ class TestRecallTopical:
         for r in results:
             assert r['source_tool'] == 'recall_topical'
 
+    def test_score_maps_effective_activation(self, env):
+        """Score-contract pin: the tool's score MUST be recall_score(result)
+        (= effective_activation), the same field daemon_hooks gives the
+        cosine pool. When these fork, the admission floor in surface.py
+        silently drops 100% of fetches (the 3-week death of 2026-07)."""
+        real_recall = env.brain.recall
+        try:
+            env.brain.recall = lambda **kw: {'results': [
+                {'id': 'aaaa1111', 'title': 't1', 'effective_activation': 0.42},
+                {'id': 'bbbb2222', 'title': 't2', 'effective_activation': 0.17},
+            ]}
+            out = recall_topical(env.brain, query='anything', k=5)
+        finally:
+            env.brain.recall = real_recall
+        assert [c['score'] for c in out] == [0.42, 0.17]
+
+    def test_zero_raw_results_logs_warning(self, env):
+        """recall_topical returning 0 raw results means the tool broke, not
+        'no matches' — cosine top-k always fills k. Must warn loudly."""
+        before = _event_ids(env.brain, 'warning', source='fetch_topical_zero_raw')
+        real_recall = env.brain.recall
+        try:
+            env.brain.recall = lambda **kw: {'results': []}
+            out = recall_topical(env.brain, query='anything', k=5)
+        finally:
+            env.brain.recall = real_recall
+        assert out == []
+        after = _event_ids(env.brain, 'warning', source='fetch_topical_zero_raw')
+        assert len(after - before) == 1
+
+
+class TestScoreContractSync:
+    """Both score producers must route through surface_contract.recall_score.
+
+    Source-level pin: a refactor that reverts either side to a raw field
+    read re-opens the silent-drift class this function exists to close."""
+
+    def _source(self, relpath):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, relpath)) as f:
+            return f.read()
+
+    def test_daemon_hooks_uses_recall_score(self):
+        src = self._source('servers/daemon_hooks.py')
+        assert 'node_data["score"] = recall_score(r)' in src
+
+    def test_fetch_tools_uses_recall_score(self):
+        src = self._source('servers/scales/s1/fetch_tools.py')
+        assert 'recall_score(r)' in src
+        # The old drift form must not come back.
+        assert "r.get('score', 0.0)" not in src
+
 
 class TestRecallByTimeDiscussed:
     # recall_recent was DELETED 2026-06-12 — its use case ('the thing we

@@ -16,7 +16,10 @@ DESIGN CONTRACT
 
 LOOP CONTROL
 ------------
-- Max 3 rounds (Haiku-thinks → tools-run → Haiku-thinks → ...).
+- Max 2 rounds (surface.py _call_surface_agentic max_rounds=2).
+- Tools are offered on EVERY round — the round-1 prefix is prompt-cached,
+  and stripping tools would invalidate it. A final-round tool_use gets one
+  forced tools-stripped finalize call instead (loud: surface_forced_finalize).
 - Parallel tool calls per round encouraged (Anthropic native).
 - Behavioral discipline (in surface prompt) prevents iterating same query.
 
@@ -333,13 +336,22 @@ def recall_topical(brain, query: str, k: int = 8, **_) -> List[Dict[str, Any]]:
     cosine candidates. Archived nodes never returned (brain.recall filters
     archived in all three lanes — verified at SQL level)."""
     try:
+        from servers.scales.s1.surface_contract import recall_score
         k = min(int(k), 10)
         results = brain.recall(query=query, limit=k)
         if isinstance(results, dict):
             results = results.get('results') or results.get('items') or []
+        if not results:
+            # Cosine top-k against a populated brain essentially always
+            # returns k results — zero raw results means the tool broke
+            # (drift, empty index, recall regression), not "no matches".
+            brain._log_warning(
+                'fetch_topical_zero_raw',
+                'recall_topical returned 0 raw results — brain.recall drift?',
+                'query=%r k=%d' % (query[:120], k))
         out = []
         for r in (results or []):
-            cand = _to_candidate(r, r.get('score', 0.0) if isinstance(r, dict) else 0.0,
+            cand = _to_candidate(r, recall_score(r) if isinstance(r, dict) else 0.0,
                                   'recall_topical')
             if cand:
                 out.append(cand)

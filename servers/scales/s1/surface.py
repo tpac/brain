@@ -205,7 +205,16 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                     if isinstance(c, dict) and (c.get('score') or 0) > 0]
     _pool_median = _stats.median(_pool_scores) if _pool_scores else 0.0
 
-    messages = [{"role": "user", "content": user_content}]
+    # Cache breakpoint (2026-07-02, the deferred A1): the round-1 prefix
+    # (tools + system + this user content, ~20K tokens) is written to the
+    # 5-min prompt cache and read back by round 2 at 0.1× price and much
+    # faster prefill. Requires the tools param to be byte-identical across
+    # rounds — see the forced-finalize path below for how the loop
+    # terminates without stripping tools. Prompts under the model's
+    # 4096-token cacheable minimum are silently not cached (no error).
+    messages = [{"role": "user", "content": [
+        {"type": "text", "text": user_content,
+         "cache_control": {"type": "ephemeral"}}]}]
     tool_trace = []
     raw_final = ''
 
@@ -242,18 +251,19 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
     for round_idx in range(max_rounds):
         is_final = (round_idx == max_rounds - 1)
 
+        # Tools ride on EVERY round (2026-07-02) — stripping them on the
+        # final round (the pre-cache force-select design) changes the
+        # request prefix and invalidates the entire prompt cache. The
+        # final round instead force-finalizes via the fallback below when
+        # Haiku tool-uses past its budget.
         api_kwargs = {
             'model': model,
             'max_tokens': max_tokens,
             'system': surface_instructions,
             'messages': messages,
             'output_config': output_config,
+            'tools': TOOL_DEFINITIONS,
         }
-        if not is_final:
-            # Final round omits tools — forces a finalization. Earlier rounds
-            # offer tools alongside the schema; Haiku may either tool_use (no
-            # schema constraint on tool_use blocks) or finalize JSON.
-            api_kwargs['tools'] = TOOL_DEFINITIONS
 
         try:
             api_resp = client.messages.create(**api_kwargs)
@@ -264,9 +274,24 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
 
         # Accumulate cost across rounds before processing this response.
         rounds_used += 1
-        sum_usage(usage_total, read_usage(api_resp))
+        round_usage = read_usage(api_resp)
+        sum_usage(usage_total, round_usage)
         if getattr(api_resp, 'stop_reason', None) == 'max_tokens':
             truncated += 1
+        # Cache visibility (operator ask): round 2+ shares round 1's prefix
+        # byte-for-byte, so zero cache reads on a cacheable-sized prompt
+        # means the cache broke (tools drift, block-shape change). Gate on
+        # prompt size so sub-minimum prompts (tests, tiny brains) don't warn.
+        if round_idx > 0 and (round_usage.get('cache_read_tokens') or 0) == 0 \
+                and (round_usage.get('input_tokens') or 0) \
+                    + (round_usage.get('cache_creation_tokens') or 0) > 4096:
+            brain._log_warning(
+                'surface_cache_miss',
+                'agentic round %d read 0 cache tokens (input=%d created=%d) '
+                '— round-1 prefix should have hit' % (
+                    round_idx, round_usage.get('input_tokens') or 0,
+                    round_usage.get('cache_creation_tokens') or 0),
+                'session=%s' % session_id)
 
         stop_reason = api_resp.stop_reason
         round_record = {'round': round_idx, 'stop_reason': stop_reason,
@@ -278,6 +303,45 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                 raw_final = block.text.strip()
 
         if stop_reason != 'tool_use':
+            tool_trace.append(round_record)
+            break
+
+        if is_final:
+            # Budget exhausted but Haiku tool-used anyway. Do NOT execute —
+            # re-issue the same request WITHOUT tools, forcing a JSON
+            # selection from the pool it already has. This round's tool_use
+            # blocks are discarded (appending them without tool_results
+            # would 400 the next call). Rare path: it costs one extra
+            # uncached call — exactly what every fired recall cost before
+            # caching. Loud so the rate is observable; if it's not rare,
+            # the prompt's round discipline regressed.
+            brain._log_warning(
+                'surface_forced_finalize',
+                'Haiku tool-used on the final round — forcing selection '
+                'with tools stripped',
+                'round=%d session=%s' % (round_idx, session_id))
+            round_record['forced_finalize'] = 1
+            forced_kwargs = {
+                'model': model,
+                'max_tokens': max_tokens,
+                'system': surface_instructions,
+                'messages': messages,
+                'output_config': output_config,
+            }
+            try:
+                forced_resp = client.messages.create(**forced_kwargs)
+            except Exception as e:
+                brain._log_error('surface_agentic_api', e,
+                                  'forced-finalize Haiku call')
+                tool_trace.append(round_record)
+                return raw_final, tool_trace, _telemetry()
+            rounds_used += 1
+            sum_usage(usage_total, read_usage(forced_resp))
+            if getattr(forced_resp, 'stop_reason', None) == 'max_tokens':
+                truncated += 1
+            for block in forced_resp.content:
+                if getattr(block, 'type', None) == 'text':
+                    raw_final = block.text.strip()
             tool_trace.append(round_record)
             break
 
@@ -306,27 +370,59 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                 # from the same recall pipeline as the cosine pool, so they
                 # are directly comparable — a fetched node scoring below the
                 # original pool's median doesn't beat what's already here.
-                # Filter exec_result IN PLACE so the rendered tool output and
-                # the candidate pool agree (Haiku must never see an id it
-                # can't select). Other tools keep synthetic scores — no floor.
+                # Score field parity is pinned by surface_contract.recall_score
+                # (both the pool and the tool read it). Filter exec_result IN
+                # PLACE so the rendered tool output and the candidate pool
+                # agree (Haiku must never see an id it can't select). Other
+                # tools keep synthetic scores — no floor.
+                _raw_results = [c for c in (exec_result.get('results') or [])
+                                if isinstance(c, dict)]
                 _dropped_below_floor = 0
+                _dropped_ids = []
                 if tool_name == 'recall_topical' and _pool_median > 0:
-                    _kept = [c for c in (exec_result.get('results') or [])
-                             if (c.get('score') or 0) >= _pool_median]
-                    _dropped_below_floor = len(exec_result.get('results') or []) - len(_kept)
+                    _kept = []
+                    _dropped = []
+                    for c in _raw_results:
+                        if (c.get('score') or 0) >= _pool_median:
+                            _kept.append(c)
+                        else:
+                            _dropped.append(c)
+                    _dropped_below_floor = len(_dropped)
+                    _dropped_ids = [str(c.get('id') or '')[:8] for c in _dropped]
                     exec_result['results'] = _kept
+                    if _raw_results and not _kept:
+                        # Tripwire: the tool fetched candidates and the floor
+                        # dropped every one. Occasional all-drops are fine;
+                        # EVERY call all-dropping means the score contract
+                        # forked again (the 3-week silent death of 2026-07).
+                        _top_fetched = max((c.get('score') or 0)
+                                           for c in _raw_results)
+                        brain._log_warning(
+                            'surface_floor_dropped_all',
+                            'admission floor dropped ALL %d recall_topical '
+                            'results (pool_median=%.3f top_fetched=%.3f) — '
+                            'score-contract drift if this repeats'
+                            % (len(_raw_results), _pool_median, _top_fetched),
+                            'args=%r' % str(tool_input)[:200])
                 # Append fetched results to candidates_data (dedupe)
                 for cand in exec_result.get('results') or []:
                     cid = cand.get('id') if isinstance(cand, dict) else None
                     if cid and cid not in existing_ids:
                         candidates_data.append(cand)
                         existing_ids.add(cid)
-                # Record for trace
+                # Record for trace. result_ids/dropped_ids make per-tool
+                # selection attribution computable downstream (LAF training
+                # reads these traces) — counts alone can't say which tool
+                # sourced a picked node.
                 round_record['tool_calls'].append({
                     'tool': tool_name,
                     'args': tool_input,
                     'result_count': len(exec_result.get('results') or []),
+                    'result_ids': [str(c.get('id') or '')[:8]
+                                   for c in (exec_result.get('results') or [])
+                                   if isinstance(c, dict)],
                     'dropped_below_floor': _dropped_below_floor,
+                    'dropped_ids': _dropped_ids,
                     'latency_ms': exec_result.get('latency_ms', 0),
                     'error': exec_result.get('error'),
                 })
