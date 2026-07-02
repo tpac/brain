@@ -1,5 +1,10 @@
 # Brain Evaluation Framework
 
+> **Start at [docs/EVAL-PLATFORM.md](../docs/EVAL-PLATFORM.md)** — the current
+> platform reference (Frozen Corpus two-stage harness, sweep A/B, analyzers).
+> Production surface-judgment metrics: `oracle_audit/ab_tool_use_audit.py`.
+> The evals below are the original 2026-03 formatting A/Bs — historical.
+
 Automated A/B testing for brain-to-Claude communication. Measures whether formatting changes improve Claude's encoding quality and recall attention.
 
 ## Evals
