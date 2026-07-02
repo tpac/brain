@@ -56,3 +56,10 @@ unset PYTHONHOME
 # this, the registered surface prompt runs under the legacy v4 single-shot
 # path and tools never fire. Rollback: unset this var and restart the daemon.
 export BRAIN_SURFACE_VARIANT="v5_agentic"
+
+# Recall variant — laf_v1 is the LAF challenger scorer (§19 P1): maxsim +
+# episodic pick/enc + idf + situation lanes (servers/recall_laf.py). Gate:
+# eval/laf/p1_gate.md (2026-07-02) — 16%/23% need@5/@25 vs champion 11%/17%,
+# 2.3× faster p50. Read by the DAEMON (brain_recall._recall_impl) — takes
+# effect at daemon restart. Rollback: remove this line and restart.
+export BRAIN_RECALL_VARIANT="laf_v1"
