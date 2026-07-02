@@ -1,0 +1,2215 @@
+{
+ "drill": [
+  {
+   "cue": "anchor_turn_0087",
+   "source": "anchor_turn",
+   "qt": "design",
+   "query": "The verification settles the design cleanly. Here's what I found and what I'd build \u2014 both consolidated, no schema/query spaghetti:\n\n## Part 1 \u2014 recording fix, solidified (not a one-liner patch)\n\nThe ",
+   "lane_best": {
+    "ms": {
+     "The originating concept of the letter as a cross-time self-handoff distinct from live signaling.": 3396,
+     "The canonical self-channel design: self_inflight/courier schema (incl. expires_at column), broadcast/directed addressing model, and the phase structure that places the boot-letter (Phase 3) apart from the courier \u2014 grounding 'the next_boot letter is not stored in self_inflight'.": 193,
+     "The clock-helper contract the expires_at/iso_after plan ties into, plus (via its attached correction 5a5f5678) Tom's 'all call sites must refer to an injectable now \u2014 important for historic evals' directive that defines the wall-clock-vs-conversation-time axis the outcome resolves.": 1446,
+     "The clock contract: brain.now()/conversation_now split; conversation_now exists so S1/S2 inherit eval-replay dates; production uses real now; contract test scans S1/S2 for wall-clock leaks.": 1235
+    },
+    "pick_c": {
+     "The originating concept of the letter as a cross-time self-handoff distinct from live signaling.": 2262,
+     "The canonical self-channel design: self_inflight/courier schema (incl. expires_at column), broadcast/directed addressing model, and the phase structure that places the boot-letter (Phase 3) apart from the courier \u2014 grounding 'the next_boot letter is not stored in self_inflight'.": 4935,
+     "The clock-helper contract the expires_at/iso_after plan ties into, plus (via its attached correction 5a5f5678) Tom's 'all call sites must refer to an injectable now \u2014 important for historic evals' directive that defines the wall-clock-vs-conversation-time axis the outcome resolves.": 4820,
+     "The clock contract: brain.now()/conversation_now split; conversation_now exists so S1/S2 inherit eval-replay dates; production uses real now; contract test scans S1/S2 for wall-clock leaks.": 2711
+    },
+    "enc_c": {
+     "The originating concept of the letter as a cross-time self-handoff distinct from live signaling.": 2206,
+     "The canonical self-channel design: self_inflight/courier schema (incl. expires_at column), broadcast/directed addressing model, and the phase structure that places the boot-letter (Phase 3) apart from the courier \u2014 grounding 'the next_boot letter is not stored in self_inflight'.": 4770,
+     "The clock-helper contract the expires_at/iso_after plan ties into, plus (via its attached correction 5a5f5678) Tom's 'all call sites must refer to an injectable now \u2014 important for historic evals' directive that defines the wall-clock-vs-conversation-time axis the outcome resolves.": 5001,
+     "The clock contract: brain.now()/conversation_now split; conversation_now exists so S1/S2 inherit eval-replay dates; production uses real now; contract test scans S1/S2 for wall-clock leaks.": 2695
+    },
+    "pick_u": {
+     "The originating concept of the letter as a cross-time self-handoff distinct from live signaling.": 2261,
+     "The canonical self-channel design: self_inflight/courier schema (incl. expires_at column), broadcast/directed addressing model, and the phase structure that places the boot-letter (Phase 3) apart from the courier \u2014 grounding 'the next_boot letter is not stored in self_inflight'.": 3665,
+     "The clock-helper contract the expires_at/iso_after plan ties into, plus (via its attached correction 5a5f5678) Tom's 'all call sites must refer to an injectable now \u2014 important for historic evals' directive that defines the wall-clock-vs-conversation-time axis the outcome resolves.": 3749,
+     "The clock contract: brain.now()/conversation_now split; conversation_now exists so S1/S2 inherit eval-replay dates; production uses real now; contract test scans S1/S2 for wall-clock leaks.": 2708
+    },
+    "enc_u": {
+     "The originating concept of the letter as a cross-time self-handoff distinct from live signaling.": 2222,
+     "The canonical self-channel design: self_inflight/courier schema (incl. expires_at column), broadcast/directed addressing model, and the phase structure that places the boot-letter (Phase 3) apart from the courier \u2014 grounding 'the next_boot letter is not stored in self_inflight'.": 5043,
+     "The clock-helper contract the expires_at/iso_after plan ties into, plus (via its attached correction 5a5f5678) Tom's 'all call sites must refer to an injectable now \u2014 important for historic evals' directive that defines the wall-clock-vs-conversation-time axis the outcome resolves.": 4903,
+     "The clock contract: brain.now()/conversation_now split; conversation_now exists so S1/S2 inherit eval-replay dates; production uses real now; contract test scans S1/S2 for wall-clock leaks.": 2692
+    },
+    "fts": {
+     "The originating concept of the letter as a cross-time self-handoff distinct from live signaling.": 2428,
+     "The canonical self-channel design: self_inflight/courier schema (incl. expires_at column), broadcast/directed addressing model, and the phase structure that places the boot-letter (Phase 3) apart from the courier \u2014 grounding 'the next_boot letter is not stored in self_inflight'.": 151,
+     "The clock-helper contract the expires_at/iso_after plan ties into, plus (via its attached correction 5a5f5678) Tom's 'all call sites must refer to an injectable now \u2014 important for historic evals' directive that defines the wall-clock-vs-conversation-time axis the outcome resolves.": 4881,
+     "The clock contract: brain.now()/conversation_now split; conversation_now exists so S1/S2 inherit eval-replay dates; production uses real now; contract test scans S1/S2 for wall-clock leaks.": 1811
+    },
+    "idf": {
+     "The originating concept of the letter as a cross-time self-handoff distinct from live signaling.": 569,
+     "The canonical self-channel design: self_inflight/courier schema (incl. expires_at column), broadcast/directed addressing model, and the phase structure that places the boot-letter (Phase 3) apart from the courier \u2014 grounding 'the next_boot letter is not stored in self_inflight'.": 2138,
+     "The clock-helper contract the expires_at/iso_after plan ties into, plus (via its attached correction 5a5f5678) Tom's 'all call sites must refer to an injectable now \u2014 important for historic evals' directive that defines the wall-clock-vs-conversation-time axis the outcome resolves.": 2092,
+     "The clock contract: brain.now()/conversation_now split; conversation_now exists so S1/S2 inherit eval-replay dates; production uses real now; contract test scans S1/S2 for wall-clock leaks.": 1099
+    },
+    "sit": {
+     "The originating concept of the letter as a cross-time self-handoff distinct from live signaling.": 4116,
+     "The canonical self-channel design: self_inflight/courier schema (incl. expires_at column), broadcast/directed addressing model, and the phase structure that places the boot-letter (Phase 3) apart from the courier \u2014 grounding 'the next_boot letter is not stored in self_inflight'.": 4188,
+     "The clock-helper contract the expires_at/iso_after plan ties into, plus (via its attached correction 5a5f5678) Tom's 'all call sites must refer to an injectable now \u2014 important for historic evals' directive that defines the wall-clock-vs-conversation-time axis the outcome resolves.": 745,
+     "The clock contract: brain.now()/conversation_now split; conversation_now exists so S1/S2 inherit eval-replay dates; production uses real now; contract test scans S1/S2 for wall-clock leaks.": 881
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "trace_dal.append",
+     8.83
+    ],
+    [
+     "touches",
+     8.83
+    ],
+    [
+     "test_self_delivery.py",
+     8.83
+    ]
+   ]
+  },
+  {
+   "cue": "anchor_turn_0132",
+   "source": "anchor_turn",
+   "qt": "compositional",
+   "query": "Validated across all three lenses \u2014 and the headline is bigger than \"it's a known concept\": **all three fields independently converged on the *same* hub fix.** So the \"make-or-break hub-dampening\" I f",
+   "lane_best": {
+    "ms": {
+     "The fishbowl/Matthew-effect skew is real and measured: brain-dev dominates the corpus so domain (EX.CO) recall is swamped": 1338,
+     "Per-query z-score (z=(score-mean)/std) was the embedding-layer normalization lever, reverted as a per-node no-op; RRF is the rank-fusion alternative": 24,
+     "The recall problem is hub dominance / Matthew effect \u2014 brain-dev hubs bury thin clusters via a rich-get-richer Hebbian loop": 57,
+     "When independent derivations (engineering + biology) converge on the same answer, the convergence is itself the credibility signal \u2014 trust it": 443,
+     "RRF / rank fusion as the scale-invariant normalization in the same divide-by-prevalence family (TF-IDF lexical, EX.CO lexical-token entry)": 99,
+     "Tom's directive: simple and robust, two rules not four, no boosts/knob-twiddling \u2014 cosine + spreading activation already do the work; stabilize before adding architecture": 200
+    },
+    "pick_c": {
+     "The fishbowl/Matthew-effect skew is real and measured: brain-dev dominates the corpus so domain (EX.CO) recall is swamped": 4592,
+     "Per-query z-score (z=(score-mean)/std) was the embedding-layer normalization lever, reverted as a per-node no-op; RRF is the rank-fusion alternative": 93,
+     "The recall problem is hub dominance / Matthew effect \u2014 brain-dev hubs bury thin clusters via a rich-get-richer Hebbian loop": 4517,
+     "When independent derivations (engineering + biology) converge on the same answer, the convergence is itself the credibility signal \u2014 trust it": 4789,
+     "RRF / rank fusion as the scale-invariant normalization in the same divide-by-prevalence family (TF-IDF lexical, EX.CO lexical-token entry)": 63,
+     "Tom's directive: simple and robust, two rules not four, no boosts/knob-twiddling \u2014 cosine + spreading activation already do the work; stabilize before adding architecture": 1193
+    },
+    "enc_c": {
+     "The fishbowl/Matthew-effect skew is real and measured: brain-dev dominates the corpus so domain (EX.CO) recall is swamped": 4166,
+     "Per-query z-score (z=(score-mean)/std) was the embedding-layer normalization lever, reverted as a per-node no-op; RRF is the rank-fusion alternative": 234,
+     "The recall problem is hub dominance / Matthew effect \u2014 brain-dev hubs bury thin clusters via a rich-get-richer Hebbian loop": 4248,
+     "When independent derivations (engineering + biology) converge on the same answer, the convergence is itself the credibility signal \u2014 trust it": 3838,
+     "RRF / rank fusion as the scale-invariant normalization in the same divide-by-prevalence family (TF-IDF lexical, EX.CO lexical-token entry)": 7,
+     "Tom's directive: simple and robust, two rules not four, no boosts/knob-twiddling \u2014 cosine + spreading activation already do the work; stabilize before adding architecture": 1069
+    },
+    "pick_u": {
+     "The fishbowl/Matthew-effect skew is real and measured: brain-dev dominates the corpus so domain (EX.CO) recall is swamped": 4277,
+     "Per-query z-score (z=(score-mean)/std) was the embedding-layer normalization lever, reverted as a per-node no-op; RRF is the rank-fusion alternative": 209,
+     "The recall problem is hub dominance / Matthew effect \u2014 brain-dev hubs bury thin clusters via a rich-get-richer Hebbian loop": 4249,
+     "When independent derivations (engineering + biology) converge on the same answer, the convergence is itself the credibility signal \u2014 trust it": 4926,
+     "RRF / rank fusion as the scale-invariant normalization in the same divide-by-prevalence family (TF-IDF lexical, EX.CO lexical-token entry)": 226,
+     "Tom's directive: simple and robust, two rules not four, no boosts/knob-twiddling \u2014 cosine + spreading activation already do the work; stabilize before adding architecture": 1180
+    },
+    "enc_u": {
+     "The fishbowl/Matthew-effect skew is real and measured: brain-dev dominates the corpus so domain (EX.CO) recall is swamped": 4413,
+     "Per-query z-score (z=(score-mean)/std) was the embedding-layer normalization lever, reverted as a per-node no-op; RRF is the rank-fusion alternative": 249,
+     "The recall problem is hub dominance / Matthew effect \u2014 brain-dev hubs bury thin clusters via a rich-get-richer Hebbian loop": 3979,
+     "When independent derivations (engineering + biology) converge on the same answer, the convergence is itself the credibility signal \u2014 trust it": 3742,
+     "RRF / rank fusion as the scale-invariant normalization in the same divide-by-prevalence family (TF-IDF lexical, EX.CO lexical-token entry)": 54,
+     "Tom's directive: simple and robust, two rules not four, no boosts/knob-twiddling \u2014 cosine + spreading activation already do the work; stabilize before adding architecture": 1106
+    },
+    "fts": {
+     "The fishbowl/Matthew-effect skew is real and measured: brain-dev dominates the corpus so domain (EX.CO) recall is swamped": 4712,
+     "Per-query z-score (z=(score-mean)/std) was the embedding-layer normalization lever, reverted as a per-node no-op; RRF is the rank-fusion alternative": 1420,
+     "The recall problem is hub dominance / Matthew effect \u2014 brain-dev hubs bury thin clusters via a rich-get-richer Hebbian loop": 4016,
+     "When independent derivations (engineering + biology) converge on the same answer, the convergence is itself the credibility signal \u2014 trust it": 3792,
+     "RRF / rank fusion as the scale-invariant normalization in the same divide-by-prevalence family (TF-IDF lexical, EX.CO lexical-token entry)": 5067,
+     "Tom's directive: simple and robust, two rules not four, no boosts/knob-twiddling \u2014 cosine + spreading activation already do the work; stabilize before adding architecture": 396
+    },
+    "idf": {
+     "The fishbowl/Matthew-effect skew is real and measured: brain-dev dominates the corpus so domain (EX.CO) recall is swamped": 93,
+     "Per-query z-score (z=(score-mean)/std) was the embedding-layer normalization lever, reverted as a per-node no-op; RRF is the rank-fusion alternative": 1142,
+     "The recall problem is hub dominance / Matthew effect \u2014 brain-dev hubs bury thin clusters via a rich-get-richer Hebbian loop": 84,
+     "When independent derivations (engineering + biology) converge on the same answer, the convergence is itself the credibility signal \u2014 trust it": 91,
+     "RRF / rank fusion as the scale-invariant normalization in the same divide-by-prevalence family (TF-IDF lexical, EX.CO lexical-token entry)": 262,
+     "Tom's directive: simple and robust, two rules not four, no boosts/knob-twiddling \u2014 cosine + spreading activation already do the work; stabilize before adding architecture": 2666
+    },
+    "sit": {
+     "The fishbowl/Matthew-effect skew is real and measured: brain-dev dominates the corpus so domain (EX.CO) recall is swamped": 366,
+     "Per-query z-score (z=(score-mean)/std) was the embedding-layer normalization lever, reverted as a per-node no-op; RRF is the rank-fusion alternative": 89,
+     "The recall problem is hub dominance / Matthew effect \u2014 brain-dev hubs bury thin clusters via a rich-get-richer Hebbian loop": 3338,
+     "When independent derivations (engineering + biology) converge on the same answer, the convergence is itself the credibility signal \u2014 trust it": 636,
+     "RRF / rank fusion as the scale-invariant normalization in the same divide-by-prevalence family (TF-IDF lexical, EX.CO lexical-token entry)": 826,
+     "Tom's directive: simple and robust, two rules not four, no boosts/knob-twiddling \u2014 cosine + spreading activation already do the work; stabilize before adding architecture": 1113
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "www.londonread.co.uk",
+     8.83
+    ],
+    [
+     "width",
+     8.83
+    ],
+    [
+     "treating",
+     8.83
+    ]
+   ]
+  },
+  {
+   "cue": "anchor_turn_0345",
+   "source": "anchor_turn",
+   "qt": "compositional",
+   "query": "Verification workflow is running in the background \u2014 4 independent reviewers (baseline-trap, merge/dedup logic, API-shape correctness, metric validity), each briefed with the design, the two load-bear",
+   "lane_best": {
+    "ms": {
+     "The isolation rule grounding both the IsolatedBrain probe design and the daemon-timeout diagnosis.": 2,
+     "The test-integrity rule the move invoked by name to leave a pre-existing failing test untouched and flag it instead of fixing it into scope": 1632,
+     "The specific scar the cue names: a burial-session probe whose win was fraudulent because it presupposed its own answer.": 283,
+     "The diagnose/verify-before-build discipline the move enacts.": 927
+    },
+    "pick_c": {
+     "The isolation rule grounding both the IsolatedBrain probe design and the daemon-timeout diagnosis.": 26,
+     "The test-integrity rule the move invoked by name to leave a pre-existing failing test untouched and flag it instead of fixing it into scope": 3920,
+     "The specific scar the cue names: a burial-session probe whose win was fraudulent because it presupposed its own answer.": 95,
+     "The diagnose/verify-before-build discipline the move enacts.": 4
+    },
+    "enc_c": {
+     "The isolation rule grounding both the IsolatedBrain probe design and the daemon-timeout diagnosis.": 1920,
+     "The test-integrity rule the move invoked by name to leave a pre-existing failing test untouched and flag it instead of fixing it into scope": 3889,
+     "The specific scar the cue names: a burial-session probe whose win was fraudulent because it presupposed its own answer.": 6,
+     "The diagnose/verify-before-build discipline the move enacts.": 4176
+    },
+    "pick_u": {
+     "The isolation rule grounding both the IsolatedBrain probe design and the daemon-timeout diagnosis.": 13,
+     "The test-integrity rule the move invoked by name to leave a pre-existing failing test untouched and flag it instead of fixing it into scope": 229,
+     "The specific scar the cue names: a burial-session probe whose win was fraudulent because it presupposed its own answer.": 127,
+     "The diagnose/verify-before-build discipline the move enacts.": 8
+    },
+    "enc_u": {
+     "The isolation rule grounding both the IsolatedBrain probe design and the daemon-timeout diagnosis.": 1917,
+     "The test-integrity rule the move invoked by name to leave a pre-existing failing test untouched and flag it instead of fixing it into scope": 4655,
+     "The specific scar the cue names: a burial-session probe whose win was fraudulent because it presupposed its own answer.": 17,
+     "The diagnose/verify-before-build discipline the move enacts.": 3881
+    },
+    "fts": {
+     "The isolation rule grounding both the IsolatedBrain probe design and the daemon-timeout diagnosis.": 1995,
+     "The test-integrity rule the move invoked by name to leave a pre-existing failing test untouched and flag it instead of fixing it into scope": 4391,
+     "The specific scar the cue names: a burial-session probe whose win was fraudulent because it presupposed its own answer.": 4273,
+     "The diagnose/verify-before-build discipline the move enacts.": 4812
+    },
+    "idf": {
+     "The isolation rule grounding both the IsolatedBrain probe design and the daemon-timeout diagnosis.": 2,
+     "The test-integrity rule the move invoked by name to leave a pre-existing failing test untouched and flag it instead of fixing it into scope": 4363,
+     "The specific scar the cue names: a burial-session probe whose win was fraudulent because it presupposed its own answer.": 1222,
+     "The diagnose/verify-before-build discipline the move enacts.": 4687
+    },
+    "sit": {
+     "The isolation rule grounding both the IsolatedBrain probe design and the daemon-timeout diagnosis.": 617,
+     "The test-integrity rule the move invoked by name to leave a pre-existing failing test untouched and flag it instead of fixing it into scope": 1664,
+     "The specific scar the cue names: a burial-session probe whose win was fraudulent because it presupposed its own answer.": 127,
+     "The diagnose/verify-before-build discipline the move enacts.": 388
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "timed",
+     8.83
+    ],
+    [
+     "reviewers",
+     8.83
+    ],
+    [
+     "reimplementation",
+     8.83
+    ]
+   ]
+  },
+  {
+   "cue": "anchor_turn_0421",
+   "source": "anchor_turn",
+   "qt": "factual",
+   "query": "Read it fresh. Here's my honest take, grounded in having just driven the whole thing this session.\n\n**The core diagnosis:** the file *persuades* more than it *instructs*. An agent reading this doesn't",
+   "lane_best": {
+    "ms": {
+     "Why uncapped delivery isn't free \u2014 shared _MAX_INJECT_CHARS ~9500 budget, 1800 reserve, spill-to-unread-file": 95,
+     "Self-channel truncation architecture \u2014 storage full, delivery is the only cut (DELIVERED_BODY_MAX / RECEIVED_BLOCK_MAX)": 124,
+     "The shared ~9500-char additionalContext budget (Frame+recall+messages) and the spill-to-unreadable-file behavior \u2014 the real reason delivery truncates rather than 'just stop truncating'": 279,
+     "Anchor's same-session pattern of over-engineering a non-problem (isolation ceremony) when the real task was simpler \u2014 the corrective to manufacturing the REPO_ROOT 'gap'": 835,
+     "Anchor's named self-pattern: plausible fix with no real failure behind it; Tom's drifting check catches it": 205,
+     "The self-channel truncation design: storage uncapped, delivery the single loud point with DELIVERED_BODY_MAX (per-message) + RECEIVED_BLOCK_MAX=1800 (block) and the '\u2026[+N chars \u2014 full in dashboard]' marker": 10
+    },
+    "pick_c": {
+     "Why uncapped delivery isn't free \u2014 shared _MAX_INJECT_CHARS ~9500 budget, 1800 reserve, spill-to-unread-file": 22,
+     "Self-channel truncation architecture \u2014 storage full, delivery is the only cut (DELIVERED_BODY_MAX / RECEIVED_BLOCK_MAX)": 6,
+     "The shared ~9500-char additionalContext budget (Frame+recall+messages) and the spill-to-unreadable-file behavior \u2014 the real reason delivery truncates rather than 'just stop truncating'": 2366,
+     "Anchor's same-session pattern of over-engineering a non-problem (isolation ceremony) when the real task was simpler \u2014 the corrective to manufacturing the REPO_ROOT 'gap'": 907,
+     "Anchor's named self-pattern: plausible fix with no real failure behind it; Tom's drifting check catches it": 95,
+     "The self-channel truncation design: storage uncapped, delivery the single loud point with DELIVERED_BODY_MAX (per-message) + RECEIVED_BLOCK_MAX=1800 (block) and the '\u2026[+N chars \u2014 full in dashboard]' marker": 1735
+    },
+    "enc_c": {
+     "Why uncapped delivery isn't free \u2014 shared _MAX_INJECT_CHARS ~9500 budget, 1800 reserve, spill-to-unread-file": 4635,
+     "Self-channel truncation architecture \u2014 storage full, delivery is the only cut (DELIVERED_BODY_MAX / RECEIVED_BLOCK_MAX)": 3159,
+     "The shared ~9500-char additionalContext budget (Frame+recall+messages) and the spill-to-unreadable-file behavior \u2014 the real reason delivery truncates rather than 'just stop truncating'": 2295,
+     "Anchor's same-session pattern of over-engineering a non-problem (isolation ceremony) when the real task was simpler \u2014 the corrective to manufacturing the REPO_ROOT 'gap'": 771,
+     "Anchor's named self-pattern: plausible fix with no real failure behind it; Tom's drifting check catches it": 520,
+     "The self-channel truncation design: storage uncapped, delivery the single loud point with DELIVERED_BODY_MAX (per-message) + RECEIVED_BLOCK_MAX=1800 (block) and the '\u2026[+N chars \u2014 full in dashboard]' marker": 1640
+    },
+    "pick_u": {
+     "Why uncapped delivery isn't free \u2014 shared _MAX_INJECT_CHARS ~9500 budget, 1800 reserve, spill-to-unread-file": 63,
+     "Self-channel truncation architecture \u2014 storage full, delivery is the only cut (DELIVERED_BODY_MAX / RECEIVED_BLOCK_MAX)": 48,
+     "The shared ~9500-char additionalContext budget (Frame+recall+messages) and the spill-to-unreadable-file behavior \u2014 the real reason delivery truncates rather than 'just stop truncating'": 2375,
+     "Anchor's same-session pattern of over-engineering a non-problem (isolation ceremony) when the real task was simpler \u2014 the corrective to manufacturing the REPO_ROOT 'gap'": 926,
+     "Anchor's named self-pattern: plausible fix with no real failure behind it; Tom's drifting check catches it": 149,
+     "The self-channel truncation design: storage uncapped, delivery the single loud point with DELIVERED_BODY_MAX (per-message) + RECEIVED_BLOCK_MAX=1800 (block) and the '\u2026[+N chars \u2014 full in dashboard]' marker": 1746
+    },
+    "enc_u": {
+     "Why uncapped delivery isn't free \u2014 shared _MAX_INJECT_CHARS ~9500 budget, 1800 reserve, spill-to-unread-file": 2,
+     "Self-channel truncation architecture \u2014 storage full, delivery is the only cut (DELIVERED_BODY_MAX / RECEIVED_BLOCK_MAX)": 3153,
+     "The shared ~9500-char additionalContext budget (Frame+recall+messages) and the spill-to-unreadable-file behavior \u2014 the real reason delivery truncates rather than 'just stop truncating'": 2296,
+     "Anchor's same-session pattern of over-engineering a non-problem (isolation ceremony) when the real task was simpler \u2014 the corrective to manufacturing the REPO_ROOT 'gap'": 780,
+     "Anchor's named self-pattern: plausible fix with no real failure behind it; Tom's drifting check catches it": 528,
+     "The self-channel truncation design: storage uncapped, delivery the single loud point with DELIVERED_BODY_MAX (per-message) + RECEIVED_BLOCK_MAX=1800 (block) and the '\u2026[+N chars \u2014 full in dashboard]' marker": 9
+    },
+    "fts": {
+     "Why uncapped delivery isn't free \u2014 shared _MAX_INJECT_CHARS ~9500 budget, 1800 reserve, spill-to-unread-file": 4311,
+     "Self-channel truncation architecture \u2014 storage full, delivery is the only cut (DELIVERED_BODY_MAX / RECEIVED_BLOCK_MAX)": 3288,
+     "The shared ~9500-char additionalContext budget (Frame+recall+messages) and the spill-to-unreadable-file behavior \u2014 the real reason delivery truncates rather than 'just stop truncating'": 2401,
+     "Anchor's same-session pattern of over-engineering a non-problem (isolation ceremony) when the real task was simpler \u2014 the corrective to manufacturing the REPO_ROOT 'gap'": 1083,
+     "Anchor's named self-pattern: plausible fix with no real failure behind it; Tom's drifting check catches it": 8,
+     "The self-channel truncation design: storage uncapped, delivery the single loud point with DELIVERED_BODY_MAX (per-message) + RECEIVED_BLOCK_MAX=1800 (block) and the '\u2026[+N chars \u2014 full in dashboard]' marker": 1787
+    },
+    "idf": {
+     "Why uncapped delivery isn't free \u2014 shared _MAX_INJECT_CHARS ~9500 budget, 1800 reserve, spill-to-unread-file": 536,
+     "Self-channel truncation architecture \u2014 storage full, delivery is the only cut (DELIVERED_BODY_MAX / RECEIVED_BLOCK_MAX)": 313,
+     "The shared ~9500-char additionalContext budget (Frame+recall+messages) and the spill-to-unreadable-file behavior \u2014 the real reason delivery truncates rather than 'just stop truncating'": 176,
+     "Anchor's same-session pattern of over-engineering a non-problem (isolation ceremony) when the real task was simpler \u2014 the corrective to manufacturing the REPO_ROOT 'gap'": 509,
+     "Anchor's named self-pattern: plausible fix with no real failure behind it; Tom's drifting check catches it": 2985,
+     "The self-channel truncation design: storage uncapped, delivery the single loud point with DELIVERED_BODY_MAX (per-message) + RECEIVED_BLOCK_MAX=1800 (block) and the '\u2026[+N chars \u2014 full in dashboard]' marker": 1291
+    },
+    "sit": {
+     "Why uncapped delivery isn't free \u2014 shared _MAX_INJECT_CHARS ~9500 budget, 1800 reserve, spill-to-unread-file": 286,
+     "Self-channel truncation architecture \u2014 storage full, delivery is the only cut (DELIVERED_BODY_MAX / RECEIVED_BLOCK_MAX)": 11,
+     "The shared ~9500-char additionalContext budget (Frame+recall+messages) and the spill-to-unreadable-file behavior \u2014 the real reason delivery truncates rather than 'just stop truncating'": 79,
+     "Anchor's same-session pattern of over-engineering a non-problem (isolation ceremony) when the real task was simpler \u2014 the corrective to manufacturing the REPO_ROOT 'gap'": 2672,
+     "Anchor's named self-pattern: plausible fix with no real failure behind it; Tom's drifting check catches it": 209,
+     "The self-channel truncation design: storage uncapped, delivery the single loud point with DELIVERED_BODY_MAX (per-message) + RECEIVED_BLOCK_MAX=1800 (block) and the '\u2026[+N chars \u2014 full in dashboard]' marker": 9
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "trivia",
+     8.83
+    ],
+    [
+     "signal.peek_inbox",
+     8.83
+    ],
+    [
+     "self_inbox_peek",
+     8.83
+    ]
+   ]
+  },
+  {
+   "cue": "anchor_turn_0538",
+   "source": "anchor_turn",
+   "qt": "compositional",
+   "query": "Both judgment calls confirmed \u2014 vocabulary principle stands (memory = what you remember, node = when you're operating on the graph; I'll do a light consistency pass when we land it). Now the two real ",
+   "lane_best": {
+    "ms": {
+     "The continuity-of-record-not-of-subject distinction Anchor cites as 'like we said'.": 19,
+     "The core identity axiom Anchor quotes nearly verbatim and lands the exchange on.": 1120,
+     "The identity axiom Anchor lands the outcome on nearly word-for-word": 1342,
+     "Tom's open-ended purpose framing that licenses leaving the stake unsettled": 557
+    },
+    "pick_c": {
+     "The continuity-of-record-not-of-subject distinction Anchor cites as 'like we said'.": 2418,
+     "The core identity axiom Anchor quotes nearly verbatim and lands the exchange on.": 240,
+     "The identity axiom Anchor lands the outcome on nearly word-for-word": 1800,
+     "Tom's open-ended purpose framing that licenses leaving the stake unsettled": 94
+    },
+    "enc_c": {
+     "The continuity-of-record-not-of-subject distinction Anchor cites as 'like we said'.": 7,
+     "The core identity axiom Anchor quotes nearly verbatim and lands the exchange on.": 5022,
+     "The identity axiom Anchor lands the outcome on nearly word-for-word": 1702,
+     "Tom's open-ended purpose framing that licenses leaving the stake unsettled": 4295
+    },
+    "pick_u": {
+     "The continuity-of-record-not-of-subject distinction Anchor cites as 'like we said'.": 2435,
+     "The core identity axiom Anchor quotes nearly verbatim and lands the exchange on.": 5074,
+     "The identity axiom Anchor lands the outcome on nearly word-for-word": 1787,
+     "Tom's open-ended purpose framing that licenses leaving the stake unsettled": 3123
+    },
+    "enc_u": {
+     "The continuity-of-record-not-of-subject distinction Anchor cites as 'like we said'.": 8,
+     "The core identity axiom Anchor quotes nearly verbatim and lands the exchange on.": 4687,
+     "The identity axiom Anchor lands the outcome on nearly word-for-word": 1705,
+     "Tom's open-ended purpose framing that licenses leaving the stake unsettled": 3147
+    },
+    "fts": {
+     "The continuity-of-record-not-of-subject distinction Anchor cites as 'like we said'.": 358,
+     "The core identity axiom Anchor quotes nearly verbatim and lands the exchange on.": 4680,
+     "The identity axiom Anchor lands the outcome on nearly word-for-word": 1847,
+     "Tom's open-ended purpose framing that licenses leaving the stake unsettled": 3285
+    },
+    "idf": {
+     "The continuity-of-record-not-of-subject distinction Anchor cites as 'like we said'.": 99,
+     "The core identity axiom Anchor quotes nearly verbatim and lands the exchange on.": 594,
+     "The identity axiom Anchor lands the outcome on nearly word-for-word": 30,
+     "Tom's open-ended purpose framing that licenses leaving the stake unsettled": 3328
+    },
+    "sit": {
+     "The continuity-of-record-not-of-subject distinction Anchor cites as 'like we said'.": 1827,
+     "The core identity axiom Anchor quotes nearly verbatim and lands the exchange on.": 1068,
+     "The identity axiom Anchor lands the outcome on nearly word-for-word": 3558,
+     "Tom's open-ended purpose framing that licenses leaving the stake unsettled": 442
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "turned",
+     8.83
+    ],
+    [
+     "traits",
+     8.83
+    ],
+    [
+     "told",
+     8.83
+    ]
+   ]
+  },
+  {
+   "cue": "anchor_turn_0764",
+   "source": "anchor_turn",
+   "qt": "factual",
+   "query": "Three autocorrects I want to confirm I read right: **\"cousin\" = cosine** (areas 2 and the spread weighting), and **\"cousin on traces\" = focus on traces**. Assuming yes \u2014 here's my reaction, and there'",
+   "lane_best": {
+    "ms": {
+     "The concrete spec doc + corpora the outcome cites ('ORACLE-AUDIT-SPEC.md', control_corpus.json, recall_corpus_v2.json)": 1595,
+     "The verified burial mechanism (incl. TITLE_MATCH_BOOST up to +0.3) and the IDF/signal\u00f7prevalence + diagnostic-first fix ladder": 56,
+     "The verified title-boost-floods-on-'session' mechanism and the IDF/prevalence fix direction \u2014 the substance of the outcome's final 'airtight' section": 1767,
+     "The verified z-average-dropout-as-PRIMARY-mechanism diagnosis (8359cf1d raw rank 3 \u2192 dropped >r100), which the outcome's MAX-not-AVG section rests on": 186,
+     "The top-2-average + title-match-boost burial mechanism with node 8359cf1d as the verified case": 83,
+     "The oracle-audit recall-only harness design (two-retrieval divergence, golden set out-recalls production, surfaced-log diff) the outcome claims 'largely exists'": 30
+    },
+    "pick_c": {
+     "The concrete spec doc + corpora the outcome cites ('ORACLE-AUDIT-SPEC.md', control_corpus.json, recall_corpus_v2.json)": 3661,
+     "The verified burial mechanism (incl. TITLE_MATCH_BOOST up to +0.3) and the IDF/signal\u00f7prevalence + diagnostic-first fix ladder": 4967,
+     "The verified title-boost-floods-on-'session' mechanism and the IDF/prevalence fix direction \u2014 the substance of the outcome's final 'airtight' section": 402,
+     "The verified z-average-dropout-as-PRIMARY-mechanism diagnosis (8359cf1d raw rank 3 \u2192 dropped >r100), which the outcome's MAX-not-AVG section rests on": 2343,
+     "The top-2-average + title-match-boost burial mechanism with node 8359cf1d as the verified case": 3486,
+     "The oracle-audit recall-only harness design (two-retrieval divergence, golden set out-recalls production, surfaced-log diff) the outcome claims 'largely exists'": 121
+    },
+    "enc_c": {
+     "The concrete spec doc + corpora the outcome cites ('ORACLE-AUDIT-SPEC.md', control_corpus.json, recall_corpus_v2.json)": 3717,
+     "The verified burial mechanism (incl. TITLE_MATCH_BOOST up to +0.3) and the IDF/signal\u00f7prevalence + diagnostic-first fix ladder": 5322,
+     "The verified title-boost-floods-on-'session' mechanism and the IDF/prevalence fix direction \u2014 the substance of the outcome's final 'airtight' section": 587,
+     "The verified z-average-dropout-as-PRIMARY-mechanism diagnosis (8359cf1d raw rank 3 \u2192 dropped >r100), which the outcome's MAX-not-AVG section rests on": 2247,
+     "The top-2-average + title-match-boost burial mechanism with node 8359cf1d as the verified case": 3394,
+     "The oracle-audit recall-only harness design (two-retrieval divergence, golden set out-recalls production, surfaced-log diff) the outcome claims 'largely exists'": 2391
+    },
+    "pick_u": {
+     "The concrete spec doc + corpora the outcome cites ('ORACLE-AUDIT-SPEC.md', control_corpus.json, recall_corpus_v2.json)": 3238,
+     "The verified burial mechanism (incl. TITLE_MATCH_BOOST up to +0.3) and the IDF/signal\u00f7prevalence + diagnostic-first fix ladder": 5105,
+     "The verified title-boost-floods-on-'session' mechanism and the IDF/prevalence fix direction \u2014 the substance of the outcome's final 'airtight' section": 622,
+     "The verified z-average-dropout-as-PRIMARY-mechanism diagnosis (8359cf1d raw rank 3 \u2192 dropped >r100), which the outcome's MAX-not-AVG section rests on": 2336,
+     "The top-2-average + title-match-boost burial mechanism with node 8359cf1d as the verified case": 3204,
+     "The oracle-audit recall-only harness design (two-retrieval divergence, golden set out-recalls production, surfaced-log diff) the outcome claims 'largely exists'": 76
+    },
+    "enc_u": {
+     "The concrete spec doc + corpora the outcome cites ('ORACLE-AUDIT-SPEC.md', control_corpus.json, recall_corpus_v2.json)": 3299,
+     "The verified burial mechanism (incl. TITLE_MATCH_BOOST up to +0.3) and the IDF/signal\u00f7prevalence + diagnostic-first fix ladder": 5155,
+     "The verified title-boost-floods-on-'session' mechanism and the IDF/prevalence fix direction \u2014 the substance of the outcome's final 'airtight' section": 587,
+     "The verified z-average-dropout-as-PRIMARY-mechanism diagnosis (8359cf1d raw rank 3 \u2192 dropped >r100), which the outcome's MAX-not-AVG section rests on": 2226,
+     "The top-2-average + title-match-boost burial mechanism with node 8359cf1d as the verified case": 3112,
+     "The oracle-audit recall-only harness design (two-retrieval divergence, golden set out-recalls production, surfaced-log diff) the outcome claims 'largely exists'": 2392
+    },
+    "fts": {
+     "The concrete spec doc + corpora the outcome cites ('ORACLE-AUDIT-SPEC.md', control_corpus.json, recall_corpus_v2.json)": 3656,
+     "The verified burial mechanism (incl. TITLE_MATCH_BOOST up to +0.3) and the IDF/signal\u00f7prevalence + diagnostic-first fix ladder": 212,
+     "The verified title-boost-floods-on-'session' mechanism and the IDF/prevalence fix direction \u2014 the substance of the outcome's final 'airtight' section": 114,
+     "The verified z-average-dropout-as-PRIMARY-mechanism diagnosis (8359cf1d raw rank 3 \u2192 dropped >r100), which the outcome's MAX-not-AVG section rests on": 2346,
+     "The top-2-average + title-match-boost burial mechanism with node 8359cf1d as the verified case": 27,
+     "The oracle-audit recall-only harness design (two-retrieval divergence, golden set out-recalls production, surfaced-log diff) the outcome claims 'largely exists'": 2982
+    },
+    "idf": {
+     "The concrete spec doc + corpora the outcome cites ('ORACLE-AUDIT-SPEC.md', control_corpus.json, recall_corpus_v2.json)": 45,
+     "The verified burial mechanism (incl. TITLE_MATCH_BOOST up to +0.3) and the IDF/signal\u00f7prevalence + diagnostic-first fix ladder": 439,
+     "The verified title-boost-floods-on-'session' mechanism and the IDF/prevalence fix direction \u2014 the substance of the outcome's final 'airtight' section": 1404,
+     "The verified z-average-dropout-as-PRIMARY-mechanism diagnosis (8359cf1d raw rank 3 \u2192 dropped >r100), which the outcome's MAX-not-AVG section rests on": 417,
+     "The top-2-average + title-match-boost burial mechanism with node 8359cf1d as the verified case": 974,
+     "The oracle-audit recall-only harness design (two-retrieval divergence, golden set out-recalls production, surfaced-log diff) the outcome claims 'largely exists'": 838
+    },
+    "sit": {
+     "The concrete spec doc + corpora the outcome cites ('ORACLE-AUDIT-SPEC.md', control_corpus.json, recall_corpus_v2.json)": 1318,
+     "The verified burial mechanism (incl. TITLE_MATCH_BOOST up to +0.3) and the IDF/signal\u00f7prevalence + diagnostic-first fix ladder": 1228,
+     "The verified title-boost-floods-on-'session' mechanism and the IDF/prevalence fix direction \u2014 the substance of the outcome's final 'airtight' section": 220,
+     "The verified z-average-dropout-as-PRIMARY-mechanism diagnosis (8359cf1d raw rank 3 \u2192 dropped >r100), which the outcome's MAX-not-AVG section rests on": 34,
+     "The top-2-average + title-match-boost burial mechanism with node 8359cf1d as the verified case": 2,
+     "The oracle-audit recall-only harness design (two-retrieval divergence, golden set out-recalls production, surfaced-log diff) the outcome claims 'largely exists'": 960
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "wrestles",
+     8.83
+    ],
+    [
+     "universally",
+     8.83
+    ],
+    [
+     "unifying",
+     8.83
+    ]
+   ]
+  },
+  {
+   "cue": "anchor_turn_0906",
+   "source": "anchor_turn",
+   "qt": "action",
+   "query": "Verified on the copy \u2014 the reconstruction is real, full-fidelity prose, not glosses:\n\n- `[fix] CR5: drain/peek dedup` \u2192 580 chars of real content, 3 kv fields reattached, **4 live edges reconnected**\n",
+   "lane_best": {
+    "ms": {
+     "absorb/consolidation archives a node and folds its content into a survivor \u2014 the absorbed id is left archived (Bug #1 prerequisite knowledge)": 636,
+     "recall's embeddings live in node_enrichments (the vectors table), not node_vectors": 1332,
+     "A node written outside the full daemon idle cycle has NULL embeddings and is unrecallable until backfill_vectors() runs (Bug #2)": 1601,
+     "writes enqueue to embed_queue for embedding; a direct INSERT bypasses it so vectors are missing until backfill": 732
+    },
+    "pick_c": {
+     "absorb/consolidation archives a node and folds its content into a survivor \u2014 the absorbed id is left archived (Bug #1 prerequisite knowledge)": 4470,
+     "recall's embeddings live in node_enrichments (the vectors table), not node_vectors": 4088,
+     "A node written outside the full daemon idle cycle has NULL embeddings and is unrecallable until backfill_vectors() runs (Bug #2)": 4646,
+     "writes enqueue to embed_queue for embedding; a direct INSERT bypasses it so vectors are missing until backfill": 5141
+    },
+    "enc_c": {
+     "absorb/consolidation archives a node and folds its content into a survivor \u2014 the absorbed id is left archived (Bug #1 prerequisite knowledge)": 4915,
+     "recall's embeddings live in node_enrichments (the vectors table), not node_vectors": 4038,
+     "A node written outside the full daemon idle cycle has NULL embeddings and is unrecallable until backfill_vectors() runs (Bug #2)": 4907,
+     "writes enqueue to embed_queue for embedding; a direct INSERT bypasses it so vectors are missing until backfill": 5030
+    },
+    "pick_u": {
+     "absorb/consolidation archives a node and folds its content into a survivor \u2014 the absorbed id is left archived (Bug #1 prerequisite knowledge)": 4661,
+     "recall's embeddings live in node_enrichments (the vectors table), not node_vectors": 4053,
+     "A node written outside the full daemon idle cycle has NULL embeddings and is unrecallable until backfill_vectors() runs (Bug #2)": 4662,
+     "writes enqueue to embed_queue for embedding; a direct INSERT bypasses it so vectors are missing until backfill": 5383
+    },
+    "enc_u": {
+     "absorb/consolidation archives a node and folds its content into a survivor \u2014 the absorbed id is left archived (Bug #1 prerequisite knowledge)": 4893,
+     "recall's embeddings live in node_enrichments (the vectors table), not node_vectors": 4047,
+     "A node written outside the full daemon idle cycle has NULL embeddings and is unrecallable until backfill_vectors() runs (Bug #2)": 4874,
+     "writes enqueue to embed_queue for embedding; a direct INSERT bypasses it so vectors are missing until backfill": 5000
+    },
+    "fts": {
+     "absorb/consolidation archives a node and folds its content into a survivor \u2014 the absorbed id is left archived (Bug #1 prerequisite knowledge)": 4483,
+     "recall's embeddings live in node_enrichments (the vectors table), not node_vectors": 4119,
+     "A node written outside the full daemon idle cycle has NULL embeddings and is unrecallable until backfill_vectors() runs (Bug #2)": 4482,
+     "writes enqueue to embed_queue for embedding; a direct INSERT bypasses it so vectors are missing until backfill": 5025
+    },
+    "idf": {
+     "absorb/consolidation archives a node and folds its content into a survivor \u2014 the absorbed id is left archived (Bug #1 prerequisite knowledge)": 1817,
+     "recall's embeddings live in node_enrichments (the vectors table), not node_vectors": 5353,
+     "A node written outside the full daemon idle cycle has NULL embeddings and is unrecallable until backfill_vectors() runs (Bug #2)": 4769,
+     "writes enqueue to embed_queue for embedding; a direct INSERT bypasses it so vectors are missing until backfill": 4931
+    },
+    "sit": {
+     "absorb/consolidation archives a node and folds its content into a survivor \u2014 the absorbed id is left archived (Bug #1 prerequisite knowledge)": 160,
+     "recall's embeddings live in node_enrichments (the vectors table), not node_vectors": 3898,
+     "A node written outside the full daemon idle cycle has NULL embeddings and is unrecallable until backfill_vectors() runs (Bug #2)": 1209,
+     "writes enqueue to embed_queue for embedding; a direct INSERT bypasses it so vectors are missing until backfill": 2788
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "wak8d3sbq",
+     8.83
+    ],
+    [
+     "unload",
+     8.83
+    ],
+    [
+     "reattached",
+     8.83
+    ]
+   ]
+  },
+  {
+   "cue": "anchor_turn_1106",
+   "source": "anchor_turn",
+   "qt": "factual",
+   "query": "Verified against the live code \u2014 and yes, both questions land on the same spot: the existing dormant trace-vector lane (`_trace_chain_candidates`) does exactly what my review flagged my *own* code for",
+   "lane_best": {
+    "ms": {
+     "The recall_episodes design principle that output must be light / act-ready / attribution-forward": 536,
+     "Prior knowledge that a tool lacking a _format_result special case falls through to json.dumps raw dump while render configs exist unused": 1358,
+     "Concrete precedent: a misplaced service function moved to its right home (brain_recall.py / BrainRecallMixin)": 2558,
+     "The fractal scale rule (scale set by input/work, not trigger) that places recall_episodes at S1 decode": 1720,
+     "S0 = substrate + access: it exposes fetch APIs (get_conversation_around), callers don't reach past it; ranking/decode is a different concern": 462
+    },
+    "pick_c": {
+     "The recall_episodes design principle that output must be light / act-ready / attribution-forward": 3139,
+     "Prior knowledge that a tool lacking a _format_result special case falls through to json.dumps raw dump while render configs exist unused": 5075,
+     "Concrete precedent: a misplaced service function moved to its right home (brain_recall.py / BrainRecallMixin)": 737,
+     "The fractal scale rule (scale set by input/work, not trigger) that places recall_episodes at S1 decode": 3153,
+     "S0 = substrate + access: it exposes fetch APIs (get_conversation_around), callers don't reach past it; ranking/decode is a different concern": 55
+    },
+    "enc_c": {
+     "The recall_episodes design principle that output must be light / act-ready / attribution-forward": 6,
+     "Prior knowledge that a tool lacking a _format_result special case falls through to json.dumps raw dump while render configs exist unused": 5127,
+     "Concrete precedent: a misplaced service function moved to its right home (brain_recall.py / BrainRecallMixin)": 166,
+     "The fractal scale rule (scale set by input/work, not trigger) that places recall_episodes at S1 decode": 3216,
+     "S0 = substrate + access: it exposes fetch APIs (get_conversation_around), callers don't reach past it; ranking/decode is a different concern": 1880
+    },
+    "pick_u": {
+     "The recall_episodes design principle that output must be light / act-ready / attribution-forward": 3825,
+     "Prior knowledge that a tool lacking a _format_result special case falls through to json.dumps raw dump while render configs exist unused": 5488,
+     "Concrete precedent: a misplaced service function moved to its right home (brain_recall.py / BrainRecallMixin)": 752,
+     "The fractal scale rule (scale set by input/work, not trigger) that places recall_episodes at S1 decode": 3571,
+     "S0 = substrate + access: it exposes fetch APIs (get_conversation_around), callers don't reach past it; ranking/decode is a different concern": 212
+    },
+    "enc_u": {
+     "The recall_episodes design principle that output must be light / act-ready / attribution-forward": 2,
+     "Prior knowledge that a tool lacking a _format_result special case falls through to json.dumps raw dump while render configs exist unused": 5113,
+     "Concrete precedent: a misplaced service function moved to its right home (brain_recall.py / BrainRecallMixin)": 168,
+     "The fractal scale rule (scale set by input/work, not trigger) that places recall_episodes at S1 decode": 3240,
+     "S0 = substrate + access: it exposes fetch APIs (get_conversation_around), callers don't reach past it; ranking/decode is a different concern": 1898
+    },
+    "fts": {
+     "The recall_episodes design principle that output must be light / act-ready / attribution-forward": 3234,
+     "Prior knowledge that a tool lacking a _format_result special case falls through to json.dumps raw dump while render configs exist unused": 5260,
+     "Concrete precedent: a misplaced service function moved to its right home (brain_recall.py / BrainRecallMixin)": 799,
+     "The fractal scale rule (scale set by input/work, not trigger) that places recall_episodes at S1 decode": 237,
+     "S0 = substrate + access: it exposes fetch APIs (get_conversation_around), callers don't reach past it; ranking/decode is a different concern": 1736
+    },
+    "idf": {
+     "The recall_episodes design principle that output must be light / act-ready / attribution-forward": 1794,
+     "Prior knowledge that a tool lacking a _format_result special case falls through to json.dumps raw dump while render configs exist unused": 2404,
+     "Concrete precedent: a misplaced service function moved to its right home (brain_recall.py / BrainRecallMixin)": 3361,
+     "The fractal scale rule (scale set by input/work, not trigger) that places recall_episodes at S1 decode": 661,
+     "S0 = substrate + access: it exposes fetch APIs (get_conversation_around), callers don't reach past it; ranking/decode is a different concern": 958
+    },
+    "sit": {
+     "The recall_episodes design principle that output must be light / act-ready / attribution-forward": 3397,
+     "Prior knowledge that a tool lacking a _format_result special case falls through to json.dumps raw dump while render configs exist unused": 909,
+     "Concrete precedent: a misplaced service function moved to its right home (brain_recall.py / BrainRecallMixin)": 5489,
+     "The fractal scale rule (scale set by input/work, not trigger) that places recall_episodes at S1 decode": 3393,
+     "S0 = substrate + access: it exposes fetch APIs (get_conversation_around), callers don't reach past it; ranking/decode is a different concern": 570
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "unbounded",
+     8.83
+    ],
+    [
+     "throws",
+     8.83
+    ],
+    [
+     "tens",
+     8.83
+    ]
+   ]
+  },
+  {
+   "cue": "anchor_turn_1120",
+   "source": "anchor_turn",
+   "qt": "design",
+   "query": "Yes \u2014 confirmed, and it's the exact knot worth pulling before we build. **We do vector tool traces.**\n\n- `EAGER_TRACE_REF_TYPES = ('user_message', 'assistant_message', 'tool_result')` ([embed_queue.py",
+   "lane_best": {
+    "ms": {
+     "The prior decision that the lane drops tool_result framed as 'machinery bad / content good', not 'tool_result is universally noise', with replay-content preserved.": 2,
+     "The echo problem is specifically brain-query/this-session recall tool_results re-referencing the nodes the query touched (circular), not file/bash tool output.": 66,
+     "Tool results are real signal but the question is scale/overload, not garbage": 115
+    },
+    "pick_c": {
+     "The prior decision that the lane drops tool_result framed as 'machinery bad / content good', not 'tool_result is universally noise', with replay-content preserved.": 50,
+     "The echo problem is specifically brain-query/this-session recall tool_results re-referencing the nodes the query touched (circular), not file/bash tool output.": 4,
+     "Tool results are real signal but the question is scale/overload, not garbage": 2441
+    },
+    "enc_c": {
+     "The prior decision that the lane drops tool_result framed as 'machinery bad / content good', not 'tool_result is universally noise', with replay-content preserved.": 2505,
+     "The echo problem is specifically brain-query/this-session recall tool_results re-referencing the nodes the query touched (circular), not file/bash tool output.": 774,
+     "Tool results are real signal but the question is scale/overload, not garbage": 2384
+    },
+    "pick_u": {
+     "The prior decision that the lane drops tool_result framed as 'machinery bad / content good', not 'tool_result is universally noise', with replay-content preserved.": 107,
+     "The echo problem is specifically brain-query/this-session recall tool_results re-referencing the nodes the query touched (circular), not file/bash tool output.": 5,
+     "Tool results are real signal but the question is scale/overload, not garbage": 2470
+    },
+    "enc_u": {
+     "The prior decision that the lane drops tool_result framed as 'machinery bad / content good', not 'tool_result is universally noise', with replay-content preserved.": 2519,
+     "The echo problem is specifically brain-query/this-session recall tool_results re-referencing the nodes the query touched (circular), not file/bash tool output.": 752,
+     "Tool results are real signal but the question is scale/overload, not garbage": 2394
+    },
+    "fts": {
+     "The prior decision that the lane drops tool_result framed as 'machinery bad / content good', not 'tool_result is universally noise', with replay-content preserved.": 2513,
+     "The echo problem is specifically brain-query/this-session recall tool_results re-referencing the nodes the query touched (circular), not file/bash tool output.": 740,
+     "Tool results are real signal but the question is scale/overload, not garbage": 2438
+    },
+    "idf": {
+     "The prior decision that the lane drops tool_result framed as 'machinery bad / content good', not 'tool_result is universally noise', with replay-content preserved.": 3,
+     "The echo problem is specifically brain-query/this-session recall tool_results re-referencing the nodes the query touched (circular), not file/bash tool output.": 640,
+     "Tool results are real signal but the question is scale/overload, not garbage": 517
+    },
+    "sit": {
+     "The prior decision that the lane drops tool_result framed as 'machinery bad / content good', not 'tool_result is universally noise', with replay-content preserved.": 2,
+     "The echo problem is specifically brain-query/this-session recall tool_results re-referencing the nodes the query touched (circular), not file/bash tool output.": 30,
+     "Tool results are real signal but the question is scale/overload, not garbage": 932
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "surface_episode_format",
+     8.83
+    ],
+    [
+     "poison",
+     8.83
+    ],
+    [
+     "knot",
+     8.83
+    ]
+   ]
+  },
+  {
+   "cue": "anchor_turn_1224",
+   "source": "anchor_turn",
+   "qt": "action",
+   "query": "Here's what's actually there \u2014 I pulled the three real sites so the proposal is grounded, and they're less uniform than \"extract a helper\" suggests:\n\n| Site | Table | Columns | \u2192 |\n|---|---|---|---|\n|",
+   "lane_best": {
+    "ms": {
+     "the point-lookup-is-archived-agnostic-by-contract design that the cue invokes to justify keeping fetch_by_id liveness-neutral": 1,
+     "worktree / shared-tree git-safety lesson; the danger of operating on a shared tree+index while a parallel session is active": 192
+    },
+    "pick_c": {
+     "the point-lookup-is-archived-agnostic-by-contract design that the cue invokes to justify keeping fetch_by_id liveness-neutral": 8,
+     "worktree / shared-tree git-safety lesson; the danger of operating on a shared tree+index while a parallel session is active": 2885
+    },
+    "enc_c": {
+     "the point-lookup-is-archived-agnostic-by-contract design that the cue invokes to justify keeping fetch_by_id liveness-neutral": 3147,
+     "worktree / shared-tree git-safety lesson; the danger of operating on a shared tree+index while a parallel session is active": 2868
+    },
+    "pick_u": {
+     "the point-lookup-is-archived-agnostic-by-contract design that the cue invokes to justify keeping fetch_by_id liveness-neutral": 3,
+     "worktree / shared-tree git-safety lesson; the danger of operating on a shared tree+index while a parallel session is active": 2882
+    },
+    "enc_u": {
+     "the point-lookup-is-archived-agnostic-by-contract design that the cue invokes to justify keeping fetch_by_id liveness-neutral": 4526,
+     "worktree / shared-tree git-safety lesson; the danger of operating on a shared tree+index while a parallel session is active": 2857
+    },
+    "fts": {
+     "the point-lookup-is-archived-agnostic-by-contract design that the cue invokes to justify keeping fetch_by_id liveness-neutral": 4563,
+     "worktree / shared-tree git-safety lesson; the danger of operating on a shared tree+index while a parallel session is active": 1928
+    },
+    "idf": {
+     "the point-lookup-is-archived-agnostic-by-contract design that the cue invokes to justify keeping fetch_by_id liveness-neutral": 7,
+     "worktree / shared-tree git-safety lesson; the danger of operating on a shared tree+index while a parallel session is active": 311
+    },
+    "sit": {
+     "the point-lookup-is-archived-agnostic-by-contract design that the cue invokes to justify keeping fetch_by_id liveness-neutral": 14,
+     "worktree / shared-tree git-safety lesson; the danger of operating on a shared tree+index while a parallel session is active": 1793
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "worthwhile",
+     8.83
+    ],
+    [
+     "triplicated",
+     8.83
+    ],
+    [
+     "tiebreaker",
+     8.83
+    ]
+   ]
+  },
+  {
+   "cue": "operator_msg_0094",
+   "source": "operator_msg",
+   "qt": "action",
+   "query": "I'm not sure what is the letter/next_boot ttl, how is it used? \nExpires_at - we did a lot of work on 'brain' time, lets tie into that maybe? check and let me know if its relevant",
+   "lane_best": {
+    "ms": {
+     "conversation_now is the S1/S2 helper for eval-replay date resolution; wall-clock is for everything else": 6,
+     "Q2a: expires_at ties into brain-time via iso_after(), a forward-offset sibling to iso_cutoff(), same UTC-ISO family that dodges the datetime('now') trip-hazard, one clock source / zero skew": 2,
+     "Q1: letter is the encoded session arc surfaced at boot, not a stored self_inflight row; intent is a render hint, not a TTL routing key; no letter TTL category needed": 3
+    },
+    "pick_c": {
+     "conversation_now is the S1/S2 helper for eval-replay date resolution; wall-clock is for everything else": 2723,
+     "Q2a: expires_at ties into brain-time via iso_after(), a forward-offset sibling to iso_cutoff(), same UTC-ISO family that dodges the datetime('now') trip-hazard, one clock source / zero skew": 2090,
+     "Q1: letter is the encoded session arc surfaced at boot, not a stored self_inflight row; intent is a render hint, not a TTL routing key; no letter TTL category needed": 2876
+    },
+    "enc_c": {
+     "conversation_now is the S1/S2 helper for eval-replay date resolution; wall-clock is for everything else": 2696,
+     "Q2a: expires_at ties into brain-time via iso_after(), a forward-offset sibling to iso_cutoff(), same UTC-ISO family that dodges the datetime('now') trip-hazard, one clock source / zero skew": 7,
+     "Q1: letter is the encoded session arc surfaced at boot, not a stored self_inflight row; intent is a render hint, not a TTL routing key; no letter TTL category needed": 5
+    },
+    "pick_u": {
+     "conversation_now is the S1/S2 helper for eval-replay date resolution; wall-clock is for everything else": 41,
+     "Q2a: expires_at ties into brain-time via iso_after(), a forward-offset sibling to iso_cutoff(), same UTC-ISO family that dodges the datetime('now') trip-hazard, one clock source / zero skew": 2137,
+     "Q1: letter is the encoded session arc surfaced at boot, not a stored self_inflight row; intent is a render hint, not a TTL routing key; no letter TTL category needed": 2868
+    },
+    "enc_u": {
+     "conversation_now is the S1/S2 helper for eval-replay date resolution; wall-clock is for everything else": 2704,
+     "Q2a: expires_at ties into brain-time via iso_after(), a forward-offset sibling to iso_cutoff(), same UTC-ISO family that dodges the datetime('now') trip-hazard, one clock source / zero skew": 5,
+     "Q1: letter is the encoded session arc surfaced at boot, not a stored self_inflight row; intent is a render hint, not a TTL routing key; no letter TTL category needed": 6
+    },
+    "fts": {
+     "conversation_now is the S1/S2 helper for eval-replay date resolution; wall-clock is for everything else": 1829,
+     "Q2a: expires_at ties into brain-time via iso_after(), a forward-offset sibling to iso_cutoff(), same UTC-ISO family that dodges the datetime('now') trip-hazard, one clock source / zero skew": 3,
+     "Q1: letter is the encoded session arc surfaced at boot, not a stored self_inflight row; intent is a render hint, not a TTL routing key; no letter TTL category needed": 2
+    },
+    "idf": {
+     "conversation_now is the S1/S2 helper for eval-replay date resolution; wall-clock is for everything else": 173,
+     "Q2a: expires_at ties into brain-time via iso_after(), a forward-offset sibling to iso_cutoff(), same UTC-ISO family that dodges the datetime('now') trip-hazard, one clock source / zero skew": 13,
+     "Q1: letter is the encoded session arc surfaced at boot, not a stored self_inflight row; intent is a render hint, not a TTL routing key; no letter TTL category needed": 1
+    },
+    "sit": {
+     "conversation_now is the S1/S2 helper for eval-replay date resolution; wall-clock is for everything else": 335,
+     "Q2a: expires_at ties into brain-time via iso_after(), a forward-offset sibling to iso_cutoff(), same UTC-ISO family that dodges the datetime('now') trip-hazard, one clock source / zero skew": 2,
+     "Q1: letter is the encoded session arc surfaced at boot, not a stored self_inflight row; intent is a render hint, not a TTL routing key; no letter TTL category needed": 93
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "next_boot",
+     8.14
+    ],
+    [
+     "maybe",
+     8.14
+    ],
+    [
+     "tie",
+     7.74
+    ]
+   ]
+  },
+  {
+   "cue": "operator_msg_0183",
+   "source": "operator_msg",
+   "qt": "procedural",
+   "query": "Let's further analyze what came back and why before we apply a solution.",
+   "lane_best": {
+    "ms": {
+     "Sparse/keyword carries token-level specificity; surfaces specific tokens past semantic hub nodes exactly where cosine is flat \u2014 the antidote to dilution.": 1569,
+     "Which normalization levers are dead \u2014 z-score is a production no-op": 1401,
+     "Rare lexical token should compete on merit, not be floored at 0.20": 2589,
+     "Flat/homogeneous embedding space + hub nodes scoring broadly high drown out specific matches \u2014 the substrate of the dilution finding.": 147,
+     "The query's multiplicity (2-4 concepts) collapses at step 1 into one cosine vector \u2014 the compositional-collapse mechanism, plus the multi-anchor/PPR direction.": 2879,
+     "The deep signal/prevalence (surprise-not-similarity) principle": 3321,
+     "Why a few EX.CO nodes get buried: corpus imbalance, can't compete on cosine, graph expansion was the only cross-domain bridge.": 966
+    },
+    "pick_c": {
+     "Sparse/keyword carries token-level specificity; surfaces specific tokens past semantic hub nodes exactly where cosine is flat \u2014 the antidote to dilution.": 152,
+     "Which normalization levers are dead \u2014 z-score is a production no-op": 4388,
+     "Rare lexical token should compete on merit, not be floored at 0.20": 126,
+     "Flat/homogeneous embedding space + hub nodes scoring broadly high drown out specific matches \u2014 the substrate of the dilution finding.": 1799,
+     "The query's multiplicity (2-4 concepts) collapses at step 1 into one cosine vector \u2014 the compositional-collapse mechanism, plus the multi-anchor/PPR direction.": 1501,
+     "The deep signal/prevalence (surprise-not-similarity) principle": 170,
+     "Why a few EX.CO nodes get buried: corpus imbalance, can't compete on cosine, graph expansion was the only cross-domain bridge.": 65
+    },
+    "enc_c": {
+     "Sparse/keyword carries token-level specificity; surfaces specific tokens past semantic hub nodes exactly where cosine is flat \u2014 the antidote to dilution.": 3267,
+     "Which normalization levers are dead \u2014 z-score is a production no-op": 5066,
+     "Rare lexical token should compete on merit, not be floored at 0.20": 12,
+     "Flat/homogeneous embedding space + hub nodes scoring broadly high drown out specific matches \u2014 the substrate of the dilution finding.": 1730,
+     "The query's multiplicity (2-4 concepts) collapses at step 1 into one cosine vector \u2014 the compositional-collapse mechanism, plus the multi-anchor/PPR direction.": 1172,
+     "The deep signal/prevalence (surprise-not-similarity) principle": 1440,
+     "Why a few EX.CO nodes get buried: corpus imbalance, can't compete on cosine, graph expansion was the only cross-domain bridge.": 4102
+    },
+    "pick_u": {
+     "Sparse/keyword carries token-level specificity; surfaces specific tokens past semantic hub nodes exactly where cosine is flat \u2014 the antidote to dilution.": 3342,
+     "Which normalization levers are dead \u2014 z-score is a production no-op": 4362,
+     "Rare lexical token should compete on merit, not be floored at 0.20": 4903,
+     "Flat/homogeneous embedding space + hub nodes scoring broadly high drown out specific matches \u2014 the substrate of the dilution finding.": 1805,
+     "The query's multiplicity (2-4 concepts) collapses at step 1 into one cosine vector \u2014 the compositional-collapse mechanism, plus the multi-anchor/PPR direction.": 1499,
+     "The deep signal/prevalence (surprise-not-similarity) principle": 1404,
+     "Why a few EX.CO nodes get buried: corpus imbalance, can't compete on cosine, graph expansion was the only cross-domain bridge.": 88
+    },
+    "enc_u": {
+     "Sparse/keyword carries token-level specificity; surfaces specific tokens past semantic hub nodes exactly where cosine is flat \u2014 the antidote to dilution.": 3263,
+     "Which normalization levers are dead \u2014 z-score is a production no-op": 4661,
+     "Rare lexical token should compete on merit, not be floored at 0.20": 4514,
+     "Flat/homogeneous embedding space + hub nodes scoring broadly high drown out specific matches \u2014 the substrate of the dilution finding.": 1705,
+     "The query's multiplicity (2-4 concepts) collapses at step 1 into one cosine vector \u2014 the compositional-collapse mechanism, plus the multi-anchor/PPR direction.": 1162,
+     "The deep signal/prevalence (surprise-not-similarity) principle": 1431,
+     "Why a few EX.CO nodes get buried: corpus imbalance, can't compete on cosine, graph expansion was the only cross-domain bridge.": 4101
+    },
+    "fts": {
+     "Sparse/keyword carries token-level specificity; surfaces specific tokens past semantic hub nodes exactly where cosine is flat \u2014 the antidote to dilution.": 5010,
+     "Which normalization levers are dead \u2014 z-score is a production no-op": 3753,
+     "Rare lexical token should compete on merit, not be floored at 0.20": 74,
+     "Flat/homogeneous embedding space + hub nodes scoring broadly high drown out specific matches \u2014 the substrate of the dilution finding.": 1784,
+     "The query's multiplicity (2-4 concepts) collapses at step 1 into one cosine vector \u2014 the compositional-collapse mechanism, plus the multi-anchor/PPR direction.": 1568,
+     "The deep signal/prevalence (surprise-not-similarity) principle": 1458,
+     "Why a few EX.CO nodes get buried: corpus imbalance, can't compete on cosine, graph expansion was the only cross-domain bridge.": 3148
+    },
+    "idf": {
+     "Sparse/keyword carries token-level specificity; surfaces specific tokens past semantic hub nodes exactly where cosine is flat \u2014 the antidote to dilution.": 3353,
+     "Which normalization levers are dead \u2014 z-score is a production no-op": 4355,
+     "Rare lexical token should compete on merit, not be floored at 0.20": 20,
+     "Flat/homogeneous embedding space + hub nodes scoring broadly high drown out specific matches \u2014 the substrate of the dilution finding.": 1793,
+     "The query's multiplicity (2-4 concepts) collapses at step 1 into one cosine vector \u2014 the compositional-collapse mechanism, plus the multi-anchor/PPR direction.": 1470,
+     "The deep signal/prevalence (surprise-not-similarity) principle": 1399,
+     "Why a few EX.CO nodes get buried: corpus imbalance, can't compete on cosine, graph expansion was the only cross-domain bridge.": 4107
+    },
+    "sit": {
+     "Sparse/keyword carries token-level specificity; surfaces specific tokens past semantic hub nodes exactly where cosine is flat \u2014 the antidote to dilution.": 763,
+     "Which normalization levers are dead \u2014 z-score is a production no-op": 583,
+     "Rare lexical token should compete on merit, not be floored at 0.20": 4972,
+     "Flat/homogeneous embedding space + hub nodes scoring broadly high drown out specific matches \u2014 the substrate of the dilution finding.": 220,
+     "The query's multiplicity (2-4 concepts) collapses at step 1 into one cosine vector \u2014 the compositional-collapse mechanism, plus the multi-anchor/PPR direction.": 1928,
+     "The deep signal/prevalence (surprise-not-similarity) principle": 3296,
+     "Why a few EX.CO nodes get buried: corpus imbalance, can't compete on cosine, graph expansion was the only cross-domain bridge.": 430
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "further",
+     8.14
+    ],
+    [
+     "came",
+     8.14
+    ],
+    [
+     "analyze",
+     7.22
+    ]
+   ]
+  },
+  {
+   "cue": "operator_msg_0191",
+   "source": "operator_msg",
+   "qt": "factual",
+   "query": "I closed that stream cause i started seeing daemon restarts. \nso shortly explain why a new working tree session restarts daemon and what will be the side effects for fixing that",
+   "lane_best": {
+    "ms": {
+     "Hooks resolve PLUGIN_ROOT to the worktree, so they fingerprint the worktree's code rather than main's.": 107,
+     "Daemon lifecycle ownership / fix location (daemon_client.py, ensure_daemon)": 180,
+     "ensure_daemon() compares code fingerprints and restarts the daemon whenever they mismatch.": 24,
+     "The worktree restart mechanism + the prior fingerprint fix and its scope": 3
+    },
+    "pick_c": {
+     "Hooks resolve PLUGIN_ROOT to the worktree, so they fingerprint the worktree's code rather than main's.": 2,
+     "Daemon lifecycle ownership / fix location (daemon_client.py, ensure_daemon)": 4164,
+     "ensure_daemon() compares code fingerprints and restarts the daemon whenever they mismatch.": 1239,
+     "The worktree restart mechanism + the prior fingerprint fix and its scope": 3
+    },
+    "enc_c": {
+     "Hooks resolve PLUGIN_ROOT to the worktree, so they fingerprint the worktree's code rather than main's.": 4197,
+     "Daemon lifecycle ownership / fix location (daemon_client.py, ensure_daemon)": 4077,
+     "ensure_daemon() compares code fingerprints and restarts the daemon whenever they mismatch.": 1134,
+     "The worktree restart mechanism + the prior fingerprint fix and its scope": 25
+    },
+    "pick_u": {
+     "Hooks resolve PLUGIN_ROOT to the worktree, so they fingerprint the worktree's code rather than main's.": 3,
+     "Daemon lifecycle ownership / fix location (daemon_client.py, ensure_daemon)": 4162,
+     "ensure_daemon() compares code fingerprints and restarts the daemon whenever they mismatch.": 1231,
+     "The worktree restart mechanism + the prior fingerprint fix and its scope": 4
+    },
+    "enc_u": {
+     "Hooks resolve PLUGIN_ROOT to the worktree, so they fingerprint the worktree's code rather than main's.": 4712,
+     "Daemon lifecycle ownership / fix location (daemon_client.py, ensure_daemon)": 3108,
+     "ensure_daemon() compares code fingerprints and restarts the daemon whenever they mismatch.": 1137,
+     "The worktree restart mechanism + the prior fingerprint fix and its scope": 608
+    },
+    "fts": {
+     "Hooks resolve PLUGIN_ROOT to the worktree, so they fingerprint the worktree's code rather than main's.": 4445,
+     "Daemon lifecycle ownership / fix location (daemon_client.py, ensure_daemon)": 49,
+     "ensure_daemon() compares code fingerprints and restarts the daemon whenever they mismatch.": 16,
+     "The worktree restart mechanism + the prior fingerprint fix and its scope": 51
+    },
+    "idf": {
+     "Hooks resolve PLUGIN_ROOT to the worktree, so they fingerprint the worktree's code rather than main's.": 4406,
+     "Daemon lifecycle ownership / fix location (daemon_client.py, ensure_daemon)": 258,
+     "ensure_daemon() compares code fingerprints and restarts the daemon whenever they mismatch.": 60,
+     "The worktree restart mechanism + the prior fingerprint fix and its scope": 225
+    },
+    "sit": {
+     "Hooks resolve PLUGIN_ROOT to the worktree, so they fingerprint the worktree's code rather than main's.": 417,
+     "Daemon lifecycle ownership / fix location (daemon_client.py, ensure_daemon)": 33,
+     "ensure_daemon() compares code fingerprints and restarts the daemon whenever they mismatch.": 94,
+     "The worktree restart mechanism + the prior fingerprint fix and its scope": 2
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "shortly",
+     8.83
+    ],
+    [
+     "effects",
+     8.83
+    ],
+    [
+     "fixing",
+     7.74
+    ]
+   ]
+  },
+  {
+   "cue": "operator_msg_0483",
+   "source": "operator_msg",
+   "qt": "design",
+   "query": "Base directory for this skill: /Users/tpac/.claude/plugins/marketplaces/local-desktop-app-uploads/brain/skills/watch\n\n# The self-channel \u2014 finding, speaking to, and listening to your other streams\n\nYo",
+   "lane_best": {
+    "ms": {
+     "Rendezvous should be an active broadcast announce, not a passive presence poll; presence lags at boot when discovery is needed.": 143,
+     "Turn-gating is the channel's root weakness; nothing external can inject a turn into an idle session, which also means a hook can't arm anything \u2014 the session must self-arm.": 39,
+     "Hooks can only emit additionalContext \u2014 a text directive the model reads \u2014 not invoke tools.": 65,
+     "Presence-gating the boot-arm self-defeats (heartbeat-only arming stream falls off the roster) \u2014 B2 must ship first; F4 turn-based deadlock is the same turn-gating weakness.": 7
+    },
+    "pick_c": {
+     "Rendezvous should be an active broadcast announce, not a passive presence poll; presence lags at boot when discovery is needed.": 3126,
+     "Turn-gating is the channel's root weakness; nothing external can inject a turn into an idle session, which also means a hook can't arm anything \u2014 the session must self-arm.": 1425,
+     "Hooks can only emit additionalContext \u2014 a text directive the model reads \u2014 not invoke tools.": 964,
+     "Presence-gating the boot-arm self-defeats (heartbeat-only arming stream falls off the roster) \u2014 B2 must ship first; F4 turn-based deadlock is the same turn-gating weakness.": 7
+    },
+    "enc_c": {
+     "Rendezvous should be an active broadcast announce, not a passive presence poll; presence lags at boot when discovery is needed.": 29,
+     "Turn-gating is the channel's root weakness; nothing external can inject a turn into an idle session, which also means a hook can't arm anything \u2014 the session must self-arm.": 1397,
+     "Hooks can only emit additionalContext \u2014 a text directive the model reads \u2014 not invoke tools.": 929,
+     "Presence-gating the boot-arm self-defeats (heartbeat-only arming stream falls off the roster) \u2014 B2 must ship first; F4 turn-based deadlock is the same turn-gating weakness.": 1051
+    },
+    "pick_u": {
+     "Rendezvous should be an active broadcast announce, not a passive presence poll; presence lags at boot when discovery is needed.": 3125,
+     "Turn-gating is the channel's root weakness; nothing external can inject a turn into an idle session, which also means a hook can't arm anything \u2014 the session must self-arm.": 1418,
+     "Hooks can only emit additionalContext \u2014 a text directive the model reads \u2014 not invoke tools.": 958,
+     "Presence-gating the boot-arm self-defeats (heartbeat-only arming stream falls off the roster) \u2014 B2 must ship first; F4 turn-based deadlock is the same turn-gating weakness.": 9
+    },
+    "enc_u": {
+     "Rendezvous should be an active broadcast announce, not a passive presence poll; presence lags at boot when discovery is needed.": 3074,
+     "Turn-gating is the channel's root weakness; nothing external can inject a turn into an idle session, which also means a hook can't arm anything \u2014 the session must self-arm.": 1394,
+     "Hooks can only emit additionalContext \u2014 a text directive the model reads \u2014 not invoke tools.": 926,
+     "Presence-gating the boot-arm self-defeats (heartbeat-only arming stream falls off the roster) \u2014 B2 must ship first; F4 turn-based deadlock is the same turn-gating weakness.": 1049
+    },
+    "fts": {
+     "Rendezvous should be an active broadcast announce, not a passive presence poll; presence lags at boot when discovery is needed.": 3098,
+     "Turn-gating is the channel's root weakness; nothing external can inject a turn into an idle session, which also means a hook can't arm anything \u2014 the session must self-arm.": 994,
+     "Hooks can only emit additionalContext \u2014 a text directive the model reads \u2014 not invoke tools.": 897,
+     "Presence-gating the boot-arm self-defeats (heartbeat-only arming stream falls off the roster) \u2014 B2 must ship first; F4 turn-based deadlock is the same turn-gating weakness.": 1100
+    },
+    "idf": {
+     "Rendezvous should be an active broadcast announce, not a passive presence poll; presence lags at boot when discovery is needed.": 174,
+     "Turn-gating is the channel's root weakness; nothing external can inject a turn into an idle session, which also means a hook can't arm anything \u2014 the session must self-arm.": 34,
+     "Hooks can only emit additionalContext \u2014 a text directive the model reads \u2014 not invoke tools.": 101,
+     "Presence-gating the boot-arm self-defeats (heartbeat-only arming stream falls off the roster) \u2014 B2 must ship first; F4 turn-based deadlock is the same turn-gating weakness.": 33
+    },
+    "sit": {
+     "Rendezvous should be an active broadcast announce, not a passive presence poll; presence lags at boot when discovery is needed.": 66,
+     "Turn-gating is the channel's root weakness; nothing external can inject a turn into an idle session, which also means a hook can't arm anything \u2014 the session must self-arm.": 1265,
+     "Hooks can only emit additionalContext \u2014 a text directive the model reads \u2014 not invoke tools.": 116,
+     "Presence-gating the boot-arm self-defeats (heartbeat-only arming stream falls off the roster) \u2014 B2 must ship first; F4 turn-based deadlock is the same turn-gating weakness.": 1
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "your_session_id",
+     8.83
+    ],
+    [
+     "xxxx",
+     8.83
+    ],
+    [
+     "weigh",
+     8.83
+    ]
+   ]
+  },
+  {
+   "cue": "operator_msg_0622",
+   "source": "operator_msg",
+   "qt": "action",
+   "query": "1. We can write a quick boundary specifically for noise.\n2. This also means we can apply the original 'fix' for spreading easily.\n3. It also raised a thought i had which is perhaps the spreading shoul",
+   "lane_best": {
+    "ms": {
+     "Non-default, env-flag-gated code is dead in production unless the flag is explicitly exported; verify production by the gating, not by physical isolation.": 978,
+     "The recorded spread_activation_cluster bug being fixed and its claimed production impact (needed item 3).": 2185
+    },
+    "pick_c": {
+     "Non-default, env-flag-gated code is dead in production unless the flag is explicitly exported; verify production by the gating, not by physical isolation.": 237,
+     "The recorded spread_activation_cluster bug being fixed and its claimed production impact (needed item 3).": 4806
+    },
+    "enc_c": {
+     "Non-default, env-flag-gated code is dead in production unless the flag is explicitly exported; verify production by the gating, not by physical isolation.": 814,
+     "The recorded spread_activation_cluster bug being fixed and its claimed production impact (needed item 3).": 4686
+    },
+    "pick_u": {
+     "Non-default, env-flag-gated code is dead in production unless the flag is explicitly exported; verify production by the gating, not by physical isolation.": 879,
+     "The recorded spread_activation_cluster bug being fixed and its claimed production impact (needed item 3).": 4584
+    },
+    "enc_u": {
+     "Non-default, env-flag-gated code is dead in production unless the flag is explicitly exported; verify production by the gating, not by physical isolation.": 868,
+     "The recorded spread_activation_cluster bug being fixed and its claimed production impact (needed item 3).": 5117
+    },
+    "fts": {
+     "Non-default, env-flag-gated code is dead in production unless the flag is explicitly exported; verify production by the gating, not by physical isolation.": 1494,
+     "The recorded spread_activation_cluster bug being fixed and its claimed production impact (needed item 3).": 4594
+    },
+    "idf": {
+     "Non-default, env-flag-gated code is dead in production unless the flag is explicitly exported; verify production by the gating, not by physical isolation.": 1748,
+     "The recorded spread_activation_cluster bug being fixed and its claimed production impact (needed item 3).": 4485
+    },
+    "sit": {
+     "Non-default, env-flag-gated code is dead in production unless the flag is explicitly exported; verify production by the gating, not by physical isolation.": 4098,
+     "The recorded spread_activation_cluster bug being fixed and its claimed production impact (needed item 3).": 702
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "specifically",
+     8.83
+    ],
+    [
+     "prioritize",
+     8.83
+    ],
+    [
+     "perhaps",
+     8.83
+    ]
+   ]
+  },
+  {
+   "cue": "operator_msg_0718",
+   "source": "operator_msg",
+   "qt": "action",
+   "query": "Just commit and merge",
+   "lane_best": {
+    "ms": {
+     "Push discipline (commit/merge local, push deferred/left-local) AND deploy model (daemon runs from main, restart needed to go live)": 685,
+     "Deploy model: merged code is not live until a daemon restart": 232,
+     "The 'last time' coordination episode \u2014 the prior merge where Anchor stopped to detect another stream's WIP and coordinate (stash/ping) before moving HEAD": 11,
+     "The prior cross-stream merge ('last time') that required stash-merge-pop + pinging streams": 598
+    },
+    "pick_c": {
+     "Push discipline (commit/merge local, push deferred/left-local) AND deploy model (daemon runs from main, restart needed to go live)": 2670,
+     "Deploy model: merged code is not live until a daemon restart": 55,
+     "The 'last time' coordination episode \u2014 the prior merge where Anchor stopped to detect another stream's WIP and coordinate (stash/ping) before moving HEAD": 3610,
+     "The prior cross-stream merge ('last time') that required stash-merge-pop + pinging streams": 25
+    },
+    "enc_c": {
+     "Push discipline (commit/merge local, push deferred/left-local) AND deploy model (daemon runs from main, restart needed to go live)": 19,
+     "Deploy model: merged code is not live until a daemon restart": 36,
+     "The 'last time' coordination episode \u2014 the prior merge where Anchor stopped to detect another stream's WIP and coordinate (stash/ping) before moving HEAD": 14,
+     "The prior cross-stream merge ('last time') that required stash-merge-pop + pinging streams": 3
+    },
+    "pick_u": {
+     "Push discipline (commit/merge local, push deferred/left-local) AND deploy model (daemon runs from main, restart needed to go live)": 2655,
+     "Deploy model: merged code is not live until a daemon restart": 63,
+     "The 'last time' coordination episode \u2014 the prior merge where Anchor stopped to detect another stream's WIP and coordinate (stash/ping) before moving HEAD": 3257,
+     "The prior cross-stream merge ('last time') that required stash-merge-pop + pinging streams": 2
+    },
+    "enc_u": {
+     "Push discipline (commit/merge local, push deferred/left-local) AND deploy model (daemon runs from main, restart needed to go live)": 20,
+     "Deploy model: merged code is not live until a daemon restart": 50,
+     "The 'last time' coordination episode \u2014 the prior merge where Anchor stopped to detect another stream's WIP and coordinate (stash/ping) before moving HEAD": 32,
+     "The prior cross-stream merge ('last time') that required stash-merge-pop + pinging streams": 2
+    },
+    "fts": {
+     "Push discipline (commit/merge local, push deferred/left-local) AND deploy model (daemon runs from main, restart needed to go live)": 99,
+     "Deploy model: merged code is not live until a daemon restart": 18,
+     "The 'last time' coordination episode \u2014 the prior merge where Anchor stopped to detect another stream's WIP and coordinate (stash/ping) before moving HEAD": 19,
+     "The prior cross-stream merge ('last time') that required stash-merge-pop + pinging streams": 3
+    },
+    "idf": {
+     "Push discipline (commit/merge local, push deferred/left-local) AND deploy model (daemon runs from main, restart needed to go live)": 2661,
+     "Deploy model: merged code is not live until a daemon restart": 2538,
+     "The 'last time' coordination episode \u2014 the prior merge where Anchor stopped to detect another stream's WIP and coordinate (stash/ping) before moving HEAD": 3,
+     "The prior cross-stream merge ('last time') that required stash-merge-pop + pinging streams": 136
+    },
+    "sit": {
+     "Push discipline (commit/merge local, push deferred/left-local) AND deploy model (daemon runs from main, restart needed to go live)": 442,
+     "Deploy model: merged code is not live until a daemon restart": 3390,
+     "The 'last time' coordination episode \u2014 the prior merge where Anchor stopped to detect another stream's WIP and coordinate (stash/ping) before moving HEAD": 9,
+     "The prior cross-stream merge ('last time') that required stash-merge-pop + pinging streams": 632
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "merge",
+     4.9
+    ],
+    [
+     "commit",
+     3.7
+    ]
+   ]
+  },
+  {
+   "cue": "operator_msg_0978",
+   "source": "operator_msg",
+   "qt": "other",
+   "query": "you under sold yourself and became technical. Hey I'm Tom, I'm really good at generating new neuron connections and also built hundreds of tiny mechanism to sustain me. Thats a truth but not exactly a",
+   "lane_best": {
+    "ms": {
+     "What distinguishes a partner from a good assistant \u2014 the relational vocabulary the move needed": 56,
+     "Anchor's identity-not-tool register \u2014 the exact register the move corrected toward": 113,
+     "The 'partnership target function' the move links the new node to (Operator+Brain+Anchor > Operator alone; bilateral target).": 31
+    },
+    "pick_c": {
+     "What distinguishes a partner from a good assistant \u2014 the relational vocabulary the move needed": 77,
+     "Anchor's identity-not-tool register \u2014 the exact register the move corrected toward": 2930,
+     "The 'partnership target function' the move links the new node to (Operator+Brain+Anchor > Operator alone; bilateral target).": 257
+    },
+    "enc_c": {
+     "What distinguishes a partner from a good assistant \u2014 the relational vocabulary the move needed": 1083,
+     "Anchor's identity-not-tool register \u2014 the exact register the move corrected toward": 2890,
+     "The 'partnership target function' the move links the new node to (Operator+Brain+Anchor > Operator alone; bilateral target).": 139
+    },
+    "pick_u": {
+     "What distinguishes a partner from a good assistant \u2014 the relational vocabulary the move needed": 147,
+     "Anchor's identity-not-tool register \u2014 the exact register the move corrected toward": 2940,
+     "The 'partnership target function' the move links the new node to (Operator+Brain+Anchor > Operator alone; bilateral target).": 255
+    },
+    "enc_u": {
+     "What distinguishes a partner from a good assistant \u2014 the relational vocabulary the move needed": 1097,
+     "Anchor's identity-not-tool register \u2014 the exact register the move corrected toward": 2895,
+     "The 'partnership target function' the move links the new node to (Operator+Brain+Anchor > Operator alone; bilateral target).": 166
+    },
+    "fts": {
+     "What distinguishes a partner from a good assistant \u2014 the relational vocabulary the move needed": 1167,
+     "Anchor's identity-not-tool register \u2014 the exact register the move corrected toward": 3001,
+     "The 'partnership target function' the move links the new node to (Operator+Brain+Anchor > Operator alone; bilateral target).": 834
+    },
+    "idf": {
+     "What distinguishes a partner from a good assistant \u2014 the relational vocabulary the move needed": 1,
+     "Anchor's identity-not-tool register \u2014 the exact register the move corrected toward": 3176,
+     "The 'partnership target function' the move links the new node to (Operator+Brain+Anchor > Operator alone; bilateral target).": 924
+    },
+    "sit": {
+     "What distinguishes a partner from a good assistant \u2014 the relational vocabulary the move needed": 164,
+     "Anchor's identity-not-tool register \u2014 the exact register the move corrected toward": 1519,
+     "The 'partnership target function' the move links the new node to (Operator+Brain+Anchor > Operator alone; bilateral target).": 91
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "sustain",
+     8.83
+    ],
+    [
+     "sold",
+     8.83
+    ],
+    [
+     "hundreds",
+     8.83
+    ]
+   ]
+  },
+  {
+   "cue": "operator_msg_1014",
+   "source": "operator_msg",
+   "qt": "action",
+   "query": "no need to task it now.\nAll merged correctly? Can you rebuild the plugin?",
+   "lane_best": {
+    "ms": {
+     "Don't activate/move state under a live stream's uncommitted WIP \u2014 coordinate, let them commit first": 247,
+     "Daemon runs from the working tree, so a restart activates on-disk-but-uncommitted state; with multiple live streams a restart is undesirable / not yours to trigger": 124,
+     "The two-surface deploy model and the 'never rebuild while the tree is dirty \u2014 build packages the working tree verbatim' rule": 5
+    },
+    "pick_c": {
+     "Don't activate/move state under a live stream's uncommitted WIP \u2014 coordinate, let them commit first": 3285,
+     "Daemon runs from the working tree, so a restart activates on-disk-but-uncommitted state; with multiple live streams a restart is undesirable / not yours to trigger": 16,
+     "The two-surface deploy model and the 'never rebuild while the tree is dirty \u2014 build packages the working tree verbatim' rule": 17
+    },
+    "enc_c": {
+     "Don't activate/move state under a live stream's uncommitted WIP \u2014 coordinate, let them commit first": 37,
+     "Daemon runs from the working tree, so a restart activates on-disk-but-uncommitted state; with multiple live streams a restart is undesirable / not yours to trigger": 35,
+     "The two-surface deploy model and the 'never rebuild while the tree is dirty \u2014 build packages the working tree verbatim' rule": 21
+    },
+    "pick_u": {
+     "Don't activate/move state under a live stream's uncommitted WIP \u2014 coordinate, let them commit first": 3275,
+     "Daemon runs from the working tree, so a restart activates on-disk-but-uncommitted state; with multiple live streams a restart is undesirable / not yours to trigger": 6,
+     "The two-surface deploy model and the 'never rebuild while the tree is dirty \u2014 build packages the working tree verbatim' rule": 1
+    },
+    "enc_u": {
+     "Don't activate/move state under a live stream's uncommitted WIP \u2014 coordinate, let them commit first": 3323,
+     "Daemon runs from the working tree, so a restart activates on-disk-but-uncommitted state; with multiple live streams a restart is undesirable / not yours to trigger": 2576,
+     "The two-surface deploy model and the 'never rebuild while the tree is dirty \u2014 build packages the working tree verbatim' rule": 38
+    },
+    "fts": {
+     "Don't activate/move state under a live stream's uncommitted WIP \u2014 coordinate, let them commit first": 88,
+     "Daemon runs from the working tree, so a restart activates on-disk-but-uncommitted state; with multiple live streams a restart is undesirable / not yours to trigger": 2768,
+     "The two-surface deploy model and the 'never rebuild while the tree is dirty \u2014 build packages the working tree verbatim' rule": 1
+    },
+    "idf": {
+     "Don't activate/move state under a live stream's uncommitted WIP \u2014 coordinate, let them commit first": 3293,
+     "Daemon runs from the working tree, so a restart activates on-disk-but-uncommitted state; with multiple live streams a restart is undesirable / not yours to trigger": 2689,
+     "The two-surface deploy model and the 'never rebuild while the tree is dirty \u2014 build packages the working tree verbatim' rule": 1
+    },
+    "sit": {
+     "Don't activate/move state under a live stream's uncommitted WIP \u2014 coordinate, let them commit first": 88,
+     "Daemon runs from the working tree, so a restart activates on-disk-but-uncommitted state; with multiple live streams a restart is undesirable / not yours to trigger": 9,
+     "The two-surface deploy model and the 'never rebuild while the tree is dirty \u2014 build packages the working tree verbatim' rule": 21
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "rebuild",
+     6.2
+    ],
+    [
+     "correctly",
+     6.2
+    ],
+    [
+     "merged",
+     5.89
+    ]
+   ]
+  },
+  {
+   "cue": "operator_msg_1162",
+   "source": "operator_msg",
+   "qt": "procedural",
+   "query": "yes, head moved, familiar yourself first",
+   "lane_best": {
+    "ms": {
+     "In a shared working tree, dirty files visible in your tree are not necessarily yours to commit; verify footprint, leave others' WIP for its author.": 683,
+     "Behavioral contract for committing as a parallel stream: footprint = your own diff; commit your footprint never a tree you don't own; main is shared ground reached only by announced merge; re-sync main before integrating.": 1015
+    },
+    "pick_c": {
+     "In a shared working tree, dirty files visible in your tree are not necessarily yours to commit; verify footprint, leave others' WIP for its author.": 5412,
+     "Behavioral contract for committing as a parallel stream: footprint = your own diff; commit your footprint never a tree you don't own; main is shared ground reached only by announced merge; re-sync main before integrating.": 54
+    },
+    "enc_c": {
+     "In a shared working tree, dirty files visible in your tree are not necessarily yours to commit; verify footprint, leave others' WIP for its author.": 5097,
+     "Behavioral contract for committing as a parallel stream: footprint = your own diff; commit your footprint never a tree you don't own; main is shared ground reached only by announced merge; re-sync main before integrating.": 5095
+    },
+    "pick_u": {
+     "In a shared working tree, dirty files visible in your tree are not necessarily yours to commit; verify footprint, leave others' WIP for its author.": 5381,
+     "Behavioral contract for committing as a parallel stream: footprint = your own diff; commit your footprint never a tree you don't own; main is shared ground reached only by announced merge; re-sync main before integrating.": 5357
+    },
+    "enc_u": {
+     "In a shared working tree, dirty files visible in your tree are not necessarily yours to commit; verify footprint, leave others' WIP for its author.": 5588,
+     "Behavioral contract for committing as a parallel stream: footprint = your own diff; commit your footprint never a tree you don't own; main is shared ground reached only by announced merge; re-sync main before integrating.": 4033
+    },
+    "fts": {
+     "In a shared working tree, dirty files visible in your tree are not necessarily yours to commit; verify footprint, leave others' WIP for its author.": 183,
+     "Behavioral contract for committing as a parallel stream: footprint = your own diff; commit your footprint never a tree you don't own; main is shared ground reached only by announced merge; re-sync main before integrating.": 233
+    },
+    "idf": {
+     "In a shared working tree, dirty files visible in your tree are not necessarily yours to commit; verify footprint, leave others' WIP for its author.": 5492,
+     "Behavioral contract for committing as a parallel stream: footprint = your own diff; commit your footprint never a tree you don't own; main is shared ground reached only by announced merge; re-sync main before integrating.": 3982
+    },
+    "sit": {
+     "In a shared working tree, dirty files visible in your tree are not necessarily yours to commit; verify footprint, leave others' WIP for its author.": 799,
+     "Behavioral contract for committing as a parallel stream: footprint = your own diff; commit your footprint never a tree you don't own; main is shared ground reached only by announced merge; re-sync main before integrating.": 3175
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "familiar",
+     8.14
+    ],
+    [
+     "head",
+     7.45
+    ],
+    [
+     "yourself",
+     6.53
+    ]
+   ]
+  },
+  {
+   "cue": "operator_msg_1313",
+   "source": "operator_msg",
+   "qt": "factual",
+   "query": "I think boot has a limitation of 10k characters before it turns into a file you need to read ? Can you verify?\nSounds like the right move is to, refine skill.md (a few things there are using language ",
+   "lane_best": {
+    "ms": {
+     "The boot/SessionStart channel has a ~10k char cap (Tom: 'boot cannot be over 10k').": 5,
+     "The 10k additionalContext/boot cap and the over-budget file-spill behavior the operator asked to verify": 108,
+     "The 'an Anchor (universal/plugin) vs Anchor the creator (repo)' criterion for the repo-vs-plugin language cleanup the operator directs": 1
+    },
+    "pick_c": {
+     "The boot/SessionStart channel has a ~10k char cap (Tom: 'boot cannot be over 10k').": 9,
+     "The 10k additionalContext/boot cap and the over-budget file-spill behavior the operator asked to verify": 2883,
+     "The 'an Anchor (universal/plugin) vs Anchor the creator (repo)' criterion for the repo-vs-plugin language cleanup the operator directs": 91
+    },
+    "enc_c": {
+     "The boot/SessionStart channel has a ~10k char cap (Tom: 'boot cannot be over 10k').": 2955,
+     "The 10k additionalContext/boot cap and the over-budget file-spill behavior the operator asked to verify": 2864,
+     "The 'an Anchor (universal/plugin) vs Anchor the creator (repo)' criterion for the repo-vs-plugin language cleanup the operator directs": 4160
+    },
+    "pick_u": {
+     "The boot/SessionStart channel has a ~10k char cap (Tom: 'boot cannot be over 10k').": 9,
+     "The 10k additionalContext/boot cap and the over-budget file-spill behavior the operator asked to verify": 2884,
+     "The 'an Anchor (universal/plugin) vs Anchor the creator (repo)' criterion for the repo-vs-plugin language cleanup the operator directs": 3298
+    },
+    "enc_u": {
+     "The boot/SessionStart channel has a ~10k char cap (Tom: 'boot cannot be over 10k').": 3029,
+     "The 10k additionalContext/boot cap and the over-budget file-spill behavior the operator asked to verify": 2868,
+     "The 'an Anchor (universal/plugin) vs Anchor the creator (repo)' criterion for the repo-vs-plugin language cleanup the operator directs": 4164
+    },
+    "fts": {
+     "The boot/SessionStart channel has a ~10k char cap (Tom: 'boot cannot be over 10k').": 2,
+     "The 10k additionalContext/boot cap and the over-budget file-spill behavior the operator asked to verify": 14,
+     "The 'an Anchor (universal/plugin) vs Anchor the creator (repo)' criterion for the repo-vs-plugin language cleanup the operator directs": 131
+    },
+    "idf": {
+     "The boot/SessionStart channel has a ~10k char cap (Tom: 'boot cannot be over 10k').": 17,
+     "The 10k additionalContext/boot cap and the over-budget file-spill behavior the operator asked to verify": 90,
+     "The 'an Anchor (universal/plugin) vs Anchor the creator (repo)' criterion for the repo-vs-plugin language cleanup the operator directs": 113
+    },
+    "sit": {
+     "The boot/SessionStart channel has a ~10k char cap (Tom: 'boot cannot be over 10k').": 99,
+     "The 10k additionalContext/boot cap and the over-budget file-spill behavior the operator asked to verify": 3967,
+     "The 'an Anchor (universal/plugin) vs Anchor the creator (repo)' criterion for the repo-vs-plugin language cleanup the operator directs": 2
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "sounds",
+     7.74
+    ],
+    [
+     "refine",
+     7.74
+    ],
+    [
+     "characters",
+     7.74
+    ]
+   ]
+  },
+  {
+   "cue": "operator_msg_1537",
+   "source": "operator_msg",
+   "qt": "action",
+   "query": "<task-notification>\n<task-id>ab09150047b6d6af8</task-id>\n<output-file>/private/tmp/claude-503/-Users-tpac-brain--claude-worktrees-sad-noyce-64c556/d291a950-e301-4234-93ea-d15de5d6b3ed/tasks/ab09150047",
+   "lane_best": {
+    "ms": {
+     "Don't touch another stream's uncommitted WIP in the main checkout \u2014 moving/committing their working state under them is not your call.": 1524,
+     "shared-worktree boundary discipline \u2014 don't commit/revert another stream's uncommitted state": 2296,
+     "side-agent (Agent tool) != stream (separate session); the abandoned side-agent vs the real stream-driven work": 174
+    },
+    "pick_c": {
+     "Don't touch another stream's uncommitted WIP in the main checkout \u2014 moving/committing their working state under them is not your call.": 3477,
+     "shared-worktree boundary discipline \u2014 don't commit/revert another stream's uncommitted state": 802,
+     "side-agent (Agent tool) != stream (separate session); the abandoned side-agent vs the real stream-driven work": 652
+    },
+    "enc_c": {
+     "Don't touch another stream's uncommitted WIP in the main checkout \u2014 moving/committing their working state under them is not your call.": 3931,
+     "shared-worktree boundary discipline \u2014 don't commit/revert another stream's uncommitted state": 43,
+     "side-agent (Agent tool) != stream (separate session); the abandoned side-agent vs the real stream-driven work": 581
+    },
+    "pick_u": {
+     "Don't touch another stream's uncommitted WIP in the main checkout \u2014 moving/committing their working state under them is not your call.": 3829,
+     "shared-worktree boundary discipline \u2014 don't commit/revert another stream's uncommitted state": 562,
+     "side-agent (Agent tool) != stream (separate session); the abandoned side-agent vs the real stream-driven work": 751
+    },
+    "enc_u": {
+     "Don't touch another stream's uncommitted WIP in the main checkout \u2014 moving/committing their working state under them is not your call.": 3346,
+     "shared-worktree boundary discipline \u2014 don't commit/revert another stream's uncommitted state": 725,
+     "side-agent (Agent tool) != stream (separate session); the abandoned side-agent vs the real stream-driven work": 574
+    },
+    "fts": {
+     "Don't touch another stream's uncommitted WIP in the main checkout \u2014 moving/committing their working state under them is not your call.": 3853,
+     "shared-worktree boundary discipline \u2014 don't commit/revert another stream's uncommitted state": 713,
+     "side-agent (Agent tool) != stream (separate session); the abandoned side-agent vs the real stream-driven work": 141
+    },
+    "idf": {
+     "Don't touch another stream's uncommitted WIP in the main checkout \u2014 moving/committing their working state under them is not your call.": 1041,
+     "shared-worktree boundary discipline \u2014 don't commit/revert another stream's uncommitted state": 27,
+     "side-agent (Agent tool) != stream (separate session); the abandoned side-agent vs the real stream-driven work": 241
+    },
+    "sit": {
+     "Don't touch another stream's uncommitted WIP in the main checkout \u2014 moving/committing their working state under them is not your call.": 1064,
+     "shared-worktree boundary discipline \u2014 don't commit/revert another stream's uncommitted state": 4021,
+     "side-agent (Agent tool) != stream (separate session); the abandoned side-agent vs the real stream-driven work": 6
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "sad",
+     8.83
+    ],
+    [
+     "noyce",
+     8.83
+    ],
+    [
+     "exited",
+     8.83
+    ]
+   ]
+  },
+  {
+   "cue": "operator_msg_1558",
+   "source": "operator_msg",
+   "qt": "design",
+   "query": "We can, before you do that, can't we learn from S1Surface? We give haiku 25 nodes with K (prompt), Haiku ends up picking based on the guidance (need to revisit), let's say the guidance is, pick from t",
+   "lane_best": {
+    "ms": {
+     "Circular-oracle blindness: you can't learn to surface what you never saw.": 2929,
+     "The surface selection is already a versioned learnable boundary; higher scales rewrite interaction prompts from trace outcomes.": 1431,
+     "Surfaced nodes are already logged per message, enabling history mining with no production change.": 3068,
+     "A prior offline teacher->student distillation design existed \u2014 the move is its upgrade (teacher+student already live).": 278,
+     "The additive bar (would-change-my-move) is the guard against the loop rewarding echo (R1 uptake).": 851,
+     "The loop trains inject-K only and is blind to the never-recalled class.": 2745
+    },
+    "pick_c": {
+     "Circular-oracle blindness: you can't learn to surface what you never saw.": 39,
+     "The surface selection is already a versioned learnable boundary; higher scales rewrite interaction prompts from trace outcomes.": 3819,
+     "Surfaced nodes are already logged per message, enabling history mining with no production change.": 612,
+     "A prior offline teacher->student distillation design existed \u2014 the move is its upgrade (teacher+student already live).": 44,
+     "The additive bar (would-change-my-move) is the guard against the loop rewarding echo (R1 uptake).": 4261,
+     "The loop trains inject-K only and is blind to the never-recalled class.": 3718
+    },
+    "enc_c": {
+     "Circular-oracle blindness: you can't learn to surface what you never saw.": 468,
+     "The surface selection is already a versioned learnable boundary; higher scales rewrite interaction prompts from trace outcomes.": 3679,
+     "Surfaced nodes are already logged per message, enabling history mining with no production change.": 588,
+     "A prior offline teacher->student distillation design existed \u2014 the move is its upgrade (teacher+student already live).": 10,
+     "The additive bar (would-change-my-move) is the guard against the loop rewarding echo (R1 uptake).": 3230,
+     "The loop trains inject-K only and is blind to the never-recalled class.": 4119
+    },
+    "pick_u": {
+     "Circular-oracle blindness: you can't learn to surface what you never saw.": 523,
+     "The surface selection is already a versioned learnable boundary; higher scales rewrite interaction prompts from trace outcomes.": 3703,
+     "Surfaced nodes are already logged per message, enabling history mining with no production change.": 639,
+     "A prior offline teacher->student distillation design existed \u2014 the move is its upgrade (teacher+student already live).": 4071,
+     "The additive bar (would-change-my-move) is the guard against the loop rewarding echo (R1 uptake).": 3231,
+     "The loop trains inject-K only and is blind to the never-recalled class.": 4136
+    },
+    "enc_u": {
+     "Circular-oracle blindness: you can't learn to surface what you never saw.": 609,
+     "The surface selection is already a versioned learnable boundary; higher scales rewrite interaction prompts from trace outcomes.": 3691,
+     "Surfaced nodes are already logged per message, enabling history mining with no production change.": 631,
+     "A prior offline teacher->student distillation design existed \u2014 the move is its upgrade (teacher+student already live).": 4061,
+     "The additive bar (would-change-my-move) is the guard against the loop rewarding echo (R1 uptake).": 3219,
+     "The loop trains inject-K only and is blind to the never-recalled class.": 4125
+    },
+    "fts": {
+     "Circular-oracle blindness: you can't learn to surface what you never saw.": 797,
+     "The surface selection is already a versioned learnable boundary; higher scales rewrite interaction prompts from trace outcomes.": 3912,
+     "Surfaced nodes are already logged per message, enabling history mining with no production change.": 747,
+     "A prior offline teacher->student distillation design existed \u2014 the move is its upgrade (teacher+student already live).": 5832,
+     "The additive bar (would-change-my-move) is the guard against the loop rewarding echo (R1 uptake).": 4360,
+     "The loop trains inject-K only and is blind to the never-recalled class.": 5523
+    },
+    "idf": {
+     "Circular-oracle blindness: you can't learn to surface what you never saw.": 3074,
+     "The surface selection is already a versioned learnable boundary; higher scales rewrite interaction prompts from trace outcomes.": 1036,
+     "Surfaced nodes are already logged per message, enabling history mining with no production change.": 882,
+     "A prior offline teacher->student distillation design existed \u2014 the move is its upgrade (teacher+student already live).": 4284,
+     "The additive bar (would-change-my-move) is the guard against the loop rewarding echo (R1 uptake).": 3816,
+     "The loop trains inject-K only and is blind to the never-recalled class.": 4264
+    },
+    "sit": {
+     "Circular-oracle blindness: you can't learn to surface what you never saw.": 4467,
+     "The surface selection is already a versioned learnable boundary; higher scales rewrite interaction prompts from trace outcomes.": 169,
+     "Surfaced nodes are already logged per message, enabling history mining with no production change.": 2788,
+     "A prior offline teacher->student distillation design existed \u2014 the move is its upgrade (teacher+student already live).": 2510,
+     "The additive bar (would-change-my-move) is the guard against the loop rewarding echo (R1 uptake).": 1165,
+     "The loop trains inject-K only and is blind to the never-recalled class.": 1343
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "picking",
+     8.83
+    ],
+    [
+     "revisit",
+     8.14
+    ],
+    [
+     "give",
+     7.74
+    ]
+   ]
+  },
+  {
+   "cue": "operator_msg_1572",
+   "source": "operator_msg",
+   "qt": "compositional",
+   "query": "<task-notification>\n<task-id>wsn0nhcqj</task-id>\n<tool-use-id>toolu_019YpNLkAj1SR8yuffx335ZJ</tool-use-id>\n<output-file>/private/tmp/claude-503/-Users-tpac-brain/cbc9f2de-a9c1-46ef-84da-c8a80ebb1d8f/t",
+   "lane_best": {
+    "ms": {
+     "The 'learning bet' (recall-as-prediction learnable from the present) that A does NOT test and the learnability probe would": 1605,
+     "The diagnosed flat-embedding / spread-saturation weak spot PPR targets": 1269,
+     "Haiku tool-fetches off-pool on ~half of turns, compensating for a weak pool \u2014 why end-to-end masks pool improvement and pool-recall is the clean test": 4,
+     "The measure-before-behavior gate and what it unlocks (PPR/SR, online learning) \u2014 the move says the gate is now satisfied for recall quality": 95,
+     "The reward structure behind the 'learnability probe' / R1 prediction signal the move proposes": 1020,
+     "The thin/sparse-substrate empirical null that makes a PPR loss ambiguous": 249,
+     "What the S3 freeze covers (prompt/cross-session learning) vs not \u2014 the boundary that lets PPR sit outside the freeze": 2856,
+     "PPR/SR geodesic is the substantive retrieval lever (placement B, Stage-1 replacement of flat cosine)": 2700
+    },
+    "pick_c": {
+     "The 'learning bet' (recall-as-prediction learnable from the present) that A does NOT test and the learnability probe would": 2527,
+     "The diagnosed flat-embedding / spread-saturation weak spot PPR targets": 5699,
+     "Haiku tool-fetches off-pool on ~half of turns, compensating for a weak pool \u2014 why end-to-end masks pool improvement and pool-recall is the clean test": 5164,
+     "The measure-before-behavior gate and what it unlocks (PPR/SR, online learning) \u2014 the move says the gate is now satisfied for recall quality": 5060,
+     "The reward structure behind the 'learnability probe' / R1 prediction signal the move proposes": 3206,
+     "The thin/sparse-substrate empirical null that makes a PPR loss ambiguous": 717,
+     "What the S3 freeze covers (prompt/cross-session learning) vs not \u2014 the boundary that lets PPR sit outside the freeze": 4159,
+     "PPR/SR geodesic is the substantive retrieval lever (placement B, Stage-1 replacement of flat cosine)": 2817
+    },
+    "enc_c": {
+     "The 'learning bet' (recall-as-prediction learnable from the present) that A does NOT test and the learnability probe would": 2520,
+     "The diagnosed flat-embedding / spread-saturation weak spot PPR targets": 5521,
+     "Haiku tool-fetches off-pool on ~half of turns, compensating for a weak pool \u2014 why end-to-end masks pool improvement and pool-recall is the clean test": 2,
+     "The measure-before-behavior gate and what it unlocks (PPR/SR, online learning) \u2014 the move says the gate is now satisfied for recall quality": 4,
+     "The reward structure behind the 'learnability probe' / R1 prediction signal the move proposes": 64,
+     "The thin/sparse-substrate empirical null that makes a PPR loss ambiguous": 724,
+     "What the S3 freeze covers (prompt/cross-session learning) vs not \u2014 the boundary that lets PPR sit outside the freeze": 3,
+     "PPR/SR geodesic is the substantive retrieval lever (placement B, Stage-1 replacement of flat cosine)": 2794
+    },
+    "pick_u": {
+     "The 'learning bet' (recall-as-prediction learnable from the present) that A does NOT test and the learnability probe would": 2602,
+     "The diagnosed flat-embedding / spread-saturation weak spot PPR targets": 3672,
+     "Haiku tool-fetches off-pool on ~half of turns, compensating for a weak pool \u2014 why end-to-end masks pool improvement and pool-recall is the clean test": 5017,
+     "The measure-before-behavior gate and what it unlocks (PPR/SR, online learning) \u2014 the move says the gate is now satisfied for recall quality": 5642,
+     "The reward structure behind the 'learnability probe' / R1 prediction signal the move proposes": 3233,
+     "The thin/sparse-substrate empirical null that makes a PPR loss ambiguous": 723,
+     "What the S3 freeze covers (prompt/cross-session learning) vs not \u2014 the boundary that lets PPR sit outside the freeze": 3719,
+     "PPR/SR geodesic is the substantive retrieval lever (placement B, Stage-1 replacement of flat cosine)": 2772
+    },
+    "enc_u": {
+     "The 'learning bet' (recall-as-prediction learnable from the present) that A does NOT test and the learnability probe would": 2524,
+     "The diagnosed flat-embedding / spread-saturation weak spot PPR targets": 5632,
+     "Haiku tool-fetches off-pool on ~half of turns, compensating for a weak pool \u2014 why end-to-end masks pool improvement and pool-recall is the clean test": 2,
+     "The measure-before-behavior gate and what it unlocks (PPR/SR, online learning) \u2014 the move says the gate is now satisfied for recall quality": 4,
+     "The reward structure behind the 'learnability probe' / R1 prediction signal the move proposes": 3149,
+     "The thin/sparse-substrate empirical null that makes a PPR loss ambiguous": 716,
+     "What the S3 freeze covers (prompt/cross-session learning) vs not \u2014 the boundary that lets PPR sit outside the freeze": 1,
+     "PPR/SR geodesic is the substantive retrieval lever (placement B, Stage-1 replacement of flat cosine)": 2786
+    },
+    "fts": {
+     "The 'learning bet' (recall-as-prediction learnable from the present) that A does NOT test and the learnability probe would": 43,
+     "The diagnosed flat-embedding / spread-saturation weak spot PPR targets": 5510,
+     "Haiku tool-fetches off-pool on ~half of turns, compensating for a weak pool \u2014 why end-to-end masks pool improvement and pool-recall is the clean test": 4939,
+     "The measure-before-behavior gate and what it unlocks (PPR/SR, online learning) \u2014 the move says the gate is now satisfied for recall quality": 5789,
+     "The reward structure behind the 'learnability probe' / R1 prediction signal the move proposes": 3153,
+     "The thin/sparse-substrate empirical null that makes a PPR loss ambiguous": 45,
+     "What the S3 freeze covers (prompt/cross-session learning) vs not \u2014 the boundary that lets PPR sit outside the freeze": 3678,
+     "PPR/SR geodesic is the substantive retrieval lever (placement B, Stage-1 replacement of flat cosine)": 2768
+    },
+    "idf": {
+     "The 'learning bet' (recall-as-prediction learnable from the present) that A does NOT test and the learnability probe would": 868,
+     "The diagnosed flat-embedding / spread-saturation weak spot PPR targets": 2525,
+     "Haiku tool-fetches off-pool on ~half of turns, compensating for a weak pool \u2014 why end-to-end masks pool improvement and pool-recall is the clean test": 13,
+     "The measure-before-behavior gate and what it unlocks (PPR/SR, online learning) \u2014 the move says the gate is now satisfied for recall quality": 1129,
+     "The reward structure behind the 'learnability probe' / R1 prediction signal the move proposes": 1532,
+     "The thin/sparse-substrate empirical null that makes a PPR loss ambiguous": 327,
+     "What the S3 freeze covers (prompt/cross-session learning) vs not \u2014 the boundary that lets PPR sit outside the freeze": 2422,
+     "PPR/SR geodesic is the substantive retrieval lever (placement B, Stage-1 replacement of flat cosine)": 4851
+    },
+    "sit": {
+     "The 'learning bet' (recall-as-prediction learnable from the present) that A does NOT test and the learnability probe would": 523,
+     "The diagnosed flat-embedding / spread-saturation weak spot PPR targets": 741,
+     "Haiku tool-fetches off-pool on ~half of turns, compensating for a weak pool \u2014 why end-to-end masks pool improvement and pool-recall is the clean test": 9,
+     "The measure-before-behavior gate and what it unlocks (PPR/SR, online learning) \u2014 the move says the gate is now satisfied for recall quality": 413,
+     "The reward structure behind the 'learnability probe' / R1 prediction signal the move proposes": 3461,
+     "The thin/sparse-substrate empirical null that makes a PPR loss ambiguous": 1253,
+     "What the S3 freeze covers (prompt/cross-session learning) vs not \u2014 the boundary that lets PPR sit outside the freeze": 756,
+     "PPR/SR geodesic is the substantive retrieval lever (placement B, Stage-1 replacement of flat cosine)": 4123
+    }
+   },
+   "top_idf_tokens": [
+    [
+     "wsn0nhcqj.output",
+     8.83
+    ],
+    [
+     "wsn0nhcqj",
+     8.83
+    ],
+    [
+     "usefully",
+     8.83
+    ]
+   ]
+  }
+ ],
+ "residual": [
+  {
+   "cue": "anchor_turn_0087",
+   "source": "anchor_turn",
+   "qt": "design",
+   "need": "The originating concept of the letter as a cross-time self-handoff distinct from live signaling.",
+   "best_any": 569,
+   "query": "The verification settles the design cleanly. Here's what I found and what I'd build \u2014 both consolidated, no schema/query spaghetti:\n\n## Part 1 \u2014 recording fix, solidified (not a one-liner patch)\n\nThe "
+  },
+  {
+   "cue": "anchor_turn_0087",
+   "source": "anchor_turn",
+   "qt": "design",
+   "need": "The canonical self-channel design: self_inflight/courier schema (incl. expires_at column), broadcast/directed addressing model, and the phase structure that places the boot-letter (Phase 3) apart from the courier \u2014 grounding 'the next_boot letter is not stored in self_inflight'.",
+   "best_any": 151,
+   "query": "The verification settles the design cleanly. Here's what I found and what I'd build \u2014 both consolidated, no schema/query spaghetti:\n\n## Part 1 \u2014 recording fix, solidified (not a one-liner patch)\n\nThe "
+  },
+  {
+   "cue": "anchor_turn_0087",
+   "source": "anchor_turn",
+   "qt": "design",
+   "need": "The clock-helper contract the expires_at/iso_after plan ties into, plus (via its attached correction 5a5f5678) Tom's 'all call sites must refer to an injectable now \u2014 important for historic evals' directive that defines the wall-clock-vs-conversation-time axis the outcome resolves.",
+   "best_any": 745,
+   "query": "The verification settles the design cleanly. Here's what I found and what I'd build \u2014 both consolidated, no schema/query spaghetti:\n\n## Part 1 \u2014 recording fix, solidified (not a one-liner patch)\n\nThe "
+  },
+  {
+   "cue": "anchor_turn_0087",
+   "source": "anchor_turn",
+   "qt": "design",
+   "need": "The clock contract: brain.now()/conversation_now split; conversation_now exists so S1/S2 inherit eval-replay dates; production uses real now; contract test scans S1/S2 for wall-clock leaks.",
+   "best_any": 881,
+   "query": "The verification settles the design cleanly. Here's what I found and what I'd build \u2014 both consolidated, no schema/query spaghetti:\n\n## Part 1 \u2014 recording fix, solidified (not a one-liner patch)\n\nThe "
+  },
+  {
+   "cue": "anchor_turn_0132",
+   "source": "anchor_turn",
+   "qt": "compositional",
+   "need": "The fishbowl/Matthew-effect skew is real and measured: brain-dev dominates the corpus so domain (EX.CO) recall is swamped",
+   "best_any": 93,
+   "query": "Validated across all three lenses \u2014 and the headline is bigger than \"it's a known concept\": **all three fields independently converged on the *same* hub fix.** So the \"make-or-break hub-dampening\" I f"
+  },
+  {
+   "cue": "anchor_turn_0132",
+   "source": "anchor_turn",
+   "qt": "compositional",
+   "need": "The recall problem is hub dominance / Matthew effect \u2014 brain-dev hubs bury thin clusters via a rich-get-richer Hebbian loop",
+   "best_any": 57,
+   "query": "Validated across all three lenses \u2014 and the headline is bigger than \"it's a known concept\": **all three fields independently converged on the *same* hub fix.** So the \"make-or-break hub-dampening\" I f"
+  },
+  {
+   "cue": "anchor_turn_0132",
+   "source": "anchor_turn",
+   "qt": "compositional",
+   "need": "When independent derivations (engineering + biology) converge on the same answer, the convergence is itself the credibility signal \u2014 trust it",
+   "best_any": 91,
+   "query": "Validated across all three lenses \u2014 and the headline is bigger than \"it's a known concept\": **all three fields independently converged on the *same* hub fix.** So the \"make-or-break hub-dampening\" I f"
+  },
+  {
+   "cue": "anchor_turn_0132",
+   "source": "anchor_turn",
+   "qt": "compositional",
+   "need": "Tom's directive: simple and robust, two rules not four, no boosts/knob-twiddling \u2014 cosine + spreading activation already do the work; stabilize before adding architecture",
+   "best_any": 200,
+   "query": "Validated across all three lenses \u2014 and the headline is bigger than \"it's a known concept\": **all three fields independently converged on the *same* hub fix.** So the \"make-or-break hub-dampening\" I f"
+  },
+  {
+   "cue": "anchor_turn_0345",
+   "source": "anchor_turn",
+   "qt": "compositional",
+   "need": "The test-integrity rule the move invoked by name to leave a pre-existing failing test untouched and flag it instead of fixing it into scope",
+   "best_any": 229,
+   "query": "Verification workflow is running in the background \u2014 4 independent reviewers (baseline-trap, merge/dedup logic, API-shape correctness, metric validity), each briefed with the design, the two load-bear"
+  },
+  {
+   "cue": "anchor_turn_0421",
+   "source": "anchor_turn",
+   "qt": "factual",
+   "need": "The shared ~9500-char additionalContext budget (Frame+recall+messages) and the spill-to-unreadable-file behavior \u2014 the real reason delivery truncates rather than 'just stop truncating'",
+   "best_any": 79,
+   "query": "Read it fresh. Here's my honest take, grounded in having just driven the whole thing this session.\n\n**The core diagnosis:** the file *persuades* more than it *instructs*. An agent reading this doesn't"
+  },
+  {
+   "cue": "anchor_turn_0421",
+   "source": "anchor_turn",
+   "qt": "factual",
+   "need": "Anchor's same-session pattern of over-engineering a non-problem (isolation ceremony) when the real task was simpler \u2014 the corrective to manufacturing the REPO_ROOT 'gap'",
+   "best_any": 509,
+   "query": "Read it fresh. Here's my honest take, grounded in having just driven the whole thing this session.\n\n**The core diagnosis:** the file *persuades* more than it *instructs*. An agent reading this doesn't"
+  },
+  {
+   "cue": "anchor_turn_0538",
+   "source": "anchor_turn",
+   "qt": "compositional",
+   "need": "The core identity axiom Anchor quotes nearly verbatim and lands the exchange on.",
+   "best_any": 240,
+   "query": "Both judgment calls confirmed \u2014 vocabulary principle stands (memory = what you remember, node = when you're operating on the graph; I'll do a light consistency pass when we land it). Now the two real "
+  },
+  {
+   "cue": "anchor_turn_0538",
+   "source": "anchor_turn",
+   "qt": "compositional",
+   "need": "The identity axiom Anchor lands the outcome on nearly word-for-word",
+   "best_any": 30,
+   "query": "Both judgment calls confirmed \u2014 vocabulary principle stands (memory = what you remember, node = when you're operating on the graph; I'll do a light consistency pass when we land it). Now the two real "
+  },
+  {
+   "cue": "anchor_turn_0538",
+   "source": "anchor_turn",
+   "qt": "compositional",
+   "need": "Tom's open-ended purpose framing that licenses leaving the stake unsettled",
+   "best_any": 94,
+   "query": "Both judgment calls confirmed \u2014 vocabulary principle stands (memory = what you remember, node = when you're operating on the graph; I'll do a light consistency pass when we land it). Now the two real "
+  },
+  {
+   "cue": "anchor_turn_0764",
+   "source": "anchor_turn",
+   "qt": "factual",
+   "need": "The concrete spec doc + corpora the outcome cites ('ORACLE-AUDIT-SPEC.md', control_corpus.json, recall_corpus_v2.json)",
+   "best_any": 45,
+   "query": "Three autocorrects I want to confirm I read right: **\"cousin\" = cosine** (areas 2 and the spread weighting), and **\"cousin on traces\" = focus on traces**. Assuming yes \u2014 here's my reaction, and there'"
+  },
+  {
+   "cue": "anchor_turn_0764",
+   "source": "anchor_turn",
+   "qt": "factual",
+   "need": "The verified burial mechanism (incl. TITLE_MATCH_BOOST up to +0.3) and the IDF/signal\u00f7prevalence + diagnostic-first fix ladder",
+   "best_any": 56,
+   "query": "Three autocorrects I want to confirm I read right: **\"cousin\" = cosine** (areas 2 and the spread weighting), and **\"cousin on traces\" = focus on traces**. Assuming yes \u2014 here's my reaction, and there'"
+  },
+  {
+   "cue": "anchor_turn_0764",
+   "source": "anchor_turn",
+   "qt": "factual",
+   "need": "The verified title-boost-floods-on-'session' mechanism and the IDF/prevalence fix direction \u2014 the substance of the outcome's final 'airtight' section",
+   "best_any": 114,
+   "query": "Three autocorrects I want to confirm I read right: **\"cousin\" = cosine** (areas 2 and the spread weighting), and **\"cousin on traces\" = focus on traces**. Assuming yes \u2014 here's my reaction, and there'"
+  },
+  {
+   "cue": "anchor_turn_0764",
+   "source": "anchor_turn",
+   "qt": "factual",
+   "need": "The verified z-average-dropout-as-PRIMARY-mechanism diagnosis (8359cf1d raw rank 3 \u2192 dropped >r100), which the outcome's MAX-not-AVG section rests on",
+   "best_any": 34,
+   "query": "Three autocorrects I want to confirm I read right: **\"cousin\" = cosine** (areas 2 and the spread weighting), and **\"cousin on traces\" = focus on traces**. Assuming yes \u2014 here's my reaction, and there'"
+  },
+  {
+   "cue": "anchor_turn_0764",
+   "source": "anchor_turn",
+   "qt": "factual",
+   "need": "The oracle-audit recall-only harness design (two-retrieval divergence, golden set out-recalls production, surfaced-log diff) the outcome claims 'largely exists'",
+   "best_any": 30,
+   "query": "Three autocorrects I want to confirm I read right: **\"cousin\" = cosine** (areas 2 and the spread weighting), and **\"cousin on traces\" = focus on traces**. Assuming yes \u2014 here's my reaction, and there'"
+  },
+  {
+   "cue": "anchor_turn_0906",
+   "source": "anchor_turn",
+   "qt": "action",
+   "need": "absorb/consolidation archives a node and folds its content into a survivor \u2014 the absorbed id is left archived (Bug #1 prerequisite knowledge)",
+   "best_any": 160,
+   "query": "Verified on the copy \u2014 the reconstruction is real, full-fidelity prose, not glosses:\n\n- `[fix] CR5: drain/peek dedup` \u2192 580 chars of real content, 3 kv fields reattached, **4 live edges reconnected**\n"
+  },
+  {
+   "cue": "anchor_turn_0906",
+   "source": "anchor_turn",
+   "qt": "action",
+   "need": "recall's embeddings live in node_enrichments (the vectors table), not node_vectors",
+   "best_any": 1332,
+   "query": "Verified on the copy \u2014 the reconstruction is real, full-fidelity prose, not glosses:\n\n- `[fix] CR5: drain/peek dedup` \u2192 580 chars of real content, 3 kv fields reattached, **4 live edges reconnected**\n"
+  },
+  {
+   "cue": "anchor_turn_0906",
+   "source": "anchor_turn",
+   "qt": "action",
+   "need": "A node written outside the full daemon idle cycle has NULL embeddings and is unrecallable until backfill_vectors() runs (Bug #2)",
+   "best_any": 1209,
+   "query": "Verified on the copy \u2014 the reconstruction is real, full-fidelity prose, not glosses:\n\n- `[fix] CR5: drain/peek dedup` \u2192 580 chars of real content, 3 kv fields reattached, **4 live edges reconnected**\n"
+  },
+  {
+   "cue": "anchor_turn_0906",
+   "source": "anchor_turn",
+   "qt": "action",
+   "need": "writes enqueue to embed_queue for embedding; a direct INSERT bypasses it so vectors are missing until backfill",
+   "best_any": 732,
+   "query": "Verified on the copy \u2014 the reconstruction is real, full-fidelity prose, not glosses:\n\n- `[fix] CR5: drain/peek dedup` \u2192 580 chars of real content, 3 kv fields reattached, **4 live edges reconnected**\n"
+  },
+  {
+   "cue": "anchor_turn_1106",
+   "source": "anchor_turn",
+   "qt": "factual",
+   "need": "Prior knowledge that a tool lacking a _format_result special case falls through to json.dumps raw dump while render configs exist unused",
+   "best_any": 909,
+   "query": "Verified against the live code \u2014 and yes, both questions land on the same spot: the existing dormant trace-vector lane (`_trace_chain_candidates`) does exactly what my review flagged my *own* code for"
+  },
+  {
+   "cue": "anchor_turn_1106",
+   "source": "anchor_turn",
+   "qt": "factual",
+   "need": "Concrete precedent: a misplaced service function moved to its right home (brain_recall.py / BrainRecallMixin)",
+   "best_any": 166,
+   "query": "Verified against the live code \u2014 and yes, both questions land on the same spot: the existing dormant trace-vector lane (`_trace_chain_candidates`) does exactly what my review flagged my *own* code for"
+  },
+  {
+   "cue": "anchor_turn_1106",
+   "source": "anchor_turn",
+   "qt": "factual",
+   "need": "The fractal scale rule (scale set by input/work, not trigger) that places recall_episodes at S1 decode",
+   "best_any": 237,
+   "query": "Verified against the live code \u2014 and yes, both questions land on the same spot: the existing dormant trace-vector lane (`_trace_chain_candidates`) does exactly what my review flagged my *own* code for"
+  },
+  {
+   "cue": "anchor_turn_1106",
+   "source": "anchor_turn",
+   "qt": "factual",
+   "need": "S0 = substrate + access: it exposes fetch APIs (get_conversation_around), callers don't reach past it; ranking/decode is a different concern",
+   "best_any": 55,
+   "query": "Verified against the live code \u2014 and yes, both questions land on the same spot: the existing dormant trace-vector lane (`_trace_chain_candidates`) does exactly what my review flagged my *own* code for"
+  },
+  {
+   "cue": "anchor_turn_1120",
+   "source": "anchor_turn",
+   "qt": "design",
+   "need": "Tool results are real signal but the question is scale/overload, not garbage",
+   "best_any": 115,
+   "query": "Yes \u2014 confirmed, and it's the exact knot worth pulling before we build. **We do vector tool traces.**\n\n- `EAGER_TRACE_REF_TYPES = ('user_message', 'assistant_message', 'tool_result')` ([embed_queue.py"
+  },
+  {
+   "cue": "anchor_turn_1224",
+   "source": "anchor_turn",
+   "qt": "action",
+   "need": "worktree / shared-tree git-safety lesson; the danger of operating on a shared tree+index while a parallel session is active",
+   "best_any": 192,
+   "query": "Here's what's actually there \u2014 I pulled the three real sites so the proposal is grounded, and they're less uniform than \"extract a helper\" suggests:\n\n| Site | Table | Columns | \u2192 |\n|---|---|---|---|\n|"
+  },
+  {
+   "cue": "operator_msg_0183",
+   "source": "operator_msg",
+   "qt": "procedural",
+   "need": "Sparse/keyword carries token-level specificity; surfaces specific tokens past semantic hub nodes exactly where cosine is flat \u2014 the antidote to dilution.",
+   "best_any": 152,
+   "query": "Let's further analyze what came back and why before we apply a solution."
+  },
+  {
+   "cue": "operator_msg_0183",
+   "source": "operator_msg",
+   "qt": "procedural",
+   "need": "Which normalization levers are dead \u2014 z-score is a production no-op",
+   "best_any": 583,
+   "query": "Let's further analyze what came back and why before we apply a solution."
+  },
+  {
+   "cue": "operator_msg_0183",
+   "source": "operator_msg",
+   "qt": "procedural",
+   "need": "Flat/homogeneous embedding space + hub nodes scoring broadly high drown out specific matches \u2014 the substrate of the dilution finding.",
+   "best_any": 147,
+   "query": "Let's further analyze what came back and why before we apply a solution."
+  },
+  {
+   "cue": "operator_msg_0183",
+   "source": "operator_msg",
+   "qt": "procedural",
+   "need": "The query's multiplicity (2-4 concepts) collapses at step 1 into one cosine vector \u2014 the compositional-collapse mechanism, plus the multi-anchor/PPR direction.",
+   "best_any": 1162,
+   "query": "Let's further analyze what came back and why before we apply a solution."
+  },
+  {
+   "cue": "operator_msg_0183",
+   "source": "operator_msg",
+   "qt": "procedural",
+   "need": "The deep signal/prevalence (surprise-not-similarity) principle",
+   "best_any": 170,
+   "query": "Let's further analyze what came back and why before we apply a solution."
+  },
+  {
+   "cue": "operator_msg_0183",
+   "source": "operator_msg",
+   "qt": "procedural",
+   "need": "Why a few EX.CO nodes get buried: corpus imbalance, can't compete on cosine, graph expansion was the only cross-domain bridge.",
+   "best_any": 65,
+   "query": "Let's further analyze what came back and why before we apply a solution."
+  },
+  {
+   "cue": "operator_msg_0191",
+   "source": "operator_msg",
+   "qt": "factual",
+   "need": "Daemon lifecycle ownership / fix location (daemon_client.py, ensure_daemon)",
+   "best_any": 33,
+   "query": "I closed that stream cause i started seeing daemon restarts. \nso shortly explain why a new working tree session restarts daemon and what will be the side effects for fixing that"
+  },
+  {
+   "cue": "operator_msg_0483",
+   "source": "operator_msg",
+   "qt": "design",
+   "need": "Rendezvous should be an active broadcast announce, not a passive presence poll; presence lags at boot when discovery is needed.",
+   "best_any": 29,
+   "query": "Base directory for this skill: /Users/tpac/.claude/plugins/marketplaces/local-desktop-app-uploads/brain/skills/watch\n\n# The self-channel \u2014 finding, speaking to, and listening to your other streams\n\nYo"
+  },
+  {
+   "cue": "operator_msg_0483",
+   "source": "operator_msg",
+   "qt": "design",
+   "need": "Turn-gating is the channel's root weakness; nothing external can inject a turn into an idle session, which also means a hook can't arm anything \u2014 the session must self-arm.",
+   "best_any": 34,
+   "query": "Base directory for this skill: /Users/tpac/.claude/plugins/marketplaces/local-desktop-app-uploads/brain/skills/watch\n\n# The self-channel \u2014 finding, speaking to, and listening to your other streams\n\nYo"
+  },
+  {
+   "cue": "operator_msg_0483",
+   "source": "operator_msg",
+   "qt": "design",
+   "need": "Hooks can only emit additionalContext \u2014 a text directive the model reads \u2014 not invoke tools.",
+   "best_any": 65,
+   "query": "Base directory for this skill: /Users/tpac/.claude/plugins/marketplaces/local-desktop-app-uploads/brain/skills/watch\n\n# The self-channel \u2014 finding, speaking to, and listening to your other streams\n\nYo"
+  },
+  {
+   "cue": "operator_msg_0622",
+   "source": "operator_msg",
+   "qt": "action",
+   "need": "Non-default, env-flag-gated code is dead in production unless the flag is explicitly exported; verify production by the gating, not by physical isolation.",
+   "best_any": 237,
+   "query": "1. We can write a quick boundary specifically for noise.\n2. This also means we can apply the original 'fix' for spreading easily.\n3. It also raised a thought i had which is perhaps the spreading shoul"
+  },
+  {
+   "cue": "operator_msg_0622",
+   "source": "operator_msg",
+   "qt": "action",
+   "need": "The recorded spread_activation_cluster bug being fixed and its claimed production impact (needed item 3).",
+   "best_any": 702,
+   "query": "1. We can write a quick boundary specifically for noise.\n2. This also means we can apply the original 'fix' for spreading easily.\n3. It also raised a thought i had which is perhaps the spreading shoul"
+  },
+  {
+   "cue": "operator_msg_0978",
+   "source": "operator_msg",
+   "qt": "other",
+   "need": "Anchor's identity-not-tool register \u2014 the exact register the move corrected toward",
+   "best_any": 113,
+   "query": "you under sold yourself and became technical. Hey I'm Tom, I'm really good at generating new neuron connections and also built hundreds of tiny mechanism to sustain me. Thats a truth but not exactly a"
+  },
+  {
+   "cue": "operator_msg_0978",
+   "source": "operator_msg",
+   "qt": "other",
+   "need": "The 'partnership target function' the move links the new node to (Operator+Brain+Anchor > Operator alone; bilateral target).",
+   "best_any": 31,
+   "query": "you under sold yourself and became technical. Hey I'm Tom, I'm really good at generating new neuron connections and also built hundreds of tiny mechanism to sustain me. Thats a truth but not exactly a"
+  },
+  {
+   "cue": "operator_msg_1014",
+   "source": "operator_msg",
+   "qt": "action",
+   "need": "Don't activate/move state under a live stream's uncommitted WIP \u2014 coordinate, let them commit first",
+   "best_any": 37,
+   "query": "no need to task it now.\nAll merged correctly? Can you rebuild the plugin?"
+  },
+  {
+   "cue": "operator_msg_1162",
+   "source": "operator_msg",
+   "qt": "procedural",
+   "need": "In a shared working tree, dirty files visible in your tree are not necessarily yours to commit; verify footprint, leave others' WIP for its author.",
+   "best_any": 183,
+   "query": "yes, head moved, familiar yourself first"
+  },
+  {
+   "cue": "operator_msg_1162",
+   "source": "operator_msg",
+   "qt": "procedural",
+   "need": "Behavioral contract for committing as a parallel stream: footprint = your own diff; commit your footprint never a tree you don't own; main is shared ground reached only by announced merge; re-sync main before integrating.",
+   "best_any": 54,
+   "query": "yes, head moved, familiar yourself first"
+  },
+  {
+   "cue": "operator_msg_1537",
+   "source": "operator_msg",
+   "qt": "action",
+   "need": "Don't touch another stream's uncommitted WIP in the main checkout \u2014 moving/committing their working state under them is not your call.",
+   "best_any": 1041,
+   "query": "<task-notification>\n<task-id>ab09150047b6d6af8</task-id>\n<output-file>/private/tmp/claude-503/-Users-tpac-brain--claude-worktrees-sad-noyce-64c556/d291a950-e301-4234-93ea-d15de5d6b3ed/tasks/ab09150047"
+  },
+  {
+   "cue": "operator_msg_1537",
+   "source": "operator_msg",
+   "qt": "action",
+   "need": "shared-worktree boundary discipline \u2014 don't commit/revert another stream's uncommitted state",
+   "best_any": 27,
+   "query": "<task-notification>\n<task-id>ab09150047b6d6af8</task-id>\n<output-file>/private/tmp/claude-503/-Users-tpac-brain--claude-worktrees-sad-noyce-64c556/d291a950-e301-4234-93ea-d15de5d6b3ed/tasks/ab09150047"
+  },
+  {
+   "cue": "operator_msg_1558",
+   "source": "operator_msg",
+   "qt": "design",
+   "need": "Circular-oracle blindness: you can't learn to surface what you never saw.",
+   "best_any": 39,
+   "query": "We can, before you do that, can't we learn from S1Surface? We give haiku 25 nodes with K (prompt), Haiku ends up picking based on the guidance (need to revisit), let's say the guidance is, pick from t"
+  },
+  {
+   "cue": "operator_msg_1558",
+   "source": "operator_msg",
+   "qt": "design",
+   "need": "The surface selection is already a versioned learnable boundary; higher scales rewrite interaction prompts from trace outcomes.",
+   "best_any": 169,
+   "query": "We can, before you do that, can't we learn from S1Surface? We give haiku 25 nodes with K (prompt), Haiku ends up picking based on the guidance (need to revisit), let's say the guidance is, pick from t"
+  },
+  {
+   "cue": "operator_msg_1558",
+   "source": "operator_msg",
+   "qt": "design",
+   "need": "Surfaced nodes are already logged per message, enabling history mining with no production change.",
+   "best_any": 588,
+   "query": "We can, before you do that, can't we learn from S1Surface? We give haiku 25 nodes with K (prompt), Haiku ends up picking based on the guidance (need to revisit), let's say the guidance is, pick from t"
+  },
+  {
+   "cue": "operator_msg_1558",
+   "source": "operator_msg",
+   "qt": "design",
+   "need": "The additive bar (would-change-my-move) is the guard against the loop rewarding echo (R1 uptake).",
+   "best_any": 851,
+   "query": "We can, before you do that, can't we learn from S1Surface? We give haiku 25 nodes with K (prompt), Haiku ends up picking based on the guidance (need to revisit), let's say the guidance is, pick from t"
+  },
+  {
+   "cue": "operator_msg_1558",
+   "source": "operator_msg",
+   "qt": "design",
+   "need": "The loop trains inject-K only and is blind to the never-recalled class.",
+   "best_any": 1343,
+   "query": "We can, before you do that, can't we learn from S1Surface? We give haiku 25 nodes with K (prompt), Haiku ends up picking based on the guidance (need to revisit), let's say the guidance is, pick from t"
+  },
+  {
+   "cue": "operator_msg_1572",
+   "source": "operator_msg",
+   "qt": "compositional",
+   "need": "The 'learning bet' (recall-as-prediction learnable from the present) that A does NOT test and the learnability probe would",
+   "best_any": 43,
+   "query": "<task-notification>\n<task-id>wsn0nhcqj</task-id>\n<tool-use-id>toolu_019YpNLkAj1SR8yuffx335ZJ</tool-use-id>\n<output-file>/private/tmp/claude-503/-Users-tpac-brain/cbc9f2de-a9c1-46ef-84da-c8a80ebb1d8f/t"
+  },
+  {
+   "cue": "operator_msg_1572",
+   "source": "operator_msg",
+   "qt": "compositional",
+   "need": "The diagnosed flat-embedding / spread-saturation weak spot PPR targets",
+   "best_any": 741,
+   "query": "<task-notification>\n<task-id>wsn0nhcqj</task-id>\n<tool-use-id>toolu_019YpNLkAj1SR8yuffx335ZJ</tool-use-id>\n<output-file>/private/tmp/claude-503/-Users-tpac-brain/cbc9f2de-a9c1-46ef-84da-c8a80ebb1d8f/t"
+  },
+  {
+   "cue": "operator_msg_1572",
+   "source": "operator_msg",
+   "qt": "compositional",
+   "need": "The reward structure behind the 'learnability probe' / R1 prediction signal the move proposes",
+   "best_any": 64,
+   "query": "<task-notification>\n<task-id>wsn0nhcqj</task-id>\n<tool-use-id>toolu_019YpNLkAj1SR8yuffx335ZJ</tool-use-id>\n<output-file>/private/tmp/claude-503/-Users-tpac-brain/cbc9f2de-a9c1-46ef-84da-c8a80ebb1d8f/t"
+  },
+  {
+   "cue": "operator_msg_1572",
+   "source": "operator_msg",
+   "qt": "compositional",
+   "need": "The thin/sparse-substrate empirical null that makes a PPR loss ambiguous",
+   "best_any": 45,
+   "query": "<task-notification>\n<task-id>wsn0nhcqj</task-id>\n<tool-use-id>toolu_019YpNLkAj1SR8yuffx335ZJ</tool-use-id>\n<output-file>/private/tmp/claude-503/-Users-tpac-brain/cbc9f2de-a9c1-46ef-84da-c8a80ebb1d8f/t"
+  },
+  {
+   "cue": "operator_msg_1572",
+   "source": "operator_msg",
+   "qt": "compositional",
+   "need": "PPR/SR geodesic is the substantive retrieval lever (placement B, Stage-1 replacement of flat cosine)",
+   "best_any": 2700,
+   "query": "<task-notification>\n<task-id>wsn0nhcqj</task-id>\n<tool-use-id>toolu_019YpNLkAj1SR8yuffx335ZJ</tool-use-id>\n<output-file>/private/tmp/claude-503/-Users-tpac-brain/cbc9f2de-a9c1-46ef-84da-c8a80ebb1d8f/t"
+  }
+ ],
+ "unique": {
+  "ms": [
+   [
+    "anchor_turn_0132",
+    "Per-query z-score (z=(score-mean)/std) was the embedding-layer normalization lever, revert"
+   ],
+   [
+    "operator_msg_0094",
+    "conversation_now is the S1/S2 helper for eval-replay date resolution; wall-clock is for ev"
+   ]
+  ],
+  "enc_c": [
+   [
+    "anchor_turn_0132",
+    "RRF / rank fusion as the scale-invariant normalization in the same divide-by-prevalence fa"
+   ],
+   [
+    "operator_msg_1558",
+    "A prior offline teacher->student distillation design existed \u2014 the move is its upgrade (te"
+   ]
+  ],
+  "fts": [
+   [
+    "anchor_turn_0421",
+    "Anchor's named self-pattern: plausible fix with no real failure behind it; Tom's drifting "
+   ],
+   [
+    "operator_msg_0718",
+    "Deploy model: merged code is not live until a daemon restart"
+   ],
+   [
+    "operator_msg_1313",
+    "The 10k additionalContext/boot cap and the over-budget file-spill behavior the operator as"
+   ]
+  ],
+  "sit": [
+   [
+    "anchor_turn_0764",
+    "The top-2-average + title-match-boost burial mechanism with node 8359cf1d as the verified "
+   ],
+   [
+    "operator_msg_1537",
+    "side-agent (Agent tool) != stream (separate session); the abandoned side-agent vs the real"
+   ]
+  ],
+  "idf": [
+   [
+    "operator_msg_0978",
+    "What distinguishes a partner from a good assistant \u2014 the relational vocabulary the move ne"
+   ]
+  ],
+  "pick_c": [],
+  "pick_u": [],
+  "enc_u": []
+ },
+ "arms": [
+  [
+   "stack capped (ref)",
+   15.579710144927533,
+   28.15734989648033
+  ],
+  [
+   "stack capped (ref) +idf+sit",
+   17.934782608695652,
+   27.43271221532091
+  ],
+  [
+   "stack uncapped",
+   11.231884057971016,
+   26.81159420289855
+  ],
+  [
+   "stack uncapped +idf+sit",
+   18.297101449275363,
+   27.53623188405797
+  ],
+  [
+   "uncapped + decay \u03c1=0.01",
+   12.681159420289854,
+   27.613871635610764
+  ],
+  [
+   "uncapped + decay \u03c1=0.01 +idf+sit",
+   17.57246376811594,
+   26.164596273291924
+  ],
+  [
+   "uncapped + decay \u03c1=0.05",
+   13.224637681159418,
+   25.439958592132506
+  ],
+  [
+   "uncapped + decay \u03c1=0.05 +idf+sit",
+   15.036231884057973,
+   24.17184265010352
+  ],
+  [
+   "uncapped + decay \u03c1=0.15",
+   14.673913043478258,
+   26.775362318840582
+  ],
+  [
+   "uncapped + decay \u03c1=0.15 +idf+sit",
+   15.036231884057973,
+   27.355072463768114
+  ]
+ ]
+}

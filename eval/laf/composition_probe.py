@@ -72,17 +72,31 @@ class UncappedEpisodes:
     recall_episodes so episodic_ops' moment-dedup/role-join runs unchanged.
     """
 
-    def __init__(self, brain):
-        ph = ",".join("?" * len(CONVERSATIONAL_REF_TYPES))
-        rows = brain._trace_dal.conn.execute(
-            "SELECT te.chain_id, te.session_id, te.created_at, tem.vector "
-            "FROM trace_events te JOIN trace_embeddings tem ON tem.trace_id = te.id "
-            "WHERE te.scale='s0' AND te.ref_type IN (%s)" % ph,
-            list(CONVERSATIONAL_REF_TYPES)).fetchall()
-        rows = [r for r in rows if r[3]]
-        self.meta = [(r[0], r[1]) for r in rows]
-        self.created = np.array([r[2] for r in rows])
-        self.M = np.stack([np.frombuffer(r[3], dtype=np.float32) for r in rows])
+    def __init__(self, brain, rho=None, _share=None):
+        """rho: optional per-DAY recency decay applied AT SELECTION — moments are
+        picked by sim·e^(−ρ·Δdays), the principled replacement for the newest-500
+        cap's accidental recency prior. _share: reuse another instance's matrix."""
+        if _share is not None:
+            self.meta, self.created, self.M = _share.meta, _share.created, _share.M
+            self._age_days = _share._age_days
+        else:
+            ph = ",".join("?" * len(CONVERSATIONAL_REF_TYPES))
+            rows = brain._trace_dal.conn.execute(
+                "SELECT te.chain_id, te.session_id, te.created_at, tem.vector "
+                "FROM trace_events te JOIN trace_embeddings tem ON tem.trace_id = te.id "
+                "WHERE te.scale='s0' AND te.ref_type IN (%s)" % ph,
+                list(CONVERSATIONAL_REF_TYPES)).fetchall()
+            rows = [r for r in rows if r[3]]
+            self.meta = [(r[0], r[1]) for r in rows]
+            self.created = np.array([r[2] for r in rows])
+            self.M = np.stack([np.frombuffer(r[3], dtype=np.float32) for r in rows])
+            # created_at → fractional days since epoch, for the decay arms
+            from datetime import datetime, timezone
+            epoch = datetime(2020, 1, 1, tzinfo=timezone.utc)
+            self._age_days = np.array([
+                (datetime.fromisoformat(c) - epoch).total_seconds() / 86400.0
+                for c in self.created])
+        self.rho = rho
         self.timings = []
 
     def __call__(self, query=None, older_than=None, scale="s0", limit=None, **_):
@@ -91,8 +105,15 @@ class UncappedEpisodes:
         limit = limit or DEFAULT_TOP_MOMENTS
         mask = self.created < older_than if older_than else np.ones(len(self.meta), bool)
         sims = np.where(mask, self.M @ qv, -np.inf)
+        if self.rho:
+            from datetime import datetime, timezone
+            epoch = datetime(2020, 1, 1, tzinfo=timezone.utc)
+            now_d = ((datetime.fromisoformat(older_than) - epoch).total_seconds()
+                     / 86400.0) if older_than else float(self._age_days.max())
+            sims = sims * np.exp(-self.rho * np.maximum(now_d - self._age_days, 0.0))
         top = np.argsort(-sims)[:limit]
         eps = [{"chain_id": self.meta[i][0], "session_id": self.meta[i][1],
+                "created_at": str(self.created[i]),
                 "_score": float(sims[i])} for i in top if np.isfinite(sims[i])]
         self.timings.append(time.perf_counter() - t0)
         return {"episodes": eps, "ranked_by": "relevance", "truncated": False}
