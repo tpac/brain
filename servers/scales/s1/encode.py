@@ -11,6 +11,7 @@ Writes: nodes/edges via dispatch, traces (O/K), journal + session context via co
 
 import os
 import json
+import re
 import time
 
 from servers.scales.dispatch import load_env
@@ -505,18 +506,36 @@ def _scout_note_line(scout, cand):
     if detail:
         line += ' — %s' % detail[:160]
     extras = [str(b) for b in (cand.get('precision'), cand.get('relational_marker')) if b]
-    reuse = str(cand.get('existing_anchor_id') or '').strip()
-    if reuse and reuse.lower() not in ('null', 'none'):
-        extras.append('reuse id:%s' % reuse[:8])
+    reuse = _id_ish(cand.get('existing_anchor_id'))
+    if reuse:
+        extras.append('reuse id:%s' % reuse)
     anchors = cand.get('context_anchors') or ()
     if anchors:
         extras.append('anchors: %s' % ', '.join(str(a) for a in anchors[:4]))
-    cat = str(cand.get('catalog_match') or '').strip()
-    if cat and cat.lower() not in ('null', 'none'):
-        extras.append('catalog: id:%s' % cat[:8])
+    cat = _id_ish(cand.get('catalog_match'))
+    if cat:
+        extras.append('catalog: id:%s' % cat)
     if extras:
         line += ' (%s)' % '; '.join(extras)
     return _xml_escape(' '.join(line.split()))
+
+
+def _id_ish(v):
+    """Coerce a scout-provided node-id reference to a renderable 8-char id, or
+    '' when it isn't one. Haiku scouts emit these fields loosely — a dict
+    ({'node_id': …}), a titled string, null — and a raw repr leaking into the
+    prompt reads as garbage (`catalog: id:{'node_i` — found live, dry-run 3).
+    Accept only something that actually looks like a node id: extract from a
+    dict's id-ish keys, strip an `id:` prefix, then require a hex-ish token."""
+    if isinstance(v, dict):
+        v = v.get('node_id') or v.get('id') or v.get('catalog_id') or ''
+    s = str(v or '').strip()
+    if s.lower().startswith('id:'):
+        s = s[3:]
+    s = s.strip()
+    if re.fullmatch(r'[0-9a-f]{6,32}', s):
+        return s[:8]
+    return ''
 
 
 def _map_scout_notes(scout_outputs, messages):

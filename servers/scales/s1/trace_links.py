@@ -32,7 +32,8 @@ THE JOIN IS STRUCTURAL, by stop_counter — never by timestamp proximity. Every
 chain for turn N ends in `-N` (`s0-{short}-N`, `s1r-{short}-N`, `s1e-{short}-N`),
 so `_stop_of` extracts the join key from any of them. surfaced is 1:1 with a turn
 (same stop); encode is per-RUN (one run at stop S closes the turn-range ending
-at S), so a turn's owning run is the first run whose stop >= the turn's stop, and
+at S), so a turn's owning run is the first run whose stop is STRICTLY greater
+than the turn's stop (turn chains stamp pre-increment, run chains post-), and
 `encoded_by` disambiguates which run / marks the boundary.
 
 TWO LAYERS so it is robust to a raw trace dataset run sequentially:
@@ -225,7 +226,14 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces,
         surfaced = _dedup(surf_by_stop.get(stop, [])) if stop is not None else []
         encoded, encoded_by = [], None
         if stop is not None:
-            # owning run = first run that closes a range at/after this turn.
+            # owning run = first run that closes a range STRICTLY AFTER this
+            # turn. STRICT, not >=: a turn's S0 chain is stamped at the counter
+            # value BEFORE the Stop-hook increment ("before increment, so the
+            # stop matches" — daemon_hooks), while a run's s1e chain carries the
+            # POST-increment counter — so a run at stop S saw exactly the turns
+            # with chain-stop < S, never == S. The >= form marked the first turn
+            # AFTER each encode as covered (found live: 9-true/1-false where the
+            # replay's own count said 2 unencoded — Tom, dry-run 3, 2026-07-02).
             # LIMIT (proximity is heuristic): the encoder reads a sliding message
             # window, so a single failed run's turns are normally re-covered by
             # the next run's lookback (correct). But if 2+ consecutive runs fail,
@@ -234,7 +242,7 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces,
             # precisely; the encoder's "revise if shifted, don't blind-skip"
             # how-to-read is the mitigation. Rare (needs consecutive failures).
             for rstop, rtid, rids in runs:
-                if rstop >= stop:
+                if rstop > stop:
                     encoded, encoded_by = list(rids), rtid
                     break
         tch = touched_by_stop.get(stop) or {} if stop is not None else {}
