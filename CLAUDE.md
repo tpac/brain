@@ -32,6 +32,8 @@ Two databases:
 
 **Edge model (v22):** Physical edges (`edges` table) carry `edge_id`, `source_id` (actor), `target_id` (acted upon), aggregate `weight`. One row per pair — no mirrors. Semantic layer (`edge_relations` table) carries multiple relations per edge via `edge_id` FK: `relation` (open text), `description`, `weight`, `encoding_source`. Direction matters — source is the actor. Use `GraphDAL.add_relation()` for all edge writes.
 
+**Weight on edges is dead — a static `0.5`.** Never rank on it; use cosine against `edge_relations.embedding` for edge relevance.
+
 **Edge mutation:** `add_relation` is the canonical upsert — idempotent, field-preserving. Hebbian co-access strengthening lives in `recall_write_queue` (batched, atomic, off the recall hot path).
 
 **Write topology:** Two SQLite writer connections on `brain.db`:
