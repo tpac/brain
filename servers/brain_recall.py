@@ -1514,6 +1514,30 @@ class BrainRecallMixin:
         if situation_vec is None:
             situation_vec = query_vec
 
+        # STEP 2.7: LAF v1 challenger scorer — flag-gated (§19 P1).
+        # BRAIN_RECALL_VARIANT=laf_v1 → recall_laf computes the full field score
+        # per node (maxsim + episodic pick/enc + idf + situation lanes, sigmoid-
+        # squashed to (0,1)) and this loop INJECTS it as each node's `sim` below,
+        # so filters, fatigue, critical boost, floors, hydration and tracing are
+        # inherited from the champion path. The channels the field REPLACES
+        # (z-weighted groups, situation scan, FTS5 net, keyword blend, idf2 title
+        # boost, trace-chain lane) are gated off under the flag at their sites.
+        # Flag unset / scorer failure → _laf_scores is None → champion unchanged.
+        _laf_scores = None
+        import os as _os_laf
+        if _os_laf.environ.get('BRAIN_RECALL_VARIANT', '').strip().lower() == 'laf_v1':
+            try:
+                try:
+                    from .recall_laf import get_engine as _laf_get_engine
+                except ImportError:
+                    from recall_laf import get_engine as _laf_get_engine
+                _laf_scores = _laf_get_engine(self).scores(
+                    self, query, query_vec, model=_active_model)
+            except Exception as _laf_e:
+                self._log_error('recall_laf', _laf_e,
+                                'laf_v1 scoring failed — champion fallback')
+                _laf_scores = None
+
         # STEP 3: Brute-force cosine similarity against ALL stored embeddings
         # This is the core change: embeddings drive retrieval, not keywords.
         # For 600 nodes this is fast (<50ms). At 10k+ nodes, switch to sqlite-vec.
@@ -1587,16 +1611,21 @@ class BrainRecallMixin:
                 node_emotion[node_id] = row.get('emotion', 0)
                 node_access_count[node_id] = row.get('access_count', 0)
                 if blob:
-                    sim = embedder.cosine_similarity(query_vec, blob)
-                    # Lexical bridge: take max cosine across all phrasings
-                    # (primary + Haiku-expanded alternates). This is the
-                    # mechanism that makes "uncle's birthday party" reach
-                    # "niece's birthday party" nodes — Haiku generated
-                    # the contrastive phrasing, embedding bridged the gap.
-                    for _av in alternate_vecs:
-                        _alt_sim = embedder.cosine_similarity(_av, blob)
-                        if _alt_sim > sim:
-                            sim = _alt_sim
+                    if _laf_scores is not None:
+                        # laf_v1: the field score IS the similarity — cosine and
+                        # the lexical bridge are subsumed by the field's lanes.
+                        sim = _laf_scores.get(node_id, 0.0)
+                    else:
+                        sim = embedder.cosine_similarity(query_vec, blob)
+                        # Lexical bridge: take max cosine across all phrasings
+                        # (primary + Haiku-expanded alternates). This is the
+                        # mechanism that makes "uncle's birthday party" reach
+                        # "niece's birthday party" nodes — Haiku generated
+                        # the contrastive phrasing, embedding bridged the gap.
+                        for _av in alternate_vecs:
+                            _alt_sim = embedder.cosine_similarity(_av, blob)
+                            if _alt_sim > sim:
+                                sim = _alt_sim
 
                     # v11: Z-score contrastive normalization (BEFORE fatigue).
                     # Measures SURPRISE: how unusual is this cosine for this node?
@@ -1648,6 +1677,9 @@ class BrainRecallMixin:
             import os as _os
             _expansion_mode = _os.environ.get(
                 'BRAIN_QUERY_EXPANSION', 'off').lower()
+            if _laf_scores is not None:
+                _expansion_mode = 'off'   # laf_v1: field scores replace cosine —
+                #                           alternates would max() against them
             _do_expand = False
             if _expansion_mode == 'on':
                 _do_expand = True
@@ -1730,7 +1762,10 @@ class BrainRecallMixin:
             node_vector_scores = {}  # node_id → list of (weighted_sim, type)
 
             # Primary (blend) scores — already computed, add with blend weight
-            for nid, prim_sim in primary_scores.items():
+            # (laf_v1: STEP 3.5 gated off — the field score already fuses the
+            # views; empty inputs make every loop below a no-op.)
+            for nid, prim_sim in (primary_scores.items()
+                                  if _laf_scores is None else ()):
                 if nid not in node_vector_scores:
                     node_vector_scores[nid] = []
                 node_vector_scores[nid].append((_blend_weight * prim_sim, '_primary'))
@@ -1738,7 +1773,7 @@ class BrainRecallMixin:
             try:
                 _enrich_rows = _vec_dal.get_all_vectors(
                     exclude_archived=not include_archived,
-                    model=_active_model or None)
+                    model=_active_model or None) if _laf_scores is None else []
                 for erow in _enrich_rows:
                     e_node_id = erow['node_id']
                     e_type = erow['vector_type']
@@ -1794,7 +1829,9 @@ class BrainRecallMixin:
             # Fatigue was previously applied to primary sim only, but STEP 3.5
             # could overwrite with unfatigued z-weighted scores. Now fatigue
             # dampens the final embedding score regardless of which vector won.
-            if _recall_fatigue:
+            # (laf_v1: skipped — 3.5 never overwrites, STEP 3 already fatigued
+            # the injected field score once.)
+            if _recall_fatigue and _laf_scores is None:
                 for nid in list(embedding_scores.keys()):
                     _fc = _recall_fatigue.get(nid, 0)
                     if _fc > 0:
@@ -1807,8 +1844,9 @@ class BrainRecallMixin:
             print(f'[brain] Embedding scan error: {e}', file=sys.stderr)
 
         # STEP 3.5: Situation scan — boost nodes whose situation matches current context
+        # (laf_v1: gated off — situation is a gain-weighted lane inside the field)
         situation_scores = {}
-        if situation_vec:
+        if situation_vec and _laf_scores is None:
             try:
                 sit_rows = _vec_dal.get_all_situations(model=_active_model)
                 for row in sit_rows:
@@ -1850,7 +1888,12 @@ class BrainRecallMixin:
         fts5_all_ids = set()
         try:
             fts5_dal = self._fts
-            _fts5_queries = [query] + alternate_strings
+            # laf_v1: FTS5 net gated off — the field scores the full universe
+            # (no discovery needed) and the fts lane measured harmful in-stack
+            # at static gains (eval/laf/composition_probe.md); P4's per-query
+            # gate is the path back in.
+            _fts5_queries = ([query] + alternate_strings
+                             if _laf_scores is None else [])
             for _fq in _fts5_queries:
                 if not _fq or not _fq.strip():
                     continue
@@ -1876,7 +1919,8 @@ class BrainRecallMixin:
         # cut) — rescuing them from below the cut is the whole point. Dedup vs the main TOP is at merge.
         import os as _os_tc
         trace_chain_scores = {}
-        if _os_tc.environ.get('BRAIN_TRACE_CHAIN', '') == '1':
+        if (_os_tc.environ.get('BRAIN_TRACE_CHAIN', '') == '1'
+                and _laf_scores is None):   # laf_v1: episodic lanes supersede
             trace_chain_scores = self._trace_chain_candidates(query_vec, exclude_ids=fts5_only_ids)
 
         # STEP 5: Build unified candidate set (all nodes seen by any path)
@@ -1905,6 +1949,8 @@ class BrainRecallMixin:
         # (zero regressions, terse+rich), 43/43 recall+contract tests green.
         import os as _os_tb
         _title_boost_mode = _os_tb.environ.get('BRAIN_TITLE_BOOST', 'idf2').strip().lower()
+        if _laf_scores is not None:
+            _title_boost_mode = 'off'   # laf_v1: idf2 is a gain-weighted lane inside the field
         _title_idf = None
         _idf_total = 1.0
         _title_tok = None
@@ -1942,7 +1988,12 @@ class BrainRecallMixin:
             kw_score = keyword_scores.get(nid, 0)
 
             # Determine discovery source and compute blended score
-            if nid in fts5_only_ids:
+            if _laf_scores is not None and emb_score > 0:
+                # laf_v1: the field score stands alone — no keyword blending
+                # (lexical signal is the idf lane inside the field).
+                blended = emb_score
+                discovery = 'laf_v1'
+            elif nid in fts5_only_ids:
                 # v9: FTS5-only — word match, no embedding match.
                 # Passthrough score above noise floor. Judge decides relevance.
                 blended = FTS5_PASSTHROUGH_SCORE
@@ -2239,7 +2290,7 @@ class BrainRecallMixin:
             'results': final_results,
             'vocab_context': vocab_context,  # v8.8: vocab nodes as connectors, not results
             'intent': intent,
-            '_recall_mode': 'embeddings_first',
+            '_recall_mode': 'laf_v1' if _laf_scores is not None else 'embeddings_first',
             '_embedding_stats': {
                 'embedder_ready': True,
                 'nodes_with_embeddings': nodes_with_embeddings,
@@ -2248,6 +2299,7 @@ class BrainRecallMixin:
                 'keyword_fallback_weight': KEYWORD_FALLBACK_WEIGHT,
                 'recall_ms': round(recall_ms, 1),
                 'results_by_source': {
+                    'laf_v1': sum(1 for r in final_results if r.get('_discovery') == 'laf_v1'),
                     'embedding+keyword': sum(1 for r in final_results if r.get('_discovery') == 'embedding+keyword'),
                     'embedding_only': sum(1 for r in final_results if r.get('_discovery') == 'embedding_only'),
                     'keyword_only_fallback': sum(1 for r in final_results if r.get('_discovery') == 'keyword_only_fallback'),
