@@ -546,6 +546,22 @@ this. `endo` rides the same delta when wired. Legacy date-chain per-action trace
 
 Code half complete. This phase = **reconcile the v-next prompt with the as-built code → register it DORMANT → build the 3 missing eval dims → run the coupled A/B gate.** Tom runs the evals; this section is the durable spec.
 
+### ⚑ EVAL VERDICT — real coupled A/B run 2026-07-02 (v26 DORMANT vs v25, 4 dup-prone qids, variance 3)
+
+**v26 does NOT pass the do-no-harm gate yet — one real blocker, plus wins.** Corpora: control `f49997`, lived `00f8a6`; full prompts captured under `<corpus>/prompts/`.
+
+- **BLOCKER — arc regression (must fix before activate):** v26 dropped the encoder's `SESSION_CONTEXT:` emission (→ `## Review` notes) but `_save_session_context` still writes the arc *only* by parsing that line, and the promised "separate" arc path was never built. Result: **zero `session_context_*` rows on every lived item** → Frame "Current focus" goes dark mid-session. Node: `80ee8ccc`. **Primary next action.**
+- **Encoding-quality WINS (real, favor v26):** event_time 16%→**59%**; anchor_raw_quote 1%→**10%**; avg content 464→**610** chars; richer type diversity (concept/lesson/principle/moment). The `## Review` residue is exceptional (caught its own repeated Tutankhamun/Met false-attribution → revised to a systemic-pattern node; zero trace-restatement). v26 also **fixed a v25 identity-hygiene bug**: v25 leaked the name "Tom" onto an anonymous persona (0 occurrences in haystack); v26 correctly kept them "operator/anonymous".
+- **Recall-QA "regression" is mostly GATE NOISE:** control recall-conditional 100% (6/6) vs lived 57% (4/7) — but 3 of 4 items are **count/order questions** whose gold is a *synthesized aggregate* ("five items: …", "order of six museums") that no single node should hold. Verified the constituent facts are ALL present on both arms → the `ENCODE_MISS` label is a false negative of the substring gate. **Lesson: pick single-retrievable-fact gold items for the recall gate; count/order items only measure richness.** One genuine recall miss (`gpt4_31ff4165`) is confounded by an eval-harness artifact the encoder itself caught: the embed-queue didn't flush during ingest → `related_nodes` empty all session → lived arm encoded half-blind to its own graph.
+- **Cost:** ~$8–12 total, ~38 min wall (both corpora parallel), $0 session tokens (all on API key).
+
+### Deferred to next stream (Tom, 2026-07-02) — the pickup list
+1. **Arc write-path** — give the lived arm a `session_context_*` writer (the "separate arc" the closing promised). Gate-blocker.
+2. **Temporal scout: RETIRE** (Anchor's rec; Tom deferred the check to stream A). Evidence: encoder does temporal itself + rejects scout misfires; scout is net noise (10-week documented numbers-as-dates false-positives, node `d9f9f405`); exact symmetry with the quote-scout retirement. **De-risk first:** confirm event_time-bearing nodes don't correlate with scout findings (corpus data already there); if event_time holds with scout off → retire clean (→ facts is the only surviving scout); if it leans on the scout → fall back to gating to `source_role==other` only.
+3. **operator/other voice sweep** — 67 prose "operator" vs 4 `<other>` tag mentions; the encoder internalized "operator" (its notes call `<other>` the operator). Decide: full "other" prose commit vs accept the split. Tom holds the pen (identity-critical voice).
+4. **`>`/`>=` cross-stream conflict (trace_links `nodes_for_traces` owning-run join)** — my strict-`>` coverage-off-by-one fix (`09f946f`/rebased) breaks the LAF sibling's 2 new tests (they assume `>=`). Only affects the `encoded="true|false"` display marker, not what's stored. Marker sent to sibling `950b220f`; **their ruling pending.** 2 tests RED on this branch until resolved (known-held, not a silent regression). GraphDAL import moved `dal.py`→`dal_graph.py` (sibling refactor) — fixed.
+5. `user_raw_quote` rate slipped 74%→58%; `thought` field unused (0%) — minor, watch.
+
 ### Decisions locked (2026-06-30)
 - **Coupled A/B, NOT split.** Run old-input+old-prompt **vs** new-input+new-prompt as one unit (no ablation isolating input-vs-prompt). Matches production; faster.
 - **Gate = no-regression, but OUTPUT = rich per-case quality detail.** The bar to flip live is "no regression on encode-coverage + recall-conditional pass, clean residue, arc still produced." But the eval must *report* detailed per-case comparison (what each arm encoded, dupes avoided, residue quality) — Tom wants to SEE the quality, not just an aggregate pass rate.

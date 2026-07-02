@@ -308,7 +308,7 @@ class TestBuildNodeCatalog:
         survive. Control arm (extra_ids=None): unfiltered — byte-behavior of the
         long-standing path preserved."""
         from servers.scales.s1.encode_contract import build_node_catalog
-        from servers.dal import GraphDAL
+        from servers.dal_graph import GraphDAL
         # sanity: the aspect registry classifies community_member as noise
         noise = set(self.brain.aspects.relations_in(['noise']))
         assert 'community_member' in noise
