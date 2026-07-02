@@ -332,6 +332,9 @@ def hook_recall(brain, args, graph_changes):
             except Exception as _e:
                 brain._log_error('edge_select_prior_vecs', _e, 'embedding prior turns')
 
+        # recall_score is the shared score semantic — fetch_tools reads the
+        # same function, keeping the agentic admission floor comparable.
+        from .scales.s1.surface_contract import recall_score
         candidates_data = []
         for r in capped:
             nid = r.get("id", "")
@@ -353,10 +356,7 @@ def hook_recall(brain, args, graph_changes):
                     node_data['connections'], _query_vec,
                     limit=10,  # keep 10, render truncates to 3
                     prior_vecs=_prior_vecs, brain_conn=brain.conn, brain=brain)
-            # Attach recall-specific fields (not in DB — from scoring pipeline).
-            # recall_score is the shared score semantic — fetch_tools reads the
-            # same function, keeping the agentic admission floor comparable.
-            from .scales.s1.surface_contract import recall_score
+            # Attach recall-specific fields (not in DB — from scoring pipeline)
             node_data["score"] = recall_score(r)
             node_data["discovery"] = r.get("_discovery", "embedding")
             # Include full graph neighborhood for encoding agent

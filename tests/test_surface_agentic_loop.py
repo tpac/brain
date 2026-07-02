@@ -138,6 +138,20 @@ class TestForcedFinalize:
         assert tel['rounds'] == 2
         assert any(w[0] == 'surface_forced_finalize' for w in brain.warnings)
 
+    def test_empty_tool_use_round_retries_without_history_append(self):
+        # stop_reason='tool_use' with ZERO tool_use blocks (the May-2026
+        # Haiku mode) must not append empty messages (API 400 next round).
+        # The loop retries with untouched history, then finalizes normally.
+        brain = FakeBrain()
+        empty_tool_use = SimpleNamespace(
+            stop_reason='tool_use', content=[], usage=FakeUsage())
+        client = FakeClient([empty_tool_use, text_response()])
+        raw, trace, tel = run_loop(client, brain, [])
+        assert raw == SELECTION_JSON
+        assert len(client.calls) == 2
+        assert len(client.calls[1]['messages']) == 1  # history untouched
+        assert any(w[0] == 'surface_empty_tool_use' for w in brain.warnings)
+
     def test_forced_call_reuses_history_without_orphan_tool_use(self):
         # The tool_use assistant message must NOT be appended before the
         # forced call — tool_use without tool_result is an API 400.

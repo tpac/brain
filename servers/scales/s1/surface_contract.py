@@ -177,6 +177,12 @@ def surface_selected_path(session_id, stop_counter):
 # doesn't have to reach into surface-call config to know which model to ping.
 SURFACE_MODEL = 'claude-haiku-4-5'
 
+# Anthropic prompt-cache minimum cacheable prefix for SURFACE_MODEL
+# (Haiku 4.5: 4096 tokens; Sonnet-class: 1024). Prompts under this are
+# silently not cached by the API. The agentic loop's cache-miss tripwire
+# gates on it so sub-minimum prompts (tests, tiny brains) don't warn.
+CACHE_MIN_PREFIX_TOKENS = 4096
+
 # Judge (Haiku) — selects relevant nodes with reasoning
 # v9: max_candidates 25→20, Anchor truncation 150→400, recent_messages 5→7
 SURFACE = {

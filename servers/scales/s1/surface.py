@@ -191,7 +191,8 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
     from servers.scales.s1.fetch_tools import (
         TOOL_DEFINITIONS, execute_tool, format_tool_result_for_haiku,
     )
-    from servers.scales.s1.surface_contract import SURFACE_SELECTION_SCHEMA
+    from servers.scales.s1.surface_contract import (
+        SURFACE_SELECTION_SCHEMA, CACHE_MIN_PREFIX_TOKENS)
 
     # Track existing IDs to dedupe tool-fetched candidates against cosine pool
     existing_ids = {c.get('id') for c in candidates_data if isinstance(c, dict)}
@@ -231,6 +232,23 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
             **usage_total,
             elapsed_ms=int((time.time() - _t0) * 1000),
             rounds=rounds_used, truncated=truncated)
+
+    def _absorb_response(resp):
+        """Fold one Haiku response into the running cost totals and capture
+        any text content as the candidate final answer. The ONE place a
+        response's usage/truncation/text is absorbed — the main loop and
+        the forced-finalize call both route through it so their telemetry
+        can't drift. Returns the response's usage dict for per-round checks."""
+        nonlocal rounds_used, truncated, raw_final
+        rounds_used += 1
+        ru = read_usage(resp)
+        sum_usage(usage_total, ru)
+        if getattr(resp, 'stop_reason', None) == 'max_tokens':
+            truncated += 1
+        for block in resp.content:
+            if getattr(block, 'type', None) == 'text':
+                raw_final = block.text.strip()
+        return ru
 
     # Anthropic Structured Outputs runs on EVERY round, alongside tools.
     # When Haiku tool-uses, the schema doesn't apply to tool_use blocks;
@@ -272,19 +290,16 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                               'agentic Haiku call round=%d' % round_idx)
             return raw_final, tool_trace, _telemetry()
 
-        # Accumulate cost across rounds before processing this response.
-        rounds_used += 1
-        round_usage = read_usage(api_resp)
-        sum_usage(usage_total, round_usage)
-        if getattr(api_resp, 'stop_reason', None) == 'max_tokens':
-            truncated += 1
+        # Accumulate cost + capture any text (the candidate final answer).
+        round_usage = _absorb_response(api_resp)
         # Cache visibility (operator ask): round 2+ shares round 1's prefix
         # byte-for-byte, so zero cache reads on a cacheable-sized prompt
         # means the cache broke (tools drift, block-shape change). Gate on
         # prompt size so sub-minimum prompts (tests, tiny brains) don't warn.
         if round_idx > 0 and (round_usage.get('cache_read_tokens') or 0) == 0 \
                 and (round_usage.get('input_tokens') or 0) \
-                    + (round_usage.get('cache_creation_tokens') or 0) > 4096:
+                    + (round_usage.get('cache_creation_tokens') or 0) \
+                    > CACHE_MIN_PREFIX_TOKENS:
             brain._log_warning(
                 'surface_cache_miss',
                 'agentic round %d read 0 cache tokens (input=%d created=%d) '
@@ -296,11 +311,6 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
         stop_reason = api_resp.stop_reason
         round_record = {'round': round_idx, 'stop_reason': stop_reason,
                          'tool_calls': []}
-
-        # Collect any text content from this round (last round usually has it).
-        for block in api_resp.content:
-            if getattr(block, 'type', None) == 'text':
-                raw_final = block.text.strip()
 
         if stop_reason != 'tool_use':
             tool_trace.append(round_record)
@@ -321,13 +331,8 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                 'with tools stripped',
                 'round=%d session=%s' % (round_idx, session_id))
             round_record['forced_finalize'] = 1
-            forced_kwargs = {
-                'model': model,
-                'max_tokens': max_tokens,
-                'system': surface_instructions,
-                'messages': messages,
-                'output_config': output_config,
-            }
+            forced_kwargs = {k: v for k, v in api_kwargs.items()
+                             if k != 'tools'}
             try:
                 forced_resp = client.messages.create(**forced_kwargs)
             except Exception as e:
@@ -335,13 +340,7 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                                   'forced-finalize Haiku call')
                 tool_trace.append(round_record)
                 return raw_final, tool_trace, _telemetry()
-            rounds_used += 1
-            sum_usage(usage_total, read_usage(forced_resp))
-            if getattr(forced_resp, 'stop_reason', None) == 'max_tokens':
-                truncated += 1
-            for block in forced_resp.content:
-                if getattr(block, 'type', None) == 'text':
-                    raw_final = block.text.strip()
+            _absorb_response(forced_resp)
             tool_trace.append(round_record)
             break
 
@@ -435,6 +434,20 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                     "tool_use_id": tool_use_id,
                     "content": format_tool_result_for_haiku(exec_result),
                 })
+        if not tool_results:
+            # stop_reason said tool_use but no tool_use block arrived (the
+            # May-2026 empty-tool_use Haiku mode). Appending an assistant
+            # message with no tool_use + an empty tool_results user message
+            # would 400 the next round. Leave `messages` untouched and go
+            # around again — the identical request re-reads the cached
+            # prefix, and a repeat lands in the final-round forced-finalize.
+            brain._log_warning(
+                'surface_empty_tool_use',
+                'stop_reason=tool_use with no tool_use blocks — retrying '
+                'without history append',
+                'round=%d session=%s' % (round_idx, session_id))
+            tool_trace.append(round_record)
+            continue
         messages.append({"role": "assistant", "content": assistant_blocks})
         messages.append({"role": "user", "content": tool_results})
         tool_trace.append(round_record)
