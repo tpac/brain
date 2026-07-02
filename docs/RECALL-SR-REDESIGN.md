@@ -1449,6 +1449,12 @@ Substrate: unified `nodes_for_traces` join (+dropped role), dict `gather`, `Edge
 GATE: beats production on gold-24 need@5/@25 (production measured ~10% need@5 vs stack 16%) + frame_replay A/B
 no regression + hot-path latency budget (episodic pull cost measured FIRST; if too slow, ship maxsim-only,
 episodic on the hook path only). Deploy=flag flip; rollback=flag. Risk guards: champion floor (risk map #1).
+*P1 wiring constraints (found by the P1 stream 950b220f, 2026-07-02, code-read):* (a) `recall_episodes`
+applies a **silent 7-day `younger_than` default** when called with no bounds — naive live wiring would seed
+episodic from last week only; the variant must pass explicit bounds. (b) `filter_event_vectors` is
+`ORDER BY created_at DESC LIMIT 500` (`EPISODE_MAX_LIMIT` hard cap) — full-history episodic seeding sees only
+the newest 500 embedded s0 traces, a coverage ceiling the gold-24 probes dodged via per-cue cutoffs; live
+laf_v1 either accepts recency-bounded episodic or the cap needs a design call.
 
 **P2 — The dataset walker (the foundation asset).** Walk all traced turns; per (turn, candidate) emit
 {φ(q) features, f₁..fₖ(n|q) computed AS-OF the turn (replay fidelity = the gold24 harness discipline: node
