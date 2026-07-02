@@ -489,19 +489,19 @@ JOURNAL_NOTE_DELIMITER = '·'
 # journal's restatement disease, not an evidenced need. Iterate from LIVE
 # results, not synthetic probes (which can't reproduce the encoder's lived run).
 JOURNAL_REVIEW_INSTRUCTION = (
-    "Your review — a short note to the next run of this work, about what you "
-    "noticed that won't be visible in what you did.\n"
-    "What you changed is already recorded automatically; don't restate it. This "
-    "note is only for what your actions don't capture — a doubt, a friction, a "
-    "surprise, a pattern forming.\n\n"
-    "Name what each note is about: a specific thing you touched, a tool or input "
-    "you were handed, or the run itself.\n\n"
-    "Add one word for the kind of thing it is — your word, whatever fits "
+    "A review — a short note to the next run of this work, about anything "
+    "noticed here that won't be visible in the actions taken.\n"
+    "The changes made are already recorded automatically; don't restate them. "
+    "This note is only for what the actions don't capture — a doubt, a "
+    "friction, a surprise, a pattern forming.\n\n"
+    "Name what each note is about: a specific thing touched, a tool or input "
+    "handed in, or the run itself.\n\n"
+    "Add one word for the kind of thing it is — any word that fits "
     "(friction, doubt, surprise, dead-end — examples, not a list).\n\n"
-    "Put your notes under a `## Review` heading, inside a fenced code block — "
+    "Put the notes under a `## Review` heading, inside a fenced code block — "
     "one note per line as `tag %s subject %s note`. A clean run is an empty "
     "fence — leave it empty rather than saying there's nothing to note.\n\n"
-    "Your time is precious — we already log your actions automatically; no need "
+    "Time is precious — actions are already logged automatically; no need "
     "to rephrase. Stay sharp."
 ) % (JOURNAL_NOTE_DELIMITER, JOURNAL_NOTE_DELIMITER)
 
@@ -536,12 +536,12 @@ def render_prompt_closure():
     """
     return (
         "## Finishing\n\n"
-        "You're done when your reply makes no tool call — that final reply is the "
-        "only place your review goes. Two ways to get there, both ending the same:\n"
-        "- You made tool calls: after the results come back, your next reply is the final one.\n"
-        "- You made no tool call at all (nothing needed changing): then this reply is "
+        "The run is done when a reply makes no tool call — that final reply is the "
+        "only place the review goes. Two ways to get there, both ending the same:\n"
+        "- After tool calls: once the results come back, the next reply is the final one.\n"
+        "- A reply with no tool call at all (nothing needed changing): that reply is "
         "already the final one.\n\n"
-        'End that final reply with your `## Review`, then write "DONE".'
+        'End the final reply with the `## Review`, then write "DONE".'
     )
 
 
