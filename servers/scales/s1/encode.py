@@ -432,8 +432,8 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
     if lived:
         try:
             from servers.scales.s1.trace_links import gather, session_node_ids
-            streams = gather(brain, session_id)           # (surface, encode, touched)
-            extra_ids = session_node_ids(streams[1], streams[2])
+            streams = gather(brain, session_id)           # {'surface','encode','touched'}
+            extra_ids = session_node_ids(streams['encode'], streams['touched'])
         except AttributeError:
             # Stub brain (tests) without query_traces — expected, quiet. Degrade
             # to surfaced-only catalog + self-gathering timeline.
@@ -594,7 +594,7 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None):
     the per-tool cue ("Edit: foo.py", "Bash: …"). Window-matched to the control
     arm (trimmed to the same number of user turns as `messages`).
 
-    `streams` (optional) is the pre-gathered (surface, encode, touched) tuple from
+    `streams` (optional) is the pre-gathered {'surface','encode','touched'} dict from
     one trace_links.gather call, threaded in so the catalog and the <provenance>
     block share a single pull. None → _turn_links gathers its own.
 
@@ -686,8 +686,8 @@ def _turn_links(brain, session_id, turns, streams=None):
                  on the earlier covered turns — no 5× repetition (which the design
                  warns would nudge dense source_refs).
 
-    `streams` (optional): the pre-gathered (surface, encode, touched) tuple, so the
-    catalog and this share one gather. None → gather here.
+    `streams` (optional): the pre-gathered {'surface','encode','touched'} dict, so
+    the catalog and this share one gather. None → gather here.
 
     Guarded: any failure returns ({}, {}) → the timeline renders exactly as piece
     1 did. Also the path the piece-1 stub brains take (no query_traces).
@@ -695,10 +695,9 @@ def _turn_links(brain, session_id, turns, streams=None):
     try:
         from servers.scales.s1.trace_links import gather, nodes_for_traces
         targets = [t['user'] for t in turns if t['user']]
-        surface_traces, encode_traces, touched_traces = (
-            streams if streams is not None else gather(brain, session_id))
-        links = nodes_for_traces(surface_traces, encode_traces, targets,
-                                 touched_traces=touched_traces)
+        st = streams if streams is not None else gather(brain, session_id)
+        links = nodes_for_traces(st['surface'], st['encode'], targets,
+                                 touched_traces=st['touched'])
     except AttributeError:
         # Expected, quiet: a stub brain (tests) without query_traces. Degrade to
         # the piece-1 timeline (no provenance) — production brains always have it.

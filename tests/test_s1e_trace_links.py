@@ -17,6 +17,7 @@ if ROOT not in sys.path:
 
 from servers.scales.s1.trace_links import (  # noqa: E402
     nodes_for_traces, gather, session_node_ids, _stop_of, _surface_ids,
+    _candidate_outcomes,
 )
 
 SHORT = 'abcd1234'  # session_short in every chain id
@@ -125,6 +126,7 @@ def test_full_link_shape_surfaced_and_encoded_together():
         'encoded': ['encC', 'encD'],
         'encoded_by': 'run5',
         'authored': [], 'recalled': [], 'endo': [],  # no touched stream here
+        'dropped': [],                               # no recall stream here
     }
 
 
@@ -139,7 +141,8 @@ def test_malformed_rows_are_survivable():
         target_traces=[_turn(5), {'id': 'orphan'}])  # orphan has no chain_id
     assert links['u5']['surfaced'] == ['ok']           # the good row survived
     assert links['orphan'] == {'surfaced': [], 'encoded': [], 'encoded_by': None,
-                               'authored': [], 'recalled': [], 'endo': []}
+                               'authored': [], 'recalled': [], 'endo': [],
+                               'dropped': []}
 
 
 def test_runs_out_of_order_still_pick_earliest_owning_run():
@@ -177,7 +180,8 @@ class _StubBrain:
 
 def test_gather_pulls_all_three_streams_via_door():
     brain = _StubBrain()
-    surf, enc, touched = gather(brain, 'sess-xyz')
+    st = gather(brain, 'sess-xyz')          # default streams: surface/encode/touched
+    surf, enc, touched = st['surface'], st['encode'], st['touched']
     assert len(surf) == 1 and len(enc) == 1 and len(touched) == 1
     # all three pulls scoped to the session, window disabled (hours=None);
     # surface/encode at s1, anchor_touched at s0.
@@ -262,6 +266,131 @@ def test_anchor_touched_metadata_builder_shape_and_dedup():
     assert m['revised'] == [] and m['archived'] == [] and m['endo'] == []
     # the shared keys are exactly the encode delta's id-list field names
     assert {'created', 'revised', 'archived'} <= set(DELTA_METADATA_SHAPE)
+
+
+# ── the dropped role: recall_traces + _candidate_outcomes (episodic view) ──
+
+def _outcomes(stop, outcomes, tid=None):
+    """A Δ additionalContext candidate-pool trace (authoritative verdict map)."""
+    return {'id': tid or ('ac%d' % stop), 'chain_id': 's1r-%s-%d' % (SHORT, stop),
+            'metadata': {'outcomes_per_candidate': outcomes}}
+
+
+def _recall_pool(stop, cand_short_ids, tid=None):
+    """An O recall candidate-pool trace (raw pool, no verdict)."""
+    cands = ['%s|some title|0.70|finding' % c for c in cand_short_ids]
+    return {'id': tid or ('rc%d' % stop), 'chain_id': 's1r-%s-%d' % (SHORT, stop),
+            'metadata': {'candidates': cands}}
+
+
+def test_candidate_outcomes_reads_verdict_map():
+    cands, dropped = _candidate_outcomes(
+        {'outcomes_per_candidate': {'a': 'selected', 'b': 'dropped', 'c': 'dropped'}})
+    assert set(cands) == {'a', 'b', 'c'}
+    assert set(dropped) == {'b', 'c'}
+
+
+def test_candidate_outcomes_falls_back_to_mirror_lists():
+    cands, dropped = _candidate_outcomes({'selected': ['a'], 'dropped': ['b', 'c']})
+    assert set(cands) == {'a', 'b', 'c'} and set(dropped) == {'b', 'c'}
+
+
+def test_candidate_outcomes_raw_pool_has_no_verdict():
+    cands, dropped = _candidate_outcomes(
+        {'candidates': ['a|t|0.7|x', 'b|t|0.6|y']})
+    assert cands == ['a', 'b'] and dropped is None   # caller derives dropped
+
+
+def test_candidate_outcomes_malformed_is_empty():
+    assert _candidate_outcomes(None) == ([], None)
+    assert _candidate_outcomes({}) == ([], None)
+    assert _candidate_outcomes({'candidates': 'not a list'}) == ([], None)
+
+
+def test_dropped_authoritative_verdict_split():
+    # surfaced from K surface_selected; dropped from the Δ verdict map; encoded
+    # from the owning encode run at the same stop — ONE join, all roles.
+    links = nodes_for_traces(
+        [_surface(5, ['p1'])],
+        [_encode(5, ['enc_full_1'], ['enc_full_2'])],
+        [_turn(5)],
+        recall_traces=[_outcomes(5, {'p1': 'selected', 'd1': 'dropped',
+                                     'd2': 'dropped'})])
+    r = links['u5']
+    assert r['surfaced'] == ['p1']
+    assert set(r['dropped']) == {'d1', 'd2'}
+    assert set(r['encoded']) == {'enc_full_1', 'enc_full_2'}
+
+
+def test_dropped_raw_pool_derives_pool_minus_surfaced():
+    # No verdict map — only the raw O pool. dropped = candidates − surfaced.
+    links = nodes_for_traces(
+        [_surface(7, ['p1'])], [], [_turn(7)],
+        recall_traces=[_recall_pool(7, ['p1', 'd1', 'd2', 'd3'])])
+    r = links['u7']
+    assert r['surfaced'] == ['p1']
+    assert set(r['dropped']) == {'d1', 'd2', 'd3'}
+    assert r['encoded'] == []
+
+
+def test_surfaced_never_appears_in_dropped():
+    # Even if a stale pool lists a surfaced id as a candidate, surfaced wins.
+    links = nodes_for_traces(
+        [_surface(3, ['p1', 'p2'])], [], [_turn(3)],
+        recall_traces=[_recall_pool(3, ['p1', 'p2', 'd1'])])
+    r = links['u3']
+    assert set(r['surfaced']) == {'p1', 'p2'}
+    assert r['dropped'] == ['d1']
+
+
+def test_dropped_empty_without_recall_stream():
+    # recall_traces omitted → dropped is empty, never missing (mirrors touched).
+    links = nodes_for_traces([_surface(5, ['s'])], [], [_turn(5)])
+    assert links['u5']['dropped'] == []
+
+
+def test_dropped_missing_stop_yields_empty():
+    links = nodes_for_traces([], [], [{'id': 'x', 'chain_id': 'no-stop-here'}],
+                             recall_traces=[])
+    assert links['x']['surfaced'] == [] and links['x']['dropped'] == []
+    assert links['x']['encoded'] == []
+
+
+class _RolesStubBrain:
+    """Stub serving the three doors the episodic gather pulls."""
+    def __init__(self):
+        self.calls = []
+
+    def query_traces(self, **kw):
+        self.calls.append(kw)
+        rt = kw.get('ref_type')
+        if rt == 'additionalContext':
+            return {'events': [_outcomes(5, {'p': 'selected', 'd': 'dropped'})]}
+        if rt == 'surface_selected':
+            return {'events': [_surface(5, ['p'])]}
+        if rt == 'encoding_run':
+            return {'events': [_encode(5, ['e'], [])]}
+        return {'events': []}
+
+
+def test_gather_recall_streams_and_dropped_compose():
+    brain = _RolesStubBrain()
+    st = gather(brain, 'sess-xyz', streams=('surface', 'encode', 'recall'))
+    assert len(st['surface']) == 1 and len(st['encode']) == 1 and len(st['recall']) == 1
+    rts = {c['ref_type'] for c in brain.calls}
+    assert rts == {'additionalContext', 'surface_selected', 'encoding_run'}
+    for c in brain.calls:
+        assert c['scale'] == 's1' and c['session_id'] == 'sess-xyz' and c['hours'] is None
+    links = nodes_for_traces(st['surface'], st['encode'], [_turn(5)],
+                             recall_traces=st['recall'])
+    r = links['u5']
+    assert r['surfaced'] == ['p'] and r['encoded'] == ['e'] and r['dropped'] == ['d']
+
+
+def test_gather_unknown_stream_is_loud():
+    import pytest
+    with pytest.raises(KeyError):
+        gather(_RolesStubBrain(), 'sess-xyz', streams=('surface', 'bogus'))
 
 
 # ── render integration: <provenance> in the lived-sequence timeline (encode.py) ──

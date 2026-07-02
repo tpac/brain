@@ -11,19 +11,22 @@ It is a consumer-NEUTRAL link, not "provenance" (which is one reader's lens).
 The capability returns, per target trace, the nodes linked to it by relation:
 
     trace_id -> {
-        'surfaced':   [node_id, ...],   # what recall gave this turn  (S1R)
+        'surfaced':   [node_id, ...],   # recall surfaced AND Haiku picked (S1R)
         'encoded':    [node_id, ...],   # what the owning run wrote    (S1E)
         'encoded_by': trace_id | None,  # the encoding_run trace; None = unencoded
         'authored':   [node_id, ...],   # what Anchor's own tools wrote (S0, anchor_touched)
         'recalled':   [node_id, ...],   # what Anchor deliberately looked up (S0)
         'endo':       [node_id, ...],   # endo-surfaced this turn (S0, empty until wired)
+        'dropped':    [node_id, ...],   # offered to Haiku, NOT picked (S1R pool − surfaced)
     }
 
-Two readers, one primitive:
+Two readers, ONE join (do not fork a sibling join per reader — that is how the
+2-vs-3-tuple drift happened):
   • The S1 encoder reads a link as "already handled here → revise, don't dupe,"
     and reads `encoded_by is None` as the emergent unencoded boundary.
-  • A recall layer reads the same link as "nodes the brain touched around traces
-    like this → a candidate cue lane" (the underutilized-cue thesis).
+  • The LAF episodic layers read the SAME link at similar past moments:
+    `surfaced` (+act picked), `encoded` (+act learned), `dropped` (−inhibit —
+    offered in a situation like this and consistently not chosen).
 
 THE JOIN IS STRUCTURAL, by stop_counter — never by timestamp proximity. Every
 chain for turn N ends in `-N` (`s0-{short}-N`, `s1r-{short}-N`, `s1e-{short}-N`),
@@ -36,8 +39,10 @@ TWO LAYERS so it is robust to a raw trace dataset run sequentially:
   • nodes_for_traces(...) — PURE. Plain trace records in, link map out. No brain,
     no DB. This is what eval replay (Frozen Corpus), unit tests, and any
     historical/sequential dataset drive directly; it assumes nothing about storage.
-  • gather(brain, session_id) — thin live adapter. Pulls the two trace streams via
-    the public `query_traces` door (no bespoke DAL). Eval/tests skip it.
+  • gather(brain, session_id, streams=...) — thin live adapter. Pulls the named
+    trace streams via the public `query_traces` door (no bespoke DAL) and returns
+    a DICT keyed by stream name — never a bare tuple (tuple arity is unauditable
+    drift; a named dict extends without breaking any consumer). Eval/tests skip it.
 
 Anchor's own actions (`authored`/`recalled`) come from the S0 `anchor_touched`
 delta — a per-turn aggregate the daemon flushes at the Stop boundary (the S0
@@ -91,10 +96,45 @@ def _delta_ids(meta, *keys):
     return _dedup(out)
 
 
+def _candidate_outcomes(meta):
+    """(candidate_ids, dropped_ids) from a candidate-pool trace's metadata. PURE.
+
+    Reads, in priority order, the two trace shapes that carry the candidate pool:
+      1. Δ `additionalContext` — `outcomes_per_candidate {short_id: verdict}` is
+         the authoritative Haiku-resolved pool; candidates = its keys, dropped =
+         keys whose verdict == 'dropped'. (Falls back to the `dropped`/`selected`
+         mirror lists if outcomes is absent but those are present.)
+      2. O `recall` — `candidates ["short_id|title|score|type", ...]` is the raw
+         pool with no verdict; returns (candidate_ids, None) — the caller derives
+         dropped as candidates − surfaced picks.
+    Returns (candidate_ids, dropped_ids_or_None). Empty/odd metadata → ([], None),
+    so a malformed row contributes nothing rather than crashing the join."""
+    if not isinstance(meta, dict):
+        return [], None
+    outcomes = meta.get('outcomes_per_candidate')
+    if isinstance(outcomes, dict) and outcomes:
+        cands = list(outcomes.keys())
+        dropped = [cid for cid, v in outcomes.items() if v == 'dropped']
+        return cands, dropped
+    # Δ trace mirror lists (outcomes absent but selected/dropped present)
+    sel = meta.get('selected')
+    drp = meta.get('dropped')
+    if isinstance(sel, list) or isinstance(drp, list):
+        sel = list(sel or [])
+        drp = list(drp or [])
+        return _dedup(sel + drp), drp
+    # O recall trace: "short_id|title|score|type" rows, no verdict
+    raw = meta.get('candidates')
+    if isinstance(raw, list) and raw:
+        cands = [str(r).split('|', 1)[0] for r in raw if str(r).split('|', 1)[0]]
+        return _dedup(cands), None
+    return [], None
+
+
 def nodes_for_traces(surface_traces, encode_traces, target_traces,
-                     touched_traces=None):
-    """Join S1 surface/encode + S0 anchor_touched traces to target traces by
-    stop. PURE.
+                     touched_traces=None, recall_traces=None):
+    """Join S1 surface/encode + S0 anchor_touched + S1R candidate-pool traces to
+    target traces by stop. PURE.
 
     Args:
         surface_traces: S1R `surface_selected` trace records (chain_id + ref_id).
@@ -107,15 +147,25 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces,
         touched_traces: S0 `anchor_touched` trace records (chain_id + metadata) —
                         what Anchor's OWN tools touched. Optional (the feed may not
                         be wired); when omitted, authored/recalled/endo are empty.
+        recall_traces:  S1R candidate-POOL trace records — either Δ
+                        `additionalContext` rows (metadata.outcomes_per_candidate,
+                        the authoritative Haiku-resolved pool + verdict) or O
+                        `recall` rows (metadata.candidates, the raw pool). Mixed is
+                        fine; per stop the verdict shape wins. Optional; when
+                        omitted, `dropped` is empty.
 
     Returns:
         {target_trace_id: {'surfaced': [ids], 'encoded': [ids],
                            'encoded_by': run_trace_id | None,
-                           'authored': [ids], 'recalled': [ids], 'endo': [ids]}}
+                           'authored': [ids], 'recalled': [ids], 'endo': [ids],
+                           'dropped': [ids]}}
 
-    surfaced / authored / recalled / endo are 1:1 with the turn (same stop);
-    encoded is per-RUN (the owning run). Node ids verbatim (full) — display
-    formatting (8-char refs) is the renderer's job, not the link's.
+    surfaced / authored / recalled / endo / dropped are 1:1 with the turn (same
+    stop); encoded is per-RUN (the owning run). `dropped` = the turn's candidate
+    pool MINUS surfaced (explicit verdict wins over the derived subtraction; a
+    node never appears in both — surfaced wins). surfaced/dropped ids are what
+    the surface traces record (8-char short ids); encoded/authored are full —
+    verbatim either way, width resolution is the consumer's job.
     """
     # surfaced, indexed by stop (1:1 with a turn; merge if a stop ever repeats).
     surf_by_stop = {}
@@ -140,6 +190,21 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces,
         e['authored'].extend(_delta_ids(meta, 'created', 'revised'))
         e['recalled'].extend(_delta_ids(meta, 'recalled'))
         e['endo'].extend(_delta_ids(meta, 'endo'))
+
+    # candidate pool + explicit-dropped (when the trace carries a verdict),
+    # indexed by stop. A stop may have both an O row (raw pool) and a Δ row
+    # (verdict) — keep the union of candidates and any explicit dropped set.
+    cands_by_stop = {}
+    explicit_dropped_by_stop = {}
+    for t in (recall_traces or []):
+        stop = _stop_of(t.get('chain_id'))
+        if stop is None:
+            continue
+        cands, dropped = _candidate_outcomes(t.get('metadata') or {})
+        if cands:
+            cands_by_stop.setdefault(stop, []).extend(cands)
+        if dropped is not None:
+            explicit_dropped_by_stop.setdefault(stop, []).extend(dropped)
 
     # encode runs as (stop, trace_id, [created+revised]), ascending by stop.
     runs = []
@@ -173,11 +238,22 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces,
                     encoded, encoded_by = list(rids), rtid
                     break
         tch = touched_by_stop.get(stop) or {} if stop is not None else {}
+        # dropped: explicit verdict wins over the derived pool−surfaced; either way
+        # a node can never be both surfaced and dropped at one stop — surfaced wins.
+        surfaced_set = set(surfaced)
+        if stop is None:
+            pool = []
+        elif stop in explicit_dropped_by_stop:
+            pool = explicit_dropped_by_stop[stop]
+        else:
+            pool = cands_by_stop.get(stop, [])
+        dropped = [d for d in _dedup(pool) if d not in surfaced_set]
         out[tid] = {
             'surfaced': surfaced, 'encoded': encoded, 'encoded_by': encoded_by,
             'authored': _dedup(tch.get('authored', [])),
             'recalled': _dedup(tch.get('recalled', [])),
             'endo': _dedup(tch.get('endo', [])),
+            'dropped': dropped,
         }
     return out
 
@@ -203,26 +279,41 @@ def session_node_ids(encode_traces, touched_traces):
     return {'encoded': encoded, 'authored': authored, 'recalled': recalled}
 
 
-def gather(brain, session_id, limit=500):
-    """Live adapter: fetch the two S1 trace streams for a session. Thin.
+# The streams gather() can pull: name → (ref_type, scale). One registry, so a
+# new stream is one line here and zero signature changes anywhere.
+GATHER_STREAMS = {
+    'surface': ('surface_selected', 's1'),    # S1R picks (the `surfaced` role)
+    'encode':  ('encoding_run', 's1'),        # S1E deltas (the `encoded` role)
+    'touched': ('anchor_touched', 's0'),      # Anchor's own tool actions
+    'recall':  ('additionalContext', 's1'),   # candidate pool + verdict (`dropped`)
+}
+
+
+def gather(brain, session_id, streams=('surface', 'encode', 'touched'), limit=500):
+    """Live adapter: fetch named trace streams for a session. Thin.
 
     Composes the public `query_traces` door (no bespoke DAL, per the §10.2
-    trace-query law). Returns (surface_traces, encode_traces) ready to hand to
-    nodes_for_traces. Eval/tests bypass this and feed records directly.
+    trace-query law). Returns {stream_name: [trace records]} for the requested
+    `streams` — a NAMED dict, never a bare tuple: tuple arity drifts silently
+    when two consumers evolve the stream list apart (the 2-vs-3-tuple lesson);
+    a keyed dict extends without breaking anyone. Eval/tests bypass this and
+    feed records to nodes_for_traces directly.
+
+    Defaults to the encoder's three streams. The episodic layers pass
+    ('surface', 'encode', 'recall') — `recall` is the Δ `additionalContext`
+    candidate-pool rows carrying `metadata.outcomes_per_candidate` (the
+    authoritative Haiku-resolved pool + verdict; `_candidate_outcomes` also
+    reads the O `recall` raw-pool shape for datasets that only logged that).
 
     `limit` is the session trace-pull bound (created_at DESC, so it keeps the
     most-recent traces — what the recent-turn window needs). Distinct from the
     timeline's LIVED_SEQUENCE_PULL; a reusable adapter default, not a per-piece
     constant. A consumer with a different need passes its own.
-
-    Returns (surface_traces, encode_traces, touched_traces) — the three streams
-    nodes_for_traces joins.
     """
-    def _pull(ref_type, scale):
-        return brain.query_traces(
+    out = {}
+    for name in streams:
+        ref_type, scale = GATHER_STREAMS[name]   # unknown name = caller bug, loud
+        out[name] = brain.query_traces(
             ref_type=ref_type, scale=scale,
             session_id=session_id, hours=None, limit=limit).get('events', [])
-    surface_traces = _pull('surface_selected', 's1')
-    encode_traces = _pull('encoding_run', 's1')
-    touched_traces = _pull('anchor_touched', 's0')   # Anchor's own tool actions
-    return surface_traces, encode_traces, touched_traces
+    return out
