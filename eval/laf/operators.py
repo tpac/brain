@@ -175,3 +175,62 @@ def temporal_distinctiveness(days, eligible_mask, window_days=7.0):
     neighbours = (hi - lo - 1).astype(np.float32)        # exclude self
     out[idxs[order]] = 1.0 / (1.0 + neighbours)
     return out
+
+
+# ──────────────── operator: relational reinstatement (the graph rebuild) ────────────────
+# The old graph_spread weighted edges by the stored `weight` — which is an uncalibrated 0.5
+# default (5a58ea33): SUM(weight) ≈ 0.5 × relation-multiplicity, no relevance signal. Decay +
+# Hebbian only touch the noise/co-access relations we already exclude. So the rebuild throws the
+# stored weight away and sets each edge's CONDUCTANCE from MEANING: cos(cue, edge.why), using the
+# per-edge description embedding (edge_relations.embedding, v26+, ~91% of semantic edges). Activation
+# flows from cosine-reachable seeds along the edges whose description matches the cue — the realizable
+# form of what the judges did (follow a typed edge whose `why` IS the need, from a node they found).
+
+def build_edge_conductance(brain, idx):
+    """Per-edge substrate for relational_reinstatement: (src, dst, edge_unit_matrix, relations)
+    over noise-excluded edges that HAVE a description embedding. Built once, reused per cue.
+
+    edge_unit_matrix[e] is the unit vector of edge e's description (compose_edge_text(relation,
+    description)); conductance = edge_unit_matrix @ qv at recall time. Edges whose endpoints lack a
+    node embedding (not in idx), self-loops, or with no description vector are dropped."""
+    na = brain.aspects.by_name("noise")
+    noise = list(na.edge_relations) if na else []
+    ph = ",".join("?" * len(noise)) if noise else "''"
+    rows = brain.conn.execute(
+        "SELECT e.source_id, e.target_id, er.relation, er.embedding "
+        "FROM edge_relations er JOIN edges e ON e.edge_id = er.edge_id "
+        "WHERE (er.archived IS NULL OR er.archived = 0) "
+        "  AND er.relation NOT IN (%s) AND er.embedding IS NOT NULL" % ph, noise).fetchall()
+    src, dst, vecs, rels = [], [], [], []
+    for s, t, rel, emb in rows:
+        if s in idx and t in idx and s != t:
+            uv = unit(emb)
+            if uv is not None:
+                src.append(idx[s]); dst.append(idx[t]); vecs.append(uv); rels.append(rel)
+    src = np.asarray(src, dtype=np.int64)
+    dst = np.asarray(dst, dtype=np.int64)
+    emat = np.asarray(vecs, dtype=np.float32) if vecs else np.zeros((0, len(next(iter(idx), "")) or 768))
+    return src, dst, emat, rels
+
+
+def relational_reinstatement(qv, seed, edges, n, hops=1):
+    """[N] activation spread from `seed` (a per-node cosine field) along edges, each edge weighted
+    by its cue-MEANING conductance cos(qv, edge.why) — NOT the stored weight. ÷norm by conductance-
+    degree so a node fed by many weakly-matching edges can't dominate. Undirected v1."""
+    src, dst, emat, _ = edges
+    out = np.zeros(n, dtype=np.float64)
+    if src.size == 0 or emat.shape[0] == 0:
+        return out
+    cond = np.clip(emat @ qv, 0.0, None)                 # [E] cue↔edge-why match, no negatives
+    condeg = np.zeros(n, dtype=np.float64)
+    np.add.at(condeg, dst, cond)
+    np.add.at(condeg, src, cond)
+    cur = np.clip(np.asarray(seed, dtype=np.float64), 0.0, None).copy()
+    for _ in range(hops):
+        nxt = np.zeros(n, dtype=np.float64)
+        np.add.at(nxt, dst, cur[src] * cond)
+        np.add.at(nxt, src, cur[dst] * cond)
+        nz = condeg > 0
+        nxt[nz] /= (1.0 + condeg[nz])                     # ÷norm: conductance-degree hub damp
+        cur = nxt
+    return cur

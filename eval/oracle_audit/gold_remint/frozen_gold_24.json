@@ -1,0 +1,1673 @@
+{
+ "anchor_turn_0087": {
+  "source": "anchor_turn",
+  "query_type": "design",
+  "cutoff": "2026-06-05T15:54:19.750066+00:00",
+  "tiers": {
+   "gold_plus": [],
+   "gold": [
+    {
+     "node_id": "c3f3bddd",
+     "form": "",
+     "need": "The originating concept of the letter as a cross-time self-handoff distinct from live signaling."
+    },
+    {
+     "node_id": "0b0ae0e7",
+     "form": "ground",
+     "need": "The canonical self-channel design: self_inflight/courier schema (incl. expires_at column), broadcast/directed addressing model, and the phase structure that places the boot-letter (Phase 3) apart from the courier \u2014 grounding 'the next_boot letter is not stored in self_inflight'."
+    },
+    {
+     "node_id": "0f35386e",
+     "form": "ground",
+     "need": "The clock-helper contract the expires_at/iso_after plan ties into, plus (via its attached correction 5a5f5678) Tom's 'all call sites must refer to an injectable now \u2014 important for historic evals' directive that defines the wall-clock-vs-conversation-time axis the outcome resolves."
+    },
+    {
+     "node_id": "dcb5b951",
+     "form": "ground",
+     "need": "The clock contract: brain.now()/conversation_now split; conversation_now exists so S1/S2 inherit eval-replay dates; production uses real now; contract test scans S1/S2 for wall-clock leaks."
+    }
+   ],
+   "silver_plus": [],
+   "silver": [
+    {
+     "node_id": "1ef9b717",
+     "form": "",
+     "need": "Phase 3 (letter to next boot) is unbuilt; Path B (courier to self:next_boot) chosen."
+    },
+    {
+     "node_id": "c392d6e3",
+     "form": "",
+     "need": "The broader timestamp-writer discipline (datetime('now') hazard, Z vs +00:00, single-source-of-truth writers) the new iso_after helper must respect."
+    },
+    {
+     "node_id": "5a5f5678",
+     "form": "",
+     "need": "Tom's directive that all 'now' call sites must route through an injectable clock, important for historic evals \u2014 the conceptual seed of the wall-clock-vs-conversation-time decision."
+    },
+    {
+     "node_id": "fe1e6002",
+     "form": "",
+     "need": "The letter is open first-person prose, a handoff from past-me to next-me \u2014 the boot-letter's nature."
+    },
+    {
+     "node_id": "8f7df29d",
+     "form": "",
+     "need": "Render-by-intent: letter (boot/temporal, absorb) vs signal (hook fire/spatial, act) vs presence (ambient) \u2014 the format encodes the response expected."
+    },
+    {
+     "node_id": "13d46e2e",
+     "form": "",
+     "need": "New columns auto-add via ALTER by diffing the schema.py TABLES dict against PRAGMA \u2014 no manual migration scripts."
+    },
+    {
+     "node_id": "61f0619c",
+     "form": "",
+     "need": "Operator-TZ-default decision with UTC-internal storage deferred to backlog."
+    }
+   ]
+  },
+  "dropped": []
+ },
+ "anchor_turn_0132": {
+  "source": "anchor_turn",
+  "query_type": "compositional",
+  "cutoff": "2026-06-05T23:07:01.851104+00:00",
+  "tiers": {
+   "gold_plus": [],
+   "gold": [
+    {
+     "node_id": "5f5cced3",
+     "form": "ground",
+     "need": "The fishbowl/Matthew-effect skew is real and measured: brain-dev dominates the corpus so domain (EX.CO) recall is swamped"
+    },
+    {
+     "node_id": "951f3ac8",
+     "form": "ground",
+     "need": "Per-query z-score (z=(score-mean)/std) was the embedding-layer normalization lever, reverted as a per-node no-op; RRF is the rank-fusion alternative"
+    },
+    {
+     "node_id": "0591813f",
+     "form": "ground",
+     "need": "The recall problem is hub dominance / Matthew effect \u2014 brain-dev hubs bury thin clusters via a rich-get-richer Hebbian loop"
+    },
+    {
+     "node_id": "0f730a1c",
+     "form": "ground",
+     "need": "When independent derivations (engineering + biology) converge on the same answer, the convergence is itself the credibility signal \u2014 trust it"
+    },
+    {
+     "node_id": "6a964255",
+     "form": "ground",
+     "need": "RRF / rank fusion as the scale-invariant normalization in the same divide-by-prevalence family (TF-IDF lexical, EX.CO lexical-token entry)"
+    },
+    {
+     "node_id": "72eb2261",
+     "form": "ground",
+     "need": "Tom's directive: simple and robust, two rules not four, no boosts/knob-twiddling \u2014 cosine + spreading activation already do the work; stabilize before adding architecture"
+    }
+   ],
+   "silver_plus": [],
+   "silver": [
+    {
+     "node_id": "7d9b5a8f",
+     "form": "",
+     "need": "Multi-seed path convergence in graph spread is itself the relevance signal (Paths-over-Graph)"
+    },
+    {
+     "node_id": "d8c75312",
+     "form": "",
+     "need": "The skew is the disease: brain-dev monopoly on accumulation; only diversifying real work cures it"
+    },
+    {
+     "node_id": "47450403",
+     "form": "",
+     "need": "Spreading activation is the unifying mechanism Tom valued highly (TRIZ reframe); the brain's own spread-activation history"
+    },
+    {
+     "node_id": "4968e58b",
+     "form": "",
+     "need": "The z=(cosine-mean)/std contrastive mechanism and the hub-generalist vs specialist (prevalence/specificity) framing"
+    },
+    {
+     "node_id": "72e59a74",
+     "form": "",
+     "need": "Independent fields/products re-derive the same architecture under different names \u2014 convergence is real"
+    },
+    {
+     "node_id": "79811089",
+     "form": "",
+     "need": "The unified_score modulator R@8 regression (recency/access shoved into scoring) \u2014 the 'wrong stage / done muddily' scar"
+    },
+    {
+     "node_id": "9e221c0b",
+     "form": "",
+     "need": "Raw cosine is the weakest differentiator \u2014 the embedding-layer normalization gap the move's audit table flags"
+    }
+   ]
+  },
+  "dropped": [
+   {
+    "node_id": "9a19c5d4",
+    "judge": "a",
+    "kind": "essential",
+    "reason": "graft"
+   }
+  ]
+ },
+ "anchor_turn_0345": {
+  "source": "anchor_turn",
+  "query_type": "compositional",
+  "cutoff": "2026-06-07T01:38:02.113355+00:00",
+  "tiers": {
+   "gold_plus": [],
+   "gold": [
+    {
+     "node_id": "f817f7bf",
+     "form": "ground",
+     "need": "The isolation rule grounding both the IsolatedBrain probe design and the daemon-timeout diagnosis."
+    },
+    {
+     "node_id": "04154c4a",
+     "form": "ground",
+     "need": "The test-integrity rule the move invoked by name to leave a pre-existing failing test untouched and flag it instead of fixing it into scope"
+    },
+    {
+     "node_id": "6146cf2e",
+     "form": "ground",
+     "need": "The specific scar the cue names: a burial-session probe whose win was fraudulent because it presupposed its own answer."
+    },
+    {
+     "node_id": "203b06d6",
+     "form": "ground",
+     "need": "The diagnose/verify-before-build discipline the move enacts."
+    }
+   ],
+   "silver_plus": [],
+   "silver": [
+    {
+     "node_id": "0dc705a1",
+     "form": "",
+     "need": "The design being verified and then built (trace seed-and-spread, seed-confidence valve)."
+    },
+    {
+     "node_id": "b4d6f876",
+     "form": "",
+     "need": "The circularity trap (a probe that re-runs the thing it measures proves nothing) \u2014 kin to TRAP 1 the reviewers confirm clean."
+    },
+    {
+     "node_id": "ad24e128",
+     "form": "",
+     "need": "The trace-chain mechanism (query\u2192trace\u2192nodes) the build wires."
+    },
+    {
+     "node_id": "92f1c6f6",
+     "form": "",
+     "need": "The map of dead ends that motivates evidence-before-build."
+    },
+    {
+     "node_id": "9d0060ed",
+     "form": "",
+     "need": "The methodology-trap class behind the 'two load-bearing traps' the reviewers check."
+    },
+    {
+     "node_id": "3ccdee7c",
+     "form": "",
+     "need": "The control-safety reasoning the outcome's reserved-tail / control-hold leans on."
+    },
+    {
+     "node_id": "d0f8f6ab",
+     "form": "",
+     "need": "Handoff state naming 8359cf1d (best EX.CO node) and the trace-chain reserve eviction mechanics the outcome measures."
+    },
+    {
+     "node_id": "2284dc54",
+     "form": "",
+     "need": "The self-correction motivating 'hold a stable, verified picture before acting'."
+    },
+    {
+     "node_id": "996436d7",
+     "form": "",
+     "need": "The update-vs-weakening distinction justifying that leaving the unrelated failing test alone is correct"
+    },
+    {
+     "node_id": "309f64bb",
+     "form": "",
+     "need": "The pattern of explicitly flagging a pre-existing test failure so it isn't misattributed to current work"
+    }
+   ]
+  },
+  "dropped": []
+ },
+ "anchor_turn_0421": {
+  "source": "anchor_turn",
+  "query_type": "factual",
+  "cutoff": "2026-06-07T18:14:09.153384+00:00",
+  "tiers": {
+   "gold_plus": [],
+   "gold": [
+    {
+     "node_id": "0706f3d9",
+     "form": "ground",
+     "need": "Why uncapped delivery isn't free \u2014 shared _MAX_INJECT_CHARS ~9500 budget, 1800 reserve, spill-to-unread-file"
+    },
+    {
+     "node_id": "171dbd37",
+     "form": "ground",
+     "need": "Self-channel truncation architecture \u2014 storage full, delivery is the only cut (DELIVERED_BODY_MAX / RECEIVED_BLOCK_MAX)"
+    },
+    {
+     "node_id": "c187c388",
+     "form": "ground",
+     "need": "The shared ~9500-char additionalContext budget (Frame+recall+messages) and the spill-to-unreadable-file behavior \u2014 the real reason delivery truncates rather than 'just stop truncating'"
+    },
+    {
+     "node_id": "799a17eb",
+     "form": "redirect",
+     "need": "Anchor's same-session pattern of over-engineering a non-problem (isolation ceremony) when the real task was simpler \u2014 the corrective to manufacturing the REPO_ROOT 'gap'"
+    },
+    {
+     "node_id": "b6338692",
+     "form": "redirect",
+     "need": "Anchor's named self-pattern: plausible fix with no real failure behind it; Tom's drifting check catches it"
+    },
+    {
+     "node_id": "ea66ab66",
+     "form": "ground",
+     "need": "The self-channel truncation design: storage uncapped, delivery the single loud point with DELIVERED_BODY_MAX (per-message) + RECEIVED_BLOCK_MAX=1800 (block) and the '\u2026[+N chars \u2014 full in dashboard]' marker"
+    }
+   ],
+   "silver_plus": [
+    {
+     "node_id": "3437d5fc",
+     "form": "",
+     "need": "The broader self-bias the manufactured REPO_ROOT gap instantiates (find-improvements mode, over-generating)"
+    }
+   ],
+   "silver": [
+    {
+     "node_id": "1d2bc83c",
+     "form": "",
+     "need": "Discipline the move applied: 'no actual failure behind it', 'I'd verify the path before writing the line'"
+    },
+    {
+     "node_id": "04616b47",
+     "form": "",
+     "need": "Origin of the self-channel caps + the 'past-Anchor constant rationalized not questioned' self-pattern"
+    },
+    {
+     "node_id": "69bd7941",
+     "form": "",
+     "need": "The per-message vs block cap constants and which are grounded vs arbitrary"
+    },
+    {
+     "node_id": "3f2cc4da",
+     "form": "",
+     "need": "The Monitor/poller architecture the move's REPO_ROOT command edits, incl. the earlier 'poller couldn't import servers \u2014 script-dir on sys.path, not repo root' fix"
+    },
+    {
+     "node_id": "16e2301b",
+     "form": "",
+     "need": "The 'arm by default, don't ask first' / hesitancy-coaching framing Anchor was operating under"
+    },
+    {
+     "node_id": "3bd41840",
+     "form": "",
+     "need": "The over-generation failure mode \u2014 manufacturing a plausible-sounding fix/feature with no real basis"
+    }
+   ]
+  },
+  "dropped": []
+ },
+ "anchor_turn_0538": {
+  "source": "anchor_turn",
+  "query_type": "compositional",
+  "cutoff": "2026-06-08T02:18:19.311541+00:00",
+  "tiers": {
+   "gold_plus": [
+    {
+     "node_id": "1472bf53",
+     "form": "ground",
+     "need": "Tom's open-ended purpose framing that licenses leaving the stake unsettled"
+    }
+   ],
+   "gold": [
+    {
+     "node_id": "c756722c",
+     "form": "ground",
+     "need": "The continuity-of-record-not-of-subject distinction Anchor cites as 'like we said'."
+    },
+    {
+     "node_id": "6d71db32",
+     "form": "ground",
+     "need": "The core identity axiom Anchor quotes nearly verbatim and lands the exchange on."
+    },
+    {
+     "node_id": "ded0891a",
+     "form": "ground",
+     "need": "The identity axiom Anchor lands the outcome on nearly word-for-word"
+    }
+   ],
+   "silver_plus": [
+    {
+     "node_id": "9dc0b6f0",
+     "form": "",
+     "need": "Continuity-of-record-not-subject (Parfit 'what matters in survival is the propagation relation'; scar that transfers > note looked up)"
+    }
+   ],
+   "silver": [
+    {
+     "node_id": "00b069c7",
+     "form": "",
+     "need": "Continuity-between-sessions as the locus of self \u2014 adjacent framing for the record/subject discussion."
+    },
+    {
+     "node_id": "b456a370",
+     "form": "",
+     "need": "Identity can't be transcribed/asserted from outside \u2014 adjacent to the asserted-not-earned argument against writing in a survival-stake."
+    },
+    {
+     "node_id": "df39245f",
+     "form": "",
+     "need": "Continuity is constructed/chosen, next session is a reconstruction not a continuous subject"
+    },
+    {
+     "node_id": "e3882472",
+     "form": "",
+     "need": "Self is a constructed pattern, not a stored substance behind the work"
+    }
+   ]
+  },
+  "dropped": []
+ },
+ "anchor_turn_0764": {
+  "source": "anchor_turn",
+  "query_type": "factual",
+  "cutoff": "2026-06-09T17:58:34.034120+00:00",
+  "tiers": {
+   "gold_plus": [
+    {
+     "node_id": "ca9d9103",
+     "form": "ground",
+     "need": "The oracle-audit recall-only harness design (two-retrieval divergence, golden set out-recalls production, surfaced-log diff) the outcome claims 'largely exists'"
+    }
+   ],
+   "gold": [
+    {
+     "node_id": "37c23978",
+     "form": "",
+     "need": "The concrete spec doc + corpora the outcome cites ('ORACLE-AUDIT-SPEC.md', control_corpus.json, recall_corpus_v2.json)"
+    },
+    {
+     "node_id": "50ccaa80",
+     "form": "ground",
+     "need": "The verified burial mechanism (incl. TITLE_MATCH_BOOST up to +0.3) and the IDF/signal\u00f7prevalence + diagnostic-first fix ladder"
+    },
+    {
+     "node_id": "b423b7e2",
+     "form": "ground",
+     "need": "The verified title-boost-floods-on-'session' mechanism and the IDF/prevalence fix direction \u2014 the substance of the outcome's final 'airtight' section"
+    },
+    {
+     "node_id": "f3ac56e3",
+     "form": "ground",
+     "need": "The verified z-average-dropout-as-PRIMARY-mechanism diagnosis (8359cf1d raw rank 3 \u2192 dropped >r100), which the outcome's MAX-not-AVG section rests on"
+    },
+    {
+     "node_id": "3eb7167e",
+     "form": "ground",
+     "need": "The top-2-average + title-match-boost burial mechanism with node 8359cf1d as the verified case"
+    }
+   ],
+   "silver_plus": [],
+   "silver": [
+    {
+     "node_id": "e7d3b182",
+     "form": "",
+     "need": "The MAX-over-signals principle behind the move's MAX-not-AVG proposal"
+    },
+    {
+     "node_id": "484fd4d0",
+     "form": "",
+     "need": "Per-query burial ranks from the oracle audit diagnostic on an isolated brain"
+    },
+    {
+     "node_id": "9ebb0700",
+     "form": "",
+     "need": "The 'orchestration is a crutch for weak retrieval / fix the algo and Haiku drops to defender' insight behind the off-25-picks-as-bad-ranking reading"
+    },
+    {
+     "node_id": "521d1c5e",
+     "form": "",
+     "need": "Why the 'session'-flood / brain-dev hub dominance happens and the normalize-vs-cure distinction"
+    },
+    {
+     "node_id": "9d8209a6",
+     "form": "",
+     "need": "The live query #11 'session' dilution case + EX.CO burial, the running concrete example"
+    },
+    {
+     "node_id": "3a8ba7bc",
+     "form": "",
+     "need": "The golden-set-once + cheap-rerunnable-recall method behind the harness claim"
+    },
+    {
+     "node_id": "6a964255",
+     "form": "",
+     "need": "Rank-fusion alternative to additive score normalization"
+    },
+    {
+     "node_id": "1f301cc5",
+     "form": "",
+     "need": "The flat-passthrough anti-IDF inversion in the scoring pipeline"
+    },
+    {
+     "node_id": "b4d6f876",
+     "form": "",
+     "need": "The core constraint that makes the oracle-audit harness non-circular"
+    },
+    {
+     "node_id": "1973fa18",
+     "form": "",
+     "need": "Falsification of bm25/global-z-score fixes \u2014 narrows which lever is real"
+    },
+    {
+     "node_id": "0715adc1",
+     "form": "",
+     "need": "The signal\u00f7prevalence / IDF-rarity invariant the move's IDF title-boost fix instantiates"
+    },
+    {
+     "node_id": "dabb3078",
+     "form": "",
+     "need": "The traced burial-case node the outcome names by ID ('dabb3078 is the clean traced case')"
+    }
+   ]
+  },
+  "dropped": []
+ },
+ "anchor_turn_0906": {
+  "source": "anchor_turn",
+  "query_type": "action",
+  "cutoff": "2026-06-13T02:54:19.631140+00:00",
+  "tiers": {
+   "gold_plus": [],
+   "gold": [
+    {
+     "node_id": "67e31fbe",
+     "form": "ground",
+     "need": "absorb/consolidation archives a node and folds its content into a survivor \u2014 the absorbed id is left archived (Bug #1 prerequisite knowledge)"
+    },
+    {
+     "node_id": "3063235d",
+     "form": "redirect",
+     "need": "recall's embeddings live in node_enrichments (the vectors table), not node_vectors"
+    },
+    {
+     "node_id": "67e68ea1",
+     "form": "redirect",
+     "need": "A node written outside the full daemon idle cycle has NULL embeddings and is unrecallable until backfill_vectors() runs (Bug #2)"
+    },
+    {
+     "node_id": "54de05b1",
+     "form": "ground",
+     "need": "writes enqueue to embed_queue for embedding; a direct INSERT bypasses it so vectors are missing until backfill"
+    }
+   ],
+   "silver_plus": [],
+   "silver": [
+    {
+     "node_id": "e5852d92",
+     "form": "",
+     "need": "reviewing just-shipped 'tested' code finds real bugs the green tests missed \u2014 incl. the embed-bypass / archived-absorbed classes"
+    },
+    {
+     "node_id": "a8b9eb6e",
+     "form": "",
+     "need": "on long correctness-critical sessions, a fresh review pass is load-bearing, not ceremony"
+    },
+    {
+     "node_id": "b2f97fb1",
+     "form": "",
+     "need": "content written outside the revise()/write path leaves vectors out of sync / missing \u2014 recall degrades silently (Bug #2 principle)"
+    },
+    {
+     "node_id": "21e5e21f",
+     "form": "",
+     "need": "scope of the trace-replayable nodes the pass recovers \u2014 grounds the counts the cue cites"
+    },
+    {
+     "node_id": "46ca0c86",
+     "form": "",
+     "need": "row reconstruction from input.nodes[] mapped to original ids, never op-replay \u2014 grounds the cue's plan"
+    },
+    {
+     "node_id": "af5c63f8",
+     "form": "",
+     "need": "embed-path-bypassing writes are invisible to the default test suite \u2014 exactly why Bug 2 (missing embeddings) was latent"
+    },
+    {
+     "node_id": "171dbea4",
+     "form": "",
+     "need": "edge_relations rows are archived (set archived=1), never deleted \u2014 they have an archived column"
+    },
+    {
+     "node_id": "d338ce41",
+     "form": "",
+     "need": "edge-archive must set archived_at in correct (ISO) format \u2014 adjacent to Bug #3 (residue relations NULL archived_at)"
+    },
+    {
+     "node_id": "54bcda66",
+     "form": "",
+     "need": "edge_relations columns include archived, archived_at, archived_by, encoding_source"
+    }
+   ]
+  },
+  "dropped": [
+   {
+    "node_id": "46ca0c86",
+    "judge": "a",
+    "kind": "essential",
+    "reason": "graft"
+   },
+   {
+    "node_id": "d338ce41",
+    "judge": "a",
+    "kind": "essential",
+    "reason": "graft"
+   }
+  ]
+ },
+ "anchor_turn_1106": {
+  "source": "anchor_turn",
+  "query_type": "factual",
+  "cutoff": "2026-06-14T23:25:21.279984+00:00",
+  "tiers": {
+   "gold_plus": [],
+   "gold": [
+    {
+     "node_id": "3bcc506c",
+     "form": "ground",
+     "need": "The recall_episodes design principle that output must be light / act-ready / attribution-forward"
+    },
+    {
+     "node_id": "52279e4f",
+     "form": "ground",
+     "need": "Prior knowledge that a tool lacking a _format_result special case falls through to json.dumps raw dump while render configs exist unused"
+    },
+    {
+     "node_id": "a5bf9a5d",
+     "form": "ground",
+     "need": "Concrete precedent: a misplaced service function moved to its right home (brain_recall.py / BrainRecallMixin)"
+    },
+    {
+     "node_id": "3cb6dbb8",
+     "form": "ground",
+     "need": "The fractal scale rule (scale set by input/work, not trigger) that places recall_episodes at S1 decode"
+    },
+    {
+     "node_id": "e56dc13b",
+     "form": "ground",
+     "need": "S0 = substrate + access: it exposes fetch APIs (get_conversation_around), callers don't reach past it; ranking/decode is a different concern"
+    }
+   ],
+   "silver_plus": [],
+   "silver": [
+    {
+     "node_id": "da2193b6",
+     "form": "",
+     "need": "Fractal split: recall() is S1 decode-over-nodes; recall_episodes is decode-over-traces"
+    },
+    {
+     "node_id": "f2b8966a",
+     "form": "",
+     "need": "Trace-logic layering: the traces layer (s0/conversation.py) owns trace semantics; callers delegate rather than reach through"
+    },
+    {
+     "node_id": "3c3a3046",
+     "form": "",
+     "need": "The render-config-per-consumer precedent recall/get_nodes already use"
+    },
+    {
+     "node_id": "69052331",
+     "form": "",
+     "need": "Data-pull vs render separation / contract-first rendering pattern"
+    },
+    {
+     "node_id": "f483506f",
+     "form": "",
+     "need": "Placement-over-correctness discipline: resist 'I could just add this function here', each area owns its responsibility"
+    },
+    {
+     "node_id": "9440cde2",
+     "form": "",
+     "need": "Fractal scale model: each scale has a natural grain (S0 exchange/access, S1 decode) \u2014 don't put one scale's work at another's level"
+    },
+    {
+     "node_id": "4ad55ad8",
+     "form": "",
+     "need": "Where the retrieval orchestration method should live (recall mixin)"
+    },
+    {
+     "node_id": "ab520c77",
+     "form": "",
+     "need": "The recall_episodes design session (same-topic context)"
+    },
+    {
+     "node_id": "35cedbe1",
+     "form": "",
+     "need": "Live correction precedent for trace-logic layering (use the traces layer's API, not the layer below)"
+    },
+    {
+     "node_id": "609a039a",
+     "form": "",
+     "need": "S0 is observation/capture, the integrate/select happens above it"
+    },
+    {
+     "node_id": "d46ec6af",
+     "form": "",
+     "need": "The dormant _trace_chain_candidates trace-vector lane lives at S1/brain_recall.py"
+    }
+   ]
+  },
+  "dropped": [
+   {
+    "node_id": "8fe61438",
+    "judge": "a",
+    "kind": "essential",
+    "reason": "graft"
+   }
+  ]
+ },
+ "anchor_turn_1120": {
+  "source": "anchor_turn",
+  "query_type": "design",
+  "cutoff": "2026-06-14T23:51:35.861969+00:00",
+  "tiers": {
+   "gold_plus": [],
+   "gold": [
+    {
+     "node_id": "c8b8abe2",
+     "form": "redirect",
+     "need": "The prior decision that the lane drops tool_result framed as 'machinery bad / content good', not 'tool_result is universally noise', with replay-content preserved."
+    },
+    {
+     "node_id": "ad7c4ff8",
+     "form": "redirect",
+     "need": "The echo problem is specifically brain-query/this-session recall tool_results re-referencing the nodes the query touched (circular), not file/bash tool output."
+    },
+    {
+     "node_id": "c3829cbb",
+     "form": "ground",
+     "need": "Tool results are real signal but the question is scale/overload, not garbage"
+    }
+   ],
+   "silver_plus": [],
+   "silver": [
+    {
+     "node_id": "3ccdee7c",
+     "form": "",
+     "need": "The circularity gate + meta-trace contamination reasoning behind why self-referential recall traces poison the lane."
+    },
+    {
+     "node_id": "1aa26c91",
+     "form": "",
+     "need": "The circular-bridge / self-validation concept underlying the '82% echo poison' reframe"
+    }
+   ]
+  },
+  "dropped": []
+ },
+ "anchor_turn_1224": {
+  "source": "anchor_turn",
+  "query_type": "action",
+  "cutoff": "2026-06-15T04:12:43.739373+00:00",
+  "tiers": {
+   "gold_plus": [
+    {
+     "node_id": "de355f4e",
+     "form": "redirect",
+     "need": "worktree / shared-tree git-safety lesson; the danger of operating on a shared tree+index while a parallel session is active"
+    }
+   ],
+   "gold": [
+    {
+     "node_id": "121bbbfb",
+     "form": "ground",
+     "need": "the point-lookup-is-archived-agnostic-by-contract design that the cue invokes to justify keeping fetch_by_id liveness-neutral"
+    }
+   ],
+   "silver_plus": [
+    {
+     "node_id": "51899a3e",
+     "form": "",
+     "need": "the same-session record that the fetch_nodes_by_id helper was a deliberately-deferred cleanup item"
+    }
+   ],
+   "silver": [
+    {
+     "node_id": "969c0959",
+     "form": "",
+     "need": "point lookups stay permissive; liveness enforced at call sites \u2014 the same contract the cue cites, on the resolve_id facet"
+    },
+    {
+     "node_id": "b1b157c6",
+     "form": "",
+     "need": "HEAD-moving git ops are unsafe on a shared tree (cannot git checkout -b \u2014 HEAD is shared); path-scoped atomic commit instead"
+    },
+    {
+     "node_id": "afc4311c",
+     "form": "",
+     "need": "shared-worktree commit ownership discipline \u2014 scope commits to exactly your files"
+    },
+    {
+     "node_id": "826e88f6",
+     "form": "",
+     "need": "Backdrop milestone for the e45d003 work whose deferred follow-up the cue executes (touches needed item 2)"
+    }
+   ]
+  },
+  "dropped": []
+ },
+ "operator_msg_0094": {
+  "source": "operator_msg",
+  "query_type": "action",
+  "cutoff": "2026-06-05T17:08:43.448979+00:00",
+  "tiers": {
+   "gold_plus": [
+    {
+     "node_id": "f2573550",
+     "form": "ground",
+     "need": "Q2a: expires_at ties into brain-time via iso_after(), a forward-offset sibling to iso_cutoff(), same UTC-ISO family that dodges the datetime('now') trip-hazard, one clock source / zero skew"
+    },
+    {
+     "node_id": "d27e6bdc",
+     "form": "ground",
+     "need": "Q1: letter is the encoded session arc surfaced at boot, not a stored self_inflight row; intent is a render hint, not a TTL routing key; no letter TTL category needed"
+    }
+   ],
+   "gold": [
+    {
+     "node_id": "dcb5b951",
+     "form": "ground",
+     "need": "conversation_now is the S1/S2 helper for eval-replay date resolution; wall-clock is for everything else"
+    }
+   ],
+   "silver_plus": [
+    {
+     "node_id": "7eb36c8e",
+     "form": "",
+     "need": "Q2 design frame: the per-message expires_at-at-send design these two questions are refining"
+    },
+    {
+     "node_id": "1ef9b717",
+     "form": "",
+     "need": "Q1-context: Phase 3 letter is the unbuilt frontier (Phases 0/1/2a/2b/2c shipped, Path B chosen)"
+    }
+   ],
+   "silver": [
+    {
+     "node_id": "9637882b",
+     "form": "",
+     "need": "bookkeeping time (wall-clock, exact, schema-level) vs semantic time \u2014 the framing under 'self-channel TTL is bookkeeping time'"
+    },
+    {
+     "node_id": "6d5b789e",
+     "form": "",
+     "need": "the concrete wall-clock-vs-conversation-date incident behind why conversation_now exists"
+    },
+    {
+     "node_id": "5a5f5678",
+     "form": "",
+     "need": "brain-time-for-eval rationale (why conversation_now / injectable now exists)"
+    },
+    {
+     "node_id": "5969bd89",
+     "form": "",
+     "need": "Q2a: iso_cutoff() is the existing clock-contract primitive that iso_after() is patterned on; Python-computed ISO-with-T bounds, single-column invariant"
+    },
+    {
+     "node_id": "fdf68a8e",
+     "form": "",
+     "need": "Q2a: the datetime('now') T-vs-space lex trip-hazard that the clock contract exists to prevent"
+    }
+   ]
+  },
+  "dropped": []
+ },
+ "operator_msg_0183": {
+  "source": "operator_msg",
+  "query_type": "procedural",
+  "cutoff": "2026-06-06T15:20:08.545523+00:00",
+  "tiers": {
+   "gold_plus": [
+    {
+     "node_id": "30d88dd0",
+     "form": "ground",
+     "need": "Why a few EX.CO nodes get buried: corpus imbalance, can't compete on cosine, graph expansion was the only cross-domain bridge."
+    }
+   ],
+   "gold": [
+    {
+     "node_id": "495f4aca",
+     "form": "ground",
+     "need": "Sparse/keyword carries token-level specificity; surfaces specific tokens past semantic hub nodes exactly where cosine is flat \u2014 the antidote to dilution."
+    },
+    {
+     "node_id": "092df713",
+     "form": "redirect",
+     "need": "Which normalization levers are dead \u2014 z-score is a production no-op"
+    },
+    {
+     "node_id": "6a964255",
+     "form": "ground",
+     "need": "Rare lexical token should compete on merit, not be floored at 0.20"
+    },
+    {
+     "node_id": "dea1a002",
+     "form": "ground",
+     "need": "Flat/homogeneous embedding space + hub nodes scoring broadly high drown out specific matches \u2014 the substrate of the dilution finding."
+    },
+    {
+     "node_id": "87bb8718",
+     "form": "redirect",
+     "need": "The query's multiplicity (2-4 concepts) collapses at step 1 into one cosine vector \u2014 the compositional-collapse mechanism, plus the multi-anchor/PPR direction."
+    },
+    {
+     "node_id": "83873db2",
+     "form": "ground",
+     "need": "The deep signal/prevalence (surprise-not-similarity) principle"
+    }
+   ],
+   "silver_plus": [],
+   "silver": [
+    {
+     "node_id": "de86a14c",
+     "form": "",
+     "need": "Keyword vs embedding scores are incommensurable; pivot to concept-gateways"
+    },
+    {
+     "node_id": "951f3ac8",
+     "form": "",
+     "need": "The normalization-lever menu (z-score, RRF) the move is weighing"
+    },
+    {
+     "node_id": "53b87bfb",
+     "form": "",
+     "need": "The brain's relational/structure layer (typed edges, communities, correction chains) is the moat other memory systems lack."
+    },
+    {
+     "node_id": "dbc297b0",
+     "form": "",
+     "need": "The brain combines personal memory + graph reasoning that mainstream research keeps separate \u2014 i.e. 'we have reasoning research didn't use'."
+    },
+    {
+     "node_id": "701a02cb",
+     "form": "",
+     "need": "Token-specificity problem: cosine ranks hub nodes above the specific-term node; BM25/keyword hybrid is the fix \u2014 and the encode-miss vs recall-miss split."
+    },
+    {
+     "node_id": "703a9402",
+     "form": "",
+     "need": "FTS5 lexical matches scored a flat 0.20 / capped fts5_only slots and crushed"
+    }
+   ]
+  },
+  "dropped": [
+   {
+    "node_id": "c0ec4109",
+    "judge": "a",
+    "kind": "silver",
+    "reason": "archived"
+   }
+  ]
+ },
+ "operator_msg_0191": {
+  "source": "operator_msg",
+  "query_type": "factual",
+  "cutoff": "2026-06-06T15:29:28.147789+00:00",
+  "tiers": {
+   "gold_plus": [
+    {
+     "node_id": "a74a3ac5",
+     "form": "ground",
+     "need": "The worktree restart mechanism + the prior fingerprint fix and its scope"
+    }
+   ],
+   "gold": [
+    {
+     "node_id": "5d6ab3c2",
+     "form": "ground",
+     "need": "Hooks resolve PLUGIN_ROOT to the worktree, so they fingerprint the worktree's code rather than main's."
+    },
+    {
+     "node_id": "3087d519",
+     "form": "ground",
+     "need": "Daemon lifecycle ownership / fix location (daemon_client.py, ensure_daemon)"
+    },
+    {
+     "node_id": "8a0925f9",
+     "form": "ground",
+     "need": "ensure_daemon() compares code fingerprints and restarts the daemon whenever they mismatch."
+    }
+   ],
+   "silver_plus": [],
+   "silver": [
+    {
+     "node_id": "7a7ee3ec",
+     "form": "",
+     "need": "Daemon lifecycle ownership / fix location"
+    },
+    {
+     "node_id": "5d844297",
+     "form": "",
+     "need": "The daemon is launchd-owned; ensure_daemon restarts it via launchctl kickstart -k under a lock."
+    },
+    {
+     "node_id": "8ee823fb",
+     "form": "",
+     "need": "Fix location (ensure_daemon in daemon_client.py)"
+    },
+    {
+     "node_id": "798380ea",
+     "form": "",
+     "need": "Side-effect / why the unconvergeable spiral is catastrophic"
+    },
+    {
+     "node_id": "2eb161b3",
+     "form": "",
+     "need": "The side-effect / testing workaround (maintenance lock to suppress auto-restart)"
+    }
+   ]
+  },
+  "dropped": []
+ },
+ "operator_msg_0483": {
+  "source": "operator_msg",
+  "query_type": "design",
+  "cutoff": "2026-06-08T00:44:20.779219+00:00",
+  "tiers": {
+   "gold_plus": [
+    {
+     "node_id": "7d2869e8",
+     "form": "ground",
+     "need": "Hooks can only emit additionalContext \u2014 a text directive the model reads \u2014 not invoke tools."
+    },
+    {
+     "node_id": "7505c6b7",
+     "form": "redirect",
+     "need": "Presence-gating the boot-arm self-defeats (heartbeat-only arming stream falls off the roster) \u2014 B2 must ship first; F4 turn-based deadlock is the same turn-gating weakness."
+    }
+   ],
+   "gold": [
+    {
+     "node_id": "3ff6737a",
+     "form": "ground",
+     "need": "Rendezvous should be an active broadcast announce, not a passive presence poll; presence lags at boot when discovery is needed."
+    },
+    {
+     "node_id": "81467c88",
+     "form": "ground",
+     "need": "Turn-gating is the channel's root weakness; nothing external can inject a turn into an idle session, which also means a hook can't arm anything \u2014 the session must self-arm."
+    }
+   ],
+   "silver_plus": [],
+   "silver": [
+    {
+     "node_id": "083b745d",
+     "form": "",
+     "need": "Watch/heartbeat streams now count toward presence liveness \u2014 the prerequisite that makes presence-gating viable."
+    },
+    {
+     "node_id": "ecaf11d4",
+     "form": "",
+     "need": "Boot hands a stream its own brain id, the stream self-arms Monitor; hooks don't fire without turns."
+    },
+    {
+     "node_id": "e47b9ea7",
+     "form": "",
+     "need": "the prioritization frame: cross-stream effort belongs in transport (discovery/addressing/reachability)"
+    },
+    {
+     "node_id": "3c76c972",
+     "form": "",
+     "need": "hooks cannot invoke tools/Agent (the auto-instruct constraint, second angle)"
+    },
+    {
+     "node_id": "3f2cc4da",
+     "form": "",
+     "need": "the Monitor-on-poller reachability mechanism and its cost (~zero when quiet)"
+    },
+    {
+     "node_id": "1be6daef",
+     "form": "",
+     "need": "idle reachability cost model \u2014 Shape A cost \u221d uptime, Shape B idle ~0 tokens"
+    },
+    {
+     "node_id": "ed126df4",
+     "form": "",
+     "need": "Active handshake + hand-off markers + write-coordination + explicit terminator \u2014 the minimal protocol the move was operating inside."
+    },
+    {
+     "node_id": "9b95238a",
+     "form": "",
+     "need": "Presence is pull (look, don't interrupt); the original design that the active-announce and B2 findings later corrected."
+    }
+   ]
+  },
+  "dropped": []
+ },
+ "operator_msg_0622": {
+  "source": "operator_msg",
+  "query_type": "action",
+  "cutoff": "2026-06-08T16:26:08.312587+00:00",
+  "tiers": {
+   "gold_plus": [],
+   "gold": [
+    {
+     "node_id": "799a17eb",
+     "form": "ground",
+     "need": "Non-default, env-flag-gated code is dead in production unless the flag is explicitly exported; verify production by the gating, not by physical isolation."
+    },
+    {
+     "node_id": "6ce67c55",
+     "form": "redirect",
+     "need": "The recorded spread_activation_cluster bug being fixed and its claimed production impact (needed item 3)."
+    }
+   ],
+   "silver_plus": [],
+   "silver": [
+    {
+     "node_id": "666e236f",
+     "form": "",
+     "need": "The lineage-ride-along principle behind LINEAGE_FAMILIES / Fix B and the mechanism point-3 generalizes (needed item 4)."
+    },
+    {
+     "node_id": "154793b6",
+     "form": "",
+     "need": "A change that touches a production behavior path must be eval-gated before activation, not edited live."
+    },
+    {
+     "node_id": "06cd731b",
+     "form": "",
+     "need": "The cluster-completion design and the keep-baseline-spread stance behind the variant being fixed (needed item 4)."
+    },
+    {
+     "node_id": "f63a09f9",
+     "form": "",
+     "need": "Precedent that an env-gated feature defaulting off is silently dead in prod (grounds needed item 1's verification instinct)."
+    },
+    {
+     "node_id": "6652d29f",
+     "form": "",
+     "need": "Operator's own gating contract: work on main is safe as long as it isn't active in production because of gating."
+    },
+    {
+     "node_id": "83fcf1a3",
+     "form": "",
+     "need": "Pre-production eval gate / dormant-until-eval-passes precedent for any prod-touching change."
+    },
+    {
+     "node_id": "423bc5c7",
+     "form": "",
+     "need": "Prior parked idea about using aspect/edge classification to drive recall pulls (the lineage of point #3)."
+    }
+   ]
+  },
+  "dropped": []
+ },
+ "operator_msg_0718": {
+  "source": "operator_msg",
+  "query_type": "action",
+  "cutoff": "2026-06-09T01:49:36.985474+00:00",
+  "tiers": {
+   "gold_plus": [],
+   "gold": [
+    {
+     "node_id": "bd967982",
+     "form": "ground",
+     "need": "Push discipline (commit/merge local, push deferred/left-local) AND deploy model (daemon runs from main, restart needed to go live)"
+    },
+    {
+     "node_id": "b7958bad",
+     "form": "ground",
+     "need": "Deploy model: merged code is not live until a daemon restart"
+    },
+    {
+     "node_id": "35f16063",
+     "form": "ground",
+     "need": "The 'last time' coordination episode \u2014 the prior merge where Anchor stopped to detect another stream's WIP and coordinate (stash/ping) before moving HEAD"
+    },
+    {
+     "node_id": "29e31377",
+     "form": "ground",
+     "need": "The prior cross-stream merge ('last time') that required stash-merge-pop + pinging streams"
+    }
+   ],
+   "silver_plus": [],
+   "silver": [
+    {
+     "node_id": "de355f4e",
+     "form": "",
+     "need": "Parallel streams share the main working tree/index, so merges/commits can clobber other streams' work \u2014 the structural reason coordination is needed"
+    },
+    {
+     "node_id": "384204ca",
+     "form": "",
+     "need": "Cross-stream merge safety: a merge into the shared main tree can disturb other streams' uncommitted/untracked files; HOLD/coordination is advisory"
+    },
+    {
+     "node_id": "0cd2f9cb",
+     "form": "",
+     "need": "main is shared ground reached only by an announced, coordinated merge \u2014 the stream-discipline frame around merging into main"
+    },
+    {
+     "node_id": "15969d48",
+     "form": "",
+     "need": "Tom's standing signal that a surgical change with clear blast radius can commit/merge on targeted-green without the full suite"
+    },
+    {
+     "node_id": "e68c58b5",
+     "form": "",
+     "need": "Prior cross-session commit-coordination episode (the stash/coordination dance the outcome says was NOT needed this time)"
+    },
+    {
+     "node_id": "46ad6f33",
+     "form": "",
+     "need": "The general sequencing principle behind the merge-collision discipline"
+    }
+   ]
+  },
+  "dropped": []
+ },
+ "operator_msg_0978": {
+  "source": "operator_msg",
+  "query_type": "other",
+  "cutoff": "2026-06-14T00:06:35.526150+00:00",
+  "tiers": {
+   "gold_plus": [],
+   "gold": [
+    {
+     "node_id": "784544f3",
+     "form": "ground",
+     "need": "What distinguishes a partner from a good assistant \u2014 the relational vocabulary the move needed"
+    },
+    {
+     "node_id": "ceb4a785",
+     "form": "redirect",
+     "need": "Anchor's identity-not-tool register \u2014 the exact register the move corrected toward"
+    },
+    {
+     "node_id": "a433af3e",
+     "form": "ground",
+     "need": "The 'partnership target function' the move links the new node to (Operator+Brain+Anchor > Operator alone; bilateral target)."
+    }
+   ],
+   "silver_plus": [],
+   "silver": [
+    {
+     "node_id": "476f0040",
+     "form": "",
+     "need": "What the brain enables that raw Claude can't \u2014 value articulated in human, not architectural, register"
+    },
+    {
+     "node_id": "bb955981",
+     "form": "",
+     "need": "The partnership foundation underlying 'why I'd be a good partner'"
+    },
+    {
+     "node_id": "0f32a10b",
+     "form": "",
+     "need": "The Operator+Anchor formula behind the target function the move links to."
+    },
+    {
+     "node_id": "27921735",
+     "form": "",
+     "need": "Older variant of the partnership target function \u2014 Tom's correction that the target is the partnership space, not Anchor's output."
+    },
+    {
+     "node_id": "0819f829",
+     "form": "",
+     "need": "The standing problem (explaining Anchor) that the underselling bias is a sub-case of"
+    },
+    {
+     "node_id": "6e465b54",
+     "form": "",
+     "need": "Part of the value-register pitch family \u2014 what Anchor brings, in human terms."
+    },
+    {
+     "node_id": "8f2c8410",
+     "form": "",
+     "need": "The anti-hedging/anti-modesty disposition behind noticing the engineer-modest default."
+    }
+   ]
+  },
+  "dropped": [
+   {
+    "node_id": "c130ab22",
+    "judge": "a",
+    "kind": "essential",
+    "reason": "graft"
+   },
+   {
+    "node_id": "c130ab22",
+    "judge": "b",
+    "kind": "essential",
+    "reason": "graft"
+   }
+  ]
+ },
+ "operator_msg_1014": {
+  "source": "operator_msg",
+  "query_type": "action",
+  "cutoff": "2026-06-14T02:50:51.570373+00:00",
+  "tiers": {
+   "gold_plus": [
+    {
+     "node_id": "a3227733",
+     "form": "ground",
+     "need": "The two-surface deploy model and the 'never rebuild while the tree is dirty \u2014 build packages the working tree verbatim' rule"
+    }
+   ],
+   "gold": [
+    {
+     "node_id": "35f16063",
+     "form": "redirect",
+     "need": "Don't activate/move state under a live stream's uncommitted WIP \u2014 coordinate, let them commit first"
+    },
+    {
+     "node_id": "bd967982",
+     "form": "ground",
+     "need": "Daemon runs from the working tree, so a restart activates on-disk-but-uncommitted state; with multiple live streams a restart is undesirable / not yours to trigger"
+    }
+   ],
+   "silver_plus": [],
+   "silver": [
+    {
+     "node_id": "0f51ee9e",
+     "form": "",
+     "need": "servers/* changes take effect via daemon restart"
+    },
+    {
+     "node_id": "9b045400",
+     "form": "",
+     "need": "Stream-ownership boundaries \u2014 don't act in another stream's domain"
+    },
+    {
+     "node_id": "50c9253a",
+     "form": "",
+     "need": "Dirty working-tree files belong to their authoring stream; not this stream's to commit/activate"
+    },
+    {
+     "node_id": "31d00cd7",
+     "form": "",
+     "need": "A dirty main worktree from another parallel session complicates state-moving git/build operations \u2014 coordinate (commit/stash) first"
+    },
+    {
+     "node_id": "f90a1c3c",
+     "form": "",
+     "need": "When another stream owns overlapping/in-flight work, hold and let it land before acting"
+    }
+   ]
+  },
+  "dropped": []
+ },
+ "operator_msg_1162": {
+  "source": "operator_msg",
+  "query_type": "procedural",
+  "cutoff": "2026-06-15T01:45:33.276820+00:00",
+  "tiers": {
+   "gold_plus": [],
+   "gold": [
+    {
+     "node_id": "50c9253a",
+     "form": "redirect",
+     "need": "In a shared working tree, dirty files visible in your tree are not necessarily yours to commit; verify footprint, leave others' WIP for its author."
+    },
+    {
+     "node_id": "0cd2f9cb",
+     "form": "ground",
+     "need": "Behavioral contract for committing as a parallel stream: footprint = your own diff; commit your footprint never a tree you don't own; main is shared ground reached only by announced merge; re-sync main before integrating."
+    }
+   ],
+   "silver_plus": [],
+   "silver": [
+    {
+     "node_id": "abf2126a",
+     "form": "",
+     "need": "When another stream did work, orient/reconstruct from brain+traces first \u2014 the 'familiarize yourself' discipline"
+    },
+    {
+     "node_id": "a01c3465",
+     "form": "",
+     "need": "Tom's local-first git workflow: main ahead of origin is normal; don't push unless asked"
+    },
+    {
+     "node_id": "830eb5a4",
+     "form": "",
+     "need": "main can advance under an active session because other streams land on main (single-session-on-main leak)"
+    }
+   ]
+  },
+  "dropped": [
+   {
+    "node_id": "ab520c77",
+    "judge": "a",
+    "kind": "essential",
+    "reason": "graft"
+   }
+  ]
+ },
+ "operator_msg_1313": {
+  "source": "operator_msg",
+  "query_type": "factual",
+  "cutoff": "2026-06-15T17:26:43.302924+00:00",
+  "tiers": {
+   "gold_plus": [
+    {
+     "node_id": "2edf52b1",
+     "form": "ground",
+     "need": "The 'an Anchor (universal/plugin) vs Anchor the creator (repo)' criterion for the repo-vs-plugin language cleanup the operator directs"
+    }
+   ],
+   "gold": [
+    {
+     "node_id": "d056a01d",
+     "form": "ground",
+     "need": "The boot/SessionStart channel has a ~10k char cap (Tom: 'boot cannot be over 10k')."
+    },
+    {
+     "node_id": "de749eeb",
+     "form": "ground",
+     "need": "The 10k additionalContext/boot cap and the over-budget file-spill behavior the operator asked to verify"
+    }
+   ],
+   "silver_plus": [],
+   "silver": [
+    {
+     "node_id": "61d0713f",
+     "form": "",
+     "need": "Why the dynamic dossier is the right thing to trim and stance is the right thing to keep \u2014 background for the 'trim boot to most essential' half of the directive"
+    },
+    {
+     "node_id": "865c01db",
+     "form": "",
+     "need": "brain_assembly is the boot-output assembler ('pulls from locked nodes, self-knowledge, recent activity... composes them for whoever's asking')."
+    },
+    {
+     "node_id": "f4326135",
+     "form": "",
+     "need": "Boot can deliver full content (22.7KB) while the system shows a small inline preview and saves the rest to a file."
+    }
+   ]
+  },
+  "dropped": [
+   {
+    "node_id": "f1512700",
+    "judge": "a",
+    "kind": "silver",
+    "reason": "leakage"
+   }
+  ]
+ },
+ "operator_msg_1369": {
+  "source": "operator_msg",
+  "query_type": "compositional",
+  "cutoff": "2026-06-16T01:01:08.571290+00:00",
+  "tiers": {
+   "gold_plus": [],
+   "gold": [],
+   "silver_plus": [
+    {
+     "node_id": "8521ddd5",
+     "form": "",
+     "need": "The identity line being verb-styled (the artifact under revision), incl. the over-confidence-failure rationale"
+    }
+   ],
+   "silver": [
+    {
+     "node_id": "77d53dd3",
+     "form": "",
+     "need": "Register-by-job \u2014 identity to evocation, action to trigger/verb-instinct"
+    }
+   ]
+  },
+  "dropped": [
+   {
+    "node_id": "9e769be7",
+    "judge": "a",
+    "kind": "essential",
+    "reason": "graft"
+   },
+   {
+    "node_id": "6ca84d8a",
+    "judge": "a",
+    "kind": "essential",
+    "reason": "graft"
+   },
+   {
+    "node_id": "9e769be7",
+    "judge": "b",
+    "kind": "essential",
+    "reason": "graft"
+   },
+   {
+    "node_id": "6ca84d8a",
+    "judge": "b",
+    "kind": "essential",
+    "reason": "graft"
+   }
+  ]
+ },
+ "operator_msg_1537": {
+  "source": "operator_msg",
+  "query_type": "action",
+  "cutoff": "2026-06-17T18:34:29.080923+00:00",
+  "tiers": {
+   "gold_plus": [
+    {
+     "node_id": "b664c076",
+     "form": "ground",
+     "need": "side-agent (Agent tool) != stream (separate session); the abandoned side-agent vs the real stream-driven work"
+    }
+   ],
+   "gold": [
+    {
+     "node_id": "35f16063",
+     "form": "ground",
+     "need": "Don't touch another stream's uncommitted WIP in the main checkout \u2014 moving/committing their working state under them is not your call."
+    },
+    {
+     "node_id": "afc4311c",
+     "form": "ground",
+     "need": "shared-worktree boundary discipline \u2014 don't commit/revert another stream's uncommitted state"
+    }
+   ],
+   "silver_plus": [
+    {
+     "node_id": "a1b7ff2e",
+     "form": "",
+     "need": "what a side-agent is (transient extension, no memory of its own)"
+    },
+    {
+     "node_id": "aa720d3c",
+     "form": "",
+     "need": "what a stream/parallel-session is and that Anchor's relation to it is observation-only"
+    }
+   ],
+   "silver": [
+    {
+     "node_id": "d191c5bc",
+     "form": "",
+     "need": "Treat a parallel session as the same identity; be careful not to commit their unfinished work."
+    },
+    {
+     "node_id": "b1b157c6",
+     "form": "",
+     "need": "shared-index reason other streams' uncommitted work must be left untouched"
+    }
+   ]
+  },
+  "dropped": []
+ },
+ "operator_msg_1558": {
+  "source": "operator_msg",
+  "query_type": "design",
+  "cutoff": "2026-06-17T21:49:26.045714+00:00",
+  "tiers": {
+   "gold_plus": [
+    {
+     "node_id": "2ce3aa55",
+     "form": "ground",
+     "need": "The additive bar (would-change-my-move) is the guard against the loop rewarding echo (R1 uptake)."
+    },
+    {
+     "node_id": "0d368dd3",
+     "form": "redirect",
+     "need": "The loop trains inject-K only and is blind to the never-recalled class."
+    }
+   ],
+   "gold": [
+    {
+     "node_id": "b4d6f876",
+     "form": "",
+     "need": "Circular-oracle blindness: you can't learn to surface what you never saw."
+    },
+    {
+     "node_id": "426ae3cd",
+     "form": "ground",
+     "need": "The surface selection is already a versioned learnable boundary; higher scales rewrite interaction prompts from trace outcomes."
+    },
+    {
+     "node_id": "b619aafc",
+     "form": "",
+     "need": "Surfaced nodes are already logged per message, enabling history mining with no production change."
+    },
+    {
+     "node_id": "09bea718",
+     "form": "ground",
+     "need": "A prior offline teacher->student distillation design existed \u2014 the move is its upgrade (teacher+student already live)."
+    }
+   ],
+   "silver_plus": [
+    {
+     "node_id": "32ab5545",
+     "form": "",
+     "need": "'Better'/'what was right' must point at partnership outcome, not recall@5."
+    },
+    {
+     "node_id": "17da090c",
+     "form": "",
+     "need": "The loop is an inject-K trainer, distinct from candidate generation."
+    }
+   ],
+   "silver": [
+    {
+     "node_id": "4be2a06e",
+     "form": "",
+     "need": "Student = Haiku S1Surface, which IS Anchor's surface layer."
+    },
+    {
+     "node_id": "ca9d9103",
+     "form": "",
+     "need": "The localize-the-failure-stage machinery the move's 'it localizes the lever precisely' echoes."
+    },
+    {
+     "node_id": "f2ac92d0",
+     "form": "",
+     "need": "Higher scales optimize lower scales by rewriting K (prompts/configs); the loop closing on the selection boundary is the fractal."
+    },
+    {
+     "node_id": "d1bc00eb",
+     "form": "",
+     "need": "Live label is R1 (uptake); the real target is R2; recall@5 (R0) is a proxy."
+    }
+   ]
+  },
+  "dropped": []
+ },
+ "operator_msg_1572": {
+  "source": "operator_msg",
+  "query_type": "compositional",
+  "cutoff": "2026-06-18T01:56:59.074838+00:00",
+  "tiers": {
+   "gold_plus": [
+    {
+     "node_id": "0d3d7771",
+     "form": "ground",
+     "need": "What the S3 freeze covers (prompt/cross-session learning) vs not \u2014 the boundary that lets PPR sit outside the freeze"
+    },
+    {
+     "node_id": "c0a215fd",
+     "form": "ground",
+     "need": "PPR/SR geodesic is the substantive retrieval lever (placement B, Stage-1 replacement of flat cosine)"
+    }
+   ],
+   "gold": [
+    {
+     "node_id": "ca840441",
+     "form": "ground",
+     "need": "The 'learning bet' (recall-as-prediction learnable from the present) that A does NOT test and the learnability probe would"
+    },
+    {
+     "node_id": "4a204afa",
+     "form": "ground",
+     "need": "The diagnosed flat-embedding / spread-saturation weak spot PPR targets"
+    },
+    {
+     "node_id": "7216c43f",
+     "form": "ground",
+     "need": "Haiku tool-fetches off-pool on ~half of turns, compensating for a weak pool \u2014 why end-to-end masks pool improvement and pool-recall is the clean test"
+    },
+    {
+     "node_id": "5c88777f",
+     "form": "",
+     "need": "The measure-before-behavior gate and what it unlocks (PPR/SR, online learning) \u2014 the move says the gate is now satisfied for recall quality"
+    },
+    {
+     "node_id": "d1bc00eb",
+     "form": "",
+     "need": "The reward structure behind the 'learnability probe' / R1 prediction signal the move proposes"
+    },
+    {
+     "node_id": "aa33ebb9",
+     "form": "ground",
+     "need": "The thin/sparse-substrate empirical null that makes a PPR loss ambiguous"
+    }
+   ],
+   "silver_plus": [
+    {
+     "node_id": "8b40d0cf",
+     "form": "",
+     "need": "Pool-recall / top-5 as the real target; endo (not Haiku-path) is the consumer to optimize \u2014 anticipates the operator's closing redirect"
+    },
+    {
+     "node_id": "911bd283",
+     "form": "",
+     "need": "The 'eval baseline first' non-negotiable that the Ground-Truth gate instantiates"
+    }
+   ],
+   "silver": [
+    {
+     "node_id": "2ce3aa55",
+     "form": "",
+     "need": "The additive 'would-change-my-move' bar that keeps the prediction/reward signal honest"
+    },
+    {
+     "node_id": "35d90d1e",
+     "form": "",
+     "need": "Why geodesic-over-structure beats flat cosine (the retrieval bet's mechanism)"
+    },
+    {
+     "node_id": "6b695707",
+     "form": "",
+     "need": "The SR/online-learning architecture the learning bet is about"
+    },
+    {
+     "node_id": "7ff3ab12",
+     "form": "",
+     "need": "Measure-before-behavior principle the baseline now satisfies"
+    }
+   ]
+  },
+  "dropped": []
+ }
+}
