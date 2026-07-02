@@ -1414,3 +1414,96 @@ metric + the moment boundary — *then* expand the episodic **seed axis** (prev-
 full role×seed **family** of separate layers. (4) measure the `dropped−` layer against the **inhibition anti-gold** corpus at
 scale. All bounded by N=24 → grow the corpus (the remaining ~49 engineering + 22 diverse cues) before any number is treated as
 more than directional.
+
+---
+
+## 19 — The trained engine: phased ladder, every rung deployable (Tom + Anchor, 2026-07-01/02) ◀ NEXT ARC
+
+**The frame (settled 2026-07-01, nodes `cf7d5773`/`25a23312`):** LAF is an attention mechanism over persistent
+memory — graph=weights (trained by living), layers=heads (hand-built lenses), gains=head-mixing (the trainable
+part), field=one pass's activations. Tom's direction: reverse-engineering DISCOVERS mechanisms; the combination
+is LEARNED from the production flywheel, never hand-tuned. The flywheel already exists: `outcomes_per_candidate`
+≈ 4,650 turns since 2026-04-19 — each a labeled (moment, ~25 candidates, picked 3–5, dropped ~20) decision, plus
+next-turn usage as the debiasing label. Judge-dropped candidates = hard negatives (failed as a recall-time layer,
+gold as a training-time signal). Fitted values from the literature are priors, not inventions to re-make:
+SYNAPSE/HippoRAG2/PAM parameter node `7e762e54` (fan(j) division, T=3, δ=0.5/S=0.8, PPR damping 0.5, synonym τ=0.8,
+familiarity-normalized conductance `w−E[w]`, fusion λ≈{0.5 cos, 0.3 activation, 0.2 global prior}).
+
+**The mixing math (node `d076d946`):** `score(n) = Σₖ gₖ(φ(q))·fₖ(n|q)`. Level 0: gₖ constant (20 params).
+Level 1: gₖ(q) = gate over situation features φ(q) — discrete classes (C×K ≈ 120 params) or softmax(W·φ(q))
+(K×dim(φ) ≈ 320–640). Include per-field peakedness (max z-score of fₖ on q) in φ: a field flat on this query
+self-silences — which is ALSO the cold-start story (empty fields → gains → 0 → graceful collapse to cosine).
+Gate only pays over DECORRELATED fields (oracle probe `1b5b18fc`: routing over same-query arms ≈ worthless;
+the 53%-union prize lives on query-side seeds).
+
+**Current verified state (all on the 24-cue lens-independent gold, need-collapsed):** base maxsim 14/21;
++graph-beam 13–14/24 (+7-8 brought); +pick+enc episodic **16/28** (best); drop− OUT (direct ablation);
+temporal OUT (burst corpus); graph redundant on top of episodic at static gains (re-check post seed-axis).
+Substrate: unified `nodes_for_traces` join (+dropped role), dict `gather`, `EdgeIndex` + cutoff-masked
+`edge_cos`, `laf_metrics.py` shared metrics, gold artifacts in `eval/oracle_audit/gold_remint/`.
+
+### The ladder — each rung gated, deployable, reversible
+
+**P1 — Ship the measured winner (deploy now-ish).** Wire maxsim + pick+enc (static literature gains) into
+`brain.recall()` as a flagged variant (`BRAIN_RECALL_VARIANT=laf_v1`), champion/challenger vs production.
+GATE: beats production on gold-24 need@5/@25 (production measured ~10% need@5 vs stack 16%) + frame_replay A/B
+no regression + hot-path latency budget (episodic pull cost measured FIRST; if too slow, ship maxsim-only,
+episodic on the hook path only). Deploy=flag flip; rollback=flag. Risk guards: champion floor (risk map #1).
+
+**P2 — The dataset walker (the foundation asset).** Walk all traced turns; per (turn, candidate) emit
+{φ(q) features, f₁..fₖ(n|q) computed AS-OF the turn (replay fidelity = the gold24 harness discipline: node
+eligibility, edge created_at masks, older_than episodic), label picked/dropped, label used-next-turn}.
+GATE (not deployable, but a hard win): leakage audit per field ("can this feature know the label by
+construction?"), gold-24 cue turns/sessions EXCLUDED by id, April-gap rows handled, replay sanity check —
+offline static-gain scoring of walker rows reproduces the live ranking. ~2–3 days reusing the probe machinery.
+
+**P3 — Fit Level-0 gains.** Pairwise ranking loss (picked > dropped within a turn's candidate set), L1,
+~20 params, numpy/sklearn, trains in seconds. GATE: beats hand-set gains on held-out gold-24 AND time-split
+(train April–May → validate June; drift measured, not assumed). Deploy: gains are config — flag flip.
+This rung validates the whole loop end-to-end (data → fit → deploy → measure) at minimum blast radius.
+
+**P4 — Level-1 gate.** Add φ(q) (aspect cosines, query shape, FTS-hit, per-field peakedness) → gₖ(q).
+GATE: nested comparison — ships ONLY if it beats Level-0 on held-out (gates on faith are how per-situation
+weights become worse than global). Deploy: config. Cold-start rule ships here: fits apply only above a
+minimum-data threshold (~500 labeled turns); below it, literature defaults + self-silencing.
+
+**P5 — New fields as columns (parallel, from P2 onward).** Seed-axis fields FIRST (prev-anchor, work-context,
+segment particles — the decorrelated inputs where routing pays), then ACT-R base-level usage prior
+(B=ln(Σt⁻ᵈ) over ACCESS events — dodges the burst-corpus degeneracy that killed creation-time temporal),
+PAM familiarity-normalized conductance in `edge_cos` (one line; targets measured mean-0.499 flatness),
+FTS∪maxsim beam seeds, node-specificity in spread. Each field: leakage audit → column → refit → per-field
+ablation on gold. Post-training economics: a field costs one column + refit, not a hand-tuning session.
+
+**P6 — The moment encoder (answers "define moment" empirically).** Contrastive training from the walker:
+two moments are similar iff overlapping nodes were useful in them (behavioral metric, not text cosine).
+Small projection head on nomic. GATE: episodic field standalone + in-stack beats the text-cosine stub on gold.
+Deploys as the episodic layer's internal `score_fn`. This is the trained answer to the open moment-definition
+call (window/boundary seam stays in `episodic_ops.py`).
+
+**P7 — Node-embedder fine-tune (the keys).** Contrastive: picks/used = positives, judge-dropped = hard
+negatives. Attacks the flat-space wall (0.54–0.63 band) on OUR distribution. GATE: the ENTIRE ladder re-runs
+on the new space (biggest win potential, biggest re-validation cost) — nothing above survives by assumption.
+Deploy: re-embed migration, staged.
+
+**Ongoing, not a rung:** grow the gold (remaining ~49 engineering + 22 diverse cues); RE-MINT blind gold
+periodically on fresh moments — this is the anti-feedback-loop mechanism, not one-time infra.
+
+### Risk map = acceptance criteria (2026-07-02; each guard is a checklist item, not advice)
+
+1. **Loses-to-cosine** → champion/challenger + runtime fallback; worst case IS today's behavior.
+2. **Feedback loop** (model trains on its own surfacing echo — the deepest risk) → next-turn-usage labels
+   (surfacing-independent) + periodic blind-gold re-mint + small exploration rate in candidate admission.
+3. **Cold start / 100-node brain** → peakedness self-silencing + literature-default gains + min-data
+   threshold before any fit applies + NEVER transfer one brain's fitted weights as another's truth.
+4. **Field poisoning** → training itself filters noise (L1 → exactly 0); the real danger is LEAKAGE —
+   per-field audit at the door + per-field ablation after every fit.
+5. **Bad φ(q)** → nested model comparison; gate ships only if it beats static.
+6. **Eval contamination** → gold cue turns/sessions excluded from the walk BY CONSTRUCTION (P2 gate).
+7. **Goodhart-on-Haiku** → pick-agreement is the training signal, never the KPI; gold + usage are the KPIs.
+8. **Drift** → time-split validation each refit; canaries: judge-disagreement rate, abstention rate.
+
+**Files/nodes to load on wake:** this section; `eval/laf/` (probes + `laf_metrics.py` + `operators.py`);
+gold in `eval/oracle_audit/gold_remint/`; nodes `cf7d5773` (analogy), `25a23312` (Tom's training directive),
+`1b5b18fc` (oracle/seed-axis), `7e762e54` (literature params), `d076d946`/`3be5c0df`/`152cd0db` (gates, build
+scope, failure modes — encoder-written), community `dae30088`. **START at P1's latency measurement + P2's
+walker skeleton; P2 does not block P1.**
