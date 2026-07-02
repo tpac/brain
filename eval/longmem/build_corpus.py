@@ -121,8 +121,18 @@ def _apply_interaction_override(brain, name: str, template: str) -> None:
 def build_corpus(items_per_axis: int, seed: int, oracle: str,
                  s1e: str, ingest_surface: str, s2_every_n: int,
                  label: str, qids: str = None, force: bool = False,
-                 interaction_overrides: dict = None) -> str:
+                 interaction_overrides: dict = None, lived: bool = False) -> str:
     _load_env()
+
+    # The lived arm (BRAIN_S1E_LIVED_SEQUENCE) changes the ENCODED GRAPH — the
+    # XML lived-sequence input, widened catalog, 2-scout muster, inline scout
+    # notes all shape what S1E writes — so it must be pinned here, not inherited
+    # from the shell: set it explicitly per the arg, and clear any leaked env
+    # on the control arm so a stray export can't silently flip a build's arm.
+    if lived:
+        os.environ["BRAIN_S1E_LIVED_SEQUENCE"] = "1"
+    else:
+        os.environ.pop("BRAIN_S1E_LIVED_SEQUENCE", None)
 
     with open(oracle) as f:
         data = json.load(f)
@@ -156,6 +166,12 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
     if interaction_overrides:
         config["interaction_overrides"] = {
             k: int(v) for k, v in sorted(interaction_overrides.items())}
+    # Lived arm joins the content address ONLY when on (key absent on control →
+    # every pre-existing control corpus keeps its hash; no cache invalidation).
+    # Without this, a lived and a control build with the same versions would
+    # collide on one hash and the cache would hand back the wrong arm's corpus.
+    if lived:
+        config["s1e_lived"] = True
     h = corpus_config_hash(config)
     ov_str = (" / overrides=%s" % config["interaction_overrides"]) if interaction_overrides else ""
     print(f"[corpus] config hash = {h}  ({config['s1e']} / surface={config['ingest_surface']} "
@@ -179,6 +195,17 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
                   flush=True)
 
     os.makedirs(corpus_dir(h), exist_ok=True)
+
+    # Full-prompt capture (Tom, 2026-07-02): every S1E encode in a corpus build
+    # dumps its literal per-round payload — the REAL prompt fed to S1Scribe, not
+    # a rebuild — under the corpus itself. Files key as
+    # {arm}__ingest-{qid}__stop{n}-r{round}-{pid}-{seq}.json, so any regression
+    # in the A/B is inspectable at the exact prompt that produced it.
+    prompts_dir = os.path.join(corpus_dir(h), "prompts")
+    os.makedirs(prompts_dir, exist_ok=True)
+    os.environ["BRAIN_PROMPT_CAPTURE_DIR"] = prompts_dir
+    print(f"[corpus] full-prompt capture → {prompts_dir}", flush=True)
+
     items_manifest = []
     t_run0 = time.time()
 
@@ -189,6 +216,7 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
         ac = sum(1 for it in items_manifest if it.get("answerable"))
         m = {
             "corpus_hash": h, "label": label, "created_at_epoch": time.time(),
+            "prompts_dir": prompts_dir,
             "config": config, "items": items_manifest,
             "answerable_count": ac,
             "unanswerable_count": len(items_manifest) - ac,
@@ -302,6 +330,10 @@ def main():
     p.add_argument("--label", default="corpus", help="human label stored in the manifest")
     p.add_argument("--qids", default=None, help="comma-separated qids (overrides stratified sampling)")
     p.add_argument("--force", action="store_true", help="rebuild even if the corpus already exists")
+    p.add_argument("--lived", action="store_true",
+                   help="build the LIVED arm (BRAIN_S1E_LIVED_SEQUENCE on: XML lived-sequence "
+                        "input, widened catalog, 2 scouts, inline notes). Joins the content "
+                        "address — a lived corpus never collides with a control corpus.")
     p.add_argument("--interaction-override", dest="interaction_override", default=None,
                    help="Comma-separated name=version pairs, fetched from the live daemon's "
                         "registered (incl. DORMANT) versions and activated in each eval brain. "
@@ -317,7 +349,7 @@ def main():
 
     build_corpus(args.items, args.seed, args.oracle, args.s1e, args.ingest_surface,
                  args.s2_every_n, args.label, qids=args.qids, force=args.force,
-                 interaction_overrides=overrides or None)
+                 interaction_overrides=overrides or None, lived=args.lived)
 
 
 if __name__ == "__main__":

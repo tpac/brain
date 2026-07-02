@@ -480,17 +480,37 @@ def _build_catalog(brain, messages, session_id, lived):
 
 
 def _scout_note_line(scout, cand):
-    """One compact <scout_notes> line for a candidate: scout + handle + a
-    trimmed detail (event description / evidence quote), whitespace-collapsed
-    and XML-escaped so it can't malform the timeline."""
+    """One <scout_notes> line for a candidate — compact but LOSSLESS on the
+    decision-bearing fields the encoder's instructions rely on. The turn's full
+    text sits directly above the note, so the detail (event description /
+    evidence quote) can trim — but fields the turn text does NOT carry must
+    render or the instruction that uses them goes dead:
+      [role] — source_role, the temporal-authority tag (user beats assistant;
+               the v15.9 'since November' discrimination rides on this)
+      reuse id:… — existing_anchor_id (never mint a second anchor)
+      anchors: … — the facts scout's context_anchors (adjacent-query findability)
+      catalog: id:… — the facts scout's catalog_match (dedup hint)
+    Whitespace-collapsed and XML-escaped so it can't malform the timeline."""
     handle = str(cand.get('handle') or '').strip()
     detail = str(cand.get('event_description') or cand.get('evidence_quote') or '').strip()
-    extras = [str(b) for b in (cand.get('precision'), cand.get('relational_marker')) if b]
     line = '%s: %s' % (scout, handle)
+    role = str(cand.get('source_role') or '').strip()
+    if role:
+        line += ' [%s]' % role
     if detail:
-        line += ' — %s' % detail[:140]
+        line += ' — %s' % detail[:160]
+    extras = [str(b) for b in (cand.get('precision'), cand.get('relational_marker')) if b]
+    reuse = str(cand.get('existing_anchor_id') or '').strip()
+    if reuse and reuse.lower() not in ('null', 'none'):
+        extras.append('reuse id:%s' % reuse[:8])
+    anchors = cand.get('context_anchors') or ()
+    if anchors:
+        extras.append('anchors: %s' % ', '.join(str(a) for a in anchors[:4]))
+    cat = str(cand.get('catalog_match') or '').strip()
+    if cat and cat.lower() not in ('null', 'none'):
+        extras.append('catalog: id:%s' % cat[:8])
     if extras:
-        line += ' (%s)' % ', '.join(extras)
+        line += ' (%s)' % '; '.join(extras)
     return _xml_escape(' '.join(line.split()))
 
 
@@ -529,7 +549,10 @@ def _map_scout_notes(scout_outputs, messages):
             owner = None
             for et in (cand.get('evidence_turns') or ()):
                 i = idx_by_mid.get(et)
-                if i is not None and owner_trace[i]:
+                # bounds guard: idx_by_mid and owner_trace are built from the
+                # same messages list today, but a scout citing an id outside it
+                # (hallucinated turn ref) must land in `unmapped`, never crash
+                if i is not None and i < len(owner_trace) and owner_trace[i]:
                     owner = owner_trace[i]
                     break
             if owner:
@@ -829,7 +852,7 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
         # ellipsis, then escape.
         meta = ep.get('metadata')
         body = (meta.get('content') if isinstance(meta, dict) else None) or ep.get('summary') or ''
-        cap = cap or lim
+        cap = cap if cap is not None else lim
         cut = body[:cap] + ('…' if len(body) > cap else '')
         return _xml_escape(cut)
 

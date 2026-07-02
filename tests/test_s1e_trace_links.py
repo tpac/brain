@@ -594,6 +594,28 @@ def _mk_messages():
     ]
 
 
+def test_scout_note_line_carries_decision_fields():
+    # The rendered line must be LOSSLESS on the fields the prompt's instructions
+    # use: source_role (temporal authority), existing_anchor_id (reuse — never
+    # duplicate), context_anchors (findability), catalog_match (dedup hint).
+    from servers.scales.s1.encode import _scout_note_line
+    t = _scout_note_line('temporal', {
+        'handle': '2025-01-22', 'source_role': 'user', 'precision': 'explicit',
+        'relational_marker': 'just after', 'existing_anchor_id': 'abc12345ff',
+        'event_description': 'the surgery Dr. Chen did on January 22nd'})
+    assert '[user]' in t and 'explicit' in t and 'just after' in t
+    assert 'reuse id:abc12345' in t
+    f = _scout_note_line('facts', {
+        'handle': 'PT = Sarah', 'evidence_quote': 'PT with Sarah at Riverside',
+        'context_anchors': ['Dr. Chen', 'Riverside Rehab'],
+        'catalog_match': 'dd44ee55'})
+    assert 'anchors: Dr. Chen, Riverside Rehab' in f
+    assert 'catalog: id:dd44ee55' in f
+    # absent fields render nothing (no empty brackets/parens)
+    bare = _scout_note_line('facts', {'handle': 'X = Y'})
+    assert bare == 'facts: X = Y'
+
+
 def test_map_scout_notes_joins_by_owning_user_turn():
     from servers.scales.s1.encode import _map_scout_notes
     outputs = {

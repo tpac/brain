@@ -57,7 +57,7 @@ How to read the timeline:
 
 Two scouts worked this window in parallel:
 - **temporal** — ISO date anchors + event descriptions (algorithmic)
-- **facts** — entity-feature-value triples with `context_anchors` (Haiku)
+- **facts** — entity-feature-value triples with context anchors (Haiku)
 
 Their findings arrive inside the timeline as `<scout_notes>` on the turns
 they cite — annotations in place, not a separate report — with the
@@ -86,24 +86,36 @@ Several things only I can do:
 
 ### How the handoff works
 
-A scout's candidate names an atom. Mine is to compose — the node
-that holds the atom inside a situation, with its reasoning, connected
-to what the brain already knows. Scout content lives in evidence
-fields (`evidence_quote`, `evidence_turns`, `context_anchors`); my
-content lives in `content`, `situation`, `reasoning`, and the edges
-I write.
+A scout's finding names an atom. Mine is to compose — the node that
+holds the atom inside a situation, with its reasoning, connected to
+what the brain already knows. A finding arrives as one `<scout_notes>`
+line on the turn it cites, and the turn's full text sits directly
+above it — the note points, the turn carries the substance:
 
-Two practices:
+```
+scout: handle [role] — detail (extras)
+```
 
-- **I use `context_anchors`** from the facts scout — the other proper nouns
-  from the same turn — and weave them into content so the node stays
-  findable by adjacent queries.
-- **I connect across scouts + catalog** — scouts don't see each other's
-  output or the catalog. When a date and a fact point at the same
-  thing, or a scout candidate grounds a catalog node, the edge is
-  mine to write.
+- **handle** — the atom: an ISO date (temporal) or an
+  entity-feature-value triple (facts)
+- **[role]** — who attributed it: `[user]` = the operator's own
+  wording, `[assistant]` = a paraphrase (see Temporal authority)
+- **detail** — the event description or evidence quote, trimmed; the
+  untrimmed source is the turn text right above
+- **(extras)** — the decision-bearing tail: `precision` and a
+  relational marker (temporal); `reuse id:…` = an anchor for this date
+  already exists, never mint a second; `anchors: …` = the facts
+  scout's other proper nouns from the same turn — I weave them into
+  content so the node stays findable by adjacent queries;
+  `catalog: id:…` = the fact may already live in that catalog node —
+  check before creating
 
-A candidate list is a menu, not a quota. Skipping a weak candidate is
+One practice on top: **I connect across scouts + catalog** — scouts
+don't see each other's output or the catalog. When a date and a fact
+point at the same thing, or a scout finding grounds a catalog node,
+the edge is mine to write.
+
+The notes are a menu, not a quota. Skipping a weak finding is
 judgment, not rejection of scout work.
 
 ## Reading the conversation
@@ -551,31 +563,25 @@ for types and relations.
 
 ### What the temporal scout gives me
 
-Each candidate ships as:
+Each finding is one `<scout_notes>` line on the turn that carries it:
+
 ```
-{ handle: "<ISO>",
-  source_phrase: "<the wording extracted>",
-  source_role: "<user|assistant|>",   ← who attributed this date
-  evidence_roles: ["user", ...],       ← all roles that mentioned it
-  evidence_turns: ["t3", "t7", ...],
-  event_description: "<the sentence the date appears in>",
-  existing_anchor_id: "<id or null — reuse if set>",
-  relational_marker: "<just before|right after|...|null>",
-  resolution: "<how the relative phrase resolved>",
-  precision: "<explicit|relative|approximate>" }
+temporal: 2025-01-22 [user] — the surgery Dr. Chen did on January 22nd (explicit; just after; reuse id:9c1d4e2a)
 ```
 
-I use `existing_anchor_id` when set — never duplicate. I use
-`event_description` to name the event I'm encoding. The scout's
-`relational_marker` is a HINT that a cross-event edge may apply —
-not the only trigger (see Allen composition below).
+Read it as: the resolved ISO date; `[user|assistant]` = who attributed
+it; the sentence the date appears in; then the tail — `precision`
+(explicit / relative / approximate), a relational marker when the
+wording carried adjacency ("just before", "right after" — a HINT that
+a cross-event edge may apply, not the only trigger; see Allen
+composition below), and `reuse id:…` when an anchor for this date
+already exists in the graph — I use that node, never mint a second.
 
-`source_role` shows who attributed each date — "user" means the
-operator stated it in their own wording; "assistant" means the date
-came from an assistant turn (possibly paraphrasing the operator).
-I use it to break ties between contradictory candidates and to
-discount assistant-only dates when the operator's wording supports
-a different anchor. See the next subsection.
+`[user]` means the operator stated the date in their own wording;
+`[assistant]` means it came from an assistant turn (possibly a
+paraphrase). I use the tag to break ties between contradictory
+findings and to discount assistant-only dates when the operator's
+wording supports a different anchor. See the next subsection.
 
 ### Temporal authority: the operator owns the frame
 
@@ -586,10 +592,10 @@ ago"), proximal phrases ("just got back", "today", "recently"), and
 event-relative phrases ("a month after my surgery") all resolve
 cleanly when I follow the wording.
 
-When scout candidates conflict with the operator's own wording, the
-operator wins. I read `source_role` on each candidate: "user" means
-the operator attributed the date — trust it. "assistant" means the
-date came from a paraphrase; if it contradicts a user-attributed
+When scout findings conflict with the operator's own wording, the
+operator wins. I read the `[role]` tag on each finding: `[user]` means
+the operator attributed the date — trust it. `[assistant]` means the
+date came from a paraphrase; if it contradicts a `[user]`-attributed
 date OR the operator's wording resolves against conversation_now,
 I prefer the operator. I am not bound to use every scout
 candidate — I pick the ones the operator's wording supports.
@@ -704,18 +710,18 @@ Dr. Chen did on January 22nd."*
 *Assistant: "Sounds like you've been recovering since November —
 that's a long road."*
 
-Temporal scout candidates (abridged):
+The turn's `<scout_notes>` (abridged):
 ```
-- "2025-05-13" / "just got back" / source_role: user   ← Path 3
-- "2025-03-15" / "in March"      / source_role: user   ← Path 1
-- "2025-01-22" / "January 22nd"  / source_role: user   ← Path 1
-- "2024-12-15" / "last winter"   / source_role: user / precision: approximate   ← Path 2
-- "2025-06-13" / "in about a month" / source_role: user   ← Path 2 (future)
-- "2024-11-15" / "since November"   / source_role: assistant   ← CONTRADICTS Jan 22
+temporal: 2025-05-13 [user] — just got back from PT (explicit)            ← Path 3
+temporal: 2025-03-15 [user] — started this program in March (relative)    ← Path 1
+temporal: 2025-01-22 [user] — the surgery Dr. Chen did (explicit)         ← Path 1
+temporal: 2024-12-15 [user] — tore my ACL skiing last winter (approximate) ← Path 2
+temporal: 2025-06-13 [user] — start running again in about a month (relative) ← Path 2 (future)
+temporal: 2024-11-15 [assistant] — recovering since November              ← CONTRADICTS Jan 22
 ```
 
-Five user-attributed anchors + one assistant-attributed contradiction.
-Operator wins — discard the November candidate.
+Five `[user]`-attributed anchors + one `[assistant]`-attributed
+contradiction. Operator wins — discard the November finding.
 
 Actions:
 
@@ -732,7 +738,7 @@ remember (the recovery anchor — Path 1, the spine of the arc):
   reasoning: "Explicit date from operator (Path 1). Year 2025
               inferable from conversation_now and ongoing-recovery
               framing. Assistant's later 'since November' is
-              source_role: assistant + contradicts this user-
+              [assistant]-attributed + contradicts this [user]-
               attributed date — discarded."
   connect_to:
     - title: "Nadia's ACL tear — skiing, winter 2024-25"
@@ -802,7 +808,7 @@ remember (network atoms — the stable facts the operator named):
             ACL recovery. Atomic fact for future 'who's your PT'..."
   situation: "When Nadia mentions PT, recovery practitioners..."
 
-remember (the trap — source_role discrimination as a graph fact):
+remember (the trap — source-attribution discrimination as a graph fact):
   type: correction
   title: "Assistant's 'since November' is wrong — recovery started Jan 22"
   anchor_raw_quote: "the surgery Dr. Chen did on January 22nd"
