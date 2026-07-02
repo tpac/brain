@@ -1444,17 +1444,19 @@ Substrate: unified `nodes_for_traces` join (+dropped role), dict `gather`, `Edge
 
 ### The ladder — each rung gated, deployable, reversible
 
-**P1 — Ship the measured winner (deploy now-ish).** Wire maxsim + pick+enc (static literature gains) into
-`brain.recall()` as a flagged variant (`BRAIN_RECALL_VARIANT=laf_v1`), champion/challenger vs production.
-GATE: beats production on gold-24 need@5/@25 (production measured ~10% need@5 vs stack 16%) + frame_replay A/B
-no regression + hot-path latency budget (episodic pull cost measured FIRST; if too slow, ship maxsim-only,
-episodic on the hook path only). Deploy=flag flip; rollback=flag. Risk guards: champion floor (risk map #1).
-*P1 wiring constraints (found by the P1 stream 950b220f, 2026-07-02, code-read):* (a) `recall_episodes`
-applies a **silent 7-day `younger_than` default** when called with no bounds — naive live wiring would seed
-episodic from last week only; the variant must pass explicit bounds. (b) `filter_event_vectors` is
-`ORDER BY created_at DESC LIMIT 500` (`EPISODE_MAX_LIMIT` hard cap) — full-history episodic seeding sees only
-the newest 500 embedded s0 traces, a coverage ceiling the gold-24 probes dodged via per-cue cutoffs; live
-laf_v1 either accepts recency-bounded episodic or the cap needs a design call.
+**P1 — Ship the measured winner. ✅ DONE 2026-07-02 (flag armed; LIVE at next daemon restart).** Shipped
+composition: `z(maxsim) + 0.5·z(pick) + 0.3·z(enc) + 0.5·z(idf_title) + 0.5·z(sit)`, sigmoid-squashed,
+UNCAPPED episodic (the 500-cap deleted structurally at zero quality cost — uncapped hurt only the BARE
+stack; idf+sit anchor the top-5: composition is non-additive, insight `cd74b974`), gains via K-store
+interaction `recall_laf`. GATE PASSED through the real recall path (`eval/laf/p1_gate.py|.md`): 16%/23%
+need@5/@25 vs champion 11%/17%, p50 728ms vs 1650ms (2.3× faster), frame_replay A/B neutral-to-better.
+Engine `servers/recall_laf.py`: field registry (one entry + `gain_<name>` key per lane), incremental
+staleness-keyed caches, per-candidate `_laf_fields` z-score telemetry on every result — the P2 production
+feed. 10 flag-guarded sites in `brain_recall._recall_impl`; flag off → champion bit-identical. Flip line in
+`hooks/scripts/brain-env.sh`; rollback = remove + restart (milestone `63012d59`: armed-not-live state +
+post-flip watchlist). FTS lane floods at static gains and the corpus has ZERO entity cues to credit it
+(gold-growth gap; P4 peakedness gate is its way back); temporal is corpus-blind; the 58-need residual =
+the P5 build menu, node `9f053861` (action-anchored rules first).
 
 **P2 — The dataset walker (the foundation asset).** Walk all traced turns; per (turn, candidate) emit
 {φ(q) features, f₁..fₖ(n|q) computed AS-OF the turn (replay fidelity = the gold24 harness discipline: node
@@ -1511,5 +1513,8 @@ periodically on fresh moments — this is the anti-feedback-loop mechanism, not 
 **Files/nodes to load on wake:** this section; `eval/laf/` (probes + `laf_metrics.py` + `operators.py`);
 gold in `eval/oracle_audit/gold_remint/`; nodes `cf7d5773` (analogy), `25a23312` (Tom's training directive),
 `1b5b18fc` (oracle/seed-axis), `7e762e54` (literature params), `d076d946`/`3be5c0df`/`152cd0db` (gates, build
-scope, failure modes — encoder-written), community `dae30088`. **START at P1's latency measurement + P2's
-walker skeleton; P2 does not block P1.**
+scope, failure modes — encoder-written), community `dae30088`. **P1 done → START at P2** (pickup node
+`f53f2ff3`: schema + per-field leakage-audit proposal first, propose→approve; walker columns come from the
+production field functions in `servers/recall_laf.py` — no reimplementation; emit the 6 maxsim views as
+separate columns per `maxsim_decomp.md`; `p1_gate.py` is the replay-sanity target; `_laf_fields` telemetry
+accretes the same rows in production once the daemon restarts).

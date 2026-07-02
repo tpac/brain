@@ -203,6 +203,7 @@ Files: `scales/s1/surface.py`, `scales/s1/surface_contract.py`, `scales/s1/frame
 Traces: `s1r-{session_short}-{stop}` (O: candidates, K: selected, Δ: additionalContext)
 Interaction: `surface` — the learnable boundary higher scales evolve
 Env var: `BRAIN_SURFACE_VARIANT=v5_agentic` (exported from `hooks/scripts/brain-env.sh`) enables the agentic tool-use loop. Without this, the single-shot path fires.
+Env var: `BRAIN_RECALL_VARIANT=laf_v1` (same file) swaps the recall scoring core for the LAF field engine (`servers/recall_laf.py`: maxsim + episodic pick/enc + idf + situation lanes, z-scored gain-weighted sum; gains via K-store interaction `recall_laf`; per-candidate `_laf_fields` telemetry on every result). Flag off → champion path bit-identical. Read by the daemon — flips only at restart. Gate + numbers: `eval/laf/p1_gate.md`, plan `docs/RECALL-SR-REDESIGN.md` §19.
 Design: `docs/RECALL-OVERVIEW.md` for the full pipeline
 
 ### S1 Scribe
@@ -266,7 +267,7 @@ The most important table in the brain. Not nodes — those are memory. Interacti
 
 Every boundary where two parts meet has an interaction entry: versioned prompt + config JSON. `register()` auto-increments version. `created_by` tracks who wrote it. Trace events reference `interaction_id` — which version produced which result. Compare outcomes across versions to evaluate changes.
 
-**Runtime-wired boundaries:** `surface`, `encoding_agent`, `s2_community_enrichment`, `s2_consolidation_enrichment`, `s2_healer`, `s2_aspects` read from the table at runtime. MCP tool `register_interaction` allows updating from conversation.
+**Runtime-wired boundaries:** `surface`, `encoding_agent`, `s2_community_enrichment`, `s2_consolidation_enrichment`, `s2_healer`, `s2_aspects`, `recall_laf` (config-only: the LAF gain values — P3 updates them via `register_interaction`, no code change) read from the table at runtime. MCP tool `register_interaction` allows updating from conversation.
 
 API: `brain.get_interaction_prompt(name)`, `brain.get_interaction_config(name)`, `brain.get_interaction(name)`. Falls back to hardcoded defaults if the table is empty.
 
