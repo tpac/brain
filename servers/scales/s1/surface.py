@@ -500,6 +500,32 @@ def _parse_surfacer_json(raw):
     return None
 
 
+def _sanitize_selected_id(raw):
+    """Strip whitespace Haiku occasionally injects inside emitted ids.
+
+    Observed (eval run v12_1_full, item d7c942c3-r1): picks emitted as
+    '9 9a 2e ' / 'd 6d3 f8' — real candidate ids with spaces inserted.
+    Must run BEFORE any [:8] truncation, or the cut keeps the spaces and
+    drops real hex chars.
+    """
+    return ''.join(str(raw or '').split())
+
+
+def _unique_prefix_match(short_id, candidate_short_ids):
+    """Recover a corrupted pick by unique-prefix match against the menu.
+
+    Returns the single candidate short id that starts with `short_id`, or
+    None when zero or several match. Requires >= 4 chars so a near-empty
+    fragment can't land on a candidate by coincidence. Candidates only —
+    never the whole brain — so recovery can't resurrect an archived node
+    the menu already excluded.
+    """
+    if len(short_id) < 4:
+        return None
+    hits = [cid for cid in candidate_short_ids if cid.startswith(short_id)]
+    return hits[0] if len(hits) == 1 else None
+
+
 # Module-level flag so variant verification logs once per process, not per
 # call. Reset on import (when the harness reloads modules between runs).
 _VARIANT_FIRST_CALL_LOGGED = False
@@ -870,11 +896,10 @@ def run_surface(brain, ctx, candidates_data, user_message,
     _mark('surface_haiku')
 
     selected = surfaced.get("selected", [])
-    selected_short_ids = {s.get("id", "")[:8] for s in selected}
 
     if not selected:
         _write_surface_selected_file(brain, session_id, ctx.stop_counter,
-                                     selected_short_ids)
+                                     set())
         try:
             _write_traces(brain, ctx, candidates_data, set(), [], [],
                           None, enriched, results,
@@ -885,21 +910,36 @@ def run_surface(brain, ctx, candidates_data, user_message,
         _write_surface_result_file(recall_ref, surface_prompt, "(no selection)", brain)
         return None
 
-    # Map short-id → full-id + why using candidates_data (they were enriched
-    # with full IDs on the way in). Also collect Haiku's "why" per seed.
+    # Map short-id → full-id + why over the WHOLE candidate pool (≤25
+    # entries) — sanitized / prefix-recovered ids below must be able to
+    # land on any candidate, not just ones whose raw emitted form matched.
     short_to_full = {}
     selected_why = {}
     for c in candidates_data:
         cid = c.get('id', '')
-        if cid[:8] in selected_short_ids:
+        if cid:
             short_to_full[cid[:8]] = cid
-    hallucinated_ids = []
+    hallucinated = []  # (short_id, why) pairs that resolved nowhere
     # selected_mode: per-node render mode (fact|arc|background), default 'arc'.
     # Surface v5 may emit `mode` per selected item; v4 omits it → all 'arc'.
     selected_mode = {}
     for s in selected:
-        short_id = s.get('id', '')[:8]
+        raw_id = s.get('id', '')
+        short_id = _sanitize_selected_id(raw_id)[:8]
         full_id = short_to_full.get(short_id)
+        if not full_id and short_id:
+            # Whitespace corruption often leaves fewer than 8 real chars
+            # ('d 6d3 f8' → 'd6d3f8') — a unique prefix of exactly one
+            # candidate is still an unambiguous pick. Recover it rather
+            # than dropping the selection.
+            recovered = _unique_prefix_match(short_id, short_to_full)
+            if recovered:
+                full_id = short_to_full[recovered]
+                brain._log_warning(
+                    'surface_id_fuzzy_recovered',
+                    'emitted id %r recovered to candidate %s by unique prefix'
+                    % (raw_id, recovered),
+                    'session=%s' % session_id)
         if full_id:
             selected_why[full_id] = s.get('why', '')
             mode = (s.get('mode') or 'arc').strip().lower()
@@ -958,14 +998,28 @@ def run_surface(brain, ctx, candidates_data, user_message,
                     RuntimeError('Haiku selected an ID not in its candidate menu but it resolves to a real node'),
                     'short_id=%s resolved=%s why=%r' % (short_id, resolved[:12], s.get('why', '')[:80]))
             else:
-                hallucinated_ids.append(short_id)
-    if hallucinated_ids:
+                hallucinated.append((short_id, s.get('why', '')))
+                # Drift tripwire — the scoreboard's drift section counts
+                # this stream; a silent drop here is exactly how the
+                # v12_1_full empty-context miss went unnoticed.
+                brain._log_warning(
+                    'surface_unknown_selected_id',
+                    'emitted id %r matches no candidate and resolves to '
+                    'no node — pick dropped' % raw_id,
+                    'sanitized=%s session=%s why=%r'
+                    % (short_id, session_id, s.get('why', '')[:80]))
+    if hallucinated:
         brain._log_error(
             'haiku_id_unresolvable',
             RuntimeError('Haiku selected IDs that exist nowhere in the brain'),
             'ids=%s why_samples=%r' % (
-                ','.join(hallucinated_ids[:5]),
-                [s.get('why', '')[:80] for s in selected if s.get('id', '')[:8] in hallucinated_ids][:3]))
+                ','.join(sid for sid, _ in hallucinated[:5]),
+                [why[:80] for _, why in hallucinated[:3]]))
+
+    # Trace + Hebbian-file input derives from what actually RESOLVED, so a
+    # recovered pick lands as its real short id (not the corrupted emission)
+    # and unresolvable ids never leak downstream.
+    selected_short_ids = {fid[:8] for fid in selected_why}
 
     # Liveness gate — Haiku's prompt carries node ids in historical text
     # (conversation, recently-surfaced block) that read-time archived

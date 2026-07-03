@@ -494,3 +494,116 @@ class TestSelectionLivenessGate(BrainTestBase):
             surface_mod._call_surface = orig
             if os.path.exists(path):
                 os.remove(path)
+
+
+class TestSelectedIdRecovery(BrainTestBase):
+    """2026-07-03 — Haiku occasionally emits whitespace-corrupted ids in its
+    selection JSON ('9 9a 2e ' for candidate 99a2e…). The raw [:8] lookup
+    matched nothing, the pick died silently, and the surfaced context came
+    out empty (eval run v12_1_full, item d7c942c3-r1). The resolution layer
+    must sanitize + unique-prefix-recover against the candidate pool, and
+    any id that still resolves nowhere must log a drift warning the
+    scoreboard's drift section counts."""
+
+    needs_embedder = False
+
+    def _run_with_selection(self, session_id, candidates_data, selection):
+        """Drive the REAL run_surface with a canned Haiku selection; return
+        the surfaced-ids set the Hebbian file received."""
+        from servers.scales.s1 import surface as surface_mod
+        from servers.scales.s1.surface_contract import surface_selected_path
+
+        ctx = self.brain.get_or_create_session(session_id)
+
+        def _fake_call_surface(brain, cands, user_message, recent_messages,
+                               sid, result, frame=''):
+            return ({'selected': selection}, 'prompt', 100, None,
+                    {'input_tokens': 50, 'output_tokens': 10,
+                     'cache_read_tokens': 0, 'cache_creation_tokens': 0,
+                     'elapsed_ms': 5, 'rounds': 1, 'truncated': 0})
+
+        orig = surface_mod._call_surface
+        surface_mod._call_surface = _fake_call_surface
+        path = surface_selected_path(session_id, ctx.stop_counter)
+        try:
+            surface_mod.run_surface(
+                self.brain, ctx, candidates_data, 'user msg', [], {},
+                'enriched query', [], 'test-recall-ref', session_id, None,
+                query_vec=None)
+            with open(path) as f:
+                return set(json.load(f)['selected_ids'])
+        finally:
+            surface_mod._call_surface = orig
+            if os.path.exists(path):
+                os.remove(path)
+
+    def _warnings(self, source):
+        rows = self.brain.logs_conn.execute(
+            "SELECT metadata FROM debug_log "
+            "WHERE source = ? AND event_type = 'warning'", (source,)).fetchall()
+        return [json.loads(r[0]) for r in rows]
+
+    def _two_candidates(self, tag):
+        a = self.brain.remember(type='test', title='%s_a' % tag, content='c',
+                                auto_connect=False,
+                                encoding_source='anchor:test')
+        b = self.brain.remember(type='test', title='%s_b' % tag, content='c',
+                                auto_connect=False,
+                                encoding_source='anchor:test')
+        cands = [
+            {'id': a['id'], 'title': '%s_a' % tag, 'type': 'test', 'score': 0.9},
+            {'id': b['id'], 'title': '%s_b' % tag, 'type': 'test', 'score': 0.8},
+        ]
+        return a, b, cands
+
+    def test_space_corrupted_full_id_sanitized(self):
+        """All 8 chars present but space-riddled → sanitize alone recovers,
+        and the file carries the REAL short id, not the corrupted emission."""
+        a, _b, cands = self._two_candidates('sani')
+        nid8 = a['id'][:8]
+        corrupted = ' '.join(nid8[i:i + 2] for i in range(0, 8, 2))
+
+        on_disk = self._run_with_selection(
+            'test-id-sanitize', cands,
+            [{'id': corrupted, 'why': 'relevant'}])
+
+        self.assertEqual(on_disk, {nid8},
+                         'sanitized id did not resolve to its candidate')
+        self.assertFalse(self._warnings('surface_unknown_selected_id'),
+                         'exact sanitized match must not log unknown-id drift')
+
+    def test_space_corrupted_fragment_prefix_recovered(self):
+        """Corruption dropped chars ('d 6d3 f8' shape): the sanitized
+        fragment is a unique prefix of one candidate → recovered + warned."""
+        a, _b, cands = self._two_candidates('fuzz')
+        nid8 = a['id'][:8]
+        frag = nid8[:6]
+        corrupted = '%s %s %s' % (frag[0], frag[1:4], frag[4:6])
+
+        on_disk = self._run_with_selection(
+            'test-id-fuzzy', cands,
+            [{'id': corrupted, 'why': 'relevant'}])
+
+        self.assertEqual(on_disk, {nid8},
+                         'unique-prefix fragment was not recovered')
+        recov = self._warnings('surface_id_fuzzy_recovered')
+        self.assertTrue(recov, 'fuzzy recovery must log its drift warning')
+        self.assertIn(nid8, recov[-1]['message'])
+
+    def test_unknown_id_dropped_with_drift_warning(self):
+        """An id that matches no candidate and no brain node is dropped —
+        but never silently: surface_unknown_selected_id must fire."""
+        a, _b, cands = self._two_candidates('unkn')
+        nid8 = a['id'][:8]
+
+        on_disk = self._run_with_selection(
+            'test-id-unknown', cands, [
+                {'id': nid8, 'why': 'relevant'},
+                {'id': 'zzzz 9999', 'why': 'confabulated'},
+            ])
+
+        self.assertEqual(on_disk, {nid8},
+                         'good pick lost or unknown id leaked into the file')
+        warns = self._warnings('surface_unknown_selected_id')
+        self.assertTrue(warns, 'unknown selected id was dropped silently')
+        self.assertIn('zzzz 9999', warns[-1]['message'])
