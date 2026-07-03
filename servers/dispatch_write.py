@@ -27,7 +27,11 @@ def _stamp_session_project(brain, cmd, args, ctx=None):
 
     Returns warning strings for the handler to surface in its result.
     """
-    if ctx is not None:
+    if cmd in ('revise', 'revise_batch'):
+        # revise policy strips regardless of the project VALUE — only the
+        # session's existence matters, so skip the SessionContext load
+        project = '' if caller_session(args) else None
+    elif ctx is not None:
         project = ctx.project
     else:
         sid = caller_session(args)
@@ -35,8 +39,9 @@ def _stamp_session_project(brain, cmd, args, ctx=None):
                    if sid else None)
     warnings = stamp_project_provenance(cmd, args, project)
     for w in warnings:
-        brain._log_error('project_provenance_stamp', ValueError(w),
-                         'cmd=%s (agents never author project)' % cmd)
+        # expected agent behavior (the MCP schema still advertises project),
+        # surfaced as a warning — not an error-feed entry
+        brain._log_warning('project_provenance_stamp', w, 'cmd=%s' % cmd)
     return warnings
 
 
@@ -615,7 +620,7 @@ def _handle_revise_batch(brain, args, graph_changes):
         return {"ok": False, "error": "revisions array is required"}
 
     # Project is birth provenance — a revise never moves it (migration does).
-    _stamp_session_project(brain, 'revise_batch', args)
+    project_warnings = _stamp_session_project(brain, 'revise_batch', args)
 
     # Inherit encoding_source from dispatch wrapper
     top_encoding_source = args.get("encoding_source")
@@ -671,6 +676,8 @@ def _handle_revise_batch(brain, args, graph_changes):
                 session_id=session_id,
             )
 
+    if project_warnings and isinstance(result, dict):
+        result.setdefault('warnings', []).extend(project_warnings)
     return {"ok": True, "result": result,
             "affected": _affected(revised=revised_ids)}
 
@@ -767,6 +774,13 @@ def _handle_brain_batch(brain, args, graph_changes):
     operations = args.get("operations", [])
     if not operations:
         return {"ok": False, "error": "operations array is required"}
+
+    # Deterministic project provenance at the BATCH boundary. The remember/
+    # revise sub-ops would be covered by their leaf handlers anyway, but ops
+    # that don't delegate (absorb — whose field overrides flow into revise()
+    # via brain.absorb(updates=...)) are only guarded here; without this an
+    # agent-supplied `project` on an absorb op silently moves birth provenance.
+    project_warnings = _stamp_session_project(brain, 'brain_batch', args)
 
     # Valid nested op names live in contract.VALID_BATCH_OPS (single source of
     # truth — see that constant). The dispatcher matches them via the if/elif
@@ -1048,7 +1062,7 @@ def _handle_brain_batch(brain, args, graph_changes):
         session_id=top_session_id, reason='connect_to')
 
     succeeded = sum(1 for r in results if r.get("ok"))
-    return {"ok": True, "result": {
+    _batch_result = {
         "total": len(operations),
         "succeeded": succeeded,
         "failed": len(operations) - succeeded,
@@ -1056,7 +1070,10 @@ def _handle_brain_batch(brain, args, graph_changes):
         "connect_to_failures": len(connect_to_failed),
         "connect_to_failed": connect_to_failed,
         "results": results,
-    }, "affected": _affected(
+    }
+    if project_warnings:
+        _batch_result["warnings"] = project_warnings
+    return {"ok": True, "result": _batch_result, "affected": _affected(
         created=agg['created'], revised=agg['revised'], archived=agg['archived'])}
 
 

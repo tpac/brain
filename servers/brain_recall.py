@@ -1591,6 +1591,20 @@ class BrainRecallMixin:
         # (z-weighted groups, situation scan, FTS5 net, keyword blend, idf2 title
         # boost, trace-chain lane) are gated off under the flag at their sites.
         # Flag unset / scorer failure → _laf_scores is None → champion unchanged.
+        # Session context — resolved ONCE for the whole recall: the proj
+        # lane's query-side project (STEP 2.7) and the fatigue snapshot
+        # (STEP 3) both read it. Previously the ctx-less MCP path loaded the
+        # SessionContext twice (session_env_for here + get_or_create_session
+        # in STEP 3), a redundant logs-db blob parse per recall.
+        _recall_ctx = ctx
+        if _recall_ctx is None and session_id:
+            try:
+                _recall_ctx = self.get_or_create_session(session_id)
+            except Exception as _ferr:
+                self._log_error('recall_fatigue_ctx', _ferr,
+                                'loading session ctx for fatigue dampening — '
+                                'falling back to empty fatigue')
+
         _laf_scores = None
         _laf_fields = None
         import os as _os_laf
@@ -1609,12 +1623,8 @@ class BrainRecallMixin:
                     from recall_laf import get_engine as _laf_get_engine
                 # Session project — the query-side source for the proj lane
                 # (deterministic provenance from ctx, never from query text).
-                _session_project = None
-                if ctx is not None:
-                    _session_project = ctx.project
-                elif session_id:
-                    _session_project = self.session_env_for(
-                        session_id).get('project', '')
+                _session_project = (_recall_ctx.project
+                                    if _recall_ctx is not None else None)
                 _laf_scores, _laf_fields = _laf_get_engine(self).scores(
                     self, query, query_vec, model=_active_model,
                     session_project=_session_project)
@@ -1665,20 +1675,11 @@ class BrainRecallMixin:
             # reason. Now paid once. Idempotent if Brain.warm_up() already
             # built the structural cache during daemon boot.
             self._ensure_structural_degree_cache()
-            # Per-session fatigue snapshot — prefer the SessionContext the
-            # caller passed in (Tom's convention); otherwise load fresh from
-            # session_id. ctx is saved at end of _recall_impl so fatigue
-            # increments (via _mark_accessed below) persist for the next
-            # recall in this session.
-            _recall_ctx = ctx
+            # Per-session fatigue snapshot — _recall_ctx was resolved once
+            # before STEP 2.7 (shared with the proj lane's session project).
+            # ctx is saved at end of _recall_impl so fatigue increments (via
+            # _mark_accessed below) persist for the next recall this session.
             _recall_fatigue: Dict[str, int] = {}
-            if _recall_ctx is None and session_id:
-                try:
-                    _recall_ctx = self.get_or_create_session(session_id)
-                except Exception as _ferr:
-                    self._log_error('recall_fatigue_ctx', _ferr,
-                                    'loading session ctx for fatigue dampening — '
-                                    'falling back to empty fatigue')
             if _recall_ctx is not None:
                 _recall_fatigue = _recall_ctx.fatigue
             # Per-node data collected here for unified_score() in STEP 6.

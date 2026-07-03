@@ -113,7 +113,8 @@ def _empty_peek(session_id=''):
     # consumers never KeyError. test_peek_empty_path_has_all_keys locks this.
     return {'session_id': session_id, 'short': session_id[:8] if session_id else '',
             'focus': '', 'recent_msgs': [], 'turn_count': 0,
-            'cwd': '', 'branch': '', 'worktree': '', 'session_started_at': '',
+            'cwd': '', 'branch': '', 'worktree': '', 'project': '',
+            'session_started_at': '',
             'last_active_at': '', 'liveness': 'lost', 'pending_inbox_count': 0,
             'found': False}
 
@@ -147,6 +148,7 @@ def peek(brain, session_id, msg_limit=2):
         'cwd': env.get('cwd', ''),
         'branch': env.get('branch', ''),
         'worktree': env.get('worktree', ''),
+        'project': env.get('project', ''),
         'session_started_at': act.get('started_at', '') or '',
         'last_active_at': last_active,
         'liveness': liveness,

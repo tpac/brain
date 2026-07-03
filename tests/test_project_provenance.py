@@ -55,6 +55,19 @@ class TestStampPolicy:
         assert 'project' not in args
         assert len(warnings) == 1
 
+    def test_empty_string_project_cannot_wipe_provenance(self):
+        # REGRESSION (review finding): `project: ''` is falsy but present —
+        # a truthy-only strip let it through to revise, where validate_field
+        # accepts '' and the column write WIPED birth provenance. Strip must
+        # be presence-based on every path.
+        args = {'node_id': 'n', 'reason': 'r', 'project': ''}
+        stamp_project_provenance('revise', args, 'brain')
+        assert 'project' not in args
+        # remember with no session project: explicit '' must also be popped
+        args = {'title': 't', 'project': ''}
+        stamp_project_provenance('remember', args, '')
+        assert 'project' not in args
+
     def test_remember_batch_stamps_each_node(self):
         args = {'nodes': [{'title': 'a'}, {'title': 'b', 'project': 'x'}]}
         stamp_project_provenance('remember_batch', args, 'brain')
@@ -72,6 +85,15 @@ class TestStampPolicy:
         assert ops[0]['project'] == 'brain'
         assert 'project' not in ops[1]
         assert 'project' not in ops[2]
+
+    def test_batch_branch_derives_from_op_contract(self):
+        # force-vs-strip comes from BATCH_OP_SPECS' creates_node flag, not a
+        # local op enumeration — pins the derivation so a future node-creating
+        # op added via the contract path inherits the stamp automatically.
+        from servers.contract import BATCH_OP_SPECS
+        creating = {op for op, spec in BATCH_OP_SPECS.items()
+                    if spec.get('creates_node')}
+        assert creating == {'remember'}   # today; grows via the contract only
 
 
 class TestUnitPolicies(BrainTestBase):
@@ -166,6 +188,49 @@ class TestDispatchStamping(BrainTestBase):
         node = self.brain.get_node(nid)
         assert node['project'] == 'brain'      # unchanged
         assert node['content'] == 'c2'         # other fields still applied
+
+    def test_brain_batch_absorb_cannot_move_provenance(self):
+        # REGRESSION (review finding): MCP brain_batch never stamped, and
+        # _op_absorb forwards non-control keys as survivor field overrides —
+        # an agent-supplied project on an absorb op silently moved birth
+        # provenance. The batch-boundary stamp closes it.
+        from servers.dispatch_write import _handle_remember, _handle_brain_batch
+        self._session_with_project('proj-sess-5', 'brain')
+        a = _handle_remember(self.brain, {
+            'type': 'lesson', 'title': 'survivor node', 'content': 'keep me',
+            '_caller_session': 'proj-sess-5'}, [])['result']['id']
+        b = _handle_remember(self.brain, {
+            'type': 'lesson', 'title': 'absorbed node', 'content': 'fold me',
+            '_caller_session': 'proj-sess-5'}, [])['result']['id']
+        res = _handle_brain_batch(self.brain, {
+            'operations': [{'op': 'absorb', 'survivor_id': a,
+                            'absorbed_id': b, 'project': 'elsewhere'}],
+            '_caller_session': 'proj-sess-5',
+        }, [])
+        assert res['ok'], res
+        assert res['result']['succeeded'] == 1, res['result']
+        node = self.brain.get_node(a)
+        assert node['project'] == 'brain'       # provenance NOT moved
+        assert any('provenance' in w for w in res['result'].get('warnings', []))
+
+    def test_revise_batch_surfaces_stamp_warnings(self):
+        # REGRESSION (review finding): revise_batch discarded the stamp's
+        # warnings while the other three handlers surface them — the agent
+        # never learned its project field was dropped.
+        from servers.dispatch_write import _handle_remember, _handle_revise_batch
+        self._session_with_project('proj-sess-6', 'brain')
+        nid = _handle_remember(self.brain, {
+            'type': 'lesson', 'title': 'batch revised', 'content': 'c',
+            '_caller_session': 'proj-sess-6'}, [])['result']['id']
+        res = _handle_revise_batch(self.brain, {
+            'revisions': [{'node_id': nid, 'reason': 'r',
+                           'project': 'elsewhere', 'content': 'c2'}],
+            '_caller_session': 'proj-sess-6',
+        }, [])
+        assert res['ok'], res
+        assert any('provenance' in w
+                   for w in res['result'].get('warnings', []))
+        assert self.brain.get_node(nid)['project'] == 'brain'
 
     def test_sessionless_caller_passes_through(self):
         # No ambient session (encoder path / direct handler call): the handler

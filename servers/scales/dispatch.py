@@ -100,18 +100,26 @@ def stamp_project_provenance(cmd, cmd_args, project):
                     "%s: project is session-derived provenance — supplied "
                     "%r replaced with %r" % (where, supplied, project))
             node_dict['project'] = project
-        elif supplied:
-            node_dict.pop('project', None)
-            warnings.append(
-                "%s: project is session-derived provenance and this session "
-                "has none — supplied %r dropped" % (where, supplied))
+        elif 'project' in node_dict:
+            # presence-based, not truthiness: an explicit '' is also
+            # agent-authored and must not reach the node
+            supplied = node_dict.pop('project')
+            if supplied:
+                warnings.append(
+                    "%s: project is session-derived provenance and this "
+                    "session has none — supplied %r dropped" % (where, supplied))
 
     def _strip(d, where):
-        if isinstance(d, dict) and d.get('project'):
-            warnings.append(
-                "%s: project is session-derived provenance — agent-supplied "
-                "%r dropped (set at node creation, moved only by migration)"
-                % (where, d.pop('project')))
+        # presence-based: `project: ''` through a revise would WIPE birth
+        # provenance (validate_field accepts '', revise writes the column) —
+        # pop the key whenever it appears, warn when it carried a value
+        if isinstance(d, dict) and 'project' in d:
+            supplied = d.pop('project')
+            if supplied:
+                warnings.append(
+                    "%s: project is session-derived provenance — "
+                    "agent-supplied %r dropped (set at node creation, moved "
+                    "only by migration)" % (where, supplied))
 
     if cmd == 'remember':
         _force(cmd_args, 'remember')
@@ -126,11 +134,16 @@ def stamp_project_provenance(cmd, cmd_args, project):
             for i, spec in enumerate(cmd_args.get('revisions') or []):
                 _strip(spec, 'revise_batch.revisions[%d]' % i)
     elif cmd == 'brain_batch':
+        # force-vs-strip derives from the op contract (creates_node flag on
+        # BATCH_OP_SPECS), not a local op enumeration — a new node-creating
+        # op added via the documented contract path inherits the stamp.
+        from ..contract import BATCH_OP_SPECS
         for i, op in enumerate(cmd_args.get('operations') or []):
             if not isinstance(op, dict):
                 continue
             where = 'brain_batch.operations[%d]' % i
-            if op.get('op') == 'remember':
+            spec = BATCH_OP_SPECS.get(op.get('op'), {})
+            if spec.get('creates_node'):
                 _force(op, where)
             else:
                 _strip(op, where)

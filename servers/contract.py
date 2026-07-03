@@ -103,6 +103,12 @@ CONNECT_TO_ITEM_SCHEMA = {
 BATCH_OP_SPECS = {
     "remember": {
         "required": ["type", "title", "content"],
+        # creates_node: this op mints a node, so provenance stamping
+        # (stamp_project_provenance) FORCE-stamps the session project onto
+        # its payload; ops without the flag get agent-supplied project
+        # STRIPPED. Derived, not enumerated — a future node-creating op
+        # added here inherits the stamp automatically.
+        "creates_node": True,
         "description": ("Create a node. Accepts all remember() fields "
                         "(situation, reasoning, quotes, ...)."),
         "properties": {

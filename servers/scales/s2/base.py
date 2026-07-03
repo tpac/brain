@@ -349,11 +349,10 @@ class IntegrationUnit:
                 encoding_source=encoding_source, run_chain_id=run_chain_id,
                 project=project_policy)
             for _w in _proj_warnings:
-                brain._log_error(
-                    'project_provenance_stamp',
-                    ValueError(_w),
-                    'unit=%s (encoder drift — agents never author project)'
-                    % unit_name)
+                # encoder drift, not a failure — warning severity so the
+                # error feed stays real errors only
+                brain._log_warning('project_provenance_stamp', _w,
+                                   'unit=%s' % unit_name)
 
             if cmd == 'brain_batch' and isinstance(cmd_args, dict):
                 if archive_guard is not None:

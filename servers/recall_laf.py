@@ -223,9 +223,11 @@ class LafV1Engine:
         self._title_df = {}          # token → doc frequency over titles
         self._titles_key = None
         self._titles_ts = 0.0
-        # project provenance (proj lane)
-        self._proj = {}              # row → project slug (only project-carrying nodes)
-        self._proj_key = None
+        # project provenance (proj lane) — row-keyed parallel arrays for the
+        # vectorized per-query lane build (rows of project-carrying nodes only)
+        self._proj_rows = np.empty(0, dtype=np.int64)
+        self._proj_vals = np.empty(0, dtype=object)
+        self._proj_key = None        # (nodes change_key, kv change_key)
         self._proj_ts = 0.0
         # trace matrix — block list, no per-append copy
         self._tr_blocks = []         # [ndarray [k×768]]
@@ -311,6 +313,12 @@ class LafV1Engine:
             self._mats[vt] = m
         # titles are row-keyed — force a rebuild against the new row space
         self._title_tok, self._titles_key, self._titles_ts = {}, None, 0.0
+        # proj arrays are row-keyed too — same forced rebuild, or a reindexed
+        # row space serves WRONG-node project labels (rows shift when a node
+        # drops out of master, and the nodes/kv change keys can't see that)
+        self._proj_rows = np.empty(0, dtype=np.int64)
+        self._proj_vals = np.empty(0, dtype=object)
+        self._proj_key, self._proj_ts = None, 0.0
 
     def _refresh_matrices(self, brain, model):
         key = brain._vec_dal.change_key()
@@ -333,13 +341,15 @@ class LafV1Engine:
 
     # ── title idf: full rebuild, TTL-throttled (cheap but not free) ──
     def _refresh_titles(self, brain):
+        """Returns the nodes change_key it computed, or None on a TTL skip —
+        _refresh_projects reuses it so one expiry window pays one probe."""
         now = time.monotonic()
         if self._title_tok and now - self._titles_ts < TITLES_TTL_S:
-            return
+            return None
         key = brain._nodes.change_key()
         if key == self._titles_key and self._title_tok:
             self._titles_ts = now
-            return
+            return key
         tok, df = {}, defaultdict(int)
         for nid, title in brain._nodes.title_rows():
             i = self._idx.get(nid)
@@ -351,22 +361,31 @@ class LafV1Engine:
                 df[t] += 1
         self._title_tok, self._title_df = tok, dict(df)
         self._titles_key, self._titles_ts = key, now
+        return key
 
     # ── project provenance map: full rebuild, TTL-throttled (same shape) ──
-    def _refresh_projects(self, brain):
+    def _refresh_projects(self, brain, node_key=None):
         now = time.monotonic()
         if self._proj_key is not None and now - self._proj_ts < PROJECTS_TTL_S:
             return
-        key = brain._nodes.change_key()
+        # Two-component staleness key: nodes change_key alone is blind to
+        # node_metadata_kv writes, and project_rows reads COALESCE(kv, column)
+        # — a kv backfill (the column→kv migration, a set_many) must
+        # invalidate this cache or the lane serves pre-migration labels
+        # until an unrelated node insert.
+        nk = node_key if node_key is not None else brain._nodes.change_key()
+        key = (nk, brain._meta_kv.change_key())
         if key == self._proj_key:
             self._proj_ts = now
             return
-        proj = {}
+        rows, vals = [], []
         for nid, p in brain._nodes.project_rows():
             i = self._idx.get(nid)
             if i is not None:
-                proj[i] = p
-        self._proj = proj
+                rows.append(i)
+                vals.append(p)
+        self._proj_rows = np.asarray(rows, dtype=np.int64)
+        self._proj_vals = np.asarray(vals, dtype=object)
         self._proj_key, self._proj_ts = key, now
 
     # ── trace matrix: block list — appends never copy the resident rows ──
@@ -450,17 +469,23 @@ class LafV1Engine:
         the lane contributes ~nothing; its power is INHIBITION when the
         operator works outside the dominant project."""
         vec = np.full(n, np.nan)
-        if not session_project:
+        if not session_project or not len(self._proj_rows):
             return vec
-        for i, p in self._proj.items():
-            if i < n:
-                vec[i] = 1.0 if p == session_project else 0.0
+        m = self._proj_rows < n
+        vec[self._proj_rows[m]] = (
+            self._proj_vals[m] == session_project).astype(float)
         return vec
 
     # ── the field registry: name → per-node raw activation [n] ──
     def _fields(self, brain, query, qv, cfg, n, session_project=None):
         """Adding a lane = one entry here + a 'gain_<name>' DEFAULT_CONFIG key.
-        Every vector is z-scored by the caller — return RAW activations."""
+        Every vector is z-scored by the caller — return RAW activations.
+
+        LANE CONTRACT: missing data is NaN, NEVER 0.0 — _zscore's isfinite
+        mask excludes NaN from the stats so absence is neutral. A 0.0 is a
+        REAL activation that z-scores far below the corpus mean (the sit-lane
+        zero-fill buried fresh nodes at −10σ; tests pin the NaN passthrough
+        for sit and proj)."""
         with np.errstate(all='ignore'):
             maxsim = np.nanmax(
                 np.stack([self._mats[vt][:n] @ qv for vt in MAXSIM_VIEWS]), axis=0)
@@ -499,8 +524,10 @@ class LafV1Engine:
         cfg = self.config(brain)
         with self._lock:
             self._refresh_matrices(brain, model)
-            self._refresh_titles(brain)
-            self._refresh_projects(brain)
+            # titles returns the change_key it probed (None on TTL skip) so
+            # both node-derived caches pay one probe per expiry window
+            _node_key = self._refresh_titles(brain)
+            self._refresh_projects(brain, node_key=_node_key)
             self._refresh_traces(brain)
             n = self._n
             if n == 0:

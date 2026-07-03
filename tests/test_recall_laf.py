@@ -125,11 +125,6 @@ class TestLafEngineUnits(BrainTestBase):
                                                ref_types=['tool_result']), [])
 
 
-@unittest.skipUnless(
-    os.path.exists(os.path.join(os.path.expanduser('~'),
-                                'AgentsContext', 'brain', 'brain.db'))
-    or os.environ.get('BRAIN_DB_DIR'),
-    'integration smoke needs a production brain copy')
 class TestProjLane(BrainTestBase):
     """proj lane: session-project provenance as a gain-dialed activation field.
 
@@ -168,11 +163,49 @@ class TestProjLane(BrainTestBase):
         # unit: same-project 1.0, cross-project 0.0, no-project NaN,
         # no-session-project → all NaN (inert)
         eng = LafV1Engine()
-        eng._proj = {0: 'alpha', 1: 'beta'}          # row 2 carries none
+        eng._proj_rows = np.array([0, 1], dtype=np.int64)   # row 2 carries none
+        eng._proj_vals = np.array(['alpha', 'beta'], dtype=object)
         vec = eng._project_field('alpha', 3)
         assert vec[0] == 1.0 and vec[1] == 0.0 and np.isnan(vec[2])
         assert np.isnan(eng._project_field('', 3)).all()
         assert np.isnan(eng._project_field(None, 3)).all()
+
+    def test_sit_lane_preserves_nan_for_vectorless_nodes(self):
+        # REGRESSION (the sit-lane zero-fill bug): a node with no _situation
+        # vector must reach the fusion as NaN — a real 0.0 z-scores ~10σ below
+        # the corpus mean and buries the node. Pins the lane contract stated
+        # in _fields' docstring for the lane that originally violated it.
+        import servers.embedder as embedder
+        from servers.recall_laf import get_engine, _unit as _u
+        node = self.brain.remember(
+            type='lesson', title='Node without a situation field',
+            content='This node deliberately has no situation.')
+        eng = get_engine(self.brain)
+        qv = _u(embedder.embed_query('anything at all'))
+        with eng._lock:
+            eng._refresh_matrices(self.brain, None)
+            nk = eng._refresh_titles(self.brain)
+            eng._refresh_projects(self.brain, node_key=nk)
+            eng._refresh_traces(self.brain)
+            fields = eng._fields(self.brain, 'anything at all', qv,
+                                 eng.config(self.brain), eng._n)
+        row = eng._idx[node['id']]
+        assert np.isnan(fields['sit'][row]), \
+            'missing situation vector must be NaN in the sit lane, never 0.0'
+
+    def test_full_matrix_build_resets_proj_arrays(self):
+        # REGRESSION: proj arrays are row-keyed; a full matrix rebuild
+        # reindexes rows, so the arrays must be force-reset like the titles
+        # cache — stale indices would label the WRONG nodes.
+        eng, *_ = self._engine_with_projects()
+        import servers.embedder as embedder
+        from servers.recall_laf import _unit as _u
+        qv = _u(embedder.embed_query('caching'))
+        eng.scores(self.brain, 'caching', qv, session_project='alpha')
+        assert len(eng._proj_rows)                  # populated by the refresh
+        with eng._lock:
+            eng._full_matrix_build(self.brain, None)
+        assert len(eng._proj_rows) == 0 and eng._proj_key is None
 
     def test_default_gain_zero_is_bit_identical(self):
         import servers.embedder as embedder
@@ -211,6 +244,11 @@ class TestProjLane(BrainTestBase):
         assert cid not in rows             # no project anywhere → absent
 
 
+@unittest.skipUnless(
+    os.path.exists(os.path.join(os.path.expanduser('~'),
+                                'AgentsContext', 'brain', 'brain.db'))
+    or os.environ.get('BRAIN_DB_DIR'),
+    'integration smoke needs a production brain copy')
 class TestLafFlagIntegration(unittest.TestCase):
     """End-to-end: flag on → laf-scored recall; flag off → champion shape.
 
