@@ -94,17 +94,16 @@ class TestDateParser:
 # ─── Tool definitions are well-formed ────────────────────────────────────
 
 class TestToolDefinitions:
-    def test_three_tools_defined(self):
-        # recall_by_aspect removed from Haiku's tool set 2026-06-08
-        # (query-blind, redundant with Frame). expand_node removed 2026-06-12
-        # (production audit: 13/13 zero-result calls over 4 days — 100% no-op
-        # that still triggered the second Haiku round). Both functions still
-        # exist and are tested below; they're just no longer offered to Haiku.
+    def test_two_tools_defined(self):
+        # Haiku's surface tool set, trimmed over time (functions kept callable +
+        # tested below; just no longer offered to Haiku):
+        #  - recall_by_aspect removed 2026-06-08 (query-blind, Frame-redundant)
+        #  - expand_node removed 2026-06-12 (13/13 zero-result over 4 days)
+        #  - recall_verbatim removed 2026-07-02 (name promised phrase-match, but
+        #    the mechanism is a bag-of-words OR query; thin/redundant edge over
+        #    recall_topical; episodic signal belongs to the LAF episodic lane)
         names = {t['name'] for t in TOOL_DEFINITIONS}
-        assert names == {
-            'recall_topical', 'recall_by_time',
-            'recall_verbatim',
-        }
+        assert names == {'recall_topical', 'recall_by_time'}
 
     def test_each_tool_has_input_schema(self):
         for tool in TOOL_DEFINITIONS:
