@@ -124,6 +124,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             session_id = params.get("session_id", [""])[0]
             self._json(200, {"runs": encoding.query_encoding_runs(
                 limit=limit, hours=hours, session_id=session_id)})
+        elif path == "/api/encoding-prompt":
+            chain_id = params.get("chain_id", [""])[0]
+            self._json(200, encoding.query_encoding_prompt(chain_id=chain_id))
 
         # S2 unit runs
         elif path == "/api/consolidation-runs":
