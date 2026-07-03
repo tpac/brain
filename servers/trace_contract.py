@@ -676,6 +676,17 @@ def _extract_fenced_block(text, marker):
     open_fence = after.find('```')
     if open_fence == -1:
         return None
+    # The fence must belong to THIS section. If a new `## ` heading starts
+    # before the opening fence, this section has no fence of its own and the
+    # fence we found belongs to a LATER section — return None (drift) rather
+    # than capturing the wrong section's content. Without this, a fenceless
+    # `## Arc` reaches forward into the `## Review` fence (§7.2 orders Arc
+    # before Review) and review notes get written as the session arc, silently.
+    # Checking position (heading-before-fence) — not blunt truncation — leaves
+    # legit fence content that itself contains a `## ` line intact.
+    next_heading = after.find('\n## ')
+    if next_heading != -1 and next_heading < open_fence:
+        return None
     rest = after[open_fence + 3:]
     nl = rest.find('\n')           # skip an optional language tag on the fence line
     if nl != -1:
