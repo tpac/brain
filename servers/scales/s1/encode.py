@@ -97,8 +97,10 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     # 2b. Muster phase — Phase-1 scouts fan out in parallel, emit O/K traces on
     # the s1e chain. Architectural default: ON. The lived arm runs WITHOUT the
     # quote scout (episodes recall preserves verbatim substrate — Tom 2026-07-02)
-    # and consumes findings as per-turn timeline annotations; the control arm
-    # runs the full set and appends the classic `## Scout reports` block.
+    # NOR the temporal scout (the encoder resolves and sets event_time itself;
+    # the scout was net-noise — Tom 2026-07-03), leaving facts as the only lived
+    # scout, consumed as per-turn timeline annotations; the control arm runs the
+    # full set and appends the classic `## Scout reports` block.
     if muster_enabled is None:
         muster_enabled = True
 
@@ -106,7 +108,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     if muster_enabled:
         scout_report, scout_outputs, muster_summary = _run_muster_phase(
             brain, messages, session_id, counter, catalog_text, catalog_ids,
-            log_fn, _step, exclude_scouts=(('quote',) if lived else ()))
+            log_fn, _step, exclude_scouts=(('quote', 'temporal') if lived else ()))
 
     # 2c. Body assembly. Lived: scout findings ride INSIDE the timeline
     # (<scout_notes> per turn + <scout_legend>); control: legacy body + the
@@ -410,7 +412,7 @@ def _run_muster_phase(brain, messages, session_id, counter, catalog_text,
         # conversation_now resolves the date THIS conversation thinks
         # it's happening: eval replay reads [Current date: ...] prefix;
         # production reads SessionContext.created_at; falls back to
-        # operator wall-clock. Critical for temporal scout — without it,
+        # operator wall-clock. Critical for date resolution — without it,
         # "today/yesterday" in historical conversations resolve to NOW.
         # See servers/clock.py + brain memory 6d5b789e.
         from servers.clock import conversation_now
@@ -501,11 +503,9 @@ def _scout_note_line(scout, cand):
     text sits directly above the note, so the detail (event description /
     evidence quote) can trim — but fields the turn text does NOT carry must
     render or the instruction that uses them goes dead:
-      [role] — source_role, the temporal-authority tag, rendered in the
-               timeline's identity vocabulary: [other] = the other side's own
-               wording (beats my paraphrase), [me] = my turn attributed it
-               (the v15.9 'since November' discrimination rides on this)
-      reuse id:… — existing_anchor_id (never mint a second anchor)
+      [role] — source_role, rendered in the timeline's identity vocabulary:
+               [other] = the other side's own wording, [me] = my turn
+               attributed it
       anchors: … — the facts scout's context_anchors (adjacent-query findability)
       catalog: id:… — the facts scout's catalog_match (dedup hint)
     Whitespace-collapsed and XML-escaped so it can't malform the timeline."""
@@ -576,6 +576,10 @@ def _map_scout_notes(scout_outputs, messages):
         owner_trace.append(last_user)
 
     per_turn, unmapped, legend = {}, [], []
+    # Generic mapper: inline whatever non-stub scout envelopes it's handed.
+    # WHICH scouts run is muster's call (exclude_scouts) — the temporal-scout
+    # retirement (Tom 2026-07-03) is enforced there, so temporal arrives here
+    # only as a disabled stub (skipped below), never as candidates.
     for name in ('temporal', 'facts'):
         env = (scout_outputs or {}).get(name) or {}
         if env.get('_errors'):
@@ -607,13 +611,12 @@ def _render_scout_legend(legend_lines, unmapped):
     their findings got into the timeline — plus each scout's category statement
     and any window-level findings no single turn owns."""
     out = "<scout_legend>\n"
-    out += ("Notes inside <scout_notes> came from outside this read: focused "
-            "scouts that scanned this same window in parallel before this "
-            "encode — temporal (date anchors + event descriptions, "
-            "algorithmic) and facts (entity-feature-value triples, Haiku) — "
-            "and their findings are attached to the turns they cite. Each was "
-            "primed for one kind of atomization: hints, not the map. They "
-            "propose; I compose — I read the window myself.\n")
+    out += ("Notes inside <scout_notes> came from outside this read: a focused "
+            "scout that scanned this same window in parallel before this "
+            "encode — facts (entity-feature-value triples, Haiku) — and its "
+            "findings are attached to the turns they cite. It was primed for "
+            "one kind of atomization: hints, not the map. It proposes; I "
+            "compose — I read the window myself.\n")
     for ln in legend_lines:
         out += "- %s\n" % ln
     if unmapped:
@@ -639,12 +642,12 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
         - user_preamble: stable instructions; safe to cache 1h.
         - user_body: dynamic content for this cycle (5m cache).
         - catalog_text: rendered catalog block (reused by muster).
-        - catalog_ids: set of node ids in the catalog (reused by temporal scout).
+        - catalog_ids: set of node ids in the catalog (reused by muster scouts).
 
     `precomputed` — the (node_catalog, cataloged_ids, streams) tuple from
     _build_catalog, when run_encoding already built it (it runs muster between
     the catalog and the body). None → build here (tests / standalone callers).
-    `scout_outputs` — muster envelopes (lived arm only): temporal+facts
+    `scout_outputs` — muster envelopes (lived arm only): facts
     candidates inline into the timeline as per-turn <scout_notes>, with a
     <scout_legend> explaining where they came from; the trailing
     `## Scout reports` block is retired on this arm.
