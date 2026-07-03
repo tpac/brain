@@ -590,6 +590,32 @@ class TestSelectedIdRecovery(BrainTestBase):
         self.assertTrue(recov, 'fuzzy recovery must log its drift warning')
         self.assertIn(nid8, recov[-1]['message'])
 
+    def test_selection_schema_id_pattern(self):
+        """Layer-1 source fix: the structured-outputs schema constrains the
+        id field so constrained decoding cannot emit the whitespace
+        corruption the parse layer recovers from. Pins the pattern's
+        semantics AND that the schema actually carries it."""
+        import re
+        from servers.scales.s1.surface_contract import (
+            SURFACE_SELECTION_SCHEMA, SURFACE_SELECTED_ID_PATTERN)
+
+        id_prop = (SURFACE_SELECTION_SCHEMA['properties']['selected']
+                   ['items']['properties']['id'])
+        self.assertEqual(id_prop.get('pattern'), SURFACE_SELECTED_ID_PATTERN,
+                         'schema id field lost its pattern constraint')
+
+        pat = re.compile(SURFACE_SELECTED_ID_PATTERN)
+        # The observed corruption class must be unrepresentable.
+        for bad in ('9 9a 2e ', 'd 6d3 f8', '', 'zzzz9999', 'a3f0c5e1x',
+                    'A3F0C5E1'):
+            self.assertIsNone(pat.match(bad),
+                              'pattern must reject %r' % bad)
+        # Known-legitimate emissions stay representable: full 8-char,
+        # 7-char leading-zero drop, short honest fragments (>=4).
+        for good in ('a3f0c5e1', '95c2b96', 'd6d3'):
+            self.assertIsNotNone(pat.match(good),
+                                 'pattern must accept %r' % good)
+
     def test_unknown_id_dropped_with_drift_warning(self):
         """An id that matches no candidate and no brain node is dropped —
         but never silently: surface_unknown_selected_id must fire."""
