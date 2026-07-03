@@ -919,13 +919,19 @@ def run_surface(brain, ctx, candidates_data, user_message,
         cid = c.get('id', '')
         if cid:
             short_to_full[cid[:8]] = cid
-    hallucinated = []  # (short_id, why) pairs that resolved nowhere
-    # selected_mode: per-node render mode (fact|arc|background), default 'arc'.
-    # Surface v5 may emit `mode` per selected item; v4 omits it → all 'arc'.
+    # selected_mode: per-node render mode, default 'arc'. Surface v5 may emit
+    # `mode` per selected item; v4 omits it → all default. Valid modes come
+    # from the contract (SURFACE_MODES) — the schema enum derives from the
+    # same constant, so both stay in sync by construction.
+    from servers.scales.s1.surface_contract import (
+        SURFACE_MODES, SURFACE_MODE_DEFAULT)
     selected_mode = {}
     for s in selected:
         raw_id = s.get('id', '')
         short_id = _sanitize_selected_id(raw_id)[:8]
+        mode = (s.get('mode') or SURFACE_MODE_DEFAULT).strip().lower()
+        if mode not in SURFACE_MODES:
+            mode = SURFACE_MODE_DEFAULT
         full_id = short_to_full.get(short_id)
         if not full_id and short_id:
             # Whitespace corruption often leaves fewer than 8 real chars
@@ -942,9 +948,6 @@ def run_surface(brain, ctx, candidates_data, user_message,
                     'session=%s' % session_id)
         if full_id:
             selected_why[full_id] = s.get('why', '')
-            mode = (s.get('mode') or 'arc').strip().lower()
-            if mode not in ('fact', 'arc', 'background'):
-                mode = 'arc'
             selected_mode[full_id] = mode
         else:
             # Haiku returned an ID not in its candidate menu — either a
@@ -978,7 +981,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
                 # "ID is hallucinated" — a SQL/index issue would become
                 # indistinguishable from a Haiku confabulation, breaking
                 # the diagnostic value of the haiku_id_outside_candidates
-                # vs haiku_id_unresolvable distinction below.
+                # vs surface_unknown_selected_id distinction below.
                 resolved = None
                 try:
                     brain._log_error(
@@ -989,32 +992,23 @@ def run_surface(brain, ctx, candidates_data, user_message,
                     pass
             if resolved:
                 selected_why[resolved] = s.get('why', '')
-                mode = (s.get('mode') or 'arc').strip().lower()
-                if mode not in ('fact', 'arc', 'background'):
-                    mode = 'arc'
                 selected_mode[resolved] = mode
                 brain._log_error(
                     'haiku_id_outside_candidates',
                     RuntimeError('Haiku selected an ID not in its candidate menu but it resolves to a real node'),
                     'short_id=%s resolved=%s why=%r' % (short_id, resolved[:12], s.get('why', '')[:80]))
             else:
-                hallucinated.append((short_id, s.get('why', '')))
-                # Drift tripwire — the scoreboard's drift section counts
-                # this stream; a silent drop here is exactly how the
-                # v12_1_full empty-context miss went unnoticed.
+                # Single loud channel for an id that exists nowhere — the
+                # scoreboard's drift section counts this stream, and the
+                # dashboard error feed shows warnings alongside errors. A
+                # silent drop here is exactly how the v12_1_full
+                # empty-context miss went unnoticed.
                 brain._log_warning(
                     'surface_unknown_selected_id',
                     'emitted id %r matches no candidate and resolves to '
                     'no node — pick dropped' % raw_id,
                     'sanitized=%s session=%s why=%r'
                     % (short_id, session_id, s.get('why', '')[:80]))
-    if hallucinated:
-        brain._log_error(
-            'haiku_id_unresolvable',
-            RuntimeError('Haiku selected IDs that exist nowhere in the brain'),
-            'ids=%s why_samples=%r' % (
-                ','.join(sid for sid, _ in hallucinated[:5]),
-                [why[:80] for _, why in hallucinated[:3]]))
 
     # Trace + Hebbian-file input derives from what actually RESOLVED, so a
     # recovered pick lands as its real short id (not the corrupted emission)
