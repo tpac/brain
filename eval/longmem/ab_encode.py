@@ -209,6 +209,11 @@ def run_arm(arm, version, qid, item, capture_dir, control_lived=False):
     else:
         os.environ.pop("BRAIN_S1E_LIVED_SEQUENCE", None)
     os.environ["BRAIN_PROMPT_CAPTURE_DIR"] = capture_dir
+    # Explicit arm name for capture labels — with --control-lived both arms
+    # run lived, so encode.py's flag-derived arm would label everything
+    # 'new__' and the control arm's prompt_captured assertion goes falsely
+    # INVALID (seen 2026-07-03, effort A/B run 1).
+    os.environ["BRAIN_PROMPT_CAPTURE_ARM"] = arm
 
     tmpl, params = FETCHED[version]
     path = os.path.expanduser("~/AgentsContext/brain-ab-%s-%s" % (arm, qid))

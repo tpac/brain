@@ -186,7 +186,12 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     # collide; runner.py adds round + a monotonic seq.
     capture_label = None
     if os.environ.get('BRAIN_PROMPT_CAPTURE_DIR'):
-        arm = 'new' if lived else 'control'
+        # Arm name: the harness (ab_encode) sets BRAIN_PROMPT_CAPTURE_ARM
+        # explicitly — required for same-template A/Bs (--control-lived) where
+        # BOTH arms run lived and the flag can't distinguish them. Flag-derived
+        # fallback keeps ad-hoc captures working without the env.
+        arm = os.environ.get('BRAIN_PROMPT_CAPTURE_ARM') or (
+            'new' if lived else 'control')
         safe_sid = (session_id or 'nosession').replace('/', '_').replace(' ', '_')
         capture_label = "%s__%s__stop%d" % (arm, safe_sid, counter)
 
