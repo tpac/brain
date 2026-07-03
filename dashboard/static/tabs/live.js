@@ -640,9 +640,14 @@ async function loadEncodingActivity() {
     // Honor the session-filter dropdown — without this the encoding feed
     // shows runs from every session while decoding correctly narrows.
     const sessionId = getSessionFilter();
+    // Recent-activity window. Widened from 50/12h once the per-run payload
+    // dropped to ~1KB (lazy prompt + no inline blobs) — the tight cap existed
+    // to bound a then-heavy full-rebuild poll, not by design. 48h/200 covers
+    // normal browsing without pagination; the S2 sources below share the 48h
+    // window so the merged timeline stays consistent.
     const runsD = await api.encodingRuns({
-      limit: 50,
-      hours: 12,
+      limit: 200,
+      hours: 48,
       ...(sessionId ? { session_id: sessionId } : {}),
     });
 
@@ -673,7 +678,7 @@ async function loadEncodingActivity() {
 
     let s2Runs = [];
     try {
-      const consolD = await api.consolidationRuns({ hours: 12 });
+      const consolD = await api.consolidationRuns({ hours: 48 });
       if (consolD.runs) {
         for (const run of consolD.runs) {
           s2Runs.push({type: 'consolidation', ...run, start_ts: run.timestamp});
@@ -681,7 +686,7 @@ async function loadEncodingActivity() {
       }
     } catch(e) { console.error('S2 consolidation load:', e); }
     try {
-      const commD = await api.communityRuns({ hours: 12 });
+      const commD = await api.communityRuns({ hours: 48 });
       if (commD.runs) {
         for (const run of commD.runs) {
           s2Runs.push({type: 'community', ...run, start_ts: run.timestamp});
@@ -689,7 +694,7 @@ async function loadEncodingActivity() {
       }
     } catch(e) { console.error('S2 community load:', e); }
     try {
-      const healD = await api.healerRuns({ hours: 12 });
+      const healD = await api.healerRuns({ hours: 48 });
       if (healD.runs) {
         for (const run of healD.runs) {
           s2Runs.push({type: 'healer', ...run, start_ts: run.timestamp});
