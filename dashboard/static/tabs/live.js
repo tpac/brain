@@ -956,8 +956,16 @@ function _renderS1EncodeCard(run) {
   const nodeCount = run.nodes ? run.nodes.length : 0;
   const sid       = run.session_id ? run.session_id.substring(0, 8) : '';
 
-  // Body: created/revised nodes, then up to 8 edges, then overflow line.
+  // Body: journal notes FIRST (the encoder's residue — why/doubt/next), then
+  // created/revised nodes, then up to 8 edges, then overflow line.
   const bodyRows = [];
+  for (const j of (run.journal_notes || [])) {
+    bodyRows.push(el('div', { class: 'enc-entry enc-sub-row enc-journal-note' },
+      j.tag ? el('span', { class: 'enc-kind journal' }, j.tag.toUpperCase()) : null,
+      ' ',
+      el('span', { class: 'enc-journal-text' }, j.note),
+    ));
+  }
   for (const n of (run.nodes || [])) {
     const kindClass = n.kind === 'revised' ? 'revised' : 'created';
     const kindLabel = n.kind === 'revised' ? 'REVISED' : 'CREATED';
@@ -986,7 +994,8 @@ function _renderS1EncodeCard(run) {
     bodyRows.push(el('div', { class: 'enc-edge-overflow' },
       '+' + ((run.edges || []).length - 8) + ' more edges'));
   }
-  if (!(run.nodes || []).length && !(run.edges || []).length) {
+  if (!(run.nodes || []).length && !(run.edges || []).length
+      && !(run.journal_notes || []).length) {
     bodyRows.push(el('div', { class: 'enc-empty-note' }, '(no write actions)'));
   }
   const body = el('div', { class: 'hook-body hook-body--padded' }, bodyRows);

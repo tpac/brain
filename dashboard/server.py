@@ -269,6 +269,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", mime)
         self.send_header("Content-Length", len(body))
+        # no-cache: the browser must revalidate before reusing a cached asset,
+        # so a dashboard deploy (new JS/CSS) takes effect on the next normal
+        # refresh instead of silently running stale code until a hard-refresh.
+        # Assets are tiny and served from localhost, so refetch cost is nil.
+        self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(body)
 
