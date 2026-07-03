@@ -17,7 +17,7 @@ if ROOT not in sys.path:
 
 from servers.scales.s1.trace_links import (  # noqa: E402
     nodes_for_traces, gather, session_node_ids, _stop_of, _surface_ids,
-    _candidate_outcomes,
+    _candidate_outcomes, _tool_provenance,
 )
 
 SHORT = 'abcd1234'  # session_short in every chain id
@@ -27,10 +27,19 @@ def _turn(stop, tid=None):
     return {'id': tid or ('u%d' % stop), 'chain_id': 's0-%s-%d' % (SHORT, stop)}
 
 
-def _surface(stop, ids, tid=None):
+def _surface(stop, ids, tid=None, tool_trace=None):
     import json
-    return {'id': tid or ('sr%d' % stop), 'chain_id': 's1r-%s-%d' % (SHORT, stop),
-            'ref_id': json.dumps(ids)}
+    rec = {'id': tid or ('sr%d' % stop), 'chain_id': 's1r-%s-%d' % (SHORT, stop),
+           'ref_id': json.dumps(ids)}
+    if tool_trace is not None:
+        rec['metadata'] = {'tool_trace': tool_trace}
+    return rec
+
+
+def _tool_call(tool, result_ids=None, dropped_ids=None):
+    return {'tool': tool, 'args': {}, 'result_count': len(result_ids or []),
+            'result_ids': result_ids or [], 'dropped_ids': dropped_ids or [],
+            'latency_ms': 5, 'error': None}
 
 
 def _encode(stop, created, revised, tid=None):
@@ -129,6 +138,7 @@ def test_full_link_shape_surfaced_and_encoded_together():
         'encoded_by': 'run6',
         'authored': [], 'recalled': [], 'endo': [],  # no touched stream here
         'dropped': [],                               # no recall stream here
+        'fetched_by': {}, 'floored_by': {},          # no tool_trace here
     }
 
 
@@ -144,7 +154,7 @@ def test_malformed_rows_are_survivable():
     assert links['u5']['surfaced'] == ['ok']           # the good row survived
     assert links['orphan'] == {'surfaced': [], 'encoded': [], 'encoded_by': None,
                                'authored': [], 'recalled': [], 'endo': [],
-                               'dropped': []}
+                               'dropped': [], 'fetched_by': {}, 'floored_by': {}}
 
 
 def test_runs_out_of_order_still_pick_earliest_owning_run():
@@ -356,6 +366,47 @@ def test_dropped_missing_stop_yields_empty():
                              recall_traces=[])
     assert links['x']['surfaced'] == [] and links['x']['dropped'] == []
     assert links['x']['encoded'] == []
+    assert links['x']['fetched_by'] == {} and links['x']['floored_by'] == {}
+
+
+# ── tool provenance (fetched_by / floored_by, from the K rows' tool_trace) ──
+
+def test_tool_provenance_parses_result_and_dropped_ids():
+    fetched, floored = _tool_provenance({'tool_trace': [
+        {'round': 0, 'stop_reason': 'tool_use', 'tool_calls': [
+            _tool_call('recall_by_time', result_ids=['aaaa1111', 'bbbb2222']),
+            _tool_call('recall_topical', result_ids=['cccc3333'],
+                       dropped_ids=['dddd4444', 'eeee5555']),
+        ]},
+        {'round': 1, 'stop_reason': 'end_turn', 'tool_calls': []},
+    ]})
+    assert fetched == {'aaaa1111': 'recall_by_time', 'bbbb2222': 'recall_by_time',
+                       'cccc3333': 'recall_topical'}
+    assert floored == {'dddd4444': 'recall_topical', 'eeee5555': 'recall_topical'}
+
+
+def test_tool_provenance_survives_old_and_malformed_traces():
+    # pre-2026-07-02 traces: tool_calls without result_ids/dropped_ids
+    fetched, floored = _tool_provenance({'tool_trace': [
+        {'round': 0, 'tool_calls': [{'tool': 'recall_by_time', 'result_count': 9}]}]})
+    assert fetched == {} and floored == {}
+    assert _tool_provenance(None) == ({}, {})
+    assert _tool_provenance({'tool_trace': 'garbage'}) == ({}, {})
+
+
+def test_fetched_and_floored_roles_join_by_stop():
+    surface = [_surface(3, ['aaaa1111'], tool_trace=[
+        {'round': 0, 'stop_reason': 'tool_use', 'tool_calls': [
+            _tool_call('recall_topical', result_ids=['aaaa1111', 'ffff6666'],
+                       dropped_ids=['dddd4444'])]}])]
+    links = nodes_for_traces(surface, [], [_turn(3), _turn(4)])
+    l3 = links['u3']
+    # aaaa1111 was fetched AND picked; ffff6666 fetched, pooled, not picked.
+    assert l3['fetched_by'] == {'aaaa1111': 'recall_topical',
+                                'ffff6666': 'recall_topical'}
+    assert l3['floored_by'] == {'dddd4444': 'recall_topical'}
+    # other turns unaffected
+    assert links['u4']['fetched_by'] == {} and links['u4']['floored_by'] == {}
 
 
 class _RolesStubBrain:

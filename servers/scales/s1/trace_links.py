@@ -18,7 +18,17 @@ The capability returns, per target trace, the nodes linked to it by relation:
         'recalled':   [node_id, ...],   # what Anchor deliberately looked up (S0)
         'endo':       [node_id, ...],   # endo-surfaced this turn (S0, empty until wired)
         'dropped':    [node_id, ...],   # offered to Haiku, NOT picked (S1R pool − surfaced)
+        'fetched_by': {node_id: tool},  # tool-fetched, ADMITTED to the pool (S1R tool_trace)
+        'floored_by': {node_id: tool},  # tool-fetched, floor-rejected — never pooled
     }
+
+    `fetched_by`/`floored_by` are the tool-provenance tier (K rows carry
+    tool_trace with per-call result_ids/dropped_ids from 2026-07-02; older
+    traces simply yield empty dicts). Three label tiers for one node at one
+    turn: picked (`surfaced`), pooled-but-not-picked (`dropped`, which
+    INCLUDES admitted tool fetches — fetched_by says which tool), and
+    fetched-but-floored (`floored_by` only — these never reached Haiku, a
+    harder negative than dropped).
 
 Two readers, ONE join (do not fork a sibling join per reader — that is how the
 2-vs-3-tuple drift happened):
@@ -97,6 +107,28 @@ def _delta_ids(meta, *keys):
     return _dedup(out)
 
 
+def _tool_provenance(meta):
+    """(fetched_by, floored_by) from a surface K trace's tool_trace. PURE.
+
+    Walks metadata.tool_trace's per-round tool_calls: `result_ids` are the
+    fetched candidates ADMITTED to the pool, `dropped_ids` the floor-rejected
+    ones that never reached Haiku. Returns two {short_id: tool_name} dicts.
+    Traces older than 2026-07-02 lack the id fields → empty dicts. First
+    tool wins on the (rare) same-id-two-tools collision — dedupe order
+    matches the call order Haiku issued."""
+    if not isinstance(meta, dict):
+        return {}, {}
+    fetched, floored = {}, {}
+    for rnd in (meta.get('tool_trace') or []):
+        for call in (rnd.get('tool_calls') or []) if isinstance(rnd, dict) else []:
+            tool = call.get('tool') or '?'
+            for nid in (call.get('result_ids') or []):
+                fetched.setdefault(nid, tool)
+            for nid in (call.get('dropped_ids') or []):
+                floored.setdefault(nid, tool)
+    return fetched, floored
+
+
 def _candidate_outcomes(meta):
     """(candidate_ids, dropped_ids) from a candidate-pool trace's metadata. PURE.
 
@@ -168,14 +200,27 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces,
     the surface traces record (8-char short ids); encoded/authored are full —
     verbatim either way, width resolution is the consumer's job.
     """
-    # surfaced, indexed by stop (1:1 with a turn; merge if a stop ever repeats).
+    # surfaced + tool provenance, indexed by stop (1:1 with a turn; merge if a
+    # stop ever repeats). The SAME K rows carry both: ref_id is Haiku's picks,
+    # metadata.tool_trace is which tool fetched what (and what the floor cut).
     surf_by_stop = {}
+    fetched_by_stop = {}
+    floored_by_stop = {}
     for t in surface_traces:
         stop = _stop_of(t.get('chain_id'))
         if stop is None:
             continue
         bucket = surf_by_stop.setdefault(stop, [])
         bucket.extend(_surface_ids(t.get('ref_id')))
+        fetched, floored = _tool_provenance(t.get('metadata'))
+        if fetched:
+            fb = fetched_by_stop.setdefault(stop, {})
+            for nid, tool in fetched.items():
+                fb.setdefault(nid, tool)
+        if floored:
+            fl = floored_by_stop.setdefault(stop, {})
+            for nid, tool in floored.items():
+                fl.setdefault(nid, tool)
 
     # anchor_touched, indexed by stop (1:1 with a turn, like surfaced). authored =
     # created∪revised (live nodes Anchor wrote; archived is recorded in the trace
@@ -262,6 +307,8 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces,
             'recalled': _dedup(tch.get('recalled', [])),
             'endo': _dedup(tch.get('endo', [])),
             'dropped': dropped,
+            'fetched_by': dict(fetched_by_stop.get(stop, {})) if stop is not None else {},
+            'floored_by': dict(floored_by_stop.get(stop, {})) if stop is not None else {},
         }
     return out
 
