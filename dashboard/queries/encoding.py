@@ -151,9 +151,17 @@ def _query_encoding_chains(conn, limit: int, session_id: str, hours: int):
         ).fetchone()
         catalog_info = k_row[0] if k_row else ''
 
+        # The authoritative run summary is the `encoding_run` delta — it carries
+        # the created/revised rollup + the "N actions" line. S1E (v29) also
+        # writes many *other* delta rows per chain (one edge_relation_revised
+        # per edge, node_revised per node, journal_note per residue item), so an
+        # unfiltered `event_type='delta'` + fetchone() grabbed the FIRST delta (an
+        # edge revision, whose metadata has no created/revised) → the card showed
+        # "0 actions" for runs that actually wrote. Filter to encoding_run.
         d_row = conn.execute(
             "SELECT summary, created_at, metadata FROM trace_events "
-            "WHERE chain_id = ? AND event_type = 'delta'",
+            "WHERE chain_id = ? AND event_type = 'delta' "
+            "AND ref_type = 'encoding_run'",
             (chain_id,),
         ).fetchone()
         summary = d_row[0] if d_row else '(encoding in progress or no actions)'
@@ -173,6 +181,24 @@ def _query_encoding_chains(conn, limit: int, session_id: str, hours: int):
             except (ValueError, TypeError):
                 pass
 
+        # Journal notes — the encoder's residue (why/doubt/next), written as
+        # journal_note delta rows on the chain. Small by design (a sentence or
+        # two each); the card renders them FIRST in the details, above the
+        # nodes/edges, so the operator reads the encoder's mind before its hands.
+        journal_notes = []
+        for (jmeta,) in conn.execute(
+            "SELECT metadata FROM trace_events "
+            "WHERE chain_id = ? AND ref_type = 'journal_note' ORDER BY id",
+            (chain_id,),
+        ).fetchall():
+            try:
+                m = json.loads(jmeta) if jmeta else {}
+            except (ValueError, TypeError):
+                continue
+            note = (m.get('note') or '').strip()
+            if note:
+                journal_notes.append({"note": note[:600], "tag": m.get('tag') or ''})
+
         # NOTE: the full encoder prompt (user_content) is deliberately NOT read
         # here. A long session's prompt is hundreds of KB; shipping it inline for
         # every run in the polled list bloated the response into the multi-MB
@@ -191,6 +217,7 @@ def _query_encoding_chains(conn, limit: int, session_id: str, hours: int):
             "catalog_info": catalog_info,
             "created_ids": created_ids,
             "revised_ids": revised_ids,
+            "journal_notes": journal_notes,
             "nodes": [],
             "edges": [],
         })
