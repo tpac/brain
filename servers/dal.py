@@ -85,6 +85,18 @@ class NodeDAL:
             "WHERE archived = 0 AND title IS NOT NULL AND title != ''"
         ).fetchall()
 
+    def project_rows(self) -> List[tuple]:
+        """[(id, project)] for live nodes that carry a project — the LAF proj
+        lane substrate. Migration-proof read: node_metadata_kv['project'] (the
+        post-migration canonical home) wins over the legacy nodes.project
+        column, so the lane needs no code change when the column is retired."""
+        return self.conn.execute(
+            "SELECT n.id, COALESCE(k.value, n.project) AS proj FROM nodes n "
+            "LEFT JOIN node_metadata_kv k "
+            "  ON k.node_id = n.id AND k.key = 'project' "
+            "WHERE n.archived = 0 AND proj IS NOT NULL AND proj != ''"
+        ).fetchall()
+
     def get_naked_node(self, node_id: str) -> Optional[Dict[str, Any]]:
         """Get a single node row by ID. Returns all columns as a dict.
 

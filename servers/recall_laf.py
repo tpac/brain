@@ -80,6 +80,13 @@ DEFAULT_CONFIG = {
     'gain_enc': 0.3,
     'gain_idf': 0.5,
     'gain_sit': 0.5,
+    # proj: session-project provenance match. SHIPPED AT ZERO — the lane is
+    # wired (telemetry live, per-candidate _laf_fields carry its z) but
+    # contributes nothing until a measured gain is registered via the
+    # recall_laf interaction. The gate corpus is single-project (all cues are
+    # brain-repo) so a nonzero gain here is untestable until cross-project
+    # cues are minted — see docs/BACKLOG.md.
+    'gain_proj': 0.0,
     'top_moments': 15,        # similar past moments to seed episodic roles from
     'window_turns': 1,        # ±N-turn moment window (the measured winner)
     'sigmoid_scale': 3.0,     # z-sum → (0,1) squash temperature
@@ -89,6 +96,7 @@ DEFAULT_CONFIG = {
 
 CONFIG_TTL_S = 60.0           # K-store overlay refresh cadence
 TITLES_TTL_S = 60.0           # min seconds between title-idf rebuilds
+PROJECTS_TTL_S = 60.0         # min seconds between project-map rebuilds
 TRACE_BLOCK_CONSOLIDATE = 32  # merge trace blocks when the list grows past this
 _GROW = 1.3                   # matrix capacity growth factor
 
@@ -215,6 +223,10 @@ class LafV1Engine:
         self._title_df = {}          # token → doc frequency over titles
         self._titles_key = None
         self._titles_ts = 0.0
+        # project provenance (proj lane)
+        self._proj = {}              # row → project slug (only project-carrying nodes)
+        self._proj_key = None
+        self._proj_ts = 0.0
         # trace matrix — block list, no per-append copy
         self._tr_blocks = []         # [ndarray [k×768]]
         self._tr_meta = []           # [(chain_id, session_id)] aligned to blocks' rows
@@ -340,6 +352,23 @@ class LafV1Engine:
         self._title_tok, self._title_df = tok, dict(df)
         self._titles_key, self._titles_ts = key, now
 
+    # ── project provenance map: full rebuild, TTL-throttled (same shape) ──
+    def _refresh_projects(self, brain):
+        now = time.monotonic()
+        if self._proj_key is not None and now - self._proj_ts < PROJECTS_TTL_S:
+            return
+        key = brain._nodes.change_key()
+        if key == self._proj_key:
+            self._proj_ts = now
+            return
+        proj = {}
+        for nid, p in brain._nodes.project_rows():
+            i = self._idx.get(nid)
+            if i is not None:
+                proj[i] = p
+        self._proj = proj
+        self._proj_key, self._proj_ts = key, now
+
     # ── trace matrix: block list — appends never copy the resident rows ──
     def _refresh_traces(self, brain):
         rows = brain._trace_dal.event_vector_rows(
@@ -412,8 +441,24 @@ class LafV1Engine:
         i = self._idx.get(node_id)
         return i if i is not None else self._short.get(node_id)
 
+    def _project_field(self, session_project, n):
+        """proj lane raw activations: same-project 1.0, cross-project 0.0,
+        no-project NaN (neutral — _zscore's isfinite mask excludes it, the
+        sit-lane lesson as a design rule). No session project → all-NaN, the
+        whole lane inert. z-scoring makes the lane self-calibrating: in a
+        near-single-project brain the finite entries have ~no variance and
+        the lane contributes ~nothing; its power is INHIBITION when the
+        operator works outside the dominant project."""
+        vec = np.full(n, np.nan)
+        if not session_project:
+            return vec
+        for i, p in self._proj.items():
+            if i < n:
+                vec[i] = 1.0 if p == session_project else 0.0
+        return vec
+
     # ── the field registry: name → per-node raw activation [n] ──
-    def _fields(self, brain, query, qv, cfg, n):
+    def _fields(self, brain, query, qv, cfg, n, session_project=None):
         """Adding a lane = one entry here + a 'gain_<name>' DEFAULT_CONFIG key.
         Every vector is z-scored by the caller — return RAW activations."""
         with np.errstate(all='ignore'):
@@ -433,16 +478,20 @@ class LafV1Engine:
             # mean (0.475±0.045), burying just-encoded nodes and any node in
             # the revise→re-embed window (sit z −10.6 ≈ −5.3 zsum at gain 0.5).
             'sit': sit_raw,
+            'proj': self._project_field(session_project, n),
         }
 
     # ── the scorer ──
-    def scores(self, brain, query, query_vec, model=None):
+    def scores(self, brain, query, query_vec, model=None, session_project=None):
         """({node_id: score01}, telemetry) over every node with ≥1 embedding view.
 
         score01 is a monotonic sigmoid of the z-scored gain-weighted field sum,
         guaranteed ∈ (0,1) (the range contract brain_recall's floors/boosts
         assume); telemetry is {node_id: {field: z}} for the top nodes — the
         production feed for the P2 dataset walker.
+
+        session_project: the calling session's derived project (ctx.project) —
+        the query-side source for the proj lane. None/'' → lane inert.
         """
         qv = _unit(query_vec)
         if qv is None or not MAXSIM_VIEWS:
@@ -451,11 +500,13 @@ class LafV1Engine:
         with self._lock:
             self._refresh_matrices(brain, model)
             self._refresh_titles(brain)
+            self._refresh_projects(brain)
             self._refresh_traces(brain)
             n = self._n
             if n == 0:
                 return {}, None
-            fields = self._fields(brain, query, qv, cfg, n)
+            fields = self._fields(brain, query, qv, cfg, n,
+                                  session_project=session_project)
             zf = {name: _zscore(vec, n) for name, vec in fields.items()}
             zsum = np.zeros(n)
             for name, z in zf.items():

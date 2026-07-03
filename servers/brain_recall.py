@@ -1607,8 +1607,17 @@ class BrainRecallMixin:
                     from .recall_laf import get_engine as _laf_get_engine
                 except ImportError:
                     from recall_laf import get_engine as _laf_get_engine
+                # Session project — the query-side source for the proj lane
+                # (deterministic provenance from ctx, never from query text).
+                _session_project = None
+                if ctx is not None:
+                    _session_project = ctx.project
+                elif session_id:
+                    _session_project = self.session_env_for(
+                        session_id).get('project', '')
                 _laf_scores, _laf_fields = _laf_get_engine(self).scores(
-                    self, query, query_vec, model=_active_model)
+                    self, query, query_vec, model=_active_model,
+                    session_project=_session_project)
                 if not _laf_scores:
                     _laf_scores = None      # empty field → champion, not zeros
             except Exception as _laf_e:
