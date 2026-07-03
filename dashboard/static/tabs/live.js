@@ -156,11 +156,11 @@ function renderRecallEntry(evt) {
       identityChip +
       '<span class="hook-id">#' + idShort + '</span>' +
       '<span class="hook-size">' + (evt.used_count || 0) + ' selected</span>' +
-      (evt.judge_prompt ? '<button class="hook-details-btn hook-details-btn--right">Show Prompt</button>' : '') +
+      (evt.has_prompt ? '<button class="hook-details-btn hook-details-btn--right">Show Prompt</button>' : '') +
     '</div>' +
     '<div class="hook-prompt">' + escapeHtml(evt.query || '') + '</div>' +
     '<div class="hook-body">' + shortContent + '</div>' +
-    '<div class="surface-prompt-body" style="display:none"><pre>' + (evt.judge_prompt ? escapeHtml(evt.judge_prompt) : '') + '</pre></div>';
+    '<div class="surface-prompt-body" style="display:none"><pre>' + (evt.has_prompt ? 'Loading...' : '') + '</pre></div>';
 
   // ── Attach listeners (post-innerHTML) ───────────────────────────────
   // Header click toggles body open AND bubbles up to the container click
@@ -178,7 +178,10 @@ function renderRecallEntry(evt) {
   // ferrying event.stopPropagation; the helper handles that internally.
   const promptBtn  = div.querySelector('.hook-details-btn');
   const promptBody = div.querySelector('.surface-prompt-body');
-  if (promptBtn && promptBody) _wirePromptToggle(promptBtn, promptBody, null);
+  if (promptBtn && promptBody) _wirePromptToggle(promptBtn, promptBody, async () => {
+    const d = await api.recallPrompt({ recall_ref: evt.recall_ref });
+    return d.judge_prompt || d.error || '(no prompt available)';
+  });
 
   // Hover = preview, click = commit. mouseenter previews the recall's
   // nodes on the graph (saves prior state); mouseleave restores; click

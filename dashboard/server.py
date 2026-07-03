@@ -110,6 +110,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         # Live decoding feed
         elif path == "/api/recalls":
             self._serve_recalls(params)
+        elif path == "/api/recall-prompt":
+            recall_ref = params.get("recall_ref", [""])[0]
+            self._json(200, recalls.query_recall_prompt(recall_ref=recall_ref))
         elif path == "/api/sessions":
             self._json(200, sessions.query_recent_sessions())
 
