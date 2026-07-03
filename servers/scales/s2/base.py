@@ -558,10 +558,17 @@ class IntegrationUnit:
         t0 = time.time()
         try:
             client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
+            # 1h cache on the (stable, byte-identical) system prompt so repeat
+            # _call_llm calls within a run/hour read it from cache instead of
+            # re-billing full input — mirrors run_llm_loop's BP1. No-op below
+            # the model's cacheable floor: s2_healer (~2.5K tok) sits under
+            # Haiku 4.5's 4096 floor, so this only engages once a _call_llm
+            # prompt clears the floor (s2_aspects on Sonnet already does).
             response = client.messages.create(
                 model=model,
                 max_tokens=max_tokens,
-                system=system_prompt,
+                system=[{"type": "text", "text": system_prompt,
+                         "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
                 messages=[{"role": "user", "content": user_content}])
 
             telemetry = {'elapsed_ms': int((time.time() - t0) * 1000),
