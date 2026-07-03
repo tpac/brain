@@ -62,8 +62,10 @@ class _Stream:
 class _Messages:
     def __init__(self, scripted):
         self._s = list(scripted)
+        self.calls = []          # kwargs of every stream() request, in order
 
     def stream(self, **kw):
+        self.calls.append(kw)
         return self._s.pop(0)
 
 
@@ -148,6 +150,34 @@ class TestPromptCapture(unittest.TestCase):
         os.environ.pop('BRAIN_PROMPT_CAPTURE_DIR', None)
         _run(_Client(_two_round_script()), capture_label='new__sessX__stop5')
         self.assertEqual(self._files(), [])
+
+
+class TestEffortPassthrough(unittest.TestCase):
+    """`effort` reaches every API request as output_config; None omits it.
+    The value originates in the encoder interaction's parameters JSON (the
+    K-store) — this pins the runner half of that wire."""
+
+    def _loop(self, client, **kw):
+        return run_llm_loop(
+            client=client, model='claude-test', max_tokens=256, max_rounds=3,
+            system_prompt='SYS', user_content='BODY', tools=[],
+            dispatch_fn=lambda name, args: {'ok': True, 'result': {'id': 'n1'},
+                                            'affected': {'created': ['n1']}},
+            log_fn=lambda m: None, **kw)
+
+    def test_effort_set_rides_every_round(self):
+        client = _Client(_two_round_script())
+        self._loop(client, effort='medium')
+        calls = client.messages.calls
+        self.assertEqual(len(calls), 2)
+        for kw in calls:
+            self.assertEqual(kw.get('output_config'), {'effort': 'medium'})
+
+    def test_effort_none_omits_output_config(self):
+        client = _Client(_two_round_script())
+        self._loop(client)                      # default: no effort kwarg
+        for kw in client.messages.calls:
+            self.assertNotIn('output_config', kw)
 
 
 if __name__ == '__main__':

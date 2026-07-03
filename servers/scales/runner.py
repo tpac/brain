@@ -152,7 +152,8 @@ def run_unit_in_background(unit, name, lock, on_complete=None):
 
 def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                  user_content, tools, dispatch_fn, log_fn=None,
-                 user_preamble=None, get_nodes_config=None, capture_label=None):
+                 user_preamble=None, get_nodes_config=None, capture_label=None,
+                 effort=None):
     """Generic LLM tool loop — call model, process tool_use, dispatch, repeat.
 
     Used by all scale encode agents. Scale-specific logic is in what
@@ -188,6 +189,12 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             hatch, which dumps full _corrections and can explode an encoder's
             context. None = default batch-size-driven rendering. Consumers with
             tight token budgets (S2 encoders) pass their own lean config.
+
+        effort: Optional API effort level ('low'|'medium'|'high'|'max').
+            Passed as output_config={'effort': ...} on every request. None
+            (default) omits output_config entirely — the API default (high).
+            Comes from the encoder's interaction `parameters` JSON (the
+            K-store), so it's A/B-able per prompt version without code change.
 
     Returns:
         dict with: rounds, actions, write_actions, action_details,
@@ -266,6 +273,7 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                     "round": _cap_round[0],
                     "seq": seq,
                     "model": model,
+                    "effort": effort,              # None = API default (high)
                     "system": system_prompt,       # full text, not a length
                     "messages": msgs,              # full, every content block
                     "tools": [t.get("name") for t in (tools or [])],
@@ -285,10 +293,13 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         _capture_payload(msgs)   # literal per-round payload; no-op unless capturing
         request_t0 = time.time()
         ttft_ms = None
+        # effort rides in output_config; None omits it (API default = high).
+        extra = {"output_config": {"effort": effort}} if effort else {}
         try:
             with client.messages.stream(
                     model=model, max_tokens=max_tokens,
-                    system=system_param, messages=msgs, tools=tools) as stream:
+                    system=system_param, messages=msgs, tools=tools,
+                    **extra) as stream:
                 # Iterate raw events so we can timestamp the first server
                 # signal. SDK's stream object exposes a synchronous iter
                 # that yields RawMessageStreamEvent objects — message_start,
@@ -305,7 +316,8 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             # never on happy path. Better than nuking the encoder cycle.
             with client.messages.stream(
                     model=model, max_tokens=max_tokens,
-                    system=system_param, messages=msgs, tools=tools) as stream:
+                    system=system_param, messages=msgs, tools=tools,
+                    **extra) as stream:
                 final_msg = stream.get_final_message()
             ttft_ms = None
         total_ms = int((time.time() - request_t0) * 1000)

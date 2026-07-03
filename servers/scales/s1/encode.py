@@ -82,6 +82,16 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     # 2. Build prompt (from interactions table — learnable boundary)
     enc_interaction = brain.get_interaction('s1e')
     enc_instructions = enc_interaction.get('template', '') if enc_interaction else ''
+    # Per-version config rides in the interaction's parameters JSON (the
+    # K-store): `effort` maps to the API's output_config.effort. Absent/{} →
+    # None → API default (high). Lets an effort change ship as a prompt
+    # version (A/B-able via ab_encode's parameters injection), not a code edit.
+    try:
+        enc_params = json.loads(enc_interaction.get('parameters') or '{}') \
+            if enc_interaction else {}
+    except (ValueError, TypeError):
+        enc_params = {}
+    enc_effort = enc_params.get('effort') or None
     system_prompt = _build_system_prompt(
         prompt_instructions=enc_instructions or None, lived=lived)
 
@@ -166,7 +176,8 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     _write_pre_traces(brain, dispatch_fn, messages, user_content, counter, session_id)
 
     # 6. Run generic LLM loop (shared with S2+)
-    _log("calling Sonnet with %d tools, %d chars context..." % (len(tools), len(user_content)))
+    _log("calling Sonnet with %d tools, %d chars context, effort=%s..." % (
+        len(tools), len(user_content), enc_effort or 'default(high)'))
     _log("PROFILE so far: %s" % " → ".join("%s:%dms" % (n, t) for n, t in profile))
 
     # Full-prompt capture label (eval/observability) — only computed when
@@ -183,6 +194,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         result = run_llm_loop(
             client=client,
             model="claude-sonnet-4-6",
+            effort=enc_effort,
             max_tokens=ENCODING_AGENT['max_tokens'],
             max_rounds=ENCODING_AGENT.get('max_rounds', 5),
             system_prompt=system_prompt,

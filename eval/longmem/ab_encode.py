@@ -195,12 +195,16 @@ HARD_CHECKS = {"embeddings_complete", "recall_live", "prompt_captured",
                "lived_timeline_xml", "arc_produced"}
 
 
-def run_arm(arm, version, qid, item, capture_dir):
+def run_arm(arm, version, qid, item, capture_dir, control_lived=False):
     from eval.longmem.fresh_brain import create_fresh_eval_brain
     from eval.longmem.replay import replay_item
 
     # Arm env — set BEFORE the brain/replay so the in-process encoder reads it.
-    if arm == "new":
+    # control_lived=True runs BOTH arms lived — for same-template A/Bs where
+    # the axis is the interaction's parameters (e.g. effort high vs medium),
+    # not the input structure. The coupled flag-off control only makes sense
+    # when comparing prompt GENERATIONS (v25-style vs lived-style).
+    if arm == "new" or control_lived:
         os.environ["BRAIN_S1E_LIVED_SEQUENCE"] = "1"
     else:
         os.environ.pop("BRAIN_S1E_LIVED_SEQUENCE", None)
@@ -241,6 +245,9 @@ def main():
     ap.add_argument("--oracle", default="eval/longmem/data/longmemeval_oracle.json")
     ap.add_argument("--capture-dir",
                     default=os.path.expanduser("~/AgentsContext/ab-prompts"))
+    ap.add_argument("--control-lived", action="store_true",
+                    help="run the control arm lived too (same-template A/B — "
+                         "e.g. effort via interaction parameters)")
     args = ap.parse_args()
 
     os.makedirs(args.capture_dir, exist_ok=True)
@@ -260,7 +267,9 @@ def main():
     for qid in args.qids:
         results[qid] = {}
         for arm, ver in arms:
-            results[qid][arm] = run_arm(arm, ver, qid, items[qid], args.capture_dir)
+            results[qid][arm] = run_arm(arm, ver, qid, items[qid],
+                                        args.capture_dir,
+                                        control_lived=args.control_lived)
 
     # ── Report ──────────────────────────────────────────────────────────
     print("\n\n%s\n# S1E COUPLED A/B — ENCODING DIFF\n%s" % ("#" * 70, "#" * 70))
