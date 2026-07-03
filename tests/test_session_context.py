@@ -97,7 +97,8 @@ class TestSessionContextPersistence:
         with pytest.raises(SessionContextCorrupt):
             SessionContext.load(self.brain.logs_conn, 'corrupt-sess')
         # the brain caller catches the signal and degrades gracefully (no crash)
-        assert self.brain.session_env_for('corrupt-sess') == {'cwd': '', 'branch': '', 'worktree': ''}
+        assert self.brain.session_env_for('corrupt-sess') == {
+            'cwd': '', 'branch': '', 'worktree': '', 'project': ''}
 
     def test_save_updates_existing(self):
         from servers.session_context import SessionContext
@@ -111,33 +112,38 @@ class TestSessionContextPersistence:
         assert loaded.stop_counter == 15
 
     def test_save_and_load_cwd_branch(self):
-        # cwd/branch/worktree are session identity (fed from the boot hook) — they
-        # must round-trip through the JSON blob like the other fields.
+        # cwd/branch/worktree/project are session identity (fed from the boot
+        # hook) — they must round-trip through the JSON blob like the other fields.
         from servers.session_context import SessionContext
         ctx = SessionContext(session_id='env-test')
         ctx.cwd = '/work/tree/x'
         ctx.branch = 'claude/x'
         ctx.worktree = 'emb-bench'
+        ctx.project = 'brain'
         ctx.save(self.brain.logs_conn)
         loaded = SessionContext.load(self.brain.logs_conn, 'env-test')
         assert loaded.cwd == '/work/tree/x'
         assert loaded.branch == 'claude/x'
         assert loaded.worktree == 'emb-bench'
+        assert loaded.project == 'brain'
 
     def test_set_env_mutator(self):
         # set_env is the single per-session env stamper. cwd/branch refresh only on
-        # a non-empty value; worktree uses a None sentinel so '' can CLEAR it
-        # (WorktreeRemove) distinct from "leave unchanged".
+        # a non-empty value; worktree/project use a None sentinel so '' can CLEAR
+        # (WorktreeRemove / non-repo) distinct from "leave unchanged".
         from servers.session_context import SessionContext
         ctx = SessionContext(session_id='setenv-test')
-        ctx.set_env(cwd='/a', branch='b', worktree='wt')
-        assert (ctx.cwd, ctx.branch, ctx.worktree) == ('/a', 'b', 'wt')
+        ctx.set_env(cwd='/a', branch='b', worktree='wt', project='brain')
+        assert (ctx.cwd, ctx.branch, ctx.worktree, ctx.project) == \
+            ('/a', 'b', 'wt', 'brain')
         ctx.set_env(cwd='', branch='')               # empty → leave cwd/branch
         assert (ctx.cwd, ctx.branch) == ('/a', 'b')
-        ctx.set_env(cwd='/c')                          # worktree None → unchanged
+        ctx.set_env(cwd='/c')                    # worktree/project None → unchanged
         assert ctx.worktree == 'wt'
-        ctx.set_env(worktree='')                       # '' → explicit clear
+        assert ctx.project == 'brain'
+        ctx.set_env(worktree='', project='')           # '' → explicit clear
         assert ctx.worktree == ''
+        assert ctx.project == ''
 
     def test_reset_session_activity_stamps_cwd(self):
         # boot feeds cwd → a NEW session's reset stamps cwd + derived branch.
@@ -161,6 +167,21 @@ class TestSessionContextPersistence:
         assert f('/Users/t/brain/.git/worktrees/emb-bench') == 'emb-bench'  # linked
         assert f('/x/worktrees/repo/.git') == ''                          # main UNDER worktrees/
         assert f('/x/worktrees/repo/.git/worktrees/wt1') == 'wt1'          # linked UNDER worktrees/
+
+    def test_project_from_common_dir(self):
+        # Unit-test the common-dir → project parser. The common dir is the SAME
+        # from the main tree and every linked worktree, so project is stable
+        # across checkouts. Relative output ('.git' from the repo root) resolves
+        # against cwd; submodule git-dirs resolve to the superproject; unknown
+        # shapes → '' (never a crash, never a wrong slug).
+        from servers.brain import Brain
+        f = Brain._project_from_common_dir
+        assert f('/Users/t/brain/.git', '/anywhere') == 'brain'           # absolute
+        assert f('.git', '/Users/t/brain') == 'brain'                     # relative → cwd
+        assert f('/Users/t/brain/.git/modules/sub', '/x') == 'brain'      # submodule
+        assert f('/x/worktrees/repo/.git', '/y') == 'repo'                # repo under worktrees/
+        assert f('', '/x') == ''                                          # no output
+        assert f('gitdir-without-marker', '/x') == ''                     # unrecognized
 
     def test_detect_git_env_and_stamp_worktree_real(self):
         # Real verification of boot-time derivation: build a temp repo + linked
@@ -187,10 +208,16 @@ class TestSessionContextPersistence:
 
             assert self.brain.detect_git_env(repo)[1] == ''             # main tree → ''
             assert self.brain.detect_git_env(wt)[1] == 'wt-emb-bench'   # linked → name
-            assert self.brain.detect_git_env('/no/such/dir') == ('unknown', None)  # failed → keep
+            # project = main repo dir name — SAME from main tree and worktree
+            assert self.brain.detect_git_env(repo)[2] == 'repo'
+            assert self.brain.detect_git_env(wt)[2] == 'repo'
+            assert self.brain.detect_git_env('/no/such/dir') == \
+                ('unknown', None, None)                                 # failed → keep
 
             self.brain.reset_session_activity(session_id='wt-sess', cwd=wt)
-            assert self.brain.session_env_for('wt-sess')['worktree'] == 'wt-emb-bench'
+            env = self.brain.session_env_for('wt-sess')
+            assert env['worktree'] == 'wt-emb-bench'
+            assert env['project'] == 'repo'
         finally:
             shutil.rmtree(root, ignore_errors=True)
 
