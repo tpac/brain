@@ -135,7 +135,6 @@ def _query_encoding_chains(conn, limit: int, session_id: str, hours: int):
     runs = []
     for row in chain_rows:
         chain_id = row[0]
-        prompt_file = row[1] or ''
         prompt_info = row[2] or ''
         session = row[4] or ''
         timestamp = row[5] or ''
@@ -174,15 +173,13 @@ def _query_encoding_chains(conn, limit: int, session_id: str, hours: int):
             except (ValueError, TypeError):
                 pass
 
-        encoder_prompt = None
-        if prompt_file and os.path.exists(prompt_file):
-            try:
-                with open(prompt_file) as f:
-                    encoder_prompt = json.load(f).get("user_content")
-            except Exception:
-                # Inner row-level failure — silent on purpose.
-                pass
-
+        # NOTE: the full encoder prompt (user_content) is deliberately NOT read
+        # here. A long session's prompt is hundreds of KB; shipping it inline for
+        # every run in the polled list bloated the response into the multi-MB
+        # range and broke the browser transfer (BrokenPipe → empty S1 panel).
+        # The frontend lazy-loads it per-run on card expand via
+        # query_encoding_prompt(chain_id), which re-derives the file from the
+        # chain — so nothing prompt-related rides along in this list row.
         runs.append({
             "chain_id": chain_id,
             "counter": counter,
@@ -196,9 +193,37 @@ def _query_encoding_chains(conn, limit: int, session_id: str, hours: int):
             "revised_ids": revised_ids,
             "nodes": [],
             "edges": [],
-            "encoder_prompt": encoder_prompt,
         })
     return runs
+
+
+@safe_query('queries.encoding', logs_db_path, default={})
+def query_encoding_prompt(conn, chain_id: str = ""):
+    """Lazy-load one run's full encoder prompt (user_content) on card expand.
+
+    Split out of query_encoding_runs so the polled list stays small: the prompt
+    body is fetched only when the operator expands a specific run's card. Keyed
+    by chain_id → the run's encoding_prompt O trace → its ref_id (the tmp file
+    the encoder wrote) → user_content. Mirrors _serve_consolidation_prompt.
+    Returns {"user_content": str} or {"error": str} for the UI fallback."""
+    if not chain_id:
+        return {"error": "chain_id required"}
+    row = conn.execute(
+        "SELECT ref_id FROM trace_events "
+        "WHERE chain_id = ? AND scale = 's1' AND event_type = 'O' "
+        "AND ref_type = 'encoding_prompt' LIMIT 1",
+        (chain_id,),
+    ).fetchone()
+    prompt_file = row[0] if row else ''
+    if not prompt_file:
+        return {"error": "no prompt trace for chain %s" % chain_id}
+    if not os.path.exists(prompt_file):
+        return {"error": "prompt file no longer on disk (encoder tmp cleaned)"}
+    try:
+        with open(prompt_file) as f:
+            return {"user_content": json.load(f).get("user_content") or ""}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def query_encoding_runs(limit: int = 10, session_id: str = '', hours: int = 24):

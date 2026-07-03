@@ -991,11 +991,12 @@ function _renderS1EncodeCard(run) {
   }
   const body = el('div', { class: 'hook-body hook-body--padded' }, bodyRows);
 
-  // Prompt body — populated up-front from run.encoder_prompt (no lazy
-  // load needed; the API already returned it inline).
+  // Prompt body — lazy-loaded on first expand. The list response no longer
+  // carries the full prompt inline (a long session's is hundreds of KB, which
+  // bloated the polled list into multi-MB and broke the browser transfer);
+  // fetched per-run on demand, mirroring the consolidation card.
   const encPromptBody = el('div', { class: 'enc-prompt-body', style: { display: 'none' } },
-    el('pre', { class: 'enc-prompt-pre' },
-      run.encoder_prompt || '(no prompt file found — encoding ran before prompt logging was added)'),
+    el('pre', { class: 'enc-prompt-pre' }, 'Loading...'),
   );
   const showPromptBtn = el('button', { class: 'hook-details-btn hook-details-btn--right' }, 'Show Prompt');
 
@@ -1008,7 +1009,10 @@ function _renderS1EncodeCard(run) {
     showPromptBtn,
   );
   header.addEventListener('click', () => body.classList.toggle('open'));
-  _wirePromptToggle(showPromptBtn, encPromptBody, null);
+  _wirePromptToggle(showPromptBtn, encPromptBody, async () => {
+    const d = await api.encodingPrompt({ chain_id: run.chain_id });
+    return d.user_content || d.error || '(no prompt available)';
+  });
 
   return el('div', {
     class: 'hook-entry enc-entry',
