@@ -1,6 +1,15 @@
 # S1 Scribe — Whole-Encoder Redesign
 
-**Status:** design / pickup spec. Captured 2026-06-28. **Nothing built yet.** This is
+> ✅ **COMPLETE — ARCHIVED 2026-07-03.** The whole redesign shipped and is LIVE:
+> **s1e v29 active** (lived-sequence input, temporal+quote scouts retired,
+> operator→"the other side" voice, `## Arc`/`## Review` residue, medium effort),
+> `BRAIN_S1E_LIVED_SEQUENCE=1`. Gate: LongMemEval do-no-harm A/B passed
+> (raw 70%→77%, encode-miss 6→0, temporal held 1.0). Code-review-hardened
+> (arc-fence bug fixed, `87869ae`). Live source of truth = the `s1e` interaction
+> (interactions table) + `servers/scales/s1/encoding_prompt.py` seed. Brain
+> capstone: milestone (this session, 2026-07-03). This doc is history — git holds it.
+
+**Status (original):** design / pickup spec. Captured 2026-06-28. This is
 the master spine for reopening the S1 Scribe (S1E) encoder *as a whole* — input
 architecture + journal/residue + the empirical refinements its own journals asked
 for. Highest-risk encoder (live recall path, feeds the Frame), so it's eval-gated and

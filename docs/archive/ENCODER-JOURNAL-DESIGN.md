@@ -1,6 +1,15 @@
 # Encoder Journals — Design & Considerations
 
-**Status:** Living design doc. **Phases 2, 3, and 5 SHIPPED + LIVE on `main`** — the journal-note contract is now the only path for both S2 LLM encoders (consolidation + community), base journal legacy retired, daemon restarted on v20. **Next: Phase 4 — S1 Scribe**, eval-gated on the Frozen Corpus (highest risk — live recall path). Started 2026-06-15. (Phase 4 reorder: community came before S1E per the "prove on cheap S2 first" rule — see the 2026-06-24 Phase-5 decision-log entry.)
+> ✅ **IMPLEMENTATION COMPLETE — ARCHIVED 2026-07-03.** Phases 0,2,3,5 shipped;
+> **Phase 4 (S1 Scribe) shipped + LIVE** as s1e v29 (2026-07-03). The journal-note
+> contract (`## Review` residue + `## Arc`) is the only path across S1E + S2
+> consolidation + community; Healer/Aspect journal-exempt. **Phase 6 (the S3
+> miner) is deliberately NOT built — it becomes its own standalone project later**
+> (recurrence mining of the retained note stream → finding nodes + operator-asks,
+> with the confabulation safeguards). This doc is history; S3 gets a fresh design
+> doc when it starts. Git holds the full Phase-6 sketch (§6 L4, §8 Phase 6, §9).
+
+**Status (original):** Living design doc. **Phases 2, 3, and 5 SHIPPED + LIVE on `main`** — the journal-note contract is now the only path for both S2 LLM encoders (consolidation + community), base journal legacy retired, daemon restarted on v20. **Next: Phase 4 — S1 Scribe**, eval-gated on the Frozen Corpus (highest risk — live recall path). Started 2026-06-15. (Phase 4 reorder: community came before S1E per the "prove on cheap S2 first" rule — see the 2026-06-24 Phase-5 decision-log entry.)
 **Scope:** The journal mechanism across all five encoders — S1 Scribe + S2 Consolidation / Community / Healer / Aspect.
 **Reframe in one line:** the "journal" becomes a residue-only, **episodic** stream of notes — what the encoder's *mind* did, not its *hands* — each note a Δ of `integrate()`, stored in traces (retained, never pruned), read recency-bounded (last 3–5 runs), and mined later by a future S3.
 
