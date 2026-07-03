@@ -111,6 +111,7 @@ export const api = {
   aspects:             ()       => get('/api/aspects'),
   sessions:            ()       => get('/api/sessions'),
   recalls:             (p = {}) => get('/api/recalls' + _qs(p)),
+  recallPrompt:        (p = {}) => get('/api/recall-prompt' + _qs(p)),
   encodingRuns:        (p = {}) => get('/api/encoding-runs' + _qs(p)),
   encodingPrompt:      (p = {}) => get('/api/encoding-prompt' + _qs(p)),
   encodingActivity:    (p = {}) => get('/api/encoding-activity' + _qs(p)),
