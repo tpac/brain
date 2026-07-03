@@ -132,22 +132,19 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
             },
         },
     },
-    {
-        "name": "recall_verbatim",
-        "description": (
-            "Verbatim phrase lookup. Use when the user is asking about EXACT wording "
-            "('what did X say about Y', 'find the quote where', 'literal phrase'). "
-            "Bypasses semantic similarity — pure full-text lexical match."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "phrase": {"type": "string", "description": "The exact phrase or distinctive words to match."},
-                "k": {"type": "integer", "description": "Max results (default 10)", "default": 10},
-            },
-            "required": ["phrase"],
-        },
-    },
+    # recall_verbatim REMOVED from Haiku's tool set 2026-07-02 (operator call,
+    # same surgical pattern as recall_by_aspect / expand_node): the name and
+    # description promised "EXACT wording / literal phrase," but the mechanism
+    # (Fts5DAL.search → _sanitize_query) is a bag-of-words OR query over
+    # title+content, NOT a phrase match — so it could never do what it claimed,
+    # and its only real edge over recall_topical (pure lexical, no embedding
+    # dilution) was thin and redundant. 42 calls/7d (~6% of tool calls). The
+    # episodic→node signal we actually want ("what did we work on about X") is
+    # the LAF episodic lane (brain node d3480899, always-on recall) — if a
+    # TARGETED episodic tool proves needed after that lands, reintroduce as
+    # recall_episodic bridging on created/revised (NOT surfaced — that echoes
+    # past picks into the training signal, the 4942bd35 circularity trap). The
+    # recall_verbatim FUNCTION below stays callable + tested for the record.
     # expand_node REMOVED from Haiku's tool set 2026-06-12 (same surgical
     # pattern as the recall_by_aspect cut): production audit over 4 days
     # (eval/oracle_audit/ab_tool_use_audit.py) showed 13 calls → 13 zero-result
