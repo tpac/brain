@@ -426,7 +426,13 @@ class LafV1Engine:
             'pick': pick,
             'enc': enc,
             'idf': idf_scores(query, self._title_tok, self._title_df, n),
-            'sit': np.where(np.isfinite(sit_raw), sit_raw, 0.0),
+            # NaN (no _situation vector) stays NaN: _zscore's isfinite mask
+            # excludes it from the stats and scores it 0 — absence is neutral,
+            # same semantics as maxsim's nanmax. Zero-filling here scored a
+            # missing vector as a real cosine of 0.0 — ~10σ below the corpus
+            # mean (0.475±0.045), burying just-encoded nodes and any node in
+            # the revise→re-embed window (sit z −10.6 ≈ −5.3 zsum at gain 0.5).
+            'sit': sit_raw,
         }
 
     # ── the scorer ──

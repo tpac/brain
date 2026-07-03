@@ -1594,7 +1594,14 @@ class BrainRecallMixin:
         _laf_scores = None
         _laf_fields = None
         import os as _os_laf
-        if _os_laf.environ.get('BRAIN_RECALL_VARIANT', '').strip().lower() == 'laf_v1':
+        # include_archived falls back to champion: the LAF engine's universe is
+        # deliberately live-only (vectors_since / get_all_vectors exclude
+        # archived — a performance choice, don't widen it), so archived
+        # candidates would all score _laf_scores.get(id, 0.0) = dead-last.
+        # Champion cosines them correctly, and these calls are rare and
+        # not latency-critical.
+        if (_os_laf.environ.get('BRAIN_RECALL_VARIANT', '').strip().lower() == 'laf_v1'
+                and not include_archived):
             try:
                 try:
                     from .recall_laf import get_engine as _laf_get_engine
