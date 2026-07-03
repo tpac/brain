@@ -1,5 +1,17 @@
 # Surface v12 — ship-the-bundle handoff
 
+**SHIPPED 2026-07-03 as v12.1** (DB surface v12). The v12 draft FAILED its A/B
+(fire rate +20pp, forced-finalize 13% — dropping v11's hard-cap language
+inverted fetch behavior); the shipped text is `eval/surface_v12_1_prompt.txt`:
+same draft plus restored hard 1-round cap, trigger-gated fetching, and
+no-retry-on-empty. A/B numbers + drill-down live in
+`eval/longmem/reports/run_v11_ctrl.json` / `run_v12_cand.json` /
+`run_v12_1_full.json`. Corrected scoreboard split: the caching restart was
+**2026-07-02T23:20 UTC** (the 19:23 below is local time mislabeled as UTC).
+The rest of this doc is the original handoff, kept for the WHY links.
+
+---
+
 Picks up the surface-layer arc from the 2026-07-02 session. The design work is
 DONE; the job is to eval-gate the v12 prompt and ship the bundle. Read this
 whole file, then recall the brain nodes at the bottom before touching anything.

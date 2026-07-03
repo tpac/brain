@@ -234,6 +234,13 @@ def sweep(corpus_hash: str, surface: str, variance: int, label: str,
                 "candidates": trace.get("candidates", []),
                 "selected": trace.get("selected", []),
                 "context": trace.get("context", qr.get("additional_context", "")),
+                # Probe-fidelity + per-arm tool economics: the agentic surface
+                # always writes a non-empty tool_trace (a no-fire run still has
+                # its round record); v4 single-shot writes []. Without these,
+                # tool_trace_summary reads nothing and an A/B can't prove it
+                # exercised the agentic path.
+                "tool_trace": trace.get("tool_trace", []),
+                "surface_variant": trace.get("surface_variant", ""),
                 "s2_reach": reach,
                 "answerer_response": {
                     "hypothesis": ar["hypothesis"],
