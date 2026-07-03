@@ -324,7 +324,8 @@ def test_dropped_authoritative_verdict_split():
     # from the owning encode run at the same stop — ONE join, all roles.
     links = nodes_for_traces(
         [_surface(5, ['p1'])],
-        [_encode(5, ['enc_full_1'], ['enc_full_2'])],
+        # run@6 owns turn 5 (strict ownership, 4171a2e — run@5 never saw stop 5)
+        [_encode(6, ['enc_full_1'], ['enc_full_2'])],
         [_turn(5)],
         recall_traces=[_outcomes(5, {'p1': 'selected', 'd1': 'dropped',
                                      'd2': 'dropped'})])
@@ -422,7 +423,9 @@ class _RolesStubBrain:
         if rt == 'surface_selected':
             return {'events': [_surface(5, ['p'])]}
         if rt == 'encoding_run':
-            return {'events': [_encode(5, ['e'], [])]}
+            # stop 6: a run owns turns with chain-stop < its own (strict
+            # ownership, 4171a2e) — run@6 is turn 5's owning run.
+            return {'events': [_encode(6, ['e'], [])]}
         return {'events': []}
 
 
