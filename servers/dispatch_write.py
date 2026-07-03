@@ -39,8 +39,9 @@ def _stamp_session_project(brain, cmd, args, ctx=None):
                    if sid else None)
     warnings = stamp_project_provenance(cmd, args, project)
     for w in warnings:
-        # expected agent behavior (the MCP schema still advertises project),
-        # surfaced as a warning — not an error-feed entry
+        # agent drift, not a failure (the field is system_stamped and no
+        # longer in the MCP schemas, but agents may still emit it from
+        # habit/training) — warning severity keeps the error feed real
         brain._log_warning('project_provenance_stamp', w, 'cmd=%s' % cmd)
     return warnings
 
@@ -451,7 +452,7 @@ def _handle_remember(brain, args, graph_changes):
 
 
 def _handle_remember_batch(brain, args, graph_changes):
-    from .contract import validate_field, get_remember_fields
+    from .contract import validate_field
 
     # Pop session_id BEFORE spec scrubbing so per-node specs don't inherit
     # control fields. Also strip from each spec defensively in case the
@@ -466,7 +467,6 @@ def _handle_remember_batch(brain, args, graph_changes):
     project_warnings = _stamp_session_project(
         brain, 'remember_batch', args, ctx=ctx)
 
-    accepted_fields = set(get_remember_fields().keys())
     # Inherit top-level encoding_source into each node (dispatch wrapper injects this)
     top_encoding_source = args.get("encoding_source")
 

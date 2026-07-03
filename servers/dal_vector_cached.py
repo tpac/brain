@@ -134,7 +134,6 @@ class CachedVectorDAL:
 
     def get_all_with_context(self, exclude_archived: bool = True,
                              types: List[str] = None,
-                             project: str = None,
                              model: str = None) -> List[Dict[str, Any]]:
         """Primary vectors + per-node context fields.
 
@@ -151,15 +150,14 @@ class CachedVectorDAL:
 
         # 2) Fetch per-node context for those ids, filtered.
         ctx_by_id = self._fetch_node_context(
-            ids, exclude_archived=exclude_archived,
-            types=types, project=project)
+            ids, exclude_archived=exclude_archived, types=types)
 
         # 3) Zip results — same dict shape as VectorDAL.get_all_with_context.
         out = []
         for nid, blob in primary:
             ctx = ctx_by_id.get(nid)
             if ctx is None:
-                # Filtered out by archived/type/project → skip.
+                # Filtered out by archived/type → skip.
                 continue
             out.append({
                 'node_id': nid,
@@ -231,8 +229,7 @@ class CachedVectorDAL:
 
     def _fetch_node_context(self, ids: List[str], *,
                             exclude_archived: bool,
-                            types: Optional[List[str]],
-                            project: Optional[str]) -> Dict[str, Dict[str, Any]]:
+                            types: Optional[List[str]]) -> Dict[str, Dict[str, Any]]:
         """One bounded SQL: SELECT ... FROM nodes WHERE id IN (...)
         with the filters that get_all_with_context previously applied
         server-side. Returns {id → context dict}.
@@ -251,9 +248,6 @@ class CachedVectorDAL:
             if types:
                 where.append('n.type IN (%s)' % ','.join('?' * len(types)))
                 params.extend(types)
-            if project:
-                where.append('(n.project = ? OR n.project IS NULL)')
-                params.append(project)
             sql = ('SELECT n.id, n.personal, n.personal_context, '
                    'n.confidence, n.critical, n.title, n.type, '
                    'n.created_at, n.emotion, n.access_count '

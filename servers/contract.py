@@ -204,7 +204,10 @@ STRUCTURAL_FIELDS = {
     "critical":   {"store": "nodes", "type": "bool", "default": False},
     "emotion":    {"store": "nodes", "type": "float"},
     "emotion_label": {"store": "nodes", "type": "str", "default": "neutral"},
-    "project":    {"store": "nodes", "type": "str"},
+    # `project` moved to PROMOTED_FIELDS (metadata_kv) 2026-07-03 — the
+    # nodes.project column is legacy (nulled by the kv migration, dropped at
+    # the next schema bump). Provenance is system-stamped at the write
+    # boundary, never agent-authored.
     "personal":   {"store": "nodes", "type": "str"},
     "personal_context": {"store": "nodes", "type": "str"},
     "evolution_status":  {"store": "nodes", "type": "str"},
@@ -221,6 +224,21 @@ STRUCTURAL_FIELDS = {
 # "surfaces_in": where the field is shown (engineering, boot, distiller, etc.)
 
 PROMOTED_FIELDS = {
+    "project": {
+        "store": "metadata_kv",
+        "type": "str",
+        # system_stamped: excluded from the agent-facing MCP schemas
+        # (get_writable_fields) — the write boundary stamps it from
+        # SessionContext.project and overrides/drops agent-supplied values,
+        # so advertising it as an input would only train drift.
+        "system_stamped": True,
+        "description": (
+            "Repo provenance — WHERE this was learned (the session's main-repo "
+            "directory name, derived from cwd). System-stamped at the write "
+            "boundary from SessionContext.project; agent-supplied values are "
+            "overridden or dropped, and a revise never moves it (only "
+            "migration does). Read by the LAF proj lane and dict filters."),
+    },
     "situation": {
         "store": "metadata_kv",
         "type": "str",
@@ -276,9 +294,13 @@ ALL_FIELDS = {**STRUCTURAL_FIELDS, **PROMOTED_FIELDS}
 # ── HELPER FUNCTIONS ──
 
 def get_writable_fields():
-    """Fields that can be set via remember() or revise()."""
+    """Fields an AGENT can set via remember() or revise() — feeds the MCP
+    schemas. Excludes immutable fields and system_stamped ones (project:
+    the write boundary derives it from the session; advertising it as an
+    input would only train drift)."""
     return {k: v for k, v in ALL_FIELDS.items()
-            if not v.get("immutable") and k != "archived"}
+            if not v.get("immutable") and not v.get("system_stamped")
+            and k != "archived"}
 
 
 def get_remember_fields():

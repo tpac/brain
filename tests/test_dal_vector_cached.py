@@ -149,15 +149,6 @@ class TestParity:
                    key=lambda r: r['node_id'])
         assert i == c
 
-    def test_get_all_with_context_project_filter(self, brain_db):
-        inner = VectorDAL(brain_db)
-        cached = CachedVectorDAL(brain_db)
-        i = sorted(inner.get_all_with_context(project='brain'),
-                   key=lambda r: r['node_id'])
-        c = sorted(cached.get_all_with_context(project='brain'),
-                   key=lambda r: r['node_id'])
-        assert i == c
-
     def test_get_primary(self, brain_db):
         inner = VectorDAL(brain_db)
         cached = CachedVectorDAL(brain_db)

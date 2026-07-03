@@ -852,12 +852,15 @@ class VectorDAL:
 
     def get_all_with_context(self, exclude_archived: bool = True,
                              types: List[str] = None,
-                             project: str = None,
                              model: str = None) -> List[Dict[str, Any]]:
         """Get all primary embeddings with node context for recall STEP 3 scan.
 
         When `model` is given, only vectors produced by that model are returned.
         Stale-model rows are invisible — prevents cosine noise after a swap.
+
+        `project` param removed 2026-07-03 with recall(project=) — project is
+        kv provenance now, scored by the LAF proj lane / filtered via the dict
+        filter, not a scan pre-filter.
         """
         where = ["ne.vector_type = '_primary'"]
         params: List[Any] = []
@@ -866,9 +869,6 @@ class VectorDAL:
         if types:
             where.append('n.type IN (%s)' % ','.join('?' * len(types)))
             params.extend(types)
-        if project:
-            where.append('(n.project = ? OR n.project IS NULL)')
-            params.append(project)
         if model:
             where.append('ne.model = ?')
             params.append(model)

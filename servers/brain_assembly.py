@@ -329,9 +329,12 @@ class BrainAssemblyMixin:
                     'content': r[3]
                 })
 
-        # 3. Recall by context query (project-scoped)
+        # 3. Recall by context query. (Previously passed project= — with the
+        # boot default 'default' matching no node, the soft-filter silently
+        # EXCLUDED every project-tagged node from boot recall. The param was
+        # removed 2026-07-03; project is kv provenance scored by the LAF lane.)
         if query:
-            recall_result = self.recall(query=query, limit=max_recall, project=project, source='internal')
+            recall_result = self.recall(query=query, limit=max_recall, source='internal')
             recalled = recall_result.get('results', recall_result) if isinstance(recall_result, dict) else recall_result
             for r in recalled:
                 if r['id'] not in seen:
