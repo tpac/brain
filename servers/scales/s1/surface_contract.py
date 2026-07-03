@@ -647,6 +647,14 @@ HAIKU_FORMAT_LEAN = {
 # Enforced during generation via output_config={'format':{'type':'json_schema',
 # 'schema': SURFACE_SELECTION_SCHEMA}} on the final agentic-round API call.
 # See surface.py:_call_surface_agentic.
+# id pattern: hex-only kills the observed corruption class — Haiku copying a
+# candidate id as its BPE chunks with spaces leaked in ('9 9a 2e ' for
+# 99a2e…) — by masking the space token during constrained decoding. Length
+# {4,8}, not {8}: Haiku is known to emit 7-char leading-zero-dropped ids, and
+# a hard 8 would force it to guess digits it doesn't know; short-but-honest
+# fragments are recovered downstream (surface.py unique-prefix match).
+SURFACE_SELECTED_ID_PATTERN = "^[0-9a-f]{4,8}$"
+
 SURFACE_SELECTION_SCHEMA = {
     "type": "object",
     "properties": {
@@ -655,7 +663,8 @@ SURFACE_SELECTION_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "id":   {"type": "string"},
+                    "id":   {"type": "string",
+                             "pattern": SURFACE_SELECTED_ID_PATTERN},
                     "why":  {"type": "string"},
                     "mode": {"type": "string", "enum": list(SURFACE_MODES)},
                 },
