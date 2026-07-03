@@ -128,11 +128,24 @@ def capture_files_for(capture_dir: str, arm: str, session: str) -> list:
                   key=_cap_sort_key)
 
 
-def run_assertions(brain, arm: str, question: str, cap_files: list) -> dict:
+def run_assertions(brain, arm: str, question: str, cap_files: list,
+                   session: str = '') -> dict:
     """Verify the pipeline worked INTERNALLY. Hard checks gate validity; soft
     checks (lived structures) warn — they depend on haystack length + the
     deferred-embedding reality of eval ingest."""
     a = {}
+
+    # HARD: the session arc populated (Guardrail #1 of the eval design — the
+    # v26 A/B regression this tool missed: the lived arm wrote zero
+    # session_context_* rows and only the corpus-stage analysis caught it).
+    # Both arms must produce it: control via the SESSION_CONTEXT: line, new
+    # via the `## Arc` fence → write_session_arc.
+    if session:
+        try:
+            ctx = (brain.session_context_for(session) or '').strip()
+            a["arc_produced"] = (bool(ctx), "%d chars of session arc" % len(ctx))
+        except Exception as e:
+            a["arc_produced"] = (False, "arc probe failed: %s" % e)
 
     # HARD: embeddings computed (the classic '0% baseline from NULL vectors' trap).
     try:
@@ -178,7 +191,8 @@ def run_assertions(brain, arm: str, question: str, cap_files: list) -> dict:
     return a
 
 
-HARD_CHECKS = {"embeddings_complete", "recall_live", "prompt_captured", "lived_timeline_xml"}
+HARD_CHECKS = {"embeddings_complete", "recall_live", "prompt_captured",
+               "lived_timeline_xml", "arc_produced"}
 
 
 def run_arm(arm, version, qid, item, capture_dir):
@@ -206,7 +220,8 @@ def run_arm(arm, version, qid, item, capture_dir):
 
     nodes, edges = dump_nodes(brain), dump_edges(brain)
     cap_files = capture_files_for(capture_dir, arm, session)
-    asserts = run_assertions(brain, arm, item["question"], cap_files)
+    asserts = run_assertions(brain, arm, item["question"], cap_files,
+                             session=session)
     try:
         brain.close()
     except Exception:
