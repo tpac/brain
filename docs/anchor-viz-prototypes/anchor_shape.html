@@ -1,0 +1,197 @@
+<style>
+  :root{
+    --ground:#070812;--ground-2:#0b0e1e;--ink:#c9d3e6;--ink-dim:#6b7794;--hair:#1e2740;
+    --panel:rgba(9,11,22,.72);--amber:#ffc46b;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  .stage{position:fixed;inset:0;overflow:hidden;font-family:var(--sans);color:var(--ink);
+    background:radial-gradient(130% 100% at 55% 46%, #0e1330 0%, var(--ground-2) 46%, var(--ground) 100%)}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab}
+  .scrim{position:absolute;inset:0;z-index:2;pointer-events:none;background:
+    radial-gradient(66% 46% at 22% 12%, rgba(7,8,18,.9), rgba(7,8,18,.45) 45%, rgba(7,8,18,0) 74%)}
+  .title{position:absolute;top:26px;left:30px;z-index:3;pointer-events:none;max-width:min(42ch,64vw)}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.32em;text-transform:uppercase;color:var(--amber);opacity:.85;margin:0 0 10px}
+  .title h1{font-size:clamp(21px,3.2vw,33px);line-height:1.08;margin:0;font-weight:600;letter-spacing:-.01em;text-wrap:balance;color:#eef2fb}
+  .title p{margin:12px 0 0;font-size:14px;line-height:1.5;color:var(--ink-dim);max-width:40ch}
+  .hud{position:absolute;left:30px;bottom:28px;z-index:3;display:flex;flex-direction:column;gap:14px;
+    padding:17px 20px;background:var(--panel);border:1px solid var(--hair);border-radius:14px;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);min-width:260px}
+  .idrow{font-family:var(--mono);font-size:12px;color:var(--ink-dim)}
+  .idrow b{color:#eef2fb;font-size:15px}
+  .profile{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-size:11px}
+  .bar{display:flex;align-items:center;gap:8px}
+  .bar .lab{width:88px;color:var(--ink-dim);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar .track{flex:1;height:6px;border-radius:3px;background:#161c30;overflow:hidden}
+  .bar .fill{height:100%;border-radius:3px}
+  .newbtn{appearance:none;border:0;font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:#0a0b14;background:var(--amber);border-radius:9px;padding:11px 16px;cursor:pointer;font-weight:600;transition:transform .12s ease,box-shadow .2s ease}
+  .newbtn:hover{transform:translateY(-1px);box-shadow:0 6px 22px -6px rgba(255,196,107,.55)}
+  .newbtn:focus-visible{outline:2px solid #fff1e6;outline-offset:3px}
+  .hint{font-family:var(--mono);font-size:11px;color:var(--ink-dim)}
+</style>
+
+<div class="stage">
+  <canvas id="c"></canvas>
+  <div class="scrim"></div>
+  <div class="title">
+    <p class="eyebrow">Anchor · one of a kind</p>
+    <h1>Every Anchor has a shape</h1>
+    <p>The 16 aspects are fixed poles — the shared anatomy of every brain. What each Anchor has <em>lived</em> — its mass in each aspect — folds that anatomy into a form no other Anchor has. Same poles, unique folds.</p>
+  </div>
+  <div class="hud">
+    <div class="idrow">anchor <b id="aid">—</b> · <span id="ncount">0</span> memories</div>
+    <div class="profile" id="profile"></div>
+    <button class="newbtn" id="newbtn" type="button">⟳ Generate another Anchor</button>
+    <div class="hint">drag to orbit · scroll to zoom</div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const ASPECTS=['identity_bearing','episodic_anchor','active_thread','lesson_insight','generic_relation','noise',
+    'correction_improvement','extension_refinement','explanation_causation','dependency_flow','contradiction_conflict',
+    'validation_evidence','hierarchical_structure','temporal_sequence','survivor_lineage','wisdom'];
+  const SHORT=['identity','episodic','active','lesson','relation','noise','correction','extension','causation',
+    'dependency','conflict','evidence','hierarchy','temporal','lineage','wisdom'];
+  const NA=ASPECTS.length;
+  // fixed pole directions — identical for every Anchor (the shared anatomy)
+  const POLES=(()=>{ const p=[],g=Math.PI*(3-Math.sqrt(5)); for(let i=0;i<NA;i++){ const y=1-(i/(NA-1))*2, r=Math.sqrt(Math.max(0,1-y*y)), t=g*i; p.push([Math.cos(t)*r,y,Math.sin(t)*r]); } return p; })();
+  // cool palette per aspect, warm-biased for wisdom/lesson so identity reads
+  const HUES=POLES.map((_,i)=>{ const t=i/NA; return [ 80+70*Math.sin(t*6.28), 120+55*Math.sin(t*6.28+2), 175+55*Math.cos(t*6.28) ]; });
+
+  function mulberry(a){ return ()=>{ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+
+  // ── generate one Anchor: aspect-mass profile → deformed rounded organ ──
+  let N=0, X,Y,Z, COL, E=[], adj=[], mass=new Float32Array(NA), seed=0, maxR=1;
+  function makeAnchor(s){
+    seed=s; const rng=mulberry(s);
+    // mass profile: a few dominant aspects, most quiet — skewed so shapes differ hard
+    for(let a=0;a<NA;a++){ let m=Math.pow(rng(),3.4); mass[a]=m; }
+    // guarantee 2-3 clear dominant lobes → distinct silhouettes
+    const nDom=2+(rng()*2|0); for(let k=0;k<nDom;k++){ mass[rng()*NA|0]=0.75+rng()*0.25; }
+    let mx=0; for(let a=0;a<NA;a++) mx=Math.max(mx,mass[a]); for(let a=0;a<NA;a++) mass[a]/=mx;
+
+    // communities: each sits at an aspect pole, count ∝ that aspect's mass
+    const comms=[]; const NC=40;
+    for(let c=0;c<NC;c++){
+      // pick aspect weighted by mass
+      let r=rng()*mass.reduce((s,v)=>s+v+0.05,0), a=0; for(;a<NA;a++){ r-=(mass[a]+0.05); if(r<=0) break; } a=Math.min(a,NA-1);
+      const sec = rng()<0.5 ? (rng()*NA|0) : -1;   // secondary aspect (edge-pull individuation)
+      comms.push({a, sec, k: 22 + (mass[a]*60|0) + (rng()*14|0)});
+    }
+    const xs=[],ys=[],zs=[],col=[],ca=[]; const byComm=[];
+    const R=1.0, BULGE=0.6;
+    comms.forEach((cm,ci)=>{ byComm.push([]);
+      // community centre direction = pole, nudged, blended toward secondary
+      let d=POLES[cm.a].slice();
+      if(cm.sec>=0){ const w=0.32; for(let j=0;j<3;j++) d[j]=d[j]*(1-w)+POLES[cm.sec][j]*w; }
+      const cd=norm([ d[0]+(rng()-.5)*.4, d[1]+(rng()-.5)*.4, d[2]+(rng()-.5)*.4 ]);
+      for(let i=0;i<cm.k;i++){
+        // scatter tightly around the community direction
+        const dir=norm([ cd[0]+(rng()-.5)*.5, cd[1]+(rng()-.5)*.5, cd[2]+(rng()-.5)*.5 ]);
+        // FILLED ball (cube-root radius → uniform density, solid core), with the
+        // surface bulging outward where this aspect carries mass → rounded lobes
+        const bulge=1 + BULGE*mass[cm.a]*Math.pow(Math.max(0,dot(dir,POLES[cm.a])),1.5);
+        const rad=R*Math.cbrt(0.08+rng()*0.92)*bulge;
+        const idx=xs.length;
+        xs.push(dir[0]*rad); ys.push(dir[1]*rad); zs.push(dir[2]*rad);
+        col.push(HUES[cm.a]); ca.push(cm.a); byComm[ci].push(idx);
+      }
+    });
+    N=xs.length; X=Float32Array.from(xs); Y=Float32Array.from(ys); Z=Float32Array.from(zs); COL=col;
+    // edges: intra-community k-nearest + a few typed cross-community bridges
+    E=[]; adj=Array.from({length:N},()=>[]);
+    byComm.forEach(ids=>{ for(const i of ids){
+      const nn=ids.filter(j=>j!==i).map(j=>[j,(X[i]-X[j])**2+(Y[i]-Y[j])**2+(Z[i]-Z[j])**2]).sort((a,b)=>a[1]-b[1]).slice(0,3);
+      for(const [j] of nn) if(i<j){ E.push([i,j]); adj[i].push(j); adj[j].push(i); }
+    }});
+    for(let b=0;b<NC*1.5;b++){ const i=rng()*N|0, j=rng()*N|0; if(i!==j){ E.push([i,j]); adj[i].push(j); adj[j].push(i); } }
+    // 2 relaxation passes — neighbour-averaging rounds the lobes
+    for(let pass=0;pass<2;pass++){ const nx=Float32Array.from(X),ny=Float32Array.from(Y),nz=Float32Array.from(Z);
+      for(let i=0;i<N;i++){ if(!adj[i].length) continue; let sx=X[i],sy=Y[i],sz=Z[i],n=1;
+        for(const j of adj[i]){ sx+=X[j];sy+=Y[j];sz+=Z[j];n++; } nx[i]=X[i]*.6+sx/n*.4; ny[i]=Y[i]*.6+sy/n*.4; nz[i]=Z[i]*.6+sz/n*.4; }
+      X=nx;Y=ny;Z=nz;
+    }
+    // recenter on centroid + measure radius → the view auto-fits any Anchor
+    let cmx=0,cmy=0,cmz=0; for(let i=0;i<N;i++){cmx+=X[i];cmy+=Y[i];cmz+=Z[i];} cmx/=N;cmy/=N;cmz/=N;
+    maxR=0.001; for(let i=0;i<N;i++){ X[i]-=cmx;Y[i]-=cmy;Z[i]-=cmz; maxR=Math.max(maxR,Math.hypot(X[i],Y[i],Z[i])); }
+    document.getElementById('aid').textContent='#'+(s>>>0).toString(16).slice(0,6);
+    document.getElementById('ncount').textContent=N.toLocaleString();
+    // profile readout: top 5 aspects by mass
+    const order=[...Array(NA).keys()].sort((a,b)=>mass[b]-mass[a]).slice(0,5);
+    document.getElementById('profile').innerHTML = order.map(a=>{
+      const h=HUES[a], c=`rgb(${h[0]|0},${h[1]|0},${h[2]|0})`;
+      return `<div class="bar"><span class="lab">${SHORT[a]}</span><span class="track"><span class="fill" style="width:${(mass[a]*100)|0}%;background:${c}"></span></span></div>`;
+    }).join('');
+  }
+  function norm(v){ const l=Math.hypot(v[0],v[1],v[2])||1; return [v[0]/l,v[1]/l,v[2]/l]; }
+  function dot(a,b){ return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+
+  // ── camera ──
+  let W,H,DPR,MIN, yaw=0.4,pitch=0.22,zoom=1,panx=0,pany=0, t0=performance.now();
+  function resize(){ DPR=Math.min(devicePixelRatio||1,2); W=cv.clientWidth;H=cv.clientHeight;MIN=Math.min(W,H); cv.width=W*DPR;cv.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+  new ResizeObserver(resize).observe(cv); resize();
+  const GLOW=document.createElement('canvas'); GLOW.width=GLOW.height=64;
+  (()=>{ const g=GLOW.getContext('2d'),rg=g.createRadialGradient(32,32,0,32,32,32);
+    rg.addColorStop(0,'rgba(255,255,255,0.9)');rg.addColorStop(0.4,'rgba(200,220,255,0.28)');rg.addColorStop(1,'rgba(160,190,255,0)');
+    g.fillStyle=rg;g.fillRect(0,0,64,64); })();
+
+  const FOCAL=5.5, SPREAD=0.2;
+  const S_x=[],S_y=[],S_d=[],S_z=[], order=[];
+  const CXf=0.6, CYf=0.44;
+  function project(){ const cyaw=Math.cos(yaw),syaw=Math.sin(yaw),cpit=Math.cos(pitch),spit=Math.sin(pitch);
+    const cx=W*CXf+panx, cy=H*CYf+pany, sc=(0.34*MIN/maxR)*zoom;
+    for(let i=0;i<N;i++){ let rx=X[i]*cyaw-Z[i]*syaw, rz=X[i]*syaw+Z[i]*cyaw; const ry=Y[i]*cpit-rz*spit; rz=Y[i]*spit+rz*cpit;
+      const p=FOCAL/(FOCAL+rz); S_x[i]=cx+rx*sc*p; S_y[i]=cy+ry*sc*p; S_d[i]=p; S_z[i]=rz; }
+  }
+  function projPole(v){ const cyaw=Math.cos(yaw),syaw=Math.sin(yaw),cpit=Math.cos(pitch),spit=Math.sin(pitch);
+    const cx=W*CXf+panx, cy=H*CYf+pany, sc=(0.34*MIN/maxR)*zoom;
+    let rx=v[0]*cyaw-v[2]*syaw, rz=v[0]*syaw+v[2]*cyaw; const ry=v[1]*cpit-rz*spit; rz=v[1]*spit+rz*cpit;
+    const p=FOCAL/(FOCAL+rz); return [cx+rx*sc*p*1.42, cy+ry*sc*p*1.42, p, rz]; }
+
+  function frame(now){ const dt=Math.min((now-t0)/1000,.05); t0=now;
+    if(!reduce && !dragging) yaw+=dt*0.09;
+    project();
+    ctx.clearRect(0,0,W,H);
+    // edges
+    const rest=new Path2D();
+    for(let e=0;e<E.length;e++){ const a=E[e][0],b=E[e][1]; rest.moveTo(S_x[a],S_y[a]); rest.lineTo(S_x[b],S_y[b]); }
+    ctx.lineWidth=0.5; ctx.strokeStyle='rgba(120,150,205,0.05)'; ctx.stroke(rest);
+    // nodes back-to-front
+    if(order.length!==N){ order.length=0; for(let i=0;i<N;i++) order.push(i); }
+    order.sort((i,j)=>S_z[j]-S_z[i]);
+    for(let k=0;k<N;k++){ const i=order[k]; const p=S_d[i], sz=0.7+p*1.7, al=(0.16+p*0.55)*(0.5+p*.5); const h=COL[i];
+      ctx.fillStyle=`rgba(${h[0]|0},${h[1]|0},${h[2]|0},${Math.min(al,0.9)})`; ctx.fillRect(S_x[i]-sz/2,S_y[i]-sz/2,sz,sz);
+    }
+    // aspect pole labels — only lobes with real mass, front hemisphere, decluttered
+    ctx.textAlign='center'; ctx.textBaseline='middle'; const placed=[];
+    const labs=[]; for(let a=0;a<NA;a++){ if(mass[a]<0.18) continue; const P=projPole(POLES[a]); labs.push({a,x:P[0],y:P[1],p:P[2]}); }
+    labs.sort((A,B)=>B.p-A.p);
+    for(const L of labs){ if(L.x<14||L.x>W-14||L.y<64||L.y>H-118) continue;
+      let clash=false; for(const q of placed){ if(Math.abs(q.x-L.x)<70&&Math.abs(q.y-L.y)<16){clash=true;break;} } if(clash) continue;
+      const alpha=Math.max(0,Math.min(0.9,(L.p-0.6)*3.4)); if(alpha<0.06) continue;
+      const h=HUES[L.a]; ctx.font=`600 ${Math.round(11+L.p*3)}px system-ui,sans-serif`;
+      ctx.fillStyle=`rgba(${Math.min(h[0]+95,255)|0},${Math.min(h[1]+80,255)|0},${Math.min(h[2]+70,255)|0},${alpha})`;
+      ctx.fillText(SHORT[L.a], L.x, L.y); placed.push(L);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // ── interaction ──
+  let dragging=false,lastX=0,lastY=0,shift=false;
+  cv.addEventListener('mousedown',e=>{dragging=true;lastX=e.clientX;lastY=e.clientY;shift=e.shiftKey;cv.style.cursor='grabbing';});
+  window.addEventListener('mousemove',e=>{ if(!dragging)return; const dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;
+    if(shift){panx+=dx;pany+=dy;} else {yaw+=dx*0.005; pitch=Math.max(-1.3,Math.min(1.3,pitch+dy*0.005));} });
+  window.addEventListener('mouseup',()=>{dragging=false;cv.style.cursor='grab';});
+  cv.addEventListener('wheel',e=>{e.preventDefault(); zoom=Math.max(0.5,Math.min(4,zoom*(e.deltaY<0?1.12:0.892)));},{passive:false});
+  document.getElementById('newbtn').addEventListener('click',()=>makeAnchor((Math.random()*1e9)|0));
+
+  makeAnchor(0x5eed42);
+  requestAnimationFrame(frame);
+})();
+</script>
