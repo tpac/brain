@@ -2,6 +2,13 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "viz-proto",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "47399", "--directory", "docs/anchor-viz-prototypes"],
+      "port": 47399,
+      "autoPort": false
+    },
+    {
       "name": "dashboard-dev",
       "runtimeExecutable": "venv/bin/python",
       "runtimeArgs": ["dashboard/brain_dashboard_standalone.py"],

@@ -1,0 +1,8 @@
+# Generated build artifacts — reproducible from build_mind.py / emit_html.py
+# (raw graph dumps come from the daemon via read-only eval; see build_mind.py header)
+_realgraph_*.json
+_pca.json
+mind_data.json
+anchor_mind.html
+_preview_mind.html
+_check*.js
