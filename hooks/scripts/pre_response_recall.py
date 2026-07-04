@@ -44,6 +44,20 @@ if not user_message.strip() or user_message.startswith("/") or user_message.star
 # daemon_hooks.hook_recall register-only fast path.
 register_only = len(user_message.strip()) < SHORT_MESSAGE_MAX_LEN
 
+# Harness-injected background-task completions arrive through THIS same
+# UserPromptSubmit channel — the harness packages a <task-notification> as a
+# prompt, so it passes the slash/bang/short gate above and would otherwise run
+# the full recall + Haiku surface. That's pure waste here (I'm mid-task with
+# full context) AND actively harmful: every surfaced candidate gets marked
+# accessed under this session_id, so machine chatter pollutes synaptic fatigue
+# and dampens my NEXT real prompt. Route them register_only — keep the
+# user_message trace (turn stays conversational, so my substantive response to
+# the results is still encoded at Stop) but skip recall + Haiku + fatigue.
+# Full-skip (slash/bang path) would misclassify the turn as a heartbeat and
+# drop that response from encoding.
+if "<task-notification>" in user_message:
+    register_only = True
+
 
 def main():
     t0 = time.time()
