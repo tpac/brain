@@ -86,12 +86,9 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     # K-store): `effort` maps to the API's output_config.effort. Absent/{} →
     # None → API default (high). Lets an effort change ship as a prompt
     # version (A/B-able via ab_encode's parameters injection), not a code edit.
-    try:
-        enc_params = json.loads(enc_interaction.get('parameters') or '{}') \
-            if enc_interaction else {}
-    except (ValueError, TypeError):
-        enc_params = {}
-    enc_effort = enc_params.get('effort') or None
+    # brain.get_interaction_config is the single K-store parse (active version,
+    # json.loads with {}-on-error) — reuse it, don't re-hand-roll the parse.
+    enc_effort = (brain.get_interaction_config('s1e') or {}).get('effort') or None
     system_prompt = _build_system_prompt(
         prompt_instructions=enc_instructions or None, lived=lived)
 

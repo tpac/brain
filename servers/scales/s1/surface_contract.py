@@ -177,10 +177,13 @@ def surface_selected_path(session_id, stop_counter):
 # doesn't have to reach into surface-call config to know which model to ping.
 SURFACE_MODEL = 'claude-haiku-4-5'
 
-# Anthropic prompt-cache minimum cacheable prefix for SURFACE_MODEL
-# (Haiku 4.5: 4096 tokens; Sonnet-class: 1024). Prompts under this are
-# silently not cached by the API. The agentic loop's cache-miss tripwire
-# gates on it so sub-minimum prompts (tests, tiny brains) don't warn.
+# Anthropic prompt-cache minimum cacheable prefix for SURFACE_MODEL.
+# Floors are model-specific: Haiku 4.5 + Opus 4.x = 4096; Sonnet 4.6 +
+# Fable 5 = 2048; Sonnet 4.5 and older = 1024. This constant is scoped to
+# SURFACE_MODEL (Haiku 4.5 → 4096); the Sonnet encoders live above that
+# floor at 2048. Prompts under the floor are silently not cached by the API.
+# The agentic loop's cache-miss tripwire gates on it so sub-minimum prompts
+# (tests, tiny brains) don't warn.
 CACHE_MIN_PREFIX_TOKENS = 4096
 
 # Judge (Haiku) — selects relevant nodes with reasoning
@@ -647,6 +650,14 @@ HAIKU_FORMAT_LEAN = {
 # Enforced during generation via output_config={'format':{'type':'json_schema',
 # 'schema': SURFACE_SELECTION_SCHEMA}} on the final agentic-round API call.
 # See surface.py:_call_surface_agentic.
+# id pattern: hex-only kills the observed corruption class — Haiku copying a
+# candidate id as its BPE chunks with spaces leaked in ('9 9a 2e ' for
+# 99a2e…) — by masking the space token during constrained decoding. Length
+# {4,8}, not {8}: Haiku is known to emit 7-char leading-zero-dropped ids, and
+# a hard 8 would force it to guess digits it doesn't know; short-but-honest
+# fragments are recovered downstream (surface.py unique-prefix match).
+SURFACE_SELECTED_ID_PATTERN = "^[0-9a-f]{4,8}$"
+
 SURFACE_SELECTION_SCHEMA = {
     "type": "object",
     "properties": {
@@ -655,7 +666,8 @@ SURFACE_SELECTION_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "id":   {"type": "string"},
+                    "id":   {"type": "string",
+                             "pattern": SURFACE_SELECTED_ID_PATTERN},
                     "why":  {"type": "string"},
                     "mode": {"type": "string", "enum": list(SURFACE_MODES)},
                 },

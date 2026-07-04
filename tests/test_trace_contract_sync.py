@@ -625,6 +625,24 @@ class TestJournalNoteParser:
         assert extract_arc_block(text) == 'arc write-path built'
         assert extract_review_block(text) == 'doubt · arc-fence · one-liner may drift'
 
+    def test_fenceless_arc_does_not_capture_review_fence(self):
+        # Regression (code-review 2026-07-03): §7.2 orders Arc BEFORE Review.
+        # A fenceless `## Arc` must NOT reach forward into the `## Review` fence
+        # — else review notes get silently written as the session arc. A heading
+        # before the fence = drift → None (→ write_session_arc 'no_arc_extracted').
+        from servers.trace_contract import extract_arc_block, extract_review_block
+        drift = ('## Arc\nI made progress but forgot to fence it\n\n'
+                 '## Review\n```\ndoubt · x · y\n```\nDONE')
+        assert extract_arc_block(drift) is None                # NOT 'doubt · x · y'
+        assert extract_review_block(drift) == 'doubt · x · y'  # review still fine
+
+    def test_arc_fence_content_with_hash_hash_line_survives(self):
+        # The fix checks heading POSITION (before the fence), not blunt
+        # truncation — so legit fence content containing a '## ' line is kept.
+        from servers.trace_contract import extract_arc_block
+        assert extract_arc_block('## Arc\n```\n## shipped the writer\n```\nDONE') \
+            == '## shipped the writer'
+
     def test_render_arc_block_names_marker_and_placement(self):
         # The arc block must teach the `## Arc` marker its writer keys on, and
         # state its own placement (before the review) — the closure deliberately

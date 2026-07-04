@@ -41,6 +41,9 @@ ERROR_SPIKE_MIN_CURRENT     = 5     # Need ≥5 errors in current hour to flag
 ERROR_SPIKE_RATIO           = 3.0   # current ≥ prior × this → flag
 ERROR_SPIKE_HIGH_RATIO      = 10.0  # ratio ≥ this → high
 
+SURFACE_ID_DRIFT_MIN        = 3     # combined recover+lost events in 24h → flag
+SURFACE_ID_DRIFT_HIGH       = 5     # lost (unresolvable) picks ≥ this → high
+
 # Known S2 unit identifiers. Chain ids look like `s2-{YYYYMMDDHHMMSS}-{unit}`
 # (older rows: `s2-{YYYYMMDD}-{unit}`); we split on '-' and key by the unit
 # slug. The slug is `split('-', 2)[2]`, so it's format-agnostic — the longer
@@ -221,6 +224,54 @@ def _scan_error_spike(conn):
     }]
 
 
+@safe_query('queries.insights_scanner', logs_db_path, default=[])
+def _scan_surface_id_drift(conn):
+    """Flag Haiku emitting selection ids that had to be recovered or were lost.
+
+    surface.py's id-resolution writes two drift warnings:
+      surface_id_fuzzy_recovered  — a whitespace/fragment id was recovered
+                                     against the candidate pool (pick survived,
+                                     but the emission is degrading)
+      surface_unknown_selected_id — an id matched no candidate and resolved to
+                                     nothing (pick LOST — context came out
+                                     thinner than Haiku intended, silently)
+
+    The SURFACE_SELECTED_ID_PATTERN schema constraint should hold both at ~0.
+    A nonzero rate means the pattern isn't holding on some path (round-1 text,
+    an older prompt variant) — this is the exact silent-context-loss class
+    that produced the v12.1 wrong-abstention miss, so it must alert, not just
+    sit in the Logs tab. Empty-selection scanning can't catch it: recovered
+    picks make ref_id non-empty, so the pipeline looks healthy."""
+    since = utc_cutoff(hours=24)
+    rows = conn.execute(
+        "SELECT source, COUNT(*) FROM debug_log "
+        "WHERE event_type = 'warning' AND created_at > ? "
+        "AND source IN ('surface_unknown_selected_id', "
+        "               'surface_id_fuzzy_recovered') "
+        "GROUP BY source",
+        (since,),
+    ).fetchall()
+    counts = {s: n for s, n in rows}
+    lost      = counts.get('surface_unknown_selected_id', 0)
+    recovered = counts.get('surface_id_fuzzy_recovered', 0)
+    if lost + recovered < SURFACE_ID_DRIFT_MIN:
+        return []
+    severity = 'high' if lost >= SURFACE_ID_DRIFT_HIGH else 'medium'
+    return [{
+        'severity': severity,
+        'icon': '\U0001f524',  # 🔤 — the id charset (lowercase hex)
+        'title': 'Surface id corruption: %d lost, %d recovered (24h)'
+                  % (lost, recovered),
+        'detail': ('Haiku emitted selection ids that failed to match a '
+                   'candidate. Lost picks dropped context silently; recovered '
+                   'picks survived but the emission is degrading. The '
+                   'SURFACE_SELECTED_ID_PATTERN schema constraint should keep '
+                   'this at zero — a nonzero rate means it is not holding on '
+                   'some path. Open the Logs tab for the per-id detail.'),
+        'evidence': {'lost': lost, 'recovered': recovered},
+    }]
+
+
 # ── Aggregator ────────────────────────────────────────────────────────
 
 def scan_all():
@@ -233,4 +284,5 @@ def scan_all():
         _scan_s2_silence()
       + _scan_empty_selections()
       + _scan_error_spike()
+      + _scan_surface_id_drift()
     )

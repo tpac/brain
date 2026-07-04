@@ -156,11 +156,11 @@ function renderRecallEntry(evt) {
       identityChip +
       '<span class="hook-id">#' + idShort + '</span>' +
       '<span class="hook-size">' + (evt.used_count || 0) + ' selected</span>' +
-      (evt.judge_prompt ? '<button class="hook-details-btn hook-details-btn--right">Show Prompt</button>' : '') +
+      (evt.has_prompt ? '<button class="hook-details-btn hook-details-btn--right">Show Prompt</button>' : '') +
     '</div>' +
     '<div class="hook-prompt">' + escapeHtml(evt.query || '') + '</div>' +
     '<div class="hook-body">' + shortContent + '</div>' +
-    '<div class="surface-prompt-body" style="display:none"><pre>' + (evt.judge_prompt ? escapeHtml(evt.judge_prompt) : '') + '</pre></div>';
+    '<div class="surface-prompt-body" style="display:none"><pre>' + (evt.has_prompt ? 'Loading...' : '') + '</pre></div>';
 
   // ── Attach listeners (post-innerHTML) ───────────────────────────────
   // Header click toggles body open AND bubbles up to the container click
@@ -178,7 +178,10 @@ function renderRecallEntry(evt) {
   // ferrying event.stopPropagation; the helper handles that internally.
   const promptBtn  = div.querySelector('.hook-details-btn');
   const promptBody = div.querySelector('.surface-prompt-body');
-  if (promptBtn && promptBody) _wirePromptToggle(promptBtn, promptBody, null);
+  if (promptBtn && promptBody) _wirePromptToggle(promptBtn, promptBody, async () => {
+    const d = await api.recallPrompt({ recall_ref: evt.recall_ref });
+    return d.judge_prompt || d.error || '(no prompt available)';
+  });
 
   // Hover = preview, click = commit. mouseenter previews the recall's
   // nodes on the graph (saves prior state); mouseleave restores; click
@@ -640,9 +643,14 @@ async function loadEncodingActivity() {
     // Honor the session-filter dropdown — without this the encoding feed
     // shows runs from every session while decoding correctly narrows.
     const sessionId = getSessionFilter();
+    // Recent-activity window. Widened from 50/12h once the per-run payload
+    // dropped to ~1KB (lazy prompt + no inline blobs) — the tight cap existed
+    // to bound a then-heavy full-rebuild poll, not by design. 48h/200 covers
+    // normal browsing without pagination; the S2 sources below share the 48h
+    // window so the merged timeline stays consistent.
     const runsD = await api.encodingRuns({
-      limit: 50,
-      hours: 12,
+      limit: 200,
+      hours: 48,
       ...(sessionId ? { session_id: sessionId } : {}),
     });
 
@@ -673,7 +681,7 @@ async function loadEncodingActivity() {
 
     let s2Runs = [];
     try {
-      const consolD = await api.consolidationRuns({ hours: 12 });
+      const consolD = await api.consolidationRuns({ hours: 48 });
       if (consolD.runs) {
         for (const run of consolD.runs) {
           s2Runs.push({type: 'consolidation', ...run, start_ts: run.timestamp});
@@ -681,7 +689,7 @@ async function loadEncodingActivity() {
       }
     } catch(e) { console.error('S2 consolidation load:', e); }
     try {
-      const commD = await api.communityRuns({ hours: 12 });
+      const commD = await api.communityRuns({ hours: 48 });
       if (commD.runs) {
         for (const run of commD.runs) {
           s2Runs.push({type: 'community', ...run, start_ts: run.timestamp});
@@ -689,7 +697,7 @@ async function loadEncodingActivity() {
       }
     } catch(e) { console.error('S2 community load:', e); }
     try {
-      const healD = await api.healerRuns({ hours: 12 });
+      const healD = await api.healerRuns({ hours: 48 });
       if (healD.runs) {
         for (const run of healD.runs) {
           s2Runs.push({type: 'healer', ...run, start_ts: run.timestamp});
@@ -956,8 +964,16 @@ function _renderS1EncodeCard(run) {
   const nodeCount = run.nodes ? run.nodes.length : 0;
   const sid       = run.session_id ? run.session_id.substring(0, 8) : '';
 
-  // Body: created/revised nodes, then up to 8 edges, then overflow line.
+  // Body: journal notes FIRST (the encoder's residue — why/doubt/next), then
+  // created/revised nodes, then up to 8 edges, then overflow line.
   const bodyRows = [];
+  for (const j of (run.journal_notes || [])) {
+    bodyRows.push(el('div', { class: 'enc-entry enc-sub-row enc-journal-note' },
+      j.tag ? el('span', { class: 'enc-kind journal' }, j.tag.toUpperCase()) : null,
+      ' ',
+      el('span', { class: 'enc-journal-text' }, j.note),
+    ));
+  }
   for (const n of (run.nodes || [])) {
     const kindClass = n.kind === 'revised' ? 'revised' : 'created';
     const kindLabel = n.kind === 'revised' ? 'REVISED' : 'CREATED';
@@ -986,16 +1002,18 @@ function _renderS1EncodeCard(run) {
     bodyRows.push(el('div', { class: 'enc-edge-overflow' },
       '+' + ((run.edges || []).length - 8) + ' more edges'));
   }
-  if (!(run.nodes || []).length && !(run.edges || []).length) {
+  if (!(run.nodes || []).length && !(run.edges || []).length
+      && !(run.journal_notes || []).length) {
     bodyRows.push(el('div', { class: 'enc-empty-note' }, '(no write actions)'));
   }
   const body = el('div', { class: 'hook-body hook-body--padded' }, bodyRows);
 
-  // Prompt body — populated up-front from run.encoder_prompt (no lazy
-  // load needed; the API already returned it inline).
+  // Prompt body — lazy-loaded on first expand. The list response no longer
+  // carries the full prompt inline (a long session's is hundreds of KB, which
+  // bloated the polled list into multi-MB and broke the browser transfer);
+  // fetched per-run on demand, mirroring the consolidation card.
   const encPromptBody = el('div', { class: 'enc-prompt-body', style: { display: 'none' } },
-    el('pre', { class: 'enc-prompt-pre' },
-      run.encoder_prompt || '(no prompt file found — encoding ran before prompt logging was added)'),
+    el('pre', { class: 'enc-prompt-pre' }, 'Loading...'),
   );
   const showPromptBtn = el('button', { class: 'hook-details-btn hook-details-btn--right' }, 'Show Prompt');
 
@@ -1008,7 +1026,10 @@ function _renderS1EncodeCard(run) {
     showPromptBtn,
   );
   header.addEventListener('click', () => body.classList.toggle('open'));
-  _wirePromptToggle(showPromptBtn, encPromptBody, null);
+  _wirePromptToggle(showPromptBtn, encPromptBody, async () => {
+    const d = await api.encodingPrompt({ chain_id: run.chain_id });
+    return d.user_content || d.error || '(no prompt available)';
+  });
 
   return el('div', {
     class: 'hook-entry enc-entry',

@@ -110,6 +110,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         # Live decoding feed
         elif path == "/api/recalls":
             self._serve_recalls(params)
+        elif path == "/api/recall-prompt":
+            recall_ref = params.get("recall_ref", [""])[0]
+            self._json(200, recalls.query_recall_prompt(recall_ref=recall_ref))
         elif path == "/api/sessions":
             self._json(200, sessions.query_recent_sessions())
 
@@ -124,6 +127,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             session_id = params.get("session_id", [""])[0]
             self._json(200, {"runs": encoding.query_encoding_runs(
                 limit=limit, hours=hours, session_id=session_id)})
+        elif path == "/api/encoding-prompt":
+            chain_id = params.get("chain_id", [""])[0]
+            self._json(200, encoding.query_encoding_prompt(chain_id=chain_id))
 
         # S2 unit runs
         elif path == "/api/consolidation-runs":
@@ -266,6 +272,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", mime)
         self.send_header("Content-Length", len(body))
+        # no-cache: the browser must revalidate before reusing a cached asset,
+        # so a dashboard deploy (new JS/CSS) takes effect on the next normal
+        # refresh instead of silently running stale code until a hard-refresh.
+        # Assets are tiny and served from localhost, so refetch cost is nil.
+        self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(body)
 

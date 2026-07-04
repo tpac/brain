@@ -135,7 +135,6 @@ def _query_encoding_chains(conn, limit: int, session_id: str, hours: int):
     runs = []
     for row in chain_rows:
         chain_id = row[0]
-        prompt_file = row[1] or ''
         prompt_info = row[2] or ''
         session = row[4] or ''
         timestamp = row[5] or ''
@@ -152,9 +151,17 @@ def _query_encoding_chains(conn, limit: int, session_id: str, hours: int):
         ).fetchone()
         catalog_info = k_row[0] if k_row else ''
 
+        # The authoritative run summary is the `encoding_run` delta — it carries
+        # the created/revised rollup + the "N actions" line. S1E (v29) also
+        # writes many *other* delta rows per chain (one edge_relation_revised
+        # per edge, node_revised per node, journal_note per residue item), so an
+        # unfiltered `event_type='delta'` + fetchone() grabbed the FIRST delta (an
+        # edge revision, whose metadata has no created/revised) → the card showed
+        # "0 actions" for runs that actually wrote. Filter to encoding_run.
         d_row = conn.execute(
             "SELECT summary, created_at, metadata FROM trace_events "
-            "WHERE chain_id = ? AND event_type = 'delta'",
+            "WHERE chain_id = ? AND event_type = 'delta' "
+            "AND ref_type = 'encoding_run'",
             (chain_id,),
         ).fetchone()
         summary = d_row[0] if d_row else '(encoding in progress or no actions)'
@@ -174,15 +181,31 @@ def _query_encoding_chains(conn, limit: int, session_id: str, hours: int):
             except (ValueError, TypeError):
                 pass
 
-        encoder_prompt = None
-        if prompt_file and os.path.exists(prompt_file):
+        # Journal notes — the encoder's residue (why/doubt/next), written as
+        # journal_note delta rows on the chain. Small by design (a sentence or
+        # two each); the card renders them FIRST in the details, above the
+        # nodes/edges, so the operator reads the encoder's mind before its hands.
+        journal_notes = []
+        for (jmeta,) in conn.execute(
+            "SELECT metadata FROM trace_events "
+            "WHERE chain_id = ? AND ref_type = 'journal_note' ORDER BY id",
+            (chain_id,),
+        ).fetchall():
             try:
-                with open(prompt_file) as f:
-                    encoder_prompt = json.load(f).get("user_content")
-            except Exception:
-                # Inner row-level failure — silent on purpose.
-                pass
+                m = json.loads(jmeta) if jmeta else {}
+            except (ValueError, TypeError):
+                continue
+            note = (m.get('note') or '').strip()
+            if note:
+                journal_notes.append({"note": note[:600], "tag": m.get('tag') or ''})
 
+        # NOTE: the full encoder prompt (user_content) is deliberately NOT read
+        # here. A long session's prompt is hundreds of KB; shipping it inline for
+        # every run in the polled list bloated the response into the multi-MB
+        # range and broke the browser transfer (BrokenPipe → empty S1 panel).
+        # The frontend lazy-loads it per-run on card expand via
+        # query_encoding_prompt(chain_id), which re-derives the file from the
+        # chain — so nothing prompt-related rides along in this list row.
         runs.append({
             "chain_id": chain_id,
             "counter": counter,
@@ -194,11 +217,40 @@ def _query_encoding_chains(conn, limit: int, session_id: str, hours: int):
             "catalog_info": catalog_info,
             "created_ids": created_ids,
             "revised_ids": revised_ids,
+            "journal_notes": journal_notes,
             "nodes": [],
             "edges": [],
-            "encoder_prompt": encoder_prompt,
         })
     return runs
+
+
+@safe_query('queries.encoding', logs_db_path, default={})
+def query_encoding_prompt(conn, chain_id: str = ""):
+    """Lazy-load one run's full encoder prompt (user_content) on card expand.
+
+    Split out of query_encoding_runs so the polled list stays small: the prompt
+    body is fetched only when the operator expands a specific run's card. Keyed
+    by chain_id → the run's encoding_prompt O trace → its ref_id (the tmp file
+    the encoder wrote) → user_content. Mirrors _serve_consolidation_prompt.
+    Returns {"user_content": str} or {"error": str} for the UI fallback."""
+    if not chain_id:
+        return {"error": "chain_id required"}
+    row = conn.execute(
+        "SELECT ref_id FROM trace_events "
+        "WHERE chain_id = ? AND scale = 's1' AND event_type = 'O' "
+        "AND ref_type = 'encoding_prompt' LIMIT 1",
+        (chain_id,),
+    ).fetchone()
+    prompt_file = row[0] if row else ''
+    if not prompt_file:
+        return {"error": "no prompt trace for chain %s" % chain_id}
+    if not os.path.exists(prompt_file):
+        return {"error": "prompt file no longer on disk (encoder tmp cleaned)"}
+    try:
+        with open(prompt_file) as f:
+            return {"user_content": json.load(f).get("user_content") or ""}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def query_encoding_runs(limit: int = 10, session_id: str = '', hours: int = 24):

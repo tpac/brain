@@ -1,0 +1,301 @@
+<style>
+  :root{
+    --ground:#070812;--ground-2:#0b0e1e;--ink:#c9d3e6;--ink-dim:#6b7794;--hair:#1e2740;
+    --panel:rgba(9,11,22,.72);--amber:#ffc46b;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  .stage{position:fixed;inset:0;overflow:hidden;font-family:var(--sans);color:var(--ink);
+    background:radial-gradient(130% 100% at 58% 48%, #0e1330 0%, var(--ground-2) 45%, var(--ground) 100%)}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+  .scrim{position:absolute;inset:0;z-index:2;pointer-events:none;background:
+    radial-gradient(70% 48% at 22% 12%, rgba(7,8,18,.92), rgba(7,8,18,.5) 44%, rgba(7,8,18,0) 74%)}
+
+  .title{position:absolute;top:26px;left:30px;z-index:3;pointer-events:none;max-width:min(44ch,66vw)}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.32em;text-transform:uppercase;color:var(--amber);opacity:.85;margin:0 0 10px}
+  .title h1{font-size:clamp(22px,3.3vw,34px);line-height:1.08;margin:0;font-weight:600;letter-spacing:-.01em;text-wrap:balance;color:#eef2fb}
+  .title p{margin:12px 0 0;font-size:14px;line-height:1.5;color:var(--ink-dim);max-width:40ch}
+
+  .hud{position:absolute;left:30px;bottom:28px;z-index:3;display:flex;flex-direction:column;gap:15px;
+    padding:17px 20px;background:var(--panel);border:1px solid var(--hair);border-radius:14px;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);min-width:250px}
+  .readout{display:flex;gap:20px;font-family:var(--mono);font-size:11px;color:var(--ink-dim)}
+  .readout b{display:block;font-size:19px;color:#eef2fb;font-weight:600;font-variant-numeric:tabular-nums;margin-bottom:3px}
+  .readout .live b{color:var(--amber)}
+  .legend{display:flex;flex-direction:column;gap:7px}
+  .ramp{height:7px;border-radius:4px;background:linear-gradient(90deg,#2f3a55 0%,#5b7db0 32%,#ffc46b 74%,#fff1e6 100%)}
+  .ramp-labels{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim)}
+  .fire{appearance:none;border:0;font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:#0a0b14;background:var(--amber);border-radius:9px;padding:11px 16px;cursor:pointer;font-weight:600;
+    transition:transform .12s ease,box-shadow .2s ease}
+  .fire:hover{transform:translateY(-1px);box-shadow:0 6px 22px -6px rgba(255,196,107,.55)}
+  .fire:active{transform:translateY(0)}
+  .fire:focus-visible{outline:2px solid #fff1e6;outline-offset:3px}
+  .hint{font-family:var(--mono);font-size:11px;color:var(--ink-dim)}
+  .tip{position:absolute;z-index:4;pointer-events:none;transform:translate(-50%,-150%);font-family:var(--mono);font-size:12px;
+    color:#eef2fb;background:rgba(7,8,18,.92);border:1px solid var(--hair);border-radius:7px;padding:6px 10px;white-space:nowrap;opacity:0;transition:opacity .12s ease}
+  .tip .c{color:var(--ink-dim);font-size:10px;letter-spacing:.1em;text-transform:uppercase}
+  @media (max-width:560px){ .title{left:20px;top:20px} .hud{left:16px;right:16px;bottom:16px;min-width:0} }
+</style>
+
+<div class="stage">
+  <canvas id="field"></canvas>
+  <div class="scrim"></div>
+
+  <div class="title">
+    <p class="eyebrow">Anchor · concept</p>
+    <h1>Recall as an activation field</h1>
+    <p>The whole brain, at rest — thousands of memories, their relations a dim lattice. A recall lights a seed and a wavefront ripples out, fading each hop. Click anywhere in the mass, or fire a recall.</p>
+  </div>
+
+  <div class="hud">
+    <div class="readout">
+      <div><b id="n-nodes">0</b>memories</div>
+      <div><b id="n-edges">0</b>relations</div>
+      <div class="live"><b id="n-active">0</b>firing</div>
+    </div>
+    <div class="legend">
+      <div class="ramp" aria-hidden="true"></div>
+      <div class="ramp-labels"><span>resting</span><span>firing</span></div>
+    </div>
+    <button class="fire" id="fire" type="button">⟳ Fire recall</button>
+    <div class="hint">drag to orbit · scroll to zoom · shift-drag to pan · click a memory to fire</div>
+  </div>
+
+  <div class="tip" id="tip"><span class="c" id="tip-c"></span><br><span id="tip-t"></span></div>
+</div>
+
+<script>
+(() => {
+  const cv = document.getElementById('field'), ctx = cv.getContext('2d');
+  const tip = document.getElementById('tip');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Community themes — real brain regions; the rest are numbered so the mass
+  // reads as one large graph, not a handful of named clumps.
+  const THEMES = ['Recall · LAF','Dashboard','Identity','Encoding','Eval · Corpus','Traces','Daemon',
+    'Aspects','Corrections','Journal','Communities','Surface','Frame','Hooks','Attractor nets','Embeddings'];
+
+  // ── build a large clustered 3D graph ──
+  const NC = 46;                       // communities
+  const per = () => 34 + (Math.random()*54|0);   // nodes per community
+  const comms = [];
+  for(let c=0;c<NC;c++){
+    // community centres scattered through a flattened ball
+    let cx,cy,cz,r2;
+    do{ cx=(Math.random()*2-1); cy=(Math.random()*2-1)*0.62; cz=(Math.random()*2-1); r2=cx*cx+cy*cy+cz*cz; }while(r2>1);
+    const t = c/NC*Math.PI*2;
+    comms.push({ cx,cy,cz, name: c<THEMES.length?THEMES[c]:('cluster '+(c+1)),
+      hue:[ 70+40*Math.sin(t), 110+35*Math.sin(t+2), 150+40*Math.cos(t) ] });
+  }
+  const N_x=[],N_y=[],N_z=[],N_c=[];    // node coords + community
+  comms.forEach((cm,ci)=>{ const k=per(); for(let i=0;i<k;i++){
+    N_x.push(cm.cx + gauss()*0.11); N_y.push(cm.cy + gauss()*0.09); N_z.push(cm.cz + gauss()*0.11); N_c.push(ci);
+  }});
+  const N = N_x.length;
+  const act = new Float32Array(N);     // live activation this frame
+  const warm = new Float32Array(N);    // slow afterglow — "current focus" trail
+  const inter = new Float32Array(N);   // interference — lit by 2+ recalls at once
+  const cnt = new Uint8Array(N);        // how many fires reach each node
+  // screen-projection scratch
+  const S_x=new Float32Array(N), S_y=new Float32Array(N), S_d=new Float32Array(N), S_z=new Float32Array(N);
+  function gauss(){ let u=0,v=0; for(let i=0;i<3;i++){u+=Math.random();v+=Math.random();} return (u-v)/1.5; }
+
+  // ── edges: dense intra-community (k-nearest) + sparse bridges ──
+  const E = [];
+  // bucket node indices by community
+  const byComm = comms.map(()=>[]); for(let i=0;i<N;i++) byComm[N_c[i]].push(i);
+  byComm.forEach(ids=>{
+    for(const i of ids){
+      // connect to 3 nearest neighbours within the community
+      const nn = ids.filter(j=>j!==i).map(j=>{ const dx=N_x[i]-N_x[j],dy=N_y[i]-N_y[j],dz=N_z[i]-N_z[j]; return [j,dx*dx+dy*dy+dz*dz]; })
+        .sort((a,b)=>a[1]-b[1]).slice(0,3);
+      for(const [j] of nn) if(i<j) E.push([i,j]);
+    }
+  });
+  // bridges: link each community to ~2 nearest communities
+  comms.forEach((cm,ci)=>{
+    const near = comms.map((o,oi)=>[oi,(o.cx-cm.cx)**2+(o.cy-cm.cy)**2+(o.cz-cm.cz)**2]).sort((a,b)=>a[1]-b[1]).slice(1,3);
+    for(const [oi] of near){ for(let b=0;b<2;b++){
+      const a=byComm[ci][Math.random()*byComm[ci].length|0], d=byComm[oi][Math.random()*byComm[oi].length|0];
+      if(a!=null&&d!=null) E.push([a,d]);
+    }}
+  });
+  const M = E.length;
+  // adjacency (flattened) for BFS
+  const adj = Array.from({length:N},()=>[]);
+  E.forEach(([a,b])=>{ adj[a].push(b); adj[b].push(a); });
+
+  document.getElementById('n-nodes').textContent = N.toLocaleString();
+  document.getElementById('n-edges').textContent = M.toLocaleString();
+  const activeEl = document.getElementById('n-active');
+
+  // ── viewport ──
+  let W=0,H=0,DPR=1,MIN=0;
+  function resize(){ DPR=Math.min(devicePixelRatio||1,2); W=cv.clientWidth; H=cv.clientHeight; MIN=Math.min(W,H);
+    cv.width=W*DPR; cv.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+  new ResizeObserver(resize).observe(cv); resize();
+
+  // Pre-rendered glow sprite — blitting one cached sprite is ~100x cheaper
+  // than createRadialGradient per node when a recall lights up hundreds.
+  const GLOW=document.createElement('canvas'); GLOW.width=GLOW.height=64;
+  (()=>{ const g=GLOW.getContext('2d'); const rg=g.createRadialGradient(32,32,0,32,32,32);
+    rg.addColorStop(0,'rgba(255,224,186,0.8)'); rg.addColorStop(0.38,'rgba(255,196,120,0.3)'); rg.addColorStop(1,'rgba(255,196,107,0)');
+    g.fillStyle=rg; g.fillRect(0,0,64,64); })();
+
+  // ── activation: expanding BFS wavefronts ──
+  const HOP_MS=210, DECAY_MS=1400, MAXHOP=7, HOP_DECAY=0.76, GATE=0.09;
+  const fires=[]; // {dist:Int8Array, t0}
+  function fire(seed){
+    const dist=new Int8Array(N).fill(-1); dist[seed]=0;
+    let frontier=[seed];
+    for(let h=1;h<=MAXHOP && frontier.length;h++){
+      const next=[];
+      for(const u of frontier) for(const v of adj[u]) if(dist[v]<0){ dist[v]=h; next.push(v); }
+      frontier=next;
+    }
+    fires.push({dist,t0:performance.now()});
+    if(fires.length>6) fires.shift();
+  }
+  function fireRandom(){ fire(Math.random()*N|0); }
+  let ambientAt=0;
+
+  function updateActivation(now, dt){
+    act.fill(0); inter.fill(0); cnt.fill(0);
+    for(let f=fires.length-1;f>=0;f--){
+      const fr=fires[f], age=now-fr.t0;
+      if(age > MAXHOP*HOP_MS + DECAY_MS*3.2){ fires.splice(f,1); continue; }
+      const dist=fr.dist;
+      for(let i=0;i<N;i++){ const d=dist[i]; if(d<0) continue;
+        const local = age - d*HOP_MS; if(local<0) continue;
+        const env = Math.exp(-local/DECAY_MS) * Math.pow(HOP_DECAY,d);
+        if(env>GATE){ cnt[i]++; if(env>act[i]) act[i]=env; }
+      }
+    }
+    // afterglow decays slowly (~20s); interference = a node two wavefronts reached
+    const wd=Math.pow(0.9,dt);
+    for(let i=0;i<N;i++){ warm[i]*=wd; if(act[i]*0.5>warm[i]) warm[i]=act[i]*0.5; if(cnt[i]>=2) inter[i]=act[i]; }
+    if(!reduce && now>ambientAt){ ambientAt = now + 2400 + Math.random()*2600; fireRandom(); }
+  }
+
+  // ── render ──
+  const FOCAL=2.55, SPREAD=0.4;
+  // camera: yaw/pitch orbit, zoom, pan — driven by mouse below
+  let yaw=0, pitch=0.14, zoom=1, panx=0, pany=0, t0=performance.now(), order=Array.from({length:N},(_,i)=>i);
+
+  function project(){
+    const cyaw=Math.cos(yaw), syaw=Math.sin(yaw), cpit=Math.cos(pitch), spit=Math.sin(pitch);
+    const cxpx=W*0.585+panx, cypx=H*0.53+pany, sc=MIN*SPREAD*zoom;
+    for(let i=0;i<N;i++){
+      const x=N_x[i], y=N_y[i], z=N_z[i];
+      let rx = x*cyaw - z*syaw, rz = x*syaw + z*cyaw;   // yaw about Y
+      const ry = y*cpit - rz*spit; rz = y*spit + rz*cpit; // pitch about X
+      const p = FOCAL/(FOCAL+rz);
+      S_x[i]=cxpx + rx*sc*p; S_y[i]=cypx + ry*sc*p; S_d[i]=p; S_z[i]=rz;
+    }
+  }
+
+  function frame(now){
+    const dt=Math.min((now-t0)/1000,0.05); t0=now;
+    if(!reduce && !dragging) yaw += dt*0.028;   // gentle idle drift, paused while orbiting
+    updateActivation(now, dt);
+    project();
+
+    ctx.clearRect(0,0,W,H);
+
+    // resting edges — one batched path, single stroke (cheap at scale)
+    const rest=new Path2D(); const hot=[];
+    for(let e=0;e<M;e++){ const a=E[e][0], b=E[e][1];
+      const aa=act[a], ab=act[b];
+      if(aa>0.06||ab>0.06){ hot.push(e); continue; }
+      rest.moveTo(S_x[a],S_y[a]); rest.lineTo(S_x[b],S_y[b]);
+    }
+    ctx.lineWidth=0.6; ctx.strokeStyle='rgba(120,150,205,0.05)'; ctx.stroke(rest);
+
+    // resting nodes — back to front, tiny points, depth-shaded
+    order.sort((i,j)=>S_z[j]-S_z[i]);
+    for(let k=0;k<N;k++){ const i=order[k]; if(act[i]>0.06) continue;
+      const p=S_d[i], sz=0.6+p*1.5; let al=(0.12+p*0.5)*(0.5+p*0.5);
+      const hue=comms[N_c[i]].hue; let R=hue[0],G=hue[1],B=hue[2];
+      const w=warm[i];
+      if(w>0.02){ R+=(255-R)*w*0.85; G+=(200-G)*w*0.7; B-=(B-120)*w*0.6; al+=w*0.3; }   // afterglow warms recent regions
+      ctx.fillStyle=`rgba(${R|0},${G|0},${B|0},${Math.min(al,0.95)})`;
+      ctx.fillRect(S_x[i]-sz/2, S_y[i]-sz/2, sz, sz);
+    }
+
+    // hot edges + firing nodes — additive glow on top
+    ctx.globalCompositeOperation='lighter';
+    ctx.lineWidth=1;
+    for(const e of hot){ const a=E[e][0],b=E[e][1], s=Math.max(act[a],act[b]);
+      ctx.strokeStyle=`rgba(255,206,145,${0.06+s*0.34})`; ctx.beginPath();
+      ctx.moveTo(S_x[a],S_y[a]); ctx.lineTo(S_x[b],S_y[b]); ctx.stroke(); }
+    for(let i=0;i<N;i++){ const aItn=act[i]; if(aItn<=0.06) continue;
+      const p=S_d[i], x=S_x[i], y=S_y[i], gr=(1.1+p*1.7)*(2+aItn*2.6);
+      ctx.globalAlpha=Math.min(0.16+aItn*0.44,0.7);
+      ctx.drawImage(GLOW, x-gr, y-gr, gr*2, gr*2);
+    }
+    // interference — where two recall wavefronts meet, a white-hot core (the associative bridge)
+    for(let i=0;i<N;i++){ if(inter[i]<=0.08) continue;
+      const p=S_d[i], s=(1+p)*1.7; ctx.globalAlpha=Math.min(inter[i],0.9);
+      ctx.fillStyle='rgba(255,251,242,1)'; ctx.fillRect(S_x[i]-s/2, S_y[i]-s/2, s, s);
+    }
+    ctx.globalAlpha=1;
+    ctx.globalCompositeOperation='source-over';
+
+    // ── region labels (arXiv-map style): themed communities, depth-faded, decluttered ──
+    { const cyaw=Math.cos(yaw),syaw=Math.sin(yaw),cpit=Math.cos(pitch),spit=Math.sin(pitch);
+      const cxpx=W*0.585+panx, cypx=H*0.53+pany, sc=MIN*SPREAD*zoom, labs=[];
+      for(let ci=0; ci<Math.min(THEMES.length,comms.length); ci++){ const c=comms[ci];
+        let rx=c.cx*cyaw-c.cz*syaw, rz=c.cx*syaw+c.cz*cyaw; const ry=c.cy*cpit-rz*spit; rz=c.cy*spit+rz*cpit;
+        const p=FOCAL/(FOCAL+rz); labs.push({ci, sx:cxpx+rx*sc*p, sy:cypx+ry*sc*p, p}); }
+      labs.sort((a,b)=>b.p-a.p);   // nearest first — they win declutter
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      const placed=[];
+      for(const L of labs){
+        if(L.sx<14||L.sx>W-14||L.sy<66||L.sy>H-118) continue;   // stay off title + HUD
+        const a=Math.max(0,Math.min(0.85,(L.p-0.64)*3.2)); if(a<0.06) continue;
+        let clash=false; for(const q of placed){ if(Math.abs(q.sx-L.sx)<78 && Math.abs(q.sy-L.sy)<17){clash=true;break;} }
+        if(clash) continue;
+        const h=comms[L.ci].hue;
+        ctx.font=`600 ${Math.round(10.5+L.p*3)}px system-ui, sans-serif`;
+        ctx.fillStyle=`rgba(${Math.min(h[0]+95,255)|0},${Math.min(h[1]+80,255)|0},${Math.min(h[2]+80,255)|0},${a})`;
+        ctx.fillText(comms[L.ci].name, L.sx, L.sy); placed.push(L);
+      }
+    }
+
+    // live count (throttled read)
+    let c=0; for(let i=0;i<N;i++) if(act[i]>0.06) c++;
+    activeEl.textContent = c.toLocaleString();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ── interaction: drag to orbit · scroll to zoom · short click to fire ──
+  function nearest(mx,my){ let best=-1,bd=18*18; for(let i=0;i<N;i++){ const dx=S_x[i]-mx,dy=S_y[i]-my,d=dx*dx+dy*dy; if(d<bd){bd=d;best=i;} } return best; }
+  let dragging=false, dragMoved=0, lastX=0, lastY=0, shift=false;
+  cv.style.cursor='grab';
+  cv.addEventListener('mousedown', e=>{ dragging=true; dragMoved=0; lastX=e.clientX; lastY=e.clientY;
+    shift=e.shiftKey; cv.style.cursor='grabbing'; tip.style.opacity=0; });
+  window.addEventListener('mousemove', e=>{
+    if(!dragging) return;
+    const dx=e.clientX-lastX, dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY;
+    dragMoved += Math.abs(dx)+Math.abs(dy);
+    if(shift){ panx+=dx; pany+=dy; }                       // shift-drag pans
+    else { yaw+=dx*0.005; pitch=Math.max(-1.3,Math.min(1.3,pitch+dy*0.005)); } // drag orbits
+  });
+  window.addEventListener('mouseup', e=>{
+    if(!dragging) return; dragging=false; cv.style.cursor='grab';
+    if(dragMoved<5){ const r=cv.getBoundingClientRect(); const i=nearest(e.clientX-r.left,e.clientY-r.top); fire(i>=0?i:(Math.random()*N|0)); }
+  });
+  cv.addEventListener('mousemove', e=>{ if(dragging) return;
+    const r=cv.getBoundingClientRect(), mx=e.clientX-r.left,my=e.clientY-r.top; const i=nearest(mx,my);
+    if(i>=0){ tip.style.left=S_x[i]+'px'; tip.style.top=S_y[i]+'px';
+      document.getElementById('tip-c').textContent=comms[N_c[i]].name; document.getElementById('tip-t').textContent='memory · '+adj[i].length+' relations';
+      tip.style.opacity=1; } else tip.style.opacity=0; });
+  cv.addEventListener('mouseleave',()=>{ if(!dragging) tip.style.opacity=0; });
+  cv.addEventListener('wheel', e=>{ e.preventDefault(); zoom = Math.max(0.45, Math.min(5, zoom*(e.deltaY<0?1.12:0.892))); }, {passive:false});
+  document.getElementById('fire').addEventListener('click', fireRandom);
+  setTimeout(fireRandom,500); setTimeout(fireRandom,1600);
+})();
+</script>

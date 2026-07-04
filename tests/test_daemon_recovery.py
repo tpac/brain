@@ -185,6 +185,51 @@ class TestLaunchdHelpersDegradeWhenAbsent(unittest.TestCase):
             self.assertFalse(dc._launchd_manages_daemon())
 
 
+class TestManagesDaemonTransientVsAbsent(unittest.TestCase):
+    """_launchd_manages_daemon()==False AUTHORIZES the direct-spawn fallback that
+    can orphan a competing daemon (incident 2026-07-03: a transient `launchctl
+    print` failure was read as 'launchd absent', spawned an orphan that squatted
+    the lock, and launchd's KeepAlive stormed 135k exits). False must mean
+    DEFINITIVELY-not-managed; a launchctl that merely failed to answer is
+    INDETERMINATE and must defer (True), never spawn a rival.
+    """
+
+    def _ok(self, returncode, stderr=""):
+        return MagicMock(returncode=returncode, stdout="", stderr=stderr)
+
+    def test_true_when_running(self):
+        with patch.object(dc.subprocess, "run", return_value=self._ok(0)):
+            self.assertTrue(dc._launchd_manages_daemon())
+
+    def test_false_on_clean_not_found(self):
+        # rc 113 + "Could not find service …" is a definitive absence.
+        stderr = 'Could not find service "com.brain.daemon" in domain for user gui: 503'
+        with patch.object(dc.subprocess, "run", return_value=self._ok(113, stderr)):
+            self.assertFalse(dc._launchd_manages_daemon())
+
+    def test_true_on_timeout(self):
+        # launchctl present but hung → indeterminate → defer, do NOT spawn.
+        with patch.object(dc.subprocess, "run",
+                          side_effect=dc.subprocess.TimeoutExpired(
+                              cmd=["launchctl"], timeout=10)):
+            self.assertTrue(dc._launchd_manages_daemon())
+
+    def test_true_on_unexpected_nonzero(self):
+        # non-zero WITHOUT the not-found signature (e.g. gui/<uid> unaddressable)
+        # is indeterminate, not absence.
+        with patch.object(dc.subprocess, "run",
+                          return_value=self._ok(1, "Bootstrap operation not permitted")):
+            self.assertTrue(dc._launchd_manages_daemon())
+
+    def test_retries_transient_then_reads_answer(self):
+        # A one-off timeout must not decide the outcome — the retry sees rc 0.
+        with patch.object(dc.subprocess, "run",
+                          side_effect=[dc.subprocess.TimeoutExpired(cmd=["launchctl"], timeout=10),
+                                       self._ok(0)]) as run:
+            self.assertTrue(dc._launchd_manages_daemon())
+            self.assertEqual(run.call_count, 2)
+
+
 class TestHookDelegation(unittest.TestCase):
     """hook_common must delegate, not carry its own recovery copy."""
 

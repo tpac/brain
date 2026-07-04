@@ -40,6 +40,23 @@ def read_judge_file(recall_ref: str):
         return None, None
 
 
+def query_recall_prompt(recall_ref: str = ""):
+    """Lazy-load one recall's full surface prompt on card expand.
+
+    Split out of query_recall_log so the polled decoding feed stays small: the
+    ~35KB prompt is fetched only when the operator expands a card's "Show
+    Prompt". Reads the same /tmp judge-result file read_judge_file uses.
+    Returns {"judge_prompt": str} or {"error": str} for the UI fallback."""
+    # recall_ref lands in a filename — reject anything that could traverse out
+    # of the tmp dir (localhost-only dashboard, but cheap defense).
+    if not recall_ref or '/' in recall_ref or '..' in recall_ref:
+        return {"error": "bad recall_ref"}
+    prompt, _out = read_judge_file(recall_ref)
+    if not prompt:
+        return {"error": "no prompt file for %s" % recall_ref}
+    return {"judge_prompt": prompt}
+
+
 @safe_query('queries.recalls', logs_db_path)
 def query_recall_log(conn, since_ts: str = '', limit: int = 50, session_id: str = ''):
     """Read recall events from S1 traces, joined into one row per chain."""
@@ -155,10 +172,17 @@ def query_recall_log(conn, since_ts: str = '', limit: int = 50, session_id: str 
             "used_ids": selected_ids,
             "used_count": len(selected_ids),
             "activation_ids": activation_ids,
-            "judge_prompt": j_prompt,
-            # Prefer the /tmp surface-result file over trace metadata —
-            # the trace truncates at 4000 chars per policy, but the file
-            # holds the full additionalContext (including canary / tail).
+            # judge_prompt (the full surface prompt, ~35KB each) is NOT shipped
+            # in the list — it was 75% of a 2.3MB polled payload, hidden behind
+            # "Show Prompt" anyway. The frontend lazy-loads it per-card on expand
+            # via query_recall_prompt(recall_ref). has_prompt tells the UI whether
+            # to render the button without shipping the bytes.
+            "has_prompt": bool(j_prompt),
+            "recall_ref": recall_ref,
+            # judge_output (the additionalContext) STAYS inline — it's the card's
+            # displayed content, and it's an order of magnitude smaller (~8KB).
+            # Prefer the /tmp surface-result file over trace metadata — the trace
+            # truncates at 4000 chars, but the file holds the full context.
             "judge_output": j_output_file or judge_output,
             "human_identity": human_identity,
             "agent_identity": agent_identity,
