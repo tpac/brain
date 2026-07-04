@@ -43,7 +43,7 @@ class BrainAssemblyMixin:
 
     def suggest(self, context: Optional[str] = None, file: Optional[str] = None,
                screen: Optional[str] = None, action: Optional[str] = None,
-               project: Optional[str] = None, limit: Optional[int] = None) -> Dict[str, Any]:
+               limit: Optional[int] = None) -> Dict[str, Any]:
         """
         Multi-query recall with type boosts, locked node boost, file-term relevance.
         Returns dict with suggestions list and query_count.
@@ -122,13 +122,6 @@ class BrainAssemblyMixin:
                         })
         except Exception as e:
             self._log_error('suggest_edge_neighbors', e, 'fetching edge neighbors for suggestions')
-
-        # Project filter
-        if project:
-            all_results.sort(key=lambda a: (
-                -(1 if a.get('project') == project else 0),
-                -(a.get('effective_activation') or 0)
-            ))
 
         # Scoring
         rule_boost = self.get_config('boost_rule', 1.3)
@@ -275,17 +268,18 @@ class BrainAssemblyMixin:
                 '_critical': True
             })
 
-        # 1. Get locked nodes with full content for top N
-        # Project-scoped: return nodes for this project + global (NULL project)
+        # 1. Get locked nodes with full content for top N.
+        # Global (not project-scoped): locked nodes are identity scaffolding —
+        # cross-project by nature. Project is now kv provenance (where a node
+        # was learned), not a boot filter; the nodes.project column is gone.
         locked = self.conn.execute('''
             SELECT id, type, title, content FROM nodes
             WHERE locked = 1 AND archived = 0
-              AND (project = ? OR project IS NULL OR project = '')
             ORDER BY
               CASE type WHEN 'rule' THEN 0 WHEN 'decision' THEN 1 ELSE 2 END,
               access_count DESC, last_accessed DESC
             LIMIT ?
-        ''', (project, max_locked)).fetchall()
+        ''', (max_locked,)).fetchall()
 
         for r in locked:
             if r[0] in seen:
@@ -296,16 +290,15 @@ class BrainAssemblyMixin:
                 'content': r[3]
             })
 
-        # Title-only index for remaining locked nodes (same project scope)
+        # Title-only index for remaining locked nodes (global, as above)
         locked_index = self.conn.execute('''
             SELECT id, type, title FROM nodes
             WHERE locked = 1 AND archived = 0
-              AND (project = ? OR project IS NULL OR project = '')
             ORDER BY
               CASE type WHEN 'rule' THEN 0 WHEN 'decision' THEN 1 ELSE 2 END,
               access_count DESC, last_accessed DESC
             LIMIT 500 OFFSET ?
-        ''', (project, max_locked)).fetchall()
+        ''', (max_locked,)).fetchall()
 
         for r in locked_index:
             if r[0] not in seen:

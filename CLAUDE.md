@@ -322,9 +322,8 @@ Who created a node. Format: `category:process`. Edges carry the same tag so ever
 ### project Convention
 
 Repo PROVENANCE — where a node was learned, never what it's about. Stored in
-`node_metadata_kv['project']`; the legacy `nodes.project` column is dead
-(nulled by `servers/tools/migrate_project_to_kv.py`, dropped at the next
-schema bump).
+`node_metadata_kv['project']`; the legacy `nodes.project` column was dropped in
+schema v30 (`_migrate_v30_project_to_kv` moves values → kv, then DROP COLUMN).
 
 **Deterministic, never agent-authored.** `SessionContext.project` is derived
 from cwd at boot in the same git call as branch+worktree (main-repo dir name;

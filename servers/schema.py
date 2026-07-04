@@ -40,7 +40,7 @@ import shutil
 import sqlite3
 from datetime import datetime, timezone
 
-BRAIN_VERSION = 29  # v29: trace_events.id INTEGER AUTOINCREMENT → TEXT (8-char hex) for ID consistency across nodes/edges/traces. trace_embeddings.trace_id and node_source_refs.trace_id follow. Existing rows migrate via deterministic hex (printf '%08x'); new rows generated via secrets.token_hex(4). Eliminates the sentinel-range hack in example authoring.
+BRAIN_VERSION = 30  # v30: drop nodes.project column — project is now system-stamped kv provenance (node_metadata_kv['project']), not a nodes column. _migrate_v30_project_to_kv moves values (slug map: everything→brain except the EX.CO trio→ex.co) then DROP COLUMN. See v29 note below for prior version.
 BRAIN_VERSION_KEY = 'brain_schema_version'
 
 # ─── Allowed node types ───
@@ -110,7 +110,6 @@ TABLES = {
             emotion REAL DEFAULT 0,
             emotion_label TEXT DEFAULT 'neutral',
             emotion_source TEXT DEFAULT 'auto',
-            project TEXT,
             confidence REAL DEFAULT NULL,
             personal TEXT DEFAULT NULL,
             personal_context TEXT DEFAULT NULL,
@@ -134,7 +133,7 @@ TABLES = {
             'activation': '1.0', 'stability': '1.0', 'access_count': '1',
             'locked': '0', 'archived': '0', 'critical': '0', 'recency_score': '0',
             'emotion': '0', 'emotion_label': "'neutral'",
-            'emotion_source': "'auto'", 'project': 'NULL',
+            'emotion_source': "'auto'",
             'confidence': 'NULL',
             'personal': 'NULL',              # v4: null | 'fixed' | 'fluid' | 'contextual'
             'personal_context': 'NULL',      # v4: qualifier for contextual personal nodes
@@ -465,7 +464,6 @@ INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_nodes_activation ON nodes(activation DESC)',
     'CREATE INDEX IF NOT EXISTS idx_nodes_archived ON nodes(archived)',
     'CREATE INDEX IF NOT EXISTS idx_nodes_emotion ON nodes(emotion)',
-    'CREATE INDEX IF NOT EXISTS idx_nodes_project ON nodes(project)',
     'CREATE INDEX IF NOT EXISTS idx_nodes_created ON nodes(created_at)',
     # edges (v22: edge_id PK, source/target for lookups)
     'CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id)',
@@ -660,6 +658,13 @@ def _backfill_data(conn, from_version):
         # the logs DB migration runs from ensure_logs_schema.
         _migrate_v29_trace_id_main(conn)
 
+    if from_version < 30:
+        # v30: drop nodes.project. Project became system-stamped kv
+        # provenance (node_metadata_kv['project']) on 2026-07-03 — read by the
+        # LAF proj lane + dict filters, never an agent-authored column. Moves
+        # legacy values to kv (slug map) then DROP COLUMN, mirroring v28.
+        _migrate_v30_project_to_kv(conn)
+
 
 def _trace_id_column_is_integer(conn, table: str, column: str) -> bool:
     """Returns True only if the table exists AND the column type is INTEGER
@@ -848,6 +853,53 @@ def _migrate_v29_trace_id_logs(conn):
             raise
 
     conn.isolation_level = prior_isolation
+
+
+def _migrate_v30_project_to_kv(conn):
+    """v30: move nodes.project → node_metadata_kv['project'], then drop the
+    column. Project became system-stamped kv provenance (2026-07-03); the
+    nodes.project column is legacy. Mirrors _migrate_v28_drop_keywords —
+    index before column. Idempotent: re-run finds the column already gone.
+
+    Slug map (operator-approved 2026-07-03): every legacy value → 'brain'
+    except the EX.CO trio → 'ex.co'. The old column carried topical costume
+    names ('S1Scribe', 'aspects_refactor', 'dashboard', ...) that were all
+    brain-repo work; the 24-cue inventory was reviewed before approval.
+    """
+    # Column already gone (fresh v30 brain, or a re-run) → nothing to do.
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(nodes)").fetchall()}
+    if 'project' not in cols:
+        print("[brain] v30: nodes.project already absent — skipped")
+        return
+
+    # 1. Move values → kv. INSERT OR REPLACE on PK (node_id, key) is idempotent.
+    #    Total mapping (no unmapped value possible): exco trio → ex.co, else brain.
+    exco = {'EX.CO CTV kit', 'ex.co', 'CTVOnboarding'}
+    rows = conn.execute(
+        "SELECT id, project FROM nodes "
+        "WHERE project IS NOT NULL AND project != ''").fetchall()
+    for nid, legacy in rows:
+        slug = 'ex.co' if legacy in exco else 'brain'
+        conn.execute(
+            "INSERT OR REPLACE INTO node_metadata_kv (node_id, key, value) "
+            "VALUES (?, 'project', ?)", (nid, slug))
+    print(f"[brain] v30: moved {len(rows)} nodes.project values → kv")
+
+    # 2. Drop the index before the column (SQLite refuses to drop an
+    #    indexed column). No-op if already gone.
+    try:
+        conn.execute("DROP INDEX IF EXISTS idx_nodes_project")
+    except Exception as e:
+        print(f"[brain] v30: drop idx_nodes_project warning: {e}")
+
+    # 3. Drop the column (SQLite 3.35+). Fail loud — a silent half-migration
+    #    (values moved but column kept) is the worst case.
+    try:
+        conn.execute("ALTER TABLE nodes DROP COLUMN project")
+        print("[brain] v30: nodes.project column dropped")
+    except Exception as e:
+        print(f"[brain] v30: DROP COLUMN project failed: {e}")
+        raise
 
 
 def _migrate_v28_drop_keywords(conn):

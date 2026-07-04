@@ -1926,7 +1926,6 @@ def score_run(tool_calls, scenario):
         "locked_count": 0,
         "has_keywords": 0,
         "has_emotion": 0,
-        "has_project": 0,
         "unique_types": set(),
         "encoding_richness": 0,  # composite score
     }
@@ -1947,8 +1946,6 @@ def score_run(tool_calls, scenario):
                 scores["has_keywords"] += 1
             if args.get("emotion"):
                 scores["has_emotion"] += 1
-            if args.get("project"):
-                scores["has_project"] += 1
             content_lengths.append(len(args.get("content", "")))
             title_lengths.append(len(args.get("title", "")))
 

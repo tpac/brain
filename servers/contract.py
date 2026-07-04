@@ -204,10 +204,9 @@ STRUCTURAL_FIELDS = {
     "critical":   {"store": "nodes", "type": "bool", "default": False},
     "emotion":    {"store": "nodes", "type": "float"},
     "emotion_label": {"store": "nodes", "type": "str", "default": "neutral"},
-    # `project` moved to PROMOTED_FIELDS (metadata_kv) 2026-07-03 — the
-    # nodes.project column is legacy (nulled by the kv migration, dropped at
-    # the next schema bump). Provenance is system-stamped at the write
-    # boundary, never agent-authored.
+    # `project` lives in PROMOTED_FIELDS (metadata_kv) — the nodes.project
+    # column was dropped in schema v30. Provenance is system-stamped at the
+    # write boundary, never agent-authored.
     "personal":   {"store": "nodes", "type": "str"},
     "personal_context": {"store": "nodes", "type": "str"},
     "evolution_status":  {"store": "nodes", "type": "str"},

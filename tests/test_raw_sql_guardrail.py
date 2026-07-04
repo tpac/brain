@@ -42,7 +42,6 @@ ALLOWED = {
     'recall_write_queue.py': 3,           # exception: bg-writer connection (off foreground), batched
     'scales/s2/rejection_table.py': 2,    # exception: owns all s2_rejections SQL — record_rejections INSERT + clear_unplaceable_rejections DELETE (relocated out of community.py)
     'scales/self_channel/signal.py': 4,   # exception: parallel-stream file (SelfChannelDAL out of this effort)
-    'tools/migrate_project_to_kv.py': 1,  # exception: one-off migration — the column-nulling UPDATE is the migration itself; a NodeDAL method for it would be dead API the day after it runs
     # temporal_extraction.py: 0 — entity_dates writes migrated to EntityDatesDAL (Phase 5)
 }
 

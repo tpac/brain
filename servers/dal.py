@@ -87,14 +87,13 @@ class NodeDAL:
 
     def project_rows(self) -> List[tuple]:
         """[(id, project)] for live nodes that carry a project — the LAF proj
-        lane substrate. Migration-proof read: node_metadata_kv['project'] (the
-        post-migration canonical home) wins over the legacy nodes.project
-        column, so the lane needs no code change when the column is retired."""
+        lane substrate. project is kv provenance (node_metadata_kv['project']);
+        the legacy nodes.project column was dropped in schema v30."""
         return self.conn.execute(
-            "SELECT n.id, COALESCE(k.value, n.project) AS proj FROM nodes n "
-            "LEFT JOIN node_metadata_kv k "
-            "  ON k.node_id = n.id AND k.key = 'project' "
-            "WHERE n.archived = 0 AND proj IS NOT NULL AND proj != ''"
+            "SELECT k.node_id, k.value FROM node_metadata_kv k "
+            "JOIN nodes n ON n.id = k.node_id "
+            "WHERE k.key = 'project' AND n.archived = 0 "
+            "  AND k.value IS NOT NULL AND k.value != ''"
         ).fetchall()
 
     def get_naked_node(self, node_id: str) -> Optional[Dict[str, Any]]:
@@ -357,25 +356,38 @@ class NodeDAL:
     def filter_nodes(self, field: str, include=None, exclude=None,
                      lt=None, gt=None, limit: int = 50,
                      sort_by: str = 'created_at', sort_order: str = 'desc'):
-        """Filter nodes by any structural field.
+        """Filter nodes by any structural OR promoted-kv field.
 
         Args:
-            field: column name — must be in STRUCTURAL_FIELDS whitelist.
+            field: a nodes-table column (STRUCTURAL_FIELDS) or a promoted
+                metadata_kv field (PROMOTED_FIELDS, e.g. project) — the latter
+                is matched via a node_metadata_kv subquery, mirroring recall's
+                dict-filter kv lookup.
             include: list of values to match (exact, IN).
             exclude: list of values to exclude (exact, NOT IN).
-            lt/gt: numeric comparisons for float/int fields.
+            lt/gt: numeric comparisons — structural fields only.
             limit: max results (capped at 200).
             sort_by: column to sort by.
             sort_order: 'asc' or 'desc'.
 
         Returns: dict with 'nodes' list and 'total_count'.
         """
-        from .contract import STRUCTURAL_FIELDS
+        from .contract import STRUCTURAL_FIELDS, PROMOTED_FIELDS
+
+        # kv_field: a promoted metadata_kv field (project, situation, ...) —
+        # matched via node_metadata_kv, not a nodes column. field is whitelisted
+        # against known constants, so it's safe to inline into the subquery.
+        _kv_fields = {k for k, v in PROMOTED_FIELDS.items()
+                      if v.get('store') == 'metadata_kv'}
+        kv_field = field not in STRUCTURAL_FIELDS and field in _kv_fields
 
         # Whitelist field
-        if field not in STRUCTURAL_FIELDS:
+        if field not in STRUCTURAL_FIELDS and not kv_field:
             return {"error": "Unknown field '%s'. Valid: %s" % (
-                field, ', '.join(sorted(STRUCTURAL_FIELDS.keys())))}
+                field, ', '.join(sorted(set(STRUCTURAL_FIELDS) | _kv_fields)))}
+        if kv_field and (lt is not None or gt is not None):
+            return {"error": "lt/gt not supported for metadata field '%s' "
+                             "(text-valued)" % field}
 
         # Whitelist sort_by
         allowed_sort = {'created_at', 'confidence', 'access_count', 'title', 'type',
@@ -396,11 +408,21 @@ class NodeDAL:
 
         if include:
             placeholders = ','.join('?' for _ in include)
-            conditions.append('%s IN (%s)' % (field, placeholders))
+            if kv_field:
+                conditions.append(
+                    "id IN (SELECT node_id FROM node_metadata_kv "
+                    "WHERE key = '%s' AND value IN (%s))" % (field, placeholders))
+            else:
+                conditions.append('%s IN (%s)' % (field, placeholders))
             params.extend(include)
         elif exclude:
             placeholders = ','.join('?' for _ in exclude)
-            conditions.append('%s NOT IN (%s)' % (field, placeholders))
+            if kv_field:
+                conditions.append(
+                    "id NOT IN (SELECT node_id FROM node_metadata_kv "
+                    "WHERE key = '%s' AND value IN (%s))" % (field, placeholders))
+            else:
+                conditions.append('%s NOT IN (%s)' % (field, placeholders))
             params.extend(exclude)
 
         if lt is not None:
@@ -418,9 +440,14 @@ class NodeDAL:
         ).fetchone()
         total_count = count_row[0] if count_row else 0
 
-        # Fetch results
+        # Fetch results. kv fields select their value via a correlated
+        # subquery (they're not nodes columns); structural fields select direct.
+        field_select = field
+        if kv_field:
+            field_select = ("(SELECT value FROM node_metadata_kv "
+                            "WHERE node_id = nodes.id AND key = '%s')" % field)
         sql = 'SELECT id, title, type, confidence, created_at, %s FROM nodes WHERE %s ORDER BY %s %s LIMIT ?' % (
-            field, where, sort_by, sort_order)
+            field_select, where, sort_by, sort_order)
         rows = self.conn.execute(sql, params + [limit]).fetchall()
 
         nodes = []
