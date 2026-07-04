@@ -148,9 +148,10 @@ function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1
 function randn(R){let u=0,v=0;while(!u)u=R();while(!v)v=R();return Math.sqrt(-2*Math.log(u))*Math.cos(6.2831853*v);}
 
 // ── projection + render ──
-let sx,sy,sp,sz,order;
+let sx,sy,sp,sz,order,fired,hop;
 function allocScreen(N){ sx=new Float32Array(N);sy=new Float32Array(N);sp=new Float32Array(N);sz=new Float32Array(N);
-  order=new Int32Array(N); for(let i=0;i<N;i++)order[i]=i; act=new Float32Array(N); front=[]; }
+  order=new Int32Array(N); for(let i=0;i<N;i++)order[i]=i; act=new Float32Array(N); fired=new Uint8Array(N);
+  hop=new Int8Array(N); hop.fill(-1); front=[]; }
 function project(){ const g=G; const cr=Math.cos(roll),sr=Math.sin(roll),cy=Math.cos(yaw),syw=Math.sin(yaw),cp=Math.cos(pitch),spp=Math.sin(pitch);
   const sc=(FIT*MIN)*zoom;
   for(let i=0;i<g.N;i++){ let x=g.X[i],y=g.Y[i],z=g.Z[i];
@@ -160,20 +161,31 @@ function project(){ const g=G; const cr=Math.cos(roll),sr=Math.sin(roll),cy=Math
 function matches(i){ if(!_searchQuery) return true; const q=_searchQuery;
   return (G.TITLE[i]||'').toLowerCase().includes(q) || (G.TYPE[i]||'').toLowerCase().includes(q); }
 
-function seed(i){ if(i<0||i>=G.N)return; act[i]=Math.max(act[i],1); if(front.indexOf(i)<0)front.push(i); }
-function stepActivation(dt){ if(!front.length)return; const nf=[], add=new Map();
-  for(const i of front){ const nb=G.adj[i], give=act[i]*0.26;
-    if(give>0.03 && nb.length){ const per=give/Math.min(nb.length,6);
-      for(let k=0;k<nb.length&&k<6;k++){const j=nb[k]; if(act[j]<0.02) add.set(j,(add.get(j)||0)+per);} }
-    act[i]*=Math.pow(0.09,dt); if(act[i]>0.02) nf.push(i); }
-  for(const [j,v] of add){ act[j]=Math.min(1,act[j]+v); if(nf.indexOf(j)<0)nf.push(j); }
-  front=nf.slice(0,1400); }
+const MAXHOP=4;   // a recall lights a bounded neighbourhood, not the whole brain
+function seed(i){ if(i<0||i>=G.N)return; act[i]=Math.max(act[i],1); fired[i]=1; hop[i]=0; if(front.indexOf(i)<0)front.push(i); }
+// A recall spreads like a signal firing through a network: a lit node CHARGES its
+// fresh neighbours up over ~0.7s until they ignite and pass it on, out to MAXHOP
+// then it stops and the whole thing fades. Each node fires once per wave (fired[]
+// refractory → no feedback, no flash-all), then cools and re-arms. dt-scaled ⇒
+// frame-rate independent; the front travels ~1-2 hops/s, blooms ~2s, fades by ~4s.
+function stepActivation(dt){ if(!front.length)return; const nf=[], add=new Map(), hm=new Map();
+  const decay=Math.pow(0.5,dt);
+  for(const i of front){ const a=act[i], nb=G.adj[i], hi=hop[i];
+    if(a>0.12 && hi<MAXHOP && nb.length){ const cap=Math.min(nb.length,5), h=hi+1;
+      for(let k=0;k<cap;k++){ const j=nb[k]; if(!fired[j]){ add.set(j,(add.get(j)||0)+a*4.0*dt/cap);
+        if(!hm.has(j)||hm.get(j)>h) hm.set(j,h); } } }
+    act[i]*=decay;
+    if(act[i]>0.03) nf.push(i); else { fired[i]=0; hop[i]=-1; }   // cooled → re-armable next wave
+  }
+  for(const [j,v] of add){ act[j]=Math.min(1,act[j]+v); if(hop[j]<0) hop[j]=hm.get(j);
+    if(act[j]>0.6) fired[j]=1; if(nf.indexOf(j)<0)nf.push(j); }
+  front=nf.slice(0,2500); }
 
 function frame(now){ if(!G||!ctx){raf=0;return;}
   const dt=Math.min((now-t0)/1000,.05); t0=now;
   if(spin&&!reduce){ roll+=dt*0.075; needSort=true; }
   stepActivation(dt);
-  if(!reduce){ ambientT+=dt; if(ambientT>ambientGap && front.length<40){ ambientT=0; ambientGap=4.5+Math.random()*3;
+  if(!reduce){ ambientT+=dt; if(ambientT>ambientGap && front.length<150){ ambientT=0; ambientGap=3.5+Math.random()*3;
     let best=-1,bh=0; for(let k=0;k<34;k++){const i=(Math.random()*G.N)|0; if(G.H[i]>bh){bh=G.H[i];best=i;}} seed(best); } }
   project();
   ctx.clearRect(0,0,W,H2);
@@ -327,8 +339,12 @@ export function onGraphSearchKey(event){ if(event&&event.key==='Enter') onGraphS
 function _applyEvent(event){ if(!event)return;
   const byTier={ returned:event.returned_ids||[], activation:event.activation_ids||[], used:event.used_ids||[] };
   for(const tier of ['returned','activation','used']) for(const id of byTier[tier]) _highlightTier.set(id,tier); }
-function _bloomEvent(event){ if(!event||!G)return; let dl=0;
-  for(const list of [event.used_ids||[], event.activation_ids||[]]) for(const id of list){ const i=G.idIndex.get(id); if(i!=null) seed(i); } }
+// Seed ONLY the judge's picks (or a few activation seeds) and let stepActivation
+// carry the wave outward — seeding the whole recall set at once made it all flash
+// together instead of spreading.
+function _bloomEvent(event){ if(!event||!G)return;
+  const src=(event.used_ids&&event.used_ids.length) ? event.used_ids : (event.activation_ids||[]).slice(0,3);
+  for(const id of src){ const i=G.idIndex.get(id); if(i!=null) seed(i); } }
 function _onRecallEvent({event}){ if(!G||!event)return;
   _bloomEvent(event);                              // live "watch it think" bloom
   if(_highlightMode==='pinned') return; }          // pinned spotlight stays put
