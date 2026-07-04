@@ -1,0 +1,154 @@
+<style>
+  :root{--ground:#070812;--ground-2:#0b0e1e;--ink:#c9d3e6;--ink-dim:#6b7794;--hair:#1e2740;
+    --panel:rgba(9,11,22,.72);--amber:#ffc46b;--mono:ui-monospace,"SF Mono",Menlo,monospace;--sans:system-ui,-apple-system,sans-serif;}
+  *{box-sizing:border-box}
+  .stage{position:fixed;inset:0;overflow:hidden;font-family:var(--sans);color:var(--ink);
+    background:radial-gradient(130% 100% at 55% 46%,#0e1330 0%,var(--ground-2) 46%,var(--ground) 100%)}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab}
+  .scrim{position:absolute;inset:0;z-index:2;pointer-events:none;background:radial-gradient(64% 44% at 22% 12%,rgba(7,8,18,.9),rgba(7,8,18,.42) 45%,rgba(7,8,18,0) 74%)}
+  .title{position:absolute;top:26px;left:30px;z-index:3;pointer-events:none;max-width:min(42ch,64vw)}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.32em;text-transform:uppercase;color:var(--amber);opacity:.85;margin:0 0 10px}
+  .title h1{font-size:clamp(21px,3.2vw,33px);line-height:1.08;margin:0;font-weight:600;letter-spacing:-.01em;text-wrap:balance;color:#eef2fb}
+  .title p{margin:12px 0 0;font-size:14px;line-height:1.5;color:var(--ink-dim);max-width:40ch}
+  .hud{position:absolute;left:30px;bottom:28px;z-index:3;display:flex;flex-direction:column;gap:13px;padding:17px 20px;
+    background:var(--panel);border:1px solid var(--hair);border-radius:14px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);min-width:268px}
+  .idrow{font-family:var(--mono);font-size:12px;color:var(--ink-dim)}
+  .idrow b{color:#eef2fb;font-size:15px}
+  .feat{display:flex;flex-wrap:wrap;gap:6px;max-width:290px}
+  .chip{font-family:var(--mono);font-size:10.5px;padding:3px 8px;border-radius:20px;border:1px solid;white-space:nowrap}
+  .newbtn{appearance:none;border:0;font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0a0b14;
+    background:var(--amber);border-radius:9px;padding:11px 16px;cursor:pointer;font-weight:600;transition:transform .12s,box-shadow .2s}
+  .newbtn:hover{transform:translateY(-1px);box-shadow:0 6px 22px -6px rgba(255,196,107,.55)}
+  .newbtn:focus-visible{outline:2px solid #fff1e6;outline-offset:3px}
+  .hint{font-family:var(--mono);font-size:11px;color:var(--ink-dim)}
+</style>
+<div class="stage">
+  <canvas id="c"></canvas><div class="scrim"></div>
+  <div class="title">
+    <p class="eyebrow">Anchor · one of a kind</p>
+    <h1>Every Anchor is a creature</h1>
+    <p>A shaped core — its form echoing the aspects around it — with sub-organs growing on arcs, connected to one another. Wisdom arcs into a crown, memory spirals out, corrections cluster and bridge back. Shapes within a shape.</p>
+  </div>
+  <div class="hud">
+    <div class="idrow">specimen <b id="aid">—</b> · <span id="ncount">0</span> memories</div>
+    <div class="feat" id="feat"></div>
+    <button class="newbtn" id="newbtn" type="button">⟳ Grow another Anchor</button>
+    <div class="hint">drag to orbit · scroll to zoom</div>
+  </div>
+</div>
+<script>
+(() => {
+  const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const SHORT=['identity','episodic','active','lesson','relation','noise','correction','extension','causation',
+    'dependency','conflict','evidence','hierarchy','temporal','lineage','wisdom'];
+  const NA=16;
+  const HUES=[[120,180,230],[150,120,210],[255,180,90],[120,210,180],[110,130,170],[90,100,130],
+    [255,120,120],[180,200,120],[200,160,230],[120,200,220],[240,110,150],[150,210,150],
+    [200,190,120],[110,180,240],[190,140,110],[255,214,140]];
+  const POLE=(()=>{const p=[],gg=Math.PI*(3-Math.sqrt(5));for(let i=0;i<NA;i++){const y=1-(i/(NA-1))*2,r=Math.sqrt(Math.max(0,1-y*y)),t=gg*i;p.push([Math.cos(t)*r,y,Math.sin(t)*r]);}return p;})();
+  const mul=a=>()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
+  const norm=v=>{const l=Math.hypot(v[0],v[1],v[2])||1;return[v[0]/l,v[1]/l,v[2]/l];};
+  const sphereDir=rng=>{const u=rng()*2-1,th=rng()*6.283,s=Math.sqrt(1-u*u);return[s*Math.cos(th),u,s*Math.sin(th)];};
+  const bez=(A,B,C,t)=>{const u=1-t;return[u*u*A[0]+2*u*t*C[0]+t*t*B[0],u*u*A[1]+2*u*t*C[1]+t*t*B[1],u*u*A[2]+2*u*t*C[2]+t*t*B[2]];};
+
+  let N=0,X,Y,Z,COL,GRP,E=[],adj=[],mass=new Float32Array(NA),maxR=1,feats=[];
+  function build(s){
+    const rng=mul(s);
+    for(let a=0;a<NA;a++) mass[a]=Math.pow(rng(),3.2);
+    const nDom=3+(rng()*3|0); for(let k=0;k<nDom;k++) mass[rng()*NA|0]=0.7+rng()*0.3;
+    let mx=0;for(let a=0;a<NA;a++)mx=Math.max(mx,mass[a]);for(let a=0;a<NA;a++)mass[a]/=mx;
+
+    const xs=[],ys=[],zs=[],cs=[],gs=[]; let g=0; feats=[];
+    const push=(p,a,grp)=>{xs.push(p[0]);ys.push(p[1]);zs.push(p[2]);cs.push(a);gs.push(grp);};
+    const jit=k=>(rng()-.5)*k;
+
+    // ── core: a filled hull whose radius echoes the aspect-mass field, so the
+    //    middle DERIVES from the outer layers (bulges toward the same aspects) ──
+    const coreM=0.45+0.55*(mass[0]+mass[2]+mass[4])/3, gc=g++, coreK=260+(coreM*240|0);
+    for(let i=0;i<coreK;i++){ const d=sphereDir(rng); let bulge=0.55;
+      for(let a=0;a<NA;a++){ const al=Math.max(0,d[0]*POLE[a][0]+d[1]*POLE[a][1]+d[2]*POLE[a][2]); bulge+=mass[a]*al*al*0.6; }
+      const r=(0.30+0.5*Math.cbrt(rng()))*bulge; push([d[0]*r,d[1]*r,d[2]*r],0,gc); }
+
+    // sub-organ morphologies — small shapes, arc/spiral-biased (captures push/rng)
+    const subOrgan=(a,m,C,tang,grp)=>{
+      const k=Math.round(26+m*40);
+      if(a===15){ const rays=4+(m*4|0); for(let r=0;r<rays;r++){ const up=norm([tang[0]+jit(.8),1+rng()*.6,tang[2]+jit(.8)]), side=norm([up[1],-up[0],jit(.4)]);
+        for(let j=0;j<9;j++){ const t=j/9, arc=Math.sin(t*3.14159)*0.28*(0.4+m); push([C[0]+up[0]*t*0.55+side[0]*arc,C[1]+up[1]*t*0.55+side[1]*arc,C[2]+up[2]*t*0.55+side[2]*arc],a,grp); } } }       // wisdom: arcing crown
+      else if(a===13){ const th0=rng()*6.28; for(let j=0;j<k;j++){ const t=j/k, th=th0+t*4*6.283, r=t*0.55; push([C[0]+Math.cos(th)*r,C[1]+(t-.5)*0.42,C[2]+Math.sin(th)*r],a,grp); } }                    // temporal: mini spiral
+      else if(a===6){ for(let j=0;j<k;j++){ const d=sphereDir(rng), r=(rng()<.5?0.12:0.28+rng()*0.22); push([C[0]+d[0]*r,C[1]+d[1]*r,C[2]+d[2]*r],a,grp); } }                                                 // correction: spiny nodule
+      else if(a===1){ const str=2+(m*2|0); for(let sI=0;sI<str;sI++){ const d=norm([jit(1),-.5-rng()*.4,jit(1)]), pp=norm([d[1],-d[0],jit(.4)]); for(let j=0;j<11;j++){ const t=j/11,w=Math.sin(t*3)*0.18; push([C[0]+d[0]*t*.7+pp[0]*w,C[1]+d[1]*t*.7+pp[1]*w,C[2]+d[2]*t*.7+pp[2]*w],a,grp); } } } // episodic: filaments
+      else if(a===9){ let d=norm([jit(1),jit(1),jit(1)]); for(let j=0;j<10;j++){const t=j/10;push([C[0]+d[0]*t*.5,C[1]+d[1]*t*.5,C[2]+d[2]*t*.5],a,grp);} for(let b=0;b<2;b++){const nd=norm([d[0]+jit(.9),d[1]+jit(.9),d[2]+jit(.9)]);for(let j=0;j<6;j++){const t=j/6;push([C[0]+d[0]*.5+nd[0]*t*.36,C[1]+d[1]*.5+nd[1]*t*.36,C[2]+d[2]*.5+nd[2]*t*.36],a,grp);}} } // dependency: mini branch
+      else { for(let j=0;j<k;j++){ const d=sphereDir(rng), r=Math.cbrt(rng())*0.3; push([C[0]+d[0]*r,C[1]+d[1]*r,C[2]+d[2]*r],a,grp); } }                                                                    // default: small cluster
+    };
+
+    // ── sub-organs on arcing tracts off the core ──
+    const dom=[...Array(NA).keys()].filter(a=>mass[a]>0.3).sort((x,y)=>mass[y]-mass[x]).slice(0,6);
+    const centers={};
+    dom.forEach(a=>{ const m=mass[a], base=POLE[a];
+      const tang=norm([base[1]-base[2]+0.02, base[2]-base[0], base[0]-base[1]]);
+      const len=0.95+m*1.0, off=0.4+m*0.5;
+      const A=[base[0]*0.5,base[1]*0.5,base[2]*0.5];
+      const B=[base[0]*len+tang[0]*off, base[1]*len+tang[1]*off, base[2]*len+tang[2]*off];
+      const C=[(A[0]+B[0])/2+tang[0]*0.55,(A[1]+B[1])/2+tang[1]*0.55,(A[2]+B[2])/2+tang[2]*0.55];
+      const tg=g++, per=15+(m*15|0);
+      for(let j=0;j<=per;j++){ const t=j/per, p=bez(A,B,C,t); push([p[0]+jit(.025),p[1]+jit(.025),p[2]+jit(.025)],a,tg); }  // arcing tract
+      centers[a]=B; feats.push({a,label:SHORT[a],c:B});
+      subOrgan(a,m,B,tang,g++);
+    });
+    // ── arcs connecting neighbouring organs → shapes within a shape that connect ──
+    for(let i=0;i+1<dom.length;i++){ const A=centers[dom[i]],B=centers[dom[i+1]];
+      const C=[(A[0]+B[0])*0.75,(A[1]+B[1])*0.75,(A[2]+B[2])*0.75], bg=g++;
+      for(let j=0;j<=16;j++){ const t=j/16,p=bez(A,B,C,t); push([p[0]+jit(.02),p[1]+jit(.02),p[2]+jit(.02)],dom[i],bg); } }
+
+    N=xs.length; X=Float32Array.from(xs);Y=Float32Array.from(ys);Z=Float32Array.from(zs);COL=cs;GRP=gs;
+    E=[];adj=Array.from({length:N},()=>[]); const byG={};
+    for(let i=0;i<N;i++){(byG[GRP[i]]=byG[GRP[i]]||[]).push(i);}
+    for(const k in byG){ const ids=byG[k]; for(const i of ids){ const nn=ids.filter(j=>j!==i).map(j=>[j,(X[i]-X[j])**2+(Y[i]-Y[j])**2+(Z[i]-Z[j])**2]).sort((a,b)=>a[1]-b[1]).slice(0,2);
+      for(const [j] of nn) if(i<j){E.push([i,j]);adj[i].push(j);adj[j].push(i);} } }
+    let mcx=0,mcy=0,mcz=0;for(let i=0;i<N;i++){mcx+=X[i];mcy+=Y[i];mcz+=Z[i];}mcx/=N;mcy/=N;mcz/=N;
+    maxR=0.001;for(let i=0;i<N;i++){X[i]-=mcx;Y[i]-=mcy;Z[i]-=mcz;maxR=Math.max(maxR,Math.hypot(X[i],Y[i],Z[i]));}
+    document.getElementById('aid').textContent='#'+(s>>>0).toString(16).slice(0,6);
+    document.getElementById('ncount').textContent=N.toLocaleString();
+    document.getElementById('feat').innerHTML=feats.map(f=>{const h=HUES[f.a],c=`rgb(${h[0]},${h[1]},${h[2]})`;return `<span class="chip" style="color:${c};border-color:${c}55">${f.label}</span>`;}).join('');
+  }
+
+  // ── camera + render ──
+  let W,H,DPR,MIN,yaw=0.5,pitch=0.16,zoom=1,panx=0,pany=0,t0=performance.now();
+  function resize(){DPR=Math.min(devicePixelRatio||1,2);W=cv.clientWidth;H=cv.clientHeight;MIN=Math.min(W,H);cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);}
+  new ResizeObserver(resize).observe(cv);resize();
+  const GLOW=document.createElement('canvas');GLOW.width=GLOW.height=64;
+  (()=>{const gg=GLOW.getContext('2d'),rg=gg.createRadialGradient(32,32,0,32,32,32);rg.addColorStop(0,'rgba(255,255,255,.85)');rg.addColorStop(.4,'rgba(220,230,255,.2)');rg.addColorStop(1,'rgba(200,220,255,0)');gg.fillStyle=rg;gg.fillRect(0,0,64,64);})();
+  const FOCAL=5.5,S_x=[],S_y=[],S_d=[],S_z=[],order=[],CXf=0.58,CYf=0.46;
+  function pj(x,y,z){const cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch);
+    let rx=x*cy-z*sy,rz=x*sy+z*cy;const ry=y*cp-rz*sp;rz=y*sp+rz*cp;const p=FOCAL/(FOCAL+rz);
+    return[W*CXf+panx+rx*(0.34*MIN/maxR)*zoom*p,H*CYf+pany+ry*(0.34*MIN/maxR)*zoom*p,p,rz];}
+  function frame(now){const dt=Math.min((now-t0)/1000,.05);t0=now;if(!reduce&&!drag)yaw+=dt*0.1;
+    for(let i=0;i<N;i++){const q=pj(X[i],Y[i],Z[i]);S_x[i]=q[0];S_y[i]=q[1];S_d[i]=q[2];S_z[i]=q[3];}
+    ctx.clearRect(0,0,W,H);
+    const rest=new Path2D();for(let e=0;e<E.length;e++){const a=E[e][0],b=E[e][1];rest.moveTo(S_x[a],S_y[a]);rest.lineTo(S_x[b],S_y[b]);}
+    ctx.lineWidth=0.5;ctx.strokeStyle='rgba(130,155,210,0.07)';ctx.stroke(rest);
+    if(order.length!==N){order.length=0;for(let i=0;i<N;i++)order.push(i);}
+    order.sort((i,j)=>S_z[j]-S_z[i]);
+    for(let k=0;k<N;k++){const i=order[k],p=S_d[i],sz=0.7+p*1.7,al=(0.18+p*0.5)*(0.5+p*.5),h=HUES[COL[i]];
+      ctx.fillStyle=`rgba(${h[0]},${h[1]},${h[2]},${Math.min(al,0.92)})`;ctx.fillRect(S_x[i]-sz/2,S_y[i]-sz/2,sz,sz);}
+    ctx.textAlign='center';ctx.textBaseline='middle';const placed=[];
+    const labs=feats.map(f=>{const q=pj(f.c[0]*1.18,f.c[1]*1.18,f.c[2]*1.18);return{f,x:q[0],y:q[1],p:q[2]};}).sort((A,B)=>B.p-A.p);
+    for(const L of labs){if(L.x<14||L.x>W-14||L.y<64||L.y>H-118)continue;
+      let cl=false;for(const q of placed){if(Math.abs(q.x-L.x)<72&&Math.abs(q.y-L.y)<16){cl=true;break;}}if(cl)continue;
+      const al=Math.max(0,Math.min(0.92,(L.p-0.58)*3.4));if(al<0.06)continue;const h=HUES[L.f.a];
+      ctx.font=`600 ${Math.round(11+L.p*3)}px system-ui,sans-serif`;
+      ctx.fillStyle=`rgba(${Math.min(h[0]+70,255)},${Math.min(h[1]+60,255)},${Math.min(h[2]+60,255)},${al})`;
+      ctx.fillText(L.f.label,L.x,L.y);placed.push(L);}
+    requestAnimationFrame(frame);
+  }
+  let drag=false,lx=0,ly=0,sh=false;
+  cv.addEventListener('mousedown',e=>{drag=true;lx=e.clientX;ly=e.clientY;sh=e.shiftKey;cv.style.cursor='grabbing';});
+  window.addEventListener('mousemove',e=>{if(!drag)return;const dx=e.clientX-lx,dy=e.clientY-ly;lx=e.clientX;ly=e.clientY;
+    if(sh){panx+=dx;pany+=dy;}else{yaw+=dx*0.005;pitch=Math.max(-1.3,Math.min(1.3,pitch+dy*0.005));}});
+  window.addEventListener('mouseup',()=>{drag=false;cv.style.cursor='grab';});
+  cv.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(0.5,Math.min(4,zoom*(e.deltaY<0?1.12:.892)));},{passive:false});
+  document.getElementById('newbtn').addEventListener('click',()=>build((Math.random()*1e9)|0));
+  build(0x5eed42); requestAnimationFrame(frame);
+})();
+</script>
