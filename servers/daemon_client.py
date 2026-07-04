@@ -493,20 +493,47 @@ def _launchd_manages_daemon() -> bool:
     """True iff launchd has the daemon's LaunchAgent loaded in this user's GUI
     domain.
 
-    This is DISTINCT from `_launchd_kickstart()` succeeding. kickstart can
-    return nonzero for transient or contextual reasons — a boot context that
-    can't address `gui/<uid>`, a timeout — even while launchd IS managing the
-    daemon. Conflating "kickstart failed" with "launchd absent" is what let a
-    competing direct-spawn orphan be created and squat the port (Errno-48
-    storm, 2026-06-05). Gate the no-launchd fallback on THIS, not on kickstart's
-    return code."""
+    A False return AUTHORIZES ensure_daemon()'s direct-spawn fallback — the exact
+    path that creates a competing orphan squatting the port/lock (Errno-48 storm
+    2026-06-05; orphan-daemon incident 2026-07-03). So False must mean launchd
+    DEFINITIVELY does not manage the daemon, never "couldn't tell right now".
+
+    Two DIFFERENT failures must not be conflated:
+      • `launchctl` binary MISSING (FileNotFoundError) — the platform has no
+        launchd at all (Linux). Deterministic absence → return False so
+        ensure_daemon()'s direct spawn can bootstrap. This is the ONLY path that
+        starts the daemon off-macOS, so it must stay False (contract pinned by
+        test_manages_returns_false_when_launchctl_missing).
+      • `launchctl` PRESENT but the call failed — a timeout, a boot context that
+        can't address `gui/<uid>`, an unexpected non-zero. INDETERMINATE, not
+        evidence of absence: retry, and if still indeterminate assume managed so
+        the caller defers to KeepAlive instead of spawning a rival. (The original
+        `return result.returncode == 0` / `except Exception: return False`
+        conflated this transient failure with absence — the very trap this
+        docstring's first version warned about for kickstart, but the code fell
+        into it here, orphaning a daemon on 2026-07-03.)
+
+    `launchctl print gui/<uid>/<label>` returns 0 when managed and a clean
+    non-zero (113, "Could not find service …") when genuinely absent.
+    """
     label = "gui/{}/{}".format(os.getuid(), LAUNCHD_LABEL)
-    try:
-        result = subprocess.run(["launchctl", "print", label],
-                                timeout=10, capture_output=True)
-        return result.returncode == 0
-    except Exception:
-        return False
+    for _attempt in range(3):
+        try:
+            result = subprocess.run(["launchctl", "print", label],
+                                    timeout=10, capture_output=True, text=True)
+        except FileNotFoundError:
+            return False  # no launchctl binary = no launchd platform → spawn directly
+        except Exception:
+            continue  # transient (timeout / other) — retry, never conclude absence
+        if result.returncode == 0:
+            return True  # definitively managed
+        combined = ((result.stdout or "") + (result.stderr or "")).lower()
+        if "could not find service" in combined:
+            return False  # definitively NOT managed (clean not-found)
+        # Unexpected non-zero — indeterminate, retry.
+    # No definitive answer after retries → assume managed (defer to KeepAlive
+    # rather than spawn a competing orphan).
+    return True
 
 
 def _relaunch_daemon(db_path: Optional[str]):
