@@ -24,7 +24,7 @@ def query_graph3d():
 
     rows = direct_query(
         "SELECT id, type, title, locked, confidence, access_count, "
-        "encoding_source, created_at, emotion, critical "
+        "encoding_source, created_at, emotion, critical, last_accessed "
         "FROM nodes WHERE archived = 0",
         db_path=db,
     )
@@ -67,6 +67,7 @@ def query_graph3d():
             "confidence": r[4] or 1.0,
             "access_count": r[5] or 1,
             "created_at": r[7],
+            "last_accessed": r[10],
             "community": comm,
             "community_title": community_titles.get(comm, ''),
             "color": color,
