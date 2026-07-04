@@ -1716,6 +1716,9 @@ class Brain(
         Args:
             now: Epoch seconds (default: time.time()). Injectable for tests.
 
+        This is the SINGLE production activation path for S2 (run_s2). No
+        other caller triggers maintenance; the daemon poll owns it.
+
         Returns: S2 coordinator results dict when a run fired, None when
             not due. Caller (daemon) is responsible for serializing calls;
             this method is safe to call frequently — it no-ops cheaply when

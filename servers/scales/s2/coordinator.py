@@ -1,7 +1,9 @@
 """S2 Coordinator — runs all S2 integration units in order.
 
-The idle hook calls run_s2() once. S2 decides what to run.
-Each unit checks its own traces to decide whether it should fire.
+run_s2() has a single production caller: the daemon's maintenance poll
+(Brain.run_maintenance_if_due), single-flighted by the daemon's _s2_running
+guard. That is the ONLY path that activates S2 — do not add another. Each
+unit checks its own traces to decide whether it should fire.
 
 Ordering matters:
 1. AspectIntegration — classify new node types / edge relations into the 14 aspects
