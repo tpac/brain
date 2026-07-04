@@ -71,6 +71,15 @@ class MetadataDAL:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
+    def change_key(self) -> tuple:
+        """(row count, max rowid) — cheap staleness key for kv-derived caches
+        (LAF proj lane). INSERT OR REPLACE assigns a fresh rowid on update, so
+        edits bump MAX(rowid); COUNT catches deletions. Mirrors
+        NodeDAL.change_key."""
+        return tuple(self.conn.execute(
+            'SELECT COUNT(*), COALESCE(MAX(rowid), 0) '
+            'FROM node_metadata_kv').fetchone())
+
     def get(self, node_id: str) -> Dict[str, str]:
         """Get all metadata for a node as a dict. Returns {} if none.
 

@@ -266,18 +266,16 @@ class TestDampening(BrainTestBase):
                          f'Decision should rank first (type dampening), got type={result_list[0]["type"]}')
 
     def test_project_filtering(self):
-        """Nodes in the queried project should rank higher than nodes in a different project.
-
-        When project="alpha" is passed, alpha nodes get priority sorting
-        (project match first, then by effective_activation).
-        """
-        self.brain.remember(
+        """Project is kv provenance (2026-07-03): the dict filter hard-scopes
+        by it, replacing the removed recall(project=) soft-sort. The soft
+        version is the LAF proj lane (gain-dialed, session-derived —
+        tests/test_recall_laf.py::TestProjLane)."""
+        a = self.brain.remember(
             type='decision',
             title='Alpha: use GraphQL for the dashboard API layer',
             content='The alpha project dashboard needs flexible queries for widgets. GraphQL lets '
                     'the frontend request exactly the fields it needs without over-fetching. We use '
                     'Apollo Server with DataLoader for N+1 query prevention.',
-            keywords='graphql dashboard api apollo dataloader alpha',
             project='alpha'
         )
         self.brain.remember(
@@ -286,22 +284,28 @@ class TestDampening(BrainTestBase):
             content='The beta project public API must be REST because our developer audience expects '
                     'standard HTTP methods, predictable URLs, and OpenAPI documentation. GraphQL would '
                     'add unnecessary complexity for third-party consumers.',
-            keywords='rest api public openapi developer beta',
             project='beta'
         )
         self.brain.save()
 
-        results = self.brain.recall('API design decisions', limit=5, project='alpha')
+        # project rides **extra_fields into node_metadata_kv, and get_node
+        # promotes it back onto the payload (kv wins over the legacy column)
+        node = self.brain.get_node(a['id'])
+        self.assertEqual(node.get('project'), 'alpha')
+        self.assertEqual(
+            self.brain._meta_kv.get_field(a['id'], 'project'), 'alpha')
+
+        # dict filter routes project to the kv lookup (left _NODE_COLUMNS)
+        results = self.brain.recall(
+            'API design decisions', limit=5,
+            filter={'project': {'equals': 'alpha'}})
         result_list = results.get('results', [])
         self.assertTrue(len(result_list) >= 1,
                         f'Should find at least 1 result, got {len(result_list)}')
-        # Alpha project node should rank higher when filtering by alpha
-        alpha_nodes = [n for n in result_list if n.get('project') == 'alpha']
-        self.assertTrue(len(alpha_nodes) > 0, 'Should find alpha project nodes')
-        if len(result_list) >= 2:
-            first_project = result_list[0].get('project')
-            self.assertEqual(first_project, 'alpha',
-                             f'Alpha node should rank first with project filter, got project={first_project}')
+        for n in result_list:
+            self.assertEqual(
+                self.brain._meta_kv.get_field(n['id'], 'project'), 'alpha',
+                'project filter must hard-scope to alpha nodes only')
 
 
 # Coverage moved 2026-04-26 to tests/test_spread_activation.py.

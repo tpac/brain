@@ -103,6 +103,12 @@ CONNECT_TO_ITEM_SCHEMA = {
 BATCH_OP_SPECS = {
     "remember": {
         "required": ["type", "title", "content"],
+        # creates_node: this op mints a node, so provenance stamping
+        # (stamp_project_provenance) FORCE-stamps the session project onto
+        # its payload; ops without the flag get agent-supplied project
+        # STRIPPED. Derived, not enumerated — a future node-creating op
+        # added here inherits the stamp automatically.
+        "creates_node": True,
         "description": ("Create a node. Accepts all remember() fields "
                         "(situation, reasoning, quotes, ...)."),
         "properties": {
@@ -198,7 +204,9 @@ STRUCTURAL_FIELDS = {
     "critical":   {"store": "nodes", "type": "bool", "default": False},
     "emotion":    {"store": "nodes", "type": "float"},
     "emotion_label": {"store": "nodes", "type": "str", "default": "neutral"},
-    "project":    {"store": "nodes", "type": "str"},
+    # `project` lives in PROMOTED_FIELDS (metadata_kv) — the nodes.project
+    # column was dropped in schema v30. Provenance is system-stamped at the
+    # write boundary, never agent-authored.
     "personal":   {"store": "nodes", "type": "str"},
     "personal_context": {"store": "nodes", "type": "str"},
     "evolution_status":  {"store": "nodes", "type": "str"},
@@ -215,6 +223,21 @@ STRUCTURAL_FIELDS = {
 # "surfaces_in": where the field is shown (engineering, boot, distiller, etc.)
 
 PROMOTED_FIELDS = {
+    "project": {
+        "store": "metadata_kv",
+        "type": "str",
+        # system_stamped: excluded from the agent-facing MCP schemas
+        # (get_writable_fields) — the write boundary stamps it from
+        # SessionContext.project and overrides/drops agent-supplied values,
+        # so advertising it as an input would only train drift.
+        "system_stamped": True,
+        "description": (
+            "Repo provenance — WHERE this was learned (the session's main-repo "
+            "directory name, derived from cwd). System-stamped at the write "
+            "boundary from SessionContext.project; agent-supplied values are "
+            "overridden or dropped, and a revise never moves it (only "
+            "migration does). Read by the LAF proj lane and dict filters."),
+    },
     "situation": {
         "store": "metadata_kv",
         "type": "str",
@@ -270,9 +293,13 @@ ALL_FIELDS = {**STRUCTURAL_FIELDS, **PROMOTED_FIELDS}
 # ── HELPER FUNCTIONS ──
 
 def get_writable_fields():
-    """Fields that can be set via remember() or revise()."""
+    """Fields an AGENT can set via remember() or revise() — feeds the MCP
+    schemas. Excludes immutable fields and system_stamped ones (project:
+    the write boundary derives it from the session; advertising it as an
+    input would only train drift)."""
     return {k: v for k, v in ALL_FIELDS.items()
-            if not v.get("immutable") and k != "archived"}
+            if not v.get("immutable") and not v.get("system_stamped")
+            and k != "archived"}
 
 
 def get_remember_fields():

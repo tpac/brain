@@ -125,6 +125,125 @@ class TestLafEngineUnits(BrainTestBase):
                                                ref_types=['tool_result']), [])
 
 
+class TestProjLane(BrainTestBase):
+    """proj lane: session-project provenance as a gain-dialed activation field.
+
+    Design rules pinned here (2026-07-03):
+      - missing data is NEUTRAL (NaN, excluded from z-stats) — the sit-lane
+        zero-fill lesson as a contract;
+      - no session project → the whole lane is inert;
+      - gain_proj defaults to 0.0 → wired-but-contributing-nothing until a
+        measured gain is registered (the gate corpus is single-project and
+        cannot see this lane yet).
+    """
+
+    def _engine_with_projects(self):
+        """Fresh brain + 3 embedded nodes (alpha / beta / no project)."""
+        a = self.brain.remember(
+            type='decision', title='Alpha decision on caching strategy',
+            content='We cache aggressively at the edge for the dashboard.',
+            project='alpha')
+        b = self.brain.remember(
+            type='decision', title='Beta decision on caching strategy',
+            content='We cache conservatively at the origin for the API.',
+            project='beta')
+        c = self.brain.remember(
+            type='decision', title='General decision on caching strategy',
+            content='Caching should always be measured before tuning.')
+        # third project-carrying node: _zscore's small-sample guard needs >2
+        # finite entries or the lane (correctly) stays silent
+        self.brain.remember(
+            type='decision', title='Gamma decision on caching strategy',
+            content='Gamma project caches nothing and recomputes on demand.',
+            project='gamma')
+        from servers.recall_laf import get_engine
+        return get_engine(self.brain), a['id'], b['id'], c['id']
+
+    def test_project_field_semantics(self):
+        # unit: same-project 1.0, cross-project 0.0, no-project NaN,
+        # no-session-project → all NaN (inert)
+        eng = LafV1Engine()
+        eng._proj_rows = np.array([0, 1], dtype=np.int64)   # row 2 carries none
+        eng._proj_vals = np.array(['alpha', 'beta'], dtype=object)
+        vec = eng._project_field('alpha', 3)
+        assert vec[0] == 1.0 and vec[1] == 0.0 and np.isnan(vec[2])
+        assert np.isnan(eng._project_field('', 3)).all()
+        assert np.isnan(eng._project_field(None, 3)).all()
+
+    def test_sit_lane_preserves_nan_for_vectorless_nodes(self):
+        # REGRESSION (the sit-lane zero-fill bug): a node with no _situation
+        # vector must reach the fusion as NaN — a real 0.0 z-scores ~10σ below
+        # the corpus mean and buries the node. Pins the lane contract stated
+        # in _fields' docstring for the lane that originally violated it.
+        import servers.embedder as embedder
+        from servers.recall_laf import get_engine, _unit as _u
+        node = self.brain.remember(
+            type='lesson', title='Node without a situation field',
+            content='This node deliberately has no situation.')
+        eng = get_engine(self.brain)
+        qv = _u(embedder.embed_query('anything at all'))
+        with eng._lock:
+            eng._refresh_matrices(self.brain, None)
+            nk = eng._refresh_titles(self.brain)
+            eng._refresh_projects(self.brain, node_key=nk)
+            eng._refresh_traces(self.brain)
+            fields = eng._fields(self.brain, 'anything at all', qv,
+                                 eng.config(self.brain), eng._n)
+        row = eng._idx[node['id']]
+        assert np.isnan(fields['sit'][row]), \
+            'missing situation vector must be NaN in the sit lane, never 0.0'
+
+    def test_full_matrix_build_resets_proj_arrays(self):
+        # REGRESSION: proj arrays are row-keyed; a full matrix rebuild
+        # reindexes rows, so the arrays must be force-reset like the titles
+        # cache — stale indices would label the WRONG nodes.
+        eng, *_ = self._engine_with_projects()
+        import servers.embedder as embedder
+        from servers.recall_laf import _unit as _u
+        qv = _u(embedder.embed_query('caching'))
+        eng.scores(self.brain, 'caching', qv, session_project='alpha')
+        assert len(eng._proj_rows)                  # populated by the refresh
+        with eng._lock:
+            eng._full_matrix_build(self.brain, None)
+        assert len(eng._proj_rows) == 0 and eng._proj_key is None
+
+    def test_default_gain_zero_is_bit_identical(self):
+        import servers.embedder as embedder
+        eng, *_ = self._engine_with_projects()
+        qv = embedder.embed_query('caching strategy decision')
+        base, _ = eng.scores(self.brain, 'caching strategy decision', qv)
+        with_proj, _ = eng.scores(self.brain, 'caching strategy decision', qv,
+                                  session_project='alpha')
+        assert base == with_proj      # gain 0 → lane wired, zero contribution
+
+    def test_nonzero_gain_boosts_same_inhibits_cross_neutral_missing(self):
+        import time as _time
+        import servers.embedder as embedder
+        eng, aid, bid, cid = self._engine_with_projects()
+        # Isolate the lane: all gains 0 except proj → score IS the proj z.
+        eng._cfg = {**DEFAULT_CONFIG,
+                    'gain_maxsim': 0.0, 'gain_pick': 0.0, 'gain_enc': 0.0,
+                    'gain_idf': 0.0, 'gain_sit': 0.0, 'gain_proj': 1.0}
+        eng._cfg_ts = _time.monotonic()
+        qv = embedder.embed_query('caching strategy decision')
+        s, _ = eng.scores(self.brain, 'caching strategy decision', qv,
+                          session_project='alpha')
+        # z over finite {1.0, 0.0}: alpha +1σ, beta −1σ, no-project excluded → 0
+        assert s[aid] > s[cid] > s[bid]
+        # inert without a session project: everyone z=0 → equal scores
+        s0, _ = eng.scores(self.brain, 'caching strategy decision', qv)
+        assert s0[aid] == s0[bid] == s0[cid]
+
+    def test_project_rows_kv_wins_over_column(self):
+        # migration-proof read: node_metadata_kv['project'] beats the legacy
+        # column once the migration lands, with no engine change.
+        _, aid, _, cid = self._engine_with_projects()
+        self.brain._meta_kv.set_many(aid, {'project': 'kv-project'})
+        rows = dict(self.brain._nodes.project_rows())
+        assert rows[aid] == 'kv-project'   # kv overrides column 'alpha'
+        assert cid not in rows             # no project anywhere → absent
+
+
 @unittest.skipUnless(
     os.path.exists(os.path.join(os.path.expanduser('~'),
                                 'AgentsContext', 'brain', 'brain.db'))
@@ -182,7 +301,8 @@ class TestLafFlagIntegration(unittest.TestCase):
         # per-candidate field telemetry rides the result (P2 walker feed)
         self.assertIn('_laf_fields', res)
         some_fields = next(iter(res['_laf_fields'].values()))
-        self.assertEqual(set(some_fields), {'maxsim', 'pick', 'enc', 'idf', 'sit'})
+        self.assertEqual(set(some_fields),
+                         {'maxsim', 'pick', 'enc', 'idf', 'sit', 'proj'})
         # engine cached on the brain, matrices + trace blocks resident
         eng = self.brain._laf_engine
         self.assertGreater(eng._n, 0)

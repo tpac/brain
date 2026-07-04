@@ -67,3 +67,84 @@ WRITE_COMMANDS = {
 # mislabelled brain_batch encodes and hid them from the dashboard's encoder view).
 NON_ATTRIBUTED_WRITES = {'enrich', 'trace_append', 'set_config'}
 ATTRIBUTED_WRITE_COMMANDS = WRITE_COMMANDS - NON_ATTRIBUTED_WRITES
+
+
+def stamp_project_provenance(cmd, cmd_args, project):
+    """Enforce deterministic project provenance on an outgoing write's args.
+
+    `project` on a node is PROVENANCE — the repo the session was working in
+    when the node was learned (SessionContext.project, derived from cwd).
+    It is never agent-authored: node-creating payloads get the session's
+    value force-stamped; agent-supplied values on any other write are
+    dropped. Mutates cmd_args in place; returns a list of warning strings
+    for values that were overridden or dropped (callers surface them).
+
+    project policy value:
+      - None  → no-op. The caller has no session authority (bare handler
+        call without an ambient session); an upstream chokepoint may already
+        have stamped, so args pass through untouched.
+      - ''    → authoritative "no project here": strip agent-supplied values
+        (non-repo session, or an S2 unit — graph-scope work never invents
+        provenance).
+      - 'x'   → force-stamp onto node-creating payloads, strip elsewhere.
+    """
+    if project is None or not isinstance(cmd_args, dict):
+        return []
+    warnings = []
+
+    def _force(node_dict, where):
+        supplied = node_dict.get('project')
+        if project:
+            if supplied and supplied != project:
+                warnings.append(
+                    "%s: project is session-derived provenance — supplied "
+                    "%r replaced with %r" % (where, supplied, project))
+            node_dict['project'] = project
+        elif 'project' in node_dict:
+            # presence-based, not truthiness: an explicit '' is also
+            # agent-authored and must not reach the node
+            supplied = node_dict.pop('project')
+            if supplied:
+                warnings.append(
+                    "%s: project is session-derived provenance and this "
+                    "session has none — supplied %r dropped" % (where, supplied))
+
+    def _strip(d, where):
+        # presence-based: `project: ''` through a revise would WIPE birth
+        # provenance (validate_field accepts '', revise writes the column) —
+        # pop the key whenever it appears, warn when it carried a value
+        if isinstance(d, dict) and 'project' in d:
+            supplied = d.pop('project')
+            if supplied:
+                warnings.append(
+                    "%s: project is session-derived provenance — "
+                    "agent-supplied %r dropped (set at node creation, moved "
+                    "only by migration)" % (where, supplied))
+
+    if cmd == 'remember':
+        _force(cmd_args, 'remember')
+    elif cmd == 'remember_batch':
+        for i, spec in enumerate(cmd_args.get('nodes') or []):
+            if isinstance(spec, dict):
+                _force(spec, 'remember_batch.nodes[%d]' % i)
+    elif cmd in ('revise', 'revise_batch'):
+        if cmd == 'revise':
+            _strip(cmd_args, 'revise')
+        else:
+            for i, spec in enumerate(cmd_args.get('revisions') or []):
+                _strip(spec, 'revise_batch.revisions[%d]' % i)
+    elif cmd == 'brain_batch':
+        # force-vs-strip derives from the op contract (creates_node flag on
+        # BATCH_OP_SPECS), not a local op enumeration — a new node-creating
+        # op added via the documented contract path inherits the stamp.
+        from ..contract import BATCH_OP_SPECS
+        for i, op in enumerate(cmd_args.get('operations') or []):
+            if not isinstance(op, dict):
+                continue
+            where = 'brain_batch.operations[%d]' % i
+            spec = BATCH_OP_SPECS.get(op.get('op'), {})
+            if spec.get('creates_node'):
+                _force(op, where)
+            else:
+                _strip(op, where)
+    return warnings

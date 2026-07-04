@@ -38,21 +38,21 @@ def brain_db():
     # Seed nodes — 5 active, 1 archived, mixed types.
     now = '2026-04-19T12:00:00Z'
     nodes = [
-        ('n1', 'decision',  'Recall uses nomic',         'content 1', 0, 0.8, 1, 'brain'),
-        ('n2', 'rule',      'Single-writer daemon',      'content 2', 0, 0.9, 0, 'brain'),
-        ('n3', 'insight',   'Cache thrashing pattern',   'content 3', 0, 0.7, 0, 'brain'),
-        ('n4', 'concept',   'S2 integration units',      'content 4', 0, 0.6, 0, None),
-        ('n5', 'open',      'Next-session checklist',    'content 5', 0, 0.5, 0, 'other'),
-        ('n6', 'decision',  'Archived choice',           'content 6', 1, 0.8, 0, 'brain'),
+        ('n1', 'decision',  'Recall uses nomic',         'content 1', 0, 0.8, 1),
+        ('n2', 'rule',      'Single-writer daemon',      'content 2', 0, 0.9, 0),
+        ('n3', 'insight',   'Cache thrashing pattern',   'content 3', 0, 0.7, 0),
+        ('n4', 'concept',   'S2 integration units',      'content 4', 0, 0.6, 0),
+        ('n5', 'open',      'Next-session checklist',    'content 5', 0, 0.5, 0),
+        ('n6', 'decision',  'Archived choice',           'content 6', 1, 0.8, 0),
     ]
-    for (nid, ntype, title, content, archived, conf, critical, project) in nodes:
+    for (nid, ntype, title, content, archived, conf, critical) in nodes:
         conn.execute(
             'INSERT INTO nodes (id, type, title, content, archived, confidence, '
-            'critical, project, created_at, personal, personal_context, '
+            'critical, created_at, personal, personal_context, '
             'emotion, access_count) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, 0)',
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, 0)',
             (nid, ntype, title, content, archived, conf, critical,
-             project, now, 'ctx-' + nid))
+             now, 'ctx-' + nid))
 
     # Seed vectors — 5 primary (n1-n5 only; n6 archived has none), 2 situations.
     dal = VectorDAL(conn)
@@ -146,15 +146,6 @@ class TestParity:
         i = sorted(inner.get_all_with_context(types=['decision']),
                    key=lambda r: r['node_id'])
         c = sorted(cached.get_all_with_context(types=['decision']),
-                   key=lambda r: r['node_id'])
-        assert i == c
-
-    def test_get_all_with_context_project_filter(self, brain_db):
-        inner = VectorDAL(brain_db)
-        cached = CachedVectorDAL(brain_db)
-        i = sorted(inner.get_all_with_context(project='brain'),
-                   key=lambda r: r['node_id'])
-        c = sorted(cached.get_all_with_context(project='brain'),
                    key=lambda r: r['node_id'])
         assert i == c
 

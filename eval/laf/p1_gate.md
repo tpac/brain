@@ -4,18 +4,18 @@
 
 | arm | need@5 | need@25 | warm p50 | warm p95 | mode |
 |---|---|---|---|---|---|
-| champion | 11% | 17% | 1650ms | 2265ms | embeddings_first |
-| laf_v1 | 16% | 23% | 728ms | 1296ms | laf_v1 |
+| champion | 11% | 17% | 1496ms | 2384ms | embeddings_first |
+| laf_v1 | 14% | 23% | 819ms | 1501ms | laf_v1 |
 
-laf_v1 first call (engine cache build): 1584ms
+laf_v1 first call (engine cache build): 1237ms
 
 ## Per-cue (need@5 / need@25)
 
 | cue | champion | laf_v1 | Δ@5 | Δ@25 |
 |---|---|---|---|---|
 | anchor_turn_0087 | 0.00 / 0.00 | 0.00 / 0.00 | +0.00 | +0.00 |
-| anchor_turn_0132 | 0.00 / 0.00 | 0.17 / 0.17 | +0.17 | +0.17 |
-| anchor_turn_0345 | 0.25 / 0.25 | 0.50 / 0.50 | +0.25 | +0.25 |
+| anchor_turn_0132 | 0.00 / 0.00 | 0.00 / 0.00 | +0.00 | +0.00 |
+| anchor_turn_0345 | 0.25 / 0.25 | 0.25 / 0.50 | +0.00 | +0.25 |
 | anchor_turn_0421 | 0.00 / 0.17 | 0.17 / 0.50 | +0.17 | +0.33 |
 | anchor_turn_0538 | 0.00 / 0.00 | 0.00 / 0.00 | +0.00 | +0.00 |
 | anchor_turn_0764 | 0.00 / 0.00 | 0.00 / 0.00 | +0.00 | +0.00 |

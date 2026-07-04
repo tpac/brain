@@ -319,6 +319,30 @@ Who created a node. Format: `category:process`. Edges carry the same tag so ever
 - `hook:compaction` / `hook:integrity` — hook lifecycle markers
 - `migration:*` — one-off recovery/migration scripts
 
+### project Convention
+
+Repo PROVENANCE — where a node was learned, never what it's about. Stored in
+`node_metadata_kv['project']`; the legacy `nodes.project` column was dropped in
+schema v30 (`_migrate_v30_project_to_kv` moves values → kv, then DROP COLUMN).
+
+**Deterministic, never agent-authored.** `SessionContext.project` is derived
+from cwd at boot in the same git call as branch+worktree (main-repo dir name;
+a worktree session resolves to the same project as the main tree; `''` for
+non-repo sessions). Two chokepoints enforce it — `stamp_project_provenance`
+(`scales/dispatch.py`): the MCP write handlers force-stamp the session's
+project on node-creating payloads and strip it everywhere else (a revise
+never moves provenance); the encoder attribution does the same for the Scribe,
+while S2 units always strip (graph-scope work never invents provenance).
+brain_batch force-vs-strip derives from `BATCH_OP_SPECS`' `creates_node` flag.
+The field is `system_stamped` in the contract — excluded from the agent-facing
+MCP schemas. The CLI's `--project` is the operator escape hatch.
+
+**Read side:** the LAF `proj` lane scores session-project match per query
+(gain_proj=0 until cross-project cues exist to tune it — the lane's real job
+is INHIBITION when the operator works outside the dominant project); dict
+filter `{"project": {...}}` hard-scopes via the KV lookup; `get_node`
+promotes it onto the payload like `situation`.
+
 ## Development Rules
 
 ### Time-window queries: route through `clock.iso_now()` / `iso_cutoff()`

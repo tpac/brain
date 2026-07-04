@@ -1198,9 +1198,12 @@ def hook_worktree_context(brain, args, graph_changes):
     worktree_name = args.get("name", "")
     cwd = args.get("cwd", "")
 
-    # Detect git branch from cwd — single source (also used by the per-session
-    # boot env stamp); env-neutral, 'unknown' on any failure.
-    branch = brain.detect_git_branch(cwd)
+    # Branch + project from cwd in ONE git call (same combined probe as boot).
+    # Project matters here too: a session that booted outside a repo and then
+    # entered a worktree must not keep project='' — the provenance stamp would
+    # strip every subsequent write from a demonstrably-repo session. The hook's
+    # `name` arg stays authoritative for worktree (git's derived name ignored).
+    branch, _, project = brain.detect_git_env(cwd)
 
     # Per-session identity — replaces the global current_worktree config, which was
     # last-writer-wins across parallel streams. session_id is backfilled from
@@ -1211,7 +1214,8 @@ def hook_worktree_context(brain, args, graph_changes):
     if session_id:
         with brain.write_lock:
             ctx = brain.get_or_create_session(session_id)
-            ctx.set_env(cwd=cwd, branch=branch, worktree=worktree_name)
+            ctx.set_env(cwd=cwd, branch=branch, worktree=worktree_name,
+                        project=project)
             ctx.save(brain.logs_conn)
 
     try:

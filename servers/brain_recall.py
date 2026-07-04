@@ -158,10 +158,12 @@ def _expand_query_via_haiku(query: str) -> List[str]:
 
 # Node table columns — filter checks these on the result dict.
 # Anything not in this set is looked up as a metadata key.
+# `project` removed 2026-07-03: provenance lives in node_metadata_kv, so
+# filter {'project': ...} routes to the KV lookup like other promoted fields.
 _NODE_COLUMNS = frozenset({
     'id', 'type', 'title', 'content', 'keywords', 'activation', 'stability',
     'access_count', 'locked', 'archived', 'critical', 'recency_score',
-    'emotion', 'emotion_label', 'emotion_source', 'project', 'confidence',
+    'emotion', 'emotion_label', 'emotion_source', 'confidence',
     'personal', 'personal_context', 'evolution_status', 'resolved_at',
     'resolved_by', 'due_date', 'content_summary', 'source_attribution',
     'scope', 'encoding_version', 'encoding_source', 'revised_at',
@@ -403,6 +405,11 @@ class BrainRecallMixin:
                 sit = meta_by_node[nid].get('situation')
                 if sit:
                     nodes[nid]['situation'] = sit
+                # Promote project the same way — provenance is first-class.
+                # KV wins over the legacy column value (migration transition).
+                proj = meta_by_node[nid].get('project')
+                if proj:
+                    nodes[nid]['project'] = proj
 
         # ── 4. Batch corrections via aspect-edge walk ──
         # Renderer slices the heavy payload per consumer (HAIKU_FORMAT
@@ -1067,10 +1074,14 @@ class BrainRecallMixin:
 
     def _keyword_recall(self, query: str, filter: Optional[Dict[str, Any]] = None, limit: int = 20,
                         offset: int = 0, include_archived: bool = False, min_recency: float = 0,
-                        project: Optional[str] = None, session_id: Optional[str] = None,
+                        session_id: Optional[str] = None,
                         _skip_log: bool = False) -> Dict[str, Any]:
         """INTERNAL: TF-IDF keyword recall. Used by recall() for keyword blending.
         Do NOT call directly — use recall() (embeddings + graph traversal) instead.
+
+        `project` param removed 2026-07-03 — project is provenance in
+        node_metadata_kv now: filter with {'project': {...}} (routes to the KV
+        lookup) or lean on the LAF proj lane, which scores it per session.
 
         Args:
             query: Search query
@@ -1079,7 +1090,6 @@ class BrainRecallMixin:
             offset: Pagination offset
             include_archived: Include archived nodes
             min_recency: Minimum recency score threshold
-            project: Filter to specific project
             session_id: Optional session ID for logging
 
         Returns:
@@ -1240,19 +1250,14 @@ class BrainRecallMixin:
             else:
                 filtered = [n for n in filtered if n.get('recency_score', 0) >= min_recency]
 
-        # v5: Project filter
-        if project:
-            filtered.sort(key=lambda n: (1 if n.get('project') == project else 0, -n.get('effective_activation', 0)))
-
         # v5: Temporal filter
         if temporal_filter:
             after = temporal_filter.get('after')
             before = temporal_filter.get('before')
             filtered = [n for n in filtered if self._matches_temporal_filter(n.get('created_at'), after, before)]
 
-        # Step 5: Sort by effective activation (if no project filter)
-        if not project:
-            filtered.sort(key=lambda n: -n.get('effective_activation', 0))
+        # Step 5: Sort by effective activation
+        filtered.sort(key=lambda n: -n.get('effective_activation', 0))
 
         # Step 6: Pagination
         page = filtered[offset:offset + limit]
@@ -1345,11 +1350,16 @@ class BrainRecallMixin:
     def recall(self, query: str, filter: Optional[Dict[str, Any]] = None,
                limit: int = 20, offset: int = 0,
                include_archived: bool = False,
-               min_recency: float = 0, project: Optional[str] = None,
+               min_recency: float = 0,
                session_id: Optional[str] = None,
                situation_vec=None, source: str = 'unknown',
                ctx=None) -> Dict[str, Any]:
         """Recall: embeddings + 3-degree graph traversal + keyword blending + situation matching.
+
+        `project` param removed 2026-07-03 (it had zero production callers) —
+        project is provenance in node_metadata_kv now: hard-scope with
+        filter {"project": {"equals": ...}} (routes to the KV lookup), or let
+        the LAF proj lane score the session's project as a soft field.
 
         Args:
             query: Search query
@@ -1362,7 +1372,6 @@ class BrainRecallMixin:
             offset: Pagination offset
             include_archived: Include archived
             min_recency: Min recency threshold
-            project: Optional project filter
             session_id: Optional session ID
 
         Returns:
@@ -1376,7 +1385,7 @@ class BrainRecallMixin:
            one becomes leader, others wait for its result.
 
         Both keyed by (query, filter, limit, offset, include_archived,
-        min_recency, project, session_id, situation_vec). session_id is
+        min_recency, session_id, situation_vec). session_id is
         in the key because synaptic fatigue is per-session.
 
         Replaces the dispatch + brain.pre_edit caches: every recall caller
@@ -1394,7 +1403,7 @@ class BrainRecallMixin:
             dedup_key = (
                 query, int(min(limit, MAX_PAGE_SIZE)), int(offset),
                 bool(include_archived), float(min_recency or 0),
-                project, session_id, filter_key, sit_key,
+                session_id, filter_key, sit_key,
             )
         except Exception:
             # If key construction fails, skip dedup — better to do
@@ -1424,7 +1433,7 @@ class BrainRecallMixin:
                 result = self._recall_impl(
                     query=query, filter=filter, limit=limit, offset=offset,
                     include_archived=include_archived, min_recency=min_recency,
-                    project=project, session_id=session_id, ctx=ctx,
+                    session_id=session_id, ctx=ctx,
                     situation_vec=situation_vec, source=source)
                 self._recall_cache_put(dedup_key, result)
                 inflight.set_result(result)
@@ -1439,7 +1448,7 @@ class BrainRecallMixin:
         return self._recall_impl(
             query=query, filter=filter, limit=limit, offset=offset,
             include_archived=include_archived, min_recency=min_recency,
-            project=project, session_id=session_id, ctx=ctx,
+            session_id=session_id, ctx=ctx,
             situation_vec=situation_vec, source=source)
 
     # ─── recall result cache (5s TTL) ─────────────────────────────────
@@ -1515,7 +1524,7 @@ class BrainRecallMixin:
 
     def _recall_impl(self, query: str, filter=None, limit: int = 20,
                      offset: int = 0, include_archived: bool = False,
-                     min_recency: float = 0, project=None,
+                     min_recency: float = 0,
                      session_id=None, situation_vec=None,
                      source: str = 'unknown', ctx=None) -> Dict[str, Any]:
         """Actual recall implementation — hot path. Single-flight wrapper
@@ -1527,7 +1536,7 @@ class BrainRecallMixin:
         # ── FALLBACK: If embedder not ready, degrade to keyword-only ──
         if not embedder.is_ready():
             result = self._keyword_recall(query, filter, limit, offset, include_archived,
-                               min_recency, project, session_id, _skip_log=True)
+                               min_recency, session_id, _skip_log=True)
             result['_recall_mode'] = 'keyword_only_DEGRADED'
             result['_embedding_stats'] = {
                 'embedder_ready': False,
@@ -1550,12 +1559,12 @@ class BrainRecallMixin:
             if not query_vec:
                 # Embedding failed for this query — fall back
                 result = self._keyword_recall(query, filter, limit, offset, include_archived,
-                                   min_recency, project, session_id)
+                                   min_recency, session_id)
                 result['_recall_mode'] = 'keyword_only_DEGRADED'
                 return result
         except Exception as e:
             result = self._keyword_recall(query, filter, limit, offset, include_archived,
-                               min_recency, project, session_id)
+                               min_recency, session_id)
             result['_recall_mode'] = 'keyword_only_DEGRADED'
             return result
 
@@ -1591,17 +1600,43 @@ class BrainRecallMixin:
         # (z-weighted groups, situation scan, FTS5 net, keyword blend, idf2 title
         # boost, trace-chain lane) are gated off under the flag at their sites.
         # Flag unset / scorer failure → _laf_scores is None → champion unchanged.
+        # Session context — resolved ONCE for the whole recall: the proj
+        # lane's query-side project (STEP 2.7) and the fatigue snapshot
+        # (STEP 3) both read it. Previously the ctx-less MCP path loaded the
+        # SessionContext twice (session_env_for here + get_or_create_session
+        # in STEP 3), a redundant logs-db blob parse per recall.
+        _recall_ctx = ctx
+        if _recall_ctx is None and session_id:
+            try:
+                _recall_ctx = self.get_or_create_session(session_id)
+            except Exception as _ferr:
+                self._log_error('recall_fatigue_ctx', _ferr,
+                                'loading session ctx for fatigue dampening — '
+                                'falling back to empty fatigue')
+
         _laf_scores = None
         _laf_fields = None
         import os as _os_laf
-        if _os_laf.environ.get('BRAIN_RECALL_VARIANT', '').strip().lower() == 'laf_v1':
+        # include_archived falls back to champion: the LAF engine's universe is
+        # deliberately live-only (vectors_since / get_all_vectors exclude
+        # archived — a performance choice, don't widen it), so archived
+        # candidates would all score _laf_scores.get(id, 0.0) = dead-last.
+        # Champion cosines them correctly, and these calls are rare and
+        # not latency-critical.
+        if (_os_laf.environ.get('BRAIN_RECALL_VARIANT', '').strip().lower() == 'laf_v1'
+                and not include_archived):
             try:
                 try:
                     from .recall_laf import get_engine as _laf_get_engine
                 except ImportError:
                     from recall_laf import get_engine as _laf_get_engine
+                # Session project — the query-side source for the proj lane
+                # (deterministic provenance from ctx, never from query text).
+                _session_project = (_recall_ctx.project
+                                    if _recall_ctx is not None else None)
                 _laf_scores, _laf_fields = _laf_get_engine(self).scores(
-                    self, query, query_vec, model=_active_model)
+                    self, query, query_vec, model=_active_model,
+                    session_project=_session_project)
                 if not _laf_scores:
                     _laf_scores = None      # empty field → champion, not zeros
             except Exception as _laf_e:
@@ -1642,27 +1677,18 @@ class BrainRecallMixin:
                 _types_filter = filter['type']['in']
             emb_rows = _vec_dal.get_all_with_context(
                 exclude_archived=not include_archived,
-                types=_types_filter, project=project,
+                types=_types_filter,
                 model=_active_model)
             # Hoisted out of the per-row loop — these were `if not hasattr`
             # guards behind the cosine inner loop, so paid N times for no
             # reason. Now paid once. Idempotent if Brain.warm_up() already
             # built the structural cache during daemon boot.
             self._ensure_structural_degree_cache()
-            # Per-session fatigue snapshot — prefer the SessionContext the
-            # caller passed in (Tom's convention); otherwise load fresh from
-            # session_id. ctx is saved at end of _recall_impl so fatigue
-            # increments (via _mark_accessed below) persist for the next
-            # recall in this session.
-            _recall_ctx = ctx
+            # Per-session fatigue snapshot — _recall_ctx was resolved once
+            # before STEP 2.7 (shared with the proj lane's session project).
+            # ctx is saved at end of _recall_impl so fatigue increments (via
+            # _mark_accessed below) persist for the next recall this session.
             _recall_fatigue: Dict[str, int] = {}
-            if _recall_ctx is None and session_id:
-                try:
-                    _recall_ctx = self.get_or_create_session(session_id)
-                except Exception as _ferr:
-                    self._log_error('recall_fatigue_ctx', _ferr,
-                                    'loading session ctx for fatigue dampening — '
-                                    'falling back to empty fatigue')
             if _recall_ctx is not None:
                 _recall_fatigue = _recall_ctx.fatigue
             # Per-node data collected here for unified_score() in STEP 6.
@@ -1943,7 +1969,7 @@ class BrainRecallMixin:
         # and to get keyword precision scores for exact-match tiebreaking
         # _skip_log=True: precision module handles logging via hooks, not here.
         keyword_result = self._keyword_recall(query, filter, limit * 3, offset, include_archived,
-                                    min_recency, project, session_id, _skip_log=True)
+                                    min_recency, session_id, _skip_log=True)
         keyword_scores = {}  # node_id → keyword_effective_activation
         keyword_nodes = {}   # node_id → full node dict
         for node in keyword_result.get('results', []):

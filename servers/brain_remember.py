@@ -774,7 +774,10 @@ class BrainRememberMixin:
     def remember(self, type: str, title: str, content: Optional[str] = None,
                  locked: bool = False,
                  emotion: float = 0, emotion_label: str = 'neutral',
-                 emotion_source: str = 'auto', project: Optional[str] = None,
+                 emotion_source: str = 'auto',
+                 # `project` param removed 2026-07-03 — provenance is
+                 # system-stamped at the write boundary and rides
+                 # **extra_fields into node_metadata_kv (PROMOTED_FIELDS).
                  confidence: float = 1.0,
                  personal: Optional[str] = None,
                  personal_context: Optional[str] = None,
@@ -870,14 +873,14 @@ class BrainRememberMixin:
             '''INSERT INTO nodes
                (id, type, title, content, content_summary,
                 activation, stability, locked, confidence,
-                recency_score, emotion, emotion_label, emotion_source, project,
+                recency_score, emotion, emotion_label, emotion_source,
                 personal, personal_context, encoding_version, encoding_source,
                 evolution_status, source_turn_id,
                 last_accessed, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, 1.0, 1.0, ?, ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+               VALUES (?, ?, ?, ?, ?, 1.0, 1.0, ?, ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (node_id, type, title, content, content_summary,
              1 if locked else 0, confidence,
-             emotion, emotion_label, emotion_source, project,
+             emotion, emotion_label, emotion_source,
              personal, personal_context, CURRENT_ENCODING_VERSION,
              encoding_source or 'anchor',
              evolution_status, source_turn_id,
@@ -1198,9 +1201,11 @@ class BrainRememberMixin:
         # ── Field classification ──
         # Top-level fields live on the nodes table (updatable via SQL).
         # Immutable fields are silently skipped with a warning.
+        # `project` removed 2026-07-03 — provenance lives in node_metadata_kv
+        # (PROMOTED_FIELDS) and revise strips it at the write boundary anyway.
         NODES_TABLE_FIELDS = {
             'title', 'type', 'confidence', 'emotion',
-            'emotion_label', 'project', 'personal', 'personal_context',
+            'emotion_label', 'personal', 'personal_context',
             'critical', 'evolution_status', 'encoding_source',
             'archived',  # allows revise(archived=True) for consolidation
         }
