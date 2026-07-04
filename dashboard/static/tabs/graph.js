@@ -44,6 +44,7 @@ let cv=null, ctx=null, host=null, tip=null, legend=null;
 let raf=0, _loadGen=0, _activateTimer=null, _ro=null;
 let W=0,H2=0,DPR=1,MIN=0, yaw=0, pitch=0.62, roll=0, zoom=1, panx=0, pany=0, t0=0;
 let spin=true, showEdges=false, colorMode=0, hoverIdx=-1, ambientT=0, ambientGap=4;
+let needSort=true, _winWired=false;
 let act=null, front=[];
 let _searchQuery='';
 const _highlightTier=new Map();     // id -> tier (persistent spotlight; pin/preview)
@@ -133,11 +134,12 @@ function buildGalaxy(data){
   for(let i=0;i<N;i++){X[i]/=mr;Y[i]/=mr;Z[i]/=mr;}
   // adjacency (non-noise) + drawn-edge subset
   const adj=Array.from({length:N},()=>[]);
-  const draw=[]; let di=0;
+  const draw=[]; let ei=0;
   for(const [a,b,r] of E){ if(r!==NOISE_ASP){ adj[a].push(b); adj[b].push(a); }
-    if(r===NOISE_ASP) continue; const bridge=COMM[a]!==COMM[b];
-    if(r===GENERIC_ASP && !bridge && (di++ %4)) continue;
-    if(!bridge && (di++ %2)) continue;
+    if(r===NOISE_ASP) continue;
+    const bridge=COMM[a]!==COMM[b]; ei++;
+    // bridges always drawn; intra-community sampled (generic 1-in-4, other 1-in-2)
+    if(!bridge){ if(r===GENERIC_ASP){ if(ei%4) continue; } else if(ei%2) continue; }
     draw.push([a,b,r,bridge?1:0]); }
   return { N, X,Y,Z, A, D, H, DEG, TITLE, TYPE, COMM, AGE, IDS, idIndex, adj, edges:draw,
            C:cids.length, E_total:E.length };
@@ -169,7 +171,7 @@ function stepActivation(dt){ if(!front.length)return; const nf=[], add=new Map()
 
 function frame(now){ if(!G||!ctx){raf=0;return;}
   const dt=Math.min((now-t0)/1000,.05); t0=now;
-  if(spin&&!reduce) roll+=dt*0.075;
+  if(spin&&!reduce){ roll+=dt*0.075; needSort=true; }
   stepActivation(dt);
   if(!reduce){ ambientT+=dt; if(ambientT>ambientGap && front.length<40){ ambientT=0; ambientGap=4.5+Math.random()*3;
     let best=-1,bh=0; for(let k=0;k<34;k++){const i=(Math.random()*G.N)|0; if(G.H[i]>bh){bh=G.H[i];best=i;}} seed(best); } }
@@ -185,7 +187,7 @@ function frame(now){ if(!G||!ctx){raf=0;return;}
     for(const r in paths){const h=HUE[r];ctx.strokeStyle=`rgba(${h[0]},${h[1]},${h[2]},0.05)`;ctx.lineWidth=0.6;ctx.stroke(paths[r]);}
     for(const r in bp){const h=HUE[r];ctx.strokeStyle=`rgba(${h[0]},${h[1]},${h[2]},0.13)`;ctx.lineWidth=0.8;ctx.stroke(bp[r]);} }
 
-  order.sort((i,j)=>sz[j]-sz[i]);
+  if(needSort){ order.sort((i,j)=>sz[j]-sz[i]); needSort=false; }   // re-sort only when the view rotated
   // glow underlay
   for(let k=0;k<g.N;k++){ const i=order[k],heat=g.H[i],hh=heat*heat,ac=act[i];
     const dim = (_searchQuery&&!matches(i)) || (spot&&!_highlightTier.has(i));
@@ -265,18 +267,25 @@ function buildScaffold(){
   return true;
 }
 let drag=false,lx=0,ly=0,sh=false,moved=false;
+// window-level pointer handlers: bound ONCE (in init) — they reference the
+// current module cv/G/tip, which are reassigned per mount. Binding them per
+// mount (the old wireCanvas) leaked a pair on every Refresh.
+function _onWinMove(e){ if(!G)return;
+  if(drag){const dx=e.clientX-lx,dy=e.clientY-ly;lx=e.clientX;ly=e.clientY;if(Math.abs(dx)+Math.abs(dy)>2)moved=true;
+    if(sh){panx+=dx;pany+=dy;}else{yaw+=dx*0.005;pitch=Math.max(-1.5,Math.min(1.5,pitch+dy*0.005));needSort=true;}return;}
+  if(!cv)return; const r=cv.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+  if(mx<0||my<0||mx>r.width||my>r.height){hoverIdx=-1;if(tip)tip.classList.remove('show');return;}
+  const i=nearest(mx,my); hoverIdx=i;
+  if(i>=0){showTip(i,mx,my);cv.style.cursor='pointer';}else{if(tip)tip.classList.remove('show');cv.style.cursor='grab';} }
+function _onWinUp(e){ if(!drag)return; drag=false; if(cv)cv.style.cursor='grab';
+  if(!moved&&G){const r=cv.getBoundingClientRect(),i=nearest(e.clientX-r.left,e.clientY-r.top);
+    if(i>=0){ seed(i); loadNodeDetail(G.IDS[i]); }} }
+function wireWindowOnce(){ if(_winWired)return; _winWired=true;
+  window.addEventListener('mousemove',_onWinMove); window.addEventListener('mouseup',_onWinUp); }
+// canvas-scoped handlers re-bind per mount — the canvas is discarded on destroy,
+// so these listeners are GC'd with it (no leak).
 function wireCanvas(){
   cv.addEventListener('mousedown',e=>{drag=true;moved=false;lx=e.clientX;ly=e.clientY;sh=e.shiftKey;cv.style.cursor='grabbing';});
-  window.addEventListener('mousemove',e=>{ if(!G)return;
-    if(drag){const dx=e.clientX-lx,dy=e.clientY-ly;lx=e.clientX;ly=e.clientY;if(Math.abs(dx)+Math.abs(dy)>2)moved=true;
-      if(sh){panx+=dx;pany+=dy;}else{yaw+=dx*0.005;pitch=Math.max(-1.5,Math.min(1.5,pitch+dy*0.005));}return;}
-    if(!cv)return; const r=cv.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
-    if(mx<0||my<0||mx>r.width||my>r.height){hoverIdx=-1;if(tip)tip.classList.remove('show');return;}
-    const i=nearest(mx,my); hoverIdx=i;
-    if(i>=0){showTip(i,mx,my);cv.style.cursor='pointer';}else{if(tip)tip.classList.remove('show');cv.style.cursor='grab';} });
-  window.addEventListener('mouseup',e=>{ if(!drag)return; drag=false; if(cv)cv.style.cursor='grab';
-    if(!moved&&G){const r=cv.getBoundingClientRect(),i=nearest(e.clientX-r.left,e.clientY-r.top);
-      if(i>=0){ seed(i); loadNodeDetail(G.IDS[i]); }} });
   cv.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(0.4,Math.min(6,zoom*(e.deltaY<0?1.12:.892)));},{passive:false});
 }
 
@@ -294,7 +303,7 @@ export async function loadGraph3D(){
     if(!raw.nodes || !raw.nodes.length){ host.innerHTML='<div class="graph-error"><div class="graph-error-title">No graph data</div></div>'; return; }
     ensureSprites();
     G = buildGalaxy(raw);
-    allocScreen(G.N);
+    allocScreen(G.N); needSort=true;
     sizeCanvas();
     t0=performance.now();
     if(!raf) raf=requestAnimationFrame(frame);
@@ -338,10 +347,11 @@ export function onGraphRefresh(){ _highlightTier.clear(); _highlightMode='latest
 // ── lifecycle ──
 export function init(){
   bus.subscribe('recall:event', _onRecallEvent);
+  wireWindowOnce();
   const h=document.getElementById('graph-3d');
   if(h && 'ResizeObserver' in window){ _ro=new ResizeObserver(()=>requestAnimationFrame(resize)); _ro.observe(h); }
 }
-export function resize(){ if(!cv||!host) return; sizeCanvas(); }
+export function resize(){ if(!cv||!host) return; sizeCanvas(); needSort=true; }
 export function activate(){
   if(_activateTimer) clearTimeout(_activateTimer);
   _activateTimer=setTimeout(()=>{ _activateTimer=null;

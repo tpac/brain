@@ -177,3 +177,61 @@ Two mockups this session were shipped/described before being *looked at* — one
 rendered as a stringy mess, one had a silent SyntaxError. Correction adopted
 mid-session: **always render + screenshot a visual before claiming it works**,
 and node-syntax-check generated scripts. Verify visuals, don't narrate them.
+
+---
+
+## Part C — Galaxy realized & SHIPPED to the dashboard (follow-up session)
+
+Part B's design arc converged and is now **live on the production dashboard**
+(`main` commit `8d65e98`, merged `67f03f9`, `com.brain.dashboard` kickstarted).
+The creature grammar was set aside — a force-sim of one giant connected
+component always relaxes to a sphere ("looks like a blob"), and PCA of the 768-d
+embeddings is even rounder (top-3 = ~11% variance). The winning form is a
+**spiral galaxy**, which is distinct from every angle and maps cleanly to real
+signals.
+
+### The mapping (all real, computed in JS on load)
+- **radius = memory age** — oldest/most-settled knowledge in the bright core;
+  recent growth spirals out on the arms (`created_at`, percentile-normalized).
+- **knot = community** — each of the ~536 communities is a distinct clump on an
+  arm; local in-plane repulsion + spring-to-home separates them into knots
+  without drifting off the spiral.
+- **colour = memory kind** — node type → aspect (identity=gold, lessons=teal,
+  moments=rose, open threads=cyan, corrections=red, wisdom=amber, scaffolding=dim).
+- **size = degree**, **glow = recall heat** (`last_accessed` recency + `access_count`).
+- **2 spiral arms + bulge + thin disc**, viewed at a 3/4 tilt, auto-spins around
+  the disc normal.
+
+### Interaction
+- **hover** → reads the memory (title, kind, connections, age, recall state) + ring.
+- **click** → opens node detail + seeds a recall bloom.
+- **live recall** → the real `recall:event` bus lights the galaxy (used_ids flash
+  white, activation_ids bloom outward node-to-node — NOT lines; graph-neighbours
+  are spatially scattered so edge-lines read as "pencil scribble" across the disc).
+  Blooms fire and fade (~1.5s decay); ambient single-node pulses every ~5s when idle.
+- **toggles**: color kind/heat · lines on/off (default off — lines muddy the shape) · spin.
+- **search** filters/dims; pin/preview = persistent spotlight (dims non-set).
+
+### Where it lives
+- **`dashboard/static/tabs/graph.js`** — full rewrite, Canvas 2D (no WebGL →
+  the ~16-context-exhaustion class of bug is gone). Drop-in: identical module
+  contract (`init/activate/deactivate/destroy/resize/loadGraph3D/onGraphSearch/
+  onGraphSearchKey/onGraphRefresh/setSearchQuery/previewRecallOnGraph/
+  clearRecallPreview/pinRecallToGraph`), so `app.js`/`live.js`/`index.html` untouched.
+  Embeds `TYPE2ASP`/`REL2ASP` first-claimant maps (regenerate from
+  `aspects_v1.json` if the taxonomy grows).
+- **`dashboard/queries/graph.py`** — now also returns `last_accessed`.
+- **`docs/anchor-viz-prototypes/build_mind.py` + `emit_html.py`** — the offline
+  layout + self-contained artifact tooling (raw dumps via daemon read-only eval,
+  gitignored & reproducible). Artifact (with a generator for hypothetical
+  Anchors — dashboard drops the generator): the claude.ai `1b92bfe8…` URL.
+
+### Pickup list
+- Tune bloom intensity/decay live once real recalls are flowing (couldn't observe
+  a live in-browser bloom during dev — verified the spread mechanism numerically:
+  hub seed → 9→52→961 nodes — same code path is wired to the bus).
+- Optional: curved lines-on view (straight chords spray across the disc); tighter
+  synthetic-Anchor connectivity in the artifact generator.
+- Deferred fork: move layout into the daemon (async-after-boot cached coords,
+  graph-state fingerprint) — the "unique Anchor shape" boot pipeline. Shipped as
+  JS-on-load for speed; daemon-owned is the cleaner long-term home.
