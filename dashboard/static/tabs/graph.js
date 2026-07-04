@@ -1,45 +1,23 @@
 // ===========================================================================
-// tabs/graph.js — 3D ForceGraph + search-driven highlighter +
-//                 persistent recall-highlight ('spotlight') mode.
+// tabs/graph.js — Canvas "spiral galaxy" renderer for the brain graph.
 // ---------------------------------------------------------------------------
-// Lifecycle contract (shared by every tabs/*.js module):
+// Replaces the former 3D-force-graph (WebGL) renderer. Canvas 2D — so there is
+// NO WebGL context to exhaust (the old ~16-context-per-tab flakiness is gone).
 //
-//   init()         called once on app boot. Wires bus subs.
-//   activate()     called when Live tab becomes visible. Lazy-loads
-//                  graph data + sizes renderer to container.
-//   deactivate()   no-op — 3D scene keeps animating in background.
+// The galaxy is grown from the real graph, laid out in JS on load:
+//   • radius   = memory AGE  — oldest/most-settled knowledge in the bright core,
+//                              recent growth spiralling out on the arms.
+//   • knot     = COMMUNITY   — each community is a distinct clump on an arm.
+//   • colour   = memory KIND — its node-type's aspect (identity/lesson/moment/…).
+//   • size     = CONNECTEDNESS (degree). glow = RECALL HEAT (recency + volume).
 //
-// Since the P2.2 layout pivot the graph mounts inside Live's left pane;
-// `activate()` is now driven by live.activate().
+// Live layer: every recall lights the galaxy — used_ids flash white, the
+// activation set blooms outward, returned_ids glow faint (recall:event bus).
 //
-// ── Visual model ─────────────────────────────────────────────────────
-//
-// The graph has TWO independent dimming axes that combine via AND:
-//
-//   1. SEARCH    — type a query into the search box. Non-matching nodes
-//                  go dark. Empty query = everything passes.
-//
-//   2. HIGHLIGHT — when a recall lands, the surfaced nodes become the
-//                  "highlight set" (persistent — no decay). All non-set
-//                  nodes go dark. Empty set = everything passes.
-//                  Cleared by clicking Refresh.
-//
-// A node only renders in its community color if it passes BOTH gates.
-// Within the highlight set, tier (used/activation/returned) drives the
-// color blend + size bump:
-//
-//   used        white blend, 1.0× intensity   — judge picked these
-//   activation  green blend, 0.7× intensity   — spread-expanded
-//   returned    blue blend,  0.4× intensity   — candidate pool
-//
-// ── Highlight mode ───────────────────────────────────────────────────
-//
-//   latest   (default) — every new recall REPLACES the set. Pre-loaded
-//                        with the most recent recall on first open.
-//   pinned   — entered by clicking a recall card in the activity stream.
-//              Locked until Refresh / the × on the pin chip; incoming
-//              recalls are ignored. There is no UI dropdown — the chip
-//              in .graph-controls is the only signal + escape hatch.
+// Lifecycle contract (unchanged, drives app.js / live.js):
+//   init() activate() deactivate() destroy() resize()
+//   loadGraph3D() onGraphSearch() onGraphSearchKey() onGraphRefresh()
+//   setSearchQuery() previewRecallOnGraph() clearRecallPreview() pinRecallToGraph()
 // ===========================================================================
 
 import { api } from '/static/lib/api.js';
@@ -47,622 +25,336 @@ import bus from '/static/lib/bus.js';
 import { escapeHtml } from '/static/lib/dom.js';
 import { loadNodeDetail } from '/static/lib/node_detail.js';
 
-let graph3d = null;
-let graph3dData = null;
-// activate() defers loadGraph3D() by 300ms; destroy() must cancel that pending
-// timer AND invalidate any in-flight load so a hide (or refresh) during the
-// window can't mount a WebGL graph into a now-hidden pane. _loadGen is bumped
-// on every teardown; a load that started under an older generation aborts.
-let _activateTimer = null;
-let _loadGen = 0;
+// ── aspect taxonomy (first-claimant, generated from aspects_v1.json) ──
+const TYPE2ASP={"principle":0,"identity":0,"vision":0,"rule":0,"operator":0,"capability":0,"directive":0,"design_principle":0,"procedure":0,"philosophy":0,"framework":0,"definition":0,"preference":0,"craft_rule":0,"design_direction":0,"moment":1,"anchor_quote":1,"user_quote":1,"quote":1,"catalyst":1,"milestone":1,"event":1,"interaction":1,"context":1,"incident":1,"corridor":1,"benchmark":1,"state":1,"resolution":1,"outcome":1,"episode":1,"time_anchor":1,"personal_context":1,"profile":1,"person":1,"interest":1,"case":1,"journal":1,"experiment":1,"open":2,"tension":2,"hypothesis":2,"aspiration":2,"uncertainty":2,"gap":2,"task":2,"status":2,"product-requirement":2,"problem":2,"requirement":2,"plan":2,"performance":2,"goal":2,"feature-requirement":2,"risk":2,"backlog":2,"proposal":2,"idea":2,"todo":2,"lesson":3,"insight":3,"validation":3,"meta_learning":3,"reflection":3,"decision":3,"fact":3,"finding":3,"mechanism":3,"architecture":3,"bug":3,"concept":3,"design":3,"pattern":3,"mental_model":3,"fn_reasoning":3,"analysis":3,"constraint":3,"research":3,"diagnosis":3,"convention":3,"impact":3,"code_concept":3,"reframe":3,"reference":3,"research-finding":3,"param_influence":3,"observation":3,"artifact":3,"fix":3,"discovery":3,"arch_constraint":3,"method":3,"landscape":3,"clarification":3,"audit":3,"recommendation_set":3,"resource_list":3,"knowledge":3,"reference_cluster":3,"technique":3,"reference_list":3,"overview":3,"taxonomy":3,"process":3,"direction":3,"distinction":3,"methodology":3,"community":5,"aspect":5,"intuition":5,"thought":5,"purpose":5,"file":5,"vocabulary":5,"test":5,"project":5,"correction":6,"bug_lesson":6};
+const REL2ASP={"related_to":4,"related":4,"similar_to":4,"synthesizes":4,"complements":4,"co_accessed":5,"emergent_bridge":5,"community_member":5,"corrects":6,"corrected_by":6,"reframes":6,"resolves":6,"addresses":6,"consolidated_into":6,"updates":6,"fixes":6,"extends":7,"refines":7,"implements":7,"contextualizes":7,"applies":7,"instantiates":7,"operationalizes":7,"advances":7,"explains":8,"caused_by":8,"grounds":8,"produces":8,"informs":8,"triggers":8,"motivates":8,"depends_on":9,"enables":9,"requires":9,"blocks":9,"constrains":9,"configures":9,"contradicts":10,"violates":10,"challenges":10,"contrasts_with":10,"validates":11,"confirms":11,"demonstrates":11,"strengthens":11,"supports":11,"part_of":12,"includes":12,"contains":12,"supersedes":12,"abstracts":12,"follows":13,"leads_to":13,"after":13,"before":13,"during":13,"opens":13,"completes":13,"co_anchored":13,"absorbed_into":14};
+const DEF_NODE_ASP=3, DEF_REL_ASP=4, NOISE_ASP=5, GENERIC_ASP=4;
 
-// ── Search state ──────────────────────────────────────────────────────
+const HUE=[[255,205,110],[255,150,170],[95,208,230],[110,222,165],[110,130,175],[80,92,120],
+  [255,110,95],[150,220,150],[185,140,255],[245,190,110],[245,110,180],[130,230,200],
+  [140,165,240],[120,182,242],[150,150,160],[255,233,176]];
+const NODE_FAMS=[0,3,1,2,6,15,5];
+const NF_LABEL={0:'identity',3:'lessons',1:'moments',2:'open threads',6:'corrections',15:'wisdom',5:'scaffolding'};
+const KIND_NAME={0:'identity',1:'moment',2:'open thread',3:'lesson',5:'scaffolding',6:'correction',15:'wisdom'};
 
-let _searchQuery = '';
+// ── module state ──
+let G=null;                 // laid-out galaxy { N, X,Y,Z, A,D,H, DEG, TITLE, TYPE, COMM, AGE, IDS, idIndex, adj, edges }
+let raw=null;               // last /api/graph3d payload (search fallback)
+let cv=null, ctx=null, host=null, tip=null, legend=null;
+let raf=0, _loadGen=0, _activateTimer=null, _ro=null;
+let W=0,H2=0,DPR=1,MIN=0, yaw=0, pitch=0.62, roll=0, zoom=1, panx=0, pany=0, t0=0;
+let spin=true, showEdges=false, colorMode=0, hoverIdx=-1, ambientT=0, ambientGap=4;
+let act=null, front=[];
+let _searchQuery='';
+const _highlightTier=new Map();     // id -> tier (persistent spotlight; pin/preview)
+let _highlightMode='latest', _pinnedEventId=null, _previewSnapshot=null;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-function _nodeMatches(node) {
-  if (!_searchQuery) return true;
-  const q = _searchQuery;
-  return (node.name || '').toLowerCase().includes(q)
-      || (node.type || '').toLowerCase().includes(q)
-      || (node.community_title || '').toLowerCase().includes(q);
-}
+const FOCAL=4.2, CX=0.5, CY=0.5, FIT=0.66;
+const HTIERS={ used:[255,255,255], activation:[80,255,150], returned:[130,190,255] };
 
-// ── Highlight state ───────────────────────────────────────────────────
+// ── sprites ──
+function sprite(r,g,b){const s=48,c=document.createElement('canvas');c.width=c.height=s;
+  const x=c.getContext('2d'),gd=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+  gd.addColorStop(0,`rgba(${Math.min(r+55,255)},${Math.min(g+55,255)},${Math.min(b+55,255)},1)`);
+  gd.addColorStop(.18,`rgba(${r},${g},${b},.9)`);gd.addColorStop(.44,`rgba(${r},${g},${b},.18)`);
+  gd.addColorStop(1,`rgba(${r},${g},${b},0)`);x.fillStyle=gd;x.fillRect(0,0,s,s);return c;}
+let SPR=null, WHITE=null;
+function ensureSprites(){ if(SPR)return; SPR=HUE.map(h=>sprite(h[0],h[1],h[2])); WHITE=sprite(255,244,214); }
 
-const DIM_COLOR = '#1a1a1a';
-const HIGHLIGHT_SIZE_MULT = 1.8;
+// ── helpers ──
+const NOW = Date.now();
+function daysAgo(ts){ if(!ts) return 9999; const s=String(ts).replace(' ','T').replace('Z','+00:00');
+  const d=Date.parse(s); if(isNaN(d)) return 9999; return Math.max(0,(NOW-d)/86400000); }
+function hstr(s){ let h=2166136261>>>0; s=String(s); for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);} return (h>>>0)/4294967296; }
 
-// tier → { color, intensity }. Used for color blend + size bump within
-// the highlight set. Adding a tier means a new label here + extending
-// HIGHLIGHT_TIER_ORDER.
-const HIGHLIGHT_TIERS = {
-  used:       { color: '#ffffff', intensity: 1.00 },
-  activation: { color: '#33ff88', intensity: 0.70 },
-  returned:   { color: '#7eb8ff', intensity: 0.40 },
-};
-// Weakest → strongest so later writes win in the per-id Map.
-const HIGHLIGHT_TIER_ORDER = ['returned', 'activation', 'used'];
-
-// nodeId → tier string. Persistent (no decay). Empty = no highlight
-// active = all nodes show their community color.
-const _highlightTier = new Map();
-// Two modes, no dropdown:
-//   'latest' (default) — each incoming recall REPLACES the set.
-//   'pinned'           — set frozen to a specific event clicked from the
-//                        activity stream; incoming live events are ignored
-//                        until Refresh. Set by pinRecallToGraph().
-// Session filtering used to live here but was removed once the activity
-// stream gained its own session-filter dropdown — two parallel filters
-// for the same dimension were redundant.
-let _highlightMode = 'latest';
-let _pinnedEventId = null;     // for the chip display while pinned
-
-// ── Color math ────────────────────────────────────────────────────────
-
-function _hexToRgb(hex) {
-  const m = hex.replace('#', '');
-  return {
-    r: parseInt(m.slice(0, 2), 16),
-    g: parseInt(m.slice(2, 4), 16),
-    b: parseInt(m.slice(4, 6), 16),
-  };
-}
-function _rgbToHex(r, g, b) {
-  const h = v => Math.max(0, Math.min(255, v|0)).toString(16).padStart(2, '0');
-  return '#' + h(r) + h(g) + h(b);
-}
-function _blend(c1, c2, t) {
-  const a = _hexToRgb(c1), b = _hexToRgb(c2);
-  return _rgbToHex(a.r * t + b.r * (1 - t), a.g * t + b.g * (1 - t), a.b * t + b.b * (1 - t));
-}
-
-// ── Per-node color + size resolvers ────────────────────────────────
-
-function _colorFor(n) {
-  // A node renders in color iff it passes BOTH gates:
-  //   - search:    matches the current query (or no query)
-  //   - highlight: in the set (or no set is active)
-  const setActive = _highlightTier.size > 0;
-  const inHighlight = !setActive || _highlightTier.has(n.id);
-  if (!_nodeMatches(n) || !inHighlight) return DIM_COLOR;
-
-  // In-highlight nodes get tier-blended color (when the set is active).
-  // When no set is active, just show the community color.
-  const tierName = setActive ? _highlightTier.get(n.id) : null;
-  const baseColor = n.color || '#666';
-  if (!tierName) return baseColor;
-  const tier = HIGHLIGHT_TIERS[tierName];
-  return _blend(tier.color, baseColor, tier.intensity);
-}
-
-function _valFor(n) {
-  const base = n.hub ? n.val : 2;
-  const tierName = _highlightTier.get(n.id);
-  if (!tierName) return base;
-  const tier = HIGHLIGHT_TIERS[tierName];
-  return base * (1 + (HIGHLIGHT_SIZE_MULT - 1) * tier.intensity);
-}
-
-// Force ForceGraph3D to re-evaluate per-node color/size. The library
-// treats setter calls with the SAME function reference as no-ops, so we
-// pass fresh closures each time we need a refresh.
-function _refreshGraph() {
-  if (!graph3d) return;
-  graph3d.nodeColor(n => _colorFor(n));
-  graph3d.nodeVal(n => _valFor(n));
-}
-
-// ── Search public surface ────────────────────────────────────────────
-
-function _focusFirstMatch() {
-  if (!graph3d || !_searchQuery) return;
-  // Match against the live graph only — camera pan needs the laid-out
-  // x/y/z coords from the simulation, which the raw API payload lacks.
-  const matches = graph3d.graphData().nodes.filter(_nodeMatches);
-  if (!matches.length) return;
-  const target = matches.find(n => n.hub) || matches[0];
-  graph3d.cameraPosition(
-    { x: target.x + 120, y: target.y + 60, z: target.z + 120 },
-    target,
-    1200,
-  );
-}
-
-// Single source of truth for "what nodes can we filter against." Pulls
-// from the live ForceGraph3D instance when available, otherwise falls
-// back to the raw API payload. The fallback matters when WebGL failed
-// to mount: graph3dData is populated by api.graph3d() before the canvas
-// is built, so search keeps giving the user feedback ("23 matches") even
-// when the visualization itself is unavailable. Returns null when neither
-// is loaded.
-function _searchableNodes() {
-  if (graph3d) return graph3d.graphData().nodes;
-  if (graph3dData?.nodes) return graph3dData.nodes;
-  return null;
-}
-
-function _updateMatchCount() {
-  const el = document.getElementById('graph-search-count');
-  if (!el) return;
-  if (!_searchQuery) { el.textContent = ''; return; }
-  const nodes = _searchableNodes();
-  if (!nodes) { el.textContent = ''; return; }
-  const n = nodes.filter(_nodeMatches).length;
-  el.textContent = n + ' match' + (n === 1 ? '' : 'es');
-}
-
-export function setSearchQuery(q) {
-  _searchQuery = (q || '').toLowerCase().trim();
-  _refreshGraph();
-  _updateMatchCount();
-}
-
-export function onGraphSearch() {
-  const input = document.getElementById('graph-search');
-  setSearchQuery(input ? input.value : '');
-}
-
-export function onGraphSearchKey(event) {
-  if (event && event.key === 'Enter') {
-    onGraphSearch();
-    _focusFirstMatch();
+// ── galaxy layout (JS port of build_mind.py) ──
+function buildGalaxy(data){
+  const nodes=data.nodes||[], edgesRaw=data.edges||[];
+  const N=nodes.length;
+  const IDS=new Array(N), idIndex=new Map();
+  for(let i=0;i<N;i++){ IDS[i]=nodes[i].id; idIndex.set(nodes[i].id,i); }
+  const A=new Int32Array(N), DEG=new Float32Array(N), AGE=new Float64Array(N);
+  const TITLE=new Array(N), TYPE=new Array(N), COMM=new Array(N);
+  const acc=new Float64Array(N), rec=new Float64Array(N);
+  for(let i=0;i<N;i++){ const n=nodes[i];
+    A[i]=TYPE2ASP[n.type]!=null?TYPE2ASP[n.type]:DEF_NODE_ASP;
+    TITLE[i]=n.name||n.id; TYPE[i]=n.type||''; COMM[i]=n.community||null;
+    acc[i]=n.access_count||1; AGE[i]=daysAgo(n.created_at);
+    rec[i]=Math.exp(-daysAgo(n.last_accessed||n.created_at)/45);
   }
+  // degree from edges
+  const E=[]; for(const e of edgesRaw){ const a=idIndex.get(e.source), b=idIndex.get(e.target);
+    if(a==null||b==null||a===b) continue; DEG[a]++; DEG[b]++;
+    E.push([a,b, REL2ASP[e.relation]!=null?REL2ASP[e.relation]:DEF_REL_ASP]); }
+  // heat
+  let maxAcc=1; for(let i=0;i<N;i++) maxAcc=Math.max(maxAcc,acc[i]); const la=Math.log1p(maxAcc);
+  const H=new Float32Array(N), D=new Float32Array(N);
+  for(let i=0;i<N;i++){ H[i]=Math.max(0,Math.min(1, 0.35*Math.log1p(acc[i])/la + 0.65*rec[i]));
+    D[i]=Math.min(1, Math.sqrt(DEG[i])/13.4); }
+
+  // communities
+  const cmap=new Map();
+  for(let i=0;i<N;i++){ const c=COMM[i]; if(c==null) continue; (cmap.get(c)||cmap.set(c,[]).get(c)).push(i); }
+  // age percentiles for radius
+  const ages=Array.from(AGE).filter(a=>a<9999).sort((a,b)=>a-b);
+  const lo=ages.length?ages[Math.floor(ages.length*0.03)]:0, hi=ages.length?ages[Math.floor(ages.length*0.99)]:100;
+  const aget=x=>{ x=Math.max(lo,Math.min(hi,x)); return Math.max(0,Math.min(1,1-(x-lo)/Math.max(1e-6,hi-lo))); };
+  const NARM=2, WIND=2.75, DISC=0.26;
+  function spiral(t,arm,jr,ja,jz){ const rad=0.24+2.4*t, th=arm*Math.PI+t*WIND*2*Math.PI+(ja-0.5)*(0.13+0.2*t);
+    const x=rad*Math.cos(th), y=rad*Math.sin(th), px=-Math.sin(th),py=Math.cos(th), w=(jr-0.5)*(0.05+0.18*t);
+    return [x+px*w, y+py*w, jz*DISC*(0.5+0.55*t)*rad]; }
+  const X=new Float32Array(N), Y=new Float32Array(N), Z=new Float32Array(N);
+  // community centroids on the spiral (by median member age)
+  const cids=[...cmap.keys()], cc={}, cx=[],cy=[];
+  for(const c of cids){ const mem=cmap.get(c); const med=mem.map(i=>AGE[i]).sort((a,b)=>a-b)[mem.length>>1];
+    const p=spiral(aget(med), hstr(c+'m')<0.5?0:1, hstr(c+'r'), hstr(c+'a'), (hstr(c+'z')-0.5)*2);
+    cc[c]=[p[0],p[1],p[2]]; cx.push(p[0]); cy.push(p[1]); }
+  // local in-plane repulsion + spring home → distinct knots
+  const hx=cx.slice(), hy=cy.slice(), n=cids.length;
+  for(let it=0;it<45;it++){ for(let i=0;i<n;i++){ let fx=0,fy=0;
+    for(let j=0;j<n;j++){ if(i===j)continue; const dx=cx[i]-cx[j],dy=cy[i]-cy[j],d2=dx*dx+dy*dy;
+      if(d2<0.09&&d2>1e-9){ const inv=1/(d2+2e-3); fx+=dx*inv; fy+=dy*inv; } }
+    cx[i]+=Math.max(-0.03,Math.min(0.03,fx*0.0016))-(cx[i]-hx[i])*0.1;
+    cy[i]+=Math.max(-0.03,Math.min(0.03,fy*0.0016))-(cy[i]-hy[i])*0.1; } }
+  for(let k=0;k<n;k++){ cc[cids[k]][0]=cx[k]; cc[cids[k]][1]=cy[k]; }
+  // place members as tight knots
+  const rnd=mulberry(12345);
+  for(const c of cids){ const mem=cmap.get(c), ctr=cc[c], ball=0.03+0.075*Math.log1p(mem.length);
+    for(const i of mem){ let dx=randn(rnd),dy=randn(rnd),dz=randn(rnd)*DISC; const L=Math.hypot(dx,dy,dz)||1;
+      const cp=0.16*(DEG[i]/(DEG[i]+15)); const rr=ball*(0.35+0.65*rnd());
+      X[i]=ctr[0]*(1-cp)+dx/L*rr; Y[i]=ctr[1]*(1-cp)+dy/L*rr; Z[i]=ctr[2]*(1-cp)+dz/L*rr; } }
+  // free nodes ride the arms as faint dust
+  for(let i=0;i<N;i++){ if(COMM[i]!=null) continue; const p=spiral(aget(AGE[i]), rnd()<0.5?0:1, rnd(), rnd(), randn(rnd)*0.8);
+    X[i]=p[0]*1.06; Y[i]=p[1]*1.06; Z[i]=p[2]*1.06; }
+  // recenter + normalize
+  let mx=0,my=0,mz=0; for(let i=0;i<N;i++){mx+=X[i];my+=Y[i];mz+=Z[i];} mx/=N||1;my/=N||1;mz/=N||1;
+  let mr=1e-3; for(let i=0;i<N;i++){X[i]-=mx;Y[i]-=my;Z[i]-=mz;mr=Math.max(mr,Math.hypot(X[i],Y[i],Z[i]));}
+  for(let i=0;i<N;i++){X[i]/=mr;Y[i]/=mr;Z[i]/=mr;}
+  // adjacency (non-noise) + drawn-edge subset
+  const adj=Array.from({length:N},()=>[]);
+  const draw=[]; let di=0;
+  for(const [a,b,r] of E){ if(r!==NOISE_ASP){ adj[a].push(b); adj[b].push(a); }
+    if(r===NOISE_ASP) continue; const bridge=COMM[a]!==COMM[b];
+    if(r===GENERIC_ASP && !bridge && (di++ %4)) continue;
+    if(!bridge && (di++ %2)) continue;
+    draw.push([a,b,r,bridge?1:0]); }
+  return { N, X,Y,Z, A, D, H, DEG, TITLE, TYPE, COMM, AGE, IDS, idIndex, adj, edges:draw,
+           C:cids.length, E_total:E.length };
+}
+function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function randn(R){let u=0,v=0;while(!u)u=R();while(!v)v=R();return Math.sqrt(-2*Math.log(u))*Math.cos(6.2831853*v);}
+
+// ── projection + render ──
+let sx,sy,sp,sz,order;
+function allocScreen(N){ sx=new Float32Array(N);sy=new Float32Array(N);sp=new Float32Array(N);sz=new Float32Array(N);
+  order=new Int32Array(N); for(let i=0;i<N;i++)order[i]=i; act=new Float32Array(N); front=[]; }
+function project(){ const g=G; const cr=Math.cos(roll),sr=Math.sin(roll),cy=Math.cos(yaw),syw=Math.sin(yaw),cp=Math.cos(pitch),spp=Math.sin(pitch);
+  const sc=(FIT*MIN)*zoom;
+  for(let i=0;i<g.N;i++){ let x=g.X[i],y=g.Y[i],z=g.Z[i];
+    let xr=x*cr-y*sr, yr=x*sr+y*cr; let rx=xr*cy-z*syw, rz=xr*syw+z*cy; let ry=yr*cp-rz*spp; rz=yr*spp+rz*cp;
+    const pe=FOCAL/(FOCAL+rz); sx[i]=W*CX+panx+rx*sc*pe; sy[i]=H2*CY+pany+ry*sc*pe; sp[i]=pe; sz[i]=rz; } }
+
+function matches(i){ if(!_searchQuery) return true; const q=_searchQuery;
+  return (G.TITLE[i]||'').toLowerCase().includes(q) || (G.TYPE[i]||'').toLowerCase().includes(q); }
+
+function seed(i){ if(i<0||i>=G.N)return; act[i]=Math.max(act[i],1); if(front.indexOf(i)<0)front.push(i); }
+function stepActivation(dt){ if(!front.length)return; const nf=[], add=new Map();
+  for(const i of front){ const nb=G.adj[i], give=act[i]*0.26;
+    if(give>0.03 && nb.length){ const per=give/Math.min(nb.length,6);
+      for(let k=0;k<nb.length&&k<6;k++){const j=nb[k]; if(act[j]<0.02) add.set(j,(add.get(j)||0)+per);} }
+    act[i]*=Math.pow(0.09,dt); if(act[i]>0.02) nf.push(i); }
+  for(const [j,v] of add){ act[j]=Math.min(1,act[j]+v); if(nf.indexOf(j)<0)nf.push(j); }
+  front=nf.slice(0,1400); }
+
+function frame(now){ if(!G||!ctx){raf=0;return;}
+  const dt=Math.min((now-t0)/1000,.05); t0=now;
+  if(spin&&!reduce) roll+=dt*0.075;
+  stepActivation(dt);
+  if(!reduce){ ambientT+=dt; if(ambientT>ambientGap && front.length<40){ ambientT=0; ambientGap=4.5+Math.random()*3;
+    let best=-1,bh=0; for(let k=0;k<34;k++){const i=(Math.random()*G.N)|0; if(G.H[i]>bh){bh=G.H[i];best=i;}} seed(best); } }
+  project();
+  ctx.clearRect(0,0,W,H2);
+  ctx.globalCompositeOperation='lighter';
+  const spot=_highlightTier.size>0;
+  const g=G;
+  if(showEdges){ const paths={},bp={};
+    for(let e=0;e<g.edges.length;e++){ const a=g.edges[e][0],b=g.edges[e][1],r=g.edges[e][2],br=g.edges[e][3];
+      const t=br?bp:paths; (t[r]||(t[r]=new Path2D())); const ax=sx[a],ay=sy[a],bx=sx[b],by=sy[b],mx=(ax+bx)/2,my=(ay+by)/2;
+      t[r].moveTo(ax,ay); t[r].quadraticCurveTo(mx+(ay-by)*0.06,my+(bx-ax)*0.06,bx,by); }
+    for(const r in paths){const h=HUE[r];ctx.strokeStyle=`rgba(${h[0]},${h[1]},${h[2]},0.05)`;ctx.lineWidth=0.6;ctx.stroke(paths[r]);}
+    for(const r in bp){const h=HUE[r];ctx.strokeStyle=`rgba(${h[0]},${h[1]},${h[2]},0.13)`;ctx.lineWidth=0.8;ctx.stroke(bp[r]);} }
+
+  order.sort((i,j)=>sz[j]-sz[i]);
+  // glow underlay
+  for(let k=0;k<g.N;k++){ const i=order[k],heat=g.H[i],hh=heat*heat,ac=act[i];
+    const dim = (_searchQuery&&!matches(i)) || (spot&&!_highlightTier.has(i));
+    if(dim && ac<0.05) continue;
+    if(hh<0.14 && g.D[i]<0.14 && ac<0.05 && !_highlightTier.has(i)) continue;
+    const pe=sp[i],depth=Math.max(0,Math.min(1,(pe-0.5)/0.7));
+    const base=1.5+g.D[i]*11+hh*2.4, s=(base*1.9+ac*ac*26)*pe;
+    ctx.globalAlpha=Math.min(0.34,(0.02+0.12*hh+g.D[i]*0.1)*(0.4+0.6*depth)+ac*0.28)*(dim?0.15:1);
+    ctx.drawImage(SPR[g.A[i]],sx[i]-s,sy[i]-s,s*2,s*2); }
+  // firing bloom
+  for(let x=0;x<front.length;x++){const i=front[x],ac=act[i];if(ac<0.12)continue;const pe=sp[i],s=(3+ac*16)*pe;
+    ctx.globalAlpha=Math.min(0.6,ac*0.7);ctx.drawImage(WHITE,sx[i]-s,sy[i]-s,s*2,s*2);}
+  // crisp cores
+  ctx.globalCompositeOperation='source-over';
+  for(let k=0;k<g.N;k++){ const i=order[k],pe=sp[i],depth=Math.max(0,Math.min(1,(pe-0.5)/0.7)),heat=g.H[i],hh=heat*heat,ac=act[i];
+    const dim=(_searchQuery&&!matches(i))||(spot&&!_highlightTier.has(i));
+    const tier=spot?_highlightTier.get(i):null;
+    const base=1.5+g.D[i]*11+hh*2.4+ac*4, s=base*0.62*pe*(tier?1.5:1);
+    let spr,al;
+    if(ac>0.15){spr=WHITE;al=(0.35+0.6*ac)*(0.4+0.6*depth);}
+    else if(tier){const c=HTIERS[tier]; spr=tierSprite(c); al=(0.55+0.4*depth);}
+    else{spr=colorMode===0?SPR[g.A[i]]:(heat>0.62?WHITE:SPR[3]);
+      al=(colorMode===0?(0.16+0.66*hh+g.D[i]*0.34):(0.12+0.8*hh))*(0.4+0.6*depth);}
+    if(dim && !tier && ac<0.15){ al*=0.12; }
+    ctx.globalAlpha=Math.min(0.98,al); ctx.drawImage(spr,sx[i]-s,sy[i]-s,s*2,s*2); }
+  // hover ring
+  if(hoverIdx>=0 && hoverIdx<g.N){ const i=hoverIdx,h=HUE[g.A[i]];
+    ctx.globalAlpha=0.9;ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=1.4;
+    ctx.beginPath();ctx.arc(sx[i],sy[i],7+g.D[i]*10,0,6.2832);ctx.stroke();
+    ctx.strokeStyle=`rgba(${h[0]},${h[1]},${h[2]},.5)`;ctx.lineWidth=1;const nb=g.adj[i];
+    for(let k=0;k<nb.length&&k<40;k++){const j=nb[k];ctx.beginPath();ctx.moveTo(sx[i],sy[i]);ctx.lineTo(sx[j],sy[j]);ctx.stroke();} }
+  ctx.globalAlpha=1;
+  raf=requestAnimationFrame(frame); }
+
+const _tierSprites={};
+function tierSprite(c){ const k=c.join(','); if(!_tierSprites[k])_tierSprites[k]=sprite(c[0],c[1],c[2]); return _tierSprites[k]; }
+
+// ── picking + tooltip ──
+function nearest(mx,my){ if(!G)return-1; let best=-1,bd=18*18;
+  for(let i=0;i<G.N;i++){ if(sp[i]<0.4)continue; const dx=sx[i]-mx,dy=sy[i]-my,d=dx*dx+dy*dy;
+    if(d<bd){bd=d;best=i;} } return best; }
+function ago(days){ if(days>=9999)return'unknown'; if(days<1)return'today'; if(days<30)return Math.round(days)+'d ago'; return Math.round(days/30)+'mo ago'; }
+function recallWord(h){ return h>0.6?'recalled recently':h>0.3?'recalled this month':'resting'; }
+function showTip(i,mx,my){ if(!tip)return; const h=HUE[G.A[i]],name=KIND_NAME[G.A[i]]||G.TYPE[i]||'memory';
+  tip.querySelector('.gt-title').textContent=G.TITLE[i];
+  tip.querySelector('.gt-meta').innerHTML=`<span class="gt-k" style="color:rgb(${h[0]},${h[1]},${h[2]});border-color:rgb(${h[0]},${h[1]},${h[2]})">${escapeHtml(name)}</span>`+
+    `<span>${G.DEG[i]} connection${G.DEG[i]===1?'':'s'}</span><span>·</span><span>created ${ago(G.AGE[i])}</span><span>·</span><span>${recallWord(G.H[i])}</span>`;
+  let x=mx+16,y=my+16; if(x>W-300)x=mx-290; if(y>H2-80)y=my-70;
+  tip.style.left=x+'px'; tip.style.top=y+'px'; tip.classList.add('show'); }
+
+// ── DOM scaffold inside #graph-3d ──
+function buildScaffold(){
+  host=document.getElementById('graph-3d'); if(!host) return false;
+  host.innerHTML='';
+  host.style.position='relative';
+  cv=document.createElement('canvas'); cv.style.cssText='position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;background:radial-gradient(140% 110% at 52% 44%,#0a0f24 0%,#06080f 44%,#04050c 100%)';
+  host.appendChild(cv); ctx=cv.getContext('2d');
+  tip=document.createElement('div'); tip.className='gt';
+  tip.style.cssText='position:absolute;z-index:5;pointer-events:none;opacity:0;transition:opacity .12s;max-width:290px;padding:9px 11px;border-radius:9px;background:rgba(6,8,16,.94);border:1px solid #1a2138;box-shadow:0 10px 30px -12px #000';
+  tip.innerHTML='<div class="gt-title" style="font:600 12.5px system-ui;color:#eef2fb;line-height:1.35;margin-bottom:6px"></div><div class="gt-meta" style="font:10.5px ui-monospace,Menlo,monospace;color:#67718e;display:flex;gap:6px;flex-wrap:wrap;align-items:center"></div>';
+  host.appendChild(tip);
+  legend=document.createElement('div');
+  legend.style.cssText='position:absolute;left:10px;bottom:8px;z-index:4;display:flex;flex-wrap:wrap;gap:4px 8px;max-width:72%;pointer-events:none;font:10px ui-monospace,Menlo,monospace;color:#8791ab';
+  legend.innerHTML=NODE_FAMS.map(a=>{const h=HUE[a];return `<span style="display:flex;align-items:center;gap:4px"><span style="width:7px;height:7px;border-radius:50%;background:rgb(${h[0]},${h[1]},${h[2]});box-shadow:0 0 5px rgb(${h[0]},${h[1]},${h[2]})"></span>${NF_LABEL[a]}</span>`;}).join('');
+  host.appendChild(legend);
+  // toggles overlay the canvas, banded ABOVE the legend so they never collide
+  const ctl=document.createElement('div');
+  ctl.style.cssText='position:absolute;right:10px;bottom:34px;z-index:4;display:flex;gap:6px';
+  ctl.innerHTML=`<button data-g="color" class="gbtn">color: kind</button><button data-g="lines" class="gbtn">lines: off</button><button data-g="spin" class="gbtn">spin: on</button>`;
+  host.appendChild(ctl);
+  ctl.querySelectorAll('.gbtn').forEach(b=>{ b.style.cssText='border:1px solid #1a2138;background:rgba(8,10,20,.72);color:#c9d3e6;font:10px ui-monospace,Menlo,monospace;letter-spacing:.06em;text-transform:uppercase;border-radius:7px;padding:6px 9px;cursor:pointer;white-space:nowrap;backdrop-filter:blur(6px)';
+    b.onclick=()=>{ const k=b.dataset.g;
+      if(k==='color'){colorMode^=1;b.textContent='color: '+(colorMode?'heat':'kind');}
+      if(k==='lines'){showEdges=!showEdges;b.textContent='lines: '+(showEdges?'on':'off');}
+      if(k==='spin'){spin=!spin;b.textContent='spin: '+(spin?'on':'off');} }; });
+  wireCanvas();
+  return true;
+}
+let drag=false,lx=0,ly=0,sh=false,moved=false;
+function wireCanvas(){
+  cv.addEventListener('mousedown',e=>{drag=true;moved=false;lx=e.clientX;ly=e.clientY;sh=e.shiftKey;cv.style.cursor='grabbing';});
+  window.addEventListener('mousemove',e=>{ if(!G)return;
+    if(drag){const dx=e.clientX-lx,dy=e.clientY-ly;lx=e.clientX;ly=e.clientY;if(Math.abs(dx)+Math.abs(dy)>2)moved=true;
+      if(sh){panx+=dx;pany+=dy;}else{yaw+=dx*0.005;pitch=Math.max(-1.5,Math.min(1.5,pitch+dy*0.005));}return;}
+    if(!cv)return; const r=cv.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+    if(mx<0||my<0||mx>r.width||my>r.height){hoverIdx=-1;if(tip)tip.classList.remove('show');return;}
+    const i=nearest(mx,my); hoverIdx=i;
+    if(i>=0){showTip(i,mx,my);cv.style.cursor='pointer';}else{if(tip)tip.classList.remove('show');cv.style.cursor='grab';} });
+  window.addEventListener('mouseup',e=>{ if(!drag)return; drag=false; if(cv)cv.style.cursor='grab';
+    if(!moved&&G){const r=cv.getBoundingClientRect(),i=nearest(e.clientX-r.left,e.clientY-r.top);
+      if(i>=0){ seed(i); loadNodeDetail(G.IDS[i]); }} });
+  cv.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(0.4,Math.min(6,zoom*(e.deltaY<0?1.12:.892)));},{passive:false});
 }
 
-// ── Highlight + mode public surface ──────────────────────────────────
+function sizeCanvas(){ if(!cv||!host) return; DPR=Math.min(devicePixelRatio||1,2);
+  W=host.clientWidth||800; H2=host.clientHeight||600; MIN=Math.min(W,H2);
+  cv.width=W*DPR; cv.height=H2*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
 
-// Layer a recall event into the highlight set. Weakest tier first so
-// stronger tiers overwrite (Map.set last-write).
-function _applyEventToHighlight(event) {
-  if (!event) return;
-  const idsByTier = {
-    returned:   event.returned_ids   || [],
-    activation: event.activation_ids || [],
-    used:       event.used_ids       || [],
-  };
-  for (const tier of HIGHLIGHT_TIER_ORDER) {
-    for (const id of idsByTier[tier]) _highlightTier.set(id, tier);
-  }
-}
-
-function _onRecallEvent({ event }) {
-  if (!graph3d || !event) return;
-  // Pinned mode means the user clicked a specific recall to lock the
-  // highlight on it — don't let auto-incoming events steal that focus.
-  if (_highlightMode === 'pinned') return;
-  // 'latest': replace the entire set with just this recall.
-  _highlightTier.clear();
-  _applyEventToHighlight(event);
-  _refreshGraph();
-}
-
-// ── Hover-preview ────────────────────────────────────────────────────
-// previewRecallOnGraph / clearRecallPreview let the activity stream
-// "audition" a recall on the graph while the cursor is over its card,
-// without committing — the prior highlight state is snapshotted on enter
-// and restored on leave. Click upgrades the preview to a pin
-// (pinRecallToGraph) which marks the preview as consumed so the
-// subsequent mouseleave is a no-op.
-let _previewSnapshot = null;   // { tier: Map, mode, pinnedEventId }
-
-function _saveSnapshot() {
-  _previewSnapshot = {
-    tier: new Map(_highlightTier),
-    mode: _highlightMode,
-    pinnedEventId: _pinnedEventId,
-  };
-}
-
-function _restoreSnapshot() {
-  if (!_previewSnapshot) return;
-  _highlightTier.clear();
-  for (const [k, v] of _previewSnapshot.tier) _highlightTier.set(k, v);
-  _highlightMode = _previewSnapshot.mode;
-  _pinnedEventId = _previewSnapshot.pinnedEventId;
-  _previewSnapshot = null;
-  _refreshGraph();
-}
-
-export function previewRecallOnGraph(event) {
-  if (!graph3d || !event) return;
-  if (!_previewSnapshot) _saveSnapshot();
-  _highlightTier.clear();
-  _applyEventToHighlight(event);
-  _refreshGraph();
-}
-
-export function clearRecallPreview() {
-  if (!_previewSnapshot) return;
-  _restoreSnapshot();
-}
-
-// Pin highlight to a specific past recall event — called from the
-// activity stream when the operator clicks a recall card. Replaces the
-// highlight set with this event's nodes and locks the mode so subsequent
-// live recalls don't override. Clear by clicking Refresh or selecting a
-// different mode in the dropdown. Publishes 'graph:pinned' so the
-// activity stream can mark its corresponding card with the selected
-// background — graph.js doesn't reach into live.js DOM directly, the
-// bus topic is the boundary.
-export function pinRecallToGraph(event) {
-  if (!event) return;
-  // Consume any in-flight preview snapshot — the user upgraded a hover
-  // into a commit, so the post-hover mouseleave must not restore the
-  // pre-hover state. Without this, leaving the card after a click
-  // would silently undo the pin.
-  _previewSnapshot = null;
-  _highlightMode = 'pinned';
-  _pinnedEventId = event.id || null;
-  _highlightTier.clear();
-  _applyEventToHighlight(event);
-  _refreshGraph();
-  _renderPinIndicator();
-  bus.publish('graph:pinned', { eventId: _pinnedEventId });
-  // Reflect the lock in the mode dropdown — Latest is no longer correct.
-  // We keep the dropdown selectable so the user can leave pinned mode by
-  // picking Latest or a session.
-  const sel = document.getElementById('graph-highlight-mode');
-  if (sel) sel.value = 'latest';   // semantically pinned overrides; chip shows the truth
-}
-
-// Small chip rendered into .graph-controls when pinned, with a × that
-// returns to Latest. Removed automatically when leaving pinned mode.
-function _renderPinIndicator() {
-  const controls = document.querySelector('.graph-controls');
-  if (!controls) return;
-  let chip = document.getElementById('graph-pin-chip');
-  if (_highlightMode !== 'pinned') {
-    if (chip) chip.remove();
-    return;
-  }
-  if (!chip) {
-    chip = document.createElement('span');
-    chip.id = 'graph-pin-chip';
-    chip.className = 'graph-pin-chip';
-    controls.appendChild(chip);
-  }
-  const idShort = (_pinnedEventId || '').toString().slice(0, 8);
-  chip.innerHTML = '<span class="graph-pin-chip-label">Pinned: #' + idShort + '</span>' +
-                   '<button class="graph-pin-chip-close" title="Unpin (back to Latest)">&times;</button>';
-  const closeBtn = chip.querySelector('.graph-pin-chip-close');
-  if (closeBtn) closeBtn.onclick = () => setHighlightMode('latest');
-}
-
-// Switch highlight mode. Only used to escape pinned mode (back to
-// 'latest') — there's no longer a dropdown to drive this from the UI.
-// The × on the pin chip and onGraphRefresh both call it.
-async function setHighlightMode(mode) {
-  _highlightMode = 'latest';   // 'pinned' is set only by pinRecallToGraph
-  _pinnedEventId = null;
-  _renderPinIndicator();       // removes the chip if leaving pinned mode
-  bus.publish('graph:pinned', { eventId: null });
-  _highlightTier.clear();
+// ── load ──
+export async function loadGraph3D(){
+  const gen=_loadGen;
+  if(!buildScaffold()) return;
   try {
-    const d = await api.recalls({ limit: 1 });
-    const evt = (d.events || [])[0];
-    if (evt) _applyEventToHighlight(evt);
-  } catch (e) {
-    console.error('[graph] latest-recall preload failed:', e);
-  }
-  _refreshGraph();
-}
-
-// Refresh = nuke any zombie state, then reload from scratch. We dispose
-// the renderer rather than just calling graphData() because the user
-// typically clicks Refresh when something feels stuck — Chrome may have
-// dropped our context. Cheap rebuild beats a half-alive canvas. Also
-// clears any pinned-event lock so the rebuilt graph follows live events.
-export function onGraphRefresh() {
-  _highlightTier.clear();
-  _highlightMode = 'latest';
-  _pinnedEventId = null;
-  _renderPinIndicator();
-  bus.publish('graph:pinned', { eventId: null });
-  destroy();        // teardown + null data + invalidate any in-flight load
-  loadGraph3D();
-}
-
-// ── Graph load + lifecycle ────────────────────────────────────────────
-
-function _renderGraphError(message, hint, hintHTML) {
-  const container = document.getElementById('graph-3d');
-  if (!container) return;
-  container.innerHTML =
-    '<div class="graph-error">' +
-      '<div class="graph-error-title">3D graph unavailable</div>' +
-      '<div class="graph-error-msg">' + escapeHtml(message || 'unknown error') + '</div>' +
-      (hintHTML ? '<div class="graph-error-hint">' + hintHTML + '</div>'
-                : (hint ? '<div class="graph-error-hint">' + escapeHtml(hint) + '</div>' : '')) +
-    '</div>';
-}
-
-// Pre-flight WebGL check. ForceGraph3D's THREE.WebGLRenderer constructor
-// catches its own context-creation failure but logs a noisy stack first;
-// detecting up-front gives us a friendlier error AND avoids the noise.
-// Returns null on success, or a {reason, hintHTML} on failure.
-//
-// CRITICAL: Chrome caps WebGL contexts at ~16 per tab. The probe context
-// MUST be explicitly released via WEBGL_lose_context — letting it fall
-// out of scope leaves the slot allocated until GC, which during a busy
-// session never catches up. Before this fix, each loadGraph3D() burned
-// a slot, and after ~16 tab switches the real graph mount silently failed.
-function _detectWebGLBlocker() {
-  // 1. Library loaded?
-  if (typeof window.ForceGraph3D !== 'function') {
-    return {
-      reason: 'ForceGraph3D library failed to load.',
-      hintHTML:
-        'The CDN script (<code>unpkg.com/3d-force-graph</code>) didn\'t finish loading. ' +
-        'Check the Network tab — likely a network/CSP block. Reload the page after the ' +
-        'CDN is reachable.',
-    };
-  }
-  // 2. WebGL context creatable?
-  let gl = null;
-  try {
-    const c = document.createElement('canvas');
-    gl = c.getContext('webgl2') || c.getContext('webgl') || c.getContext('experimental-webgl');
-  } catch (e) { /* fall through */ }
-  // Always release the probe slot — see comment above.
-  if (gl) {
-    try { gl.getExtension('WEBGL_lose_context')?.loseContext(); } catch (_) { /* best-effort */ }
-  }
-  if (!gl) {
-    return {
-      reason: 'Browser refused to create a WebGL context.',
-      hintHTML:
-        'Open <code>chrome://gpu</code> in a new tab and look for "WebGL" status. ' +
-        'If it says "Hardware accelerated" but you still see this, try: ' +
-        '<ol style="text-align:left;margin:6px 0 0 18px;padding:0">' +
-          '<li>chrome://settings → System → "Use hardware acceleration when available" ON, then restart Chrome.</li>' +
-          '<li>chrome://flags → search "WebGL" → ensure none are explicitly disabled.</li>' +
-          '<li>Hard refresh this page (Cmd+Shift+R).</li>' +
-        '</ol>',
-    };
-  }
-  return null;
-}
-
-// Fully tear down the current graph instance + DOM. Used on error paths
-// and on user-triggered Refresh so we never accumulate orphan
-// WebGLRenderer instances (Chrome's ~16-context-per-tab cap is the root
-// cause of "flaky / works sometimes / blank after refresh"). Safe to
-// call when graph3d is already null.
-function _destroyGraph() {
-  if (graph3d) {
-    try {
-      // Force the GPU slot to free immediately rather than waiting for GC.
-      const renderer = graph3d.renderer?.();
-      renderer?.forceContextLoss?.();
-      renderer?.dispose?.();
-    } catch (_) { /* best-effort */ }
-    try {
-      // ForceGraph3D exposes _destructor for clean unmount.
-      graph3d._destructor?.();
-    } catch (_) { /* best-effort */ }
-    graph3d = null;
-  }
-  // Either way, wipe the host element — a half-mounted canvas can linger
-  // here even when the JS handle is null (e.g. mount threw mid-init).
-  const c = document.getElementById('graph-3d');
-  if (c) c.innerHTML = '';
-}
-
-// Wire webglcontextlost / webglcontextrestored on the renderer's canvas.
-// Called once after the initial mount. Context loss = Chrome's GPU
-// process crashed or VRAM ran out — the #1 cause of flakiness per the
-// 2026 troubleshooting threads. Without this, the canvas goes black and
-// the user sees no signal. With it, they get a recovery prompt + auto-
-// rebuild on restore.
-function _wireContextLossHandlers() {
-  const canvas = graph3d?.renderer?.()?.domElement;
-  if (!canvas) return;
-  canvas.addEventListener('webglcontextlost', (e) => {
-    // preventDefault is required for the restore event to fire later.
-    e.preventDefault();
-    console.warn('[graph] WebGL context lost — GPU process crash or VRAM exhaustion');
-    _destroyGraph();
-    _renderGraphError(
-      'GPU context lost.',
-      null,
-      'Chrome\'s GPU process likely crashed or VRAM filled up. ' +
-      'Hard refresh (Cmd+Shift+R) — if it keeps happening, check ' +
-      '<code>chrome://gpu</code> for repeated GPU crashes.'
-    );
-  });
-  canvas.addEventListener('webglcontextrestored', () => {
-    console.info('[graph] WebGL context restored — reloading graph');
-    loadGraph3D();
-  });
-}
-
-export async function loadGraph3D() {
-  // Capture the load generation: if destroy() runs while api.graph3d() is in
-  // flight (e.g. the user hides the graph mid-fetch), the mount below must
-  // abort rather than build a WebGL context into a now-hidden pane.
-  const gen = _loadGen;
-  // Pre-flight: bail with a clean error if the browser can't render at all.
-  // Avoids the noisy THREE.WebGLRenderer console stack trace and gives the
-  // operator actionable Chrome-specific hints instead of a generic catch.
-  const block = _detectWebGLBlocker();
-  if (block) {
-    _renderGraphError(block.reason, null, block.hintHTML);
-    // Still fetch the graph payload so search keeps working as a node
-    // browser even when the 3D canvas can't mount. Match-count updates
-    // via _updateMatchCount → _searchableNodes() falling back to
-    // graph3dData. Without this, search would silently no-op every time
-    // WebGL was unavailable.
-    try {
-      if (!graph3dData) graph3dData = await api.graph3d();
-      _updateMatchCount();
-    } catch (_) { /* search degradation only; not worth surfacing */ }
-    return;
-  }
-  try {
-    graph3dData = await api.graph3d();
-    // A teardown (hide / refresh) happened during the fetch — abort the mount
-    // so we don't spin up a WebGL context the user no longer wants to see.
-    if (gen !== _loadGen) return;
-    if (!graph3dData.nodes || !graph3dData.nodes.length) {
-      _renderGraphError('No graph data returned',
-        'The /api/graph3d endpoint returned an empty payload. Check daemon health on the Logs tab.');
-      return;
-    }
-
-    // Filter: only show nodes IN communities + community hub nodes.
-    // Orphans hidden — they clutter without adding structure.
-    const communityNodeIds = new Set();
-    const hubIds = new Set();
-    graph3dData.nodes.forEach(n => {
-      if (n.hub) hubIds.add(n.id);
-      if (n.community) communityNodeIds.add(n.id);
-    });
-    hubIds.forEach(id => communityNodeIds.add(id));
-
-    const visibleNodes = graph3dData.nodes.filter(
-      n => communityNodeIds.has(n.id) || hubIds.has(n.id));
-    const visibleIds = new Set(visibleNodes.map(n => n.id));
-
-    const visibleLinks = graph3dData.edges
-      .filter(e => visibleIds.has(e.source) && visibleIds.has(e.target))
-      .filter(e => e.relation !== 'co_accessed' && e.relation !== 'emergent_bridge')
-      .map(e => ({source: e.source, target: e.target, relation: e.relation}));
-
-    const container = document.getElementById('graph-3d');
-    const w = container.offsetWidth || 800;
-    const h = container.offsetHeight || 600;
-
-    if (graph3d) {
-      graph3d.graphData({nodes: visibleNodes, links: visibleLinks});
-    } else {
-      graph3d = ForceGraph3D()(container)
-        .width(w).height(h)
-        .graphData({nodes: visibleNodes, links: visibleLinks})
-        .backgroundColor('#08080f')
-        .nodeVal(n => _valFor(n))
-        .nodeColor(n => _colorFor(n))
-        .nodeOpacity(0.85)
-        .nodeLabel(n => {
-          if (n.hub) return '<div style="text-align:center;font-size:14px"><b>' + n.name + '</b><br><span style="color:#aaa">' + (n.val/0.8|0) + ' members</span></div>';
-          const comm = n.community_title ? '<br><span style="color:#666">' + n.community_title.substring(0, 40) + '</span>' : '';
-          return '<div style="text-align:center"><b>' + n.name + '</b><br><span style="color:#888">' + n.type + '</span>' + comm + '</div>';
-        })
-        .linkColor(l => l.relation === 'community_member' ? '#333' : '#222')
-        .linkOpacity(l => l.relation === 'community_member' ? 0.15 : 0.08)
-        .linkWidth(l => l.relation === 'community_member' ? 0.3 : 0.15)
-        .d3AlphaDecay(0.08)
-        .d3VelocityDecay(0.5)
-        .warmupTicks(150)
-        .cooldownTicks(300)
-        .onEngineTick(() => {
-          if (!graph3d._forcesConfigured) {
-            const charge = graph3d.d3Force('charge');
-            if (charge) { charge.strength(-15).distanceMax(200); }
-            const link = graph3d.d3Force('link');
-            if (link) { link.distance(l => l.relation === 'community_member' ? 3 : 40).strength(l => l.relation === 'community_member' ? 0.9 : 0.05); }
-            graph3d._forcesConfigured = true;
-          }
-        })
-        .onNodeClick(node => {
-          graph3d.cameraPosition({x: node.x + 150, y: node.y + 80, z: node.z + 150}, node, 1000);
-          loadNodeDetail(node.id);
-        });
-      const controls = graph3d.controls();
-      if (controls) controls.zoomSpeed = 5.0;
-      // Hook into WebGL context loss so a GPU process crash surfaces
-      // as a recovery prompt instead of a silent black canvas. Only
-      // wire on first mount — subsequent loadGraph3D() reuse the
-      // existing renderer + canvas, so the listeners persist.
-      _wireContextLossHandlers();
-    }
-
-    // Apply any current state (search + highlight) once nodes are live.
-    _refreshGraph();
+    raw = await api.graph3d();
+    if(gen!==_loadGen) return;
+    if(!raw.nodes || !raw.nodes.length){ host.innerHTML='<div class="graph-error"><div class="graph-error-title">No graph data</div></div>'; return; }
+    ensureSprites();
+    G = buildGalaxy(raw);
+    allocScreen(G.N);
+    sizeCanvas();
+    t0=performance.now();
+    if(!raf) raf=requestAnimationFrame(frame);
     _updateMatchCount();
-  } catch(e) {
-    console.error('Graph3D load failed:', e);
-    // Full teardown — previously this just nulled the handle, leaving
-    // the half-mounted canvas/renderer attached to the DOM. After a few
-    // retries that orphaned chain would exhaust Chrome's per-tab WebGL
-    // context budget and every subsequent mount would silently fail.
-    _destroyGraph();
-    const msg = (e && e.message) ? e.message : String(e);
-    _renderGraphError(msg,
-      /webgl|gl\b/i.test(msg)
-        ? 'WebGL context could not be created. Common causes: GPU driver, browser policy, sandboxed iframe. Try reloading or opening in a regular Chrome window.'
-        : 'See the Logs tab → Dashboard sub-feed for the full stack.');
-  }
+  } catch(e){ console.error('[graph] galaxy load failed:', e);
+    if(host) host.innerHTML='<div class="graph-error"><div class="graph-error-title">Graph unavailable</div><div class="graph-error-msg">'+escapeHtml(String(e&&e.message||e))+'</div></div>'; }
 }
 
-/** Resize ForceGraph3D to the current container. Run after tab-switch
- * or layout drag — three.js doesn't observe its host. */
-export function resize() {
-  if (!graph3d) return;
-  const c = document.getElementById('graph-3d');
-  if (!c) return;
-  void c.offsetHeight;   // trigger reflow before reading offset*
-  const w = c.offsetWidth || 800;
-  const h = c.offsetHeight || 600;
-  graph3d.width(w).height(h);
-  graph3d.renderer().setSize(w, h);
-  graph3d.camera().aspect = w / h;
-  graph3d.camera().updateProjectionMatrix();
-}
+// ── search ──
+function _searchableNodes(){ if(G) return G.N; if(raw?.nodes) return raw.nodes.length; return 0; }
+function _updateMatchCount(){ const el=document.getElementById('graph-search-count'); if(!el)return;
+  if(!_searchQuery){el.textContent='';return;}
+  let n=0; if(G){ for(let i=0;i<G.N;i++) if(matches(i)) n++; }
+  else if(raw?.nodes){ const q=_searchQuery; n=raw.nodes.filter(x=>(x.name||'').toLowerCase().includes(q)||(x.type||'').toLowerCase().includes(q)).length; }
+  el.textContent=n+' match'+(n===1?'':'es'); }
+export function setSearchQuery(q){ _searchQuery=(q||'').toLowerCase().trim(); _updateMatchCount(); }
+export function onGraphSearch(){ const i=document.getElementById('graph-search'); setSearchQuery(i?i.value:''); }
+export function onGraphSearchKey(event){ if(event&&event.key==='Enter') onGraphSearch(); }
 
-// ── Lifecycle ─────────────────────────────────────────────────────────
+// ── recall highlight (persistent spotlight for pin/preview) + live bloom ──
+function _applyEvent(event){ if(!event)return;
+  const byTier={ returned:event.returned_ids||[], activation:event.activation_ids||[], used:event.used_ids||[] };
+  for(const tier of ['returned','activation','used']) for(const id of byTier[tier]) _highlightTier.set(id,tier); }
+function _bloomEvent(event){ if(!event||!G)return; let dl=0;
+  for(const list of [event.used_ids||[], event.activation_ids||[]]) for(const id of list){ const i=G.idIndex.get(id); if(i!=null) seed(i); } }
+function _onRecallEvent({event}){ if(!G||!event)return;
+  _bloomEvent(event);                              // live "watch it think" bloom
+  if(_highlightMode==='pinned') return; }          // pinned spotlight stays put
+export function previewRecallOnGraph(event){ if(!G||!event)return; if(!_previewSnapshot) _saveSnapshot();
+  _highlightTier.clear(); _applyEvent(event); }
+export function clearRecallPreview(){ if(_previewSnapshot) _restoreSnapshot(); }
+function _saveSnapshot(){ _previewSnapshot={tier:new Map(_highlightTier),mode:_highlightMode,pinned:_pinnedEventId}; }
+function _restoreSnapshot(){ if(!_previewSnapshot)return; _highlightTier.clear();
+  for(const [k,v] of _previewSnapshot.tier)_highlightTier.set(k,v); _highlightMode=_previewSnapshot.mode; _pinnedEventId=_previewSnapshot.pinned; _previewSnapshot=null; }
+export function pinRecallToGraph(event){ if(!event)return; _previewSnapshot=null; _highlightMode='pinned';
+  _pinnedEventId=event.id||null; _highlightTier.clear(); _applyEvent(event); _bloomEvent(event);
+  bus.publish('graph:pinned',{eventId:_pinnedEventId}); }
+export function onGraphRefresh(){ _highlightTier.clear(); _highlightMode='latest'; _pinnedEventId=null;
+  bus.publish('graph:pinned',{eventId:null}); destroy(); loadGraph3D(); }
 
-export function init() {
+// ── lifecycle ──
+export function init(){
   bus.subscribe('recall:event', _onRecallEvent);
-
-  // Keep the canvas matched to its container. ForceGraph3D does NOT observe
-  // its host element, so without this the canvas keeps whatever size it had
-  // at mount — widening the window left a narrow canvas in a wide pane.
-  // A ResizeObserver catches every container size change from one place
-  // (window resize, divider drag, layout-mode switch); resize() no-ops when
-  // the graph isn't mounted. Deferred via rAF so the observed box has
-  // settled before we read it and to avoid ResizeObserver feedback loops.
-  // Replaces the old `live:layout` bus handler, which only covered the
-  // divider/layout-mode subset and missed plain window resizes.
-  const host = document.getElementById('graph-3d');
-  if (host && 'ResizeObserver' in window) {
-    new ResizeObserver(() => requestAnimationFrame(resize)).observe(host);
-  }
+  const h=document.getElementById('graph-3d');
+  if(h && 'ResizeObserver' in window){ _ro=new ResizeObserver(()=>requestAnimationFrame(resize)); _ro.observe(h); }
 }
-
-export function activate() {
-  // 300ms delay matches the legacy behavior: tab-content display:block
-  // hasn't laid out yet by the time switchTab returns. The handle is stored so
-  // destroy() (a hide within the window) can cancel the pending mount.
-  if (_activateTimer) clearTimeout(_activateTimer);
-  _activateTimer = setTimeout(() => {
-    _activateTimer = null;
-    if (!graph3dData) loadGraph3D();
-    else resize();
-    // Pre-load the latest recall so the spotlight is immediately
-    // visible on first open. Skips when the user has already pinned a
-    // card (don't overwrite their selection).
-    if (_highlightTier.size === 0 && _highlightMode !== 'pinned') {
-      setHighlightMode('latest');
-    }
+export function resize(){ if(!cv||!host) return; sizeCanvas(); }
+export function activate(){
+  if(_activateTimer) clearTimeout(_activateTimer);
+  _activateTimer=setTimeout(()=>{ _activateTimer=null;
+    if(!G) loadGraph3D(); else { sizeCanvas(); if(!raf){t0=performance.now();raf=requestAnimationFrame(frame);} }
+    // preload the latest recall as an opening bloom
+    if(_highlightMode!=='pinned'){ api.recalls({limit:1}).then(d=>{ const e=(d.events||[])[0]; if(e) _bloomEvent(e); }).catch(()=>{}); }
   }, 300);
 }
-
-export function deactivate() {
-  // 3D scene keeps animating in the background — cheap; re-activating
-  // a paused scene introduces a visible re-warmup.
-}
-
-// Public teardown — frees the WebGL context, VRAM, and the render loop
-// entirely (not paused — gone). Used by Live's graph-visibility toggle so
-// a hidden graph costs zero GPU. Re-showing routes back through activate()
-// → loadGraph3D(), which refetches since graph3dData is nulled here.
-export function destroy() {
-  // Cancel a pending activate() mount and invalidate any in-flight loadGraph3D
-  // fetch, so a hide during the 300ms defer or mid-fetch can't mount a graph
-  // into the now-hidden pane (would re-introduce the GPU cost the toggle kills).
-  if (_activateTimer) { clearTimeout(_activateTimer); _activateTimer = null; }
+export function deactivate(){ /* canvas keeps animating; cheap */ }
+export function destroy(){
+  if(_activateTimer){clearTimeout(_activateTimer);_activateTimer=null;}
   _loadGen++;
-  _destroyGraph();
-  graph3dData = null;
+  if(raf){cancelAnimationFrame(raf);raf=0;}
+  G=null; raw=null;
+  const c=document.getElementById('graph-3d'); if(c){c.innerHTML='';} cv=null; ctx=null; host=null; tip=null;
 }
