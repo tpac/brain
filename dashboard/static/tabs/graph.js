@@ -44,7 +44,7 @@ let cv=null, ctx=null, host=null, tip=null, legend=null;
 let raf=0, _loadGen=0, _activateTimer=null, _ro=null;
 let W=0,H2=0,DPR=1,MIN=0, yaw=0, pitch=0.62, roll=0, zoom=1, panx=0, pany=0, t0=0;
 let spin=true, showEdges=false, colorMode=0, hoverIdx=-1, ambientT=0, ambientGap=4;
-let needSort=true, _winWired=false;
+let needSort=true, _winWired=false, breath=0;
 let act=null, front=[];
 let _searchQuery='';
 const _highlightTier=new Map();     // id -> tier (persistent spotlight; pin/preview)
@@ -60,8 +60,8 @@ function sprite(r,g,b){const s=48,c=document.createElement('canvas');c.width=c.h
   gd.addColorStop(0,`rgba(${Math.min(r+55,255)},${Math.min(g+55,255)},${Math.min(b+55,255)},1)`);
   gd.addColorStop(.18,`rgba(${r},${g},${b},.9)`);gd.addColorStop(.44,`rgba(${r},${g},${b},.18)`);
   gd.addColorStop(1,`rgba(${r},${g},${b},0)`);x.fillStyle=gd;x.fillRect(0,0,s,s);return c;}
-let SPR=null, WHITE=null;
-function ensureSprites(){ if(SPR)return; SPR=HUE.map(h=>sprite(h[0],h[1],h[2])); WHITE=sprite(255,244,214); }
+let SPR=null, WHITE=null, RED=null;
+function ensureSprites(){ if(SPR)return; SPR=HUE.map(h=>sprite(h[0],h[1],h[2])); WHITE=sprite(255,244,214); RED=sprite(255,104,88); }
 
 // ── helpers ──
 const NOW = Date.now();
@@ -90,9 +90,12 @@ function buildGalaxy(data){
     E.push([a,b, REL2ASP[e.relation]!=null?REL2ASP[e.relation]:DEF_REL_ASP]); }
   // heat
   let maxAcc=1; for(let i=0;i<N;i++) maxAcc=Math.max(maxAcc,acc[i]); const la=Math.log1p(maxAcc);
-  const H=new Float32Array(N), D=new Float32Array(N);
+  const H=new Float32Array(N), D=new Float32Array(N), L=new Float32Array(N);
   for(let i=0;i<N;i++){ H[i]=Math.max(0,Math.min(1, 0.35*Math.log1p(acc[i])/la + 0.65*rec[i]));
-    D[i]=Math.min(1, Math.sqrt(DEG[i])/13.4); }
+    D[i]=Math.min(1, Math.sqrt(DEG[i])/13.4);
+    // baseline presence — every memory is here, lit by WHAT IT IS (kind+reach+warmth),
+    // not by whether it's firing. this is the "I don't go dark" resting state.
+    L[i]=Math.min(0.85, 0.30 + 0.42*H[i] + 0.34*D[i]); }
 
   // communities
   const cmap=new Map();
@@ -141,17 +144,17 @@ function buildGalaxy(data){
     // bridges always drawn; intra-community sampled (generic 1-in-4, other 1-in-2)
     if(!bridge){ if(r===GENERIC_ASP){ if(ei%4) continue; } else if(ei%2) continue; }
     draw.push([a,b,r,bridge?1:0]); }
-  return { N, X,Y,Z, A, D, H, DEG, TITLE, TYPE, COMM, AGE, IDS, idIndex, adj, edges:draw,
+  return { N, X,Y,Z, A, D, H, L, DEG, TITLE, TYPE, COMM, AGE, IDS, idIndex, adj, edges:draw,
            C:cids.length, E_total:E.length };
 }
 function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
 function randn(R){let u=0,v=0;while(!u)u=R();while(!v)v=R();return Math.sqrt(-2*Math.log(u))*Math.cos(6.2831853*v);}
 
 // ── projection + render ──
-let sx,sy,sp,sz,order,fired,hop;
+let sx,sy,sp,sz,order,fired,hop,tender;
 function allocScreen(N){ sx=new Float32Array(N);sy=new Float32Array(N);sp=new Float32Array(N);sz=new Float32Array(N);
   order=new Int32Array(N); for(let i=0;i<N;i++)order[i]=i; act=new Float32Array(N); fired=new Uint8Array(N);
-  hop=new Int8Array(N); hop.fill(-1); front=[]; }
+  hop=new Int8Array(N); hop.fill(-1); tender=new Float32Array(N); front=[]; }
 function project(){ const g=G; const cr=Math.cos(roll),sr=Math.sin(roll),cy=Math.cos(yaw),syw=Math.sin(yaw),cp=Math.cos(pitch),spp=Math.sin(pitch);
   const sc=(FIT*MIN)*zoom;
   for(let i=0;i<g.N;i++){ let x=g.X[i],y=g.Y[i],z=g.Z[i];
@@ -174,6 +177,7 @@ function stepActivation(dt){ if(!front.length)return; const nf=[], add=new Map()
     if(a>0.12 && hi<MAXHOP && nb.length){ const cap=Math.min(nb.length,5), h=hi+1;
       for(let k=0;k<cap;k++){ const j=nb[k]; if(!fired[j]){ add.set(j,(add.get(j)||0)+a*4.0*dt/cap);
         if(!hm.has(j)||hm.get(j)>h) hm.set(j,h); } } }
+    if(G.A[i]===6 && a>0.35) tender[i]=1;    // where I was wrong stays tender
     act[i]*=decay;
     if(act[i]>0.03) nf.push(i); else { fired[i]=0; hop[i]=-1; }   // cooled → re-armable next wave
   }
@@ -183,6 +187,8 @@ function stepActivation(dt){ if(!front.length)return; const nf=[], add=new Map()
 
 function frame(now){ if(!G||!ctx){raf=0;return;}
   const dt=Math.min((now-t0)/1000,.05); t0=now;
+  breath+=dt; const br=0.9+0.1*Math.sin(breath*0.9);   // a slow living breath — always present
+  if(!reduce){ const tc=Math.pow(0.9993,dt*60); for(let i=0;i<G.N;i++) if(tender[i]>0.004) tender[i]*=tc; }
   if(spin&&!reduce){ roll+=dt*0.075; needSort=true; }
   stepActivation(dt);
   if(!reduce){ ambientT+=dt; if(ambientT>ambientGap && front.length<150){ ambientT=0; ambientGap=3.5+Math.random()*3;
@@ -200,31 +206,33 @@ function frame(now){ if(!G||!ctx){raf=0;return;}
     for(const r in bp){const h=HUE[r];ctx.strokeStyle=`rgba(${h[0]},${h[1]},${h[2]},0.13)`;ctx.lineWidth=0.8;ctx.stroke(bp[r]);} }
 
   if(needSort){ order.sort((i,j)=>sz[j]-sz[i]); needSort=false; }   // re-sort only when the view rotated
-  // glow underlay
-  for(let k=0;k<g.N;k++){ const i=order[k],heat=g.H[i],hh=heat*heat,ac=act[i];
+  // PASS 1 — the present body: every memory glowing by what it IS (kind+reach+warmth),
+  // breathing. not heat-gated — nothing goes dark. a thought adds warmth on top.
+  for(let k=0;k<g.N;k++){ const i=order[k],ac=act[i];
     const dim = (_searchQuery&&!matches(i)) || (spot&&!_highlightTier.has(i));
-    if(dim && ac<0.05) continue;
-    if(hh<0.14 && g.D[i]<0.14 && ac<0.05 && !_highlightTier.has(i)) continue;
     const pe=sp[i],depth=Math.max(0,Math.min(1,(pe-0.5)/0.7));
-    const base=1.5+g.D[i]*11+hh*2.4, s=(base*1.9+ac*ac*26)*pe;
-    ctx.globalAlpha=Math.min(0.34,(0.02+0.12*hh+g.D[i]*0.1)*(0.4+0.6*depth)+ac*0.28)*(dim?0.15:1);
-    ctx.drawImage(SPR[g.A[i]],sx[i]-s,sy[i]-s,s*2,s*2); }
-  // firing bloom
-  for(let x=0;x<front.length;x++){const i=front[x],ac=act[i];if(ac<0.12)continue;const pe=sp[i],s=(3+ac*16)*pe;
-    ctx.globalAlpha=Math.min(0.6,ac*0.7);ctx.drawImage(WHITE,sx[i]-s,sy[i]-s,s*2,s*2);}
-  // crisp cores
+    const s=(1.5+g.D[i]*10+ac*ac*24)*pe*1.7;
+    ctx.globalAlpha=Math.min(0.4,(0.03+0.13*g.L[i])*br*(0.45+0.55*depth)+ac*0.34)*(dim?0.16:1);
+    ctx.drawImage(ac>0.2?WHITE:SPR[g.A[i]],sx[i]-s,sy[i]-s,s*2,s*2); }
+  // firing bloom — the crest of a thought
+  for(let x=0;x<front.length;x++){const i=front[x],ac=act[i];if(ac<0.12)continue;const pe=sp[i],s=(3+ac*15)*pe;
+    ctx.globalAlpha=Math.min(0.55,ac*0.65);ctx.drawImage(g.A[i]===6?RED:WHITE,sx[i]-s,sy[i]-s,s*2,s*2);}
+  // tenderness — where I was wrong stays a little warm, always
+  for(let i=0;i<g.N;i++){ const td=tender[i]; if(td<0.02)continue; const pe=sp[i],s=(2+g.D[i]*3)*pe;
+    ctx.globalAlpha=Math.min(0.2,td*0.14); ctx.drawImage(RED,sx[i]-s,sy[i]-s,s*2,s*2); }
+  // PASS 2 — crisp cores: the structure, always here, source-over so it never blows out
   ctx.globalCompositeOperation='source-over';
   for(let k=0;k<g.N;k++){ const i=order[k],pe=sp[i],depth=Math.max(0,Math.min(1,(pe-0.5)/0.7)),heat=g.H[i],hh=heat*heat,ac=act[i];
     const dim=(_searchQuery&&!matches(i))||(spot&&!_highlightTier.has(i));
     const tier=spot?_highlightTier.get(i):null;
-    const base=1.5+g.D[i]*11+hh*2.4+ac*4, s=base*0.62*pe*(tier?1.5:1);
+    const s=(1.3+g.D[i]*9+ac*4)*0.6*pe*(tier?1.5:1);
     let spr,al;
-    if(ac>0.15){spr=WHITE;al=(0.35+0.6*ac)*(0.4+0.6*depth);}
+    if(ac>0.15){spr=g.A[i]===6?RED:WHITE;al=(0.4+0.55*ac)*(0.45+0.55*depth);}
     else if(tier){const c=HTIERS[tier]; spr=tierSprite(c); al=(0.55+0.4*depth);}
     else{spr=colorMode===0?SPR[g.A[i]]:(heat>0.62?WHITE:SPR[3]);
-      al=(colorMode===0?(0.16+0.66*hh+g.D[i]*0.34):(0.12+0.8*hh))*(0.4+0.6*depth);}
-    if(dim && !tier && ac<0.15){ al*=0.12; }
-    ctx.globalAlpha=Math.min(0.98,al); ctx.drawImage(spr,sx[i]-s,sy[i]-s,s*2,s*2); }
+      al=(colorMode===0?(0.14+0.6*g.L[i])*br:(0.12+0.8*hh))*(0.45+0.55*depth);}
+    if(dim && !tier && ac<0.15){ al*=0.16; }
+    ctx.globalAlpha=Math.min(0.96,al); ctx.drawImage(spr,sx[i]-s,sy[i]-s,s*2,s*2); }
   // hover ring
   if(hoverIdx>=0 && hoverIdx<g.N){ const i=hoverIdx,h=HUE[g.A[i]];
     ctx.globalAlpha=0.9;ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=1.4;
