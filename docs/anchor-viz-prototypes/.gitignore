@@ -6,3 +6,7 @@ mind_data.json
 anchor_mind.html
 _preview_mind.html
 _check*.js
+
+# self-portrait build artifacts (reproducible from emit_self.py)
+anchor_self.html
+_preview_self.html
