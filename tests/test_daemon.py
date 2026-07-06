@@ -32,7 +32,6 @@ from servers.daemon_config import (
 from servers.daemon_dispatch import COMMAND_TABLE, CmdEntry
 from servers.daemon_client import (
     send_command, is_daemon_running, ensure_daemon, stop_daemon,
-    create_agent_db, list_agent_changes, cleanup_agent_db,
 )
 from servers.brain_mcp import TOOLS as MCP_TOOLS
 
@@ -254,84 +253,6 @@ class TestEncodingVersion(unittest.TestCase):
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# TEST 4: Agent DB isolation
-# ══════════════════════════════════════════════════════════════════════════
-
-class TestAgentIsolation(unittest.TestCase):
-    """Verify agent DB copy, change tracking, and cleanup."""
-
-    def setUp(self):
-        self.tmp = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.tmp, 'brain.db')
-        os.environ['ORT_DISABLE_ALL_ACCELERATORS'] = '1'
-        from servers.brain import Brain
-        self.brain = Brain(self.db_path)
-        self.brain.remember(type='rule', title='seed rule', content='exists before agent')
-        self.brain.save()
-        self.brain.close()
-
-    def tearDown(self):
-        shutil.rmtree(self.tmp, ignore_errors=True)
-
-    def test_create_agent_db_copies_data(self):
-        """Agent DB should contain all production nodes."""
-        agent_db = create_agent_db('test-agent-1', source_db=self.db_path)
-        try:
-            conn = sqlite3.connect(agent_db)
-            count = conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
-            conn.close()
-            self.assertGreater(count, 0, "Agent DB should have nodes from production")
-        finally:
-            cleanup_agent_db(agent_db)
-
-    def test_agent_changes_tracked(self):
-        """Nodes created in agent DB after a timestamp should be listable."""
-        agent_db = create_agent_db('test-agent-2', source_db=self.db_path)
-        try:
-            since = time.strftime('%Y-%m-%dT%H:%M:%S')
-            from servers.brain import Brain
-            agent_brain = Brain(agent_db)
-            agent_brain.remember(type='lesson', title='agent discovery',
-                                 content='found something interesting')
-            agent_brain.save()
-            agent_brain.close()
-
-            changes = list_agent_changes(agent_db, since)
-            agent_titles = [c['title'] for c in changes]
-            self.assertIn('agent discovery', agent_titles,
-                          "Agent's new node should appear in changes list")
-        finally:
-            cleanup_agent_db(agent_db)
-
-    def test_agent_cleanup_removes_db(self):
-        """cleanup_agent_db should delete the file."""
-        agent_db = create_agent_db('test-agent-3', source_db=self.db_path)
-        self.assertTrue(os.path.exists(agent_db))
-        cleanup_agent_db(agent_db)
-        self.assertFalse(os.path.exists(agent_db))
-
-    def test_agent_writes_dont_affect_production(self):
-        """Writing to agent DB must not change production DB."""
-        agent_db = create_agent_db('test-agent-4', source_db=self.db_path)
-        try:
-            from servers.brain import Brain
-            agent_brain = Brain(agent_db)
-            agent_brain.remember(type='lesson', title='agent only node',
-                                 content='should not appear in production')
-            agent_brain.save()
-            agent_brain.close()
-
-            # Check production
-            prod = sqlite3.connect(self.db_path)
-            row = prod.execute(
-                "SELECT COUNT(*) FROM nodes WHERE title = 'agent only node'").fetchone()
-            prod.close()
-            self.assertEqual(row[0], 0, "Agent node leaked to production DB")
-        finally:
-            cleanup_agent_db(agent_db)
-
-
-# ══════════════════════════════════════════════════════════════════════════
 # TEST 5: Daemon module structure
 # ══════════════════════════════════════════════════════════════════════════
 
@@ -342,8 +263,7 @@ class TestDaemonModuleStructure(unittest.TestCase):
         """Split daemon modules must export all expected symbols in their respective homes."""
         from servers.daemon_server import BrainDaemon
         from servers.daemon_client import (send_command, is_daemon_running,
-                                           ensure_daemon, stop_daemon,
-                                           create_agent_db, list_agent_changes, cleanup_agent_db)
+                                           ensure_daemon, stop_daemon)
         from servers.daemon_launch import (kickstart, manages, kill_daemon,
                                            port_is_occupied, spawn_detached_daemon)
         from servers.daemon_config import (get_socket_path, get_pid_path,
@@ -366,9 +286,6 @@ class TestDaemonModuleStructure(unittest.TestCase):
             ('get_lock_path', get_lock_path),
             ('get_status_path', get_status_path),
             ('COMMAND_TABLE', COMMAND_TABLE),
-            ('create_agent_db', create_agent_db),
-            ('list_agent_changes', list_agent_changes),
-            ('cleanup_agent_db', cleanup_agent_db),
         ]:
             self.assertIsNotNone(sym, f"Split daemon modules missing symbol: {sym_name}")
 
