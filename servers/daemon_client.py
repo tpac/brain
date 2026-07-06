@@ -276,7 +276,11 @@ def ensure_daemon(db_path: str) -> bool:
         # (b) Nothing is serving. Spawn directly ONLY if launchd genuinely is
         #     not managing the daemon (fresh install). If launchd DOES manage it
         #     but kickstart failed transiently, let KeepAlive bring it up rather
-        #     than racing a manual spawn.
+        #     than racing a manual spawn. (Role note: _relaunch_daemon KILLS in
+        #     this same managed+kickstart-failed state — correct there, where the
+        #     target is a live corpse KeepAlive can't respawn past. Here "down"
+        #     means the process exited, so KeepAlive owns the respawn. Don't
+        #     unify the two arms.)
         if manages():
             sys.stderr.write(
                 "[brain-daemon] launchd manages the daemon but kickstart failed "
@@ -367,14 +371,33 @@ def _write_recovery_state(last_attempt: float, attempts: int):
 def _relaunch_daemon(db_path: Optional[str]):
     """Bring a fresh daemon up. launchd is the canonical owner (kickstart -k);
     if launchd isn't managing it (kickstart fails), fall back to kill + Popen
-    spawn via ensure_daemon."""
+    spawn via ensure_daemon.
+
+    Role note — this kill fires even when launchd MANAGES the daemon, and that
+    is deliberate (do not "unify" it with ensure_daemon's defer-to-KeepAlive
+    arm): recovery's target is the hung CORPSE — a live process holding the
+    port and serving nothing. KeepAlive only respawns on process EXIT, so it
+    can never get past a live corpse; when kickstart -k (launchd's own killer)
+    is unreachable, the manual SIGKILL is what produces the exit KeepAlive
+    needs. ensure_daemon's managed arm defers instead because its "down" means
+    the process already exited — there, KeepAlive genuinely owns the respawn."""
     if kickstart():
         return
-    # kickstart failed (launchd unreachable / not managing). A manual kill+respawn
-    # only converges from the daemon's SOURCE checkout: a linked worktree / 2nd
-    # clone would SIGKILL the shared daemon and then refuse to spawn (pure client,
-    # can't converge its own code), leaving nothing serving. Defer loudly instead.
-    if not _is_daemon_source(_can_connect()):
+    # kickstart failed. Re-ping before ANY kill decision: recover_daemon's
+    # single 2s ping can't tell slow/busy from dead (a recall runs 10-17s), and
+    # a kickstart can fail transiently while a healthy daemon serves. A daemon
+    # that answers NOW must be deferred to, never SIGKILLed mid-request —
+    # ensure_daemon's ladder has this rung; it was missing here.
+    resp = _can_connect()
+    if resp.get("ok"):
+        sys.stderr.write("[brain-daemon] kickstart unavailable but the daemon answers "
+                         "pings again — deferring (recovery not needed).\n")
+        return
+    # A manual kill+respawn only converges from the daemon's SOURCE checkout:
+    # a linked worktree / 2nd clone would SIGKILL the shared daemon and then
+    # refuse to spawn (pure client, can't converge its own code), leaving
+    # nothing serving. Defer loudly instead.
+    if not _is_daemon_source(resp):
         sys.stderr.write("[brain-daemon] kickstart unavailable and this checkout is not the "
                          "daemon's source — deferring kill+respawn to launchd/source "
                          "(NOT killing the shared daemon).\n")

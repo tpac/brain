@@ -49,6 +49,21 @@ Each step is executable cold in its own session. Recommend; do not batch. This d
   verified. This closed the "fourth root" (`_do_restart` detached Popen, `e6fd63aa`) and the
   self-Popen-vs-kickstart double-mechanism. Agents that read the pre-`3cb6031` worktree flagged
   these as live; they are fixed on `main`. (The worktree has since been fast-forwarded to `main`.)
+- **Step 3 RESOLVED (2026-07-06) — as a drift fix, NOT the unified primitive.** The tri-state
+  design below would regress corpse recovery: its "managed+unreachable → defer to KeepAlive" arm is
+  correct for `ensure_daemon` (down = process exited → KeepAlive respawns) but WRONG for
+  `_relaunch_daemon`, whose target is the hung CORPSE — a live process KeepAlive can never respawn
+  past; the manual kill-despite-managed is what produces the exit KeepAlive needs. The two ladders
+  are role-distinct, not drifted copies. Shipped instead: `_relaunch_daemon` gained the missing
+  re-ping rung (defers to a responsive incumbent instead of SIGKILLing it — the drift this step
+  named), the role asymmetry is documented at both managed arms in `daemon_client.py`, and
+  `test_kickstart_failed_but_incumbent_responsive_defers_never_kills` pins it. A1 (clean-exit on
+  all platforms) evaluated and DECLINED: ~4 lines saved vs an unverifiable Linux behavior change
+  (restart would leave the daemon down until a client pings). Post-Step-2 there is no remaining
+  triple-written ladder: `_perform_restart` is two lines per branch, and `_relaunch_daemon`'s
+  spawn tail already delegates to `ensure_daemon`. Step 6 may treat the spawn/restart model as
+  settled: restart = clean-exit (managed) | teardown+spawn (unmanaged); recovery = kickstart →
+  re-ping-defer → source-gated kill + ensure_daemon.
 
 ---
 

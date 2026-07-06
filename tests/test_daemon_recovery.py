@@ -156,6 +156,20 @@ class TestRelaunchDaemon(unittest.TestCase):
             kill.assert_called_once()
             ensure.assert_called_once_with("/tmp/x/brain.db")
 
+    def test_kickstart_failed_but_incumbent_responsive_defers_never_kills(self):
+        # Step 3 drift fix. recover_daemon's single 2s ping can call a slow/busy
+        # daemon "down"; if kickstart then also fails transiently, the old code
+        # went straight to SIGKILL — killing a live daemon mid-request that
+        # ensure_daemon's ladder would have deferred to. A daemon that answers
+        # the re-ping must be deferred to, never killed.
+        with patch.object(dl.subprocess, "run", return_value=MagicMock(returncode=1)), \
+             patch.object(dc, "_can_connect", return_value={"ok": True}), \
+             patch.object(dc, "kill_daemon") as kill, \
+             patch.object(dc, "ensure_daemon") as ensure:
+            dc._relaunch_daemon("/tmp/x/brain.db")
+            kill.assert_not_called()
+            ensure.assert_not_called()
+
     def test_kickstart_failure_from_non_source_defers_never_kills(self):
         # A worktree / 2nd clone must NEVER SIGKILL the shared daemon: kickstart
         # failed AND we are not the source → defer to launchd/source, don't kill.
