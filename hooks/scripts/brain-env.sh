@@ -25,6 +25,13 @@ if [ -f "$_BRAIN_USER_ENV" ]; then
     set +a
 fi
 
+# Daemon rendezvous port — set EARLY, before the runtime-bootstrap guard below,
+# since it depends only on the uid (not the venv). The ONE shell source of the
+# per-user port; shell scripts + hook Python read $BRAIN_DAEMON_PORT (the formula
+# survives only as a resilience fallback). An explicit value (shell / the user
+# env above) wins. Python inside servers/ uses daemon_config.DAEMON_PORT.
+export BRAIN_DAEMON_PORT="${BRAIN_DAEMON_PORT:-$((47200 + $(id -u) % 100))}"
+
 # Additive userConfig fallback: if the env file / shell didn't supply the key,
 # take it from the plugin-config value CC injects as CLAUDE_PLUGIN_OPTION_<KEY>
 # (per plugins-reference). Env file / shell still win. Both casings checked —

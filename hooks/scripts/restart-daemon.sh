@@ -2,7 +2,7 @@
 # Restart the brain daemon — clears cache, re-execs with fresh code.
 # Usage: hooks/scripts/restart-daemon.sh
 source "$(dirname "$0")/resolve-brain-db.sh"
-PORT=$((47200 + $(id -u) % 100))
+PORT="${BRAIN_DAEMON_PORT:-$((47200 + $(id -u) % 100))}"  # env (brain-env.sh) is the live source
 
 python3 -c "
 import socket, json, sys

@@ -24,7 +24,7 @@ if _parent not in sys.path:
 # ── Daemon communication ──
 
 DAEMON_HOST = "127.0.0.1"  # Client connects via IPv4 loopback
-DAEMON_PORT = 47200 + (os.getuid() % 100)
+from servers.daemon_config import DAEMON_PORT  # single Python source of the per-user port
 _last_daemon_fingerprint = None  # Track daemon restarts
 
 

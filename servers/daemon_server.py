@@ -28,8 +28,9 @@ from .daemon_config import (
     IDLE_TIMEOUT_SECONDS, AUTOSAVE_INTERVAL_SECONDS,
     SOCKET_BACKLOG, MAX_MESSAGE_SIZE, THREAD_POOL_SIZE,
     DAEMON_HOST, DAEMON_PORT,
-    _CODE_FINGERPRINT,
+    _CODE_FINGERPRINT, DAEMON_CPU_ENV,
     get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
+    get_daemon_log_path,
 )
 from .daemon_dispatch import COMMAND_TABLE, check_unknown_keys
 from .dispatch_common import caller_session
@@ -984,7 +985,7 @@ class BrainDaemon:
                 % (project_dir, db_dir, self.db_path)
             )
             self._log("Spawning new daemon: %s -c ..." % sys.executable)
-            log_path = os.path.join(db_dir, 'daemon.log')
+            log_path = get_daemon_log_path(self.db_path)
             try:
                 log_fp = open(log_path, 'a', buffering=1)
             except Exception:
@@ -992,7 +993,8 @@ class BrainDaemon:
             subprocess.Popen([sys.executable, '-c', startup],
                              start_new_session=True,
                              stdout=log_fp,
-                             stderr=log_fp)
+                             stderr=log_fp,
+                             env={**os.environ, **DAEMON_CPU_ENV})
             self._log("New daemon spawned. Shutting down old.")
             os._exit(0)
 

@@ -90,7 +90,7 @@ def main():
         }
     })
 
-    port = 47200 + (os.getuid() % 100)
+    port = int(os.environ.get("BRAIN_DAEMON_PORT") or (47200 + os.getuid() % 100))  # env (brain-env.sh) is the live source; formula is the fallback
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(2)

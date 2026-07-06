@@ -13,7 +13,7 @@
 #   fi
 
 BRAIN_DAEMON_HOST="127.0.0.1"
-BRAIN_DAEMON_PORT=$((47200 + $(id -u) % 100))
+BRAIN_DAEMON_PORT="${BRAIN_DAEMON_PORT:-$((47200 + $(id -u) % 100))}"  # env (brain-env.sh) is the live source
 
 # daemon_send CMD_JSON [TIMEOUT]
 # Sends a JSON command to the daemon via TCP.

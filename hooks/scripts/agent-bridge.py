@@ -15,7 +15,7 @@ import os
 import socket
 import json
 
-PORT = 47200 + os.getuid() % 100
+PORT = int(os.environ.get("BRAIN_DAEMON_PORT") or (47200 + os.getuid() % 100))  # env (brain-env.sh) is the live source; formula is the fallback
 HOST = '127.0.0.1'
 TIMEOUT = 10
 

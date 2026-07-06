@@ -283,7 +283,7 @@ def daemon_unavailable_error(hook_name=None):
 
 # ── Daemon helpers ──
 DAEMON_HOST = "127.0.0.1"
-DAEMON_PORT = 47200 + (os.getuid() % 100)
+DAEMON_PORT = int(os.environ.get("BRAIN_DAEMON_PORT") or (47200 + os.getuid() % 100))  # env (brain-env.sh) is the live source; formula is the fallback
 
 
 def daemon_available(timeout=2.0):

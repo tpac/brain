@@ -9,7 +9,7 @@
 source "$(dirname "$0")/brain-env.sh" > /dev/null 2>&1 || true
 
 DAEMON_HOST="127.0.0.1"
-DAEMON_PORT=$((47200 + $(id -u) % 100))
+DAEMON_PORT="${BRAIN_DAEMON_PORT:-$((47200 + $(id -u) % 100))}"  # env (brain-env.sh) is the live source
 
 # ── Send command to daemon via TCP ──
 _send_to_daemon() {

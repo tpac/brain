@@ -10,11 +10,25 @@ import sys
 import hashlib
 
 # ─── Force CPU-only BEFORE any downstream import ───
-# On macOS Apple Silicon, CoreML/Metal XPC connections cause SIGABRT
-# in background/daemon processes that lack GPU context.
-os.environ["ORT_DISABLE_ALL_ACCELERATORS"] = "1"
-os.environ.setdefault("ONNX_PROVIDERS", "CPUExecutionProvider")
-os.environ.setdefault("PYTORCH_MPS_DISABLE", "1")
+# On macOS Apple Silicon, CoreML/Metal XPC connections cause SIGABRT in
+# background/daemon processes that lack GPU context. DAEMON_CPU_ENV is the SINGLE
+# source of the CPU-only invariant: the launchd plist, every spawn site's env=,
+# and this import-time application all draw from it, so a daemon started fresh,
+# restarted, or launchd-spawned runs with the IDENTICAL accelerator env (a prior
+# drift left the restart path without VECLIB_MAXIMUM_THREADS / MPS_FALLBACK).
+DAEMON_CPU_ENV = {
+    "ORT_DISABLE_ALL_ACCELERATORS": "1",
+    "ONNX_PROVIDERS": "CPUExecutionProvider",
+    "PYTORCH_MPS_DISABLE": "1",
+    "VECLIB_MAXIMUM_THREADS": "1",
+    "PYTORCH_ENABLE_MPS_FALLBACK": "0",
+}
+# ORT accelerator-disable is the load-bearing SIGABRT guard — force it even over
+# an ambient value (matches pre-consolidation behavior); setdefault the rest so
+# an explicit plist/operator value wins.
+os.environ["ORT_DISABLE_ALL_ACCELERATORS"] = DAEMON_CPU_ENV["ORT_DISABLE_ALL_ACCELERATORS"]
+for _cpu_k, _cpu_v in DAEMON_CPU_ENV.items():
+    os.environ.setdefault(_cpu_k, _cpu_v)
 
 # ─── Constants ───
 
@@ -37,6 +51,17 @@ DAEMON_PORT = 47200 + (os.getuid() % 100)  # Per-user port to avoid collisions
 # (KeepAlive=true), so external recovery force-restarts a hung daemon with
 # `launchctl kickstart -k` and lets launchd own the respawn.
 LAUNCHD_LABEL = "com.brain.daemon"
+
+# launchd's plist ThrottleInterval — launchd won't relaunch the daemon faster
+# than this after an exit. The recovery deadlines in daemon_client DERIVE from it
+# (they must exceed throttle + embedder reload, or a recovering daemon is
+# mistaken for a corpse and re-kickstarted — the self-sustaining storm). Keep in
+# sync with the plist's <key>ThrottleInterval</key> (Step 7 generates the plist
+# from this + a contract test). SIGKILL grace is launchd's SIGTERM→SIGKILL window
+# (~macOS default); SHUTDOWN_BACKSTOP_S must stay under it so we exit on our own
+# terms.
+LAUNCHD_THROTTLE_INTERVAL_S = 10
+LAUNCHD_SIGKILL_GRACE_S = 20
 
 
 # ─── Identity binding ───
@@ -168,6 +193,15 @@ def get_lock_path() -> str:
 def get_status_path() -> str:
     """Get the daemon status file path (read by statusline script)."""
     return os.path.join("/tmp", "brain-status-{}.json".format(os.getuid()))
+
+
+def get_daemon_log_path(db_path: str) -> str:
+    """Path to the daemon log — where the daemon writes and where every spawn
+    site redirects the successor's stdout/stderr. Honors BRAIN_DB_DIR, else the
+    DB's own directory. Single source so a restart-spawned and a boot-spawned
+    daemon can't log to different files under an env override."""
+    db_dir = os.environ.get("BRAIN_DB_DIR") or os.path.dirname(db_path)
+    return os.path.join(db_dir, "daemon.log")
 
 
 def get_maintenance_path() -> str:

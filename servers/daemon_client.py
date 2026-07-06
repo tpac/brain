@@ -65,6 +65,7 @@ from .daemon_config import (
     _code_fingerprint, _CODE_FINGERPRINT, _IS_WORKTREE, REPO_ROOT, LAUNCHD_LABEL,
     get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
     get_recovery_state_path, is_maintenance_mode,
+    DAEMON_CPU_ENV, get_daemon_log_path, LAUNCHD_THROTTLE_INTERVAL_S,
 )
 
 
@@ -152,8 +153,11 @@ def is_daemon_responsive(timeout: float = 2.0) -> bool:
 # hook (the closed-DB boot failure of 2026-06-06). Bounded by WALL-CLOCK, not a
 # ping count: a hung corpse whose socket blocks the full ping timeout each probe
 # must not blow the budget (a count of 40 × 2s pings would be ~100s, not ~20s).
-_GRACE_DEADLINE_S = 20.0       # confirm-down / wait out a relaunch
-_KICKSTART_DEADLINE_S = 25.0   # wait for our own kickstart to come back
+# Derived from the plist throttle (single-sourced in daemon_config) so the two
+# worlds can't drift: the budget must clear ThrottleInterval + an embedder reload.
+_EMBEDDER_RELOAD_BUDGET_S = 10.0                                          # cold embedder + Anthropic client warmup
+_GRACE_DEADLINE_S = LAUNCHD_THROTTLE_INTERVAL_S + _EMBEDDER_RELOAD_BUDGET_S   # 20.0 — confirm-down / wait out a relaunch
+_KICKSTART_DEADLINE_S = _GRACE_DEADLINE_S + 5.0                               # 25.0 — wait for our own kickstart to come back
 
 
 def _await_responsive(deadline_s: float, ping_timeout: float = 2.0) -> dict:
@@ -327,7 +331,7 @@ def ensure_daemon(db_path: str) -> bool:
             _kill_daemon()
             time.sleep(1)
         parent_dir = REPO_ROOT
-        log_path = os.path.join(os.path.dirname(db_path), "daemon.log")
+        log_path = get_daemon_log_path(db_path)
         with open(log_path, 'a') as log_fd_file, open(os.devnull, 'r') as devnull:
             daemon_python = _debugger_friendly_python()
             subprocess.Popen(
@@ -342,14 +346,7 @@ def ensure_daemon(db_path: str) -> bool:
                 stdout=log_fd_file,
                 stderr=log_fd_file,
                 start_new_session=True,
-                env={
-                    **os.environ,
-                    "VECLIB_MAXIMUM_THREADS": "1",
-                    "ORT_DISABLE_ALL_ACCELERATORS": "1",
-                    "ONNX_PROVIDERS": "CPUExecutionProvider",
-                    "PYTORCH_MPS_DISABLE": "1",
-                    "PYTORCH_ENABLE_MPS_FALLBACK": "0",
-                },
+                env={**os.environ, **DAEMON_CPU_ENV},
             )
         for i in range(20):  # 10 seconds max
             time.sleep(0.5)

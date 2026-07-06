@@ -625,7 +625,40 @@ class TestPerformRestartLaunchdSoleSpawner(unittest.TestCase):
         m_popen.assert_called_once()       # only correct spawner when no launchd
         _, kwargs = m_popen.call_args
         self.assertTrue(kwargs.get("start_new_session"))
+        # Step 1: the restart spawn must carry the full CPU-only env (the drift fix
+        # — the old restart Popen set no env and could differ from the boot path).
+        from servers.daemon_config import DAEMON_CPU_ENV
+        self.assertTrue(set(DAEMON_CPU_ENV).issubset(kwargs.get("env") or {}),
+                        "restart Popen must merge DAEMON_CPU_ENV")
         m_exit.assert_called_once_with(0)
+
+
+class TestDaemonConfigSingleSource(unittest.TestCase):
+    """Step 1: the launch facts (CPU env, log path, launchd timing) are
+    single-sourced in daemon_config so no start path drifts from another."""
+
+    def test_cpu_env_is_the_full_set(self):
+        from servers.daemon_config import DAEMON_CPU_ENV
+        self.assertEqual(
+            set(DAEMON_CPU_ENV),
+            {"ORT_DISABLE_ALL_ACCELERATORS", "ONNX_PROVIDERS", "PYTORCH_MPS_DISABLE",
+             "VECLIB_MAXIMUM_THREADS", "PYTORCH_ENABLE_MPS_FALLBACK"},
+            "DAEMON_CPU_ENV must carry every var the spawn paths used to hand-list")
+
+    def test_log_path_honors_brain_db_dir(self):
+        # The divergence fix: ensure_daemon used to ignore BRAIN_DB_DIR, the
+        # restart path honored it — now both go through get_daemon_log_path.
+        from servers.daemon_config import get_daemon_log_path
+        with patch.dict(os.environ, {"BRAIN_DB_DIR": "/tmp/brain-test-logdir"}):
+            self.assertEqual(get_daemon_log_path("/other/place/brain.db"),
+                             "/tmp/brain-test-logdir/daemon.log")
+
+    def test_recovery_deadlines_derive_from_throttle(self):
+        from servers import daemon_client as dc, daemon_config as cfg
+        # Deadlines must clear the plist throttle + reload, or a recovering
+        # daemon is mistaken for a corpse and re-kickstarted (the storm).
+        self.assertGreater(dc._GRACE_DEADLINE_S, cfg.LAUNCHD_THROTTLE_INTERVAL_S)
+        self.assertGreater(dc._KICKSTART_DEADLINE_S, dc._GRACE_DEADLINE_S)
 
 
 if __name__ == "__main__":
