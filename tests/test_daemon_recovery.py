@@ -1,10 +1,14 @@
 """Tests for hung-daemon detection + recovery (the consolidated path).
 
 Recovery lives in servers/daemon_client.py — one primitive, recover_daemon(),
-called by both the MCP health monitor and the recall hook. These tests lock:
+called by both the MCP health monitor and the recall hook. The launchd + spawn
+MECHANISMS (kickstart, manages, kill_daemon, spawn_detached_daemon) live in
+servers/daemon_launch.py — daemon_client and daemon_server both consume them as
+public names. These tests lock:
   - liveness (is_daemon_responsive) tells a live daemon from a hung corpse,
   - recover_daemon's guards: responsive no-op, maintenance, cooldown, breaker,
   - _relaunch_daemon prefers launchd kickstart, falls back to kill + spawn,
+  - the one hardened spawn primitive — no raw Popen outside daemon_launch,
   - hook_common delegates instead of carrying its own copy.
 
 Pure unit tests — no Brain, no embedder, no real daemon; launchctl + the
@@ -28,6 +32,7 @@ from unittest.mock import patch, MagicMock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import servers.daemon_client as dc
+import servers.daemon_launch as dl
 
 
 class TestIsDaemonResponsive(unittest.TestCase):
@@ -129,8 +134,8 @@ class TestRecoverDaemon(unittest.TestCase):
 
 class TestRelaunchDaemon(unittest.TestCase):
     def test_kickstart_success_skips_fallback(self):
-        with patch.object(dc.subprocess, "run", return_value=MagicMock(returncode=0)) as run, \
-             patch.object(dc, "_kill_daemon") as kill, \
+        with patch.object(dl.subprocess, "run", return_value=MagicMock(returncode=0)) as run, \
+             patch.object(dc, "kill_daemon") as kill, \
              patch.object(dc, "ensure_daemon") as ensure:
             dc._relaunch_daemon(None)
             run.assert_called_once()
@@ -142,10 +147,10 @@ class TestRelaunchDaemon(unittest.TestCase):
 
     def test_kickstart_failure_falls_back_to_kill_and_spawn(self):
         # kickstart fails AND we ARE the daemon's source → own the kill + respawn.
-        with patch.object(dc.subprocess, "run", return_value=MagicMock(returncode=1)), \
+        with patch.object(dl.subprocess, "run", return_value=MagicMock(returncode=1)), \
              patch.object(dc, "_is_daemon_source", return_value=True), \
              patch.object(dc, "_can_connect", return_value={}), \
-             patch.object(dc, "_kill_daemon") as kill, \
+             patch.object(dc, "kill_daemon") as kill, \
              patch.object(dc, "ensure_daemon", return_value=True) as ensure:
             dc._relaunch_daemon("/tmp/x/brain.db")
             kill.assert_called_once()
@@ -154,10 +159,10 @@ class TestRelaunchDaemon(unittest.TestCase):
     def test_kickstart_failure_from_non_source_defers_never_kills(self):
         # A worktree / 2nd clone must NEVER SIGKILL the shared daemon: kickstart
         # failed AND we are not the source → defer to launchd/source, don't kill.
-        with patch.object(dc.subprocess, "run", return_value=MagicMock(returncode=1)), \
+        with patch.object(dl.subprocess, "run", return_value=MagicMock(returncode=1)), \
              patch.object(dc, "_is_daemon_source", return_value=False), \
              patch.object(dc, "_can_connect", return_value={}), \
-             patch.object(dc, "_kill_daemon") as kill, \
+             patch.object(dc, "kill_daemon") as kill, \
              patch.object(dc, "ensure_daemon") as ensure:
             dc._relaunch_daemon("/tmp/x/brain.db")
             kill.assert_not_called()
@@ -175,18 +180,18 @@ class TestLaunchdHelpersDegradeWhenAbsent(unittest.TestCase):
     """
 
     def test_kickstart_returns_false_when_launchctl_missing(self):
-        with patch.object(dc.subprocess, "run",
+        with patch.object(dl.subprocess, "run",
                           side_effect=FileNotFoundError("launchctl")):
-            self.assertFalse(dc._launchd_kickstart())
+            self.assertFalse(dl.kickstart())
 
     def test_manages_returns_false_when_launchctl_missing(self):
-        with patch.object(dc.subprocess, "run",
+        with patch.object(dl.subprocess, "run",
                           side_effect=FileNotFoundError("launchctl")):
-            self.assertFalse(dc._launchd_manages_daemon())
+            self.assertFalse(dl.manages())
 
 
 class TestManagesDaemonTransientVsAbsent(unittest.TestCase):
-    """_launchd_manages_daemon()==False AUTHORIZES the direct-spawn fallback that
+    """manages()==False AUTHORIZES the direct-spawn fallback that
     can orphan a competing daemon (incident 2026-07-03: a transient `launchctl
     print` failure was read as 'launchd absent', spawned an orphan that squatted
     the lock, and launchd's KeepAlive stormed 135k exits). False must mean
@@ -198,35 +203,35 @@ class TestManagesDaemonTransientVsAbsent(unittest.TestCase):
         return MagicMock(returncode=returncode, stdout="", stderr=stderr)
 
     def test_true_when_running(self):
-        with patch.object(dc.subprocess, "run", return_value=self._ok(0)):
-            self.assertTrue(dc._launchd_manages_daemon())
+        with patch.object(dl.subprocess, "run", return_value=self._ok(0)):
+            self.assertTrue(dl.manages())
 
     def test_false_on_clean_not_found(self):
         # rc 113 + "Could not find service …" is a definitive absence.
         stderr = 'Could not find service "com.brain.daemon" in domain for user gui: 503'
-        with patch.object(dc.subprocess, "run", return_value=self._ok(113, stderr)):
-            self.assertFalse(dc._launchd_manages_daemon())
+        with patch.object(dl.subprocess, "run", return_value=self._ok(113, stderr)):
+            self.assertFalse(dl.manages())
 
     def test_true_on_timeout(self):
         # launchctl present but hung → indeterminate → defer, do NOT spawn.
-        with patch.object(dc.subprocess, "run",
-                          side_effect=dc.subprocess.TimeoutExpired(
+        with patch.object(dl.subprocess, "run",
+                          side_effect=dl.subprocess.TimeoutExpired(
                               cmd=["launchctl"], timeout=10)):
-            self.assertTrue(dc._launchd_manages_daemon())
+            self.assertTrue(dl.manages())
 
     def test_true_on_unexpected_nonzero(self):
         # non-zero WITHOUT the not-found signature (e.g. gui/<uid> unaddressable)
         # is indeterminate, not absence.
-        with patch.object(dc.subprocess, "run",
+        with patch.object(dl.subprocess, "run",
                           return_value=self._ok(1, "Bootstrap operation not permitted")):
-            self.assertTrue(dc._launchd_manages_daemon())
+            self.assertTrue(dl.manages())
 
     def test_retries_transient_then_reads_answer(self):
         # A one-off timeout must not decide the outcome — the retry sees rc 0.
-        with patch.object(dc.subprocess, "run",
-                          side_effect=[dc.subprocess.TimeoutExpired(cmd=["launchctl"], timeout=10),
+        with patch.object(dl.subprocess, "run",
+                          side_effect=[dl.subprocess.TimeoutExpired(cmd=["launchctl"], timeout=10),
                                        self._ok(0)]) as run:
-            self.assertTrue(dc._launchd_manages_daemon())
+            self.assertTrue(dl.manages())
             self.assertEqual(run.call_count, 2)
 
 
@@ -286,26 +291,26 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
              patch.object(dc, "_is_daemon_source", return_value=True), \
              patch.object(dc, "_can_connect", return_value={"ok": True}), \
              patch.object(dc, "_code_changed", return_value=False), \
-             patch.object(dc, "_launchd_kickstart") as ks, \
-             patch.object(dc.subprocess, "Popen") as popen:
+             patch.object(dc, "kickstart") as ks, \
+             patch.object(dc, "spawn_detached_daemon") as spawn:
             self.assertTrue(dc.ensure_daemon(self._db))
             ks.assert_not_called()
-            popen.assert_not_called()
+            spawn.assert_not_called()
 
     def test_stale_code_kickstarts_once_never_popen(self):
-        # Responsive but stale → exactly one launchd kickstart, never a Popen.
+        # Responsive but stale → exactly one launchd kickstart, never a spawn.
         # _code_changed: fast-path(stale) → under-lock recheck(stale) → ready.
         with patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "get_lock_path", return_value=self._lock), \
              patch.object(dc, "_is_daemon_source", return_value=True), \
              patch.object(dc, "_can_connect", return_value={"ok": True}), \
              patch.object(dc, "_code_changed", side_effect=[True, True, False]), \
-             patch.object(dc, "_launchd_kickstart", return_value=True) as ks, \
-             patch.object(dc.subprocess, "Popen") as popen, \
+             patch.object(dc, "kickstart", return_value=True) as ks, \
+             patch.object(dc, "spawn_detached_daemon") as spawn, \
              patch.object(dc.time, "sleep"):
             self.assertTrue(dc.ensure_daemon(self._db))
             ks.assert_called_once()
-            popen.assert_not_called()
+            spawn.assert_not_called()
 
     def test_concurrent_winner_already_restarted_skips_kickstart(self):
         # The anti-storm guarantee: fast-path sees stale and falls through to
@@ -316,16 +321,16 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
              patch.object(dc, "_is_daemon_source", return_value=True), \
              patch.object(dc, "_can_connect", return_value={"ok": True}), \
              patch.object(dc, "_code_changed", side_effect=[True, False]), \
-             patch.object(dc, "_launchd_kickstart") as ks, \
-             patch.object(dc.subprocess, "Popen") as popen:
+             patch.object(dc, "kickstart") as ks, \
+             patch.object(dc, "spawn_detached_daemon") as spawn:
             self.assertTrue(dc.ensure_daemon(self._db))
             ks.assert_not_called()
-            popen.assert_not_called()
+            spawn.assert_not_called()
 
     def test_no_launchd_falls_back_to_direct_spawn(self):
         # Daemon down, nothing serving, AND launchd genuinely not managing it
-        # (kickstart fails AND _launchd_manages_daemon False) → the only case a
-        # direct Popen is legitimate (no KeepAlive to race). _can_connect calls:
+        # (kickstart fails AND manages() False) → the only case a direct spawn
+        # is legitimate (no KeepAlive to race). _can_connect calls:
         # fast-path, under-lock recheck, post-kickstart re-ping, post-spawn ready.
         with patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "get_lock_path", return_value=self._lock), \
@@ -334,15 +339,14 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
                           side_effect=[{"ok": False}, {"ok": False}, {"ok": False}, {"ok": True}]), \
              patch.object(dc, "_await_responsive", return_value={"ok": False}), \
              patch.object(dc, "_code_changed", return_value=False), \
-             patch.object(dc, "_launchd_kickstart", return_value=False) as ks, \
-             patch.object(dc, "_launchd_manages_daemon", return_value=False), \
-             patch.object(dc, "_port_is_occupied", return_value=False), \
-             patch.object(dc, "_debugger_friendly_python", return_value="/usr/bin/python3"), \
-             patch.object(dc.subprocess, "Popen") as popen, \
+             patch.object(dc, "kickstart", return_value=False) as ks, \
+             patch.object(dc, "manages", return_value=False), \
+             patch.object(dc, "port_is_occupied", return_value=False), \
+             patch.object(dc, "spawn_detached_daemon") as spawn, \
              patch.object(dc.time, "sleep"):
             self.assertTrue(dc.ensure_daemon(self._db))
             ks.assert_called_once()
-            popen.assert_called_once()
+            spawn.assert_called_once_with(self._db)
 
     def test_kickstart_killed_incumbent_then_failed_does_not_false_defer(self):
         # `kickstart -k` SIGKILLs the incumbent before respawning. If it then
@@ -357,32 +361,31 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
              patch.object(dc, "_can_connect",
                           side_effect=[{"ok": True}, {"ok": True}, {"ok": False}, {"ok": True}]), \
              patch.object(dc, "_code_changed", return_value=True), \
-             patch.object(dc, "_launchd_kickstart", return_value=False), \
-             patch.object(dc, "_launchd_manages_daemon", return_value=False), \
-             patch.object(dc, "_port_is_occupied", return_value=False), \
-             patch.object(dc, "_debugger_friendly_python", return_value="/usr/bin/python3"), \
-             patch.object(dc.subprocess, "Popen") as popen, \
+             patch.object(dc, "kickstart", return_value=False), \
+             patch.object(dc, "manages", return_value=False), \
+             patch.object(dc, "port_is_occupied", return_value=False), \
+             patch.object(dc, "spawn_detached_daemon") as spawn, \
              patch.object(dc.time, "sleep"):
             self.assertTrue(dc.ensure_daemon(self._db))
-            popen.assert_called_once()   # spawned — did NOT false-defer on stale resp
+            spawn.assert_called_once()   # spawned — did NOT false-defer on stale resp
 
     def test_responsive_stale_kickstart_unreachable_defers_not_spawn(self):
         # Regression guard for the 2026-06-05 orphan storm. A worktree session
         # runs stale code, so the running daemon looks stale; kickstart can't
         # reach launchd from that context. We MUST defer to the responsive
-        # incumbent — never kill it and Popen a competitor (the rival orphaned,
+        # incumbent — never kill it and spawn a competitor (the rival orphaned,
         # squatted the port, and crash-looped the real launchd daemon).
         with patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "get_lock_path", return_value=self._lock), \
              patch.object(dc, "_is_daemon_source", return_value=True), \
              patch.object(dc, "_can_connect", return_value={"ok": True}), \
              patch.object(dc, "_code_changed", return_value=True), \
-             patch.object(dc, "_launchd_kickstart", return_value=False), \
-             patch.object(dc, "_kill_daemon") as kill, \
-             patch.object(dc.subprocess, "Popen") as popen:
+             patch.object(dc, "kickstart", return_value=False), \
+             patch.object(dc, "kill_daemon") as kill, \
+             patch.object(dc, "spawn_detached_daemon") as spawn:
             self.assertTrue(dc.ensure_daemon(self._db))
             kill.assert_not_called()
-            popen.assert_not_called()
+            spawn.assert_not_called()
 
     def test_down_but_launchd_managed_kickstart_failed_defers_to_keepalive(self):
         # Daemon down, kickstart failed (transient), but launchd DOES manage the
@@ -393,19 +396,19 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
              patch.object(dc, "_can_connect", return_value={"ok": False}), \
              patch.object(dc, "_await_responsive", return_value={"ok": False}), \
              patch.object(dc, "_code_changed", return_value=False), \
-             patch.object(dc, "_launchd_kickstart", return_value=False), \
-             patch.object(dc, "_launchd_manages_daemon", return_value=True), \
-             patch.object(dc.subprocess, "Popen") as popen:
+             patch.object(dc, "kickstart", return_value=False), \
+             patch.object(dc, "manages", return_value=True), \
+             patch.object(dc, "spawn_detached_daemon") as spawn:
             self.assertFalse(dc.ensure_daemon(self._db))
-            popen.assert_not_called()
+            spawn.assert_not_called()
 
     def test_maintenance_mode_skips_everything(self):
         with patch.object(dc, "is_maintenance_mode", return_value=True), \
-             patch.object(dc, "_launchd_kickstart") as ks, \
-             patch.object(dc.subprocess, "Popen") as popen:
+             patch.object(dc, "kickstart") as ks, \
+             patch.object(dc, "spawn_detached_daemon") as spawn:
             self.assertFalse(dc.ensure_daemon(self._db))
             ks.assert_not_called()
-            popen.assert_not_called()
+            spawn.assert_not_called()
 
     def test_worktree_client_up_is_noop(self):
         # A non-source checkout (worktree) is a PURE CLIENT: daemon up → return
@@ -415,11 +418,11 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
              patch.object(dc, "get_lock_path", return_value=self._lock), \
              patch.object(dc, "_is_daemon_source", return_value=False), \
              patch.object(dc, "_can_connect", return_value={"ok": True}), \
-             patch.object(dc, "_launchd_kickstart") as ks, \
-             patch.object(dc.subprocess, "Popen") as popen:
+             patch.object(dc, "kickstart") as ks, \
+             patch.object(dc, "spawn_detached_daemon") as spawn:
             self.assertTrue(dc.ensure_daemon(self._db))
             ks.assert_not_called()
-            popen.assert_not_called()
+            spawn.assert_not_called()
 
     def test_worktree_client_down_waits_never_kickstarts(self):
         # A worktree never (re)starts the shared daemon — launchd KeepAlive owns
@@ -430,11 +433,11 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
              patch.object(dc, "_is_daemon_source", return_value=False), \
              patch.object(dc, "_can_connect", return_value={"ok": False}), \
              patch.object(dc, "_await_responsive", return_value={"ok": True}), \
-             patch.object(dc, "_launchd_kickstart") as ks, \
-             patch.object(dc.subprocess, "Popen") as popen:
+             patch.object(dc, "kickstart") as ks, \
+             patch.object(dc, "spawn_detached_daemon") as spawn:
             self.assertTrue(dc.ensure_daemon(self._db))
             ks.assert_not_called()
-            popen.assert_not_called()
+            spawn.assert_not_called()
 
     def test_owner_slow_daemon_recovers_within_grace_not_kickstarted(self):
         # THE core fix. The source checkout sees a non-responsive 2s ping, but the
@@ -446,11 +449,11 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
              patch.object(dc, "_can_connect", return_value={"ok": False}), \
              patch.object(dc, "_await_responsive", return_value={"ok": True}), \
              patch.object(dc, "_code_changed", return_value=False), \
-             patch.object(dc, "_launchd_kickstart") as ks, \
-             patch.object(dc.subprocess, "Popen") as popen:
+             patch.object(dc, "kickstart") as ks, \
+             patch.object(dc, "spawn_detached_daemon") as spawn:
             self.assertTrue(dc.ensure_daemon(self._db))
             ks.assert_not_called()   # slow ≠ dead → not restarted
-            popen.assert_not_called()
+            spawn.assert_not_called()
 
 
 class TestDuplicateDaemonDefers(unittest.TestCase):
@@ -588,49 +591,84 @@ class TestPerformRestartLaunchdSoleSpawner(unittest.TestCase):
     2026-07-03/04). Managed → clean _shutdown() (drain→save→close DB→release lock
     LAST) then os._exit; KeepAlive respawns. Direct spawn ONLY on no-launchd."""
 
-    def _make_daemon(self):
+    def _make_daemon(self, order):
         from servers import daemon_server as ds
         d = ds.BrainDaemon.__new__(ds.BrainDaemon)   # skip __init__ — no real brain/socket
         d.db_path = "/tmp/nonexistent-brain-test.db"
         d._log = lambda *a, **k: None
-        d._shutdown = MagicMock()   # the ordered teardown: closes DB, releases lock LAST
+        # the ordered teardown: closes DB, releases lock LAST
+        d._shutdown = MagicMock(side_effect=lambda: order.append("teardown"))
         return d
 
-    def _run(self, manages, env=None):
-        d = self._make_daemon()
+    def _run(self, managed):
+        order = []
+        d = self._make_daemon(order)
         # os._exit truly halts in production; SystemExit models that so control
         # can't fall through, and the if/else already makes the branches exclusive.
-        with patch.dict(os.environ, env or {}), \
-             patch("time.sleep"), \
+        with patch("time.sleep"), \
              patch("os._exit", side_effect=SystemExit) as m_exit, \
              patch("subprocess.Popen") as m_popen, \
              patch("shutil.rmtree"), \
-             patch("servers.daemon_client._launchd_manages_daemon", return_value=manages):
+             patch("servers.daemon_server.spawn_detached_daemon",
+                   side_effect=lambda _db: order.append("spawn")) as m_spawn, \
+             patch("servers.daemon_server.manages", return_value=managed):
             with self.assertRaises(SystemExit):
                 d._perform_restart()
-        return d, m_exit, m_popen
+        return d, m_exit, m_spawn, m_popen, order
 
     def test_managed_clean_exit_never_popens(self):
-        d, m_exit, m_popen = self._run(manages=True)
+        d, m_exit, m_spawn, m_popen, _ = self._run(managed=True)
         d._shutdown.assert_called_once()   # ordered teardown before exit (closes DB, releases lock LAST)
-        m_popen.assert_not_called()        # THE invariant — no detached rival; KeepAlive respawns
+        m_spawn.assert_not_called()        # THE invariant — no detached rival; KeepAlive respawns
+        m_popen.assert_not_called()        # …and no raw Popen sneaking around the primitive
         m_exit.assert_called_once_with(0)
 
     def test_no_launchd_direct_spawns_after_teardown(self):
-        import tempfile
-        # BRAIN_DB_DIR → tmp so the real log open can't touch the production daemon.log.
-        tmp = tempfile.mkdtemp()
-        d, m_exit, m_popen = self._run(manages=False, env={"BRAIN_DB_DIR": tmp})
-        d._shutdown.assert_called_once()   # teardown FIRST — DB closed before the successor opens it
-        m_popen.assert_called_once()       # only correct spawner when no launchd
-        _, kwargs = m_popen.call_args
-        self.assertTrue(kwargs.get("start_new_session"))
-        # Step 1: the restart spawn must carry the full CPU-only env (the drift fix
-        # — the old restart Popen set no env and could differ from the boot path).
-        from servers.daemon_config import DAEMON_CPU_ENV
-        self.assertTrue(set(DAEMON_CPU_ENV).issubset(kwargs.get("env") or {}),
-                        "restart Popen must merge DAEMON_CPU_ENV")
+        d, m_exit, m_spawn, m_popen, order = self._run(managed=False)
+        d._shutdown.assert_called_once()
+        m_spawn.assert_called_once_with(d.db_path)   # the ONE hardened spawn (daemon_launch)
+        m_popen.assert_not_called()                  # no second, un-hardened Popen path
+        # teardown FIRST — DB closed + lock released before the successor can
+        # open brain.db (two writers corrupt the indexes).
+        self.assertEqual(order, ["teardown", "spawn"])
         m_exit.assert_called_once_with(0)
+
+
+class TestSpawnDetachedDaemon(unittest.TestCase):
+    """spawn_detached_daemon is the ONE spawn, and it is the HARDENED one:
+    debugger-friendly interpreter, devnull stdin, log redirect, own session,
+    full CPU-only env. Step 2 unified the two drifted spawn sites (ensure_daemon
+    fallback vs _perform_restart no-launchd — the latter ran raw sys.executable
+    with inherited stdin) into this primitive."""
+
+    def test_spawn_is_hardened(self):
+        import tempfile
+        with tempfile.TemporaryDirectory(prefix="brain-spawn-test-") as tmp, \
+             patch.object(dl.subprocess, "Popen") as popen, \
+             patch.object(dl, "debugger_friendly_python", return_value="/usr/bin/python3"), \
+             patch.dict(os.environ, {"BRAIN_DB_DIR": tmp}):
+            dl.spawn_detached_daemon(os.path.join(tmp, "brain.db"))
+        popen.assert_called_once()
+        argv = popen.call_args[0][0]
+        kwargs = popen.call_args[1]
+        self.assertEqual(argv[0], "/usr/bin/python3")  # debugger-friendly, not raw sys.executable
+        self.assertEqual(argv[1], "-c")
+        self.assertIn("BrainDaemon", argv[2])
+        self.assertTrue(kwargs["start_new_session"])
+        self.assertIsNotNone(kwargs["stdin"])           # devnull, never inherited
+        from servers.daemon_config import DAEMON_CPU_ENV
+        self.assertTrue(set(DAEMON_CPU_ENV).issubset(kwargs["env"]),
+                        "spawn must merge the full CPU-only env")
+
+    def test_no_raw_popen_outside_daemon_launch(self):
+        # Both spawn callers must route through spawn_detached_daemon — a direct
+        # Popen in either module is the un-hardened-drift bug class coming back.
+        import inspect
+        import servers.daemon_server
+        for mod in (dc, servers.daemon_server):
+            self.assertNotIn(
+                "Popen(", inspect.getsource(mod),
+                "%s must spawn via daemon_launch.spawn_detached_daemon" % mod.__name__)
 
 
 class TestDaemonConfigSingleSource(unittest.TestCase):

@@ -28,10 +28,10 @@ from .daemon_config import (
     IDLE_TIMEOUT_SECONDS, AUTOSAVE_INTERVAL_SECONDS,
     SOCKET_BACKLOG, MAX_MESSAGE_SIZE, THREAD_POOL_SIZE,
     DAEMON_HOST, DAEMON_PORT,
-    _CODE_FINGERPRINT, DAEMON_CPU_ENV,
+    _CODE_FINGERPRINT,
     get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
-    get_daemon_log_path,
 )
+from .daemon_launch import manages, spawn_detached_daemon
 from .daemon_dispatch import COMMAND_TABLE, check_unknown_keys
 from .dispatch_common import caller_session
 
@@ -961,40 +961,20 @@ class BrainDaemon:
             if os.path.isdir(cache_dir):
                 shutil.rmtree(cache_dir, ignore_errors=True)
 
-        from .daemon_client import _launchd_manages_daemon
-        if _launchd_manages_daemon():
+        if manages():
             # launchd owns the lifecycle: teardown (closes DB, releases lock
             # LAST) then exit; KeepAlive brings up a fresh managed instance.
             self._log("Restart: launchd-managed — clean teardown + exit, KeepAlive respawns.")
             self._shutdown()
             os._exit(0)
         else:
-            # No launchd: nothing respawns us, so spawn the successor ourselves.
-            # Teardown FIRST (closes DB, releases lock) so the successor can't
-            # double-open brain.db, THEN spawn, THEN exit.
+            # No launchd: nothing respawns us, so spawn the successor ourselves
+            # via the ONE hardened spawn (daemon_launch). Teardown FIRST (closes
+            # DB, releases lock) so the successor can't double-open brain.db,
+            # THEN spawn, THEN exit.
             self._log("Restart: no launchd — spawning successor directly.")
             self._shutdown()
-            import subprocess
-            db_dir = os.environ.get('BRAIN_DB_DIR', os.path.dirname(self.db_path))
-            startup = (
-                "import sys, os; "
-                "sys.path.insert(0, %r); "
-                "os.environ['BRAIN_DB_DIR'] = %r; "
-                "from servers.daemon_server import BrainDaemon; "
-                "d = BrainDaemon(%r); d.start()"
-                % (project_dir, db_dir, self.db_path)
-            )
-            self._log("Spawning new daemon: %s -c ..." % sys.executable)
-            log_path = get_daemon_log_path(self.db_path)
-            try:
-                log_fp = open(log_path, 'a', buffering=1)
-            except Exception:
-                log_fp = open(os.devnull, 'w')
-            subprocess.Popen([sys.executable, '-c', startup],
-                             start_new_session=True,
-                             stdout=log_fp,
-                             stderr=log_fp,
-                             env={**os.environ, **DAEMON_CPU_ENV})
+            spawn_detached_daemon(self.db_path)
             self._log("New daemon spawned. Shutting down old.")
             os._exit(0)
 

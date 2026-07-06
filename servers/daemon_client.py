@@ -13,59 +13,19 @@ No file markers, no polling races.
 import fcntl
 import json
 import os
-import signal
 import socket
-import subprocess
 import sys
 import time
 from typing import Any, Dict, Optional
 
-
-def _debugger_friendly_python() -> str:
-    """Pick a Python interpreter the daemon can be spawned with.
-
-    macOS SIP blocks debuggers (py-spy, lldb) from attaching to the
-    system Python at /Applications/Xcode.app/.../Python. A user-managed
-    venv Python is not protected and can be introspected live.
-
-    Priority:
-      1. $BRAIN_PYTHON env var (explicit override)
-      2. <repo>/venv/bin/python (dev checkout)
-      3. <plugin>/venv/bin/python (installed plugin)
-      4. Fall back to sys.executable with a stderr warning
-
-    Returning the first hit keeps future `sudo py-spy dump` / `lldb -p`
-    calls actually usable when the daemon goes hot.
-    """
-    override = os.environ.get('BRAIN_PYTHON', '').strip()
-    if override and os.path.exists(override):
-        return override
-
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.dirname(here)
-    candidates = [
-        os.path.join(repo_root, 'venv', 'bin', 'python'),
-        os.path.expanduser(
-            '~/.claude/plugins/marketplaces/local-desktop-app-uploads/'
-            'brain/venv/bin/python'),
-    ]
-    for p in candidates:
-        if os.path.exists(p):
-            return p
-
-    # Fallback: warn once. The daemon still runs; debugging is just harder.
-    if '/Xcode.app/' in sys.executable or sys.executable.startswith('/Applications/'):
-        sys.stderr.write(
-            '[brain-daemon] WARN: spawning with SIP-protected Python (%s). '
-            'Set BRAIN_PYTHON to a user-managed python (e.g. repo venv) '
-            'so py-spy/lldb can attach when the daemon spins.\n' % sys.executable)
-    return sys.executable
-
 from .daemon_config import (
-    _code_fingerprint, _CODE_FINGERPRINT, _IS_WORKTREE, REPO_ROOT, LAUNCHD_LABEL,
+    _code_fingerprint, _CODE_FINGERPRINT, _IS_WORKTREE, REPO_ROOT,
     get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
     get_recovery_state_path, is_maintenance_mode,
-    DAEMON_CPU_ENV, get_daemon_log_path, LAUNCHD_THROTTLE_INTERVAL_S,
+    LAUNCHD_THROTTLE_INTERVAL_S,
+)
+from .daemon_launch import (
+    kickstart, kill_daemon, manages, port_is_occupied, spawn_detached_daemon,
 )
 
 
@@ -218,7 +178,7 @@ def ensure_daemon(db_path: str) -> bool:
 
     launchd owns the daemon lifecycle (com.brain.daemon: KeepAlive, RunAtLoad).
     This function only PINGS and, when a (re)start is needed, routes it through
-    launchd via `launchctl kickstart -k` (_launchd_kickstart). It never kills +
+    launchd via `launchctl kickstart -k` (daemon_launch.kickstart). It never kills +
     Popens its own process alongside launchd.
 
     Doing both was the Errno-48 storm of 2026-06-04: N sessions booted at once,
@@ -279,7 +239,7 @@ def ensure_daemon(db_path: str) -> bool:
         # Route the (re)start through launchd. `kickstart -k` kills any running
         # instance (covers healthy-but-stale AND hung-corpse) and respawns it in
         # one launchd-serialized call — no competing-spawn race with KeepAlive.
-        if _launchd_kickstart():
+        if kickstart():
             # Wait past ThrottleInterval (10s) + embedder reload — a tighter
             # window gives up while the daemon is still coming back and would
             # re-kickstart it, resetting the throttle (the self-sustaining storm).
@@ -317,7 +277,7 @@ def ensure_daemon(db_path: str) -> bool:
         #     not managing the daemon (fresh install). If launchd DOES manage it
         #     but kickstart failed transiently, let KeepAlive bring it up rather
         #     than racing a manual spawn.
-        if _launchd_manages_daemon():
+        if manages():
             sys.stderr.write(
                 "[brain-daemon] launchd manages the daemon but kickstart failed "
                 "and nothing is serving — leaving it to KeepAlive.\n")
@@ -326,28 +286,11 @@ def ensure_daemon(db_path: str) -> bool:
         # No launchd managing the daemon (fresh install / not bootstrapped).
         # No KeepAlive to race here, so spawn directly — still under the lock.
         sys.stderr.write("[brain-daemon] launchd not managing daemon — spawning directly\n")
-        if _port_is_occupied():
+        if port_is_occupied():
             sys.stderr.write("[brain-daemon] Port occupied but unresponsive — killing zombie\n")
-            _kill_daemon()
+            kill_daemon()
             time.sleep(1)
-        parent_dir = REPO_ROOT
-        log_path = get_daemon_log_path(db_path)
-        with open(log_path, 'a') as log_fd_file, open(os.devnull, 'r') as devnull:
-            daemon_python = _debugger_friendly_python()
-            subprocess.Popen(
-                [daemon_python, '-c',
-                 'import sys, os; sys.path.insert(0, %r); '
-                 'os.environ["BRAIN_DB_DIR"] = %r; '
-                 'from servers.daemon_server import BrainDaemon; '
-                 'd = BrainDaemon(%r); d.start()' % (parent_dir,
-                     os.environ.get('BRAIN_DB_DIR', os.path.dirname(db_path)),
-                     db_path)],
-                stdin=devnull,
-                stdout=log_fd_file,
-                stderr=log_fd_file,
-                start_new_session=True,
-                env={**os.environ, **DAEMON_CPU_ENV},
-            )
+        spawn_detached_daemon(db_path)
         for i in range(20):  # 10 seconds max
             time.sleep(0.5)
             if _can_connect().get("ok"):
@@ -368,63 +311,17 @@ def ensure_daemon(db_path: str) -> bool:
                 pass
 
 
-def _port_is_occupied() -> bool:
-    """Check if something is holding our daemon port."""
-    addr = get_daemon_addr()
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        s.bind(addr)
-        s.close()
-        return False
-    except OSError:
-        s.close()
-        return True
-
-
-def _kill_daemon():
-    """Kill a running daemon. Escalates SIGTERM → SIGKILL if needed."""
-    pid_path = get_pid_path()
-    try:
-        with open(pid_path) as f:
-            pid = int(f.read().strip())
-        sys.stderr.write("[brain-daemon] Killing daemon PID={}\n".format(pid))
-
-        os.kill(pid, signal.SIGTERM)
-
-        for _ in range(15):
-            time.sleep(0.2)
-            try:
-                os.kill(pid, 0)
-            except OSError:
-                break
-        else:
-            sys.stderr.write("[brain-daemon] SIGTERM failed, SIGKILL PID={}\n".format(pid))
-            try:
-                os.kill(pid, signal.SIGKILL)
-                time.sleep(0.5)
-            except OSError:
-                pass
-    except Exception as e:
-        sys.stderr.write("[brain-daemon] Kill failed: {}\n".format(e))
-    for path in [pid_path, get_lock_path()]:
-        try:
-            if os.path.exists(path):
-                os.unlink(path)
-        except Exception:
-            pass
-
-
 def stop_daemon():
     """Gracefully stop the daemon."""
     resp = send_command("shutdown", timeout=5.0)
     if not resp.get("ok"):
-        _kill_daemon()
+        kill_daemon()
         return
     for _ in range(20):
         if not is_daemon_running():
             return
         time.sleep(0.1)
-    _kill_daemon()
+    kill_daemon()
 
 
 def restart_daemon(db_path: str = None) -> bool:
@@ -467,77 +364,11 @@ def _write_recovery_state(last_attempt: float, attempts: int):
         pass
 
 
-def _launchd_kickstart() -> bool:
-    """Ask launchd to (re)start the daemon. `kickstart -k` kills any running
-    instance and respawns it in one launchd-serialized call. Returns True iff
-    launchd accepted it (rc 0); False means launchd isn't managing the daemon
-    (fresh install / not bootstrapped) and the caller must spawn it itself.
-
-    The SOLE restart primitive — every (re)start (boot-path code-change in
-    ensure_daemon, hung-corpse recovery in _relaunch_daemon) routes through
-    launchd so concurrent callers + KeepAlive can't race competing spawns.
-    That race was the Errno-48 storm of 2026-06-04."""
-    label = "gui/{}/{}".format(os.getuid(), LAUNCHD_LABEL)
-    try:
-        result = subprocess.run(["launchctl", "kickstart", "-k", label],
-                                timeout=10, capture_output=True)
-        return result.returncode == 0
-    except Exception:
-        return False
-
-
-def _launchd_manages_daemon() -> bool:
-    """True iff launchd has the daemon's LaunchAgent loaded in this user's GUI
-    domain.
-
-    A False return AUTHORIZES ensure_daemon()'s direct-spawn fallback — the exact
-    path that creates a competing orphan squatting the port/lock (Errno-48 storm
-    2026-06-05; orphan-daemon incident 2026-07-03). So False must mean launchd
-    DEFINITIVELY does not manage the daemon, never "couldn't tell right now".
-
-    Two DIFFERENT failures must not be conflated:
-      • `launchctl` binary MISSING (FileNotFoundError) — the platform has no
-        launchd at all (Linux). Deterministic absence → return False so
-        ensure_daemon()'s direct spawn can bootstrap. This is the ONLY path that
-        starts the daemon off-macOS, so it must stay False (contract pinned by
-        test_manages_returns_false_when_launchctl_missing).
-      • `launchctl` PRESENT but the call failed — a timeout, a boot context that
-        can't address `gui/<uid>`, an unexpected non-zero. INDETERMINATE, not
-        evidence of absence: retry, and if still indeterminate assume managed so
-        the caller defers to KeepAlive instead of spawning a rival. (The original
-        `return result.returncode == 0` / `except Exception: return False`
-        conflated this transient failure with absence — the very trap this
-        docstring's first version warned about for kickstart, but the code fell
-        into it here, orphaning a daemon on 2026-07-03.)
-
-    `launchctl print gui/<uid>/<label>` returns 0 when managed and a clean
-    non-zero (113, "Could not find service …") when genuinely absent.
-    """
-    label = "gui/{}/{}".format(os.getuid(), LAUNCHD_LABEL)
-    for _attempt in range(3):
-        try:
-            result = subprocess.run(["launchctl", "print", label],
-                                    timeout=10, capture_output=True, text=True)
-        except FileNotFoundError:
-            return False  # no launchctl binary = no launchd platform → spawn directly
-        except Exception:
-            continue  # transient (timeout / other) — retry, never conclude absence
-        if result.returncode == 0:
-            return True  # definitively managed
-        combined = ((result.stdout or "") + (result.stderr or "")).lower()
-        if "could not find service" in combined:
-            return False  # definitively NOT managed (clean not-found)
-        # Unexpected non-zero — indeterminate, retry.
-    # No definitive answer after retries → assume managed (defer to KeepAlive
-    # rather than spawn a competing orphan).
-    return True
-
-
 def _relaunch_daemon(db_path: Optional[str]):
     """Bring a fresh daemon up. launchd is the canonical owner (kickstart -k);
     if launchd isn't managing it (kickstart fails), fall back to kill + Popen
     spawn via ensure_daemon."""
-    if _launchd_kickstart():
+    if kickstart():
         return
     # kickstart failed (launchd unreachable / not managing). A manual kill+respawn
     # only converges from the daemon's SOURCE checkout: a linked worktree / 2nd
@@ -549,7 +380,7 @@ def _relaunch_daemon(db_path: Optional[str]):
                          "(NOT killing the shared daemon).\n")
         return
     # No launchd (or kickstart failed) and we ARE the source — own the kill + respawn.
-    _kill_daemon()
+    kill_daemon()
     if not db_path:
         db_dir = os.environ.get("BRAIN_DB_DIR",
                                 os.path.join(os.path.expanduser("~"), "AgentsContext", "brain"))

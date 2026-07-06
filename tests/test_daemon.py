@@ -32,7 +32,7 @@ from servers.daemon_config import (
 from servers.daemon_dispatch import COMMAND_TABLE, CmdEntry
 from servers.daemon_client import (
     send_command, is_daemon_running, ensure_daemon, stop_daemon,
-    _kill_daemon, create_agent_db, list_agent_changes, cleanup_agent_db,
+    create_agent_db, list_agent_changes, cleanup_agent_db,
 )
 from servers.brain_mcp import TOOLS as MCP_TOOLS
 
@@ -342,8 +342,10 @@ class TestDaemonModuleStructure(unittest.TestCase):
         """Split daemon modules must export all expected symbols in their respective homes."""
         from servers.daemon_server import BrainDaemon
         from servers.daemon_client import (send_command, is_daemon_running,
-                                           ensure_daemon, stop_daemon, _kill_daemon,
+                                           ensure_daemon, stop_daemon,
                                            create_agent_db, list_agent_changes, cleanup_agent_db)
+        from servers.daemon_launch import (kickstart, manages, kill_daemon,
+                                           port_is_occupied, spawn_detached_daemon)
         from servers.daemon_config import (get_socket_path, get_pid_path,
                                            get_lock_path, get_status_path)
         from servers.daemon_dispatch import COMMAND_TABLE
@@ -354,7 +356,11 @@ class TestDaemonModuleStructure(unittest.TestCase):
             ('is_daemon_running', is_daemon_running),
             ('ensure_daemon', ensure_daemon),
             ('stop_daemon', stop_daemon),
-            ('_kill_daemon', _kill_daemon),
+            ('kickstart', kickstart),
+            ('manages', manages),
+            ('kill_daemon', kill_daemon),
+            ('port_is_occupied', port_is_occupied),
+            ('spawn_detached_daemon', spawn_detached_daemon),
             ('get_socket_path', get_socket_path),
             ('get_pid_path', get_pid_path),
             ('get_lock_path', get_lock_path),
@@ -378,7 +384,8 @@ class TestDaemonModuleStructure(unittest.TestCase):
         """Importing daemon modules in any order should not cause circular imports."""
         # These should all succeed without ImportError
         import importlib
-        for mod_name in ['daemon_config', 'daemon_dispatch', 'daemon_client', 'daemon_server']:
+        for mod_name in ['daemon_config', 'daemon_launch', 'daemon_dispatch',
+                         'daemon_client', 'daemon_server']:
             mod = importlib.import_module(f'servers.{mod_name}')
             self.assertIsNotNone(mod)
 

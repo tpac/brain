@@ -47,11 +47,6 @@ THREAD_POOL_SIZE = max(4, (os.cpu_count() or 4) // 2)
 DAEMON_HOST = ""  # Empty string = all interfaces (IPv4+IPv6), fixes macOS localhost→::1
 DAEMON_PORT = 47200 + (os.getuid() % 100)  # Per-user port to avoid collisions
 
-# launchd service label (macOS). The daemon runs as this launchd job
-# (KeepAlive=true), so external recovery force-restarts a hung daemon with
-# `launchctl kickstart -k` and lets launchd own the respawn.
-LAUNCHD_LABEL = "com.brain.daemon"
-
 # launchd's plist ThrottleInterval — launchd won't relaunch the daemon faster
 # than this after an exit. The recovery deadlines in daemon_client DERIVE from it
 # (they must exceed throttle + embedder reload, or a recovering daemon is
