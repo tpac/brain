@@ -6,7 +6,6 @@ Tests for the split daemon modules, including:
   - Integrity: dispatch table ↔ MCP tools ↔ hook table consistency
   - Concurrency: parallel reads don't block, writes serialize
   - Degradation: recall fallback flagging
-  - Agent isolation: DB copy, changes listing, cleanup
   - Worktree: hooks.json has required hooks
   - CLI: brain_cli.py commands work
   - Schema: encoding_version column exists and is set
@@ -15,11 +14,9 @@ Tests for the split daemon modules, including:
 import json
 import os
 import shutil
-import sqlite3
 import sys
 import tempfile
 import threading
-import time
 import unittest
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
