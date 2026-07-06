@@ -685,6 +685,30 @@ class TestSpawnDetachedDaemon(unittest.TestCase):
                 "%s must spawn via daemon_launch.spawn_detached_daemon" % mod.__name__)
 
 
+class TestKillDaemonLockDiscipline(unittest.TestCase):
+    """Step 5: NO code path unlinks a lock file. kill_daemon relies on the
+    kernel releasing the dead PID's flock; unlinking the path while another
+    holder (a daemon, an ensure_daemon mid-ladder) has it open would let a
+    third process lock a fresh inode at the same path — two "singleton"
+    holders, the two-writer corruption class."""
+
+    def test_kill_daemon_clears_pid_but_never_unlinks_lock(self):
+        import inspect
+        import tempfile
+        self.assertNotIn("get_lock_path", inspect.getsource(dl.kill_daemon),
+                         "kill_daemon must not touch the lock path at all")
+        with tempfile.TemporaryDirectory(prefix="brain-kill-test-") as tmp:
+            pid_path = os.path.join(tmp, "daemon.pid")
+            with open(pid_path, "w") as f:
+                f.write("999999")
+            with patch.object(dl, "get_pid_path", return_value=pid_path), \
+                 patch.object(dl.os, "kill", side_effect=ProcessLookupError), \
+                 patch.object(dl.time, "sleep"):
+                dl.kill_daemon()
+            self.assertFalse(os.path.exists(pid_path),
+                             "stale PID hint should still be cleared")
+
+
 class TestDaemonConfigSingleSource(unittest.TestCase):
     """Step 1: the launch facts (CPU env, log path, launchd timing) are
     single-sourced in daemon_config so no start path drifts from another."""

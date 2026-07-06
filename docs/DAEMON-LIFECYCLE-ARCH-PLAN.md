@@ -64,6 +64,16 @@ Each step is executable cold in its own session. Recommend; do not batch. This d
   spawn tail already delegates to `ensure_daemon`. Step 6 may treat the spawn/restart model as
   settled: restart = clean-exit (managed) | teardown+spawn (unmanaged); recovery = kickstart →
   re-ping-defer → source-gated kill + ensure_daemon.
+- **Step 4 RESOLVED (2026-07-07)** — dead `restart_daemon()` deleted (zero callers confirmed
+  repo-wide, docs included). `stop_daemon` kept: it is the graceful TCP-shutdown utility, and its
+  kill fallback is safe now that the lock unlink is gone (Step 5).
+- **Step 5 RESOLVED (2026-07-07)** — `kill_daemon` no longer unlinks the lock file (kernel releases
+  the dead PID's flock; only the stale PID hint is cleared). **No code path unlinks a lock file** —
+  pinned by `TestKillDaemonLockDiscipline` (source + behavioral assert). "Confine to no-launchd"
+  needed no further change: `port_is_occupied` is only reached in ensure_daemon's unmanaged arm,
+  and `kill_daemon`'s remaining callers are that arm, `stop_daemon`'s fallback, and
+  `_relaunch_daemon`'s corpse kill — which the Step 3 resolution established as deliberately
+  NOT launchd-gated.
 
 ---
 

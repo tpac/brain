@@ -22,7 +22,7 @@ import time
 
 from .daemon_config import (
     DAEMON_CPU_ENV, REPO_ROOT,
-    get_daemon_addr, get_daemon_log_path, get_lock_path, get_pid_path,
+    get_daemon_addr, get_daemon_log_path, get_pid_path,
 )
 
 # launchd service label (macOS). The daemon runs as this launchd job
@@ -177,12 +177,17 @@ def kill_daemon():
                 pass
     except Exception as e:
         sys.stderr.write("[brain-daemon] Kill failed: {}\n".format(e))
-    for path in [pid_path, get_lock_path()]:
-        try:
-            if os.path.exists(path):
-                os.unlink(path)
-        except Exception:
-            pass
+    # Clear the stale PID hint only. The LOCK file is never unlinked — the
+    # kernel releases the dead process's flock on its own, and unlinking the
+    # path while ANOTHER holder (a daemon, an ensure_daemon mid-ladder) has it
+    # open would let a third process lock a fresh inode at the same path: two
+    # "singleton" holders, the two-writer corruption class. No code path
+    # unlinks a lock file.
+    try:
+        if os.path.exists(pid_path):
+            os.unlink(pid_path)
+    except Exception:
+        pass
 
 
 def daemon_argv(db_path: str) -> list:

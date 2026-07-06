@@ -328,16 +328,6 @@ def stop_daemon():
     kill_daemon()
 
 
-def restart_daemon(db_path: str = None) -> bool:
-    """Stop + start daemon."""
-    stop_daemon()
-    time.sleep(1)
-    if not db_path:
-        db_dir = os.environ.get("BRAIN_DB_DIR", os.path.join(os.path.expanduser("~"), "AgentsContext", "brain"))
-        db_path = os.path.join(db_dir, "brain.db")
-    return ensure_daemon(db_path)
-
-
 # ─── Hung-daemon recovery ───
 #
 # A daemon that hangs after host sleep ("corpse") keeps its port bound but
