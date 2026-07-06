@@ -744,7 +744,7 @@ def _build_tools():
 
     # ── Daemon control ──
     {"name": "restart",
-     "description": "Restart the brain daemon with fresh code. Clears bytecode cache, saves brain, spawns new process. Use after code changes during development.",
+     "description": "Restart the brain daemon with fresh code. Saves the brain, clears bytecode cache, then exits cleanly so launchd relaunches a fresh instance (or, where launchd isn't managing it, spawns one directly). Use after code changes during development.",
      "inputSchema": {"type": "object", "properties": {}}},
 
     # ── Escape hatch ──

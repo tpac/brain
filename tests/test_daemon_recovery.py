@@ -581,5 +581,52 @@ class TestAwaitResponsive(unittest.TestCase):
         slept.assert_not_called()       # zero deadline never enters the retry loop
 
 
+class TestPerformRestartLaunchdSoleSpawner(unittest.TestCase):
+    """_perform_restart must never spawn a detached rival when launchd manages
+    the daemon — that orphan (non-launchd, PPID 1) squats the singleton lock and
+    wedges KeepAlive into a respawn storm, needing a manual kill (incidents
+    2026-07-03/04). Managed → clean _shutdown() (drain→save→close DB→release lock
+    LAST) then os._exit; KeepAlive respawns. Direct spawn ONLY on no-launchd."""
+
+    def _make_daemon(self):
+        from servers import daemon_server as ds
+        d = ds.BrainDaemon.__new__(ds.BrainDaemon)   # skip __init__ — no real brain/socket
+        d.db_path = "/tmp/nonexistent-brain-test.db"
+        d._log = lambda *a, **k: None
+        d._shutdown = MagicMock()   # the ordered teardown: closes DB, releases lock LAST
+        return d
+
+    def _run(self, manages, env=None):
+        d = self._make_daemon()
+        # os._exit truly halts in production; SystemExit models that so control
+        # can't fall through, and the if/else already makes the branches exclusive.
+        with patch.dict(os.environ, env or {}), \
+             patch("time.sleep"), \
+             patch("os._exit", side_effect=SystemExit) as m_exit, \
+             patch("subprocess.Popen") as m_popen, \
+             patch("shutil.rmtree"), \
+             patch("servers.daemon_client._launchd_manages_daemon", return_value=manages):
+            with self.assertRaises(SystemExit):
+                d._perform_restart()
+        return d, m_exit, m_popen
+
+    def test_managed_clean_exit_never_popens(self):
+        d, m_exit, m_popen = self._run(manages=True)
+        d._shutdown.assert_called_once()   # ordered teardown before exit (closes DB, releases lock LAST)
+        m_popen.assert_not_called()        # THE invariant — no detached rival; KeepAlive respawns
+        m_exit.assert_called_once_with(0)
+
+    def test_no_launchd_direct_spawns_after_teardown(self):
+        import tempfile
+        # BRAIN_DB_DIR → tmp so the real log open can't touch the production daemon.log.
+        tmp = tempfile.mkdtemp()
+        d, m_exit, m_popen = self._run(manages=False, env={"BRAIN_DB_DIR": tmp})
+        d._shutdown.assert_called_once()   # teardown FIRST — DB closed before the successor opens it
+        m_popen.assert_called_once()       # only correct spawner when no launchd
+        _, kwargs = m_popen.call_args
+        self.assertTrue(kwargs.get("start_new_session"))
+        m_exit.assert_called_once_with(0)
+
+
 if __name__ == "__main__":
     unittest.main()

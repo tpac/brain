@@ -676,67 +676,11 @@ class BrainDaemon:
 
             if cmd == "restart":
                 self._log("Restart requested — scheduling re-exec after response...")
-                # No marker needed — daemon_client uses fcntl.flock for singleton.
-                # Schedule restart AFTER response is sent to client
-                def _do_restart():
-                    time.sleep(0.5)  # Let response reach client
-                    self._log("Executing restart...")
-                    self._arm_force_exit_backstop()
-                    # Stop the bg-writer CLEANLY so its in-flight drain commits
-                    # instead of being torn off mid-transaction by os._exit. We do
-                    # NOT drain the worker pool here — that would delay releasing
-                    # the lock/port past the replacement daemon's startup and break
-                    # the handoff; in-flight pool commands roll back safely on exit.
-                    self._signal_drain_shutdown()
-                    try:
-                        from servers import embed_queue
-                        embed_queue.join_worker(timeout=3.0)
-                    except Exception as e:
-                        self._log_shutdown_error('restart_bg_writer_join', e)
-                    try:
-                        if self.brain:
-                            self.brain.save()
-                    except Exception as e:
-                        self._log("Save error during restart: {}".format(e))
-                    import shutil, subprocess
-                    servers_dir = os.path.dirname(os.path.abspath(__file__))
-                    project_dir = os.path.dirname(servers_dir)
-                    # Clear bytecode cache
-                    for cache_dir in [os.path.join(servers_dir, '__pycache__'),
-                                      os.path.join(project_dir, 'hooks', 'scripts', '__pycache__')]:
-                        if os.path.isdir(cache_dir):
-                            shutil.rmtree(cache_dir, ignore_errors=True)
-                    db_dir = os.environ.get('BRAIN_DB_DIR', os.path.dirname(self.db_path))
-                    startup = (
-                        "import sys, os; "
-                        "sys.path.insert(0, %r); "
-                        "os.environ['BRAIN_DB_DIR'] = %r; "
-                        "from servers.daemon_server import BrainDaemon; "
-                        "d = BrainDaemon(%r); d.start()"
-                        % (project_dir, db_dir, self.db_path)
-                    )
-                    self._log("Spawning new daemon: %s -c ..." % sys.executable)
-                    # Spawn new process BEFORE cleanup — ensures new daemon starts.
-                    # stdout/stderr → daemon.log (append) so the new daemon's logs
-                    # remain visible. /dev/null was a footgun: every `Daemon
-                    # started` line, every encoding profile, every memory
-                    # watchdog sample was being silently dropped after each
-                    # restart, which is why the leak diagnostic was invisible.
-                    log_path = os.path.join(db_dir, 'daemon.log')
-                    try:
-                        log_fp = open(log_path, 'a', buffering=1)
-                    except Exception:
-                        log_fp = open('/dev/null', 'w')
-                    subprocess.Popen([sys.executable, '-c', startup],
-                                     start_new_session=True,
-                                     stdout=log_fp,
-                                     stderr=log_fp)
-                    self._log("New daemon spawned. Shutting down old.")
-                    self._cleanup()
-                    os._exit(0)
-
+                # Restart runs on its own thread AFTER this response reaches the
+                # client. The re-exec logic lives in _perform_restart (a method,
+                # not a closure, so it is unit-testable — it calls os._exit).
                 import threading as _t
-                _t.Thread(target=_do_restart, daemon=False).start()
+                _t.Thread(target=self._perform_restart, daemon=False).start()
                 return {"ok": True, "result": {"status": "restarting"}}
 
             # Hook commands — HOOK_TABLE is the single source of truth
@@ -981,6 +925,76 @@ class BrainDaemon:
             except Exception:
                 pass
             self._write_status()
+
+    def _perform_restart(self):
+        """Restart with fresh code, letting launchd own the respawn.
+
+        When launchd manages the daemon (macOS), tear down cleanly and exit —
+        launchd's KeepAlive (unconditional in com.brain.daemon.plist) respawns a
+        fresh, launchd-managed instance. We do NOT spawn a detached rival: that
+        orphan (PPID 1, non-launchd) is exactly what wedged KeepAlive into a
+        respawn storm and had to be killed by hand (incidents 2026-07-03/04). We
+        also do NOT `kickstart -k` ourselves — a daemon restarting *itself* only
+        needs to exit; kickstart is for recovering a daemon from OUTSIDE, and
+        self-kickstart just reopens the two-writer/self-SIGKILL races.
+
+        Only on a genuine no-launchd platform (Linux / fresh install), where
+        nothing would respawn us, do we spawn the successor directly.
+
+        Both branches run the ordered `_shutdown()` teardown (drain → save →
+        CLOSE DB → release lock LAST) BEFORE anything else can open brain.db, so
+        a respawn/successor can never hold a second writer on it (two writers
+        corrupt the indexes — see _teardown_brain).
+        """
+        time.sleep(0.5)  # let the {status: restarting} response reach the client
+        self._log("Executing restart...")
+
+        # Clear bytecode cache so the respawned daemon loads fresh code (the
+        # point of a restart). Both the KeepAlive respawn and the no-launchd
+        # Popen re-run start-daemon.sh, which imports servers.* from __pycache__.
+        import shutil
+        servers_dir = os.path.dirname(os.path.abspath(__file__))
+        project_dir = os.path.dirname(servers_dir)
+        for cache_dir in [os.path.join(servers_dir, '__pycache__'),
+                          os.path.join(project_dir, 'hooks', 'scripts', '__pycache__')]:
+            if os.path.isdir(cache_dir):
+                shutil.rmtree(cache_dir, ignore_errors=True)
+
+        from .daemon_client import _launchd_manages_daemon
+        if _launchd_manages_daemon():
+            # launchd owns the lifecycle: teardown (closes DB, releases lock
+            # LAST) then exit; KeepAlive brings up a fresh managed instance.
+            self._log("Restart: launchd-managed — clean teardown + exit, KeepAlive respawns.")
+            self._shutdown()
+            os._exit(0)
+        else:
+            # No launchd: nothing respawns us, so spawn the successor ourselves.
+            # Teardown FIRST (closes DB, releases lock) so the successor can't
+            # double-open brain.db, THEN spawn, THEN exit.
+            self._log("Restart: no launchd — spawning successor directly.")
+            self._shutdown()
+            import subprocess
+            db_dir = os.environ.get('BRAIN_DB_DIR', os.path.dirname(self.db_path))
+            startup = (
+                "import sys, os; "
+                "sys.path.insert(0, %r); "
+                "os.environ['BRAIN_DB_DIR'] = %r; "
+                "from servers.daemon_server import BrainDaemon; "
+                "d = BrainDaemon(%r); d.start()"
+                % (project_dir, db_dir, self.db_path)
+            )
+            self._log("Spawning new daemon: %s -c ..." % sys.executable)
+            log_path = os.path.join(db_dir, 'daemon.log')
+            try:
+                log_fp = open(log_path, 'a', buffering=1)
+            except Exception:
+                log_fp = open(os.devnull, 'w')
+            subprocess.Popen([sys.executable, '-c', startup],
+                             start_new_session=True,
+                             stdout=log_fp,
+                             stderr=log_fp)
+            self._log("New daemon spawned. Shutting down old.")
+            os._exit(0)
 
     def _run_idle_maintenance(self):
         """Poll brain's maintenance decision. Runs in thread pool.
