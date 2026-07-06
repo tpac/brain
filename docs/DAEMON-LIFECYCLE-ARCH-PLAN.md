@@ -35,6 +35,13 @@ Each step is executable cold in its own session. Recommend; do not batch. This d
 - **The four SURFACES are a deliberate split** — boot-hook path, daemon-side, launchd plist,
   session-init — "fixes deploy to the surface that loaded them" (`95b3166e`). **The goal is
   concentrating the shared PRIMITIVES each surface calls, NOT merging the surfaces.**
+- **The maintenance lock is the eval/DB-op safe-stop and MUST survive every step.**
+  `is_maintenance_mode()` (`daemon_config.py:178`, `/tmp/brain-maintenance-{uid}.lock`) is honored by
+  `ensure_daemon` (`daemon_client.py:232`) and `recover_daemon` (`:574`) to skip startup during
+  VACUUM / schema changes / bulk deletes / evals. Any step that rewires `ensure_daemon`, the
+  spawn/kickstart path, or `daemon_config` (Steps 2, 3, 8) MUST keep this gate — it is how a
+  human/eval safely stops the daemon so a second process can open `brain.db`. Dropping it silently
+  re-opens the two-writer corruption door the whole subsystem exists to keep shut.
 
 ## Already resolved (do NOT re-plan)
 
@@ -42,6 +49,43 @@ Each step is executable cold in its own session. Recommend; do not batch. This d
   verified. This closed the "fourth root" (`_do_restart` detached Popen, `e6fd63aa`) and the
   self-Popen-vs-kickstart double-mechanism. Agents that read the pre-`3cb6031` worktree flagged
   these as live; they are fixed on `main`. (The worktree has since been fast-forwarded to `main`.)
+
+---
+
+## Testing & isolation (applies to EVERY step)
+
+The subsystem's failure history is corruption + restart storms, so verification is not optional
+polish — it is how each step earns its merge. Three cross-cutting rules:
+
+**1. The flock is NOT the eval-corruption guard — don't conflate them.** The singleton flock
+(Step 11) guards **daemon-vs-daemon** (one daemon per user). It does NOT stop an eval/test/bench
+process that opens the live `brain.db` *directly* — those processes never acquire the daemon lock.
+That corruption class is governed by a *separate* discipline that these steps must PRESERVE, never
+weaken:
+  - `IsolatedBrain` (`tests/isolated_brain.py`) — copies the DB; the correct way to test against
+    production-shaped data.
+  - the **maintenance lock** — `touch /tmp/brain-maintenance-{uid}.lock` stops auto-restart so a
+    human/eval can safely open the DB (see the settled-constraints entry).
+  - TCP routing / `daemon_client.send_command` — mutate the live brain only *through* the daemon.
+  A step that makes `ensure_daemon`/spawn ignore the maintenance lock is a regression even if every
+  unit test passes.
+
+**2. New integration tests are port/db-scoped — never the live daemon.** Current tests bind nothing
+on the live `:47203` (they use mocks, `BrainDaemon.__new__`, `IsolatedBrain`, or host/port
+overrides à la `test_hook_daemon_call_logging.py`). Any NEW test that spawns a *real* daemon MUST
+use a test-scoped port + DB dir, so it can run in parallel (and alongside evals / the live daemon)
+without racing the singleton flock or the shared `brain.db`. `tests/conftest.py` already refuses to
+run outside the bundled Python — keep that guard.
+
+**3. Restart-under-load must stay clean.** A restart while S2 maintenance / an encode is in flight
+must drain the pool + bg-writer before releasing the lock (`_teardown_brain`'s ordering). Add an
+explicit **restart-mid-S2** test (idle maintenance running → restart → assert clean teardown order,
+no torn write) on top of the ordering already pinned by `test_write_txn_discipline`.
+
+Per-step verification names the specific suite; these three rules are the floor under all of them.
+The existing gates: `test_daemon_recovery` (62, mocked lifecycle), `test_write_txn_discipline`
+(release-LAST / two-writer ordering), `test_maintenance_gate` (idle S2 gate), `test_system`
+(hook-table + dispatch), `test_daemon` / `test_daemon_hooks` (worktree + hook paths).
 
 ---
 
