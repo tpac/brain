@@ -206,7 +206,7 @@ SURFACE = {
                                     # interrupted turns leave lone user messages, so pairing
                                     # is not guaranteed). Single source of truth: daemon_hooks
                                     # pulls exactly this many from traces (current chain
-                                    # excluded via exclude_chain, wake envelopes filtered);
+                                    # excluded via exclude_trace_id, wake envelopes filtered);
                                     # build_surface_prompt slices the same number. The current
                                     # prompt is NOT in this window — it renders as its own
                                     # "Current message" block.
@@ -489,7 +489,7 @@ def build_surface_prompt(candidates, user_message,
             "Current message" block (user only, no reply yet)
         recent_messages: List of {"role": str, "content": str} — PREVIOUS
             turns only; the caller excludes the current turn's chain
-            (daemon_hooks passes exclude_chain to get_session_turns)
+            (daemon_hooks passes exclude_trace_id to get_session_turns)
         recently_recalled: List of {"id": str, "title": str} from last N recalls
         retrieval_stats: Dict with brain_size, top_score, median_score, source_breakdown
         intent: Query intent from STEP 2 classification
@@ -514,7 +514,7 @@ def build_surface_prompt(candidates, user_message,
 
     # Format conversation context (both roles, asymmetric truncation).
     # PREVIOUS turns only — the caller excludes the current chain upstream
-    # (get_session_turns exclude_chain); the current message renders below
+    # (get_session_turns exclude_trace_id); the current message renders below
     # as its own block, never inside the history window.
     # 2026-05-03: "Operator:" is generic — prompts ship to different operators.
     conversation = ""
