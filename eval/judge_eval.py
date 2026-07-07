@@ -152,7 +152,6 @@ def run_judge_eval(brain, query_spec, verbose=False):
     result = brain.recall(query, limit=SURFACE['max_candidates'])
     results = result.get("results", [])
     retrieval_stats = result.get("_retrieval_stats", {})
-    intent = result.get("intent", "general")
 
     # Build candidates (same as daemon_hooks.py)
     candidates_data = []
@@ -176,11 +175,9 @@ def run_judge_eval(brain, query_spec, verbose=False):
     # Layer 2: Build judge prompt and call Haiku
     judge_prompt, max_tokens = build_surface_prompt(
         candidates_data, query,
-        session_context="",
         recent_messages=[],
         recently_recalled=[],
-        retrieval_stats=retrieval_stats,
-        intent=intent)
+        retrieval_stats=retrieval_stats)
 
     client = anthropic.Anthropic()
     api_resp = client.messages.create(
@@ -245,7 +242,6 @@ def run_judge_eval(brain, query_spec, verbose=False):
         "selected_count": len(selected),
         "candidates_count": len(candidates_data),
         "top_score": retrieval_stats.get("top_score", 0),
-        "intent": intent,
         "latency_ms": round(latency_ms),
     }
 

@@ -140,7 +140,7 @@ def _format_candidates_b(candidates):
     return text
 
 
-def _build_prompt(candidates_text, query, retrieval_stats=None, intent=None):
+def _build_prompt(candidates_text, query, retrieval_stats=None):
     """Build surface prompt with formatted candidates. Same wrapper for both pipelines."""
     from servers.scales.s1.surface_contract import SURFACE
 
@@ -162,20 +162,6 @@ def _build_prompt(candidates_text, query, retrieval_stats=None, intent=None):
                 "\nNOTE: Top score %.2f is low for %d memories — "
                 "brain likely has nothing relevant. Prefer selecting 0." % (top, brain_sz))
 
-    # Intent context
-    intent_context = ""
-    if intent and intent != 'general':
-        _intent_guidance = {
-            'decision_lookup': 'Tom is looking for a past decision — prioritize decision, rule, and correction nodes.',
-            'reasoning_chain': 'Design/reasoning task — architecture, mechanism, and pattern nodes most helpful.',
-            'correction_lookup': 'Looking for a correction — prioritize correction and lesson nodes.',
-            'how_to': 'How-to question — mechanism, convention, and lesson nodes most helpful.',
-            'temporal': 'Time-based query — check created_at dates, prioritize session and milestone nodes.',
-            'state_query': 'Checking current state — recent decisions and open items most relevant.',
-        }
-        if intent in _intent_guidance:
-            intent_context = "Query type: %s. %s" % (intent, _intent_guidance[intent])
-
     instructions = (
         "You surface relevant memories from a shared AI brain. The brain stores "
         "memories from conversations between an operator (Tom) and an AI assistant "
@@ -196,14 +182,12 @@ Conversation:
 Tom: %s
 
 %s
-%s
 Candidates:
 
 %s""" % (
         instructions,
         query[:300],
         retrieval_context,
-        intent_context,
         candidates_text,
     )
 
@@ -269,7 +253,6 @@ def run_ab_query(brain, query_spec, verbose=False, dry_run=False):
     result = brain.recall(query, limit=25)
     results = result.get("results", [])
     retrieval_stats = result.get("_retrieval_stats", {})
-    intent = result.get("intent", "general")
 
     if not results:
         return {"query": query, "skipped": True, "reason": "no recall results"}
@@ -283,8 +266,8 @@ def run_ab_query(brain, query_spec, verbose=False, dry_run=False):
     text_b = _format_candidates_b(candidates_b)
 
     # Build prompts (same wrapper)
-    prompt_a = _build_prompt(text_a, query, retrieval_stats, intent)
-    prompt_b = _build_prompt(text_b, query, retrieval_stats, intent)
+    prompt_a = _build_prompt(text_a, query, retrieval_stats)
+    prompt_b = _build_prompt(text_b, query, retrieval_stats)
 
     if dry_run:
         return {

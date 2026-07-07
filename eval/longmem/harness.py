@@ -247,7 +247,8 @@ def _apply_s1e_override(brain, override_path: str) -> None:
             's1e', result['version'], set_by='eval-s1e-override')
 
 
-def _apply_surface_override(brain, override_path: str) -> None:
+def _apply_surface_override(brain, override_path: str,
+                            params_json: str = None) -> None:
     """Register a new surface prompt version AND activate it in this brain.
 
     Used by --surface-override to test surface v5 (agentic, with tools) on
@@ -258,10 +259,16 @@ def _apply_surface_override(brain, override_path: str) -> None:
     when --surface-override is passed) — the env var picks the tool-use
     loop in surface.py; this DAL action makes the v5 prompt the one Haiku
     actually reads.
+
+    params_json: optional interaction config for the override version
+    (e.g. '{"layout": "xml_v13"}' — the surface renderer reads `layout`
+    from the active config, so template and user-content layout flip
+    atomically). None preserves the existing active config.
     """
     new_template = open(override_path).read()
     existing = brain._interaction_dal.get_active('surface')
-    params = existing.get('parameters', '') if existing else ''
+    params = params_json if params_json is not None else (
+        existing.get('parameters', '') if existing else '')
     result = brain._interaction_dal.register(
         'surface', template=new_template, parameters=params,
         created_by='eval-surface-override')

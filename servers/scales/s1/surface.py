@@ -85,9 +85,10 @@ def _call_surface(brain, candidates_data, user_message,
     except Exception as e:
         brain._log_error('surface_recently_recalled', e, 'fetching recently surfaced titles')
 
-    # Retrieval stats and intent from recall result
+    # Retrieval stats from recall result. (The `intent` field recall still
+    # returns is a constant 'general' — the regex classifier was deleted
+    # 2026-07-07; surface no longer reads it.)
     retrieval_stats = result.get('_retrieval_stats') if isinstance(result, dict) else None
-    intent = result.get('intent') if isinstance(result, dict) else None
 
     # interaction_seed.py guarantees 'surface' is registered on every boot.
     surface_interaction = brain.get_interaction('surface')
@@ -99,13 +100,24 @@ def _call_surface(brain, candidates_data, user_message,
     surface_instructions = surface_interaction['template']
     interaction_id = surface_interaction.get('id')
 
+    # Layout rides in the interaction CONFIG ({"layout": "xml_v13"}), so a
+    # version flip changes template and renderer atomically — a v13 template
+    # can never run against the legacy user content or vice versa.
+    layout = 'legacy'
+    try:
+        layout = (brain.get_interaction_config('surface') or {}).get(
+            'layout', 'legacy')
+    except Exception as _cfg_err:
+        brain._log_error('surface_layout_config', _cfg_err,
+                         'reading layout from surface interaction config')
+
     user_content, max_tokens = build_surface_prompt(
         candidates_data, user_message,
         recent_messages=recent_messages,
         recently_recalled=recently_surfaced,
         retrieval_stats=retrieval_stats,
-        intent=intent,
-        frame=frame)
+        frame=frame,
+        layout=layout)
 
     surface_prompt = (surface_instructions + "\n\n---\n\n" + user_content) \
         if surface_instructions else user_content
@@ -125,7 +137,8 @@ def _call_surface(brain, candidates_data, user_message,
         # mapping resolves them.
         raw, tool_trace, telemetry = _call_surface_agentic(
             client, brain, candidates_data, surface_instructions,
-            user_content, max_tokens, session_id, SURFACE_MODEL)
+            user_content, max_tokens, session_id, SURFACE_MODEL,
+            layout=layout)
         # Attach tool trace to brain for the caller to write into K trace.
         # Stashed on the brain instance per-session-id so parallel sessions
         # don't clobber each other.
@@ -176,7 +189,7 @@ def _call_surface(brain, candidates_data, user_message,
 
 def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                            user_content, max_tokens, session_id, model,
-                           max_rounds=2):
+                           max_rounds=2, layout='legacy'):
     """Agentic surface call: Haiku may use fetch tools to extend the candidate
     pool before final JSON selection.
 
@@ -432,7 +445,7 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tool_use_id,
-                    "content": format_tool_result_for_haiku(exec_result),
+                    "content": format_tool_result_for_haiku(exec_result, layout=layout),
                 })
         if not tool_results:
             # stop_reason said tool_use but no tool_use block arrived (the

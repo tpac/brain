@@ -146,6 +146,12 @@ def _relative_time(iso_str):
 # SURFACE CONFIG
 # ═══════════════════════════════════════════════════════════════
 
+# Haiku's fetch tools — the discovery values that mean "came from a tool
+# call" (vs recall MODES like laf_v1/embedding, which are engine provenance).
+# Must stay in sync with fetch_tools.TOOL_DEFINITIONS; pinned by
+# test_surface_transitions.test_fetch_tool_names_in_sync.
+SURFACE_FETCH_TOOLS = ('recall_topical', 'recall_by_time')
+
 # Candidate pool — how many nodes recall pulls for the surface funnel.
 # Production reads only max_candidates; content_limit and include_metadata
 # are read by the eval harnesses (judge_eval, surface_ab_eval) when they
@@ -291,7 +297,7 @@ def enrich_candidate_metadata(brain, node_id, node_data, config):
 # FORMATTERS
 # ═══════════════════════════════════════════════════════════════
 
-def format_candidate_for_surface(c, index):
+def format_candidate_for_surface(c, index, layout='legacy'):
     """Format a single candidate for the surface prompt.
 
     Thin wrapper around render_rich_node(HAIKU_FORMAT) — adds recall-specific
@@ -305,6 +311,11 @@ def format_candidate_for_surface(c, index):
     pick-divergence (J=0.64) at the same-prompt noise floor (full-vs-full
     J=0.72). Covers cosine candidates AND tool results (fetch_tools renders
     through this same function).
+
+    layout='xml_v13': wraps the same node body in a <candidate> element —
+    id as attribute (the pick key), locked / source_tool as flags. No score
+    header: rank rides in candidate ORDER; exposing match floats invites
+    anchoring on our numbers instead of semantic judgment (v13 decision).
     """
     import os as _os_hr
     from servers.contract import render_rich_node
@@ -312,6 +323,20 @@ def format_candidate_for_surface(c, index):
     fmt = HAIKU_FORMAT \
         if _os_hr.environ.get('BRAIN_HAIKU_RENDER', 'lean').strip().lower() == 'full' \
         else HAIKU_FORMAT_LEAN
+
+    discovery = c.get("discovery", "")
+
+    if layout == 'xml_v13':
+        attrs = ['id="%s"' % str(c.get('id', ''))[:8]]
+        if c.get('locked'):
+            attrs.append('locked="true"')
+        # Strict tool-name match: `discovery` also carries recall MODES
+        # (laf_v1, embedding+keyword, ...) which are not tool provenance —
+        # the legacy "anything non-embedding" predicate mislabeled them.
+        if discovery in SURFACE_FETCH_TOOLS:
+            attrs.append('source_tool="true"')
+        return '<candidate %s>\n%s\n</candidate>' % (
+            ' '.join(attrs), render_rich_node(c, fmt))
 
     # Recall-specific header (score + discovery — not part of the node)
     score_parts = []
@@ -322,7 +347,6 @@ def format_candidate_for_surface(c, index):
         if score > 1.0:
             score_str += ",boosted"
         score_parts.append(score_str)
-    discovery = c.get("discovery", "")
     if discovery and discovery not in ("embedding", "embedding_only", "embedding+keyword"):
         score_parts.append("via:%s" % discovery)
 
@@ -363,15 +387,96 @@ def _dedup_candidates(candidates):
     return result
 
 
+def _group_turns(msgs):
+    """Group a flat oldest-first message list into user+assistant turns.
+
+    A user message always opens a new turn; an assistant message closes the
+    open turn or opens its own (lone assistant — e.g. the user half was a
+    filtered wake envelope). No strict-alternation assumption.
+    """
+    groups = []
+    for m in msgs:
+        if m.get('role') == 'user':
+            groups.append({'user': m})
+        elif groups and 'assistant' not in groups[-1]:
+            groups[-1]['assistant'] = m
+        else:
+            groups.append({'assistant': m})
+    return groups
+
+
+def _build_user_content_xml(candidates, user_message, recent_messages,
+                            retrieval_stats, frame, cfg):
+    """v13 XML user content — one grammar, oldest first, current message last.
+
+    Sections: <partnership_context> (Frame), <conversation> (turns with
+    per-turn <shown> dedup elements; final turn is current_msg="true", user
+    only), <candidates> (id-attribute grammar, no score floats), and a
+    conditional <note> when retrieval is weak (the threshold logic stays in
+    code; Haiku sees the conclusion, never our numbers).
+
+    Replaces the legacy separate "Recently surfaced" section: already-shown
+    memories sit inline on the turn they surfaced for, so out-of-scope is
+    structural (<shown> vs <candidate>), not a rule about a distant block.
+    """
+    parts = []
+    parts.append('<partnership_context>\n%s\n</partnership_context>' % (
+        frame.strip() if frame
+        else '(none — fresh session or Frame unavailable)'))
+
+    lines = ['<conversation>']
+    n = 0
+    for g in _group_turns((recent_messages or [])[-(cfg['recent_messages']):]):
+        n += 1
+        lines.append('<turn n="%d">' % n)
+        u = g.get('user')
+        if u:
+            lines.append('<user>%s</user>'
+                         % (u.get('content') or '')[:cfg['user_message_limit']])
+            for s in (u.get('surfaced') or []):
+                lines.append('<shown id="%s">%s</shown>' % (
+                    str(s.get('id', ''))[:8], (s.get('title') or '')[:80]))
+        a = g.get('assistant')
+        if a:
+            lines.append('<assistant>%s</assistant>'
+                         % (a.get('content') or '')[:cfg['anchor_message_limit']])
+        lines.append('</turn>')
+    n += 1
+    lines.append('<turn n="%d" current_msg="true">' % n)
+    lines.append('<user>%s</user>' % (
+        user_message[:cfg['user_message_limit']] if user_message
+        else '(no message)'))
+    lines.append('</turn>')
+    lines.append('</conversation>')
+    parts.append('\n'.join(lines))
+
+    cand_lines = ['<candidates n="%d">' % len(candidates)]
+    for c in candidates:
+        cand_lines.append('')
+        cand_lines.append(format_candidate_for_surface(c, 0, layout='xml_v13'))
+    cand_lines.append('</candidates>')
+    parts.append('\n'.join(cand_lines))
+
+    if retrieval_stats:
+        from servers.brain_constants import RETRIEVAL_LOW_CONFIDENCE
+        if retrieval_stats.get('top_score', 0) < RETRIEVAL_LOW_CONFIDENCE:
+            parts.append('<note>Retrieval is weak for this message — the '
+                         'brain likely has nothing relevant. Prefer '
+                         'selecting 0.</note>')
+
+    return '\n\n'.join(parts), cfg['max_tokens']
+
+
 def build_surface_prompt(candidates, user_message,
                        recent_messages=None, recently_recalled=None,
-                       retrieval_stats=None, intent=None, frame=""):
+                       retrieval_stats=None, frame="",
+                       layout='legacy'):
     """Build the S1 recall surface USER message — per-turn delta only.
 
     v11 (2026-05-03, Frame Phase 2.5 / surface prompt v2): instructions
     moved to the cached system block (in `_call_surface`). This function
     now builds ONLY the per-turn user content: Frame, conversation,
-    recently surfaced, retrieval stats, intent, candidates. The registered
+    recently surfaced, retrieval stats, candidates. The registered
     `surface` interaction template is the system block; this is the user
     block. Two parts → two-block API call → caching becomes possible.
 
@@ -387,7 +492,6 @@ def build_surface_prompt(candidates, user_message,
             (daemon_hooks passes exclude_trace_id to get_session_turns)
         recently_recalled: List of {"id": str, "title": str} from last N recalls
         retrieval_stats: Dict with brain_size, top_score, median_score, source_breakdown
-        intent: Query intent from STEP 2 classification
         frame: Markdown Frame (Anchor's prior). When non-empty becomes the
             "Partnership context:" block. When empty, explicit degraded marker.
 
@@ -397,6 +501,14 @@ def build_surface_prompt(candidates, user_message,
 
     # v9: Deduplicate candidates (remove near-identical titles)
     candidates = _dedup_candidates(candidates[:cfg['max_candidates']])
+
+    # v13 XML layout — selected by the active `surface` interaction config
+    # ({"layout": "xml_v13"}), so template and renderer flip atomically.
+    # Ignores `recently_recalled` (replaced by per-turn <shown> elements).
+    if layout == 'xml_v13':
+        return _build_user_content_xml(
+            candidates, user_message, recent_messages, retrieval_stats,
+            frame, cfg)
 
     # Format conversation context (both roles, asymmetric truncation).
     # PREVIOUS turns only — the caller excludes the current chain upstream
@@ -466,21 +578,6 @@ def build_surface_prompt(candidates, user_message,
                 "\nNOTE: Top score %.2f is low for %d memories — "
                 "brain likely has nothing relevant. Prefer selecting 0." % (top, brain_sz))
 
-    # v9: Intent context (from STEP 2 classification). 2026-05-03: generalized
-    # — no operator name hardcoded.
-    intent_context = ""
-    if intent and intent != 'general':
-        _intent_guidance = {
-            'decision_lookup': 'Operator is looking for a past decision — prioritize decision, rule, and correction nodes.',
-            'reasoning_chain': 'Design/reasoning task — architecture, mechanism, and pattern nodes most helpful.',
-            'correction_lookup': 'Looking for a correction — prioritize correction and lesson nodes.',
-            'how_to': 'How-to question — mechanism, convention, and lesson nodes most helpful.',
-            'temporal': 'Time-based query — check created_at dates, prioritize session and milestone nodes.',
-            'state_query': 'Checking current state — recent decisions and open items most relevant.',
-        }
-        if intent in _intent_guidance:
-            intent_context = "Query type: %s. %s" % (intent, _intent_guidance[intent])
-
     # Format candidates
     candidates_text = ""
     for i, c in enumerate(candidates, 1):
@@ -499,7 +596,6 @@ Current message (the one to surface for — the assistant has not replied yet):
 Recently surfaced (OUT OF SCOPE — Anchor has already seen these in the last 5 turns; do NOT select any ID from this block):
 %s
 %s
-%s
 %d candidates follow. Select 0-%d.
 
 Candidates:
@@ -510,7 +606,6 @@ Candidates:
         current_block,
         recalled_text or "(none)",
         retrieval_context,
-        intent_context,
         len(candidates),
         cfg['max_selected'],
         candidates_text,

@@ -168,9 +168,11 @@ class TestFloorAndAttribution:
             fetch_tools_mod, 'execute_tool',
             lambda *a, **kw: {'results': list(fetched), 'latency_ms': 1})
         # Fakes carry only id/score — skip the rich candidate renderer.
+        # Signature mirrors production (layout kwarg threaded from the loop).
         monkeypatch.setattr(
             fetch_tools_mod, 'format_tool_result_for_haiku',
-            lambda result: '%d results' % len(result.get('results') or []))
+            lambda result, layout='legacy':
+                '%d results' % len(result.get('results') or []))
         brain = FakeBrain()
         client = FakeClient([tool_use_response(), text_response()])
         raw, trace, tel = run_loop(client, brain, pool)

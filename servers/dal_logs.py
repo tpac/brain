@@ -1229,7 +1229,8 @@ class TraceDAL:
                           around_timestamp: str = None,
                           before: int = None, after: int = None,
                           with_judge_output: bool = True,
-                          exclude_trace_id: str = None) -> List[Dict[str, Any]]:
+                          exclude_trace_id: str = None,
+                          with_surfaced: bool = False) -> List[Dict[str, Any]]:
         """Get chronological turns for a session from S0 + S1 traces.
 
         Returns: [{role, trace_id, content, timestamp, judge_output}]
@@ -1255,6 +1256,12 @@ class TraceDAL:
             with_judge_output: fill judge_output on user turns (one extra
                 query over the window's recall chains). Callers that only
                 read role/content pass False.
+            with_surfaced: fill `surfaced` on user turns — the memories the
+                surface selected for that turn ([{id, title}], from the s1
+                surface_selected K trace's 'id8|title' detail). Consumed by
+                the v13 XML surface layout as per-turn <shown> elements.
+                Shares the recall-chain collection with judge_output; adds
+                one query over the window's chains when enabled.
             exclude_trace_id: trace_event id of one row to drop. The
                 user_message trace is written at prompt-arrival (not Stop),
                 so mid-turn readers that want PREVIOUS turns only — the
@@ -1316,7 +1323,7 @@ class TraceDAL:
             else:
                 # Incoming side (user_message today; self_message if flipped on)
                 rc = meta.get('recall_chain', '')
-                if rc and with_judge_output:
+                if rc and (with_judge_output or with_surfaced):
                     user_refs.append((len(turns), rc))
                 turns.append({
                     'role': 'user',
@@ -1326,19 +1333,40 @@ class TraceDAL:
                     'judge_output': '',
                 })
 
-        # Cross-reference S1 delta (additionalContext) for judge_output
+        # Cross-reference S1 traces over the window's recall chains:
+        # delta/additionalContext → judge_output, K/surface_selected →
+        # surfaced (each gated by its flag; the chain collection is shared).
         if user_refs:
             recall_chains = {rc for _, rc in user_refs}
             placeholders = ','.join('?' for _ in recall_chains)
-            s1_rows = self.conn.execute(
-                "SELECT chain_id, metadata FROM trace_events "
-                "WHERE scale = 's1' AND event_type = 'delta' AND ref_type = 'additionalContext' "
-                "AND chain_id IN (%s)" % placeholders,
-                list(recall_chains)).fetchall()
-            judge_outputs = {r[0]: self._decode_metadata(r[1]).get('content', '')
-                             for r in s1_rows}
-            for i, rc in user_refs:
-                turns[i]['judge_output'] = judge_outputs.get(rc, '')
+            if with_judge_output:
+                s1_rows = self.conn.execute(
+                    "SELECT chain_id, metadata FROM trace_events "
+                    "WHERE scale = 's1' AND event_type = 'delta' AND ref_type = 'additionalContext' "
+                    "AND chain_id IN (%s)" % placeholders,
+                    list(recall_chains)).fetchall()
+                judge_outputs = {r[0]: self._decode_metadata(r[1]).get('content', '')
+                                 for r in s1_rows}
+                for i, rc in user_refs:
+                    turns[i]['judge_output'] = judge_outputs.get(rc, '')
+            if with_surfaced:
+                sel_rows = self.conn.execute(
+                    "SELECT chain_id, metadata FROM trace_events "
+                    "WHERE scale = 's1' AND event_type = 'K' AND ref_type = 'surface_selected' "
+                    "AND chain_id IN (%s)" % placeholders,
+                    list(recall_chains)).fetchall()
+                surfaced_by_chain = {}
+                for r in sel_rows:
+                    entries = []
+                    for item in (self._decode_metadata(r[1]).get('selected') or []):
+                        if not isinstance(item, str):
+                            continue
+                        sid, _, title = item.partition('|')
+                        if sid:
+                            entries.append({'id': sid, 'title': title})
+                    surfaced_by_chain[r[0]] = entries
+                for i, rc in user_refs:
+                    turns[i]['surfaced'] = surfaced_by_chain.get(rc, [])
 
         # Apply windowing (default mode is already limited in SQL)
         if around_timestamp:
