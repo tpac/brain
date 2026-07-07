@@ -268,9 +268,66 @@ class TestSpreadingActivationCoverageMoved(BrainTestBase):
 
 
 # ═══════════════════════════════════════════════════════════════
+# TestEmbedderDownNoFallback — embedder unavailable/failed must yield EMPTY
+# results + a reported condition, never a silent keyword substitute
+# ═══════════════════════════════════════════════════════════════
+
+class TestEmbedderDownNoFallback(BrainTestBase):
+    """Recall's no-embedding exits: empty results, consistent shape, loud report.
+
+    Guards the no-fallback contract (Tom: 'I don't want a fallback') — a future
+    edit that re-introduces a silent keyword substitute, drops the _log_error
+    report, or diverges the empty-result shape fails here."""
+
+    def test_embedder_down_returns_empty_and_reports(self):
+        from unittest.mock import patch
+        from servers import embedder
+
+        original_model = embedder._model
+        original_loaded = embedder.stats['model_loaded']
+        embedder._model = None
+        embedder.stats['model_loaded'] = False
+        try:
+            with patch.object(self.brain, '_log_error') as log_spy:
+                results = self.brain.recall('embedder down empty contract', limit=5)
+        finally:
+            embedder._model = original_model
+            embedder.stats['model_loaded'] = original_loaded
+
+        self.assertEqual(results.get('results'), [],
+                         'no keyword substitute — results must be EMPTY')
+        self.assertEqual(results.get('_recall_mode'), 'embedder_unavailable')
+        stats = results.get('_embedding_stats')
+        self.assertTrue(stats, '_embedding_stats must be present so the MCP '
+                               'footer renders the failure mode inline')
+        self.assertFalse(stats.get('embedder_ready'))
+        sources = [c.args[0] for c in log_spy.call_args_list]
+        self.assertIn('recall_embedder_unavailable', sources,
+                      'the condition must be REPORTED via _log_error')
+
+    def test_embed_failure_returns_empty_and_reports(self):
+        from unittest.mock import patch
+        from servers import embedder
+
+        with patch.object(embedder, 'embed_query',
+                          side_effect=RuntimeError('embed boom')), \
+             patch.object(self.brain, '_log_error') as log_spy:
+            results = self.brain.recall('embed failure empty contract', limit=5)
+
+        self.assertEqual(results.get('results'), [],
+                         'no keyword substitute — results must be EMPTY')
+        self.assertEqual(results.get('_recall_mode'), 'embed_failed')
+        self.assertTrue(results.get('_embedding_stats'),
+                        'embed_failed must carry _embedding_stats too — '
+                        'same shape as embedder_unavailable')
+        sources = [c.args[0] for c in log_spy.call_args_list]
+        self.assertIn('recall_embed_failed', sources,
+                      'the condition must be REPORTED via _log_error')
+
+
+# ═══════════════════════════════════════════════════════════════
 # TestTFIDFRecall — verify TF-IDF stopword filtering and cosine similarity
-# scoring (the keyword-net internals; the embedder-down fallback was removed
-# 2026-07-07 — recall now returns empty + reports when the embedder is down)
+# scoring (the keyword-net internals)
 # ═══════════════════════════════════════════════════════════════
 
 class TestTFIDFRecall(BrainTestBase):

@@ -1099,14 +1099,9 @@ class BrainRecallMixin:
 
         expanded_query = query
 
-        # Intent classification (INTENT_PATTERNS / temporalFilter) removed
-        # 2026-07-07: regex intent was deprecated on the primary path 2026-04-12
-        # (z-score contrastive scoring replaced type boosts) and survived only
-        # here, where it was marginal (keyword-net contribution) and the temporal
-        # filter keyed on created_at — encode-time, not event-time. This path is
-        # now a pure FTS5/keyword-precision net. 'intent' stays 'general' for the
-        # result-shape contract (surface.py reads it; primary path already
-        # hardcodes 'general').
+        # Pure FTS5/keyword-precision net — no intent classification, no
+        # type boosts, no date windowing. 'intent' is a constant, kept only
+        # for the result-shape contract (surface.py reads it).
         intent = 'general'
 
         # Step 1: Keyword search for seeds
@@ -1504,6 +1499,17 @@ class BrainRecallMixin:
             fut.set_exception(RuntimeError(
                 'recall leader exited without setting result'))
 
+    def _empty_recall(self, mode: str) -> Dict[str, Any]:
+        """The one empty-result shape for recall's no-embedding exits.
+
+        Every exit carries `_embedding_stats` so the MCP diagnostic footer
+        (brain_mcp renders it only when stats is non-empty) shows the failure
+        mode inline — an exit without it reads as "brain knows nothing" instead
+        of "embedding is broken"."""
+        return {'results': [], 'intent': 'general', '_recall_mode': mode,
+                '_embedding_stats': {'embedder_ready': embedder.is_ready(),
+                                     'embedder_status': embedder.get_model_status()}}
+
     def _recall_impl(self, query: str, filter=None, limit: int = 20,
                      offset: int = 0, include_archived: bool = False,
                      min_recency: float = 0,
@@ -1515,19 +1521,16 @@ class BrainRecallMixin:
         t0 = time.time()
         limit = min(limit, MAX_PAGE_SIZE)
 
-        # ── No embedder → no recall. The keyword-only fallback was removed
-        #    2026-07-07: a silent keyword substitute masks that semantic recall
-        #    is down. Return empty + REPORT the condition (surfaces in the
-        #    dashboard errors view + the boot unsurfaced-errors notice). The
-        #    embedder is warmed at daemon boot so this window is small, and the
-        #    recall hook degrades gracefully on empty results.
+        # ── No embedder → no recall. Deliberately NO keyword fallback: a silent
+        #    keyword substitute masks that semantic recall is down. Report the
+        #    condition (dashboard errors view + boot unsurfaced-errors notice)
+        #    and return empty — the recall hook degrades gracefully on empty
+        #    results, and the embedder is warmed at daemon boot so this window
+        #    is small.
         if not embedder.is_ready():
             self._log_error('recall_embedder_unavailable', None,
                             'embedder not ready — returning empty (no keyword fallback)')
-            return {'results': [], 'intent': 'general',
-                    '_recall_mode': 'embedder_unavailable',
-                    '_embedding_stats': {'embedder_ready': False,
-                                         'embedder_status': embedder.get_model_status()}}
+            return self._empty_recall('embedder_unavailable')
 
         # ── PRIMARY PATH: Embeddings-first ──
 
@@ -1541,11 +1544,11 @@ class BrainRecallMixin:
         except Exception as e:
             self._log_error('recall_embed_failed', e,
                             'embed_query raised — returning empty (no keyword fallback)')
-            return {'results': [], 'intent': 'general', '_recall_mode': 'embed_failed'}
+            return self._empty_recall('embed_failed')
         if not query_vec:
             self._log_error('recall_embed_failed', None,
                             'embed_query returned empty — returning empty (no keyword fallback)')
-            return {'results': [], 'intent': 'general', '_recall_mode': 'embed_failed'}
+            return self._empty_recall('embed_failed')
 
         # Lexical bridge alternates — populated conditionally AFTER primary
         # cosine completes (see post-STEP-3 expansion gate). Empty here so
@@ -1556,11 +1559,9 @@ class BrainRecallMixin:
         alternate_vecs = []
         alternate_strings = []
 
-        # Regex intent classification / type boosts fully removed 2026-07-07
-        # (deprecated on this path 2026-04-12 — z-score contrastive scoring
-        # handles type relevance via per-node statistics; the keyword-net vestige
-        # went with INTENT_PATTERNS). 'intent' stays a constant for the result
-        # shape (surface.py reads it).
+        # 'intent' is a constant for the result-shape contract (surface.py
+        # reads it). Type relevance is handled by z-score contrastive scoring,
+        # not query classification.
         intent = 'general'
 
         # STEP 2.5: Wire situation matching — query IS the situation context.
