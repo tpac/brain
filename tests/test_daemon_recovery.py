@@ -474,21 +474,45 @@ class TestDuplicateDaemonDefers(unittest.TestCase):
     """A duplicate (port already served by a responsive daemon) must raise
     DuplicateDaemonError so the supervisor exits cleanly instead of crash-
     looping on bind. Backstop for the Errno-48 storm (2026-06-05) — closes the
-    class regardless of HOW a second daemon was spawned."""
+    class regardless of HOW a second daemon was spawned.
+
+    Step 6 removed _run's is_daemon_responsive PRE-check: the flock (acquired in
+    start() before the supervisor loop) is the singleton primitive, and while we
+    hold it no other same-uid process is past the flock-acquire — so none can be
+    serving our port. test_lock_holder_blocks_start_before_run pins that; the
+    bind-time EADDRINUSE backstop below covers the only residue (a different uid
+    colliding via uid%100, and the acquire→bind race)."""
 
     def _daemon(self):
         from servers.daemon_server import BrainDaemon
         return BrainDaemon("/tmp/nonexistent-brain-test.db")
 
-    def test_run_precheck_defers_when_responsive(self):
+    def test_lock_holder_blocks_start_before_run(self):
+        # The flock — not a port pre-check — is what rejects a duplicate. With an
+        # incumbent holding the singleton lock, start() must return BEFORE ever
+        # invoking _run() (which would open DB writer connections). This is the
+        # invariant the deleted _run pre-check was redundantly asserting.
+        import fcntl
         from servers import daemon_server as ds
-        d = self._daemon()
-        # Responsive incumbent → defer BEFORE loading the brain (no DB writers).
-        with patch("servers.daemon_client.is_daemon_responsive", return_value=True), \
-             patch.object(d, "_load_brain") as load:
-            with self.assertRaises(ds.DuplicateDaemonError):
-                d._run()
-            load.assert_not_called()
+        with tempfile.TemporaryDirectory(prefix="brain-lock-test-") as tmp:
+            lock_path = os.path.join(tmp, "daemon.lock")
+            incumbent = open(lock_path, "w")
+            fcntl.flock(incumbent, fcntl.LOCK_EX | fcntl.LOCK_NB)  # hold it
+            try:
+                d = ds.BrainDaemon.__new__(ds.BrainDaemon)
+                d._log = lambda *a, **k: None
+                with patch("shutil.rmtree"), \
+                     patch("servers.daemon_server.get_lock_path", return_value=lock_path), \
+                     patch("servers.daemon_server.get_pid_path",
+                           return_value=os.path.join(tmp, "daemon.pid")), \
+                     patch.object(d, "_run") as run, \
+                     patch.object(d, "_shutdown") as shutdown:
+                    d.start()
+                run.assert_not_called()       # flock rejected us → never reached _run
+                shutdown.assert_not_called()  # early return, before the loop/_shutdown
+            finally:
+                fcntl.flock(incumbent, fcntl.LOCK_UN)
+                incumbent.close()
 
     def test_bind_socket_defers_on_eaddrinuse_when_responsive(self):
         from servers import daemon_server as ds
@@ -513,6 +537,97 @@ class TestDuplicateDaemonDefers(unittest.TestCase):
              patch.object(ds.time, "sleep"):
             with self.assertRaises(OSError):
                 d._bind_socket()
+
+
+class TestSupervisorPhaseScoping(unittest.TestCase):
+    """Step 6: the supervisor is PHASE-scoped, not exception-type-scoped.
+      • Crash while self.brain is None (before/during the brain load) → a brain-
+        level fault. Retrying re-runs the same deterministic failure ×MAX, each
+        paying the full load cost while holding the flock and serving nothing —
+        so exit to KeepAlive for a fresh process (no in-place retry).
+      • Crash with the brain up → a transient serve/socket fault. Warm-retry
+        (keep the loaded brain) up to MAX, then give up.
+      • The crash streak resets only after HEALTHY_UPTIME_RESET_S of serving, so
+        an endless serve-crash loop actually reaches MAX (the old reset-on-every-
+        bind let it loop forever) while unrelated crashes hours apart don't
+        accumulate.
+    Every path stays LOUD — _log_crash writes the traceback before any branch."""
+
+    def _make(self, tmp):
+        from servers import daemon_server as ds
+        d = ds.BrainDaemon.__new__(ds.BrainDaemon)   # skip __init__ — no pool/brain
+        d._restart_count = 0
+        d._run_started_at = 0
+        d.socket_path = os.path.join(tmp, "x.sock")  # absent → start() skips unlink
+        d.logs = []
+        d._log = lambda m: d.logs.append(m)
+        d._log_crash = MagicMock()
+        d._shutdown = MagicMock()
+        d._close_socket = MagicMock()
+        return d
+
+    def _start(self, d, tmp):
+        # Run the REAL supervisor loop with only the flock/signal/pycache/sleep
+        # machinery stubbed. The flock acquires cleanly (nothing else holds it).
+        lock_path = os.path.join(tmp, "daemon.lock")
+        with patch("shutil.rmtree"), \
+             patch("servers.daemon_server.get_lock_path", return_value=lock_path), \
+             patch("servers.daemon_server.signal.signal"), \
+             patch("servers.daemon_server.atexit.register"), \
+             patch("servers.daemon_server.time.sleep"):
+            d.start()
+
+    def test_load_crash_exits_to_keepalive_no_retry(self):
+        with tempfile.TemporaryDirectory(prefix="brain-sup-test-") as tmp:
+            d = self._make(tmp)
+            d.brain = None                       # load-phase fault
+            calls = []
+            def boom():
+                calls.append(1)
+                raise RuntimeError("brain load failed")
+            d._run = boom
+            self._start(d, tmp)
+            self.assertEqual(len(calls), 1, "load-phase crash must NOT warm-retry")
+            self.assertEqual(d._restart_count, 0, "no restart counted on the exit-to-KeepAlive path")
+            self.assertTrue(any("FATAL: crash before the brain loaded" in m for m in d.logs),
+                            "must log the FATAL exit reason")
+            d._log_crash.assert_called_once()    # LOUD: traceback before the branch
+            d._shutdown.assert_called_once()     # clean teardown → flock released → KeepAlive respawns
+
+    def test_serve_crash_warm_retries_then_gives_up(self):
+        with tempfile.TemporaryDirectory(prefix="brain-sup-test-") as tmp:
+            d = self._make(tmp)
+            d.brain = MagicMock()                # brain up → serve-phase fault
+            calls = []
+            def boom():
+                calls.append(1)                  # never sets _run_started_at (crashes "fast")
+                raise RuntimeError("serve socket died")
+            d._run = boom
+            self._start(d, tmp)
+            # 1 initial run + MAX warm retries, then FATAL give-up.
+            self.assertEqual(len(calls), d.MAX_SUPERVISOR_RESTARTS + 1)
+            self.assertTrue(any("Giving up" in m for m in d.logs))
+
+    def test_healthy_uptime_resets_streak(self):
+        with tempfile.TemporaryDirectory(prefix="brain-sup-test-") as tmp:
+            d = self._make(tmp)
+            d.brain = MagicMock()
+            seq = []
+            def run():
+                seq.append(1)
+                if len(seq) <= 3:
+                    # each crash lands AFTER a full healthy-uptime interval
+                    d._run_started_at = time.time() - (d.HEALTHY_UPTIME_RESET_S + 10)
+                    raise RuntimeError("crash after healthy uptime")
+                return  # 4th run: clean shutdown → loop breaks
+            d._run = run
+            self._start(d, tmp)
+            # 3 healthy-uptime crashes each reset the streak to 0 (→ +1 = 1), so we
+            # NEVER approach MAX(5) — they don't accumulate. 4th run returns clean.
+            self.assertEqual(len(seq), 4)
+            self.assertEqual(d._restart_count, 1)
+            self.assertFalse(any("Giving up" in m for m in d.logs),
+                             "healthy-uptime crashes must not accumulate toward give-up")
 
 
 class TestShutdownDrainOrder(unittest.TestCase):

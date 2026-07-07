@@ -49,6 +49,12 @@ class BrainDaemon:
 
     MAX_SUPERVISOR_RESTARTS = 5      # Max restarts before giving up
     SUPERVISOR_RESTART_COOLDOWN = 2   # Seconds between restart attempts
+    HEALTHY_UPTIME_RESET_S = 300      # A crash after this much healthy serving is
+                                      # a FRESH incident, not part of a rapid crash-
+                                      # loop — reset the streak. Without this the
+                                      # count either reset on every bind (an endless
+                                      # serve-crash loop never hit MAX) or accrued
+                                      # across unrelated crashes hours apart.
     SHUTDOWN_BACKSTOP_S = 15          # Force-exit if teardown wedges. > a typical
                                       # in-flight recall (so it finishes on open
                                       # conns), < launchd's ~20s SIGTERM→SIGKILL
@@ -90,6 +96,9 @@ class BrainDaemon:
         self._scribe_attempts = {}
         self._scribe_failures = {}
         self._restart_count = 0
+        self._run_started_at = 0  # wall-clock when the current _run() began serving
+                                  # (set after bind) — the supervisor's healthy-uptime
+                                  # streak reset reads it.
         # Only the instance that actually binds the port writes the PID file —
         # so a duplicate that defers (DuplicateDaemonError) never claims it, and
         # _cleanup never unlinks the incumbent's PID file out from under it.
@@ -175,8 +184,33 @@ class BrainDaemon:
                 self._log("DEFER: %s — exiting cleanly (no restart)." % e)
                 break
             except Exception as e:
-                self._restart_count += 1
+                # LOUD first: the traceback goes to daemon.log (and the brain error
+                # table if the brain is up) before any branch decision.
                 self._log_crash(e)
+
+                # Phase-scoped, not exception-type-scoped. self.brain is set ONLY
+                # after Brain() constructs (see _load_brain). So brain is None ⟺
+                # the crash happened before/during the load — a brain-level fault.
+                # Warm-retrying that re-runs the SAME deterministic failure
+                # ×MAX, each paying the full load cost while holding the flock and
+                # serving nothing. Exit for a fresh process (a clean reload)
+                # instead of crash-looping in place: on macOS launchd KeepAlive
+                # respawns it (throttled); off-launchd the next client
+                # ensure_daemon does. Either way, exit beats in-place retry.
+                if self.brain is None:
+                    self._log("FATAL: crash before the brain loaded — exiting for a "
+                              "fresh reload (KeepAlive / next ensure_daemon respawns; "
+                              "no in-place retry).")
+                    break
+
+                # Brain is up: a transient serve/bind/socket fault, where the warm-
+                # brain retry is the real latency win (no reload). Reset the streak
+                # if the daemon had been serving healthily — a crash after sustained
+                # uptime is a fresh incident, not a continuation of a rapid loop.
+                if self._run_started_at and (
+                        time.time() - self._run_started_at) > self.HEALTHY_UPTIME_RESET_S:
+                    self._restart_count = 0
+                self._restart_count += 1
 
                 if self._restart_count > self.MAX_SUPERVISOR_RESTARTS:
                     self._log("FATAL: %d consecutive crashes. Giving up." % self._restart_count)
@@ -197,16 +231,16 @@ class BrainDaemon:
 
         Raises on fatal errors so the supervisor can restart.
         Normal shutdown (signal/idle) returns cleanly.
-        """
-        # Singleton pre-check, BEFORE loading the brain — if a responsive daemon
-        # already owns the port we're a duplicate, so defer without ever opening
-        # DB writer connections (two writers on one brain.db corrupts indexes).
-        # Cheap: a free port refuses the connection immediately.
-        from .daemon_client import is_daemon_responsive
-        if is_daemon_responsive(timeout=1.0):
-            raise DuplicateDaemonError(
-                "A responsive daemon already owns %s:%d." % self.daemon_addr)
 
+        Singleton identity is the flock, acquired in start() BEFORE this runs.
+        A serving daemon holds its flock for its whole serving life (released in
+        _cleanup, after the socket closes), so while WE hold it no other same-uid
+        process can be past the flock-acquire — none is binding or serving our
+        port. The only residual port owner is a DIFFERENT uid colliding via
+        uid%100, and the EADDRINUSE backstop in _bind_socket defers cleanly on
+        that (and on the acquire→bind race window). So there is no reachable
+        "responsive daemon already owns the port" state here to pre-check for.
+        """
         # Load brain if not loaded (first run or after crash that corrupted it)
         if not self.brain:
             self._load_brain()
@@ -222,7 +256,8 @@ class BrainDaemon:
         self._wrote_pid = True
 
         self.running = True
-        self._restart_count = 0  # Reset on successful start
+        self._run_started_at = time.time()  # healthy-uptime clock for the supervisor's
+                                            # streak reset (see the except handler).
         threads = threading.enumerate()
         self._log("Daemon started. PID={}, addr={}:{}, workers={}, restarts={}, threads={}({})".format(
             os.getpid(), self.daemon_addr[0], self.daemon_addr[1],
