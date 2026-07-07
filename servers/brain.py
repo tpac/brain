@@ -46,7 +46,6 @@ from . import embedder
 
 from .brain_constants import (
     DECAY_HALF_LIFE,
-    INTENT_PATTERNS, INTENT_TYPE_BOOSTS, TEMPORAL_PATTERNS,
 )
 
 
@@ -516,59 +515,6 @@ class Brain(
     # Replaced by recall_scoring.unified_score() — a pure module with one formula
     # for both embedding and keyword paths. See recall_scoring.py for the
     # research-grounded formula (pattern completion + bounded modulators).
-
-    def _classify_intent(self, query: str) -> Dict[str, Any]:
-        """
-        Classify query intent and extract metadata (type boosts, temporal filter, etc).
-
-        Args:
-            query: User query string
-
-        Returns:
-            Dict with:
-                - intent: 'general' or specific intent name
-                - typeBoosts: Dict of type→boost multipliers
-                - temporalFilter: {'after': ISO, 'before': ISO} or None
-                - followEdges: bool for deeper edge traversal
-        """
-        lower_query = query.lower()
-        intent = 'general'
-        type_boosts = {}
-        temporal_filter = None
-        follow_edges = False
-
-        # Check intent patterns
-        for intent_name, pattern in INTENT_PATTERNS.items():
-            if pattern.search(lower_query):
-                intent = intent_name
-                type_boosts = INTENT_TYPE_BOOSTS.get(intent_name, {}).copy()
-                break
-
-        # Reasoning chains need deeper edge traversal
-        if intent == 'reasoning_chain':
-            follow_edges = True
-
-        # Check temporal patterns
-        for temporal in TEMPORAL_PATTERNS:
-            pattern = temporal['pattern']
-            match = pattern.search(lower_query)
-            if match:
-                range_fn = temporal['range_fn']
-                try:
-                    temporal_filter = range_fn(match)
-                except TypeError:
-                    temporal_filter = range_fn()
-                if intent == 'general':
-                    intent = 'temporal'
-                type_boosts.update(INTENT_TYPE_BOOSTS.get('temporal', {}))
-                break
-
-        return {
-            'intent': intent,
-            'typeBoosts': type_boosts,
-            'temporalFilter': temporal_filter,
-            'followEdges': follow_edges
-        }
 
     # ─── TF-IDF Methods ───
 

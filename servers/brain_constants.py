@@ -5,11 +5,6 @@ Constants used across multiple brain mixin modules.
 Extracted to avoid circular imports (mixins can't import from brain.py).
 """
 
-import re
-from datetime import datetime, timedelta, timezone
-
-from .clock import iso_now
-
 # ═══════════════════════════════════════════════════════════════
 # CONSTANTS: Decay rates by node type (hours until weight halves)
 # ═══════════════════════════════════════════════════════════════
@@ -269,109 +264,6 @@ EXTENDED_STOP_WORDS = TFIDF_STOP_WORDS | {
     'come', 'go', 'see', 'know', 'good', 'bad', 'big', 'small', 'part',
     'work', 'way', 'time', 'done', 'made', 'feature',
 }
-
-# Intent detection patterns
-INTENT_PATTERNS = {
-    'decision_lookup': re.compile(r'\b(what did (?:we|tom|i) (?:decide|choose|pick)|decision about|decided on)\b', re.IGNORECASE),
-    'reasoning_chain': re.compile(r'\b(why did (?:we|i)|reason for|reasoning behind|what led to|how come)\b', re.IGNORECASE),
-    'state_query': re.compile(r"\b(what(?:'s| is) the (?:current|latest)|status of|state of|where (?:are|is) (?:we|it))\b", re.IGNORECASE),
-    'temporal': re.compile(r'\b(when did|last (?:week|month|time|session)|this (?:week|month)|before (?:the|we)|after (?:the|we)|yesterday|today|recently|history of|timeline)\b', re.IGNORECASE),
-    'correction_lookup': re.compile(r'\b(what mistake|lesson(?:s)? learned|correction|what went wrong|what did (?:we|i) learn|mistakes?\b.*learn|learn(?:ed)? from)\b', re.IGNORECASE),
-    'how_to': re.compile(r"\b(how (?:do|does|to|should)|what(?:'s| is) the (?:best|right) way)\b", re.IGNORECASE),
-    'list_query': re.compile(r'\b(list (?:all|every)|show me (?:all|every)|what are (?:all|the))\b', re.IGNORECASE),
-}
-
-INTENT_TYPE_BOOSTS = {
-    'decision_lookup':   {'decision': 1.5, 'rule': 1.0, 'lesson': 1.2, 'correction': 1.3},
-    'reasoning_chain':   {'decision': 1.3, 'rule': 1.2, 'context': 1.1, 'mechanism': 1.3, 'reasoning_trace': 1.4, 'mental_model': 1.2},
-    'state_query':       {'context': 1.5, 'project': 1.3, 'task': 1.3, 'object': 1.4, 'purpose': 1.2},
-    'temporal':          {'decision': 1.0, 'context': 1.2},
-    'correction_lookup': {'decision': 1.5, 'rule': 1.2, 'correction': 1.5, 'lesson': 1.3},
-    'how_to':            {'rule': 1.5, 'decision': 1.2, 'mechanism': 1.5, 'convention': 1.4, 'purpose': 1.2, 'constraint': 1.3},
-    'list_query':        {'rule': 1.0, 'decision': 1.0, 'object': 1.3},
-    'general':           {'purpose': 1.1, 'mechanism': 1.1, 'impact': 1.1, 'vocabulary': 1.1},
-}
-
-def _start_of_today():
-    """Midnight UTC today."""
-    return datetime.now(timezone.utc).replace(
-        hour=0, minute=0, second=0, microsecond=0)
-
-def _start_of_week():
-    """Monday 00:00 UTC of the current week."""
-    now = datetime.now(timezone.utc)
-    return (now - timedelta(days=now.weekday())).replace(
-        hour=0, minute=0, second=0, microsecond=0)
-
-def _start_of_month():
-    """First day of the current month, 00:00 UTC."""
-    return datetime.now(timezone.utc).replace(
-        day=1, hour=0, minute=0, second=0, microsecond=0)
-
-# Window definitions route through ``iso_now(at=...)`` so the bound
-# parameters share the +00:00 suffix convention used by every other
-# stored timestamp. Lexicographic comparison against historical Z-stored
-# rows is safe — the date/time prefix dominates.
-TEMPORAL_PATTERNS = [
-    {
-        'pattern': re.compile(r'\btoday\b', re.IGNORECASE),
-        'range_fn': lambda: {
-            'after': iso_now(at=_start_of_today())
-        }
-    },
-    {
-        'pattern': re.compile(r'\byesterday\b', re.IGNORECASE),
-        'range_fn': lambda: {
-            'after': iso_now(at=_start_of_today() - timedelta(days=1)),
-            'before': iso_now(at=_start_of_today()),
-        }
-    },
-    {
-        'pattern': re.compile(r'\bthis week\b', re.IGNORECASE),
-        'range_fn': lambda: {
-            'after': iso_now(at=_start_of_week())
-        }
-    },
-    {
-        'pattern': re.compile(r'\blast week\b', re.IGNORECASE),
-        'range_fn': lambda: {
-            'after': iso_now(at=_start_of_week() - timedelta(weeks=1)),
-            'before': iso_now(at=_start_of_week()),
-        }
-    },
-    {
-        'pattern': re.compile(r'\bthis month\b', re.IGNORECASE),
-        'range_fn': lambda: {
-            'after': iso_now(at=_start_of_month())
-        }
-    },
-    {
-        'pattern': re.compile(r'\blast month\b', re.IGNORECASE),
-        'range_fn': lambda: {
-            'after': iso_now(at=(_start_of_month().replace(day=1) - timedelta(days=1)).replace(
-                day=1, hour=0, minute=0, second=0, microsecond=0)),
-            'before': iso_now(at=_start_of_month()),
-        }
-    },
-    {
-        'pattern': re.compile(r'\blast (\d+) days?\b', re.IGNORECASE),
-        'range_fn': lambda m: {
-            'after': iso_now(at=datetime.now(timezone.utc) - timedelta(days=int(m.group(1))))
-        }
-    },
-    {
-        'pattern': re.compile(r'\brecently\b', re.IGNORECASE),
-        'range_fn': lambda: {
-            'after': iso_now(at=datetime.now(timezone.utc) - timedelta(days=3))
-        }
-    },
-    {
-        'pattern': re.compile(r'\blast session\b', re.IGNORECASE),
-        'range_fn': lambda: {
-            'after': iso_now(at=datetime.now(timezone.utc) - timedelta(hours=6))
-        }
-    },
-]
 
 # Edge types
 EDGE_TYPES = {

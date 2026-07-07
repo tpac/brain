@@ -1099,11 +1099,15 @@ class BrainRecallMixin:
 
         expanded_query = query
 
-        # v5 Step 0: Intent detection
-        intent_data = self._classify_intent(query)
-        intent = intent_data['intent']
-        type_boosts = intent_data['typeBoosts']
-        temporal_filter = intent_data['temporalFilter']
+        # Intent classification (INTENT_PATTERNS / temporalFilter) removed
+        # 2026-07-07: regex intent was deprecated on the primary path 2026-04-12
+        # (z-score contrastive scoring replaced type boosts) and survived only
+        # here, where it was marginal (keyword-net contribution) and the temporal
+        # filter keyed on created_at — encode-time, not event-time. This path is
+        # now a pure FTS5/keyword-precision net. 'intent' stays 'general' for the
+        # result-shape contract (surface.py reads it; primary path already
+        # hardcodes 'general').
+        intent = 'general'
 
         # Step 1: Keyword search for seeds
         seeds = self._search_keywords(expanded_query, 30)
@@ -1204,10 +1208,6 @@ class BrainRecallMixin:
             if node.get('type') in ('project', 'person'):
                 relevance *= 0.5
 
-            # v5: Intent-based type boosting
-            type_boost = type_boosts.get(node.get('type'), 1.0)
-            relevance *= type_boost
-
             # v5.2: Critical node boost
             if node.get('critical'):
                 relevance *= CRITICAL_BOOST
@@ -1250,12 +1250,6 @@ class BrainRecallMixin:
             else:
                 filtered = [n for n in filtered if n.get('recency_score', 0) >= min_recency]
 
-        # v5: Temporal filter
-        if temporal_filter:
-            after = temporal_filter.get('after')
-            before = temporal_filter.get('before')
-            filtered = [n for n in filtered if self._matches_temporal_filter(n.get('created_at'), after, before)]
-
         # Step 5: Sort by effective activation
         filtered.sort(key=lambda n: -n.get('effective_activation', 0))
 
@@ -1286,23 +1280,11 @@ class BrainRecallMixin:
         returned_ids = [n['id'] for n in page]
         # recall_log writes REMOVED 2026-04-05 — S1 traces capture all recall data.
 
-        # v6: Attach reasoning chains when intent is reasoning_chain
-        reasoning_chains = []
-        if intent == 'reasoning_chain':
-            # 1. Pull chains for decision nodes in results
-            decision_nodes = [n for n in page if n.get('type') == 'decision']
-            for dn in decision_nodes:
-                # Note: reasoning methods not yet implemented, skipping for now
-                pass
-
         # recall_log writes removed 2026-04-05 — traces are source of truth
         result = {
             'results': page,
             'intent': intent,
         }
-
-        if reasoning_chains:
-            result['reasoning_chains'] = reasoning_chains
 
         return result
 
@@ -1577,13 +1559,12 @@ class BrainRecallMixin:
         alternate_vecs = []
         alternate_strings = []
 
-        # STEP 2: Intent classification — DEPRECATED 2026-04-12.
-        # Regex patterns fire on 12% of queries and miscalibrate scores when they do
-        # (how_to boosted irrelevant rules to 0.943). Replaced by z-score contrastive
-        # scoring which naturally handles type relevance through per-node statistics.
-        # Type boosts removed from STEP 6 scoring.
+        # Regex intent classification / type boosts fully removed 2026-07-07
+        # (deprecated on this path 2026-04-12 — z-score contrastive scoring
+        # handles type relevance via per-node statistics; the keyword-net vestige
+        # went with INTENT_PATTERNS). 'intent' stays a constant for the result
+        # shape (surface.py reads it).
         intent = 'general'
-        type_boosts = {}
 
         # STEP 2.5: Wire situation matching — query IS the situation context.
         # 1085 nodes have situation embeddings describing WHEN they're relevant.
@@ -2122,9 +2103,6 @@ class BrainRecallMixin:
                 blended = KEYWORD_FALLBACK_WEIGHT * kw_score
                 discovery = 'keyword_only_fallback'
 
-            # Intent-based type boosting — DEPRECATED 2026-04-12.
-            # Z-score contrastive scoring replaces type boosts.
-            # type_boosts is always {} now (set in STEP 2).
             node = keyword_nodes.get(nid)
 
             # v8.8: Title-match boost — proportional to query/title word overlap.
@@ -2448,10 +2426,6 @@ class BrainRecallMixin:
                 'top_score': max_score if 'max_score' in locals() else 0,
             }
 
-        # Carry over reasoning chains from keyword result
-        if keyword_result.get('reasoning_chains'):
-            result['reasoning_chains'] = keyword_result['reasoning_chains']
-
         # v5.1: Return query embedding for segment boundary detection
         # Zero cost — already computed in STEP 1
         result['_query_embedding'] = query_vec
@@ -2658,12 +2632,3 @@ class BrainRecallMixin:
                 results.append(node)
         return results
 
-    def _matches_temporal_filter(self, created_at: Optional[str], after: Optional[str], before: Optional[str]) -> bool:
-        """Check if a node creation date matches temporal filter."""
-        if not created_at:
-            return False
-        if after and created_at < after:
-            return False
-        if before and created_at > before:
-            return False
-        return True
