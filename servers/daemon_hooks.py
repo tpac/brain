@@ -198,7 +198,7 @@ def hook_recall(brain, args, graph_changes):
     # ctx.s0_chain() with the same stop_counter, so they stay paired. Reaching
     # hook_recall means a real prompt (client filters watch-wakes), so this is
     # exactly the conversational set — heartbeat turns never get here.
-    _s0_trace(
+    _user_msg_trace_id = _s0_trace(
         brain, ctx, event_type='K', ref_type='user_message',
         summary=user_message[:200] if user_message else '',
         metadata={'content': user_message[:4000],
@@ -302,10 +302,12 @@ def hook_recall(brain, args, graph_changes):
         # Previous turns — ONE pull serves both consumers below (the surface
         # conversation window and the prior-query embedding blend), keeping
         # their notion of "previous" aligned by construction. Exclude the
-        # current chain: its user_message trace is already written (at
-        # prompt-arrival, above) and the current message reaches
-        # build_surface_prompt separately as `user_message`, rendered as its
-        # own block. Drop wake envelopes — task-notification ignites are
+        # current prompt's own trace row: it was written at prompt-arrival
+        # (above) and the current message reaches build_surface_prompt
+        # separately as `user_message`, rendered as its own block. Keyed on
+        # the trace id, not the chain — after an interrupt the current chain
+        # also holds the previous real prompt, which belongs in the window.
+        # Drop wake envelopes — task-notification ignites are
         # recorded as user_message traces but are machine payloads, not
         # operator speech; Haiku must not read them as conversation.
         # Limit comes from SURFACE['recent_messages'] so the upstream pull and
@@ -316,7 +318,8 @@ def hook_recall(brain, args, graph_changes):
         try:
             turns = brain._trace_dal.get_session_turns(
                 session_id, limit=_SURFACE['recent_messages'],
-                exclude_chain=ctx.s0_chain())
+                with_judge_output=False,
+                exclude_trace_id=_user_msg_trace_id)
             turns = [t for t in turns
                      if not (t.get('content') or '').startswith(WAKE_ENVELOPE_MARKER)]
             recent_messages = [{"role": t['role'], "content": (t['content'] or '')[:_PL['recent_message_content']]}
@@ -539,8 +542,11 @@ def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None):
     self_message — differ only in event_type / ref_type / summary / metadata;
     everything else is turn-fixed. Routing them all through here keeps
     session_id from being dropped — the self_message append once omitted it,
-    leaving cross-stream deliveries unattributable to the recipient session."""
-    brain._trace_dal.append(
+    leaving cross-stream deliveries unattributable to the recipient session.
+
+    Returns the appended trace_event id (hook_recall passes the current
+    prompt's id to get_session_turns as exclude_trace_id)."""
+    return brain._trace_dal.append(
         chain_id=ctx.s0_chain(), scale='s0', session_id=ctx.session_id,
         event_type=event_type, ref_type=ref_type, summary=summary,
         metadata=metadata)

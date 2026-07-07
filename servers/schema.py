@@ -1505,6 +1505,11 @@ LOG_INDEXES = [
     # journal-note subject pulls: WHERE ref_type='journal_note' AND ref_id=?
     # ORDER BY created_at — the hotspot/subject query (N notes on one node).
     'CREATE INDEX IF NOT EXISTS idx_trace_ref_subject ON trace_events(ref_type, ref_id, created_at)',
+    # get_session_turns hot path (hook_recall, once per user prompt): filter by
+    # session + scale, walk created_at DESC, stop at LIMIT — same short-circuit
+    # pattern as idx_trace_scope_created above. Without it the planner loads
+    # every row of the session before sorting.
+    'CREATE INDEX IF NOT EXISTS idx_trace_session_created ON trace_events(session_id, scale, created_at)',
     # v9.2: session_state
     'CREATE INDEX IF NOT EXISTS idx_session_state_session ON session_state(session_id)',
     # self channel — drain/peek filter by address + expires_at; reap by expires_at;

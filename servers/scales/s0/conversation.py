@@ -205,6 +205,7 @@ def _from_traces_by_session(brain, session_id, timestamp, before, after):
             around_timestamp=timestamp,
             before=before,
             after=after,
+            with_judge_output=False,
         )
         if turns:
             return [{'role': t['role'], 'content': t.get('content', ''),

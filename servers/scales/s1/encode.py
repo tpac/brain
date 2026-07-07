@@ -170,7 +170,8 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         print('[s1e] WARNING: could not write prompt file: %s' % e, flush=True)
 
     # 5. Write S1 traces: O (observation) and K (knowledge)
-    _write_pre_traces(brain, dispatch_fn, messages, user_content, counter, session_id)
+    _write_pre_traces(brain, dispatch_fn, messages, user_content, counter,
+                      session_id, catalog_ids=catalog_ids)
 
     # 6. Run generic LLM loop (shared with S2+)
     _log("calling Sonnet with %d tools, %d chars context, effort=%s..." % (
@@ -332,7 +333,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
 def _gather_messages(brain, session_id):
     """Fetch recent messages for the current session via S0 API.
 
-    Returns: [{id, role, content, signal, timestamp, recalled_raw, surface_output}]
+    Returns: [{id, turn_label, role, trace_id, content, timestamp, judge_output}]
     Uses S0 layer's get_conversation() — single source of truth.
     """
     from servers.scales.s1.encode_contract import ENCODING_AGENT
@@ -1080,36 +1081,23 @@ def _render_provenance(links, frontier, turn, idx, titles=None):
     return ' | '.join(parts)
 
 
-def _write_pre_traces(brain, dispatch_fn, messages, user_content, counter, session_id):
-    """Write S1 encode traces: O (encoding prompt) and K (node catalog)."""
+def _write_pre_traces(brain, dispatch_fn, messages, user_content, counter,
+                      session_id, catalog_ids=()):
+    """Write S1 encode traces: O (encoding prompt) and K (node catalog).
+
+    `catalog_ids` — the ids build_node_catalog actually rendered for this
+    run. The K trace's ref_id carries them (8-char, comma-separated); the S2
+    consolidation blindness check (_load_catalog_data) reads that list to
+    decide whether node B was created blind to A. It used to be parsed from
+    messages' `recalled_raw`, which no producer populates — every K trace
+    said "0 unique nodes" and the blindness check saw an empty catalog.
+    """
     try:
         from servers.session_context import SessionContext
         ctx = SessionContext(session_id=session_id, stop_counter=counter)
         enc_chain = ctx.s1e_chain()
         turn_count = len(messages) if messages else 0
-
-        # K: extract node IDs from surface outputs
-        node_ids = set()
-        for m in (messages or []):
-            raw = m.get('recalled_raw') or ''
-            if raw:
-                try:
-                    for c in json.loads(raw):
-                        cid = c.get('id', '') if isinstance(c, dict) else ''
-                        if cid:
-                            node_ids.add(cid[:8])
-                except (ValueError, TypeError) as _e:
-                    # Corrupt recalled_raw JSON silently dropped node IDs
-                    # from the encoding-prompt trace. Surface so we can spot
-                    # whether the producer side (recall result serialization)
-                    # is emitting malformed content.
-                    try:
-                        brain._log_error(
-                            'encoding_recall_parse', _e,
-                            'malformed recalled_raw — node refs missing from O-trace; sample=%r'
-                            % str(raw)[:160])
-                    except Exception:
-                        pass
+        node_ids = {(cid or '')[:8] for cid in (catalog_ids or ()) if cid}
 
         dispatch_fn('trace_append', {
             'chain_id': enc_chain, 'scale': 's1', 'event_type': 'O',
@@ -1121,7 +1109,7 @@ def _write_pre_traces(brain, dispatch_fn, messages, user_content, counter, sessi
         dispatch_fn('trace_append', {
             'chain_id': enc_chain, 'scale': 's1', 'event_type': 'K',
             'ref_type': 'node_catalog',
-            'ref_id': ','.join(sorted(node_ids)[:20]),
+            'ref_id': ','.join(sorted(node_ids)),
             'summary': '%d unique nodes in catalog from %d turns' % (
                 len(node_ids), turn_count),
             'session_id': session_id})
