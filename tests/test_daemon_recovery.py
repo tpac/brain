@@ -156,6 +156,20 @@ class TestRelaunchDaemon(unittest.TestCase):
             kill.assert_called_once()
             ensure.assert_called_once_with("/tmp/x/brain.db")
 
+    def test_kickstart_failed_but_incumbent_responsive_defers_never_kills(self):
+        # Step 3 drift fix. recover_daemon's single 2s ping can call a slow/busy
+        # daemon "down"; if kickstart then also fails transiently, the old code
+        # went straight to SIGKILL — killing a live daemon mid-request that
+        # ensure_daemon's ladder would have deferred to. A daemon that answers
+        # the re-ping must be deferred to, never killed.
+        with patch.object(dl.subprocess, "run", return_value=MagicMock(returncode=1)), \
+             patch.object(dc, "_can_connect", return_value={"ok": True}), \
+             patch.object(dc, "kill_daemon") as kill, \
+             patch.object(dc, "ensure_daemon") as ensure:
+            dc._relaunch_daemon("/tmp/x/brain.db")
+            kill.assert_not_called()
+            ensure.assert_not_called()
+
     def test_kickstart_failure_from_non_source_defers_never_kills(self):
         # A worktree / 2nd clone must NEVER SIGKILL the shared daemon: kickstart
         # failed AND we are not the source → defer to launchd/source, don't kill.
@@ -460,21 +474,45 @@ class TestDuplicateDaemonDefers(unittest.TestCase):
     """A duplicate (port already served by a responsive daemon) must raise
     DuplicateDaemonError so the supervisor exits cleanly instead of crash-
     looping on bind. Backstop for the Errno-48 storm (2026-06-05) — closes the
-    class regardless of HOW a second daemon was spawned."""
+    class regardless of HOW a second daemon was spawned.
+
+    Step 6 removed _run's is_daemon_responsive PRE-check: the flock (acquired in
+    start() before the supervisor loop) is the singleton primitive, and while we
+    hold it no other same-uid process is past the flock-acquire — so none can be
+    serving our port. test_lock_holder_blocks_start_before_run pins that; the
+    bind-time EADDRINUSE backstop below covers the only residue (a different uid
+    colliding via uid%100, and the acquire→bind race)."""
 
     def _daemon(self):
         from servers.daemon_server import BrainDaemon
         return BrainDaemon("/tmp/nonexistent-brain-test.db")
 
-    def test_run_precheck_defers_when_responsive(self):
+    def test_lock_holder_blocks_start_before_run(self):
+        # The flock — not a port pre-check — is what rejects a duplicate. With an
+        # incumbent holding the singleton lock, start() must return BEFORE ever
+        # invoking _run() (which would open DB writer connections). This is the
+        # invariant the deleted _run pre-check was redundantly asserting.
+        import fcntl
         from servers import daemon_server as ds
-        d = self._daemon()
-        # Responsive incumbent → defer BEFORE loading the brain (no DB writers).
-        with patch("servers.daemon_client.is_daemon_responsive", return_value=True), \
-             patch.object(d, "_load_brain") as load:
-            with self.assertRaises(ds.DuplicateDaemonError):
-                d._run()
-            load.assert_not_called()
+        with tempfile.TemporaryDirectory(prefix="brain-lock-test-") as tmp:
+            lock_path = os.path.join(tmp, "daemon.lock")
+            incumbent = open(lock_path, "w")
+            fcntl.flock(incumbent, fcntl.LOCK_EX | fcntl.LOCK_NB)  # hold it
+            try:
+                d = ds.BrainDaemon.__new__(ds.BrainDaemon)
+                d._log = lambda *a, **k: None
+                with patch("shutil.rmtree"), \
+                     patch("servers.daemon_server.get_lock_path", return_value=lock_path), \
+                     patch("servers.daemon_server.get_pid_path",
+                           return_value=os.path.join(tmp, "daemon.pid")), \
+                     patch.object(d, "_run") as run, \
+                     patch.object(d, "_shutdown") as shutdown:
+                    d.start()
+                run.assert_not_called()       # flock rejected us → never reached _run
+                shutdown.assert_not_called()  # early return, before the loop/_shutdown
+            finally:
+                fcntl.flock(incumbent, fcntl.LOCK_UN)
+                incumbent.close()
 
     def test_bind_socket_defers_on_eaddrinuse_when_responsive(self):
         from servers import daemon_server as ds
@@ -499,6 +537,97 @@ class TestDuplicateDaemonDefers(unittest.TestCase):
              patch.object(ds.time, "sleep"):
             with self.assertRaises(OSError):
                 d._bind_socket()
+
+
+class TestSupervisorPhaseScoping(unittest.TestCase):
+    """Step 6: the supervisor is PHASE-scoped, not exception-type-scoped.
+      • Crash while self.brain is None (before/during the brain load) → a brain-
+        level fault. Retrying re-runs the same deterministic failure ×MAX, each
+        paying the full load cost while holding the flock and serving nothing —
+        so exit to KeepAlive for a fresh process (no in-place retry).
+      • Crash with the brain up → a transient serve/socket fault. Warm-retry
+        (keep the loaded brain) up to MAX, then give up.
+      • The crash streak resets only after HEALTHY_UPTIME_RESET_S of serving, so
+        an endless serve-crash loop actually reaches MAX (the old reset-on-every-
+        bind let it loop forever) while unrelated crashes hours apart don't
+        accumulate.
+    Every path stays LOUD — _log_crash writes the traceback before any branch."""
+
+    def _make(self, tmp):
+        from servers import daemon_server as ds
+        d = ds.BrainDaemon.__new__(ds.BrainDaemon)   # skip __init__ — no pool/brain
+        d._restart_count = 0
+        d._run_started_at = 0
+        d.socket_path = os.path.join(tmp, "x.sock")  # absent → start() skips unlink
+        d.logs = []
+        d._log = lambda m: d.logs.append(m)
+        d._log_crash = MagicMock()
+        d._shutdown = MagicMock()
+        d._close_socket = MagicMock()
+        return d
+
+    def _start(self, d, tmp):
+        # Run the REAL supervisor loop with only the flock/signal/pycache/sleep
+        # machinery stubbed. The flock acquires cleanly (nothing else holds it).
+        lock_path = os.path.join(tmp, "daemon.lock")
+        with patch("shutil.rmtree"), \
+             patch("servers.daemon_server.get_lock_path", return_value=lock_path), \
+             patch("servers.daemon_server.signal.signal"), \
+             patch("servers.daemon_server.atexit.register"), \
+             patch("servers.daemon_server.time.sleep"):
+            d.start()
+
+    def test_load_crash_exits_to_keepalive_no_retry(self):
+        with tempfile.TemporaryDirectory(prefix="brain-sup-test-") as tmp:
+            d = self._make(tmp)
+            d.brain = None                       # load-phase fault
+            calls = []
+            def boom():
+                calls.append(1)
+                raise RuntimeError("brain load failed")
+            d._run = boom
+            self._start(d, tmp)
+            self.assertEqual(len(calls), 1, "load-phase crash must NOT warm-retry")
+            self.assertEqual(d._restart_count, 0, "no restart counted on the exit-to-KeepAlive path")
+            self.assertTrue(any("FATAL: crash before the brain loaded" in m for m in d.logs),
+                            "must log the FATAL exit reason")
+            d._log_crash.assert_called_once()    # LOUD: traceback before the branch
+            d._shutdown.assert_called_once()     # clean teardown → flock released → KeepAlive respawns
+
+    def test_serve_crash_warm_retries_then_gives_up(self):
+        with tempfile.TemporaryDirectory(prefix="brain-sup-test-") as tmp:
+            d = self._make(tmp)
+            d.brain = MagicMock()                # brain up → serve-phase fault
+            calls = []
+            def boom():
+                calls.append(1)                  # never sets _run_started_at (crashes "fast")
+                raise RuntimeError("serve socket died")
+            d._run = boom
+            self._start(d, tmp)
+            # 1 initial run + MAX warm retries, then FATAL give-up.
+            self.assertEqual(len(calls), d.MAX_SUPERVISOR_RESTARTS + 1)
+            self.assertTrue(any("Giving up" in m for m in d.logs))
+
+    def test_healthy_uptime_resets_streak(self):
+        with tempfile.TemporaryDirectory(prefix="brain-sup-test-") as tmp:
+            d = self._make(tmp)
+            d.brain = MagicMock()
+            seq = []
+            def run():
+                seq.append(1)
+                if len(seq) <= 3:
+                    # each crash lands AFTER a full healthy-uptime interval
+                    d._run_started_at = time.time() - (d.HEALTHY_UPTIME_RESET_S + 10)
+                    raise RuntimeError("crash after healthy uptime")
+                return  # 4th run: clean shutdown → loop breaks
+            d._run = run
+            self._start(d, tmp)
+            # 3 healthy-uptime crashes each reset the streak to 0 (→ +1 = 1), so we
+            # NEVER approach MAX(5) — they don't accumulate. 4th run returns clean.
+            self.assertEqual(len(seq), 4)
+            self.assertEqual(d._restart_count, 1)
+            self.assertFalse(any("Giving up" in m for m in d.logs),
+                             "healthy-uptime crashes must not accumulate toward give-up")
 
 
 class TestShutdownDrainOrder(unittest.TestCase):
@@ -671,6 +800,30 @@ class TestSpawnDetachedDaemon(unittest.TestCase):
                 "%s must spawn via daemon_launch.spawn_detached_daemon" % mod.__name__)
 
 
+class TestKillDaemonLockDiscipline(unittest.TestCase):
+    """Step 5: NO code path unlinks a lock file. kill_daemon relies on the
+    kernel releasing the dead PID's flock; unlinking the path while another
+    holder (a daemon, an ensure_daemon mid-ladder) has it open would let a
+    third process lock a fresh inode at the same path — two "singleton"
+    holders, the two-writer corruption class."""
+
+    def test_kill_daemon_clears_pid_but_never_unlinks_lock(self):
+        import inspect
+        import tempfile
+        self.assertNotIn("get_lock_path", inspect.getsource(dl.kill_daemon),
+                         "kill_daemon must not touch the lock path at all")
+        with tempfile.TemporaryDirectory(prefix="brain-kill-test-") as tmp:
+            pid_path = os.path.join(tmp, "daemon.pid")
+            with open(pid_path, "w") as f:
+                f.write("999999")
+            with patch.object(dl, "get_pid_path", return_value=pid_path), \
+                 patch.object(dl.os, "kill", side_effect=ProcessLookupError), \
+                 patch.object(dl.time, "sleep"):
+                dl.kill_daemon()
+            self.assertFalse(os.path.exists(pid_path),
+                             "stale PID hint should still be cleared")
+
+
 class TestDaemonConfigSingleSource(unittest.TestCase):
     """Step 1: the launch facts (CPU env, log path, launchd timing) are
     single-sourced in daemon_config so no start path drifts from another."""
@@ -697,6 +850,53 @@ class TestDaemonConfigSingleSource(unittest.TestCase):
         # daemon is mistaken for a corpse and re-kickstarted (the storm).
         self.assertGreater(dc._GRACE_DEADLINE_S, cfg.LAUNCHD_THROTTLE_INTERVAL_S)
         self.assertGreater(dc._KICKSTART_DEADLINE_S, dc._GRACE_DEADLINE_S)
+
+
+class TestDaemonPlistTemplateContract(unittest.TestCase):
+    """Step 7: the repo plist template (hooks/scripts/com.brain.daemon.plist,
+    installed per-machine by install-daemon-service.sh) DERIVES its CPU env and
+    launchd timing from the Step-1 daemon_config constants. Pins the equality so
+    the XML can't silently drift from the Python again — the drift Step 1 named,
+    where the hand-installed plist carried a stale 4-var CPU set missing
+    PYTORCH_ENABLE_MPS_FALLBACK."""
+
+    def _load(self):
+        import plistlib
+        path = os.path.join(os.path.dirname(__file__), '..',
+                            'hooks', 'scripts', 'com.brain.daemon.plist')
+        with open(path, 'rb') as f:
+            raw = f.read()
+        return plistlib.loads(raw), raw.decode()
+
+    def test_plist_env_matches_daemon_cpu_env(self):
+        from servers.daemon_config import DAEMON_CPU_ENV
+        plist, _ = self._load()
+        env = plist["EnvironmentVariables"]
+        # The env is exactly DAEMON_CPU_ENV plus the per-machine BRAIN_DB_DIR path.
+        self.assertEqual(set(env), set(DAEMON_CPU_ENV) | {"BRAIN_DB_DIR"},
+                         "plist env must be DAEMON_CPU_ENV + BRAIN_DB_DIR, nothing more/less")
+        for k, v in DAEMON_CPU_ENV.items():
+            self.assertEqual(env.get(k), v,
+                             "plist %s=%r must match DAEMON_CPU_ENV" % (k, v))
+
+    def test_plist_throttle_matches_constant(self):
+        from servers.daemon_config import LAUNCHD_THROTTLE_INTERVAL_S
+        plist, _ = self._load()
+        self.assertEqual(plist["ThrottleInterval"], LAUNCHD_THROTTLE_INTERVAL_S,
+                         "plist ThrottleInterval must equal LAUNCHD_THROTTLE_INTERVAL_S")
+
+    def test_plist_is_an_unresolved_template(self):
+        # The repo copy is a TEMPLATE — install-daemon-service.sh sed-substitutes
+        # the tokens. If a resolved (machine-specific) copy is ever committed, the
+        # placeholders vanish and a fresh install materializes wrong paths.
+        plist, raw = self._load()
+        self.assertIn("__PLUGIN_DIR__", raw)
+        self.assertIn("__BRAIN_DB_DIR__", raw)
+        self.assertEqual(plist["ProgramArguments"],
+                         ["__PLUGIN_DIR__/hooks/scripts/start-daemon.sh"],
+                         "entrypoint must be start-daemon.sh under the plugin-dir token")
+        self.assertTrue(plist["KeepAlive"])
+        self.assertTrue(plist["RunAtLoad"])
 
 
 if __name__ == "__main__":

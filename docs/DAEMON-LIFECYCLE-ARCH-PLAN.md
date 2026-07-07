@@ -49,6 +49,54 @@ Each step is executable cold in its own session. Recommend; do not batch. This d
   verified. This closed the "fourth root" (`_do_restart` detached Popen, `e6fd63aa`) and the
   self-Popen-vs-kickstart double-mechanism. Agents that read the pre-`3cb6031` worktree flagged
   these as live; they are fixed on `main`. (The worktree has since been fast-forwarded to `main`.)
+- **Step 3 RESOLVED (2026-07-06) — as a drift fix, NOT the unified primitive.** The tri-state
+  design below would regress corpse recovery: its "managed+unreachable → defer to KeepAlive" arm is
+  correct for `ensure_daemon` (down = process exited → KeepAlive respawns) but WRONG for
+  `_relaunch_daemon`, whose target is the hung CORPSE — a live process KeepAlive can never respawn
+  past; the manual kill-despite-managed is what produces the exit KeepAlive needs. The two ladders
+  are role-distinct, not drifted copies. Shipped instead: `_relaunch_daemon` gained the missing
+  re-ping rung (defers to a responsive incumbent instead of SIGKILLing it — the drift this step
+  named), the role asymmetry is documented at both managed arms in `daemon_client.py`, and
+  `test_kickstart_failed_but_incumbent_responsive_defers_never_kills` pins it. A1 (clean-exit on
+  all platforms) evaluated and DECLINED: ~4 lines saved vs an unverifiable Linux behavior change
+  (restart would leave the daemon down until a client pings). Post-Step-2 there is no remaining
+  triple-written ladder: `_perform_restart` is two lines per branch, and `_relaunch_daemon`'s
+  spawn tail already delegates to `ensure_daemon`. Step 6 may treat the spawn/restart model as
+  settled: restart = clean-exit (managed) | teardown+spawn (unmanaged); recovery = kickstart →
+  re-ping-defer → source-gated kill + ensure_daemon.
+- **Step 4 RESOLVED (2026-07-07)** — dead `restart_daemon()` deleted (zero callers confirmed
+  repo-wide, docs included). `stop_daemon` kept: it is the graceful TCP-shutdown utility, and its
+  kill fallback is safe now that the lock unlink is gone (Step 5).
+- **Step 5 RESOLVED (2026-07-07)** — `kill_daemon` no longer unlinks the lock file (kernel releases
+  the dead PID's flock; only the stale PID hint is cleared). **No code path unlinks a lock file** —
+  pinned by `TestKillDaemonLockDiscipline` (source + behavioral assert). "Confine to no-launchd"
+  needed no further change: `port_is_occupied` is only reached in ensure_daemon's unmanaged arm,
+  and `kill_daemon`'s remaining callers are that arm, `stop_daemon`'s fallback, and
+  `_relaunch_daemon`'s corpse kill — which the Step 3 resolution established as deliberately
+  NOT launchd-gated.
+- **Step 6 RESOLVED (2026-07-07)** — `edcc749` + `f0a70bf`. (a) Deleted `_run`'s
+  `is_daemon_responsive` pre-check: the flock (acquired in `start()` before the supervisor loop) is
+  the singleton primitive — while we hold it no same-uid process is past the acquire, so none can be
+  serving our port; the bind-time `EADDRINUSE` `DuplicateDaemonError` backstop (KEPT) covers the
+  uid%100 residue + the acquire→bind race. (b) Phase-scoped the supervisor's `except Exception`:
+  `self.brain is None` ⟺ a load-phase fault → exit for a fresh reload (KeepAlive / next
+  ensure_daemon), no in-place retry; brain-up transient fault → warm-retry to MAX. (c) Fixed the
+  crash-streak counter (`HEALTHY_UPTIME_RESET_S=300`) — the old reset-on-every-bind let an endless
+  serve-crash loop never reach MAX. LOUD preserved. Pinned by `test_lock_holder_blocks_start_before_run`
+  + `TestSupervisorPhaseScoping`.
+- **Step 7 RESOLVED (2026-07-07)** — plist repo template + installer, mirroring the dashboard
+  pattern (`adef11ae`). New `hooks/scripts/com.brain.daemon.plist` (`__PLUGIN_DIR__` /
+  `__BRAIN_DB_DIR__` tokens) carries the FULL 5-var `DAEMON_CPU_ENV` — fixing the drift Step 1
+  named (the hand-installed plist was missing `PYTORCH_ENABLE_MPS_FALLBACK`). **Deviation from the
+  step text below:** the install step went to `boot-brain.sh` (a new dedicated
+  `install-daemon-service.sh`, mirroring `ensure-dashboard.sh`), NOT `ensure-runtime.sh` — the
+  latter can't get `BRAIN_DB_DIR` (it runs via `resolve-brain-db.sh`→`brain-env.sh` BEFORE
+  `BRAIN_DB_DIR` is resolved, and sourcing resolve there would recurse). boot-brain.sh runs the
+  installer AFTER `resolve-brain-db.sh` and BEFORE `ensure_daemon()`, so on a fresh macOS install
+  launchd owns the daemon from boot instead of ensure_daemon direct-spawning a detached rival.
+  Idempotent (skip if already `launchctl`-managed), macOS-only, non-fatal. Contract test
+  `TestDaemonPlistTemplateContract` pins plist env == `DAEMON_CPU_ENV` and
+  ThrottleInterval == `LAUNCHD_THROTTLE_INTERVAL_S`.
 
 ---
 
