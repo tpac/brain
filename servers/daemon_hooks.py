@@ -321,7 +321,8 @@ def hook_recall(brain, args, graph_changes):
             _query_vec = np.frombuffer(_query_emb, dtype=np.float32) if isinstance(_query_emb, bytes) else np.array(_query_emb, dtype=np.float32)
             # Get prior user messages for multi-turn context
             try:
-                _prior_turns = brain._trace_dal.get_session_turns(session_id, limit=4)
+                _prior_turns = brain._trace_dal.get_session_turns(
+                    session_id, limit=4, with_judge_output=False)
                 _user_turns = [t for t in _prior_turns if t.get('role') == 'user'][:2]
                 for _t in _user_turns:
                     _text = (_t.get('content') or '')[:500]
@@ -380,7 +381,8 @@ def hook_recall(brain, args, graph_changes):
         recent_messages = []
         try:
             turns = brain._trace_dal.get_session_turns(
-                session_id, limit=_SURFACE['recent_messages'])
+                session_id, limit=_SURFACE['recent_messages'],
+                with_judge_output=False)
             recent_messages = [{"role": t['role'], "content": (t['content'] or '')[:_PL['recent_message_content']]}
                                for t in turns]
         except Exception as _e:

@@ -1227,14 +1227,21 @@ class TraceDAL:
 
     def get_session_turns(self, session_id: str, limit: int = 20,
                           around_timestamp: str = None,
-                          before: int = None, after: int = None) -> List[Dict[str, Any]]:
+                          before: int = None, after: int = None,
+                          with_judge_output: bool = True) -> List[Dict[str, Any]]:
         """Get chronological turns for a session from S0 + S1 traces.
 
-        Returns same shape as encoding_agent._gather_messages():
-        [{role, content, signal_type, timestamp, surface_output, recalled_raw}]
+        Returns: [{role, trace_id, content, timestamp, judge_output}]
+        (s0/conversation.py get_conversation and the encoder's
+        _gather_messages derive their shapes from this.)
 
-        Groups S0 K (user_message) + S0 delta (assistant_message) per chain,
-        cross-references S1 delta (additionalContext) via recall_chain in metadata.
+        One turn per trace row — never grouped by chain. A chain can hold N
+        user messages (an interrupted turn never fires Stop, so stop_counter
+        never advances and the next prompt lands in the same chain); keying
+        on chain would overwrite all but the last user message.
+
+        Cross-references S1 delta (additionalContext) via recall_chain in
+        metadata to fill judge_output on user turns.
 
         Args:
             session_id: Full session UUID
@@ -1244,8 +1251,10 @@ class TraceDAL:
                 this timestamp instead of the most recent `limit`.
             before: Turns before around_timestamp (default 10)
             after: Turns after around_timestamp (default 5)
+            with_judge_output: fill judge_output on user turns (one extra
+                query over the window's recall chains). Callers that only
+                read role/content pass False.
         """
-        # Get S0 events for this session, chronologically.
         # v29: select `id` (8-char hex trace_event.id) so callers can render
         # [trace:<hex>] markers — the encoder copies these into source_refs.
         # Conversation window = the conversational ref_types defined by the S0
@@ -1253,82 +1262,70 @@ class TraceDAL:
         # encoder reads — see trace_contract.CONVERSATIONAL_REF_TYPES).
         from .trace_contract import CONVERSATIONAL_REF_TYPES
         _refs = ",".join("?" * len(CONVERSATIONAL_REF_TYPES))
-        rows = self.conn.execute(
-            "SELECT id, chain_id, event_type, ref_type, summary, metadata, created_at "
+        base_sql = (
+            "SELECT id, ref_type, summary, metadata, created_at "
             "FROM trace_events WHERE scale = 's0' AND session_id = ? "
-            "AND event_type IN ('K', 'delta') AND ref_type IN (%s) "
-            "ORDER BY created_at ASC" % _refs,
-            (session_id, *CONVERSATIONAL_REF_TYPES)).fetchall()
+            "AND event_type IN ('K', 'delta') AND ref_type IN (%s) " % _refs)
+        params = (session_id, *CONVERSATIONAL_REF_TYPES)
+        if around_timestamp:
+            # Historic window — needs the whole session to locate the center.
+            rows = self.conn.execute(
+                base_sql + "ORDER BY created_at ASC, rowid ASC",
+                params).fetchall()
+        else:
+            # Hot path (hook_recall, once per user prompt): newest-first with
+            # a SQL LIMIT so cost is O(limit), not O(session length) —
+            # idx_trace_session_created walks created_at DESC and stops.
+            # rowid breaks same-timestamp ties in insert order.
+            rows = self.conn.execute(
+                base_sql + "ORDER BY created_at DESC, rowid DESC LIMIT ?",
+                (*params, limit)).fetchall()
+            rows.reverse()
 
-        # Group by chain (each chain = one stop = user+assistant pair)
-        chains = {}
+        # Build result in encoding_agent._gather_messages() shape —
+        # one turn per row, chronological.
+        turns = []
+        user_refs = []  # (turn index, recall_chain) for the judge_output fill
         for r in rows:
-            trace_id = r[0]
-            chain_id = r[1]
-            if chain_id not in chains:
-                chains[chain_id] = {}
-            meta = self._decode_metadata(r[5])
+            meta = self._decode_metadata(r[3])
             # Content lives in metadata (full), summary is truncated for display
-            content = meta.get('content', '') or r[4] or ''
-            if r[3] == 'user_message':
-                chains[chain_id]['user'] = {
-                    'trace_id': trace_id,
+            content = meta.get('content', '') or r[2] or ''
+            if r[1] == 'assistant_message':
+                turns.append({
+                    'role': 'assistant',
+                    'trace_id': r[0],
                     'content': content,
-                    'timestamp': r[6],
-                    'recall_chain': meta.get('recall_chain', ''),
-                }
-            elif r[3] == 'assistant_message':
-                chains[chain_id]['assistant'] = {
-                    'trace_id': trace_id,
+                    'timestamp': r[4],
+                    'judge_output': None,
+                })
+            else:
+                # Incoming side (user_message today; self_message if flipped on)
+                rc = meta.get('recall_chain', '')
+                if rc and with_judge_output:
+                    user_refs.append((len(turns), rc))
+                turns.append({
+                    'role': 'user',
+                    'trace_id': r[0],
                     'content': content,
-                    'timestamp': r[6],
-                }
+                    'timestamp': r[4],
+                    'judge_output': '',
+                })
 
         # Cross-reference S1 delta (additionalContext) for judge_output
-        recall_chains = set()
-        for data in chains.values():
-            rc = data.get('user', {}).get('recall_chain', '')
-            if rc:
-                recall_chains.add(rc)
-
-        judge_outputs = {}
-        if recall_chains:
+        if user_refs:
+            recall_chains = {rc for _, rc in user_refs}
             placeholders = ','.join('?' for _ in recall_chains)
             s1_rows = self.conn.execute(
                 "SELECT chain_id, metadata FROM trace_events "
                 "WHERE scale = 's1' AND event_type = 'delta' AND ref_type = 'additionalContext' "
                 "AND chain_id IN (%s)" % placeholders,
                 list(recall_chains)).fetchall()
-            for r in s1_rows:
-                judge_outputs[r[0]] = self._decode_metadata(r[1]).get('content', '')
+            judge_outputs = {r[0]: self._decode_metadata(r[1]).get('content', '')
+                             for r in s1_rows}
+            for i, rc in user_refs:
+                turns[i]['judge_output'] = judge_outputs.get(rc, '')
 
-        # Build result in encoding_agent._gather_messages() shape
-        turns = []
-        for chain_id in sorted(chains.keys(), key=lambda c: chains[c].get('user', {}).get('timestamp', '')):
-            data = chains[chain_id]
-            if 'user' in data:
-                recall_chain = data['user'].get('recall_chain', '')
-                turns.append({
-                    'role': 'user',
-                    'trace_id': data['user'].get('trace_id'),
-                    'content': data['user']['content'],
-                    'timestamp': data['user']['timestamp'],
-                    'signal': None,
-                    'judge_output': judge_outputs.get(recall_chain, ''),
-                    'recalled_raw': None,  # Not stored in S0 traces (available in S1 O)
-                })
-            if 'assistant' in data:
-                turns.append({
-                    'role': 'assistant',
-                    'trace_id': data['assistant'].get('trace_id'),
-                    'content': data['assistant']['content'],
-                    'timestamp': data['assistant']['timestamp'],
-                    'signal': None,
-                    'judge_output': None,
-                    'recalled_raw': None,
-                })
-
-        # Apply windowing
+        # Apply windowing (default mode is already limited in SQL)
         if around_timestamp:
             # Find the turn closest to around_timestamp, then take window
             _before = before if before is not None else 10
@@ -1340,9 +1337,6 @@ class TraceDAL:
             start = max(0, center_idx - _before * 2)  # ×2 because user+assistant = 2 turns per exchange
             end = min(len(turns), center_idx + _after * 2 + 1)
             turns = turns[start:end]
-        elif len(turns) > limit:
-            # Most recent turns (default behavior)
-            turns = turns[-limit:]
 
         return turns
 
