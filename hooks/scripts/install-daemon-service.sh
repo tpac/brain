@@ -57,4 +57,15 @@ sed -e "s|__PLUGIN_DIR__|$PLUGIN_DIR|g" \
     "$TEMPLATE" > "$TARGET"
 launchctl bootstrap "$DOMAIN" "$TARGET" >/dev/null 2>&1 \
   || launchctl load -w "$TARGET" >/dev/null 2>&1 || true
-echo "[install-daemon-service] installed $TARGET (launchd now owns the daemon)" >&2
+# VERIFY instead of assuming: bootstrap/load failures were swallowed above (the
+# fallback chain needs that), so re-probe launchd for the truth. A false
+# "installed" here would mask exactly the state this script exists to prevent —
+# the daemon silently running detached (no KeepAlive) forever.
+if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
+  echo "[install-daemon-service] installed $TARGET (launchd now owns the daemon)" >&2
+else
+  echo "[install-daemon-service] WARN: wrote $TARGET but launchctl bootstrap failed —" >&2
+  echo "[install-daemon-service] daemon will run DETACHED via ensure_daemon (no KeepAlive," >&2
+  echo "[install-daemon-service] no boot persistence). Retry: launchctl bootstrap $DOMAIN $TARGET" >&2
+  exit 1
+fi

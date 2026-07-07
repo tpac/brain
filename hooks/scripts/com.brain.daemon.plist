@@ -6,10 +6,10 @@
 	<string>com.brain.daemon</string>
 
 	<!-- Brain daemon launchd service. In the repo this file is a TEMPLATE
-	     whose paths are per-machine placeholders; ensure-runtime.sh substitutes
-	     them on first-run setup and installs the live copy at
-	     ~/Library/LaunchAgents/com.brain.daemon.plist (don't hand-load the repo
-	     template — its placeholder paths won't resolve). See
+	     whose paths are per-machine placeholders; install-daemon-service.sh
+	     (run by boot-brain.sh on fresh installs) substitutes them and installs
+	     the live copy at ~/Library/LaunchAgents/com.brain.daemon.plist (don't
+	     hand-load the repo template — its placeholder paths won't resolve). See
 	     docs/DAEMON-LIFECYCLE-ARCH-PLAN.md Step 7.
 
 	     launchd is the SOLE daemon spawner where present (Errno-48 fix): this
