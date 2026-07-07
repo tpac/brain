@@ -163,8 +163,8 @@ def hook_recall(brain, args, graph_changes):
     1. Session setup + store user message
     2. Recall candidates from brain
     3. Segment boundary detection
-    4. Build candidates file for encoding agent
-    5. Priming check, gap logging, signal producers
+    4. Enrich candidates (rich-node pull + edge selection + recent turns)
+    5. Priming check, signal producers
     6. S1 Surface (Haiku) → select → expand → format → trace
     7. Return additionalContext or approve
 
@@ -261,8 +261,8 @@ def hook_recall(brain, args, graph_changes):
     pt.mark('setup')
 
     # Recall — logging happens inside brain.recall() (single source of truth)
+    from .scales.s1.surface_contract import CANDIDATE_POOL as _CF
     try:
-        from .pipeline_contract import CANDIDATES_FILE as _CF
         # Pass ctx directly — already loaded above, skip the redundant DB
         # lookup recall would otherwise do. ctx mutations (fatigue, segment)
         # are saved at turn end in post_response_common.
@@ -270,7 +270,6 @@ def hook_recall(brain, args, graph_changes):
                               ctx=ctx, source='hook')
     except Exception as e:
         brain._log_error('recall_first_attempt', e, 'hook_recall')
-        from .pipeline_contract import CANDIDATES_FILE as _CF
         result = brain.recall(query=enriched, limit=_CF['max_candidates'],
                               ctx=ctx, source='hook')
 
@@ -281,31 +280,50 @@ def hook_recall(brain, args, graph_changes):
     recall_ref = '%s-%s' % (session_id[:8], _current_stop)
 
     # Segment boundary detection
-    segment_note = None
     try:
         query_emb = result.get("_query_embedding")
         if query_emb:
-            seg = brain.check_segment_boundary(query_emb, session_id)
-            if seg.get("is_boundary"):
-                segment_note = "--- CONTEXT SHIFT (segment %d, sim=%.2f) ---" % (
-                    seg["segment_id"], seg["similarity"])
+            brain.check_segment_boundary(query_emb, session_id)
             for r in results:
                 brain.add_to_segment(r.get("id", ""), session_id)
     except Exception as e:
         brain._log_error('segment_boundary', e, 'hook_recall')
     pt.mark('segment')
 
-    # Gap detection (needed by candidates file + later logging)
-    gap = result.get('_gap') if isinstance(result, dict) else None
-
-    # Write candidates to file for recall agent hook (LLM distillation + encoding agent)
-    # Encoding agent needs ALL candidates (including previously surfaced) for revision.
-    # Session dedup happens only at distiller stage, not here.
+    # Enrich candidates for the surface call: batch rich-node pull, then
+    # query-aware edge selection.
+    candidates_data = []
+    recent_messages = []
+    _query_vec = None
+    _prior_vecs = []
     try:
-        from .pipeline_contract import CANDIDATES_FILE
-        candidates_path = os.path.join(
-            brain_tmp_dir(), 'brain-{}-recall-candidates.json'.format(session_id))
-        capped = results[:CANDIDATES_FILE['max_candidates']]
+        capped = results[:_CF['max_candidates']]
+
+        # Previous turns — ONE pull serves both consumers below (the surface
+        # conversation window and the prior-query embedding blend), keeping
+        # their notion of "previous" aligned by construction. Exclude the
+        # current chain: its user_message trace is already written (at
+        # prompt-arrival, above) and the current message reaches
+        # build_surface_prompt separately as `user_message`, rendered as its
+        # own block. Drop wake envelopes — task-notification ignites are
+        # recorded as user_message traces but are machine payloads, not
+        # operator speech; Haiku must not read them as conversation.
+        # Limit comes from SURFACE['recent_messages'] so the upstream pull and
+        # the downstream slice in build_surface_prompt share one source of truth.
+        from .scales.s1.surface_contract import SURFACE as _SURFACE
+        from .trace_contract import WAKE_ENVELOPE_MARKER
+        turns = []
+        try:
+            turns = brain._trace_dal.get_session_turns(
+                session_id, limit=_SURFACE['recent_messages'],
+                exclude_chain=ctx.s0_chain())
+            turns = [t for t in turns
+                     if not (t.get('content') or '').startswith(WAKE_ENVELOPE_MARKER)]
+            recent_messages = [{"role": t['role'], "content": (t['content'] or '')[:_PL['recent_message_content']]}
+                               for t in turns]
+        except Exception as _e:
+            brain._log_error('surface_recent_messages', _e, 'fetching recent messages from traces')
+        pt.mark('traces')
 
         # Batch enrichment: one call, 5 queries for all 25 nodes
         node_ids = [r.get("id", "") for r in capped if r.get("id")]
@@ -315,14 +333,12 @@ def hook_recall(brain, args, graph_changes):
         # Get query embedding + prior turn embeddings for multi-turn blend
         import numpy as np
         _query_emb = result.get("_query_embedding")
-        _query_vec = None
-        _prior_vecs = []
         if _query_emb is not None:
             _query_vec = np.frombuffer(_query_emb, dtype=np.float32) if isinstance(_query_emb, bytes) else np.array(_query_emb, dtype=np.float32)
-            # Get prior user messages for multi-turn context
+            # Prior user messages for the multi-turn blend — sliced from the
+            # single turns pull above (last 4 messages, first 2 user turns).
             try:
-                _prior_turns = brain._trace_dal.get_session_turns(session_id, limit=4)
-                _user_turns = [t for t in _prior_turns if t.get('role') == 'user'][:2]
+                _user_turns = [t for t in turns[-4:] if t.get('role') == 'user'][:2]
                 for _t in _user_turns:
                     _text = (_t.get('content') or '')[:500]
                     if _text and len(_text) > 5:
@@ -335,7 +351,6 @@ def hook_recall(brain, args, graph_changes):
         # recall_score is the shared score semantic — fetch_tools reads the
         # same function, keeping the agentic admission floor comparable.
         from .scales.s1.surface_contract import recall_score
-        candidates_data = []
         for r in capped:
             nid = r.get("id", "")
             node_data = rich_nodes.get(nid)
@@ -348,7 +363,6 @@ def hook_recall(brain, args, graph_changes):
                     "created_at": r.get("created_at"), "revised_at": r.get("revised_at"),
                 }
             # Query-aware edge selection (S1 intelligence)
-            # Encoding agent gets all connections (no select_edges call).
             # Render gets the selected subset via edge_limit in config.
             if _query_vec is not None and node_data.get('connections'):
                 from .scales.s1.surface_contract import select_edges
@@ -359,9 +373,6 @@ def hook_recall(brain, args, graph_changes):
             # Attach recall-specific fields (not in DB — from scoring pipeline)
             node_data["score"] = recall_score(r)
             node_data["discovery"] = r.get("_discovery", "embedding")
-            # Include full graph neighborhood for encoding agent
-            # (encoding agent reads from /tmp file, sees all connections)
-            node_data["_all_connections"] = rich_nodes.get(nid, {}).get('connections', [])
             graph = r.get("_graph", {})
             if graph:
                 node_data["_graph"] = graph
@@ -372,38 +383,8 @@ def hook_recall(brain, args, graph_changes):
         # DEPRECATED 2026-04-01: vocab_context removed (vocab → concept migration)
 
         pt.mark('candidates')
-
-        # Recent messages for surface context — from traces.
-        # Limit comes from SURFACE['recent_messages'] so the upstream pull and
-        # the downstream slice in build_surface_prompt share one source of truth.
-        from .scales.s1.surface_contract import SURFACE as _SURFACE
-        recent_messages = []
-        try:
-            turns = brain._trace_dal.get_session_turns(
-                session_id, limit=_SURFACE['recent_messages'])
-            recent_messages = [{"role": t['role'], "content": (t['content'] or '')[:_PL['recent_message_content']]}
-                               for t in turns]
-        except Exception as _e:
-            brain._log_error('surface_recent_messages', _e, 'fetching recent messages from traces')
-        pt.mark('traces')
-
-        # Session context from last encoding agent run (per-session — no leak)
-        session_context = brain.session_context_for(session_id)
-        pt.mark('session_ctx')
-
-        with open(candidates_path, 'w') as f:
-            json.dump({
-                "user_message": user_message,
-                "session_context": session_context,
-                "candidates": candidates_data,
-                "segment_note": segment_note,
-                "gap": gap.get("query") if gap else None,
-                "recent_messages": recent_messages,
-                "recall_ref": recall_ref,
-            }, f, default=str)
-        pt.mark('file_write')
     except Exception as e:
-        brain._log_error('recall_candidates_write', e, 'Failed to write candidates file')
+        brain._log_error('surface_candidates_build', e, 'Failed to enrich candidates for surface')
 
     if not results:
         brain.save()
@@ -434,7 +415,7 @@ def hook_recall(brain, args, graph_changes):
         # took N ms" without knowing which sub-phase ate the budget.
         additional_context = _run_surface(
             brain, ctx, candidates_data, user_message,
-            recent_messages=recent_messages if 'recent_messages' in dir() else [],
+            recent_messages=recent_messages,
             result=result, enriched=enriched, results=results,
             recall_ref=recall_ref, session_id=session_id,
             graph_changes=graph_changes,

@@ -302,7 +302,9 @@ def get_group_weight(vector_type):
 PIPELINE = {
     'user_message_query': 500,
     'assistant_response_store': 4000,
-    'recent_message_content': 300,
+    'recent_message_content': 400,  # upstream cap on the daemon_hooks trace pull;
+                                    # must cover SURFACE's per-role display limits —
+                                    # enforced by test_pipeline_contract.TestTruncationInvariants.
     'recall_log_query': 500,
     'recall_log_title': 80,
     'recall_log_snippet': 150,
@@ -490,7 +492,7 @@ def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
 
 from .scales.s1.surface_contract import (  # noqa: E402, F401
     SURFACE,
-    CANDIDATES_FILE,
+    CANDIDATE_POOL,
     NEIGHBOR_TRUNCATION,
     format_candidate_for_surface,
     build_surface_prompt,

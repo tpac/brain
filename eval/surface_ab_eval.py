@@ -261,7 +261,7 @@ def _jaccard(set_a, set_b):
 def run_ab_query(brain, query_spec, verbose=False, dry_run=False):
     """Run a single query through both pipelines and compare."""
     from servers.scales.s1.surface_contract import SURFACE
-    from servers.pipeline_contract import CANDIDATES_FILE
+    from servers.pipeline_contract import CANDIDATE_POOL
 
     query = query_spec["query"]
 
@@ -275,8 +275,8 @@ def run_ab_query(brain, query_spec, verbose=False, dry_run=False):
         return {"query": query, "skipped": True, "reason": "no recall results"}
 
     # Build candidates both ways
-    candidates_a = _build_candidates_a(brain, results[:25], CANDIDATES_FILE)
-    candidates_b = _build_candidates_b(brain, results[:25], CANDIDATES_FILE)
+    candidates_a = _build_candidates_a(brain, results[:25], CANDIDATE_POOL)
+    candidates_b = _build_candidates_b(brain, results[:25], CANDIDATE_POOL)
 
     # Format both ways
     text_a = _format_candidates_a(candidates_a)

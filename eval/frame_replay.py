@@ -66,8 +66,8 @@ SNAPSHOT_DIR = ROOT / "eval" / "replay_snapshots"
 def _capture_one(brain, ctx, spec):
     """Run a single query through recall + run_surface, return snapshot dict."""
     from servers.scales.s1.surface import run_surface
-    from servers.pipeline_contract import CANDIDATES_FILE
-    from servers.scales.s1.surface_contract import select_edges
+    from servers.pipeline_contract import CANDIDATE_POOL
+    from servers.scales.s1.surface_contract import select_edges, recall_score
     from servers.daemon_config import brain_tmp_dir
     import numpy as np
 
@@ -75,7 +75,7 @@ def _capture_one(brain, ctx, spec):
     query = spec["query"]
 
     t0 = time.time()
-    result = brain.recall(query=query, limit=CANDIDATES_FILE['max_candidates'],
+    result = brain.recall(query=query, limit=CANDIDATE_POOL['max_candidates'],
                           session_id=ctx.session_id, source='replay')
     results = result.get("results", [])
     recall_ms = (time.time() - t0) * 1000
@@ -89,7 +89,7 @@ def _capture_one(brain, ctx, spec):
 
     # Mirror the candidate-enrichment logic from daemon_hooks.hook_recall —
     # same shape so run_surface receives what production gives it.
-    capped = results[:CANDIDATES_FILE['max_candidates']]
+    capped = results[:CANDIDATE_POOL['max_candidates']]
     node_ids = [r.get("id", "") for r in capped if r.get("id")]
     rich_nodes = brain.get_node(node_ids)
 
@@ -114,9 +114,8 @@ def _capture_one(brain, ctx, spec):
                 node_data['connections'], _query_vec,
                 limit=10, prior_vecs=[],
                 brain_conn=brain.conn, brain=brain)
-        node_data["score"] = r.get("effective_activation", 0)
+        node_data["score"] = recall_score(r)
         node_data["discovery"] = r.get("_discovery", "embedding")
-        node_data["_all_connections"] = rich_nodes.get(nid, {}).get('connections', [])
         candidates_data.append(node_data)
 
     recall_ref = "replay-%s" % qid

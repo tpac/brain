@@ -14,7 +14,7 @@ Three contracts:
 # this shape — if the decoder changes what it produces, update here
 # and the encoder's _format_clusters() must adapt.
 #
-# This is the equivalent of S1's CANDIDATES_FILE contract.
+# This is the equivalent of S1's CANDIDATE_POOL contract.
 # ═══════════════════════════════════════════════════════════════
 
 CLUSTER_SHAPE = {

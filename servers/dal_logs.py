@@ -1227,7 +1227,8 @@ class TraceDAL:
 
     def get_session_turns(self, session_id: str, limit: int = 20,
                           around_timestamp: str = None,
-                          before: int = None, after: int = None) -> List[Dict[str, Any]]:
+                          before: int = None, after: int = None,
+                          exclude_chain: str = None) -> List[Dict[str, Any]]:
         """Get chronological turns for a session from S0 + S1 traces.
 
         Returns same shape as encoding_agent._gather_messages():
@@ -1244,6 +1245,12 @@ class TraceDAL:
                 this timestamp instead of the most recent `limit`.
             before: Turns before around_timestamp (default 10)
             after: Turns after around_timestamp (default 5)
+            exclude_chain: S0 chain_id to drop from the result. The
+                user_message trace is written at prompt-arrival (not Stop),
+                so mid-turn readers that want PREVIOUS turns only — the
+                surface conversation window, prior-query embeddings — pass
+                the current ctx.s0_chain() here. Readers that want the
+                conversation as-is (Scribe, historic lookups) omit it.
         """
         # Get S0 events for this session, chronologically.
         # v29: select `id` (8-char hex trace_event.id) so callers can render
@@ -1253,12 +1260,15 @@ class TraceDAL:
         # encoder reads — see trace_contract.CONVERSATIONAL_REF_TYPES).
         from .trace_contract import CONVERSATIONAL_REF_TYPES
         _refs = ",".join("?" * len(CONVERSATIONAL_REF_TYPES))
+        _excl = "AND chain_id != ? " if exclude_chain else ""
+        _params = (session_id, *CONVERSATIONAL_REF_TYPES) + \
+            ((exclude_chain,) if exclude_chain else ())
         rows = self.conn.execute(
             "SELECT id, chain_id, event_type, ref_type, summary, metadata, created_at "
             "FROM trace_events WHERE scale = 's0' AND session_id = ? "
-            "AND event_type IN ('K', 'delta') AND ref_type IN (%s) "
-            "ORDER BY created_at ASC" % _refs,
-            (session_id, *CONVERSATIONAL_REF_TYPES)).fetchall()
+            "AND event_type IN ('K', 'delta') AND ref_type IN (%s) " % _refs +
+            _excl + "ORDER BY created_at ASC",
+            _params).fetchall()
 
         # Group by chain (each chain = one stop = user+assistant pair)
         chains = {}

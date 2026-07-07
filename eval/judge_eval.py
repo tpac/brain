@@ -142,7 +142,7 @@ JUDGE_QUERIES = [
 def run_judge_eval(brain, query_spec, verbose=False):
     """Run a single query through the full pipeline including judge."""
     import anthropic
-    from servers.pipeline_contract import build_surface_prompt, CANDIDATES_FILE, SURFACE
+    from servers.pipeline_contract import build_surface_prompt, CANDIDATE_POOL, SURFACE
     from servers.pipeline_contract import enrich_candidate_metadata
 
     query = query_spec["query"]
@@ -156,7 +156,7 @@ def run_judge_eval(brain, query_spec, verbose=False):
 
     # Build candidates (same as daemon_hooks.py)
     candidates_data = []
-    content_limit = CANDIDATES_FILE['content_limit']
+    content_limit = CANDIDATE_POOL['content_limit']
     for r in results[:SURFACE['max_candidates']]:
         node_data = {
             "id": r.get("id", ""),
@@ -169,8 +169,8 @@ def run_judge_eval(brain, query_spec, verbose=False):
             "discovery": r.get("_discovery", "embedding"),
             "created_at": r.get("created_at"),
         }
-        if CANDIDATES_FILE.get('include_metadata'):
-            enrich_candidate_metadata(brain, r.get("id", ""), node_data, CANDIDATES_FILE)
+        if CANDIDATE_POOL.get('include_metadata'):
+            enrich_candidate_metadata(brain, r.get("id", ""), node_data, CANDIDATE_POOL)
         candidates_data.append(node_data)
 
     # Layer 2: Build judge prompt and call Haiku

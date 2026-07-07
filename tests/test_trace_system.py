@@ -623,3 +623,33 @@ class TestGetSessionTurns:
             time.sleep(0.01)
         turns = self.dal.get_session_turns('sess-5', limit=4)
         assert len(turns) <= 4
+
+    def test_exclude_chain_drops_current_prompt(self):
+        """exclude_chain drops the in-flight turn, keeps all previous ones.
+
+        Mid-turn scenario: the user_message S0 trace is written at
+        prompt-arrival (94b4642), so at recall time the current prompt is
+        already in trace_events. The surface conversation window must see
+        PREVIOUS turns only — without exclude_chain the current prompt eats
+        a history slot AND duplicates (build_surface_prompt renders it
+        separately as the "Current message" block).
+        """
+        import time
+        self._write_turn('sess-6', '1', 'first question', 'first answer')
+        time.sleep(0.01)
+        # Current turn: user_message written, no assistant half yet.
+        current_chain = 's0-%s-%s' % ('sess-6'[:8], '2')
+        self.dal.append(chain_id=current_chain, scale='s0', event_type='K',
+                        ref_type='user_message', summary='current prompt',
+                        metadata={'content': 'current prompt'},
+                        session_id='sess-6')
+
+        # Without exclusion: current prompt leaks into the window.
+        turns = self.dal.get_session_turns('sess-6', limit=5)
+        assert 'current prompt' in [t['content'] for t in turns]
+
+        # With exclusion: previous turns intact, current prompt gone.
+        turns = self.dal.get_session_turns('sess-6', limit=5,
+                                           exclude_chain=current_chain)
+        contents = [t['content'] for t in turns]
+        assert contents == ['first question', 'first answer']

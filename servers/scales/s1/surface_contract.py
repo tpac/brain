@@ -1,7 +1,7 @@
 """Surface Contract — S1 surface (Haiku) prompt building, candidate formatting, output formatting.
 
 S1 Surface pushes relevant memories into awareness. This contract defines:
-- What the surfacer sees (SURFACE config, CANDIDATES_FILE, neighbor fields)
+- What the surfacer sees (SURFACE config, CANDIDATE_POOL, neighbor fields)
 - How candidates are formatted (format_candidate_for_surface)
 - How the prompt is assembled (build_surface_prompt)
 - How output is formatted for Anchor (format_surface_output_activation)
@@ -146,14 +146,14 @@ def _relative_time(iso_str):
 # SURFACE CONFIG
 # ═══════════════════════════════════════════════════════════════
 
-# Candidates file (written by daemon, read by surface + encoding agent)
-CANDIDATES_FILE = {
+# Candidate pool — how many nodes recall pulls for the surface funnel.
+# Production reads only max_candidates; content_limit and include_metadata
+# are read by the eval harnesses (judge_eval, surface_ab_eval) when they
+# rebuild candidates.
+CANDIDATE_POOL = {
     'content_limit': 1000,
     'max_candidates': 25,
-    'include_graph': True,      # _graph with degree 1/2/3 neighbors
     'include_metadata': True,   # situation, reasoning, user_raw_quote
-    'metadata_fields': ['situation', 'reasoning', 'user_raw_quote'],
-    'max_edges_described': 3,   # top edges with descriptions per candidate
 }
 
 
@@ -196,10 +196,14 @@ SURFACE = {
     'max_selected': 5,              # Haiku picks at most this many (was 8 — reduced for 10K hook cap)
     'user_message_limit': 300,
     'anchor_message_limit': 400,    # v9: was 150. Anchor responses carry design context
-    'recent_messages': 5,           # 2026-05-17: single source of truth. daemon_hooks
-                                    # pulls exactly this many session turns; build_surface_prompt
-                                    # slices the same number. Prior config of 7 was a dead
-                                    # ceiling — upstream get_session_turns(limit=5) clipped it.
+    'recent_messages': 8,           # previous MESSAGES (~4 exchanges when turns alternate;
+                                    # interrupted turns leave lone user messages, so pairing
+                                    # is not guaranteed). Single source of truth: daemon_hooks
+                                    # pulls exactly this many from traces (current chain
+                                    # excluded via exclude_chain, wake envelopes filtered);
+                                    # build_surface_prompt slices the same number. The current
+                                    # prompt is NOT in this window — it renders as its own
+                                    # "Current message" block.
     'recent_recalls_messages': 5,   # Aligned with recent_messages: the dedup window matches
                                     # the conversation window Haiku sees. Was 10 — meant any
                                     # node surfaced in the last 10 selections was rendered as
@@ -376,8 +380,11 @@ def build_surface_prompt(candidates, user_message,
 
     Args:
         candidates: List of candidate node dicts (enriched with metadata)
-        user_message: The operator's latest message
-        recent_messages: List of {"role": str, "content": str}
+        user_message: The operator's latest message — rendered as its own
+            "Current message" block (user only, no reply yet)
+        recent_messages: List of {"role": str, "content": str} — PREVIOUS
+            turns only; the caller excludes the current turn's chain
+            (daemon_hooks passes exclude_chain to get_session_turns)
         recently_recalled: List of {"id": str, "title": str} from last N recalls
         retrieval_stats: Dict with brain_size, top_score, median_score, source_breakdown
         intent: Query intent from STEP 2 classification
@@ -392,6 +399,9 @@ def build_surface_prompt(candidates, user_message,
     candidates = _dedup_candidates(candidates[:cfg['max_candidates']])
 
     # Format conversation context (both roles, asymmetric truncation).
+    # PREVIOUS turns only — the caller excludes the current chain upstream
+    # (get_session_turns exclude_chain); the current message renders below
+    # as its own block, never inside the history window.
     # 2026-05-03: "Operator:" is generic — prompts ship to different operators.
     conversation = ""
     if recent_messages:
@@ -405,9 +415,12 @@ def build_surface_prompt(candidates, user_message,
                 content = (msg.get("content") or "")[:cfg['anchor_message_limit']]
             conversation += "%s: %s\n" % (label, content)
 
-    # Append current user message (not yet in message_stream — stored on Stop)
-    if user_message:
-        conversation += "Operator: %s\n" % (user_message or "")[:cfg['user_message_limit']]
+    # Current user message — the one Haiku surfaces for. Rendered as its own
+    # labeled block so it never blurs into the history window (user only:
+    # the assistant hasn't replied yet). Explicit degraded marker when empty
+    # so Haiku is never told to surface for a blank line.
+    current_block = ("Operator: %s" % user_message[:cfg['user_message_limit']]) \
+        if user_message else "(no message)"
 
     # 2026-05-02 (Frame Phase 2): Frame is the canonical session prior.
     # When non-empty, it's the "Partnership context:" block — rich content
@@ -478,8 +491,11 @@ def build_surface_prompt(candidates, user_message,
     # in _call_surface. This function builds ONLY what changes per turn.
     user_content = """%s
 
-Conversation (recent, oldest first):
+Conversation (previous turns, oldest first):
 %s
+Current message (the one to surface for — the assistant has not replied yet):
+%s
+
 Recently surfaced (OUT OF SCOPE — Anchor has already seen these in the last 5 turns; do NOT select any ID from this block):
 %s
 %s
@@ -490,7 +506,8 @@ Candidates:
 
 %s""" % (
         partnership_block or "(no partnership context — fresh session or Frame unavailable)",
-        conversation or "(no recent messages)",
+        conversation or "(none — first message of the session)\n",
+        current_block,
         recalled_text or "(none)",
         retrieval_context,
         intent_context,
