@@ -1228,7 +1228,8 @@ class TraceDAL:
     def get_session_turns(self, session_id: str, limit: int = 20,
                           around_timestamp: str = None,
                           before: int = None, after: int = None,
-                          with_judge_output: bool = True) -> List[Dict[str, Any]]:
+                          with_judge_output: bool = True,
+                          exclude_trace_id: str = None) -> List[Dict[str, Any]]:
         """Get chronological turns for a session from S0 + S1 traces.
 
         Returns: [{role, trace_id, content, timestamp, judge_output}]
@@ -1254,6 +1255,15 @@ class TraceDAL:
             with_judge_output: fill judge_output on user turns (one extra
                 query over the window's recall chains). Callers that only
                 read role/content pass False.
+            exclude_trace_id: trace_event id of one row to drop. The
+                user_message trace is written at prompt-arrival (not Stop),
+                so mid-turn readers that want PREVIOUS turns only — the
+                surface conversation window, prior-query embeddings — pass
+                the current prompt's trace id (returned by the append).
+                Keyed on the trace row, NOT the chain: after an interrupt
+                the current chain also holds the previous real prompt,
+                which must stay in the window. Readers that want the
+                conversation as-is (Scribe, historic lookups) omit it.
         """
         # v29: select `id` (8-char hex trace_event.id) so callers can render
         # [trace:<hex>] markers — the encoder copies these into source_refs.
@@ -1267,6 +1277,11 @@ class TraceDAL:
             "FROM trace_events WHERE scale = 's0' AND session_id = ? "
             "AND event_type IN ('K', 'delta') AND ref_type IN (%s) " % _refs)
         params = (session_id, *CONVERSATIONAL_REF_TYPES)
+        if exclude_trace_id:
+            # In SQL (not post-filter) so the LIMIT below still returns
+            # `limit` full rows of previous turns.
+            base_sql += "AND id != ? "
+            params = (*params, exclude_trace_id)
         if around_timestamp:
             # Historic window — needs the whole session to locate the center.
             rows = self.conn.execute(

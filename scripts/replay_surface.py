@@ -8,7 +8,7 @@ Haiku messages.create() call (no tool loop). Either:
   (c) max_tokens=600 was hit and the model spent its whole budget,
   (d) something is wrong with the request shape.
 
-Two reconstruction modes:
+Reconstruction:
 
   --judge-result PATH    Apples-to-apples. Reads the EXACT prompt the daemon
                          sent from the dashboard file written by surface.py
@@ -17,14 +17,7 @@ Two reconstruction modes:
                          user_content, so we can split and replay byte-
                          identical to what the daemon issued.
 
-  --candidates PATH      Approximation. Rebuilds the user_content via
-                         build_surface_prompt from the candidates file.
-                         Misses ctx.get_frame(brain), which is built fresh
-                         per call — produces a smaller payload than what
-                         the daemon actually sends. Use only when the
-                         dashboard file is missing.
-
-Default: latest dashboard file (judge-result mode).
+Default: latest dashboard file.
 
 Run:
     ./dev python3 scripts/replay_surface.py
@@ -44,7 +37,6 @@ import argparse
 import glob
 import json
 import os
-import sqlite3
 import sys
 import time
 
@@ -56,22 +48,8 @@ from servers.scales.dispatch import load_env  # noqa: E402
 load_env()
 
 import anthropic  # noqa: E402
-from servers.scales.s1.surface_contract import (  # noqa: E402
-    SURFACE_MODEL, build_surface_prompt,
-)
+from servers.scales.s1.surface_contract import SURFACE_MODEL  # noqa: E402
 from servers.daemon_config import brain_tmp_dir  # noqa: E402
-
-
-def _latest_candidates_file() -> str:
-    # Honor BRAIN_TMP_DIR via brain_tmp_dir() so we read where the daemon WROTE
-    # (matches the WRITER; default /tmp).
-    tmp_dir = brain_tmp_dir()
-    paths = glob.glob(os.path.join(tmp_dir, 'brain-*-recall-candidates.json'))
-    paths = [p for p in paths if os.path.getsize(p) > 1000]  # skip stub files
-    if not paths:
-        raise SystemExit('No candidates file found in %s' % tmp_dir)
-    paths.sort(key=os.path.getmtime, reverse=True)
-    return paths[0]
 
 
 def _latest_judge_result_file() -> str:
@@ -116,49 +94,6 @@ def _build_request_from_judge_result(path: str) -> tuple[str, str, int, dict]:
         'max_tokens': SURFACE['max_tokens'],
     }
     return system_block, user_content, SURFACE['max_tokens'], debug
-
-
-def _load_surface_template() -> str:
-    logs_db = os.path.join(
-        os.environ.get('BRAIN_DB_DIR') or
-        os.path.expanduser('~/AgentsContext/brain'),
-        'brain_logs.db')
-    con = sqlite3.connect(f'file:{logs_db}?mode=ro', uri=True)
-    cur = con.cursor()
-    row = cur.execute(
-        "SELECT template FROM interactions WHERE name='surface' "
-        "ORDER BY version DESC LIMIT 1").fetchone()
-    con.close()
-    if not row or not row[0]:
-        raise SystemExit("No 'surface' interaction in brain_logs.db")
-    return row[0]
-
-
-def _build_request(candidates_file: str) -> tuple[str, str, int, dict]:
-    """Returns (system_block, user_content, max_tokens, debug)."""
-    with open(candidates_file) as f:
-        d = json.load(f)
-
-    template = _load_surface_template()
-    user_content, max_tokens = build_surface_prompt(
-        d['candidates'], d.get('user_message', ''),
-        recent_messages=d.get('recent_messages', []),
-        recently_recalled=[],
-        retrieval_stats=None,
-        intent=None,
-        frame=d.get('session_context', ''))
-
-    debug = {
-        'candidates_file': candidates_file,
-        'n_candidates': len(d.get('candidates', [])),
-        'user_message_len': len(d.get('user_message', '') or ''),
-        'frame_len': len(d.get('session_context', '') or ''),
-        'recent_messages': len(d.get('recent_messages', [])),
-        'system_chars': len(template),
-        'user_chars': len(user_content),
-        'max_tokens': max_tokens,
-    }
-    return template, user_content, max_tokens, debug
 
 
 def _run_blocking(client, system, user, max_tokens):
@@ -235,10 +170,6 @@ def main():
     parser.add_argument('--judge-result', default=None,
                         help='Path to dashboard /tmp/brain-judge-result-*.json. '
                              'Default: latest. Replays byte-identical input.')
-    parser.add_argument('--candidates', default=None,
-                        help='Approximation mode: rebuild from candidates file. '
-                             'Misses ctx.get_frame(brain). Use only when '
-                             'judge-result file is missing.')
     parser.add_argument('--stream', action='store_true',
                         help='Also do a streaming run (reports TTFT + chunk gaps).')
     parser.add_argument('--no-retry', action='store_true',
@@ -248,13 +179,9 @@ def main():
                         help='Number of blocking runs (default 1).')
     args = parser.parse_args()
 
-    if args.candidates:
-        system, user, max_tokens, debug = _build_request(args.candidates)
-        debug['mode'] = 'candidates (approximation — missing real Frame)'
-    else:
-        path = args.judge_result or _latest_judge_result_file()
-        system, user, max_tokens, debug = _build_request_from_judge_result(path)
-        debug['mode'] = 'judge-result (apples-to-apples)'
+    path = args.judge_result or _latest_judge_result_file()
+    system, user, max_tokens, debug = _build_request_from_judge_result(path)
+    debug['mode'] = 'judge-result (apples-to-apples)'
 
     print('=' * 72)
     print('Reconstructed surface request')

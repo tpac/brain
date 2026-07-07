@@ -673,3 +673,47 @@ class TestGetSessionTurns:
                                            with_judge_output=False)
         user_turn = [t for t in turns if t['role'] == 'user'][0]
         assert user_turn['judge_output'] == ''
+
+    def test_exclude_trace_id_drops_current_prompt(self):
+        """exclude_trace_id drops the in-flight prompt, keeps all previous ones.
+
+        Mid-turn scenario: the user_message S0 trace is written at
+        prompt-arrival (94b4642), so at recall time the current prompt is
+        already in trace_events. The surface conversation window must see
+        PREVIOUS turns only — without exclusion the current prompt eats
+        a history slot AND duplicates (build_surface_prompt renders it
+        separately as the "Current message" block).
+
+        Keyed on the specific trace row, NOT the chain: after an interrupt
+        the previous real prompt shares the current chain (stop_counter
+        never advanced) and must stay in the window — a chain-keyed
+        exclusion would silently drop it.
+        """
+        import time
+        sid = 'sess-exclude'
+        self._write_turn(sid, '1', 'first question', 'first answer')
+        time.sleep(0.01)
+        # Turn 2: interrupted — user_message written, Stop never fired.
+        current_chain = 's0-%s-%s' % (sid[:8], '2')
+        self.dal.append(chain_id=current_chain, scale='s0', event_type='K',
+                        ref_type='user_message', summary='interrupted prompt',
+                        metadata={'content': 'interrupted prompt'},
+                        session_id=sid)
+        time.sleep(0.01)
+        # Current turn: same chain (no Stop between), no assistant half yet.
+        current_id = self.dal.append(
+            chain_id=current_chain, scale='s0', event_type='K',
+            ref_type='user_message', summary='current prompt',
+            metadata={'content': 'current prompt'}, session_id=sid)
+
+        # Without exclusion: current prompt leaks into the window.
+        turns = self.dal.get_session_turns(sid, limit=5)
+        assert 'current prompt' in [t['content'] for t in turns]
+
+        # With exclusion: current prompt gone; previous turns intact —
+        # INCLUDING the interrupted prompt that shares the current chain.
+        turns = self.dal.get_session_turns(sid, limit=5,
+                                           exclude_trace_id=current_id)
+        contents = [t['content'] for t in turns]
+        assert contents == ['first question', 'first answer',
+                            'interrupted prompt']

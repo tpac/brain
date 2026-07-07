@@ -267,6 +267,45 @@ class TestDecodeTransitions(BrainTestBase):
                           'Candidate %s not found in surface prompt — '
                           'format_candidate_for_surface dropped it' % short_id)
 
+    def test_current_message_is_own_block_not_history(self):
+        """build_surface_prompt: current prompt renders once, in its own block.
+
+        Regression pin for the 94b4642 fallout: the user_message trace is
+        written at prompt-arrival, so upstream excludes the current chain and
+        this function renders `user_message` ONLY in the "Current message"
+        block — never appended to the history window (which duplicated it
+        and ate a history slot). Window = SURFACE['recent_messages'] previous
+        messages, newest kept.
+        """
+        from servers.scales.s1.surface_contract import build_surface_prompt, SURFACE
+
+        window = SURFACE['recent_messages']
+        # More history than the window holds — oldest must fall off.
+        # Zero-padded labels: 'message 01' must never be a substring of
+        # 'message 010' if the window config grows past single digits.
+        history = []
+        for i in range(window + 2):
+            role = 'user' if i % 2 == 0 else 'assistant'
+            history.append({'role': role, 'content': 'history message %03d' % i})
+
+        current = 'CURRENT-PROMPT-SENTINEL what changed in the deploy?'
+        prompt, _ = build_surface_prompt([], user_message=current,
+                                         recent_messages=history)
+
+        # Exactly one occurrence, inside the Current message block.
+        self.assertEqual(prompt.count('CURRENT-PROMPT-SENTINEL'), 1,
+                         'current prompt must appear exactly once')
+        current_block_pos = prompt.index('Current message')
+        self.assertGreater(prompt.index('CURRENT-PROMPT-SENTINEL'), current_block_pos,
+                           'current prompt must render under the Current message label')
+        self.assertIn('Conversation (previous turns, oldest first):', prompt)
+
+        # Window slice: newest `window` messages kept, oldest dropped.
+        self.assertNotIn('history message 000', prompt)
+        self.assertNotIn('history message 001', prompt)
+        self.assertIn('history message 002', prompt)
+        self.assertIn('history message %03d' % (window + 1), prompt)
+
     def test_recently_surfaced_is_session_scoped(self):
         """_get_recently_surfaced must not leak surfaces from parallel sessions.
 

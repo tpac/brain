@@ -852,5 +852,52 @@ class TestDaemonConfigSingleSource(unittest.TestCase):
         self.assertGreater(dc._KICKSTART_DEADLINE_S, dc._GRACE_DEADLINE_S)
 
 
+class TestDaemonPlistTemplateContract(unittest.TestCase):
+    """Step 7: the repo plist template (hooks/scripts/com.brain.daemon.plist,
+    installed per-machine by install-daemon-service.sh) DERIVES its CPU env and
+    launchd timing from the Step-1 daemon_config constants. Pins the equality so
+    the XML can't silently drift from the Python again — the drift Step 1 named,
+    where the hand-installed plist carried a stale 4-var CPU set missing
+    PYTORCH_ENABLE_MPS_FALLBACK."""
+
+    def _load(self):
+        import plistlib
+        path = os.path.join(os.path.dirname(__file__), '..',
+                            'hooks', 'scripts', 'com.brain.daemon.plist')
+        with open(path, 'rb') as f:
+            raw = f.read()
+        return plistlib.loads(raw), raw.decode()
+
+    def test_plist_env_matches_daemon_cpu_env(self):
+        from servers.daemon_config import DAEMON_CPU_ENV
+        plist, _ = self._load()
+        env = plist["EnvironmentVariables"]
+        # The env is exactly DAEMON_CPU_ENV plus the per-machine BRAIN_DB_DIR path.
+        self.assertEqual(set(env), set(DAEMON_CPU_ENV) | {"BRAIN_DB_DIR"},
+                         "plist env must be DAEMON_CPU_ENV + BRAIN_DB_DIR, nothing more/less")
+        for k, v in DAEMON_CPU_ENV.items():
+            self.assertEqual(env.get(k), v,
+                             "plist %s=%r must match DAEMON_CPU_ENV" % (k, v))
+
+    def test_plist_throttle_matches_constant(self):
+        from servers.daemon_config import LAUNCHD_THROTTLE_INTERVAL_S
+        plist, _ = self._load()
+        self.assertEqual(plist["ThrottleInterval"], LAUNCHD_THROTTLE_INTERVAL_S,
+                         "plist ThrottleInterval must equal LAUNCHD_THROTTLE_INTERVAL_S")
+
+    def test_plist_is_an_unresolved_template(self):
+        # The repo copy is a TEMPLATE — install-daemon-service.sh sed-substitutes
+        # the tokens. If a resolved (machine-specific) copy is ever committed, the
+        # placeholders vanish and a fresh install materializes wrong paths.
+        plist, raw = self._load()
+        self.assertIn("__PLUGIN_DIR__", raw)
+        self.assertIn("__BRAIN_DB_DIR__", raw)
+        self.assertEqual(plist["ProgramArguments"],
+                         ["__PLUGIN_DIR__/hooks/scripts/start-daemon.sh"],
+                         "entrypoint must be start-daemon.sh under the plugin-dir token")
+        self.assertTrue(plist["KeepAlive"])
+        self.assertTrue(plist["RunAtLoad"])
+
+
 if __name__ == "__main__":
     unittest.main()

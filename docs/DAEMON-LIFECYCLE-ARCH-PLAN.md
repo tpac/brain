@@ -74,6 +74,29 @@ Each step is executable cold in its own session. Recommend; do not batch. This d
   and `kill_daemon`'s remaining callers are that arm, `stop_daemon`'s fallback, and
   `_relaunch_daemon`'s corpse kill — which the Step 3 resolution established as deliberately
   NOT launchd-gated.
+- **Step 6 RESOLVED (2026-07-07)** — `edcc749` + `f0a70bf`. (a) Deleted `_run`'s
+  `is_daemon_responsive` pre-check: the flock (acquired in `start()` before the supervisor loop) is
+  the singleton primitive — while we hold it no same-uid process is past the acquire, so none can be
+  serving our port; the bind-time `EADDRINUSE` `DuplicateDaemonError` backstop (KEPT) covers the
+  uid%100 residue + the acquire→bind race. (b) Phase-scoped the supervisor's `except Exception`:
+  `self.brain is None` ⟺ a load-phase fault → exit for a fresh reload (KeepAlive / next
+  ensure_daemon), no in-place retry; brain-up transient fault → warm-retry to MAX. (c) Fixed the
+  crash-streak counter (`HEALTHY_UPTIME_RESET_S=300`) — the old reset-on-every-bind let an endless
+  serve-crash loop never reach MAX. LOUD preserved. Pinned by `test_lock_holder_blocks_start_before_run`
+  + `TestSupervisorPhaseScoping`.
+- **Step 7 RESOLVED (2026-07-07)** — plist repo template + installer, mirroring the dashboard
+  pattern (`adef11ae`). New `hooks/scripts/com.brain.daemon.plist` (`__PLUGIN_DIR__` /
+  `__BRAIN_DB_DIR__` tokens) carries the FULL 5-var `DAEMON_CPU_ENV` — fixing the drift Step 1
+  named (the hand-installed plist was missing `PYTORCH_ENABLE_MPS_FALLBACK`). **Deviation from the
+  step text below:** the install step went to `boot-brain.sh` (a new dedicated
+  `install-daemon-service.sh`, mirroring `ensure-dashboard.sh`), NOT `ensure-runtime.sh` — the
+  latter can't get `BRAIN_DB_DIR` (it runs via `resolve-brain-db.sh`→`brain-env.sh` BEFORE
+  `BRAIN_DB_DIR` is resolved, and sourcing resolve there would recurse). boot-brain.sh runs the
+  installer AFTER `resolve-brain-db.sh` and BEFORE `ensure_daemon()`, so on a fresh macOS install
+  launchd owns the daemon from boot instead of ensure_daemon direct-spawning a detached rival.
+  Idempotent (skip if already `launchctl`-managed), macOS-only, non-fatal. Contract test
+  `TestDaemonPlistTemplateContract` pins plist env == `DAEMON_CPU_ENV` and
+  ThrottleInterval == `LAUNCHD_THROTTLE_INTERVAL_S`.
 
 ---
 

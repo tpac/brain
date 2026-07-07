@@ -124,6 +124,15 @@ if [ -z "$BRAIN_DB_DIR" ]; then
   exit 0
 fi
 
+# ── Provision the launchd service on fresh installs (macOS, idempotent) ──
+# Install the LaunchAgent BEFORE ensure_daemon() so launchd owns the daemon from
+# the first boot (KeepAlive + RunAtLoad). Without this, a fresh macOS install has
+# no plist, so ensure_daemon's manages() is False and it direct-spawns a DETACHED
+# daemon — no KeepAlive, no boot persistence. No-op on every non-fresh boot and
+# off macOS. Non-fatal: on failure ensure_daemon's detached fallback still brings
+# the daemon up (boot never has set -e).
+bash "$(dirname "$0")/install-daemon-service.sh"
+
 # ── Start daemon via ensure_daemon() — fcntl-locked singleton ──
 # No inline spawning. ensure_daemon() handles: lock, ping, spawn, code-change restart.
 PYTHONPATH="$(cd "$(dirname "$0")/../.." && pwd)" python3 -c "
