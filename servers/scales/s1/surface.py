@@ -85,9 +85,10 @@ def _call_surface(brain, candidates_data, user_message,
     except Exception as e:
         brain._log_error('surface_recently_recalled', e, 'fetching recently surfaced titles')
 
-    # Retrieval stats and intent from recall result
+    # Retrieval stats from recall result. (The `intent` field recall still
+    # returns is a constant 'general' — the regex classifier was deleted
+    # 2026-07-07; surface no longer reads it.)
     retrieval_stats = result.get('_retrieval_stats') if isinstance(result, dict) else None
-    intent = result.get('intent') if isinstance(result, dict) else None
 
     # interaction_seed.py guarantees 'surface' is registered on every boot.
     surface_interaction = brain.get_interaction('surface')
@@ -115,7 +116,6 @@ def _call_surface(brain, candidates_data, user_message,
         recent_messages=recent_messages,
         recently_recalled=recently_surfaced,
         retrieval_stats=retrieval_stats,
-        intent=intent,
         frame=frame,
         layout=layout)
 

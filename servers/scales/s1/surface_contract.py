@@ -469,14 +469,14 @@ def _build_user_content_xml(candidates, user_message, recent_messages,
 
 def build_surface_prompt(candidates, user_message,
                        recent_messages=None, recently_recalled=None,
-                       retrieval_stats=None, intent=None, frame="",
+                       retrieval_stats=None, frame="",
                        layout='legacy'):
     """Build the S1 recall surface USER message — per-turn delta only.
 
     v11 (2026-05-03, Frame Phase 2.5 / surface prompt v2): instructions
     moved to the cached system block (in `_call_surface`). This function
     now builds ONLY the per-turn user content: Frame, conversation,
-    recently surfaced, retrieval stats, intent, candidates. The registered
+    recently surfaced, retrieval stats, candidates. The registered
     `surface` interaction template is the system block; this is the user
     block. Two parts → two-block API call → caching becomes possible.
 
@@ -492,7 +492,6 @@ def build_surface_prompt(candidates, user_message,
             (daemon_hooks passes exclude_trace_id to get_session_turns)
         recently_recalled: List of {"id": str, "title": str} from last N recalls
         retrieval_stats: Dict with brain_size, top_score, median_score, source_breakdown
-        intent: Query intent from STEP 2 classification
         frame: Markdown Frame (Anchor's prior). When non-empty becomes the
             "Partnership context:" block. When empty, explicit degraded marker.
 
@@ -505,8 +504,7 @@ def build_surface_prompt(candidates, user_message,
 
     # v13 XML layout — selected by the active `surface` interaction config
     # ({"layout": "xml_v13"}), so template and renderer flip atomically.
-    # Ignores `intent` (regex guess — Haiku reads the message itself) and
-    # `recently_recalled` (replaced by per-turn <shown> elements).
+    # Ignores `recently_recalled` (replaced by per-turn <shown> elements).
     if layout == 'xml_v13':
         return _build_user_content_xml(
             candidates, user_message, recent_messages, retrieval_stats,
@@ -580,21 +578,6 @@ def build_surface_prompt(candidates, user_message,
                 "\nNOTE: Top score %.2f is low for %d memories — "
                 "brain likely has nothing relevant. Prefer selecting 0." % (top, brain_sz))
 
-    # v9: Intent context (from STEP 2 classification). 2026-05-03: generalized
-    # — no operator name hardcoded.
-    intent_context = ""
-    if intent and intent != 'general':
-        _intent_guidance = {
-            'decision_lookup': 'Operator is looking for a past decision — prioritize decision, rule, and correction nodes.',
-            'reasoning_chain': 'Design/reasoning task — architecture, mechanism, and pattern nodes most helpful.',
-            'correction_lookup': 'Looking for a correction — prioritize correction and lesson nodes.',
-            'how_to': 'How-to question — mechanism, convention, and lesson nodes most helpful.',
-            'temporal': 'Time-based query — check created_at dates, prioritize session and milestone nodes.',
-            'state_query': 'Checking current state — recent decisions and open items most relevant.',
-        }
-        if intent in _intent_guidance:
-            intent_context = "Query type: %s. %s" % (intent, _intent_guidance[intent])
-
     # Format candidates
     candidates_text = ""
     for i, c in enumerate(candidates, 1):
@@ -613,7 +596,6 @@ Current message (the one to surface for — the assistant has not replied yet):
 Recently surfaced (OUT OF SCOPE — Anchor has already seen these in the last 5 turns; do NOT select any ID from this block):
 %s
 %s
-%s
 %d candidates follow. Select 0-%d.
 
 Candidates:
@@ -624,7 +606,6 @@ Candidates:
         current_block,
         recalled_text or "(none)",
         retrieval_context,
-        intent_context,
         len(candidates),
         cfg['max_selected'],
         candidates_text,
