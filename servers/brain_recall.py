@@ -1515,40 +1515,37 @@ class BrainRecallMixin:
         t0 = time.time()
         limit = min(limit, MAX_PAGE_SIZE)
 
-        # ── FALLBACK: If embedder not ready, degrade to keyword-only ──
+        # ── No embedder → no recall. The keyword-only fallback was removed
+        #    2026-07-07: a silent keyword substitute masks that semantic recall
+        #    is down. Return empty + REPORT the condition (surfaces in the
+        #    dashboard errors view + the boot unsurfaced-errors notice). The
+        #    embedder is warmed at daemon boot so this window is small, and the
+        #    recall hook degrades gracefully on empty results.
         if not embedder.is_ready():
-            result = self._keyword_recall(query, filter, limit, offset, include_archived,
-                               min_recency, session_id, _skip_log=True)
-            result['_recall_mode'] = 'keyword_only_DEGRADED'
-            result['_embedding_stats'] = {
-                'embedder_ready': False,
-                'embedder_status': embedder.get_model_status(),
-                'warning': 'Recall is keyword-only. Semantic understanding disabled.',
-            }
-            print(f'[brain] WARNING: keyword-only recall (embedder not ready)', file=sys.stderr)
-            # recall_log writes REMOVED 2026-04-05 — S1 traces capture all recall data.
-            # recall_ref no longer returned (consumers use stop counter instead).
-            return result
+            self._log_error('recall_embedder_unavailable', None,
+                            'embedder not ready — returning empty (no keyword fallback)')
+            return {'results': [], 'intent': 'general',
+                    '_recall_mode': 'embedder_unavailable',
+                    '_embedding_stats': {'embedder_ready': False,
+                                         'embedder_status': embedder.get_model_status()}}
 
         # ── PRIMARY PATH: Embeddings-first ──
 
         expanded_query = query
         _active_model = embedder.stats.get('model_name') or None
 
-        # STEP 1: Embed the query
+        # STEP 1: Embed the query. No fallback — a failed embed reports the
+        # condition and returns empty (see the not-ready branch above).
         try:
             query_vec = embedder.embed_query(expanded_query)
-            if not query_vec:
-                # Embedding failed for this query — fall back
-                result = self._keyword_recall(query, filter, limit, offset, include_archived,
-                                   min_recency, session_id)
-                result['_recall_mode'] = 'keyword_only_DEGRADED'
-                return result
         except Exception as e:
-            result = self._keyword_recall(query, filter, limit, offset, include_archived,
-                               min_recency, session_id)
-            result['_recall_mode'] = 'keyword_only_DEGRADED'
-            return result
+            self._log_error('recall_embed_failed', e,
+                            'embed_query raised — returning empty (no keyword fallback)')
+            return {'results': [], 'intent': 'general', '_recall_mode': 'embed_failed'}
+        if not query_vec:
+            self._log_error('recall_embed_failed', None,
+                            'embed_query returned empty — returning empty (no keyword fallback)')
+            return {'results': [], 'intent': 'general', '_recall_mode': 'embed_failed'}
 
         # Lexical bridge alternates — populated conditionally AFTER primary
         # cosine completes (see post-STEP-3 expansion gate). Empty here so

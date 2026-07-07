@@ -268,51 +268,13 @@ class TestSpreadingActivationCoverageMoved(BrainTestBase):
 
 
 # ═══════════════════════════════════════════════════════════════
-# TestTFIDFRecall — verify TF-IDF fallback path, stopword filtering,
-# and cosine similarity scoring
+# TestTFIDFRecall — verify TF-IDF stopword filtering and cosine similarity
+# scoring (the keyword-net internals; the embedder-down fallback was removed
+# 2026-07-07 — recall now returns empty + reports when the embedder is down)
 # ═══════════════════════════════════════════════════════════════
 
 class TestTFIDFRecall(BrainTestBase):
-    """Verify TF-IDF based recall when embedder is unavailable."""
-
-    def test_tfidf_without_embedder(self):
-        """Recall should work via TF-IDF keyword matching when embedder is disabled.
-
-        Manually disables the embedder to force the keyword-only fallback path.
-        Verifies that remember + recall still works using TF-IDF scoring.
-        """
-        from servers import embedder
-
-        # Save original state and disable embedder
-        original_model = embedder._model
-        original_loaded = embedder.stats['model_loaded']
-        embedder._model = None
-        embedder.stats['model_loaded'] = False
-
-        try:
-            self.brain.remember(
-                type='decision',
-                title='Use Tailwind CSS utility classes instead of CSS modules',
-                content='Tailwind reduces context switching between JSX and stylesheets. The JIT '
-                        'compiler purges unused classes, keeping bundle size under 10KB. Component '
-                        'libraries like Headless UI integrate seamlessly with Tailwind.',
-                keywords='tailwind css utility-classes jit purge headless-ui components'
-            )
-            self.brain.save()
-
-            results = self.brain.recall('tailwind css utility classes', limit=5)
-            result_list = results.get('results', [])
-            self.assertTrue(len(result_list) >= 1,
-                            'Should find results via TF-IDF keyword fallback')
-            self.assertIn('Tailwind', result_list[0]['title'],
-                          'TF-IDF should find the Tailwind node')
-            # Verify it used the degraded path
-            self.assertEqual(results.get('_recall_mode'), 'keyword_only_DEGRADED',
-                             'Should report keyword_only_DEGRADED mode')
-        finally:
-            # Restore embedder state
-            embedder._model = original_model
-            embedder.stats['model_loaded'] = original_loaded
+    """Verify the TF-IDF keyword-net internals (tokenizer, cosine scoring)."""
 
     def test_stopwords_filtered(self):
         """Common English stopwords should NOT appear in the node_vectors TF-IDF table.
