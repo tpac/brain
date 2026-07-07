@@ -568,8 +568,8 @@ class TraceDAL:
     def append(self, chain_id: str, scale: str, event_type: str,
                ref_type: str = '', ref_id: str = '', summary: str = '',
                metadata: Optional[Dict] = None, session_id: str = '',
-               interaction_id: int = None) -> int:
-        """Append an event to a trace chain. Returns event id.
+               interaction_id: int = None) -> str:
+        """Append an event to a trace chain. Returns event id (8-char hex).
 
         Validates against trace_contract before writing. Configured
         identity tokens (set_identity) are stamped into metadata via
