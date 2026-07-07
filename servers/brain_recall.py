@@ -1093,16 +1093,14 @@ class BrainRecallMixin:
             session_id: Optional session ID for logging
 
         Returns:
-            Dict with results (list of nodes), recall_ref, intent
+            Dict with results (list of nodes).
         """
         limit = min(limit, MAX_PAGE_SIZE)
 
         expanded_query = query
 
-        # Pure FTS5/keyword-precision net — no intent classification, no
-        # type boosts, no date windowing. 'intent' is a constant, kept only
-        # for the result-shape contract (surface.py reads it).
-        intent = 'general'
+        # Pure FTS5/keyword-precision net — no intent classification, no type
+        # boosts, no date windowing.
 
         # Step 1: Keyword search for seeds
         seeds = self._search_keywords(expanded_query, 30)
@@ -1135,7 +1133,6 @@ class BrainRecallMixin:
             # Return recent nodes if no seeds found
             return {
                 'results': _apply_filter(self._get_recent(limit), filter, self.conn),
-                'intent': intent
             }
 
         # Step 1b: Compute direct keyword match strength per seed
@@ -1278,7 +1275,6 @@ class BrainRecallMixin:
         # recall_log writes removed 2026-04-05 — traces are source of truth
         result = {
             'results': page,
-            'intent': intent,
         }
 
         return result
@@ -1352,7 +1348,7 @@ class BrainRecallMixin:
             session_id: Optional session ID
 
         Returns:
-            Dict with results, recall_ref, _embedding_stats, intent, _recall_mode
+            Dict with results, _embedding_stats, _recall_mode
 
         Two layers of dedup (2026-05-08):
         1. Result cache (5s TTL) — repeat identical recalls return cached
@@ -1506,7 +1502,7 @@ class BrainRecallMixin:
         (brain_mcp renders it only when stats is non-empty) shows the failure
         mode inline — an exit without it reads as "brain knows nothing" instead
         of "embedding is broken"."""
-        return {'results': [], 'intent': 'general', '_recall_mode': mode,
+        return {'results': [], '_recall_mode': mode,
                 '_embedding_stats': {'embedder_ready': embedder.is_ready(),
                                      'embedder_status': embedder.get_model_status()}}
 
@@ -1558,11 +1554,6 @@ class BrainRecallMixin:
         # cosine collapses on (e.g. "scratch grains" vs "feed").
         alternate_vecs = []
         alternate_strings = []
-
-        # 'intent' is a constant for the result-shape contract (surface.py
-        # reads it). Type relevance is handled by z-score contrastive scoring,
-        # not query classification.
-        intent = 'general'
 
         # STEP 2.5: Wire situation matching — query IS the situation context.
         # 1085 nodes have situation embeddings describing WHEN they're relevant.
@@ -2366,7 +2357,6 @@ class BrainRecallMixin:
         result = {
             'results': final_results,
             'vocab_context': vocab_context,  # v8.8: vocab nodes as connectors, not results
-            'intent': intent,
             '_recall_mode': 'laf_v1' if _laf_scores is not None else 'embeddings_first',
             '_embedding_stats': {
                 'embedder_ready': True,
@@ -2499,7 +2489,7 @@ class BrainRecallMixin:
         node_dal = self._nodes
         node = node_dal.get_naked_node(node_id)
         if not node:
-            return {'results': [], 'intent': 'direct_lookup'}
+            return {'results': []}
 
         # Set display fields for format compatibility
         node['effective_activation'] = node.get('activation', 0)
@@ -2512,7 +2502,6 @@ class BrainRecallMixin:
 
         return {
             'results': results,
-            'intent': 'direct_lookup',
             '_recall_mode': 'by_id',
         }
 
