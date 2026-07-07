@@ -314,13 +314,19 @@ def hook_recall(brain, args, graph_changes):
         from .trace_contract import WAKE_ENVELOPE_MARKER
         turns = []
         try:
+            # Over-fetch so filtered wake envelopes don't cost window slots,
+            # then trim back to the configured window after filtering.
             turns = brain._trace_dal.get_session_turns(
-                session_id, limit=_SURFACE['recent_messages'],
+                session_id, limit=_SURFACE['recent_messages'] + 4,
                 exclude_chain=ctx.s0_chain())
             turns = [t for t in turns
                      if not (t.get('content') or '').startswith(WAKE_ENVELOPE_MARKER)]
-            recent_messages = [{"role": t['role'], "content": (t['content'] or '')[:_PL['recent_message_content']]}
-                               for t in turns]
+            turns = turns[-_SURFACE['recent_messages']:]
+            recent_messages = [
+                {"role": t['role'],
+                 "content": (t['content'] or '')[:_PL['recent_message_content']],
+                 "surfaced": t.get('surfaced') or []}
+                for t in turns]
         except Exception as _e:
             brain._log_error('surface_recent_messages', _e, 'fetching recent messages from traces')
         pt.mark('traces')

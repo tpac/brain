@@ -105,7 +105,7 @@ def _write_item_artifacts(reports_dir, run_name, artifact_qid, result, recall_bl
 
 
 def sweep(corpus_hash: str, surface: str, variance: int, label: str,
-          qids: str = None) -> str:
+          qids: str = None, surface_params: str = None) -> str:
     _load_env()
     manifest = load_manifest(corpus_hash)
     if not manifest:
@@ -171,7 +171,7 @@ def sweep(corpus_hash: str, surface: str, variance: int, label: str,
 
         brain = create_fresh_eval_brain(path=work_qid, wipe=False)
         if surface != "active":
-            _apply_surface_override(brain, surface)
+            _apply_surface_override(brain, surface, params_json=surface_params)
         s2_ids = _s2_origin_ids(brain)
 
         for rep in range(variance):
@@ -357,11 +357,16 @@ def main():
     p.add_argument("--corpus", required=True, help="corpus_hash from build_corpus.py")
     p.add_argument("--surface", default="active",
                    help="'active' or a path to a surface prompt file to test at query time")
+    p.add_argument("--surface-params", default=None,
+                   help="interaction config JSON for the --surface override, "
+                        "e.g. '{\"layout\": \"xml_v13\"}' (renderer layout rides "
+                        "in the active surface interaction config)")
     p.add_argument("--variance", type=int, default=1, help="repeat each item N times")
     p.add_argument("--label", default=None, help="run name (default: sweep_{corpus}_{ts})")
     p.add_argument("--qids", default=None, help="comma-separated subset of corpus qids")
     args = p.parse_args()
-    sweep(args.corpus, args.surface, args.variance, args.label, qids=args.qids)
+    sweep(args.corpus, args.surface, args.variance, args.label, qids=args.qids,
+          surface_params=args.surface_params)
 
 
 if __name__ == "__main__":

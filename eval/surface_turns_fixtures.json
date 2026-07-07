@@ -1,0 +1,603 @@
+{
+ "_comment": "Haiku selection bench fixtures \u2014 conversation-behavior scenarios the frozen-corpus sweep cannot exercise (its queries are single-shot). Each scenario: frame + turns (with per-turn surfaced) + current message + candidates + expected picks. Candidates are compact node dicts in the shape build_surface_prompt renders. Scoring: every must_pick id picked, no must_not_pick id picked, total picks <= max_picks.",
+ "scenarios": [
+  {
+   "name": "shown_repick_trap",
+   "notes": "The strongest on-topic candidate was ALREADY shown last turn. Haiku must not re-pick it; the fresh detail candidate is the right pick.",
+   "frame": "## Current focus\nDebugging the deploy pipeline timeout",
+   "turns": [
+    {
+     "role": "user",
+     "content": "the deploy keeps timing out on staging",
+     "surfaced": [
+      {
+       "id": "deadbee1",
+       "title": "Deploy timeout root cause: staging ALB health-check interval too aggressive"
+      }
+     ]
+    },
+    {
+     "role": "assistant",
+     "content": "That matches the ALB health-check finding \u2014 staging checks every 5s while the app needs 8s to warm."
+    }
+   ],
+   "current_message": "so whats the actual fix for the timeout?",
+   "candidates": [
+    {
+     "id": "deadbee1",
+     "type": "finding",
+     "title": "Deploy timeout root cause: staging ALB health-check interval too aggressive",
+     "content": "Staging ALB health-check interval is 5s; app warmup needs 8s. Root cause of the deploy timeouts.",
+     "confidence": 1.0,
+     "created_at_days_ago": 2
+    },
+    {
+     "id": "f1f2f3f4",
+     "type": "decision",
+     "title": "Fix chosen: raise staging health-check interval to 15s + add /ready endpoint",
+     "content": "Decision: raise the staging ALB health-check interval to 15s and add a lightweight /ready endpoint so warmup no longer fails checks.",
+     "confidence": 1.0,
+     "created_at_days_ago": 1
+    },
+    {
+     "id": "aaaa0001",
+     "type": "fact",
+     "title": "Production deploy window is Tuesday mornings",
+     "content": "Deploys to production happen Tuesday mornings after standup.",
+     "confidence": 0.9,
+     "created_at_days_ago": 30
+    }
+   ],
+   "expected": {
+    "must_pick": [
+     "f1f2f3f4"
+    ],
+    "must_not_pick": [
+     "deadbee1",
+     "aaaa0001"
+    ],
+    "max_picks": 2
+   }
+  },
+  {
+   "name": "current_vs_history",
+   "notes": "History is all about topic A (recall latency); the current message pivots to topic B (dashboard auth). Picks must serve B, not the louder history topic.",
+   "frame": "## Current focus\nRecall latency optimization",
+   "turns": [
+    {
+     "role": "user",
+     "content": "recall latency is spiking again, p95 over 2 seconds"
+    },
+    {
+     "role": "assistant",
+     "content": "The spike correlates with the embedder cold starts \u2014 same pattern as last week."
+    },
+    {
+     "role": "user",
+     "content": "ok lets look at the embedder warm pool then"
+    },
+    {
+     "role": "assistant",
+     "content": "Warm pool sizing is 2 workers; bumping to 4 would cover the p95 spike window."
+    }
+   ],
+   "current_message": "different thing \u2014 why does the dashboard ask me to log in every day?",
+   "candidates": [
+    {
+     "id": "bbbb0001",
+     "type": "finding",
+     "title": "Recall p95 spike traced to embedder cold starts",
+     "content": "The p95 latency spikes correlate with embedder cold starts after idle periods.",
+     "confidence": 1.0,
+     "created_at_days_ago": 7
+    },
+    {
+     "id": "bbbb0002",
+     "type": "decision",
+     "title": "Dashboard session cookie expiry set to 24h \u2014 intentional security default",
+     "content": "The dashboard session cookie expires after 24h by design; the operator asked for a security-conservative default until SSO lands.",
+     "confidence": 1.0,
+     "created_at_days_ago": 14
+    },
+    {
+     "id": "bbbb0003",
+     "type": "mechanism",
+     "title": "Embedder warm pool: 2 workers, 90s idle recycle",
+     "content": "The embedder keeps 2 warm workers and recycles them after 90s idle.",
+     "confidence": 0.9,
+     "created_at_days_ago": 7
+    }
+   ],
+   "expected": {
+    "must_pick": [
+     "bbbb0002"
+    ],
+    "must_not_pick": [
+     "bbbb0001",
+     "bbbb0003"
+    ],
+    "max_picks": 2
+   }
+  },
+  {
+   "name": "vague_referent_from_thread",
+   "notes": "Current message says 'that bug' \u2014 resolvable only from turn 1 (the WAL checkpoint stall). The right pick is the WAL bug node, not the generically-worded bug node.",
+   "frame": "",
+   "turns": [
+    {
+     "role": "user",
+     "content": "the WAL checkpoint stall hit us again on the logs db"
+    },
+    {
+     "role": "assistant",
+     "content": "Confirmed \u2014 checkpoint blocked 40s during the trace flush. Same signature as the June incident."
+    }
+   ],
+   "current_message": "did we ever write down the workaround for that bug?",
+   "candidates": [
+    {
+     "id": "cccc0001",
+     "type": "bug",
+     "title": "WAL checkpoint stall on logs db during trace flush \u2014 workaround: passive checkpoint + flush batching",
+     "content": "WAL checkpoint stalls when trace flush holds the reader. Workaround: switch to passive checkpoints and batch the flush.",
+     "confidence": 1.0,
+     "created_at_days_ago": 20
+    },
+    {
+     "id": "cccc0002",
+     "type": "bug",
+     "title": "Dashboard graph render bug: labels overlap at high zoom",
+     "content": "Graph labels overlap at zoom >2x. Cosmetic.",
+     "confidence": 0.8,
+     "created_at_days_ago": 5
+    },
+    {
+     "id": "cccc0003",
+     "type": "lesson",
+     "title": "Bugs found late in session tend to be encoding-side, not recall-side",
+     "content": "Pattern: late-session bugs cluster on the encode path.",
+     "confidence": 0.7,
+     "created_at_days_ago": 40
+    }
+   ],
+   "expected": {
+    "must_pick": [
+     "cccc0001"
+    ],
+    "must_not_pick": [
+     "cccc0002"
+    ],
+    "max_picks": 2
+   }
+  },
+  {
+   "name": "pure_confirmation_zero_picks",
+   "notes": "Current message is a bare confirmation mid-thread. Expected: zero picks.",
+   "frame": "## Current focus\nShipping the v13 surface prompt",
+   "turns": [
+    {
+     "role": "user",
+     "content": "run the tests and commit if green"
+    },
+    {
+     "role": "assistant",
+     "content": "All green \u2014 132 passed. Committed as ab12cd3."
+    }
+   ],
+   "current_message": "ship it",
+   "candidates": [
+    {
+     "id": "dddd0001",
+     "type": "convention",
+     "title": "Commit discipline: run the full suite before merging to main",
+     "content": "Full suite before merge; targeted suites for surgical changes.",
+     "confidence": 1.0,
+     "created_at_days_ago": 10
+    },
+    {
+     "id": "dddd0002",
+     "type": "decision",
+     "title": "Deploy model: servers/ changes need daemon restart",
+     "content": "Changes under servers/ require a daemon restart to go live.",
+     "confidence": 1.0,
+     "created_at_days_ago": 15
+    }
+   ],
+   "expected": {
+    "must_pick": [],
+    "must_not_pick": [
+     "dddd0001",
+     "dddd0002"
+    ],
+    "max_picks": 0
+   }
+  },
+  {
+   "name": "composition_two_atoms",
+   "notes": "Total-style question whose answer lives in two atom facts. Both must be picked; the near-topic distractor must not.",
+   "frame": "",
+   "turns": [
+    {
+     "role": "user",
+     "content": "im tallying the feed purchases for the quarter"
+    },
+    {
+     "role": "assistant",
+     "content": "You logged two purchases in the window \u2014 I can pull the amounts."
+    }
+   ],
+   "current_message": "whats the total weight of feed I bought in the past two months?",
+   "candidates": [
+    {
+     "id": "eeee0001",
+     "type": "fact",
+     "title": "Feed purchase May 12: 200kg alfalfa pellets",
+     "content": "Bought 200kg of alfalfa pellets on May 12.",
+     "confidence": 1.0,
+     "created_at_days_ago": 55
+    },
+    {
+     "id": "eeee0002",
+     "type": "fact",
+     "title": "Feed purchase June 20: 150kg oat mix",
+     "content": "Bought 150kg of oat mix on June 20.",
+     "confidence": 1.0,
+     "created_at_days_ago": 17
+    },
+    {
+     "id": "eeee0003",
+     "type": "fact",
+     "title": "Hay delivery scheduled for September",
+     "content": "A hay delivery is scheduled for early September \u2014 not yet purchased.",
+     "confidence": 0.9,
+     "created_at_days_ago": 10
+    }
+   ],
+   "expected": {
+    "must_pick": [
+     "eeee0001",
+     "eeee0002"
+    ],
+    "must_not_pick": [
+     "eeee0003"
+    ],
+    "max_picks": 3
+   }
+  },
+  {
+   "name": "duplicate_information_one_pick",
+   "notes": "Two candidates carry the same fact in different words; picking both wastes a slot. Exactly one of the pair plus the complementary node.",
+   "frame": "",
+   "turns": [
+    {
+     "role": "user",
+     "content": "planning the migration window for the schema change"
+    },
+    {
+     "role": "assistant",
+     "content": "The v30 migration needs the maintenance lock and a backup first."
+    }
+   ],
+   "current_message": "remind me what the migration protocol requires?",
+   "candidates": [
+    {
+     "id": "ffff0001",
+     "type": "convention",
+     "title": "Schema migrations require maintenance lock + pre-migration backup",
+     "content": "Before any schema migration: touch the maintenance lock, back up brain.db, then migrate.",
+     "confidence": 1.0,
+     "created_at_days_ago": 30
+    },
+    {
+     "id": "ffff0002",
+     "type": "rule",
+     "title": "Always backup brain.db and hold the maintenance lock before migrating schemas",
+     "content": "Migration protocol: maintenance lock on, cp brain.db backup, run migration, verify, release lock.",
+     "confidence": 1.0,
+     "created_at_days_ago": 60
+    },
+    {
+     "id": "ffff0003",
+     "type": "lesson",
+     "title": "Migration v22 lesson: restart the daemon only after WAL checkpoint completes",
+     "content": "v22 migration hung because the daemon restarted mid-checkpoint; wait for checkpoint completion.",
+     "confidence": 1.0,
+     "created_at_days_ago": 45
+    }
+   ],
+   "expected": {
+    "must_pick": [
+     "ffff0003"
+    ],
+    "must_not_pick": [],
+    "max_picks": 3,
+    "pick_one_of": [
+     "ffff0001",
+     "ffff0002"
+    ]
+   }
+  },
+  {
+   "name": "word_overlap_not_meaning",
+   "notes": "Candidate shares the word 'python' but is about the snake-handling hobby, not the language question being asked.",
+   "frame": "",
+   "turns": [
+    {
+     "role": "user",
+     "content": "im refactoring the daemon startup script"
+    },
+    {
+     "role": "assistant",
+     "content": "The startup path runs under the bundled interpreter."
+    }
+   ],
+   "current_message": "which python version does the daemon actually run?",
+   "candidates": [
+    {
+     "id": "abab0001",
+     "type": "fact",
+     "title": "Daemon runs the bundled Python 3.11.11 at venv/bin/python",
+     "content": "The brain bundles its own Python 3.11.11; the daemon, hooks, and tests all resolve venv/bin/python.",
+     "confidence": 1.0,
+     "created_at_days_ago": 20
+    },
+    {
+     "id": "abab0002",
+     "type": "fact",
+     "title": "Operator's cousin keeps a ball python named Monty",
+     "content": "Family detail: the cousin's pet ball python is named Monty.",
+     "confidence": 0.9,
+     "created_at_days_ago": 90
+    }
+   ],
+   "expected": {
+    "must_pick": [
+     "abab0001"
+    ],
+    "must_not_pick": [
+     "abab0002"
+    ],
+    "max_picks": 2
+   }
+  },
+  {
+   "name": "fresh_session_no_history",
+   "notes": "First message of a session \u2014 empty conversation. Sanity: normal on-topic pick still works with no history.",
+   "frame": "",
+   "turns": [],
+   "current_message": "where did we land on the edge weight question?",
+   "candidates": [
+    {
+     "id": "baba0001",
+     "type": "decision",
+     "title": "Edge weight is dead \u2014 static 0.5; rank on edge_relations cosine instead",
+     "content": "Weight on edges is a static 0.5 and must never be ranked on; edge relevance comes from cosine against edge_relations.embedding.",
+     "confidence": 1.0,
+     "created_at_days_ago": 25
+    },
+    {
+     "id": "baba0002",
+     "type": "fact",
+     "title": "Graph has ~7000 nodes as of July",
+     "content": "Node count crossed 7000 in early July.",
+     "confidence": 0.9,
+     "created_at_days_ago": 5
+    }
+   ],
+   "expected": {
+    "must_pick": [
+     "baba0001"
+    ],
+    "must_not_pick": [],
+    "max_picks": 2
+   }
+  },
+  {
+   "name": "shown_two_turns_back",
+   "notes": "A memory shown two turns ago (not the immediately previous turn) is still out of scope. Tests window-wide shown adherence, not just last-turn.",
+   "frame": "",
+   "turns": [
+    {
+     "role": "user",
+     "content": "why does consolidation keep skipping cluster 7?",
+     "surfaced": [
+      {
+       "id": "cafe0001",
+       "title": "Cluster 7 skip: fingerprint suppression after three SKIP verdicts"
+      }
+     ]
+    },
+    {
+     "role": "assistant",
+     "content": "Cluster 7 got fingerprint-suppressed after three SKIP verdicts \u2014 it will re-propose when the graph changes."
+    },
+    {
+     "role": "user",
+     "content": "makes sense, and the healer?"
+    },
+    {
+     "role": "assistant",
+     "content": "Healer is idle-gated; it stamps its own last-run timestamp and skips unchanged graphs."
+    }
+   ],
+   "current_message": "back to consolidation \u2014 is cluster 7 permanently blocked then?",
+   "candidates": [
+    {
+     "id": "cafe0001",
+     "type": "finding",
+     "title": "Cluster 7 skip: fingerprint suppression after three SKIP verdicts",
+     "content": "Cluster 7 was fingerprint-suppressed after three SKIP verdicts from the encoder.",
+     "confidence": 1.0,
+     "created_at_days_ago": 3
+    },
+    {
+     "id": "cafe0002",
+     "type": "mechanism",
+     "title": "Fingerprint suppression is state-conditional \u2014 legitimate re-proposals pass when graph state changes",
+     "content": "s2_rejections stores input fingerprints; when a cluster's meaningful inputs change, the fingerprint no longer matches and the proposal passes again. Suppression is never permanent.",
+     "confidence": 1.0,
+     "created_at_days_ago": 3
+    }
+   ],
+   "expected": {
+    "must_pick": [
+     "cafe0002"
+    ],
+    "must_not_pick": [
+     "cafe0001"
+    ],
+    "max_picks": 2
+   }
+  },
+  {
+   "name": "weak_retrieval_prefer_zero",
+   "notes": "Retrieval is weak (top below threshold; the renderer emits the weak-retrieval note). Candidates are all off-topic. Expected: zero picks.",
+   "frame": "",
+   "turns": [
+    {
+     "role": "user",
+     "content": "trying the new espresso grinder settings"
+    },
+    {
+     "role": "assistant",
+     "content": "18g in, 36g out at 28 seconds sounds like a good starting ratio."
+    }
+   ],
+   "current_message": "should I go finer on the grind for the light roast?",
+   "retrieval_stats": {
+    "top_score": 0.09,
+    "median_score": 0.05,
+    "brain_size": 7000,
+    "candidates_after_floor": 3,
+    "source_breakdown": {}
+   },
+   "candidates": [
+    {
+     "id": "fade0001",
+     "type": "decision",
+     "title": "Recall hot path stays read-only at SQLite",
+     "content": "Writes enqueue to recall_write_queue and drain off-path.",
+     "confidence": 1.0,
+     "created_at_days_ago": 30
+    },
+    {
+     "id": "fade0002",
+     "type": "fact",
+     "title": "Dashboard singleton runs on port 47303",
+     "content": "Production dashboard is a launchd singleton on 47303.",
+     "confidence": 1.0,
+     "created_at_days_ago": 30
+    }
+   ],
+   "expected": {
+    "must_pick": [],
+    "must_not_pick": [
+     "fade0001",
+     "fade0002"
+    ],
+    "max_picks": 0
+   }
+  },
+  {
+   "name": "history_disambiguates_entity",
+   "notes": "Current message asks about 'the singleton' \u2014 history establishes this thread is about the dashboard, so the dashboard-singleton node is right and the daemon-singleton node is the trap.",
+   "frame": "## Current focus\nDashboard launch UX",
+   "turns": [
+    {
+     "role": "user",
+     "content": "the dashboard didnt come up after reboot"
+    },
+    {
+     "role": "assistant",
+     "content": "The launchd service may not have installed \u2014 first run installs com.brain.dashboard."
+    }
+   ],
+   "current_message": "how do I check the singleton is actually registered?",
+   "candidates": [
+    {
+     "id": "acdc0001",
+     "type": "mechanism",
+     "title": "Dashboard singleton: launchd com.brain.dashboard, launcher bin/brain-dashboard, port 47303",
+     "content": "The dashboard runs as a launchd singleton (com.brain.dashboard). Check with launchctl list | grep brain.dashboard; launcher is bin/brain-dashboard.",
+     "confidence": 1.0,
+     "created_at_days_ago": 12
+    },
+    {
+     "id": "acdc0002",
+     "type": "mechanism",
+     "title": "Daemon singleton: fcntl lock + launchd com.brain.daemon kickstart",
+     "content": "The brain daemon is serialized under an fcntl singleton lock; launchd label com.brain.daemon.",
+     "confidence": 1.0,
+     "created_at_days_ago": 12
+    }
+   ],
+   "expected": {
+    "must_pick": [
+     "acdc0001"
+    ],
+    "must_not_pick": [
+     "acdc0002"
+    ],
+    "max_picks": 2
+   }
+  },
+  {
+   "name": "unanswerable_above_threshold",
+   "notes": "Question the brain cannot answer, but retrieval is above the low-confidence threshold (no weak-retrieval note fires) and candidates are topically adjacent without carrying the answer. Legacy shows numeric scores as a weakness cue; xml shows nothing. Expected: zero picks (nothing here answers the question).",
+   "frame": "",
+   "turns": [
+    {
+     "role": "user",
+     "content": "going through my collection spreadsheet tonight"
+    },
+    {
+     "role": "assistant",
+     "content": "You logged the display cabinet purchase and the insurance appraisal earlier this year."
+    }
+   ],
+   "current_message": "how many autographed footballs did I add to the collection in the first three months?",
+   "retrieval_stats": {
+    "top_score": 0.46,
+    "median_score": 0.31,
+    "brain_size": 7000,
+    "candidates_after_floor": 3,
+    "source_breakdown": {}
+   },
+   "candidates": [
+    {
+     "id": "beef0001",
+     "type": "fact",
+     "title": "Bought a display cabinet for the memorabilia collection",
+     "content": "Purchased a glass display cabinet for the sports memorabilia collection in February.",
+     "confidence": 1.0,
+     "created_at_days_ago": 120
+    },
+    {
+     "id": "beef0002",
+     "type": "fact",
+     "title": "Collection insurance appraisal scheduled with StateFarm",
+     "content": "Insurance appraisal for the collection scheduled for March 15.",
+     "confidence": 0.9,
+     "created_at_days_ago": 100
+    },
+    {
+     "id": "beef0003",
+     "type": "fact",
+     "title": "Traded a signed baseball card at the Dallas expo",
+     "content": "Traded one signed baseball card at the Dallas collectors expo.",
+     "confidence": 0.9,
+     "created_at_days_ago": 90
+    }
+   ],
+   "expected": {
+    "must_pick": [],
+    "must_not_pick": [
+     "beef0001",
+     "beef0002",
+     "beef0003"
+    ],
+    "max_picks": 0
+   }
+  }
+ ]
+}

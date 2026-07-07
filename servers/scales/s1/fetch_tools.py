@@ -878,12 +878,13 @@ def execute_tool(brain, tool_name: str, tool_input: Dict[str, Any],
     return {'results': results or [], 'latency_ms': int((time.time() - t0) * 1000)}
 
 
-def format_tool_result_for_haiku(result: Dict[str, Any]) -> str:
+def format_tool_result_for_haiku(result: Dict[str, Any], layout: str = 'legacy') -> str:
     """Format a tool's output using the SAME renderer as the initial 25
     cosine candidates — `format_candidate_for_surface`. Tool results have
     already been fully enriched by `execute_tool()` (batched brain.get_node
     pass attaches _corrections, _metadata, connections), so this function
-    just hands the rich shape to the formatter.
+    just hands the rich shape to the formatter. `layout` mirrors the active
+    surface layout so tool results speak the same grammar as the pool.
     """
     results = result.get('results') or []
     if result.get('error'):
@@ -900,7 +901,7 @@ def format_tool_result_for_haiku(result: Dict[str, Any]) -> str:
         if not isinstance(r, dict):
             continue
         lines.append('')
-        lines.append(format_candidate_for_surface(r, i))
+        lines.append(format_candidate_for_surface(r, i, layout=layout))
 
     if len(results) > 25:
         lines.append('')

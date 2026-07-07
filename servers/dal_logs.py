@@ -1302,6 +1302,7 @@ class TraceDAL:
                 recall_chains.add(rc)
 
         judge_outputs = {}
+        surfaced_by_chain = {}
         if recall_chains:
             placeholders = ','.join('?' for _ in recall_chains)
             s1_rows = self.conn.execute(
@@ -1311,6 +1312,25 @@ class TraceDAL:
                 list(recall_chains)).fetchall()
             for r in s1_rows:
                 judge_outputs[r[0]] = self._decode_metadata(r[1]).get('content', '')
+
+            # Per-turn surfaced memories — the surface_selected K event's
+            # `selected` detail ('id8|title' strings). Consumed by the v13
+            # XML surface layout as <shown> elements on the turn each
+            # memory surfaced for.
+            sel_rows = self.conn.execute(
+                "SELECT chain_id, metadata FROM trace_events "
+                "WHERE scale = 's1' AND event_type = 'K' AND ref_type = 'surface_selected' "
+                "AND chain_id IN (%s)" % placeholders,
+                list(recall_chains)).fetchall()
+            for r in sel_rows:
+                entries = []
+                for item in (self._decode_metadata(r[1]).get('selected') or []):
+                    if not isinstance(item, str):
+                        continue
+                    sid, _, title = item.partition('|')
+                    if sid:
+                        entries.append({'id': sid, 'title': title})
+                surfaced_by_chain[r[0]] = entries
 
         # Build result in encoding_agent._gather_messages() shape
         turns = []
@@ -1325,6 +1345,7 @@ class TraceDAL:
                     'timestamp': data['user']['timestamp'],
                     'signal': None,
                     'judge_output': judge_outputs.get(recall_chain, ''),
+                    'surfaced': surfaced_by_chain.get(recall_chain, []),
                     'recalled_raw': None,  # Not stored in S0 traces (available in S1 O)
                 })
             if 'assistant' in data:

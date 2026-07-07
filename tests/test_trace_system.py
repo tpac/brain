@@ -624,6 +624,32 @@ class TestGetSessionTurns:
         turns = self.dal.get_session_turns('sess-5', limit=4)
         assert len(turns) <= 4
 
+    def test_surfaced_ids_cross_referenced_per_turn(self):
+        """User turns carry the surface_selected ids for their recall chain.
+
+        The v13 XML surface layout renders these as per-turn <shown>
+        elements; the source is the s1 surface_selected K trace's
+        'id8|title' selected detail.
+        """
+        recall_chain = 's1r-sess7777-3'
+        self._write_turn('sess7777aabbccdd', '3', 'what did we decide?',
+                         'we decided X', recall_chain=recall_chain)
+        self.dal.append(chain_id=recall_chain, scale='s1', event_type='K',
+                        ref_type='surface_selected', summary='2 surfaced',
+                        metadata={'selected': ['aaaabbbb|window fix decision',
+                                               'ccccdddd|commit discipline']},
+                        session_id='sess7777aabbccdd')
+
+        turns = self.dal.get_session_turns('sess7777aabbccdd')
+        user_turn = [t for t in turns if t['role'] == 'user'][0]
+        assert user_turn['surfaced'] == [
+            {'id': 'aaaabbbb', 'title': 'window fix decision'},
+            {'id': 'ccccdddd', 'title': 'commit discipline'},
+        ]
+        # Assistant turns carry no surfaced field payload.
+        assistant_turn = [t for t in turns if t['role'] == 'assistant'][0]
+        assert 'surfaced' not in assistant_turn or not assistant_turn.get('surfaced')
+
     def test_exclude_chain_drops_current_prompt(self):
         """exclude_chain drops the in-flight turn, keeps all previous ones.
 

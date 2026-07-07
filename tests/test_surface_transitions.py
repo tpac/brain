@@ -306,6 +306,85 @@ class TestDecodeTransitions(BrainTestBase):
         self.assertIn('history message 002', prompt)
         self.assertIn('history message %03d' % (window + 1), prompt)
 
+    def test_xml_layout_structure(self):
+        """layout='xml_v13': turn grouping, current_msg last, <shown> dedup,
+        no score floats, candidate id-attribute grammar.
+        """
+        from servers.scales.s1.surface_contract import build_surface_prompt
+
+        n = self.brain.remember(
+            type='decision', title='XML layout ships behind interaction config',
+            content='Layout rides in the surface interaction parameters.')
+        node = self.brain.get_node(n['id'] if isinstance(n, dict) else n)
+        candidate = dict(node)
+        candidate['score'] = 0.87
+        candidate['discovery'] = 'embedding'
+
+        history = [
+            {'role': 'user', 'content': 'lets fix the window',
+             'surfaced': [{'id': 'aaaabbbb', 'title': 'window fix decision'}]},
+            {'role': 'assistant', 'content': 'Done, tests green.'},
+            {'role': 'assistant', 'content': 'lone assistant (envelope-filtered user half)'},
+            {'role': 'user', 'content': 'now the XML restructure'},
+        ]
+        prompt, _ = build_surface_prompt(
+            [candidate], user_message='CURRENT-XML-SENTINEL ready to eval?',
+            recent_messages=history, layout='xml_v13')
+
+        # Structure: all four turn groups render; current turn is last and marked.
+        self.assertIn('<conversation>', prompt)
+        self.assertIn('current_msg="true"', prompt)
+        last_turn_pos = prompt.rindex('<turn ')
+        self.assertIn('current_msg="true"', prompt[last_turn_pos:prompt.index('>', last_turn_pos) + 1],
+                      'the last turn must be the current_msg turn')
+        self.assertEqual(prompt.count('CURRENT-XML-SENTINEL'), 1)
+
+        # <shown> rides the turn it surfaced for, same id-attribute grammar.
+        self.assertIn('<shown id="aaaabbbb">window fix decision</shown>', prompt)
+
+        # Lone assistant gets its own turn (no strict alternation assumption).
+        self.assertIn('<assistant>lone assistant', prompt)
+
+        # Candidates: id attribute, no score floats, no legacy #N header.
+        short_id = str(candidate['id'])[:8]
+        self.assertIn('<candidate id="%s"' % short_id, prompt)
+        self.assertNotIn('match:', prompt)
+        self.assertNotIn('#1', prompt)
+
+        # Legacy sections must not leak into the XML layout.
+        self.assertNotIn('Recently surfaced', prompt)
+        self.assertNotIn('Query type:', prompt)
+
+    def test_fetch_tool_names_in_sync(self):
+        """SURFACE_FETCH_TOOLS must cover exactly the tools Haiku can fire —
+        a new tool that isn't listed would render without source_tool, and a
+        recall MODE (laf_v1) must never count as tool provenance."""
+        from servers.scales.s1.surface_contract import SURFACE_FETCH_TOOLS
+        from servers.scales.s1.fetch_tools import TOOL_DEFINITIONS
+        tool_names = {t['name'] for t in TOOL_DEFINITIONS}
+        self.assertEqual(tool_names, set(SURFACE_FETCH_TOOLS))
+
+    def test_xml_source_tool_only_for_real_tools(self):
+        """laf_v1 (recall mode) must not render source_tool; tool names must."""
+        from servers.scales.s1.surface_contract import format_candidate_for_surface
+        base = {'id': 'aaaabbbbcccc', 'type': 'fact', 'title': 't', 'content': 'c',
+                'confidence': 1.0, 'created_at': '2026-07-01T00:00:00+00:00'}
+        laf = format_candidate_for_surface(
+            dict(base, discovery='laf_v1'), 1, layout='xml_v13')
+        self.assertNotIn('source_tool', laf)
+        tool = format_candidate_for_surface(
+            dict(base, discovery='recall_topical'), 1, layout='xml_v13')
+        self.assertIn('source_tool="true"', tool)
+
+    def test_xml_layout_default_off(self):
+        """Default layout stays legacy — no XML sections without opt-in."""
+        from servers.scales.s1.surface_contract import build_surface_prompt
+        prompt, _ = build_surface_prompt(
+            [], user_message='plain message',
+            recent_messages=[{'role': 'user', 'content': 'hi'}])
+        self.assertNotIn('<conversation>', prompt)
+        self.assertIn('Conversation (previous turns, oldest first):', prompt)
+
     def test_recently_surfaced_is_session_scoped(self):
         """_get_recently_surfaced must not leak surfaces from parallel sessions.
 
