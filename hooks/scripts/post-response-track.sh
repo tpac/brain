@@ -3,6 +3,11 @@
 # Fires on UserPromptSubmit and Stop events.
 # Output: encoding checkpoint text (visible on UserPromptSubmit, pending on Stop)
 source "$(dirname "$0")/resolve-brain-db.sh"
-[ -z "$BRAIN_DB_DIR" ] || [ ! -f "$BRAIN_DB_DIR/brain.db" ] && exit 0
+if [ -z "$BRAIN_DB_DIR" ] || [ ! -f "$BRAIN_DB_DIR/brain.db" ]; then
+  # Loud bail (stderr only — the recall hook carries the operator-facing
+  # alert; Stop stdout is not injected context). See pre-response-recall.sh.
+  echo "[brain-stop] no brain.db at '${BRAIN_DB_DIR:-unresolved}' — turn not recorded" >&2
+  exit 0
+fi
 export HOOK_INPUT=$(cat)
 exec python3 "$(dirname "$0")/post_response_track.py"
