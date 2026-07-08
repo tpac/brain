@@ -11,6 +11,10 @@ OUT="${1:-brain.plugin}"
 # Explicit file manifest — if it's not listed, it doesn't ship
 FILES=(
   .claude-plugin/plugin.json
+  # marketplace.json makes the unzipped package a self-contained marketplace:
+  # `claude plugin marketplace add <unzip-dir>` works with no repo access
+  # (source "./" resolves to the unzip dir itself).
+  .claude-plugin/marketplace.json
   .mcp.json
   requirements.txt
   # servers/ ships in FULL via `git ls-files servers` below — do NOT hand-list.
