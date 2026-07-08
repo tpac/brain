@@ -22,7 +22,9 @@ TEMPLATE="$SCRIPT_DIR/$LABEL.plist"
 
 # Resolve BRAIN_DB_DIR (+ DASHBOARD_PORT if the user set it) the same way every
 # launch path does — so the installed plist points at the right brain.
-source "$SCRIPT_DIR/resolve-brain-db.sh" >/dev/null 2>&1 || true
+# stdout suppressed (bootstrap noise); stderr kept — a resolution failure must
+# say WHY, not surface later as a bare "BRAIN_DB_DIR unresolved".
+source "$SCRIPT_DIR/resolve-brain-db.sh" >/dev/null || true
 PORT="${DASHBOARD_PORT:-47303}"
 
 _up() { [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/" 2>/dev/null)" = "200" ]; }

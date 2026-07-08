@@ -15,11 +15,19 @@ alive and `/dashboard` just opens it.
 When invoked:
 
 1. **Ensure the dashboard is running** — run the ensure script (idempotent; it
-   handles port resolution, first-run install, restart, and waiting):
+   handles port resolution, first-run install, restart, and waiting).
+   The Bash shell has NO `CLAUDE_PLUGIN_*` vars (those exist only in hook
+   executions) — locate the plugin via the state file the brain persists on
+   every boot:
    ```bash
-   "$CLAUDE_PLUGIN_ROOT/hooks/scripts/ensure-dashboard.sh"   # installed plugin
-   # or, from the brain repo root:  hooks/scripts/ensure-dashboard.sh
+   . "${XDG_CONFIG_HOME:-$HOME/.config}/brain/resolved.env" 2>/dev/null
+   "$PLUGIN_ROOT/hooks/scripts/ensure-dashboard.sh"
+   # from the brain repo root, simply:  hooks/scripts/ensure-dashboard.sh
    ```
+   If `resolved.env` doesn't exist, the brain hasn't booted on this machine
+   since install — tell the operator to send one message (any session) so boot
+   persists it, or find the plugin dir under `~/.claude/plugins/` and run the
+   script from there.
    - already up → no-op;
    - down + first run (macOS) → **installs the launchd singleton** (materializes
      the plist for this machine + loads it); launchd's RunAtLoad + KeepAlive keep
