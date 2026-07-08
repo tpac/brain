@@ -22,7 +22,8 @@ Rules for what belongs here
 - The subject is "a baby Anchor and a fresh operator starting their journey together."
 - Each node fills every current field (title, content, type, confidence, locked,
   question, situation, reasoning, emotion, encoding_source).
-- IDs are deterministic (md5 of slug) so re-seeding is idempotent.
+- Re-seeding is idempotent by title: exact-title match first (deterministic),
+  embedding fuzzy match second (catches organic near-equivalents).
 
 Not in scope
 ============
@@ -978,8 +979,18 @@ def seed_baby_brain(brain):
         slug = node["slug"]
         title = node["title"]
 
-        # Idempotency: exact-title match at high threshold means already seeded
-        existing = brain.find_node_by_title(title, threshold=0.95, top_k=1)
+        # Idempotency, two tiers. Exact-title SQL first — deterministic, catches
+        # re-seeds. The embedding fuzzy match alone is NOT reliable for this:
+        # query/document embeddings are asymmetric, and symbol-heavy titles
+        # (O/K/Δ) score ~0.86 against their own stored copy — below any safe
+        # threshold — which historically re-created the same seed on every
+        # gap-fill run. Fuzzy stays as the second tier so a brain that already
+        # holds an organic near-equivalent of a seed doesn't get a duplicate.
+        exact = brain.conn.execute(
+            "SELECT id FROM nodes WHERE title = ? AND archived = 0 LIMIT 1",
+            (title,),
+        ).fetchone()
+        existing = {"id": exact[0]} if exact else brain.find_node_by_title(title, threshold=0.95, top_k=1)
         if existing:
             found = existing if isinstance(existing, dict) else existing[0]
             slug_to_id[slug] = found["id"]
