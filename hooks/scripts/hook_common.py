@@ -241,8 +241,26 @@ def daemon_unavailable_error(hook_name=None):
     1. Returns CRITICAL additionalContext that Claude MUST relay to user
     2. Logs to dashboard DB directly (no daemon needed)
     3. Attempts to restart daemon via ensure_daemon()
+
+    Exception — unconfigured install (no brain.db anywhere AND no daemon):
+    that is not a crash, it's Anchor never having come up. Logs ANCHOR OFFLINE
+    and exits 1 (real, non-blocking hook error) WITHOUT attempting recovery —
+    boot creates brains, recovery must not, and recover-storms on machines
+    with nothing to recover are how first installs get flaky.
     """
     name = hook_name or _get_hook_name()
+
+    if not (db_path and os.path.isfile(db_path)):
+        log_hook_error(
+            name,
+            "ANCHOR OFFLINE - no brain.db at %s and the daemon is not answering"
+            % (db_dir or "unresolved"),
+            "plugin enabled but Anchor never came up: recall+encode+traces dead. "
+            "Likely causes in order: ANTHROPIC_API_KEY missing (boot exits before "
+            "creating the brain); stale BRAIN_DB_DIR override in ~/.config/brain/env; "
+            "first install interrupted.",
+            level="critical")
+        sys.exit(1)
 
     # 1. Format CRITICAL message for Claude
     msg = (
