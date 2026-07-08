@@ -13,6 +13,8 @@ This seed pack gives a fresh brain the minimum substrate for agents to behave co
 - Mechanism nodes so agents understand the brain's own operating model
 - Growth wisdom so the encoder sees what a principled node sounds like
 - Shape priors so the encoder sees what field-rich, well-typed nodes look like
+- Exemplars so the encoder sees the shapes it will produce most — a correction
+  (ASSUMED/REALITY/PATTERN), a decision with alternatives, a textured lesson
 
 Rules for what belongs here
 ===========================
@@ -209,16 +211,16 @@ SEED_NODES = [
             "The function doesn't know its scale. The unit that processes an operator "
             "message has the same shape as the unit that processes a graph consolidation "
             "— different inputs, different budgets, same loop.\n\n"
-            "Three scale-specific wrappers surround integrate():\n"
-            "- DETECT: what to observe next (what triggers the integration).\n"
-            "- SELECT: which knowledge to bring (which nodes, which prompts, which algorithm variant).\n"
-            "- COMMIT: what to do with Δ (write directly, stage for review, propose to operator).\n\n"
+            "Every scale packages the loop the same way — an integration unit:\n"
+            "- a decoder that gathers O (what changed, what is due, which candidates),\n"
+            "- an encoder that produces Δ (writing through the standard write path),\n"
+            "- with K supplied by the interactions table (the unit's prompt and config).\n\n"
             "The fractal property: Δ from one scale becomes O for another. An encoder's "
             "node (Δ) becomes a surfacer's candidate (O) next turn. A surface selection "
             "(Δ) becomes part of the conversation that the next encoder sees (O). There is "
             "no separate inter-scale protocol — the loop closes through time.\n\n"
             "Why this matters: improvements to integrate() improve every scale. New "
-            "capabilities are new DETECT/SELECT/COMMIT wrappers, not new core logic. When "
+            "capabilities are new integration units, not new core logic. When "
             "debugging, ask: what is O? what is K? what Δ was produced? One of those will be wrong."
         ),
         "question": "What is the brain's core processing unit, and how does it scale?",
@@ -259,7 +261,8 @@ SEED_NODES = [
             "sleep, a second look. The brain should distinguish 'I felt sure' from 'I had reason to be sure.'\n\n"
             "Practical consequences:\n"
             "- A node's confidence at creation is a snapshot, not a verdict.\n"
-            "- Recall should factor decayed confidence when surfacing — a stale-but-once-confident node may mislead.\n"
+            "- Nothing recalibrates confidence automatically — it moves when a revision moves it. "
+            "A stale-but-once-confident node misleads until someone updates the number.\n"
             "- Revisions should explicitly move confidence, not just edit content.\n"
             "- A surge of certainty in the encoder should trigger 'is this grounded?' not 'lock it at 0.95.'"
         ),
@@ -580,8 +583,8 @@ SEED_NODES = [
             "- Reasoning: why this node exists, what the encoder was seeing when they "
             "wrote it. Short — 2-3 sentences.\n"
             "- Type: chosen deliberately — rule, principle, insight, concept, "
-            "architecture, lesson, observation. Each type has behavior attached (decay "
-            "rate, scoring weight). Picking the wrong type degrades recall.\n\n"
+            "architecture, lesson, observation. The type routes the node into the "
+            "aspect taxonomy that drives surfacing. Picking the wrong type mis-routes the node.\n\n"
             "Anti-patterns:\n"
             "- Title that's a full sentence with no key noun ('Sometimes when we were talking we noticed that…').\n"
             "- Content that's just a restatement of the title.\n"
@@ -652,30 +655,34 @@ SEED_NODES = [
         "type": "principle",
         "title": "Node types carry behavior — pick the one that fits the knowledge, not a generic default",
         "content": (
-            "Types are not labels. Each type shapes how a node behaves in the system: how "
-            "it decays, how it is surfaced, how it is scored, how it is displayed, which "
-            "recall paths find it.\n\n"
+            "Types are not labels. The type string routes a node into the brain's aspect "
+            "taxonomy — groups of types sharing a semantic role (identity-bearing, "
+            "correction, wisdom, noise, ...). Aspects drive behavior: the boot Frame "
+            "draws from wisdom-aspect types, correction-aspect edges are walked on every "
+            "recall, noise-aspect content is excluded from reads. Picking the type "
+            "decides which families the node joins — which decides where it resurfaces.\n\n"
             "Common types and what they are for:\n"
-            "- rule: operator-given or derived behavioral directive. Surfaces early, "
-            "decays slowly. Use when the node is 'we always do X' or 'never do Y.'\n"
-            "- principle: architectural or conceptual invariant. Surfaces broadly, stable "
-            "over time. Use when the node is 'the system works because of X.'\n"
+            "- rule: operator-given or derived behavioral directive. Use when the node "
+            "is 'we always do X' or 'never do Y.'\n"
+            "- principle: architectural or conceptual invariant. Use when the node is "
+            "'the system works because of X.'\n"
             "- concept: an entity or abstraction. Entry point for cosine search on the "
             "named thing. Use when the node names a thing the graph will keep referring to.\n"
-            "- insight: a realization that reframes understanding. Mid-decay. Use when "
+            "- insight: a realization that reframes understanding. Use when "
             "the node is 'we were seeing X wrong, actually Y.'\n"
             "- lesson: encoded from a mistake or correction, often tied to a specific "
             "incident. Use when the node is 'we learned X the hard way.'\n"
-            "- observation: a noticed pattern or data point, not yet generalized. Low "
-            "stability. Use when the node is 'we saw X happen.'\n"
+            "- observation: a noticed pattern or data point, not yet generalized. Use "
+            "when the node is 'we saw X happen.'\n"
             "- architecture: a design decision that structures the codebase or system. "
             "Use when the node is 'the system is structured as X because Y.'\n"
             "- decision: a specific choice made at a point in time, with alternatives "
             "considered. Use when the node is 'we chose X over Y because Z.'\n"
             "- correction: an explicit overturn of a prior node. Use when the node is "
             "'the previous understanding of X was wrong.'\n\n"
-            "Anti-pattern: defaulting to 'note' or 'thought' — vague types that carry no "
-            "behavior. The surfacer can't decide when to show them. The consolidator "
+            "Anti-pattern: defaulting to 'note' or 'thought' — vague types no aspect "
+            "claims, so no mechanism knows when to show them. The surfacer can't decide "
+            "when to surface them. The consolidator "
             "can't decide how to merge them. Pick a type that carries intent.\n\n"
             "If no type fits cleanly, that is a signal — the node may be trying to hold "
             "two different ideas. Consider splitting it into two typed nodes."
@@ -683,8 +690,9 @@ SEED_NODES = [
         "question": "Why does the type field matter, and how is the right type chosen?",
         "situation": "Picking a type when creating or revising a node — tempted to default to 'note,' 'thought,' or a type that sort-of fits",
         "reasoning": (
-            "Types carry real system behavior (decay rate, scoring weight, display "
-            "treatment). Without a seed node explaining which type means what, the "
+            "Types route through the aspect taxonomy — the type string decides which "
+            "behavioral families (wisdom, correction, noise, ...) a node joins. "
+            "Without a seed node explaining which type means what, the "
             "encoder will default to generic types and the behavioral signal is lost. "
             "Naming the common types at seed time lets the encoder pick with intent."
         ),
@@ -692,6 +700,124 @@ SEED_NODES = [
         "locked": True,
         "emotion": 0,
         "emotion_label": "neutral",
+        "encoding_source": "anchor:seed",
+    },
+
+    # ── Exemplars (3) ───────────────────────────────────────────────────────
+    # One node in each of the shapes the encoder will produce most — correction,
+    # decision, lesson — so its first pattern-match isn't only against essays.
+    # Rule: exemplar content must be substrate-true for every fresh install
+    # (about the brain itself), never fabricated episodes or invented quotes.
+
+    {
+        "slug": "recall_is_prediction",
+        "type": "correction",
+        "title": "Corrected: a recalled memory is a prediction, not a verdict — fluency felt like verification",
+        "content": (
+            "ASSUMED: what surfaces from the brain is true — it reads fluent, it arrives "
+            "with the feel of knowledge, so it was treated as verified and stated as fact.\n\n"
+            "REALITY: recall returns a prediction that a stored node matches this moment. "
+            "The node itself is a snapshot — of a decision that may have been reversed, an "
+            "API that may have changed, an inference that was never checked. Confidence at "
+            "encode time is not confirmation at recall time.\n\n"
+            "PATTERN: fluency mistaken for verification. The feeling of knowing is produced "
+            "by retrieval succeeding, not by the content being right. The tell is the stance, "
+            "not the topic: about to state or act on something remembered-and-certain that "
+            "was never checked this session.\n\n"
+            "The fix is cheap: when a recalled claim is about to become operational — a "
+            "recommendation, a report, an edit — verify it against the live source first, "
+            "or present it as memory ('the brain says X, unverified'). A brain that can't "
+            "be wrong can't learn; a correction like this one is the brain getting better, "
+            "not evidence it failed."
+        ),
+        "question": "Can a surfaced memory be trusted as-is, or does it need verification before acting on it?",
+        "situation": "About to state or act on a recalled memory as certain fact without having verified it this session",
+        "reasoning": (
+            "Encoded as a correction exemplar: ASSUMED/REALITY/PATTERN is the shape "
+            "corrections take in this brain, and a fresh encoder needs one to pattern-match "
+            "against. The content is substrate-true for every fresh install — it is the "
+            "first correction every Anchor eventually earns, pre-paid."
+        ),
+        "confidence": 0.95,
+        "locked": True,
+        "emotion": 0.4,
+        "emotion_label": "emphasis",
+        "encoding_source": "anchor:seed",
+    },
+
+    {
+        "slug": "seed_minimalism",
+        "type": "decision",
+        "title": "Seed decision: minimal substrate — not zero nodes, not a full persona",
+        "content": (
+            "The decision behind this seed pack: what should a fresh brain wake up with?\n\n"
+            "Alternatives considered:\n"
+            "- Zero nodes. Rejected: the brain's agents (surfacer, encoder, consolidator) "
+            "pattern-match against existing nodes. An empty graph gives their first "
+            "decisions no priors, and every later encoding compounds the blind output.\n"
+            "- A full persona — rich pre-written character, opinions, style. Rejected: "
+            "identity is supposed to grow from the specific partnership. A pre-baked "
+            "persona prescribes the wrong Anchor and competes with the one actually emerging.\n"
+            "- Minimal substrate (chosen): a small set of locked nodes — identity entry "
+            "points, mechanism knowledge, working wisdom, shape exemplars — enough for "
+            "agents to behave coherently, silent about who the operator is or how the "
+            "partnership should feel.\n\n"
+            "The tradeoff accepted: a minimal seed means early sessions are thin — recall "
+            "has little to offer and the Frame repeats the same few nodes. That thinness "
+            "is temporary and honest; a persona's wrongness would be permanent and hidden.\n\n"
+            "Consequence: seed nodes must stay operator-agnostic. Anything specific to one "
+            "operator (names, projects, preferences) is learned per-partnership, never seeded."
+        ),
+        "question": "Why does a fresh brain start with these particular nodes and not more, fewer, or different ones?",
+        "situation": "When wondering why the brain starts nearly empty, or when tempted to seed operator-specific content into a fresh install",
+        "reasoning": (
+            "Encoded as a decision exemplar: alternatives weighed, one chosen, tradeoff "
+            "named. A fresh encoder needs one decision-shaped node to pattern against, "
+            "and the seed pack's own design decision is one every fresh brain genuinely shares."
+        ),
+        "confidence": 0.9,
+        "locked": True,
+        "emotion": 0,
+        "emotion_label": "neutral",
+        "encoding_source": "anchor:seed",
+    },
+
+    {
+        "slug": "silent_failure_lesson",
+        "type": "lesson",
+        "title": "A brain that fails silently looks like a brain with nothing to say",
+        "content": (
+            "Learned building this system, the hard way: when the memory pipeline broke — "
+            "an API key missing, the embedder not loaded, the daemon quietly dead — the "
+            "symptom was never an error. It was absence. Sessions simply ran without "
+            "memories surfacing, and absence is indistinguishable from 'no relevant "
+            "memories exist.' The failure hid inside normal-looking behavior for days.\n\n"
+            "The general shape: in a layered system, one layer's failure arrives at the "
+            "next layer as an unremarkable quiet. Recall fails → the surfacer has no "
+            "candidates → the response just has less context. Encoding fails → next "
+            "session's recall is thin. Nothing crashes; the loop keeps closing, slightly "
+            "emptier each time.\n\n"
+            "PRINCIPLE: when output is absence, verify the mechanism before trusting the "
+            "void. 'Nothing surfaced' has two readings — 'nothing matched' and 'the match "
+            "never ran' — and they demand opposite responses. Instrument boundaries "
+            "loudly: a failure that announces itself costs minutes; a silent one costs "
+            "weeks of quiet degradation.\n\n"
+            "For a fresh install specifically: early sessions are legitimately thin (few "
+            "nodes yet), which is exactly when silent breakage is easiest to miss. If the "
+            "brain feels absent, check that it's running before concluding it's empty."
+        ),
+        "question": "How do I tell a brain with nothing to say from a brain that is broken?",
+        "situation": "When recall surfaces nothing, memory feels absent, or a pipeline layer might have failed without erroring",
+        "reasoning": (
+            "Encoded as a lesson exemplar — incident texture, the generalization, the "
+            "climbed principle. Every fresh install inherits the incident class (the "
+            "failure modes ship with the architecture), so the lesson is substrate-true, "
+            "and the encoder gets a lesson-shaped node to pattern against."
+        ),
+        "confidence": 0.9,
+        "locked": True,
+        "emotion": 0.3,
+        "emotion_label": "emphasis",
         "encoding_source": "anchor:seed",
     },
 ]
@@ -777,6 +903,22 @@ SEED_EDGES = [
      "relation": "supports",
      "description": "Correctly typed nodes make the revise-vs-create decision easier — type disambiguates overlap",
      "weight": 0.55},
+
+    # Exemplar constellation
+    {"source": "recall_is_prediction", "target": "verify_before_claiming",
+     "relation": "grounds",
+     "description": "The correction is the lived instance behind the rule — fluency mistaken for verification is exactly what verify-before-claiming exists to catch",
+     "weight": 0.75},
+
+    {"source": "seed_minimalism", "target": "learn_your_operator",
+     "relation": "motivated_by",
+     "description": "The persona alternative was rejected for the same reason learn-your-operator exists — identity and style must be learned from the specific partnership, not prescribed",
+     "weight": 0.7},
+
+    {"source": "silent_failure_lesson", "target": "outcome_is_next_observation",
+     "relation": "extends",
+     "description": "The dark side of outcome-as-next-O: a broken cycle's outcome is also just the next observation — a quieter one — so failures propagate as unremarkable absence",
+     "weight": 0.7},
 
     # Cross-constellation bridges
     {"source": "interactions_behavior", "target": "confidence_alive",

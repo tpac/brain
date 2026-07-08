@@ -325,8 +325,8 @@ class Brain(
         # AspectRegistry must be ready before any edge embedding runs: the
         # embed_queue worker (Brain.backfill_edge_embeddings) dereferences
         # brain.aspects to compose edge text. It's initialized here at __init__,
-        # before the worker starts and before seed_baby_brain enqueues its 16
-        # edges, so async edge embedding always has aspects available. (Edge
+        # before the worker starts and before seed_baby_brain enqueues its
+        # seed edges, so async edge embedding always has aspects available. (Edge
         # embedding moved async 2026-06 — seed's connect_typed no longer embeds
         # inline, so the old 'seed edges silently fail to embed' ordering hazard
         # is gone; keeping this init position is harmless + defensive.)
