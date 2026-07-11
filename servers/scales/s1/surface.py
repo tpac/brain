@@ -193,9 +193,12 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
     pool before final JSON selection.
 
     Returns: (raw_final_text, tool_trace, telemetry) where tool_trace is a list
-    of per-round dicts {round, tool_calls: [...]} for trace observability, and
-    telemetry is the shared run-cost dict (build_run_telemetry kwargs) summed
-    across the loop's Haiku rounds.
+    of per-round dicts {round, stop_reason, total_ms, <USAGE_FIELDS>,
+    tool_calls: [...]} for trace observability (total_ms + usage per API call,
+    mirroring run_llm_loop's per_round_stats; a forced-finalize call adds
+    forced_total_ms/forced_usage to its round's record), and telemetry is the
+    shared run-cost dict (build_run_telemetry kwargs) summed across the loop's
+    Haiku rounds.
 
     Mutates `candidates_data` IN PLACE — tool-fetched candidates are appended
     so the downstream short_to_full ID mapping (in run_surface) can resolve them.
@@ -295,12 +298,14 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
             'tools': TOOL_DEFINITIONS,
         }
 
+        _t_call = time.time()
         try:
             api_resp = client.messages.create(**api_kwargs)
         except Exception as e:
             brain._log_error('surface_agentic_api', e,
                               'agentic Haiku call round=%d' % round_idx)
             return raw_final, tool_trace, _telemetry()
+        _call_ms = int((time.time() - _t_call) * 1000)
 
         # Accumulate cost + capture any text (the candidate final answer).
         round_usage = _absorb_response(api_resp)
@@ -321,7 +326,13 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                 'session=%s' % session_id)
 
         stop_reason = api_resp.stop_reason
+        # Per-API-call cost, same field names as run_llm_loop's
+        # per_round_stats (total_ms + USAGE_FIELDS; no ttft_ms — this path
+        # is non-streaming). Distinguishes a slow/retried call (high
+        # total_ms, normal output) from a verbose one (total_ms tracks
+        # output_tokens at ~20ms/token).
         round_record = {'round': round_idx, 'stop_reason': stop_reason,
+                         'total_ms': _call_ms, **round_usage,
                          'tool_calls': []}
 
         if stop_reason != 'tool_use':
@@ -345,6 +356,7 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
             round_record['forced_finalize'] = 1
             forced_kwargs = {k: v for k, v in api_kwargs.items()
                              if k != 'tools'}
+            _t_forced = time.time()
             try:
                 forced_resp = client.messages.create(**forced_kwargs)
             except Exception as e:
@@ -352,7 +364,11 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                                   'forced-finalize Haiku call')
                 tool_trace.append(round_record)
                 return raw_final, tool_trace, _telemetry()
-            _absorb_response(forced_resp)
+            # Extra API call rides on this round's record (prefixed keys)
+            # so trace[-1] stays the forced round for existing readers.
+            round_record['forced_total_ms'] = int(
+                (time.time() - _t_forced) * 1000)
+            round_record['forced_usage'] = _absorb_response(forced_resp)
             tool_trace.append(round_record)
             break
 

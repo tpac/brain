@@ -162,6 +162,52 @@ class TestForcedFinalize:
         assert forced_messages[0]['role'] == 'user'
 
 
+class TestPerRoundTelemetry:
+    """Each tool_trace record carries its API call's cost (2026-07-11):
+    total_ms + the four USAGE_FIELDS, mirroring run_llm_loop's
+    per_round_stats — so a slow/retried call is distinguishable from a
+    verbose one per round, not just in the summed telemetry."""
+
+    def test_single_round_records_cost(self):
+        client = FakeClient([text_response(input_tokens=1500,
+                                           output_tokens=250)])
+        raw, trace, tel = run_loop(client, FakeBrain(), [])
+        rec = trace[0]
+        assert isinstance(rec['total_ms'], int) and rec['total_ms'] >= 0
+        assert rec['input_tokens'] == 1500
+        assert rec['output_tokens'] == 250
+        assert rec['cache_read_tokens'] == 0
+        assert rec['cache_creation_tokens'] == 0
+
+    def test_each_round_carries_own_usage(self, monkeypatch):
+        monkeypatch.setattr(
+            fetch_tools_mod, 'execute_tool',
+            lambda *a, **kw: {'results': [], 'latency_ms': 1})
+        client = FakeClient([
+            tool_use_response(output_tokens=150, cache_creation=12000),
+            text_response(output_tokens=300, cache_read=12000),
+        ])
+        raw, trace, tel = run_loop(client, FakeBrain(), [])
+        assert trace[0]['output_tokens'] == 150
+        assert trace[0]['cache_creation_tokens'] == 12000
+        assert trace[1]['output_tokens'] == 300
+        assert trace[1]['cache_read_tokens'] == 12000
+
+    def test_forced_finalize_records_extra_call_cost(self):
+        client = FakeClient([
+            tool_use_response(output_tokens=150),
+            text_response(output_tokens=400),
+        ])
+        raw, trace, tel = run_loop(client, FakeBrain(), [], max_rounds=1)
+        rec = trace[-1]
+        # The round's own call and the forced call are both costed.
+        assert rec['output_tokens'] == 150
+        assert rec['forced_usage']['output_tokens'] == 400
+        assert isinstance(rec['forced_total_ms'], int)
+        # Summed telemetry still covers both calls.
+        assert tel['output_tokens'] == 550
+
+
 class TestFloorAndAttribution:
     def _run_with_fetched(self, monkeypatch, pool, fetched):
         monkeypatch.setattr(
