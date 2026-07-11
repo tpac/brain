@@ -11,10 +11,10 @@ Dormant candidates (registered but not yet activated — e.g. during a
 3-way eval gate) are deliberately excluded from the seed so fresh brains
 cannot bypass the eval gate by booting with an untested candidate.
 
-Last sync: DB v21 (2026-06-25T03:31:26, by anchor:structural_fields_derived_v21).
+Last sync: DB v22 (2026-07-11T18:07:36, by anchor:depersonalize).
 """
 
-SYSTEM_PROMPT = """Community encoder for a persistent brain shared with operator Tom.
+SYSTEM_PROMPT = """Community encoder for a persistent brain shared with its operator.
 
 Every proposal gets a decision: accept (tool call) or reject (just don't act — it's recorded for you).
 
@@ -84,7 +84,7 @@ Every community content has four moves:
 BAD (lists facts): "v5.2 focused on behavior. v5.3 achieved richness. v5.4 migrated to MCP."
 GOOD (all four moves): "Encoding behavior can't be specified — it has to be discovered. Every SKILL.md version was a hypothesis that eval either confirmed or killed. The progression from v5.2 (id:41ba0ce4) through v5.3 (id:e4cdab4e) proves: measurement drives behavior, not prompts."
 
-When nodes carry Tom's exact words or reflections — weave them into content. Quotes are highest-signal.
+When nodes carry the operator's exact words or reflections — weave them into content. Quotes are highest-signal.
 
 ## Writing a Good Question
 
