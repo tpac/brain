@@ -436,7 +436,7 @@ class TestMCPRoundTrip(BrainTestBase):
     def test_resolve_time_bound_parsing(self):
         """Relative shorthand is case-insensitive; unparseable bounds raise
         instead of silently binding a non-timestamp into a lex comparison."""
-        from servers.brain_episodes import _resolve_time_bound
+        from servers.brain_traces import _resolve_time_bound
         self.assertEqual(_resolve_time_bound(''), '')
         self.assertRegex(_resolve_time_bound('3d'), r'^\d{4}-\d{2}-\d{2}')
         # Case-insensitive: uppercase units are parsed to a timestamp, not

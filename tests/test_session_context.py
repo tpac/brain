@@ -277,7 +277,6 @@ class TestSessionContextPersistence:
         # The S1 Scribe cadence is derived LIVE from traces — no stored counter.
         # Pins the definition: a turn == one s0 user_message; <task-notification>
         # ignitions don't count; only turns AFTER the last s1 encoding_prompt count.
-        from servers.scales.s0.conversation import turns_since_last_encode
         sid = 'cadence-sess'
         c = self.brain.logs_conn
         _n = [0]
@@ -294,14 +293,14 @@ class TestSessionContextPersistence:
         ins('s0', 'K', 'user_message', '2026-06-13T10:00:02+00:00')
         ins('s0', 'K', 'user_message', '2026-06-13T10:00:03+00:00')
         c.commit()
-        assert turns_since_last_encode(self.brain, sid) == 3
+        assert self.brain.turns_since_last_encode(sid) == 3
         # encode runs, then 2 real turns + 1 task-notification ignition after it
         ins('s1', 'O', 'encoding_prompt', '2026-06-13T10:00:04+00:00')
         ins('s0', 'K', 'user_message', '2026-06-13T10:00:05+00:00')
         ins('s0', 'K', 'user_message', '2026-06-13T10:00:06+00:00')
         ins('s0', 'K', 'user_message', '2026-06-13T10:00:07+00:00', summary='<task-notification> wake')
         c.commit()
-        assert turns_since_last_encode(self.brain, sid) == 2   # ignition excluded; only real turns since encode
+        assert self.brain.turns_since_last_encode(sid) == 2   # ignition excluded; only real turns since encode
 
     def test_parallel_sessions_count_cadence_independently(self):
         # The cross-session fix: the Scribe cadence is per-session, derived live
@@ -311,7 +310,6 @@ class TestSessionContextPersistence:
         # global conversational_count was clobbered last-writer-wins, so a busy
         # stream could starve a quiet one (or fire it early). This pins that the
         # two streams never see each other's cadence.
-        from servers.scales.s0.conversation import turns_since_last_encode
         a, b = 'stream-A', 'stream-B'
         c = self.brain.logs_conn
         _n = [0]
@@ -333,22 +331,22 @@ class TestSessionContextPersistence:
         ins(a, 's0', 'K', 'user_message', '2026-06-13T10:00:05+00:00')
         c.commit()
         # Each sees only its own turns — A's 3 are invisible to B and vice versa.
-        assert turns_since_last_encode(self.brain, a) == 3
-        assert turns_since_last_encode(self.brain, b) == 2
+        assert self.brain.turns_since_last_encode(a) == 3
+        assert self.brain.turns_since_last_encode(b) == 2
 
         # A encodes. This must reset ONLY A's cadence — B's count is untouched.
         ins(a, 's1', 'O', 'encoding_prompt', '2026-06-13T10:00:06+00:00')
         c.commit()
-        assert turns_since_last_encode(self.brain, a) == 0   # A's backlog cleared
-        assert turns_since_last_encode(self.brain, b) == 2   # B unaffected by A's encode
+        assert self.brain.turns_since_last_encode(a) == 0   # A's backlog cleared
+        assert self.brain.turns_since_last_encode(b) == 2   # B unaffected by A's encode
 
         # More interleaved turns after A's encode: A +2, B +1.
         ins(a, 's0', 'K', 'user_message', '2026-06-13T10:00:07+00:00')
         ins(b, 's0', 'K', 'user_message', '2026-06-13T10:00:08+00:00')
         ins(a, 's0', 'K', 'user_message', '2026-06-13T10:00:09+00:00')
         c.commit()
-        assert turns_since_last_encode(self.brain, a) == 2   # only post-encode turns
-        assert turns_since_last_encode(self.brain, b) == 3   # all B turns; B never encoded
+        assert self.brain.turns_since_last_encode(a) == 2   # only post-encode turns
+        assert self.brain.turns_since_last_encode(b) == 3   # all B turns; B never encoded
 
     def test_multiple_sessions_isolated(self):
         """Two sessions don't interfere with each other."""

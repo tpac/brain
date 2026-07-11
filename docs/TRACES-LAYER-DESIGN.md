@@ -1,6 +1,11 @@
 # Traces Functional Layer — Consolidation Design (Option E)
 
-**Status: PROPOSED** — design agreed in session 2026-07-11, implementation pending go.
+**Status: IMPLEMENTED** (2026-07-11) — Phase 0 dedup + the move both live; see
+`servers/brain_traces.py`. Scope additions found at implementation: `get_trace`,
+`get_traces`, `count_traces` also moved (pure trace doors that were sitting next
+to `query_traces`); the full-wrapper variant of Phase-0 finding #1 was rejected
+at implementation (it would have changed the hours×session composition rule and
+fired spurious zero-row warnings) — the shared WHERE builder landed instead.
 
 ## Problem
 

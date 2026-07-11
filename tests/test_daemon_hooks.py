@@ -254,12 +254,13 @@ class TestScribeReactor(unittest.TestCase):
              last_role='assistant'):
         """Brain.scribe_due bound to a fake brain whose higher session
         functions are stubbed (present_streams + turns_since_last_encode +
-        get_conversation). boot_time defaults ancient (past the boot-grace);
-        pass ~now to test it. last_role is the newest conversational row's
-        role (default 'assistant' = complete exchange, so the 5+ clause's
-        wait-for-answer gate passes); None = empty conversation."""
+        get_conversation — the latter two are BrainTracesMixin methods, so
+        the fake provides them directly). boot_time defaults ancient (past
+        the boot-grace); pass ~now to test it. last_role is the newest
+        conversational row's role (default 'assistant' = complete exchange,
+        so the 5+ clause's wait-for-answer gate passes); None = empty
+        conversation."""
         import types
-        from unittest.mock import patch
         from servers.brain import Brain
 
         class FakeBrain:
@@ -267,6 +268,12 @@ class TestScribeReactor(unittest.TestCase):
 
             def present_streams(self, window_min, limit):
                 return streams
+
+            def turns_since_last_encode(self, sid):
+                return turns_map.get(sid, 0)
+
+            def get_conversation(self, sid, limit=20):
+                return [{'role': last_role}] if last_role else []
 
             def get_or_create_session(self, sid):
                 return types.SimpleNamespace(stop_counter=42)
@@ -276,12 +283,7 @@ class TestScribeReactor(unittest.TestCase):
 
         fb = FakeBrain()
         fb._boot_time = boot_time
-        last = [{'role': last_role}] if last_role else []
-        with patch('servers.scales.s0.conversation.turns_since_last_encode',
-                   side_effect=lambda brain, sid: turns_map.get(sid, 0)), \
-             patch('servers.scales.s0.conversation.get_conversation',
-                   side_effect=lambda brain, sid, limit: last):
-            return Brain.scribe_due(fb, now=now, skip_sessions=skip)
+        return Brain.scribe_due(fb, now=now, skip_sessions=skip)
 
     def _poll(self, scribe_due_fn, attempts=None, failures=None):
         """Drive BrainDaemon._run_scribe_poll against a fake daemon (scribe_due

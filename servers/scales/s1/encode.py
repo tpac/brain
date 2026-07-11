@@ -331,18 +331,17 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
 
 
 def _gather_messages(brain, session_id):
-    """Fetch recent messages for the current session via S0 API.
+    """Fetch recent messages for the current session via the traces layer.
 
     Returns: [{id, turn_label, role, trace_id, content, timestamp, judge_output}]
-    Uses S0 layer's get_conversation() — single source of truth.
+    Uses brain.get_conversation() — single source of truth.
     """
     from servers.scales.s1.encode_contract import ENCODING_AGENT
-    from servers.scales.s0.conversation import get_conversation
     limit = ENCODING_AGENT['max_messages']
     content_limit = ENCODING_AGENT['message_content_limit']
 
     try:
-        turns = get_conversation(brain, session_id, limit=limit)
+        turns = brain.get_conversation(session_id, limit=limit)
         if turns:
             for i, t in enumerate(turns):
                 # `id` was a synthetic display label (turn-N). Keep it as
