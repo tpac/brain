@@ -118,6 +118,55 @@ trace functions. `Brain` bases: `BrainEpisodesMixin` → `BrainTracesMixin`.
   the substrate, not a boundary in the read path.
 - `CLAUDE.md` S0 API section — rewrite to point at `brain_traces.py`.
 
+## Phase 0 (recommended): TraceDAL dedup — clean primitives before the move
+
+Intra-DAL audit (2026-07-11, verified spot-checks) found ~70–90 lines of true
+duplication inside `dal_logs.py`. Doing this FIRST means the new layer lands on
+clean primitives. Sequenced by risk:
+
+1. **`_CANON_COLS` constant** — the canonical 10-column SELECT is copy-pasted 7×
+   (5 unqualified: L707/718/788/965/1043 + 2 `te.`-qualified: L880/1456);
+   `_row_to_event`'s own docstring documents that the copies have drifted before.
+   Zero behavior change, de-risks everything after. (~6–10 lines + kills a
+   documented drift class)
+2. **Parameterize `get_recent` with `ref_type`/`ref_id`** — `get_by_ref_type`
+   (L1006) is `get_recent` (L723) plus two WHERE predicates; identical projection,
+   ORDER, LIMIT, index alignment. `get_by_ref_type` becomes a thin wrapper keeping
+   its required-ref_type contract. Fold the twice-stated `chain_suffix` fragment
+   and the **verbatim-duplicated session-XOR guard** (`get_recent` L748–765 ≡
+   `_event_where` L823–836, identical ValueError text) into one WHERE builder
+   (`_event_where`, extended with hours/chain_suffix/exclude_ref_types).
+   (~50 lines; medium care — hot paths)
+3. **`append` delegates to `append_batch([ev])[0]`** — verified byte-identical
+   validate→stamp→INSERT sequence; single-event batch is semantically identical
+   (same commit gating, same contract raises). (~18 lines; write-path drift hazard
+   eliminated)
+
+Explicitly cleared by the audit: no dead methods (Category-B checked), no N+1
+loops, all hot paths index-aligned (`find_by_metadata_substring`'s unanchored
+LIKE is an intentional forensic scan — needs only a docstring note),
+`get_recent_errors` vs `query_logs` share only a JSON-decode helper worth
+extracting (~4 lines).
+
+## Pre-flight checklist (verified 2026-07-11)
+
+- **Three grep forms** for dissolved-module callers: import form, dotted
+  patch-string form (`patch('servers.scales.s0.conversation…')` —
+  `tests/test_daemon_hooks.py:280–282`), and private-symbol form
+  (`tests/test_mcp_roundtrip.py:439` imports `brain_episodes._resolve_time_bound`).
+  Plus `tests/test_session_context.py` (×2) and
+  `eval/oracle_audit/endo_surface_corpus.py`.
+- **CLAUDE.md**: exactly one section to rewrite (lines 74–76, "S0 API") — pre-draft
+  so docs land in the same commit as code.
+- **MCP + dashboard verified clean** — neither imports the dissolved modules:
+  daemon restart only, **no redeploy, no new-session**.
+- **Merge window**: `brain_recall.py` is the collision hotspot — check
+  `self_presence` for active sibling streams (2 were live at spec time, one in
+  recall territory) and `self_send` a heads-up before executing.
+- **Brain memory**: revise id:71b34243 + id:e56dc13b with supersedes edges at
+  implementation time (deliberately, not left to the encoder).
+- **Baseline green**: the 2 daemon-recovery reds were fixed on main (`5c0a1fa`).
+
 ## Migration steps (each with a check)
 
 1. **Baseline**: full suite green (modulo the 2 known-red daemon-recovery tests on
