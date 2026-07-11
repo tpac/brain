@@ -108,17 +108,35 @@ class TestDaemonUnavailableLogging(unittest.TestCase):
     log_hook_output — deprecated to a no-op (2026-04-03) — so a real
     daemon-down event left hook_errors empty: invisible in the dashboard, at
     boot, and to query_logs, even though the operator saw the CRITICAL relay.
+
+    Two arms since b2aaa1f (ANCHOR OFFLINE gate): an existing brain.db means
+    a crashed daemon — relay + persist + recover; no brain.db means Anchor
+    never came up — persist ANCHOR OFFLINE + exit 1, no recovery.
     """
 
     def setUp(self):
         self._tmp = tempfile.mkdtemp()
-        self._saved_dir = hook_common.db_dir
+        self._saved = (hook_common.db_dir, hook_common.db_path)
         hook_common.db_dir = self._tmp
+        hook_common.db_path = os.path.join(self._tmp, "brain.db")
 
     def tearDown(self):
-        hook_common.db_dir = self._saved_dir
+        hook_common.db_dir, hook_common.db_path = self._saved
+
+    def _hook_errors(self):
+        db = os.path.join(self._tmp, "brain_logs.db")
+        if not os.path.isfile(db):
+            return []
+        conn = sqlite3.connect(db)
+        try:
+            return conn.execute(
+                "SELECT hook_name, level, error FROM hook_errors ORDER BY id").fetchall()
+        finally:
+            conn.close()
 
     def test_outage_relayed_and_persisted(self):
+        # A brain.db exists → this is a crashed daemon, the recovery arm.
+        open(hook_common.db_path, "w").close()
         # Neutralize step 3 (recover_daemon) so the test never touches a real
         # daemon — daemon_unavailable_error imports it lazily at call time.
         with mock.patch("servers.daemon_client.recover_daemon", lambda *a, **k: None):
@@ -140,6 +158,20 @@ class TestDaemonUnavailableLogging(unittest.TestCase):
         self.assertTrue(down, "daemon-down event must be logged to hook_errors")
         self.assertEqual(down[0][1], "critical", "daemon-down must log at level=critical")
         self.assertIn("recall", down[0][2], "the detecting hook should be named in the error")
+
+    def test_unconfigured_install_logs_offline_and_exits(self):
+        # No brain.db → ANCHOR OFFLINE arm: persist a critical error, exit 1,
+        # and never attempt recovery (boot creates brains, recovery must not).
+        with mock.patch("servers.daemon_client.recover_daemon") as recover:
+            with self.assertRaises(SystemExit) as cm:
+                hook_common.daemon_unavailable_error("recall")
+        self.assertEqual(cm.exception.code, 1)
+        recover.assert_not_called()
+
+        offline = [r for r in self._hook_errors() if "ANCHOR OFFLINE" in (r[2] or "")]
+        self.assertTrue(offline, "ANCHOR OFFLINE must be persisted to hook_errors")
+        self.assertEqual(offline[0][0], "recall", "the detecting hook is the error's hook_name")
+        self.assertEqual(offline[0][1], "critical", "ANCHOR OFFLINE must log at level=critical")
 
 
 if __name__ == "__main__":
