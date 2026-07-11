@@ -87,6 +87,7 @@ New file: `servers/brain_traces.py`, class `BrainTracesMixin`. Estimated ~700 li
 | `query_traces` | `brain_recall.py:540` | none (already `brain.query_traces` / `self.query_traces`) |
 | `journal_notes` | `brain_recall.py:576` | none |
 | `write_journal_notes` | `brain_recall.py:621` | none |
+| `write_session_arc` | `brain_recall.py:707` (journal-family — same trace-residue system) | none |
 | `recall_episodes` + `_resolve_time_bound` | `brain_episodes.py` (file dissolves) | none (already `brain.recall_episodes`) |
 | `get_conversation` | `s0/conversation.py:56` → **becomes a method** | `brain.py:scribe_due` (→ `self.get_conversation`), `s1/encode.py:_gather_messages` (→ `brain.get_conversation`) |
 | `turns_since_last_encode` | `s0/conversation.py:84` → method | `brain.py:scribe_due` (→ `self.turns_since_last_encode`) |
@@ -141,7 +142,25 @@ trace functions. `Brain` bases: `BrainEpisodesMixin` → `BrainTracesMixin`.
    restart. MCP redeploy not expected (verify step: `brain_mcp.py` must not import the
    deleted modules).
 
+## Cost accounting (measured 2026-07-11)
+
+~728 lines relocated (167 brain_recall + 179 episodes + 382 conversation); net
+savings only ~30–60 lines of merged boilerplate. **This is a routing fix, not a
+size reduction** — the payoff is the eliminated correction tax, not line count.
+
+Hidden callers beyond the 3 in `servers/`: `tests/test_mcp_roundtrip.py`,
+`tests/test_daemon_hooks.py`, `tests/test_session_context.py`,
+`eval/oracle_audit/endo_surface_corpus.py` import the dissolved modules directly —
+update in step 5's grep.
+
 ## Risks
+
+- **Magnet-file growth** — `brain_traces.py` is now THE home for trace features and
+  will grow (dal.py precedent: 4,148 lines before forced split). Watch threshold:
+  ~1,200 lines → split by section group; the clean boundary makes that cheap.
+- **Stale brain memories** — several reinforced nodes teach "use the S0
+  conversation layer"; supersession edges cover the durable record, but
+  auto-surfaced stale guidance is a transient confusion source post-migration.
 
 - **JSONL fallback path depth** (step 4 gotcha) — the one silent-failure candidate;
   covered by an explicit check.
