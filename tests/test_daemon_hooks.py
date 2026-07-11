@@ -245,15 +245,19 @@ class TestScribeReactor(unittest.TestCase):
     Preserves the guarantees the gate proved — each session fires on ITS OWN
     conversational count, sub-threshold never fires, one encode runs at a time
     across sessions (a busy session re-qualifies and drains on a later poll) —
-    and adds the idle-tail clause. scribe_due reads only two HIGHER session
-    functions (present_streams + turns_since_last_encode), so we stub those:
-    no DB, no SQL.
+    and adds the idle-tail clause. scribe_due reads only HIGHER session
+    functions (present_streams + turns_since_last_encode + get_conversation),
+    so we stub those: no DB, no SQL.
     """
 
-    def _due(self, streams, turns_map, now=1_000_000.0, skip=None, boot_time=0.0):
-        """Brain.scribe_due bound to a fake brain whose two higher session
-        functions are stubbed (present_streams + turns_since_last_encode).
-        boot_time defaults ancient (past the boot-grace); pass ~now to test it."""
+    def _due(self, streams, turns_map, now=1_000_000.0, skip=None, boot_time=0.0,
+             last_role='assistant'):
+        """Brain.scribe_due bound to a fake brain whose higher session
+        functions are stubbed (present_streams + turns_since_last_encode +
+        get_conversation). boot_time defaults ancient (past the boot-grace);
+        pass ~now to test it. last_role is the newest conversational row's
+        role (default 'assistant' = complete exchange, so the 5+ clause's
+        wait-for-answer gate passes); None = empty conversation."""
         import types
         from unittest.mock import patch
         from servers.brain import Brain
@@ -272,8 +276,11 @@ class TestScribeReactor(unittest.TestCase):
 
         fb = FakeBrain()
         fb._boot_time = boot_time
+        last = [{'role': last_role}] if last_role else []
         with patch('servers.scales.s0.conversation.turns_since_last_encode',
-                   side_effect=lambda brain, sid: turns_map.get(sid, 0)):
+                   side_effect=lambda brain, sid: turns_map.get(sid, 0)), \
+             patch('servers.scales.s0.conversation.get_conversation',
+                   side_effect=lambda brain, sid, limit: last):
             return Brain.scribe_due(fb, now=now, skip_sessions=skip)
 
     def _poll(self, scribe_due_fn, attempts=None, failures=None):
@@ -480,6 +487,40 @@ class TestScribeReactor(unittest.TestCase):
             self._due([{'session_id': 'active', 'updated_at': fresh}],
                       {'active': ENCODE_EVERY + 3}, now=now)['session_id'],
             'active', 'an actively-conversing 5+ session still fires')
+
+    def test_5plus_waits_for_the_answer_to_the_threshold_prompt(self):
+        # The turn count crosses ENCODE_EVERY on the USER prompt, so without a
+        # completeness gate the 5+ clause always fires mid-turn and the encode
+        # window ends on an unanswered question (the 2026-07-11 incident: the
+        # Scribe journaled "Turn 5 has no <me> response" because the answer's
+        # Stop trace landed ~30s after the snapshot). The 5+ clause must wait
+        # until the newest conversational row is the assistant's answer.
+        from servers.scales.s1.encode_contract import ENCODE_EVERY
+        now = 1_000_000.0
+        fresh = [{'session_id': 'midturn', 'updated_at': self._iso(now, 10)}]
+        turns = {'midturn': ENCODE_EVERY + 1}
+        self.assertIsNone(
+            self._due(fresh, turns, now=now, last_role='user'),
+            '5+ must not fire while the newest turn is unanswered')
+        self.assertEqual(
+            self._due(fresh, turns, now=now, last_role='assistant')
+            ['session_id'], 'midturn',
+            'the same session fires once the answer trace lands')
+
+    def test_idle_tail_encodes_a_dangling_question(self):
+        # The tail is EXEMPT from the completeness gate: a question still
+        # unanswered once the session went quiet (interrupt / disconnect —
+        # Stop never fires, so no assistant trace ever lands) is genuinely
+        # dangling and belongs in the encode as-is; the journal records the
+        # gap honestly.
+        from servers.scales.s1.encode_contract import (
+            SCRIBE_TAIL_IDLE_SECONDS, SCRIBE_TAIL_MIN_TURNS)
+        now = 1_000_000.0
+        due = self._due(
+            [{'session_id': 'dangling',
+              'updated_at': self._iso(now, SCRIBE_TAIL_IDLE_SECONDS + 60)}],
+            {'dangling': SCRIBE_TAIL_MIN_TURNS + 1}, now=now, last_role='user')
+        self.assertEqual(due['session_id'], 'dangling')
 
     def test_boot_grace_suppresses_the_poll(self):
         # Just after a (re)start, the poll is a no-op for the settle window — no

@@ -893,8 +893,9 @@ class Brain(
         DECIDES.
 
         Reads only higher session functions — `present_streams` (who's awake +
-        each one's last-turn time) and `turns_since_last_encode` (per-session
-        cadence count) — never SQL/DAL directly. Wall-clock is correct here
+        each one's last-turn time), `turns_since_last_encode` (per-session
+        cadence count) and `get_conversation` (is the newest exchange
+        complete?) — never SQL/DAL directly. Wall-clock is correct here
         (presence + idle are real-time "is the operator away", like
         run_maintenance_if_due), so it's exempt from the conversation_now rule.
 
@@ -913,7 +914,8 @@ class Brain(
             SCRIBE_CANDIDATE_WINDOW_MIN, SCRIBE_ACTIVE_WINDOW_SECONDS,
             scribe_is_starved)
         from .brain_constants import MAINTENANCE_BOOT_GRACE_SECONDS
-        from .scales.s0.conversation import turns_since_last_encode
+        from .scales.s0.conversation import (get_conversation,
+                                              turns_since_last_encode)
 
         now = now if now is not None else _time.time()
         # Boot-grace: don't sweep/encode during the daemon's warmup after a
@@ -958,6 +960,16 @@ class Brain(
             except (ValueError, TypeError):
                 idle = 0.0
             five_plus = turns >= ENCODE_EVERY and idle < SCRIBE_ACTIVE_WINDOW_SECONDS
+            if five_plus:
+                # The turn count crosses the threshold ON the user prompt (a
+                # turn == one user_message), so an immediate fire snapshots a
+                # window ending on an unanswered question — the answer's Stop
+                # trace lands seconds later. Wait for the exchange to complete;
+                # the next poll fires it. The tail is exempt: a question still
+                # dangling once the session went quiet is genuinely unanswered
+                # (interrupt/disconnect) and belongs in the encode as-is.
+                last = get_conversation(self, sid, limit=1)
+                five_plus = bool(last) and last[0].get('role') == 'assistant'
             tail = turns > SCRIBE_TAIL_MIN_TURNS and idle > SCRIBE_TAIL_IDLE_SECONDS
             if not (five_plus or tail):
                 continue
