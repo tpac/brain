@@ -329,21 +329,25 @@ adopt-vs-create fork, `seed_pack` (16 generic nodes + 14 seed prompts), entry-po
 (`servers.brain`, `brain_mcp`, `daemon_server`). **Layer 4 — live Claude Code (daemon boot +
 MCP connect + hooks fire + recall/encode) — is UNTESTED. The key remaining unknown.**
 
-**Goal-A checklist (hand to a friend), besides the s1e encoder prompt (other stream owns it):**
-1. **Depersonalize the 3 non-s1e seed prompts** still carrying "Tom" — `servers/scales/s1/surface_contract.py`,
-   `servers/scales/s2/community_enrichment_prompt.py`, `servers/scales/s2/aspect_prompt.py`
-   (= §4 Phase 1.1/1.2 applied to these files). They seed every fresh brain's `interactions`.
-2. **Relocate `servers/scales/s2/aspects_proposed.json`** out of the shipped package — it's
-   runtime-writable (aspect decoder), so it belongs in `$BRAIN_DB_DIR` (the seed/runtime split).
-   It ships today (git-tracked under `servers/`).
-3. **Layer-4 live test** on a clean macOS account/VM — the untested integration; do *before* the friend.
-4. **Friend install** — `marketplace.json` is now a real "brain" marketplace (`source: "./"`).
-   For a *trusted* friend: hand them the repo/package + their own API key (userConfig prompts).
-   No git-history scrub needed (that's Goal B / §5.4 only).
-- **Not blocking:** daemon launchd self-install (parity with `ensure-dashboard.sh`); seed-pack
-  *quality* (D-5) — the 16 generic seeds suffice for a first friend.
-
-**Recommended order:** 1 + 2 (cheap gates) → 3 (Layer-4 test) → 4 (friend install = the Goal-A proof).
+**Goal-A checklist — status as of 2026-07-11 (all gates but the live test CLOSED):**
+1. ~~Depersonalize seed prompts~~ **DONE** — s1e (other stream), s2_community_enrichment v22 +
+   s2_aspects v3 (registered → activated → synced; `s2_aspects` added to `sync_prompts` SEED_PROMPTS).
+   Every interaction template a fresh brain seeds is operator-agnostic; only 2 code comments in
+   `surface_contract.py` still say "Tom" (never seeded).
+2. ~~Relocate `aspects_proposed.json`~~ **DONE** — untracked + out of the package; runtime path
+   resolves to `$BRAIN_DB_DIR`.
+3. **Layer-4 live test — the one OPEN gate.** Partially proven in production 2026-07-08 (first
+   friend install: boot, brain creation, seeding, daemon, MCP, PostToolUse traces all worked).
+   Exposed + fixed: CLAUDE_PLUGIN_* vars are hook-execution-only (→ `resolved.env` persistence),
+   silent no-brain bail (→ ANCHOR OFFLINE in `hook_common.daemon_unavailable_error`), seed
+   idempotency dup bug (exact-title match). UNRESOLVED: friend's UserPromptSubmit/Stop hooks not
+   firing on the ex.co machine — silent-gate (now impossible) vs CC plugin-hook bug
+   (#10225/#29767/#53643); his reinstall with the current zip disambiguates.
+4. **Friend install** — `brain.plugin` is fully self-contained (ships `.claude-plugin/marketplace.json`):
+   unzip → `claude plugin marketplace add <dir>` → install → API key via userConfig. No repo access needed.
+- Daemon launchd self-install shipped 2026-07-07 (Step 7, `install-daemon-service.sh`). Seed pack
+  gained 3 exemplar nodes (correction/decision/lesson) + mechanism-staleness fixes; seeds 19 nodes.
+  Seed-pack *quality* redesign stays D-5 (deferred).
 
 ---
 
