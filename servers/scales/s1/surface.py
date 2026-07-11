@@ -30,9 +30,9 @@ def _get_recently_surfaced(brain, session_id):
     """
     from servers.scales.s1.surface_contract import SURFACE
     lookback = SURFACE.get('recent_recalls_messages', 10)
-    recent_k = brain._trace_dal.get_by_ref_type(
-        'surface_selected', scale='s1', hours=None, limit=lookback,
-        session_id=session_id)
+    recent_k = brain.query_traces(
+        ref_type='surface_selected', scale='s1', hours=None, limit=lookback,
+        session_id=session_id)['events']
     seen_ids = set()
     for evt in recent_k:
         raw = evt.get('ref_id', '[]')

@@ -1292,13 +1292,15 @@ class BrainRecallMixin:
         OFF by default so this never touches the live hot path until eval-gated activation.
         """
         from .brain_constants import TRACE_CHAIN_T, TRACE_CHAIN_N, TRACE_CHAIN_RESERVE
+        from .trace_contract import CONVERSATIONAL_REF_TYPES
         try:
-            trows = self.logs_conn.execute(
-                """SELECT te.vector, ev.ref_type, ev.scale
-                   FROM trace_embeddings te LEFT JOIN trace_events ev ON ev.id = te.trace_id"""
-            ).fetchall()
-            tr = [(embedder.cosine_similarity(query_vec, r[0]), r[0]) for r in trows
-                  if r[0] and r[2] == 's0' and r[1] in ('user_message', 'assistant_message')]
+            # rows: (chain_id, session_id, created_at, vector) — indexed pull of
+            # exactly the embedded conversational traces (same door recall_laf
+            # uses); the conversational dial lives in trace_contract.
+            trows = self._trace_dal.event_vector_rows(
+                scale='s0', ref_types=list(CONVERSATIONAL_REF_TYPES))
+            tr = [(embedder.cosine_similarity(query_vec, r[3]), r[3])
+                  for r in trows]
             if not tr:
                 return {}
             tr.sort(key=lambda x: -x[0])

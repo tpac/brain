@@ -867,13 +867,14 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
     <provenance> block (piece 2). Piece 1 is a pure timeline read.
     """
     from servers.scales.s1.encode_contract import ENCODING_AGENT, LIVED_SEQUENCE_PULL
+    from servers.trace_contract import SAID_AND_DID_REF_TYPES
     lim = ENCODING_AGENT['message_display_limit']
     n_turns = sum(1 for m in (messages or []) if m.get('role') == 'user') or 20
 
     try:
         episodes = brain.recall_episodes(
             session_id=session_id,
-            ref_type=['user_message', 'assistant_message', 'tool_result'],
+            ref_type=list(SAID_AND_DID_REF_TYPES),
             sort_order='desc', limit=LIVED_SEQUENCE_PULL)['episodes']
     except Exception as e:
         print('[s1e] ERROR reading lived sequence, falling back to markdown: %s' % e, flush=True)

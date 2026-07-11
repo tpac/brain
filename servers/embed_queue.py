@@ -20,6 +20,8 @@ import threading
 import time
 from typing import Dict, Optional, Set
 
+from .trace_contract import SAID_AND_DID_REF_TYPES
+
 # Drain every N seconds if queue is non-empty. Empty queue = no-op, no work.
 EMBED_DRAIN_INTERVAL = 5.0
 # Max entities processed under a single write_lock acquisition. Lock is
@@ -41,7 +43,7 @@ STALL_THRESHOLD_S = EMBED_DRAIN_INTERVAL * 3
 # restart-safe — the LEFT JOIN finds whatever's still missing.
 TRACE_DRAIN_LIMIT = 5
 EAGER_TRACE_SCALES = ('s0',)
-EAGER_TRACE_REF_TYPES = ('user_message', 'assistant_message', 'tool_result')
+EAGER_TRACE_REF_TYPES = SAID_AND_DID_REF_TYPES
 # Embed window — only consider traces newer than this. The architectural
 # reason (not just a perf knob): traces older than v27/identity-stamping
 # rollout have no human_identity / agent_identity in their metadata and

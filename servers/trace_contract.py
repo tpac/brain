@@ -188,6 +188,12 @@ CONVERSATIONAL_REF_TYPES = tuple(
     rt for rt, conv in S0_CONVERSATIONAL_INCOMING.items() if conv
 ) + ("assistant_message",)
 
+# The "said + did" timeline: conversation plus tool activity. What the S1
+# encoder's lived timeline reads and what the embed queue eagerly embeds —
+# the two must stay in lockstep (an unembedded timeline row can't anchor
+# recall), so the set is defined once here.
+SAID_AND_DID_REF_TYPES = CONVERSATIONAL_REF_TYPES + ("tool_result",)
+
 # A wakeup ignite (e.g. a background-task notification) arrives as turn CONTENT,
 # not a distinct ref_type: it runs recall, so it's recorded as a `user_message`
 # (conversational) even though it's an ENVELOPE, not work. Presence focus skips

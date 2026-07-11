@@ -431,11 +431,11 @@ class IntegrationUnit:
 
         try:
             if ref_type:
-                traces = self.brain._trace_dal.get_by_ref_type(
-                    ref_type, scale=scale, hours=168, limit=5)
+                traces = self.brain.query_traces(
+                    ref_type=ref_type, scale=scale, hours=168, limit=5)['events']
             else:
-                traces = self.brain._trace_dal.get_recent(
-                    scale=scale, event_type='delta', limit=5)
+                traces = self.brain.query_traces(
+                    scale=scale, event_type='delta', limit=5)['events']
             for t in traces:
                 if t.get('created_at', '') > last_ts:
                     return True
@@ -474,11 +474,12 @@ class IntegrationUnit:
         results = []
         if ref_types:
             for rt in ref_types:
-                results.extend(self.brain._trace_dal.get_by_ref_type(
-                    rt, scale=scale, hours=hours, limit=500))
+                results.extend(self.brain.query_traces(
+                    ref_type=rt, scale=scale, hours=hours,
+                    limit=500)['events'])
         else:
-            results = self.brain._trace_dal.get_recent(
-                scale=scale, hours=hours, limit=500)
+            results = self.brain.query_traces(
+                scale=scale, hours=hours, limit=500)['events']
 
         if since_ts:
             results = [t for t in results if t.get('created_at', '') > since_ts]
