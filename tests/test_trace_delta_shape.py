@@ -469,6 +469,56 @@ class _TelStubBrain:
         self.errors.append((source, str(exc), context))
 
 
+class TestSurfaceSelectionJournal:
+    """The S1Surface journal (2026-07-11): Haiku's per-pick `why` + the
+    recall-level `reason` persist in the surface_selected K trace — their
+    only durable home (the renderer drops both; Anchor never sees them)."""
+
+    def _k_event(self, **kw):
+        from servers.scales.s1.surface import _write_traces
+
+        class _DAL:
+            def __init__(self):
+                self.batches = []
+
+            def append_batch(self, events):
+                self.batches.append(events)
+
+        brain = _TelStubBrain()
+        brain._trace_dal = _DAL()
+
+        class _Ctx:
+            def s1r_chain(self):
+                return 's1r-test-journal'
+
+        cands = [{'id': 'a' * 32, 'title': 'T', 'score': 0.9, 'type': 'fact'}]
+        _write_traces(brain, _Ctx(), cands, {'aaaaaaaa'}, [], [],
+                      'ctx', 'query', [], 'ref-1', 7, 'sess-journal', **kw)
+        events = brain._trace_dal.batches[0]
+        return next(e for e in events
+                    if e['ref_type'] == 'surface_selected')
+
+    def test_why_and_reason_persist_in_k_metadata(self):
+        k = self._k_event(
+            selected_why={'a' * 32: 'commit discipline applies here'},
+            selection_reason='work message about committing to main')
+        assert k['metadata']['selection_why'] == {
+            'aaaaaaaa': 'commit discipline applies here'}
+        assert k['metadata']['selection_reason'] == \
+            'work message about committing to main'
+
+    def test_journal_keys_present_even_when_empty(self):
+        k = self._k_event()
+        assert k['metadata']['selection_why'] == {}
+        assert k['metadata']['selection_reason'] == ''
+
+    def test_runaway_rationale_is_bounded(self):
+        k = self._k_event(selected_why={'a' * 32: 'x' * 999},
+                          selection_reason='y' * 999)
+        assert len(k['metadata']['selection_why']['aaaaaaaa']) == 200
+        assert len(k['metadata']['selection_reason']) == 500
+
+
 class TestTraceBoundaryTelemetryGuard:
     """IntegrationUnit.trace() is the single S2 delta write boundary — the guard
     fires there so every S2 unit (and every FUTURE one) is covered for free.

@@ -657,7 +657,8 @@ def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
 def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
                   graph_neighbors, additional_context, enriched, results,
                   recall_ref, interaction_id, session_id, expansion=None,
-                  frame='', telemetry=None, pt=None):
+                  frame='', telemetry=None, pt=None,
+                  selected_why=None, selection_reason=''):
     """Write S1 surface traces: O (candidates), K (surfaced), Δ (additionalContext).
 
     `expansion` carries activation data from spread_activation when present —
@@ -677,6 +678,10 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
     form of the hook_phase_timing debug string. The K trace also records an
     `outcome` flag (served / empty) so a turn that surfaced nothing is
     distinguishable from one that did, without cross-referencing other logs.
+
+    `selected_why` (full-id → Haiku's why) + `selection_reason` (recall-level
+    rationale) form the S1Surface journal on the K event — the trace is their
+    only durable home; neither is rendered into additionalContext.
     """
     recall_chain = ctx.s1r_chain()
 
@@ -752,6 +757,14 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
     # so Surface now carries BOTH cost and loop detail — the gap this closes.
     k_metadata = {
         'selected': sel_detail, 'expanded': exp_detail,
+        # S1Surface journal (2026-07-11): Haiku's per-pick `why` (post-gate,
+        # short-id keyed) + the recall-level `reason`. Neither is rendered to
+        # Anchor — the K trace is their only durable home, making the
+        # selection rationale queryable (S3 / dashboard / prompt evals).
+        # Bounded per entry so a runaway why can't bloat the trace.
+        'selection_why': {fid[:8]: (w or '')[:200]
+                          for fid, w in (selected_why or {}).items()},
+        'selection_reason': (selection_reason or '')[:500],
         **frame_meta, **activation_meta,
         # Agentic surface tool trace (v5 only; empty for v4). Stashed by
         # _call_surface_agentic on the brain instance so we don't change the
@@ -914,6 +927,9 @@ def run_surface(brain, ctx, candidates_data, user_message,
     _mark('surface_haiku')
 
     selected = surfaced.get("selected", [])
+    # Haiku's per-recall rationale. Rendered nowhere (Anchor never sees
+    # it) — its one consumer is the S1Surface journal in the K trace.
+    selection_reason = surfaced.get("reason") or ''
 
     if not selected:
         _write_surface_selected_file(brain, session_id, ctx.stop_counter,
@@ -922,7 +938,8 @@ def run_surface(brain, ctx, candidates_data, user_message,
             _write_traces(brain, ctx, candidates_data, set(), [], [],
                           None, enriched, results,
                           recall_ref, interaction_id, session_id,
-                          frame=frame, telemetry=telemetry, pt=pt)
+                          frame=frame, telemetry=telemetry, pt=pt,
+                          selection_reason=selection_reason)
         except Exception as e:
             brain._log_error('trace_s1_surface_empty', e, 'S1 surface trace (no selection)')
         _write_surface_result_file(recall_ref, surface_prompt, "(no selection)", brain)
@@ -1083,7 +1100,9 @@ def run_surface(brain, ctx, candidates_data, user_message,
                       graph_neighbors_compat, additional_context,
                       enriched, results,
                       recall_ref, interaction_id, session_id,
-                      expansion=expansion, frame=frame, telemetry=telemetry, pt=pt)
+                      expansion=expansion, frame=frame, telemetry=telemetry, pt=pt,
+                      selected_why=selected_why,
+                      selection_reason=selection_reason)
     except Exception as e:
         brain._log_error('trace_s1_surface', e, 'S1 surface trace capture')
 
