@@ -192,12 +192,14 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
     """Agentic surface call: Haiku may use fetch tools to extend the candidate
     pool before final JSON selection.
 
+    The final round is sent with tool_choice='none', so Haiku must finalize
+    with the selection JSON — max_rounds is the hard cap on API calls.
+
     Returns: (raw_final_text, tool_trace, telemetry) where tool_trace is a list
     of per-round dicts {round, stop_reason, total_ms, <USAGE_FIELDS>,
     tool_calls: [...]} for trace observability (total_ms + usage per API call,
-    mirroring run_llm_loop's per_round_stats; a forced-finalize call adds
-    forced_total_ms/forced_usage to its round's record), and telemetry is the
-    shared run-cost dict (build_run_telemetry kwargs) summed across the loop's
+    mirroring run_llm_loop's per_round_stats), and telemetry is the shared
+    run-cost dict (build_run_telemetry kwargs) summed across the loop's
     Haiku rounds.
 
     Mutates `candidates_data` IN PLACE — tool-fetched candidates are appended
@@ -221,13 +223,17 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                     if isinstance(c, dict) and (c.get('score') or 0) > 0]
     _pool_median = _stats.median(_pool_scores) if _pool_scores else 0.0
 
-    # Cache breakpoint (2026-07-02, the deferred A1): the round-1 prefix
-    # (tools + system + this user content, ~20K tokens) is written to the
-    # 5-min prompt cache and read back by round 2 at 0.1× price and much
-    # faster prefill. Requires the tools param to be byte-identical across
-    # rounds — see the forced-finalize path below for how the loop
-    # terminates without stripping tools. Prompts under the model's
-    # 4096-token cacheable minimum are silently not cached (no error).
+    # Cache breakpoints (runner convention: BP1 system 1h, BP2 user 5m):
+    #   BP1 (in api_kwargs below) — last system block. Caches tools+system,
+    #   which is byte-identical ACROSS recalls (cross-recall reuse) and
+    #   survives the final round's tool_choice flip — tool_choice changes
+    #   invalidate only the messages-tier cache (Anthropic invalidation
+    #   hierarchy), never the tools/system tiers.
+    #   BP2 (here) — the round-1 user content (~20K tokens incl. the
+    #   candidate pool): read back by round 2 at 0.1× price and much
+    #   faster prefill. Requires tools to be byte-identical across rounds.
+    # Prompts under the model's 4096-token cacheable minimum are silently
+    # not cached (no error).
     messages = [{"role": "user", "content": [
         {"type": "text", "text": user_content,
          "cache_control": {"type": "ephemeral"}}]}]
@@ -251,9 +257,8 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
     def _absorb_response(resp):
         """Fold one Haiku response into the running cost totals and capture
         any text content as the candidate final answer. The ONE place a
-        response's usage/truncation/text is absorbed — the main loop and
-        the forced-finalize call both route through it so their telemetry
-        can't drift. Returns the response's usage dict for per-round checks."""
+        response's usage/truncation/text is absorbed, so telemetry can't
+        drift. Returns the response's usage dict for per-round checks."""
         nonlocal rounds_used, truncated, raw_final
         rounds_used += 1
         ru = read_usage(resp)
@@ -284,19 +289,23 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
     for round_idx in range(max_rounds):
         is_final = (round_idx == max_rounds - 1)
 
-        # Tools ride on EVERY round (2026-07-02) — stripping them on the
-        # final round (the pre-cache force-select design) changes the
-        # request prefix and invalidates the entire prompt cache. The
-        # final round instead force-finalizes via the fallback below when
-        # Haiku tool-uses past its budget.
+        # Tools ride on EVERY round byte-identical (2026-07-02) so the BP1
+        # prefix never shifts. The FINAL round adds tool_choice='none'
+        # (2026-07-11): Haiku must answer with the selection JSON, so
+        # max_rounds IS the hard API-call cap — no forced-finalize third
+        # call (that path cost an extra ~5.7s and breached the 20s hook
+        # budget on 2-tool-round recalls).
         api_kwargs = {
             'model': model,
             'max_tokens': max_tokens,
-            'system': surface_instructions,
+            'system': [{"type": "text", "text": surface_instructions,
+                        "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
             'messages': messages,
             'output_config': output_config,
             'tools': TOOL_DEFINITIONS,
         }
+        if is_final:
+            api_kwargs['tool_choice'] = {'type': 'none'}
 
         _t_call = time.time()
         try:
@@ -340,35 +349,15 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
             break
 
         if is_final:
-            # Budget exhausted but Haiku tool-used anyway. Do NOT execute —
-            # re-issue the same request WITHOUT tools, forcing a JSON
-            # selection from the pool it already has. This round's tool_use
-            # blocks are discarded (appending them without tool_results
-            # would 400 the next call). Rare path: it costs one extra
-            # uncached call — exactly what every fired recall cost before
-            # caching. Loud so the rate is observable; if it's not rare,
-            # the prompt's round discipline regressed.
+            # Unreachable via the API: this round was sent with
+            # tool_choice='none', so stop_reason can't be tool_use. Reaching
+            # it means the constraint stopped constraining — log loudly,
+            # keep whatever text was absorbed, and spend no extra call.
             brain._log_warning(
-                'surface_forced_finalize',
-                'Haiku tool-used on the final round — forcing selection '
-                'with tools stripped',
+                'surface_final_round_tool_use',
+                "stop_reason=tool_use despite tool_choice='none' on the "
+                'final round — constraint not honored',
                 'round=%d session=%s' % (round_idx, session_id))
-            round_record['forced_finalize'] = 1
-            forced_kwargs = {k: v for k, v in api_kwargs.items()
-                             if k != 'tools'}
-            _t_forced = time.time()
-            try:
-                forced_resp = client.messages.create(**forced_kwargs)
-            except Exception as e:
-                brain._log_error('surface_agentic_api', e,
-                                  'forced-finalize Haiku call')
-                tool_trace.append(round_record)
-                return raw_final, tool_trace, _telemetry()
-            # Extra API call rides on this round's record (prefixed keys)
-            # so trace[-1] stays the forced round for existing readers.
-            round_record['forced_total_ms'] = int(
-                (time.time() - _t_forced) * 1000)
-            round_record['forced_usage'] = _absorb_response(forced_resp)
             tool_trace.append(round_record)
             break
 
@@ -468,7 +457,8 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
             # message with no tool_use + an empty tool_results user message
             # would 400 the next round. Leave `messages` untouched and go
             # around again — the identical request re-reads the cached
-            # prefix, and a repeat lands in the final-round forced-finalize.
+            # prefix, and the final round's tool_choice='none' guarantees
+            # a JSON finalize.
             brain._log_warning(
                 'surface_empty_tool_use',
                 'stop_reason=tool_use with no tool_use blocks — retrying '

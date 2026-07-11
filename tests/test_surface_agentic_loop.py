@@ -1,10 +1,12 @@
 """Unit tests for the v5_agentic surface loop (_call_surface_agentic).
 
-Covers the 2026-07-02 loop changes:
-  - Prompt-cache breakpoint on the round-1 user content, tools on EVERY
-    round (byte-identical prefix so round 2 cache-hits).
-  - Forced-finalize fallback: Haiku tool-uses on the final round → one
-    extra tools-stripped call, loudly logged.
+Covers the loop contract:
+  - Prompt-cache breakpoints: BP1 on the system block (tools+system,
+    1h — survives the final round's tool_choice flip), BP2 on the
+    round-1 user content; tools byte-identical on EVERY round.
+  - Final-round discipline (2026-07-11): the last round is sent with
+    tool_choice='none', so max_rounds is the hard API-call cap — the
+    forced-finalize third call is gone.
   - Admission-floor tripwire + result_ids/dropped_ids trace attribution.
 
 All tests run against fakes — no brain, no network.
@@ -87,6 +89,16 @@ class TestCachePrefix:
         assert block['text'] == 'USER CONTENT'
         assert raw == SELECTION_JSON
 
+    def test_system_carries_bp1_cache_control(self):
+        # BP1 (tools+system tier, 1h): byte-identical across recalls AND
+        # unaffected by the final round's tool_choice flip.
+        client = FakeClient([text_response()])
+        run_loop(client, FakeBrain(), [])
+        system = client.calls[0]['system']
+        assert system[0]['text'] == 'SYSTEM'
+        assert system[0]['cache_control'] == {'type': 'ephemeral',
+                                              'ttl': '1h'}
+
     def test_tools_present_on_every_round(self, monkeypatch):
         monkeypatch.setattr(
             fetch_tools_mod, 'execute_tool',
@@ -124,24 +136,41 @@ class TestCachePrefix:
         assert tel['cache_read_tokens'] == 19000
 
 
-class TestForcedFinalize:
-    def test_final_round_tool_use_forces_selection(self):
+class TestFinalRoundDiscipline:
+    """The final round is sent with tool_choice='none' (2026-07-11) —
+    max_rounds is the hard API-call cap. Replaces the forced-finalize
+    fallback (a third tools-stripped call that cost ~5.7s and breached
+    the 20s hook budget on 2-tool-round recalls)."""
+
+    def test_final_round_sends_tool_choice_none(self, monkeypatch):
+        monkeypatch.setattr(
+            fetch_tools_mod, 'execute_tool',
+            lambda *a, **kw: {'results': [], 'latency_ms': 1})
+        client = FakeClient([tool_use_response(), text_response()])
+        raw, trace, tel = run_loop(client, FakeBrain(), [])
+        assert 'tool_choice' not in client.calls[0]   # round 0: auto
+        assert client.calls[1]['tool_choice'] == {'type': 'none'}
+        assert raw == SELECTION_JSON
+        assert tel['rounds'] == 2
+
+    def test_max_rounds_is_the_api_call_cap(self):
+        # Even if the model tool-uses on the final round (impossible via
+        # the real API under tool_choice='none' — only a fake can), the
+        # loop must NOT spend an extra call; it logs loudly and stops.
         brain = FakeBrain()
-        # max_rounds=1 → round 0 is final; Haiku tool-uses → forced call.
         client = FakeClient([tool_use_response(), text_response()])
         raw, trace, tel = run_loop(client, brain, [], max_rounds=1)
-        assert len(client.calls) == 2
-        assert 'tools' in client.calls[0]
-        assert 'tools' not in client.calls[1]      # forced call strips tools
-        assert raw == SELECTION_JSON
-        assert trace[-1].get('forced_finalize') == 1
-        assert tel['rounds'] == 2
-        assert any(w[0] == 'surface_forced_finalize' for w in brain.warnings)
+        assert len(client.calls) == 1
+        assert client.calls[0]['tool_choice'] == {'type': 'none'}
+        assert tel['rounds'] == 1
+        assert any(w[0] == 'surface_final_round_tool_use'
+                   for w in brain.warnings)
 
     def test_empty_tool_use_round_retries_without_history_append(self):
         # stop_reason='tool_use' with ZERO tool_use blocks (the May-2026
         # Haiku mode) must not append empty messages (API 400 next round).
-        # The loop retries with untouched history, then finalizes normally.
+        # The loop retries with untouched history; the retry is the final
+        # round, so tool_choice='none' guarantees it finalizes.
         brain = FakeBrain()
         empty_tool_use = SimpleNamespace(
             stop_reason='tool_use', content=[], usage=FakeUsage())
@@ -150,16 +179,8 @@ class TestForcedFinalize:
         assert raw == SELECTION_JSON
         assert len(client.calls) == 2
         assert len(client.calls[1]['messages']) == 1  # history untouched
+        assert client.calls[1]['tool_choice'] == {'type': 'none'}
         assert any(w[0] == 'surface_empty_tool_use' for w in brain.warnings)
-
-    def test_forced_call_reuses_history_without_orphan_tool_use(self):
-        # The tool_use assistant message must NOT be appended before the
-        # forced call — tool_use without tool_result is an API 400.
-        client = FakeClient([tool_use_response(), text_response()])
-        run_loop(client, FakeBrain(), [], max_rounds=1)
-        forced_messages = client.calls[1]['messages']
-        assert len(forced_messages) == 1
-        assert forced_messages[0]['role'] == 'user'
 
 
 class TestPerRoundTelemetry:
@@ -192,20 +213,6 @@ class TestPerRoundTelemetry:
         assert trace[0]['cache_creation_tokens'] == 12000
         assert trace[1]['output_tokens'] == 300
         assert trace[1]['cache_read_tokens'] == 12000
-
-    def test_forced_finalize_records_extra_call_cost(self):
-        client = FakeClient([
-            tool_use_response(output_tokens=150),
-            text_response(output_tokens=400),
-        ])
-        raw, trace, tel = run_loop(client, FakeBrain(), [], max_rounds=1)
-        rec = trace[-1]
-        # The round's own call and the forced call are both costed.
-        assert rec['output_tokens'] == 150
-        assert rec['forced_usage']['output_tokens'] == 400
-        assert isinstance(rec['forced_total_ms'], int)
-        # Summed telemetry still covers both calls.
-        assert tel['output_tokens'] == 550
 
 
 class TestFloorAndAttribution:

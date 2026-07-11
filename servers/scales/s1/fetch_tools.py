@@ -17,9 +17,10 @@ DESIGN CONTRACT
 LOOP CONTROL
 ------------
 - Max 2 rounds (surface.py _call_surface_agentic max_rounds=2).
-- Tools are offered on EVERY round — the round-1 prefix is prompt-cached,
-  and stripping tools would invalidate it. A final-round tool_use gets one
-  forced tools-stripped finalize call instead (loud: surface_forced_finalize).
+- Tools are offered on EVERY round byte-identical — the tools+system
+  prefix is prompt-cached. The final round is sent with tool_choice='none',
+  so Haiku must finalize with the selection JSON (max_rounds is the hard
+  API-call cap; no extra forced call).
 - Parallel tool calls per round encouraged (Anthropic native).
 - Behavioral discipline (in surface prompt) prevents iterating same query.
 

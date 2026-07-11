@@ -264,6 +264,7 @@ wrows = conn.execute(
        WHERE created_at > ? AND source IN (
          'surface_floor_dropped_all', 'fetch_topical_zero_raw',
          'surface_cache_miss', 'surface_forced_finalize',
+         'surface_final_round_tool_use',
          'surface_empty_tool_use', 'surface_id_fuzzy_recovered',
          'surface_unknown_selected_id')
        GROUP BY source ORDER BY n DESC""", (cutoff,)).fetchall()
