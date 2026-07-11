@@ -265,10 +265,29 @@ class TestHookDelegation(unittest.TestCase):
             self.assertFalse(self.hc.daemon_available())
 
     def test_unavailable_error_calls_recover_daemon(self):
-        with patch("servers.daemon_client.recover_daemon") as recover:
-            msg = self.hc.daemon_unavailable_error("recall")
-            recover.assert_called_once()
-            self.assertIn("CRITICAL", msg)
+        # Existing brain.db + dead daemon = a crash: recovery must fire.
+        with tempfile.TemporaryDirectory(prefix="brain-hook-deleg-") as tmp:
+            db = os.path.join(tmp, "brain.db")
+            open(db, "w").close()
+            with patch.object(self.hc, "db_dir", tmp), \
+                 patch.object(self.hc, "db_path", db), \
+                 patch("servers.daemon_client.recover_daemon") as recover:
+                msg = self.hc.daemon_unavailable_error("recall")
+                recover.assert_called_once_with(db)
+                self.assertIn("CRITICAL", msg)
+
+    def test_unconfigured_install_exits_without_recovery(self):
+        # No brain.db AND no daemon = Anchor never came up, not a crash.
+        # ANCHOR OFFLINE contract (b2aaa1f): log + exit 1, NO recovery attempt —
+        # boot creates brains, recovery must not.
+        with tempfile.TemporaryDirectory(prefix="brain-hook-deleg-") as tmp:
+            with patch.object(self.hc, "db_dir", tmp), \
+                 patch.object(self.hc, "db_path", os.path.join(tmp, "brain.db")), \
+                 patch("servers.daemon_client.recover_daemon") as recover:
+                with self.assertRaises(SystemExit) as cm:
+                    self.hc.daemon_unavailable_error("recall")
+                self.assertEqual(cm.exception.code, 1)
+                recover.assert_not_called()
 
     def test_hook_common_has_no_local_recovery(self):
         # The duplicate must be gone — recovery lives only in daemon_client.
