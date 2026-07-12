@@ -26,6 +26,7 @@ import json
 import os
 import re
 from bisect import bisect_left
+from functools import lru_cache
 from typing import Any, Dict, List
 
 from . import embedder
@@ -119,6 +120,8 @@ class BrainTracesMixin:
           one subject, chain_suffix to scope to one S2 unit's chains, session_id
           to scope to one session, hours=None to disable the time window)
         - grouped=True + session_id: return chains grouped with nested events
+          (NOTE: unlike the flat single-session pull, the grouped path IS
+          hours-bound — pass a wide hours for historical sessions)
         - session_ids (list) set: cross-session pull; hours ignored
         - session_id (str) set: single-session pull; hours ignored
         - default: return flat recent events (hours-bound; + optional chain_suffix
@@ -456,20 +459,27 @@ class BrainTracesMixin:
 
     # ── Conversation ──
 
-    def get_conversation(self, session_id: str, limit: int = 20) -> List[Dict]:
+    def get_conversation(self, session_id: str, limit: int = 20,
+                         with_judge_output: bool = True) -> List[Dict]:
         """Get recent conversation turns for a session.
 
-        The simple path — S1E, hooks, scribe_due: anything that knows its
+        The simple path — S1E and scribe_due: anything that knows its
         session_id and wants the last N turns. No timestamp resolution, no
-        JSONL fallback.
+        JSONL fallback. (daemon_hooks' surface window still reads
+        get_session_turns directly — it needs with_surfaced/exclude_trace_id
+        this door doesn't expose yet; widening it retires that bypass.)
 
         Returns: [{role, content, timestamp, trace_id, judge_output}]
             trace_id: 8-char hex id from trace_events (v29) — used by S1 encoder
                       to populate source_refs via `[trace:<hex>]` inline markers.
             judge_output: surface selection from S1R for the user turn (if any).
+                      Filling it costs an extra query over the window's recall
+                      chains — callers that only read role/content (the
+                      scribe_due poll) pass with_judge_output=False.
         """
         try:
-            turns = self._trace_dal.get_session_turns(session_id, limit=limit)
+            turns = self._trace_dal.get_session_turns(
+                session_id, limit=limit, with_judge_output=with_judge_output)
             return [{'role': t['role'],
                      'trace_id': t.get('trace_id'),
                      'content': t.get('content', ''),
@@ -555,18 +565,14 @@ class BrainTracesMixin:
         return _from_jsonl(resolved_timestamp, before, after)
 
     def _resolve_node_timestamp(self, node_id):
-        """Get a node's created_at timestamp."""
-        row = self.conn.execute(
-            "SELECT created_at FROM nodes WHERE id = ?", (node_id,)
-        ).fetchone()
-        if row:
-            return row[0]
-
-        # Try short ID
-        row = self.conn.execute(
-            "SELECT created_at FROM nodes WHERE id LIKE ?", (node_id[:8] + '%',)
-        ).fetchone()
-        return row[0] if row else None
+        """Get a node's created_at timestamp (full id or short-id prefix) —
+        through NodeDAL, so prefix-resolution semantics live in one place."""
+        nid = (self._nodes.resolve_id(node_id)
+               or self._nodes.resolve_id(node_id[:8]))
+        if not nid:
+            return None
+        node = self._nodes.get_naked_node(nid)
+        return node['created_at'] if node else None
 
     def _find_encoding_session(self, node_id, node_created_at):
         """Find which session encoded this node.
@@ -630,26 +636,16 @@ class BrainTracesMixin:
 # JSONL Conversation Log Support (pre-trace history)
 # ═══════════════════════════════════════════════════════════════
 
-_CONV_DIR = None
-
-
+@lru_cache(maxsize=1)
 def _get_conv_dir():
     """Locate the conversations/ dir under the brain repo root (or '' if
     absent). __file__ is servers/brain_traces.py → repo root is TWO dirname
     hops up. Path depth is load-bearing: a wrong hop count silently kills the
-    JSONL fallback (empty dir, no error)."""
-    global _CONV_DIR
-    if _CONV_DIR is not None:
-        return _CONV_DIR
-
+    JSONL fallback (empty dir, no error). Cached once per process
+    (cache_clear() resets — e.g. a test pointing at a temp dir)."""
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     candidate = os.path.join(repo_root, 'conversations')
-    if os.path.isdir(candidate):
-        _CONV_DIR = candidate
-        return _CONV_DIR
-
-    _CONV_DIR = ''  # Not found
-    return _CONV_DIR
+    return candidate if os.path.isdir(candidate) else ''
 
 
 def _from_jsonl(timestamp, before, after):

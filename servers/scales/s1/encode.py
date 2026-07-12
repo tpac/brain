@@ -346,14 +346,14 @@ def _gather_messages(brain, session_id):
             for i, t in enumerate(turns):
                 # `id` was a synthetic display label (turn-N). Keep it as
                 # `turn_label` for human-facing render. `trace_id` (hex)
-                # comes from S0 layer and is the load-bearing reference
-                # the encoder copies into source_refs.
+                # comes from the traces layer and is the load-bearing
+                # reference the encoder copies into source_refs.
                 t['turn_label'] = 'turn-%d' % i
                 t['id'] = 'turn-%d' % i  # backward-compat for downstream readers
                 t['content'] = (t.get('content', '') or '')[:content_limit]
             return turns
     except Exception as e:
-        print('[s1e] S0 CONVERSATION ERROR: %s' % e, flush=True)
+        print('[s1e] CONVERSATION READ ERROR: %s' % e, flush=True)
 
     return []
 

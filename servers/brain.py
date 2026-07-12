@@ -966,7 +966,8 @@ class Brain(
                 # the next poll fires it. The tail is exempt: a question still
                 # dangling once the session went quiet is genuinely unanswered
                 # (interrupt/disconnect) and belongs in the encode as-is.
-                last = self.get_conversation(sid, limit=1)
+                last = self.get_conversation(sid, limit=1,
+                                             with_judge_output=False)
                 five_plus = bool(last) and last[0].get('role') == 'assistant'
             tail = turns > SCRIBE_TAIL_MIN_TURNS and idle > SCRIBE_TAIL_IDLE_SECONDS
             if not (five_plus or tail):

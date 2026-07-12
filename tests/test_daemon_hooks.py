@@ -272,7 +272,7 @@ class TestScribeReactor(unittest.TestCase):
             def turns_since_last_encode(self, sid):
                 return turns_map.get(sid, 0)
 
-            def get_conversation(self, sid, limit=20):
+            def get_conversation(self, sid, limit=20, with_judge_output=True):
                 return [{'role': last_role}] if last_role else []
 
             def get_or_create_session(self, sid):

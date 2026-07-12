@@ -739,7 +739,9 @@ class TraceDAL:
         # historical sessions don't silently truncate to empty. exclude_ref_types
         # drops residue (journal_note) so "recent integration deltas" don't
         # count encoder notes. The XOR guard + predicate build live in
-        # _event_where (the one WHERE source for all trace_events readers).
+        # _event_where (the one WHERE source for trace_events readers;
+        # latest_in_window and find_by_metadata_substring stay inline — their
+        # inclusive bounds / metadata-only LIKE differ from the builder's forms).
         where, params = self._event_where(
             scale=scale, event_type=event_type,
             session_id=session_id, session_ids=session_ids,
@@ -858,7 +860,7 @@ class TraceDAL:
         The time/no-query path: indexed WHERE + ORDER BY created_at + LIMIT
         early-exits, so only `limit` rows are decoded. See _event_where for the
         filter semantics (ref_types is an INCLUDE whitelist). Semantic ranking
-        lives in BrainEpisodesMixin.recall_episodes.
+        lives in BrainTracesMixin.recall_episodes (brain_traces.py).
         """
         from .brain_constants import EPISODE_MAX_LIMIT
         limit = min(max(int(limit), 1), EPISODE_MAX_LIMIT)
@@ -912,17 +914,9 @@ class TraceDAL:
         history (the newest-500 cap was a coverage ceiling, not a feature —
         2026-07-02, eval/laf/composition_probe.md).
         """
-        conditions = ['tem.vector IS NOT NULL']
-        params: List[Any] = []
-        if scale:
-            conditions.append('te.scale = ?')
-            params.append(scale)
-        if ref_types:
-            conditions.append('te.ref_type IN (%s)' % ','.join('?' * len(ref_types)))
-            params.extend(ref_types)
-        if since:
-            conditions.append('te.created_at > ?')
-            params.append(since)
+        where, params = self._event_where(
+            scale=scale, ref_types=ref_types, younger_than=since or '')
+        conditions = ['tem.vector IS NOT NULL', where]
         rows = self.conn.execute(
             'SELECT te.chain_id, te.session_id, te.created_at, tem.vector '
             'FROM trace_events te '
@@ -1002,6 +996,13 @@ class TraceDAL:
         identity lives in the chain suffix (`s2-{ts}-{unit}`). LIMIT then bounds
         the per-unit result, not the global stream.
         """
+        # Loud on a falsy ref_type: this door's contract REQUIRES one (the
+        # builder would silently drop the predicate and return every type).
+        # Un-typed pulls are get_recent's job.
+        if not ref_type:
+            raise ValueError(
+                "get_by_ref_type: ref_type is required — use get_recent for "
+                "un-typed pulls")
         # Unlike get_recent, hours composes WITH a session scope here — this
         # door's contract is "exactly these predicates", no authority rule.
         where, params = self._event_where(
@@ -1025,15 +1026,10 @@ class TraceDAL:
         if field not in allowed:
             return {}
 
-        conditions = ['created_at > ?']
-        params = [iso_cutoff(hours=hours)]
-        if scale:
-            conditions.append('scale = ?')
-            params.append(scale)
-        where = ' AND '.join(conditions)
-
+        where, params = self._event_where(scale=scale, hours=hours)
         rows = self.conn.execute(
-            'SELECT %s, COUNT(*) FROM trace_events WHERE %s GROUP BY %s' % (field, where, field),
+            'SELECT te.%s, COUNT(*) FROM trace_events te '
+            'WHERE %s GROUP BY te.%s' % (field, where, field),
             params).fetchall()
 
         return {r[0] or '': r[1] for r in rows}
@@ -1203,7 +1199,7 @@ class TraceDAL:
         """Get chronological turns for a session from S0 + S1 traces.
 
         Returns: [{role, trace_id, content, timestamp, judge_output}]
-        (s0/conversation.py get_conversation and the encoder's
+        (brain_traces.py get_conversation and the encoder's
         _gather_messages derive their shapes from this.)
 
         One turn per trace row — never grouped by chain. A chain can hold N
