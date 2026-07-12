@@ -2,10 +2,11 @@
 
 Scale: S1 (turn). This composes S1's OWN behavioral output — S1R surface
 selections and S1E encode runs — into a per-trace view of which nodes the brain
-touched around each turn. It is the S1 sibling of `scales/s0/conversation.py`:
-S0 composes s0 traces into the conversation; this composes s1 traces into the
-node-links over that conversation. Recall lives at the brain level (it spans
-every scale); surface+encode are about the turn, so they live here.
+touched around each turn. It is the S1 sibling of brain_traces.py's
+conversation reads: those compose s0 traces into the conversation; this
+composes s1 traces into the node-links over that conversation. Recall lives at
+the brain level (it spans every scale); surface+encode are about the turn, so
+they live here.
 
 It is a consumer-NEUTRAL link, not "provenance" (which is one reader's lens).
 The capability returns, per target trace, the nodes linked to it by relation:

@@ -575,38 +575,26 @@ class TraceDAL:
         identity tokens (set_identity) are stamped into metadata via
         setdefault — explicit per-event values win.
         """
-        from .trace_contract import validate_trace_event, validate_trace_metadata
-        ok, error = validate_trace_event(scale, event_type, ref_type)
-        if not ok:
-            raise ValueError("Trace contract violation: %s" % error)
-        # Payload shape — loud, never block. This is the SINGLE chokepoint every
-        # writer passes (inline S1/S2 + the dispatched command), so the guard
-        # actually fires in production: the command-boundary check missed every
-        # in-process delta write (S2 units + S1 Scribe run with dispatch=None).
-        meta_ok, meta_err = validate_trace_metadata(event_type, ref_type, metadata)
-        if not meta_ok:
-            self._warn_metadata_invalid(ref_type, meta_err)
-
-        self._maybe_warn_identity_unset(scale, ref_type)
-        metadata = self._stamp_identity(metadata)
-        now = iso_now()
-        meta_json = json.dumps(metadata) if metadata else None
-        trace_id = _new_trace_id(self.conn)
-        self.conn.execute(
-            'INSERT INTO trace_events '
-            '(id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, interaction_id, created_at) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            (trace_id, chain_id, scale, event_type, ref_type, ref_id,
-             summary if summary else '', meta_json, session_id, interaction_id, now))
-        commit_unless_batched(self.conn)
-        return trace_id
+        return self.append_batch([{
+            'chain_id': chain_id, 'scale': scale, 'event_type': event_type,
+            'ref_type': ref_type, 'ref_id': ref_id,
+            'summary': summary if summary else '',
+            'metadata': metadata, 'session_id': session_id,
+            'interaction_id': interaction_id}])[0]
 
     def append_batch(self, events: list) -> List[str]:
         """Append multiple trace events in a single transaction.
 
         Reduces WAL lock contention — one commit instead of N.
-        Each event dict uses the same keys as append(). Identity stamping
-        applies per-event via the same setdefault semantics as append().
+        Each event dict uses the same keys as append() (which delegates here —
+        this per-event body is the write path's ONE implementation).
+        Identity stamping applies per-event via setdefault semantics.
+
+        The metadata validation below is loud, never blocking. This is the
+        SINGLE chokepoint every writer passes (inline S1/S2 + the dispatched
+        command), so the guard actually fires in production: the
+        command-boundary check missed every in-process delta write (S2 units +
+        S1 Scribe run with dispatch=None).
         """
         from .trace_contract import validate_trace_event, validate_trace_metadata
         now = iso_now()
@@ -657,16 +645,20 @@ class TraceDAL:
                 return {}
         return meta if isinstance(meta, dict) else {}
 
+    # The canonical 10-column projection _row_to_event() decodes. Interpolate
+    # one of these into every trace_events SELECT — never restate the list
+    # (the hand-maintained copies drifted into different orders before).
+    _CANON_FIELDS = ('id', 'chain_id', 'scale', 'event_type', 'ref_type',
+                     'ref_id', 'summary', 'metadata', 'session_id', 'created_at')
+    _CANON_COLS = ', '.join(_CANON_FIELDS)
+    _CANON_COLS_TE = ', '.join('te.' + f for f in _CANON_FIELDS)
+
     def _row_to_event(self, r) -> Dict[str, Any]:
         """Map ONE canonical-order trace_events row tuple → the event dict.
 
         The single column→dict mapping for the whole DAL: every reader's SELECT
-        is realigned to feed this exact column order, so the index→field binding
-        lives in ONE place instead of ~8 hand-maintained copies that drifted into
-        subtly different orders. The SELECT feeding this MUST be exactly:
-
-            id, chain_id, scale, event_type, ref_type, ref_id,
-            summary, metadata, session_id, created_at
+        interpolates _CANON_COLS (or the te.-qualified variant) so the
+        index→field binding lives in ONE place.
 
         ref_type/ref_id/summary are ''-guarded (they're '' at write, never NULL
         in practice — the guard keeps the dict total). metadata is decoded.
@@ -704,10 +696,8 @@ class TraceDAL:
                         type(tid).__name__, tid))
         placeholders = ','.join('?' * len(trace_ids))
         rows = self.conn.execute(
-            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, '
-            '       summary, metadata, session_id, created_at '
-            'FROM trace_events WHERE id IN (%s) '
-            'ORDER BY id ASC' % placeholders,
+            'SELECT %s FROM trace_events WHERE id IN (%s) '
+            'ORDER BY id ASC' % (self._CANON_COLS, placeholders),
             list(trace_ids)).fetchall()
         return [self._row_to_event(r) for r in rows]
 
@@ -715,8 +705,8 @@ class TraceDAL:
         """Get all events in a trace chain, ordered by time. Each event is the
         full canonical row (incl. its own chain_id — = the queried id)."""
         rows = self.conn.execute(
-            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, created_at '
-            'FROM trace_events WHERE chain_id = ? ORDER BY created_at ASC',
+            'SELECT %s FROM trace_events WHERE chain_id = ? '
+            'ORDER BY created_at ASC' % self._CANON_COLS,
             (chain_id,)).fetchall()
         return [self._row_to_event(r) for r in rows]
 
@@ -745,48 +735,20 @@ class TraceDAL:
         Passing both session_id and session_ids raises ValueError — the
         caller's intent is ambiguous and we don't guess.
         """
-        if session_id and session_ids:
-            raise ValueError(
-                "Pass either session_id (single str) or session_ids (List[str]), "
-                "not both. Got session_id=%r session_ids=%r"
-                % (session_id, session_ids))
-
-        conditions: list = []
-        params: list = []
-        if session_ids:
-            # Plural authoritative — IN clause across requested sessions,
-            # skip the hours cutoff entirely.
-            placeholders = ','.join(['?'] * len(session_ids))
-            conditions.append('session_id IN (%s)' % placeholders)
-            params.extend(session_ids)
-        elif session_id:
-            # Singular authoritative — equality, skip hours cutoff.
-            conditions.append('session_id = ?')
-            params.append(session_id)
-        else:
-            if hours is not None:    # None = no time window (caller bounds via limit)
-                conditions.append('created_at > ?')
-                params.append(iso_cutoff(hours=hours))
-        if scale:
-            conditions.append('scale = ?')
-            params.append(scale)
-        if event_type:
-            conditions.append('event_type = ?')
-            params.append(event_type)
-        if chain_suffix:
-            conditions.append("chain_id LIKE ? ESCAPE '\\'")
-            params.append(self._like_suffix_param(chain_suffix))
-        if exclude_ref_types:
-            # Exclude residue (journal_note) so "recent integration deltas"
-            # don't count encoder notes. NULL ref_type is kept (treated as
-            # non-residue), not dropped by NOT IN.
-            ph = ','.join(['?'] * len(exclude_ref_types))
-            conditions.append('(ref_type IS NULL OR ref_type NOT IN (%s))' % ph)
-            params.extend(exclude_ref_types)
-        where = ' AND '.join(conditions) if conditions else '1=1'
+        # Session scope is authoritative — the hours window is skipped so
+        # historical sessions don't silently truncate to empty. exclude_ref_types
+        # drops residue (journal_note) so "recent integration deltas" don't
+        # count encoder notes. The XOR guard + predicate build live in
+        # _event_where (the one WHERE source for all trace_events readers).
+        where, params = self._event_where(
+            scale=scale, event_type=event_type,
+            session_id=session_id, session_ids=session_ids,
+            hours=None if (session_id or session_ids) else hours,
+            chain_suffix=chain_suffix, exclude_ref_types=exclude_ref_types)
         rows = self.conn.execute(
-            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, created_at '
-            'FROM trace_events WHERE %s ORDER BY created_at DESC LIMIT ?' % where,
+            'SELECT %s FROM trace_events te '
+            'WHERE %s ORDER BY te.created_at DESC LIMIT ?'
+            % (self._CANON_COLS_TE, where),
             params + [limit]).fetchall()
         out = [self._row_to_event(r) for r in rows]
         # Loud-by-default: explicit session filter with zero rows is a real
@@ -801,24 +763,35 @@ class TraceDAL:
                   file=_sys.stderr)
         return out
 
-    def _event_where(self, contains: str, scale: str, event_type: str,
-                     ref_types: Optional[List[str]], session_id: str,
-                     session_ids: Optional[List[str]],
-                     younger_than: str, older_than: str):
-        """Build the shared WHERE clause + params for recall_episodes' two
-        access paths (filter_events / filter_event_vectors). Columns are
-        `te.`-qualified so the same clause works under the trace_embeddings
-        JOIN, where `created_at` would otherwise be ambiguous.
+    def _event_where(self, contains: str = '', scale: str = '',
+                     event_type: str = '', ref_types: Optional[List[str]] = None,
+                     session_id: str = '', session_ids: Optional[List[str]] = None,
+                     younger_than: str = '', older_than: str = '',
+                     ref_type: str = '', ref_id: str = '',
+                     hours: Optional[int] = None, chain_suffix: str = '',
+                     exclude_ref_types: Optional[List[str]] = None):
+        """Build the shared WHERE clause + params for every trace_events reader
+        (get_recent, get_by_ref_type, get_chains, filter_events,
+        filter_event_vectors). Columns are `te.`-qualified so the same clause
+        works under the trace_embeddings JOIN — plain readers alias the table
+        (`FROM trace_events te`).
+
+        Purely mechanical: applies exactly the predicates it is given. Door
+        SEMANTICS stay at each caller — e.g. get_recent skips `hours` under a
+        session scope while get_by_ref_type applies both; each door passes (or
+        withholds) `hours` accordingly.
 
         Needles: contains → (summary OR metadata) LIKE %s% (same idiom as
         find_by_metadata_substring; metadata is JSON text, so it greps the full
-        body, not the 200-char summary). Structural: scale/event_type equality.
-        ref_types: an INCLUDE whitelist (te.ref_type IN (...)); None/empty = no
-        ref_type filter (all types). The caller (BrainEpisodesMixin) sources the
-        default whitelist from the trace_contract dial, so there's no hardcoded
-        list here to drift. Scope: session_id XOR session_ids (both raises, like
-        get_recent). Time (ISO, caller pre-resolves shorthand): younger_than →
-        created_at >, older_than → <.
+        body, not the 200-char summary). Structural: scale/event_type/ref_type/
+        ref_id equality. ref_types: an INCLUDE whitelist (te.ref_type IN (...));
+        None/empty = no filter (the recall_episodes caller sources its default
+        whitelist from the trace_contract dial, so there's no hardcoded list
+        here to drift). exclude_ref_types: NOT IN, NULL-safe (NULL ref_type is
+        kept — treated as non-residue). Scope: session_id XOR session_ids (both
+        raises). Time: younger_than/older_than are absolute ISO bounds; hours
+        is the relative window (created_at > now-hours). chain_suffix matches
+        chains ENDING in '-{suffix}' via _like_suffix_param.
         """
         if session_id and session_ids:
             raise ValueError(
@@ -840,20 +813,37 @@ class TraceDAL:
         if event_type:
             conditions.append('te.event_type = ?')
             params.append(event_type)
+        if ref_type:
+            conditions.append('te.ref_type = ?')
+            params.append(ref_type)
+        if ref_id:
+            conditions.append('te.ref_id = ?')
+            params.append(ref_id)
         if ref_types:
             placeholders = ','.join(['?'] * len(ref_types))
             conditions.append('te.ref_type IN (%s)' % placeholders)
             params.extend(ref_types)
+        if exclude_ref_types:
+            ph = ','.join(['?'] * len(exclude_ref_types))
+            conditions.append(
+                '(te.ref_type IS NULL OR te.ref_type NOT IN (%s))' % ph)
+            params.extend(exclude_ref_types)
         if contains:
             like = '%' + contains + '%'
             conditions.append('(te.summary LIKE ? OR te.metadata LIKE ?)')
             params.extend([like, like])
+        if hours is not None:
+            conditions.append('te.created_at > ?')
+            params.append(iso_cutoff(hours=hours))
         if younger_than:
             conditions.append('te.created_at > ?')
             params.append(younger_than)
         if older_than:
             conditions.append('te.created_at < ?')
             params.append(older_than)
+        if chain_suffix:
+            conditions.append("te.chain_id LIKE ? ESCAPE '\\'")
+            params.append(self._like_suffix_param(chain_suffix))
         return (' AND '.join(conditions) if conditions else '1=1'), params
 
     def filter_events(self, contains: str = '', scale: str = '',
@@ -877,10 +867,9 @@ class TraceDAL:
             younger_than, older_than)
         order = 'ASC' if sort_order == 'asc' else 'DESC'
         rows = self.conn.execute(
-            'SELECT te.id, te.chain_id, te.scale, te.event_type, te.ref_type, '
-            'te.ref_id, te.summary, te.metadata, te.session_id, te.created_at '
-            'FROM trace_events te WHERE %s ORDER BY te.created_at %s LIMIT ?'
-            % (where, order),
+            'SELECT %s FROM trace_events te '
+            'WHERE %s ORDER BY te.created_at %s LIMIT ?'
+            % (self._CANON_COLS_TE, where, order),
             params + [limit]).fetchall()
         return [self._row_to_event(r) for r in rows]
 
@@ -951,19 +940,12 @@ class TraceDAL:
         session_id are chain-level; each event is the chain-relative subset
         (no chain_id/scale/session_id). Ordered by most recent chain first.
         """
-        conditions = ['created_at > ?']
-        params = [iso_cutoff(hours=hours)]
-        if session_id:
-            conditions.append('session_id = ?')
-            params.append(session_id)
-        if scale:
-            conditions.append('scale = ?')
-            params.append(scale)
-        where = ' AND '.join(conditions)
-
+        where, params = self._event_where(
+            scale=scale, session_id=session_id, hours=hours)
         rows = self.conn.execute(
-            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, created_at '
-            'FROM trace_events WHERE %s ORDER BY created_at DESC' % where,
+            'SELECT %s FROM trace_events te '
+            'WHERE %s ORDER BY te.created_at DESC'
+            % (self._CANON_COLS_TE, where),
             params).fetchall()
 
         # Group by chain_id, preserve order of first appearance.
@@ -1020,28 +1002,15 @@ class TraceDAL:
         identity lives in the chain suffix (`s2-{ts}-{unit}`). LIMIT then bounds
         the per-unit result, not the global stream.
         """
-        conditions = ['ref_type = ?']
-        params: List[Any] = [ref_type]
-        if hours is not None:
-            conditions.append('created_at > ?')
-            params.append(iso_cutoff(hours=hours))
-        if scale:
-            conditions.append('scale = ?')
-            params.append(scale)
-        if session_id:
-            conditions.append('session_id = ?')
-            params.append(session_id)
-        if ref_id:
-            conditions.append('ref_id = ?')
-            params.append(ref_id)
-        if chain_suffix:
-            conditions.append("chain_id LIKE ? ESCAPE '\\'")
-            params.append(self._like_suffix_param(chain_suffix))
-        where = ' AND '.join(conditions)
-
+        # Unlike get_recent, hours composes WITH a session scope here — this
+        # door's contract is "exactly these predicates", no authority rule.
+        where, params = self._event_where(
+            scale=scale, session_id=session_id, ref_type=ref_type,
+            ref_id=ref_id, hours=hours, chain_suffix=chain_suffix)
         rows = self.conn.execute(
-            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, created_at '
-            'FROM trace_events WHERE %s ORDER BY created_at DESC LIMIT ?' % where,
+            'SELECT %s FROM trace_events te '
+            'WHERE %s ORDER BY te.created_at DESC LIMIT ?'
+            % (self._CANON_COLS_TE, where),
             params + [limit]).fetchall()
 
         return [self._row_to_event(r) for r in rows]
@@ -1453,16 +1422,14 @@ class TraceDAL:
             params.append(since)
         params.append(limit)
         rows = self.conn.execute(
-            'SELECT te.id, te.chain_id, te.scale, te.event_type, te.ref_type, te.ref_id, '
-            '       te.summary, te.metadata, te.session_id, te.created_at '
-            'FROM trace_events te '
+            'SELECT %s FROM trace_events te '
             'LEFT JOIN trace_embeddings tem ON tem.trace_id = te.id '
             'WHERE tem.trace_id IS NULL '
             '  AND te.scale IN (%s) '
             '  AND te.ref_type IN (%s) '
             '  %s'
             'ORDER BY te.created_at DESC '
-            'LIMIT ?' % (scale_ph, ref_ph, since_clause),
+            'LIMIT ?' % (self._CANON_COLS_TE, scale_ph, ref_ph, since_clause),
             params).fetchall()
         return [self._row_to_event(r) for r in rows]
 

@@ -71,9 +71,18 @@ S0 traces written by Stop hook via TraceDAL. Chain ID: `s0-{session_short}-{stop
 
 `additionalContext` is the ONLY channel that reaches Claude. `systemMessage` is dead.
 
-**S0 API** (`scales/s0/conversation.py`):
-- `get_conversation(brain, session_id, limit)` — simple path for live sessions (S1 Scribe, hooks).
-- `get_conversation_around(brain, node_id, timestamp, before, after)` — historic lookups (S2 Healer, eval). Falls back to JSONL logs for pre-trace history.
+**Traces layer** (`servers/brain_traces.py` — `BrainTracesMixin`): every trace
+read (and API-level write) is a `brain.` method living in this ONE file — the
+generic door (`query_traces`, `get_trace(s)`, `count_traces`), journal + arc
+residue (`journal_notes`, `write_journal_notes`, `write_session_arc`), episodic
+recall (`recall_episodes`), and conversation reads (`get_conversation` for live
+sessions, `turns_since_last_encode` for the Scribe cadence,
+`get_conversation_around` for historic lookups with JSONL fallback). Only
+`brain_traces.py` touches `TraceDAL`; `trace_contract.py` owns the vocabulary.
+Sanctioned direct-DAL exceptions: the recall engines' vector-substrate pulls
+(`event_vector_rows`) and the read-only dashboard. Scale packages
+(`scales/s1|s2`) host integration units, never data access.
+Design: `docs/TRACES-LAYER-DESIGN.md`.
 
 ## Aspects — semantic roles for types and relations
 

@@ -202,15 +202,14 @@ class HealerDecoder(IntegrationUnit):
     def _load_conversation(self, node_id, node_created_at):
         """Load the conversation exchanges around when this node was encoded.
 
-        Uses the S0 conversation API — single source of truth for conversation
-        context. Handles both post-trace (S0 traces) and pre-trace (JSONL logs).
+        Uses brain.get_conversation_around — single source of truth for
+        conversation context. Handles both post-trace (S0 traces) and
+        pre-trace (JSONL logs).
 
         Returns: (turns_list, encoding_timestamp) or ([], '')
         """
-        from servers.scales.s0.conversation import get_conversation_around
-
-        turns = get_conversation_around(
-            self.brain, node_id=node_id, before=10, after=5)
+        turns = self.brain.get_conversation_around(
+            node_id=node_id, before=10, after=5)
 
         # Encoding timestamp: use node's created_at as best estimate
         return turns, node_created_at

@@ -35,7 +35,7 @@ from .dal_logs import LogsDAL
 from .db_backends.sqlite import commit_unless_batched
 from .clock import iso_cutoff, iso_now
 from .brain_recall import BrainRecallMixin
-from .brain_episodes import BrainEpisodesMixin
+from .brain_traces import BrainTracesMixin
 from .brain_remember import BrainRememberMixin
 from .brain_connections import BrainConnectionsMixin
 from .brain_reminders import BrainRemindersMixin
@@ -55,7 +55,7 @@ from .brain_constants import (
 
 class Brain(
     BrainRecallMixin,
-    BrainEpisodesMixin,
+    BrainTracesMixin,
     BrainRememberMixin,
     BrainConnectionsMixin,
     BrainRemindersMixin,
@@ -914,8 +914,6 @@ class Brain(
             SCRIBE_CANDIDATE_WINDOW_MIN, SCRIBE_ACTIVE_WINDOW_SECONDS,
             scribe_is_starved)
         from .brain_constants import MAINTENANCE_BOOT_GRACE_SECONDS
-        from .scales.s0.conversation import (get_conversation,
-                                              turns_since_last_encode)
 
         now = now if now is not None else _time.time()
         # Boot-grace: don't sweep/encode during the daemon's warmup after a
@@ -931,7 +929,7 @@ class Brain(
             sid = stream.get('session_id', '')
             if not sid or sid in skip:
                 continue
-            turns = turns_since_last_encode(self, sid)
+            turns = self.turns_since_last_encode(sid)
             if turns <= 0:
                 continue
 
@@ -968,7 +966,7 @@ class Brain(
                 # the next poll fires it. The tail is exempt: a question still
                 # dangling once the session went quiet is genuinely unanswered
                 # (interrupt/disconnect) and belongs in the encode as-is.
-                last = get_conversation(self, sid, limit=1)
+                last = self.get_conversation(sid, limit=1)
                 five_plus = bool(last) and last[0].get('role') == 'assistant'
             tail = turns > SCRIBE_TAIL_MIN_TURNS and idle > SCRIBE_TAIL_IDLE_SECONDS
             if not (five_plus or tail):
