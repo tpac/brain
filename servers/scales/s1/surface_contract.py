@@ -1970,8 +1970,7 @@ def _render_node_activation(node, budget, activation,
 
 
 def format_surface_output_activation(node_activation, field_activation,
-                                      rich_nodes, selected_why=None,
-                                      selected_mode=None,
+                                      rich_nodes, selected_mode=None,
                                       query_vec=None, brain=None,
                                       total_budget=7000):
     """Render activated nodes as additionalContext.
@@ -1984,10 +1983,8 @@ def format_surface_output_activation(node_activation, field_activation,
                           Per-field masking removed 2026-05-17 — the renderer
                           trusts the encoder's attached fields.
         rich_nodes:       {node_id: rich_node_dict} from brain.get_node(ids)
-        selected_why:     {node_id: str} — the Haiku-selected seed ids (dict
-                          keys; values are vestigial '' since the per-pick
-                          why field was removed — rename pending cleanup)
-        selected_mode:    {node_id: str} — per-seed render mode (fact/arc/background).
+        selected_mode:    {node_id: str} — the Haiku-selected seed ids (dict
+                          keys) → per-seed render mode (fact/arc/background).
                           Omitted → 'arc'.
         query_vec:        query embedding, used to re-rank each node's edges
         brain:            Brain instance — for select_edges + overflow logging
@@ -1998,7 +1995,6 @@ def format_surface_output_activation(node_activation, field_activation,
     if not node_activation:
         return ""
 
-    selected_why = selected_why or {}
     selected_mode = selected_mode or {}
 
     # Rank the inject. Two modes (BRAIN_SURFACE_RANK_MODE, default 'activation'):
@@ -2072,7 +2068,7 @@ def format_surface_output_activation(node_activation, field_activation,
                     'surface_inject_overflow',
                     ValueError('inject %d > cap %d' % (len(result), _MAX_INJECT_CHARS)),
                     'ranked=%d primary=%d; truncated at byte cap' % (
-                        len(ranked), len(selected_why)))
+                        len(ranked), len(selected_mode)))
             except Exception:
                 pass
         result = result[:_MAX_INJECT_CHARS].rsplit('\n', 1)[0]

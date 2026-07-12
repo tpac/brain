@@ -834,34 +834,31 @@ def _write_surface_result_file(recall_ref, surface_prompt, output, brain):
         brain._log_error('surface_result_write', e, 'writing surface result file')
 
 
-def _drop_archived_selected(brain, selected_why, selected_mode,
-                            selected_short_ids):
+def _drop_archived_selected(brain, selected_mode, selected_short_ids):
     """Drop archived nodes from Haiku's resolved selection, in place.
 
-    Mutates selected_why / selected_mode (full-id keyed) and
-    selected_short_ids (8-char set), and logs an ERROR per event —
-    operator mandate: an archived node being picked anywhere must be
-    loud, never stat-only. The surfaced-ids file is written by the
-    caller AFTER this gate — single write site, only the filtered set
-    ever lands on disk.
+    Mutates selected_mode (full-id keyed) and selected_short_ids (8-char
+    set), and logs an ERROR per event — operator mandate: an archived node
+    being picked anywhere must be loud, never stat-only. The surfaced-ids
+    file is written by the caller AFTER this gate — single write site, only
+    the filtered set ever lands on disk.
 
     Returns the list of dropped full ids (for tests / callers).
     """
-    if not selected_why:
+    if not selected_mode:
         return []
     try:
-        archived = brain._nodes.archived_subset(list(selected_why))
+        archived = brain._nodes.archived_subset(list(selected_mode))
     except Exception as e:
         brain._log_error(
             'surface_liveness_gate', e,
             'archived check failed — selection passes unfiltered '
             '(hebbian drain gate backstops)')
         return []
-    dead = sorted(nid for nid in selected_why if nid in archived)
+    dead = sorted(nid for nid in selected_mode if nid in archived)
     if not dead:
         return []
     for nid in dead:
-        selected_why.pop(nid, None)
         selected_mode.pop(nid, None)
     selected_short_ids -= {nid[:8] for nid in dead}
     brain._log_error(
@@ -941,19 +938,19 @@ def run_surface(brain, ctx, candidates_data, user_message,
         _write_surface_result_file(recall_ref, surface_prompt, "(no selection)", brain)
         return None
 
-    # Map short-id → full-id + why over the WHOLE candidate pool (≤25
-    # entries) — sanitized / prefix-recovered ids below must be able to
-    # land on any candidate, not just ones whose raw emitted form matched.
+    # Map short-id → full-id over the WHOLE candidate pool (≤25 entries) —
+    # sanitized / prefix-recovered ids below must be able to land on any
+    # candidate, not just ones whose raw emitted form matched.
     short_to_full = {}
-    selected_why = {}
     for c in candidates_data:
         cid = c.get('id', '')
         if cid:
             short_to_full[cid[:8]] = cid
-    # selected_mode: per-node render mode, default 'arc'. Surface v5 may emit
-    # `mode` per selected item; v4 omits it → all default. Valid modes come
-    # from the contract (SURFACE_MODES) — the schema enum derives from the
-    # same constant, so both stay in sync by construction.
+    # selected_mode is the resolved-pick registry: {full_id: render_mode}.
+    # Its keys ARE the selection (what spread seeds on, what the render and
+    # liveness gate key off); the value is the per-node render mode, default
+    # 'arc'. Valid modes come from the contract (SURFACE_MODES) — the schema
+    # enum derives from the same constant, so both stay in sync by construction.
     from servers.scales.s1.surface_contract import (
         SURFACE_MODES, SURFACE_MODE_DEFAULT)
     selected_mode = {}
@@ -978,11 +975,6 @@ def run_surface(brain, ctx, candidates_data, user_message,
                     % (raw_id, recovered),
                     'session=%s' % session_id)
         if full_id:
-            # Registry of resolved picks. Values are '' — the per-pick why
-            # field was removed from the selection schema (decode-time
-            # waste); the dict survives as the selected-id map the spread /
-            # render / gate steps key on. Rename pending cleanup.
-            selected_why[full_id] = ''
             selected_mode[full_id] = mode
         else:
             # Haiku returned an ID not in its candidate menu — either a
@@ -1026,7 +1018,6 @@ def run_surface(brain, ctx, candidates_data, user_message,
                 except Exception:
                     pass
             if resolved:
-                selected_why[resolved] = ''
                 selected_mode[resolved] = mode
                 brain._log_error(
                     'haiku_id_outside_candidates',
@@ -1047,7 +1038,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
     # Trace + Hebbian-file input derives from what actually RESOLVED, so a
     # recovered pick lands as its real short id (not the corrupted emission)
     # and unresolvable ids never leak downstream.
-    selected_short_ids = {fid[:8] for fid in selected_why}
+    selected_short_ids = {fid[:8] for fid in selected_mode}
 
     # Liveness gate — Haiku's prompt carries node ids in historical text
     # (conversation, recently-surfaced block) that read-time archived
@@ -1059,8 +1050,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
     # recently-surfaced block is built from — a self-perpetuating loop
     # (2026-06-12: node 90664c51, 4 selections over 2.5h). Enforce
     # liveness structurally — code beats prompt compliance.
-    _drop_archived_selected(brain, selected_why, selected_mode,
-                            selected_short_ids)
+    _drop_archived_selected(brain, selected_mode, selected_short_ids)
 
     # Surfaced-ids file (Hebbian + Stop hook input) — written once,
     # after the gate, so only the filtered selection lands on disk.
@@ -1072,7 +1062,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
     # Graph expansion via spreading activation. The kernel replaces what
     # select_edges + per-seed top-3 neighbors + mutual-traversal used to do.
     expansion = _graph_expand(
-        brain, list(selected_why.keys()),
+        brain, list(selected_mode.keys()),
         query_vec=query_vec, prior_vecs=prior_vecs)
     _mark('surface_spread')
 
@@ -1083,7 +1073,6 @@ def run_surface(brain, ctx, candidates_data, user_message,
         node_activation=expansion['node_activation'],
         field_activation=expansion['field_activation'],
         rich_nodes=expansion['rich_nodes'],
-        selected_why=selected_why,
         selected_mode=selected_mode,
         query_vec=query_vec,
         brain=brain,
@@ -1094,7 +1083,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
     # activation data in metadata for S3 / dashboard observability.
     try:
         graph_neighbors_compat = _activation_to_trace_list(
-            expansion, selected_why)
+            expansion, selected_mode)
         _write_traces(brain, ctx, candidates_data, selected_short_ids, selected,
                       graph_neighbors_compat, additional_context,
                       enriched, results,
@@ -1111,14 +1100,16 @@ def run_surface(brain, ctx, candidates_data, user_message,
     return additional_context
 
 
-def _activation_to_trace_list(expansion, selected_why):
+def _activation_to_trace_list(expansion, selected_mode):
     """Convert activation expansion output to the legacy neighbor-list shape
     the trace writer expects. Kept minimal — Part I will upgrade the trace
     contract itself to carry activation data natively.
+
+    `selected_mode` keys are the seed ids — excluded from the neighbor list.
     """
     out = []
     for nid, act in expansion['node_activation'].items():
-        if nid in selected_why:
+        if nid in selected_mode:
             continue  # seeds aren't "neighbors"
         rich = expansion['rich_nodes'].get(nid, {})
         out.append({

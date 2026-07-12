@@ -447,18 +447,16 @@ class TestSelectionLivenessGate(BrainTestBase):
                                        reason='liveness gate test')
         self.assertTrue(arch.get('ok'))
 
-        selected_why = {live['id']: 'relevant', dead['id']: 'stale'}
         selected_mode = {live['id']: 'arc', dead['id']: 'arc'}
         selected_short_ids = {live['id'][:8], dead['id'][:8]}
 
         dropped = _drop_archived_selected(
-            self.brain, selected_why, selected_mode, selected_short_ids)
+            self.brain, selected_mode, selected_short_ids)
 
         self.assertEqual(dropped, [dead['id']])
-        self.assertNotIn(dead['id'], selected_why)
         self.assertNotIn(dead['id'], selected_mode)
         self.assertNotIn(dead['id'][:8], selected_short_ids)
-        self.assertIn(live['id'], selected_why)
+        self.assertIn(live['id'], selected_mode)
         self.assertIn(live['id'][:8], selected_short_ids)
 
     def test_all_live_selection_untouched(self):
@@ -467,15 +465,14 @@ class TestSelectionLivenessGate(BrainTestBase):
         a = self.brain.remember(type='test', title='gate_a', content='c',
                                 auto_connect=False,
                                 encoding_source='anchor:test')
-        selected_why = {a['id']: 'relevant'}
         selected_mode = {a['id']: 'arc'}
         selected_short_ids = {a['id'][:8]}
 
         dropped = _drop_archived_selected(
-            self.brain, selected_why, selected_mode, selected_short_ids)
+            self.brain, selected_mode, selected_short_ids)
 
         self.assertEqual(dropped, [])
-        self.assertIn(a['id'], selected_why)
+        self.assertIn(a['id'], selected_mode)
 
     def test_surface_selected_file_write(self):
         # Single write site: the file lands post-gate with whatever the
