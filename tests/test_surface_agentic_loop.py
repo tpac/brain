@@ -20,7 +20,7 @@ from servers.scales.s1 import surface as surface_mod
 from servers.scales.s1 import fetch_tools as fetch_tools_mod
 
 
-SELECTION_JSON = '{"selected":[{"id":"aaaa1111","why":"w","mode":"arc"}]}'
+SELECTION_JSON = '{"selected":[{"id":"aaaa1111","mode":"arc"}]}'
 
 
 class FakeUsage:

@@ -768,6 +768,10 @@ HAIKU_FORMAT_LEAN = {
 # {4,8}, not {8}: Haiku is known to emit 7-char leading-zero-dropped ids, and
 # a hard 8 would force it to guess digits it doesn't know; short-but-honest
 # fragments are recovered downstream (surface.py unique-prefix match).
+# No per-pick rationale field by design: generation time tracks output
+# tokens (~20ms/token), a why per pick cost ~150-200 tokens/recall, and
+# nothing rendered it. The recall-level `reason` (kept, cheap) is the
+# journal signal — persisted as selection_reason in the K trace.
 SURFACE_SELECTED_ID_PATTERN = "^[0-9a-f]{4,8}$"
 
 SURFACE_SELECTION_SCHEMA = {
@@ -780,10 +784,9 @@ SURFACE_SELECTION_SCHEMA = {
                 "properties": {
                     "id":   {"type": "string",
                              "pattern": SURFACE_SELECTED_ID_PATTERN},
-                    "why":  {"type": "string"},
                     "mode": {"type": "string", "enum": list(SURFACE_MODES)},
                 },
-                "required": ["id", "why", "mode"],
+                "required": ["id", "mode"],
                 "additionalProperties": False,
             },
         },
@@ -1889,7 +1892,7 @@ def _event_time_line(node):
 
 
 def _render_node_activation(node, budget, activation,
-                             why='', query_vec=None, brain=None, mode='arc',
+                             query_vec=None, brain=None, mode='arc',
                              seen_root_ids=None):
     """Render a single activated node within a char budget.
 
@@ -1981,7 +1984,9 @@ def format_surface_output_activation(node_activation, field_activation,
                           Per-field masking removed 2026-05-17 — the renderer
                           trusts the encoder's attached fields.
         rich_nodes:       {node_id: rich_node_dict} from brain.get_node(ids)
-        selected_why:     {node_id: str} — Haiku's "why" annotation (seeds only)
+        selected_why:     {node_id: str} — the Haiku-selected seed ids (dict
+                          keys; values are vestigial '' since the per-pick
+                          why field was removed — rename pending cleanup)
         selected_mode:    {node_id: str} — per-seed render mode (fact/arc/background).
                           Omitted → 'arc'.
         query_vec:        query embedding, used to re-rank each node's edges
@@ -2039,7 +2044,6 @@ def format_surface_output_activation(node_activation, field_activation,
             break
 
         node = rich_nodes[nid]
-        why = selected_why.get(nid, '')
         mode = selected_mode.get(nid, 'arc')
 
         # Fact-mode gets a 1.5× budget bump — ensures verbatim content
@@ -2048,7 +2052,7 @@ def format_surface_output_activation(node_activation, field_activation,
                                 remaining)
         rendered = _render_node_activation(
             node, effective_budget, activation,
-            why=why, query_vec=query_vec, brain=brain, mode=mode,
+            query_vec=query_vec, brain=brain, mode=mode,
             seen_root_ids=seen_root_ids)
 
         lines.append(rendered)

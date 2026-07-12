@@ -657,8 +657,7 @@ def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
 def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
                   graph_neighbors, additional_context, enriched, results,
                   recall_ref, interaction_id, session_id, expansion=None,
-                  frame='', telemetry=None, pt=None,
-                  selected_why=None, selection_reason=''):
+                  frame='', telemetry=None, pt=None, selection_reason=''):
     """Write S1 surface traces: O (candidates), K (surfaced), Δ (additionalContext).
 
     `expansion` carries activation data from spread_activation when present —
@@ -679,9 +678,9 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
     `outcome` flag (served / empty) so a turn that surfaced nothing is
     distinguishable from one that did, without cross-referencing other logs.
 
-    `selected_why` (full-id → Haiku's why) + `selection_reason` (recall-level
-    rationale) form the S1Surface journal on the K event — the trace is their
-    only durable home; neither is rendered into additionalContext.
+    `selection_reason` (Haiku's recall-level rationale, in practice the
+    why-nothing-was-picked note) is the S1Surface journal on the K event —
+    the trace is its only durable home; it is never rendered to Anchor.
     """
     recall_chain = ctx.s1r_chain()
 
@@ -757,13 +756,10 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
     # so Surface now carries BOTH cost and loop detail — the gap this closes.
     k_metadata = {
         'selected': sel_detail, 'expanded': exp_detail,
-        # S1Surface journal (2026-07-11): Haiku's per-pick `why` (post-gate,
-        # short-id keyed) + the recall-level `reason`. Neither is rendered to
-        # Anchor — the K trace is their only durable home, making the
-        # selection rationale queryable (S3 / dashboard / prompt evals).
-        # Bounded per entry so a runaway why can't bloat the trace.
-        'selection_why': {fid[:8]: (w or '')[:200]
-                          for fid, w in (selected_why or {}).items()},
+        # S1Surface journal (2026-07-11): Haiku's recall-level `reason` —
+        # in practice the why-nothing-was-picked note (the prompt asks for
+        # it only on empty selections). Not rendered to Anchor; the K trace
+        # is its only durable home. Bounded so a runaway can't bloat it.
         'selection_reason': (selection_reason or '')[:500],
         **frame_meta, **activation_meta,
         # Agentic surface tool trace (v5 only; empty for v4). Stashed by
@@ -982,7 +978,11 @@ def run_surface(brain, ctx, candidates_data, user_message,
                     % (raw_id, recovered),
                     'session=%s' % session_id)
         if full_id:
-            selected_why[full_id] = s.get('why', '')
+            # Registry of resolved picks. Values are '' — the per-pick why
+            # field was removed from the selection schema (decode-time
+            # waste); the dict survives as the selected-id map the spread /
+            # render / gate steps key on. Rename pending cleanup.
+            selected_why[full_id] = ''
             selected_mode[full_id] = mode
         else:
             # Haiku returned an ID not in its candidate menu — either a
@@ -1026,12 +1026,12 @@ def run_surface(brain, ctx, candidates_data, user_message,
                 except Exception:
                     pass
             if resolved:
-                selected_why[resolved] = s.get('why', '')
+                selected_why[resolved] = ''
                 selected_mode[resolved] = mode
                 brain._log_error(
                     'haiku_id_outside_candidates',
                     RuntimeError('Haiku selected an ID not in its candidate menu but it resolves to a real node'),
-                    'short_id=%s resolved=%s why=%r' % (short_id, resolved[:12], s.get('why', '')[:80]))
+                    'short_id=%s resolved=%s' % (short_id, resolved[:12]))
             else:
                 # Single loud channel for an id that exists nowhere — the
                 # scoreboard's drift section counts this stream, and the
@@ -1042,8 +1042,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
                     'surface_unknown_selected_id',
                     'emitted id %r matches no candidate and resolves to '
                     'no node — pick dropped' % raw_id,
-                    'sanitized=%s session=%s why=%r'
-                    % (short_id, session_id, s.get('why', '')[:80]))
+                    'sanitized=%s session=%s' % (short_id, session_id))
 
     # Trace + Hebbian-file input derives from what actually RESOLVED, so a
     # recovered pick lands as its real short id (not the corrupted emission)
@@ -1101,7 +1100,6 @@ def run_surface(brain, ctx, candidates_data, user_message,
                       enriched, results,
                       recall_ref, interaction_id, session_id,
                       expansion=expansion, frame=frame, telemetry=telemetry, pt=pt,
-                      selected_why=selected_why,
                       selection_reason=selection_reason)
     except Exception as e:
         brain._log_error('trace_s1_surface', e, 'S1 surface trace capture')

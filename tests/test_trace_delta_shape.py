@@ -470,9 +470,10 @@ class _TelStubBrain:
 
 
 class TestSurfaceSelectionJournal:
-    """The S1Surface journal (2026-07-11): Haiku's per-pick `why` + the
-    recall-level `reason` persist in the surface_selected K trace — their
-    only durable home (the renderer drops both; Anchor never sees them)."""
+    """The S1Surface journal (2026-07-11): Haiku's recall-level `reason`
+    persists in the surface_selected K trace — its only durable home (the
+    renderer drops it; Anchor never sees it). In practice it's the
+    why-nothing-was-picked note on empty selections."""
 
     def _k_event(self, **kw):
         from servers.scales.s1.surface import _write_traces
@@ -498,24 +499,17 @@ class TestSurfaceSelectionJournal:
         return next(e for e in events
                     if e['ref_type'] == 'surface_selected')
 
-    def test_why_and_reason_persist_in_k_metadata(self):
-        k = self._k_event(
-            selected_why={'a' * 32: 'commit discipline applies here'},
-            selection_reason='work message about committing to main')
-        assert k['metadata']['selection_why'] == {
-            'aaaaaaaa': 'commit discipline applies here'}
+    def test_reason_persists_in_k_metadata(self):
+        k = self._k_event(selection_reason='pure confirmation, no topic')
         assert k['metadata']['selection_reason'] == \
-            'work message about committing to main'
+            'pure confirmation, no topic'
 
-    def test_journal_keys_present_even_when_empty(self):
+    def test_journal_key_present_even_when_empty(self):
         k = self._k_event()
-        assert k['metadata']['selection_why'] == {}
         assert k['metadata']['selection_reason'] == ''
 
     def test_runaway_rationale_is_bounded(self):
-        k = self._k_event(selected_why={'a' * 32: 'x' * 999},
-                          selection_reason='y' * 999)
-        assert len(k['metadata']['selection_why']['aaaaaaaa']) == 200
+        k = self._k_event(selection_reason='y' * 999)
         assert len(k['metadata']['selection_reason']) == 500
 
 
