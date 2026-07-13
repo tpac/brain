@@ -100,6 +100,9 @@ def replay_one(run_dir: Path, qid: str, system_prompt: str,
 
     os.environ['BRAIN_DB_DIR'] = brain_db_path
     os.environ['BRAIN_SURFACE_VARIANT'] = variant
+    # Replays must never write into the production capture corpus —
+    # _call_surface captures by default (surface_capture.py).
+    os.environ['BRAIN_SURFACE_CAPTURE'] = 'off'
 
     from servers.brain import Brain
     brain_db_file = os.path.join(brain_db_path, 'brain.db')
