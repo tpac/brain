@@ -15,6 +15,7 @@ import time
 
 from servers.scales.dispatch import load_env
 from servers.scales.runner import read_usage, sum_usage
+from servers.scales.s1 import surface_capture
 from servers.trace_contract import (
     build_selection_metadata, build_run_telemetry, check_surface_telemetry)
 from servers.daemon_config import brain_tmp_dir
@@ -124,6 +125,21 @@ def _call_surface(brain, candidates_data, user_message,
     # Variant gate — env var picks the path. v4 is the production default.
     variant = os.environ.get('BRAIN_SURFACE_VARIANT', 'v4').strip().lower()
 
+    # Production capture at the Haiku boundary (replay-bench corpus). Must
+    # begin BEFORE the agentic loop: it deep-copies candidates_data, which
+    # the loop mutates in place with tool-fetched entries — replay needs
+    # the round-1 pool. Returns None when disabled; every consumer of
+    # `capture` below is None-safe.
+    capture = surface_capture.begin(
+        brain, candidates_data=candidates_data, user_message=user_message,
+        recent_messages=recent_messages, recently_surfaced=recently_surfaced,
+        retrieval_stats=retrieval_stats, frame=frame, layout=layout,
+        surface_instructions=surface_instructions,
+        interaction_version=surface_interaction.get('version'),
+        interaction_id=interaction_id, user_content=user_content,
+        max_tokens=max_tokens, variant=variant, model=SURFACE_MODEL,
+        session_id=session_id)
+
     # Shared client, built-and-cached once on the brain. No per-call throwaway
     # fallback: Brain._ensure_anthropic_client is the single construction site
     # and self-heals if a boot-warmup failure left the client unset.
@@ -137,7 +153,7 @@ def _call_surface(brain, candidates_data, user_message,
         raw, tool_trace, telemetry = _call_surface_agentic(
             client, brain, candidates_data, surface_instructions,
             user_content, max_tokens, session_id, SURFACE_MODEL,
-            layout=layout)
+            layout=layout, capture=capture)
         # Attach tool trace to brain for the caller to write into K trace.
         # Stashed on the brain instance per-session-id so parallel sessions
         # don't clobber each other.
@@ -170,6 +186,15 @@ def _call_surface(brain, candidates_data, user_message,
     #   (c) JSON + trailing prose: {...}\n\nHere's why I picked...
     # `raw_decode` consumes the first valid JSON object and reports the
     # tail, which we discard — no "Extra data" crash on (c).
+    # Stash the capture (raw attached) for run_surface to finish() with the
+    # resolved selection — same per-session-id stash pattern as
+    # _surface_tool_traces, so parallel sessions can't clobber each other.
+    if capture is not None:
+        capture['output'] = {'raw': raw}
+        if not hasattr(brain, '_surface_captures'):
+            brain._surface_captures = {}
+        brain._surface_captures[session_id] = capture
+
     surfaced = _parse_surfacer_json(raw)
     if surfaced is None and raw:
         # We had a non-empty Haiku response but couldn't parse anything
@@ -188,7 +213,7 @@ def _call_surface(brain, candidates_data, user_message,
 
 def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                            user_content, max_tokens, session_id, model,
-                           max_rounds=2, layout='legacy'):
+                           max_rounds=2, layout='legacy', capture=None):
     """Agentic surface call: Haiku may use fetch tools to extend the candidate
     pool before final JSON selection.
 
@@ -470,6 +495,12 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
         messages.append({"role": "user", "content": tool_results})
         tool_trace.append(round_record)
 
+    # Replay-bench capture: the literal loop history (round-1 user content,
+    # assistant tool_use blocks, full rendered tool results) — the round-2
+    # story that can't be eyeballed from a prompt diff. Normal exits only;
+    # an in-loop API-error return leaves rounds empty (visible as such).
+    surface_capture.record_rounds(capture, messages=messages,
+                                  raw_final=raw_final, tool_trace=tool_trace)
     return raw_final, tool_trace, _telemetry()
 
 
@@ -924,6 +955,11 @@ def run_surface(brain, ctx, candidates_data, user_message,
     # it) — its one consumer is the S1Surface journal in the K trace.
     selection_reason = surfaced.get("reason") or ''
 
+    # Replay-bench capture stashed by _call_surface — popped (not read) so
+    # a failed finish can't leak a stale capture into the next recall.
+    capture = (getattr(brain, '_surface_captures', {}) or {}).pop(
+        session_id, None)
+
     if not selected:
         _write_surface_selected_file(brain, session_id, ctx.stop_counter,
                                      set())
@@ -936,6 +972,12 @@ def run_surface(brain, ctx, candidates_data, user_message,
         except Exception as e:
             brain._log_error('trace_s1_surface_empty', e, 'S1 surface trace (no selection)')
         _write_surface_result_file(recall_ref, surface_prompt, "(no selection)", brain)
+        # Empty selections are corpus-worthy — a prompt candidate that
+        # changes WHEN Haiku picks nothing needs these to be judged.
+        surface_capture.finish(
+            brain, capture, recall_ref=recall_ref, surfaced=surfaced,
+            resolved_mode={}, selection_reason=selection_reason,
+            telemetry=telemetry)
         return None
 
     # Map short-id → full-id over the WHOLE candidate pool (≤25 entries) —
@@ -1095,6 +1137,13 @@ def run_surface(brain, ctx, candidates_data, user_message,
 
     # Dashboard file
     _write_surface_result_file(recall_ref, surface_prompt, additional_context, brain)
+
+    # Replay-bench capture — written last, with the post-gate resolution
+    # (production's actual picks are the concordance baseline for replay).
+    surface_capture.finish(
+        brain, capture, recall_ref=recall_ref, surfaced=surfaced,
+        resolved_mode=selected_mode, selection_reason=selection_reason,
+        telemetry=telemetry)
     _mark('surface_trace')
 
     return additional_context
