@@ -39,8 +39,9 @@ CREATE TABLE IF NOT EXISTS turns (
     op_text TEXT,               -- full operator message (S0)
     anchor_text TEXT,           -- full Anchor response at this stop (S0; j>=1 only)
     query_stored TEXT,          -- O-row 500-char query (join-sanity witness)
-    op_trace_id INTEGER,        -- trace_events.id of the user_message (NULL for interrupted)
-    anchor_trace_id INTEGER,    -- trace_events.id of the assistant_message
+    op_trace_id TEXT,           -- trace_events.id (HEX STRING — INTEGER affinity would coerce
+                                -- ids like '6e46…' via scientific notation and mangle the join)
+    anchor_trace_id TEXT,       -- trace_events.id of the assistant_message
     op_vec BLOB,                -- embed phase: trace_embeddings join, or local for interrupted
     anchor_vec BLOB,            -- embed phase
     op_vec_source TEXT,         -- 'store' | 'local_interrupted' | NULL (pending drain)
