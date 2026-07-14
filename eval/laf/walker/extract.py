@@ -1,24 +1,32 @@
-"""Walker phase 1 — extract turns + candidates + labels (§20.2/§20.3).
+"""Walker phase 1 — extract micro-turns + candidates + labels (§20.2/§20.3).
 
-Turn identity is (session_id, epoch, stop). Stop counters RESET on session
-resume/compaction (604 colliding chain keys across 168 real sessions measured
-2026-07-14), so (session, stop) alone is ambiguous. Epochs are derived per
-session by sorting every stop-bearing trace row by timestamp and starting a
-new epoch whenever the stop number regresses. A reset IS a context boundary —
-the moment stack (§20.1) only looks within its own epoch, which implements
-§20.3's "compaction seams respected" clause structurally.
+TURN MODEL (v3, Tom 2026-07-14: "can't it stay in the normal conversation
+flow?"): a turn is anchored on a RECALL EVENT (the s1 O row), not on the
+(session, stop) key. Stop counters collide twice over:
 
-Joins the trace legs structurally on (session, epoch, stop):
-  Δ  s1 `additionalContext`   → outcomes_per_candidate (picked/dropped labels)
-  O  s1 `recall`              → recall ts, stored query, candidate pool detail
-  K  s1 `surface_selected`    → tool_trace (fetched_by / floored_by tiers)
-  s0 user/assistant messages  → FULL turn texts (never the 500-char O query)
-  s0 tool_result              → activity features
-  s0 anchor_touched           → used-next-turn labels (surfacing-independent)
+  • RESETS — resume/compaction restarts the counter (604 colliding keys / 168
+    sessions measured). Fixed by EPOCHS: per session, sort every stop-bearing
+    row by timestamp and start a new epoch when the stop regresses. The moment
+    stack never crosses an epoch boundary (§20.3 compaction-seams clause).
+  • INTERRUPTS — operator interrupts and re-prompts; both recalls share one
+    stop. The interrupted prompt IS part of the conversation flow: its O row
+    preserves the prompt text, its Δ row the judge labels. Each O row becomes
+    its own MICRO-TURN, ordered by ts (`seq`); an O row with no agreeing s0
+    text is an interrupted turn (op_text = the O query, ≤500 chars); an s0
+    turn with no agreeing O row is a no-recall turn (hook timeout/failure).
+    Nothing is key-deduped away — v2's keep-latest dedup silently discarded
+    every interrupt-then-reprompt first recall (~800 O rows).
 
-Within an epoch, duplicate Δ rows for one stop (hook retries — 391 burst keys
-measured) dedupe to the LATEST row. Synthetic sessions (non-UUID ids, test
-harnesses) are excluded. Every drop is COUNTED, never silent (§20.4).
+Pairing, all within (session, epoch), all ts-ordered:
+  Δ / K  → the latest O row with same stop and O.ts <= row.ts (O,K,Δ are
+           written in one append_batch in that order — verified surface.py:777)
+  s0 user_message → the agreeing O row at the same stop (prefix agreement,
+           short texts must match whole); no agreement → standalone s0 turn
+  s0 assistant/tool_result/anchor_touched → the turn holding that stop's
+           user_message
+  used_next_k → union of anchor_touched over the next k turns BY SEQ
+
+Synthetic sessions (non-UUID ids) are excluded. Every drop is COUNTED (§20.4).
 
 Run:  ./dev python3 eval/laf/walker/extract.py
 """
@@ -44,9 +52,8 @@ _spec.loader.exec_module(trace_links)
 
 FILE_TOOLS = {'Edit', 'Write', 'NotebookEdit'}
 UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
-
-# streams a session timeline is built from (all stop-bearing)
 S0_TYPES = ('user_message', 'assistant_message', 'tool_result', 'anchor_touched')
+USED_NEXT_WINDOWS = (1, 3)
 
 
 def stop_of(chain_id):
@@ -56,6 +63,16 @@ def stop_of(chain_id):
 
 def norm(text):
     return re.sub(r'\s+', ' ', (text or '')).strip().lower()
+
+
+def texts_agree(a, b, floor=40, span=120):
+    """Prefix agreement between two normalized texts; short texts must match
+    their entire length (same rule as the gold manifest)."""
+    a, b = norm(a)[:span], norm(b)[:span]
+    n = min(len(a), len(b))
+    if n == 0:
+        return False
+    return a[:n] == b[:n] and n >= min(floor, len(a), len(b))
 
 
 def parse_ts(iso):
@@ -86,11 +103,8 @@ def jload(raw):
 
 
 def assign_epochs(rows):
-    """rows: [(created_at, stop, payload)] ONE session, any stream, unsorted.
-
-    Sorts by timestamp; a new epoch starts whenever stop regresses. Returns
-    [(epoch, stop, created_at, payload)]. Stop-less rows never reach here.
-    """
+    """rows: [(created_at, stop, payload)] ONE session, unsorted. Sorts by ts;
+    a new epoch starts whenever stop regresses."""
     out = []
     epoch, prev_stop = 0, None
     for created, stop, payload in sorted(rows, key=lambda r: r[0]):
@@ -101,235 +115,167 @@ def assign_epochs(rows):
     return out
 
 
-def main():
-    manifest = json.loads(MANIFEST.read_text())
-    if manifest.get('unmatched'):
-        print('FATAL: gold manifest has %d unmatched cues — walker refuses to build' %
-              manifest['unmatched'])
-        return 2
-    gold_sessions = set(manifest['excluded_sessions'])
+def process_session(sess, raw_rows, project, prefix_map, node_times, c):
+    """One session → (turn_rows, cand_rows). Pure over its inputs."""
+    # per-epoch event streams, ts-ordered by construction
+    epochs = defaultdict(lambda: {'o': [], 's0': [], 'delta': [], 'k': [],
+                                  'act': defaultdict(lambda: {'tools': 0, 'files': 0}),
+                                  'touched': defaultdict(set)})
+    for epoch, stop, created, (stream, meta_raw) in assign_epochs(raw_rows):
+        ep = epochs[epoch]
+        if stream == 'o':
+            meta = jload(meta_raw)
+            ep['o'].append({'ts': created, 'stop': stop,
+                            'query': meta.get('query', ''),
+                            'cands': meta.get('candidates') or [],
+                            'outcomes': None, 'prov': ({}, {}),
+                            's0': None})
+        elif stream == 'delta':
+            ep['delta'].append((created, stop, jload(meta_raw).get('outcomes_per_candidate') or {}))
+        elif stream == 'k':
+            ep['k'].append((created, stop, trace_links._tool_provenance(jload(meta_raw))))
+        elif stream == 'tool_result':
+            ep['act'][stop]['tools'] += 1
+            if jload(meta_raw).get('tool') in FILE_TOOLS:
+                ep['act'][stop]['files'] += 1
+        elif stream == 'anchor_touched':
+            meta = jload(meta_raw)
+            for k in ('created', 'revised', 'recalled', 'endo'):
+                ep['touched'][stop].update(meta.get(k) or [])
+        elif stream == 'user_message':
+            ep['s0'].append({'ts': created, 'stop': stop,
+                             'op': jload(meta_raw).get('content', ''), 'anchor': None})
+        elif stream == 'assistant_message':
+            # first assistant message of a stop = the turn's response
+            for rec in ep['s0']:
+                if rec['stop'] == stop and rec['anchor'] is None:
+                    rec['anchor'] = jload(meta_raw).get('content', '')
+                    break
 
-    logs = open_logs_ro()
-    c = defaultdict(int)   # conservation counters
-
-    # ── collect raw stop-bearing rows per session (one pass per scale) ──
-    by_session = defaultdict(list)   # sess -> [(created, stop, (stream, meta...))]
-
-    for sess, chain, created, meta_raw in logs.execute(
-            "SELECT session_id, chain_id, created_at, metadata FROM trace_events "
-            "WHERE scale='s1' AND event_type='delta' AND ref_type='additionalContext'"):
-        c['delta_rows'] += 1
-        stop = stop_of(chain)
-        if stop is None:
-            c['delta_bad_chain'] += 1
-            continue
-        by_session[sess].append((created, stop, ('delta', meta_raw)))
-
-    for sess, chain, created, meta_raw in logs.execute(
-            "SELECT session_id, chain_id, created_at, metadata FROM trace_events "
-            "WHERE scale='s1' AND event_type='O' AND ref_type='recall'"):
-        stop = stop_of(chain)
-        if stop is not None:
-            by_session[sess].append((created, stop, ('o', meta_raw)))
-
-    for sess, chain, created, meta_raw in logs.execute(
-            "SELECT session_id, chain_id, created_at, metadata FROM trace_events "
-            "WHERE scale='s1' AND event_type='K' AND ref_type='surface_selected'"):
-        stop = stop_of(chain)
-        if stop is not None:
-            by_session[sess].append((created, stop, ('k', meta_raw)))
-
-    for sess, chain, created, ref_type, meta_raw in logs.execute(
-            "SELECT session_id, chain_id, created_at, ref_type, metadata FROM trace_events "
-            "WHERE scale='s0' AND ref_type IN (%s)" % ','.join('?' * len(S0_TYPES)),
-            S0_TYPES):
-        stop = stop_of(chain)
-        if stop is not None:
-            by_session[sess].append((created, stop, (ref_type, meta_raw)))
-
-    # ── session project (recent sessions only; older → NULL, expected) ──
-    project_of = {}
-    for sess, val in logs.execute(
-            "SELECT session_id, value FROM session_state WHERE key='_session_context'"):
-        proj = jload(val).get('project')
-        if proj:
-            project_of[sess] = proj
-    logs.close()
-
-    # ── node resolution map (brain.db, read-only) ───────────────────────
-    braindb = open_brain_ro()
-    prefix_map = defaultdict(list)
-    node_times = {}
-    for nid, created, updated in braindb.execute(
-            "SELECT id, created_at, updated_at FROM nodes"):
-        prefix_map[nid[:8]].append(nid)
-        node_times[nid] = (created, updated)
-    braindb.close()
-
-    # ── per session: epochs → keyed stores → rows ───────────────────────
-    walker = fresh_walker()
     turn_rows, cand_rows = [], []
+    for epoch, ep in epochs.items():
+        # Δ/K → latest O with same stop, O.ts <= row.ts
+        for created, stop, payload in ep['delta']:
+            tgt = _latest_o(ep['o'], stop, created)
+            if tgt is None:
+                if payload:
+                    c['delta_unpaired'] += 1
+                continue
+            if not payload:
+                c['delta_empty_outcomes'] += 1
+                continue
+            if tgt['outcomes'] is not None:
+                c['delta_double_pair'] += 1
+            tgt['outcomes'] = payload
+        for created, stop, prov in ep['k']:
+            tgt = _latest_o(ep['o'], stop, created)
+            if tgt is not None:
+                tgt['prov'] = prov
 
-    for sess, raw_rows in by_session.items():
-        if sess in gold_sessions:
-            c['sessions_gold_excluded_seen'] += 1
-            continue
-        if not UUID_RE.match(sess):
-            c['sessions_synthetic'] += 1
-            continue
-        c['sessions_included'] += 1
+        # s0 user_message → agreeing O at same stop
+        standalone = []
+        for rec in ep['s0']:
+            cands = [o for o in ep['o'] if o['stop'] == rec['stop'] and o['s0'] is None]
+            hit = None
+            for o in reversed(cands):                     # prefer latest
+                if texts_agree(o['query'], rec['op']):
+                    hit = o
+                    break
+            if hit is not None:
+                hit['s0'] = rec
+            else:
+                if cands:
+                    c['s0_no_agreeing_o'] += 1            # replacement whose recall failed AND text differs
+                standalone.append(rec)
 
-        labels, o_rows, prov = {}, {}, {}
-        s0_turn = defaultdict(dict)
-        activity = defaultdict(lambda: {'tools': 0, 'files': 0})
-        touched = defaultdict(set)
+        # micro-turn sequence: O-anchored turns + standalone s0, by ts
+        seq_events = [('o', o['ts'], o) for o in ep['o']]
+        seq_events += [('s0', rec['ts'], rec) for rec in standalone]
+        seq_events.sort(key=lambda e: e[1])
 
-        for epoch, stop, created, (stream, meta_raw) in assign_epochs(raw_rows):
-            key = (epoch, stop)
-            if stream == 'delta':
-                outcomes = jload(meta_raw).get('outcomes_per_candidate') or {}
-                if not outcomes:
-                    c['delta_empty_outcomes'] += 1
-                    continue
-                if key in labels:
-                    c['delta_retry_deduped'] += 1   # keep LATEST (rows arrive ts-sorted)
-                labels[key] = outcomes
-            elif stream == 'o':
-                meta = jload(meta_raw)
-                if key in o_rows:
-                    c['o_retry_deduped'] += 1
-                o_rows[key] = {'ts': created, 'query': meta.get('query', ''),
-                               'cands': meta.get('candidates') or []}
-            elif stream == 'k':
-                prov[key] = trace_links._tool_provenance(jload(meta_raw))
-            elif stream == 'tool_result':
-                activity[key]['tools'] += 1
-                if jload(meta_raw).get('tool') in FILE_TOOLS:
-                    activity[key]['files'] += 1
-            elif stream == 'anchor_touched':
-                meta = jload(meta_raw)
-                for k in ('created', 'revised', 'recalled', 'endo'):
-                    touched[key].update(meta.get(k) or [])
-            elif stream == 'user_message':
-                s0_turn[key]['op'] = jload(meta_raw).get('content', '')
-                s0_turn[key]['op_ts'] = created
-            elif stream == 'assistant_message':
-                s0_turn[key].setdefault('anchor', jload(meta_raw).get('content', ''))
-
-        # turns: every s0 turn in this session, per epoch
-        disagree_keys = set()
-        per_epoch = defaultdict(list)
-        for (epoch, stop) in s0_turn:
-            per_epoch[epoch].append(stop)
-        for epoch, stops in per_epoch.items():
-            stops.sort()
-            prev_ts = None
-            for i, stop in enumerate(stops):
-                key = (epoch, stop)
-                rec = s0_turn[key]
-                o = o_rows.get(key, {})
-                op_text = rec.get('op', '')
+        turns = []
+        for kind, ts, obj in seq_events:
+            if kind == 'o':
+                rec = obj['s0']
                 flags = []
-                if not op_text:
-                    c['turn_no_op_text'] += 1
-                    flags.append('no_op_text')
-                q = o.get('query', '')
-                if q and op_text:
-                    a, b = norm(q)[:120], norm(op_text)[:120]
-                    n = min(len(a), len(b))
-                    if n >= 20 and a[:n] != b[:n]:
-                        c['text_agreement_fail'] += 1
-                        flags.append('text_disagree')
-                        disagree_keys.add(key)
-                t_now = parse_ts(rec.get('op_ts'))
-                gap = (t_now - prev_ts).total_seconds() if (t_now and prev_ts) else None
-                prev_ts = t_now
-                act = activity[key]
-                turn_rows.append((
-                    sess, epoch, stop, o.get('ts') or rec.get('op_ts'),
-                    op_text, rec.get('anchor', ''), q,
-                    1 if key in labels else 0,
-                    len(op_text), 1 if '```' in op_text else 0,
-                    1 if '?' in op_text else 0,
-                    act['tools'], act['files'], gap, i,
-                    project_of.get(sess), json.dumps(flags)))
+                if rec is None:
+                    flags.append('interrupted')           # prompt s0 never recorded
+                    c['turns_interrupted'] += 1
+                op_text = rec['op'] if rec else obj['query']
+                turns.append({
+                    'ts': obj['ts'], 'stop': obj['stop'], 'o': obj,
+                    'op': op_text, 'anchor': (rec or {}).get('anchor') or '',
+                    'query': obj['query'], 'flags': flags,
+                    'msg_ts': (rec or {}).get('ts') or obj['ts']})
+            else:
+                c['turns_no_recall'] += 1
+                turns.append({
+                    'ts': obj['ts'], 'stop': obj['stop'], 'o': None,
+                    'op': obj['op'], 'anchor': obj.get('anchor') or '',
+                    'query': '', 'flags': ['no_recall'], 'msg_ts': obj['ts']})
 
-        # candidates: labeled turns only
-        for (epoch, stop), outcomes in labels.items():
-            key = (epoch, stop)
-            o = o_rows.get(key)
-            if o is None:
-                c['label_missing_O'] += 1
+        # rows + labels, seq-ordered
+        prev_ts = None
+        for seq, t in enumerate(turns):
+            act = ep['act'][t['stop']] if t['o'] is None or t['o']['s0'] else {'tools': 0, 'files': 0}
+            t_now = parse_ts(t['msg_ts'])
+            gap = (t_now - prev_ts).total_seconds() if (t_now and prev_ts) else None
+            prev_ts = t_now
+            labeled = bool(t['o'] and t['o']['outcomes'] and t['o']['cands'])
+            turn_rows.append((
+                sess, epoch, seq, t['stop'], t['ts'], t['op'], t['anchor'],
+                t['query'], 1 if labeled else 0,
+                len(t['op']), 1 if '```' in t['op'] else 0,
+                1 if '?' in t['op'] else 0,
+                act['tools'], act['files'], gap, seq,
+                project, json.dumps(t['flags'])))
+            if not labeled:
+                if t['o'] and t['o']['outcomes'] and not t['o']['cands']:
+                    c['label_missing_candidates'] += 1    # the April gap class
                 continue
-            if key not in s0_turn:
-                c['label_missing_s0'] += 1
-            # text_disagree = the s0 text and the O query are DIFFERENT turns
-            # (interrupted-turn misalignment, ~1%). A poisoned j=0 cue must not
-            # feed the labeled set; the turn stays in `turns` as j>=1 context.
-            # Residual-ledger item: realign via off-by-one recovery.
-            if disagree_keys and key in disagree_keys:
-                c['label_text_disagree_excluded'] += 1
-                continue
-            if not o['cands']:
-                c['label_missing_candidates'] += 1     # the April gap class
-                continue
+            c['labeled_turns_written'] += 1
+            used = {}
+            for w in USED_NEXT_WINDOWS:
+                ids = set()
+                for nxt in turns[seq + 1: seq + 1 + w]:
+                    ids |= ep['touched'].get(nxt['stop'], set())
+                used[w] = ids
+            o = t['o']
+            fetched_by, floored_by = o['prov']
             turn_ts = o['ts']
-            fetched_by, floored_by = prov.get(key, ({}, {}))
-            used1 = touched.get((epoch, stop + 1), set())
-            used3 = (used1 | touched.get((epoch, stop + 2), set())
-                     | touched.get((epoch, stop + 3), set()))
-            seen_shorts = set()
+            seen = set()
             for rank, line in enumerate(o['cands']):
                 parsed = parse_candidate_line(line)
                 if parsed is None:
                     c['cand_unparseable'] += 1
                     continue
-                short = parsed['short']
-                seen_shorts.add(short)
-                outcome = outcomes.get(short)
+                seen.add(parsed['short'])
+                outcome = o['outcomes'].get(parsed['short'])
                 if outcome is None:
                     c['cand_no_outcome'] += 1
                 tier = 'picked' if outcome == 'selected' else 'pooled_dropped'
                 cand_rows.append(_cand_row(
-                    c, sess, epoch, stop, short, outcome, tier,
-                    fetched_by.get(short), used1, used3, rank,
+                    c, sess, epoch, seq, parsed['short'], outcome, tier,
+                    fetched_by.get(parsed['short']), used, rank,
                     parsed['score'], turn_ts, prefix_map, node_times))
             for short, tool in floored_by.items():
-                if short in seen_shorts:
-                    continue
-                cand_rows.append(_cand_row(
-                    c, sess, epoch, stop, short, None, 'floored', tool,
-                    used1, used3, None, None, turn_ts, prefix_map, node_times))
-            c['labeled_turns_written'] += 1
-
-    walker.executemany(
-        "INSERT INTO turns (session_id, epoch, stop, ts, op_text, anchor_text,"
-        " query_stored, labeled, op_len, has_code, has_question, tool_result_count,"
-        " files_touched, gap_seconds, turns_since_start, project, flags)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", turn_rows)
-    walker.executemany(
-        "INSERT OR REPLACE INTO candidates (session_id, epoch, stop, cand_short,"
-        " node_id, outcome, tier, fetched_by, used_next_1, used_next_3, rank_in_pool,"
-        " pool_score, node_created_at, node_revised_after_turn, flags)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", cand_rows)
-    c['turns_written'] = len(turn_rows)
-    c['candidates_written'] = len(cand_rows)
-    c['sessions_gold_excluded'] = len(gold_sessions)
-
-    walker.executemany(
-        "INSERT OR REPLACE INTO build_meta (key, value) VALUES (?,?)",
-        [('extract_' + k, str(v)) for k, v in sorted(c.items())])
-    walker.commit()
-    walker.close()
-
-    print('extract phase — conservation counters:')
-    for k in sorted(c):
-        print('  %-28s %d' % (k, c[k]))
-    return 0
+                if short not in seen:
+                    cand_rows.append(_cand_row(
+                        c, sess, epoch, seq, short, None, 'floored', tool,
+                        used, None, None, turn_ts, prefix_map, node_times))
+    return turn_rows, cand_rows
 
 
-def _cand_row(c, sess, epoch, stop, short, outcome, tier, fetched_tool,
-              used1, used3, rank, score, turn_ts, prefix_map, node_times):
+def _latest_o(o_events, stop, created):
+    tgt = None
+    for o in o_events:
+        if o['stop'] == stop and o['ts'] <= created:
+            tgt = o
+    return tgt
+
+
+def _cand_row(c, sess, epoch, seq, short, outcome, tier, fetched_tool,
+              used, rank, score, turn_ts, prefix_map, node_times):
     flags = []
     full_ids = prefix_map.get(short, [])
     node_id = full_ids[0] if len(full_ids) == 1 else None
@@ -345,9 +291,104 @@ def _cand_row(c, sess, epoch, stop, short, outcome, tier, fetched_tool,
         created, updated = node_times.get(node_id, (None, None))
         if updated and turn_ts:
             revised_after = 1 if updated > turn_ts else 0
-    return (sess, epoch, stop, short, node_id, outcome, tier, fetched_tool,
-            1 if short in used1 else 0, 1 if short in used3 else 0,
-            rank, score, created, revised_after, json.dumps(flags))
+    u1 = 1 if used and short in used[1] else 0
+    u3 = 1 if used and short in used[3] else 0
+    return (sess, epoch, seq, short, node_id, outcome, tier, fetched_tool,
+            u1, u3, rank, score, created, revised_after, json.dumps(flags))
+
+
+def main():
+    manifest = json.loads(MANIFEST.read_text())
+    if manifest.get('unmatched'):
+        print('FATAL: gold manifest has %d unmatched cues — walker refuses to build' %
+              manifest['unmatched'])
+        return 2
+    gold_sessions = set(manifest['excluded_sessions'])
+
+    logs = open_logs_ro()
+    c = defaultdict(int)
+    by_session = defaultdict(list)
+
+    for stream, sql in (
+            ('delta', "SELECT session_id, chain_id, created_at, metadata FROM trace_events "
+                      "WHERE scale='s1' AND event_type='delta' AND ref_type='additionalContext'"),
+            ('o', "SELECT session_id, chain_id, created_at, metadata FROM trace_events "
+                  "WHERE scale='s1' AND event_type='O' AND ref_type='recall'"),
+            ('k', "SELECT session_id, chain_id, created_at, metadata FROM trace_events "
+                  "WHERE scale='s1' AND event_type='K' AND ref_type='surface_selected'")):
+        for sess, chain, created, meta_raw in logs.execute(sql):
+            if stream == 'delta':
+                c['delta_rows'] += 1
+            stop = stop_of(chain)
+            if stop is None:
+                c[stream + '_bad_chain'] += 1
+                continue
+            by_session[sess].append((created, stop, (stream, meta_raw)))
+
+    for sess, chain, created, ref_type, meta_raw in logs.execute(
+            "SELECT session_id, chain_id, created_at, ref_type, metadata FROM trace_events "
+            "WHERE scale='s0' AND ref_type IN (%s)" % ','.join('?' * len(S0_TYPES)),
+            S0_TYPES):
+        stop = stop_of(chain)
+        if stop is not None:
+            by_session[sess].append((created, stop, (ref_type, meta_raw)))
+
+    project_of = {}
+    for sess, val in logs.execute(
+            "SELECT session_id, value FROM session_state WHERE key='_session_context'"):
+        proj = jload(val).get('project')
+        if proj:
+            project_of[sess] = proj
+    logs.close()
+
+    braindb = open_brain_ro()
+    prefix_map = defaultdict(list)
+    node_times = {}
+    for nid, created, updated in braindb.execute(
+            "SELECT id, created_at, updated_at FROM nodes"):
+        prefix_map[nid[:8]].append(nid)
+        node_times[nid] = (created, updated)
+    braindb.close()
+
+    walker = fresh_walker()
+    all_turns, all_cands = [], []
+    for sess, raw_rows in by_session.items():
+        if sess in gold_sessions:
+            c['sessions_gold_excluded_seen'] += 1
+            continue
+        if not UUID_RE.match(sess):
+            c['sessions_synthetic'] += 1
+            continue
+        c['sessions_included'] += 1
+        t_rows, c_rows = process_session(
+            sess, raw_rows, project_of.get(sess), prefix_map, node_times, c)
+        all_turns.extend(t_rows)
+        all_cands.extend(c_rows)
+
+    walker.executemany(
+        "INSERT INTO turns (session_id, epoch, seq, stop, ts, op_text, anchor_text,"
+        " query_stored, labeled, op_len, has_code, has_question, tool_result_count,"
+        " files_touched, gap_seconds, turns_since_start, project, flags)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", all_turns)
+    walker.executemany(
+        "INSERT OR REPLACE INTO candidates (session_id, epoch, seq, cand_short,"
+        " node_id, outcome, tier, fetched_by, used_next_1, used_next_3, rank_in_pool,"
+        " pool_score, node_created_at, node_revised_after_turn, flags)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", all_cands)
+    c['turns_written'] = len(all_turns)
+    c['candidates_written'] = len(all_cands)
+    c['sessions_gold_excluded'] = len(gold_sessions)
+
+    walker.executemany(
+        "INSERT OR REPLACE INTO build_meta (key, value) VALUES (?,?)",
+        [('extract_' + k, str(v)) for k, v in sorted(c.items())])
+    walker.commit()
+    walker.close()
+
+    print('extract phase (v3 micro-turns) — conservation counters:')
+    for k in sorted(c):
+        print('  %-28s %d' % (k, c[k]))
+    return 0
 
 
 if __name__ == '__main__':
