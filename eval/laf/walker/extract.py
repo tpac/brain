@@ -121,7 +121,7 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
     epochs = defaultdict(lambda: {'o': [], 's0': [], 'delta': [], 'k': [],
                                   'act': defaultdict(lambda: {'tools': 0, 'files': 0}),
                                   'touched': defaultdict(set)})
-    for epoch, stop, created, (stream, meta_raw) in assign_epochs(raw_rows):
+    for epoch, stop, created, (stream, meta_raw, rid) in assign_epochs(raw_rows):
         ep = epochs[epoch]
         if stream == 'o':
             meta = jload(meta_raw)
@@ -143,13 +143,15 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
             for k in ('created', 'revised', 'recalled', 'endo'):
                 ep['touched'][stop].update(meta.get(k) or [])
         elif stream == 'user_message':
-            ep['s0'].append({'ts': created, 'stop': stop,
-                             'op': jload(meta_raw).get('content', ''), 'anchor': None})
+            ep['s0'].append({'ts': created, 'stop': stop, 'trace_id': rid,
+                             'op': jload(meta_raw).get('content', ''),
+                             'anchor': None, 'anchor_trace_id': None})
         elif stream == 'assistant_message':
             # first assistant message of a stop = the turn's response
             for rec in ep['s0']:
                 if rec['stop'] == stop and rec['anchor'] is None:
                     rec['anchor'] = jload(meta_raw).get('content', '')
+                    rec['anchor_trace_id'] = rid
                     break
 
     turn_rows, cand_rows = [], []
@@ -206,13 +208,18 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
                     'ts': obj['ts'], 'stop': obj['stop'], 'o': obj,
                     'op': op_text, 'anchor': (rec or {}).get('anchor') or '',
                     'query': obj['query'], 'flags': flags,
+                    'op_tid': (rec or {}).get('trace_id'),
+                    'anchor_tid': (rec or {}).get('anchor_trace_id'),
                     'msg_ts': (rec or {}).get('ts') or obj['ts']})
             else:
                 c['turns_no_recall'] += 1
                 turns.append({
                     'ts': obj['ts'], 'stop': obj['stop'], 'o': None,
                     'op': obj['op'], 'anchor': obj.get('anchor') or '',
-                    'query': '', 'flags': ['no_recall'], 'msg_ts': obj['ts']})
+                    'query': '', 'flags': ['no_recall'],
+                    'op_tid': obj.get('trace_id'),
+                    'anchor_tid': obj.get('anchor_trace_id'),
+                    'msg_ts': obj['ts']})
 
         # rows + labels, seq-ordered
         prev_ts = None
@@ -224,7 +231,8 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
             labeled = bool(t['o'] and t['o']['outcomes'] and t['o']['cands'])
             turn_rows.append((
                 sess, epoch, seq, t['stop'], t['ts'], t['op'], t['anchor'],
-                t['query'], 1 if labeled else 0,
+                t['query'], t['op_tid'], t['anchor_tid'],
+                1 if labeled else 0,
                 len(t['op']), 1 if '```' in t['op'] else 0,
                 1 if '?' in t['op'] else 0,
                 act['tools'], act['files'], gap, seq,
@@ -323,15 +331,15 @@ def main():
             if stop is None:
                 c[stream + '_bad_chain'] += 1
                 continue
-            by_session[sess].append((created, stop, (stream, meta_raw)))
+            by_session[sess].append((created, stop, (stream, meta_raw, None)))
 
-    for sess, chain, created, ref_type, meta_raw in logs.execute(
-            "SELECT session_id, chain_id, created_at, ref_type, metadata FROM trace_events "
+    for rid, sess, chain, created, ref_type, meta_raw in logs.execute(
+            "SELECT id, session_id, chain_id, created_at, ref_type, metadata FROM trace_events "
             "WHERE scale='s0' AND ref_type IN (%s)" % ','.join('?' * len(S0_TYPES)),
             S0_TYPES):
         stop = stop_of(chain)
         if stop is not None:
-            by_session[sess].append((created, stop, (ref_type, meta_raw)))
+            by_session[sess].append((created, stop, (ref_type, meta_raw, rid)))
 
     project_of = {}
     for sess, val in logs.execute(
@@ -367,9 +375,10 @@ def main():
 
     walker.executemany(
         "INSERT INTO turns (session_id, epoch, seq, stop, ts, op_text, anchor_text,"
-        " query_stored, labeled, op_len, has_code, has_question, tool_result_count,"
-        " files_touched, gap_seconds, turns_since_start, project, flags)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", all_turns)
+        " query_stored, op_trace_id, anchor_trace_id, labeled, op_len, has_code,"
+        " has_question, tool_result_count, files_touched, gap_seconds,"
+        " turns_since_start, project, flags)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", all_turns)
     walker.executemany(
         "INSERT OR REPLACE INTO candidates (session_id, epoch, seq, cand_short,"
         " node_id, outcome, tier, fetched_by, used_next_1, used_next_3, rank_in_pool,"

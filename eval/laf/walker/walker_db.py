@@ -39,8 +39,11 @@ CREATE TABLE IF NOT EXISTS turns (
     op_text TEXT,               -- full operator message (S0)
     anchor_text TEXT,           -- full Anchor response at this stop (S0; j>=1 only)
     query_stored TEXT,          -- O-row 500-char query (join-sanity witness)
-    op_vec BLOB,                -- embed phase
+    op_trace_id INTEGER,        -- trace_events.id of the user_message (NULL for interrupted)
+    anchor_trace_id INTEGER,    -- trace_events.id of the assistant_message
+    op_vec BLOB,                -- embed phase: trace_embeddings join, or local for interrupted
     anchor_vec BLOB,            -- embed phase
+    op_vec_source TEXT,         -- 'store' | 'local_interrupted' | NULL (pending drain)
     labeled INTEGER NOT NULL DEFAULT 0,
     -- phi(M) activity features (j=0 admissibility: computed DURING the turn,
     -- so only j>=1 slots may use tool/anchor-derived features)
