@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS turns (
     session_id TEXT NOT NULL,
     epoch INTEGER NOT NULL,     -- stop-counter reset segment (resume/compaction boundary);
                                 -- the moment stack NEVER crosses an epoch boundary
+    seq INTEGER NOT NULL,       -- ts-order position within the epoch (micro-turn index);
+                                -- interrupts share a stop, so seq is the true ordering key
     stop INTEGER NOT NULL,
     ts TEXT,                    -- O-row recall moment when labeled, else s0 user_message ts
     op_text TEXT,               -- full operator message (S0)
@@ -46,13 +48,14 @@ CREATE TABLE IF NOT EXISTS turns (
     tool_result_count INTEGER, files_touched INTEGER,  -- files_touched = Edit/Write/NotebookEdit tool results (proxy)
     gap_seconds REAL, turns_since_start INTEGER,
     project TEXT,
-    flags TEXT,                 -- JSON list of join anomalies
-    PRIMARY KEY (session_id, epoch, stop)
+    flags TEXT,                 -- JSON list: 'interrupted' (O row, s0 never recorded — op_text
+                                -- is the 500-char O query), 'no_recall' (s0 turn, recall failed)
+    PRIMARY KEY (session_id, epoch, seq)
 );
 CREATE TABLE IF NOT EXISTS candidates (
     session_id TEXT NOT NULL,
     epoch INTEGER NOT NULL,
-    stop INTEGER NOT NULL,
+    seq INTEGER NOT NULL,
     cand_short TEXT NOT NULL,   -- 8-char id as traced
     node_id TEXT,               -- resolved full id (NULL = unresolved)
     outcome TEXT,               -- 'selected' | 'dropped' | NULL (floored never pooled)
@@ -62,17 +65,17 @@ CREATE TABLE IF NOT EXISTS candidates (
     rank_in_pool INTEGER, pool_score REAL,
     node_created_at TEXT, node_revised_after_turn INTEGER,
     flags TEXT,
-    PRIMARY KEY (session_id, epoch, stop, cand_short)
+    PRIMARY KEY (session_id, epoch, seq, cand_short)
 );
 CREATE TABLE IF NOT EXISTS cand_turn_scores (
     session_id TEXT NOT NULL,
     epoch INTEGER NOT NULL,
-    stop INTEGER NOT NULL,
+    seq INTEGER NOT NULL,
     node_id TEXT NOT NULL,
-    j INTEGER NOT NULL,         -- turn offset 0..K (within the SAME epoch)
+    j INTEGER NOT NULL,         -- turn offset 0..K by seq (within the SAME epoch)
     lane TEXT NOT NULL,         -- maxsim view name | 'sit' | 'idf'
     score REAL,
-    PRIMARY KEY (session_id, epoch, stop, node_id, j, lane)
+    PRIMARY KEY (session_id, epoch, seq, node_id, j, lane)
 );
 CREATE TABLE IF NOT EXISTS build_meta (
     key TEXT PRIMARY KEY,
