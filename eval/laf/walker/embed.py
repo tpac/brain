@@ -73,6 +73,33 @@ def embed_interrupted(walker, c):
     c['op_vec_local_interrupted'] = len(updates)
 
 
+def embed_query_side(walker, c):
+    """q_vec for labeled turns: the QUERY-side vector production scores the
+    prompt with — 'search_query:' prefix over op_text[:500] (the production
+    recall-query cap), no speaker token. The trace vector (document-side,
+    'Tom: '-prefixed full render) is a DIFFERENT point in the asymmetric-
+    prefix space — reusing it for j=0 was the walker bug the replay-sanity
+    check caught (maxsim-only rho 0.16 vs live). Incremental: fills NULLs."""
+    rows = walker.execute(
+        "SELECT rowid, op_text FROM turns WHERE labeled=1 AND q_vec IS NULL"
+        " AND op_text != ''").fetchall()
+    if not rows:
+        c['q_vec_embedded'] = 0
+        return
+    from servers import embedder
+    embedder.load_model()
+    texts = [t[:500] for _, t in rows]
+    vectors = embedder.embed_batch(texts, kind='query')
+    if not vectors or len(vectors) != len(rows):
+        print('FATAL: q_vec embed_batch returned %d for %d texts'
+              % (len(vectors) if vectors else 0, len(rows)))
+        sys.exit(2)
+    walker.executemany(
+        "UPDATE turns SET q_vec=? WHERE rowid=?",
+        [(v, r) for (r, _), v in zip(rows, vectors) if v is not None])
+    c['q_vec_embedded'] = len(rows)
+
+
 def main():
     walker = open_walker()
     logs = open_logs_ro()
@@ -82,6 +109,7 @@ def main():
     fill_from_store(walker, logs, 'op_vec', 'op_trace_id', c, stamp_source=True)
     fill_from_store(walker, logs, 'anchor_vec', 'anchor_trace_id', c)
     embed_interrupted(walker, c)
+    embed_query_side(walker, c)
     c['op_vec_still_null'] = walker.execute(
         "SELECT count(*) FROM turns WHERE op_vec IS NULL").fetchone()[0]
     walker.executemany(

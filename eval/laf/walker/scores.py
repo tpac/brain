@@ -12,9 +12,11 @@ the idf lane calls recall_laf.idf_scores (the production formula, pure) fed
 AS-OF corpus state — title_tok/title_df restricted to nodes created before
 turn t (per-turn df via bisect over per-token creation timestamps).
 
-Text used for idf matches the vector recipe's 500-char cap — the moment
-representation is consistently the 500-char turn text, which at j=0 equals
-exactly what production recall saw.
+Text used for idf is capped at 500 chars — the production RECALL QUERY cap
+(pipeline_contract 'user_message_query': 500), so at j=0 idf sees exactly what
+production saw. Note the trace VECTORS embed the full turn render (the 500
+cap on trace_embeddings.text is storage-only) — production itself carries
+this query-cap vs full-turn-vector asymmetry.
 
 INCREMENTAL: turns already scored under the current LANES_VERSION are
 skipped; --rebuild wipes the table first. Missing inputs (April vectors
@@ -40,7 +42,7 @@ from servers.recall_laf import _unit, idf_scores, MAXSIM_VIEWS  # noqa: E402
 
 K_MAX = 8
 TEXT_CAP = 500                  # trace-embedding recipe cap — keep idf consistent
-LANES_VERSION = 'v1-16lane'
+LANES_VERSION = 'v2-16lane-qvec-j0'
 VIEWS = list(MAXSIM_VIEWS) + ['_situation']   # 6 maxsim views + sit
 LANE_COLS = (['v_%s_op' % v.strip('_') for v in MAXSIM_VIEWS]
              + ['sit_op', 'idf_op']
@@ -112,13 +114,17 @@ def main():
         walker.execute('DELETE FROM cand_turn_scores')
         walker.commit()
 
-    # turns: (sess, epoch) -> seq-ordered [(seq, op_vec, anchor_vec, op_text, anchor_text)]
+    # turns: (sess, epoch) -> seq -> (op_vec, anchor_vec, op_text, anchor_text, q_vec)
+    # op/anchor vecs are DOCUMENT-side (the j>=1 moment context, = live trace
+    # matrix); q_vec is the QUERY-side vector production scores the j=0 prompt
+    # with — the j=0 'op' source uses q_vec, never the document-side vector.
     turns = defaultdict(dict)
-    for sess, epoch, seq, opv, av, opt, at in walker.execute(
-            "SELECT session_id, epoch, seq, op_vec, anchor_vec, op_text, anchor_text FROM turns"):
+    for sess, epoch, seq, opv, av, opt, at, qv in walker.execute(
+            "SELECT session_id, epoch, seq, op_vec, anchor_vec, op_text, anchor_text, q_vec FROM turns"):
         turns[(sess, epoch)][seq] = (
             _unit(opv) if opv else None, _unit(av) if av else None,
-            (opt or '')[:TEXT_CAP], (at or '')[:TEXT_CAP])
+            (opt or '')[:TEXT_CAP], (at or '')[:TEXT_CAP],
+            _unit(qv) if qv else None)
 
     # labeled turns + their candidates (resolved only)
     cand_by_turn = defaultdict(list)
@@ -180,9 +186,10 @@ def main():
             src = epoch_turns.get(seq - j)
             if src is None:
                 break                      # epoch boundary — achieved window ends
-            op_vec, anchor_vec, op_text, anchor_text = src
+            op_vec, anchor_vec, op_text, anchor_text, q_vec = src
+            op_j_vec = q_vec if j == 0 else op_vec
             cells = {}
-            for prefix, tvec, ttext in (('op', op_vec, op_text),
+            for prefix, tvec, ttext in (('op', op_j_vec, op_text),
                                         ('anchor', anchor_vec, anchor_text)):
                 if tvec is not None:
                     for v in MAXSIM_VIEWS:
