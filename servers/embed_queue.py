@@ -44,15 +44,15 @@ STALL_THRESHOLD_S = EMBED_DRAIN_INTERVAL * 3
 TRACE_DRAIN_LIMIT = 5
 EAGER_TRACE_SCALES = ('s0',)
 EAGER_TRACE_REF_TYPES = SAID_AND_DID_REF_TYPES
-# Embed window — only consider traces newer than this. The architectural
-# reason (not just a perf knob): traces older than v27/identity-stamping
-# rollout have no human_identity / agent_identity in their metadata and
-# would render with OPERATOR / ANCHOR sentinels. Decision 19 specifically
-# keeps the embedding neighborhood concrete-token-only; embedding
-# pre-stamping traces would land them in a different vector neighborhood
-# from new traces. A 30-day window covers the source_refs use case (new
-# encoder writes anchoring at recent traces) without touching the
-# historical backlog.
+# Embed window default — only consider traces newer than this many days.
+# Runtime value comes from config key 'embed_queue.trace_window_days'
+# (read per tick — flips take effect without a restart); <= 0 means NO
+# window (full history). The window's original architectural reason —
+# pre-identity-stamping traces would render OPERATOR/ANCHOR sentinels,
+# which Decision 19 rules out — is extinct: the historical identity
+# backfill (commit 5cff407) stamped all 57,672 traces, and as of
+# 2026-07-14 zero unembedded dialogue rows lack human_identity. The
+# render's sentinel fallback remains for fresh installs only.
 TRACE_EMBED_WINDOW_DAYS = 30
 
 # ─── State ───
@@ -394,8 +394,15 @@ def _drain_trace_embeddings_once(brain) -> None:
     """
     try:
         from datetime import datetime, timedelta, timezone
-        since_iso = (datetime.now(timezone.utc)
-                     - timedelta(days=TRACE_EMBED_WINDOW_DAYS)).isoformat()
+        try:
+            window_days = float(brain.get_config(
+                'embed_queue.trace_window_days', TRACE_EMBED_WINDOW_DAYS))
+        except Exception:
+            window_days = TRACE_EMBED_WINDOW_DAYS
+        since_iso = None
+        if window_days > 0:
+            since_iso = (datetime.now(timezone.utc)
+                         - timedelta(days=window_days)).isoformat()
         pending = brain._trace_dal.find_unembedded(
             limit=TRACE_DRAIN_LIMIT,
             scales=list(EAGER_TRACE_SCALES),
