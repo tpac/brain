@@ -43,7 +43,12 @@ CREATE TABLE IF NOT EXISTS turns (
                                 -- ids like '6e46…' via scientific notation and mangle the join)
     anchor_trace_id TEXT,       -- trace_events.id of the assistant_message
     op_vec BLOB,                -- embed phase: trace_embeddings join, or local for interrupted
-    anchor_vec BLOB,            -- embed phase
+                                -- (DOCUMENT-side: 'search_document:' + 'Tom: <text>' render —
+                                -- the j>=1 moment-context representation, = live trace matrix)
+    anchor_vec BLOB,            -- embed phase (document-side)
+    q_vec BLOB,                 -- QUERY-side embedding of op_text[:500] — what production
+                                -- scores the j=0 prompt with ('search_query:' prefix, no
+                                -- speaker token); labeled turns only
     op_vec_source TEXT,         -- 'store' | 'local_interrupted' | NULL (pending drain)
     labeled INTEGER NOT NULL DEFAULT 0,
     -- phi(M) activity features (j=0 admissibility: computed DURING the turn,
