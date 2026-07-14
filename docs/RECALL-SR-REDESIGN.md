@@ -1518,3 +1518,203 @@ scope, failure modes — encoder-written), community `dae30088`. **P1 done → S
 production field functions in `servers/recall_laf.py` — no reimplementation; emit the 6 maxsim views as
 separate columns per `maxsim_decomp.md`; `p1_gate.py` is the replay-sanity target; `_laf_fields` telemetry
 accretes the same rows in production once the daemon restarts).
+
+**⚠ P2 SUPERSEDED IN PLACE by §20 (2026-07-14):** the walker survives but its objective changed — it is now
+the *moment-recognition instrument* (per-turn ingredients stored, moment shapes swept offline), not just the
+gains table. §20 is the approved-shape proposal; P3+ ride on §20's table unchanged. Known wiring gap found
+in the 9-day live health check: `_laf_fields` does NOT reach the trace substrate (dies at the
+`cand_detail` compaction in `surface.py`) — the forward-feed leg of the old P2 assumption is broken until
+that 3-line fix lands (routed to the surface-lane stream).
+
+## 20 — Moment recognition: walker v2 + pre-registered sweep (Tom + Anchor, 2026-07-14) ◀ ACTIVE ARC
+
+### 20.1 Objective and ship rule
+
+Recall today matches the **prompt**; it should recognize the **moment**. The LAF cue audit (2026-07-13)
+showed five of six lanes share ONE cue — the bare current message, truncated (`daemon_hooks.py:260`);
+the only other query-side inputs in the whole stack are the session project (dormant, gain 0) and fatigue's
+surfacing history (inhibition only). History enters the pipeline only downstream (Haiku selection) and
+sideways (fatigue) — never where the field is shaped.
+
+**The behavioral definition (the judge of everything):** two moments are the same moment iff the same
+memories serve them. Every feature below is an approximation; corpora decide which approximations carry it.
+Five candidate ingredients (Anchor's frame, Tom-endorsed 2026-07-13): trajectory (where this is heading),
+nested timescales (exchange/thread/arc), activity mode (what the operator is DOING), what's-already-in-the-
+room (attention state → inhibition as signal, not hygiene), distinctiveness (what makes this moment unusual
+against the session baseline). This arc instruments trajectory + timescales first; activity-mode features
+ride along in φ(M) for free.
+
+**The moment object:** `M(t) = {turn_{t-j}, j=0..K}` with per-turn weights `w_j = decay(j)`. Per lane f:
+
+    blend:    f(n | Σ_j w_j·q_{t-j})            — one blended query vector (cheapest)
+    turnmax:  max_j [ w_j · f(n | q_{t-j}) ]     — best single-turn evidence, decayed
+    turnsum:  Σ_j w_j · f(n | q_{t-j})           — accumulated evidence, decayed
+
+K, the decay form, the composition, and per-lane participation are FITTED, never hand-set (Tom's standing
+directive `25a23312`). K=0 ≡ today's shipped behavior — always the control arm.
+
+**Ship rule (pre-committed):** a moment shape ships only if it wins BOTH measurement modes:
+- **reach** (full-field, honest gold): brings gold into top-25 that K=0 misses — gold-24 + LongMemEval;
+- **rank** (pool-restricted, our 5,088 judged turns): picked>dropped pairwise improvement, time-split held out.
+Single-mode wins are findings, not ships. Cross-corpus disagreement escalates to Tom (values call, not math).
+
+### 20.2 Walker v2 schema (`eval/laf/walker/`)
+
+SQLite `walker.db` — LOCAL BUILD ARTIFACT, never committed; committed are the build script, the health
+report (`walker_health.md` per build), and the gold-exclusion manifest. Substrate verified 2026-07-13:
+5,088 labeled turns (Δ `additionalContext` rows with `outcomes_per_candidate`: Apr 555 / May 1,920 /
+Jun 2,120 / Jul 493), ~25 candidates each, all three legs joined structurally on `s1r-{session}-{stop}`
+chains via the pure `nodes_for_traces` join.
+
+**`turns`** — one row per (session_id, stop):
+- ts, chain_id, project, session ordinal features
+- `op_text`, `anchor_text` — FULL texts from S0 conversation traces (never the O-row's 500-char
+  `query` field; prev_operator and prev_anchor were DISTINCT cues in the reverse-regression `8bcc8c96`,
+  so they stay separate columns, separately embeddable)
+- `op_vec`, `anchor_vec` — 768d, stored as blobs (query-prefix convention pinned + asserted in the build)
+- φ(M) activity features: tool_result density, was_correction, prompt shape (len/code-fence/question),
+  turns_since_session_start, gap_seconds_since_prev_turn, files_touched (from S0 tool traces — the most
+  action-anchored signal available)
+**`candidates`** — one row per (session_id, stop, candidate_id):
+- labels: outcome (`selected`/`dropped`), tier (`picked`/`pooled_dropped`/`floored`), fetched_by tool
+  (post-07-02 rows only), `used_next_1`, `used_next_3` (S0 anchor_touched recalled/authored at stops
+  t+1..t+3 — surfacing-independent debias labels)
+- rank_in_pool, quality flags: node_revised_after_turn, sit_missing, label_ambiguous (short-id prefix
+  collision), pre_v5 (no tool tiers)
+**`cand_turn_scores`** — one row per (session_id, stop, candidate_id, j, lane_view):
+- j ∈ 0..8 turn offset; lane_view ∈ 6 maxsim views + sit + idf (idf recomputed per turn-j against
+  as-of title df); cosine/score computed by IMPORTING the production field functions from
+  `servers/recall_laf.py` — no reimplementation (measured==shipped)
+- ~5,088 × 25 × 9 × 8 ≈ 9M floats ≈ 40MB — trivial
+**episodic symmetrization:** pick/enc lanes get their cue swapped from single-vector to the same M(t)
+stack in the SWEEP (their trace-side moment windows already exist); no extra storage needed beyond `turns`.
+
+**Scale note:** full-field reach mode does NOT use `cand_turn_scores` (pool-only) — it matvecs the frozen
+node matrices per config inside the sweep harness. Pool-restricted rank mode reads the table directly.
+
+### 20.3 As-of + leakage rules (per-field audit)
+
+| field | as-of discipline | leakage risk & mitigation |
+|---|---|---|
+| maxsim ×6 | node eligibility `created_at < t` | revision leakage (embeddings are current-state; no history exists) — same accepted residual as the gold-24 harness, but now FLAGGED per row (`node_revised_after_turn`) so P3 can quantify it |
+| pick / enc | trace mask strictly `< t`, current chain excluded | past picks are judge output (echo risk) — legitimate as FEATURE; debias lives on the LABEL side (used-next-turn) |
+| idf | df recomputed over eligible titles only | current-corpus df would leak growth; replay check arbitrates the divergence from production |
+| sit | eligibility mask; missing → neutral (post-`f77c453` semantics) | Healer backfill postdates node creation — mask by enrichment ts if available, else `sit_missing` flag |
+| proj | session project from the turn's session record | pre-v30 turns → null; low risk (system-stamped) |
+| labels | — | 8-char short ids prefix-resolved; ambiguous → flagged, never guessed |
+| moment stack | turns strictly ≤ t from the SAME session, compaction seams respected | wrong-turn reconstruction is the silent killer → human fidelity read (§20.5 checkpoint H1) |
+
+**Exclusions by construction:** gold-24 cue turns AND their full sessions, via a one-time committed
+manifest (cards carry `cutoff` but no session ids — manifest maps cue_id → session_id/stop by
+cutoff+text match). April rows missing candidate detail (~57) or lacking a Δ label row: dropped AND
+counted in the health report — never silently skipped.
+
+### 20.4 Health report — mandatory build artifact
+
+Every walker build emits `walker_health.md`. A build without a green health report does not feed a sweep.
+
+1. **Fill-rate matrix** — every column × month (catches the "empty column for a subset" class: pre-07-02
+   tool tiers, April candidates, sit coverage)
+2. **Join conservation** — turns in = labeled + dropped-with-reason; per-reason counts
+3. **Achieved-window histogram** — how many turns actually had j turns of history (catches the
+   coverage-blindspot class: session starts, compactions, short sessions)
+4. **Query-sensitivity per lane** — field values must move when the query changes (catches dead lanes
+   that `std > ε` checks certify; the temporal-operator disease `0c8352f1`)
+5. **Replay sanity** — offline K=0 static-gain scoring of walker rows reproduces the live `p1_gate.py`
+   ranking on the gold cues (proves offline rows ≡ live scoring)
+6. **Embedding spot-audit** — N sampled turn vectors re-embedded fresh and compared (catches prefix/
+   normalization drift)
+
+### 20.5 Pre-registration: sweep Q1 (approve BEFORE it runs)
+
+**Question Q1:** does any moment shape beat K=0 (prompt-only) on BOTH reach and rank?
+
+**Grid:** K ∈ {0,1,2,4,8} × decay {exp γ ∈ 0.3/0.5/0.7/0.9, power α ∈ 1/2, uniform w_j=1/K} ×
+composition {blend, turnmax, turnsum} × turn texts {op-only, op+anchor} × lane participation
+{maxsim, sit, idf} ⊕ episodic-symmetrized {pick, enc}. The uniform family is a registered degenerate
+control — it separates "history helps" from "the WEIGHTING of history matters." Winner selected by ONE
+pre-declared aggregate (mean of reach-Δ@25 across gold corpora + rank-AUC Δ on time-split holdout), not
+per-metric cherry-picking.
+
+**Controls (all mandatory):**
+- **Shuffle control** — moment stack built from random OTHER-session turns must NOT beat K=0; if it does,
+  the gain is a norm/length artifact and the config is dead regardless of its numbers
+- **Positive control** — the harness must reproduce the measured ±1-turn episodic result (`9634cce9`)
+  before any new number is trusted
+- **Coverage control** — the empty-history subset (no previous turns) must score EXACTLY K=0
+
+**Corpora:** gold-24 reach (report, ±4pp noise acknowledged — never sole ship evidence); LongMemEval
+frozen-corpus reach (existing `eval/longmem/sweep.py` harness, variance runs); judge-label rank
+(train April–May / validate June+ time split). LoCoMo joins only if legs disagree and a tiebreaker is
+needed.
+
+**Pass criteria (pre-committed):** reach: +≥2 needs @25 on gold-24 AND LongMemEval improvement beyond its
+measured variance band; rank: pairwise AUC improvement on the held-out split. Both, or no ship. A
+surprising result spawns a NEW pre-registered question — no goalpost moves after the run.
+
+**What we do NOT conclude from Q1:** single-mode wins, post-hoc subgroup stories, anything about lanes
+not in the grid.
+
+### 20.6 Human checkpoints (Tom) — few and high-value
+
+- **H1 (Stage 1, one sitting):** moment-fidelity read — ~15 sampled reconstructed moments read against
+  Tom's memory of those conversations. The math cannot detect wrong reconstruction; this is the highest-
+  value human hour in the plan.
+- **H2 (before sweep):** pre-registration sign-off — grid, controls, pass criteria (the understand-the-
+  test rule `f11ae3cd`). Tom's parameter intuitions belong HERE (what to search), never mid-sweep.
+- **H3 (on disagreement):** cross-corpus verdict conflicts — a values call about which distribution we
+  serve, escalated with both numbers on the table.
+- **H4 (before ship):** frame_replay qualitative A/B read — "are these the memories that moment needed?"
+- Standing: cost checkpoint before any heavy run (LongMemEval corpus REBUILDS are expensive; sweeps over
+  a frozen corpus are cheap).
+
+**Drift guards (agreed 2026-07-14):** parameter intuitions go into H2's pre-registration, not mid-sweep
+picks (researcher degrees of freedom at N=24 are unaffordable); single-recall anecdotes go to the residual
+ledger and earn lane status statistically; mid-rung scope changes are batched at stage gates — the rung
+finishes as registered.
+
+### 20.7 Stages, artifacts, effort
+
+- **Stage 1 — walker v2 build (~2–3 days):** gold-exclusion manifest → build script → health report →
+  H1 fidelity read. Artifacts: `eval/laf/walker/{build_walker.py, walker_health.md, gold_manifest.json}`.
+- **Stage 2 — Q1 sweep (~2–3 days, offline math):** controls first, then grid. Artifact:
+  `eval/laf/walker/q1_sweep.md` (all configs, controls, verdict vs pre-registration).
+- **Stage 3 — ship proposal (separate, after Q1):** live wiring rides the existing engine (session turn
+  vectors are ALREADY in the trace matrix the episodic lanes scan — moment stack at recall time is
+  reading vectors we hold; blend ≈ free, turnmax/turnsum ≈ K extra matvecs). Moment params live in the
+  `recall_laf` interaction config — config flip to deploy, config flip to roll back. Gate = P1 discipline:
+  gold-24 through real `brain.recall`, frame_replay A/B (H4), latency probe.
+- **Stage 4 — P3 fit on the same table** (gains + moment params jointly), then P6 trains its contrastive
+  moment encoder on the same rows. The ladder is unchanged; §20 is P2's schema + P5's first fields.
+
+### 20.8 H2 resolutions (Tom, 2026-07-14) — walker-scope sign-off DONE
+
+1. **K grid:** {0,1,2,4,8} approved. Tom: influence of more/fewer turns is interesting but hard to
+   measure — the achieved-window histogram is the honest instrument; K=16 only via a follow-up pre-reg.
+2. **Decay families:** exp + power + uniform control approved. Tom flags the cognitive-psychology echo
+   (7±2 working-memory span) — worth a literature dig alongside the sweep, priors not parameters.
+3. **Turn texts:** op+anchor approved (the situation is together). Registered-but-parked: contradiction /
+   shift-away dynamics — when the operator (or a future LLM turn) contradicts or pivots, previous turns
+   should plausibly flip from reinforcing to inhibiting. NOT in Q1; parked in §20.9.
+4. **φ(M):** files_touched added (Tom independently wrote the same before reading the proposal);
+   test-failure signal deferred to the residual ledger.
+5. **used-next windows:** 1 and 3, no more — beyond ~3 turns the causal link dilutes.
+
+NOTE: §20.5's sweep pre-registration gets its own final H2 look AFTER the walker health report exists
+(pass criteria are cheap to confirm once fill rates are visible).
+
+### 20.9 Parked ingredients (caught, not lost — batch at stage gates)
+
+Tom's reminder (2026-07-14, "in case it synergizes") + session spirals, all candidate cue/field material
+for P5+ or φ(M) extensions — none enter Q1:
+
+- **arc** — the encoder's per-session focus blob; a nested-timescale cue (thread/arc layer above the
+  K-turn stack)
+- **communities** — offline S2 cluster nodes; membership as moment context or support-side expansion
+- **selection counts / access history** — the ACT-R base-level usage prior B=ln(Σt⁻ᵈ) already on the
+  P5 menu; also a candidate ÷norm (familiarity) operator
+- **edges/aspects** — aspect cosines belong to φ(q) at P4 (already registered there); typed edges as
+  per-pair operation-selectors remain the standing integration-thesis item
+- **contradiction / shift-away turn dynamics** (from H2 Q3) — sign-flipping the decayed stack when the
+  trajectory pivots; needs a pivot detector; revisit after Q1 shows whether plain decay carries signal
+- **test-failure signal** in φ(M) — deferred pending a reliable parse
