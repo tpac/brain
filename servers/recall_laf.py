@@ -137,19 +137,25 @@ def _zscore(x, n, mask=None):
     return o
 
 
-def idf_scores(query, title_tok, title_df, n):
+def idf_scores(query, title_tok, title_df, n, n_titles=None):
     """Production idf2 title boost as a lane: per node-row, Σ log-idf of the
     query's rare tokens found in its title, normalized by the query's total idf
     mass. Pure function so eval probes score the identical formula.
 
     title_tok: {row: frozenset(tokens)}; title_df: {token: doc frequency}.
+    n_titles: corpus size for the idf denominator — defaults to len(title_tok)
+    (the production shape, where title_tok spans the full node matrix). Callers
+    scoring a RESTRICTED row set against a larger corpus (the §20 walker's
+    as-of replay) pass the true corpus size explicitly.
     """
     vec = np.zeros(n)
     q_tokens = {t for t in _IDF_TOK.findall(query.lower())
                 if len(t) >= 2 and t not in _TITLE_BOOST_STOPWORDS}
     if not q_tokens or not title_tok:
         return vec
-    n_titles = max(len(title_tok), 1)
+    if n_titles is None:
+        n_titles = len(title_tok)
+    n_titles = max(n_titles, 1)
     idf = {t: math.log((n_titles + 1) / (title_df.get(t, 0) + 1))
            for t in q_tokens}
     total = sum(idf.values()) or 1.0

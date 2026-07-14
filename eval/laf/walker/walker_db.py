@@ -72,14 +72,24 @@ CREATE TABLE IF NOT EXISTS candidates (
     PRIMARY KEY (session_id, epoch, seq, cand_short)
 );
 CREATE TABLE IF NOT EXISTS cand_turn_scores (
+    -- WIDE: one row per (labeled turn, candidate, offset j); lanes are named
+    -- columns (~970k rows × 16 REAL vs 14.5M skinny rows). j indexes the turn
+    -- at seq-j in the SAME epoch. Sources: _op = that turn's operator message
+    -- vector/text, _anchor = its Anchor response. ADMISSIBILITY (§20.3): at
+    -- j=0 only *_op lanes are usable — the turn's own anchor/activity happen
+    -- AFTER the recall being replayed; the sweep enforces this.
     session_id TEXT NOT NULL,
     epoch INTEGER NOT NULL,
-    seq INTEGER NOT NULL,
+    seq INTEGER NOT NULL,       -- the LABELED turn being scored
     node_id TEXT NOT NULL,
-    j INTEGER NOT NULL,         -- turn offset 0..K by seq (within the SAME epoch)
-    lane TEXT NOT NULL,         -- maxsim view name | 'sit' | 'idf'
-    score REAL,
-    PRIMARY KEY (session_id, epoch, seq, node_id, j, lane)
+    j INTEGER NOT NULL,         -- 0..K turn offset (seq-j exists, same epoch)
+    v_title_op REAL, v_primary_op REAL, v_high_meta_op REAL,
+    v_other_meta_op REAL, v_edge_context_op REAL, v_question_op REAL,
+    sit_op REAL, idf_op REAL,
+    v_title_anchor REAL, v_primary_anchor REAL, v_high_meta_anchor REAL,
+    v_other_meta_anchor REAL, v_edge_context_anchor REAL, v_question_anchor REAL,
+    sit_anchor REAL, idf_anchor REAL,
+    PRIMARY KEY (session_id, epoch, seq, node_id, j)
 );
 CREATE TABLE IF NOT EXISTS build_meta (
     key TEXT PRIMARY KEY,
