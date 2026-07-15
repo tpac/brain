@@ -85,6 +85,12 @@ class NodeDAL:
             "WHERE archived = 0 AND title IS NOT NULL AND title != ''"
         ).fetchall()
 
+    def created_rows(self) -> List[tuple]:
+        """[(id, created_at)] for live nodes — the LAF as_of node-mask
+        substrate (§20.11 read-side time travel)."""
+        return self.conn.execute(
+            'SELECT id, created_at FROM nodes WHERE archived = 0').fetchall()
+
     def project_rows(self) -> List[tuple]:
         """[(id, project)] for live nodes that carry a project — the LAF proj
         lane substrate. project is kv provenance (node_metadata_kv['project']);

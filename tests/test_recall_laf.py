@@ -9,6 +9,7 @@ champion-shaped. Skipped when no production DB is available.
 import os
 import sys
 import unittest
+from bisect import bisect_left
 
 import numpy as np
 
@@ -242,6 +243,163 @@ class TestProjLane(BrainTestBase):
         rows = dict(self.brain._nodes.project_rows())
         assert rows[aid] == 'kv-project'   # kv overrides column 'alpha'
         assert cid not in rows             # no project anywhere → absent
+
+
+class TestAsOfTimeTravel(BrainTestBase):
+    """as_of read-side time travel — the §20.11 test contract.
+
+    (a) as_of=None is the identical live path (inert by construction; the
+        pre-existing classes above pin its behavior), (b) as_of=now ≡ None
+        exactly, (c) a node/trace/role-row created after as_of contributes
+        nothing, (d) the walker cross-check runs offline (eval/laf/).
+    """
+
+    EARLY = '2026-01-01T00:00:00.000000+00:00'
+    MID = '2026-02-01T00:00:00.000000+00:00'
+    LATE = '2026-03-01T00:00:00.000000+00:00'
+    FUTURE = '2030-01-01T00:00:00.000000+00:00'
+
+    def _mk_node(self, title, content, created):
+        node = self.brain.remember(type='lesson', title=title, content=content)
+        self.brain._nodes.conn.execute(
+            'UPDATE nodes SET created_at=? WHERE id=?', (created, node['id']))
+        self.brain._nodes.conn.commit()
+        return node['id']
+
+    def _mk_trace(self, chain_id, created, vec, session='sess-asof',
+                  scale='s0', ref_type='user_message', ref_id='r'):
+        dal = self.brain._trace_dal
+        tid = 'asof-%s-%s' % (chain_id, created[:7])
+        dal.conn.execute(
+            'INSERT INTO trace_events (id, chain_id, scale, event_type,'
+            " ref_type, ref_id, summary, metadata, session_id, created_at)"
+            " VALUES (?, ?, ?, 'observation', ?, ?, 's', '{}', ?, ?)",
+            (tid, chain_id, scale, ref_type, ref_id, session, created))
+        if vec is not None:
+            dal.conn.execute(
+                'INSERT INTO trace_embeddings (trace_id, vector, model)'
+                ' VALUES (?, ?, ?)', (tid, vec.astype(np.float32).tobytes(),
+                                      'test'))
+        dal.conn.commit()
+        return tid
+
+    def _fresh_engine(self, qv):
+        """New engine with caches built over the CURRENT (backdated) rows."""
+        eng = LafV1Engine()
+        with eng._lock:
+            eng._refresh_matrices(self.brain, None)
+            nk = eng._refresh_titles(self.brain)
+            eng._refresh_projects(self.brain, node_key=nk)
+            eng._refresh_traces(self.brain)
+        return eng
+
+    def test_asof_now_equals_none_exactly(self):
+        # contract (b): a far-future as_of masks nothing → bit-identical output
+        import servers.embedder as embedder
+        for i, created in enumerate((self.EARLY, self.MID, self.LATE)):
+            self._mk_node('Caching decision variant %d spread_activation' % i,
+                          'Content about caching strategy %d.' % i, created)
+        qv = embedder.embed_query('caching strategy spread_activation')
+        eng = self._fresh_engine(qv)
+        live_map, live_tel = eng.scores(self.brain, 'caching strategy', qv)
+        asof_map, asof_tel = eng.scores(self.brain, 'caching strategy', qv,
+                                        as_of=self.FUTURE)
+        self.assertEqual(live_map, asof_map)
+        self.assertEqual(live_tel, asof_tel)
+
+    def test_asof_excludes_future_nodes(self):
+        # contract (c), node universe: created-after-as_of nodes are absent
+        # from the result; z-stats run over the masked universe only
+        import servers.embedder as embedder
+        early = self._mk_node('Early caching decision',
+                              'Cache aggressively at the edge.', self.EARLY)
+        late = self._mk_node('Late caching decision',
+                             'Cache conservatively at the origin.', self.LATE)
+        qv = embedder.embed_query('caching decision')
+        eng = self._fresh_engine(qv)
+        live_map, _ = eng.scores(self.brain, 'caching decision', qv)
+        self.assertIn(early, live_map)
+        self.assertIn(late, live_map)
+        asof_map, asof_tel = eng.scores(self.brain, 'caching decision', qv,
+                                        as_of=self.MID)
+        self.assertIn(early, asof_map)
+        self.assertNotIn(late, asof_map)
+        self.assertNotIn(late, asof_tel or {})
+        # nothing existed before EARLY → empty result, loud-and-empty not weird
+        self.assertEqual(eng.scores(self.brain, 'caching decision', qv,
+                                    as_of='2020-01-01T00:00:00+00:00'),
+                         ({}, None))
+
+    def test_asof_rejects_non_iso(self):
+        import servers.embedder as embedder
+        self._mk_node('Any node title here', 'Body.', self.EARLY)
+        qv = embedder.embed_query('any')
+        eng = self._fresh_engine(qv)
+        with self.assertRaises(ValueError):
+            eng.scores(self.brain, 'any', qv, as_of='last tuesday')
+
+    def test_asof_idf_df_time_travels(self):
+        # contract (c), idf lane: the df denominator counts only titles that
+        # existed at as_of — bisect_left (strictly-before), walker semantics
+        self._mk_node('zetatoken early note', 'Body one.', self.EARLY)
+        self._mk_node('zetatoken late note', 'Body two.', self.LATE)
+        self._mk_node('Unrelated filler title', 'Body three.', self.EARLY)
+        import servers.embedder as embedder
+        qv = embedder.embed_query('zetatoken')
+        eng = self._fresh_engine(qv)
+        n = eng._n
+        # at MID: one zetatoken title of two total early titles
+        self.assertEqual(
+            bisect_left(eng._token_created['zetatoken'], self.MID), 1)
+        self.assertEqual(bisect_left(eng._title_created, self.MID), 2)
+        # two-token query: idf_scores normalizes by the query's total idf
+        # mass, so a single-token query is always 1.0 — the df shift only
+        # shows in the RATIO between tokens
+        q = 'zetatoken filler'
+        vec_mid = eng._idf_asof(q, n, self.MID)
+        vec_live = eng._idf_asof(q, n, self.FUTURE)
+        row_early = next(i for i in range(n)
+                         if 'zetatoken' in eng._title_tok.get(i, frozenset())
+                         and 'early' in eng._title_tok.get(i, frozenset()))
+        # at MID both tokens have df=1/n=2 → the zeta-only title gets 0.5;
+        # live df(zeta)=2 vs df(filler)=1 over n=3 → a smaller share
+        self.assertAlmostEqual(float(vec_mid[row_early]), 0.5, places=9)
+        self.assertGreater(0.5, float(vec_live[row_early]))
+        # far-future as-of ≡ the live formula fed the live df
+        live = idf_scores(q, eng._title_tok, eng._title_df, n)
+        np.testing.assert_array_equal(vec_live, live)
+
+    def test_asof_masks_future_traces_and_roles(self):
+        # contract (c), trace universe: a trace created after as_of seeds no
+        # moment; a role row (surface pick) created after as_of joins nothing
+        # even when its moment is visible
+        import json
+        import servers.embedder as embedder
+        node = self._mk_node('Episodic target node about walruses',
+                             'Walrus habits.', self.EARLY)
+        qv = _unit(embedder.embed_query('walrus habits'))
+        # moment 1: trace LATE (masked at MID), surface row LATE
+        self._mk_trace('s0-deadbeef-3', self.LATE, qv)
+        self._mk_trace('s1r-deadbeef-3', self.LATE, None, scale='s1',
+                       ref_type='surface_selected',
+                       ref_id=json.dumps([node[:8]]))
+        # moment 2: trace EARLY (visible at MID), but its surface row was
+        # written LATE — the roles_for_moments door must drop it
+        self._mk_trace('s0-deadbeef-5', self.EARLY, qv)
+        self._mk_trace('s1r-deadbeef-5', self.LATE, None, scale='s1',
+                       ref_type='surface_selected',
+                       ref_id=json.dumps([node[:8]]))
+        eng = self._fresh_engine(qv)
+        cfg = eng.config(self.brain)
+        n = eng._n
+        row = eng._idx[node]
+        pick_live, _ = eng._episodic_vectors(self.brain, qv, cfg, n)
+        self.assertGreater(pick_live[row], 0.0)
+        _, trace_mask = eng._asof_masks(self.MID, n)
+        pick_asof, enc_asof = eng._episodic_vectors(
+            self.brain, qv, cfg, n, as_of=self.MID, trace_mask=trace_mask)
+        self.assertEqual(float(pick_asof[row]), 0.0)
+        self.assertEqual(float(enc_asof.sum()), 0.0)
 
 
 @unittest.skipUnless(

@@ -43,13 +43,27 @@ is invisible to the field; under the flag it is reachable only via the champion'
 keyword fallback (which still runs), not the FTS5 stem net (gated off). The class is
 narrow and transient (vector backfill closes it); lexical returns via the P4 gate.
 
+AS_OF (§20.11 read-side time travel): scores(..., as_of=<ISO ts>) scores the
+query against corpus state at that instant — masks, not copies. Caches stay
+current-state supersets; as_of builds per-call boolean row masks from two
+creation-date arrays (node rows / trace rows). The node mask applies ONCE, in
+the z-score registry loop, so every node-indexed lane — including future ones —
+inherits time travel for free; the trace mask applies at the shared episodic
+door (roles_for_moments) plus the moment-similarity line. as_of=None builds no
+masks and is the identical code path (inert by construction, pinned by tests).
+
 Caches (daemon-resident, staleness-checked per call, lock-guarded):
   field matrices  growable [N×768] per view — INCREMENTAL rowid-watermark upserts via
                   VectorDAL.vectors_since; full rebuild only on deletion (count shrink)
+  node created    row-aligned created_at array (the as_of node-mask ingredient)
   title idf       full rebuild, but only when nodes' change_key moved AND a TTL expired
+                  (+ per-token sorted creation timestamps — the walker's as-of df
+                  invention moved into the cache)
   trace matrix    block list (no per-append copy), incremental by created_at
+                  (+ parallel created_at list — the as_of trace-mask ingredient)
   config          TTL-cached K-store overlay
 """
+import bisect
 import math
 import re
 import threading
@@ -166,13 +180,19 @@ def idf_scores(query, title_tok, title_df, n, n_titles=None):
     return vec
 
 
-def roles_for_moments(brain, moments, window_turns, pull_limit):
+def roles_for_moments(brain, moments, window_turns, pull_limit, as_of=None):
     """(session, short, stop)-keyed similar-moment scores → per-moment role records.
 
     THE shared episodic role-join (production engine AND eval/laf/episodic_ops.py
     consume this, so the measured join semantics are the shipped ones): per session,
     gather the surface/encode/recall streams once, join by stop via nodes_for_traces,
     union roles across the ±window stops, picked-wins-over-dropped within a moment.
+
+    as_of (§20.11 #5, the shared episodic-door chokepoint): ISO timestamp —
+    stream rows created after it are dropped BEFORE the join, so surface picks
+    / encode deltas / candidate pools from the future contribute no roles.
+    None = live, no filtering (the identical path). Rows missing created_at
+    stay visible (the always-visible convention; live rows all carry one).
 
     moments: {(session_id, short, stop): score}
     Returns [{'score', 'picked', 'encoded', 'dropped'}] — sets of node ids.
@@ -185,6 +205,9 @@ def roles_for_moments(brain, moments, window_turns, pull_limit):
     for sess, moms in by_sess.items():
         st = gather(brain, sess, streams=('surface', 'encode', 'recall'),
                     limit=pull_limit)
+        if as_of is not None:
+            st = {k: [r for r in v if (r.get('created_at') or '') <= as_of]
+                  for k, v in st.items()}
         targets = [{'id': '%d@%d' % (mi, ws), 'chain_id': 's0-%s-%d' % (short, ws)}
                    for mi, (short, stop, _s) in enumerate(moms)
                    for ws in range(max(stop - w, 0), stop + w + 1)]
@@ -224,9 +247,14 @@ class LafV1Engine:
         self._dim = 768
         self._vec_key = None         # VectorDAL.change_key() at last sync
         self._vec_watermark = 0      # max node_enrichments rowid ingested
+        # node creation timestamps — row-aligned ISO strings ('' = unknown,
+        # compares ≤ everything → always visible). The as_of node-mask source.
+        self._created = np.full(0, '', dtype='<U40')
         # title idf
         self._title_tok = {}         # row → frozenset(title tokens)
         self._title_df = {}          # token → doc frequency over titles
+        self._token_created = {}     # token → SORTED [created_at] (as-of df)
+        self._title_created = []     # SORTED [created_at] of titled rows (as-of n_titles)
         self._titles_key = None
         self._titles_ts = 0.0
         # project provenance (proj lane) — row-keyed parallel arrays for the
@@ -238,6 +266,8 @@ class LafV1Engine:
         # trace matrix — block list, no per-append copy
         self._tr_blocks = []         # [ndarray [k×768]]
         self._tr_meta = []           # [(chain_id, session_id)] aligned to blocks' rows
+        self._tr_created = []        # [created_at] aligned to _tr_meta (as_of trace mask)
+        self._tr_created_arr = np.full(0, '', dtype='<U40')   # lazy np mirror
         self._tr_last = ''           # max created_at ingested
         # config overlay
         self._cfg = None
@@ -273,6 +303,9 @@ class LafV1Engine:
             grown = np.full((new_cap, self._dim), np.nan, dtype=np.float32)
             grown[:self._n] = m[:self._n]
             self._mats[vt] = grown
+        grown_c = np.full(new_cap, '', dtype='<U40')
+        grown_c[:self._n] = self._created[:self._n]
+        self._created = grown_c
         self._cap = new_cap
 
     def _row_for(self, node_id):
@@ -317,8 +350,15 @@ class LafV1Engine:
             for nid, v in gv[vt].items():
                 m[self._idx[nid]] = v
             self._mats[vt] = m
+        # node creation timestamps, row-aligned (the as_of node-mask source)
+        created = dict(brain._nodes.created_rows())
+        self._created = np.full(self._cap, '', dtype='<U40')
+        for nid, i in self._idx.items():
+            self._created[i] = created.get(nid) or ''
         # titles are row-keyed — force a rebuild against the new row space
+        # (the as-of title structures rebuild with them)
         self._title_tok, self._titles_key, self._titles_ts = {}, None, 0.0
+        self._token_created, self._title_created = {}, []
         # proj arrays are row-keyed too — same forced rebuild, or a reindexed
         # row space serves WRONG-node project labels (rows shift when a node
         # drops out of master, and the nodes/kv change keys can't see that)
@@ -335,6 +375,7 @@ class LafV1Engine:
             # deletions, so rebuild from scratch (rare: revise/archive cleanup)
             self._full_matrix_build(brain, model)
         else:
+            n_before = self._n
             for rowid, nid, vt, blob in brain._vec_dal.vectors_since(
                     self._vec_watermark, vector_types=_ALL_VIEWS,
                     model=model or None):
@@ -342,6 +383,12 @@ class LafV1Engine:
                 if uv is None or vt not in self._mats:
                     continue
                 self._mats[vt][self._row_for(nid)] = uv
+            if self._n > n_before:
+                # backfill created_at for the appended rows (one bulk read;
+                # only fires when the refresh actually added nodes)
+                created = dict(brain._nodes.created_rows())
+                for i in range(n_before, self._n):
+                    self._created[i] = created.get(self._master[i]) or ''
         self._vec_key = key
         self._vec_watermark = key[1]
 
@@ -357,6 +404,7 @@ class LafV1Engine:
             self._titles_ts = now
             return key
         tok, df = {}, defaultdict(int)
+        tok_created, all_created = defaultdict(list), []
         for nid, title in brain._nodes.title_rows():
             i = self._idx.get(nid)
             if i is None:
@@ -365,7 +413,20 @@ class LafV1Engine:
             tok[i] = ts
             for t in ts:
                 df[t] += 1
+            # as-of df substrate: per-token creation timestamps (walker's
+            # invention, §20.11 #2). Unknown created_at ('') sorts before
+            # every ISO string, so it counts at ANY as_of — same
+            # always-visible convention as the node mask, and it keeps
+            # as_of=now ≡ live df exactly.
+            c = str(self._created[i])
+            all_created.append(c)
+            for t in ts:
+                tok_created[t].append(c)
+        all_created.sort()
+        for lst in tok_created.values():
+            lst.sort()
         self._title_tok, self._title_df = tok, dict(df)
+        self._token_created, self._title_created = dict(tok_created), all_created
         self._titles_key, self._titles_ts = key, now
         return key
 
@@ -401,13 +462,14 @@ class LafV1Engine:
             since=self._tr_last or None)
         if not rows:
             return
-        meta, vecs, last = [], [], self._tr_last
+        meta, vecs, created, last = [], [], [], self._tr_last
         for chain_id, session_id, created_at, blob in rows:
             uv = _unit(blob)
             if uv is None:
                 continue
             meta.append((chain_id, session_id))
             vecs.append(uv)
+            created.append(created_at or '')
             if created_at > last:
                 last = created_at
         self._tr_last = last
@@ -415,11 +477,39 @@ class LafV1Engine:
             return
         self._tr_blocks.append(np.stack(vecs))
         self._tr_meta.extend(meta)
+        self._tr_created.extend(created)
         if len(self._tr_blocks) > TRACE_BLOCK_CONSOLIDATE:
             self._tr_blocks = [np.vstack(self._tr_blocks)]   # one copy, occasional
 
+    # ── as_of masks: the §20.11 chokepoints' shared builder ──
+    def _asof_masks(self, as_of, n):
+        """(node_mask[n], trace_mask[T]) — True = existed at as_of
+        (created_at ≤ as_of, string-lexicographic over the brain's uniform
+        ISO shape). Masks over current-state caches, never copies. Unknown
+        created_at ('') compares ≤ everything → always visible (benign:
+        every row carries one)."""
+        node_mask = self._created[:n] <= as_of
+        if len(self._tr_created_arr) != len(self._tr_created):
+            self._tr_created_arr = np.asarray(self._tr_created, dtype='<U40')
+        return node_mask, self._tr_created_arr <= as_of
+
+    # ── as-of idf: df + n_titles at corpus-state as_of ──
+    def _idf_asof(self, query, n, as_of):
+        """idf lane with the df denominator time-travelled: per-token df and
+        n_titles via bisect over sorted creation timestamps — the walker's
+        exact semantics (eval/laf/walker/scores.py asof_tok_df: bisect_left,
+        strictly-before), so engine-as_of and walker rows cross-check
+        row-level. Same pure idf_scores formula; only the corpus counts move."""
+        q_tokens = {t for t in _IDF_TOK.findall(query.lower())
+                    if len(t) >= 2 and t not in _TITLE_BOOST_STOPWORDS}
+        df = {t: bisect.bisect_left(self._token_created[t], as_of)
+              for t in q_tokens if t in self._token_created}
+        n_titles = bisect.bisect_left(self._title_created, as_of)
+        return idf_scores(query, self._title_tok, df, n,
+                          n_titles=max(n_titles, 1))
+
     # ── episodic field (shared join semantics via roles_for_moments) ──
-    def _episodic_vectors(self, brain, qv, cfg, n):
+    def _episodic_vectors(self, brain, qv, cfg, n, as_of=None, trace_mask=None):
         """(pick, enc) [n] activation vectors from similar past surface-moments.
 
         Full-history block scan (no newest-500 cap), top `top_moments`
@@ -431,6 +521,10 @@ class LafV1Engine:
         if not self._tr_blocks:
             return pick, enc
         sims = np.concatenate([b @ qv for b in self._tr_blocks])
+        if trace_mask is not None:
+            # the moment-similarity chokepoint (§20.11 #4): traces created
+            # after as_of can never seed a moment
+            sims = np.where(trace_mask, sims, -np.inf)
         want = int(cfg['top_moments'])
         moments = {}                          # (session, short, stop) → score
         for i in np.argsort(-sims)[:want * 3]:
@@ -447,7 +541,7 @@ class LafV1Engine:
             if len(moments) >= want:
                 break
         records = roles_for_moments(brain, moments, cfg['window_turns'],
-                                    cfg['session_trace_pull'])
+                                    cfg['session_trace_pull'], as_of=as_of)
         for r in records:
             s = r['score']
             for node in r['picked']:
@@ -483,7 +577,8 @@ class LafV1Engine:
         return vec
 
     # ── the field registry: name → per-node raw activation [n] ──
-    def _fields(self, brain, query, qv, cfg, n, session_project=None):
+    def _fields(self, brain, query, qv, cfg, n, session_project=None,
+                as_of=None, trace_mask=None):
         """Adding a lane = one entry here + a 'gain_<name>' DEFAULT_CONFIG key.
         Every vector is z-scored by the caller — return RAW activations.
 
@@ -496,12 +591,14 @@ class LafV1Engine:
             maxsim = np.nanmax(
                 np.stack([self._mats[vt][:n] @ qv for vt in MAXSIM_VIEWS]), axis=0)
         sit_raw = self._mats['_situation'][:n] @ qv
-        pick, enc = self._episodic_vectors(brain, qv, cfg, n)
+        pick, enc = self._episodic_vectors(brain, qv, cfg, n,
+                                           as_of=as_of, trace_mask=trace_mask)
         return {
             'maxsim': maxsim,
             'pick': pick,
             'enc': enc,
-            'idf': idf_scores(query, self._title_tok, self._title_df, n),
+            'idf': (idf_scores(query, self._title_tok, self._title_df, n)
+                    if as_of is None else self._idf_asof(query, n, as_of)),
             # NaN (no _situation vector) stays NaN: _zscore's isfinite mask
             # excludes it from the stats and scores it 0 — absence is neutral,
             # same semantics as maxsim's nanmax. Zero-filling here scored a
@@ -513,7 +610,8 @@ class LafV1Engine:
         }
 
     # ── the scorer ──
-    def scores(self, brain, query, query_vec, model=None, session_project=None):
+    def scores(self, brain, query, query_vec, model=None, session_project=None,
+               as_of=None):
         """({node_id: score01}, telemetry) over every node with ≥1 embedding view.
 
         score01 is a monotonic sigmoid of the z-scored gain-weighted field sum,
@@ -523,10 +621,24 @@ class LafV1Engine:
 
         session_project: the calling session's derived project (ctx.project) —
         the query-side source for the proj lane. None/'' → lane inert.
+
+        as_of: ISO-8601 UTC timestamp (the brain's iso_now shape) — score
+        against corpus state at that instant (§20.11 read-side time travel):
+        nodes/traces created after it contribute nothing, z-stats run over the
+        masked universe, and masked nodes are absent from the result. None
+        (default) builds no masks — the identical live path. scores() is
+        read-only by construction, so replay needs no side-effect suppression.
         """
         qv = _unit(query_vec)
         if qv is None or not MAXSIM_VIEWS:
             return {}, None
+        if as_of is not None:
+            as_of = str(as_of)
+            if 'T' not in as_of:
+                # lexicographic masks silently corrupt on a non-ISO shape —
+                # refuse loudly instead
+                raise ValueError('as_of must be an ISO-8601 timestamp, got %r'
+                                 % as_of)
         cfg = self.config(brain)
         with self._lock:
             self._refresh_matrices(brain, model)
@@ -538,9 +650,18 @@ class LafV1Engine:
             n = self._n
             if n == 0:
                 return {}, None
+            node_mask = trace_mask = None
+            if as_of is not None:
+                node_mask, trace_mask = self._asof_masks(as_of, n)
+                if not node_mask.any():
+                    return {}, None
             fields = self._fields(brain, query, qv, cfg, n,
-                                  session_project=session_project)
-            zf = {name: _zscore(vec, n) for name, vec in fields.items()}
+                                  session_project=session_project,
+                                  as_of=as_of, trace_mask=trace_mask)
+            # THE node-mask chokepoint (§20.11 #1/#6): one masked z-score
+            # loop covers every node-indexed lane, including future ones
+            zf = {name: _zscore(vec, n, mask=node_mask)
+                  for name, vec in fields.items()}
             zsum = np.zeros(n)
             for name, z in zf.items():
                 zsum = zsum + float(cfg['gain_' + name]) * z
@@ -549,9 +670,15 @@ class LafV1Engine:
                 # out-of-contract vector — refuse to ship it; the caller's
                 # try/except falls back to champion and logs the error
                 raise ValueError('laf_v1 produced non-finite scores')
-            score_map = {nid: float(s01[i])
-                         for i, nid in enumerate(self._master[:n])}
-            top = np.argsort(-s01)[:int(cfg['telemetry_top_n'])]
+            if node_mask is None:
+                score_map = {nid: float(s01[i])
+                             for i, nid in enumerate(self._master[:n])}
+                top = np.argsort(-s01)[:int(cfg['telemetry_top_n'])]
+            else:
+                score_map = {self._master[i]: float(s01[i])
+                             for i in np.flatnonzero(node_mask)}
+                top = [i for i in np.argsort(-np.where(node_mask, s01, -np.inf))
+                       [:int(cfg['telemetry_top_n'])] if node_mask[i]]
             telemetry = {self._master[i]: {name: round(float(z[i]), 3)
                                            for name, z in zf.items()}
                          for i in top}
