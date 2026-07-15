@@ -59,9 +59,10 @@ CREATE TABLE IF NOT EXISTS turns (
     project TEXT,
     flags TEXT,                 -- JSON list (see extract.py taxonomy): 'untraced_legacy' (O row,
                                 -- s0 never recorded — pre-2026-06-08; op_text is the 500-char O
-                                -- query), 'superseded' (a later turn shares this stop — Stop never
-                                -- fired: steering/interrupt/notification), 'text_disagree'
-                                -- (structurally paired s0, op/query mismatch — never labeled),
+                                -- query), 'superseded' (shares its stop and is NOT the survivor —
+                                -- the turn holding the response; steering/interrupt/notification;
+                                -- no_recall turns never flagged), 'text_disagree' (structurally
+                                -- paired s0, op/query mismatch — never labeled),
                                 -- 'no_recall' (s0 turn, no O row — register_only or hook miss)
     PRIMARY KEY (session_id, epoch, seq)
 );
