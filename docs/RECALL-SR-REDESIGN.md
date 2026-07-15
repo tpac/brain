@@ -1840,3 +1840,14 @@ found (2024–2026 sweep: Mem0/Letta/Zep/HippoRAG2/A-MEM all stateless per-query
 Architectures (2601.09913) is a position paper CALLING for exactly this with no equations — a recognized
 gap. Closest running system: Synapse (stateless per-query F_e analog). Read those two first when
 implementing.
+
+**A6 — walker v4 data shapes (relabel shipped 2026-07-14, d786f01; taxonomy: brain node 9adc8127).**
+No DDL change — turns/candidates/cand_turn_scores columns identical; only VALUES moved. The sweep
+inherits: (1) flag vocabulary is now `untraced_legacy` (627 — pre-06-08 s0 loss, op_text = O query;
+`interrupted` no longer exists), `superseded` (847, 13.2% — a later turn shares the stop; steering/
+interrupt/notification, live signal — moment-stack builders decide whether M(t) includes them),
+`text_disagree` (69 structurally-paired turns kept as context, never labeled), `no_recall` (575).
+(2) Labeled set: 4,478 (38 text_disagree exclusions, ledger-counted; was 4,495). (3) assistant_message
+now attaches to the LAST s0 of its stop — the §20.9 first-s0 mis-attach is FIXED, anchor lanes at j≥1
+score the response that actually followed. (4) op_vec_source value `local_interrupted` →
+`local_untraced`. Rebuild GREEN 6/6, 809,466 score rows; fresh walker.db copied to the main tree.
