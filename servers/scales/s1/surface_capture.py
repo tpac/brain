@@ -85,7 +85,8 @@ def capture_dir(brain=None):
 def begin(brain, *, candidates_data, user_message, recent_messages,
           recently_surfaced, retrieval_stats, frame, layout,
           surface_instructions, interaction_version, interaction_id,
-          user_content, max_tokens, variant, model, session_id):
+          user_content, max_tokens, variant, model, session_id,
+          shuffle_seed=None):
     """Snapshot everything known at the Haiku call boundary.
 
     Called from _call_surface BEFORE the agentic loop runs — candidates_data
@@ -117,6 +118,10 @@ def begin(brain, *, candidates_data, user_message, recent_messages,
                 'retrieval_stats': retrieval_stats,
                 'frame': frame,
                 'candidates_pre_tools': copy.deepcopy(candidates_data),
+                # Presentation-shuffle seed (§20.12 A2): re-rendering must
+                # pass this back to build_surface_prompt or the candidate
+                # order won't byte-match. None on pre-shuffle captures.
+                'shuffle_seed': shuffle_seed,
             },
             'rendered': {
                 'system': surface_instructions,

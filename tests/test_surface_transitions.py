@@ -748,3 +748,126 @@ class TestSelectedIdRecovery(BrainTestBase):
         warns = self._warnings('surface_unknown_selected_id')
         self.assertTrue(warns, 'unknown selected id was dropped silently')
         self.assertIn('zzzz 9999', warns[-1]['message'])
+
+
+class TestPresentationShuffle(unittest.TestCase):
+    """§20.12 A2 (2026-07-14) — the candidate menu Haiku sees is a seeded
+    shuffle of the scorer's ranking. These pin the contract: presentation
+    order shuffles, scorer order (traces, caller's list) never does."""
+
+    @staticmethod
+    def _cands(n=12):
+        return [{'id': ('%02x' % i) * 16, 'title': 'node %d' % i,
+                 'type': 'fact', 'content': 'content %d' % i,
+                 'score': 1.0 - i * 0.01,
+                 'created_at': '2026-07-01T00:00:00+00:00'}
+                for i in range(n)]
+
+    def test_seeded_shuffle_deterministic_membership_preserved(self):
+        from servers.scales.s1.surface_contract import (
+            prepare_presented_candidates)
+        cands = self._cands()
+        a = prepare_presented_candidates(cands, shuffle_seed=42)
+        b = prepare_presented_candidates(cands, shuffle_seed=42)
+        plain = prepare_presented_candidates(cands, shuffle_seed=None)
+        self.assertEqual([c['id'] for c in a], [c['id'] for c in b],
+                         'same seed must reproduce the same order')
+        self.assertEqual({c['id'] for c in a}, {c['id'] for c in plain},
+                         'shuffle must not change top-N membership')
+        self.assertNotEqual([c['id'] for c in a], [c['id'] for c in plain],
+                            'seed 42 must actually permute 12 candidates')
+
+    def test_none_seed_preserves_scorer_order(self):
+        from servers.scales.s1.surface_contract import (
+            prepare_presented_candidates)
+        cands = self._cands()
+        out = prepare_presented_candidates(cands, shuffle_seed=None)
+        self.assertEqual([c['id'] for c in out], [c['id'] for c in cands])
+
+    def test_caller_list_never_reordered(self):
+        """candidates_data is the trace/mapping substrate — prepare must
+        work on a copy, never mutate the caller's scorer-ordered list."""
+        from servers.scales.s1.surface_contract import (
+            prepare_presented_candidates)
+        cands = self._cands()
+        before = [c['id'] for c in cands]
+        prepare_presented_candidates(cands, shuffle_seed=42)
+        self.assertEqual([c['id'] for c in cands], before)
+
+    def test_xml_prompt_renders_presented_order(self):
+        """build_surface_prompt(shuffle_seed) must render candidate id
+        attributes in exactly prepare_presented_candidates' order — the
+        presented_order recorded in the K trace IS what Haiku saw."""
+        import re
+        from servers.scales.s1.surface_contract import (
+            build_surface_prompt, prepare_presented_candidates)
+        cands = self._cands()
+        expected = [c['id'][:8] for c in
+                    prepare_presented_candidates(cands, shuffle_seed=7)]
+        prompt, _ = build_surface_prompt(
+            cands, 'a question', layout='xml_v13', shuffle_seed=7)
+        rendered = re.findall(r'<candidate id="([0-9a-f]{8})"', prompt)
+        self.assertEqual(rendered, expected)
+
+    def test_turn_seed_stable_and_message_sensitive(self):
+        from servers.scales.s1.surface_contract import (
+            presentation_shuffle_seed)
+        s1 = presentation_shuffle_seed('sess-a', 'hello')
+        s2 = presentation_shuffle_seed('sess-a', 'hello')
+        s3 = presentation_shuffle_seed('sess-a', 'other message')
+        self.assertEqual(s1, s2, 'seed must be deterministic per turn')
+        self.assertNotEqual(s1, s3)
+
+
+class TestShuffleTraceRecord(BrainTestBase):
+    """The K trace must carry shuffle_seed + presented_order (the exact
+    menu Haiku saw) while the O trace keeps scorer order — the join that
+    makes picked/dropped rows propensity-exact for the LAF P3 fit."""
+
+    needs_embedder = False
+
+    def test_run_surface_writes_presented_order_to_k_trace(self):
+        from servers.scales.s1 import surface as surface_mod
+        from servers.scales.s1.surface_contract import surface_selected_path
+
+        node = self.brain.remember(type='test', title='shuf_node', content='c',
+                                   auto_connect=False,
+                                   encoding_source='anchor:test')
+        session_id = 'test-surface-shuffle'
+        ctx = self.brain.get_or_create_session(session_id)
+        candidates_data = [
+            {'id': node['id'], 'title': 'shuf_node', 'type': 'test',
+             'score': 0.9}]
+
+        # Fake _call_surface that stashes the presentation record the way
+        # the real one does (the stash, not the call, is under test here).
+        def _fake_call_surface(brain, cands, user_message, recent_messages,
+                               sid, result, frame=''):
+            brain._surface_presented = {
+                sid: {'shuffle_seed': 12345,
+                      'presented_order': [node['id'][:8]]}}
+            return ({'selected': [{'id': node['id'][:8], 'why': 'r'}]},
+                    'prompt', 100, None,
+                    {'input_tokens': 10, 'output_tokens': 5,
+                     'cache_read_tokens': 0, 'cache_creation_tokens': 0,
+                     'elapsed_ms': 5, 'rounds': 1, 'truncated': 0})
+
+        orig = surface_mod._call_surface
+        surface_mod._call_surface = _fake_call_surface
+        path = surface_selected_path(session_id, ctx.stop_counter)
+        try:
+            surface_mod.run_surface(
+                self.brain, ctx, candidates_data, 'user msg', [], {},
+                'enriched query', [], 'test-shuf-ref', session_id, None,
+                query_vec=None)
+            evts = self.brain._trace_dal.get_by_ref_type(
+                'surface_selected', scale='s1', hours=None,
+                session_id=session_id)
+            self.assertTrue(evts, 'no surface_selected K trace written')
+            meta = evts[0]['metadata']
+            self.assertEqual(meta.get('shuffle_seed'), 12345)
+            self.assertEqual(meta.get('presented_order'), [node['id'][:8]])
+        finally:
+            surface_mod._call_surface = orig
+            if os.path.exists(path):
+                os.remove(path)

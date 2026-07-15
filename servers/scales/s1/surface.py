@@ -77,7 +77,8 @@ def _call_surface(brain, candidates_data, user_message,
         the active version pointer (must be activated separately).
     """
     from servers.scales.s1.surface_contract import (
-        build_surface_prompt, SURFACE_MODEL)
+        build_surface_prompt, prepare_presented_candidates,
+        presentation_shuffle_seed, SURFACE_MODEL)
 
     # Recently surfaced (for dedup)
     recently_surfaced = []
@@ -111,13 +112,31 @@ def _call_surface(brain, candidates_data, user_message,
         brain._log_error('surface_layout_config', _cfg_err,
                          'reading layout from surface interaction config')
 
+    # Presentation shuffle (2026-07-14, RECALL-SR-REDESIGN.md §20.12 A2):
+    # the menu Haiku sees is a deterministic per-turn shuffle of the
+    # scorer's ranking — position bias dies at the source, and picked/
+    # dropped trace rows become uniform-propensity P3 training data.
+    # candidates_data itself is NEVER reordered: traces (cand_detail),
+    # short_to_full, and the admission floor all keep scorer order.
+    # presented_order (the exact round-1 menu, pre-tool-fetches) is stashed
+    # per-session for the K trace — same pattern as _surface_tool_traces.
+    shuffle_seed = presentation_shuffle_seed(session_id, user_message)
+    presented_order = [
+        str(c.get('id', ''))[:8]
+        for c in prepare_presented_candidates(candidates_data, shuffle_seed)]
+    if not hasattr(brain, '_surface_presented'):
+        brain._surface_presented = {}
+    brain._surface_presented[session_id] = {
+        'shuffle_seed': shuffle_seed, 'presented_order': presented_order}
+
     user_content, max_tokens = build_surface_prompt(
         candidates_data, user_message,
         recent_messages=recent_messages,
         recently_recalled=recently_surfaced,
         retrieval_stats=retrieval_stats,
         frame=frame,
-        layout=layout)
+        layout=layout,
+        shuffle_seed=shuffle_seed)
 
     surface_prompt = (surface_instructions + "\n\n---\n\n" + user_content) \
         if surface_instructions else user_content
@@ -134,6 +153,7 @@ def _call_surface(brain, candidates_data, user_message,
         brain, candidates_data=candidates_data, user_message=user_message,
         recent_messages=recent_messages, recently_surfaced=recently_surfaced,
         retrieval_stats=retrieval_stats, frame=frame, layout=layout,
+        shuffle_seed=shuffle_seed,
         surface_instructions=surface_instructions,
         interaction_version=surface_interaction.get('version'),
         interaction_id=interaction_id, user_content=user_content,
@@ -797,6 +817,11 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
         # _call_surface_agentic on the brain instance so we don't change the
         # run_surface signature.
         'tool_trace': (getattr(brain, '_surface_tool_traces', {}) or {}).get(session_id) or [],
+        # Presentation shuffle record (§20.12 A2): shuffle_seed + the exact
+        # round-1 menu order Haiku saw (presented_order, 8-char ids).
+        # cand_detail in the O trace stays scorer-ordered — propensity
+        # analysis joins picked/dropped against presented_order.
+        **((getattr(brain, '_surface_presented', {}) or {}).get(session_id) or {}),
         'surface_variant': os.environ.get('BRAIN_SURFACE_VARIANT', 'v4'),
         # telemetry is already a complete build_run_telemetry dict from both
         # surface paths; spread it flat (fallback to the all-zero block on None).

@@ -1813,7 +1813,11 @@ top-third 6.25% vs bottom-third 5.27% — 1.19× pure-bias gradient, far inside 
 (the raw 7× position curve is almost entirely relevance). CAVEAT: ties cluster in the low-score region —
 bias is measured mainly where relevance is weak. TEST: ship the Haiku candidate-order SHUFFLE (surface
 lane, 2-line change — kills residual bias at source AND makes future logs randomization-grade); compare
-P3 fits with/without IPS on shuffled-era data. IPS recipe on file if needed: regression-EM propensities
+P3 fits with/without IPS on shuffled-era data. **SHUFFLED ERA BEGINS 2026-07-14** (shipped: seeded
+per-turn shuffle in `build_surface_prompt`, seed = sha256(session_id|user_message); K trace carries
+`shuffle_seed` + `presented_order`, O-trace cand_detail / rank_in_pool stay scorer-ordered; surface
+prompt v15 drops "ordered by retrieval strength"). Pre-2026-07-14 rows keep the mild-bias caveat;
+post-shuffle rows are propensity-exact. IPS recipe on file if needed: regression-EM propensities
 (Wang 2018) or harvested cross-scorer-version swaps (Agarwal 2019), pair weight min(1/θ, 10),
 self-normalized (Joachims 2017; Unbiased LambdaMART for the negative side).
 
