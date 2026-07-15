@@ -31,7 +31,9 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import open_walker, open_brain_ro, lane_columns, check_lane_schema
+from walker_db import (open_walker, open_brain_ro, lane_columns,
+                       check_lane_schema, scores_table_ddl, lanes_version,
+                       EXTRACT_VERSION as EXPECTED_EXTRACT_VERSION)
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -40,7 +42,10 @@ from servers.recall_laf import _unit, idf_scores, MAXSIM_VIEWS  # noqa: E402
 
 K_MAX = 8
 TEXT_CAP = 500                  # trace-embedding recipe cap — keep idf consistent
-LANES_VERSION = 'v2-16lane-qvec-j0'
+# Version stamp is DERIVED from the production view list (walker_db) — a config
+# retune changes the stamp mechanically and the mismatch gate below demands
+# --rebuild; no human has to remember to bump anything.
+LANES_VERSION = lanes_version(MAXSIM_VIEWS)
 VIEWS = list(MAXSIM_VIEWS) + ['_situation']   # 6 maxsim views + sit
 LANE_COLS = lane_columns(MAXSIM_VIEWS)        # single-sourced (walker_db)
 
@@ -105,10 +110,21 @@ def asof_tok_df(cand_ids, node_tokens, token_created, all_created, turn_ts):
 def main():
     rebuild = '--rebuild' in sys.argv
     walker = open_walker()
-    check_lane_schema(walker, MAXSIM_VIEWS)   # loud on DDL/views drift (review)
+    # phase-consistency stamp: refuse a turns table built by a different
+    # extract than this code expects (wrong-science hardening — the artifact
+    # must prove its provenance, or the sweep measures the wrong thing)
+    ev = walker.execute(
+        "SELECT value FROM build_meta WHERE key='extract_version'").fetchone()
+    if not ev or ev[0] != EXPECTED_EXTRACT_VERSION:
+        raise SystemExit(
+            'walker.db extract_version=%s but scores expects %s — rebuild the '
+            'walker (extract.py, then embed.py) before scoring.'
+            % (ev[0] if ev else 'MISSING (pre-stamp build)', EXPECTED_EXTRACT_VERSION))
     if rebuild:
-        walker.execute('DELETE FROM cand_turn_scores')
+        walker.execute('DROP TABLE IF EXISTS cand_turn_scores')
         walker.commit()
+    walker.executescript(scores_table_ddl(MAXSIM_VIEWS))
+    check_lane_schema(walker, MAXSIM_VIEWS)   # unreachable-by-design assert
 
     # turns: (sess, epoch) -> seq -> (op_vec, anchor_vec, op_text, anchor_text, q_vec)
     # op/anchor vecs are DOCUMENT-side (the j>=1 moment context, = live trace

@@ -21,7 +21,7 @@ import json
 import sys
 from pathlib import Path
 
-from walker_db import open_walker, open_logs_ro
+from walker_db import open_walker, open_logs_ro, EMBED_VERSION
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -115,7 +115,8 @@ def main():
         "SELECT count(*) FROM turns WHERE op_vec IS NULL").fetchone()[0]
     walker.executemany(
         "INSERT OR REPLACE INTO build_meta (key, value) VALUES (?,?)",
-        [('embed_' + k, str(v)) for k, v in sorted(c.items())])
+        [('embed_' + k, str(v)) for k, v in sorted(c.items())]
+        + [('embed_version', EMBED_VERSION)])
     walker.commit()
     walker.close()
     logs.close()

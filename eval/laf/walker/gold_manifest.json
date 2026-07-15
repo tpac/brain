@@ -5,6 +5,10 @@
     "window_hours": 6,
     "prefix_chars": 100
   },
+  "source_hashes": {
+    "frozen_gold_24.json": "d4337dd52628a512",
+    "moments.json": "74b51698497c50d1"
+  },
   "cues": [
     {
       "cue_id": "anchor_turn_0087",
