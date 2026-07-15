@@ -1793,6 +1793,13 @@ live-only, 54c2e6e0); deleted nodes are absent. All minor, all already carried a
 as_of=None; (c) exclusion correctness (a node/trace created after as_of contributes nothing);
 (d) the walker cross-check — row-level agreement on content lanes across ~4.5k turns.
 
+**Status (2026-07-15):** SHIPPED — (a)–(c) in tests/test_recall_laf.py (TestAsOfTimeTravel), engine
+e335b89. (d) RUN, verdict **AGREE** (eval/laf/walker/cross_check.py → cross_check.md): 105,776 j=0
+rows × 8 lanes, cosine/sit median |Δ| 5.96e-08; the only out-of-tolerance rows sit on 2 nodes revised
+after the walker build (provably excused, listed in the report), idf median |Δ| = 0 with the tail
+explained by corpus churn. The 434 archived-since-build candidate nodes (3,560 rows) are counted in
+the report — §20.3's since-archived pre-fit tally, now measured.
+
 ### 20.12 Priors & borrowed machinery — ASSUMPTIONS REGISTER (Tom 2026-07-14: "all assumptions worth noting and testing")
 
 Every entry is an assumption with a named test — none is trusted, none constrains the locked grid.
