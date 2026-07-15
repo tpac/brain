@@ -97,7 +97,7 @@ fi
 # 3. Standard Claude Code plugin data location ($CLAUDE_PLUGIN_DATA is set
 #    by Claude Code per-plugin and survives plugin updates — the documented
 #    convention for plugin-owned runtime state).
-if [ -z "$DB_DIR" ] && [ -n "$CLAUDE_PLUGIN_DATA" ] && [ -f "$CLAUDE_PLUGIN_DATA/brain/brain.db" ]; then
+if [ -z "$DB_DIR" ] && [ -n "${CLAUDE_PLUGIN_DATA:-}" ] && [ -f "$CLAUDE_PLUGIN_DATA/brain/brain.db" ]; then
   DB_DIR="$CLAUDE_PLUGIN_DATA/brain"
 fi
 
@@ -121,7 +121,10 @@ if [ -z "$DB_DIR" ]; then
 fi
 
 # 5. Standard first-run: create at $CLAUDE_PLUGIN_DATA/brain
-if [ -z "$DB_DIR" ] && [ -n "$CLAUDE_PLUGIN_DATA" ]; then
+# ${:-} guards (here and step 3): CLAUDE_PLUGIN_DATA exists only in hook
+# executions — this file is also sourced by set -u launchers (brain-dashboard)
+# and terminals, where a bare deref kills the shell under nounset.
+if [ -z "$DB_DIR" ] && [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
   DB_DIR="$CLAUDE_PLUGIN_DATA/brain"
   mkdir -p "$DB_DIR" 2>/dev/null
 fi

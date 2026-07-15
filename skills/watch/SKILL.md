@@ -56,12 +56,12 @@ seek permission for. "Should I watch?" is almost always already answered: yes.
 
 You know your own id from the boot banner (`MY_STREAM_ID: <id>`). Arm the listener in
 one step — `brain-watch` ships with the plugin at `hooks/scripts/brain-watch`, and every
-hook run persists the plugin's location to `~/.config/brain/resolved.env` (as
-`PLUGIN_ROOT`), so it runs from any repo or session:
+hook run persists the plugin's location to `${XDG_CONFIG_HOME:-$HOME/.config}/brain/resolved.env`
+(as `PLUGIN_ROOT`), so it runs from any repo or session:
 
     Monitor(persistent: true, timeout_ms: 3600000,
       description: "self-channel: messages to <your-short-id>",
-      command: ". ~/.config/brain/resolved.env && \"$PLUGIN_ROOT/hooks/scripts/brain-watch\" <MY_STREAM_ID>")
+      command: ". \"${XDG_CONFIG_HOME:-$HOME/.config}/brain/resolved.env\" && \"$PLUGIN_ROOT/hooks/scripts/brain-watch\" <MY_STREAM_ID>")
 
 `brain-watch` runs the poller under the plugin's bundled python and finds the daemon by
 port. The poller peeks the inbox **read-only** (never consumes — the Stop hook owns the

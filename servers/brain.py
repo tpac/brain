@@ -907,6 +907,12 @@ class Brain(
         multi-session backlog drains one-per-poll (most-behind first); None when
         nothing is due.
         """
+        # Keyless onboarding window: encoding is Sonnet-driven — nothing is due
+        # until a key resolves. Gate here (the DECIDE step) so the daemon poll
+        # never spawns an encode destined to 401.
+        if not self.llm_available:
+            self.note_llm_unavailable('S1 Scribe')
+            return None
         import time as _time
         from datetime import datetime as _datetime
         from .scales.s1.encode_contract import (
@@ -1681,6 +1687,11 @@ class Brain(
             this method is safe to call frequently — it no-ops cheaply when
             not due.
         """
+        # Keyless onboarding window: every S2 unit's encoder is LLM-driven —
+        # skip the whole cycle until a key resolves (noted once, not per poll).
+        if not self.llm_available:
+            self.note_llm_unavailable('S2 maintenance')
+            return None
         import time as _time
         from .brain_constants import (
             MAINTENANCE_IDLE_THRESHOLD_SECONDS,
@@ -2053,8 +2064,12 @@ class Brain(
             # Free warmup: warms TLS handshake + httpx connection pool + DNS to
             # api.anthropic.com. Doesn't bill. Same call the idle keepalive loop
             # makes — one shared primitive (warm_anthropic_connection).
+            # Keyless: skip — the warm can only 401; note once instead.
             t = _time.monotonic()
-            self.warm_anthropic_connection()
+            if self.llm_available:
+                self.warm_anthropic_connection()
+            else:
+                self.note_llm_unavailable('boot warm-up')
             timings['anthropic_models_retrieve_ms'] = int(
                 (_time.monotonic() - t) * 1000)
             # No Haiku route ping. The ping was here briefly (2026-05-09)
@@ -2077,6 +2092,46 @@ class Brain(
 
         timings['total_ms'] = int((_time.monotonic() - t0) * 1000)
         return timings
+
+    @property
+    def llm_available(self) -> bool:
+        """True when a plausibly-valid Anthropic key (sk-*) is resolved.
+
+        The single keyless-mode gate: S1 surface, S1 Scribe, S2 maintenance,
+        and the connection warms all check this before spending an API call
+        that can only 401. load_env() re-reads the env file on every check
+        (one stat when unchanged), so writing the key to ~/.config/brain/env
+        flips this True on the next check — the no-restart onboarding heal.
+        sk-* matches boot-brain.sh's gate: a placeholder value counts as
+        missing, not as a key.
+        """
+        from .scales.dispatch import load_env
+        load_env()
+        if os.environ.get('ANTHROPIC_API_KEY', '').startswith('sk-'):
+            if getattr(self, '_llm_unavailable_noted', False):
+                self._llm_unavailable_noted = False
+                self._file_logger.info(
+                    'llm_available: API key resolved — LLM features live')
+            return True
+        return False
+
+    def note_llm_unavailable(self, where: str) -> None:
+        """Record the keyless state ONCE (errors table), not per attempt.
+
+        Keyless mode is the designed first-run onboarding window — a single
+        marker row keeps the dashboard honest without burying real errors
+        under per-turn/per-tick auth-failure spam. Reset by llm_available
+        when the key appears, so a later key removal notes again.
+        """
+        if getattr(self, '_llm_unavailable_noted', False):
+            return
+        self._llm_unavailable_noted = True
+        self._log_error(
+            'llm_unavailable',
+            RuntimeError('ANTHROPIC_API_KEY not resolved'),
+            'LLM features paused (first hit: %s) — memory storage, traces and '
+            'direct recall unaffected. Set the key in ~/.config/brain/env; '
+            'picked up automatically, no restart.' % where)
 
     def _ensure_anthropic_client(self):
         """Return the shared Anthropic client, building it if absent.
@@ -2110,7 +2165,9 @@ class Brain(
         # never authenticate. Returning it uncached means load_env() re-resolves
         # on every call, so the moment the operator writes the key to
         # ~/.config/brain/env the next LLM call picks it up — no daemon restart.
-        if not os.environ.get('ANTHROPIC_API_KEY'):
+        # sk-* (not truthiness) so a placeholder like 'changeme' is also never
+        # cached — same predicate as llm_available and boot-brain.sh.
+        if not os.environ.get('ANTHROPIC_API_KEY', '').startswith('sk-'):
             return client
         self.anthropic_client = client
         return client

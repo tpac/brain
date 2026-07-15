@@ -189,8 +189,10 @@ class TestWorktreeHooks(unittest.TestCase):
                         if hook.get('type') == 'command':
                             cmd = hook['command']
                             # Extract script name from "bash ${...}/scripts/foo.sh"
+                            # or the quoted form `bash "${...}/scripts/foo.sh"`
+                            # (98fe784 quoted all commands for spaced paths).
                             parts = cmd.split('/')
-                            script_name = parts[-1] if parts else ''
+                            script_name = parts[-1].strip('"\'') if parts else ''
                             if script_name:
                                 script_path = os.path.join(scripts_dir, script_name)
                                 self.assertTrue(os.path.isfile(script_path),

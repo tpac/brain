@@ -147,15 +147,23 @@ def test_warm_skips_when_already_in_flight():
 
 class _StubDaemonBrain:
     """Minimal brain for tick tests: get_config + warm + _log_error."""
-    def __init__(self, *, enabled=True, interval=300, warm=None):
+    def __init__(self, *, enabled=True, interval=300, warm=None,
+                 llm_available=True):
         from servers.activity_state import ActivityState
         self._cfg = {'surface_keepalive.enabled': enabled,
                      'surface_keepalive.interval_seconds': interval}
         self.warm_calls = 0
         self._warm = warm  # optional callable to simulate a raising warm
         self.logged = []
+        # Keyed by default — the tick gates the warm on llm_available
+        # (keyless onboarding); keyless ticks are tested explicitly.
+        self.llm_available = llm_available
+        self.unavailable_notes = []
         # Keepalive reads the user-activity clock from brain.activity now.
         self.activity = ActivityState()
+
+    def note_llm_unavailable(self, where):
+        self.unavailable_notes.append(where)
 
     def get_config(self, key, default):
         return self._cfg.get(key, default)
@@ -189,6 +197,19 @@ def test_tick_warms_when_idle_and_advances_last_ping():
     new_lp = d.tick(now=1000.0, last_ping=0.0)        # since_last_ping=1000 >= 300
     assert brain.warm_calls == 1
     assert new_lp == 1000.0  # last_ping advanced
+
+
+def test_tick_keyless_skips_warm_notes_once_and_keeps_cadence():
+    """Keyless onboarding: the warm can only 401 — the tick must skip it,
+    note the state (once, via note_llm_unavailable), and still advance
+    last_ping so the check stays on the interval cadence."""
+    brain = _StubDaemonBrain(llm_available=False)
+    d = _StubDaemon(brain, last_user_activity=0.0)
+    new_lp = d.tick(now=1000.0, last_ping=0.0)
+    assert brain.warm_calls == 0                      # no doomed API attempt
+    assert brain.unavailable_notes == ['keepalive warm']
+    assert brain.logged == []                         # no error-table spam
+    assert new_lp == 1000.0                           # cadence preserved
 
 
 def test_tick_backs_off_after_raising_warm():

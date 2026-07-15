@@ -26,11 +26,5 @@ fi
 # resolve-brain-db.sh exports BRAIN_DB_DIR for the dashboard's read-only SQLite
 # fallback (incl. the $CLAUDE_PLUGIN_DATA standard location). Best-effort —
 # never block the launch; live data still comes via the daemon socket.
-# set +u: resolve-brain-db.sh is NOT nounset-safe (same constraint documented in
-# ensure-dashboard.sh) — under launchd BRAIN_DB_DIR arrives via the plist so it
-# early-returns, but a bare-terminal launch reaches its unguarded
-# $CLAUDE_PLUGIN_DATA and dies before exec.
-set +u
 source "$SCRIPT_DIR/resolve-brain-db.sh" 1>&2 || true
-set -u
 exec "$BRAIN_PYTHON" "$PLUGIN_DIR/dashboard/brain_dashboard_standalone.py" "$@"

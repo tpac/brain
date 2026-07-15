@@ -256,9 +256,10 @@ def daemon_unavailable_error(hook_name=None):
             "ANCHOR OFFLINE - no brain.db at %s and the daemon is not answering"
             % (db_dir or "unresolved"),
             "plugin enabled but Anchor never came up: recall+encode+traces dead. "
-            "Likely causes in order: ANTHROPIC_API_KEY missing (boot exits before "
-            "creating the brain); stale BRAIN_DB_DIR override in ~/.config/brain/env; "
-            "first install interrupted.",
+            "Likely causes in order: stale BRAIN_DB_DIR override in "
+            "~/.config/brain/env; first install interrupted; daemon crash "
+            "before bind. (A missing ANTHROPIC_API_KEY does NOT cause this — "
+            "boot creates the brain and daemon keyless since a1a620e.)",
             level="critical")
         sys.exit(1)
 

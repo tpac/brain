@@ -424,8 +424,13 @@ class BrainDaemon:
                 # warm_anthropic_connection raises on API error and returns
                 # False if there's no client yet or a warm is already in
                 # flight — all three outcomes back off the same way.
+                # Keyless: the warm can only 401 — skip (noted once), keep the
+                # interval cadence so the check stays cheap.
                 last_ping = now
-                self.brain.warm_anthropic_connection()
+                if self.brain.llm_available:
+                    self.brain.warm_anthropic_connection()
+                else:
+                    self.brain.note_llm_unavailable('keepalive warm')
             return last_ping
         except Exception as e:
             # A keepalive tick must never crash the daemon.
