@@ -181,16 +181,20 @@ class TestByteTruthFidelity:
         monkeypatch.setenv('BRAIN_SURFACE_CAPTURE_DIR', str(tmp_path))
         monkeypatch.delenv('BRAIN_SURFACE_CAPTURE', raising=False)
 
-        # Production-side render, every field non-default.
+        # Production-side render, every field non-default — including the
+        # presentation-shuffle seed (§20.12 A2), which production always
+        # passes and the capture must round-trip for byte fidelity.
+        seed = 0x5eed
         user_content, max_tokens = build_surface_prompt(
             CANDS, INPUT_KW['user_message'],
             recent_messages=INPUT_KW['recent_messages'],
             recently_recalled=INPUT_KW['recently_surfaced'],
             retrieval_stats=INPUT_KW['retrieval_stats'],
             frame=INPUT_KW['frame'],
-            layout=layout)
+            layout=layout, shuffle_seed=seed)
 
-        cap = _begin(FakeBrain(), user_content=user_content, layout=layout)
+        cap = _begin(FakeBrain(), user_content=user_content, layout=layout,
+                     shuffle_seed=seed)
 
         # Replay-side re-render, from the capture alone.
         i = cap['inputs']
@@ -200,9 +204,20 @@ class TestByteTruthFidelity:
             recently_recalled=i['recently_surfaced'],
             retrieval_stats=i['retrieval_stats'],
             frame=i['frame'],
-            layout=cap['stamps']['layout'])
+            layout=cap['stamps']['layout'],
+            shuffle_seed=i['shuffle_seed'])
 
         assert rerendered == cap['rendered']['user_content']
+
+    def test_pre_shuffle_capture_rerenders_without_seed(self):
+        """Old captures have no shuffle_seed key — replay reads it as None
+        and the re-render must equal the unshuffled production render."""
+        user_content, _ = build_surface_prompt(
+            CANDS, INPUT_KW['user_message'], layout='xml_v13')
+        rerendered, _ = build_surface_prompt(
+            CANDS, INPUT_KW['user_message'], layout='xml_v13',
+            shuffle_seed=None)
+        assert rerendered == user_content
 
     def test_render_is_time_dependent_so_replay_must_pin_clock(
             self, monkeypatch):

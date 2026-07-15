@@ -13,7 +13,9 @@ attaches `_corrections` automatically.
 Interaction: 'surface' in interactions table. Prompt is learnable.
 """
 
+import hashlib
 import os
+import random
 import threading
 from datetime import datetime, timezone
 from collections import OrderedDict
@@ -314,8 +316,10 @@ def format_candidate_for_surface(c, index, layout='legacy'):
 
     layout='xml_v13': wraps the same node body in a <candidate> element —
     id as attribute (the pick key), locked / source_tool as flags. No score
-    header: rank rides in candidate ORDER; exposing match floats invites
-    anchoring on our numbers instead of semantic judgment (v13 decision).
+    header: exposing match floats invites anchoring on our numbers instead
+    of semantic judgment (v13 decision). Since 2026-07-14 (§20.12 A2) the
+    menu order is shuffled per turn, so in xml_v13 the menu carries NO rank
+    signal at all — Haiku judges on meaning alone.
     """
     import os as _os_hr
     from servers.contract import render_rich_node
@@ -467,10 +471,49 @@ def _build_user_content_xml(candidates, user_message, recent_messages,
     return '\n\n'.join(parts), cfg['max_tokens']
 
 
+def presentation_shuffle_seed(session_id, user_message):
+    """Deterministic per-turn seed for the candidate presentation shuffle.
+
+    Derived from (session_id, user_message) — the two per-turn inputs
+    _call_surface already holds — so a replay of the same turn reproduces
+    production's presentation order exactly. sha256, not hash(): Python
+    salts hash() per process, and the seed must be stable across daemon
+    restarts and replay processes.
+    """
+    key = ('%s|%s' % (session_id or '', user_message or '')).encode(
+        'utf-8', 'replace')
+    return int(hashlib.sha256(key).hexdigest()[:8], 16)
+
+
+def prepare_presented_candidates(candidates, shuffle_seed=None, cfg=None):
+    """Slice + dedup + presentation shuffle — the exact candidate list
+    build_surface_prompt renders, in the order Haiku sees it.
+
+    The shuffle (2026-07-14, RECALL-SR-REDESIGN.md §20.12 A2): Haiku shows
+    a mild pure position bias (1.19× top-vs-bottom pick rate within
+    identical-score tie groups, 92k candidates), so the PRESENTATION order
+    is randomized per turn. The scorer's ranking is untouched everywhere
+    else — the O-trace cand_detail and the walker's rank_in_pool keep
+    recording it; only what Haiku sees shuffles. Side effect: every
+    picked/dropped log row becomes randomization-grade training data for
+    the LAF P3 fit (exact uniform propensities, no estimation).
+
+    Slice + dedup run BEFORE the shuffle so top-N membership stays
+    scorer-determined. Seeded RNG so the capture/replay byte-contract
+    holds; shuffle_seed=None skips the shuffle (legacy behavior — evals
+    and tests that don't pass a seed are bit-identical to pre-shuffle).
+    """
+    cfg = cfg or SURFACE
+    cands = _dedup_candidates(candidates[:cfg['max_candidates']])
+    if shuffle_seed is not None:
+        random.Random(shuffle_seed).shuffle(cands)
+    return cands
+
+
 def build_surface_prompt(candidates, user_message,
                        recent_messages=None, recently_recalled=None,
                        retrieval_stats=None, frame="",
-                       layout='legacy'):
+                       layout='legacy', shuffle_seed=None):
     """Build the S1 recall surface USER message — per-turn delta only.
 
     v11 (2026-05-03, Frame Phase 2.5 / surface prompt v2): instructions
@@ -494,13 +537,17 @@ def build_surface_prompt(candidates, user_message,
         retrieval_stats: Dict with brain_size, top_score, median_score, source_breakdown
         frame: Markdown Frame (Anchor's prior). When non-empty becomes the
             "Partnership context:" block. When empty, explicit degraded marker.
+        shuffle_seed: When not None, presentation order is a seeded shuffle
+            of the deduped pool (see prepare_presented_candidates). None →
+            scorer order, bit-identical to pre-shuffle rendering.
 
     Returns: (user_content_string, max_tokens)
     """
     cfg = SURFACE
 
-    # v9: Deduplicate candidates (remove near-identical titles)
-    candidates = _dedup_candidates(candidates[:cfg['max_candidates']])
+    # Slice + dedup + presentation shuffle (§20.12 A2) — one prep path,
+    # shared with the presented-order record _call_surface writes to traces.
+    candidates = prepare_presented_candidates(candidates, shuffle_seed, cfg)
 
     # v13 XML layout — selected by the active `surface` interaction config
     # ({"layout": "xml_v13"}), so template and renderer flip atomically.
