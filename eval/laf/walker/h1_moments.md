@@ -76,44 +76,42 @@ post-resume/compaction restarts — the stack deliberately does NOT cross them.
 ---
 
 ### Moment 4 — superseded turn (steering/interrupt — later turn shares its stop)
-`session 6e369a2e · epoch 0 · seq 4 · 2026-07-01 01:46`
+`session 37a32ee9 · epoch 0 · seq 17 · 2026-06-23 18:22`
 
-- j=4
-  - **Tom:** Let's continue the work on recall, get your self up to speed and lets chat
-  - *Anchor:* I'm up to speed. Here's the honest state — and one thing needs a decision before we do anything else. ⏎  ⏎ ## Where recall actually is ⏎  ⏎ The gate cleared. The whole arc since 2026-06-27 was: *don't…
+- j=4  ⚠ ["superseded"]
+  - **Tom:** Explain the edge case?  ⏎ Show me the prompt reframe before nad after
 - j=3
-  - **Tom:** We can get that code but it felt like a quick and dirty job for testing activation layers and im not sure i wanted these shapes or the placement on the architecture.  ⏎ Some of them were good though, so how would you wan to do it?
-  - *Anchor:* Right — that reframes it. The branch isn't a feature to merge, it's a **research spike**. Its value is the *findings*; the code shapes were scaffolding to get them. Merging a spike wholesale into the …
+  - **Tom:** edge case: We can do that but can't we also create a seam between when _heal_graph is looking at something and the threshold for dead? Or is your suggestion better? Just dont like to leave dead mechanisms, i prefer less accuracy but not a hole that things stay in forever - On the…
+  - *Anchor:* Code is committed (`544736b`) on the branch, all tests green. Here's where we are and the one remaining step — the deploy, which I'm holding for your go because it changes live behavior and needs a da…
 - j=2
-  - **Tom:** sounds good. But i want to go deeper and not wider in this session, what is working what isnt, go into each layer and debug it, refine it
-  - *Anchor:* The ablation's still churning through 24 cues (settling engine + a full `brain.recall` per cue). Rather than hold the turn on it, let me give you the honest map — because going deep on each layer imme…
+  - **Tom:** go, and i want you to watch and track the behavior. Feel like you need a code-review before?
+  - *Anchor:* Verified: `int_frac` skips both `generic_relation` (`similar_to`, `synthesizes`, `related_to`) and `noise` (`co_accessed`, `community_member`, `temporal_sequence`). That confirms the one finding that …
 - j=1
-  - **Tom:** <task-notification> ⏎ <task-id>biy1b5v9g</task-id> ⏎ <tool-use-id>toolu_019KFjupHL3XuRudeAAmqxVT</tool-use-id> ⏎ <output-file>/private/tmp/claude-503/-Users-tpac-brain--claude-worktrees-priceless-ramanujan-c73e53/6e369a2e-930e-47fc-b4fa-6252aeb68dd0/tasks/biy1b5v9g.output</output…
-  - *Anchor:* The ablation finished — and it's more informative than the doc's summary. This is the settling engine (`field_recall.py`) with the *old* operators, on the honest 24-cue gold: ⏎  ⏎ ``` ⏎ config        …
+  - **Tom:** yes, very good suggestion
+  - *Anchor:* Minor fix applied and folded into the commit (`830c286`); 27 tests still green.  ⏎  ⏎ **The code is final and the gates are cleared — ready to deploy.** Since this is the session's most consequential …
 - **→ THE MOMENT**  ⚠ ["superseded"]
-  - **Tom:** What's the graph?
+  - **Tom:** you can do it now
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
 ---
 
 ### Moment 5 — superseded turn (steering/interrupt — later turn shares its stop)
-`session b12ab854 · epoch 0 · seq 48 · 2026-07-04 13:40`
+`session 4893691c · epoch 0 · seq 5 · 2026-06-24 17:26`
 
 - j=4
-  - **Tom:** Backup brain now before.  also worth a small code-review after all 3 steps?
-  - *Anchor:* Stop — the situation genuinely changed, and it's your call. The peer stream `454a4418` (exciting-nightingale) is now **active**, not dormant — it's mid-code-review on its galaxy viz and has been landi…
-- j=3  ⚠ ["no_recall"]
-  - **Tom:** go
-  - *Anchor:* Integration seam is clean. Main's only change to `base.py` was `d1e8373` (a caching-comment + BP1 marker in `_call_llm`) — a different method entirely from my `apply_encoder_attribution`/`project_poli…
-- j=2
-  - **Tom:** Lets commit to main and restart
-  - *Anchor:* Done — committed and restarted, daemon verified live: ⏎  ⏎ - **`brain.plugin` committed** to main (`904e059`), tree clean. ⏎ - **Daemon restarted** — live and serving (MCP responding), `schema_version…
-- j=1
-  - **Tom:** Let's check that everything works? We can even fill up missing projects if we want to
-  - *Anchor:* Now I have the complete picture. Here's the honest status on "does everything work": ⏎  ⏎ ## Works, verified live ⏎ - **Migration** — `nodes.project` dropped, 1269 values in KV (now 1270 with the mile…
+  - **Tom:** yes let's do the cleanup as you suggested. ⏎ Try and reuse and not create new things, it really needs to be unified and 'simple'
+  - *Anchor:* I'll wait for that to complete. While it runs, here's a summary of the cleanup I applied per your "reuse, unify, keep it simple" steer: ⏎  ⏎ ## Cleanup applied — unified, no parallel abstractions ⏎  ⏎…
+- j=3
+  - **Tom:** our full suite is buggy and tends to run forever on some of the tests. I dont know if you want to have a look and fix it perhaps?
+  - *Anchor:* There's a `pytest.ini` with `[pytest]` + `addopts` (it already deselects 4 known-broken tests with documented rationale) — so it's the natural home for a permanent fix. The diagnostic is at ~10% and c…
+- j=2  ⚠ ["no_recall"]
+  - **Tom:** >
+- j=1  ⚠ ["no_recall"]
+  - **Tom:** ?
+  - *Anchor:* I'll wait for the full suite. Here's where things stand: ⏎  ⏎ ## Summary so far ⏎  ⏎ **The hanging-suite bug — found, root-caused, fixed.** It's a real production latent bug, not just a test artifact:…
 - **→ THE MOMENT**  ⚠ ["superseded"]
-  - **Tom:** can you check if the new stream im working on is stamping everything correctly?
+  - **Tom:** <task-notification> ⏎ <task-id>b5hk45yux</task-id> ⏎ <tool-use-id>toolu_01RwLw2eryHnrJJW53QMR4ck</tool-use-id> ⏎ <output-file>/private/tmp/claude-503/-Users-tpac-brain--claude-worktrees-silly-edison-9a06cf/4893691c-6662-4f80-ac67-c9170ea4fe6e/tasks/b5hk45yux.output</output-file> …
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
@@ -190,46 +188,46 @@ post-resume/compaction restarts — the stack deliberately does NOT cross them.
 ---
 
 ### Moment 11 — normal labeled, deep history (seq >= 8)
-`session 91cb2ca9 · epoch 0 · seq 36 · 2026-07-07 19:55`
+`session 91cb2ca9 · epoch 0 · seq 35 · 2026-07-07 19:26`
 
 - j=4  ⚠ ["no_recall"]
+  - **Tom:** <task-notification> ⏎ <task-id>b2m5t3z4a</task-id> ⏎ <summary>Monitor event: "v13 A/B sweep progress (both arms) in v13ab_sweep.log"</summary> ⏎ <event>[sweep] report → /Users/tpac/brain/.claude/worktrees/awesome-sanderson-ddfa23/eval/longmem/reports/run_v13ab_cand_xml.json</even…
+  - *Anchor:* The targeted run is in flight (same monitored log — I'll get pinged per report). Where the abstention question stands: ⏎  ⏎ **Evidence so far:** ⏎ - Full sweep: candidate −3.3pp overall, *entirely* fr…
+- j=3  ⚠ ["no_recall"]
   - **Tom:** <task-notification> ⏎ <task-id>b2m5t3z4a</task-id> ⏎ <summary>Monitor event: "v13 A/B sweep progress (both arms) in v13ab_sweep.log"</summary> ⏎ <event>[sweep] corpus a300d2 loaded — scoring 4 item(s); 7 flagged unanswerable by the gate, scored anyway for coverage: ['54026fce', '…
   - *Anchor:* Control-side targeted run started (4 abstention items loaded). Waiting on both reports — nothing to act on yet.
-- j=3  ⚠ ["no_recall"]
+- j=2  ⚠ ["no_recall"]
   - **Tom:** <task-notification> ⏎ <task-id>b2m5t3z4a</task-id> ⏎ <summary>Monitor event: "v13 A/B sweep progress (both arms) in v13ab_sweep.log"</summary> ⏎ <event>[sweep] report → /Users/tpac/brain/.claude/worktrees/awesome-sanderson-ddfa23/eval/longmem/reports/run_v13ab_abs_ctrl.json</even…
   - *Anchor:* Control's variance-5 read is telling on its own: **0.50 overall** — the *control* at higher variance scores exactly what the candidate scored in the full sweep. Two of the four items are literal coin-…
-- j=2  ⚠ ["no_recall"]
+- j=1  ⚠ ["no_recall"]
   - **Tom:** <task-notification> ⏎ <task-id>b2m5t3z4a</task-id> ⏎ <summary>Monitor event: "v13 A/B sweep progress (both arms) in v13ab_sweep.log"</summary> ⏎ <event>[sweep] report → /Users/tpac/brain/.claude/worktrees/awesome-sanderson-ddfa23/eval/longmem/reports/run_v13ab_abs_cand.json</even…
   - *Anchor:* Artifacts don't survive the run (the tmp routing deletes with the work dir), and each debug rep costs a full pipeline pass on an item that's a 40% coin-flip even in control — that's the timebox. Here'…
-- j=1
+- **→ THE MOMENT**
   - **Tom:** Can you actually look at the turns and new surface haiku and check if you agree / disagree with the picks itself?
   - *Anchor:* Ran it — two real moments, production's actual picks vs fresh legacy vs XML (×2 reps for stability). Here's my honest judgment as the one who consumed these picks: ⏎  ⏎ ## Moment A — your "don't eval …
-- **→ THE MOMENT**
-  - **Tom:** Let's do that
-  - *Anchor:* v13 registered in the live brain — and the version number landed on 13 exactly, DORMANT with `{"layout": "xml_v13"}` config, v12 still active. Sequence in flight: ⏎  ⏎ 1. ✅ Register v13 DORMANT ⏎ 2. ⏳…
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
 ---
 
 ### Moment 12 — normal labeled, deep history (seq >= 8)
-`session b12ab854 · epoch 0 · seq 36 · 2026-07-04 02:10`
+`session b12ab854 · epoch 0 · seq 32 · 2026-07-04 01:45`
 
 - j=4
+  - **Tom:** Do we know that the agent actually getting the AdditionalContext info? Is it considered a new session id? otherwise the surfaced nodes get 'fatigued' even though they were given to an agent.  ⏎ Need to understand how it works before we comeup with solutions
+  - *Anchor:* Traced the full path. Your worry is valid, and the mechanism is actually sharper than the question. Here's how it works, three questions in order. ⏎  ⏎ ## Q1 — Does the additionalContext reach "the ag…
+- j=3
+  - **Tom:** Let's do two things. ⏎ For now lets just simply filter out task onuserprompt. ⏎ Then, let's discuss the flow you've seen about fatigue, i think it will be easier to see it in some visual way
+  - *Anchor:* Reading it top-down, three things stand out — and the middle one is the crux you were circling. ⏎  ⏎ **The fork is where the mismatch lives.** `recall()` produces ~25 candidates, and that set splits t…
+- j=2
+  - **Tom:** hold on. I remember that we marked accessed only on selected haiku nodes... Do we have several paths to that or something?
+  - *Anchor:* You're right, and I was incompletely right — I traced one path and generalized from it. There are **three** mechanisms here, and two of them are selection-scoped exactly as you remember. Here's the ve…
+- j=1
+  - **Tom:** yes plz
+  - *Anchor:* That's the accurate map. The correction that matters: the split isn't "before/after" as timing trivia — it's that the two marks which actually *shape future behavior* (dedup exclusion → what Haiku can…
+- **→ THE MOMENT**
   - **Tom:** It's worth remember when we work on LAF, I think the fatigue level should sit there and not be an outside mechanism
   - *Anchor:* Captured — two linked nodes so the LAF thread inherits both the direction and the substrate it rests on: ⏎  ⏎ - `7e9e36a7` (decision) — "Fatigue belongs inside LAF as an inhibition lane, not an outsid…
-- j=3
-  - **Tom:** great, anything else to do on the session? are you Anything to commit? Did we do a code review?
-  - *Anchor:* Clean tree — nothing uncommitted, all 8 commits are in. But your instinct on the review is right, and here's the honest gap: ⏎  ⏎ **The code review only covered the first four commits.** The 8-angle f…
-- j=2
-  - **Tom:** lets review
-  - *Anchor:* All 4 review angles are running in parallel over the unreviewed delta (`479dfb5..HEAD`, 14 files). They're covering: line-by-line correctness (incl. the INSERT column/placeholder count and the migrati…
-- j=1
-  - **Tom:** <task-notification> ⏎ <task-id>ac8f23f9ba98473cf</task-id> ⏎ <tool-use-id>toolu_01HDcLsi5th98zTBb2Kvrz3S</tool-use-id> ⏎ <output-file>/private/tmp/claude-503/-Users-tpac-brain--claude-worktrees-friendly-benz-f4f17f/b12ab854-ff68-4d94-b727-b3484a687aa3/tasks/ac8f23f9ba98473cf.outp…
-  - *Anchor:* Both confirmed. Review complete — 4 angles, deduped, verified against the code myself. Six findings; the top one is a genuine miss of mine. ⏎  ⏎ ## Findings, ranked ⏎  ⏎ **F1 · HIGH — `context_boot` s…
-- **→ THE MOMENT**
-  - **Tom:** ok. but lets also clean dead paths and project columns/schema etc. needs a real cleanup per our new design
-  - *Anchor:* This is now a real cleanup, and mapping the surface changed my recommendation on *how* — for the better. Here's the full picture and one fork I want your call on before I touch anything. ⏎  ⏎ ## The r…
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
@@ -280,31 +278,22 @@ post-resume/compaction restarts — the stack deliberately does NOT cross them.
 ---
 
 ### Moment 15 — normal labeled, session opening (seq <= 2)
-`session bea6e3fa · epoch 0 · seq 2 · 2026-06-25 00:19`
+`session bea6e3fa · epoch 0 · seq 0 · 2026-06-24 22:36`
 
-- j=2
+- **→ THE MOMENT**
   - **Tom:** I will say that i want to see, clear table mapping of what we wanna do and phases and anytime we're doing prompt changes show me before and after and make sure every single change and/or instruction is also being revised on examples in the prompt. ⏎  ⏎ This is the kick off from a…
   - *Anchor:* Orientation complete. The finding holds — and verification turned up one **correction to the doc** plus a detail that makes the fix even safer than §5 claims. ⏎  ⏎ ## What I verified (and one doc corr…
-- j=1
-  - **Tom:** 1. per cycle is good if its persistent between restarts. In terms of community visibility can these be automatically computed fields to any consumer? did S2 received the nodes with these fields? if so i dont want to suddenly hide them, i just dont want it to need to write them. m…
-  - *Anchor:* Verified — and the results actually **strengthen your instinct**, so I'm revising my recommendation. Here's what I found, then direct answers to each of your questions. ⏎  ⏎ **Key finding:** the SQL-q…
-- **→ THE MOMENT**
-  - **Tom:** hold on, is this purely algorithmic?
-  - *Anchor:* Verified — and yes, **purely algorithmic. No LLM, no embeddings, no fuzzy judgment anywhere.** All five fields are arithmetic over the `community_member` edges: ⏎  ⏎ | Field | Computation | Source | ⏎…
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
 ---
 
 ### Moment 16 — normal labeled, session opening (seq <= 2)
-`session 29ad0386 · epoch 0 · seq 1 · 2026-06-12 17:46`
+`session 29ad0386 · epoch 0 · seq 0 · 2026-06-12 16:01`
 
-- j=1
+- **→ THE MOMENT**
   - **Tom:** In /Users/tpac/brain, the S2 encoder path still uses model 'claude-sonnet-4-20250514', which the Anthropic API reports as deprecated with end-of-life June 15th, 2026 (confirmed via DeprecationWarning during an eval run on 2026-06-12). Production S2 units (consolidation, community…
   - *Anchor:* Migration complete — production S2 is off the deprecated model, tested, and the daemon restarted on the new code. `claude-sonnet-4-20250514` (EOL June 15) is gone from every live surface; everything n…
-- **→ THE MOMENT**
-  - **Tom:** anything else you've noticed that is worth diving into?
-  - *Anchor:* Yes — five things, one of which I'd act on soon. Findings in priority order: ⏎  ⏎ **1. A parallel session is editing this tree, and my daemon restart shipped its WIP live.** At session start the modif…
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 

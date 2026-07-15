@@ -16,9 +16,11 @@ on the (session, stop) key. Stop counters collide twice over:
         entirely pre-2026-06-08, when user_message was written at Stop
         (94b4642 moved it to prompt-arrival — the class ends there).
         op_text = the O query, ≤500 chars.
-      - `superseded`: a LATER turn shares this turn's stop — its Stop never
-        fired before the next prompt (steering / interrupt / notification).
-        Live signal, era-independent, ~7-12% of turns every month.
+      - `superseded`: this turn shares its stop with others and is NOT the
+        stop's SURVIVOR — the turn holding the recorded response (else the
+        stop's last turn). Steering / interrupt / notification collisions;
+        live signal, era-independent, ~7-12% of turns every month.
+        no_recall bookkeeping turns are never flagged.
       - `text_disagree`: an s0 existed at the stop but text agreement failed;
         paired STRUCTURALLY (latest unpaired O) so the moment stack keeps the
         full operator text, but excluded from labels (op/query mismatch).
@@ -192,7 +194,7 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
         # agreement claims its O before any structural fallback grabs it.
         disagree_pending, standalone = [], []
         for rec in ep['s0']:
-            cands = [o for o in ep['o'] if o['stop'] == rec['stop'] and o['s0'] is None]
+            cands = _unpaired_os_at_stop(ep['o'], rec['stop'])
             hit = None
             for o in reversed(cands):                     # prefer latest
                 if texts_agree(o['query'], rec['op']):
@@ -208,7 +210,7 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
             # rewriting). Pair the latest unpaired O so the moment stack keeps
             # the full operator text + response; flagged text_disagree below
             # and excluded from labels.
-            cands = [o for o in ep['o'] if o['stop'] == rec['stop'] and o['s0'] is None]
+            cands = _unpaired_os_at_stop(ep['o'], rec['stop'])
             if cands:
                 cands[-1]['s0'] = rec
                 cands[-1]['disagree'] = True
@@ -251,15 +253,26 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
                     'anchor_tid': obj.get('anchor_trace_id'),
                     'msg_ts': obj['ts']})
 
-        # superseded: a later turn shares this turn's stop — its Stop never
-        # fired before the next prompt (steering / interrupt / notification)
-        last_idx_of_stop = {}
+        # superseded: at a multi-turn stop, every turn except the SURVIVOR —
+        # the turn holding the stop's one recorded response (the anchor
+        # attaches to the last s0 of the stop; when no response was recorded
+        # the stop's last turn survives). Keyed on the anchor-holder, not turn
+        # order: with interrupts, prompt-ts order and recall-ts order can
+        # cross, and the survivor must be the turn that owns the response.
+        # no_recall bookkeeping turns (register_only / notification skips)
+        # are never flagged — they aren't steering/interrupt supersession.
+        idxs_of_stop = defaultdict(list)
         for idx, t in enumerate(turns):
-            last_idx_of_stop[t['stop']] = idx
-        for idx, t in enumerate(turns):
-            if last_idx_of_stop[t['stop']] > idx:
-                t['flags'].append('superseded')
-                c['turns_superseded'] += 1
+            idxs_of_stop[t['stop']].append(idx)
+        for idxs in idxs_of_stop.values():
+            if len(idxs) < 2:
+                continue
+            holders = [i for i in idxs if turns[i]['anchor']]
+            survivor = holders[-1] if holders else idxs[-1]
+            for i in idxs:
+                if i != survivor and 'no_recall' not in turns[i]['flags']:
+                    turns[i]['flags'].append('superseded')
+                    c['turns_superseded'] += 1
 
         # rows + labels, seq-ordered
         prev_ts = None
@@ -269,7 +282,7 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
             gap = (t_now - prev_ts).total_seconds() if (t_now and prev_ts) else None
             prev_ts = t_now
             labeled = bool(t['o'] and t['o']['outcomes'] and t['o']['cands'])
-            if labeled and t['o'].get('disagree'):
+            if labeled and 'text_disagree' in t['flags']:
                 labeled = False                           # op/query mismatch — keep as
                 c['label_excluded_text_disagree'] += 1    # context, not as a label row
             turn_rows.append((
@@ -315,6 +328,12 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
                         c, sess, epoch, seq, short, None, 'floored', tool,
                         used, None, None, turn_ts, prefix_map, node_times))
     return turn_rows, cand_rows
+
+
+def _unpaired_os_at_stop(o_events, stop):
+    """The one pairing predicate both the text-agreement pass and the
+    structural fallback use — ts-ordered Os at this stop not yet claimed."""
+    return [o for o in o_events if o['stop'] == stop and o['s0'] is None]
 
 
 def _latest_o(o_events, stop, created):
