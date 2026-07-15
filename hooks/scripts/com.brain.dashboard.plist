@@ -12,9 +12,10 @@
 	     template — its placeholder paths won't resolve). See
 	     docs/LIFECYCLE-LAUNCH-ARCH-PLAN.md Step 2.
 
-	     Launches bin/brain-dashboard — the single dashboard launcher (also used by
-	     the /dashboard skill and the CLI); it sources brain-env.sh + resolve-brain-db.sh
-	     and execs the venv Python.
+	     Launches hooks/scripts/brain-dashboard — the single dashboard launcher
+	     (also used by the /dashboard skill); it sources brain-env.sh +
+	     resolve-brain-db.sh and execs the venv Python. Not in a top-level bin/:
+	     claude.ai-hosted plugins may not ship bin/ executables.
 
 	     Port: not pinned here. dashboard/server.py defaults to 47303; override via
 	     DASHBOARD_PORT in ~/.config/brain/env (the single user-editable place,
@@ -25,7 +26,7 @@
 	     don't add it back to .claude/launch.json. -->
 	<key>ProgramArguments</key>
 	<array>
-		<string>__PLUGIN_DIR__/bin/brain-dashboard</string>
+		<string>__PLUGIN_DIR__/hooks/scripts/brain-dashboard</string>
 	</array>
 
 	<key>EnvironmentVariables</key>
