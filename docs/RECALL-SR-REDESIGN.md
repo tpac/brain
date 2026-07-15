@@ -1755,3 +1755,40 @@ top-K.** Below-pool mass is where reach lives (union 8bcc8c96; the retired 25-no
 **The §20.5 sweep is this object's first parameter fit** — λ from the decay grid, w_e from compositions,
 M_e's first measurement via the feedback axis. Q1's question, upgraded: does a MAINTAINED field beat a
 stateless query? Stage 3 implements A in SessionContext if the answer is yes.
+
+### 20.11 as_of — read-side time travel in the engine (design map, Tom + Anchor 2026-07-14)
+
+**Decision: replace the walker's masked-formula replay with `as_of` support in the PRODUCTION engine.**
+The eval calls the real unit with a date; every future rung (P3 fit, gold re-mints, P7 re-validation)
+inherits the capability; leakage-by-reimplementation dies as a class. The walker's existing content-lane
+columns become the CROSS-CHECK: engine-as-of and walker rows must agree row-level on content lanes —
+two independent implementations, mutual verification.
+
+**Scope: `LafV1Engine.scores(..., as_of=None)` — engine level, NOT brain.recall.** scores() is read-only
+by construction (access marks / Hebbian / traces all fire later in `_recall_impl`), so replay needs zero
+side-effect suppression. Fatigue, floors, critical boost, hydration are post-scorer production machinery —
+out of as_of scope by design (session state can't time-travel; the sweep replays M_e itself).
+brain.recall(as_of) is deferred until a consumer needs the full path.
+
+**Mechanism: masks, not copies.** Caches stay current-state supersets (they already hold full history);
+as_of builds per-call boolean row masks. as_of=None → no masks → the identical code path: inert by
+construction, pinned by tests.
+
+The root-function map (every LAF data touchpoint, walked 2026-07-14):
+
+| # | root | touches | as_of treatment | new cache ingredient |
+|---|---|---|---|---|
+| 1 | `_full_matrix_build` / `_refresh_matrices` | node view vectors (VectorDAL) | row mask: node created_at ≤ as_of; masked rows → NaN (isfinite machinery already downstream) | `_created[row]` array (one SELECT at build, maintained on append) |
+| 2 | `_refresh_titles` + `idf_scores` | node titles (NodeDAL.title_rows) | as-of df + n_titles via per-token sorted creation timestamps + bisect (the walker's invention, moved into the cache) | `_token_created` sorted lists + `_all_created` sorted array |
+| 3 | `_refresh_projects` / `_project_field` | project labels (nodes + kv) | same row mask as #1 (labels are creation-stamped) | none |
+| 4 | `_refresh_traces` (episodic matrix) | trace vectors (TraceDAL.event_vector_rows, arrives created_at ASC) | mask sims where trace created_at > as_of — retain the timestamps the refresh currently discards | `_tr_created` array parallel to `_tr_meta` |
+| 5 | `_episodic_vectors` → `roles_for_moments` → `gather`/`nodes_for_traces` | s1/s0 trace rows (query_traces door; rows carry created_at) | filter gathered stream rows to created_at ≤ as_of BEFORE the join; moment selection inherits #4's mask | `as_of` param on `roles_for_moments` |
+| 6 | `scores()` / `_fields` | orchestration | thread as_of; z-scores over the masked universe (`_zscore(mask=)` already exists) | `as_of` kwarg |
+
+**Accepted residuals (flagged, not hidden):** revised nodes leak current text/embeddings into the past
+(`node_revised_after_turn` measures the effect); nodes archived after as_of stay hidden (engine is
+live-only, 54c2e6e0); deleted nodes are absent. All minor, all already carried as walker flags.
+
+**Test contract:** (a) as_of=None bit-identical to pre-change engine (inertness pin); (b) as_of=now ≡
+as_of=None; (c) exclusion correctness (a node/trace created after as_of contributes nothing);
+(d) the walker cross-check — row-level agreement on content lanes across ~4.5k turns.
