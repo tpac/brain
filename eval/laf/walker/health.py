@@ -30,7 +30,9 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import open_walker, open_logs_ro, WALKER_DIR
+from walker_db import (open_walker, open_logs_ro, WALKER_DIR, lanes_version,
+                       gold_source_hash, GOLD_SOURCES,
+                       EXTRACT_VERSION, EMBED_VERSION)
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -52,6 +54,33 @@ def sect(lines, title, status, body):
     lines.extend(body)
     lines.append('')
     return status
+
+
+def check_provenance(walker, lines):
+    """Check 0 — the artifact must PROVE it was built by the code reading it.
+    Every phase stamps its version; the gold manifest stamps its source hashes.
+    Any mismatch = a walker.db that would make every downstream number quietly
+    wrong (the built-by-old-code class; the stale-manifest gold-leak class)."""
+    meta = dict(walker.execute("SELECT key, value FROM build_meta").fetchall())
+    problems = []
+    expect = {'extract_version': EXTRACT_VERSION,
+              'embed_version': EMBED_VERSION}
+    from servers.recall_laf import MAXSIM_VIEWS as _views
+    expect['scores_lanes_version'] = lanes_version(_views)
+    for key, want in expect.items():
+        have = meta.get(key)
+        if have != want:
+            problems.append('%s: stamped %r, code expects %r' % (key, have, want))
+    stamped = json.loads(meta.get('manifest_source_hashes') or '{}')
+    for name in GOLD_SOURCES:
+        if stamped.get(name) != gold_source_hash(name):
+            problems.append('gold source %s changed since the manifest this '
+                            'build excluded by' % name)
+    body = (['- `%s` = `%s` ✓' % (k, meta.get(k)) for k in expect]
+            + ['- gold manifest hashes match live corpus ✓'] if not problems
+            else ['- ' + p for p in problems])
+    status = 'PASS' if not problems else 'FAIL (stale artifact — rebuild: extract → embed → scores)'
+    return sect(lines, '0 · Build provenance (stamps)', status, body)
 
 
 def check_fill_rates(walker, lines):
@@ -293,6 +322,7 @@ def main():
     logs = open_logs_ro()
     lines = ['# walker_health — build report', '']
     statuses = [
+        check_provenance(walker, lines),
         check_fill_rates(walker, lines),
         check_conservation(walker, logs, lines),
         check_window(walker, lines),

@@ -188,46 +188,46 @@ post-resume/compaction restarts — the stack deliberately does NOT cross them.
 ---
 
 ### Moment 11 — normal labeled, deep history (seq >= 8)
-`session 91cb2ca9 · epoch 0 · seq 35 · 2026-07-07 19:26`
+`session 91cb2ca9 · epoch 0 · seq 28 · 2026-07-07 18:49`
 
-- j=4  ⚠ ["no_recall"]
-  - **Tom:** <task-notification> ⏎ <task-id>b2m5t3z4a</task-id> ⏎ <summary>Monitor event: "v13 A/B sweep progress (both arms) in v13ab_sweep.log"</summary> ⏎ <event>[sweep] report → /Users/tpac/brain/.claude/worktrees/awesome-sanderson-ddfa23/eval/longmem/reports/run_v13ab_cand_xml.json</even…
-  - *Anchor:* The targeted run is in flight (same monitored log — I'll get pinged per report). Where the abstention question stands: ⏎  ⏎ **Evidence so far:** ⏎ - Full sweep: candidate −3.3pp overall, *entirely* fr…
-- j=3  ⚠ ["no_recall"]
-  - **Tom:** <task-notification> ⏎ <task-id>b2m5t3z4a</task-id> ⏎ <summary>Monitor event: "v13 A/B sweep progress (both arms) in v13ab_sweep.log"</summary> ⏎ <event>[sweep] corpus a300d2 loaded — scoring 4 item(s); 7 flagged unanswerable by the gate, scored anyway for coverage: ['54026fce', '…
-  - *Anchor:* Control-side targeted run started (4 abstention items loaded). Waiting on both reports — nothing to act on yet.
-- j=2  ⚠ ["no_recall"]
-  - **Tom:** <task-notification> ⏎ <task-id>b2m5t3z4a</task-id> ⏎ <summary>Monitor event: "v13 A/B sweep progress (both arms) in v13ab_sweep.log"</summary> ⏎ <event>[sweep] report → /Users/tpac/brain/.claude/worktrees/awesome-sanderson-ddfa23/eval/longmem/reports/run_v13ab_abs_ctrl.json</even…
-  - *Anchor:* Control's variance-5 read is telling on its own: **0.50 overall** — the *control* at higher variance scores exactly what the candidate scored in the full sweep. Two of the four items are literal coin-…
-- j=1  ⚠ ["no_recall"]
-  - **Tom:** <task-notification> ⏎ <task-id>b2m5t3z4a</task-id> ⏎ <summary>Monitor event: "v13 A/B sweep progress (both arms) in v13ab_sweep.log"</summary> ⏎ <event>[sweep] report → /Users/tpac/brain/.claude/worktrees/awesome-sanderson-ddfa23/eval/longmem/reports/run_v13ab_abs_cand.json</even…
-  - *Anchor:* Artifacts don't survive the run (the tmp routing deletes with the work dir), and each debug rep costs a full pipeline pass on an item that's a 40% coin-flip even in control — that's the timebox. Here'…
+- j=4
+  - **Tom:** All good. ⏎ whats intent="reasoning_chain" means?
+  - *Anchor:* It's a **regex keyword classifier from v9** — `_classify_intent` in [brain.py:520](servers/brain.py:520) runs `INTENT_PATTERNS` over the lowercased query and buckets it: `decision_lookup`, `reasoning_…
+- j=3
+  - **Tom:** Yes.  ⏎ Ready to eval?
+  - *Anchor:* Everything's built and the eval is running. Where we stand: ⏎  ⏎ **Built** (all tests green — 46 passed): ⏎ - **XML renderer** in [surface_contract.py](servers/scales/s1/surface_contract.py) — the exa…
+- j=2
+  - **Tom:** Can you show me a sample of one run? just to make sure we're running everything correctly?
+  - *Anchor:* Sample captured from the live control arm — here's what one run actually looks like, and it verifies the setup on every axis: ⏎  ⏎ **What Haiku got (control arm, item `8e91e7d9`, the sibling-compositi…
+- j=1
+  - **Tom:** show me with conversations
+  - *Anchor:* There it is above — the v13 layout carrying **our own last four turns**, with the memories that genuinely surfaced on each (pulled from this session's `surface_selected` traces): "Ready to eval?" carr…
 - **→ THE MOMENT**
-  - **Tom:** Can you actually look at the turns and new surface haiku and check if you agree / disagree with the picks itself?
-  - *Anchor:* Ran it — two real moments, production's actual picks vs fresh legacy vs XML (×2 reps for stability). Here's my honest judgment as the one who consumed these picks: ⏎  ⏎ ## Moment A — your "don't eval …
+  - **Tom:** That basically means that our corpus isnt simulating real conversations
+  - *Anchor:* Exactly right — and it's worth being precise about the shape of the blindness: ⏎  ⏎ **What the corpus does simulate:** the *encode* side is conversational — the brains are built by feeding real multi-…
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
 ---
 
 ### Moment 12 — normal labeled, deep history (seq >= 8)
-`session b12ab854 · epoch 0 · seq 32 · 2026-07-04 01:45`
+`session 8309e704 · epoch 0 · seq 39 · 2026-07-04 01:19`
 
 - j=4
-  - **Tom:** Do we know that the agent actually getting the AdditionalContext info? Is it considered a new session id? otherwise the surfaced nodes get 'fatigued' even though they were given to an agent.  ⏎ Need to understand how it works before we comeup with solutions
-  - *Anchor:* Traced the full path. Your worry is valid, and the mechanism is actually sharper than the question. Here's how it works, three questions in order. ⏎  ⏎ ## Q1 — Does the additionalContext reach "the ag…
+  - **Tom:** very very good. But not there yet. The shape while unique is not unique enough and is also not relatable
+  - *Anchor:* Right on both counts, and I can name *why* the current version fails your two tests: ⏎  ⏎ - **Not unique enough** — because the base is always a *ball*, and aspects only add surface bumps. Every Ancho…
 - j=3
-  - **Tom:** Let's do two things. ⏎ For now lets just simply filter out task onuserprompt. ⏎ Then, let's discuss the flow you've seen about fatigue, i think it will be easier to see it in some visual way
-  - *Anchor:* Reading it top-down, three things stand out — and the middle one is the crux you were circling. ⏎  ⏎ **The fork is where the mismatch lives.** `recall()` produces ~25 candidates, and that set splits t…
+  - **Tom:** yeah lets see it
+  - *Anchor:* New artifact: **https://claude.ai/code/artifact/1b4530ef-5b8a-4be4-b3a5-7c85cfac568e** — hit "Grow another Anchor" a few times; each is a distinct creature you can read. ⏎  ⏎ **What's proven:** the mo…
 - j=2
-  - **Tom:** hold on. I remember that we marked accessed only on selected haiku nodes... Do we have several paths to that or something?
-  - *Anchor:* You're right, and I was incompletely right — I traced one path and generalized from it. There are **three** mechanisms here, and two of them are selection-scoped exactly as you remember. Here's the ve…
+  - **Tom:** Much better we're getting there. ⏎ Can you have the almost always on middle sphere a shape the derives from the outer layers? ⏎ Also, i like the spirals. Arcing shapes and potentially several shapes within a shape that connect, is also possible
+  - *Anchor:* Refresh: **https://claude.ai/code/artifact/1b4530ef-5b8a-4be4-b3a5-7c85cfac568e** — grow a few; each is a distinct, arcing organism now. ⏎  ⏎ Where we are: the creature reads as one integrated thing —…
 - j=1
-  - **Tom:** yes plz
-  - *Anchor:* That's the accurate map. The correction that matters: the split isn't "before/after" as timing trivia — it's that the two marks which actually *shape future behavior* (dedup exclusion → what Haiku can…
+  - **Tom:** Let's sum up the session, we'll continue later, can you write everything to a doc?
+  - *Anchor:* Done — full handoff written and durable. The session summary lives at **[docs/SESSION-2026-07-03-HANDOFF.md](docs/SESSION-2026-07-03-HANDOFF.md)** on `main`, with the working mockups preserved in [doc…
 - **→ THE MOMENT**
-  - **Tom:** It's worth remember when we work on LAF, I think the fatigue level should sit there and not be an outside mechanism
-  - *Anchor:* Captured — two linked nodes so the LAF thread inherits both the direction and the substrate it rests on: ⏎  ⏎ - `7e9e36a7` (decision) — "Fatigue belongs inside LAF as an inhibition lane, not an outsid…
+  - **Tom:** need to commit and merge to main?
+  - *Anchor:* All merged and clean — nothing left to do: ⏎  ⏎ - **main HEAD is `8e316f9`** — the merge of the handoff commit (`8a453bc`). ⏎ - **`docs/SESSION-2026-07-03-HANDOFF.md` and `docs/anchor-viz-prototypes/`…
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
@@ -278,22 +278,25 @@ post-resume/compaction restarts — the stack deliberately does NOT cross them.
 ---
 
 ### Moment 15 — normal labeled, session opening (seq <= 2)
-`session bea6e3fa · epoch 0 · seq 0 · 2026-06-24 22:36`
+`session 124cf35a · epoch 0 · seq 0 · 2026-06-24 22:43`
 
 - **→ THE MOMENT**
-  - **Tom:** I will say that i want to see, clear table mapping of what we wanna do and phases and anytime we're doing prompt changes show me before and after and make sure every single change and/or instruction is also being revised on examples in the prompt. ⏎  ⏎ This is the kick off from a…
-  - *Anchor:* Orientation complete. The finding holds — and verification turned up one **correction to the doc** plus a detail that makes the fix even safer than §5 claims. ⏎  ⏎ ## What I verified (and one doc corr…
+  - **Tom:** You are Anchor, implementing a confirmed architectural cleanup in the **brain plugin dev repo**. Tom has already approved the scope (Option C, staged + the S2 reverify, below) — so IMPLEMENT it; don't re-plan from scratch. But map/verify as you go, present before/after diffs + te…
+  - *Anchor:* I have everything I need. All S2 encoders (community + consolidation) delegate to the shared `_make_encoder_dispatch`, and `base.py` already imports from `..dispatch` — so the chokepoint can live in t…
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
 ---
 
 ### Moment 16 — normal labeled, session opening (seq <= 2)
-`session 29ad0386 · epoch 0 · seq 0 · 2026-06-12 16:01`
+`session 29ad0386 · epoch 0 · seq 1 · 2026-06-12 17:46`
 
-- **→ THE MOMENT**
+- j=1
   - **Tom:** In /Users/tpac/brain, the S2 encoder path still uses model 'claude-sonnet-4-20250514', which the Anthropic API reports as deprecated with end-of-life June 15th, 2026 (confirmed via DeprecationWarning during an eval run on 2026-06-12). Production S2 units (consolidation, community…
   - *Anchor:* Migration complete — production S2 is off the deprecated model, tested, and the daemon restarted on the new code. `claude-sonnet-4-20250514` (EOL June 15) is gone from every live surface; everything n…
+- **→ THE MOMENT**
+  - **Tom:** anything else you've noticed that is worth diving into?
+  - *Anchor:* Yes — five things, one of which I'd act on soon. Findings in priority order: ⏎  ⏎ **1. A parallel session is editing this tree, and my daemon restart shipped its WIP live.** At session start the modif…
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 

@@ -20,25 +20,21 @@ flagged — the walker build refuses a manifest with unmatched cues).
 """
 import ast
 import json
-import os
 import re
-import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[3]
-GOLD_DIR = REPO / 'eval' / 'oracle_audit' / 'gold_remint'
+from walker_db import (open_logs_ro, GOLD_DIR, GOLD_SOURCES,
+                       gold_source_hash)   # ONE db-resolution/gold path — a
+                                           # second copy here once read a
+                                           # different db than extract (review)
+
 OUT_PATH = Path(__file__).resolve().parent / 'gold_manifest.json'
 
 WINDOW_HOURS = 6
 PREFIX_CHARS = 100
 SPEAKER_REF = {'OPERATOR': 'user_message', 'ANCHOR': 'assistant_message'}
-
-
-def logs_db_path():
-    db_dir = os.environ.get('BRAIN_DB_DIR') or str(Path.home() / 'AgentsContext' / 'brain')
-    return Path(db_dir) / 'brain_logs.db'
 
 
 def norm(text):
@@ -130,8 +126,7 @@ def main():
         print('FATAL: frozen cues missing from moments.json: %s' % missing_cards)
         return 2
 
-    db = logs_db_path()
-    conn = sqlite3.connect('file:%s?mode=ro' % db, uri=True)
+    conn = open_logs_ro()
     try:
         entries = []
         for cue_id in sorted(frozen):
@@ -147,6 +142,10 @@ def main():
         'built_from': {'gold': 'eval/oracle_audit/gold_remint/frozen_gold_24.json',
                        'moments': 'eval/oracle_audit/gold_remint/moments.json',
                        'window_hours': WINDOW_HOURS, 'prefix_chars': PREFIX_CHARS},
+        # freshness stamp: extract.py REFUSES to build when these no longer
+        # match the live gold files — a grown corpus with a stale exclusion
+        # manifest would silently leak new cues' sessions into training
+        'source_hashes': {name: gold_source_hash(name) for name in GOLD_SOURCES},
         'cues': entries,
         'excluded_sessions': sorted({e['session_id'] for e in matched}),
         'matched': len(matched), 'unmatched': len(unmatched),

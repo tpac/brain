@@ -52,7 +52,8 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
-from walker_db import fresh_walker, open_logs_ro, open_brain_ro, WALKER_DIR
+from walker_db import (fresh_walker, open_logs_ro, open_brain_ro, WALKER_DIR,
+                       gold_source_hash, EXTRACT_VERSION)
 
 REPO = Path(__file__).resolve().parents[3]
 MANIFEST = WALKER_DIR / 'gold_manifest.json'
@@ -296,7 +297,7 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
                 1 if labeled else 0,
                 len(t['op']), 1 if '```' in t['op'] else 0,
                 1 if '?' in t['op'] else 0,
-                act['tools'], act['files'], gap, seq,
+                act['tools'], act['files'], gap,
                 project, json.dumps(t['flags'])))
             if not labeled:
                 if t['o'] and t['o']['outcomes'] and not t['o']['cands']:
@@ -384,6 +385,21 @@ def main():
         print('FATAL: gold manifest has %d unmatched cues — walker refuses to build' %
               manifest['unmatched'])
         return 2
+    # Manifest freshness (wrong-science hardening): the exclusion set was built
+    # from specific gold files. If the gold corpus changed since (gold-growth
+    # is planned), building with the stale manifest LEAKS the new cues'
+    # sessions into the training substrate — refuse instead.
+    stale = {name: h for name, h in (manifest.get('source_hashes') or {}).items()
+             if gold_source_hash(name) != h}
+    if not manifest.get('source_hashes'):
+        print('FATAL: manifest predates source-hash stamping — regenerate: '
+              './dev python3 eval/laf/walker/gold_manifest.py')
+        return 2
+    if stale:
+        print('FATAL: gold corpus changed since the manifest was built (%s) — '
+              'regenerate gold_manifest.py before extracting, or the new '
+              'cues\' sessions leak into training.' % ', '.join(sorted(stale)))
+        return 2
     gold_sessions = set(manifest['excluded_sessions'])
 
     logs = open_logs_ro()
@@ -450,8 +466,8 @@ def main():
         "INSERT INTO turns (session_id, epoch, seq, stop, ts, op_text, anchor_text,"
         " query_stored, op_trace_id, anchor_trace_id, labeled, op_len, has_code,"
         " has_question, tool_result_count, files_touched, gap_seconds,"
-        " turns_since_start, project, flags)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", all_turns)
+        " project, flags)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", all_turns)
     walker.executemany(
         "INSERT OR REPLACE INTO candidates (session_id, epoch, seq, cand_short,"
         " node_id, outcome, tier, fetched_by, used_next_1, used_next_3, rank_in_pool,"
@@ -463,7 +479,9 @@ def main():
 
     walker.executemany(
         "INSERT OR REPLACE INTO build_meta (key, value) VALUES (?,?)",
-        [('extract_' + k, str(v)) for k, v in sorted(c.items())])
+        [('extract_' + k, str(v)) for k, v in sorted(c.items())]
+        + [('extract_version', EXTRACT_VERSION),
+           ('manifest_source_hashes', json.dumps(manifest['source_hashes']))])
     walker.commit()
     walker.close()
 
