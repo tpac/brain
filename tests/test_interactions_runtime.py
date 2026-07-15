@@ -56,14 +56,45 @@ class TestInteractionSeeding:
         assert all(i['total_versions'] == 1 for i in all_interactions)
 
     def test_surface_has_prompt_and_config(self):
+        """Fresh brains seed a real surface prompt whose layout the runtime
+        renderer actually implements, and whose template teaches the same
+        grammar that layout renders. Template + layout flip atomically —
+        that's why layout rides in the interaction config — so a seed that
+        pairs an XML template with a legacy layout (or names a layout
+        build_surface_prompt doesn't implement) must fail here.
+
+        Deliberately does NOT pin config keys the runtime never reads
+        (max_candidates etc. lived here until 2026-07-15; prompt-size
+        limits come from surface_contract.SURFACE, not this config)."""
         from servers.interaction_seed import seed_interactions
+        from servers.scales.s1.surface_contract import build_surface_prompt
         seed_interactions(self.brain)
         surface = self.dal.get_active('surface')
         assert surface is not None
-        assert len(surface['template']) > 100  # real prompt, not placeholder
+        template = surface['template']
+        assert len(template) > 100  # real prompt, not placeholder
+
         config = json.loads(surface['parameters'])
-        assert 'max_candidates' in config
-        assert 'max_selected' in config
+        layout = config.get('layout', 'legacy')
+
+        # Render one candidate through the seeded layout — an unknown
+        # layout value silently falls back to legacy rendering and fails
+        # the grammar checks below (behavior-based, no layout whitelist).
+        cand = {'id': 'a' * 32, 'title': 'Seeded check', 'type': 'fact',
+                'content': 'body', 'score': 0.9,
+                'created_at': '2026-07-01T00:00:00+00:00'}
+        prompt, _ = build_surface_prompt([cand], 'a message', layout=layout)
+        if layout == 'xml_v13':
+            assert '<candidate id="aaaaaaaa"' in prompt, \
+                'seeded layout did not reach the XML renderer'
+            assert '<candidate' in template, \
+                'xml_v13 layout paired with a template that never ' \
+                'teaches the <candidate> grammar'
+        else:
+            assert '<candidate' not in prompt
+            assert '<candidate' not in template, \
+                'XML-speaking template paired with legacy layout — ' \
+                'template and layout must flip together'
 
     def test_encoding_agent_has_prompt_and_config(self):
         """The S1 encoder interaction has a real prompt + config.
