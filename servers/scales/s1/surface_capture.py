@@ -99,7 +99,11 @@ def begin(brain, *, candidates_data, user_message, recent_messages,
             return None
         return {
             'v': CAPTURE_VERSION,
-            'ts': iso_now(),
+            # Wall-clock is correct: ts records when the capture file was
+            # physically written, and replay pins brain_now to it for age
+            # rendering. Captures are off during eval replays, so no
+            # conversation-time is ever violated here.
+            'ts': iso_now(),  # clock-ok
             'session_id': session_id,
             'stamps': {
                 'git_sha': _git_sha(),
