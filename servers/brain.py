@@ -2105,9 +2105,15 @@ class Brain(
         from .scales.runner import ANTHROPIC_CLIENT_TIMEOUT
         load_env()
         import anthropic
-        self.anthropic_client = anthropic.Anthropic(
-            timeout=ANTHROPIC_CLIENT_TIMEOUT)
-        return self.anthropic_client
+        client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
+        # Keyless boot (first-run onboarding): don't cache a client that can
+        # never authenticate. Returning it uncached means load_env() re-resolves
+        # on every call, so the moment the operator writes the key to
+        # ~/.config/brain/env the next LLM call picks it up — no daemon restart.
+        if not os.environ.get('ANTHROPIC_API_KEY'):
+            return client
+        self.anthropic_client = client
+        return client
 
     def warm_anthropic_connection(self) -> bool:
         """Warm the Anthropic httpx connection (TLS + DNS) — the single free,

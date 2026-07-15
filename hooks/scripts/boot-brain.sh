@@ -45,28 +45,38 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
   fi
 fi
 
+# Missing key is NOT a boot failure — the daemon boots keyless by design
+# (brain.py _ensure_anthropic_client: lazy client, auth errors surface per
+# LLM call where callers already handle them). Everything local runs without
+# it: runtime bootstrap, embedder, brain.db, traces, direct recall. Only the
+# LLM-powered layers (memory surfacing, encoding) wait for the key. Flag it,
+# keep booting, and present the key as the one remaining setup step — a
+# designed onboarding stage, not an error.
+BRAIN_KEY_MISSING=0
 if [ -z "${ANTHROPIC_API_KEY:-}" ] || [[ "${ANTHROPIC_API_KEY}" != sk-* ]]; then
+  BRAIN_KEY_MISSING=1
   cat <<EOF
-🧠 brain plugin: ANTHROPIC_API_KEY is not set.
+🧠 Anchor — setup in progress
 
-The brain needs your Anthropic API key to encode and surface memories.
-Without it, recall still works but no new memories will be written.
+Your brain is initializing: local runtime, embedding model, memory database,
+and the brain daemon are being set up automatically — no action needed for
+those. Memory storage, history traces, and direct recall work from this
+session on.
 
-Easiest: set it in the plugin's configuration when you enable Anchor — Claude
-Code prompts for "Anthropic API key" and stores it in your keychain. Or via the
-env file:
+One step remains to complete setup — learning (writing new memories) and
+automatic memory surfacing use the Anthropic API and need your key:
 
   mkdir -p "${XDG_CONFIG_HOME:-\$HOME/.config}/brain"
   printf 'ANTHROPIC_API_KEY=sk-ant-...\n' > "${XDG_CONFIG_HOME:-\$HOME/.config}/brain/env"
   chmod 600 "${XDG_CONFIG_HOME:-\$HOME/.config}/brain/env"
 
-Get a key at https://console.anthropic.com/settings/keys, then start a new session.
+Get a key at https://console.anthropic.com/settings/keys — the running brain
+picks it up automatically on the next message (no restart needed).
 EOF
   cat >&2 <<EOF
-[brain-boot] ANTHROPIC_API_KEY not set — plugin will not load.
-[brain-boot] Expected at: $BRAIN_ENV_FILE
+[brain-boot] ANTHROPIC_API_KEY not set — booting in local-only mode (no encode/surface).
+[brain-boot] Key location: $BRAIN_ENV_FILE
 EOF
-  exit 0
 fi
 
 source "$(dirname "$0")/resolve-brain-db.sh"
