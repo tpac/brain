@@ -56,7 +56,7 @@ case "$(uname -s)" in
     ;;
   *)
     echo "[ensure-dashboard] $(uname -s): no launchd — starting detached (no boot persistence)"
-    nohup "$PLUGIN_DIR/bin/brain-dashboard" >/dev/null 2>&1 &
+    nohup "$PLUGIN_DIR/hooks/scripts/brain-dashboard" >/dev/null 2>&1 &
     ;;
 esac
 

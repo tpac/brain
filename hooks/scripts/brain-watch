@@ -1,13 +1,15 @@
 #!/bin/bash
 # brain-watch — /watch self-channel listener launcher.
 #
-# On the Bash tool's $PATH via the plugin's bin/ (Claude Code adds it while the
-# plugin is enabled), so it runs from ANY repo or session with no path to fill
-# in. Routes through brain-env.sh — the same python resolution every launcher
-# uses (bundled venv, ensure-runtime bootstrap, PYTHONHOME hygiene). The poller
+# Lives in hooks/scripts/ — NOT a top-level bin/: claude.ai-hosted plugins may
+# not ship bin/ executables. Invoked by absolute path from ANY repo or session:
+# source ~/.config/brain/resolved.env (written by every hook run) and run
+# "$PLUGIN_ROOT/hooks/scripts/brain-watch" — see skills/watch/SKILL.md. Routes
+# through brain-env.sh — the same python resolution every launcher uses
+# (bundled venv, ensure-runtime bootstrap, PYTHONHOME hygiene). The poller
 # finds the daemon by port (uid-derived), not by path.
 #
-# Usage: brain-watch [session_id] [fast_s=5] [slow_s=60] [backoff=2.0]
+# Usage: hooks/scripts/brain-watch [session_id] [fast_s=5] [slow_s=60] [backoff=2.0]
 #
 # session_id defaults to $CLAUDE_CODE_SESSION_ID — the full session UUID Claude
 # Code exports into every command's environment — so `brain-watch` with NO args
@@ -15,10 +17,10 @@
 # a long session; the env var never does. Pass an explicit id only to watch a
 # DIFFERENT stream's inbox.
 set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# brain-env.sh sets $BRAIN_PYTHON + $PLUGIN_DIR and bootstraps the runtime.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# brain-env.sh (sibling) sets $BRAIN_PYTHON + $PLUGIN_DIR and bootstraps the runtime.
 # 1>&2: our stdout is the Monitor event stream — keep bootstrap chatter off it.
-source "$ROOT/hooks/scripts/brain-env.sh" 1>&2
+source "$SCRIPT_DIR/brain-env.sh" 1>&2
 # No arg → watch THIS session, resolved from the env var Claude Code sets per
 # command. :? fails loud (rather than a silent empty-inbox poll) when run with
 # no id outside a Claude Code session.

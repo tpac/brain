@@ -279,12 +279,23 @@ class BrainVoice:
         runs from the repo; the no-daemon fallback runs from the deployed
         plugin — the relative path resolves in both. Returns '' if unreadable
         (degrade: boot continues without the stance, logged loudly).
+
+        The file carries YAML frontmatter (claude.ai skill validation requires
+        it) — strip it here so the boot injection stays pure stance, exactly
+        as before the frontmatter existed.
         """
         import os
         try:
             root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             with open(os.path.join(root, 'skills', 'brain', 'SKILL.md')) as f:
-                return f.read().strip()
+                text = f.read()
+            # Strip YAML frontmatter: a leading '---' line up to the next
+            # '---' line. Tolerant: no frontmatter → whole file unchanged.
+            if text.startswith('---\n'):
+                end = text.find('\n---\n', 4)
+                if end != -1:
+                    text = text[end + len('\n---\n'):]
+            return text.strip()
         except Exception as e:
             # Loud: the identity prior failed to load — surface it in the
             # errors table (event_type='error'), don't degrade quietly.

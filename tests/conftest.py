@@ -19,6 +19,15 @@ import os
 import sys
 
 
+# Hermetic key: brain.llm_available gates surface/encode/S2/warms on a
+# resolved sk-* key (keyless first-run onboarding). Without pinning, real-
+# Brain tests would behave differently on machines with vs without a key
+# in ~/.config/brain/env — passing on the dev box, gating (and failing) on
+# a keyless one. A fake sk- prefix keeps the suite deterministic; unit
+# tests mock actual LLM calls, so the fake never reaches the API. Also
+# stops load_env() from pulling the developer's REAL key into test runs.
+os.environ.setdefault('ANTHROPIC_API_KEY', 'sk-test-hermetic-not-a-key')
+
 _BYPASS_ENV = 'BRAIN_ALLOW_ANY_PYTHON'
 
 

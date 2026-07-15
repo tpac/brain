@@ -422,14 +422,20 @@ def hook_recall(brain, args, graph_changes):
         # phase into haiku / id_resolve / spread / render / trace marks
         # on the same final log line. Without this we only know "surface
         # took N ms" without knowing which sub-phase ate the budget.
-        additional_context = _run_surface(
-            brain, ctx, candidates_data, user_message,
-            recent_messages=recent_messages,
-            result=result, enriched=enriched, results=results,
-            recall_ref=recall_ref, session_id=session_id,
-            graph_changes=graph_changes,
-            query_vec=_query_vec, prior_vecs=_prior_vecs,
-            frame=_frame, pt=pt)
+        # Keyless onboarding window: surface is a Haiku call that can only
+        # 401 — skip it (noted once, not one error per user turn). Recall
+        # candidates were still computed locally; MCP recall stays live.
+        if brain.llm_available:
+            additional_context = _run_surface(
+                brain, ctx, candidates_data, user_message,
+                recent_messages=recent_messages,
+                result=result, enriched=enriched, results=results,
+                recall_ref=recall_ref, session_id=session_id,
+                graph_changes=graph_changes,
+                query_vec=_query_vec, prior_vecs=_prior_vecs,
+                frame=_frame, pt=pt)
+        else:
+            brain.note_llm_unavailable('S1 surface')
     except Exception as _surface_err:
         brain._log_error('daemon_surface', _surface_err,
                          'S1 Surface failed in daemon (query=%s)' % user_message[:100])

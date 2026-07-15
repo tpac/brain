@@ -265,6 +265,9 @@ class TestScribeReactor(unittest.TestCase):
 
         class FakeBrain:
             _boot_time = 0.0   # ancient → past the boot-grace window
+            # Models a KEYED brain — scribe_due gates on llm_available first
+            # (keyless onboarding); the keyless path has its own test below.
+            llm_available = True
 
             def present_streams(self, window_min, limit):
                 return streams
@@ -425,6 +428,25 @@ class TestScribeReactor(unittest.TestCase):
             [{'session_id': 'gate-B', 'updated_at': self._iso(now, 10)}],
             {'gate-B': ENCODE_EVERY - 2}, now=now)
         self.assertIsNone(due)
+
+    def test_keyless_scribe_never_due(self):
+        """Keyless onboarding window: encoding is LLM-driven — scribe_due
+        gates on llm_available BEFORE any cadence logic (no presence/turn
+        reads) and notes the state via note_llm_unavailable."""
+        from servers.brain import Brain
+
+        class KeylessBrain:
+            llm_available = False
+
+            def __init__(self):
+                self.notes = []
+
+            def note_llm_unavailable(self, where):
+                self.notes.append(where)
+
+        kb = KeylessBrain()
+        self.assertIsNone(Brain.scribe_due(kb, now=1_000_000.0))
+        self.assertEqual(kb.notes, ['S1 Scribe'])
 
     def test_each_session_on_its_own_count_most_overdue_first(self):
         # Two sessions both at/over threshold, independently — the MOST-overdue

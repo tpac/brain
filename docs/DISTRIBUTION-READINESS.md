@@ -77,9 +77,12 @@ artifact today:
 plugin-only user (including Tom outside the repo) has no dashboard at all. It's a
 read-only observer of the DBs + `/tmp/brain-surface-result-*.json`.
 
-**First-run friction.** API key missing → boot exits with instructions printed to
-stdout, which may never surface in the CC UI ("brain does nothing"). Embedder
-(~100–200 MB) downloads on first boot and can block the 15s SessionStart hook.
+**First-run friction.** ~~API key missing → boot exits~~ **RESOLVED (a1a620e,
+2026-07-15):** keyless boot now runs the full chain (runtime, embedder, brain.db,
+daemon, traces, recall); `brain.llm_available` gates surface/encode/S2 with a
+single logged marker, and the key heals the running daemon with no restart.
+Remaining friction: embedder (~100–200 MB) downloads on first boot and can block
+the 15s SessionStart hook.
 
 **Low — "Tom" in shipped code comments.** ~30 files under `servers/` and `hooks/`
 carry the operator's name in *comments* (e.g. `# Tom's convention: pass the object`,

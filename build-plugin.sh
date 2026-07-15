@@ -55,12 +55,15 @@ if [ -z "$_srv_files" ]; then
 fi
 while IFS= read -r _f; do FILES+=("$_f"); done <<< "$_srv_files"
 
-# hooks/ skills/ bin/ — git-TRACKED runtime code, shipped in full (same pattern
+# hooks/ skills/ — git-TRACKED runtime code, shipped in full (same pattern
 # as dashboard/servers above). This closes the start-daemon.sh / watch-SKILL.md
-# class of omission.
-#   hooks/ + bin/ : exclude *.md (dev notes like hooks/HOOKS.md — not runtime).
-#   skills/       : KEEP *.md — SKILL.md *is* the skill; .md is the payload.
-for _dir in hooks skills bin; do
+# class of omission. NO top-level bin/ in the package: claude.ai-hosted plugins
+# reject bin/ executables (PATH-injected but invisible on the admin approval
+# surface) — launchers live in hooks/scripts/; bin/ holds only the
+# runtime-fetched uv (ensure-runtime.sh), never packaged.
+#   hooks/  : exclude *.md (dev notes like hooks/HOOKS.md — not runtime).
+#   skills/ : KEEP *.md — SKILL.md *is* the skill; .md is the payload.
+for _dir in hooks skills; do
   if [ "$_dir" = "skills" ]; then
     _files="$(git ls-files "$_dir" || true)"
   else

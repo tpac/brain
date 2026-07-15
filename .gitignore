@@ -26,10 +26,10 @@ tests/relearned_*.db
 venv/
 node_modules/
 
-# Plugin-scoped runtime (installed by hooks/scripts/ensure-runtime.sh)
-bin/*
-!bin/brain-watch
-!bin/brain-dashboard
+# Plugin-scoped runtime (installed by hooks/scripts/ensure-runtime.sh).
+# bin/ is runtime-only (holds the fetched uv binary) — launcher scripts live
+# in hooks/scripts/ (claude.ai-hosted plugins may not ship a top-level bin/).
+bin/
 py/
 .runtime-ready
 
