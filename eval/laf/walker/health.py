@@ -24,8 +24,8 @@ Run:  ./dev python3 eval/laf/walker/health.py
 """
 import json
 import random
+import re
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -89,7 +89,6 @@ def check_conservation(walker, logs, lines):
             "SELECT session_id, metadata FROM trace_events "
             "WHERE scale='s1' AND event_type='delta' AND ref_type='additionalContext'"):
         total += 1
-        import re
         if sess in gold or not re.match(
                 r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', sess):
             gold_synth += 1

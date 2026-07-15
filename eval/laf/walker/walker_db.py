@@ -108,6 +108,41 @@ CREATE TABLE IF NOT EXISTS build_meta (
 """
 
 
+def lane_columns(views, sources=('op', 'anchor')):
+    """THE single source for lane column names (review F3 follow-up): scores'
+    INSERT list and health's checks both derive from this; the static DDL above
+    is guarded against it by check_lane_schema(). Loud on name collisions —
+    v.strip('_') is not injective ('_title' would collapse onto 'title')."""
+    names = []
+    for src in sources:
+        names += ['v_%s_%s' % (v.strip('_'), src) for v in views]
+        names += ['sit_%s' % src, 'idf_%s' % src]
+    if len(set(names)) != len(names):
+        raise SystemExit('lane_columns: view names collide under strip(_): %r' % views)
+    return names
+
+
+def check_lane_schema(conn, views):
+    """Fail LOUDLY when MAXSIM_VIEWS no longer matches the static DDL — a P3
+    view retune would otherwise hard-crash the INSERT (added view) or silently
+    orphan a DDL column as eternal NULL (removed view)."""
+    have = {r[1] for r in conn.execute('PRAGMA table_info(cand_turn_scores)')}
+    want = set(lane_columns(views))
+    if not want <= have:
+        raise SystemExit(
+            'cand_turn_scores DDL is stale: missing lanes %r. MAXSIM_VIEWS '
+            'changed (EMBEDDING_GROUPS weight retune?) — update the DDL lane '
+            'columns in walker_db.py and rerun scores.py --rebuild.'
+            % sorted(want - have))
+    orphans = {c for c in have if c.startswith(('v_', 'sit_', 'idf_'))} - want
+    if orphans:
+        raise SystemExit(
+            'cand_turn_scores has orphaned lane columns %r not in '
+            'lane_columns(MAXSIM_VIEWS) — a view was removed; update the DDL '
+            'and rerun scores.py --rebuild so the table matches production.'
+            % sorted(orphans))
+
+
 def brain_db_dir():
     return Path(os.environ.get('BRAIN_DB_DIR') or str(Path.home() / 'AgentsContext' / 'brain'))
 
