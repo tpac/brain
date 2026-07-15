@@ -103,10 +103,11 @@ def check_conservation(walker, logs, lines):
     unpaired = int(meta.get('extract_delta_unpaired', 0))
     missing_cands = int(meta.get('extract_label_missing_candidates', 0))
     missing_o = int(meta.get('extract_label_missing_O', 0))
-    accounted = labeled + empty + gold_synth + unpaired + missing_cands + missing_o
+    disagree = int(meta.get('extract_label_excluded_text_disagree', 0))
+    accounted = labeled + empty + gold_synth + unpaired + missing_cands + missing_o + disagree
     body = ['- Δ rows (independent recount): **%d**' % total,
-            '- labeled %d + empty %d + gold/synthetic %d + unpaired %d + no-candidates %d + no-O %d = **%d**'
-            % (labeled, empty, gold_synth, unpaired, missing_cands, missing_o, accounted),
+            '- labeled %d + empty %d + gold/synthetic %d + unpaired %d + no-candidates %d + no-O %d + text-disagree %d = **%d**'
+            % (labeled, empty, gold_synth, unpaired, missing_cands, missing_o, disagree, accounted),
             '- NOTE: recount runs against the LIVE logs db — rows written after the walker build '
             'appear in the recount only; a small positive drift (recount > accounted) is expected.']
     drift = total - accounted

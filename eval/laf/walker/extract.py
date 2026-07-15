@@ -1,21 +1,33 @@
 """Walker phase 1 — extract micro-turns + candidates + labels (§20.2/§20.3).
 
-TURN MODEL (v3, Tom 2026-07-14: "can't it stay in the normal conversation
-flow?"): a turn is anchored on a RECALL EVENT (the s1 O row), not on the
-(session, stop) key. Stop counters collide twice over:
+TURN MODEL (v4 — v3 micro-turns + the 2026-07-14 untraced-taxonomy relabel,
+brain node 9adc8127): a turn is anchored on a RECALL EVENT (the s1 O row), not
+on the (session, stop) key. Stop counters collide twice over:
 
   • RESETS — resume/compaction restarts the counter (604 colliding keys / 168
     sessions measured). Fixed by EPOCHS: per session, sort every stop-bearing
     row by timestamp and start a new epoch when the stop regresses. The moment
     stack never crosses an epoch boundary (§20.3 compaction-seams clause).
-  • INTERRUPTS — operator interrupts and re-prompts; both recalls share one
-    stop. The interrupted prompt IS part of the conversation flow: its O row
-    preserves the prompt text, its Δ row the judge labels. Each O row becomes
-    its own MICRO-TURN, ordered by ts (`seq`); an O row with no agreeing s0
-    text is an interrupted turn (op_text = the O query, ≤500 chars); an s0
-    turn with no agreeing O row is a no-recall turn (hook timeout/failure).
+  • SAME-STOP COLLISIONS — steering messages, Esc-interrupts, and injected
+    task-notifications all land before the turn's Stop fires, so several
+    recalls share one stop. Each O row becomes its own MICRO-TURN, ordered by
+    ts (`seq`). Flags (taxonomy verified 2026-07-14, brain node 9adc8127):
+      - `untraced_legacy`: O row with NO s0 user_message at its stop. Almost
+        entirely pre-2026-06-08, when user_message was written at Stop
+        (94b4642 moved it to prompt-arrival — the class ends there).
+        op_text = the O query, ≤500 chars.
+      - `superseded`: a LATER turn shares this turn's stop — its Stop never
+        fired before the next prompt (steering / interrupt / notification).
+        Live signal, era-independent, ~7-12% of turns every month.
+      - `text_disagree`: an s0 existed at the stop but text agreement failed;
+        paired STRUCTURALLY (latest unpaired O) so the moment stack keeps the
+        full operator text, but excluded from labels (op/query mismatch).
+      - `no_recall`: s0 turn with no O row at all — register_only short
+        answers, task-notification skips (post-2026-07-03), rare hook misses.
     Nothing is key-deduped away — v2's keep-latest dedup silently discarded
-    every interrupt-then-reprompt first recall (~800 O rows).
+    every same-stop first recall (~800 O rows).
+    The Stop's assistant_message attaches to the LAST s0 of its stop: the one
+    combined response answers the final steering message, not the first.
 
 Pairing, all within (session, epoch), all ts-ordered:
   Δ / K  → the latest O row with same stop and O.ts <= row.ts (O,K,Δ are
@@ -147,8 +159,10 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
                              'op': jload(meta_raw).get('content', ''),
                              'anchor': None, 'anchor_trace_id': None})
         elif stream == 'assistant_message':
-            # first assistant message of a stop = the turn's response
-            for rec in ep['s0']:
+            # attach to the LAST s0 of the stop: with steering messages the
+            # single Stop-time response answers the final prompt, not the
+            # first (all s0 rows of the stop precede this event by ts)
+            for rec in reversed(ep['s0']):
                 if rec['stop'] == stop and rec['anchor'] is None:
                     rec['anchor'] = jload(meta_raw).get('content', '')
                     rec['anchor_trace_id'] = rid
@@ -174,8 +188,9 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
             if tgt is not None:
                 tgt['prov'] = prov
 
-        # s0 user_message → agreeing O at same stop
-        standalone = []
+        # s0 user_message → agreeing O at same stop. Two passes so text
+        # agreement claims its O before any structural fallback grabs it.
+        disagree_pending, standalone = [], []
         for rec in ep['s0']:
             cands = [o for o in ep['o'] if o['stop'] == rec['stop'] and o['s0'] is None]
             hit = None
@@ -186,8 +201,21 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
             if hit is not None:
                 hit['s0'] = rec
             else:
-                if cands:
-                    c['s0_no_agreeing_o'] += 1            # replacement whose recall failed AND text differs
+                disagree_pending.append(rec)
+        for rec in disagree_pending:
+            # structural fallback: an s0 and an unpaired O at the same stop are
+            # the same turn even when texts disagree (command expansion, prompt
+            # rewriting). Pair the latest unpaired O so the moment stack keeps
+            # the full operator text + response; flagged text_disagree below
+            # and excluded from labels.
+            cands = [o for o in ep['o'] if o['stop'] == rec['stop'] and o['s0'] is None]
+            if cands:
+                cands[-1]['s0'] = rec
+                cands[-1]['disagree'] = True
+                c['s0_paired_text_disagree'] += 1
+            else:
+                if any(o['stop'] == rec['stop'] for o in ep['o']):
+                    c['s0_disagree_unpairable'] += 1      # every O at this stop already claimed
                 standalone.append(rec)
 
         # micro-turn sequence: O-anchored turns + standalone s0, by ts
@@ -201,8 +229,10 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
                 rec = obj['s0']
                 flags = []
                 if rec is None:
-                    flags.append('interrupted')           # prompt s0 never recorded
-                    c['turns_interrupted'] += 1
+                    flags.append('untraced_legacy')       # prompt s0 never recorded
+                    c['turns_untraced_legacy'] += 1       # (pre-06-08 Stop-time write)
+                elif obj.get('disagree'):
+                    flags.append('text_disagree')
                 op_text = rec['op'] if rec else obj['query']
                 turns.append({
                     'ts': obj['ts'], 'stop': obj['stop'], 'o': obj,
@@ -221,6 +251,16 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
                     'anchor_tid': obj.get('anchor_trace_id'),
                     'msg_ts': obj['ts']})
 
+        # superseded: a later turn shares this turn's stop — its Stop never
+        # fired before the next prompt (steering / interrupt / notification)
+        last_idx_of_stop = {}
+        for idx, t in enumerate(turns):
+            last_idx_of_stop[t['stop']] = idx
+        for idx, t in enumerate(turns):
+            if last_idx_of_stop[t['stop']] > idx:
+                t['flags'].append('superseded')
+                c['turns_superseded'] += 1
+
         # rows + labels, seq-ordered
         prev_ts = None
         for seq, t in enumerate(turns):
@@ -229,6 +269,9 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
             gap = (t_now - prev_ts).total_seconds() if (t_now and prev_ts) else None
             prev_ts = t_now
             labeled = bool(t['o'] and t['o']['outcomes'] and t['o']['cands'])
+            if labeled and t['o'].get('disagree'):
+                labeled = False                           # op/query mismatch — keep as
+                c['label_excluded_text_disagree'] += 1    # context, not as a label row
             turn_rows.append((
                 sess, epoch, seq, t['stop'], t['ts'], t['op'], t['anchor'],
                 t['query'], t['op_tid'], t['anchor_tid'],
@@ -394,7 +437,7 @@ def main():
     walker.commit()
     walker.close()
 
-    print('extract phase (v3 micro-turns) — conservation counters:')
+    print('extract phase (v4 micro-turns) — conservation counters:')
     for k in sorted(c):
         print('  %-28s %d' % (k, c[k]))
     return 0

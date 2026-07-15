@@ -42,14 +42,14 @@ CREATE TABLE IF NOT EXISTS turns (
     op_trace_id TEXT,           -- trace_events.id (HEX STRING — INTEGER affinity would coerce
                                 -- ids like '6e46…' via scientific notation and mangle the join)
     anchor_trace_id TEXT,       -- trace_events.id of the assistant_message
-    op_vec BLOB,                -- embed phase: trace_embeddings join, or local for interrupted
+    op_vec BLOB,                -- embed phase: trace_embeddings join, or local for untraced_legacy
                                 -- (DOCUMENT-side: 'search_document:' + 'Tom: <text>' render —
                                 -- the j>=1 moment-context representation, = live trace matrix)
     anchor_vec BLOB,            -- embed phase (document-side)
     q_vec BLOB,                 -- QUERY-side embedding of op_text[:500] — what production
                                 -- scores the j=0 prompt with ('search_query:' prefix, no
                                 -- speaker token); labeled turns only
-    op_vec_source TEXT,         -- 'store' | 'local_interrupted' | NULL (pending drain)
+    op_vec_source TEXT,         -- 'store' | 'local_untraced' | NULL (pending drain)
     labeled INTEGER NOT NULL DEFAULT 0,
     -- phi(M) activity features (j=0 admissibility: computed DURING the turn,
     -- so only j>=1 slots may use tool/anchor-derived features)
@@ -57,8 +57,12 @@ CREATE TABLE IF NOT EXISTS turns (
     tool_result_count INTEGER, files_touched INTEGER,  -- files_touched = Edit/Write/NotebookEdit tool results (proxy)
     gap_seconds REAL, turns_since_start INTEGER,
     project TEXT,
-    flags TEXT,                 -- JSON list: 'interrupted' (O row, s0 never recorded — op_text
-                                -- is the 500-char O query), 'no_recall' (s0 turn, recall failed)
+    flags TEXT,                 -- JSON list (see extract.py taxonomy): 'untraced_legacy' (O row,
+                                -- s0 never recorded — pre-2026-06-08; op_text is the 500-char O
+                                -- query), 'superseded' (a later turn shares this stop — Stop never
+                                -- fired: steering/interrupt/notification), 'text_disagree'
+                                -- (structurally paired s0, op/query mismatch — never labeled),
+                                -- 'no_recall' (s0 turn, no O row — register_only or hook miss)
     PRIMARY KEY (session_id, epoch, seq)
 );
 CREATE TABLE IF NOT EXISTS candidates (

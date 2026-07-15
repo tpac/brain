@@ -8,11 +8,12 @@ Vectors are never recomputed here if the substrate holds them:
     opened 2026-07-14) stay NULL, are COUNTED as pending, and fill on the
     next run — this phase never wipes, only fills.
   • The ONLY local embedding is for turns that will NEVER appear in the
-    store: interrupted micro-turns (the prompt has no s0 row — only the O
-    row preserved it). Rendered with the worker's exact recipe
-    ('%s: %s' % (identity, text), document prefix, same model) and flagged
-    op_vec_source='local_interrupted' so the sweep can run a with/without
-    sensitivity arm (live recall's trace matrix won't hold these either).
+    store: untraced_legacy micro-turns (the prompt has no s0 row — only the
+    O row preserved it; pre-2026-06-08 Stop-time write, see extract.py).
+    Rendered with the worker's exact recipe ('%s: %s' % (identity, text),
+    document prefix, same model) and flagged op_vec_source='local_untraced'
+    so the sweep can run a with/without sensitivity arm (live recall's trace
+    matrix won't hold these either).
 
 Run:  ./dev python3 eval/laf/walker/embed.py
 """
@@ -51,12 +52,12 @@ def fill_from_store(walker, logs, col, tid_col, c, stamp_source=False):
     c[col + '_pending_drain'] = len(pending) - filled
 
 
-def embed_interrupted(walker, c):
+def embed_untraced(walker, c):
     rows = walker.execute(
         "SELECT rowid, op_text FROM turns WHERE op_vec IS NULL AND op_trace_id IS NULL"
-        " AND flags LIKE '%interrupted%' AND op_text != ''").fetchall()
+        " AND flags LIKE '%untraced_legacy%' AND op_text != ''").fetchall()
     if not rows:
-        c['op_vec_local_interrupted'] = 0
+        c['op_vec_local_untraced'] = 0
         return
     from servers import embedder
     embedder.load_model()          # fresh process — daemon loads this at boot
@@ -68,9 +69,9 @@ def embed_interrupted(walker, c):
         sys.exit(2)
     updates = [(vec, rowid) for (rowid, _), vec in zip(rows, vectors) if vec is not None]
     walker.executemany(
-        "UPDATE turns SET op_vec=?, op_vec_source='local_interrupted' WHERE rowid=?",
+        "UPDATE turns SET op_vec=?, op_vec_source='local_untraced' WHERE rowid=?",
         updates)
-    c['op_vec_local_interrupted'] = len(updates)
+    c['op_vec_local_untraced'] = len(updates)
 
 
 def embed_query_side(walker, c):
@@ -105,10 +106,10 @@ def main():
     logs = open_logs_ro()
     c = {}
     # op_vec pass carries op_vec_source='store'; anchor has no source column
-    # (store is its only source — interrupted turns have no anchor at all).
+    # (store is its only source — untraced turns have no anchor at all).
     fill_from_store(walker, logs, 'op_vec', 'op_trace_id', c, stamp_source=True)
     fill_from_store(walker, logs, 'anchor_vec', 'anchor_trace_id', c)
-    embed_interrupted(walker, c)
+    embed_untraced(walker, c)
     embed_query_side(walker, c)
     c['op_vec_still_null'] = walker.execute(
         "SELECT count(*) FROM turns WHERE op_vec IS NULL").fetchone()[0]

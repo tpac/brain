@@ -1,10 +1,11 @@
 """H1 packet — §20.6 checkpoint 1: the moment-fidelity read.
 
-Samples ~15 reconstructed moments STRATIFIED across the classes where a wrong
-reconstruction would be silent (interrupted micro-turns, epoch seams, no-recall
-turns) plus normal controls across months, and renders each as the walker sees
-it: the turn + its preceding stack, roles, flags, timing. Tom reads them
-against his memory of the conversations — the one check no math can do.
+Samples ~17 reconstructed moments STRATIFIED across the classes where a wrong
+reconstruction would be silent (untraced-legacy micro-turns, superseded steering
+turns, epoch seams, no-recall turns) plus normal controls across months, and
+renders each as the walker sees it: the turn + its preceding stack, roles,
+flags, timing. Tom reads them against his memory of the conversations — the one
+check no math can do.
 
 Deterministic seed → rerunnable; emits eval/laf/walker/h1_moments.md.
 Run:  ./dev python3 eval/laf/walker/h1_packet.py
@@ -20,11 +21,14 @@ STACK_DEPTH = 4          # previous turns rendered per moment
 OP_CAP, ANCHOR_CAP = 280, 200
 
 STRATA = [
-    ('interrupted micro-turn', 3,
-     "SELECT session_id, epoch, seq FROM turns WHERE flags LIKE '%interrupted%' ORDER BY ts"),
+    ('untraced legacy micro-turn (pre-06-08 s0 loss)', 3,
+     "SELECT session_id, epoch, seq FROM turns WHERE flags LIKE '%untraced_legacy%' ORDER BY ts"),
+    ('superseded turn (steering/interrupt — later turn shares its stop)', 2,
+     "SELECT session_id, epoch, seq FROM turns WHERE flags LIKE '%superseded%'"
+     " AND flags NOT LIKE '%untraced_legacy%' ORDER BY ts"),
     ('epoch seam (first turns of epoch >= 1)', 3,
      "SELECT session_id, epoch, seq FROM turns WHERE epoch >= 1 AND seq <= 1 AND labeled=1 ORDER BY ts"),
-    ('no-recall turn (hook timeout/failure)', 2,
+    ('no-recall turn (register_only or hook miss)', 2,
      "SELECT session_id, epoch, seq FROM turns WHERE flags LIKE '%no_recall%' ORDER BY ts"),
     ('normal labeled, deep history (seq >= 8)', 4,
      "SELECT session_id, epoch, seq FROM turns WHERE labeled=1 AND seq >= 8 AND flags='[]' ORDER BY ts"),
@@ -69,9 +73,11 @@ def main():
         'Each block is a moment exactly as the walker reconstructs it: the turn (→) plus',
         'the previous %d turns of its epoch, oldest first. Read against your memory:' % STACK_DEPTH,
         'are these the right turns, in the right order, from the right conversation?',
-        'Interrupted turns show the prompt recovered from the recall trace (no Anchor',
-        'response ever existed). Epoch seams are post-resume/compaction restarts —',
-        'the stack deliberately does NOT cross them.', '',
+        'Untraced-legacy turns show the prompt recovered from the recall trace (no',
+        'Anchor response ever existed). Superseded turns never got their own Stop —',
+        'a steering message / interrupt / notification landed first; the combined',
+        'response attaches to the LAST turn of the stop. Epoch seams are',
+        'post-resume/compaction restarts — the stack deliberately does NOT cross them.', '',
         '---', '']
     idx = 0
     for label, n, sql in STRATA:
