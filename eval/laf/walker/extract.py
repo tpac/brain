@@ -70,9 +70,9 @@ S0_TYPES = ('user_message', 'assistant_message', 'tool_result', 'anchor_touched'
 USED_NEXT_WINDOWS = (1, 3)
 
 
-def stop_of(chain_id):
-    tail = str(chain_id or '').rsplit('-', 1)[-1]
-    return int(tail) if tail.isdigit() else None
+stop_of = trace_links._stop_of      # reuse the canonical join-key parser (review F7)
+                                    # — one definition, so a chain-shape change
+                                    # can't fix the live join and miss the walker's
 
 
 def norm(text):
@@ -80,13 +80,18 @@ def norm(text):
 
 
 def texts_agree(a, b, floor=40, span=120):
-    """Prefix agreement between two normalized texts; short texts must match
-    their entire length (same rule as the gold manifest)."""
+    """Do two normalized texts denote the same operator message? Long prefix
+    agreement (>= floor chars), OR — for texts shorter than floor — full
+    equality. The short-text branch is STRICTER than raw prefix containment on
+    purpose (review F5): otherwise a 2-char 'ok' would pair to any O query
+    starting 'ok...', mis-attaching that recall's labels. (Deliberately tighter
+    than the gold manifest's cue matcher, which pairs a short cue to a longer
+    trace prefix — a different job.)"""
     a, b = norm(a)[:span], norm(b)[:span]
     n = min(len(a), len(b))
     if n == 0:
         return False
-    return a[:n] == b[:n] and n >= min(floor, len(a), len(b))
+    return a[:n] == b[:n] and (n >= floor or len(a) == len(b))
 
 
 def parse_ts(iso):
@@ -302,6 +307,12 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
             for w in USED_NEXT_WINDOWS:
                 ids = set()
                 for nxt in turns[seq + 1: seq + 1 + w]:
+                    if nxt['stop'] == t['stop']:
+                        continue          # same-stop successor (superseded): its
+                        # touched-set is the shared per-stop accumulator, which
+                        # already holds THIS turn's own usage — counting it
+                        # self-leaks the label (review F2). anchor_touched is
+                        # collected per stop, not per micro-turn.
                     ids |= ep['touched'].get(nxt['stop'], set())
                 used[w] = ids
             o = t['o']

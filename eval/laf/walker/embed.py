@@ -95,10 +95,10 @@ def embed_query_side(walker, c):
         print('FATAL: q_vec embed_batch returned %d for %d texts'
               % (len(vectors) if vectors else 0, len(rows)))
         sys.exit(2)
-    walker.executemany(
-        "UPDATE turns SET q_vec=? WHERE rowid=?",
-        [(v, r) for (r, _), v in zip(rows, vectors) if v is not None])
-    c['q_vec_embedded'] = len(rows)
+    updates = [(v, r) for (r, _), v in zip(rows, vectors) if v is not None]
+    walker.executemany("UPDATE turns SET q_vec=? WHERE rowid=?", updates)
+    c['q_vec_embedded'] = len(updates)          # actual writes, not attempts (review F6)
+    c['q_vec_embed_failed'] = len(rows) - len(updates)
 
 
 def main():

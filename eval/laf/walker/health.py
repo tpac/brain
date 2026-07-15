@@ -35,7 +35,7 @@ from walker_db import open_walker, open_logs_ro, WALKER_DIR
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
 
-from servers.recall_laf import DEFAULT_CONFIG, MAXSIM_VIEWS, _unit  # noqa: E402
+from servers.recall_laf import DEFAULT_CONFIG, MAXSIM_VIEWS, _unit, _zscore  # noqa: E402
 
 LAF_LIVE_TS = '2026-07-02T19:30'
 SPOT_SAMPLE = 20
@@ -191,17 +191,17 @@ def check_replay(walker, lines):
         if len(rows) < 8:
             continue
         arr = np.array([[np.nan if x is None else x for x in r[1:]] for r in rows], dtype=float)
-        views, sit, idf, live = arr[:, :6], arr[:, 6], arr[:, 7], arr[:, 8]
+        # column split derived from the SELECT shape, not hardcoded (review F3):
+        # [NV view cols] + sit + idf + live. A P3 gain retune that adds/zeroes a
+        # view changes MAXSIM_VIEWS length; a fixed arr[:,:6] would silently
+        # mis-slice (idf read as live → Spearman ≈ 1.0, gate falsely green).
+        nv = len(MAXSIM_VIEWS)
+        views, sit, idf, live = arr[:, :nv], arr[:, nv], arr[:, nv + 1], arr[:, nv + 2]
         maxsim = np.nanmax(views, axis=1)
-
+        # production normalizer, imported not re-implemented (review F4) — the
+        # replay's whole point is measured==shipped
         def z(x):
-            x = np.array(x, dtype=float)
-            finite = np.isfinite(x)
-            if finite.sum() < 2 or np.nanstd(x[finite]) < 1e-12:
-                return np.zeros(len(x))
-            out = np.zeros(len(x))
-            out[finite] = (x[finite] - np.nanmean(x[finite])) / np.nanstd(x[finite])
-            return out
+            return _zscore(np.asarray(x, dtype=float), len(x))
         score = (gains['maxsim'] * z(maxsim) + gains['sit'] * z(sit)
                  + gains['idf'] * z(idf))
         # Spearman via rank correlation

@@ -1598,7 +1598,7 @@ node matrices per config inside the sweep harness. Pool-restricted rank mode rea
 |---|---|---|
 | maxsim ×6 | node eligibility `created_at < t` | revision leakage (embeddings are current-state; no history exists) — same accepted residual as the gold-24 harness, but now FLAGGED per row (`node_revised_after_turn`) so P3 can quantify it |
 | pick / enc | trace mask strictly `< t`, current chain excluded | past picks are judge output (echo risk) — legitimate as FEATURE; debias lives on the LABEL side (used-next-turn) |
-| idf | df recomputed over eligible titles only | current-corpus df would leak growth; replay check arbitrates the divergence from production |
+| idf | df recomputed over eligible titles only | current-corpus df would leak growth; replay check arbitrates the divergence from production. **REVIEW F1 (2026-07-14):** the as-of corpus is also filtered by TODAY's archive (`nodes WHERE archived=0`) — a node archived AFTER t is absent from both the candidate set and the df/n_titles DENOMINATOR, shifting live candidates' idf too. KEPT (not fixed): matches the engine's live-only design (§20.11 residual), so walker and engine-as_of AGREE — the cross-check holds. The distortion grows with S2 consolidation churn; magnitude to be counted (since-archived-candidate tally) before it feeds a fit. |
 | sit | eligibility mask; missing → neutral (post-`f77c453` semantics) | Healer backfill postdates node creation — mask by enrichment ts if available, else `sit_missing` flag |
 | proj | session project from the turn's session record | pre-v30 turns → null; low risk (system-stamped) |
 | labels | — | 8-char short ids prefix-resolved; ambiguous → flagged, never guessed |
@@ -1831,6 +1831,11 @@ within 3 turns as anchor_touched records it). REPLACED as the debias leg by SOFT
 between the surfaced memory and Anchor's actual next response (computable from stored walker texts).
 Hard label kept as rare-gold secondary. TEST before it gates anything: label-quality audit — does
 soft-usage correlate with picks and with gold where both exist?
+**REVIEW F2 (2026-07-14) — carry into the soft-usage build:** the hard used_next label had a self-leak —
+`anchor_touched` is accumulated per STOP, and a same-stop successor (superseded micro-turn) shares that
+accumulator with the labeled turn, so the turn's OWN usage counted as "next-turn." Fixed in extract.py
+(same-stop successors excluded from the window). Soft usage MUST key by `seq` and skip same-stop
+successors the same way, or it re-inherits the leak.
 
 **A5 — F_e borrows (P5 menu, each behind per-field ablation):** Synapse (arXiv 2601.02744) lateral
 inhibition + fan-effect normalization + calibrated feeling-of-knowing gate (their τ_gate calibration
