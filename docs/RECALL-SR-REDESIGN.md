@@ -1792,3 +1792,51 @@ live-only, 54c2e6e0); deleted nodes are absent. All minor, all already carried a
 **Test contract:** (a) as_of=None bit-identical to pre-change engine (inertness pin); (b) as_of=now ≡
 as_of=None; (c) exclusion correctness (a node/trace created after as_of contributes nothing);
 (d) the walker cross-check — row-level agreement on content lanes across ~4.5k turns.
+
+### 20.12 Priors & borrowed machinery — ASSUMPTIONS REGISTER (Tom 2026-07-14: "all assumptions worth noting and testing")
+
+Every entry is an assumption with a named test — none is trusted, none constrains the locked grid.
+Research: 3 agents 2026-07-14 (ACT-R priors / counterfactual-LTR / prior-art sweep) + two in-house
+measurements on the walker.
+
+**A1 — decay prior λ≈0.7, event-indexed.** Three independent sources converge: ACT-R d=0.5 (canonical
+across ~30y of fits; per-event licensed by Anderson & Schooler's event-time power law + time-compression
+practice), dialogue-context optimum 2–3 turns (≡ λ=0.7 horizon; 7±2 is the soft UPPER edge ~λ0.9),
+GRU4Rec-lineage EMA λ≈0.7–0.9 event-indexed with an extra last-item boost. All from OTHER distributions
+(human memory, consumer dialogue/shopping). TEST: the Q1 grid itself (0.3–0.9 + power + uniform brackets
+it; the prior predicts the winner, never narrows the search). Parked P3 nuance: separate current-message
+boost term (anchor-on-last-item).
+
+**A2 — Haiku position bias is mild → plain pairwise for P3 v1, NO IPS.** In-house natural experiment:
+within identical-pool_score tie groups (92k candidates; order carries no relevance signal), pick rate
+top-third 6.25% vs bottom-third 5.27% — 1.19× pure-bias gradient, far inside the "skip IPS" threshold
+(the raw 7× position curve is almost entirely relevance). CAVEAT: ties cluster in the low-score region —
+bias is measured mainly where relevance is weak. TEST: ship the Haiku candidate-order SHUFFLE (surface
+lane, 2-line change — kills residual bias at source AND makes future logs randomization-grade); compare
+P3 fits with/without IPS on shuffled-era data. IPS recipe on file if needed: regression-EM propensities
+(Wang 2018) or harvested cross-scorer-version swaps (Agarwal 2019), pair weight min(1/θ, 10),
+self-normalized (Joachims 2017; Unbiased LambdaMART for the negative side).
+
+**A3 — exploration ε≈4–8% (1–2 of 25 slots), unmarked, logged, ships WITH P3 (not before).** Industry
+norm vs degenerate feedback loops (Jiang 2019; Krauth 2022); the explore slice is also what makes
+round-2 training debiasable. TEST: canaries (judge-disagreement, abstention) + pool-novelty rate.
+
+**A4 — H2 AMENDMENT (pre-run, legal window): used-next label redefined.** The registered used_next_1/3
+label is statistically dead (~5–10 positives / 110k rows — Anchor near-never touches surfaced nodes
+within 3 turns as anchor_touched records it). REPLACED as the debias leg by SOFT USAGE: similarity
+between the surfaced memory and Anchor's actual next response (computable from stored walker texts).
+Hard label kept as rare-gold secondary. TEST before it gates anything: label-quality audit — does
+soft-usage correlate with picks and with gold where both exist?
+
+**A5 — F_e borrows (P5 menu, each behind per-field ablation):** Synapse (arXiv 2601.02744) lateral
+inhibition + fan-effect normalization + calibrated feeling-of-knowing gate (their τ_gate calibration
+method for our Tier-1 peakedness threshold); RF-Mem (2603.09250) familiarity/recollection switching
+thresholds. Judge-trustworthiness prior: LLM judges ≈93% human agreement on memory relevance (REMem) —
+our own blind gold re-mints are the standing test.
+
+**Prior-art verdict (context, not assumption):** the synthesis — persistent leaky-integrator field over
+a lifetime graph + online LLM-judge feedback + tiered familiarity gate — is NOT implemented anywhere
+found (2024–2026 sweep: Mem0/Letta/Zep/HippoRAG2/A-MEM all stateless per-query). Continuum Memory
+Architectures (2601.09913) is a position paper CALLING for exactly this with no equations — a recognized
+gap. Closest running system: Synapse (stateless per-query F_e analog). Read those two first when
+implementing.
