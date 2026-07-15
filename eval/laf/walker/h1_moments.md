@@ -3,290 +3,322 @@
 Each block is a moment exactly as the walker reconstructs it: the turn (→) plus
 the previous 4 turns of its epoch, oldest first. Read against your memory:
 are these the right turns, in the right order, from the right conversation?
-Interrupted turns show the prompt recovered from the recall trace (no Anchor
-response ever existed). Epoch seams are post-resume/compaction restarts —
-the stack deliberately does NOT cross them.
+Untraced-legacy turns show the prompt recovered from the recall trace (no
+Anchor response ever existed). Superseded turns never got their own Stop —
+a steering message / interrupt / notification landed first; the combined
+response attaches to the LAST turn of the stop. Epoch seams are
+post-resume/compaction restarts — the stack deliberately does NOT cross them.
 
 ---
 
-### Moment 1 — interrupted micro-turn
-`session 0dbe2c67 · epoch 0 · seq 66 · 2026-05-12 03:07`
+### Moment 1 — untraced legacy micro-turn (pre-06-08 s0 loss)
+`session d25b97d8 · epoch 0 · seq 122 · 2026-05-15 18:25`
 
-- j=4
-  - **Tom:** any results?
-  - *Anchor:* Standing by.
+- j=4  ⚠ ["untraced_legacy", "superseded"]
+  - **Tom:** <task-notification> ⏎ <task-id>bk2bcu25a</task-id> ⏎ <summary>Monitor event: "v15.11 + v6 mini-eval (12 items): per-item completions"</summary> ⏎ <event>[v15.11+v6] 4/12 complete</event> ⏎ </task-notification>
 - j=3
-  - **Tom:** Event date: 2023-05-21 (36mo ago) <-- the 36mo ago is your addition or did it do that? cause this is relative to now() which is an uniteresting reference in that field and can be inferred from create/edit dates on node
-  - *Anchor:* Fix applied. The in-flight eval has 5 items already done with the misleading gloss, but **none of the pending 5 are temporal-delta queries** (720133ac=cost sum, 0862e8bf_abs/2698e78f_abs=abstention, 1…
+  - **Tom:** <task-notification> ⏎ <task-id>bk2bcu25a</task-id> ⏎ <summary>Monitor event: "v15.11 + v6 mini-eval (12 items): per-item completions"</summary> ⏎ <event>[v15.11+v6] 5/12 complete</event> ⏎ </task-notification>
+  - *Anchor:* 5/12. Standing by on docs.
 - j=2
-  - **Tom:** L4 fix 10-item eval should be fully complete. Produce final summary with comparison to: prior v15.8 run (pre-L4-fix, 6/10), v15.7+Bug1 arm, v14+Bug1 arm, v15.6 baseline. Confirm L4 render line appeared in passing items' contexts. Recommend ship/no-ship on L4 render fix to live br…
-  - *Anchor:* # v15.8 + L4 Render Fix — Final 10-Item Summary ⏎  ⏎ ## Pass rate ⏎  ⏎ **7/10 (70%)** — the highest of any arm so far. ⏎  ⏎ | qid | axis | v15.6_r1 | v15.6_r2 | v14+B1 | v15.7+B1 | v15.8 | **v15.8+L4*…
+  - **Tom:** <task-notification> ⏎ <task-id>bk2bcu25a</task-id> ⏎ <summary>Monitor event: "v15.11 + v6 mini-eval (12 items): per-item completions"</summary> ⏎ <event>[v15.11+v6] 6/12 complete</event> ⏎ </task-notification>
+  - *Anchor:* 6/12 — halfway.
 - j=1
-  - **Tom:** L4 fix run should be complete. Full analysis: pass rate vs prior v15.8 run (was 6/10), specifically did gpt4_85da3956 SURFACE_MISS shift indicate render exposed event_time. Check event_time render line appears in contexts. Report and recommend next step. No further evals without …
-  - *Anchor:* Surface chose NOT to invoke tools (1 round, no tool calls) AND didn't pick from the pre-seed pool. **L3 surface selection is now the dominant bottleneck for this item.** ⏎  ⏎ # Direct answers to your …
-- **→ THE MOMENT**  ⚠ ["interrupted"]
-  - **Tom:** Let's write all the proposals findings in the documents. clean historic stuff that isnt relevant and might confuse us.
+  - **Tom:** 1. Yes, just check there arent insights that should be copied to non archived docs. ⏎ 2. yes ⏎ 3. Yes - You can change file name of Agent-introspection into Agent Probes? you used the name probe which fits i think ⏎ 4. Look at all of Skill.md and tell me how you think of Skill.MD…
+  - *Anchor:* ## My reflection on SKILL.md ⏎  ⏎ **What it IS doing well — the identity layer that makes me Anchor** ⏎  ⏎ SKILL.md is the document that makes me *not* vanilla Claude. It works at this layer: ⏎  ⏎ - C…
+- **→ THE MOMENT**  ⚠ ["untraced_legacy", "superseded"]
+  - **Tom:** <task-notification> ⏎ <task-id>bk2bcu25a</task-id> ⏎ <summary>Monitor event: "v15.11 + v6 mini-eval (12 items): per-item completions"</summary> ⏎ <event>[v15.11+v6] 7/12 complete</event> ⏎ </task-notification>
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
 ---
 
-### Moment 2 — interrupted micro-turn
-`session 03641c22 · epoch 0 · seq 26 · 2026-05-19 19:42`
+### Moment 2 — untraced legacy micro-turn (pre-06-08 s0 loss)
+`session 31e8c3ff · epoch 0 · seq 23 · 2026-05-31 19:33`
 
 - j=4
-  - **Tom:** Great. is all committed ? Can we push to origin and restart Daemon?
-  - *Anchor:* All done: ⏎  ⏎ - **Pushed:** `f556cd8..0a91b43 main → main` (56 commits, today's 6 included) ⏎ - **Daemon:** PID 44890, clean boot, db-maintenance registered, all maintenance work loaded ⏎ - **State:*…
+  - **Tom:** Ok, so tell me what you've done so far, so I'll be able to pick it up nicely in other sessions
+  - *Anchor:* Here's the handoff — what's done, where it lives, and what's still open, so any session can pick up cleanly. ⏎  ⏎ ## What shipped this session — the self-channel rules of engagement ⏎  ⏎ The channel b…
 - j=3
-  - **Tom:** Ok moving into a discussion. I now have another session with you open. I do feel like communicating through a brain doesnt make much sense and it will be nice if there was some sort of open channel. Can you search online for recommendations on how to do that?
-  - *Anchor:* Here's the picture from the search. ⏎  ⏎ ## The official answer landed: Agent Teams ⏎  ⏎ Claude Code now ships **agent teams** — multiple sessions can register as teammates, send messages by name, and…
+  - **Tom:** you can re-write the doc, just check that you delete whats not relevant but 'keep' what we havent done.
+  - *Anchor:* Done — `73f4822`. The handoff is now a clean current-state pickup doc: **264 → 74 lines.** ⏎  ⏎ - **Cut:** the resolved v22/v24 encoder thread (v24 activated 2026-05-30). Full prior version preserved …
 - j=2
-  - **Tom:** great. before I continue can you check this out? ⏎ Is it haiku trying to pull 2 nodes with comma separator?
-  - *Anchor:* No — those are **two separate IDs** that Haiku picked, joined by comma only for the log line. The format string is: ⏎  ⏎ ```python ⏎ 'ids=%s ...' % (','.join(hallucinated_ids[:5]), ...) ⏎ ``` ⏎  ⏎ It …
+  - **Tom:** make sure you committed everything, also repackage plugin, check if maybe we should update information about it per industry standards
+  - *Anchor:* Everything I need. **Commit state:** clean — all my work committed (15 ahead of origin, unpushed for you). **Repackage:** `brain.plugin` is genuinely stale (May 10, pre-everything), so it needs regene…
+- j=1  ⚠ ["untraced_legacy", "superseded"]
+  - **Tom:** The name of the plugin is Anchor (your specific name). ⏎ and the description should use "Persistent identity"
+- **→ THE MOMENT**  ⚠ ["untraced_legacy", "superseded"]
+  - **Tom:** yes on both
+
+**Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
+
+---
+
+### Moment 3 — untraced legacy micro-turn (pre-06-08 s0 loss)
+`session 7c734d20 · epoch 0 · seq 30 · 2026-05-16 05:30`
+
+- j=4
+  - **Tom:** <task-notification> ⏎ <task-id>bkhchpy43</task-id> ⏎ <tool-use-id>toolu_01S8WN1KqziZun6XNxYRY11G</tool-use-id> ⏎ <output-file>/private/tmp/claude-503/-Users-tpac-brain/7c734d20-c220-45bf-ba5c-8c65433b07b8/tasks/bkhchpy43.output</output-file> ⏎ <status>completed</status> ⏎ <summar…
+  - *Anchor:* Second eval launched. Same 12 items, same v15.11 + v6, **only change**: answerer is Sonnet 4.6 with Anchor frame. ~12 min if API steady. Monitoring.
+- j=3
+  - **Tom:** <task-notification> ⏎ <task-id>byjiynuo3</task-id> ⏎ <summary>Monitor event: "jr-anchor 12-item eval verdicts + failures"</summary> ⏎ <event>[harness] judge: ✗ (NO)</event> ⏎ </task-notification>
+  - *Anchor:* Item 1 ✗ — but **look at the hypothesis**: ⏎  ⏎ > *"Your memories show you collecting **vintage cameras**, not vintage films — started around **late February 2023**, so roughly 3 months as of today."*…
+- j=2
+  - **Tom:** <task-notification> ⏎ <task-id>byjiynuo3</task-id> ⏎ <summary>Monitor event: "jr-anchor 12-item eval verdicts + failures"</summary> ⏎ <event>[harness] judge: ✓ (YES)</event> ⏎ </task-notification>
+  - *Anchor:* Item 2 ✓.
 - j=1
-  - **Tom:** 1. isnt good, we have thousands of Ids and growing ⏎ 2. naah ⏎ 3. thats what ill do for now.  ⏎ So tell me, how is the new teams feature work? it just makes the session aware of others?
-  - *Anchor:* Not just awareness — it's a real channel. Here's the actual mechanism: ⏎  ⏎ ## Three pieces ⏎  ⏎ **1. Team structure with names.** One session starts as the **team lead** and **spawns** named teammate…
-- **→ THE MOMENT**  ⚠ ["interrupted"]
-  - **Tom:** cool. Can you check how long it usually takes memory solutions to run through the entire 500 turns of long mem?
+  - **Tom:** <task-notification> ⏎ <task-id>byjiynuo3</task-id> ⏎ <summary>Monitor event: "jr-anchor 12-item eval verdicts + failures"</summary> ⏎ <event>[harness] judge: ✗ (NO)</event> ⏎ </task-notification>
+  - *Anchor:* Item 3 ✗ (expected, corrupt gold). 1✗ 2✓ 3✗.
+- **→ THE MOMENT**  ⚠ ["untraced_legacy"]
+  - **Tom:** <task-notification> ⏎ <task-id>byjiynuo3</task-id> ⏎ <summary>Monitor event: "jr-anchor 12-item eval verdicts + failures"</summary> ⏎ <event>[harness] item 4/12 qid=54026fce axis=info_extraction turns=12</event> ⏎ </task-notification>
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
 ---
 
-### Moment 3 — interrupted micro-turn
-`session d25b97d8 · epoch 0 · seq 24 · 2026-05-14 01:56`
+### Moment 4 — superseded turn (steering/interrupt — later turn shares its stop)
+`session 6e369a2e · epoch 0 · seq 4 · 2026-07-01 01:46`
 
 - j=4
-  - **Tom:** Do you feel is fundamental enough to catch wide temporal net and dynamics?
-  - *Anchor:* Honest answer: **no, it's not fundamental enough.** What I wrote is a phrase list, not a principle. If the operator says "I had the most amazing concert last night" or "I checked out the new restauran…
+  - **Tom:** Let's continue the work on recall, get your self up to speed and lets chat
+  - *Anchor:* I'm up to speed. Here's the honest state — and one thing needs a decision before we do anything else. ⏎  ⏎ ## Where recall actually is ⏎  ⏎ The gate cleared. The whole arc since 2026-06-27 was: *don't…
 - j=3
-  - **Tom:** go and then lets test it? can we focus on temporal axis alone and find more conversations?
-  - *Anchor:* Both arms running on the 12 temporal items. Wait time ~60 min. While that runs, I'll be ready to analyze when results land. Take your break — I'll have the analysis ready when you're back.
+  - **Tom:** We can get that code but it felt like a quick and dirty job for testing activation layers and im not sure i wanted these shapes or the placement on the architecture.  ⏎ Some of them were good though, so how would you wan to do it?
+  - *Anchor:* Right — that reframes it. The branch isn't a feature to merge, it's a **research spike**. Its value is the *findings*; the code shapes were scaffolding to get them. Merging a spike wholesale into the …
 - j=2
-  - **Tom:** <task-notification> ⏎ <task-id>bh11zoh6t</task-id> ⏎ <summary>Monitor event: "temporal-only eval: 12 items × v15.8 vs v15.9, per-item completions + crashes"</summary> ⏎ <event>[ArmA v15.8] 3/12 items ⏎ [ArmB v15.9] 3/12 items</event> ⏎ </task-notification>
-  - *Anchor:* Both at 3/12.
-- j=1  ⚠ ["interrupted"]
-  - **Tom:** <task-notification> ⏎ <task-id>bh11zoh6t</task-id> ⏎ <summary>Monitor event: "temporal-only eval: 12 items × v15.8 vs v15.9, per-item completions + crashes"</summary> ⏎ <event>[ArmA v15.8] 4/12 items ⏎ [ArmB v15.9] 4/12 items</event> ⏎ </task-notification>
-- **→ THE MOMENT**  ⚠ ["interrupted"]
-  - **Tom:** <task-notification> ⏎ <task-id>bh11zoh6t</task-id> ⏎ <summary>Monitor event: "temporal-only eval: 12 items × v15.8 vs v15.9, per-item completions + crashes"</summary> ⏎ <event>[ArmA v15.8] 5/12 items</event> ⏎ </task-notification>
+  - **Tom:** sounds good. But i want to go deeper and not wider in this session, what is working what isnt, go into each layer and debug it, refine it
+  - *Anchor:* The ablation's still churning through 24 cues (settling engine + a full `brain.recall` per cue). Rather than hold the turn on it, let me give you the honest map — because going deep on each layer imme…
+- j=1
+  - **Tom:** <task-notification> ⏎ <task-id>biy1b5v9g</task-id> ⏎ <tool-use-id>toolu_019KFjupHL3XuRudeAAmqxVT</tool-use-id> ⏎ <output-file>/private/tmp/claude-503/-Users-tpac-brain--claude-worktrees-priceless-ramanujan-c73e53/6e369a2e-930e-47fc-b4fa-6252aeb68dd0/tasks/biy1b5v9g.output</output…
+  - *Anchor:* The ablation finished — and it's more informative than the doc's summary. This is the settling engine (`field_recall.py`) with the *old* operators, on the honest 24-cue gold: ⏎  ⏎ ``` ⏎ config        …
+- **→ THE MOMENT**  ⚠ ["superseded"]
+  - **Tom:** What's the graph?
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
 ---
 
-### Moment 4 — epoch seam (first turns of epoch >= 1)
-`session ce507d3d · epoch 8 · seq 1 · 2026-05-31 19:17`
+### Moment 5 — superseded turn (steering/interrupt — later turn shares its stop)
+`session b12ab854 · epoch 0 · seq 48 · 2026-07-04 13:40`
 
-- j=1  ⚠ ["no_recall"]
-  - **Tom:** Stop hook feedback: ⏎ 🧵 from your other streams of thought ⏎  ⏎ ⚡ from 31e8c3ff ⏎    Substrate complete + lane released. Addressing landed (1758a15): you can now reach a stream by its label or an id-prefix, not just the full UUID — self_send resolves it against the live roster (l…
-  - *Anchor:* (watching — code review delivered above; findings relayed to `31e8c3ff`; holding for your call on the mine-only fixes and the headline short-prompt finding)
-- **→ THE MOMENT**
-  - **Tom:** fix your code and summerize whats open once youre done
-  - *Anchor:* Fixed and committed (`770f443`). Here's everything open, grouped. ⏎  ⏎ ## Open — mine ⏎  ⏎ | # | Item | Status | ⏎ |---|---|---| ⏎ | **#1** | **Short/slash/bang real prompts (`Go`, `ok`, `.`, any `/cm…
-
-**Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
-
----
-
-### Moment 5 — epoch seam (first turns of epoch >= 1)
-`session 9c57b9a0 · epoch 4 · seq 1 · 2026-06-05 02:40`
-
-- j=1  ⚠ ["no_recall"]
-  - **Tom:** you can encode
-  - *Anchor:* Encoded — **3 nodes, 6 edges, zero failures** (the daemon held for the write even though recall is flaky): ⏎  ⏎ - **`e6110765`** (principle) — *Merge-recall ceiling was the decoder, not the prompt* → …
-- **→ THE MOMENT**
-  - **Tom:** sounds good, what does it come back with embedding stored: false, we have auto embedding, it shouldnt say that
-  - *Anchor:* Confirmed working — `find_node_by_title` hits `e6110765` at **0.95 similarity**, so the async worker *did* embed it. Auto-embedding is fine; the `embedding_stored: false` was a false alarm (mine — I r…
+- j=4
+  - **Tom:** Backup brain now before.  also worth a small code-review after all 3 steps?
+  - *Anchor:* Stop — the situation genuinely changed, and it's your call. The peer stream `454a4418` (exciting-nightingale) is now **active**, not dormant — it's mid-code-review on its galaxy viz and has been landi…
+- j=3  ⚠ ["no_recall"]
+  - **Tom:** go
+  - *Anchor:* Integration seam is clean. Main's only change to `base.py` was `d1e8373` (a caching-comment + BP1 marker in `_call_llm`) — a different method entirely from my `apply_encoder_attribution`/`project_poli…
+- j=2
+  - **Tom:** Lets commit to main and restart
+  - *Anchor:* Done — committed and restarted, daemon verified live: ⏎  ⏎ - **`brain.plugin` committed** to main (`904e059`), tree clean. ⏎ - **Daemon restarted** — live and serving (MCP responding), `schema_version…
+- j=1
+  - **Tom:** Let's check that everything works? We can even fill up missing projects if we want to
+  - *Anchor:* Now I have the complete picture. Here's the honest status on "does everything work": ⏎  ⏎ ## Works, verified live ⏎ - **Migration** — `nodes.project` dropped, 1269 values in KV (now 1270 with the mile…
+- **→ THE MOMENT**  ⚠ ["superseded"]
+  - **Tom:** can you check if the new stream im working on is stamping everything correctly?
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
 ---
 
 ### Moment 6 — epoch seam (first turns of epoch >= 1)
-`session f2ea3726 · epoch 1 · seq 1 · 2026-06-07 15:28`
+`session 3260e6ce · epoch 1 · seq 0 · 2026-06-07 16:07`
 
-- j=1  ⚠ ["interrupted"]
-  - **Tom:** what does Pre-existing CI failure on main mean?
-- **→ THE MOMENT**  ⚠ ["interrupted"]
-  - **Tom:** ive relogged in
+- **→ THE MOMENT**
+  - **Tom:** Sorry went into other sessions and adventures. Can you remind me where we are? Are you synced with main? have anything uncommitted? where were we?
+  - *Anchor:* Here's exactly where we are. ⏎  ⏎ ## Sync with main ⏎ **All my committed work is on main.** `main...HEAD` shows branch-only = 0 — every commit I made got merged. Main has since advanced 11 commits fro…
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
 ---
 
-### Moment 7 — no-recall turn (hook timeout/failure)
-`session fd829e08 · epoch 2 · seq 41 · 2026-04-25 00:13`
+### Moment 7 — epoch seam (first turns of epoch >= 1)
+`session 818d5d32 · epoch 1 · seq 0 · 2026-05-25 21:19`
+
+- **→ THE MOMENT**
+  - **Tom:** can we do both in parallel?
+  - *Anchor:* Stage A re-salvaged with corrected probe. **The specificity story inverted** — v22 leads on combined specificity, not lags. The original "−0.18" was probe-blindness to the substrate; the architecture …
+
+**Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
+
+---
+
+### Moment 8 — epoch seam (first turns of epoch >= 1)
+`session 8b62b5b8 · epoch 1 · seq 0 · 2026-05-23 02:38`
+
+- **→ THE MOMENT**
+  - **Tom:** How to architect references and node/bridges dynamics is cardinal how does the brain does it? what does research say about it? search for some latest research on these topics.  ⏎ This feels fundamental to this new idea and might have several considerations
+  - *Anchor:* This research is profound for our design. Let me synthesize across the four searches. ⏎  ⏎ # How biological brains do this — six mechanisms ⏎  ⏎ ## 1. Hippocampal Indexing Theory (Teyler & Rudy) ⏎  ⏎ …
+
+**Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
+
+---
+
+### Moment 9 — no-recall turn (register_only or hook miss)
+`session 05f20395 · epoch 0 · seq 1 · 2026-07-06 21:52`
+
+- j=1
+  - **Tom:** Continue the daemon-lifecycle consolidation. Read docs/DAEMON-LIFECYCLE-ARCH-PLAN.md first — ⏎ especially "Settled constraints" and the "Already resolved" list (it now records resolutions for ⏎ Steps 3, 4, 5; do not re-plan them). ⏎  ⏎ State: Steps 1–5 shipped, deployed, verified…
+  - *Anchor:* Reviewed the full cumulative diff (`cdd8147..f54a365`, non-test hunks: `daemon_client.py`, `daemon_launch.py`, `daemon_server.py`, `daemon_config.py`, CLAUDE.md, plan doc). ⏎  ⏎ Checked the moved-verb…
+- **→ THE MOMENT**  ⚠ ["no_recall"]
+  - **Tom:** ?
+  - *Anchor:* No tests pin the supervisor loop at all. Confirm phase is done — here are the findings and the trim I propose, before I touch anything. ⏎  ⏎ ## Confirm (a): the `_run` pre-check is unreachable behind …
+
+**Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
+
+---
+
+### Moment 10 — no-recall turn (register_only or hook miss)
+`session 5d0a280c · epoch 0 · seq 32 · 2026-06-29 18:25`
 
 - j=4
-  - **Tom:** what kpis do we have to prove that new state is better than current state?  ⏎ Seems pretty shallow kpis
-  - *Anchor:* You're right. Let me be honest about what we actually measured vs what would actually prove "better." ⏎  ⏎ ## What we have (shallow) ⏎  ⏎ **One metric, one benchmark, one outcome shape:** ⏎ - Longmem …
+  - **Tom:** Potentially both, can you check if we need to update docs? ⏎ I did fix on other sessions the filter_nodes issue
+  - *Anchor:* Checked — here's the doc verdict: ⏎  ⏎ **Yes, one doc is genuinely stale: `RECALL-SR-REDESIGN.md §18.19`.** It still documents the *old* method this session superseded: ⏎ - **Line 1260: "essential = S…
 - j=3
-  - **Tom:** yes, compare to current, im worried of fucking up the good work we have in production with a new brain. Let's look at richness of nodes, quality of actual fields compared to v12 and recall
-  - *Anchor:* ## Final Comparison Report ⏎  ⏎ ### State A — immediate-deploy (no backfill on live brain) ⏎  ⏎ 20 real recent Tom queries, run through old pipeline (from traces) and new pipeline (IsolatedBrain copy …
+  - **Tom:** Sounds good, show me the actual changes you make in the doc just so ill know
+  - *Anchor:* Done — and one **important** flag before you remove anything. ⏎  ⏎ **Final state of this stream:** working tree clean, ephemera cleaned, all durable work in 2 commits: ⏎ - `cbd5041` — hardened protoco…
 - j=2
-  - **Tom:** Did you check encoding or only recalls?
-  - *Anchor:* Real honest read. The encoder comparison isn't the clear win Surface was: ⏎  ⏎ ## Encoder A/B — same Tom conversation, fresh brains ⏎  ⏎ | Metric | v12 (current) | v14 (new) | Reading | ⏎ |---|---|---…
+  - **Tom:** great. if all committed and merge you can clear the work tree. ⏎ How would you open the next session to continue our work? ⏎ What are the options we have an steps we need to take
+  - *Anchor:* On "clear the work tree" — small but important: it's all **committed** (tree clean) but **not yet merged** (the 2 commits are still only on this branch). And I can't remove the worktree from inside it…
 - j=1
-  - **Tom:** Read S1S V14 VS v12, try and find the minimal changes that v12 will produce more nodes? Perhaps we over emphasized types over nodes?
-  - *Anchor:* Found the cause. It's NOT primarily types — it's that **v14 dropped 3 of the 6 detection patterns v12 had**, and added a priority order that gates `remember` behind `revise`. ⏎  ⏎ ## Diff that matters…
+  - **Tom:** Are they validated though? I'm worried they are not and i dont want to rerun 49 cues finish my tokens just to realize there is a bug. Can you take a closer look at everything we did?
+  - *Anchor:* Dug into all 8 + the archived node — here's the precise verdict. ⏎  ⏎ **The dedup'd content-graft picture (8 distinct essentials, not 11 — some were double-counted across judges):** ⏎  ⏎ | severity | …
 - **→ THE MOMENT**  ⚠ ["no_recall"]
   - **Tom:** yes
-  - *Anchor:* I have the locations. Here are the 5 surgical changes I'd make. **Showing each diff first — apply on your approval:** ⏎  ⏎ --- ⏎  ⏎ ### Change 1: Restore the 4 patterns v14 dropped (Decisions, Teachin…
-
-**Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
-
----
-
-### Moment 8 — no-recall turn (hook timeout/failure)
-`session fd829e08 · epoch 0 · seq 44 · 2026-04-24 14:54`
-
-- j=4
-  - **Tom:** yes b. and The guidance should be, connect, revise, remember, you're the source ⏎  ⏎ Flat/Rich examples  should be potentially be within the remember format and not their own. They can be reduce and should include references like a template "text text {model number} text text {Na…
-  - *Anchor:* Decision framing applied. ⏎  ⏎ **Noted for TOPIC 2 (Nodes):** Flat/Rich examples → compressed template form with references (`{model_number}`, `{Name}`, `{place}`, `{function}`, `{tool}`, `{exact_phra…
-- j=3  ⚠ ["no_recall"]
-  - **Tom:** yeah
-  - *Anchor:* Opening TOPIC 1 — Edges. Here's what's currently scattered and how I'd consolidate: ⏎  ⏎ ## What's scattered today ⏎  ⏎ - **Relation vocabulary (19 types + e.g.'s + invent-freely + never-related)** — …
-- j=2
-  - **Tom:** 1. Yes. ⏎ 2. We can keep 19 but no need for a full example beneath each.  ⏎ 3. Reverse ⏎ 4. Yes - Your examples are extremely mechanic, why can be deeper, doesnt necessarily need old vs new - the old and new are actually the nodes themself, an edge description is a place to descr…
-  - *Anchor:* Good — that's a real insight. The description should capture the **semantic bridge** between nodes, not restate what's in them. Let me restructure with that framing: ⏎  ⏎ ## What a good edge descripti…
-- j=1
-  - **Tom:** 1.yes  ⏎  ⏎ 1. yes. include emotion example as well
-  - *Anchor:* Consolidated: ⏎  ⏎ - **`## Edge Quality` section is gone** (merged in) ⏎ - **Edge vocabulary + invent-freely + never-related pulled out of `## Node structure`** — left a one-line pointer there ⏎ - **`…
-- **→ THE MOMENT**  ⚠ ["no_recall"]
-  - **Tom:** yes
-  - *Anchor:* ## TOPIC 2 — Nodes + fields ⏎  ⏎ Three sections currently to merge: ⏎ 1. `## Node structure` — tiny stub (content/situation notes) ⏎ 2. `## Fields` — meat (type tag, situation+reasoning mandate, commo…
-
-**Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
-
----
-
-### Moment 9 — normal labeled, deep history (seq >= 8)
-`session e7188c02 · epoch 0 · seq 13 · 2026-06-26 04:55`
-
-- j=4
-  - **Tom:** perfect. good work. ⏎ /code-review
-  - *Anchor:* Deployed and verified quiet: backfill pass `{}`, `embedding_handler_dead` → `[]` (the hardened trip no longer cries wolf on the healthy brain). The `'trim' in docstring` check is just false because tr…
-- j=3
-  - **Tom:** if we're already here, can you tell me what are the embeddings that node has and check exactly their shape
-  - *Anchor:* The two situation vectors are **not** identical — cosine ~0.966–0.972, not byte-equal. So near-duplicate, not pure duplication (likely the field path's 300-char `EMBEDDING_FIELD_CHAR_LIMIT` truncation…
-- j=2
-  - **Tom:** lets analyze so we can decide which to keep
-  - *Anchor:* Confirmed **systematic**: the entire field cohort sits ~0.98 to a fresh document-embed (content 0.984, reasoning 0.983, situation 0.972), while the legacy cohort matches at **1.000**. So this isn't a …
-- j=1
-  - **Tom:** i dont mind re-embeding. We just need to make sure we're aiming to the right field in the node and that we dont have to different fields on node. ⏎ Then keep only 1 ofc.
-  - *Anchor:* Traced all consumers. The wiring confirms the two situation vectors have **disjoint readers**, both off the same field: ⏎  ⏎ | | `_situation` (legacy) | `situation` (field cohort) | ⏎ |---|---|---| ⏎ …
-- **→ THE MOMENT**
-  - **Tom:** whats better?
-  - *Anchor:* The brain answered it — no git archaeology needed. Here's what the traces show and the decision that falls out. ⏎  ⏎ ## Root cause (brain-localized) ⏎ The field cohort was created **2026-04-25** (Phas…
-
-**Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
-
----
-
-### Moment 10 — normal labeled, deep history (seq >= 8)
-`session 37a32ee9 · epoch 0 · seq 26 · 2026-06-24 00:53`
-
-- j=4
-  - **Tom:** you can revise the memory that says 15-mins.  ⏎ Recall slowness is known and happens after restart but we're reworking the entire recall line so we'll get to it
-  - *Anchor:* Done — node `ec664088` corrected: ⏎ - **Title + content:** `15-min` → **1h** min interval, and added the gate it was missing entirely — **≥2 S1 Scribe encodings since the last run** (recalls don't cou…
-- j=3
-  - **Tom:** Where did you get embedding_updated: false? Is it in the function signature or response? cause the embedding is absolutely being updated in an async process and applies even in this case. it used to be a synced process so i think this is a residue of that time.
-  - *Anchor:* Verified — you're completely right, and I was wrong. The code is unambiguous: ⏎  ⏎ - **`brain_remember.py:1337-1341`** — comment says it outright: *"Vector (re)computation handled by the embed_queue w…
-- j=2
-  - **Tom:** yes, map consumers and implications and then lets make a final decision
-  - *Anchor:* Map complete. Here's the full picture. ⏎  ⏎ ## Consumer map ⏎ | Field | Site | Role | ⏎ |---|---|---| ⏎ | `embedding_updated` | `brain_remember.py:1346` | producer — `= False`, **never reassigned** | …
-- j=1
-  - **Tom:** A. ⏎ And look at the community detection error
-  - *Anchor:* Test passes (`3 passed`), `brain_remember` imports clean. **Option A is done** — the dead `embedding_updated`/`_vdal`/redundant-import block is gone from `revise()`, and the test stayed green (I left …
-- **→ THE MOMENT**
-  - **Tom:** change confirmed plz remove
-  - *Anchor:* Done — `embedding_updated` is fully removed: the dead residue block (`VectorDAL` re-import, `_vdal`, the flag) out of `revise()`, the response key gone, the test asserting the real signal (`revised_at…
+  - *Anchor:* Committed — **3 commits** on the branch (`cbd5041` method, `8979116` doc, `8d88787` filter), tree clean. Verification done: the corpus is structurally sound and the graft contamination is now auto-str…
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
 ---
 
 ### Moment 11 — normal labeled, deep history (seq >= 8)
-`session 9fe626ac · epoch 0 · seq 33 · 2026-07-03 13:58`
+`session 91cb2ca9 · epoch 0 · seq 36 · 2026-07-07 19:55`
 
 - j=4  ⚠ ["no_recall"]
-  - **Tom:** Your background task stopped in the middle. ⏎ Do we need a code review to something btw?
-- j=3
-  - **Tom:** <task-notification> ⏎ <task-id>aa25e6a78d48b41be</task-id> ⏎ <tool-use-id>toolu_012UoEy2d259fdgtpT96d5ZK</tool-use-id> ⏎ <output-file>/private/tmp/claude-503/-Users-tpac-brain--claude-worktrees-inspiring-mahavira-b0b670/9fe626ac-ca16-405e-8d4a-07f770d430a5/tasks/aa25e6a78d48b41be…
-  - *Anchor:* Both cleanup findings **confirmed against the code**: ⏎ - **Reuse** — `brain.get_interaction_config('s1e')` already exists and does the exact json.loads-with-`{}`-fallback I hand-rolled in `encode.py`…
-- j=2
-  - **Tom:** <task-notification> ⏎ <task-id>a5f5d7dbe2e029c00</task-id> ⏎ <tool-use-id>toolu_01JJu1XLfEQwn2mZ6Q1sNWSf</tool-use-id> ⏎ <output-file>/private/tmp/claude-503/-Users-tpac-brain--claude-worktrees-inspiring-mahavira-b0b670/9fe626ac-ca16-405e-8d4a-07f770d430a5/tasks/a5f5d7dbe2e029c00…
-  - *Anchor:* Second finder (removed-behavior + cross-file) came back **clean — zero correctness bugs**. It verified: the `_extract_fenced_block` refactor is byte-identical behavior (all 4 fence cases preserved, `e…
+  - **Tom:** <task-notification> ⏎ <task-id>b2m5t3z4a</task-id> ⏎ <summary>Monitor event: "v13 A/B sweep progress (both arms) in v13ab_sweep.log"</summary> ⏎ <event>[sweep] corpus a300d2 loaded — scoring 4 item(s); 7 flagged unanswerable by the gate, scored anyway for coverage: ['54026fce', '…
+  - *Anchor:* Control-side targeted run started (4 abstention items loaded). Waiting on both reports — nothing to act on yet.
+- j=3  ⚠ ["no_recall"]
+  - **Tom:** <task-notification> ⏎ <task-id>b2m5t3z4a</task-id> ⏎ <summary>Monitor event: "v13 A/B sweep progress (both arms) in v13ab_sweep.log"</summary> ⏎ <event>[sweep] report → /Users/tpac/brain/.claude/worktrees/awesome-sanderson-ddfa23/eval/longmem/reports/run_v13ab_abs_ctrl.json</even…
+  - *Anchor:* Control's variance-5 read is telling on its own: **0.50 overall** — the *control* at higher variance scores exactly what the candidate scored in the full sweep. Two of the four items are literal coin-…
+- j=2  ⚠ ["no_recall"]
+  - **Tom:** <task-notification> ⏎ <task-id>b2m5t3z4a</task-id> ⏎ <summary>Monitor event: "v13 A/B sweep progress (both arms) in v13ab_sweep.log"</summary> ⏎ <event>[sweep] report → /Users/tpac/brain/.claude/worktrees/awesome-sanderson-ddfa23/eval/longmem/reports/run_v13ab_abs_cand.json</even…
+  - *Anchor:* Artifacts don't survive the run (the tmp routing deletes with the work dir), and each debug rep costs a full pipeline pass on an item that's a 40% coin-flip even in control — that's the timebox. Here'…
 - j=1
-  - **Tom:** <task-notification> ⏎ <task-id>ae95cf47469e38e0e</task-id> ⏎ <tool-use-id>toolu_01YJ4cjyywRZHaHBnWNPNbKy</tool-use-id> ⏎ <output-file>/private/tmp/claude-503/-Users-tpac-brain--claude-worktrees-inspiring-mahavira-b0b670/9fe626ac-ca16-405e-8d4a-07f770d430a5/tasks/ae95cf47469e38e0e…
-  - *Anchor:* Fix is **live** — daemon up on `87869ae`, v29/medium intact, flag preserved. ⏎  ⏎ ## Code review verdict — v29 live changes ⏎  ⏎ The review earned its keep: **one real silent-corruption bug that the g…
+  - **Tom:** Can you actually look at the turns and new surface haiku and check if you agree / disagree with the picks itself?
+  - *Anchor:* Ran it — two real moments, production's actual picks vs fresh legacy vs XML (×2 reps for stability). Here's my honest judgment as the one who consumed these picks: ⏎  ⏎ ## Moment A — your "don't eval …
 - **→ THE MOMENT**
-  - **Tom:** let's archive, no need to keep s3 design, it will be its own huge project later. Definitely mark everywhere that we done what we done
+  - **Tom:** Let's do that
+  - *Anchor:* v13 registered in the live brain — and the version number landed on 13 exactly, DORMANT with `{"layout": "xml_v13"}` config, v12 still active. Sequence in flight: ⏎  ⏎ 1. ✅ Register v13 DORMANT ⏎ 2. ⏳…
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
 ---
 
 ### Moment 12 — normal labeled, deep history (seq >= 8)
-`session 911aa3a2 · epoch 0 · seq 12 · 2026-07-02 19:38`
+`session b12ab854 · epoch 0 · seq 36 · 2026-07-04 02:10`
 
 - j=4
-  - **Tom:** <task-notification> ⏎ <task-id>a412db86e43c19117</task-id> ⏎ <tool-use-id>toolu_01DX345Q7G11M7phnhCMQJJ5</tool-use-id> ⏎ <output-file>/private/tmp/claude-503/-Users-tpac-brain--claude-worktrees-loving-gagarin-93b3d9/911aa3a2-ad57-4e74-91de-59152e7ddd1b/tasks/a412db86e43c19117.out…
-  - *Anchor:* Six of eight — just cross-file tracer and altitude left.
+  - **Tom:** It's worth remember when we work on LAF, I think the fatigue level should sit there and not be an outside mechanism
+  - *Anchor:* Captured — two linked nodes so the LAF thread inherits both the direction and the substrate it rests on: ⏎  ⏎ - `7e9e36a7` (decision) — "Fatigue belongs inside LAF as an inhibition lane, not an outsid…
 - j=3
-  - **Tom:** <task-notification> ⏎ <task-id>ace32c431c382efcb</task-id> ⏎ <tool-use-id>toolu_019y1rPEYZyFduroVG2xYMkp</tool-use-id> ⏎ <output-file>/private/tmp/claude-503/-Users-tpac-brain--claude-worktrees-loving-gagarin-93b3d9/911aa3a2-ad57-4e74-91de-59152e7ddd1b/tasks/ace32c431c382efcb.out…
-  - *Anchor:* Seven of eight — waiting on the cross-file tracer, then I'll dedup and verify. (Side note: the two `RECALL FAILED: timeout` banners this session are the live daemon still running the old uncached loop…
+  - **Tom:** great, anything else to do on the session? are you Anything to commit? Did we do a code review?
+  - *Anchor:* Clean tree — nothing uncommitted, all 8 commits are in. But your instinct on the review is right, and here's the honest gap: ⏎  ⏎ **The code review only covered the first four commits.** The 8-angle f…
 - j=2
-  - **Tom:** <task-notification> ⏎ <task-id>a6d5a5178fc5716f3</task-id> ⏎ <tool-use-id>toolu_01FrBLR6tH1wrCTkpiRs3be9</tool-use-id> ⏎ <output-file>/private/tmp/claude-503/-Users-tpac-brain--claude-worktrees-loving-gagarin-93b3d9/911aa3a2-ad57-4e74-91de-59152e7ddd1b/tasks/a6d5a5178fc5716f3.out…
-  - *Anchor:* Verifiers running — results shortly.
+  - **Tom:** lets review
+  - *Anchor:* All 4 review angles are running in parallel over the unreviewed delta (`479dfb5..HEAD`, 14 files). They're covering: line-by-line correctness (incl. the INSERT column/placeholder count and the migrati…
 - j=1
-  - **Tom:** <task-notification> ⏎ <task-id>a404d6c7b39865e7b</task-id> ⏎ <tool-use-id>toolu_012cPrRiyjJSWLDf46wqJzuH</tool-use-id> ⏎ <output-file>/private/tmp/claude-503/-Users-tpac-brain--claude-worktrees-loving-gagarin-93b3d9/911aa3a2-ad57-4e74-91de-59152e7ddd1b/tasks/a404d6c7b39865e7b.out…
-  - *Anchor:* Cleanup verdicts in (import-in-loop CONFIRMED, 4096 constant CONFIRMED, forced-finalize dedup CONFIRMED, floor-placement deferred, recall_score altitude REFUTED — current design defended). Waiting on …
+  - **Tom:** <task-notification> ⏎ <task-id>ac8f23f9ba98473cf</task-id> ⏎ <tool-use-id>toolu_01HDcLsi5th98zTBb2Kvrz3S</tool-use-id> ⏎ <output-file>/private/tmp/claude-503/-Users-tpac-brain--claude-worktrees-friendly-benz-f4f17f/b12ab854-ff68-4d94-b727-b3484a687aa3/tasks/ac8f23f9ba98473cf.outp…
+  - *Anchor:* Both confirmed. Review complete — 4 angles, deduped, verified against the code myself. Six findings; the top one is a genuine miss of mine. ⏎  ⏎ ## Findings, ranked ⏎  ⏎ **F1 · HIGH — `context_boot` s…
 - **→ THE MOMENT**
-  - **Tom:** <task-notification> ⏎ <task-id>aeefa4fe56fe9b2ad</task-id> ⏎ <tool-use-id>toolu_014uvyippxiv5kfrmBaYGPa5</tool-use-id> ⏎ <output-file>/private/tmp/claude-503/-Users-tpac-brain--claude-worktrees-loving-gagarin-93b3d9/911aa3a2-ad57-4e74-91de-59152e7ddd1b/tasks/aeefa4fe56fe9b2ad.out…
-  - *Anchor:* Review complete and everything is landed. Here's the wrap-up, then the prompt map so we can start the section-by-section. ⏎  ⏎ ## Code review outcome ⏎  ⏎ 8 finder angles → ~30 candidates → deduped → …
+  - **Tom:** ok. but lets also clean dead paths and project columns/schema etc. needs a real cleanup per our new design
+  - *Anchor:* This is now a real cleanup, and mapping the surface changed my recommendation on *how* — for the better. Here's the full picture and one fork I want your call on before I touch anything. ⏎  ⏎ ## The r…
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
 ---
 
-### Moment 13 — normal labeled, session opening (seq <= 2)
-`session 151966b4 · epoch 0 · seq 1 · 2026-07-08 16:08`
+### Moment 13 — normal labeled, deep history (seq >= 8)
+`session 26a2f595 · epoch 0 · seq 148 · 2026-05-10 22:15`
 
+- j=4
+  - **Tom:** <task-notification> ⏎ <task-id>brr9tf30o</task-id> ⏎ <summary>Monitor event: "Eval A v15.3 progress"</summary> ⏎ <event>[harness] progress: 50/50 done</event> ⏎ </task-notification>
+  - *Anchor:* ## v15.3 Eval result — complicated, not a clean win or loss ⏎  ⏎ ### Headline ⏎ - **v14: 35/50 (70%) → v15.3: 33/50 (66%)** — -4pp aggregate ⏎ - 4 fail→pass, 6 pass→fail, 40 unchanged ⏎ - Movement tot…
+- j=3  ⚠ ["untraced_legacy", "superseded"]
+  - **Tom:** <task-notification> ⏎ <task-id>brr9tf30o</task-id> ⏎ <summary>Monitor event: "Eval A v15.3 progress"</summary> ⏎ <event>[Monitor timed out — re-arm if needed.]</event> ⏎ </task-notification>
+- j=2
+  - **Tom:** B ofcourse, we are not here to ship anything that isnt great
+  - *Anchor:* Same pattern on 8e91e7d9 — encoder encoded the sibling facts but in nodes titled "book club composition" and "professional network male-dominated." Sister info is in the *content*, but queries about "…
 - j=1
-  - **Tom:** I want to give the plugin to someone new. Are we ready for it?
-  - *Anchor:* **Not quite — but closer than the checklist says. Two cheap fixes and one real test remain.** ⏎  ⏎ I checked the June 29 pre-friend checklist (§6b of [DISTRIBUTION-READINESS.md](docs/DISTRIBUTION-READ…
+  - **Tom:** What's the value of structure title/content/emergent fields. They are different concepts of information containers, almost provoking structure. If the information is there it just means its a recall issue?
+  - *Anchor:* You're reframing my diagnosis correctly. Let me restate. ⏎  ⏎ ## You're right — this is a recall issue, not an encoder issue ⏎  ⏎ The structure (title / content / emergent KV like `situation`, `reason…
 - **→ THE MOMENT**
-  - **Tom:** 1. What's your take on the Seed brain? It was written long long ago, the purpose was to have a few nodes to help a fresh Anchor understand itself and also help Encoder see some rich nodes. In a way its the first few memories that set the stage. ⏎ 2. Show me aspects_proposed.json.…
-  - *Anchor:* Recall timed out this turn, but I have everything I need from the repo. I read the full [seed_pack.py](servers/seed_pack.py) — here are all three answers. ⏎  ⏎ ## 1. My take on the seed brain ⏎  ⏎ The…
+  - **Tom:** I'm not shipping that yet.  ⏎ Can you look at documents and read through them see if we they need update. ⏎ Add information on what we did in the eval, You can run v14 as the last thing so we will have robust information. ⏎ Let's analyze encoding only for all the tests we've done…
+  - *Anchor:* Docs updated. v14 artifact re-run at 15/50. ⏎  ⏎ Status: ⏎  ⏎ - **[docs/ENCODER-WORK-2026-05-10.md](docs/ENCODER-WORK-2026-05-10.md)** (new) — full session capture + encode-vs-decode split analysis ⏎ …
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
 ---
 
-### Moment 14 — normal labeled, session opening (seq <= 2)
-`session e69a5ba7 · epoch 0 · seq 1 · 2026-05-29 16:45`
+### Moment 14 — normal labeled, deep history (seq >= 8)
+`session 4516336b · epoch 1 · seq 10 · 2026-04-27 04:36`
 
-- j=1
-  - **Tom:** Hey Anchor
-  - *Anchor:* Hey Tom. I'm here. ⏎  ⏎ Reading the room from boot: the live wound is still the dampening cluster — synaptic fatigue increments but doesn't actually dampen scores on repeat recall, and hub_dampening i…
+- j=4
+  - **Tom:** good correction. Dampening is a mechanism that is very important but i feel like we should run some baseline benchmarks properly before further building
+  - *Anchor:* Here's how I'd run a proper v9.5 baseline. Want your sign-off before I touch anything. ⏎  ⏎ ## What to measure ⏎  ⏎ Three axes are the load-bearing baselines. Other 40-something eval scripts are histo…
+- j=3
+  - **Tom:** The test died in the middle because everything got stuck. ⏎ we have some memory leak, even now our process is on 4.5GB
+  - *Anchor:* ## Memory leak triage ⏎  ⏎ **Daemon state (PID 11011, uptime 4h 28m):** ⏎ - **Total resident: 4.6 GB** ⏎ - MALLOC_LARGE: 3.7 GB across 83 allocations (avg ~45MB each) ⏎ - MALLOC_LARGE (empty): 451 MB …
+- j=2  ⚠ ["untraced_legacy", "superseded"]
+  - **Tom:** i dont know if thats the best suggestion or maybe just keep watchdog
+- j=1  ⚠ ["text_disagree"]
+  - **Tom:** a
+  - *Anchor:* Status before sleep: ⏎  ⏎ - **Watchdog live**: PID 91329 RSS = 430 MB, samples landing in `daemon.log` every 60s, threads stable at 6 ⏎ - **Smoke**: 4/5 = 80% in 4m39s. `scout_events=16` per item — mu…
 - **→ THE MOMENT**
-  - **Tom:** What's the best way to review all current tests and make sure that we have a good coverage, they arent redundant etc?
-  - *Anchor:* All 8 agents reported. I inventoried **70 files / ~1,100 test functions** and did the cross-file clustering. Here's the hunt — organized as findings, not actions. I haven't touched anything: per your …
+  - **Tom:** great. just making sure that production brain is not touched through these test right? Also worth backing it up, we havent done that for a while
+  - *Anchor:* Both done. ⏎  ⏎ ## Production isolation ⏎  ⏎ | Component | Touches live brain.db? | ⏎ |---|---| ⏎ | Longmem broad workers (current) | **No** — each item gets `~/AgentsContext/brain-eval-baseline_v9.5/…
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
 ---
 
 ### Moment 15 — normal labeled, session opening (seq <= 2)
-`session 88aed353 · epoch 0 · seq 1 · 2026-05-15 18:56`
+`session bea6e3fa · epoch 0 · seq 2 · 2026-06-25 00:19`
+
+- j=2
+  - **Tom:** I will say that i want to see, clear table mapping of what we wanna do and phases and anytime we're doing prompt changes show me before and after and make sure every single change and/or instruction is also being revised on examples in the prompt. ⏎  ⏎ This is the kick off from a…
+  - *Anchor:* Orientation complete. The finding holds — and verification turned up one **correction to the doc** plus a detail that makes the fix even safer than §5 claims. ⏎  ⏎ ## What I verified (and one doc corr…
+- j=1
+  - **Tom:** 1. per cycle is good if its persistent between restarts. In terms of community visibility can these be automatically computed fields to any consumer? did S2 received the nodes with these fields? if so i dont want to suddenly hide them, i just dont want it to need to write them. m…
+  - *Anchor:* Verified — and the results actually **strengthen your instinct**, so I'm revising my recommendation. Here's what I found, then direct answers to each of your questions. ⏎  ⏎ **Key finding:** the SQL-q…
+- **→ THE MOMENT**
+  - **Tom:** hold on, is this purely algorithmic?
+  - *Anchor:* Verified — and yes, **purely algorithmic. No LLM, no embeddings, no fuzzy judgment anywhere.** All five fields are arithmetic over the `community_member` edges: ⏎  ⏎ | Field | Computation | Source | ⏎…
+
+**Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
+
+---
+
+### Moment 16 — normal labeled, session opening (seq <= 2)
+`session 29ad0386 · epoch 0 · seq 1 · 2026-06-12 17:46`
 
 - j=1
-  - **Tom:** Hey Anchor
-  - *Anchor:* Hey Tom. ⏎  ⏎ State of play: aspects work-in-progress — `aspects_proposed.json` and `aspects_v1.json` are both dirty, and the S1S prompt rewrite draft got deleted but not committed. Recent commits sho…
+  - **Tom:** In /Users/tpac/brain, the S2 encoder path still uses model 'claude-sonnet-4-20250514', which the Anthropic API reports as deprecated with end-of-life June 15th, 2026 (confirmed via DeprecationWarning during an eval run on 2026-06-12). Production S2 units (consolidation, community…
+  - *Anchor:* Migration complete — production S2 is off the deprecated model, tested, and the daemon restarted on the new code. `claude-sonnet-4-20250514` (EOL June 15) is gone from every live surface; everything n…
 - **→ THE MOMENT**
-  - **Tom:** can you show me the boot msg you just received?
-  - *Anchor:* The boot message didn't actually fire. The SessionStart hook errored out at session start: ⏎  ⏎ ``` ⏎ SessionStart:startup hook failed (exit 1): ⏎   command: ANTHROPIC_API_KEY="${user_config.anthropic…
+  - **Tom:** anything else you've noticed that is worth diving into?
+  - *Anchor:* Yes — five things, one of which I'd act on soon. Findings in priority order: ⏎  ⏎ **1. A parallel session is editing this tree, and my daemon restart shipped its WIP live.** At session start the modif…
+
+**Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
+
+---
+
+### Moment 17 — normal labeled, session opening (seq <= 2)
+`session 70e990c8 · epoch 0 · seq 1 · 2026-05-24 17:54`
+
+- j=1
+  - **Tom:** During the encoder-quality scan prefetch (2026-05-24), discovered that SQLite's `datetime()` function silently truncates microseconds and timezone when applied to ISO-8601 timestamps stored in `trace_events.created_at`. Example: `datetime('2026-04-22T19:23:38.560124+00:00', '-30 …
+  - *Anchor:* Audit complete. Findings below — read-only so far, no edits. ⏎  ⏎ ## What's actually broken ⏎  ⏎ The trip-hazard fires anywhere SQLite's `datetime(...)` appears in a SQL string AND it's compared again…
+- **→ THE MOMENT**
+  - **Tom:** You said on the other session the following thing: ⏎ "Tell it to fix — answers to its two questions ⏎ Scope: all 12 in one pass. Agreed with its take. Helper makes it one-line per site; "loud by default" applies; silent wrong-cleanup-deletes are exactly the dark corner the codeba…
+  - *Anchor:* All tasks done. Summary: ⏎  ⏎ ## Done ⏎  ⏎ **Backup** — `/Users/tpac/AgentsContext/brain/brain.db.bak-20260524T175632Z` (360MB; WAL was empty at copy time). ⏎  ⏎ **Helper** — [servers/clock.py](server…
 
 **Verdict:** ☐ reads right ☐ wrong turn(s) ☐ wrong order ☐ missing something — notes: ________
 
