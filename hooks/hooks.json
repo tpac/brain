@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/boot-brain.sh",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/boot-brain.sh\"",
             "timeout": 15
           }
         ]
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-response-recall.sh",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-response-recall.sh\"",
             "timeout": 21
           }
         ]
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-edit-suggest.sh",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-edit-suggest.sh\"",
             "timeout": 8
           }
         ]
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-bash-safety.sh",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-bash-safety.sh\"",
             "timeout": 8
           }
         ]
@@ -53,7 +53,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/idle-maintenance.sh",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/idle-maintenance.sh\"",
             "timeout": 30
           }
         ]
@@ -65,7 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-response-track.sh",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-response-track.sh\"",
             "timeout": 5
           }
         ]
@@ -77,7 +77,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/stop-failure-log.sh",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/stop-failure-log.sh\"",
             "timeout": 5
           }
         ]
@@ -89,7 +89,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-end.sh",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-end.sh\"",
             "timeout": 10
           }
         ]
@@ -101,7 +101,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/config-change-host.sh",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/config-change-host.sh\"",
             "timeout": 5
           }
         ]
@@ -113,12 +113,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-bash-host-check.sh",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-bash-host-check.sh\"",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post_tool_trace.py",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post_tool_trace.py\"",
             "timeout": 3
           }
         ]
@@ -128,7 +128,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post_tool_trace.py",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post_tool_trace.py\"",
             "timeout": 3
           }
         ]
@@ -138,7 +138,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post_tool_trace.py",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post_tool_trace.py\"",
             "timeout": 3
           }
         ]
@@ -150,7 +150,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/worktree-context.sh",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/worktree-context.sh\"",
             "timeout": 5
           }
         ]
@@ -162,7 +162,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/worktree-cleanup.sh",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/worktree-cleanup.sh\"",
             "timeout": 5
           }
         ]
