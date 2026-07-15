@@ -53,7 +53,7 @@ from datetime import datetime
 from pathlib import Path
 
 from walker_db import (fresh_walker, open_logs_ro, open_brain_ro, WALKER_DIR,
-                       gold_source_hash, EXTRACT_VERSION)
+                       gold_source_hash, GOLD_SOURCES, EXTRACT_VERSION)
 
 REPO = Path(__file__).resolve().parents[3]
 MANIFEST = WALKER_DIR / 'gold_manifest.json'
@@ -389,9 +389,13 @@ def main():
     # from specific gold files. If the gold corpus changed since (gold-growth
     # is planned), building with the stale manifest LEAKS the new cues'
     # sessions into the training substrate — refuse instead.
-    stale = {name: h for name, h in (manifest.get('source_hashes') or {}).items()
-             if gold_source_hash(name) != h}
-    if not manifest.get('source_hashes'):
+    # Iterate the CODE-side source list, not the manifest's — a source file
+    # added to GOLD_SOURCES without rerunning gold_manifest.py must fail HERE
+    # (the manifest's own keys can't know what it wasn't built from).
+    stamped = manifest.get('source_hashes') or {}
+    stale = {name for name in GOLD_SOURCES
+             if stamped.get(name) != gold_source_hash(name)}
+    if not stamped:
         print('FATAL: manifest predates source-hash stamping — regenerate: '
               './dev python3 eval/laf/walker/gold_manifest.py')
         return 2

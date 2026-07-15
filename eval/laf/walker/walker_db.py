@@ -172,9 +172,17 @@ def gold_source_hash(name):
     """Content hash of a gold corpus source file. gold_manifest.py STAMPS these
     into the manifest; extract.py REFUSES a manifest whose stamps don't match
     the current files (a grown gold corpus + stale exclusion manifest would
-    silently leak the new cues' sessions into training)."""
+    silently leak the new cues' sessions into training).
+
+    A missing file returns a sentinel instead of raising: the gates must emit
+    their designed refusal text — a raw FileNotFoundError would abort health
+    BEFORE it writes its report, leaving the previous (possibly GREEN) report
+    on disk as the newest artifact (lean review, 2026-07-15)."""
     import hashlib
-    return hashlib.sha256((GOLD_DIR / name).read_bytes()).hexdigest()[:16]
+    try:
+        return hashlib.sha256((GOLD_DIR / name).read_bytes()).hexdigest()[:16]
+    except FileNotFoundError:
+        return 'MISSING(%s)' % name
 
 
 def brain_db_dir():

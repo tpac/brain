@@ -27,9 +27,9 @@
 
 ## 2 · Join conservation ledger — PASS
 
-- Δ rows (independent recount): **6643**
+- Δ rows (independent recount): **6647**
 - labeled 4514 + empty 1313 + gold/synthetic 777 + unpaired 1 + no-candidates 0 + no-O 0 + text-disagree 38 = **6643**
-- drift: +0 rows (post-build live accretion)
+- drift: +4 rows (post-build live accretion)
 - NOTE: recount runs against the LIVE logs db — rows written after the walker build appear in the recount only; a small positive drift (recount > accounted) is expected.
 
 ## 3 · Achieved-window histogram — PASS
@@ -63,7 +63,7 @@
 
 ## 5 · Replay sanity (pool separability + within-pool rank) — PASS
 
-- Pool-vs-random separability (v_primary, q_vec, 40 turns): median AUC **0.920**, p25 0.855
+- Pool-vs-random separability (v_primary, q_vec, 40 turns): median AUC **0.907**, p25 0.846
 - Within-pool Spearman vs live rank_in_pool (informational, 474 turns): median 0.319 — gap attributable to episodic lanes joining at sweep time (0.8/2.8 gain mass), per-lane z over full field vs pool, and fatigue/floors applied after the scorer.
 
 ## 6 · Embedding spot-audit (recipe/prefix drift) — PASS

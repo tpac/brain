@@ -150,12 +150,28 @@ def main():
     if not rebuild:
         prior_version = walker.execute(
             "SELECT value FROM build_meta WHERE key='scores_lanes_version'").fetchone()
+        has_rows = walker.execute(
+            "SELECT 1 FROM cand_turn_scores LIMIT 1").fetchone() is not None
         if prior_version and prior_version[0] != LANES_VERSION:
             print('FATAL: existing scores are %s, current code is %s — rerun with --rebuild'
                   % (prior_version[0], LANES_VERSION))
             return 2
+        if has_rows and not prior_version:
+            # rows without a stamp = an interrupted build of UNKNOWN semantics
+            # (the stamp used to be written only at completion — lean review
+            # 2026-07-15). Resuming over them could mix score semantics in one
+            # table and then stamp it as current — refuse instead.
+            print('FATAL: cand_turn_scores has rows but no scores_lanes_version '
+                  'stamp (interrupted build?) — rerun with --rebuild.')
+            return 2
         done = {k for k in walker.execute(
             "SELECT DISTINCT session_id, epoch, seq FROM cand_turn_scores")}
+    # Stamp AT START, not completion: every committed batch below is thereby
+    # provenance-covered; an interrupted run resumes under the same verified
+    # stamp instead of bypassing the gate as unstamped.
+    walker.execute("INSERT OR REPLACE INTO build_meta (key, value) VALUES (?,?)",
+                   ('scores_lanes_version', LANES_VERSION))
+    walker.commit()
 
     braindb = open_brain_ro()
     all_nodes = {n for cands in cand_by_turn.values() for n in cands}
@@ -234,8 +250,7 @@ def main():
     if rows_buf:
         walker.executemany(ins_sql, rows_buf)
         c['rows_written'] += len(rows_buf)
-    walker.execute("INSERT OR REPLACE INTO build_meta (key, value) VALUES (?,?)",
-                   ('scores_lanes_version', LANES_VERSION))
+    # (scores_lanes_version stamped at START — see the gate block)
     walker.executemany(
         "INSERT OR REPLACE INTO build_meta (key, value) VALUES (?,?)",
         [('scores_' + k, str(v)) for k, v in sorted(c.items())])
