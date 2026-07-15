@@ -1629,12 +1629,20 @@ Every walker build emits `walker_health.md`. A build without a green health repo
 
 **Question Q1:** does any moment shape beat K=0 (prompt-only) on BOTH reach and rank?
 
-**Grid:** K ∈ {0,1,2,4,8} × decay {exp γ ∈ 0.3/0.5/0.7/0.9, power α ∈ 1/2, uniform w_j=1/K} ×
-composition {blend, turnmax, turnsum} × turn texts {op-only, op+anchor} × lane participation
-{maxsim, sit, idf} ⊕ episodic-symmetrized {pick, enc}. The uniform family is a registered degenerate
-control — it separates "history helps" from "the WEIGHTING of history matters." Winner selected by ONE
-pre-declared aggregate (mean of reach-Δ@25 across gold corpora + rank-AUC Δ on time-split holdout), not
-per-metric cherry-picking.
+**Grid (H2-LOCKED 2026-07-14):** K ∈ {0,1,2,4,8} × decay {exp γ ∈ 0.3/0.5/0.7/0.9, power α ∈ 1/2,
+uniform w_j=1/K} × composition {turnsum, turnmax} × **aggregation point {lane, zsum}** (Tom's field-level
+blend: compose per message THEN aggregate, vs per-lane aggregation; post-sigmoid rejected a priori —
+saturation compresses exactly the extremes that matter) × turn texts {op-only, op+anchor} ×
+**feedback M_e {off, δ ∈ 0.1/0.3}** (running fatigue replayed from stored picked/dropped labels:
+same-session prior outcomes modulate subsequent turns' scores) × lanes {maxsim, sit, idf, pick, enc} —
+**episodic participates in the IDENTICAL grid** (Tom 2026-07-14: no special casing; per-message episodic =
+role-map lookups against each message's vector; the old "stack-as-similarity-input" is just blend).
+NOTE: vector-level blend ≡ turnsum for cosine lanes up to within-turn z (cosine is linear in the query;
+per-turn norm cancels in z) — blend is therefore NOT a separate arm; recorded here so nobody re-adds it.
+The uniform family separates "history helps" from "the WEIGHTING matters." Shuffle control runs on the
+top-3 configs + a random sample (bounded compute, pre-registered). Results report per turn-class
+(normal vs flagged-stack) — the 36%-contamination check. Winner selected by ONE pre-declared aggregate
+(mean of reach-Δ@25 across gold corpora + rank-AUC Δ on time-split holdout), not per-metric cherry-picking.
 
 **Controls (all mandatory):**
 - **Shuffle control** — moment stack built from random OTHER-session turns must NOT beat K=0; if it does,
@@ -1718,3 +1726,32 @@ for P5+ or φ(M) extensions — none enter Q1:
 - **contradiction / shift-away turn dynamics** (from H2 Q3) — sign-flipping the decayed stack when the
   trajectory pivots; needs a pivot detector; revisit after Q1 shows whether plain decay carries signal
 - **test-failure signal** in φ(M) — deferred pending a reliable parse
+- **'interrupted' flag is really 'untraced'** — the class mixes real interrupts with Stop-hook failures /
+  session kills / mid-turn compaction (Tom's felt interrupt rate << 10.1%); taxonomy investigation spawned
+  as its own stream (task_79d02069, consult-before-execute); rename after its verdict
+
+### 20.10 The running field — the architecture target (Tom, H2 lock 2026-07-14; node 87a6dae9)
+
+The moment work converged past the decayed stack. The target object:
+
+    A ← λ(Δt)·A + w_e·F_e + M_e        on every attention event e
+
+**LAF is the recognition UNIT** (msg → settled field F_e, algorithmic, no LLM in the loop — why P1–P3
+quality is the prerequisite). **A is the running field**: one activation per node, persisted across the
+session in SessionContext — the state of mind as a MAINTAINED object, not a per-query reconstruction.
+A moment is what the integrator holds. **Endo-recall = reading A at any time** — always-on recognition;
+operator prompt / Anchor stop / tool use are just event types feeding one state (the 3-attention-moments
+vision unified). **M_e is outcome feedback**: Haiku's verdicts on the previous field arrive as one-turn-
+late labels — picked→excite, dropped→inhibit, surfaced→suppress. Fatigue becomes the inhibitory half of
+the update rule ("running fatigue"), fulfilling fatigue-as-lane (7e9e36a7).
+
+**Deployment economics:** each F_e is computed anyway at its own recall; the running field costs a cached
+vector (~28KB/turn) + weighted adds — moment recognition at ~zero marginal live latency. Each cached
+field carries its own query-side vector by construction (dissolves the walker's q_vec hand-fix).
+
+**SPEC LINE (do not "optimize" away): the persisted field is the FULL activation vector, never the
+top-K.** Below-pool mass is where reach lives (union 8bcc8c96; the retired 25-node blindness 62b04f12).
+
+**The §20.5 sweep is this object's first parameter fit** — λ from the decay grid, w_e from compositions,
+M_e's first measurement via the feedback axis. Q1's question, upgraded: does a MAINTAINED field beat a
+stateless query? Stage 3 implements A in SessionContext if the answer is yes.
