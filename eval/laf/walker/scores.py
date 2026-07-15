@@ -25,15 +25,13 @@ pending drain, nodes without a view vector) leave NULL cells and are counted.
 Run:  ./dev python3 eval/laf/walker/scores.py [--rebuild]
 """
 import bisect
-import importlib.util
-import json
 import sys
 from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
 
-from walker_db import open_walker, open_brain_ro
+from walker_db import open_walker, open_brain_ro, lane_columns, check_lane_schema
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -44,10 +42,7 @@ K_MAX = 8
 TEXT_CAP = 500                  # trace-embedding recipe cap — keep idf consistent
 LANES_VERSION = 'v2-16lane-qvec-j0'
 VIEWS = list(MAXSIM_VIEWS) + ['_situation']   # 6 maxsim views + sit
-LANE_COLS = (['v_%s_op' % v.strip('_') for v in MAXSIM_VIEWS]
-             + ['sit_op', 'idf_op']
-             + ['v_%s_anchor' % v.strip('_') for v in MAXSIM_VIEWS]
-             + ['sit_anchor', 'idf_anchor'])
+LANE_COLS = lane_columns(MAXSIM_VIEWS)        # single-sourced (walker_db)
 
 
 def load_node_vectors(braindb, node_ids):
@@ -110,6 +105,7 @@ def asof_tok_df(cand_ids, node_tokens, token_created, all_created, turn_ts):
 def main():
     rebuild = '--rebuild' in sys.argv
     walker = open_walker()
+    check_lane_schema(walker, MAXSIM_VIEWS)   # loud on DDL/views drift (review)
     if rebuild:
         walker.execute('DELETE FROM cand_turn_scores')
         walker.commit()
