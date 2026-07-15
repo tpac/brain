@@ -221,6 +221,67 @@ def load(walker):
     return list(turns.values())
 
 
+def compose(mats, ww, cfg, n, gains=None, mask=None):
+    """THE grid composition — shared by the rank leg (pool rows) and the
+    reach leg (full-field rows); one implementation, no cross-leg drift.
+
+    mats: {lane: [n × M] message columns, NaN = missing}; ww: [M] weights.
+    agg='lane': reduce each lane over messages, THEN z + gain-sum.
+    agg='zsum': z + gain-sum per MESSAGE, then reduce over messages.
+    reduce is turnsum (nan-weighted-sum) or turnmax (nan-weighted-max);
+    all-NaN rows stay NaN.
+
+    mask: the as_of node mask (reach leg) — z-statistics must run over the
+    masked universe EXACTLY like the engine's scores(as_of=) z-loop, or the
+    per-lane affine scales drift and the composed ORDER diverges from
+    production (base-parity check catches this). Rank leg passes None
+    (the pool is its own universe).
+    """
+    gains = gains or GAINS
+
+    def reduce(mat):
+        with np.errstate(all='ignore'):
+            if cfg['comp'] == 'turnsum':
+                v = np.nansum(mat * ww, axis=1)
+            else:
+                v = np.nanmax(mat * ww, axis=1)
+        v[np.all(np.isnan(mat), axis=1)] = np.nan
+        return v
+
+    if cfg['agg'] == 'lane':
+        zsum = np.zeros(n)
+        for ln, g in gains.items():
+            zsum += g * _zscore(reduce(mats[ln]), n, mask=mask)
+        return zsum
+    n_msg = next(iter(mats.values())).shape[1]
+    per_msg = np.full((n, n_msg), np.nan)
+    for col in range(n_msg):
+        acc = np.zeros(n)
+        any_data = np.zeros(n, dtype=bool)
+        for ln, g in gains.items():
+            x = mats[ln][:, col]
+            acc += g * _zscore(x, n, mask=mask)
+            any_data |= np.isfinite(x)
+        per_msg[:, col] = np.where(any_data, acc, np.nan)
+    return reduce(per_msg)
+
+
+def stack_messages(op_mat, anchor_mat, w, cfg):
+    """Lane matrix + weights for one lane under a config's K/texts axes.
+
+    TEMPORAL-LEAK RULE (coverage control caught this): the j=0 anchor is
+    the turn's OWN response — it does not exist at recall time and it IS
+    the soft-usage label. Anchor messages join the stack at j≥1 ONLY
+    (previous turns' responses; v4 attach order guarantees an anchor at
+    seq-j predates the prompt at seq). texts collapses at K=0."""
+    K = cfg['K']
+    m = op_mat[:, :K + 1]
+    if cfg['texts'] == 'op+anchor' and K >= 1:
+        return (np.concatenate([m, anchor_mat[:, 1:K + 1]], axis=1),
+                np.concatenate([w, w[1:]]))
+    return m, w
+
+
 def score_turn(td, cfg, w):
     """Config → per-candidate scores for one turn (pool z, production
     _zscore). A message = (offset j, source op|anchor); texts=op+anchor
@@ -237,52 +298,11 @@ def score_turn(td, cfg, w):
         # publish 3× duplicate configs as if M_e were measured
         raise NotImplementedError('M_e replay semantics are pinned at the '
                                   'final H2 look — axis not armed')
-    K = cfg['K']
     nc = len(td.cands)
-
-    def messages(ln):
-        """[nc × M] message columns for a lane + their weights [M].
-
-        TEMPORAL-LEAK RULE (coverage control caught this): the j=0 anchor
-        is the turn's OWN response — it does not exist at recall time and
-        it IS the soft-usage label. Anchor messages join the stack at j≥1
-        ONLY (previous turns' responses; v4 attach order guarantees an
-        anchor at seq-j predates the prompt at seq). K=0 therefore has no
-        anchor messages at all — texts collapses at K=0, as registered."""
-        m = td.op[ln][:, :K + 1]
-        if cfg['texts'] == 'op+anchor' and K >= 1:
-            return (np.concatenate([m, td.anchor[ln][:, 1:K + 1]], axis=1),
-                    np.concatenate([w, w[1:]]))
-        return m, w
-
-    def reduce(mat, ww):
-        with np.errstate(all='ignore'):
-            if cfg['comp'] == 'turnsum':
-                v = np.nansum(mat * ww, axis=1)
-            else:
-                v = np.nanmax(mat * ww, axis=1)
-        v[np.all(np.isnan(mat), axis=1)] = np.nan
-        return v
-
-    if cfg['agg'] == 'lane':
-        zsum = np.zeros(nc)
-        for ln in GAINS:
-            zsum += GAINS[ln] * _zscore(reduce(*messages(ln)), nc)
-        return zsum
-    # agg == 'zsum': z-compose per MESSAGE, then reduce over messages
-    mats = {ln: messages(ln) for ln in GAINS}
-    n_msg = next(iter(mats.values()))[0].shape[1]
-    ww = next(iter(mats.values()))[1]
-    per_msg = np.full((nc, n_msg), np.nan)
-    for col in range(n_msg):
-        acc = np.zeros(nc)
-        any_data = np.zeros(nc, dtype=bool)
-        for ln in GAINS:
-            x = mats[ln][0][:, col]
-            acc += GAINS[ln] * _zscore(x, nc)
-            any_data |= np.isfinite(x)
-        per_msg[:, col] = np.where(any_data, acc, np.nan)
-    return reduce(per_msg, ww)
+    mats, ww = {}, None
+    for ln in GAINS:
+        mats[ln], ww = stack_messages(td.op[ln], td.anchor[ln], w, cfg)
+    return compose(mats, ww, cfg, nc)
 
 
 def evaluate(turns, cfg):
