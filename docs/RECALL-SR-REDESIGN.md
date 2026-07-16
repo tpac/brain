@@ -1875,3 +1875,43 @@ interrupt/notification, live signal — moment-stack builders decide whether M(t
 now attaches to the LAST s0 of its stop — the §20.9 first-s0 mis-attach is FIXED, anchor lanes at j≥1
 score the response that actually followed. (4) op_vec_source value `local_interrupted` →
 `local_untraced`. Rebuild GREEN 6/6, 809,466 score rows; fresh walker.db copied to the main tree.
+
+### 20.13 P3 pre-registration — fit the composition on the walker table (laid out 2026-07-15, awaiting Tom's "stands")
+
+**Question:** how much signal do the fixed gains leave on the table — and does fixing the
+normalization artifact change what wins?
+
+**P3.0 — normalization repair FIRST (its own mini-verdict).** The sparse-lane z inflation
+(q1_reverse eyeball catch: enc z=11.4 / pick z=6.8 next to cosine z≈2 — mostly-zero lanes explode
+under _zscore, sparse activations dominate the blend; explains pick dominance + the lane_buried
+class). Three variants under STATIC gains before any fitting: current / support-z (stats over
+nonzero support, zeros stay neutral — recommended) / rank-norm. Pre-declared pick: best June+ AUC
+AND gold-24 tier placement not worsened. Winner becomes the fit substrate AND a flag-gated
+production candidate on its own.
+
+**P3.1 — the fit.** Walker v6, provenance-gated. Features (~32, pre-registered): {maxsim, sit,
+idf, pick, enc} × {j0-op, j1-op, j1-anchor, j2-op, j2-anchor, decayed-tail j3–8 @ γ0.5} + M_e
+fatigue value + intercept; rank_in_pool EXCLUDED (production's own output — leak). Model:
+within-turn pairwise logistic, L2, linear on purpose — coefficients deploy as recall_laf K-store
+VALUES, zero code (the §19 promise). Targets: picked (primary, pairwise); soft-usage (secondary,
+separate fit, compared). Echo-sensitivity ablation pre-registered: every fit re-run WITHOUT
+pick/enc features — if content-only collapses, the learned signal was echo and we say so.
+Split: train April–May / validate June+; report per era + turn-class.
+
+**P3.2 — evaluation (all six, pre-declared):** (1) June+ AUC vs K0-static and Q1-winner-static;
+(2) miss-class deltas on gold-24 — near_miss + lane_buried should shrink, **unreachable must NOT
+move (leak canary)**; (3) tier placement re-run (blind-judged); (4) shuffle control re-run on the
+FITTED model; (5) soft-usage correlation; (6) ship gate = P1 discipline (gold-24 through real
+brain.recall with DORMANT config, frame_replay A/B = H4, latency flat).
+
+**P3.3 — deliverable:** P3a = j0-only fitted gains (deployable NOW via K-store — production
+scores j=0 today); P3b = full moment gains (fit now, deploy rides Stage-3 wiring). Both DORMANT;
+activation after H4; rollback = pointer flip.
+
+**NOT in P3:** new lanes (cross-moment drop-rate inhibition, ÷norm recency), data-dependent
+attention weights, selector/gating — each its own pre-reg after P3. Reach parked (Tom).
+
+**Q1 inputs P3 stands on (all committed 2026-07-15):** verdict a1698bb3 (rank +0.045 shuffle-proof
+/ reach flat / no-ship as registered); contributor decomposition (label echo named, maxsim
+restriction-of-range named); miss classes (moment_seen 61 / lane_buried 48 / unreachable 38 /
+near_miss 23); tier placement flat; artifacts q1_{sweep,analysis,tiers,reverse}.* + shuffle_control.md.
