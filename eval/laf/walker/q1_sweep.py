@@ -62,7 +62,8 @@ from walker_db import (open_walker, EXTRACT_VERSION, EMBED_VERSION,
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
 
-from servers.recall_laf import MAXSIM_VIEWS, _zscore, DEFAULT_CONFIG  # noqa: E402
+from servers.recall_laf import (MAXSIM_VIEWS, _zscore, DEFAULT_CONFIG,  # noqa: E402
+                                zscore_variant)
 from soft_usage import SOFT_USAGE_VERSION, auc                        # noqa: E402
 from episodic_roles import EPISODIC_VERSION, K_MAX                    # noqa: E402
 
@@ -264,7 +265,7 @@ def load(walker):
     return list(turns.values())
 
 
-def compose(mats, ww, cfg, n, gains=None, mask=None):
+def compose(mats, ww, cfg, n, gains=None, mask=None, znorm='current'):
     """THE grid composition — shared by the rank leg (pool rows) and the
     reach leg (full-field rows); one implementation, no cross-leg drift.
 
@@ -279,8 +280,15 @@ def compose(mats, ww, cfg, n, gains=None, mask=None):
     per-lane affine scales drift and the composed ORDER diverges from
     production (base-parity check catches this). Rank leg passes None
     (the pool is its own universe).
+
+    znorm: P3.0 lane-normalizer variant ('current'/'support'/'rank') —
+    routed through the production zscore_variant dispatch; default is
+    bit-identical to the Q1 runs.
     """
     gains = gains or GAINS
+
+    def zs(x):
+        return zscore_variant(x, n, mask=mask, kind=znorm)
 
     def reduce(mat):
         with np.errstate(all='ignore'):
@@ -294,7 +302,7 @@ def compose(mats, ww, cfg, n, gains=None, mask=None):
     if cfg['agg'] == 'lane':
         zsum = np.zeros(n)
         for ln, g in gains.items():
-            zsum += g * _zscore(reduce(mats[ln]), n, mask=mask)
+            zsum += g * zs(reduce(mats[ln]))
         return zsum
     n_msg = next(iter(mats.values())).shape[1]
     per_msg = np.full((n, n_msg), np.nan)
@@ -303,7 +311,7 @@ def compose(mats, ww, cfg, n, gains=None, mask=None):
         any_data = np.zeros(n, dtype=bool)
         for ln, g in gains.items():
             x = mats[ln][:, col]
-            acc += g * _zscore(x, n, mask=mask)
+            acc += g * zs(x)
             any_data |= np.isfinite(x)
         per_msg[:, col] = np.where(any_data, acc, np.nan)
     return reduce(per_msg)
@@ -325,7 +333,7 @@ def stack_messages(op_mat, anchor_mat, w, cfg):
     return m, w
 
 
-def score_turn(td, cfg, w, gains=None):
+def score_turn(td, cfg, w, gains=None, znorm='current'):
     """Config → per-candidate scores for one turn (pool z, production
     _zscore). A message = (offset j, source op|anchor); texts=op+anchor
     puts BOTH sources in the stack as separate messages with weight w_j —
@@ -340,7 +348,7 @@ def score_turn(td, cfg, w, gains=None):
     mats, ww = {}, None
     for ln in GAINS:
         mats[ln], ww = stack_messages(td.op[ln], td.anchor[ln], w, cfg)
-    base = compose(mats, ww, cfg, nc, gains=gains)
+    base = compose(mats, ww, cfg, nc, gains=gains, znorm=znorm)
     kind, delta = cfg['me']
     if kind != 'off':
         # 2′ (H2-pinned): surfaced-only running fatigue, z-space subtraction
@@ -348,14 +356,14 @@ def score_turn(td, cfg, w, gains=None):
     return base
 
 
-def evaluate(turns, cfg):
+def evaluate(turns, cfg, znorm='current'):
     """One config over all turns → metrics dict (overall + slices)."""
     w = weights(cfg)
     pools = {'all': ([], []), 'val': ([], []), 'normal': ([], []),
              'flagged': ([], []), 'pre_era': ([], []), 'post_era': ([], [])}
     soft_x, soft_y = [], []
     for td in turns:
-        s = score_turn(td, cfg, w)
+        s = score_turn(td, cfg, w, znorm=znorm)
         sel, drp = s[td.sel], s[~td.sel]
         keys = ['all'] + (['val'] if td.val else []) + \
             (['flagged'] if td.flagged else ['normal']) + \

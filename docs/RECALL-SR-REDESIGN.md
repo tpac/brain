@@ -1915,3 +1915,32 @@ attention weights, selector/gating — each its own pre-reg after P3. Reach park
 / reach flat / no-ship as registered); contributor decomposition (label echo named, maxsim
 restriction-of-range named); miss classes (moment_seen 61 / lane_buried 48 / unreachable 38 /
 near_miss 23); tier placement flat; artifacts q1_{sweep,analysis,tiers,reverse}.* + shuffle_control.md.
+
+#### 20.13.1 P3.0 VERDICT (ran 2026-07-15, pre-declared rule) — PICK: current
+
+Instrument `eval/laf/walker/p3_norm.py` (report `p3_norm.md`). Variants live in
+`servers/recall_laf.py` (`_zscore_support`, `_zscore_rank`, `zscore_variant`; config key
+`z_norm`, default `'current'` — K-store-flippable, shipped inert). Controls: sanity fixture
+(current z_max 9.1 → support 1.9; rank bounded ±√3) + coverage invariant ×3 norms, all PASS.
+Design correction pre-outcome: rank-norm as z-of-ranks re-inflated under the zero-tie block
+(sanity caught z=7.1) → analytic uniform z (centered percentile × √12), bounded unconditionally.
+
+| norm | AUC val win | soft_r win | tiers g+g k0 top5/25 | win top5/25 | gate |
+|---|---|---|---|---|---|
+| current | **0.8676** | 0.273 | 8 / 18 | 6 / 19 | PASS |
+| support | 0.7810 | 0.278 | **9 / 21** | **8** / 19 | PASS |
+| rank | 0.8351 | 0.275 | 4 / 17 | 4 / 13 | FAIL |
+
+Pick = current, as registered (best June+ AUC; rank additionally fails the tier gate).
+**Fit substrate for P3.1 = current. No production candidate ships from P3.0.**
+
+**First-class finding — the primary metric is echo-shared for THIS comparison:** the picked-label
+AUC shares its judge with the pick/enc lanes; under `current` those lanes carry z 6–11 and the
+metric partly measures "the pick lane predicts picks." Support-z demotes exactly those lanes and
+loses 0.087 AUC — but on every judge-independent metric it is neutral-to-better (soft_r 0.278 vs
+0.273; blind-judged tiers: k0 arm top-5 9>8, top-25 21>18; win arm top-5 8>6, top-25 equal).
+The echo-sensitivity ablation (P3.1, pre-registered) adjudicates. Note: a linear fit's gains
+absorb per-lane SCALE, so `current` as substrate does not handicap the fit — the per-turn scale
+instability of sparse-lane z is second-order and the ablation catches the echo story. Secondary
+observation for a future pre-reg: idf remains heavy-tailed WITHIN its support (eyeball z 6.7–8.7
+under support-z) — support-z fixes pick/enc, not idf's internal skew.

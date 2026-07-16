@@ -106,6 +106,11 @@ DEFAULT_CONFIG = {
     'sigmoid_scale': 3.0,     # z-sum → (0,1) squash temperature
     'session_trace_pull': 2000,
     'telemetry_top_n': 50,    # per-field z-scores recorded for this many top nodes
+    # Lane normalizer (P3.0): 'current' | 'support' | 'rank' — see Z_NORMS.
+    # Sparse lanes (pick/enc/idf are mostly-zero) explode under plain z
+    # (enc z≈11 beside cosine z≈2 — q1_reverse eyeball); the P3.0 winner
+    # ships as a K-store flip of this key, rollback = flip back.
+    'z_norm': 'current',
 }
 
 CONFIG_TTL_S = 60.0           # K-store overlay refresh cadence
@@ -149,6 +154,66 @@ def _zscore(x, n, mask=None):
     if int(m.sum()) > 2 and np.std(x[m]) > 1e-9:
         o[m] = (x[m] - x[m].mean()) / x[m].std()
     return o
+
+
+def _zscore_support(x, n, mask=None):
+    """support-z (P3.0 variant): statistics over the NONZERO finite support
+    only; zeros — 'no activation' in the sparse lanes (pick/enc/idf), which
+    plain z counts as real values, shrinking std until matches explode —
+    stay exactly 0 (neutral). Dense lanes (cosines are never exactly 0.0)
+    are bit-identical to _zscore. Same small-support guard shape."""
+    m = np.isfinite(x)
+    if mask is not None:
+        m = m & mask
+    sup = m & (x != 0.0)
+    o = np.zeros(n)
+    if int(sup.sum()) > 2 and np.std(x[sup]) > 1e-9:
+        o[sup] = (x[sup] - x[sup].mean()) / x[sup].std()
+    return o
+
+
+def _zscore_rank(x, n, mask=None):
+    """rank-norm (P3.0 variant): average-tie fractional percentiles over the
+    finite (masked) universe, mapped by the ANALYTIC uniform z — centered
+    percentile × √12 — so output is z-space-commensurate (equals z-of-ranks
+    for a tie-free dense lane, where rank std is k/√12) and BOUNDED by ±√3
+    unconditionally. Deliberately NOT _zscore of the rank vector: a sparse
+    lane's zero-tie block shrinks the rank std until the matches explode
+    again (the p3_norm sanity fixture caught z=7.1) — the fixed analytic
+    scale is the whole point. The zero sea sits at its own percentile; the
+    matches rank above it, capped at +√3."""
+    m = np.isfinite(x)
+    if mask is not None:
+        m = m & mask
+    o = np.zeros(n)
+    k = int(m.sum())
+    if k <= 2:
+        return o
+    xv = x[m]
+    order = np.argsort(xv, kind='stable')
+    ranks = np.empty(k)
+    ranks[order] = np.arange(k, dtype=float)
+    _, inv, counts = np.unique(xv, return_inverse=True, return_counts=True)
+    sums = np.zeros(len(counts))
+    np.add.at(sums, inv, ranks)
+    rv = (sums / counts)[inv]                 # average rank across ties
+    p = (rv + 0.5) / k                        # fractional percentile (0,1)
+    o[m] = (p - p.mean()) * np.sqrt(12.0)     # analytic uniform z, mean-0
+    return o
+
+
+Z_NORMS = {'current': _zscore, 'support': _zscore_support, 'rank': _zscore_rank}
+
+
+def zscore_variant(x, n, mask=None, kind='current'):
+    """The ONE normalizer dispatch — engine z-loop and the walker's compose()
+    both route here so eval measures the exact function production runs."""
+    try:
+        fn = Z_NORMS[kind]
+    except KeyError:
+        raise ValueError('unknown z_norm %r (valid: %s)'
+                         % (kind, '/'.join(Z_NORMS)))
+    return fn(x, n, mask=mask)
 
 
 def idf_scores(query, title_tok, title_df, n, n_titles=None):
@@ -660,7 +725,8 @@ class LafV1Engine:
                                   as_of=as_of, trace_mask=trace_mask)
             # THE node-mask chokepoint (§20.11 #1/#6): one masked z-score
             # loop covers every node-indexed lane, including future ones
-            zf = {name: _zscore(vec, n, mask=node_mask)
+            zn = str(cfg.get('z_norm', 'current'))
+            zf = {name: zscore_variant(vec, n, mask=node_mask, kind=zn)
                   for name, vec in fields.items()}
             zsum = np.zeros(n)
             for name, z in zf.items():
