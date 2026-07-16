@@ -325,7 +325,7 @@ def stack_messages(op_mat, anchor_mat, w, cfg):
     return m, w
 
 
-def score_turn(td, cfg, w):
+def score_turn(td, cfg, w, gains=None):
     """Config → per-candidate scores for one turn (pool z, production
     _zscore). A message = (offset j, source op|anchor); texts=op+anchor
     puts BOTH sources in the stack as separate messages with weight w_j —
@@ -340,7 +340,7 @@ def score_turn(td, cfg, w):
     mats, ww = {}, None
     for ln in GAINS:
         mats[ln], ww = stack_messages(td.op[ln], td.anchor[ln], w, cfg)
-    base = compose(mats, ww, cfg, nc)
+    base = compose(mats, ww, cfg, nc, gains=gains)
     kind, delta = cfg['me']
     if kind != 'off':
         # 2′ (H2-pinned): surfaced-only running fatigue, z-space subtraction

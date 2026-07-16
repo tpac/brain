@@ -1,0 +1,74 @@
+{
+ "gold_plus": {
+  "k0": {
+   "n": 16,
+   "unresolved": 0,
+   "top1": 1,
+   "top5": 4,
+   "top25": 6,
+   "median_rank": 74.5
+  },
+  "win": {
+   "n": 16,
+   "unresolved": 0,
+   "top1": 1,
+   "top5": 3,
+   "top25": 7,
+   "median_rank": 74.5
+  }
+ },
+ "gold": {
+  "k0": {
+   "n": 80,
+   "unresolved": 1,
+   "top1": 0,
+   "top5": 4,
+   "top25": 12,
+   "median_rank": 367.0
+  },
+  "win": {
+   "n": 80,
+   "unresolved": 1,
+   "top1": 1,
+   "top5": 3,
+   "top25": 12,
+   "median_rank": 342.0
+  }
+ },
+ "silver_plus": {
+  "k0": {
+   "n": 12,
+   "unresolved": 0,
+   "top1": 2,
+   "top5": 2,
+   "top25": 2,
+   "median_rank": 819.5
+  },
+  "win": {
+   "n": 12,
+   "unresolved": 0,
+   "top1": 2,
+   "top5": 2,
+   "top25": 2,
+   "median_rank": 241.5
+  }
+ },
+ "silver": {
+  "k0": {
+   "n": 138,
+   "unresolved": 2,
+   "top1": 2,
+   "top5": 8,
+   "top25": 25,
+   "median_rank": 305.5
+  },
+  "win": {
+   "n": 138,
+   "unresolved": 2,
+   "top1": 1,
+   "top5": 10,
+   "top25": 26,
+   "median_rank": 336.5
+  }
+ }
+}
