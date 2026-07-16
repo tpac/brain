@@ -47,3 +47,24 @@ K0 baseline: {"auc_all": 0.7713, "auc_val": 0.8226, "auc_normal": 0.7829, "auc_f
 
 - configs evaluated: 673; full table: q1_sweep_full.json
 - SHUFFLE CONTROL PENDING on top-3 — no verdict before it runs (registered order).
+
+## VERDICT (pre-declared aggregate, §20.5 — recorded 2026-07-15)
+
+**Q1: does any moment shape beat K=0 on BOTH reach and rank?**
+
+- **Rank: YES, decisively.** Winner K1-exp0.5-turnsum-zsum-opanchor:
+  ΔAUC +0.045 on the June+ holdout (0.823 → 0.868), gains in EVERY slice
+  (normal +0.07, flagged +0.06, pre-era +0.10, post-era +0.04, soft_r
+  0.173 → 0.273). Shuffle control HOLDS (shuffled history lands 0.04–0.07
+  BELOW K0 — the gain is conversation-specific signal, not a norm artifact).
+- **Reach (gold-24): NO.** Winner Δ@25 = +1 need (18/96 → 19/96), Δ@5 = −2
+  (8 → 6). Inside the ±4pp noise band; the pre-committed +≥2 needs @25 is
+  NOT MET. LongMemEval leg trails (adapter unbuilt) but cannot rescue the
+  criterion — it required gold-24 AND LongMemEval.
+
+**Both-or-no-ship → NO SHIP of the moment stack as a live default, as
+registered.** The rank win stands as measured knowledge: the moment helps
+ORDER a candidate pool; it does not (at these shapes) pull new gold into
+reach on cold cues. That divergence is the surprising result, and per the
+drift guards it spawns a NEW pre-registered question rather than bending
+this one.
