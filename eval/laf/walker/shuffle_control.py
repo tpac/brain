@@ -65,6 +65,69 @@ def top_distinct(results, k=3):
     return out
 
 
+def build_shuffled(sample, donors, rng, eng, role_map, trace_mat,
+                   trace_created, n):
+    """TurnData clones with j≥1 history replaced by random OTHER-session
+    donor turns; j=0 stays real; lanes recomputed fresh through production
+    code. Extracted for reuse by the P3 fitted-model shuffle (p3_eval) —
+    behavior identical to the Q1 run."""
+    shuffled = []
+    for td in sample:
+        rows = np.array([eng._idx.get(nid, -1) for nid in td.cands])
+        ok = rows >= 0
+        sh = TurnData(td.key, td.ts, td.cands, td.flagged)
+        sh.sel, sh.soft, sh.fat = td.sel, td.soft, td.fat
+        for ln in GAINS:              # j=0 stays REAL (stored, cross-checked)
+            sh.op[ln][:, 0] = td.op[ln][:, 0]
+        for j in range(1, K_MAX + 1):
+            dsess = dov = dav = dopt = dat = None
+            while True:               # donor from a DIFFERENT session
+                dsess, dov, dav, dopt, dat = rng.choice(donors)
+                if dsess != td.key[0]:
+                    break
+            for kind, vec, text in (('op', dov, dopt),
+                                    ('anchor', dav, dat)):
+                tgt = sh.op if kind == 'op' else sh.anchor
+                if vec is None:
+                    continue
+                with np.errstate(all='ignore'):
+                    ms = np.nanmax(np.stack(
+                        [eng._mats[vt][:n] @ vec for vt in MAXSIM_VIEWS]),
+                        axis=0)
+                sit = eng._mats['_situation'][:n] @ vec
+                idf = eng._idf_asof(text, n, td.ts) if text else None
+                ep = episodic_from_sims(eng, role_map, trace_mat @ vec,
+                                        td.ts, trace_created)
+                pick = np.zeros(n)
+                enc = np.zeros(n)
+                for r_, (p, e) in ep.items():
+                    pick[r_], enc[r_] = p, e
+                for i, r_ in enumerate(rows):
+                    if not ok[i]:
+                        continue
+                    tgt['maxsim'][i, j] = ms[r_]
+                    tgt['sit'][i, j] = sit[r_]
+                    if idf is not None:
+                        tgt['idf'][i, j] = idf[r_]
+                    tgt['pick'][i, j] = pick[r_]
+                    tgt['enc'][i, j] = enc[r_]
+        shuffled.append(sh)
+    return shuffled
+
+
+def load_donors(walker):
+    """Donor pool: real non-machine turns from every session (op/anchor
+    vectors + capped texts) — history stand-ins for the shuffle."""
+    donors = []
+    for sess, opv, av, opt, at, flags in walker.execute(
+            "SELECT session_id, op_vec, anchor_vec, op_text, anchor_text, "
+            "flags FROM turns WHERE op_vec IS NOT NULL "
+            "AND flags NOT LIKE '%machine_turn%'"):
+        donors.append((sess, _unit(opv), _unit(av) if av else None,
+                       (opt or '')[:500], (at or '')[:500]))
+    return donors
+
+
 def main():
     rng = random.Random(SEED)
     results = json.loads((WALKER_DIR / 'q1_sweep_full.json').read_text())
@@ -77,15 +140,7 @@ def main():
     walker = open_walker()
     q1_sweep.gate_provenance(walker)
     turns = q1_sweep.load(walker)
-    # donor pool: (op_vec, anchor_vec, op_text, anchor_text, session) of real
-    # non-machine turns — history stand-ins drawn from OTHER sessions
-    donors = []
-    for sess, opv, av, opt, at, flags in walker.execute(
-            "SELECT session_id, op_vec, anchor_vec, op_text, anchor_text, "
-            "flags FROM turns WHERE op_vec IS NOT NULL "
-            "AND flags NOT LIKE '%machine_turn%'"):
-        donors.append((sess, _unit(opv), _unit(av) if av else None,
-                       (opt or '')[:500], (at or '')[:500]))
+    donors = load_donors(walker)
     walker.close()
 
     sample = rng.sample(turns, min(N_TURNS, len(turns)))
@@ -100,48 +155,8 @@ def main():
         trace_mat = np.vstack(eng._tr_blocks)
         role_map = build_role_map(env.brain)
         n = eng._n
-
-        shuffled = []                 # TurnData clones with donor history
-        for td in sample:
-            rows = np.array([eng._idx.get(nid, -1) for nid in td.cands])
-            ok = rows >= 0
-            sh = TurnData(td.key, td.ts, td.cands, td.flagged)
-            sh.sel, sh.soft, sh.fat = td.sel, td.soft, td.fat
-            for ln in GAINS:          # j=0 stays REAL (stored, cross-checked)
-                sh.op[ln][:, 0] = td.op[ln][:, 0]
-            for j in range(1, K_MAX + 1):
-                dsess = dov = dav = dopt = dat = None
-                while True:           # donor from a DIFFERENT session
-                    dsess, dov, dav, dopt, dat = rng.choice(donors)
-                    if dsess != td.key[0]:
-                        break
-                for kind, vec, text in (('op', dov, dopt),
-                                        ('anchor', dav, dat)):
-                    tgt = sh.op if kind == 'op' else sh.anchor
-                    if vec is None:
-                        continue
-                    with np.errstate(all='ignore'):
-                        ms = np.nanmax(np.stack(
-                            [eng._mats[vt][:n] @ vec for vt in MAXSIM_VIEWS]),
-                            axis=0)
-                    sit = eng._mats['_situation'][:n] @ vec
-                    idf = eng._idf_asof(text, n, td.ts) if text else None
-                    ep = episodic_from_sims(eng, role_map, trace_mat @ vec,
-                                            td.ts, trace_created)
-                    pick = np.zeros(n)
-                    enc = np.zeros(n)
-                    for r_, (p, e) in ep.items():
-                        pick[r_], enc[r_] = p, e
-                    for i, r_ in enumerate(rows):
-                        if not ok[i]:
-                            continue
-                        tgt['maxsim'][i, j] = ms[r_]
-                        tgt['sit'][i, j] = sit[r_]
-                        if idf is not None:
-                            tgt['idf'][i, j] = idf[r_]
-                        tgt['pick'][i, j] = pick[r_]
-                        tgt['enc'][i, j] = enc[r_]
-            shuffled.append(sh)
+        shuffled = build_shuffled(sample, donors, rng, eng, role_map,
+                                  trace_mat, trace_created, n)
 
     # same-subset AUCs: K0, real config, shuffled config
     def subset_auc(tds, cfg):

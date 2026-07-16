@@ -1944,3 +1944,63 @@ absorb per-lane SCALE, so `current` as substrate does not handicap the fit — t
 instability of sparse-lane z is second-order and the ablation catches the echo story. Secondary
 observation for a future pre-reg: idf remains heavy-tailed WITHIN its support (eyeball z 6.7–8.7
 under support-z) — support-z fixes pick/enc, not idf's internal skew.
+
+#### 20.13.2 P3.1 fit results (ran 2026-07-15) — the ablation matrix is the story
+
+Instrument `eval/laf/walker/p3_fit.py` (report `p3_fit.md`, coefficients `p3_fit.json`). 31
+features as registered (intercept cancels in the pairwise formulation — 0 by construction);
+Newton/L2, λ-insensitive across {0.1, 1, 10}; train 81,545 picked pairs / 14,461 soft pairs.
+Eight arms: {full, j0-only} × {picked, soft} × {with, without pick/enc}.
+
+| arm | target | features | val AUC (picked) | soft_r |
+|---|---|---|---|---|
+| A full | picked | all 31 | **0.9698** | 0.130 |
+| C full−pick/enc | picked | 19 | 0.7102 | 0.243 |
+| B full | soft | all 31 | 0.7695 | **0.427** |
+| F full−pick/enc | soft | 19 | 0.6448 | **0.430** |
+| D j0-only | picked | 6 | 0.9279 | 0.088 |
+| G j0-only | soft | 6 | 0.7887 | 0.177 |
+| statics | — | — | K0 0.8226 · winner 0.8676 · K0-content-only 0.6921 | 0.173 / 0.273 |
+
+**The pre-registered sentence fires: the picked-label fit gain was echo.** Content-only (C)
+collapses below K0-static (0.7102 < 0.8226); the A coefficients say why (pick·j0 +1.37,
+pick·j1op +1.00, pick·j1anchor +0.86 — the fit poured weight into the label-sharing lane).
+Like-for-like, though, the fit is real: C beats the content-only static (0.7102 > 0.6921), and
+even K0-static's own AUC is mostly echo (0.8226 → 0.6921 with pick/enc zeroed).
+
+**The quality signal lives in the moment slots and needs no echo lanes:** the soft-target fit
+nearly doubles the static soft_r (0.427–0.430 vs 0.273) and loses NOTHING when pick/enc are
+ablated (F ≈ B) — but drops to statics' level when restricted to j0 (G 0.177 ≈ static 0.173).
+Judge-independent quality headroom = moment stack, not j0 re-weighting.
+
+**M_e sign flip (mechanism finding):** fatigue coefficient −1.29 on the picked target,
++1.28 on the soft target — recently-surfaced nodes are LESS likely re-picked (availability
+management, the 2′ design intent) yet MORE likely response-relevant (thread continuity).
+One dial, two opposing jobs — relevant when M_e ships.
+
+#### 20.13.3 P3.2 verdict (ran 2026-07-15, all six pre-declared) — NO SHIP, as the gates ruled
+
+Instrument `eval/laf/walker/p3_eval.py` (report `p3_eval.md`). Arms at the blind gates:
+A (registered primary) and F (the ablation matrix's quality candidate).
+
+1. **June+ AUC** — in p3_fit.md (A +0.147 over K0-static; echo per above).
+2. **Miss classes** — expectation FAILED both arms: near_miss shrinks (24→12 A / 16 F) but
+   lane_buried grows (50→73 A / 68 F); net misses UP (201 → 216 A / 210 F). **Leak canary
+   CLEAN: unreachable frozen at 35 in all four arms; zero unreachable-substrate nodes in any
+   top-25.**
+3. **Tier placement (blind)** — A actively harms (gold top-25 12→6, gold_plus 6→3): the echo
+   model buries blind-judged gold to chase pick prediction. F ≈ parity (gold top-25 12→10,
+   gold_plus median 74→56, silver top-1 2→4).
+4. **Shuffle control on fitted models** — holds for both (A: shuffled 0.7980 ≤ j0-restricted
+   0.8257; F: 0.5962 ≤ 0.6937). What moment gain exists is not a length artifact.
+5. **Soft-usage correlation** — the one clear win: 0.427–0.430 vs 0.273 static, echo-ablation-proof.
+6. **Ship gate** — moot except for P3b below; nothing activates.
+
+**Deliverables (P3.3):** P3a = **no gain flip ships** — D's j0 gains are echo (blind tiers
+collapse), G's j0 soft gains ≈ static (0.177 vs 0.173); production statics stand. P3b = **F's
+coefficients recorded** (`p3_fit.json`, arm F_soft_ablate) as the Stage-3 candidate — the
+moment-slot soft-quality gain (0.43 vs 0.27) is real, judge-independent, and shuffle-proof, but
+it deploys only with Stage-3 moment wiring, and its blind-tier parity means it re-runs the full
+gate suite (incl. H4 frame_replay) at that point. No K-store registration now — registering a
+candidate that failed its blind gates would hollow out the eval-gated-activation discipline.
+`z_norm` stays in the engine at `'current'` (inert, K-store-flippable) as P3.0's infrastructure.
