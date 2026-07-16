@@ -1663,6 +1663,14 @@ surprising result spawns a NEW pre-registered question — no goalpost moves aft
 **What we do NOT conclude from Q1:** single-mode wins, post-hoc subgroup stories, anything about lanes
 not in the grid.
 
+**H2 FINAL LOOK — SIGNED (Tom, 2026-07-15): grid stands.** Substrate = walker v6 (machine-turn relabel
+from the H1 read; GREEN 7/7, 3,736 labeled turns). **M_e pinned = 2′, surfaced-only running fatigue:**
+`f ← β·f + 1[picked-into-context]`, score −δ·f in z-space, β=0.7 fixed, δ per the registered axis;
+session-scoped replay from stored labels. DROPPED nodes carry NO automatic within-session signal —
+being passed over once is not a relevance verdict (Tom); the cross-moment drop-RATE remains a future
+P3+ inhibition lane, not an M_e reflex. Per-node only: no neighbor spread until a field operator
+carries it (P5 Mexican-hat). The signed excite/inhibit form (§20.10) goes to P3 with its own pre-reg.
+
 ### 20.6 Human checkpoints (Tom) — few and high-value
 
 - **H1 (Stage 1, one sitting):** moment-fidelity read — ~15 sampled reconstructed moments read against

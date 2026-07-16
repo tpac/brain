@@ -25,11 +25,17 @@ Full-field caveat (health check 5): pool z here is over ~24 candidates,
 not the engine's full node field — the known rank-leg proxy; the reach
 legs run the real full-field engine. Both legs together are the verdict.
 
-M_e: the replay SEMANTICS are pluggable (M_E_VARIANTS) and PINNED AT H2 —
-the doc's registered axis (running fatigue: f ← β·f + 1[presented],
-score − δ·f in z-space, β=0.7) is the default; the §20.10 signed variant
-(picked→+δ, dropped→−δ) is coded, not run, pending Tom's pin. Controls
-run M_e=off and need no pin.
+M_e — PINNED AT H2 (Tom, 2026-07-15): 2′, surfaced-only running fatigue.
+    f ← β·f + 1[picked-into-context]      score' = score − δ·f   (z-space)
+β=0.7 fixed; session-scoped replay from STORED labels (picked = the nodes
+actually injected into Anchor's context — availability management, "no need
+to restate"). DROPPED nodes carry no automatic within-session signal (one
+pass-over is not a relevance verdict); the cross-moment drop-rate stays a
+future P3+ lane. Per-node only — no neighbor spread. KEY PROPERTY: f depends
+only on stored labels, never on config scores, so the fatigue table is
+precomputed ONCE and every M_e config is base − δ·f. Decay ticks on every
+non-machine turn row (lived turn steps), session-ordered by ts across
+epochs; f accrues only at labeled turns (recall events carry picks).
 
 CONTROLS (mandatory, run first — `--controls`):
   coverage  turns with NO prior turns must score EXACTLY the K=0 config
@@ -119,11 +125,14 @@ def weights(cfg):
     return np.ones(K + 1)
 
 
+ME_BETA = 0.7                     # H2-pinned fatigue decay (2′)
+
+
 class TurnData:
     """One labeled turn's lane tensors: lane → [n_cand × (K_MAX+1)] float
     (NaN = missing), per text source; plus labels and class tags."""
     __slots__ = ('key', 'ts', 'cands', 'op', 'anchor', 'sel', 'soft',
-                 'flagged', 'era_post', 'val')
+                 'flagged', 'era_post', 'val', 'fat')
 
     def __init__(self, key, ts, cands, flagged):
         self.key, self.ts, self.cands, self.flagged = key, ts, cands, flagged
@@ -133,8 +142,41 @@ class TurnData:
         self.anchor = {ln: np.full(shape, np.nan) for ln in GAINS}
         self.sel = np.zeros(nc, dtype=bool)
         self.soft = np.full(nc, np.nan)
+        self.fat = np.zeros(nc)           # per-candidate fatigue f at this turn
         self.era_post = ts >= ERA_SPLIT
         self.val = ts >= VAL_SPLIT
+
+
+def precompute_fatigue(walker, turns_by_key):
+    """The 2′ fatigue table: for every labeled turn, each candidate's f value
+    at recall time (BEFORE the turn's own picks accrue). Session-scoped,
+    lived-order (ts across epochs); decay β ticks on every non-machine turn
+    row; f accrues +1 on the nodes PICKED at each labeled turn. Config-
+    independent by construction — computed once, applied as base − δ·f."""
+    rows = walker.execute(
+        "SELECT session_id, epoch, seq, ts, labeled, flags FROM turns "
+        "ORDER BY session_id, ts").fetchall()
+    picked_of = defaultdict(set)
+    for sess, epoch, seq, nid in walker.execute(
+            "SELECT session_id, epoch, seq, node_id FROM candidates "
+            "WHERE outcome='selected' AND node_id IS NOT NULL"):
+        picked_of[(sess, epoch, seq)].add(nid)
+    cur_sess, f = None, defaultdict(float)
+    for sess, epoch, seq, ts, labeled, flags in rows:
+        if sess != cur_sess:
+            cur_sess, f = sess, defaultdict(float)
+        if 'machine_turn' in (flags or ''):
+            continue                          # not a turn — no decay tick
+        for k in list(f):
+            f[k] *= ME_BETA
+            if f[k] < 1e-6:
+                del f[k]
+        key = (sess, epoch, seq)
+        td = turns_by_key.get(key)
+        if td is not None:
+            td.fat[:] = [f.get(nid, 0.0) for nid in td.cands]
+        for nid in picked_of.get(key, ()):    # accrue AFTER scoring the turn
+            f[nid] += 1.0
 
 
 def load(walker):
@@ -218,6 +260,7 @@ def load(walker):
                                ('enc', row[6], row[8])):
             td.op[ln][i, j] = np.nan if v_op is None else v_op
             td.anchor[ln][i, j] = np.nan if v_an is None else v_an
+    precompute_fatigue(walker, turns)
     return list(turns.values())
 
 
@@ -293,16 +336,16 @@ def score_turn(td, cfg, w):
     a fresh (bounded) compute on the top-3 configs after the grid, not a
     score_turn mode.
     """
-    if cfg['me'][0] != 'off':
-        # loud, not silent: an unimplemented axis scoring as 'off' would
-        # publish 3× duplicate configs as if M_e were measured
-        raise NotImplementedError('M_e replay semantics are pinned at the '
-                                  'final H2 look — axis not armed')
     nc = len(td.cands)
     mats, ww = {}, None
     for ln in GAINS:
         mats[ln], ww = stack_messages(td.op[ln], td.anchor[ln], w, cfg)
-    return compose(mats, ww, cfg, nc)
+    base = compose(mats, ww, cfg, nc)
+    kind, delta = cfg['me']
+    if kind != 'off':
+        # 2′ (H2-pinned): surfaced-only running fatigue, z-space subtraction
+        base = base - float(delta) * td.fat
+    return base
 
 
 def evaluate(turns, cfg):
@@ -361,7 +404,33 @@ def coverage_control(turns):
                                  'an empty-history turn differently from K0'
                                  % cfg['name'])
             checked += 1
-    return len(no_hist), checked
+    # M_e coverage variant: at zero-fatigue turns (nothing picked earlier in
+    # the session) an M_e config must equal its off-twin exactly; at nonzero-
+    # fatigue turns it must differ (the axis is alive, not silently off)
+    zero_f = [td for td in turns if td.fat.sum() == 0][:40]
+    hot_f = [td for td in turns if td.fat.sum() > 0.5][:40]
+    cfg_off = next(c for c in configs() if c['K'] == 2 and c['me'][0] == 'off'
+                   and c['comp'] == 'turnsum' and c['agg'] == 'lane'
+                   and c['texts'] == 'op' and c['decay'] == ('exp', 0.7))
+    cfg_me = dict(cfg_off, me=('fatigue', 0.3),
+                  name=cfg_off['name'] + '+me')
+    w2 = weights(cfg_off)
+    me_checked = me_alive = 0
+    for td in zero_f:
+        if not np.allclose(np.nan_to_num(score_turn(td, cfg_off, w2)),
+                           np.nan_to_num(score_turn(td, cfg_me, w2)),
+                           atol=1e-12):
+            raise SystemExit('M_e coverage FAILED: zero-fatigue turn scored '
+                             'differently under M_e')
+        me_checked += 1
+    for td in hot_f:
+        if not np.allclose(np.nan_to_num(score_turn(td, cfg_off, w2)),
+                           np.nan_to_num(score_turn(td, cfg_me, w2))):
+            me_alive += 1
+    if hot_f and me_alive == 0:
+        raise SystemExit('M_e coverage FAILED: axis is silently dead — no '
+                         'nonzero-fatigue turn changed score')
+    return len(no_hist), checked, me_checked, me_alive, len(hot_f)
 
 
 def main():
@@ -371,16 +440,55 @@ def main():
     walker.close()
     print('loaded %d labeled turns' % len(turns))
     if '--controls' in sys.argv:
-        n_empty, checked = coverage_control(turns)
+        n_empty, checked, me_z, me_alive, me_hot = coverage_control(turns)
         print('coverage control: %d empty-history turns, %d (turn, config) '
               'pairs identical to K0 — PASS' % (n_empty, checked))
+        print('M_e coverage: %d zero-fatigue turns ≡ off-twin; axis alive on '
+              '%d/%d hot turns — PASS' % (me_z, me_alive, me_hot))
         k0 = evaluate(turns, configs()[0])
         print('K0 baseline metrics: %s'
               % json.dumps({k: round(v, 4) for k, v in k0.items()}))
         return 0
     if '--grid' in sys.argv:
-        raise SystemExit('grid run is gated on the final H2 look (§20.5) — '
-                         'not armed yet')
+        # H2 FINAL LOOK SIGNED (Tom 2026-07-15): grid stands, M_e pinned 2′.
+        n_empty, checked, me_z, me_alive, me_hot = coverage_control(turns)
+        print('controls re-verified (coverage %d/%d, M_e %d/%d/%d) — running '
+              'the registered grid' % (n_empty, checked, me_z, me_alive,
+                                       me_hot))
+        results = []
+        for i, cfg in enumerate(configs()):
+            m = evaluate(turns, cfg)
+            m['name'] = cfg['name']
+            results.append(m)
+            if (i + 1) % 50 == 0:
+                print('  %d/%d configs' % (i + 1, len(configs())))
+        k0 = next(r for r in results if r['name'] == 'K0')
+        # rank verdict metric: June+ holdout AUC delta vs K0
+        for r in results:
+            r['d_val'] = (r.get('auc_val') or 0) - (k0.get('auc_val') or 0)
+        results.sort(key=lambda r: -r['d_val'])
+        lines = ['# q1_sweep — rank leg, registered grid (§20.5)', '',
+                 'K0 baseline: %s' % json.dumps(
+                     {k: round(v, 4) for k, v in k0.items()
+                      if k != 'name'}), '',
+                 '| config | ΔAUC val (June+) | AUC all | normal | flagged |'
+                 ' pre-era | post-era | soft_r |', '|---|---|---|---|---|---|---|---|']
+        for r in results[:40]:
+            lines.append('| %s | %+.4f | %.4f | %.4f | %.4f | %.4f | %.4f | %.3f |'
+                         % (r['name'], r['d_val'], r.get('auc_all', 0),
+                            r.get('auc_normal', 0), r.get('auc_flagged', 0),
+                            r.get('auc_pre_era', 0), r.get('auc_post_era', 0),
+                            r.get('soft_r', 0)))
+        lines.append('')
+        lines.append('- configs evaluated: %d; full table: q1_sweep_full.json'
+                     % len(results))
+        lines.append('- SHUFFLE CONTROL PENDING on top-3 — no verdict before '
+                     'it runs (registered order).')
+        (WALKER_DIR / 'q1_sweep_full.json').write_text(json.dumps(results))
+        REPORT.write_text('\n'.join(lines) + '\n')
+        print('\n'.join(lines[:14]))
+        print('... full report: %s' % REPORT)
+        return 0
     print(__doc__)
     return 0
 
