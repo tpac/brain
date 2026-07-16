@@ -6,11 +6,11 @@ version: v1-j0anchor-minseqafter|title,primary,high_meta,other_meta,edge_context
 
 | slice | n_sel | n_drop | AUC soft_max | AUC soft_mean |
 |---|---|---|---|---|
-| ALL | 7492 | 94057 | 0.6473 | 0.6342 |
-| own-anchor | 6827 | 83027 | 0.6415 | 0.6275 |
-| stop-resolved | 665 | 11030 | 0.6833 | 0.6724 |
-| era pre-2026-06-08 | 4184 | 54045 | 0.6600 | 0.6435 |
-| era post-2026-06-08 | 3308 | 40012 | 0.6329 | 0.6243 |
+| ALL | 7090 | 79356 | 0.6289 | 0.6177 |
+| own-anchor | 6480 | 72834 | 0.6320 | 0.6198 |
+| stop-resolved | 610 | 6522 | 0.6018 | 0.5987 |
+| era pre-2026-06-08 | 3938 | 43630 | 0.6316 | 0.6175 |
+| era post-2026-06-08 | 3152 | 35726 | 0.6294 | 0.6221 |
 
 ## 2 · gold agreement (median soft_max, gold vs rest)
 
@@ -20,8 +20,8 @@ version: v1-j0anchor-minseqafter|title,primary,high_meta,other_meta,edge_context
 
 ## 3 · distribution sanity
 
-- labeled rows: 101578; NULL rows: 7758
-- soft_max percentiles p1/p25/p50/p75/p99: 0.590/0.700/0.732/0.761/0.831
-- std: 0.0490
+- labeled rows: 86475; NULL rows: 6433
+- soft_max percentiles p1/p25/p50/p75/p99: 0.624/0.705/0.735/0.764/0.833
+- std: 0.0442
 
-**Pre-declared bar: AUC(ALL, soft_max) > 0.55 → PASS (measured 0.6473)**
+**Pre-declared bar: AUC(ALL, soft_max) > 0.55 → PASS (measured 0.6289)**

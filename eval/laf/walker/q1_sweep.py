@@ -339,8 +339,14 @@ def coverage_control(turns):
     under every moment shape. Hard invariant — harness bug if violated."""
     k0 = configs()[0]
     w0 = weights(k0)
+    # empty-history = no op AND no anchor context at j>=1. v6 machine turns
+    # keep an anchor with no op, so a turn preceded only by machine turns has
+    # anchor-only history — genuine context that op+anchor configs SHOULD use,
+    # so it is NOT an empty-history turn (the coverage control caught this).
     no_hist = [td for td in turns
-               if all(np.all(np.isnan(td.op[ln][:, 1:])) for ln in GAINS)]
+               if all(np.all(np.isnan(td.op[ln][:, 1:]))
+                      and np.all(np.isnan(td.anchor[ln][:, 1:]))
+                      for ln in GAINS)]
     checked = 0
     for cfg in configs()[1:40:7]:          # a spread of shapes, MG=off only
         if cfg['me'][0] != 'off':

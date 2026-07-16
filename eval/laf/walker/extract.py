@@ -1,8 +1,8 @@
 """Walker phase 1 — extract micro-turns + candidates + labels (§20.2/§20.3).
 
-TURN MODEL (v4 — v3 micro-turns + the 2026-07-14 untraced-taxonomy relabel,
-brain node 9adc8127): a turn is anchored on a RECALL EVENT (the s1 O row), not
-on the (session, stop) key. Stop counters collide twice over:
+TURN MODEL (v6 — v4 taxonomy + the 2026-07-15 machine-turn relabel, H1 read):
+a turn is anchored on a RECALL EVENT (the s1 O row), not on the (session, stop)
+key. Stop counters collide twice over:
 
   • RESETS — resume/compaction restarts the counter (604 colliding keys / 168
     sessions measured). Fixed by EPOCHS: per session, sort every stop-bearing
@@ -26,6 +26,13 @@ on the (session, stop) key. Stop counters collide twice over:
         full operator text, but excluded from labels (op/query mismatch).
       - `no_recall`: s0 turn with no O row at all — register_only short
         answers, task-notification skips (post-2026-07-03), rare hook misses.
+      - `machine_turn` (v6): op is a harness `<task-notification>` (production's
+        own gate, pre_response_recall.py). NOT an operator turn — op is emptied
+        (no op_vec → moment stacks skip its op lane), the turn is force-
+        unlabeled, but Anchor's RESPONSE is kept as history (Tom: "just Anchor's
+        msgs there"). Pre-fix these fired full recall (carried O rows); the
+        walker no longer evaluates on them. Excluded from survivor logic — a
+        machine turn is not a turn, so it neither supersedes nor is superseded.
     Nothing is key-deduped away — v2's keep-latest dedup silently discarded
     every same-stop first recall (~800 O rows).
     The Stop's assistant_message attaches to the LAST s0 of its stop: the one
@@ -93,6 +100,19 @@ def texts_agree(a, b, floor=40, span=120):
     if n == 0:
         return False
     return a[:n] == b[:n] and (n >= floor or len(a) == len(b))
+
+
+def is_machine_turn(op_text):
+    """Harness-injected machine turn — production's OWN definition
+    (hooks/scripts/pre_response_recall.py: `"<task-notification>" in
+    user_message`). The harness packages a background-task completion as a
+    prompt through UserPromptSubmit, but it is NOT an operator turn. Anchor's
+    response to it is real and kept as history; the operator side is dropped
+    and the turn is never labeled/evaluated (Tom 2026-07-15: "just Anchor's
+    msgs there"). Production now routes these register_only (skip recall +
+    Haiku, node b2953766); the pre-fix era recorded them as full recall
+    events, which is why the older ones still arrive carrying O rows."""
+    return '<task-notification>' in (op_text or '')
 
 
 def parse_ts(iso):
@@ -259,6 +279,26 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
                     'anchor_tid': obj.get('anchor_trace_id'),
                     'msg_ts': obj['ts']})
 
+        # machine turns: harness <task-notification>s injected through
+        # UserPromptSubmit. Not operator turns — keep Anchor's response as
+        # history, drop the operator side (op='' → no op_vec → the moment
+        # stacks skip its op lane), force-unlabel (o=None → never an
+        # evaluable j=0 moment). Runs BEFORE superseded so a machine turn
+        # never wins survivorship over the real turn it shares a stop with.
+        for t in turns:
+            if is_machine_turn(t['op']):
+                t['flags'].append('machine_turn')
+                if t['o'] and t['o']['outcomes']:
+                    # had a recall event (delta row) — leaving the label set,
+                    # so the conservation ledger needs it in its own bucket
+                    c['label_excluded_machine'] += 1
+                t['op'] = ''
+                t['op_tid'] = None        # no operator turn → no operator trace →
+                                          # embed has nothing to pull → op_vec stays
+                                          # NULL → the moment stacks skip its op lane
+                t['o'] = None
+                c['turns_machine'] += 1
+
         # superseded: at a multi-turn stop, every turn except the SURVIVOR —
         # the turn holding the stop's one recorded response (the anchor
         # attaches to the last s0 of the stop; when no response was recorded
@@ -267,8 +307,12 @@ def process_session(sess, raw_rows, project, prefix_map, node_times, c):
         # cross, and the survivor must be the turn that owns the response.
         # no_recall bookkeeping turns (register_only / notification skips)
         # are never flagged — they aren't steering/interrupt supersession.
+        # machine turns are excluded entirely — they aren't turns, so they
+        # neither supersede a real turn nor get superseded.
         idxs_of_stop = defaultdict(list)
         for idx, t in enumerate(turns):
+            if 'machine_turn' in t['flags']:
+                continue
             idxs_of_stop[t['stop']].append(idx)
         for idxs in idxs_of_stop.values():
             if len(idxs) < 2:

@@ -92,9 +92,18 @@ def check_fill_rates(walker, lines):
             % ', '.join('sum(%s IS NOT NULL)' % c for c in TURN_COLS)):
         m, total, fills = row[0], row[1], row[2:]
         rates = [f / total for f in fills]
-        if m and m >= '2026-05':
-            worst_recent = min(worst_recent, rates[TURN_COLS.index('op_vec')])
         body.append('| %s | %s | %d |' % (m, ' | '.join('%.0f%%' % (r * 100) for r in rates), total))
+    # op_vec threshold: over turns that SHOULD have an op vector — machine
+    # turns (harness <task-notification>) intentionally carry no operator side
+    # (v6), so counting their NULL op_vec against the fill rate would penalize
+    # a correct relabel. Exclude them from the denominator.
+    for m, tot, filled in walker.execute(
+            "SELECT substr(ts,1,7) m, count(*), sum(op_vec IS NOT NULL) FROM turns "
+            "WHERE flags NOT LIKE '%machine_turn%' GROUP BY m"):
+        if m and m >= '2026-05' and tot:
+            worst_recent = min(worst_recent, filled / tot)
+    body.append('- op_vec fill threshold computed over non-machine turns '
+                '(machine turns have no operator side by design).')
     body.append('')
     body.append('| month | ' + ' | '.join(CAND_COLS) + ' | (cands) |')
     body.append('|' + '---|' * (len(CAND_COLS) + 2))
@@ -132,10 +141,12 @@ def check_conservation(walker, logs, lines):
     missing_cands = int(meta.get('extract_label_missing_candidates', 0))
     missing_o = int(meta.get('extract_label_missing_O', 0))
     disagree = int(meta.get('extract_label_excluded_text_disagree', 0))
-    accounted = labeled + empty + gold_synth + unpaired + missing_cands + missing_o + disagree
+    machine = int(meta.get('extract_label_excluded_machine', 0))
+    accounted = (labeled + empty + gold_synth + unpaired + missing_cands
+                 + missing_o + disagree + machine)
     body = ['- Δ rows (independent recount): **%d**' % total,
-            '- labeled %d + empty %d + gold/synthetic %d + unpaired %d + no-candidates %d + no-O %d + text-disagree %d = **%d**'
-            % (labeled, empty, gold_synth, unpaired, missing_cands, missing_o, disagree, accounted),
+            '- labeled %d + empty %d + gold/synthetic %d + unpaired %d + no-candidates %d + no-O %d + text-disagree %d + machine %d = **%d**'
+            % (labeled, empty, gold_synth, unpaired, missing_cands, missing_o, disagree, machine, accounted),
             '- NOTE: recount runs against the LIVE logs db — rows written after the walker build '
             'appear in the recount only; a small positive drift (recount > accounted) is expected.']
     drift = total - accounted

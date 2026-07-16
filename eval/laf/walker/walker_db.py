@@ -33,7 +33,7 @@ WALKER_DB = WALKER_DIR / 'walker.db'
 # Wrong-science hardening: an artifact built by old code meeting new code
 # fails with instructions — it can never be quietly trusted. Bump on any
 # change to a phase's OUTPUT semantics (not on refactors).
-EXTRACT_VERSION = 'v5-microturns-noTSS-manifesthash'
+EXTRACT_VERSION = 'v6-machineturns-noTSS-manifesthash'
 EMBED_VERSION = 'v2-qvec-incremental'
 SCORES_VERSION_PREFIX = 'v3-qvec-j0'
 
