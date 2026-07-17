@@ -2004,3 +2004,79 @@ it deploys only with Stage-3 moment wiring, and its blind-tier parity means it r
 gate suite (incl. H4 frame_replay) at that point. No K-store registration now — registering a
 candidate that failed its blind gates would hollow out the eval-gated-activation discipline.
 `z_norm` stays in the engine at `'current'` (inert, K-store-flippable) as P3.0's infrastructure.
+
+### 20.14 Post-P3 design notes (Tom + Anchor, 2026-07-16) — fatigue taxonomy, mesh shapes, settling, the underlying mechanism
+
+Design conversation record — nothing here is built or pre-registered; each item names its
+sequencing decision.
+
+**Fatigue taxonomy (Tom).** Two distinct concepts the system currently conflates:
+
+- **Technical fatigue** — context economy. Re-surfacing the same node wastes tokens and works
+  against the LLM's own context management. Caveat (Tom): the S1 Scribe USES surfaced nodes to
+  decide revise/connect targets — suppressing a node from Anchor's context must not starve the
+  encoder. Design note: decouple the two consumers — suppress from `additionalContext`, still
+  deliver to the encoder as "raised" (the pick/drop data already exists in S1R traces; the
+  encoder feed reads a different field). Costs nothing to honor at Stage-3 wiring time.
+- **Brain fatigue** — in-field inhibition: nodes Haiku selected at turn t−1 should be inhibited
+  IN the field at turn t, visibly to other mechanisms (spread must not resurrect an inhibited
+  node through a neighbor). This is decision 7e9e36a7 (fatigue as inhibition lane, never an
+  outside multiply) + the running field's negative channel (87a6dae9).
+- **Current state:** production `_mark_accessed` fatigue is the stopgap and is out-of-contract
+  with the 2′ pin on all three axes — candidate-scoped (not picked-only), drop-punishing,
+  undecaying (node ba05383d). Session-scoped (`ctx.fatigue`), so a proper running field with an
+  inhibition component RETIRES it, not layers under it.
+- **Sequencing (Tom's call, 2026-07-16):** fatigue strategy is thought through AFTER the
+  moment-recall value check — don't hold Stage-3 for it. P3 support: M_e was rank-flat (Q1) and
+  its sign flip (−1.29 picked / +1.28 soft, §20.13.2) says its tuning needs a quality target.
+
+**Mesh shapes (the moment-composition families) and the chosen ladder:**
+
+| shape | form | status |
+|---|---|---|
+| linear sum (turnsum·zsum) | Σ wⱼ·Aⱼ | shipped shape; Q1 winner; P3-fitted |
+| max-union (turnmax) | maxⱼ wⱼ·Aⱼ | tested, lost on rank |
+| leaky integrator (running field) | A_t = λA_{t−1} + act(q_t) − μ·surfaced_t | designed (87a6dae9), unbuilt — unrolls to the exp-decay stack, so Q1/P3 numbers transfer; O(1)/turn; principled home for brain-fatigue |
+| gated / attention mesh | wⱼ = f(relevance of turn j to now) | parked by pre-reg (its own pre-reg after P3); attacks the fixed-weight-noise failure (flagged-turn slice) |
+| nonlinear settling (attractor) | iterate a ← norm(a + ΣO(a)) | vision (076799d0); needs its own replay instrument before any rung ships |
+
+Ladder: **integrator → gate → settle.** Every rung walker-replayable before it ships — same
+discipline that caught the echo.
+
+**Settling, the principle:** stop scoring nodes independently; let the memory vote on itself
+until it agrees. State = one activation vector over the graph; operators = forces (cue evidence,
+edge propagation, inhibition, normalization); iterate to the fixed point where the constraints
+are mutually satisfied — that state IS the recall. Buys pattern completion (nodes the cue never
+touched arrive via neighbors — the unreachable-38 class), coherence-beats-similarity, and
+context sensitivity for free (settling starts from the current state, not zero). One-shot LAF
+is exactly one iteration of this loop.
+
+**Multi-modal settling (Tom's requirement, 2026-07-16):** single-attractor/global-inhibition
+settling is NARROWING — it converges to one coherent interpretation. Tom: the field should be
+able to settle on several distinct areas. The knob is the INHIBITION KERNEL: global inhibition →
+one winner; local/similarity-scoped inhibition (Mexican-hat over embedding or graph distance) →
+multi-bump settled states, one bump per distinct coherent cluster (continuous-attractor
+literature; k-WTA and per-community normalization are the discrete cousins). This is a standing
+design constraint: **never global winner-take-all** — the pool's job is to hand Haiku several
+distinct coherent clusters, not one; redundant near-duplicates compete, distant clusters coexist.
+Also the fix shape for @5 slot-stealing / pool saturation (30d88dd0).
+
+**The underlying mechanism (Tom's question: research findings are instances of what?).**
+The computational-level claim: **recall is inference of the latent moment — a posterior over
+"which stored patterns does the present belong to" — under a delivery economy.** Every research
+mechanism is one factor of that inference in closed form: similarity lanes = likelihood terms;
+recency/base-level decay = the prior from reuse statistics (Anderson's rational analysis —
+ACT-R's decay curve is DERIVED from environmental reuse frequencies, not postulated); edges =
+conditional dependencies (if A is relevant, B likely is); inhibition/normalization = explaining
+away (competition IS explaining-away); settling = iterative inference; attractors = hypotheses;
+pattern completion = filling in the posterior over unobserved variables. Two direct payoffs of
+this frame on OUR measurements: (1) the M_e sign flip is the relevance-vs-marginal-value
+distinction falling out — an already-delivered node keeps high relevance (soft +1.28) but has
+zero marginal information value (picked −1.29); fatigue is an ECONOMY term, not a relevance
+term, and must never be tuned on a relevance target. (2) Multi-modal settling = keeping the
+posterior multi-modal instead of collapsing to MAP — Tom's narrowing worry is exactly the
+MAP-collapse failure, and the delivery answer is "represent the modes," not "pick the peak."
+
+**Prospective memory (reminders)** — Tom's feature ask, designed in `docs/BACKLOG.md`
+(2026-07-16 entry): time-triggered, guaranteed-delivery reminders for both Tom and Anchor —
+deterministic due-check at the recall hook, never similarity-gated.
