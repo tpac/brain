@@ -141,7 +141,13 @@ def eval_arm(turns, cfg, w, mode='linear', score_fn=None):
         else:
             F, ww = message_fields(td, cfg, w)
             s = mesh(F, ww, mode)
-        if np.all(~np.isfinite(s)):
+        fin = s[np.isfinite(s)]
+        if fin.size == 0 or np.ptp(fin) == 0.0:
+            # all-missing OR all-tied: an uninformative field. Ranking a
+            # constant would credit insertion order — which is production
+            # rank_in_pool order, i.e. pure label echo on the stop side
+            # (2026-07-17 audit finding 2: 139/1440 stop turns, sel@1
+            # 0.561 by echo alone). Skip from placement AND soft.
             continue
         s = np.where(np.isfinite(s), s, -np.inf)
         if td.sel.any() and not td.sel.all():

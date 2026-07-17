@@ -115,14 +115,22 @@ def gold_evaluations(coefs):
             op, an = cue_fields(eng, tm, cue, q0)
             tiers = gold[cue['cue_id']]['tiers']
             golds = {it['node_id'] for t in TIERS for it in tiers.get(t, [])}
-            # shared lane attribution (q1_reverse semantics — winner config)
+            # shared lane attribution. Basis = best over ALL slots a fitted
+            # arm can use (op j0..K_MAX + anchor j1..K_MAX, unweighted
+            # nanmax), NOT the winner-K1 blend: fitted arms carry j2/tail
+            # weight, and a node reached only through j3 (measured: maxsim
+            # 0.897 on cue operator_msg_0622 / 6ce67c55) is REACHABLE — the
+            # 2026-07-17 canary trip was this attribution blind spot, not
+            # label leakage. Winner-config mats still built for its arm.
             mats_w, ww = {}, None
             for ln in GAINS:
                 mats_w[ln], ww = stack_messages(op[ln], an[ln], w_win, win)
             lane_pct = {}
             for ln in GAINS:
-                v = np.nansum(mats_w[ln] * ww, axis=1)
-                v[np.all(np.isnan(mats_w[ln]), axis=1)] = np.nan
+                full = np.concatenate([op[ln], an[ln][:, 1:]], axis=1)
+                with np.errstate(all='ignore'):
+                    v = np.nanmax(full, axis=1)
+                v[np.all(np.isnan(full), axis=1)] = np.nan
                 z = _zscore(v, n, mask=node_mask)
                 zr = z.copy()
                 zr[~node_mask] = -np.inf

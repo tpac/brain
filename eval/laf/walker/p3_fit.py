@@ -163,9 +163,13 @@ def model_auc(feats, w, cols, subset):
     return auc(np.concatenate(sel), np.concatenate(drp))
 
 
-def model_soft_r(feats, w, cols):
+def model_soft_r(feats, w, cols, val_only=True):
+    """soft_r of the model score; val_only=True keeps it held-out for
+    fitted arms (fits are train-only as of the 2026-07-17 split fix)."""
     xs, ys = [], []
     for td, X in feats:
+        if val_only and not td.val:
+            continue
         s = X[:, cols] @ w
         m = np.isfinite(td.soft) & np.isfinite(s)
         if m.sum() > 2:
@@ -211,8 +215,11 @@ def main():
     print('building features over %d turns...' % len(turns))
     feats = build(turns)
 
-    D_pick = pairs_picked(feats, train_only=False)     # train = not val
-    D_soft = pairs_soft(feats, train_only=False)
+    # train_only=True skips val turns → pairs come from April–May ONLY.
+    # (The audit of 2026-07-17 caught the inversion: train_only=False kept
+    # the June+ VAL pairs, making every fitted "val AUC" in-sample.)
+    D_pick = pairs_picked(feats, train_only=True)
+    D_soft = pairs_soft(feats, train_only=True)
     print('train pairs: picked %d · soft %d' % (len(D_pick), len(D_soft)))
 
     lines = ['# p3_fit — the composition fit (§20.13 P3.1)', '',

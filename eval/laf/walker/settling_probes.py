@@ -177,12 +177,14 @@ def probe_bc(walker, pool_of):
     from tests.isolated_brain import IsolatedBrain
     rng = np.random.default_rng(SEED)
     sample = sample_turns(walker, rng)
+    # soft label = soft_usage.soft_max — the live quality label. The first
+    # run joined candidates.used_next_* (7 positives in 93k rows, the label
+    # soft_usage.py itself declares dead) — 2026-07-17 audit finding 3.
     soft_of = {}
-    for sess, epoch, seq, nid, s1, s3 in walker.execute(
-            "SELECT session_id, epoch, seq, node_id, used_next_1, "
-            "used_next_3 FROM candidates WHERE node_id IS NOT NULL"):
-        soft_of[(sess, epoch, seq, nid)] = max(
-            float(s1 or 0), float(s3 or 0))
+    for sess, epoch, seq, nid, sm in walker.execute(
+            "SELECT session_id, epoch, seq, node_id, soft_max "
+            "FROM soft_usage WHERE soft_max IS NOT NULL"):
+        soft_of[(sess, epoch, seq, nid)] = float(sm)
 
     B_ARMS = ['base', 'spread h1 b0.3', 'spread h1 b0.5', 'spread h2 b0.3']
     ranks = {a: [] for a in B_ARMS}

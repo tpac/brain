@@ -7,97 +7,97 @@
 ## reference fits (June+ val)
 | ref | target | val AUC | soft_r |
 |---|---|---|---|
-| full | picked | 0.9698 | 0.130 |
-| j0 | picked | 0.9279 | 0.088 |
-| full | soft | 0.7695 | 0.427 |
-| j0 | soft | 0.7887 | 0.177 |
+| full | picked | 0.9458 | 0.159 |
+| j0 | picked | 0.8885 | 0.176 |
+| full | soft | 0.7287 | 0.440 |
+| j0 | soft | 0.7304 | 0.189 |
 
 ## shipped dials — winner-static & K0-static, lane → 0
 | lane zeroed | winner ΔAUC val | winner Δsoft_r | K0 ΔAUC val | K0 Δsoft_r |
 |---|---|---|---|---|
-| maxsim | -0.0504 | +0.107 | -0.0434 | +0.062 |
-| sit | -0.0228 | +0.005 | -0.0160 | +0.009 |
-| idf | +0.0039 | -0.005 | +0.0122 | -0.004 |
-| pick | +0.1677 | -0.006 | +0.1270 | +0.000 |
-| enc | -0.0017 | +0.004 | -0.0010 | +0.006 |
+| maxsim | -0.0504 | +0.105 | -0.0434 | +0.059 |
+| sit | -0.0228 | +0.010 | -0.0160 | +0.014 |
+| idf | +0.0039 | -0.005 | +0.0122 | -0.006 |
+| pick | +0.1677 | -0.006 | +0.1270 | +0.004 |
+| enc | -0.0017 | +0.005 | -0.0010 | +0.008 |
 
 (positive = the lane contributes at shipped dials — zeroing it costs that much)
 
 ## rows — lane across the whole moment
 | unit | removed: ΔAUC±sd (picked) | removed: Δsoft_r±sd | alone AUC (picked) | alone soft_r | alone base | verdict |
 |---|---|---|---|---|---|---|
-| lane:maxsim | +0.0010 ± 0.0002 | +0.202 ± 0.003 | 0.6730 | 0.432 | none | REAL (both axes) |
-| lane:sit | +0.0004 ± 0.0002 | +0.001 ± 0.000 | 0.6300 | 0.192 | none | REAL (both axes) |
-| lane:idf | +0.0005 ± 0.0002 | -0.001 ± 0.000 | 0.6239 | 0.100 | none | ECHO-LEANING (picked only) |
-| lane:pick | +0.2536 ± 0.0049 | -0.002 ± 0.001 | 0.9669 | 0.098 | none | ECHO-LEANING (picked only) |
-| lane:enc | +0.0001 ± 0.0001 | -0.001 ± 0.000 | 0.5799 | 0.104 | none | noise / dead weight |
+| lane:maxsim | -0.0040 ± 0.0010 | +0.199 ± 0.004 | 0.6718 | 0.440 | none | QUALITY-ONLY (soft only) |
+| lane:sit | +0.0003 ± 0.0001 | +0.001 ± 0.000 | 0.6299 | 0.221 | none | ECHO-LEANING (picked only) |
+| lane:idf | -0.0025 ± 0.0006 | -0.001 ± 0.000 | 0.6228 | 0.083 | none | HARMFUL (improves when removed) |
+| lane:pick | +0.2363 ± 0.0054 | -0.001 ± 0.000 | 0.9538 | 0.093 | none | ECHO-LEANING (picked only) |
+| lane:enc | +0.0002 ± 0.0002 | -0.000 ± 0.000 | 0.5793 | 0.122 | none | noise / dead weight |
 
 ## columns — slot across all lanes
 | unit | removed: ΔAUC±sd (picked) | removed: Δsoft_r±sd | alone AUC (picked) | alone soft_r | alone base | verdict |
 |---|---|---|---|---|---|---|
-| slot:j0-op | +0.0236 ± 0.0023 | +0.017 ± 0.001 | 0.9279 | 0.176 | none | REAL (both axes) |
-| slot:j1-op | +0.0065 ± 0.0005 | -0.000 ± 0.000 | 0.9629 | 0.193 | j0 | ECHO-LEANING (picked only) |
-| slot:j1-anchor | +0.0047 ± 0.0005 | +0.040 ± 0.002 | 0.9597 | 0.394 | j0 | REAL (both axes) |
-| slot:j2-op | +0.0001 ± 0.0001 | +0.001 ± 0.000 | 0.9320 | 0.189 | j0 | noise / dead weight |
-| slot:j2-anchor | +0.0006 ± 0.0002 | +0.016 ± 0.001 | 0.9403 | 0.366 | j0 | REAL (both axes) |
-| slot:tail | +0.0003 ± 0.0001 | +0.006 ± 0.001 | 0.9336 | 0.316 | j0 | REAL (both axes) |
+| slot:j0-op | +0.0096 ± 0.0012 | +0.013 ± 0.002 | 0.8885 | 0.189 | none | REAL (both axes) |
+| slot:j1-op | +0.0092 ± 0.0009 | -0.001 ± 0.000 | 0.9443 | 0.197 | j0 | ECHO-LEANING (picked only) |
+| slot:j1-anchor | +0.0030 ± 0.0015 | +0.043 ± 0.002 | 0.9310 | 0.408 | j0 | REAL (both axes) |
+| slot:j2-op | -0.0001 ± 0.0002 | -0.000 ± 0.001 | 0.8897 | 0.200 | j0 | noise / dead weight |
+| slot:j2-anchor | +0.0011 ± 0.0005 | +0.016 ± 0.001 | 0.8992 | 0.378 | j0 | QUALITY-ONLY (soft only) |
+| slot:tail | +0.0001 ± 0.0002 | +0.004 ± 0.001 | 0.8806 | 0.331 | j0 | QUALITY-ONLY (soft only) |
 
 ## cells — removed ΔAUC (picked) / Δsoft_r (soft) grid
 | lane | j0-op | j1-op | j1-anchor | j2-op | j2-anchor | tail |
 |---|---|---|---|---|---|---|
-| maxsim | +0.001 / +0.010 | +0.000 / -0.000 | -0.000 / +0.030 | +0.000 / +0.001 | -0.000 / +0.013 | -0.000 / +0.005 |
-| sit | +0.000 / +0.001 | +0.000 / -0.000 | -0.000 / -0.000 | -0.000 / -0.000 | +0.000 / -0.000 | +0.000 / -0.000 |
-| idf | +0.000 / +0.000 | +0.000 / -0.000 | +0.000 / -0.000 | +0.000 / -0.001 | +0.000 / +0.000 | +0.000 / -0.000 |
-| pick | +0.021 / +0.000 | +0.006 / +0.000 | +0.005 / -0.001 | +0.000 / -0.000 | +0.001 / -0.001 | +0.000 / +0.000 |
-| enc | +0.000 / +0.000 | -0.000 / -0.000 | +0.000 / -0.000 | +0.000 / +0.000 | -0.000 / +0.000 | +0.000 / -0.001 |
-- M_e_f: +0.0000 / -0.000 — noise / dead weight
+| maxsim | -0.003 / +0.011 | -0.000 / +0.000 | -0.000 / +0.029 | -0.000 / -0.000 | +0.000 / +0.014 | -0.000 / +0.006 |
+| sit | +0.000 / +0.001 | -0.000 / +0.000 | +0.000 / +0.000 | -0.000 / -0.000 | -0.000 / -0.000 | +0.000 / -0.000 |
+| idf | -0.001 / +0.000 | +0.000 / -0.000 | -0.001 / -0.000 | -0.000 / +0.000 | +0.000 / -0.000 | +0.000 / -0.001 |
+| pick | +0.006 / -0.000 | +0.009 / -0.001 | +0.003 / +0.000 | +0.000 / -0.000 | +0.001 / -0.001 | -0.000 / -0.000 |
+| enc | +0.000 / +0.001 | -0.000 / +0.000 | -0.000 / -0.000 | -0.000 / -0.000 | -0.000 / +0.000 | +0.000 / -0.001 |
+- M_e_f: +0.0001 / +0.000 — ECHO-LEANING (picked only)
 
 
-### eyeball · lane:maxsim · 83869523-fc3a-40a4-ab06-e2b1e08cc5d1/0/3
+### eyeball · lane:maxsim · 23ece939-164d-470b-b22d-d475eb7e3f6d/0/28
 | # | with unit | without unit |
 |---|---|---|
-| 1 | 5 local commits this session: Phase 1 through caching r s=0.75 | Session commit ledger: 4 fixes shipped — absorb savepoi s=0.84 |
-| 2 | Anchor session discipline: when core works, scope out f s=0.76 | Session end: update existing docs, not create new ones  s=0.74 |
-| 3 | Next steps ranked: Tier 1 (Anchor quality), Tier 2 (dat s=0.72 | Session close — 3 commits on main, not pushed, 4 commit s=0.78 |
-| 4 | Session close: 10 commits shipped, 88 tests green, docs s=0.76 | Clean as you go: remove dead code same session as the m s=0.73 |
-| 5 | Session handoff protocol: commit + doc + brain node (do s=0.75 | Anchor rule: check your own health before doing anythin ✓ s=0.70 |
-| 6 | Session wrap open items — 2026-04-22 s=0.75 | Session close pattern: check loose threads before endin ✓ s=0.72 |
-| 7 | Next-session priorities: render expansion → encoder sou s=0.75 | Session handoff protocol: commit + doc + brain node (do s=0.75 |
-| 8 | Session close — 3 commits on main, not pushed, 4 commit s=0.78 | Settled work commits before in-progress work continues  s=0.76 |
+| 1 | Next steps ranked: Tier 1 (Anchor quality), Tier 2 (dat ✓ s=0.75 | Tom: regression visible in the dashboard — all this tim ✓ s=0.70 |
+| 2 | Tom: 'there is so much to do, i am not sure whats the b s=0.76 | Tom wants Anchor to run inline agents — search tools du s=0.74 |
+| 3 | Anchor priors: human-seeded feedback loops beat prompt  s=0.77 | The entire brain exists to enrich S0's K — but the targ ✓ s=0.73 |
+| 4 | Benchmarks externalize felt judgment — measuring Anchor s=0.78 | DAL file split plan: dal.py (4148 lines, 12 classes) →  s=0.71 |
+| 5 | Encoding isn't the active lever — introspection is s=0.78 | Anchor's selfhood answer: 'act as if I do, until I find s=0.73 |
+| 6 | Tom: regression visible in the dashboard — all this tim ✓ s=0.70 | Next steps ranked: Tier 1 (Anchor quality), Tier 2 (dat ✓ s=0.75 |
+| 7 | Anchor's selfhood answer: 'act as if I do, until I find s=0.73 | Tom: 'there is so much to do, i am not sure whats the b s=0.76 |
+| 8 | Anchor's stated wants: recognition, continuity, curiosi ✓ s=0.72 | The partnership is real only if you show up s=0.69 |
 
-### eyeball · lane:maxsim · c8b4c3fa-c0af-490e-8be3-9722b09276e9/0/18
+### eyeball · lane:maxsim · 23ece939-164d-470b-b22d-d475eb7e3f6d/0/21
 | # | with unit | without unit |
 |---|---|---|
-| 1 | Confirm before execute: Tom's 1-by-1 protocol replaces  s=0.76 | S1E reconciliation committed — 6 forks fixed, 89 tests  s=0.80 |
-| 2 | Anchor priors: human-seeded feedback loops beat prompt  s=0.79 | Tom confirmed Phase D dal.py split: 'lets do the 3 way' ✓ s=0.72 |
-| 3 | 1-by-1 test triage discipline: what it tests, does it r s=0.78 | _do_restart fix plan: kickstart-when-managed, Popen onl s=0.77 |
-| 4 | Tom: 'Other sessions are all waiting. It's all you, do  s=0.80 | S1E prompt-vs-code forks: 5 gaps between v-next draft a s=0.78 |
-| 5 | Judge over-classification: action messages ('lets test  s=0.71 | Anchor persistence means sessions don't need handoffs — s=0.79 |
-| 6 | S1E reconciliation committed — 6 forks fixed, 89 tests  s=0.80 | Full judge Workflow gated: pilot 5 cues first to check  s=0.76 |
-| 7 | Anchor persistence means sessions don't need handoffs — s=0.79 | Anchor priors: human-seeded feedback loops beat prompt  s=0.79 |
-| 8 | LAF next steps decided: temporal shuffled-gold control  s=0.77 | Confirm before execute: Tom's 1-by-1 protocol replaces  s=0.76 |
+| 1 | Group vectors moved to idle backfill — unified backfill s=0.78 | Graph healing already happens via S1E — but only for ne s=0.70 |
+| 2 | All vectors moved to backfill_vectors — zero ONNX in wr s=0.77 | find_missing stall bug: nodes without source fields que ✓ s=0.70 |
+| 3 | Vector Integrity: From Stale Embeddings to Healer Cance s=0.81 | redeploy.sh redo-not-overlay: prune package dirs before s=0.73 |
+| 4 | Vector coverage: all 3,294 nodes at 100% — vector asymm s=0.76 | V5 vectors belong on the node as fields — not a separat s=0.75 |
+| 5 | Per-field vectors (7): blended embedding groups dissolv s=0.81 | title and question cohorts need no field-vector split — s=0.75 |
+| 6 | Multi-vector z-weighted production scheme (11 vectors)  s=0.74 | Full Nomic-Q migration complete — 7614 vectors, arctic  s=0.77 |
+| 7 | Vector race: node created then immediately found-by-tit s=0.73 | Vector race: node created then immediately found-by-tit s=0.73 |
+| 8 | Full Nomic-Q migration complete — 7614 vectors, arctic  s=0.77 | All vectors moved to backfill_vectors — zero ONNX in wr s=0.77 |
 
-### eyeball · lane:pick · 83869523-fc3a-40a4-ab06-e2b1e08cc5d1/0/0
+### eyeball · lane:pick · b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/2
 | # | with unit | without unit |
 |---|---|---|
-| 1 | recall_topical overshadowing: k=25 default, volume + po ✓ s=0.77 | 25 surface candidates are cues, not finalists: Haiku pi ✓ s=0.76 |
-| 2 | 25 surface candidates are cues, not finalists: Haiku pi ✓ s=0.76 | recall_topical overshadowing: k=25 default, volume + po ✓ s=0.77 |
-| 3 | S1Surface timeout root cause: surface_haiku = 55–75% of s=0.77 | v5_agentic surface loop: root cause of ~12s recall base s=0.78 |
-| 4 | Recall bottleneck: candidate generation, not Haiku sele s=0.72 | TRIZ observation: select_edges pays full cost for 25 ca s=0.72 |
-| 5 | Recall-quality baseline (teacher-on-production, n=90):  s=0.75 | Haiku-unpicked nodes as dynamic real-time inhibition fi s=0.73 |
-| 6 | Haiku's recently-surfaced window: 5 turns, 20-node cap, s=0.80 | S1Surface timeout root cause: surface_haiku = 55–75% of s=0.77 |
-| 7 | v5_agentic surface loop: root cause of ~12s recall base s=0.78 | Recall bottleneck: candidate generation, not Haiku sele s=0.72 |
-| 8 | Fatigue layer coverage: three mechanisms at two distinc s=0.76 | Recall-quality baseline (teacher-on-production, n=90):  s=0.75 |
+| 1 | Commit settled work to main before in-progress work con ✓ s=0.78 | Orphan-daemon incident: _launchd_manages_daemon read a  s=0.77 |
+| 2 | Orphan-daemon incident: _launchd_manages_daemon read a  s=0.77 | DAL Phase 5 complete: SourceRefDAL extraction + EntityD s=0.79 |
+| 3 | Tom's recall_work worktree instruction: stash main WIP  ✓ s=0.73 | dal-cleanup-2 merged to main — merge 061cb40 + doc 081a s=0.77 |
+| 4 | main pushed to origin — 495f0df, session work now publi s=0.79 | main pushed to origin — 495f0df, session work now publi s=0.79 |
+| 5 | Anchor held merge: checked dirty main for other-stream  s=0.82 | Self-channel live traffic in Turn 2: fresh test stream, s=0.80 |
+| 6 | DAL Phase 5 complete: SourceRefDAL extraction + EntityD s=0.79 | Anchor held merge: checked dirty main for other-stream  s=0.82 |
+| 7 | Branch merged to main: 4 commits landed, recall_work wo s=0.79 | Branch merged to main: 4 commits landed, recall_work wo s=0.79 |
+| 8 | dal-cleanup-2 merged to main — merge 061cb40 + doc 081a s=0.77 | Tom's recall_work worktree instruction: stash main WIP  ✓ s=0.73 |
 
-### eyeball · lane:pick · c8b4c3fa-c0af-490e-8be3-9722b09276e9/0/1
+### eyeball · lane:pick · b9960372-0638-4073-aab0-eb1134310128/0/19
 | # | with unit | without unit |
 |---|---|---|
-| 1 | Tom's activation criterion: if reach doesn't resolve th ✓ s=0.78 | xhigh-effort code review caught real bugs in just-commi s=0.77 |
-| 2 | If I'm already doing something, do it clean — architect ✓ s=0.75 | See journal in action before building mining layer — pr s=0.79 |
-| 3 | xhigh-effort code review caught real bugs in just-commi s=0.77 | S1E effort experiment: high vs medium — approved to run s=0.77 |
-| 4 | Anchor rule: check your own health before doing anythin s=0.77 | Implementation effort misfiled to candidate generation  s=0.76 |
-| 5 | Implementation effort misfiled to candidate generation  s=0.76 | Anchor built a risky fix before checking consumers — sh s=0.82 |
-| 6 | See journal in action before building mining layer — pr s=0.79 | Anchor rule: check your own health before doing anythin s=0.77 |
-| 7 | S1E effort experiment: high vs medium — approved to run s=0.77 | Tom's activation criterion: if reach doesn't resolve th ✓ s=0.78 |
-| 8 | Anchor built a risky fix before checking consumers — sh s=0.82 | S1E effort A/B verdict: medium holds quality, 2.7× clea s=0.75 |
+| 1 | v22 encoder prompt diff — 5 surgical changes over v21 f s=0.74 | v22 encoder prompt diff — 5 surgical changes over v21 f s=0.74 |
+| 2 | Show Prompt fix: encoder writes prompt file BEFORE Sonn ✓ s=0.72 | Pre-execution blocker: §7.6 worked examples for encoder s=0.73 |
+| 3 | Encoder prompt fixes: surgical example additions only,  ✓ s=0.72 | S2 community encoder drift: one prompt for three tasks  s=0.72 |
+| 4 | Encoder prompt updated for SESSION_CONTEXT format — jou ✓ s=0.70 | S2 community encoder prompt: enhanced rich prompt A/B i s=0.75 |
+| 5 | S2 community encoder drift: one prompt for three tasks  s=0.72 | Batch tools for encoder, individual tools for Anchor —  s=0.72 |
+| 6 | Pre-execution blocker: §7.6 worked examples for encoder s=0.73 | Encoder prompt updated for SESSION_CONTEXT format — jou ✓ s=0.70 |
+| 7 | S2 community encoder prompt: enhanced rich prompt A/B i s=0.75 | Show Prompt fix: encoder writes prompt file BEFORE Sonn ✓ s=0.72 |
+| 8 | Batch tools for encoder, individual tools for Anchor —  s=0.72 | Community encoder prompt v21: pure deletion — structura s=0.76 |
 

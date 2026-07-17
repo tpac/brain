@@ -214,7 +214,8 @@ def turn_fields(eng, trace_mask, session, stop, ts, op_text, q0):
     n = eng._n
     cfg = dict(DEFAULT_CONFIG)
     slots = {(0, 'op'): ((op_text or '')[:TEXT_CAP], q0)}
-    for (j, kind), v in stack_rows(eng._brain_ref, session, stop).items():
+    for (j, kind), v in stack_rows(eng._brain_ref, session, stop,
+                                   before_ts=ts).items():
         if (j, kind) == (0, 'op') or j > J_LIMIT:
             continue
         slots[(j, kind)] = v
@@ -233,6 +234,8 @@ def turn_fields(eng, trace_mask, session, stop, ts, op_text, q0):
                                           as_of=ts, trace_mask=trace_mask)
         tgt['pick'][:, j] = pick
         tgt['enc'][:, j] = enc
+    for ln in an:            # j0-anchor = the turn's own future response —
+        an[ln][:, 0] = np.nan    # never a cue, even for direct consumers
     return op, an
 
 

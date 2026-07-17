@@ -14,15 +14,15 @@
 ## B — graph-spread settling (full field, K2-exp0.7, 120 turns)
 | arm | sel@1 | sel@5 | sel@25 | median | soft_r(pool) |
 |---|---|---|---|---|---|
-| base | 0.110 | 0.411 | 0.843 | 8 | 0.060 |
-| spread h1 b0.3 | 0.100 | 0.311 | 0.732 | 12 | 0.072 |
-| spread h1 b0.5 | 0.074 | 0.241 | 0.605 | 17 | 0.075 |
-| spread h2 b0.3 | 0.104 | 0.358 | 0.753 | 10 | 0.067 |
+| base | 0.110 | 0.408 | 0.843 | 8 | 0.308 |
+| spread h1 b0.3 | 0.100 | 0.311 | 0.732 | 12 | 0.335 |
+| spread h1 b0.5 | 0.074 | 0.241 | 0.605 | 17 | 0.338 |
+| spread h2 b0.3 | 0.104 | 0.358 | 0.756 | 10 | 0.325 |
 - spread h1 b0.3 @25: brought 2 / lost 35 selected nodes vs base
 
 ## C — MMR delivery (top-5 from base top-50)
 | λ | sel-in-5 (share) | delivered redundancy | base redundancy |
 |---|---|---|---|
-| 0.3 | 0.424 | 0.772 | 0.773 |
-| 0.7 | 0.422 | 0.772 | 0.773 |
+| 0.3 | 0.428 | 0.773 | 0.773 |
+| 0.7 | 0.428 | 0.772 | 0.773 |
 

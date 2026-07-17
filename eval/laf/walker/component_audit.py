@@ -120,14 +120,16 @@ def boot_stats(rows_a, rows_b, n_boot=N_BOOT, seed=SEED):
 
 
 def eval_static(turns, cfg, gains):
-    """q1 evaluate() with a gains override (val slice + soft_r only)."""
+    """q1 evaluate() with a gains override — val slice for BOTH metrics
+    (2026-07-17: soft was previously accumulated across all eras)."""
     w = weights(cfg)
     sel, drp, sx, sy = [], [], [], []
     for td in turns:
+        if not td.val:
+            continue
         s = score_turn(td, cfg, w, gains=gains)
-        if td.val:
-            sel.append(s[td.sel])
-            drp.append(s[~td.sel])
+        sel.append(s[td.sel])
+        drp.append(s[~td.sel])
         m = np.isfinite(td.soft) & np.isfinite(s)
         if m.sum() > 2:
             sx.append(s[m])
@@ -204,8 +206,10 @@ def main():
     walker.close()
     print('features over %d turns...' % len(turns))
     feats = build(turns)
-    D_pick = pairs_picked(feats, train_only=False)
-    D_soft = pairs_soft(feats, train_only=False)
+    # train_only=True → fit on April–May ONLY; June+ stays held-out
+    # (2026-07-17 audit: the previous False kept val pairs → in-sample)
+    D_pick = pairs_picked(feats, train_only=True)
+    D_soft = pairs_soft(feats, train_only=True)
     print('train pairs: picked %d · soft %d' % (len(D_pick), len(D_soft)))
 
     lines = ['# component_audit — Leg A: lane × slot contributions', '',

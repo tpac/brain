@@ -1945,56 +1945,74 @@ instability of sparse-lane z is second-order and the ablation catches the echo s
 observation for a future pre-reg: idf remains heavy-tailed WITHIN its support (eyeball z 6.7–8.7
 under support-z) — support-z fixes pick/enc, not idf's internal skew.
 
-#### 20.13.2 P3.1 fit results (ran 2026-07-15) — the ablation matrix is the story
+#### 20.13.2 P3.1 fit results — CORRECTED 2026-07-17 (independent audit caught a split inversion)
 
-Instrument `eval/laf/walker/p3_fit.py` (report `p3_fit.md`, coefficients `p3_fit.json`). 31
-features as registered (intercept cancels in the pairwise formulation — 0 by construction);
-Newton/L2, λ-insensitive across {0.1, 1, 10}; train 81,545 picked pairs / 14,461 soft pairs.
-Eight arms: {full, j0-only} × {picked, soft} × {with, without pick/enc}.
+**Audit correction (2026-07-17):** the original run (2026-07-15) passed `train_only=False`,
+which — per `pairs_picked`'s skip semantics — kept the **June+ VAL pairs as the fitting set**:
+every fitted "val AUC" below was in-sample and inflated (A read 0.9698; held-out it is 0.9458).
+Caught by a fresh-agent adversarial audit of the whole walker eval stack; fixed at the two call
+sites (`p3_fit.py`, `component_audit.py`), fitted-arm soft_r additionally gated to val-only.
+Numbers below are the corrected, honestly-held-out record (fit April–May, evaluate June+;
+82,094 picked / 14,644 soft train pairs). **Every P3 qualitative verdict survives; the echo
+verdict strengthens (echo share 176% → 196%).**
 
-| arm | target | features | val AUC (picked) | soft_r |
+| arm | target | features | val AUC (picked) | soft_r (val) |
 |---|---|---|---|---|
-| A full | picked | all 31 | **0.9698** | 0.130 |
-| C full−pick/enc | picked | 19 | 0.7102 | 0.243 |
-| B full | soft | all 31 | 0.7695 | **0.427** |
-| F full−pick/enc | soft | 19 | 0.6448 | **0.430** |
-| D j0-only | picked | 6 | 0.9279 | 0.088 |
-| G j0-only | soft | 6 | 0.7887 | 0.177 |
-| statics | — | — | K0 0.8226 · winner 0.8676 · K0-content-only 0.6921 | 0.173 / 0.273 |
+| A full | picked | all 31 | **0.9458** | 0.159 |
+| C full−pick/enc | picked | 19 | 0.7040 | 0.308 |
+| B full | soft | all 31 | 0.7287 | **0.440** |
+| F full−pick/enc | soft | 19 | 0.6496 | **0.441** |
+| D j0-only | picked | 6 | 0.8885 | 0.176 |
+| G j0-only | soft | 6 | 0.7304 | 0.189 |
+| statics | — | — | K0 0.8226 · winner 0.8676 · K0-content-only 0.6921 | 0.173 / 0.273 (all-era) |
 
 **The pre-registered sentence fires: the picked-label fit gain was echo.** Content-only (C)
-collapses below K0-static (0.7102 < 0.8226); the A coefficients say why (pick·j0 +1.37,
-pick·j1op +1.00, pick·j1anchor +0.86 — the fit poured weight into the label-sharing lane).
-Like-for-like, though, the fit is real: C beats the content-only static (0.7102 > 0.6921), and
+collapses below K0-static (0.7040 < 0.8226); the A coefficients say why (pick·j1anchor +1.93,
+pick·j1op +0.69, pick·j2anchor +0.64 — the fit poured weight into the label-sharing lane).
+Like-for-like, though, the fit is real: C beats the content-only static (0.7040 > 0.6921), and
 even K0-static's own AUC is mostly echo (0.8226 → 0.6921 with pick/enc zeroed).
 
 **The quality signal lives in the moment slots and needs no echo lanes:** the soft-target fit
-nearly doubles the static soft_r (0.427–0.430 vs 0.273) and loses NOTHING when pick/enc are
-ablated (F ≈ B) — but drops to statics' level when restricted to j0 (G 0.177 ≈ static 0.173).
-Judge-independent quality headroom = moment stack, not j0 re-weighting.
+nearly doubles the static soft_r (0.440–0.441 vs 0.273) and loses NOTHING when pick/enc are
+ablated (F ≈ B) — but drops toward statics' level when restricted to j0 (G 0.189 vs static
+0.173). Judge-independent quality headroom = moment stack, not j0 re-weighting.
 
-**M_e sign flip (mechanism finding):** fatigue coefficient −1.29 on the picked target,
-+1.28 on the soft target — recently-surfaced nodes are LESS likely re-picked (availability
-management, the 2′ design intent) yet MORE likely response-relevant (thread continuity).
-One dial, two opposing jobs — relevant when M_e ships.
+**M_e sign flip (mechanism finding):** fatigue coefficient −1.32 on the picked target, strongly
+positive on the soft-target j0 arms (G/H +3.2/+3.3) — recently-surfaced nodes are LESS likely
+re-picked (availability management, the 2′ design intent) yet MORE likely response-relevant
+(thread continuity). One dial, two opposing jobs — relevant when M_e ships.
 
-#### 20.13.3 P3.2 verdict (ran 2026-07-15, all six pre-declared) — NO SHIP, as the gates ruled
+#### 20.13.3 P3.2 verdict — REGENERATED 2026-07-17 on the corrected fit; NO SHIP stands
 
 Instrument `eval/laf/walker/p3_eval.py` (report `p3_eval.md`). Arms at the blind gates:
-A (registered primary) and F (the ablation matrix's quality candidate).
+A (registered primary) and F (the ablation matrix's quality candidate). Regenerated with the
+corrected coefficients (§20.13.2 audit note); substrate = live-brain copy of 2026-07-17
+(archive drift moves the shared-attribution class counts a little across ALL arms — the
+per-arm comparisons are what the gate reads).
 
-1. **June+ AUC** — in p3_fit.md (A +0.147 over K0-static; echo per above).
-2. **Miss classes** — expectation FAILED both arms: near_miss shrinks (24→12 A / 16 F) but
-   lane_buried grows (50→73 A / 68 F); net misses UP (201 → 216 A / 210 F). **Leak canary
-   CLEAN: unreachable frozen at 35 in all four arms; zero unreachable-substrate nodes in any
-   top-25.**
-3. **Tier placement (blind)** — A actively harms (gold top-25 12→6, gold_plus 6→3): the echo
-   model buries blind-judged gold to chase pick prediction. F ≈ parity (gold top-25 12→10,
-   gold_plus median 74→56, silver top-1 2→4).
-4. **Shuffle control on fitted models** — holds for both (A: shuffled 0.7980 ≤ j0-restricted
-   0.8257; F: 0.5962 ≤ 0.6937). What moment gain exists is not a length artifact.
-5. **Soft-usage correlation** — the one clear win: 0.427–0.430 vs 0.273 static, echo-ablation-proof.
+1. **June+ AUC** — in p3_fit.md (A +0.123 over K0-static, corrected held-out; echo per above).
+2. **Miss classes** — expectation FAILED both arms, as before: near_miss shrinks (24→11 A /
+   22 F) but lane_buried grows (51→71 A; F now ≈ parity 51→53); net misses UP for A. **Leak
+   canary: attribution basis widened 2026-07-17** (best over ALL slots op j0..8 + anchor
+   j1..8 — the original winner-K1 basis false-tripped on a node legitimately reached through
+   j3, maxsim 0.897). Honest form is fitted-vs-static BASE RATE, since sum-composition
+   naturally ranks some no-single-lane-95th nodes into top-25: statics 2/2, A 1, F 0 →
+   **no fitted arm exceeds the static base rate; no leakage signal.**
+3. **Tier placement (blind)** — A actively harms (gold top-5 4→0, gold top-25 12→5,
+   gold_plus median 74→207): the echo model buries blind-judged gold to chase pick
+   prediction — STRONGER under the corrected fit. F ≈ parity (gold top-25 12→9, gold_plus
+   median 74→52, silver top-1 2→4, silver top-5 8→12).
+4. **Shuffle control on fitted models** — holds for both (A: shuffled 0.6669 ≤ j0-restricted
+   0.7183; F: 0.5978 ≤ 0.6912). What moment gain exists is not a length artifact.
+5. **Soft-usage correlation** — the one clear win: 0.440–0.441 held-out vs 0.273 static,
+   echo-ablation-proof.
 6. **Ship gate** — moot except for P3b below; nothing activates.
+
+Corrected-F coefficient shape (the Stage-3 seed): maxsim·j1-anchor +1.05 > maxsim·j2-anchor
++0.73 > maxsim·j0 +0.70 > maxsim·tail +0.62, maxsim·j2-op NEGATIVE — P3's own held-out fit
+independently reproduces the component-audit finding: the quality signal is anchor-side
+history, deeper than K=2 (tail carries real weight; "K=2, tail ~0" was the in-sample fit's
+artifact).
 
 **Deliverables (P3.3):** P3a = **no gain flip ships** — D's j0 gains are echo (blind tiers
 collapse), G's j0 soft gains ≈ static (0.177 vs 0.173); production statics stand. P3b = **F's
@@ -2259,6 +2277,16 @@ Q1 rule); G4 hard-gates activation; G5/G6 are controls. No goalpost moves after 
 **NOT in this rung:** maintained-state A, gating/attention weights, settling, fatigue rework
 (sequenced after value check — §20.14), multi-store S, PRF/query-expansion lanes (sibling
 stream's territory). Reach stays parked (Tom).
+
+**⚠ INPUT CORRECTION (2026-07-17, audit c67d42cc):** the P3b coefficients this rung seeds
+from were refit after the split-inversion fix. The corrected F_soft_ablate changes two pinned
+parameters of this pre-registration: (a) **K=2 / "tail carried ~0" no longer holds** — the
+held-out fit puts +0.62 on the tail and +0.73 on j2-anchor (quality is anchor-side and
+DEEPER than K=2); (b) "content lanes only" survives (pick/enc still excluded) but the slot
+mix shifts anchor-heavy. The K and per-slot gain pins must re-derive from the corrected
+p3_fit.json at build time — parameter amendment goes to Tom at the P4/Stage-3 gate, per the
+batch-at-stage-gates drift guard. Everything else (stateless-unrolled shape, six gates,
+wiring questions) is unaffected.
 
 **Inputs this rung stands on:** P3b coefficients (p3_fit.json, F_soft_ablate), Q1 winner shape
 (K1-exp0.5-turnsum-zsum-opanchor), §20.15 L2 (the math), §20.16 (typing + turn-meshing pin
