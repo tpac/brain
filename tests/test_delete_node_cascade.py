@@ -65,6 +65,52 @@ class TestDeleteNodeCascade(BrainTestBase):
     def test_empty_node_id_is_noop(self):
         self.brain.delete_node_cascade('')  # must not raise
 
+    def test_cascade_clears_fts5(self):
+        """Pre-consolidation blind spot (2026-07-17 plan §5.1): cascade never
+        cleaned nodes_fts — no triggers exist, nothing else ever deletes the
+        row, and this suite didn't pin it. _deindex_node closes the gap."""
+        has_fts5 = self.brain.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='nodes_fts'"
+        ).fetchone() is not None
+        if not has_fts5:
+            self.skipTest('fixture DB has no FTS5 virtual table')
+        node = self.brain.remember(type='fact', title='FTS cascade probe',
+                                   content='Body for the FTS cascade pin.')
+        nid = node['id']
+        n_before = self.brain.conn.execute(
+            'SELECT COUNT(*) FROM nodes_fts WHERE node_id = ?', (nid,)).fetchone()[0]
+        self.assertEqual(n_before, 1, 'remember must index into FTS5')
+        self.brain.delete_node_cascade(nid)
+        n_after = self.brain.conn.execute(
+            'SELECT COUNT(*) FROM nodes_fts WHERE node_id = ?', (nid,)).fetchone()[0]
+        self.assertEqual(n_after, 0, 'cascade must clear nodes_fts')
+
+    def test_archive_is_soft_deindex_keeps_tfidf(self):
+        """archive_node is SOFT delete: drop the expensive embeddings (+cache)
+        and the FTS row, but KEEP the tfidf/node_vectors rows — deleting them
+        inflates doc_freq (TfIdfDAL.delete_for_node doesn't decrement) and
+        strips include_archived lexical reachability. Contrast the hard
+        delete_node_cascade, which drops everything (tests above)."""
+        node = self.brain.remember(type='fact', title='Archive soft-deindex probe',
+                                   content='Body for the archive soft deindex pin.')
+        nid = node['id']
+        tfidf_before = self.brain.conn.execute(
+            'SELECT COUNT(*) FROM node_vectors WHERE node_id = ?', (nid,)).fetchone()[0]
+        self.assertGreater(tfidf_before, 0, 'remember must write tfidf rows')
+
+        self.brain.archive_node(nid, reason='test', archived_by='test')
+
+        enr = self.brain.conn.execute(
+            'SELECT COUNT(*) FROM node_enrichments WHERE node_id = ?', (nid,)).fetchone()[0]
+        self.assertEqual(enr, 0, 'archive drops embeddings')
+        tfidf_after = self.brain.conn.execute(
+            'SELECT COUNT(*) FROM node_vectors WHERE node_id = ?', (nid,)).fetchone()[0]
+        self.assertEqual(tfidf_after, tfidf_before,
+                         'archive is soft — tfidf rows KEPT (doc_freq stays consistent)')
+        if hasattr(self.brain._vec_dal, '_cache'):
+            self.assertEqual(self.brain._vec_dal.get_for_node(nid), [],
+                             'archive drops the cache view of the vectors')
+
 
 if __name__ == '__main__':
     unittest.main()

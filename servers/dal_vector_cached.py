@@ -16,9 +16,12 @@ Architecture:
   - find_missing delegates to inner VectorDAL — it's the backfill path,
     not the hot recall path, and it needs node titles/content the cache
     doesn't track.
-  - Archive: drop_node() removes all vectors for a node from the cache.
-    Called by brain.archive_node(). The underlying SQL row stays
-    (archived flag on the nodes table), the cache just masks it.
+  - Deletion: delete_for_node(node_id, vector_types=None) is the ONE
+    deletion surface — DB delete + exactly-mirrored cache drop in a single
+    call (all rows, or the typed subset for revise invalidation). Archive,
+    cascade, and revise all route here via brain_remember; there is no
+    cache-only public drop (that split surface caused the 2026-07-17
+    healer-invisibility bug).
 
 Thread safety: a single RLock guards cache mutations. Reads snapshot
 dicts under the lock then release — negligible contention.
@@ -95,24 +98,17 @@ class CachedVectorDAL:
                 if blob is not None)
         return written
 
-    def delete_for_node(self, node_id: str) -> int:
-        """Full delete (rare — tests, migrations). Cache drops too."""
+    def delete_for_node(self, node_id: str, vector_types=None) -> int:
+        """DB delete + cache drop, mirrored EXACTLY (one vector_types set
+        feeds both) — the invariant whose violation was the 2026-07-17
+        healer-invisibility bug (a typed DB delete paired with a whole-node
+        cache drop orphaned the surviving vectors out of every cache-served
+        scan until restart). All-rows (vector_types=None: archive/delete)
+        or typed subset (revise invalidation)."""
         with self._sql_lock:
-            n = self._inner.delete_for_node(node_id)
-        self._cache.drop_node(node_id)
+            n = self._inner.delete_for_node(node_id, vector_types=vector_types)
+        self._cache.drop_node(node_id, vector_types=vector_types)
         return n
-
-    def drop_node(self, node_id: str, vector_types=None) -> int:
-        """Remove a node's vectors from the cache without deleting from DB.
-
-        vector_types=None (archive_node): the DB rows stay (archived flag on
-        the nodes table), the cache masks the whole node so recall can't
-        surface it. vector_types given (revise invalidation): drop ONLY the
-        types whose DB rows were deleted — the cache must mirror the DB
-        delete exactly, or the surviving vectors are orphaned out of every
-        cache-served scan until restart (2026-07-17 healer-invisibility bug).
-        """
-        return self._cache.drop_node(node_id, vector_types=vector_types)
 
     # ── Reads (serve from cache) ────────────────────────────────────
 

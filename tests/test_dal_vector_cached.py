@@ -4,7 +4,9 @@ Guarantees:
   1. Parity: for every read method, CachedVectorDAL returns byte-identical
      results to VectorDAL on the same SQLite connection.
   2. Write-through: writes land in SQLite first; cache reflects them after.
-  3. Archive: drop_node() masks a node from cache queries without touching DB.
+  3. Deletion: delete_for_node(vector_types=None|[...]) removes DB rows AND the
+     mirrored cache rows in one call — the single deletion surface (the old
+     cache-only public drop_node was removed 2026-07-17).
 
 Run: python3 -m pytest tests/test_dal_vector_cached.py -v
 """
@@ -239,15 +241,34 @@ class TestWriteThrough:
         inner = VectorDAL(brain_db)
         assert inner.get_primary('n1') is None
 
-    def test_drop_node_masks_cache_only(self, brain_db):
-        """drop_node is the archive path — cache forgets, SQL row stays."""
+    def test_delete_for_node_full_removes_db_and_cache(self, brain_db):
+        """delete_for_node (no types) is the archive/delete path — DB rows
+        deleted AND cache rows gone, one call (the consolidated contract;
+        the old cache-only public drop_node is deliberately no more)."""
         cached = CachedVectorDAL(brain_db)
-        n = cached.drop_node('n2')
+        n = cached.delete_for_node('n2')
         assert n > 0
         assert cached.get_primary('n2') is None
-        # Inner DAL still sees the vector — SQL row was NOT deleted.
         inner = VectorDAL(brain_db)
-        assert inner.get_primary('n2') is not None
+        assert inner.get_primary('n2') is None
+        assert not hasattr(cached, 'drop_node'), \
+            'cache-only public drop is gone — deletion is ONE surface'
+
+    def test_delete_for_node_typed_mirrors_db_and_cache(self, brain_db):
+        """Typed deletion (revise invalidation): ONLY the given types leave
+        the DB and the cache; survivors stay in BOTH — the invariant whose
+        violation was the 2026-07-17 healer-invisibility bug."""
+        cached = CachedVectorDAL(brain_db)
+        assert len(cached.get_for_node('n1')) == 3   # _primary/_situation/title
+        n = cached.delete_for_node('n1', vector_types=['title'])
+        assert n == 1
+        inner = VectorDAL(brain_db)
+        assert cached.get_primary('n1') is not None      # survivor in cache
+        assert inner.get_primary('n1') is not None       # survivor in DB
+        remaining = {v['vector_type'] for v in cached.get_for_node('n1')}
+        assert remaining == {'_primary', '_situation'}
+        # empty list = nothing to do, loudly zero
+        assert cached.delete_for_node('n1', vector_types=[]) == 0
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -291,22 +312,18 @@ class TestCacheStats:
 # ═══════════════════════════════════════════════════════════════
 
 class TestArchiveInvalidatesCache:
-    """Regression guard for the drop_node-must-be-called-by-archive wiring.
+    """Regression guard for the delete-must-mirror-the-cache wiring.
 
-    We had CachedVectorDAL.drop_node() working in isolation (see
-    TestWriteThrough.test_drop_node_masks_cache_only), but brain.archive_node()
-    was deleting from the DB without signaling the cache. This test locks in
-    that archive_node() ALWAYS calls drop_node() — via the full Brain path.
+    The DB delete and the cache drop are ONE call (delete_for_node), so a node
+    whose vectors leave the DB always leaves the cache too — the seam can no
+    longer delete from the DB without signaling the cache (the drift that made
+    archived/deleted nodes linger in cache-served recall).
     """
 
-    def test_archive_drops_vectors_from_cache(self, brain_db):
-        """End-to-end: seed vectors, archive via Brain, confirm cache dropped.
-
-        We can't use the brain_db fixture's Brain directly (it isn't wired
-        here). We exercise the archive code path at the DAL seam: call
-        drop_node and assert the cache observes it, then confirm the cache
-        stats reflect the removal at the right granularity.
-        """
+    def test_archive_seam_removes_vectors_from_db_and_cache(self, brain_db):
+        """The archive code path's DAL seam is delete_for_node (consolidated
+        2026-07-17 — archive routes through _deindex_node → delete_for_node):
+        cache stats shrink by exactly the node's rows AND the DB rows go."""
         cached = CachedVectorDAL(brain_db)
 
         # n1 has 3 vectors seeded in the fixture: _primary, _situation, title.
@@ -314,11 +331,12 @@ class TestArchiveInvalidatesCache:
         n1_vecs_before = len(cached.get_for_node('n1'))
         assert n1_vecs_before == 3  # fixture sanity
 
-        cached.drop_node('n1')
+        cached.delete_for_node('n1')
 
         after = cached.cache_stats()['total_rows']
         assert after == before - n1_vecs_before
         assert cached.get_for_node('n1') == []
+        assert VectorDAL(brain_db).get_for_node('n1') == []
 
     def test_archive_node_integration(self, tmp_path):
         """Full Brain.archive_node path invalidates the cache.

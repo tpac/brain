@@ -203,5 +203,48 @@ class TestReviseInvalidatesVectors(BrainTestBase):
                               'the invalidated type must leave the cache')
 
 
+class TestRollbackCacheCoherence(BrainTestBase):
+    """Plan §4.4 (2026-07-17): cache mutations inside a batch envelope are
+    eager; a rollback restores the DB but not the cache — reload-on-rollback
+    must resync, or a live node stays invisible to cache-served scans until
+    restart (the inverse of the healer-invisibility bug)."""
+
+    needs_embedder = False
+
+    def test_cascade_rollback_resyncs_cache(self):
+        if not hasattr(self.brain._vec_dal, '_cache'):
+            self.skipTest('plain VectorDAL — no cache to resync')
+        node = self.brain.remember(type='fact', title='Rollback probe',
+                                   content='Body for rollback coherence.')
+        nid = node['id']
+        blob = b'\x00\x00\x80\x3f' * 192
+        self.brain._vec_dal.store(nid, '_primary', 'text', blob, 'test')
+        self.assertIsNotNone(self.brain._vec_dal.get_primary(nid))
+
+        # Inject a failure AFTER the de-index step so the envelope rolls back
+        # with the cache already mutated.
+        original = self.brain._nodes.delete
+        def _boom(_nid):
+            raise RuntimeError('injected cascade failure')
+        self.brain._nodes.delete = _boom
+        try:
+            with self.assertRaises(RuntimeError):
+                self.brain.delete_node_cascade(nid)
+        finally:
+            self.brain._nodes.delete = original
+
+        # DB rolled back — the node and its vector row survive…
+        row = self.brain.conn.execute(
+            'SELECT COUNT(*) FROM node_enrichments WHERE node_id = ?',
+            (nid,)).fetchone()[0]
+        self.assertEqual(row, 1, 'rollback must restore the DB row')
+        # …and the resync restored the CACHE view too (pre-fix: gone
+        # until restart).
+        self.assertIsNotNone(
+            self.brain._vec_dal.get_primary(nid),
+            'rollback must resync the vector cache — live node went '
+            'cache-invisible')
+
+
 if __name__ == '__main__':
     unittest.main()

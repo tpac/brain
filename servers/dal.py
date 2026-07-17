@@ -838,6 +838,11 @@ class VectorDAL:
             import sys
             print('[VectorDAL] store error for %s/%s: %s' % (
                 node_id[:12], vector_type, e), file=sys.stderr)
+            return
+        # Commit OUTSIDE the try: a COMMIT failure must propagate loud, never
+        # be swallowed by the insert's stderr-catch (which would leave an
+        # uncommitted row + the cache updated ahead of the DB).
+        commit_unless_batched(self.conn)
 
     def store_batch(self, rows, model: str = 'nomic-ai/nomic-embed-text-v1.5-Q') -> int:
         """Batch insert-or-update many vectors in one executemany round-trip.
@@ -869,12 +874,14 @@ class VectorDAL:
                    (id, node_id, vector_type, text, embedding, model, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?)''',
                 prepared)
-            return len(prepared)
         except Exception as e:
             import sys
             print('[VectorDAL] store_batch error (%d rows): %s' % (len(prepared), e),
                   file=sys.stderr)
             return 0
+        # Commit outside the try — a COMMIT failure propagates loud (see store).
+        commit_unless_batched(self.conn)
+        return len(prepared)
 
     def get_primary(self, node_id: str) -> Optional[bytes]:
         """Get primary embedding blob for a node."""
@@ -1097,10 +1104,26 @@ class VectorDAL:
         rows = self.conn.execute(sql, params).fetchall()
         return [{'id': r[0], 'title': r[1] or '', 'content': r[2] or ''} for r in rows]
 
-    def delete_for_node(self, node_id: str) -> int:
-        """Delete all vectors for a node."""
-        self.conn.execute('DELETE FROM node_enrichments WHERE node_id = ?', (node_id,))
-        return self.conn.execute('SELECT changes()').fetchone()[0]
+    def delete_for_node(self, node_id: str, vector_types=None) -> int:
+        """Delete a node's enrichment vectors — all rows (archive/delete
+        path), or only the given vector_types (revise invalidation, per
+        pipeline_contract.vectors_affected_by). THE one deletion path for
+        node_enrichments; no caller raw-SQLs this table (raw-SQL ratchet
+        enforces). Returns rows deleted."""
+        if vector_types is not None:
+            vts = list(vector_types)
+            if not vts:
+                return 0
+            ph = ','.join('?' * len(vts))
+            self.conn.execute(
+                'DELETE FROM node_enrichments WHERE node_id = ? '
+                'AND vector_type IN (%s)' % ph, [node_id, *vts])
+        else:
+            self.conn.execute(
+                'DELETE FROM node_enrichments WHERE node_id = ?', (node_id,))
+        n = self.conn.execute('SELECT changes()').fetchone()[0]
+        commit_unless_batched(self.conn)
+        return n
 
     def get_for_node(self, node_id: str) -> List[Dict[str, Any]]:
         """Get all vectors for a single node."""

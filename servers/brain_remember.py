@@ -129,6 +129,54 @@ class BrainRememberMixin:
     # Unified archive — single path for all archive operations
     # ═══════════════════════════════════════════════════════════════
 
+    def _resync_vector_cache(self, where: str) -> None:
+        """Restore cache == DB after a rollback. Cache mutations inside a
+        batch envelope are eager (the DAL drops cache rows when it deletes DB
+        rows); a rollback restores the DB but not the cache — without this,
+        a rolled-back revise/archive/absorb leaves a LIVE node invisible to
+        cache-served scans until restart (the inverse of the 2026-07-17
+        healer bug). reload() is one SELECT; rollback is the rare loud path,
+        so the cost is fine. Plain VectorDAL has no cache — nothing to do."""
+        reload_fn = getattr(self._vec_dal, 'reload', None)
+        if reload_fn is None:
+            return
+        try:
+            reload_fn()
+        except Exception as _e:
+            self._log_error('vector_cache_resync', _e, where)
+
+    def _deindex_node(self, node_id: str, include_tfidf: bool = True) -> int:
+        """Remove a node from the search indexes — the single de-indexing path
+        shared by archive_node and delete_node_cascade, so the two can never
+        again cover different index subsets (the drift class this consolidation
+        kills). Returns enrichment rows deleted (trace metadata).
+
+        include_tfidf distinguishes the two callers' correct behavior:
+          - cascade (hard delete, default True): drop EVERYTHING — enrichment
+            vectors (+cache), tfidf/node_vectors, FTS5.
+          - archive (soft delete, include_tfidf=False): drop the expensive
+            embeddings + FTS row, but KEEP the tfidf rows. Deleting them would
+            (a) inflate doc_freq — TfIdfDAL.delete_for_node removes node_vectors
+            without decrementing the per-term counts, skewing idf on every
+            archive — and (b) strip lexical reachability that include_archived
+            forensics rely on. The node row survives; archived=0 filters keep
+            it out of live recall.
+
+        Composes with batch envelopes: each store's delete gates its commit on
+        conn.in_batch. Fts5DAL.delete tolerates a missing table and logs its
+        own failures (loud-by-default lives there); the sqlite_master probe
+        just avoids a stderr line on test DBs that lack the virtual table."""
+        vectors_deleted = self._vec_dal.delete_for_node(node_id)
+        if include_tfidf:
+            self._tfidf.delete_for_node(node_id)
+        has_fts5 = self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='nodes_fts'"
+        ).fetchone() is not None
+        if has_fts5:
+            self._fts.delete(node_id)   # self-guarding: logs internally
+        self._maybe_commit()            # Fts5DAL.delete doesn't self-commit
+        return vectors_deleted
+
     def delete_node_cascade(self, node_id: str) -> None:
         """Hard-delete a node and EVERY child-table row, routed through the
         owning DALs — the one place that knows all child tables. Replaces the
@@ -147,8 +195,7 @@ class BrainRememberMixin:
         prior = self.conn.in_batch
         self.conn.in_batch = True
         try:
-            self._vec_dal.delete_for_node(node_id)     # node_enrichments
-            self._tfidf.delete_for_node(node_id)       # node_vectors
+            self._deindex_node(node_id)   # enrichments (+cache), tfidf, FTS5
             self._meta_kv.delete_all(node_id)          # node_metadata_kv
             self._graph.hard_delete_node_edges(node_id)  # edges + edge_relations
             self._source_refs.delete_source_refs(node_id)    # node_source_refs
@@ -158,6 +205,7 @@ class BrainRememberMixin:
         except Exception:
             if not prior:
                 self.conn.rollback()
+                self._resync_vector_cache('delete_node_cascade rollback')
             raise
         finally:
             self.conn.in_batch = prior
@@ -293,47 +341,24 @@ class BrainRememberMixin:
                                     'absorbed_into %s -> %s' % (
                                         full_id[:8], str(survivor_id)[:8]))
 
-            # 4. Delete vectors from node_enrichments
-            vectors_deleted = self.conn.execute(
-                'DELETE FROM node_enrichments WHERE node_id = ?',
-                (full_id,)).rowcount
-
-            # 5. Remove from FTS5 index. Some test DBs don't enable FTS5 —
-            # skip cleanly when the virtual table is absent, but log any
-            # real failure (production always has FTS5).
-            has_fts5 = self.conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='nodes_fts'"
-            ).fetchone() is not None
-            if has_fts5:
-                try:
-                    from .dal import Fts5DAL
-                    self._fts.delete(full_id)
-                except Exception as _e:
-                    self._log_error('archive_fts5', _e,
-                                    'FTS5 delete for %s' % full_id[:8])
+            # 4. De-index INSIDE the archive transaction — atomic with the
+            # archived=1 flag: a de-index failure rolls the WHOLE archive back
+            # (the caller sees a clean failure, no half-archived node, no lost
+            # trace). Soft delete → include_tfidf=False keeps the lexical rows.
+            # The eager cache drop is covered by resync-on-rollback below; when
+            # archive runs inside an outer envelope, the deletes join the outer
+            # commit and that envelope's rollback resyncs.
+            vectors_deleted = self._deindex_node(full_id, include_tfidf=False)
 
             if not prior:
                 self.conn.commit()  # commit-ok: single atomic archive
         except Exception:
             if not prior:
                 self.conn.rollback()
+                self._resync_vector_cache('archive_node rollback')
             raise
         finally:
             self.conn.in_batch = prior
-
-        # 6. AFTER commit — invalidate the in-memory vector cache so recall's
-        # cached matrix doesn't retain dead rows. Order matters: if we
-        # dropped before commit and commit failed, the cache would be ahead
-        # of the DB (node gone from cache but archived=0 in the DB) — that
-        # causes transient "node disappears from recall" until the next
-        # daemon restart repairs the cache. No-op when
-        # BRAIN_DISABLE_VECTOR_CACHE=1 (plain VectorDAL has no drop_node).
-        if hasattr(self._vec_dal, 'drop_node'):
-            try:
-                self._vec_dal.drop_node(full_id)
-            except Exception as _e:
-                self._log_error('archive_cache_drop', _e,
-                                'cache drop for %s' % full_id[:8])
 
         # 7. Trace event — S3 + dashboards see who archived what.
         # Tracing must never block the archive itself, but a failure
@@ -578,6 +603,12 @@ class BrainRememberMixin:
             else:
                 self.conn.rollback()
         finally:
+            # In finally, not the try body: absorb archives the absorbed node
+            # mid-SAVEPOINT (eager cache drop), so the cache must be resynced
+            # even if the ROLLBACK TO itself throws (e.g. a lost savepoint) —
+            # otherwise the dropped rows persist and a live node goes
+            # cache-invisible until restart.
+            self._resync_vector_cache('absorb unwind')
             self.conn.in_batch = was_batch
 
     def _tfidf_tokenize(self, text: str) -> List[str]:
@@ -1315,33 +1346,13 @@ class BrainRememberMixin:
             for field in fields_changed_for_invalidation:
                 invalidated_vectors |= vectors_affected_by(field)
             if invalidated_vectors:
-                ph = ','.join('?' * len(invalidated_vectors))
-                self.conn.execute(
-                    'DELETE FROM node_enrichments WHERE node_id = ? '
-                    'AND vector_type IN (%s)' % ph,
-                    [node_id, *invalidated_vectors])
-                self._maybe_commit()
-                # Invalidate the in-memory vector cache so recall doesn't
-                # serve stale embeddings between now and embed_queue's drain.
-                # ONLY the invalidated types: the cache must mirror the SQL
-                # DELETE above exactly. A whole-node drop here orphaned every
-                # OTHER vector type out of the cache — the DB kept them, the
-                # backfill (DB-truth) saw nothing missing, and the node went
-                # invisible to cache-served recall scans until process
-                # restart. Every healer heal did this to freshly-encoded
-                # nodes (found 2026-07-17, pooled-smoke probes).
-                # AttributeError catch (not hasattr): property-access
-                # exceptions used to fall through hasattr() as False,
-                # silently skipping invalidation when a cache IS present
-                # but momentarily broken.
-                try:
-                    self._vec_dal.drop_node(node_id,
-                                            vector_types=invalidated_vectors)
-                except AttributeError:
-                    pass  # plain VectorDAL — no in-memory cache to drop
-                except Exception as _ce:
-                    self._log_error('revise_vector_cache_drop', _ce,
-                                    'cache drop for %s' % node_id[:8])
+                # ONE call: typed DB delete + exactly-mirrored cache drop
+                # (CachedVectorDAL) or DB-only (plain VectorDAL) — same
+                # signature, structural parity. The old two-call shape here
+                # (raw SQL + separate whole-node cache drop) was the
+                # 2026-07-17 healer-invisibility bug.
+                self._vec_dal.delete_for_node(
+                    node_id, vector_types=invalidated_vectors)
         except Exception as e:
             vector_invalidation_failed = True
             self._log_error('revise_vector_invalidate', e,

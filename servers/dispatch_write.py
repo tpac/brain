@@ -852,6 +852,10 @@ def _handle_brain_batch(brain, args, graph_changes):
                 brain.conn.rollback()
             except Exception:
                 pass
+            # The leaked op may have been a cache-mutating revise/archive; its
+            # eager cache drop survives this rollback, so resync (same reason
+            # as the batch-exception rollback below).
+            brain._resync_vector_cache('brain_batch entry-flush rollback')
         print('[brain_batch] WARN: flushed a leaked transaction at entry — an '
               'upstream write did not commit (self.conn was mid-transaction)',
               flush=True)
@@ -1037,6 +1041,12 @@ def _handle_brain_batch(brain, args, graph_changes):
                         'rollback after batch exception failed')
                 except Exception:
                     pass
+            # revise/archive/absorb ops mutate the vector cache eagerly
+            # mid-envelope; the rollback restored the DB but not the cache —
+            # resync or live nodes stay invisible until restart.
+            # _resync_vector_cache is already total (getattr-guarded, internal
+            # try/except → _log_error); no second swallow layer here.
+            brain._resync_vector_cache('brain_batch rollback')
         try:
             brain._log_error(
                 'brain_batch_transaction_failed', e,

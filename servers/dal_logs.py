@@ -206,9 +206,30 @@ class LogsDAL:
                 "OR target_id NOT IN (SELECT id FROM nodes)")
             stats['orphaned_edges'] = cur.rowcount
 
+            # Sanctioned raw-SQL exception (docs/VECTOR-DELETE-CONSOLIDATION-
+            # PLAN.md §4.6): janitorial orphan sweep, structurally unable to
+            # touch live nodes, runs on a caller-supplied graph_conn — not
+            # worth a set-based VectorDAL surface for one caller. All LIVE-
+            # node enrichment deletion goes through VectorDAL.delete_for_node.
+            # (No archived-node residue sweep: archive_node de-indexes INSIDE
+            # its transaction — a failure rolls the archive back, so there is
+            # no crash window that leaves index rows on an archived node.)
             cur = graph_conn.execute(
                 "DELETE FROM node_enrichments WHERE node_id NOT IN (SELECT id FROM nodes)")
             stats['orphaned_enrichments'] = cur.rowcount
+
+            # FTS orphans: pre-consolidation delete_node_cascade never cleaned
+            # nodes_fts (no triggers exist, nothing else swept it), so legacy
+            # hard-deletes leaked permanent rows for nodes no longer in the
+            # table. Orphan-only (NOT IN nodes); archive deletes its own FTS
+            # row inline via _deindex_node. Guarded: test DBs may lack FTS5.
+            has_fts = graph_conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='nodes_fts'"
+            ).fetchone() is not None
+            if has_fts:
+                cur = graph_conn.execute(
+                    "DELETE FROM nodes_fts WHERE node_id NOT IN (SELECT id FROM nodes)")
+                stats['orphaned_fts'] = cur.rowcount
 
             # node_metadata orphan cleanup removed 2026-04-13 — table dropped.
 

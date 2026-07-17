@@ -560,6 +560,49 @@ class TestLafFlagIntegration(unittest.TestCase):
         self.assertEqual(res['_recall_mode'], 'embeddings_first')
 
 
+class TestCapacityGrowth(BrainTestBase):
+    """The incremental append that crosses _cap must not index the pre-growth
+    matrix (Python resolves the subscript target BEFORE the index expression's
+    side effects — the single-expression form raised IndexError at exactly
+    row 64; found 2026-07-17, 20-item pooled build)."""
+
+    needs_embedder = False
+
+    def _seed_vec_rows(self, n_nodes, start=0):
+        import numpy as np
+        blob = (np.arange(768, dtype=np.float32) + 1.0).tobytes()
+        for i in range(start, start + n_nodes):
+            nid = 'capnode%09d' % i
+            self.brain.conn.execute(
+                "INSERT OR IGNORE INTO nodes (id, type, title, content, created_at)"
+                " VALUES (?, 'fact', ?, 'body', '2026-01-01T00:00:00+00:00')",
+                (nid, 'Capacity growth node %d' % i))
+            self.brain.conn.execute(
+                'INSERT OR REPLACE INTO node_enrichments '
+                '(node_id, vector_type, text, embedding, model, created_at) '
+                # ISO-T literal, never datetime('now') — the space-separated
+                # form sorts before 'T' and corrupts as-of lexicographic
+                # masks (CLAUDE.md time-window rule).
+                "VALUES (?, '_primary', '', ?, 'test', '2026-01-01T00:00:00+00:00')",
+                (nid, blob))
+        self.brain.conn.commit()
+        if hasattr(self.brain._vec_dal, 'reload'):
+            self.brain._vec_dal.reload()
+
+    def test_incremental_append_across_capacity_boundary(self):
+        eng = LafV1Engine()
+        self._seed_vec_rows(3)
+        with eng._lock:
+            eng._refresh_matrices(self.brain, 'test')
+        self.assertGreaterEqual(eng._cap, 64)
+        # append enough new rows to cross the 64-row minimum capacity
+        self._seed_vec_rows(80, start=3)
+        with eng._lock:
+            eng._refresh_matrices(self.brain, 'test')   # raised IndexError pre-fix
+        self.assertGreaterEqual(eng._n, 80)
+        self.assertGreater(eng._cap, 64)
+
+
 class TestMomentStack(BrainTestBase):
     """§20.17/§20.18 moment slot lanes — dormancy, stack assembly, gain table.
 

@@ -35,7 +35,7 @@ ALLOWED = {
     'brain.py': 3,                        # _log_error/_log_warning/log_debug INSERTs migrated to LogsDAL.write_event (2026-06-26); remaining: _check_logs_db_size prune DELETEs (2) + 1 INSERT
     'brain_assembly.py': 5,               # exception: health-check / integrity audit + ping
     'brain_connections.py': 1,
-    'brain_remember.py': 10,              # pending: deferred 3c; archive_node's inline edge UPDATE moved to GraphDAL.delete_node_edges (2026-06-14)
+    'brain_remember.py': 8,               # pending: deferred 3c; enrichment DELETEs consolidated into VectorDAL.delete_for_node (2026-07-17)
     'daemon_server.py': 1,
     'dispatch_observability.py': 4,       # exception: observability writes
     'dispatch_ops.py': 1,

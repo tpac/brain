@@ -500,7 +500,13 @@ class LafV1Engine:
                 uv = _unit(blob)
                 if uv is None or vt not in self._mats:
                     continue
-                self._mats[vt][self._row_for(nid)] = uv
+                # _row_for FIRST: it may grow + REBIND self._mats[vt]; the
+                # single-expression form resolved the OLD array before the
+                # growth side effect and blew up (IndexError) on exactly the
+                # append that crossed the capacity boundary (found 2026-07-17,
+                # 20-item pooled build, gate-2 error ledger).
+                row = self._row_for(nid)
+                self._mats[vt][row] = uv
             if self._n > n_before:
                 # backfill created_at for the appended rows (one bulk read;
                 # only fires when the refresh actually added nodes)
