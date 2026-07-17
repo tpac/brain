@@ -805,9 +805,19 @@ _TOOL_FN_MAP = {
 }
 
 
+# Haiku's tool_use serialization can leak function-call markup into string
+# arg values (observed 2×/1,848 calls, both recall_by_time end_when, shape
+# '</antml parameter>\n<parameter name=...>'). The values are schema-valid
+# strings, so no upstream layer catches them; unguarded they degrade silently
+# (date parse → None → unbounded window). Matches XML-ish tags, the antml
+# literal, and control chars — not bare '<' or the word 'parameter'.
+_MARKUP_ARG_RE = re.compile(r'</?[a-zA-Z_][^>]*>|antml|[\x00-\x08\x0b-\x1f]')
+
+
 def execute_tool(brain, tool_name: str, tool_input: Dict[str, Any],
                  session_id: str = '') -> Dict[str, Any]:
-    """Execute a single tool call. Returns {results, latency_ms, error?}.
+    """Execute a single tool call. Returns {results, latency_ms, error?,
+    dropped_args?}.
 
     Every tool's output passes through one batched brain.get_node() pass —
     so _corrections, full metadata, and connections come along regardless
@@ -820,11 +830,33 @@ def execute_tool(brain, tool_name: str, tool_input: Dict[str, Any],
                 'error': 'unknown_tool: %s' % tool_name}
     t0 = time.time()
     kwargs = dict(tool_input or {})
+    # Arg-sanity guard: drop markup-corrupted string args, keep the call.
+    # Behavior matches the pre-guard degradation (the corrupt value never
+    # parsed anyway) — the difference is the loud error. Dropping a REQUIRED
+    # arg (e.g. query) makes fn raise TypeError below → error result → Haiku
+    # falls back to the candidate pool; still non-breaking.
+    dropped_args = {}
+    for k, v in list(kwargs.items()):
+        if isinstance(v, str) and _MARKUP_ARG_RE.search(v):
+            dropped_args[k] = v[:200]
+            del kwargs[k]
+    if dropped_args and brain is not None:
+        try:
+            brain._log_error(
+                'surface_malformed_tool_arg',
+                ValueError('markup in tool_use args: %r' % dropped_args),
+                'tool=%s session=%s — arg(s) dropped, call continued'
+                % (tool_name, session_id))
+        except Exception:
+            pass
     try:
         results = fn(brain, **kwargs)
     except Exception as e:
-        return {'results': [], 'latency_ms': int((time.time() - t0) * 1000),
-                'error': str(e)[:200]}
+        out = {'results': [], 'latency_ms': int((time.time() - t0) * 1000),
+               'error': str(e)[:200]}
+        if dropped_args:
+            out['dropped_args'] = dropped_args
+        return out
 
     # Unified enrichment — single source of "tool results are fully rich".
     # Rich fields from get_node fill missing keys; recall-specific fields
@@ -876,7 +908,11 @@ def execute_tool(brain, tool_name: str, tool_input: Dict[str, Any],
             results = [r for r in results
                        if not (isinstance(r, dict) and r.get('id') in _dead)]
 
-    return {'results': results or [], 'latency_ms': int((time.time() - t0) * 1000)}
+    out = {'results': results or [],
+           'latency_ms': int((time.time() - t0) * 1000)}
+    if dropped_args:
+        out['dropped_args'] = dropped_args
+    return out
 
 
 def format_tool_result_for_haiku(result: Dict[str, Any], layout: str = 'legacy') -> str:
