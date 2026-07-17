@@ -2123,3 +2123,35 @@ decision theory at the delivery. The operational sentence: **LAF already is this
 hand-set parameters; the integrator → gate → settle ladder replaces each hand-set term with its
 properly-inferred version, one measured rung at a time.** Brain: insight 813c185d (frame),
 this section (formalization).
+
+### 20.16 The type system (Tom's collapse question, 2026-07-16) — every mechanism is a factor, a move, or a value term
+
+Foundation, one line: S* = argmax_{cost≤B} E_q[U(S,z)] with q(z) ≈ p(z|o_{1:t}) under a
+generative model p(z,o). The pipeline is model → inference → decision; there is no fourth place
+for a mechanism to live — that closure is what pre-covers unimagined layers.
+
+| type | lives in | composition | admission test | bug shape |
+|---|---|---|---|---|
+| **Factor** (evidence/prior) | p(z,o) | adds in log space (the field); gain = log-likelihood ratio; must be calibrated | carries CONDITIONAL info about z given existing factors (the 8bcc8c96 union analysis IS this test) | mis-specified likelihood / mis-calibration |
+| **Move** (inference step) | q | iterates; improves q→p, never changes the model | measurably closes the approximation gap | mode collapse, dead operators |
+| **Value term** (economy) | U | adds in the SELECTOR objective only — never in the posterior | tuned on outcomes/quality, never on relevance labels or logged picks | category leaks, label echo |
+
+The arc's entire bug ledger retro-types: sit zero-fill = factor (likelihood) · z-inflation =
+factor (calibration; P3.0 was a calibration study) · graph-inert = dead move · `_mark_accessed`
+score-multiply = value term LEAKED into the posterior (typing violation — independently flagged
+as out-of-contract) · M_e sign flip = one coefficient asked to be factor AND value term ·
+pick echo = value/label confusion (off-policy) · "signal ÷ prevalence at three scales"
+(1e154cbe) = three layers collapsing into one factor family. The type system was being
+enforced by trial and pain; naming it makes it enforceable by inspection.
+
+**Derive, don't design (covers future layers):** write the generative story of a moment — a
+session carries live threads; threads activate nodes; active nodes generate every observable —
+then read the layers off it: one likelihood FACTOR per observation channel (message text /
+situation phrasing / rare tokens / pick·enc events / project / and mechanically-enumerable
+unbuilt ones: tool-usage, files-touched, time-of-day rhythm, register, speaker), one PRIOR per
+latent structure (thread persistence = decay; switching rate = the gate; thread↔community
+alignment; cross-session resumption = the L2 second timescale), VALUE terms from the delivery
+story (token cost, redundancy, fatigue/VOI; the encoder-feed decoupling = a second consumer
+with its own U over the shared posterior). New layers arrive pre-typed, pre-composed,
+pre-tested. The falsifiable residue moves up a level: the STORY (threads as the latent object)
+can be wrong in shape — a far better place to be wrong than at the layer level, fifty times.
