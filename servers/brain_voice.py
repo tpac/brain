@@ -20,6 +20,7 @@ from typing import List, Dict, Any, Optional, Callable, Union
 
 from . import embedder
 from .schema import BRAIN_VERSION
+from .brain_constants import dashboard_setup_url
 
 
 # ── Constants (shared with daemon_hooks.py) ──
@@ -285,7 +286,6 @@ class BrainVoice:
         it) — strip it here so the boot injection stays pure stance, exactly
         as before the frontmatter existed.
         """
-        import os
         try:
             root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             with open(os.path.join(root, 'skills', 'brain', 'SKILL.md')) as f:
@@ -403,10 +403,10 @@ class BrainVoice:
                 "and memory surfacing are off until a key is set. Tell the "
                 "operator before starting work — they should hear this from "
                 "you, not find it in the dashboard. Easiest path: open "
-                "http://localhost:%s/setup and paste the key there (local "
+                "%s and paste the key there (local "
                 "dashboard, stays on this machine); or ~/.config/brain/env "
                 "directly. Picked up automatically, no restart needed."
-                % (os.environ.get('DASHBOARD_PORT') or '47303'))
+                % dashboard_setup_url())
 
         out.append("[/BRAIN]")
 

@@ -10,6 +10,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _MCP_PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/runtime-state.sh"
 
 # ── Cold install: NEVER bootstrap inline — wait on the sentinel ────────────
 # Claude Code gives this spawn 30s and never retries a failed connection. A
@@ -19,12 +20,15 @@ _MCP_PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # detached in case nothing else has, then poll the sentinel with a deadline
 # under CC's 30s. Ready in time → connect normally this session. Not ready →
 # exit with a clear message; the NEXT session lands on the ~8ms fast path.
-if [ ! -f "$_MCP_PLUGIN_ROOT/.runtime-ready" ] || [ ! -x "$_MCP_PLUGIN_ROOT/venv/bin/python" ]; then
-    nohup "$SCRIPT_DIR/ensure-runtime.sh" \
-      >> "$_MCP_PLUGIN_ROOT/.bootstrap.log" 2>&1 &
+if ! brain_runtime_ready "$_MCP_PLUGIN_ROOT"; then
+    # Subshell + nohup: detach from this launcher's process group — when the
+    # 25s deadline below exits 1 and CC tears the MCP spawn down, a
+    # group-directed signal must not kill the bootstrap mid-install.
+    ( nohup "$SCRIPT_DIR/ensure-runtime.sh" \
+        >> "$_MCP_PLUGIN_ROOT/.bootstrap.log" 2>&1 & )
     echo "[brain-mcp] cold install — waiting for runtime bootstrap (max 25s)..." >&2
     _mcp_deadline=$(( $(date +%s) + 25 ))
-    while [ ! -f "$_MCP_PLUGIN_ROOT/.runtime-ready" ] || [ ! -x "$_MCP_PLUGIN_ROOT/venv/bin/python" ]; do
+    while ! brain_runtime_ready "$_MCP_PLUGIN_ROOT"; do
         if [ "$(date +%s)" -ge "$_mcp_deadline" ]; then
             echo "[brain-mcp] runtime still bootstrapping — brain tools will be available next session (progress: $_MCP_PLUGIN_ROOT/.bootstrap.log)" >&2
             exit 1

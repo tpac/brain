@@ -10,7 +10,7 @@ import os
 import unittest
 import tempfile
 
-from dashboard.server import write_api_key, api_key_present
+from dashboard.queries.setup import write_api_key, api_key_present
 
 
 class TestWriteApiKey(unittest.TestCase):

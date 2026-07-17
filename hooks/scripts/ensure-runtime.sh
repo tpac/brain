@@ -19,6 +19,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/runtime-state.sh"
 
 SENTINEL="$PLUGIN_DIR/.runtime-ready"
 UV_BIN="$PLUGIN_DIR/bin/uv"
@@ -30,8 +31,8 @@ REQ_FILE="$PLUGIN_DIR/requirements.txt"
 PY_VERSION="${BRAIN_PY_VERSION:-3.11}"
 UV_VERSION="${BRAIN_UV_VERSION:-0.5.11}"  # pinned for reproducibility
 
-# Fast path — already bootstrapped. Verify sentinel + venv python still exists.
-if [ -f "$SENTINEL" ] && [ -x "$VENV_PY" ]; then
+# Fast path — already bootstrapped (predicate: runtime-state.sh).
+if brain_runtime_ready "$PLUGIN_DIR"; then
     exit 0
 fi
 
@@ -45,40 +46,78 @@ fi
 # mkdir is the atomic test-and-set (macOS ships no flock(1)): exactly one
 # winner runs the bootstrap; losers wait for the sentinel, then fast-path.
 LOCK_DIR="$PLUGIN_DIR/.runtime-bootstrap.lock"
-LOCK_STALE_S=600     # a lock older than this is a dead winner — steal it
-WAIT_MAX_S=600       # loser wait ceiling (callers' own timeouts kill sooner)
+FAIL_SENTINEL="$PLUGIN_DIR/.bootstrap-failed"
+# Stale ceiling must comfortably exceed a WORST-CASE legitimate bootstrap
+# (uv + Python + ~200MB deps + ~150MB model on a slow link) — a premature
+# steal re-creates the concurrent-uv SIGKILL race the lock exists to kill
+# (code review 2026-07-17). Wait ceiling sits above it so the fatal branch
+# is reachable only past the steal opportunity.
+LOCK_STALE_S=1800    # 30 min: a lock older than this is a dead winner
+WAIT_MAX_S=2100      # loser ceiling (callers' own timeouts kill far sooner)
+FAIL_COOLDOWN_S=300  # a recent deterministic failure fails waiters fast
 
-_now() { date +%s; }
 _lock_age() {
     # seconds since the lock dir was created; 0 if unreadable (treat as fresh)
     local _m
     _m=$(stat -f %m "$LOCK_DIR" 2>/dev/null || stat -c %Y "$LOCK_DIR" 2>/dev/null) || { echo 0; return; }
-    echo $(( $(_now) - _m ))
+    echo $(( $(date +%s) - _m ))
+}
+_file_age() {
+    local _m
+    _m=$(stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null) || { echo 999999; return; }
+    echo $(( $(date +%s) - _m ))
 }
 
-_deadline=$(( $(_now) + WAIT_MAX_S ))
+_deadline=$(( $(date +%s) + WAIT_MAX_S ))
 while :; do
     # Re-check the fast path each round — the winner may have finished.
-    if [ -f "$SENTINEL" ] && [ -x "$VENV_PY" ]; then
+    if brain_runtime_ready "$PLUGIN_DIR"; then
         exit 0
     fi
+    # Recent deterministic failure (offline, unsupported platform): fail
+    # fast instead of a thundering herd of expensive serial retries. Past
+    # the cooldown, retries are allowed again (transient network heals).
+    if [ -f "$FAIL_SENTINEL" ] && [ "$(_file_age "$FAIL_SENTINEL")" -lt "$FAIL_COOLDOWN_S" ]; then
+        echo "[brain-boot] FATAL: a bootstrap attempt failed $(_file_age "$FAIL_SENTINEL")s ago ($(cat "$FAIL_SENTINEL" 2>/dev/null)) — retry after cooldown" >&2
+        exit 1
+    fi
     if mkdir "$LOCK_DIR" 2>/dev/null; then
+        echo "$$" > "$LOCK_DIR/owner" 2>/dev/null || true
         break  # we are the winner — run the bootstrap below
     fi
     if [ "$(_lock_age)" -gt "$LOCK_STALE_S" ]; then
-        echo "[brain-boot] stale bootstrap lock (winner died?) — stealing" >&2
-        rm -rf "$LOCK_DIR" 2>/dev/null || true
+        # Atomic steal: rename first — only ONE stealer's mv succeeds, so
+        # two waiters can never both demolish the lock and double-win (the
+        # rm-then-mkdir TOCTOU from the first cut of this code).
+        if mv "$LOCK_DIR" "$LOCK_DIR.stale.$$" 2>/dev/null; then
+            echo "[brain-boot] stale bootstrap lock (winner died?) — stole it" >&2
+            rm -rf "$LOCK_DIR.stale.$$" 2>/dev/null || true
+        fi
         continue
     fi
-    if [ "$(_now)" -ge "$_deadline" ]; then
+    if [ "$(date +%s)" -ge "$_deadline" ]; then
         echo "[brain-boot] FATAL: waited ${WAIT_MAX_S}s for a concurrent bootstrap that never finished" >&2
         exit 1
     fi
     sleep 1
 done
-# Winner: always release the lock — a FAILED bootstrap must not deadlock the
-# other consumers (they retry-acquire and either succeed or fail loudly).
-trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+# Winner cleanup — on ANY exit: release the lock IF still ours (the owner
+# token stops a slow winner's trap from demolishing a successor's lock
+# after a steal), and stamp the failure sentinel on non-zero exit so
+# waiters fail fast instead of serially re-running the whole bootstrap.
+# Success clears any stale failure stamp.
+_bootstrap_cleanup() {
+    local _code=$1
+    if [ "$(cat "$LOCK_DIR/owner" 2>/dev/null)" = "$$" ]; then
+        rm -rf "$LOCK_DIR" 2>/dev/null || true
+    fi
+    if [ "$_code" -ne 0 ]; then
+        echo "exit=$_code pid=$$ $(date '+%Y-%m-%dT%H:%M:%S')" > "$FAIL_SENTINEL" 2>/dev/null || true
+    else
+        rm -f "$FAIL_SENTINEL" 2>/dev/null || true
+    fi
+}
+trap '_bootstrap_cleanup $?' EXIT
 
 echo "[brain-boot] first-run setup — installing isolated Python $PY_VERSION + embedding runtime" >&2
 echo "[brain-boot]   plugin dir: $PLUGIN_DIR" >&2

@@ -2099,15 +2099,19 @@ class Brain(
 
         The single keyless-mode gate: S1 surface, S1 Scribe, S2 maintenance,
         and the connection warms all check this before spending an API call
-        that can only 401. load_env() re-reads the env file on every check
-        (one stat when unchanged), so writing the key to ~/.config/brain/env
-        flips this True on the next check — the no-restart onboarding heal.
-        sk-* matches boot-brain.sh's gate: a placeholder value counts as
-        missing, not as a key.
+        that can only 401. resolve_api_key() re-reads the env file on every
+        check (the FILE wins over a stale os.environ value — that's what
+        makes key replacement via /setup or the env file take effect with no
+        restart, not just first-key). sk-* matches boot-brain.sh's gate: a
+        placeholder value counts as missing, not as a key.
         """
-        from .scales.dispatch import load_env
-        load_env()
-        if os.environ.get('ANTHROPIC_API_KEY', '').startswith('sk-'):
+        from .scales.dispatch import resolve_api_key
+        key = resolve_api_key()
+        if key.startswith('sk-'):
+            # Keep os.environ in sync so anthropic.Anthropic() (which reads
+            # the env var at construction) builds with the CURRENT key.
+            if os.environ.get('ANTHROPIC_API_KEY') != key:
+                os.environ['ANTHROPIC_API_KEY'] = key
             if getattr(self, '_llm_unavailable_noted', False):
                 self._llm_unavailable_noted = False
                 self._file_logger.info(
@@ -2153,23 +2157,31 @@ class Brain(
         rarely raises; auth/network errors surface on the first real API call,
         where callers already handle them.
         """
-        client = getattr(self, 'anthropic_client', None)
-        if client is not None:
-            return client
-        from .scales.dispatch import load_env
+        from .scales.dispatch import resolve_api_key
         from .scales.runner import ANTHROPIC_CLIENT_TIMEOUT
-        load_env()
+        key = resolve_api_key()
+        client = getattr(self, 'anthropic_client', None)
+        # Key-stamped cache: reuse the client only while it was built with
+        # the key that is CURRENT now. A replaced key (via /setup or the env
+        # file — e.g. the first key was mistyped/revoked) rebuilds on the
+        # next call, keeping the "picked up automatically, no restart"
+        # promise true for replacement, not just first-key (code review
+        # 2026-07-17). One file read per call — LLM calls only, never the
+        # recall hot path.
+        if client is not None and getattr(self, '_anthropic_client_key', None) == key:
+            return client
+        if os.environ.get('ANTHROPIC_API_KEY') != key and key:
+            os.environ['ANTHROPIC_API_KEY'] = key
         import anthropic
         client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
         # Keyless boot (first-run onboarding): don't cache a client that can
-        # never authenticate. Returning it uncached means load_env() re-resolves
-        # on every call, so the moment the operator writes the key to
-        # ~/.config/brain/env the next LLM call picks it up — no daemon restart.
-        # sk-* (not truthiness) so a placeholder like 'changeme' is also never
-        # cached — same predicate as llm_available and boot-brain.sh.
-        if not os.environ.get('ANTHROPIC_API_KEY', '').startswith('sk-'):
+        # never authenticate — the next call re-resolves. sk-* (not
+        # truthiness) so a placeholder like 'changeme' is never cached —
+        # same predicate as llm_available and boot-brain.sh.
+        if not key.startswith('sk-'):
             return client
         self.anthropic_client = client
+        self._anthropic_client_key = key
         return client
 
     def warm_anthropic_connection(self) -> bool:

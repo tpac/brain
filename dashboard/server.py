@@ -20,6 +20,7 @@ from .daemon_client import DAEMON_PORT, daemon_alive, daemon_send
 from . import contract
 from .queries import (
     aspects,
+    setup,
     encoding,
     errors,
     explorer,
@@ -51,67 +52,6 @@ _STATIC_MIME = {
 }
 
 
-# ── First-run setup: API-key persistence (the /setup page's backend) ──
-# The one file the dashboard ever writes. User config, never a DB — the
-# passive-observer invariant (CLAUDE.md) is about the brain's databases.
-
-def brain_env_path() -> str:
-    """Canonical user env file — same resolution as brain-env.sh/load_env."""
-    xdg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(
-        os.path.expanduser('~'), '.config')
-    return os.path.join(xdg, 'brain', 'env')
-
-
-def api_key_present(env_path: str = None) -> bool:
-    """True when the env file carries an ANTHROPIC_API_KEY line.
-
-    Presence only — the value is never read into a response.
-    """
-    path = env_path or brain_env_path()
-    try:
-        with open(path) as f:
-            return any(line.startswith('ANTHROPIC_API_KEY=') for line in f)
-    except OSError:
-        return False
-
-
-def write_api_key(env_path: str, key: str):
-    """Persist the API key to the dotenv file (mode 600, atomic replace).
-
-    Returns (ok, message). The message never contains the key. Unlike the
-    boot-hook mirror (which never overwrites), the setup form is explicit
-    user intent — an existing ANTHROPIC_API_KEY line is REPLACED.
-    """
-    if not key.startswith('sk-') or len(key) < 10 or len(key) > 300:
-        return False, "That doesn't look like an Anthropic API key (expected sk-...)."
-    if any(c.isspace() for c in key):
-        return False, "The key contains whitespace — check the paste."
-    lines = []
-    try:
-        with open(env_path) as f:
-            lines = [l.rstrip('\n') for l in f
-                     if not l.startswith('ANTHROPIC_API_KEY=')]
-    except OSError:
-        pass
-    lines.append('ANTHROPIC_API_KEY=%s' % key)
-    os.makedirs(os.path.dirname(env_path), exist_ok=True)
-    tmp = env_path + '.tmp.%d' % os.getpid()
-    try:
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, 'w') as f:
-            f.write('\n'.join(lines) + '\n')
-        os.replace(tmp, env_path)
-        os.chmod(env_path, 0o600)
-    except OSError as e:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        return False, "Could not write %s: %s" % (env_path, e.strerror or e)
-    return True, ("Key saved. Your brain picks it up on the next message — "
-                  "no restart needed.")
-
-
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -127,6 +67,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
     # ── Routing ──
 
     def do_GET(self):
+        if not self._loopback_guard():
+            return self._json(403, {"error": "Forbidden"})
         parsed = urlparse(self.path)
         path = parsed.path
         params = parse_qs(parsed.query)
@@ -141,7 +83,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         elif path == "/setup":
             self._serve_static_file("setup.html")
         elif path == "/api/setup-state":
-            self._json(200, {"key_present": api_key_present()})
+            self._json(200, {"key_present": setup.api_key_present()})
 
         # Stats / health
         elif path == "/api/stats":
@@ -273,6 +215,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                              onboarding path for the API key. Localhost-only
                              (server binds 127.0.0.1). Never touches a DB.
         """
+        if not self._loopback_guard():
+            return self._json(403, {"error": "Forbidden"})
         parsed = urlparse(self.path)
         path = parsed.path
 
@@ -293,17 +237,61 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if err:
             return self._json(400, {"ok": False, "error": err})
         key = (body.get("api_key") or "").strip()
-        ok, msg = write_api_key(brain_env_path(), key)
+        ok, msg = setup.write_api_key(setup.brain_env_path(), key)
         self._json(200 if ok else 400, {"ok": ok, "message": msg})
 
+    # Largest legitimate POST body (self-send message / setup key) is well
+    # under this. Caps the read so a hostile Content-Length can't tie up a
+    # handler thread allocating gigabytes.
+    _MAX_BODY_BYTES = 65536
+
+    def _loopback_guard(self) -> bool:
+        """True when the request provably came from this machine's own pages.
+
+        Two checks, closing two browser-as-confused-deputy attacks
+        (security review 2026-07-17, findings 1+3):
+        - Host must be loopback → kills DNS rebinding (attacker.com resolved
+          to 127.0.0.1 arrives with Host: attacker.com).
+        - Origin, when the browser sends one, must be a loopback origin →
+          kills cross-site POSTs (CSRF); same-origin requests always pass.
+        The server only ever binds 127.0.0.1, so legitimate traffic always
+        satisfies both.
+        """
+        host = (self.headers.get("Host") or "").rsplit(":", 1)[0].strip("[]")
+        if host not in ("127.0.0.1", "localhost", "::1"):
+            return False
+        origin = self.headers.get("Origin")
+        if origin:
+            try:
+                ohost = (urlparse(origin).hostname or "").strip("[]")
+            except ValueError:
+                return False
+            if ohost not in ("127.0.0.1", "localhost", "::1"):
+                return False
+        return True
+
     def _read_json_body(self):
-        """Parse the request body as JSON; ({}, error_str) on any failure."""
+        """Parse the request body as JSON; ({}, error_str) on any failure.
+
+        Content-Type must be application/json: cross-origin fetch() with a
+        JSON Content-Type is NOT a "simple request", so the browser
+        preflights it — and this server answers no preflight (no
+        do_OPTIONS, no CORS headers), so hostile pages are blocked. A
+        text/plain body would sail through preflight-free, which is exactly
+        the CSRF hole this check closes (security review 2026-07-17,
+        finding 1).
+        """
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
+        if ctype.lower() != "application/json":
+            return {}, "Content-Type must be application/json"
         try:
             length = int(self.headers.get("Content-Length", 0))
         except (TypeError, ValueError):
             length = 0
         if not length:
             return {}, "empty body"
+        if length > self._MAX_BODY_BYTES:
+            return {}, "body too large"
         try:
             raw = self.rfile.read(length)
             return json.loads(raw.decode("utf-8")), None
@@ -337,10 +325,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
     # ── Response helpers ──
 
     def _json(self, code: int, data):
+        # NO Access-Control-Allow-Origin header — the dashboard is strictly
+        # same-origin (all JS uses relative fetches). The old wildcard `*`
+        # let ANY website the user visited read the whole brain API
+        # cross-origin (memory nodes, traces, recalls) despite the loopback
+        # bind — the browser is the confused deputy. Security review
+        # 2026-07-17, finding 2.
         body = json.dumps(data, default=str, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Content-Length", len(body))
         self.end_headers()
         self.wfile.write(body)

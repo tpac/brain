@@ -46,6 +46,34 @@ def load_env():
         return
 
 
+def resolve_api_key() -> str:
+    """The API key the daemon SHOULD be using RIGHT NOW.
+
+    The env file is the canonical user-editable source — the dashboard's
+    /setup form and boot-brain.sh's userConfig mirror both write it, and both
+    promise "picked up automatically, no restart". load_env()'s no-override
+    policy makes that promise false for key REPLACEMENT: once any key is in
+    os.environ (first resolution, hook inheritance), a rewritten file is
+    invisible (code review 2026-07-17, heal-truth finding). So: the file's
+    current value wins when present; os.environ (real shell export, plist)
+    is the fallback. Read every call — one stat + tiny read, only ever on
+    LLM-availability checks, not the recall hot path.
+    """
+    xdg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(
+        os.path.expanduser('~'), '.config')
+    env_path = os.path.join(xdg, 'brain', 'env')
+    try:
+        with open(env_path) as f:
+            for line in f:
+                if line.startswith('ANTHROPIC_API_KEY='):
+                    v = line.split('=', 1)[1].strip()
+                    if v:
+                        return v
+    except OSError:
+        pass
+    return os.environ.get('ANTHROPIC_API_KEY', '')
+
+
 # The write commands a scale agent can issue — the canonical classification read
 # by the attribution chokepoint (s2/base.apply_encoder_attribution) and the
 # contract test (test_contract_sync Layer 5: must be a subset of COMMAND_TABLE).

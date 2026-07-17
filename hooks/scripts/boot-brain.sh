@@ -81,14 +81,19 @@ automatic memory surfacing use the Anthropic API and need your key:
 
   → Open http://localhost:${DASHBOARD_PORT:-47303}/setup and paste it there.
     (That's your brain's local dashboard — it also shows what Anchor
-    remembers, recalls and learns. Local-only, nothing leaves this machine.)
+    remembers, recalls and learns. Local-only, nothing leaves this machine.
+    On a brand-new install the page comes alive when the first-run setup
+    finishes, ~1-2 minutes.)
 
-  Alternatives: the Anchor plugin's settings in Claude Code (if it offers
-  the "Anthropic API key" field), or the env file directly:
-     printf 'ANTHROPIC_API_KEY=sk-ant-...\n' >> "${XDG_CONFIG_HOME:-\$HOME/.config}/brain/env"
+  Alternatives: the Anchor plugin's settings in Claude Code — fill the
+  "Anthropic API key" field, then start a new session (it's applied at
+  session start). Or the env file directly:
+     mkdir -p "${XDG_CONFIG_HOME:-\$HOME/.config}/brain"
+     printf 'ANTHROPIC_API_KEY=sk-ant-...\n' > "${XDG_CONFIG_HOME:-\$HOME/.config}/brain/env"
+     chmod 600 "${XDG_CONFIG_HOME:-\$HOME/.config}/brain/env"
 
-Get a key at https://console.anthropic.com/settings/keys — the running
-brain picks it up on your next message, no restart needed.
+Get a key at https://console.anthropic.com/settings/keys — the dashboard
+and env-file paths take effect on your next message, no restart needed.
 EOF
   cat >&2 <<EOF
 [brain-boot] ANTHROPIC_API_KEY not set — booting in local-only mode (no encode/surface).
@@ -107,30 +112,46 @@ fi
 # launcher waits on the sentinel and connects in-session when the bootstrap
 # is quick; otherwise the next session lands on the ~8ms fast path.
 _BOOT_PLUGIN_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-if [ ! -f "$_BOOT_PLUGIN_ROOT/.runtime-ready" ] || [ ! -x "$_BOOT_PLUGIN_ROOT/venv/bin/python" ]; then
-  # Chain ensure-dashboard after the bootstrap: on a keyless first install
-  # the setup URL printed above must come alive without the user invoking
-  # /dashboard — the dashboard IS the presented key-entry path (and the new
-  # user's first look at their brain). Idempotent + cheap when already up.
-  nohup bash -c "\"$(dirname "$0")/ensure-runtime.sh\" && \"$(dirname "$0")/ensure-dashboard.sh\"" \
-    >> "$_BOOT_PLUGIN_ROOT/.bootstrap.log" 2>&1 &
+source "$(dirname "$0")/runtime-state.sh"
+if ! brain_runtime_ready "$_BOOT_PLUGIN_ROOT"; then
+  # Chain the full first-run provisioning after the bootstrap, in order:
+  # runtime → daemon launchd service (RunAtLoad starts the daemon — without
+  # this the first session had no daemon until MCP's health monitor kicked
+  # in) → dashboard (the setup URL printed above must come alive without
+  # the user invoking /dashboard — it IS the presented key-entry path).
+  # Positional-args bash -c: metachar-proof for any install path (quotes,
+  # $, backticks — not just spaces). Subshell + nohup: detach from the
+  # hook's job/process group so CC's teardown can't take the chain down.
+  _BOOT_SD="$(dirname "$0")"
+  ( nohup bash -c '"$1" && "$2" && "$3"' _ \
+      "$_BOOT_SD/ensure-runtime.sh" \
+      "$_BOOT_SD/install-daemon-service.sh" \
+      "$_BOOT_SD/ensure-dashboard.sh" \
+      >> "$_BOOT_PLUGIN_ROOT/.bootstrap.log" 2>&1 & )
   cat <<EOF
 
 🧠 Anchor — first-run install in progress
 
 Anchor is building its local runtime in the background (isolated Python +
-embedding model, ~1 minute; progress: $_BOOT_PLUGIN_ROOT/.bootstrap.log).
-Nothing to do — memory tools appear this session if the install finishes in
-time, otherwise from the next session on.
+embedding model — a couple of minutes on typical networks; progress:
+$_BOOT_PLUGIN_ROOT/.bootstrap.log). Nothing to do. Memory tools usually
+appear from the NEXT session on (this session only on a very fast
+connection) — everything else about this session works normally.
 EOF
   echo "[brain-boot] cold install — bootstrap detached, hook exiting fast" >&2
   exit 0
 fi
 
 # Keyless warm boot: make sure the dashboard (and with it the /setup page the
-# notices point to) is actually up. Idempotent — no-op when already running.
+# notices point to) is actually up. The curl probe skips the fork + full env
+# resolution when it already answers (the common case after the first boot);
+# output goes to the bootstrap log — a dashboard that fails to come up must
+# not die silently while the boot notice points users at its URL.
 if [ "$BRAIN_KEYLESS_BOOT" = "1" ]; then
-  nohup "$(dirname "$0")/ensure-dashboard.sh" >/dev/null 2>&1 &
+  if [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 1 "http://127.0.0.1:${DASHBOARD_PORT:-47303}/" 2>/dev/null)" != "200" ]; then
+    ( nohup "$(dirname "$0")/ensure-dashboard.sh" \
+        >> "$(cd "$(dirname "$0")/../.." && pwd)/.bootstrap.log" 2>&1 & )
+  fi
 fi
 
 source "$(dirname "$0")/resolve-brain-db.sh"

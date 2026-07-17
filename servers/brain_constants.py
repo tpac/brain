@@ -402,3 +402,23 @@ MAINTENANCE_FORCE_FIRE_SECONDS = 24 * 60 * 60
 # overloaded with many things — the user gets a working brain immediately;
 # maintenance can wait its turn after the first interaction.
 MAINTENANCE_BOOT_GRACE_SECONDS = 90
+
+# ── Dashboard (keyless-onboarding notices) ──
+# The dashboard's own default lives in dashboard/server.py (deliberately
+# servers-decoupled); this is the DAEMON-side single source for building the
+# /setup URL in keyless notices — daemon_hooks (per-turn PAUSED block) and
+# brain_voice (boot banner) both read it here instead of re-inlining the
+# literal port (code review 2026-07-17, contract-first).
+DASHBOARD_DEFAULT_PORT = 47303
+
+
+def dashboard_setup_url() -> str:
+    """The /setup URL keyless notices point users at.
+
+    Reads DASHBOARD_PORT from the environment (populated from
+    ~/.config/brain/env by load_env on the keyless path, so a custom port
+    is honored daemon-side) with the fixed default as fallback.
+    """
+    import os
+    return "http://localhost:%s/setup" % (
+        os.environ.get('DASHBOARD_PORT') or DASHBOARD_DEFAULT_PORT)

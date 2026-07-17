@@ -449,19 +449,19 @@ def hook_recall(brain, args, graph_changes):
                 _counts = brain._llm_paused_notice_counts = {}
             if _counts.get(session_id, 0) < 3:
                 _counts[session_id] = _counts.get(session_id, 0) + 1
-                _dash_port = os.environ.get('DASHBOARD_PORT') or '47303'
+                from .brain_constants import dashboard_setup_url
                 additional_context = (
                     "[BRAIN]\n"
                     "LLM layer: PAUSED — the brain daemon has no API key. "
                     "Memory surfacing and learning (encoding) are OFF; "
                     "storage, traces and direct recall tools still work.\n"
                     "If you have not told the operator this session, tell "
-                    "them now: open http://localhost:%s/setup and paste the "
+                    "them now: open %s and paste the "
                     "key there (their brain's local dashboard — nothing "
                     "leaves the machine). Alternatives: the Anchor plugin "
                     "settings, or ~/.config/brain/env directly. Picked up "
                     "automatically, no restart needed.\n"
-                    "[/BRAIN]" % _dash_port)
+                    "[/BRAIN]" % dashboard_setup_url())
     except Exception as _surface_err:
         brain._log_error('daemon_surface', _surface_err,
                          'S1 Surface failed in daemon (query=%s)' % user_message[:100])
