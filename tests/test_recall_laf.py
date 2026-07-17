@@ -126,6 +126,73 @@ class TestLafEngineUnits(BrainTestBase):
                                                ref_types=['tool_result']), [])
 
 
+class TestZNormVariants(BrainTestBase):
+    """P3.0 normalizer variants (code-review 2026-07-16): properties that
+    were previously pinned only by eval/laf/walker/p3_norm.py's sanity
+    fixture, which never runs under pytest — a K-store flip activates this
+    code in production, so the suite must own it."""
+    needs_embedder = False
+
+    def test_support_dense_identical_sparse_bounded_zeros_neutral(self):
+        from servers.recall_laf import _zscore_support
+        rng = np.random.default_rng(7)
+        n = 2000
+        dense = rng.normal(0.6, 0.05, n)             # cosine-like, no zeros
+        assert np.allclose(_zscore_support(dense, n), _zscore(dense, n))
+        sparse = np.zeros(n)
+        sparse[rng.choice(n, 40, replace=False)] = rng.uniform(0.5, 0.9, 40)
+        assert _zscore(sparse, n).max() > 4.0        # the inflation is real
+        z_sup = _zscore_support(sparse, n)
+        assert z_sup.max() < 4.0                     # ...and support fixes it
+        assert np.all(z_sup[sparse == 0.0] == 0.0)   # zeros stay neutral
+
+    def test_rank_bounded_unconditionally_and_tie_stable(self):
+        from servers.recall_laf import _zscore_rank
+        rng = np.random.default_rng(7)
+        n = 2000
+        sparse = np.zeros(n)                          # 98% zero-tie block —
+        sparse[rng.choice(n, 40, replace=False)] = 1.0  # the z-of-ranks trap
+        for x in (rng.normal(0.6, 0.05, n), sparse):
+            zr = _zscore_rank(x, n)
+            assert np.abs(zr).max() <= np.sqrt(3) + 1e-9
+
+    def test_variant_dispatch_and_unknown_kind_raises(self):
+        from servers.recall_laf import zscore_variant, Z_NORMS
+        x = np.array([1.0, 2.0, 3.0, 4.0])
+        assert np.allclose(zscore_variant(x, 4, kind='current'),
+                           _zscore(x, 4))
+        assert set(Z_NORMS) == {'current', 'support', 'rank'}
+        with self.assertRaises(ValueError):
+            zscore_variant(x, 4, kind='suport')
+
+    def test_config_merge_validates_z_norm_loudly(self):
+        # A typo'd K-store flip must degrade to 'current' with one loud log —
+        # never raise per-query inside scores() (which the caller's fallback
+        # would turn into fleet-wide champion mode).
+        logged = []
+
+        class TypoBrain:
+            def get_interaction_config(self, name):
+                return {'z_norm': 'suport'}
+
+            def _log_error(self, tag, e, msg):
+                logged.append((tag, str(e)))
+
+        cfg = LafV1Engine().config(TypoBrain())
+        assert cfg['z_norm'] == 'current'
+        assert logged and logged[0][0] == 'recall_laf_config'
+
+    def test_support_zero_sea_lanes_exclude_contract_zero_lanes(self):
+        # proj's 0.0 is a REAL activation (cross-project inhibition); the
+        # support rule would zero the whole lane (all-1.0 support, std<1e-9).
+        from servers.recall_laf import (SUPPORT_ZERO_SEA_LANES,
+                                        _zscore_support)
+        assert SUPPORT_ZERO_SEA_LANES == {'pick', 'enc', 'idf'}
+        assert 'proj' not in SUPPORT_ZERO_SEA_LANES
+        proj_like = np.array([1.0, 1.0, 1.0, 0.0, 0.0, np.nan])
+        assert np.all(_zscore_support(proj_like, 6) == 0.0)  # why the gate
+
+
 class TestProjLane(BrainTestBase):
     """proj lane: session-project provenance as a gain-dialed activation field.
 
@@ -234,6 +301,25 @@ class TestProjLane(BrainTestBase):
         # inert without a session project: everyone z=0 → equal scores
         s0, _ = eng.scores(self.brain, 'caching strategy decision', qv)
         assert s0[aid] == s0[bid] == s0[cid]
+
+    def test_proj_ordering_survives_support_z_flip(self):
+        # REGRESSION (code-review 2026-07-16): under z_norm='support' the
+        # scores() z-loop must route proj through plain z (lane gate) — the
+        # support rule on a {1.0, 0.0, NaN} lane would drop the 0.0s, leave
+        # an all-1.0 support with std<1e-9, and zero the lane, silently
+        # killing cross-project inhibition.
+        import time as _time
+        import servers.embedder as embedder
+        eng, aid, bid, cid = self._engine_with_projects()
+        eng._cfg = {**DEFAULT_CONFIG, 'z_norm': 'support',
+                    'gain_maxsim': 0.0, 'gain_pick': 0.0, 'gain_enc': 0.0,
+                    'gain_idf': 0.0, 'gain_sit': 0.0, 'gain_proj': 1.0}
+        eng._cfg_ts = _time.monotonic()
+        qv = embedder.embed_query('caching strategy decision')
+        s, _ = eng.scores(self.brain, 'caching strategy decision', qv,
+                          session_project='alpha')
+        assert s[aid] > s[cid] > s[bid], \
+            'support-z flip zeroed the proj lane — the lane gate is broken'
 
     def test_project_rows_kv_wins_over_column(self):
         # migration-proof read: node_metadata_kv['project'] beats the legacy

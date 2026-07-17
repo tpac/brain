@@ -10,8 +10,10 @@ Three variants under STATIC gains (production zscore_variant dispatch —
 eval measures the exact function production would run):
   current   — plain _zscore (the shipped incumbent)
   support   — stats over the NONZERO finite support; zeros stay neutral 0
-  rank      — average-tie fractional ranks, then _zscore of the rank vector
-              (bounded ~±1.7 — no lane dominates on sparsity alone)
+  rank      — average-tie fractional percentiles × √12 (the ANALYTIC uniform
+              z — deliberately NOT _zscore of the rank vector, whose tie-
+              shrunken std re-inflates sparse matches to z≈7; bounded ±√3
+              unconditionally — no lane dominates on sparsity alone)
 
 PRE-DECLARED PICK (written before the run):
   primary   best June+ AUC (auc_val) on the Q1 winner config arm
@@ -52,7 +54,9 @@ from q1_sweep import (GAINS, compose, stack_messages, weights,      # noqa: E402
 from q1_tiers import WINNER, TIERS                                  # noqa: E402
 from reach_leg import load_cues, cue_fields, rank_rows              # noqa: E402
 
-NORMS = ('current', 'support', 'rank')
+from servers.recall_laf import Z_NORMS                              # noqa: E402
+NORMS = tuple(Z_NORMS)          # the production registry IS the variant list
+                                # (insertion order keeps 'current' first)
 GATE_TIERS = ('gold_plus', 'gold')
 EYEBALL_CUES = 2
 REPORT = WALKER_DIR / 'p3_norm.md'

@@ -265,7 +265,7 @@ def load(walker):
     return list(turns.values())
 
 
-def compose(mats, ww, cfg, n, gains=None, mask=None, znorm='current'):
+def compose(mats, ww, cfg, n, gains=None, mask=None, znorm=None):
     """THE grid composition — shared by the rank leg (pool rows) and the
     reach leg (full-field rows); one implementation, no cross-leg drift.
 
@@ -283,9 +283,14 @@ def compose(mats, ww, cfg, n, gains=None, mask=None, znorm='current'):
 
     znorm: P3.0 lane-normalizer variant ('current'/'support'/'rank') —
     routed through the production zscore_variant dispatch; default is
-    bit-identical to the Q1 runs.
+    bit-identical to the Q1 runs. When the kwarg is not given explicitly,
+    cfg['z_norm'] is honored (the PRODUCTION channel for this knob) so a
+    replayed K-store config can never be silently scored as 'current'
+    under a variant label (code-review 2026-07-16).
     """
     gains = gains or GAINS
+    if znorm is None:
+        znorm = cfg.get('z_norm', 'current')
 
     def zs(x):
         return zscore_variant(x, n, mask=mask, kind=znorm)
@@ -333,7 +338,7 @@ def stack_messages(op_mat, anchor_mat, w, cfg):
     return m, w
 
 
-def score_turn(td, cfg, w, gains=None, znorm='current'):
+def score_turn(td, cfg, w, gains=None, znorm=None):
     """Config → per-candidate scores for one turn (pool z, production
     _zscore). A message = (offset j, source op|anchor); texts=op+anchor
     puts BOTH sources in the stack as separate messages with weight w_j —
@@ -351,12 +356,21 @@ def score_turn(td, cfg, w, gains=None, znorm='current'):
     base = compose(mats, ww, cfg, nc, gains=gains, znorm=znorm)
     kind, delta = cfg['me']
     if kind != 'off':
-        # 2′ (H2-pinned): surfaced-only running fatigue, z-space subtraction
+        # 2′ (H2-pinned): surfaced-only running fatigue, z-space subtraction.
+        # δ is calibrated in 'current' z-space (unbounded lane z); variant
+        # norms re-scale base (rank bounds it to ~±√3·Σgains) so the same δ
+        # carries a different relative weight — cross-norm comparisons of
+        # me≠off configs are confounded. Refuse loudly until δ is
+        # recalibrated per norm (code-review 2026-07-16).
+        if znorm not in (None, 'current'):
+            raise SystemExit('score_turn: M_e δ is calibrated for '
+                             "znorm='current' only — recalibrate before "
+                             'running fatigue configs under %r' % znorm)
         base = base - float(delta) * td.fat
     return base
 
 
-def evaluate(turns, cfg, znorm='current'):
+def evaluate(turns, cfg, znorm=None):
     """One config over all turns → metrics dict (overall + slices)."""
     w = weights(cfg)
     pools = {'all': ([], []), 'val': ([], []), 'normal': ([], []),

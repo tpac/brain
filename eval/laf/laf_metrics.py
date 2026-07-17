@@ -17,16 +17,20 @@ This module is the fix — the canonical definitions, with the semantics settled
 import numpy as np
 
 
-def zscore(x, elig, n):
+def zscore(x, elig, n, kind='current'):
     """Standardize x over the eligible finite entries → unit variance; 0 elsewhere.
     The LAF fusion normalizer: gains stay pure influence dials only if every
     operator field passes through this exact form.
 
-    Delegates to the PRODUCTION normalizer (servers/recall_laf.py:_zscore) with
-    the eval-side eligibility mask — single source, no eval↔production drift
-    (code-review 2026-07-02)."""
-    from servers.recall_laf import _zscore
-    return _zscore(x, n, mask=elig)
+    Delegates to the PRODUCTION normalizer dispatch (servers/recall_laf.py:
+    zscore_variant) with the eval-side eligibility mask — single source, no
+    eval↔production drift (code-review 2026-07-02; variant passthrough added
+    by code-review 2026-07-16). `kind` mirrors the production `z_norm` config
+    key: if the K-store ever flips z_norm off 'current', probes comparing
+    against production MUST pass the active kind or their numbers measure a
+    normalizer production no longer runs."""
+    from servers.recall_laf import zscore_variant
+    return zscore_variant(x, n, mask=elig, kind=kind)
 
 
 def ranks(scores, elig, master):
