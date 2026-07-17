@@ -2179,3 +2179,63 @@ settling) are built in the typed vocabulary as they arrive — the codebase conv
 rung by rung; (3) refactor is licensed only where a typing violation is ALSO a measured defect —
 exactly one on the books (`_mark_accessed` fatigue), already sequenced post-moment-value-check.
 The math is a compass, not a demolition order.
+
+### 20.17 Stage-3 pre-registration — moment wiring in the production engine (laid out 2026-07-16, awaiting Tom's "stands")
+
+**Type declaration (per §20.16 policy): L2 FACTOR-set extension** — per-slot moment evidence
+(j≥1 message activations) joins the field as calibrated factors with K-store gains. No moves
+(no settling/gating), no value-term changes (fatigue untouched), no multi-store S. One rung.
+
+**Question:** does the moment stack's measured quality gain (soft_r 0.43 vs 0.27, echo-proof,
+shuffle-proof — §20.13.2) survive contact with production — real engine, real sessions, real
+latency — on blind gates?
+
+**What ships (flag-gated, DORMANT):** `scores()` accepts optional moment context (the session's
+last-K conversational message vectors); each j≥1 message contributes per-lane slot activations
+composed EXACTLY as the walker's winner shape (zsum: per-message z + gain-sum, then weighted
+turnsum — Tom's turn-meshing pin; per-slot gains are K-store values seeded from P3b's
+F_soft_ablate coefficients, maxsim/sit/idf only — the fit said pick/enc add nothing to quality).
+K=2 (the fit's slot horizon; tail carried ~0). Config block in DEFAULT_CONFIG:
+`moment_K` (0 = off, the shipped default — production unchanged until the K-store flips it),
+`moment_gains` (per lane×slot), all pointer-flip reversible.
+
+**Implementation shape — stateless unrolled FIRST, maintained state later:** the leaky
+integrator's unrolled form is mathematically identical at fixed K (§20.15 L2) and is PROVABLE —
+recall-time recompute from stored trace vectors cross-checks row-level against the walker
+composition (the as_of discipline). The maintained-state A (O(1)/turn, unbounded horizon,
+inhibition channel) is the NEXT rung, built only after this one proves value; building it first
+would couple an unproven mechanism to new persistence machinery.
+
+**Wiring questions the builder must answer before code (pre-named):**
+W1 — message-vector source at recall time: the engine's `_tr_*` trace caches hold per-message
+doc-side vectors keyed by (session, stop); the reach_leg `stack_rows` join is the reference
+semantics. Cache-freshness at the live edge (the current turn's own trace may not be written
+yet) must be characterized, not assumed.
+W2 — machine-turn filtering: the v6 lesson (778 machine turns mislabeled as moments). Production
+has `register_only` task-notification filtering; verify it covers the stack source or filter
+explicitly.
+W3 — j0-anchor exclusion (the temporal-leak rule) holds by construction: anchor joins at j≥1 only.
+
+**Pre-declared gates (P1 discipline, all six):**
+G1 — engine↔walker composition parity on labeled turns (row-level, reach_leg base-parity
+pattern) — the harness IS the engine or nothing downstream counts.
+G2 — gold-24 through REAL `brain.recall` with the DORMANT config flipped on in an isolated
+brain: need-reach @5/@25 and tier placement not worsened vs production (blind gate).
+G3 — frame_replay A/B (H4): capture/compare surfaced context on replayed real turns; Tom
+eyeballs titles (the eyeball catches what aggregates hide — standing lesson).
+G4 — latency: recall hot path flat within 10% at K=2 (the extra cost is K×lanes matvecs +
+per-message z over the field; budget it, measure it).
+G5 — soft-usage correlation on the walker (already measured — 0.43; re-verify the wired
+composition reproduces it through the engine path).
+G6 — shuffle: donor-replaced history through the WIRED path must not beat its own K=0
+restriction (the fitted-model shuffle pattern, §20.13.3).
+Ship rule: G1 hard-gates everything; G2+G3 are the verdict pair (both-or-no-activation — the
+Q1 rule); G4 hard-gates activation; G5/G6 are controls. No goalpost moves after numbers exist.
+
+**NOT in this rung:** maintained-state A, gating/attention weights, settling, fatigue rework
+(sequenced after value check — §20.14), multi-store S, PRF/query-expansion lanes (sibling
+stream's territory). Reach stays parked (Tom).
+
+**Inputs this rung stands on:** P3b coefficients (p3_fit.json, F_soft_ablate), Q1 winner shape
+(K1-exp0.5-turnsum-zsum-opanchor), §20.15 L2 (the math), §20.16 (typing + turn-meshing pin
+compliance), walker v6 GREEN as the parity reference.
