@@ -2168,3 +2168,14 @@ operates first. Prior-art status (per e16feae3, June sweep): every level battle-
 (max-ent fusion / POMDP belief tracking + ACT-R need-odds / MRF-energy settling / submodular
 selection + counterfactual LTR); the assembled typed stack over a personal graph with a replay
 instrument — not found deployed; re-sweep the literature before ever leaning on novelty.
+
+**Adoption policy (Tom's pragmatism check, 2026-07-16): the shape is a lens, NOT a refactor
+mandate.** The shipped code already IS the shape (§20.15 — that was the point); rebuilding
+recall_laf into model/inference/utility classes would produce the same numbers through new bugs
+and orphan the measurement harness (walker, parity, cross-check) that our verdicts rest on.
+Three sanctioned uses only: (1) every future proposal opens with its type declaration —
+factor/move/value — one line, the whole adoption cost; (2) NEW rungs (running field, gate,
+settling) are built in the typed vocabulary as they arrive — the codebase converges organically,
+rung by rung; (3) refactor is licensed only where a typing violation is ALSO a measured defect —
+exactly one on the books (`_mark_accessed` fatigue), already sequenced post-moment-value-check.
+The math is a compass, not a demolition order.
