@@ -53,19 +53,27 @@ class TestHookRecallOutput(BrainTestBase):
         result = self._call_recall("xyzzy gibberish")
         self.assertEqual(result["json"], {"decision": "approve"})
 
-    def test_hook_recall_keyless_injects_paused_notice(self):
+    def test_hook_recall_keyless_injects_paused_notice_max_3_per_session(self):
         """Keyless daemon: the recall injection must TELL Claude the LLM
         layer is paused (with the instruction to alert the operator) — not
-        inject nothing. First laptop install: the session never mentioned
-        the missing key; the operator found it in the dashboard."""
+        inject nothing — but at most 3 times per session (operator-set cap:
+        can't be missed, doesn't nag a deliberately-keyless session).
+        First laptop install: the session never mentioned the missing key;
+        the operator found it in the dashboard."""
         from unittest.mock import patch, PropertyMock
         self._seed_data()
         with patch.object(type(self.brain), 'llm_available',
                           new_callable=PropertyMock, return_value=False):
+            for i in range(3):
+                result = self._call_recall("Test rule for recall")
+                ctx = result["json"].get("additionalContext", "")
+                self.assertIn("LLM layer: PAUSED", ctx,
+                              "notice %d of 3 missing" % (i + 1))
+                self.assertIn("tell them", ctx)
+            # 4th turn: capped — no notice (plain approve, nothing injected).
             result = self._call_recall("Test rule for recall")
-        ctx = result["json"].get("additionalContext", "")
-        self.assertIn("LLM layer: PAUSED", ctx)
-        self.assertIn("tell them", ctx)
+            self.assertNotIn("LLM layer: PAUSED",
+                             result["json"].get("additionalContext", ""))
 
     def test_hook_recall_writes_user_message_trace(self):
         """hook_recall writes the user_message S0 trace at prompt-arrival. The
