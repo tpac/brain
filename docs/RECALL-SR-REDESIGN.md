@@ -2155,3 +2155,16 @@ story (token cost, redundancy, fatigue/VOI; the encoder-feed decoupling = a seco
 with its own U over the shared posterior). New layers arrive pre-typed, pre-composed,
 pre-tested. The falsifiable residue moves up a level: the STORY (threads as the latent object)
 can be wrong in shape — a far better place to be wrong than at the layer level, fifty times.
+
+**Multi-store correction (Tom, 2026-07-16):** the story does NOT hardwire nodes as the target —
+threads activate CONTENT; each store is a different record of past moments (semantic nodes =
+distilled, episodic traces = lived, images/other modalities later). Per store: likelihood
+factors on the evidence side (pick/enc lanes = the episodic store already testifying) AND
+delivery candidates on the selection side — S widens from "nodes" to "pieces across stores"
+under one budget and one U. Tom's 'pieces of memories' vision is inside the foundation, not an
+amendment; nothing shipped may foreclose the widening (a per-store factor is a lane; a
+mixed-store S is a bigger candidate set for the same selector). Sequencing unchanged: recall
+operates first. Prior-art status (per e16feae3, June sweep): every level battle-tested somewhere
+(max-ent fusion / POMDP belief tracking + ACT-R need-odds / MRF-energy settling / submodular
+selection + counterfactual LTR); the assembled typed stack over a personal graph with a replay
+instrument — not found deployed; re-sweep the literature before ever leaning on novelty.
