@@ -35,6 +35,51 @@ if [ -f "$SENTINEL" ] && [ -x "$VENV_PY" ]; then
     exit 0
 fi
 
+# ── Concurrency guard ──────────────────────────────────────────
+# brain-env.sh has ~13 sourcers (MCP spawn, every hook, launchers, plists);
+# on a clean install they ALL hit the cold path simultaneously. Unserialized,
+# two racers extract uv over each other: overwriting a RUNNING (ad-hoc
+# signed) binary in place invalidates its code signature and macOS SIGKILLs
+# it — observed as `uv python install ... Killed: 9` on the first laptop
+# install (2026-07-17), which took the whole MCP connection down with it.
+# mkdir is the atomic test-and-set (macOS ships no flock(1)): exactly one
+# winner runs the bootstrap; losers wait for the sentinel, then fast-path.
+LOCK_DIR="$PLUGIN_DIR/.runtime-bootstrap.lock"
+LOCK_STALE_S=600     # a lock older than this is a dead winner — steal it
+WAIT_MAX_S=600       # loser wait ceiling (callers' own timeouts kill sooner)
+
+_now() { date +%s; }
+_lock_age() {
+    # seconds since the lock dir was created; 0 if unreadable (treat as fresh)
+    local _m
+    _m=$(stat -f %m "$LOCK_DIR" 2>/dev/null || stat -c %Y "$LOCK_DIR" 2>/dev/null) || { echo 0; return; }
+    echo $(( $(_now) - _m ))
+}
+
+_deadline=$(( $(_now) + WAIT_MAX_S ))
+while :; do
+    # Re-check the fast path each round — the winner may have finished.
+    if [ -f "$SENTINEL" ] && [ -x "$VENV_PY" ]; then
+        exit 0
+    fi
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+        break  # we are the winner — run the bootstrap below
+    fi
+    if [ "$(_lock_age)" -gt "$LOCK_STALE_S" ]; then
+        echo "[brain-boot] stale bootstrap lock (winner died?) — stealing" >&2
+        rm -rf "$LOCK_DIR" 2>/dev/null || true
+        continue
+    fi
+    if [ "$(_now)" -ge "$_deadline" ]; then
+        echo "[brain-boot] FATAL: waited ${WAIT_MAX_S}s for a concurrent bootstrap that never finished" >&2
+        exit 1
+    fi
+    sleep 1
+done
+# Winner: always release the lock — a FAILED bootstrap must not deadlock the
+# other consumers (they retry-acquire and either succeed or fail loudly).
+trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+
 echo "[brain-boot] first-run setup — installing isolated Python $PY_VERSION + embedding runtime" >&2
 echo "[brain-boot]   plugin dir: $PLUGIN_DIR" >&2
 
@@ -65,13 +110,21 @@ if [ ! -x "$UV_BIN" ]; then
         exit 1
     fi
 
-    # Archive contains uv-<triple>/uv and uv-<triple>/uvx — extract uv binary flat into bin/
-    if ! tar -xzf "$TMP_TAR" -C "$PLUGIN_DIR/bin" --strip-components=1 "uv-$UV_TRIPLE/uv"; then
+    # Archive contains uv-<triple>/uv and uv-<triple>/uvx. Extract to a temp
+    # dir and rename into place: mv is atomic and never invalidates a running
+    # binary's code signature, unlike extracting over bin/uv in place (macOS
+    # SIGKILLs a running ad-hoc-signed executable whose file is overwritten).
+    # Defense in depth on top of the bootstrap lock above.
+    TMP_EXTRACT="$PLUGIN_DIR/bin/.uv-extract.$$"
+    mkdir -p "$TMP_EXTRACT"
+    if ! tar -xzf "$TMP_TAR" -C "$TMP_EXTRACT" --strip-components=1 "uv-$UV_TRIPLE/uv"; then
         echo "[brain-boot] FATAL: uv extraction failed" >&2
+        rm -rf "$TMP_EXTRACT"
         exit 1
     fi
-    rm -f "$TMP_TAR"
-    chmod +x "$UV_BIN"
+    chmod +x "$TMP_EXTRACT/uv"
+    mv -f "$TMP_EXTRACT/uv" "$UV_BIN"
+    rm -rf "$TMP_EXTRACT" "$TMP_TAR"
 
     if [ ! -x "$UV_BIN" ]; then
         echo "[brain-boot] FATAL: uv extracted but not executable at $UV_BIN" >&2

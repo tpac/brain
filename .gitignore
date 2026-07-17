@@ -31,6 +31,8 @@ node_modules/
 # in hooks/scripts/ (claude.ai-hosted plugins may not ship a top-level bin/).
 bin/
 py/
+.runtime-bootstrap.lock/
+.bootstrap.log
 .runtime-ready
 
 # IDE

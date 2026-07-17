@@ -97,6 +97,33 @@ EOF
 EOF
 fi
 
+# ── Cold install: own the bootstrap DETACHED, answer instantly ─────────────
+# resolve-brain-db.sh → brain-env.sh → ensure-runtime.sh blocks 60-90s on a
+# truly fresh install — this hook has a 15s timeout, so inline bootstrap
+# means CC kills us and the identity injection + key notice are DROPPED
+# (first laptop install, 2026-07-17). Instead: launch ensure-runtime as a
+# detached child (survives our death; its mkdir-lock makes concurrent
+# launches from the MCP spawn safe), print a static no-Python notice, and
+# exit. The key resolution + mirror above already ran (pure shell). The MCP
+# launcher waits on the sentinel and connects in-session when the bootstrap
+# is quick; otherwise the next session lands on the ~8ms fast path.
+_BOOT_PLUGIN_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+if [ ! -f "$_BOOT_PLUGIN_ROOT/.runtime-ready" ] || [ ! -x "$_BOOT_PLUGIN_ROOT/venv/bin/python" ]; then
+  nohup "$(dirname "$0")/ensure-runtime.sh" \
+    >> "$_BOOT_PLUGIN_ROOT/.bootstrap.log" 2>&1 &
+  cat <<EOF
+
+🧠 Anchor — first-run install in progress
+
+Anchor is building its local runtime in the background (isolated Python +
+embedding model, ~1 minute; progress: $_BOOT_PLUGIN_ROOT/.bootstrap.log).
+Nothing to do — memory tools appear this session if the install finishes in
+time, otherwise from the next session on.
+EOF
+  echo "[brain-boot] cold install — bootstrap detached, hook exiting fast" >&2
+  exit 0
+fi
+
 source "$(dirname "$0")/resolve-brain-db.sh"
 
 # ── Validate hooks.json schema ──

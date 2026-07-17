@@ -358,6 +358,21 @@ MCP connect + hooks fire + recall/encode) — is UNTESTED. The key remaining unk
 
 ---
 
+## 6c. Bootstrap race (2026-07-17 laptop report) — fixed
+
+Second laptop attempt produced a precise report (`archives/anchor-mcp-bootstrap-
+race-report.md`): on a clean install the MCP spawn and the SessionStart hook both
+ran the cold `ensure-runtime.sh` concurrently; one racer's tar overwrote `bin/uv`
+in place while the other executed it → macOS SIGKILL (`Killed: 9`) → MCP
+connection closed (CC never retries) → tool-less session; the hook racer burned
+its 15s timeout bootstrapping → identity injection + key notice dropped. Fixes
+(same session): mkdir-lock serializes the bootstrap (winner runs, losers wait on
+the sentinel; stale-lock steal); uv extracted to temp + atomic `mv`;
+`boot-brain.sh` detaches the bootstrap on cold installs and prints a static
+warming notice instantly; `mcp-launch.sh` never bootstraps inline — kicks the
+locked bootstrap detached and polls the sentinel ≤25s (connects in-session when
+fast, exits cleanly for a next-session fast path otherwise).
+
 ## 7. Deferred / separate sessions
 
 - **D-5 seed pack / persona design** — mine the brain for mechanism-teaching +
@@ -374,6 +389,14 @@ MCP connect + hooks fire + recall/encode) — is UNTESTED. The key remaining unk
   stays always-on in SKILL.md, since a mature brain needs it *more*. Parked 2026-06-15
   during the SKILL.md instinct rewrite; sibling of D-5 (both = what a near-empty Anchor
   wakes up as).
+- **Runtime relocation to `$CLAUDE_PLUGIN_DATA`** — QUEUED NEXT (Tom, 2026-07-17:
+  "definitely intending to update often"). The runtime (`bin/uv`, `py/`, `venv/`,
+  `.runtime-ready`) lives inside the install dir, so every plugin
+  update/reinstall wipes it and forces a cold bootstrap (the exact race window
+  §6c closed). Moving it to the survives-updates plugin-data dir makes every
+  upgrade a warm ~8ms boot. Touches every `$PLUGIN_DIR/venv` reference
+  (brain-env.sh, launchers, plists, ensure-runtime) — deliberate refactor, one
+  variable at a time, after §6c proves out on the laptop.
 - **3.3 cross-platform v2** — systemd + supervisor abstraction; trigger = first
   real Linux user.
 - **Cowork support [DEFERRED 2026-06-14 — diversion from the Code goal]** — Tom
