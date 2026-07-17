@@ -343,13 +343,19 @@ MCP connect + hooks fire + recall/encode) — is UNTESTED. The key remaining unk
    `surface_contract.py` still say "Tom" (never seeded).
 2. ~~Relocate `aspects_proposed.json`~~ **DONE** — untracked + out of the package; runtime path
    resolves to `$BRAIN_DB_DIR`.
-3. **Layer-4 live test — the one OPEN gate.** Partially proven in production 2026-07-08 (first
-   friend install: boot, brain creation, seeding, daemon, MCP, PostToolUse traces all worked).
-   Exposed + fixed: CLAUDE_PLUGIN_* vars are hook-execution-only (→ `resolved.env` persistence),
-   silent no-brain bail (→ ANCHOR OFFLINE in `hook_common.daemon_unavailable_error`), seed
-   idempotency dup bug (exact-title match). UNRESOLVED: friend's UserPromptSubmit/Stop hooks not
-   firing on the ex.co machine — silent-gate (now impossible) vs CC plugin-hook bug
-   (#10225/#29767/#53643); his reinstall with the current zip disambiguates.
+3. ~~Layer-4 live test~~ **CLOSED (2026-07-17)** — clean install on Tom's second
+   laptop via the claude.ai upload channel WORKED end-to-end: serialized bootstrap
+   (no SIGKILL race, §6c), MCP tools live, brain seeded, daemon up, key delivered.
+   The shakedown arc that closed it (each attempt exposed the next layer):
+   validator gates (bin/, SKILL.md frontmatter) → hooks.json quoting (spaced
+   install path) → keyless boot (a1a620e) → userConfig key mirrored to env file
+   for the launchd daemon (7d5a58f) → loud-to-Claude keyless notices (0683f8b,
+   capped daa21c2) → bootstrap race lock (3f3a753). Earlier partial evidence
+   2026-07-08 (first friend install; its unresolved hook question is moot — hooks
+   fire on the 2026-07-17 install). REMAINING UX PAPERCUT: key entry still fell
+   back to terminal on this install (userConfig prompt did not re-offer on
+   reinstall, or was skipped) — track a CC-native key-entry improvement; the
+   mirror makes the plugin-settings path fully sufficient when the prompt fires.
 4. **Friend install** — `brain.plugin` is fully self-contained (ships `.claude-plugin/marketplace.json`):
    unzip → `claude plugin marketplace add <dir>` → install → API key via userConfig. No repo access needed.
 - Daemon launchd self-install shipped 2026-07-07 (Step 7, `install-daemon-service.sh`). Seed pack
