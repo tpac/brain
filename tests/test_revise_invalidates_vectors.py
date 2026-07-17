@@ -170,6 +170,38 @@ class TestReviseInvalidatesVectors(BrainTestBase):
         self.assertEqual(before, after,
                          'unknown field revise must not delete any vectors')
 
+    def test_revise_does_not_orphan_surviving_vectors_from_cache(self):
+        """The 2026-07-17 healer-invisibility bug: revise deleted only the
+        affected DB rows but dropped the WHOLE node from the in-memory vector
+        cache — the surviving types (notably _primary) stayed in the DB, the
+        backfill (DB-truth) saw nothing missing, and the node vanished from
+        every cache-served recall scan until process restart. The cache drop
+        must mirror the SQL delete exactly."""
+        node = self.brain.remember(type='fact', title='Cache orphan probe',
+                                   content='Body for cache orphan test.')
+        nid = node['id']
+        self._seed_vectors(nid, ['_primary', 'title', 'question'])
+        # mirror the seeded rows into the cache the way the drain would
+        if hasattr(self.brain._vec_dal, '_cache'):
+            self.brain._vec_dal._cache.add_batch(
+                (nid, vt, b'\x00', 'old text', 'test-stale-model')
+                for vt in ('_primary', 'title', 'question'))
+
+        # question-field revise → invalidates ONLY the question vector
+        self.brain.revise(node_id=nid, question='What is this?', reason='test')
+
+        after_db = self._vector_types_for_node(nid)
+        self.assertIn('_primary', after_db)
+        self.assertNotIn('question', after_db)
+        if hasattr(self.brain._vec_dal, '_cache'):
+            cached = self.brain._vec_dal._cache
+            self.assertIsNotNone(
+                cached.get(nid, '_primary'),
+                'revise must NOT orphan the surviving _primary out of the '
+                'cache — the node goes recall-invisible until restart')
+            self.assertIsNone(cached.get(nid, 'question'),
+                              'the invalidated type must leave the cache')
+
 
 if __name__ == '__main__':
     unittest.main()

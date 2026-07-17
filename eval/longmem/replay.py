@@ -98,6 +98,23 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
     dispatch_fn = _make_local_dispatch(brain)
     ctx = brain.get_or_create_session(session_id)
 
+    def _drain_embeddings(where: str) -> None:
+        """Production-faithfulness fix (2026-07-17, smoke cfd549): the daemon's
+        embed worker drains node + trace embeddings continuously; eval has no
+        worker, so before this fix EVERY frozen corpus was built decode-blind —
+        ingest-time recall saw a vector-less brain (empty results → surface
+        never fired → zero s1r traces → encoder got no catalog → duplicate
+        twins) and trace_embeddings stayed EMPTY (the moment stack's entire
+        substrate). Same code paths the worker runs, called inline after each
+        encode; local embedder only, no API cost."""
+        try:
+            brain.backfill_vectors(batch_size=50)
+            from servers.embed_queue import _drain_trace_embeddings_once
+            _drain_trace_embeddings_once(brain)
+        except Exception as e:
+            print(f"{log_prefix}   WARN embed drain failed at {where}: {e}",
+                  flush=True)
+
     stats = {"turns": 0, "user_turns": 0, "s1e_runs": 0, "s2_runs": 0,
              "s1r_ms_total": 0, "s1e_ms_total": 0, "s2_ms_total": 0,
              # Every run_s2() return captured here so the corpus build can
@@ -153,6 +170,11 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
             # so eval and prod share one write path (no divergence).
             ctx = post_response_common(brain, session_id, user_msg, assistant_msg)
 
+            # Per-turn embed drain: production's worker embeds new traces
+            # within seconds, so the NEXT turn's recall (and the moment
+            # stack's vector join) sees this turn — eval must match.
+            _drain_embeddings("turn")
+
             # S1E gate: every 5th turn, foreground encoding
             if ctx.stop_counter % 5 == 0 and ctx.stop_counter > 0:
                 print(f"{log_prefix}   s1e firing at stop={ctx.stop_counter}", flush=True)
@@ -165,6 +187,9 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
                     print(f"{log_prefix}   s1e done in {enc_result.get('_elapsed_ms', 0)}ms", flush=True)
                 except Exception as e:
                     print(f"{log_prefix}   WARN s1e failed: {e}", flush=True)
+                # New nodes become recallable NOW, not at the final backfill —
+                # the decode side the encoder's catalog depends on.
+                _drain_embeddings("s1e")
 
                 # S2 gate: every N encodings
                 if encodings_since_s2 >= s2_gate:
@@ -197,6 +222,7 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
             encodings_since_s2 += 1
         except Exception as e:
             print(f"{log_prefix}   WARN s1e trailing failed: {e}", flush=True)
+        _drain_embeddings("s1e_trailing")
 
     stats["encodings_since_s2"] = encodings_since_s2
     if not final_flush:
@@ -218,6 +244,11 @@ def finalize_item(brain, stats, encodings_since_s2, log_prefix="[replay]",
     """The end-of-ingest flush: pre/post S2 snapshots, S2 loop-until-quiet,
     embedding backfill. ONE definition — replay_item's per-item tail and the
     pooled builder's once-at-the-end call are the same code."""
+    # A caller-built stats dict (the pooled builder) must carry every counter
+    # this flush increments — a missing key killed the whole final S2 flush
+    # as a swallowed per-pass WARN (smoke build cfd549, 2026-07-17).
+    for k in ("s2_runs", "s2_ms_total", "s2_deltas"):
+        stats.setdefault(k, [] if k == "s2_deltas" else 0)
     # Snapshot the graph BEFORE the final S2 flush. Combined with the
     # post_final_s2 snapshot below, this gives a clean diff of exactly what
     # S2 (consolidation + community + healer) wrote during the flush —

@@ -94,14 +94,31 @@ class VectorCache:
             self._version += 1
         return len(prepared)
 
-    def drop_node(self, node_id: str) -> int:
-        """Remove ALL vectors for a node (archive/delete path). Returns count."""
+    def drop_node(self, node_id: str, vector_types=None) -> int:
+        """Remove a node's vectors — ALL (vector_types=None: archive/delete
+        path) or just the given types (revise invalidation: only the vectors
+        whose source text changed). Returns count dropped.
+
+        The types parameter exists because a whole-node drop after a
+        partial-DB delete ORPHANS the surviving vectors: revise deletes only
+        the affected DB rows, the backfill re-embeds only what the DB is
+        missing — so anything dropped here beyond the DB delete never comes
+        back until a process restart, and the node silently vanishes from
+        every cache-served recall scan (found live 2026-07-17, pooled smoke
+        probes; the healer made freshly-encoded nodes recall-invisible)."""
         if not node_id:
             return 0
         with self._lock:
-            types = self._by_node.pop(node_id, set())
+            have = self._by_node.get(node_id, set())
+            types = set(have) if vector_types is None else (set(vector_types) & have)
             for vt in types:
                 self._rows.pop((node_id, vt), None)
+            if vector_types is None:
+                self._by_node.pop(node_id, None)
+            else:
+                have -= types
+                if not have:
+                    self._by_node.pop(node_id, None)
             if types:
                 self._version += 1
             return len(types)

@@ -320,7 +320,15 @@ def _pooled_session_plan(picked):
     """Flatten items' (session, date) pairs and sort by date — the §20.18
     pooled interleave. Tie-break on (qid, sess_idx) for determinism. Dates
     are LongMemEval-shaped ('2023/05/22 (Mon) 16:46'); parse properly rather
-    than trusting lexicographic luck."""
+    than trusting lexicographic luck.
+
+    Each entry carries its brain session id (`sid`). Chain ids use
+    session_id[:8] (SessionContext.session_short) — production UUIDs are
+    prefix-unique by construction, so the eval scheme must be too: a readable
+    'ingest-{qid}-s{n}' collides ('ingest-2…' for every 2311e44b session) and
+    cross-attaches chain-keyed joins (judge_output corruption, smoke cfd549
+    v2). Hence the sha1 prefix; uniqueness is ASSERTED, not assumed."""
+    import hashlib
     from datetime import datetime
 
     def _parse(d):
@@ -340,10 +348,16 @@ def _pooled_session_plan(picked):
                              "interleave needs one date per session"
                              % (qid, len(sessions), len(dates)))
         for sess_idx, (session, date) in enumerate(zip(sessions, dates)):
+            h = hashlib.sha1(("%s|%d" % (qid, sess_idx)).encode()).hexdigest()
             plan.append({"qid": qid, "sess_idx": sess_idx, "date": date,
+                         "sid": "i%s-%s-s%d" % (h[:7], qid, sess_idx),
                          "sort_key": (_parse(date), qid, sess_idx),
                          "session": session})
     plan.sort(key=lambda e: e["sort_key"])
+    shorts = {e["sid"][:8] for e in plan}
+    if len(shorts) != len(plan):
+        raise ValueError("pooled session shorts collide — chain ids would "
+                         "cross-attach; refusing to build")
     return plan
 
 
@@ -386,6 +400,11 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
     qid_list = sorted(it["question_id"] for it in picked)
     config = {
         "pooled": True,
+        # Harness generation joins the content address: a graph-changing
+        # harness fix (v2: per-turn embed drains — decode-alive ingest,
+        # trace-embedding substrate; v3: collision-free session ids) must
+        # never collide with a corpus cached under the older behavior.
+        "harness": 3,
         "s1e": source_token(s1e),
         "ingest_surface": source_token(ingest_surface),
         "s2_every_n": s2_every_n,
@@ -417,12 +436,14 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
 
     t_run0 = time.time()
     totals = {"turns": 0, "user_turns": 0, "s1e_runs": 0, "s2_runs": 0,
+              "s1r_ms_total": 0, "s1e_ms_total": 0, "s2_ms_total": 0,
               "s2_deltas": []}
     carry = 0
     for i, e in enumerate(plan):
-        sid = "ingest-%s-s%d" % (e["qid"], e["sess_idx"])
+        sid = e["sid"]
         print(f"\n[pooled] session {i+1}/{len(plan)} {sid} "
               f"({e['date']}, {len(e['session'])} turns)", flush=True)
+
         stats = replay_item(
             brain, sid, [e["session"]], haystack_dates=[e["date"]],
             log_prefix=f"[pooled {i+1}/{len(plan)}]",

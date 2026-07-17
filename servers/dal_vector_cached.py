@@ -102,13 +102,17 @@ class CachedVectorDAL:
         self._cache.drop_node(node_id)
         return n
 
-    def drop_node(self, node_id: str) -> int:
+    def drop_node(self, node_id: str, vector_types=None) -> int:
         """Remove a node's vectors from the cache without deleting from DB.
 
-        Called by brain.archive_node(): the DB row stays (archived flag
-        on the nodes table), the cache masks it so recall can't surface it.
+        vector_types=None (archive_node): the DB rows stay (archived flag on
+        the nodes table), the cache masks the whole node so recall can't
+        surface it. vector_types given (revise invalidation): drop ONLY the
+        types whose DB rows were deleted — the cache must mirror the DB
+        delete exactly, or the surviving vectors are orphaned out of every
+        cache-served scan until restart (2026-07-17 healer-invisibility bug).
         """
-        return self._cache.drop_node(node_id)
+        return self._cache.drop_node(node_id, vector_types=vector_types)
 
     # ── Reads (serve from cache) ────────────────────────────────────
 

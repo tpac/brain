@@ -1323,12 +1323,20 @@ class BrainRememberMixin:
                 self._maybe_commit()
                 # Invalidate the in-memory vector cache so recall doesn't
                 # serve stale embeddings between now and embed_queue's drain.
-                # Replaced hasattr() guard with explicit AttributeError catch:
-                # property-access exceptions used to fall through hasattr() as
-                # False, silently skipping cache invalidation when a cache
-                # IS present but momentarily broken.
+                # ONLY the invalidated types: the cache must mirror the SQL
+                # DELETE above exactly. A whole-node drop here orphaned every
+                # OTHER vector type out of the cache — the DB kept them, the
+                # backfill (DB-truth) saw nothing missing, and the node went
+                # invisible to cache-served recall scans until process
+                # restart. Every healer heal did this to freshly-encoded
+                # nodes (found 2026-07-17, pooled-smoke probes).
+                # AttributeError catch (not hasattr): property-access
+                # exceptions used to fall through hasattr() as False,
+                # silently skipping invalidation when a cache IS present
+                # but momentarily broken.
                 try:
-                    self._vec_dal.drop_node(node_id)
+                    self._vec_dal.drop_node(node_id,
+                                            vector_types=invalidated_vectors)
                 except AttributeError:
                     pass  # plain VectorDAL — no in-memory cache to drop
                 except Exception as _ce:
