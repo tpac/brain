@@ -51,6 +51,67 @@ _STATIC_MIME = {
 }
 
 
+# ── First-run setup: API-key persistence (the /setup page's backend) ──
+# The one file the dashboard ever writes. User config, never a DB — the
+# passive-observer invariant (CLAUDE.md) is about the brain's databases.
+
+def brain_env_path() -> str:
+    """Canonical user env file — same resolution as brain-env.sh/load_env."""
+    xdg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(
+        os.path.expanduser('~'), '.config')
+    return os.path.join(xdg, 'brain', 'env')
+
+
+def api_key_present(env_path: str = None) -> bool:
+    """True when the env file carries an ANTHROPIC_API_KEY line.
+
+    Presence only — the value is never read into a response.
+    """
+    path = env_path or brain_env_path()
+    try:
+        with open(path) as f:
+            return any(line.startswith('ANTHROPIC_API_KEY=') for line in f)
+    except OSError:
+        return False
+
+
+def write_api_key(env_path: str, key: str):
+    """Persist the API key to the dotenv file (mode 600, atomic replace).
+
+    Returns (ok, message). The message never contains the key. Unlike the
+    boot-hook mirror (which never overwrites), the setup form is explicit
+    user intent — an existing ANTHROPIC_API_KEY line is REPLACED.
+    """
+    if not key.startswith('sk-') or len(key) < 10 or len(key) > 300:
+        return False, "That doesn't look like an Anthropic API key (expected sk-...)."
+    if any(c.isspace() for c in key):
+        return False, "The key contains whitespace — check the paste."
+    lines = []
+    try:
+        with open(env_path) as f:
+            lines = [l.rstrip('\n') for l in f
+                     if not l.startswith('ANTHROPIC_API_KEY=')]
+    except OSError:
+        pass
+    lines.append('ANTHROPIC_API_KEY=%s' % key)
+    os.makedirs(os.path.dirname(env_path), exist_ok=True)
+    tmp = env_path + '.tmp.%d' % os.getpid()
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'w') as f:
+            f.write('\n'.join(lines) + '\n')
+        os.replace(tmp, env_path)
+        os.chmod(env_path, 0o600)
+    except OSError as e:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        return False, "Could not write %s: %s" % (env_path, e.strerror or e)
+    return True, ("Key saved. Your brain picks it up on the next message — "
+                  "no restart needed.")
+
+
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -74,6 +135,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_static_file("index.html")
         elif path.startswith("/static/"):
             self._serve_static_file(path[len("/static/"):])
+
+        # First-run setup (API key entry — the no-terminal onboarding path;
+        # keyless boot notices point here)
+        elif path == "/setup":
+            self._serve_static_file("setup.html")
+        elif path == "/api/setup-state":
+            self._json(200, {"key_present": api_key_present()})
 
         # Stats / health
         elif path == "/api/stats":
@@ -195,18 +263,38 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._json(404, {"error": "Not found"})
 
     def do_POST(self):
-        """The dashboard's ONE write surface. CLAUDE.md makes the dashboard a
-        passive observer that never writes the DB directly — that invariant
-        holds: this hands off to the daemon (the single writer) over TCP, the
-        same as any MCP client. The dashboard still opens no write connection.
+        """The dashboard's write surfaces — exactly two, and the DB invariant
+        holds for both (CLAUDE.md: passive observer, never writes the DBs):
+
+        * /api/self-send   → hands off to the daemon (the single writer) over
+                             TCP, same as any MCP client. No write connection.
+        * /api/setup-key   → writes ONE user-config file
+                             (~/.config/brain/env, mode 600) — the no-terminal
+                             onboarding path for the API key. Localhost-only
+                             (server binds 127.0.0.1). Never touches a DB.
         """
         parsed = urlparse(self.path)
         path = parsed.path
 
         if path == "/api/self-send":
             self._handle_self_send()
+        elif path == "/api/setup-key":
+            self._handle_setup_key()
         else:
             self._json(404, {"error": "Not found"})
+
+    def _handle_setup_key(self):
+        """Accept {"api_key": "sk-..."} and persist it to the brain env file.
+
+        The key value is treated as a secret end-to-end: validated, written
+        0600, never logged, never echoed back in the response.
+        """
+        body, err = self._read_json_body()
+        if err:
+            return self._json(400, {"ok": False, "error": err})
+        key = (body.get("api_key") or "").strip()
+        ok, msg = write_api_key(brain_env_path(), key)
+        self._json(200 if ok else 400, {"ok": ok, "message": msg})
 
     def _read_json_body(self):
         """Parse the request body as JSON; ({}, error_str) on any failure."""

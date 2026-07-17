@@ -14,6 +14,7 @@ Architecture: COMPUTE (brain_consciousness.py) → DECIDE+FORMAT (here) → DELI
 """
 
 import json
+import os
 import sys
 from typing import List, Dict, Any, Optional, Callable, Union
 
@@ -399,10 +400,13 @@ class BrainVoice:
             out.append(
                 "LLM layer: PAUSED — no API key resolved by the daemon. "
                 "Memory storage, traces and recall work; learning (encode) "
-                "and memory surfacing are off until a key lands in "
-                "~/.config/brain/env (picked up automatically, no restart). "
-                "Tell the operator before starting work — they should hear "
-                "this from you, not find it in the dashboard.")
+                "and memory surfacing are off until a key is set. Tell the "
+                "operator before starting work — they should hear this from "
+                "you, not find it in the dashboard. Easiest path: open "
+                "http://localhost:%s/setup and paste the key there (local "
+                "dashboard, stays on this machine); or ~/.config/brain/env "
+                "directly. Picked up automatically, no restart needed."
+                % (os.environ.get('DASHBOARD_PORT') or '47303'))
 
         out.append("[/BRAIN]")
 

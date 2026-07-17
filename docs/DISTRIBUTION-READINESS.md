@@ -395,14 +395,15 @@ fast, exits cleanly for a next-session fast path otherwise).
   stays always-on in SKILL.md, since a mature brain needs it *more*. Parked 2026-06-15
   during the SKILL.md instinct rewrite; sibling of D-5 (both = what a near-empty Anchor
   wakes up as).
-- **Runtime relocation to `$CLAUDE_PLUGIN_DATA`** — QUEUED NEXT (Tom, 2026-07-17:
-  "definitely intending to update often"). The runtime (`bin/uv`, `py/`, `venv/`,
-  `.runtime-ready`) lives inside the install dir, so every plugin
-  update/reinstall wipes it and forces a cold bootstrap (the exact race window
-  §6c closed). Moving it to the survives-updates plugin-data dir makes every
-  upgrade a warm ~8ms boot. Touches every `$PLUGIN_DIR/venv` reference
-  (brain-env.sh, launchers, plists, ensure-runtime) — deliberate refactor, one
-  variable at a time, after §6c proves out on the laptop.
+- **Runtime relocation to `$CLAUDE_PLUGIN_DATA`** — DEFERRED by Tom (2026-07-17:
+  "I'll need to think more on backward compatibility beyond brain.db — I prefer
+  not to yet"). The win: updates stop wiping the runtime (warm ~8ms upgrades).
+  The cost he's weighing: it creates an *upgrade contract* — venv/deps must
+  survive versions, so version-skew protection (requirements-hash in the
+  sentinel fast path), resolved.env indirection, per-marketplace-id data dirs,
+  and plist re-materialization all become permanent obligations. Do NOT ship
+  without the hash check. Revisit when update cadence makes cold bootstraps
+  actually hurt.
 - **3.3 cross-platform v2** — systemd + supervisor abstraction; trigger = first
   real Linux user.
 - **Cowork support [DEFERRED 2026-06-14 — diversion from the Code goal]** — Tom

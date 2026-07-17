@@ -65,7 +65,9 @@ fi
 # without it: runtime bootstrap, embedder, brain.db, traces, direct recall).
 # Keep booting and present the key as the one remaining setup step — a
 # designed onboarding stage, not an error.
+BRAIN_KEYLESS_BOOT=0
 if [ -z "${ANTHROPIC_API_KEY:-}" ] || [[ "${ANTHROPIC_API_KEY}" != sk-* ]]; then
+  BRAIN_KEYLESS_BOOT=1   # read below: keyless warm boots bring the dashboard up
   cat <<EOF
 🧠 Anchor — setup in progress
 
@@ -75,25 +77,22 @@ those. Memory storage, history traces, and direct recall work from this
 session on.
 
 One step remains to complete setup — learning (writing new memories) and
-automatic memory surfacing use the Anthropic API and need your key. Either:
+automatic memory surfacing use the Anthropic API and need your key:
 
-  1. Plugin settings (recommended): open the Anchor plugin's configuration
-     in Claude Code and fill "Anthropic API key", then start a new session.
-     Claude Code stores it in your keychain; Anchor also mirrors it to the
-     env file below (mode 600) so its background daemon can read it. Or:
+  → Open http://localhost:${DASHBOARD_PORT:-47303}/setup and paste it there.
+    (That's your brain's local dashboard — it also shows what Anchor
+    remembers, recalls and learns. Local-only, nothing leaves this machine.)
 
-  2. Env file:
-     mkdir -p "${XDG_CONFIG_HOME:-\$HOME/.config}/brain"
-     printf 'ANTHROPIC_API_KEY=sk-ant-...\n' > "${XDG_CONFIG_HOME:-\$HOME/.config}/brain/env"
-     chmod 600 "${XDG_CONFIG_HOME:-\$HOME/.config}/brain/env"
-     The running brain picks this up automatically on the next message —
-     no restart needed.
+  Alternatives: the Anchor plugin's settings in Claude Code (if it offers
+  the "Anthropic API key" field), or the env file directly:
+     printf 'ANTHROPIC_API_KEY=sk-ant-...\n' >> "${XDG_CONFIG_HOME:-\$HOME/.config}/brain/env"
 
-Get a key at https://console.anthropic.com/settings/keys
+Get a key at https://console.anthropic.com/settings/keys — the running
+brain picks it up on your next message, no restart needed.
 EOF
   cat >&2 <<EOF
 [brain-boot] ANTHROPIC_API_KEY not set — booting in local-only mode (no encode/surface).
-[brain-boot] Key location: $BRAIN_ENV_FILE
+[brain-boot] Key location: $BRAIN_ENV_FILE — or the /setup page on the dashboard.
 EOF
 fi
 
@@ -109,7 +108,11 @@ fi
 # is quick; otherwise the next session lands on the ~8ms fast path.
 _BOOT_PLUGIN_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 if [ ! -f "$_BOOT_PLUGIN_ROOT/.runtime-ready" ] || [ ! -x "$_BOOT_PLUGIN_ROOT/venv/bin/python" ]; then
-  nohup "$(dirname "$0")/ensure-runtime.sh" \
+  # Chain ensure-dashboard after the bootstrap: on a keyless first install
+  # the setup URL printed above must come alive without the user invoking
+  # /dashboard — the dashboard IS the presented key-entry path (and the new
+  # user's first look at their brain). Idempotent + cheap when already up.
+  nohup bash -c "\"$(dirname "$0")/ensure-runtime.sh\" && \"$(dirname "$0")/ensure-dashboard.sh\"" \
     >> "$_BOOT_PLUGIN_ROOT/.bootstrap.log" 2>&1 &
   cat <<EOF
 
@@ -122,6 +125,12 @@ time, otherwise from the next session on.
 EOF
   echo "[brain-boot] cold install — bootstrap detached, hook exiting fast" >&2
   exit 0
+fi
+
+# Keyless warm boot: make sure the dashboard (and with it the /setup page the
+# notices point to) is actually up. Idempotent — no-op when already running.
+if [ "$BRAIN_KEYLESS_BOOT" = "1" ]; then
+  nohup "$(dirname "$0")/ensure-dashboard.sh" >/dev/null 2>&1 &
 fi
 
 source "$(dirname "$0")/resolve-brain-db.sh"
