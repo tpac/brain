@@ -1063,7 +1063,7 @@ class BrainRecallMixin:
                min_recency: float = 0,
                session_id: Optional[str] = None,
                situation_vec=None, source: str = 'unknown',
-               ctx=None) -> Dict[str, Any]:
+               ctx=None, as_of: Optional[str] = None) -> Dict[str, Any]:
         """Recall: embeddings + 3-degree graph traversal + keyword blending + situation matching.
 
         `project` param removed 2026-07-03 (it had zero production callers) —
@@ -1113,7 +1113,7 @@ class BrainRecallMixin:
             dedup_key = (
                 query, int(min(limit, MAX_PAGE_SIZE)), int(offset),
                 bool(include_archived), float(min_recency or 0),
-                session_id, filter_key, sit_key,
+                session_id, filter_key, sit_key, as_of,
             )
         except Exception:
             # If key construction fails, skip dedup — better to do
@@ -1144,7 +1144,7 @@ class BrainRecallMixin:
                     query=query, filter=filter, limit=limit, offset=offset,
                     include_archived=include_archived, min_recency=min_recency,
                     session_id=session_id, ctx=ctx,
-                    situation_vec=situation_vec, source=source)
+                    situation_vec=situation_vec, source=source, as_of=as_of)
                 self._recall_cache_put(dedup_key, result)
                 inflight.set_result(result)
                 return result
@@ -1159,7 +1159,7 @@ class BrainRecallMixin:
             query=query, filter=filter, limit=limit, offset=offset,
             include_archived=include_archived, min_recency=min_recency,
             session_id=session_id, ctx=ctx,
-            situation_vec=situation_vec, source=source)
+            situation_vec=situation_vec, source=source, as_of=as_of)
 
     # ─── recall result cache (5s TTL) ─────────────────────────────────
 
@@ -1247,7 +1247,8 @@ class BrainRecallMixin:
                      offset: int = 0, include_archived: bool = False,
                      min_recency: float = 0,
                      session_id=None, situation_vec=None,
-                     source: str = 'unknown', ctx=None) -> Dict[str, Any]:
+                     source: str = 'unknown', ctx=None,
+                     as_of: Optional[str] = None) -> Dict[str, Any]:
         """Actual recall implementation — hot path. Single-flight wrapper
         in recall() ensures only one of these runs per (query, scope) at
         a time across the daemon."""
@@ -1324,14 +1325,24 @@ class BrainRecallMixin:
         _laf_scores = None
         _laf_fields = None
         import os as _os_laf
+        _laf_on = (_os_laf.environ.get('BRAIN_RECALL_VARIANT', '')
+                   .strip().lower() == 'laf_v1')
+        # as_of (§20.11 replay time-travel) is a LAF-only capability: the
+        # champion channels have no masks, so an as_of recall that fell back
+        # to champion would silently score against TODAY's corpus and corrupt
+        # the replay. Refuse loudly instead (Leg B's harness treats this as a
+        # broken-run signal, never a data point).
+        if as_of is not None and (not _laf_on or include_archived):
+            raise ValueError('as_of recall requires BRAIN_RECALL_VARIANT='
+                             'laf_v1 and include_archived=False — the champion '
+                             'path cannot time-travel')
         # include_archived falls back to champion: the LAF engine's universe is
         # deliberately live-only (vectors_since / get_all_vectors exclude
         # archived — a performance choice, don't widen it), so archived
         # candidates would all score _laf_scores.get(id, 0.0) = dead-last.
         # Champion cosines them correctly, and these calls are rare and
         # not latency-critical.
-        if (_os_laf.environ.get('BRAIN_RECALL_VARIANT', '').strip().lower() == 'laf_v1'
-                and not include_archived):
+        if _laf_on and not include_archived:
             try:
                 try:
                     from .recall_laf import get_engine as _laf_get_engine
@@ -1343,9 +1354,17 @@ class BrainRecallMixin:
                                     if _recall_ctx is not None else None)
                 _laf_scores, _laf_fields = _laf_get_engine(self).scores(
                     self, query, query_vec, model=_active_model,
-                    session_project=_session_project)
+                    session_project=_session_project,
+                    as_of=as_of, session_id=session_id)
                 if not _laf_scores:
                     _laf_scores = None      # empty field → champion, not zeros
+                if as_of is not None and _laf_scores is None:
+                    # under time-travel there is no champion to fall back to
+                    raise ValueError('as_of recall got no field scores '
+                                     '(empty masked universe or scorer '
+                                     'failure) — refusing champion fallback')
+            except ValueError:
+                raise
             except Exception as _laf_e:
                 self._log_error('recall_laf', _laf_e,
                                 'laf_v1 scoring failed — champion fallback')
@@ -1733,6 +1752,12 @@ class BrainRecallMixin:
 
         # STEP 5: Build unified candidate set (all nodes seen by any path)
         all_candidate_ids = set(embedding_scores.keys()) | set(keyword_scores.keys()) | fts5_only_ids
+        if as_of is not None and _laf_scores is not None:
+            # as_of chokepoint: the masked field's score map IS the as-of
+            # universe — nodes created after the cue (reachable here only via
+            # the keyword fallback for embedding-less nodes) must not leak
+            # into a replay candidate set.
+            all_candidate_ids &= set(_laf_scores)
 
         # STEP 6: Score each candidate — embeddings primary, keywords fallback
         #

@@ -72,6 +72,16 @@ _spec = importlib.util.spec_from_file_location(
 trace_links = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(trace_links)
 
+# trace_contract owns the machine-turn definition (shared with the LAF moment
+# stack — one filter, can't drift); same by-path load, same reason. Its own
+# absolute import (servers.loud_truncation) needs the repo root on sys.path.
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+_tc_spec = importlib.util.spec_from_file_location(
+    'trace_contract', REPO / 'servers' / 'trace_contract.py')
+_trace_contract = importlib.util.module_from_spec(_tc_spec)
+_tc_spec.loader.exec_module(_trace_contract)
+
 FILE_TOOLS = {'Edit', 'Write', 'NotebookEdit'}
 UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
 S0_TYPES = ('user_message', 'assistant_message', 'tool_result', 'anchor_touched')
@@ -102,17 +112,11 @@ def texts_agree(a, b, floor=40, span=120):
     return a[:n] == b[:n] and (n >= floor or len(a) == len(b))
 
 
-def is_machine_turn(op_text):
-    """Harness-injected machine turn — production's OWN definition
-    (hooks/scripts/pre_response_recall.py: `"<task-notification>" in
-    user_message`). The harness packages a background-task completion as a
-    prompt through UserPromptSubmit, but it is NOT an operator turn. Anchor's
-    response to it is real and kept as history; the operator side is dropped
-    and the turn is never labeled/evaluated (Tom 2026-07-15: "just Anchor's
-    msgs there"). Production now routes these register_only (skip recall +
-    Haiku, node b2953766); the pre-fix era recorded them as full recall
-    events, which is why the older ones still arrive carrying O rows."""
-    return '<task-notification>' in (op_text or '')
+is_machine_turn = _trace_contract.is_machine_turn
+# (definition moved to servers/trace_contract.py 2026-07-17 — the LAF moment
+# stack and the walker now share the ONE filter. Pre-fix era note lives with
+# the definition; the walker behavior is unchanged: operator side dropped,
+# Anchor's response kept as history, turn never labeled/evaluated.)
 
 
 def parse_ts(iso):

@@ -76,13 +76,13 @@ try:
     from . import embedder
     from .brain_constants import _TITLE_BOOST_STOPWORDS
     from .pipeline_contract import EMBEDDING_GROUPS
-    from .trace_contract import CONVERSATIONAL_REF_TYPES
+    from .trace_contract import CONVERSATIONAL_REF_TYPES, is_machine_turn
     from .scales.s1.trace_links import gather, nodes_for_traces, _stop_of
 except ImportError:                                    # direct-script import shape
     import embedder
     from brain_constants import _TITLE_BOOST_STOPWORDS
     from pipeline_contract import EMBEDDING_GROUPS
-    from trace_contract import CONVERSATIONAL_REF_TYPES
+    from trace_contract import CONVERSATIONAL_REF_TYPES, is_machine_turn
     from scales.s1.trace_links import gather, nodes_for_traces, _stop_of
 
 # v1 gains + knobs — the measured static composition. Overridable via the interactions
@@ -111,7 +111,27 @@ DEFAULT_CONFIG = {
     # (enc z≈11 beside cosine z≈2 — q1_reverse eyeball); the P3.0 winner
     # ships as a K-store flip of this key, rollback = flip back.
     'z_norm': 'current',
+    # Moment stack (§20.17/§20.18, DORMANT — both defaults falsy, so the
+    # moment code path is unreachable until a K-store flip):
+    #   moment_K     — conversational turns of history to pull (0 = off).
+    #   moment_gains — the composition TABLE, per-(lane,slot,side) z-gains:
+    #       slot keys   '{lane}_{side}{j}' (maxsim_a1, sit_o2, idf_a3, ...)
+    #                   — only slots present in the table are computed;
+    #       o0 keys     '{lane}_o0' override the current-message content-lane
+    #                   gains (the full-fitted-table arms; absent → gain_*);
+    #       bare keys   'pick'/'enc'/'proj' override those lanes' gains
+    #                   (the fitted tables zero pick/enc; absent → gain_*).
+    #     A nonempty table activates the overrides even at moment_K=0 — that
+    #     IS the fitted-K0 arm (A0f, §20.18); an arm is a gain table, not code.
+    #     Values are frozen from eval/laf/walker/definitive_fit.json — never
+    #     refit on an eval corpus.
+    'moment_K': 0,
+    'moment_gains': {},
 }
+
+MOMENT_TEXT_CAP = 500   # slot idf text cap — the production recall-query cap
+                        # (pipeline_contract 'user_message_query') and the
+                        # walker's TEXT_CAP; keeps slot idf commensurate with j0
 
 CONFIG_TTL_S = 60.0           # K-store overlay refresh cadence
 TITLES_TTL_S = 60.0           # min seconds between title-idf rebuilds
@@ -344,12 +364,16 @@ class LafV1Engine:
         # trace matrix — block list, no per-append copy
         self._tr_blocks = []         # [ndarray [k×768]]
         self._tr_meta = []           # [(chain_id, session_id)] aligned to blocks' rows
+        self._tr_ids = {}            # trace_events.id → global row (moment-stack join)
         self._tr_created = []        # [created_at] aligned to _tr_meta (as_of trace mask)
         self._tr_created_arr = np.full(0, '', dtype='<U40')   # lazy np mirror
         self._tr_last = ''           # max created_at ingested
         # config overlay
         self._cfg = None
         self._cfg_ts = 0.0
+        # last moment-stack coverage ledger (V2 / W1 instrument; None when
+        # the moment path didn't run on the most recent scores() call)
+        self._last_moment_ledger = None
 
     # ── config: the ONE gain-resolution seam (P4 swaps this body to g(φ(q))) ──
     def config(self, brain):
@@ -556,11 +580,14 @@ class LafV1Engine:
             since=self._tr_last or None)
         if not rows:
             return
+        base = len(self._tr_meta)
         meta, vecs, created, last = [], [], [], self._tr_last
-        for chain_id, session_id, created_at, blob in rows:
+        for chain_id, session_id, created_at, blob, trace_id, _ref_type in rows:
             uv = _unit(blob)
             if uv is None:
                 continue
+            if trace_id:
+                self._tr_ids[trace_id] = base + len(vecs)
             meta.append((chain_id, session_id))
             vecs.append(uv)
             created.append(created_at or '')
@@ -574,6 +601,15 @@ class LafV1Engine:
         self._tr_created.extend(created)
         if len(self._tr_blocks) > TRACE_BLOCK_CONSOLIDATE:
             self._tr_blocks = [np.vstack(self._tr_blocks)]   # one copy, occasional
+
+    def _tr_vec(self, idx):
+        """Global trace-row index → unit vector (block-list addressing;
+        consolidation vstacks in order, so indices stay valid)."""
+        for b in self._tr_blocks:
+            if idx < len(b):
+                return b[idx]
+            idx -= len(b)
+        return None
 
     # ── as_of masks: the §20.11 chokepoints' shared builder ──
     def _asof_masks(self, as_of, n):
@@ -670,6 +706,32 @@ class LafV1Engine:
             self._proj_vals[m] == session_project).astype(float)
         return vec
 
+    # ── the per-message content-lane triple: ONE code path for j0 + slots ──
+    def _content_lanes(self, text, qv, n, as_of=None):
+        """{maxsim, sit, idf} raw activations for ONE message — the j0 query
+        and every moment slot route here (§20.18: a slot is a lane set, not a
+        mechanism), so the walker's lane×slot cells and the engine compose the
+        same math by construction (G1). qv=None → cosine lanes skipped; empty
+        text → idf skipped (the walker's j_missing semantics). Raw activations
+        per the LANE CONTRACT (NaN = missing, never 0)."""
+        lanes = {}
+        if qv is not None:
+            with np.errstate(all='ignore'):
+                lanes['maxsim'] = np.nanmax(
+                    np.stack([self._mats[vt][:n] @ qv for vt in MAXSIM_VIEWS]),
+                    axis=0)
+            # NaN (no _situation vector) stays NaN: _zscore's isfinite mask
+            # excludes it from the stats and scores it 0 — absence is neutral,
+            # same semantics as maxsim's nanmax. Zero-filling here scored a
+            # missing vector as a real cosine of 0.0 — ~10σ below the corpus
+            # mean (0.475±0.045), burying just-encoded nodes and any node in
+            # the revise→re-embed window (sit z −10.6 ≈ −5.3 zsum at gain 0.5).
+            lanes['sit'] = self._mats['_situation'][:n] @ qv
+        if text:
+            lanes['idf'] = (idf_scores(text, self._title_tok, self._title_df, n)
+                            if as_of is None else self._idf_asof(text, n, as_of))
+        return lanes
+
     # ── the field registry: name → per-node raw activation [n] ──
     def _fields(self, brain, query, qv, cfg, n, session_project=None,
                 as_of=None, trace_mask=None):
@@ -681,31 +743,97 @@ class LafV1Engine:
         REAL activation that z-scores far below the corpus mean (the sit-lane
         zero-fill buried fresh nodes at −10σ; tests pin the NaN passthrough
         for sit and proj)."""
-        with np.errstate(all='ignore'):
-            maxsim = np.nanmax(
-                np.stack([self._mats[vt][:n] @ qv for vt in MAXSIM_VIEWS]), axis=0)
-        sit_raw = self._mats['_situation'][:n] @ qv
+        content = self._content_lanes(query, qv, n, as_of=as_of)
         pick, enc = self._episodic_vectors(brain, qv, cfg, n,
                                            as_of=as_of, trace_mask=trace_mask)
         return {
-            'maxsim': maxsim,
+            'maxsim': content['maxsim'],
             'pick': pick,
             'enc': enc,
-            'idf': (idf_scores(query, self._title_tok, self._title_df, n)
-                    if as_of is None else self._idf_asof(query, n, as_of)),
-            # NaN (no _situation vector) stays NaN: _zscore's isfinite mask
-            # excludes it from the stats and scores it 0 — absence is neutral,
-            # same semantics as maxsim's nanmax. Zero-filling here scored a
-            # missing vector as a real cosine of 0.0 — ~10σ below the corpus
-            # mean (0.475±0.045), burying just-encoded nodes and any node in
-            # the revise→re-embed window (sit z −10.6 ≈ −5.3 zsum at gain 0.5).
-            'sit': sit_raw,
+            # empty query text → no idf tokens → zero lane (idf_scores'
+            # own empty-query shape, preserved through the extraction)
+            'idf': content.get('idf', np.zeros(n)),
+            'sit': content['sit'],
             'proj': self._project_field(session_project, n),
         }
 
+    # ── the moment stack: last-K turns as slot lanes (§20.17/§20.18) ──
+    def _moment_stack(self, brain, session_id, K, as_of=None):
+        """The session's last-K conversational turns, walker slot semantics:
+        slot j = TURN DISTANCE — turn t−j contributes its operator message as
+        oj and its assistant message as aj; a0 never joins (W3 — at live time
+        the response doesn't exist; under as_of the strict < cut excludes it).
+
+        Turns come through the traces-layer door (get_conversation — the same
+        object the S1 encoder reads); machine turns drop their operator side
+        but keep slot occupancy and their assistant side (the shared
+        is_machine_turn — W2, the v6 mislabel lesson); vectors join from the
+        resident trace matrix by trace_id. A turn whose embedding hasn't
+        landed yet joins as vec=None (cosine slots skipped, idf still fires) —
+        ledger-counted, so W1 cache freshness is a measured number, never an
+        assumption.
+
+        THE LIVE-EDGE RULE: the stack is COMPLETED turns. The user_message
+        trace is written at prompt-arrival (not Stop — see get_session_turns'
+        exclude_trace_id note), so at recall time the CURRENT prompt is
+        already in the conversation; without this rule it would enter as j=1
+        and double-count the j0 query. A trailing answer-less user turn is
+        exactly that in-flight prompt → dropped (ledger 'live_edge_dropped');
+        under replay the as_of strict < cut removes the cue row before this
+        rule even sees it.
+
+        Returns ([(side, j, unit_vec_or_None, text)], ledger)."""
+        ledger = {'rows': 0, 'turns': 0, 'machine_dropped': 0,
+                  'missing_vec': 0, 'live_edge_dropped': 0}
+        try:
+            rows = brain.get_conversation(session_id, limit=4 * K + 8,
+                                          with_judge_output=False)
+        except Exception as e:
+            # Degrading to bare-query recall beats killing the whole field
+            # (scores() failure → champion fallback, strictly worse) — but
+            # NEVER silently: logged, and the ledger says the stack is gone.
+            brain._log_error('laf_moment_stack', e,
+                             'get_conversation failed — recalling without '
+                             'moment context')
+            ledger['error'] = str(e)
+            return [], ledger
+        ledger['rows'] = len(rows)
+        if as_of is not None:
+            rows = [r for r in rows if (r.get('timestamp') or '') < as_of]
+        turns = []                       # [[op_row_or_None, anchor_row_or_None]]
+        for r in rows:
+            role = r.get('role')
+            if role == 'user':
+                if is_machine_turn(r.get('content')):
+                    ledger['machine_dropped'] += 1
+                    turns.append([None, None])   # slot occupied, op side dropped
+                else:
+                    turns.append([r, None])
+            elif role == 'assistant':
+                if turns and turns[-1][1] is None:
+                    turns[-1][1] = r
+                else:
+                    turns.append([None, r])      # orphan assistant (session tails)
+        if turns and turns[-1][1] is None:
+            turns.pop()                          # the live-edge rule (docstring)
+            ledger['live_edge_dropped'] = 1
+        stack = []
+        for j, (op, anchor) in enumerate(reversed(turns[-K:]), start=1):
+            for side, r in (('o', op), ('a', anchor)):
+                if r is None:
+                    continue
+                idx = self._tr_ids.get(r.get('trace_id'))
+                vec = self._tr_vec(idx) if idx is not None else None
+                if vec is None:
+                    ledger['missing_vec'] += 1
+                stack.append((side, j,
+                              vec, (r.get('content') or '')[:MOMENT_TEXT_CAP]))
+        ledger['turns'] = min(K, len(turns))
+        return stack, ledger
+
     # ── the scorer ──
     def scores(self, brain, query, query_vec, model=None, session_project=None,
-               as_of=None):
+               as_of=None, session_id=None):
         """({node_id: score01}, telemetry) over every node with ≥1 embedding view.
 
         score01 is a monotonic sigmoid of the z-scored gain-weighted field sum,
@@ -722,6 +850,13 @@ class LafV1Engine:
         masked universe, and masked nodes are absent from the result. None
         (default) builds no masks — the identical live path. scores() is
         read-only by construction, so replay needs no side-effect suppression.
+
+        session_id: the moment stack's turn source (§20.17/§20.18) — with
+        moment_K>0 in config, the session's last-K turns contribute per-slot
+        content lanes gained by the moment_gains table. None, moment_K=0, or
+        an empty table → no stack is pulled (the dormant default). The last
+        stack's coverage ledger is kept on self._last_moment_ledger (the V2
+        moment-mass / W1 freshness instrument).
         """
         qv = _unit(query_vec)
         if qv is None or not MAXSIM_VIEWS:
@@ -752,19 +887,55 @@ class LafV1Engine:
             fields = self._fields(brain, query, qv, cfg, n,
                                   session_project=session_project,
                                   as_of=as_of, trace_mask=trace_mask)
+            # Moment slot lanes (§20.17/§20.18) — DORMANT until the K-store
+            # flips moment_K + moment_gains. Each stack entry contributes the
+            # content-lane triple through the SAME _content_lanes the j0 query
+            # uses, named '{lane}_{side}{j}'; only slots present in the gain
+            # table are added (an arm is a gain table, not code).
+            mg = cfg.get('moment_gains') or {}
+            m_k = int(cfg.get('moment_K') or 0)
+            self._last_moment_ledger = None
+            if mg and m_k > 0 and session_id:
+                stack, m_ledger = self._moment_stack(brain, session_id, m_k,
+                                                     as_of=as_of)
+                self._last_moment_ledger = m_ledger
+                for side, j, mv, text in stack:
+                    if not any('%s_%s%d' % (l, side, j) in mg
+                               for l in ('maxsim', 'sit', 'idf')):
+                        continue
+                    for lane, vec in self._content_lanes(
+                            text, mv, n, as_of=as_of).items():
+                        name = '%s_%s%d' % (lane, side, j)
+                        if name in mg:
+                            fields[name] = vec
             # THE node-mask chokepoint (§20.11 #1/#6): one masked z-score
             # loop covers every node-indexed lane, including future ones.
-            # support-z is lane-gated: only the zero-sea lanes take it;
-            # contract-zero lanes (proj) keep plain z — see Z_NORMS block.
+            # support-z is lane-gated: only the zero-sea lanes take it —
+            # matched on the lane PREFIX so slot instances (idf_a3) inherit
+            # their base lane's normalizer; contract-zero lanes (proj) keep
+            # plain z — see Z_NORMS block.
             zn = str(cfg.get('z_norm', 'current'))
             zf = {name: zscore_variant(
                       vec, n, mask=node_mask,
                       kind=(zn if zn != 'support'
-                            or name in SUPPORT_ZERO_SEA_LANES else 'current'))
+                            or name.split('_', 1)[0] in SUPPORT_ZERO_SEA_LANES
+                            else 'current'))
                   for name, vec in fields.items()}
+            # Gain resolution: the moment table (when active) is the
+            # composition — slot keys verbatim; '{lane}_o0' overrides the
+            # current-message content lanes; bare 'pick'/'enc'/'proj' override
+            # those lanes. Anything absent falls back to the production
+            # gain_* — so an o0-only table IS the fitted-K0 arm (A0f) and an
+            # empty table is bit-identical production (the dormancy invariant).
             zsum = np.zeros(n)
             for name, z in zf.items():
-                zsum = zsum + float(cfg['gain_' + name]) * z
+                if mg and name in mg:
+                    gain = float(mg[name])
+                elif mg and (name + '_o0') in mg:
+                    gain = float(mg[name + '_o0'])
+                else:
+                    gain = float(cfg['gain_' + name])
+                zsum = zsum + gain * z
             s01 = 1.0 / (1.0 + np.exp(-zsum / float(cfg['sigmoid_scale'])))
             if not np.all(np.isfinite(s01)):
                 # out-of-contract vector — refuse to ship it; the caller's

@@ -194,6 +194,17 @@ CONVERSATIONAL_REF_TYPES = tuple(
 # recall), so the set is defined once here.
 SAID_AND_DID_REF_TYPES = CONVERSATIONAL_REF_TYPES + ("tool_result",)
 
+
+def is_machine_turn(op_text) -> bool:
+    """Harness-injected machine turn — a background-task completion packaged
+    as a prompt through UserPromptSubmit. NOT an operator turn: the operator
+    side is dropped wherever turns feed scoring (the LAF moment stack, the
+    walker's labeling — v6's 778-mislabel lesson), while Anchor's response to
+    it is real and kept as history. ONE definition shared by production and
+    eval (eval/laf/walker/extract.py imports this) so the filter can't drift;
+    production's recall hook routes these register_only (node b2953766)."""
+    return '<task-notification>' in (op_text or '')
+
 # A wakeup ignite (e.g. a background-task notification) arrives as turn CONTENT,
 # not a distinct ref_type: it runs recall, so it's recorded as a `user_message`
 # (conversational) even though it's an ENVELOPE, not work. Presence focus skips

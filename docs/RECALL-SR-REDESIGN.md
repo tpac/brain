@@ -2316,3 +2316,208 @@ wiring questions) is unaffected.
 **Inputs this rung stands on:** P3b coefficients (p3_fit.json, F_soft_ablate), Q1 winner shape
 (K1-exp0.5-turnsum-zsum-opanchor), §20.15 L2 (the math), §20.16 (typing + turn-meshing pin
 compliance), walker v6 GREEN as the parity reference.
+
+### 20.18 P4 pre-registration — pooled-brain external validation of the moment stack (laid out 2026-07-17; AWAITING TOM'S SIGN — NOTHING RUNS BEFORE IT)
+
+**Question:** does the moment stack's quality gain — measured on our corpus with our labels
+(walker v7 definitive fit: S_content held-out soft_r 0.446 vs 0.185 production-shaped) —
+exist OUTSIDE our history and our labels? External conversations, external evidence marks,
+responses no part of our pipeline produced, through the REAL engine. P4-confirm is §20.17's
+entry condition; P4-refute is cheap now and expensive after persistence machinery exists.
+
+**Ship rule:** P4 ships NOTHING. It produces a verdict (confirm / refute / mixed) for the
+Stage-3 gate. Single-arm wins (inhibition, stop-cue) are findings that amend the Stage-3
+pre-reg — never activations. No goalpost moves after numbers exist; parameter intuitions
+live in this section or nowhere.
+
+**Substrate — VERIFIED 2026-07-17 (corrects the session-handoff estimates):** the dev20
+oracle (`longmemeval_oracle.json`, 500 items available) carries evidence-only haystacks —
+`haystack_session_ids == answer_session_ids`. The 20 dev items pool to **32 sessions,
+173 user turns, 28 `has_answer` turns**, dates 2023-02-11 → 2023-09-30 — NOT the ~60–70
+sessions / ~600 cues the handoff carried. Sampled per-item frozen brains hold 19–39 nodes →
+pooled brain lands ~400–600 nodes (not ~1–2k). Per-item dev20 build cost 1.13 h wall,
+47 S1E runs (manifest `build_ms`/`encode_ms`). 4 of 20 items are abstention-by-design;
+of the 16 answerable, 7 scanned unanswerable in per-item builds (encode-coverage misses,
+re-scanned on the pooled brain at V0). Cross-topic distraction comes from the POOLING —
+20 items' threads interleaved by date in one brain — which is the honest version of the
+old per-item near-ceiling setup (94.4% recall-conditional).
+
+**Build plan (order is the plan; architecture agreed with Tom 2026-07-17 — maximal reuse,
+~200 new lines total):**
+1. **§20.17 wiring, DORMANT** — in `recall_laf.py` only (~120 lines). **Moment slots are
+   first-class field-registry lanes** (`maxsim_a1`, `sit_o2`, …): extract `_content_lanes()`
+   from `_fields()` so j0 and every slot share one code path; slot lanes enter the SAME
+   z-score chokepoint (as_of node-mask aware), SAME zsum loop, SAME telemetry (per-slot z
+   ships in `_laf_fields` — the flywheel sees moments). **An arm is a gain table, not
+   code.** Stack provider = engine method `_moment_stack`: turns via
+   `brain.get_conversation(session_id, with_judge_output=False)` (the traces-layer door —
+   same object the S1 encoder reads), side from role, idf text from content (500 cap),
+   machine turns filtered via the walker's `is_machine_turn` LIFTED into the shared layer
+   (walker imports it back — one filter, can't drift); vectors joined by trace_id from the
+   engine's RESIDENT trace cache (`event_vector_rows` gains two columns — te.id, ref_type —
+   in the same sanctioned pull; unembedded turn → NaN slot, lane contract, telemetry-counted
+   → W1 freshness becomes a measured number). Config: `moment_K` (default 0) +
+   `moment_gains` (default {}) in DEFAULT_CONFIG → K-store overridable; both defaults falsy
+   → new code unreachable until a K-store flip. **NO new tables, NO schema change, NO new
+   files** — production's moment substrate is trace_events+trace_embeddings, already
+   written every turn (anchor side included: CONVERSATIONAL_REF_TYPES has
+   assistant_message, embed queue is lockstep). Amendment APPLIED: **K=8,
+   per-(lane,slot,side) gains from `definitive_fit.json`** — Tom signing this section IS
+   the K-pin amendment for P4; Stage-3 re-signs its own. **No refitting on the external
+   corpus, ever.**
+2. **Pooled builder = a `--pooled` mode on `build_corpus.py`** (~40 lines, no new file):
+   flatten the 20 items' (session, date) pairs, sort by date (tie-break: session_id), one
+   fresh brain, same `replay_item` loop (haystack_dates → `[Current date:]` conversation-time
+   discipline already correct), same gold scan / error snapshot / S2-delta / content-addressed
+   manifest. Frozen after build.
+3. **⛔ COST CHECKPOINT (before any encoding runs):** present actuals-basis estimate —
+   346 turns ≈ 35–65 S1E Sonnet runs + ~16 S2 cycles + 173 Haiku surface calls,
+   ~1–1.5 h wall, order ~$10–25 API (actuals via `cost_summary.py`). Option B (scale-up:
+   pool +N of the remaining 480 oracle items; ~1.6 sessions & ~8.7 cues per item →
+   e.g. 60 items ≈ 96 sessions / ~520 cues at ~3× cost) is priced here and decided here.
+   Tom's go required.
+4. **Leg A — walker on the pooled brain** (the instrument transfer): point `BRAIN_DB_DIR`
+   at the pooled corpus dir and run the EXISTING pipeline — `extract → embed → scores` —
+   against its real s0/s1r trace chains (~20 lines of env-glue driver). Then
+   `definitive_fit.py` (arm scoring), `soft_usage.py` (+ its own audit gates),
+   `shuffle_control.py`, `component_audit.py`, `eyeball_cases.py`, `health.py` (GREEN
+   report = most of the V-ladder) all run UNCHANGED on external data. Same instruments,
+   new data — a difference is a property of the data, not the tooling. Leg A scores any
+   number of gain tables for ~free.
+5. **Leg B — engine path**: turn-by-turn real `brain.recall` with the flag on, as-of cut
+   at each cue (§20.11); arms applied via the eval platform's EXISTING interaction-override
+   mechanism (`_apply_interaction_override` / the sweep `--surface-params` pattern
+   generalized to any interaction, ~10 lines) — **arms = registered config JSONs, zero
+   arm-specific harness code**, and the same switch Stage-3 would flip in production.
+   Surfaced-context capture/compare via `frame_replay.py` (the §20.17 G3 tool). QA leg =
+   `sweep.py`/`judge.py`/`report.py`/`compare_arms.py` untouched.
+
+**Cues, two legs:**
+- **Op-cue (primary):** each of the 173 user turns; stack = preceding turns of that session.
+- **Stop-cue (exploratory):** cue positioned after each assistant response (anticipatory
+  recall — walker result: endo soft_r 0.348 ≥ op-cue 0.343); same arms, same instrument.
+
+**Composition fork — RESOLVED (Tom, 2026-07-17): full-fitted-table is the default.**
+The definitive fit is a JOINT model — its o0 weights re-balance the query side (op-side
+history mass −0.24 = "when the thread is present, trust the current sentence less"); an
+additive bolt-on (production j0 untouched, fitted j≥1 added) can only ADD history, never
+re-balance toward it, and was never measured anywhere. So the mechanism claim rides the
+full fitted table; the additive shape rides along as a test arm only. Consequence: under
+the full table, an EMPTY stack reproduces fitted-j0 (A0f below), NOT production — C2 and
+the QA leg are worded accordingly.
+
+**Registered arms (all through the wired engine; a gain table is the only difference):**
+- **A0 — production control:** `moment_K=0`, live gains. The delivery baseline.
+- **A0f — fitted-K0 control:** the fitted table restricted to j0 slots. The
+  mechanism-isolation baseline (the walker's K0-static analogue) and C2's identity target.
+- **A1 — S_content full fitted table (PRIMARY):** K=8, frozen definitive-fit gains,
+  pick/enc at 0. THE hypothesis — the measured object, validated as measured.
+- **A1t — trim variant:** A1 with |w| < 0.10 zeroed (pre-registered robustness check on
+  deep-slot fit noise — same hypothesis, not a separate arm; A1↔A1t divergence is itself
+  a finding about fit noise).
+- **A1s — S_full (flip-safe variant, Leg A at least):** the fit's pick/enc-retaining
+  table (soft_r 0.440 ≈ S_content's 0.446) — quality-equivalent while keeping the lanes
+  that earned the P1 need-reach gate; the pick/enc kill decision belongs to Stage-3's G2,
+  not P4.
+- **A1a — additive (test arm, Tom: "generally i didn't consider b but we can test it"):**
+  production j0 gains + fitted j≥1 terms. Measured against A0 as delivery-candidate info
+  for Stage-3; carries NO ship claim (unmeasured composition — a verdict on it is not a
+  verdict on the measured mechanism).
+- **A2 — A1 + sibling-inhibition-at-delivery (exploratory):** among the delivered top-N,
+  penalize candidates by z-calibrated similarity to already-delivered siblings — z within
+  the cue's own candidate-pool similarity distribution (raw cosine is flat ~0.77; naive
+  raw-cosine inhibition is falsified-by-sparsity and stays closed).
+- Naive inhibition, settling, geometric gating are CLOSED (falsified) — no arm resurrects
+  them. Leg A scores all tables ~free; Leg B engine runs cover {A0, A0f, A1, A1a} minimum,
+  the rest as budget allows.
+
+**Pre-registered decision rule on the fork:** A1 fails its claim → mechanism doesn't
+generalize, nothing ships, A1a is moot. A1 passes → Stage-3 chooses its ship shape between
+the full table (A1/A1s) and additive (A1a) with both numbers on the table and §20.17 G2 as
+the bare-cue regression guard.
+
+**Ground truth — three sources, none of them our labels:**
+1. **Evidence turns:** the 28 `has_answer` turns × the pooled brain's `gold_scan` node IDs —
+   does the field surface the node that encoded the evidence?
+2. **Soft usage (primary instrument):** the walker's soft label computed against THEIR next
+   assistant response — soft_max = nanmax over the 6 content-view cosines vs the response
+   vector (soft_mean secondary, reported side-by-side). Judge-free, transfers verbatim.
+3. **Standalone QA leg:** the classic end-of-corpus questions on the pooled brain, with
+   full transcripts kept for Tom to experience.
+
+**Metrics + pass criteria (pre-committed, in rank order):**
+- **P-primary (mechanism):** pooled soft_r — Pearson r between arm score and soft_max over
+  all (cue, candidate) rows, the definitive-fit instrument verbatim. PASS: A1 soft_r ≥
+  A0f soft_r + 0.05, with a session-clustered bootstrap 95% CI on the difference excluding 0
+  (history over no-history, within the same fitted family — the walker's S_content-vs-K0
+  comparison, externally). A1 vs A0 (production) is reported alongside as the delivery
+  number, no independent bar.
+- **P-secondary (evidence turns, n=28 — reported with exact counts, no percentage theater):**
+  gold-node best rank + reach@5/@25 per arm. PASS: A1 not worse than A0 on reach@25;
+  improvement is the win condition, no-harm is the floor.
+- **QA leg:** question-time stacks are empty → A1 collapses to A0f by construction, so the
+  identity check is **A1(empty stack) ≡ A0f bit-identical** (any divergence is a hard FAIL
+  of the wiring), and the question-time comparison **A0 vs A0f becomes a real measurement**
+  — the fitted j0 model vs production gains on bare external cues, P4 bonus value. Pooled
+  QA accuracy is reported as the new honest baseline — no pass bar against the per-item
+  94.4% (different difficulty class).
+- **Latency (informational):** per-recall wall time captured per arm; feeds §20.17 G4's
+  budget, gates nothing here.
+- **A2 / stop-cue:** same instruments, no pass bar — findings only.
+- **P4-CONFIRM =** all controls GREEN + P-primary PASS + P-secondary floor + E1 signed.
+  Anything less is refute/mixed and Stage-3 does not proceed on it.
+
+**Controls (pre-registered):**
+- **C1 — shuffle:** donor-history (stack replaced by a different session's turns, same
+  positions) through the wired path must NOT beat its own K=0 restriction
+  (fitted-model shuffle pattern, §20.13.3).
+- **C2 — coverage identity:** empty-stack cues (each session's first turn) under A1 must
+  be bit-identical to A0f row-level (fitted-j0, the arm's own K=0 restriction); and A0
+  (flag off) must be bit-identical to the pre-change engine (the dormancy invariant).
+- **C3 — walker parity (G1-style):** the wired engine's RAW slot-lane cells (maxsim/sit/idf
+  at j≥1, both sides), run over a sample of walker-v7 labeled turns, must reproduce the
+  walker's stored lane columns row-level (the cross_check.py pattern extended past j0 —
+  the harness IS the engine or nothing downstream counts). Pre-named limitation: parity is
+  on RAW lanes, not composed scores — the fit's z is over walker candidate rows, the
+  engine's z is over the whole field, an affine mismatch per lane, so composed-score
+  equality is structurally not expected. The COMPOSITION transfer across z-universes is a
+  measured question, and G5 (soft_r through the engine path) is its instrument; if field-z
+  degrades the fitted composition, z-calibration at delivery becomes a named Stage-3
+  amendment — never a silent retune.
+
+**Validation ladder — the half-broken-pipeline guard (five-check discipline, 6affa824).
+Each rung GREEN before the next rung's numbers are LOOKED AT; a red rung stops the run:**
+- **V0 — pooled-build audit:** sessions=32, user turns=173, dates monotonic non-decreasing,
+  build errors=0 (`debug_log` event_type='error' scan), node count reported, `gold_scan`
+  re-run per item on the POOLED brain (answerability WILL differ from per-item builds —
+  report the delta, don't assume).
+- **V1 — trace-vector coverage:** % of user turns whose message vectors exist in the trace
+  substrate (`_tr_*` reference semantics, §20.17 W1); every stack row resolvable.
+  <100% on stack-feeding turns → STOP (this is the silent-component-death class:
+  a missing substrate silently degrades A1 toward A0 and we'd call it a null result).
+- **V2 — moment-mass check:** per-turn moment activation distribution under A1 — nonzero
+  everywhere the stack is nonempty, zero exactly at session starts. Machine/system turns
+  excluded per §20.17 W2 (the v6 lesson: 778 machine turns mislabeled as moments).
+- **V3 = C2, V4 = C3** (run as build gates, re-reported as controls).
+- **V5 — label sanity:** soft_max distribution non-degenerate (not a constant, not
+  bimodal-at-echo); all 28 has_answer turns present in the cue set; response-resolution
+  ledger (turns with no next assistant message) counted and excluded, not zero-filled.
+
+**E1 — eyeball gate (NAMED, blocking):** before any aggregate verdict is published:
+curated cases from the replay in three bins — successes (A1 surfaced the evidence node A0
+missed), hurts (A1 displaced something A0 delivered that the response actually used),
+both-miss — each rendered with the real conversation window + surfaced titles
+(pattern: `eval/laf/walker/eyeball_cases.py`). Anchor triages first and states agreement/
+disagreement with the benchmark's own labels; Tom rules. The QA-leg transcripts ride this
+gate (Tom explicitly wants to experience the pooled brain, not just read its numbers).
+No aggregate interpretation is final until E1 is signed.
+
+**NOT in scope / NOT decided by P4:** maintained-state A, gating/attention, fatigue rework,
+reach, multi-store S, any refit of the frozen weights, and the ship decision itself —
+§20.17's six gates own that, on P4-confirm only.
+
+**Riders at this gate (queued, non-blocking):** (a) K-pin amendment — signed by signing
+this section (for P4; Stage-3 re-signs); (b) canary all-slot basis port into
+`q1_reverse.lane_attribution` (§20.13.3 adjudication) — separate small task;
+(c) 297 MB `walker.db.stale-jul15` in the laughing-darwin worktree — Tom's delete call;
+(d) branch push to origin — Tom's word.

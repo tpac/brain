@@ -62,7 +62,9 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
                 haystack_dates: Optional[List[str]] = None,
                 log_prefix: str = "[replay]",
                 dumper=None,
-                s2_every_n: Optional[int] = None) -> Dict[str, Any]:
+                s2_every_n: Optional[int] = None,
+                final_flush: bool = True,
+                s2_carry: int = 0) -> Dict[str, Any]:
     """Replay a LongMemEval item's haystack through the brain.
 
     Args:
@@ -80,9 +82,16 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
               pre_final_s2 / post_final_s2  (nodes{suffix}.jsonl, edges{suffix}.jsonl)
             Snapshot failures are non-fatal — the eval keeps going.
 
+        final_flush: run finalize_item (S2 loop-until-quiet + backfill) at the
+            end — the per-item default. The pooled builder passes False on its
+            per-session calls and runs finalize_item ONCE after all sessions.
+        s2_carry: seed for the S2 cadence counter — thread the previous call's
+            stats['encodings_since_s2'] through so pooled cadence spans calls.
+
     Returns:
         {"turns": N, "user_turns": N, "s1e_runs": N, "s2_runs": N,
-         "s1r_ms_total": N, "s1e_ms_total": N, "s2_ms_total": N}
+         "s1r_ms_total": N, "s1e_ms_total": N, "s2_ms_total": N,
+         "encodings_since_s2": N}
     """
     from servers.daemon_hooks import hook_recall, post_response_common
 
@@ -97,9 +106,10 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
              "s2_deltas": []}
 
     # S2 cadence is configurable so the corpus build can pin it into the
-    # corpus_hash; defaults to the module constant when unset.
+    # corpus_hash; defaults to the module constant when unset. s2_carry seeds
+    # the counter so a pooled build's cadence spans per-session calls.
     s2_gate = s2_every_n if s2_every_n is not None else S2_EVERY_N_ENCODINGS
-    encodings_since_s2 = 0
+    encodings_since_s2 = int(s2_carry)
     total_sessions = len(haystack_sessions)
 
     for sess_idx, session in enumerate(haystack_sessions):
@@ -188,6 +198,26 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
         except Exception as e:
             print(f"{log_prefix}   WARN s1e trailing failed: {e}", flush=True)
 
+    stats["encodings_since_s2"] = encodings_since_s2
+    if not final_flush:
+        # Pooled build (§20.18): the caller drives many per-session
+        # replay_item calls over ONE brain and runs finalize_item() once at
+        # the end — flushing loop-until-quiet after every session would be
+        # unfaithful to the per-item config AND slow. The S2 cadence carries
+        # across calls via stats['encodings_since_s2'] → next call's s2_carry.
+        print(f"{log_prefix} done (no final flush): {stats}", flush=True)
+        return stats
+    finalize_item(brain, stats, encodings_since_s2, log_prefix=log_prefix,
+                  dumper=dumper)
+    print(f"{log_prefix} done: {stats}", flush=True)
+    return stats
+
+
+def finalize_item(brain, stats, encodings_since_s2, log_prefix="[replay]",
+                  dumper=None):
+    """The end-of-ingest flush: pre/post S2 snapshots, S2 loop-until-quiet,
+    embedding backfill. ONE definition — replay_item's per-item tail and the
+    pooled builder's once-at-the-end call are the same code."""
     # Snapshot the graph BEFORE the final S2 flush. Combined with the
     # post_final_s2 snapshot below, this gives a clean diff of exactly what
     # S2 (consolidation + community + healer) wrote during the flush —
@@ -258,8 +288,6 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
               flush=True)
     except Exception as e:
         print(f"{log_prefix}   WARN backfill failed: {e}", flush=True)
-
-    print(f"{log_prefix} done: {stats}", flush=True)
     return stats
 
 

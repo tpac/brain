@@ -905,25 +905,29 @@ class TraceDAL:
                           since: str = None) -> List[tuple]:
         """UNCAPPED embedded-trace pull for field consumers (LAF episodic matrix).
 
-        Returns [(chain_id, session_id, created_at, vector)] for every embedded
-        trace matching scale/ref_types, created_at ASC. `since` (exclusive ISO
-        bound) makes refreshes incremental — callers keep a resident matrix and
-        append only new rows. Deliberately separate from filter_event_vectors:
-        that is the recall_episodes BROWSING scan (newest-first, EPISODE_MAX_LIMIT
-        capped); this is the substrate pull for a scorer that must see the whole
-        history (the newest-500 cap was a coverage ceiling, not a feature —
-        2026-07-02, eval/laf/composition_probe.md).
+        Returns [(chain_id, session_id, created_at, vector, trace_id, ref_type)]
+        for every embedded trace matching scale/ref_types, created_at ASC.
+        trace_id is trace_events.id (the same 8-char hex get_session_turns
+        returns as trace_id — the LAF moment stack joins turn→vector on it).
+        `since` (exclusive ISO bound) makes refreshes incremental — callers
+        keep a resident matrix and append only new rows. Deliberately separate
+        from filter_event_vectors: that is the recall_episodes BROWSING scan
+        (newest-first, EPISODE_MAX_LIMIT capped); this is the substrate pull
+        for a scorer that must see the whole history (the newest-500 cap was a
+        coverage ceiling, not a feature — 2026-07-02,
+        eval/laf/composition_probe.md).
         """
         where, params = self._event_where(
             scale=scale, ref_types=ref_types, younger_than=since or '')
         conditions = ['tem.vector IS NOT NULL', where]
         rows = self.conn.execute(
-            'SELECT te.chain_id, te.session_id, te.created_at, tem.vector '
+            'SELECT te.chain_id, te.session_id, te.created_at, tem.vector, '
+            'te.id, te.ref_type '
             'FROM trace_events te '
             'JOIN trace_embeddings tem ON tem.trace_id = te.id '
             'WHERE %s ORDER BY te.created_at ASC' % ' AND '.join(conditions),
             params).fetchall()
-        return [(r[0], r[1], r[2], r[3]) for r in rows]
+        return [(r[0], r[1], r[2], r[3], r[4], r[5]) for r in rows]
 
     def get_chains(self, session_id: str = '', scale: str = '',
                    hours: int = 24, limit: int = 50) -> List[Dict[str, Any]]:

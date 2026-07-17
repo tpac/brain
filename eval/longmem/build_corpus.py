@@ -316,6 +316,202 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
     return h
 
 
+def _pooled_session_plan(picked):
+    """Flatten items' (session, date) pairs and sort by date — the §20.18
+    pooled interleave. Tie-break on (qid, sess_idx) for determinism. Dates
+    are LongMemEval-shaped ('2023/05/22 (Mon) 16:46'); parse properly rather
+    than trusting lexicographic luck."""
+    from datetime import datetime
+
+    def _parse(d):
+        try:
+            return datetime.strptime(d, "%Y/%m/%d (%a) %H:%M")
+        except Exception:
+            raise ValueError("unparseable haystack date %r — the pooled sort "
+                             "must not fall back silently" % (d,))
+
+    plan = []
+    for item in picked:
+        qid = item["question_id"]
+        sessions = item.get("haystack_sessions", [])
+        dates = item.get("haystack_dates", [])
+        if len(dates) != len(sessions):
+            raise ValueError("item %s: %d sessions but %d dates — pooled "
+                             "interleave needs one date per session"
+                             % (qid, len(sessions), len(dates)))
+        for sess_idx, (session, date) in enumerate(zip(sessions, dates)):
+            plan.append({"qid": qid, "sess_idx": sess_idx, "date": date,
+                         "sort_key": (_parse(date), qid, sess_idx),
+                         "session": session})
+    plan.sort(key=lambda e: e["sort_key"])
+    return plan
+
+
+def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
+                        s2_every_n: int, label: str, force: bool = False,
+                        items_per_axis: int = None, seed: int = 42) -> str:
+    """§20.18 pooled-brain build: the picked items' haystack sessions
+    interleaved by date into ONE fresh brain — organic cross-topic
+    distractors, per-conversation session ids (the moment stack's window must
+    never cross a conversation boundary), one finalize_item at the end.
+
+    Manifest shape stays sweep.py-compatible: one entry per item (question,
+    gold, answerability re-scanned on the POOLED brain), every entry's
+    brain_dir pointing at the same pooled brain. The V0 audit (§20.18) is
+    computed here, printed, and stored under manifest['pooled_audit'] —
+    downstream legs refuse to run unless it's green.
+    """
+    from eval.longmem.replay import finalize_item
+
+    _load_env()
+    with open(oracle) as f:
+        data = json.load(f)
+    if qids:
+        wanted = [q.strip() for q in qids.split(",") if q.strip()]
+        by_id = {it["question_id"]: it for it in data}
+        missing = [q for q in wanted if q not in by_id]
+        if missing:
+            print(f"[pooled] WARN qids not in oracle: {missing}", flush=True)
+        picked = [by_id[q] for q in wanted if q in by_id]
+    else:
+        picked = stratified_sample(data, per_axis=items_per_axis or 4,
+                                   seed=seed)
+    if not picked:
+        print("[pooled] no items — exiting", file=sys.stderr)
+        sys.exit(1)
+
+    plan = _pooled_session_plan(picked)
+    n_user_turns = sum(sum(1 for t in e["session"] if t.get("role") == "user")
+                       for e in plan)
+    qid_list = sorted(it["question_id"] for it in picked)
+    config = {
+        "pooled": True,
+        "s1e": source_token(s1e),
+        "ingest_surface": source_token(ingest_surface),
+        "s2_every_n": s2_every_n,
+        "oracle": os.path.basename(oracle),
+        "qids": qid_list,
+    }
+    h = corpus_config_hash(config)
+    print(f"[pooled] config hash = {h}  ({len(qid_list)} items / "
+          f"{len(plan)} sessions / {n_user_turns} user turns / "
+          f"span {plan[0]['date']} → {plan[-1]['date']})", flush=True)
+    if load_manifest(h) and not force:
+        print(f"[pooled] CACHE HIT — manifest exists at {manifest_path(h)}; "
+              f"0 re-encoding. Pass --force to rebuild.", flush=True)
+        return h
+
+    if ingest_surface != "active":
+        os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"
+    os.makedirs(corpus_dir(h), exist_ok=True)
+    prompts_dir = os.path.join(corpus_dir(h), "prompts")
+    os.makedirs(prompts_dir, exist_ok=True)
+    os.environ["BRAIN_PROMPT_CAPTURE_DIR"] = prompts_dir
+
+    pooled_path = corpus_item_dir(h, "pooled")
+    brain = create_fresh_eval_brain(path=pooled_path, wipe=True)
+    if s1e != "active":
+        _apply_s1e_override(brain, s1e)
+    if ingest_surface != "active":
+        _apply_surface_override(brain, ingest_surface)
+
+    t_run0 = time.time()
+    totals = {"turns": 0, "user_turns": 0, "s1e_runs": 0, "s2_runs": 0,
+              "s2_deltas": []}
+    carry = 0
+    for i, e in enumerate(plan):
+        sid = "ingest-%s-s%d" % (e["qid"], e["sess_idx"])
+        print(f"\n[pooled] session {i+1}/{len(plan)} {sid} "
+              f"({e['date']}, {len(e['session'])} turns)", flush=True)
+        stats = replay_item(
+            brain, sid, [e["session"]], haystack_dates=[e["date"]],
+            log_prefix=f"[pooled {i+1}/{len(plan)}]",
+            s2_every_n=s2_every_n, final_flush=False, s2_carry=carry)
+        carry = stats.get("encodings_since_s2", 0)
+        for k in ("turns", "user_turns", "s1e_runs", "s2_runs"):
+            totals[k] += stats.get(k) or 0
+        totals["s2_deltas"].extend(stats.get("s2_deltas", []))
+
+    print(f"\n[pooled] all sessions ingested — finalize (S2 flush + backfill)",
+          flush=True)
+    finalize_item(brain, totals, carry, log_prefix="[pooled]")
+
+    # ── V0 audit (§20.18): each check printed; the block is the gate ──
+    node_count = brain.conn.execute(
+        "SELECT COUNT(*) FROM nodes").fetchone()[0]
+    build_errors = _read_build_errors(brain)
+    dates_sorted = all(plan[i]["sort_key"] <= plan[i + 1]["sort_key"]
+                       for i in range(len(plan) - 1))
+    audit = {
+        "sessions": len(plan),
+        "user_turns": n_user_turns,
+        "user_turns_replayed": totals["user_turns"],
+        "dates_monotonic": dates_sorted,
+        "build_errors": build_errors,
+        "node_count": node_count,
+        "span": [plan[0]["date"], plan[-1]["date"]],
+    }
+    v0_green = (dates_sorted and build_errors["count"] == 0
+                and totals["user_turns"] == n_user_turns)
+    print(f"[pooled] V0 audit: sessions={audit['sessions']} "
+          f"user_turns={audit['user_turns_replayed']}/{audit['user_turns']} "
+          f"dates_monotonic={dates_sorted} errors={build_errors['count']} "
+          f"nodes={node_count} → {'GREEN' if v0_green else 'RED'}", flush=True)
+    audit["green"] = v0_green
+
+    # Per-item answerability, re-scanned on the POOLED brain (§20.18 V0:
+    # answerability WILL differ from per-item builds — report, don't assume)
+    items_manifest = []
+    for item in picked:
+        scan = _scan_brain_for_gold(brain, _gold_str(item))
+        items_manifest.append({
+            "qid": item["question_id"],
+            "axis": _item_axis(item),
+            "question": item["question"],
+            "gold": _gold_str(item),
+            "question_date": item.get("question_date"),
+            "turns": sum(len(s) for s in item.get("haystack_sessions", [])),
+            "answerable": bool(scan.get("found")),
+            "gold_scan": {
+                "found": scan.get("found"),
+                "terms_used": scan.get("terms_used"),
+                "phrase_used": scan.get("phrase_used"),
+                "matches": scan.get("matches", []),
+            },
+            "brain_dir": pooled_path,
+        })
+
+    try:
+        brain.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    except Exception:
+        pass
+    try:
+        brain.close()
+    except Exception:
+        pass
+
+    ac = sum(1 for it in items_manifest if it["answerable"])
+    manifest = {
+        "corpus_hash": h, "label": label, "created_at_epoch": time.time(),
+        "prompts_dir": prompts_dir,
+        "config": config, "items": items_manifest,
+        "answerable_count": ac,
+        "unanswerable_count": len(items_manifest) - ac,
+        "s2_totals": summarize_s2_deltas(totals["s2_deltas"]),
+        "build_errors_total": build_errors["count"],
+        "build_ms": int((time.time() - t_run0) * 1000),
+        "pooled_audit": audit,
+        "pooled_totals": {k: totals[k] for k in
+                          ("turns", "user_turns", "s1e_runs", "s2_runs")},
+    }
+    path = save_manifest(h, manifest)
+    print(f"\n[pooled] done in {manifest['build_ms']/1000:.1f}s — "
+          f"ANSWERABLE {ac}/{len(items_manifest)} on the pooled brain",
+          flush=True)
+    print(f"[pooled] manifest → {path}", flush=True)
+    return h
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--items", type=int, default=2, help="per-axis item count (total = items × 5)")
@@ -338,6 +534,12 @@ def main():
                    help="Comma-separated name=version pairs, fetched from the live daemon's "
                         "registered (incl. DORMANT) versions and activated in each eval brain. "
                         "e.g. 's1e=24,s1_scout_facts=7'. Part of the corpus hash.")
+    p.add_argument("--pooled", action="store_true",
+                   help="§20.18 pooled build: interleave the picked items' haystack "
+                        "sessions by date into ONE brain (per-conversation session ids, "
+                        "one final S2 flush, V0 audit in the manifest). Incompatible "
+                        "with --lived/--interaction-override for now — the pooled arm "
+                        "is the moment-stack validation substrate, not an encoder A/B.")
     args = p.parse_args()
 
     overrides = {}
@@ -346,6 +548,14 @@ def main():
             if "=" in pair:
                 n, v = pair.split("=", 1)
                 overrides[n.strip()] = int(v.strip())
+
+    if args.pooled:
+        if args.lived or overrides:
+            p.error("--pooled does not compose with --lived/--interaction-override")
+        build_pooled_corpus(args.oracle, args.qids, args.s1e, args.ingest_surface,
+                            args.s2_every_n, args.label, force=args.force,
+                            items_per_axis=args.items, seed=args.seed)
+        return
 
     build_corpus(args.items, args.seed, args.oracle, args.s1e, args.ingest_surface,
                  args.s2_every_n, args.label, qids=args.qids, force=args.force,

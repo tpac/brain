@@ -560,5 +560,181 @@ class TestLafFlagIntegration(unittest.TestCase):
         self.assertEqual(res['_recall_mode'], 'embeddings_first')
 
 
+class TestMomentStack(BrainTestBase):
+    """§20.17/§20.18 moment slot lanes — dormancy, stack assembly, gain table.
+
+    The dormancy invariant is the ship condition: with the default config
+    (moment_K=0, moment_gains={}) the moment path is unreachable and scores()
+    is bit-identical to the moment-less engine. An arm is a gain table, not
+    code — A0f (fitted-K0) and the additive shape are pinned here as pure
+    config values.
+    """
+
+    SESS = 'sess-moment'
+    T = ['2026-05-01T00:00:%02d.000000+00:00' % i for i in range(20)]
+
+    def _mk_row(self, tid, ref_type, content, created, with_vec=True):
+        """One conversational trace row in the get_session_turns shape
+        (event_type 'K', content in metadata) + its embedding row."""
+        import json as _json
+        import servers.embedder as embedder
+        dal = self.brain._trace_dal
+        dal.conn.execute(
+            "INSERT INTO trace_events (id, chain_id, scale, event_type,"
+            " ref_type, ref_id, summary, metadata, session_id, created_at)"
+            " VALUES (?, ?, 's0', 'K', ?, 'r', ?, ?, ?, ?)",
+            (tid, 's0-momsess-1', ref_type, content[:80],
+             _json.dumps({'content': content}), self.SESS, created))
+        if with_vec:
+            blob = embedder.embed_query(content)     # packed float32 blob
+            if not isinstance(blob, (bytes, bytearray)):
+                blob = np.asarray(blob, dtype=np.float32).tobytes()
+            dal.conn.execute(
+                'INSERT INTO trace_embeddings (trace_id, vector, model)'
+                ' VALUES (?, ?, ?)', (tid, blob, 'test'))
+        dal.conn.commit()
+
+    def _mk_turn(self, i, user_text, anchor_text=None, user_vec=True):
+        self._mk_row('mtu%02d' % i, 'user_message', user_text,
+                     self.T[2 * i], with_vec=user_vec)
+        if anchor_text is not None:
+            self._mk_row('mta%02d' % i, 'assistant_message', anchor_text,
+                         self.T[2 * i + 1])
+
+    def _engine(self, moment_K=None, moment_gains=None):
+        import time as _t
+        eng = LafV1Engine()
+        with eng._lock:
+            eng._refresh_matrices(self.brain, None)
+            nk = eng._refresh_titles(self.brain)
+            eng._refresh_projects(self.brain, node_key=nk)
+            eng._refresh_traces(self.brain)
+        over = {}
+        if moment_K is not None:
+            over['moment_K'] = moment_K
+        if moment_gains is not None:
+            over['moment_gains'] = moment_gains
+        eng._cfg = dict(DEFAULT_CONFIG, **over)
+        eng._cfg_ts = _t.monotonic()
+        return eng
+
+    def test_defaults_dormant_and_bit_identical(self):
+        # the shipped defaults are falsy — the moment path is unreachable
+        self.assertEqual(DEFAULT_CONFIG['moment_K'], 0)
+        self.assertEqual(DEFAULT_CONFIG['moment_gains'], {})
+        import servers.embedder as embedder
+        self.brain.remember(type='lesson', title='Cache strategy note',
+                            content='Cache aggressively at the edge.')
+        self._mk_turn(0, 'how should caching work', 'aggressively, per note')
+        qv = embedder.embed_query('caching')
+        eng = self._engine()
+        with_sess = eng.scores(self.brain, 'caching', qv, session_id=self.SESS)
+        without = eng.scores(self.brain, 'caching', qv)
+        self.assertEqual(with_sess, without)
+        self.assertIsNone(eng._last_moment_ledger)
+
+    def test_trace_cache_carries_ids_and_ref_types(self):
+        self._mk_turn(0, 'first question here', 'first answer here')
+        rows = self.brain._trace_dal.event_vector_rows(
+            scale='s0', ref_types=['user_message', 'assistant_message'])
+        self.assertEqual({(r[4], r[5]) for r in rows},
+                         {('mtu00', 'user_message'),
+                          ('mta00', 'assistant_message')})
+        eng = self._engine()
+        self.assertIn('mtu00', eng._tr_ids)
+        vec = eng._tr_vec(eng._tr_ids['mtu00'])
+        self.assertAlmostEqual(float(np.linalg.norm(vec)), 1.0, places=5)
+
+    def test_stack_assembly_live_edge_machine_and_asof(self):
+        self._mk_turn(0, 'tell me about submarines', 'sonar arrays, mostly')
+        self._mk_turn(1, '<task-notification> background task done',
+                      '(watching)')
+        self._mk_turn(2, 'and their propulsion?', 'nuclear or diesel')
+        self._mk_turn(3, 'what about ballast tanks')       # in-flight prompt
+        eng = self._engine()
+        stack, ledger = eng._moment_stack(self.brain, self.SESS, 3)
+        # trailing answer-less user turn = the live edge → dropped
+        self.assertEqual(ledger['live_edge_dropped'], 1)
+        self.assertEqual(ledger['machine_dropped'], 1)
+        self.assertEqual(ledger['missing_vec'], 0)
+        # j=1 ← turn 2 (both sides), j=2 ← machine turn (anchor side only),
+        # j=3 ← turn 0 (both sides)
+        self.assertEqual({(s, j) for s, j, _v, _t in stack},
+                         {('o', 1), ('a', 1), ('a', 2), ('o', 3), ('a', 3)})
+        texts = {(s, j): t for s, j, _v, t in stack}
+        self.assertEqual(texts[('o', 1)], 'and their propulsion?')
+        self.assertEqual(texts[('a', 2)], '(watching)')
+        for _s, _j, v, _t in stack:
+            self.assertIsNotNone(v)
+        # as_of strictly before turn 2's user row → window is turns 0-1,
+        # complete, no live-edge drop
+        stack2, ledger2 = eng._moment_stack(self.brain, self.SESS, 3,
+                                            as_of=self.T[4])
+        self.assertEqual(ledger2['live_edge_dropped'], 0)
+        self.assertEqual({(s, j) for s, j, _v, _t in stack2},
+                         {('a', 1), ('o', 2), ('a', 2)})
+
+    def test_moment_table_shifts_scores_toward_history(self):
+        import servers.embedder as embedder
+        sub = self.brain.remember(
+            type='lesson', title='Submarine sonar arrays',
+            content='Attack submarines mount bow sonar arrays.')['id']
+        tom = self.brain.remember(
+            type='lesson', title='Garden tomato watering',
+            content='Water tomato plants at the roots, mornings.')['id']
+        self._mk_turn(0, 'tell me about attack submarines',
+                      'they mount bow sonar arrays and dive deep')
+        self._mk_turn(1, 'noted', 'anything else?')   # complete turn on top
+        query = 'watering the garden tomatoes'
+        qv = embedder.embed_query(query)
+        bare = self._engine()
+        bare_map, _ = bare.scores(self.brain, query, qv, session_id=self.SESS)
+        self.assertGreater(bare_map[tom], bare_map[sub])
+        # additive-shape table: fitted j≥1 terms only, base gains untouched
+        eng = self._engine(moment_K=3, moment_gains={'maxsim_a2': 8.0})
+        mom_map, mom_tel = eng.scores(self.brain, query, qv,
+                                      session_id=self.SESS)
+        self.assertGreater(mom_map[sub], mom_map[tom],
+                           'a2 slot (submarine anchor) should lift the '
+                           'submarine node past the tomato node')
+        self.assertEqual(eng._last_moment_ledger['turns'], 2)
+        self.assertTrue(any('maxsim_a2' in f for f in mom_tel.values()))
+
+    def test_empty_history_collapses_to_fitted_k0(self):
+        # A1 on an empty stack ≡ A0f bit-identical (§20.18 C2): slot keys
+        # contribute nothing when no history exists — fresh session id
+        import servers.embedder as embedder
+        self.brain.remember(type='lesson', title='Cache strategy note',
+                            content='Cache aggressively at the edge.')
+        qv = embedder.embed_query('caching')
+        o0_table = {'maxsim_o0': 0.7, 'sit_o0': 0.26, 'idf_o0': 0.24,
+                    'pick': 0.0, 'enc': 0.0}
+        full_table = dict(o0_table, maxsim_a1=0.95, sit_a2=0.21, idf_a3=0.13)
+        a0f = self._engine(moment_K=8, moment_gains=o0_table)
+        a1 = self._engine(moment_K=8, moment_gains=full_table)
+        self.assertEqual(
+            a1.scores(self.brain, 'caching', qv, session_id='sess-empty'),
+            a0f.scores(self.brain, 'caching', qv, session_id='sess-empty'))
+
+    def test_o0_override_equals_plain_gain_change(self):
+        # {'maxsim_o0': g} through the table ≡ gain_maxsim=g without it —
+        # pins the override resolution order (A0f mechanics, moment_K=0)
+        import servers.embedder as embedder
+        import time as _t
+        self.brain.remember(type='lesson', title='Cache strategy note',
+                            content='Cache aggressively at the edge.')
+        self.brain.remember(type='lesson', title='Unrelated gardening note',
+                            content='Prune roses in late winter.')
+        qv = embedder.embed_query('caching')
+        via_table = self._engine(moment_K=0,
+                                 moment_gains={'maxsim_o0': 0.25})
+        plain = self._engine()
+        plain._cfg = dict(DEFAULT_CONFIG, gain_maxsim=0.25)
+        plain._cfg_ts = _t.monotonic()
+        self.assertEqual(
+            via_table.scores(self.brain, 'caching', qv, session_id=self.SESS),
+            plain.scores(self.brain, 'caching', qv, session_id=self.SESS))
+
+
 if __name__ == '__main__':
     unittest.main()
