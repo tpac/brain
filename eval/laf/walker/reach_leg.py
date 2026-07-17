@@ -82,16 +82,24 @@ def load_cues():
     return cues
 
 
-def stack_rows(brain, session, stop):
+def stack_rows(brain, session, stop, before_ts=None):
     """{(j, kind): (text, unit_vec)} from the trace substrate — the LAST
-    user/assistant message per stop, stops S..S-K_MAX."""
+    user/assistant message per stop, stops S..S-K_MAX.
+
+    before_ts: exclude rows created at/after this ISO ts. Walker epochs
+    reset the stop counter within a session_id, so same-stop collisions
+    exist across epochs and 'last wins' would pick a FUTURE epoch's
+    message (2026-07-17 audit finding 4). Callers replaying a specific
+    turn must pass the turn's ts."""
     lo = max(stop - K_MAX, 0)
     rows = brain._trace_dal.conn.execute(
         "SELECT te.chain_id, te.ref_type, tem.text, tem.vector "
         "FROM trace_events te JOIN trace_embeddings tem ON tem.trace_id=te.id "
         "WHERE te.session_id=? AND te.scale='s0' AND te.ref_type IN "
         " ('user_message','assistant_message') AND tem.vector IS NOT NULL "
-        "ORDER BY te.created_at ASC", (session,)).fetchall()
+        " AND (? IS NULL OR te.created_at < ?) "
+        "ORDER BY te.created_at ASC", (session, before_ts,
+                                       before_ts)).fetchall()
     out = {}
     for chain, ref_type, text, blob in rows:
         tail = str(chain).rsplit('-', 1)[-1]

@@ -1954,6 +1954,14 @@ under support-z) — support-z fixes pick/enc, not idf's internal skew.
 below are the corrected fit (train April–May, 82,094 picked / 14,644 soft pairs; validate
 June+ out-of-sample). Every qualitative verdict survived the correction; the M_e finding
 changed shape (below).
+**Independent re-derivation (2026-07-17):** a fresh-agent adversarial audit on the
+recall-corpus-layers stream found the same inversion independently (correction node
+`c67d42cc`) and additionally caught four instrument bugs in that stream's newer probes —
+stop-cue argsort-tie echo (139 all-tied turns credited production rank order), a dead
+`used_next` label in the graph-spread probe (7 positives/93k), a cross-epoch future-message
+leak in `reach_leg.stack_rows` (fixed via `before_ts` mask), and the canary-basis blind spot
+adjudicated in §20.13.3. Its instruments additionally val-gate fitted-arm soft_r (held-out
+F soft_r 0.441 under that stricter metric vs 0.428 all-era here — same verdict either way).
 
 Instrument `eval/laf/walker/p3_fit.py` (report `p3_fit.md`, coefficients `p3_fit.json`). 31
 features as registered (intercept cancels in the pairwise formulation — 0 by construction);
@@ -2008,6 +2016,15 @@ story unchanged).
    weights, so a legitimate slot-recombination lift can trip it without label leakage; with the
    shuffle holding and one node per arm, this reads as attribution mismatch, not leak — but it
    is reported as the pre-declared rule requires, not waved off.
+   **ADJUDICATED (2026-07-17, independent audit stream): attribution mismatch CONFIRMED
+   empirically.** The F trip (`operator_msg_0622` / `6ce67c55` @16) was run down to its slot
+   profile: maxsim 0.897 on the j3 message — strongly reachable through the tail slot the
+   K1-shape attribution cannot see (F's tail coefficient +0.62). Under an all-slot basis
+   (unweighted nanmax over op j0..8 + anchor j1..8), sum-composition statics show a natural
+   base rate of 2/2 "no-single-slot-95th" nodes in top-25, and NO fitted arm exceeds it
+   (A 1, F 0) → no leakage signal. The honest canary form going forward is fitted-vs-static
+   base rate under the all-slot basis; the code port into `q1_reverse.lane_attribution` rides
+   the P4 session.
 3. **Tier placement (blind)** — A actively harms, more clearly post-correction (gold top-25
    12→5, gold_plus 6→4): the echo model buries blind-judged gold. F slightly below statics
    (gold top-25 12→9, gold_plus 6→5) with the best top-tier medians (gold_plus 52 vs 74) and
@@ -2284,6 +2301,17 @@ Q1 rule); G4 hard-gates activation; G5/G6 are controls. No goalpost moves after 
 **NOT in this rung:** maintained-state A, gating/attention weights, settling, fatigue rework
 (sequenced after value check — §20.14), multi-store S, PRF/query-expansion lanes (sibling
 stream's territory). Reach stays parked (Tom).
+
+**⚠ INPUT CORRECTION (2026-07-17):** the P3b coefficients this rung seeds from were refit
+after the split-inversion fix, and the corrected F_soft_ablate changes two pinned parameters
+of this pre-registration: (a) **K=2 / "tail carried ~0" no longer holds** — the held-out fit
+puts +0.62 on the tail and +0.73 on j2-anchor (quality is anchor-side and DEEPER than K=2;
+the walker-v7 definitive fit concurs: maxsim history mass op −0.24 vs anchor +2.99, alive to
+j8); (b) "content lanes only" survives (pick/enc still add nothing to quality — third
+consecutive measurement). The K and per-slot gain pins re-derive from the corrected fit at
+build time — parameter amendment goes to Tom at the P4/Stage-3 gate, per the
+batch-at-stage-gates drift guard. Everything else (stateless-unrolled shape, six gates,
+wiring questions) is unaffected.
 
 **Inputs this rung stands on:** P3b coefficients (p3_fit.json, F_soft_ablate), Q1 winner shape
 (K1-exp0.5-turnsum-zsum-opanchor), §20.15 L2 (the math), §20.16 (typing + turn-meshing pin
