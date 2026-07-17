@@ -400,7 +400,9 @@ class BrainVoice:
                 "LLM layer: PAUSED — no API key resolved by the daemon. "
                 "Memory storage, traces and recall work; learning (encode) "
                 "and memory surfacing are off until a key lands in "
-                "~/.config/brain/env (picked up automatically, no restart).")
+                "~/.config/brain/env (picked up automatically, no restart). "
+                "Tell the operator before starting work — they should hear "
+                "this from you, not find it in the dashboard.")
 
         out.append("[/BRAIN]")
 

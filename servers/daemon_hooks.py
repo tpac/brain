@@ -436,6 +436,21 @@ def hook_recall(brain, args, graph_changes):
                 frame=_frame, pt=pt)
         else:
             brain.note_llm_unavailable('S1 surface')
+            # Loud to Claude, every turn while keyless: the operator must
+            # hear this from the assistant, not discover it in the dashboard
+            # (first laptop install: boot looked fine, nothing told the
+            # session, the operator found the error themselves). A short
+            # block — state + what still works + the instruction to say it.
+            additional_context = (
+                "[BRAIN]\n"
+                "LLM layer: PAUSED — the brain daemon has no API key. Memory "
+                "surfacing and learning (encoding) are OFF; storage, traces "
+                "and direct recall tools still work.\n"
+                "If you have not told the operator this session, tell them "
+                "now: add the key in the Anchor plugin settings or in "
+                "~/.config/brain/env — it is picked up automatically, no "
+                "restart needed.\n"
+                "[/BRAIN]")
     except Exception as _surface_err:
         brain._log_error('daemon_surface', _surface_err,
                          'S1 Surface failed in daemon (query=%s)' % user_message[:100])

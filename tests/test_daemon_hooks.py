@@ -53,6 +53,20 @@ class TestHookRecallOutput(BrainTestBase):
         result = self._call_recall("xyzzy gibberish")
         self.assertEqual(result["json"], {"decision": "approve"})
 
+    def test_hook_recall_keyless_injects_paused_notice(self):
+        """Keyless daemon: the recall injection must TELL Claude the LLM
+        layer is paused (with the instruction to alert the operator) — not
+        inject nothing. First laptop install: the session never mentioned
+        the missing key; the operator found it in the dashboard."""
+        from unittest.mock import patch, PropertyMock
+        self._seed_data()
+        with patch.object(type(self.brain), 'llm_available',
+                          new_callable=PropertyMock, return_value=False):
+            result = self._call_recall("Test rule for recall")
+        ctx = result["json"].get("additionalContext", "")
+        self.assertIn("LLM layer: PAUSED", ctx)
+        self.assertIn("tell them", ctx)
+
     def test_hook_recall_writes_user_message_trace(self):
         """hook_recall writes the user_message S0 trace at prompt-arrival. The
         write moved here from post_response_common (it precedes recall, so it
