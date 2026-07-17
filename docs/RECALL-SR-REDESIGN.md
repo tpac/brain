@@ -2190,6 +2190,17 @@ The math is a compass, not a demolition order.
 shuffle-proof — §20.13.2) survive contact with production — real engine, real sessions, real
 latency — on blind gates?
 
+**Epistemic deliverables (what this rung teaches; Tom's ask 2026-07-16):** (1) mechanism vs
+instrument — is the P3 gain a property of the moment stack or of the walker proxy (G1/G5);
+(2) delivery-grade value — does it convert through real brain.recall + downstream
+floors/fatigue/Haiku (G2); (3) the first qualitative read of thread-aware surfacing (G3
+eyeball); (4) hot-path viability — a bad G4 reorders the roadmap toward maintained state
+early; (5) the running field's first LIVE persistence data point (λ); (6) where the linear
+mesh breaks (on-thread vs topic-switch slices) — the pre-registration evidence the gating
+rung requires, and the first live test of threads-as-latent-object. NOT learned here:
+maintained-vs-unrolled, gating value, fatigue value, reach. Negative verdict is cheap now,
+expensive after persistence machinery exists — that asymmetry is the rung's justification.
+
 **What ships (flag-gated, DORMANT):** `scores()` accepts optional moment context (the session's
 last-K conversational message vectors); each j≥1 message contributes per-lane slot activations
 composed EXACTLY as the walker's winner shape (zsum: per-message z + gain-sum, then weighted
