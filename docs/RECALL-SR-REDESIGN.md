@@ -2180,7 +2180,20 @@ rung by rung; (3) refactor is licensed only where a typing violation is ALSO a m
 exactly one on the books (`_mark_accessed` fatigue), already sequenced post-moment-value-check.
 The math is a compass, not a demolition order.
 
-### 20.17 Stage-3 pre-registration — moment wiring in the production engine (laid out 2026-07-16, awaiting Tom's "stands")
+### 20.17 Stage-3 pre-registration — moment wiring in the production engine (laid out 2026-07-16; GATED ON P4 per Tom's call)
+
+**ENTRY CONDITION — P4 external moment validation runs FIRST (Tom, 2026-07-16; fulfills
+decision e0329238 "external validation before brain-specific").** The quality case for the
+moment stack rests on one judge-independent leg (soft_r 0.43) measured on our own corpus with
+our own labels — and labels have betrayed this arc twice (pick echo §20.13.2; soft-vs-pick
+divergence). P4: moment-bearing replay over the LongMemEval/LoCoMo Frozen Corpus brains —
+vanilla longmem does NOT exercise moments (standalone post-hoc questions have no turn history →
+K=0 only), so the variant replays their multi-session conversations TURN-BY-TURN, walker-style
+(each turn a cue, preceding turns the stack, the benchmark's own QA/annotations anchoring
+relevance). External corpus, external ground truth, zero echo exposure, offline on the existing
+harness (eval/longmem/build_corpus.py + sweep.py). P4 gets its own pre-registration before any
+numbers; Stage-3 proceeds only on P4-confirm. What P4 adds that Stage-3's gates cannot:
+mechanism GENERALITY — the gain existing outside our history and our labels.
 
 **Type declaration (per §20.16 policy): L2 FACTOR-set extension** — per-slot moment evidence
 (j≥1 message activations) joins the field as calibrated factors with K-store gains. No moves
