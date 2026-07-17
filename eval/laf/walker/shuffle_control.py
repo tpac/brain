@@ -71,6 +71,7 @@ def build_shuffled(sample, donors, rng, eng, role_map, trace_mat,
     donor turns; j=0 stays real; lanes recomputed fresh through production
     code. Extracted for reuse by the P3 fitted-model shuffle (p3_eval) —
     behavior identical to the Q1 run."""
+    donor_sessions = {d[0] for d in donors}
     shuffled = []
     for td in sample:
         rows = np.array([eng._idx.get(nid, -1) for nid in td.cands])
@@ -79,6 +80,10 @@ def build_shuffled(sample, donors, rng, eng, role_map, trace_mat,
         sh.sel, sh.soft, sh.fat = td.sel, td.soft, td.fat
         for ln in GAINS:              # j=0 stays REAL (stored, cross-checked)
             sh.op[ln][:, 0] = td.op[ln][:, 0]
+        if not (donor_sessions - {td.key[0]}):
+            raise SystemExit('build_shuffled: no other-session donors exist '
+                             'for session %s — a single-session corpus '
+                             'cannot support the shuffle control' % td.key[0])
         for j in range(1, K_MAX + 1):
             dsess = dov = dav = dopt = dat = None
             while True:               # donor from a DIFFERENT session

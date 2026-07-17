@@ -48,6 +48,47 @@ TIERS = ('gold_plus', 'gold', 'silver_plus', 'silver')
 REPORT = WALKER_DIR / 'q1_reverse.md'
 
 
+def lane_attribution(mats, ww, n, node_mask):
+    """(lane_z, lane_pct) per lane — THE shared attribution for miss
+    classification; p3_eval imports this so the two instruments cannot drift.
+
+    Percentiles are computed WITHIN the eligible universe (ineligible rows
+    get -1): ranking over the full matrix inflated every eligible node's
+    percentile by the masked fraction, floating the p95/p99 class thresholds
+    per cue cutoff (code-review catch 2026-07-16)."""
+    lane_z, lane_pct = {}, {}
+    idx = np.flatnonzero(node_mask)
+    denom = max(len(idx) - 1, 1)
+    for ln in GAINS:
+        v = np.nansum(mats[ln] * ww, axis=1)
+        v[np.all(np.isnan(mats[ln]), axis=1)] = np.nan
+        z = _zscore(v, n, mask=node_mask)
+        lane_z[ln] = z
+        pct = np.full(n, -1.0)
+        if len(idx) > 1:
+            pct[idx] = z[idx].argsort().argsort() / denom * 100
+        lane_pct[ln] = pct
+    return lane_z, lane_pct
+
+
+def classify_miss(rk, best_ln, best_pct, mc):
+    """Shared miss-class decision tree — the thresholds ARE the contract.
+    `x if x is not None` (not `x or`) so a genuine 0.0 cosine is never
+    coerced to -1 (code-review catch 2026-07-16)."""
+    j0c = mc['j0-op'] if mc['j0-op'] is not None else -1
+    hist_best = max((v for k, v in mc.items()
+                     if k != 'j0-op' and v is not None), default=-1)
+    if rk is not None and rk <= 60:
+        return 'near_miss'
+    if best_pct >= 99.0:
+        return 'lane_buried:%s' % best_ln
+    if hist_best > j0c + 0.05:
+        return 'moment_seen'
+    if best_pct < 95.0:
+        return 'unreachable'
+    return 'weak_everywhere'
+
+
 def main():
     cfg = next(c for c in configs() if c['name'] == WINNER)
     w = weights(cfg)
@@ -87,15 +128,7 @@ def main():
             order = rank_rows(s, node_mask)
             rank_of = {r: i + 1 for i, r in enumerate(order)}
             # per-lane composed z + percentile (attribution view)
-            lane_z, lane_pct = {}, {}
-            for ln in GAINS:
-                v = np.nansum(mats[ln] * ww, axis=1)
-                v[np.all(np.isnan(mats[ln]), axis=1)] = np.nan
-                z = _zscore(v, n, mask=node_mask)
-                lane_z[ln] = z
-                zr = z.copy()
-                zr[~node_mask] = -np.inf
-                lane_pct[ln] = zr.argsort().argsort() / max(n - 1, 1) * 100
+            lane_z, lane_pct = lane_attribution(mats, ww, n, node_mask)
             # message visibility: maxsim per message column
             msg_cos = {'j0-op': op['maxsim'][:, 0], 'j1-op': op['maxsim'][:, 1],
                        'j1-anchor': an['maxsim'][:, 1]}
@@ -114,20 +147,7 @@ def main():
                     best_pct = lane_pct[best_ln][row]
                     mc = {k: float(v[row]) if np.isfinite(v[row]) else None
                           for k, v in msg_cos.items()}
-                    j0c = mc['j0-op'] or -1
-                    hist_best = max((v for k, v in mc.items()
-                                     if k != 'j0-op' and v is not None),
-                                    default=-1)
-                    if rk is not None and rk <= 60:
-                        cls = 'near_miss'
-                    elif best_pct >= 99.0:
-                        cls = 'lane_buried:%s' % best_ln
-                    elif hist_best > j0c + 0.05:
-                        cls = 'moment_seen'
-                    elif best_pct < 95.0:
-                        cls = 'unreachable'
-                    else:
-                        cls = 'weak_everywhere'
+                    cls = classify_miss(rk, best_ln, best_pct, mc)
                     miss_class[cls.split(':')[0]] += 1
                     miss_rows.append((cue['cue_id'], t, it['node_id'],
                                       rk or 99999, cls, best_ln,

@@ -46,6 +46,7 @@ sys.path.insert(0, str(REPO))
 from servers.recall_laf import _zscore                             # noqa: E402
 from q1_sweep import GAINS, load, gate_provenance, configs, \
     evaluate                                                        # noqa: E402
+from q1_tiers import WINNER                                         # noqa: E402
 from soft_usage import auc                                          # noqa: E402
 from episodic_roles import K_MAX                                    # noqa: E402
 
@@ -55,7 +56,6 @@ TAIL_GAMMA = 0.5
 LAMBDA = 1.0
 LAMBDA_SENS = (0.1, 1.0, 10.0)
 SOFT_MARGIN = 0.10            # min soft_max gap to mint a soft-target pair
-WINNER = 'K1-exp0.5-turnsum-zsum-opanchor-me0'
 REPORT = WALKER_DIR / 'p3_fit.md'
 OUT = WALKER_DIR / 'p3_fit.json'
 
@@ -99,11 +99,15 @@ def build(turns):
     return [(td, turn_features(td)) for td in turns]
 
 
-def pairs_picked(feats, train_only):
-    """Selected−dropped diff rows, within turn."""
+def pairs_picked(feats):
+    """Selected−dropped diff rows, within turn — TRAIN turns only (April–May;
+    `td.val` marks June+ validation turns, which never mint training pairs).
+    A tri-state train_only param here previously INVERTED the split (fitted
+    on June+, made auc_val in-sample) — caught by code review 2026-07-16;
+    the intent is now written directly."""
     rows = []
     for td, X in feats:
-        if train_only is not None and td.val == train_only:
+        if td.val:
             continue
         si = np.flatnonzero(td.sel)
         di = np.flatnonzero(~td.sel)
@@ -114,12 +118,12 @@ def pairs_picked(feats, train_only):
     return np.concatenate(rows) if rows else np.empty((0, len(FEATURES)))
 
 
-def pairs_soft(feats, train_only):
+def pairs_soft(feats):
     """Soft-usage target: within-turn pairs with a ≥SOFT_MARGIN soft gap,
-    diff oriented winner−loser."""
+    diff oriented winner−loser. TRAIN turns only (see pairs_picked)."""
     rows = []
     for td, X in feats:
-        if train_only is not None and td.val == train_only:
+        if td.val:
             continue
         fin = np.flatnonzero(np.isfinite(td.soft))
         if len(fin) < 2:
@@ -211,8 +215,8 @@ def main():
     print('building features over %d turns...' % len(turns))
     feats = build(turns)
 
-    D_pick = pairs_picked(feats, train_only=False)     # train = not val
-    D_soft = pairs_soft(feats, train_only=False)
+    D_pick = pairs_picked(feats)                       # April–May only
+    D_soft = pairs_soft(feats)
     print('train pairs: picked %d · soft %d' % (len(D_pick), len(D_soft)))
 
     lines = ['# p3_fit — the composition fit (§20.13 P3.1)', '',
@@ -304,9 +308,15 @@ def main():
     lines.append('## echo read')
     dA = results['A_full_picked']['auc_val'] - k0['auc_val']
     dC = results['C_ablate_echo']['auc_val'] - k0['auc_val']
+    # a 'share' is only defined when the full-fit gain is real and positive
+    # and the ablated delta sits inside it (0 ≤ dC ≤ dA); outside that domain
+    # report the two deltas plainly instead of a misleading percentage
+    if dA > 0.005 and 0 <= dC <= dA:
+        share = '— echo share of the fit gain: %.0f%%' % (100 * (1 - dC / dA))
+    else:
+        share = '— share undefined (deltas outside 0≤dC≤dA); read the deltas'
     lines.append('- full fit ΔAUC vs K0-static: %+.4f; content-only (no '
-                 'pick/enc): %+.4f — echo share of the fit gain: %.0f%%'
-                 % (dA, dC, 100 * (1 - dC / dA) if dA else 0))
+                 'pick/enc): %+.4f %s' % (dA, dC, share))
 
     OUT.write_text(json.dumps({'results': results, 'lambda_sens': sens,
                                'features': FEATURES,

@@ -161,7 +161,13 @@ def _zscore_support(x, n, mask=None):
     only; zeros — 'no activation' in the sparse lanes (pick/enc/idf), which
     plain z counts as real values, shrinking std until matches explode —
     stay exactly 0 (neutral). Dense lanes (cosines are never exactly 0.0)
-    are bit-identical to _zscore. Same small-support guard shape."""
+    are bit-identical to _zscore. Same small-support guard shape.
+
+    LANE CONSTRAINT: valid ONLY for lanes whose 0.0 means absence (the
+    SUPPORT_ZERO_SEA_LANES). Lanes where 0.0 is a REAL activation per the
+    _fields LANE CONTRACT (proj: cross-project inhibition) must NOT route
+    here — support-z would drop the zeros from the stats and zero the whole
+    lane (all-1.0 support, std<1e-9). The scores() z-loop enforces this."""
     m = np.isfinite(x)
     if mask is not None:
         m = m & mask
@@ -203,6 +209,13 @@ def _zscore_rank(x, n, mask=None):
 
 
 Z_NORMS = {'current': _zscore, 'support': _zscore_support, 'rank': _zscore_rank}
+
+# Lanes whose 0.0 genuinely means "no activation" (the sparse zero seas).
+# support-z applies ONLY to these; every other lane keeps plain z under
+# z_norm='support' because its zeros are real values (proj's 0.0 is
+# cross-project INHIBITION — the _fields LANE CONTRACT). rank-norm is
+# lane-safe (ranks preserve the 0<1 ordering) and needs no gating.
+SUPPORT_ZERO_SEA_LANES = frozenset(('pick', 'enc', 'idf'))
 
 
 def zscore_variant(x, n, mask=None, kind='current'):
@@ -354,6 +367,22 @@ class LafV1Engine:
                 brain._log_error('recall_laf_config', e,
                                  'get_interaction_config failed — running on '
                                  'module defaults')
+            except Exception:
+                pass
+        # z_norm validates at the MERGE, not in the hot loop: an unrecognized
+        # value (typo'd K-store flip, JSON non-string) must degrade to
+        # 'current' with one loud log — NOT raise per-query inside scores(),
+        # which the caller's fallback would turn into full champion mode
+        # (LAF silently dead fleet-wide). Code-review catch 2026-07-16.
+        if cfg.get('z_norm') not in Z_NORMS:
+            bad = cfg.get('z_norm')
+            cfg['z_norm'] = 'current'
+            try:
+                brain._log_error('recall_laf_config',
+                                 ValueError('invalid z_norm %r' % (bad,)),
+                                 'unknown z_norm in K-store config — falling '
+                                 'back to current (valid: %s)'
+                                 % '/'.join(Z_NORMS))
             except Exception:
                 pass
         self._cfg, self._cfg_ts = cfg, now
@@ -724,9 +753,14 @@ class LafV1Engine:
                                   session_project=session_project,
                                   as_of=as_of, trace_mask=trace_mask)
             # THE node-mask chokepoint (§20.11 #1/#6): one masked z-score
-            # loop covers every node-indexed lane, including future ones
+            # loop covers every node-indexed lane, including future ones.
+            # support-z is lane-gated: only the zero-sea lanes take it;
+            # contract-zero lanes (proj) keep plain z — see Z_NORMS block.
             zn = str(cfg.get('z_norm', 'current'))
-            zf = {name: zscore_variant(vec, n, mask=node_mask, kind=zn)
+            zf = {name: zscore_variant(
+                      vec, n, mask=node_mask,
+                      kind=(zn if zn != 'support'
+                            or name in SUPPORT_ZERO_SEA_LANES else 'current'))
                   for name, vec in fields.items()}
             zsum = np.zeros(n)
             for name, z in zf.items():

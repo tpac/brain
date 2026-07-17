@@ -1913,8 +1913,10 @@ attention weights, selector/gating — each its own pre-reg after P3. Reach park
 
 **Q1 inputs P3 stands on (all committed 2026-07-15):** verdict a1698bb3 (rank +0.045 shuffle-proof
 / reach flat / no-ship as registered); contributor decomposition (label echo named, maxsim
-restriction-of-range named); miss classes (moment_seen 61 / lane_buried 48 / unreachable 38 /
-near_miss 23); tier placement flat; artifacts q1_{sweep,analysis,tiers,reverse}.* + shuffle_control.md.
+restriction-of-range named); miss classes (as pre-registered: moment_seen 61 / lane_buried 48 /
+unreachable 38 / near_miss 23; re-based 2026-07-16 by the eligible-percentile fix to
+62/40/37/23 — see §20.13.3); tier placement flat; artifacts q1_{sweep,analysis,tiers,reverse}.*
++ shuffle_control.md.
 
 #### 20.13.1 P3.0 VERDICT (ran 2026-07-15, pre-declared rule) — PICK: current
 
@@ -1945,55 +1947,74 @@ instability of sparse-lane z is second-order and the ablation catches the echo s
 observation for a future pre-reg: idf remains heavy-tailed WITHIN its support (eyeball z 6.7–8.7
 under support-z) — support-z fixes pick/enc, not idf's internal skew.
 
-#### 20.13.2 P3.1 fit results (ran 2026-07-15) — the ablation matrix is the story
+#### 20.13.2 P3.1 fit results (ran 2026-07-15; CORRECTED 2026-07-16) — the ablation matrix is the story
+
+**Correction provenance:** the original run's split filter was inverted (fitted on June+,
+'val AUC' in-sample — code-review catch 2026-07-16, `pairs_picked` tri-state param). Numbers
+below are the corrected fit (train April–May, 82,094 picked / 14,644 soft pairs; validate
+June+ out-of-sample). Every qualitative verdict survived the correction; the M_e finding
+changed shape (below).
 
 Instrument `eval/laf/walker/p3_fit.py` (report `p3_fit.md`, coefficients `p3_fit.json`). 31
 features as registered (intercept cancels in the pairwise formulation — 0 by construction);
-Newton/L2, λ-insensitive across {0.1, 1, 10}; train 81,545 picked pairs / 14,461 soft pairs.
-Eight arms: {full, j0-only} × {picked, soft} × {with, without pick/enc}.
+Newton/L2, λ-insensitive across {0.1, 1, 10}. Eight arms: {full, j0-only} × {picked, soft} ×
+{with, without pick/enc}.
 
 | arm | target | features | val AUC (picked) | soft_r |
 |---|---|---|---|---|
-| A full | picked | all 31 | **0.9698** | 0.130 |
-| C full−pick/enc | picked | 19 | 0.7102 | 0.243 |
-| B full | soft | all 31 | 0.7695 | **0.427** |
-| F full−pick/enc | soft | 19 | 0.6448 | **0.430** |
-| D j0-only | picked | 6 | 0.9279 | 0.088 |
-| G j0-only | soft | 6 | 0.7887 | 0.177 |
+| A full | picked | all 31 | **0.9458** | 0.157 |
+| C full−pick/enc | picked | 19 | 0.7040 | 0.300 |
+| B full | soft | all 31 | 0.7287 | **0.426** |
+| F full−pick/enc | soft | 19 | 0.6496 | **0.428** |
+| D j0-only | picked | 6 | 0.8885 | 0.163 |
+| G j0-only | soft | 6 | 0.7304 | 0.181 |
 | statics | — | — | K0 0.8226 · winner 0.8676 · K0-content-only 0.6921 | 0.173 / 0.273 |
 
-**The pre-registered sentence fires: the picked-label fit gain was echo.** Content-only (C)
-collapses below K0-static (0.7102 < 0.8226); the A coefficients say why (pick·j0 +1.37,
-pick·j1op +1.00, pick·j1anchor +0.86 — the fit poured weight into the label-sharing lane).
-Like-for-like, though, the fit is real: C beats the content-only static (0.7102 > 0.6921), and
-even K0-static's own AUC is mostly echo (0.8226 → 0.6921 with pick/enc zeroed).
+**The pre-registered sentence fires: the picked-label fit gain was echo — and it generalizes
+across eras** (A holds 0.9458 fully out-of-sample: the pick lane predicts picks anywhere).
+Content-only (C) collapses below K0-static (0.7040 < 0.8226); the corrected coefficients
+concentrate the echo in **pick·j1-anchor +1.93** (+ pick·j1-op +0.69) — riding what was picked
+around the PREVIOUS turn. Like-for-like the fit is real: C beats the content-only static
+(0.7040 > 0.6921), and even K0-static's own AUC is mostly echo (0.8226 → 0.6921 zeroed).
 
 **The quality signal lives in the moment slots and needs no echo lanes:** the soft-target fit
-nearly doubles the static soft_r (0.427–0.430 vs 0.273) and loses NOTHING when pick/enc are
-ablated (F ≈ B) — but drops to statics' level when restricted to j0 (G 0.177 ≈ static 0.173).
-Judge-independent quality headroom = moment stack, not j0 re-weighting.
+lifts soft_r to 0.426–0.428 vs 0.273 static, loses NOTHING under pick/enc ablation (F ≈ B),
+and drops toward statics at j0-only (G 0.181 ≈ static 0.173). Judge-independent quality
+headroom = moment stack, not j0 re-weighting. Unchanged by the correction.
 
-**M_e sign flip (mechanism finding):** fatigue coefficient −1.29 on the picked target,
-+1.28 on the soft target — recently-surfaced nodes are LESS likely re-picked (availability
-management, the 2′ design intent) yet MORE likely response-relevant (thread continuity).
-One dial, two opposing jobs — relevant when M_e ships.
+**M_e finding (REVISED by the corrected fit):** the original "sign flip across targets"
+(−1.29 picked / +1.28 soft) was partly split-artifact. Corrected structure: WITH moment slots,
+fatigue is anti-pick (A −1.32) and ~neutral on soft (B −0.16); WITHOUT them (j0-only), it turns
+strongly POSITIVE on both targets (D +4.29, G +3.22) — **fatigue proxies thread-continuity
+whenever the model cannot see the moment**; given the moment factors, its marginal job is pure
+availability management. A missing-factor confound, and the operative warning stands: never
+tune the fatigue dial on a target that lacks the moment factors, or δ absorbs continuity.
 
-#### 20.13.3 P3.2 verdict (ran 2026-07-15, all six pre-declared) — NO SHIP, as the gates ruled
+#### 20.13.3 P3.2 verdict (ran 2026-07-15; CORRECTED 2026-07-16, all six pre-declared) — NO SHIP, as the gates ruled
 
 Instrument `eval/laf/walker/p3_eval.py` (report `p3_eval.md`). Arms at the blind gates:
-A (registered primary) and F (the ablation matrix's quality candidate).
+A (registered primary) and F (the quality candidate). Corrected run = refitted coefficients
+(split fix) + eligible-universe lane percentiles (the code review's second substrate catch:
+ranking over the full matrix inflated percentiles by each cue's masked fraction — fixed in the
+ONE shared `q1_reverse.lane_attribution`, which also re-based Q1's taxonomy to
+moment_seen 62 / lane_buried 40 / unreachable 37 / weak 34 / near_miss 23; qualitative Q1
+story unchanged).
 
-1. **June+ AUC** — in p3_fit.md (A +0.147 over K0-static; echo per above).
-2. **Miss classes** — expectation FAILED both arms: near_miss shrinks (24→12 A / 16 F) but
-   lane_buried grows (50→73 A / 68 F); net misses UP (201 → 216 A / 210 F). **Leak canary
-   CLEAN: unreachable frozen at 35 in all four arms; zero unreachable-substrate nodes in any
-   top-25.**
-3. **Tier placement (blind)** — A actively harms (gold top-25 12→6, gold_plus 6→3): the echo
-   model buries blind-judged gold to chase pick prediction. F ≈ parity (gold top-25 12→10,
-   gold_plus median 74→56, silver top-1 2→4).
-4. **Shuffle control on fitted models** — holds for both (A: shuffled 0.7980 ≤ j0-restricted
-   0.8257; F: 0.5962 ≤ 0.6937). What moment gain exists is not a length artifact.
-5. **Soft-usage correlation** — the one clear win: 0.427–0.430 vs 0.273 static, echo-ablation-proof.
+1. **June+ AUC** — in p3_fit.md (A +0.123 over K0-static out-of-sample; echo per above).
+2. **Miss classes** — expectation FAILED both arms: near_miss shrinks (24→11 A / 22 F) but
+   lane_buried grows (43→75 A / 58 F). **Leak canary: statics clean (0/0); fitted arms trip it
+   once each (1/1)** — one winner-attribution-unreachable node reaches a fitted top-25 per arm.
+   Read: the canary's attribution uses the WINNER config's lane shape, not the fitted slot
+   weights, so a legitimate slot-recombination lift can trip it without label leakage; with the
+   shuffle holding and one node per arm, this reads as attribution mismatch, not leak — but it
+   is reported as the pre-declared rule requires, not waved off.
+3. **Tier placement (blind)** — A actively harms, more clearly post-correction (gold top-25
+   12→5, gold_plus 6→4): the echo model buries blind-judged gold. F slightly below statics
+   (gold top-25 12→9, gold_plus 6→5) with the best top-tier medians (gold_plus 52 vs 74) and
+   silver top-1/5 (4/12).
+4. **Shuffle control on fitted models** — holds decisively (A: shuffled 0.6670 ≤ j0-restricted
+   0.7183; F: 0.5978 ≤ 0.6912). What moment gain exists is not a length artifact.
+5. **Soft-usage correlation** — the one clear win: 0.426–0.428 vs 0.273 static, echo-ablation-proof.
 6. **Ship gate** — moot except for P3b below; nothing activates.
 
 **Deliverables (P3.3):** P3a = **no gain flip ships** — D's j0 gains are echo (blind tiers
@@ -2028,7 +2049,8 @@ sequencing decision.
   inhibition component RETIRES it, not layers under it.
 - **Sequencing (Tom's call, 2026-07-16):** fatigue strategy is thought through AFTER the
   moment-recall value check — don't hold Stage-3 for it. P3 support: M_e was rank-flat (Q1) and
-  its sign flip (−1.29 picked / +1.28 soft, §20.13.2) says its tuning needs a quality target.
+  its coefficient structure (§20.13.2 corrected: anti-pick given moment slots, continuity-proxy
+  without them) says its tuning needs a quality target that includes the moment factors.
 
 **Mesh shapes (the moment-composition families) and the chosen ladder:**
 
@@ -2071,9 +2093,11 @@ conditional dependencies (if A is relevant, B likely is); inhibition/normalizati
 away (competition IS explaining-away); settling = iterative inference; attractors = hypotheses;
 pattern completion = filling in the posterior over unobserved variables. Two direct payoffs of
 this frame on OUR measurements: (1) the M_e sign flip is the relevance-vs-marginal-value
-distinction falling out — an already-delivered node keeps high relevance (soft +1.28) but has
-zero marginal information value (picked −1.29); fatigue is an ECONOMY term, not a relevance
-term, and must never be tuned on a relevance target. (2) Multi-modal settling = keeping the
+distinction falling out — the fatigue coefficient diverges sharply between the delivery target
+(picked −1.32) and the relevance target (soft −0.16), and turns into a thread-continuity PROXY
+(+4.3/+3.2) the moment the model lacks the moment factors (§20.13.2 corrected); fatigue is an
+ECONOMY term, not a relevance term, and must never be fitted without the factors it would
+otherwise impersonate. (2) Multi-modal settling = keeping the
 posterior multi-modal instead of collapsing to MAP — Tom's narrowing worry is exactly the
 MAP-collapse failure, and the delivery answer is "represent the modes," not "pick the peak."
 
@@ -2112,7 +2136,8 @@ approximation error, not a taste choice.
 S* = argmax_{cost≤B} E[U(S)|posterior]. (a) Value-of-information: delivered nodes have ~0
 marginal U regardless of relevance ⇒ fatigue is ∂U/∂delivered, an economy term OUTSIDE the
 posterior ⇒ a fitted fatigue coefficient MUST flip sign between delivery and relevance targets —
-the measured M_e flip (−1.29/+1.28), derived. (b) Submodularity: need-reach@K IS a max-coverage
+the measured M_e divergence (−1.32 delivery vs −0.16 relevance; continuity-proxy +4.3/+3.2
+without moment factors — §20.13.2 corrected), derived. (b) Submodularity: need-reach@K IS a max-coverage
 objective; greedy selection carries the Nemhauser (1−1/e) guarantee — Haiku ≈ approximate greedy;
 diversity-over-redundancy falls out of the objective. (c) The P3 pick-echo has a formal name:
 off-policy logging bias (picks generated by the previous policy; counterfactual LTR / propensity

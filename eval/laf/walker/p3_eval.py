@@ -48,6 +48,7 @@ from servers.recall_laf import LafV1Engine, _unit, _zscore          # noqa: E402
 import q1_sweep                                                      # noqa: E402
 from q1_sweep import GAINS, compose, stack_messages, weights, configs  # noqa: E402
 from q1_tiers import WINNER, TIERS                                   # noqa: E402
+from q1_reverse import lane_attribution, classify_miss               # noqa: E402
 from reach_leg import load_cues, cue_fields, rank_rows               # noqa: E402
 from p3_fit import FEATURES, LANES, SLOTS, slot_raw, turn_features    # noqa: E402
 from soft_usage import auc                                            # noqa: E402
@@ -115,18 +116,12 @@ def gold_evaluations(coefs):
             op, an = cue_fields(eng, tm, cue, q0)
             tiers = gold[cue['cue_id']]['tiers']
             golds = {it['node_id'] for t in TIERS for it in tiers.get(t, [])}
-            # shared lane attribution (q1_reverse semantics — winner config)
+            # shared lane attribution (imported from q1_reverse — one home,
+            # eligible-universe percentiles; code-review 2026-07-16)
             mats_w, ww = {}, None
             for ln in GAINS:
                 mats_w[ln], ww = stack_messages(op[ln], an[ln], w_win, win)
-            lane_pct = {}
-            for ln in GAINS:
-                v = np.nansum(mats_w[ln] * ww, axis=1)
-                v[np.all(np.isnan(mats_w[ln]), axis=1)] = np.nan
-                z = _zscore(v, n, mask=node_mask)
-                zr = z.copy()
-                zr[~node_mask] = -np.inf
-                lane_pct[ln] = zr.argsort().argsort() / max(n - 1, 1) * 100
+            _lz, lane_pct = lane_attribution(mats_w, ww, n, node_mask)
             msg_cos = {'j0-op': op['maxsim'][:, 0],
                        'j1-op': op['maxsim'][:, 1],
                        'j1-anchor': an['maxsim'][:, 1]}
@@ -169,21 +164,8 @@ def gold_evaluations(coefs):
                             continue
                         mc = {k: float(v[row]) if np.isfinite(v[row])
                               else None for k, v in msg_cos.items()}
-                        j0c = mc['j0-op'] or -1
-                        hist_best = max((v for k, v in mc.items()
-                                         if k != 'j0-op' and v is not None),
-                                        default=-1)
-                        if rk is not None and rk <= 60:
-                            cls = 'near_miss'
-                        elif best_pct >= 99.0:
-                            cls = 'lane_buried'
-                        elif hist_best > j0c + 0.05:
-                            cls = 'moment_seen'
-                        elif unreach_sub:
-                            cls = 'unreachable'
-                        else:
-                            cls = 'weak_everywhere'
-                        miss_class[arm][cls] += 1
+                        cls = classify_miss(rk, best_ln, best_pct, mc)
+                        miss_class[arm][cls.split(':')[0]] += 1
                 if arm == 'F_soft_ablate' and ci < EYEBALL_CUES:
                     rows = ['## eyeball · F_soft_ablate · %s' % cue['cue_id']]
                     for i, r in enumerate(order[:10]):
