@@ -160,15 +160,19 @@ plugin-config prompt and the env file. Verified: uppercase/lowercase fill,
 existing-key-wins, JSON valid, `bash -n` clean. End-to-end (CC injection +
 keychain prompt) is verified-by-construction; needs a deploy + re-enable to
 exercise live.
-**Known limitation (code-review #2, 2026-06-14):** userConfig reaches the daemon
-only on the hook/direct-spawn path (the daemon inherits the already-resolved
-`ANTHROPIC_API_KEY`). A **launchd/systemd-spawned** daemon sees neither
-`CLAUDE_PLUGIN_OPTION_*` nor the inherited key, so under a supervisor a
-userConfig-only key needs the env file. Adding a `dispatch.load_env` fallback is
-**ineffective** (the var isn't in the supervisor's env). New users are covered
-(no supervisor auto-installed → Popen path). **Resolve when 3.3 ships the
-supervisor**: the unit/plist must deliver the key (env file or
-`EnvironmentVariables`), since the keychain value can't reach a non-CC subprocess.
+**Known limitation (code-review #2, 2026-06-14) — RESOLVED 2026-07-15.** The
+prediction came true on the first laptop install: the daemon launchd installer
+(Step 7, 2026-07-07) made every fresh install supervisor-spawned, so a
+userConfig-only key never reached the daemon (`llm_unavailable` in the
+dashboard while boot looked healthy). Fix: `boot-brain.sh` now MIRRORS a
+userConfig-resolved key to `~/.config/brain/env` (mode 600, never overwrites
+an existing key line) so `dispatch.load_env` resolves it on every spawn path;
+the boot message says so honestly (keychain + mirrored file), and
+`render_boot_v2` states the DAEMON's LLM state (`LLM layer: PAUSED`) inside
+[BRAIN] when it boots keyless — the hook's view can no longer mask the
+daemon's. The plist stays key-free (one plaintext location, not two).
+Empirically confirmed same install: the userConfig prompt DOES appear and
+inject on the claude.ai-upload channel.
 
 **2.2 First-run embedder cost — DONE (2026-06-14) via pre-fetch at install (option B).**
 Rejected option A (async `load_model` in a background thread) — it adds correctness

@@ -390,6 +390,18 @@ class BrainVoice:
             es = embedder.get_stats()
             out.append("Embedder: %s (%sd, %sms)" % (es["model_name"], es["embedding_dim"], es["load_time_ms"]))
 
+        # ── LLM layer state — the DAEMON's truth, not the hook's ──
+        # The hook can resolve a userConfig key the daemon never sees (launchd
+        # is a separate process tree); the banner must reflect what THIS
+        # process resolved, or a keyless daemon boots looking healthy (first
+        # laptop install, 2026-07-15). One line, only in the degraded state.
+        if not brain.llm_available:
+            out.append(
+                "LLM layer: PAUSED — no API key resolved by the daemon. "
+                "Memory storage, traces and recall work; learning (encode) "
+                "and memory surfacing are off until a key lands in "
+                "~/.config/brain/env (picked up automatically, no restart).")
+
         out.append("[/BRAIN]")
 
         # Operator channel

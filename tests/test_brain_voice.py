@@ -136,6 +136,27 @@ class TestBrainVoiceRenderBoot(BrainTestBase):
         self.assertIn("[BRAIN]", text)
         self.assertIn("[/BRAIN]", text)
 
+    def test_render_boot_keyless_daemon_states_llm_paused(self):
+        """The banner carries the DAEMON's LLM state: a keyless daemon must
+        say so inside [BRAIN] (first laptop install: hook resolved a
+        userConfig key the launchd daemon never saw — boot looked healthy
+        while the daemon was keyless). Keyed daemons show no such line."""
+        from unittest.mock import patch, PropertyMock
+        voice = BrainVoice(self.brain)
+
+        keyed = voice.render_boot()['for_claude']
+        self.assertNotIn("LLM layer: PAUSED", keyed)
+
+        with patch.object(type(self.brain), 'llm_available',
+                          new_callable=PropertyMock, return_value=False):
+            keyless = voice.render_boot()['for_claude']
+        self.assertIn("LLM layer: PAUSED", keyless)
+        # The line lives inside the [BRAIN] envelope.
+        self.assertLess(keyless.index("[BRAIN]"),
+                        keyless.index("LLM layer: PAUSED"))
+        self.assertLess(keyless.index("LLM layer: PAUSED"),
+                        keyless.index("[/BRAIN]"))
+
     def test_wrapper_delegates_to_render_boot(self):
         """format_boot_context() produces structurally valid boot output."""
         wrapper = self.brain.format_boot_context(user="Tom", project="test", db_dir="/test")

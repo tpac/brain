@@ -43,6 +43,21 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
   elif [ -n "${CLAUDE_PLUGIN_OPTION_api_key:-}" ]; then
     export ANTHROPIC_API_KEY="$CLAUDE_PLUGIN_OPTION_api_key"
   fi
+  # MIRROR a userConfig-resolved key to the env file (mode 600). Required, not
+  # optional: CLAUDE_PLUGIN_OPTION_* exists only in hook executions, and this
+  # export dies with the hook — the launchd-spawned daemon (a separate process
+  # tree; installed by install-daemon-service.sh on every fresh macOS install)
+  # resolves the key ONLY via dispatch.load_env = env file + shell. Without
+  # the mirror, a user who fills the plugin's key field still runs a keyless
+  # daemon: llm_unavailable in the dashboard while boot looks fine (first
+  # laptop install, 2026-07-15). Never overwrites an existing key line.
+  if [[ "${ANTHROPIC_API_KEY:-}" == sk-* ]] \
+     && ! grep -q '^ANTHROPIC_API_KEY=' "$BRAIN_ENV_FILE" 2>/dev/null; then
+    mkdir -p "$(dirname "$BRAIN_ENV_FILE")" 2>/dev/null
+    printf 'ANTHROPIC_API_KEY=%s\n' "$ANTHROPIC_API_KEY" >> "$BRAIN_ENV_FILE" \
+      && chmod 600 "$BRAIN_ENV_FILE" \
+      && echo "[brain-boot] plugin-config key mirrored to $BRAIN_ENV_FILE (mode 600) for the background daemon" >&2
+  fi
 fi
 
 # Missing key is NOT a boot failure — the daemon boots keyless by design
@@ -62,9 +77,10 @@ session on.
 One step remains to complete setup — learning (writing new memories) and
 automatic memory surfacing use the Anthropic API and need your key. Either:
 
-  1. Plugin settings (recommended — stored in your keychain): open the
-     Anchor plugin's configuration in Claude Code and fill "Anthropic API
-     key", then start a new session. Or:
+  1. Plugin settings (recommended): open the Anchor plugin's configuration
+     in Claude Code and fill "Anthropic API key", then start a new session.
+     Claude Code stores it in your keychain; Anchor also mirrors it to the
+     env file below (mode 600) so its background daemon can read it. Or:
 
   2. Env file:
      mkdir -p "${XDG_CONFIG_HOME:-\$HOME/.config}/brain"
