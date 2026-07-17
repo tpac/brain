@@ -486,6 +486,7 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                     'dropped_ids': _dropped_ids,
                     'latency_ms': exec_result.get('latency_ms', 0),
                     'error': exec_result.get('error'),
+                    'dropped_args': exec_result.get('dropped_args'),
                 })
                 # Compose tool_result message block. Pass `brain` so tool
                 # results are rendered with the SAME formatter that produced
