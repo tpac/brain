@@ -58,12 +58,22 @@ def _gold_str(item: dict) -> str:
     return a if isinstance(a, str) else json.dumps(a)
 
 
+# Benign classes beyond the cap count as RED: one constrained-decode
+# whitespace spiral is dice (production-faithful degradation, empty
+# selection, loud log); two in one build looks systemic.
+_BENIGN_CAPS = {"surface_haiku_unparseable": 1}
+
+
 def _is_benign_build_error(source: str, context: str) -> bool:
-    """Benign = Haiku cited an ID outside its candidate menu but it resolved
-    to a real node anyway — the selection landed, nothing degraded. Everything
-    else (recall_laf fallback, S2 unit exceptions, stale txns) is RED."""
-    return (source == "haiku_id_outside_candidates"
-            and "resolved=" in (context or ""))
+    """Benign = production-faithful degradation that leaves the substrate
+    complete: Haiku citing an ID outside its menu that resolves to a real
+    node anyway, or a structured-outputs max_tokens whitespace spiral whose
+    fallback is an empty selection (candidates unaffected; capped via
+    _BENIGN_CAPS). Everything else (recall_laf fallback, S2 unit
+    exceptions, stale txns) is RED."""
+    if source == "haiku_id_outside_candidates":
+        return "resolved=" in (context or "")
+    return source in _BENIGN_CAPS
 
 
 def _read_build_errors(brain) -> dict:
@@ -86,6 +96,7 @@ def _read_build_errors(brain) -> dict:
         return {"count": 0, "red_count": 0, "benign_count": 0, "samples": []}
     samples = []
     red = 0
+    benign_seen = {}
     for source, meta_json in rows:
         try:
             meta = json.loads(meta_json) if meta_json else {}
@@ -93,6 +104,10 @@ def _read_build_errors(brain) -> dict:
             meta = {}
         context = (meta.get("context") or "")[:120]
         benign = _is_benign_build_error(source, context)
+        if benign and source in _BENIGN_CAPS:
+            benign_seen[source] = benign_seen.get(source, 0) + 1
+            if benign_seen[source] > _BENIGN_CAPS[source]:
+                benign = False    # over the cap → systemic, not dice
         if not benign:
             red += 1
         if len(samples) < 10:
