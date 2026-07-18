@@ -25,7 +25,12 @@ import sqlite3
 from pathlib import Path
 
 WALKER_DIR = Path(__file__).resolve().parent
-WALKER_DB = WALKER_DIR / 'walker.db'
+# Leg A env-glue (§20.18): OUT_DIR redirects the walker's DATA artifacts
+# (walker.db + reports) so a pooled-corpus run can't clobber the production
+# v7 walker.db / committed reports. Code + canonical inputs (gold manifest,
+# GOLD_DIR) stay anchored to WALKER_DIR.
+OUT_DIR = Path(os.environ.get('WALKER_OUT_DIR') or str(WALKER_DIR))
+WALKER_DB = OUT_DIR / 'walker.db'
 
 # ── phase version stamps (the walker's contract) ────────────────────────
 # Each phase stamps build_meta with its version; downstream phases and the

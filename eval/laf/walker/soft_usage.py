@@ -53,7 +53,7 @@ from pathlib import Path
 import numpy as np
 
 from walker_db import (open_walker, open_brain_ro, EXTRACT_VERSION,
-                       EMBED_VERSION, lanes_version, WALKER_DIR)
+                       EMBED_VERSION, lanes_version, WALKER_DIR, OUT_DIR)
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -65,7 +65,7 @@ SOFT_USAGE_VERSION = 'v1-j0anchor-minseqafter|' + ','.join(
     v.strip('_') for v in MAXSIM_VIEWS)
 AUC_BAR = 0.55                    # pre-declared; below this the label fails
 ERA_SPLIT = '2026-06-08'          # trace-loss boundary (§20.12 A6)
-REPORT = WALKER_DIR / 'soft_usage.md'
+REPORT = OUT_DIR / 'soft_usage.md'
 ANCHOR_COLS = ['v_%s_anchor' % v.strip('_') for v in MAXSIM_VIEWS]
 
 

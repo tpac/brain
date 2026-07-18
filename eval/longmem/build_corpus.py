@@ -58,6 +58,14 @@ def _gold_str(item: dict) -> str:
     return a if isinstance(a, str) else json.dumps(a)
 
 
+def _is_benign_build_error(source: str, context: str) -> bool:
+    """Benign = Haiku cited an ID outside its candidate menu but it resolved
+    to a real node anyway — the selection landed, nothing degraded. Everything
+    else (recall_laf fallback, S2 unit exceptions, stale txns) is RED."""
+    return (source == "haiku_id_outside_candidates"
+            and "resolved=" in (context or ""))
+
+
 def _read_build_errors(brain) -> dict:
     """Snapshot errors logged during this item's build.
 
@@ -67,27 +75,35 @@ def _read_build_errors(brain) -> dict:
     every error row here is from this build. Catches the guard's
     `brain_batch_stale_txn` and any unit-level S2 exception the coordinator
     logged — the loud half of "spot S2 issues".
+
+    Rows are classified RED vs benign (V0 gates on red_count, §20.18).
     """
     try:
-        count = brain.logs_conn.execute(
-            "SELECT COUNT(*) FROM debug_log WHERE event_type='error'").fetchone()[0]
         rows = brain.logs_conn.execute(
             "SELECT source, metadata FROM debug_log WHERE event_type='error' "
-            "ORDER BY id DESC LIMIT 10").fetchall()
+            "ORDER BY id DESC").fetchall()
     except Exception:
-        return {"count": 0, "samples": []}
+        return {"count": 0, "red_count": 0, "benign_count": 0, "samples": []}
     samples = []
+    red = 0
     for source, meta_json in rows:
         try:
             meta = json.loads(meta_json) if meta_json else {}
         except Exception:
             meta = {}
-        samples.append({
-            "source": source,
-            "error": (meta.get("error") or "")[:160],
-            "context": (meta.get("context") or "")[:120],
-        })
-    return {"count": count, "samples": samples}
+        context = (meta.get("context") or "")[:120]
+        benign = _is_benign_build_error(source, context)
+        if not benign:
+            red += 1
+        if len(samples) < 10:
+            samples.append({
+                "source": source,
+                "error": (meta.get("error") or "")[:160],
+                "context": context,
+                "benign": benign,
+            })
+    return {"count": len(rows), "red_count": red,
+            "benign_count": len(rows) - red, "samples": samples}
 
 
 def _fetch_interaction_template(name: str, version: int) -> str:
@@ -453,6 +469,22 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
             totals[k] += stats.get(k) or 0
         totals["s2_deltas"].extend(stats.get("s2_deltas", []))
 
+        # Per-session checkpoint: a RED-class error means the rest of the
+        # spend builds a contaminated corpus — abort now, not at V0.
+        errs = _read_build_errors(brain)
+        if errs["red_count"]:
+            print(f"\n[pooled] ✗ ABORT after session {i+1}/{len(plan)}: "
+                  f"{errs['red_count']} RED-class error(s) in debug_log — "
+                  f"corpus would be contaminated. Samples:", flush=True)
+            for s in errs["samples"]:
+                if not s["benign"]:
+                    print(f"    {s['source']}: {s['error']}", flush=True)
+            try:
+                brain.close()
+            except Exception:
+                pass
+            sys.exit(2)
+
     print(f"\n[pooled] all sessions ingested — finalize (S2 flush + backfill)",
           flush=True)
     finalize_item(brain, totals, carry, log_prefix="[pooled]")
@@ -472,11 +504,14 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
         "node_count": node_count,
         "span": [plan[0]["date"], plan[-1]["date"]],
     }
-    v0_green = (dates_sorted and build_errors["count"] == 0
+    v0_green = (dates_sorted and build_errors["red_count"] == 0
                 and totals["user_turns"] == n_user_turns)
     print(f"[pooled] V0 audit: sessions={audit['sessions']} "
           f"user_turns={audit['user_turns_replayed']}/{audit['user_turns']} "
-          f"dates_monotonic={dates_sorted} errors={build_errors['count']} "
+          f"dates_monotonic={dates_sorted} "
+          f"errors={build_errors['count']} "
+          f"(red={build_errors['red_count']} "
+          f"benign={build_errors['benign_count']}) "
           f"nodes={node_count} → {'GREEN' if v0_green else 'RED'}", flush=True)
     audit["green"] = v0_green
 

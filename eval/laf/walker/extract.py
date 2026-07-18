@@ -53,6 +53,7 @@ Run:  ./dev python3 eval/laf/walker/extract.py
 """
 import importlib.util
 import json
+import os
 import re
 import sys
 from collections import defaultdict
@@ -84,6 +85,10 @@ _tc_spec.loader.exec_module(_trace_contract)
 
 FILE_TOOLS = {'Edit', 'Write', 'NotebookEdit'}
 UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+# Leg A (§20.18): eval-corpus session ids are harness-shaped (i<qid>-<sess>-sN),
+# not UUIDs — the synthetic gate exists to keep test noise out of the
+# PRODUCTION substrate and must be bypassed explicitly for a pooled corpus.
+INCLUDE_SYNTHETIC = os.environ.get('WALKER_INCLUDE_SYNTHETIC') == '1'
 S0_TYPES = ('user_message', 'assistant_message', 'tool_result', 'anchor_touched')
 USED_NEXT_WINDOWS = (1, 3)
 
@@ -505,7 +510,7 @@ def main():
         if sess in gold_sessions:
             c['sessions_gold_excluded_seen'] += 1
             continue
-        if not UUID_RE.match(sess):
+        if not UUID_RE.match(sess) and not INCLUDE_SYNTHETIC:
             c['sessions_synthetic'] += 1
             continue
         c['sessions_included'] += 1
