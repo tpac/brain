@@ -68,10 +68,18 @@ def arm(name):
     if name == 'A1a':
         table = {k: v for k, v in w.items() if not k.endswith('_o0')}
         return {'moment_K': K, 'moment_gains': table, 'z_norm': 'current'}
-    raise ValueError('unknown arm %r (A0f/A1/A1t/A1a)' % name)
+    if name == 'A1k3':
+        # depth-trimmed exploratory table (2026-07-18 dev20 depth cells:
+        # seq4+ hurts, Leg A soft_r identical to A1) — slots j>3 dropped,
+        # same frozen weights otherwise
+        table = {k: v for k, v in w.items()
+                 if int(re.search(r'\d+$', k).group()) <= 3}
+        return {'moment_K': 3, 'moment_gains': {**table, **zeros},
+                'z_norm': 'current'}
+    raise ValueError('unknown arm %r (A0f/A1/A1t/A1a/A1k3)' % name)
 
 
-ARMS = ('A0f', 'A1', 'A1t', 'A1a')
+ARMS = ('A0f', 'A1', 'A1t', 'A1a', 'A1k3')
 
 
 def main():

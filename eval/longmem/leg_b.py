@@ -137,6 +137,7 @@ def main():
         'A1': json.dumps(arm_table('A1')),
         'A1t': json.dumps(arm_table('A1t')),
         'A1a': json.dumps(arm_table('A1a')),
+        'A1k3': json.dumps(arm_table('A1k3')),
         'C1': json.dumps(arm_table('A1')),   # A1 gains, donor stack
     }
 

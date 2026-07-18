@@ -46,15 +46,22 @@ OUT = OUT_DIR / 'external_score.json'
 _DATE_PREFIX = re.compile(r'^\[Current date:[^\]]*\]\s*')
 
 
-def weight_vector(wdict, j0_only=False, trim=0.0):
+def weight_vector(wdict, j0_only=False, trim=0.0, max_j=None):
     """Map a fit weight dict onto the FEATURES basis. M_e_f is not a slot:
-    it survives j0_only and is never trimmed."""
+    it survives j0_only/max_j and is never trimmed. max_j zeroes slots
+    deeper than j (the K-trim exploratory family — depth-cell finding
+    2026-07-18: seq4+ hurts, seq1-3 is the sweet spot)."""
     v = np.zeros(len(FEATURES))
+    slot_j = re.compile(r'(?:op|anchor)(\d+)$')
     for i, name in enumerate(FEATURES):
         w = wdict.get(name, 0.0)
         if name != 'M_e_f':
             if j0_only and not name.endswith('op0'):
                 w = 0.0
+            if max_j is not None:
+                m = slot_j.search(name)
+                if m and int(m.group(1)) > max_j:
+                    w = 0.0
             if trim and abs(w) < trim:
                 w = 0.0
         v[i] = w
@@ -105,6 +112,7 @@ def main():
         'A1':  weight_vector(fit['weights']['S_content']),
         'A1t': weight_vector(fit['weights']['S_content'], trim=TRIM_ABS),
         'A1s': weight_vector(fit['weights']['S_full']),
+        'A1k3': weight_vector(fit['weights']['S_content'], max_j=3),
     }
 
     pool_score = {}
@@ -131,7 +139,7 @@ def main():
                 bucket[a][0].append(s[m])
                 bucket[a][1].append(td.soft[m])
 
-    arm_names = ['A0', 'A0f', 'A1', 'A1t', 'A1s']
+    arm_names = ['A0', 'A0f', 'A1', 'A1t', 'A1s', 'A1k3']
     pooled = {a: (np.concatenate([x for s in per_sess.values()
                                   for x in s[a][0]] or [np.array([])]),
                   np.concatenate([y for s in per_sess.values()
