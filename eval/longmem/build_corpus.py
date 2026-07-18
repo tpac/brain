@@ -111,19 +111,49 @@ _BENIGN_MESSAGES = {
 }
 
 
+# Constructed contamination ALARMS: logged with never-raised exceptions
+# (so the frame rule below would call them benign) but they signal exactly
+# what the gate exists to catch. Always RED.
+_RED_OVERRIDE_PREFIXES = ("brain_batch", "daemon_crash")
+
+# Global cap for the constructed-exception class (designed loud-logs not
+# individually listed above). One-off LLM/output flakes are dice; a flood
+# of them is a systemic problem even when each is individually contained.
+_DESIGNED_LOUDLOG_CAP = 25
+
+
 def _benign_cap_key(source: str) -> str:
-    """Family classes share one cap under their prefix key."""
-    return "connect_to_*" if source.startswith("connect_to_") else source
+    """Family classes share one cap under their prefix key; constructed
+    loud-logs without an explicit entry share the global designed cap."""
+    if source.startswith("connect_to_"):
+        return "connect_to_*"
+    if source in _BENIGN_CAPS or source in _BENIGN_MESSAGES \
+            or source == "haiku_id_outside_candidates":
+        return source
+    return "designed_loudlog"
 
 
-def _is_benign_build_error(source: str, context: str, error: str = "") -> bool:
+def _is_benign_build_error(source: str, context: str, error: str = "",
+                           traceback: str = "") -> bool:
     """Membership check only — the per-build cap is applied by the caller
-    (_read_build_errors), which counts occurrences across the build."""
+    (_read_build_errors), which counts occurrences across the build.
+
+    Classification is by MECHANISM, not enumeration (the 2026-07-18 audit
+    of all ~150 _log_error sources): designed loud-logs pass a CONSTRUCTED
+    exception that was never raised — its traceback has no stack frames —
+    while real failures pass a caught exception with 'File \"...\"' frames.
+    Caught-exception classes stay RED unless explicitly listed (infra
+    blips); constructed classes are benign under _DESIGNED_LOUDLOG_CAP
+    unless they're contamination alarms (_RED_OVERRIDE_PREFIXES)."""
+    if any(source.startswith(p) for p in _RED_OVERRIDE_PREFIXES):
+        return False
     if source == "haiku_id_outside_candidates":
         return "resolved=" in (context or "")
     if source in _BENIGN_MESSAGES:
         return (error or "").startswith(_BENIGN_MESSAGES[source])
-    return _benign_cap_key(source) in _BENIGN_CAPS
+    if _benign_cap_key(source) in _BENIGN_CAPS:
+        return True
+    return 'File "' not in (traceback or "")
 
 
 def _read_build_errors(brain) -> dict:
@@ -153,9 +183,11 @@ def _read_build_errors(brain) -> dict:
         except Exception:
             meta = {}
         context = (meta.get("context") or "")[:120]
-        benign = _is_benign_build_error(source, context, meta.get("error") or "")
+        benign = _is_benign_build_error(source, context, meta.get("error") or "",
+                                        meta.get("traceback") or "")
         cap_key = _benign_cap_key(source)
-        cap = _BENIGN_CAPS.get(cap_key)
+        cap = (_DESIGNED_LOUDLOG_CAP if cap_key == "designed_loudlog"
+               else _BENIGN_CAPS.get(cap_key))
         if benign and cap is not None:
             benign_seen[cap_key] = benign_seen.get(cap_key, 0) + 1
             if benign_seen[cap_key] > cap:
