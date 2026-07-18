@@ -77,18 +77,34 @@ _BENIGN_CAPS = {
     "warmup_anthropic": None,              # infra noise, not build data
     "surface_haiku_unparseable": 1,        # constrained-decode whitespace spiral
     "connect_to_unresolved": 2,            # encoder title loud-skip (2×/30d prod)
+    "aspect_integration": 5,               # designed loud-FILTERS only (see
+                                           # _BENIGN_MESSAGES — the same source
+                                           # also logs REAL classify/IO
+                                           # failures, which stay RED); fresh
+                                           # brains mint new strings, so rate
+                                           # is structurally above production's
     "bg_writer_worker_stalled": 2,         # watchdog observation, self-recovers
     "s1_scout_facts_api_error": 3,         # connection blip → scout no-op
     "s1_scout_quote_api_error": 3,
     "s1_scout_temporal_api_error": 3,
 }
 
+# Sources whose benign membership is NARROWER than the source: only these
+# message prefixes are designed degradations; anything else logged under the
+# same source (real classify failures, IO errors) stays RED.
+_BENIGN_MESSAGES = {
+    "aspect_integration": ("aspect/category mismatch",
+                           "noise + semantic aspect"),
+}
 
-def _is_benign_build_error(source: str, context: str) -> bool:
+
+def _is_benign_build_error(source: str, context: str, error: str = "") -> bool:
     """Membership check only — the per-build cap is applied by the caller
     (_read_build_errors), which counts occurrences across the build."""
     if source == "haiku_id_outside_candidates":
         return "resolved=" in (context or "")
+    if source in _BENIGN_MESSAGES:
+        return (error or "").startswith(_BENIGN_MESSAGES[source])
     return source in _BENIGN_CAPS
 
 
@@ -119,7 +135,7 @@ def _read_build_errors(brain) -> dict:
         except Exception:
             meta = {}
         context = (meta.get("context") or "")[:120]
-        benign = _is_benign_build_error(source, context)
+        benign = _is_benign_build_error(source, context, meta.get("error") or "")
         cap = _BENIGN_CAPS.get(source)
         if benign and cap is not None:
             benign_seen[source] = benign_seen.get(source, 0) + 1
