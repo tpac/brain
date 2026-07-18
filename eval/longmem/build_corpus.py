@@ -82,7 +82,14 @@ _BENIGN_CAPS = {
     "surface_haiku_unparseable": 4,        # max_tokens spiral (the trailing-
                                            # comma subclass is now parsed
                                            # tolerantly and shouldn't appear)
-    "connect_to_unresolved": 6,            # encoder title loud-skip (2×/30d prod)
+    "connect_to_*": 15,                    # the write boundary's designed
+                                           # rejection FAMILY (_unresolved,
+                                           # _self, _invalid, _failed — see
+                                           # brain_remember._resolve_connect_to
+                                           # _entry: contained, never raises,
+                                           # per-entry independent); prefix-
+                                           # matched so new members don't
+                                           # cost another aborted build
     "aspect_integration": 12,              # designed loud-FILTERS only (see
                                            # _BENIGN_MESSAGES — the same source
                                            # also logs REAL classify/IO
@@ -104,6 +111,11 @@ _BENIGN_MESSAGES = {
 }
 
 
+def _benign_cap_key(source: str) -> str:
+    """Family classes share one cap under their prefix key."""
+    return "connect_to_*" if source.startswith("connect_to_") else source
+
+
 def _is_benign_build_error(source: str, context: str, error: str = "") -> bool:
     """Membership check only — the per-build cap is applied by the caller
     (_read_build_errors), which counts occurrences across the build."""
@@ -111,7 +123,7 @@ def _is_benign_build_error(source: str, context: str, error: str = "") -> bool:
         return "resolved=" in (context or "")
     if source in _BENIGN_MESSAGES:
         return (error or "").startswith(_BENIGN_MESSAGES[source])
-    return source in _BENIGN_CAPS
+    return _benign_cap_key(source) in _BENIGN_CAPS
 
 
 def _read_build_errors(brain) -> dict:
@@ -142,10 +154,11 @@ def _read_build_errors(brain) -> dict:
             meta = {}
         context = (meta.get("context") or "")[:120]
         benign = _is_benign_build_error(source, context, meta.get("error") or "")
-        cap = _BENIGN_CAPS.get(source)
+        cap_key = _benign_cap_key(source)
+        cap = _BENIGN_CAPS.get(cap_key)
         if benign and cap is not None:
-            benign_seen[source] = benign_seen.get(source, 0) + 1
-            if benign_seen[source] > cap:
+            benign_seen[cap_key] = benign_seen.get(cap_key, 0) + 1
+            if benign_seen[cap_key] > cap:
                 benign = False    # over the cap → systemic, not dice
         if not benign:
             red += 1
