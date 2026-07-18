@@ -58,19 +58,35 @@ def _gold_str(item: dict) -> str:
     return a if isinstance(a, str) else json.dumps(a)
 
 
-# Benign classes beyond the cap count as RED: one constrained-decode
-# whitespace spiral is dice (production-faithful degradation, empty
-# selection, loud log); two in one build looks systemic.
-_BENIGN_CAPS = {"surface_haiku_unparseable": 1}
+# Benign family = error classes that are ROUTINE in the production brain's
+# own debug_log (30-day audit, 2026-07-18): designed loud-skips and
+# degradations the live system experiences weekly. The eval should
+# experience what production experiences (probe-input fidelity); aborting
+# on them enumerates dice rolls at $3 a throw. Value = per-build cap
+# (None = uncapped); beyond the cap the class counts RED — one flake is
+# production-faithful, a cluster is systemic. Everything NOT listed
+# (recall_laf fallback, brain_batch_*, S2 unit exceptions: zero production
+# occurrences in 30d) stays RED — unknown classes fail loud, per
+# Loud-by-Default.
+_BENIGN_CAPS = {
+    "haiku_id_outside_candidates": None,   # resolved= only, see below
+    "surface_inject_overflow": None,       # deterministic byte-cap truncation
+    "surface_malformed_tool_arg": None,    # designed drop-and-continue
+    "revise_immutable": None,              # write-boundary rejection working
+    "keepalive_tick": None,                # infra noise, not build data
+    "warmup_anthropic": None,              # infra noise, not build data
+    "surface_haiku_unparseable": 1,        # constrained-decode whitespace spiral
+    "connect_to_unresolved": 2,            # encoder title loud-skip (2×/30d prod)
+    "bg_writer_worker_stalled": 2,         # watchdog observation, self-recovers
+    "s1_scout_facts_api_error": 3,         # connection blip → scout no-op
+    "s1_scout_quote_api_error": 3,
+    "s1_scout_temporal_api_error": 3,
+}
 
 
 def _is_benign_build_error(source: str, context: str) -> bool:
-    """Benign = production-faithful degradation that leaves the substrate
-    complete: Haiku citing an ID outside its menu that resolves to a real
-    node anyway, or a structured-outputs max_tokens whitespace spiral whose
-    fallback is an empty selection (candidates unaffected; capped via
-    _BENIGN_CAPS). Everything else (recall_laf fallback, S2 unit
-    exceptions, stale txns) is RED."""
+    """Membership check only — the per-build cap is applied by the caller
+    (_read_build_errors), which counts occurrences across the build."""
     if source == "haiku_id_outside_candidates":
         return "resolved=" in (context or "")
     return source in _BENIGN_CAPS
@@ -104,9 +120,10 @@ def _read_build_errors(brain) -> dict:
             meta = {}
         context = (meta.get("context") or "")[:120]
         benign = _is_benign_build_error(source, context)
-        if benign and source in _BENIGN_CAPS:
+        cap = _BENIGN_CAPS.get(source)
+        if benign and cap is not None:
             benign_seen[source] = benign_seen.get(source, 0) + 1
-            if benign_seen[source] > _BENIGN_CAPS[source]:
+            if benign_seen[source] > cap:
                 benign = False    # over the cap → systemic, not dice
         if not benign:
             red += 1
