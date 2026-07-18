@@ -45,18 +45,58 @@ DEFAULT_ARMS = ('A0', 'A0f', 'A1', 'A1a', 'C1')
 RECALL_LIMIT = 25
 
 
-def load_cues(walker_path):
-    """Labeled cues in corpus order: (session_id, epoch, seq, ts, query)."""
+def load_cues(walker_path, cue_side='op', logs_db=None):
+    """Cues in corpus order: (session_id, epoch, seq, ts, query).
+
+    cue_side='op' (default): each labeled turn's operator query at its
+    O-row ts — the production recall position.
+
+    cue_side='stop' (endo, §20.18 exploratory): recall fires at MY stop —
+    query = Anchor's own response to turn t (500 cap, the production query
+    cap), as_of = that assistant_message's trace ts + 1ms (turn t fully in
+    the past, turn t+1 not yet begun; the stack's j1 is the just-finished
+    exchange). Session-last turns have no next moment and are skipped.
+    Labels for a stop cue at t = soft_usage at t+1 (usage vs the NEXT
+    response — anticipatory recall's self-supervising label); the caller
+    joins with seq+1."""
     conn = sqlite3.connect('file:%s?mode=ro' % walker_path, uri=True)
-    cues = conn.execute(
-        'SELECT session_id, epoch, seq, ts, query_stored FROM turns '
-        'WHERE labeled=1 ORDER BY ts').fetchall()
     soft = {}
     for row in conn.execute(
             'SELECT session_id, epoch, seq, node_id, soft_max FROM soft_usage '
             'WHERE soft_max IS NOT NULL'):
         soft[(row[0], row[1], row[2], row[3])] = row[4]
+    if cue_side == 'op':
+        cues = conn.execute(
+            'SELECT session_id, epoch, seq, ts, query_stored FROM turns '
+            'WHERE labeled=1 ORDER BY ts').fetchall()
+        conn.close()
+        return cues, soft
+    # stop side: anchor text + the anchor trace's own ts
+    rows = conn.execute(
+        'SELECT session_id, epoch, seq, ts, anchor_text, anchor_trace_id '
+        'FROM turns WHERE anchor_text IS NOT NULL ORDER BY ts').fetchall()
+    last_seq = {}
+    for sid, ep, seq, *_ in rows:
+        last_seq[(sid, ep)] = max(last_seq.get((sid, ep), -1), seq)
+    tconn = sqlite3.connect('file:%s?mode=ro' % logs_db, uri=True)
+    anchor_ts = dict(tconn.execute(
+        "SELECT id, created_at FROM trace_events "
+        "WHERE ref_type='assistant_message'"))
+    tconn.close()
     conn.close()
+    cues = []
+    for sid, ep, seq, ts, anchor, atid in rows:
+        if seq >= last_seq[(sid, ep)]:
+            continue                      # no next moment to predict
+        ats = anchor_ts.get(atid)
+        if not ats:
+            continue
+        # +1ms past the assistant message: strict as_of masks keep turn t
+        # visible and everything of t+1 in the future
+        from datetime import datetime, timedelta
+        as_of = (datetime.fromisoformat(ats) +
+                 timedelta(milliseconds=1)).isoformat()
+        cues.append((sid, ep, seq, as_of, (anchor or '')[:500]))
     return cues, soft
 
 
@@ -118,18 +158,28 @@ def main():
     p.add_argument('--corpus', required=True)
     p.add_argument('--arms', default=','.join(DEFAULT_ARMS))
     p.add_argument('--work', default=None,
-                   help='work root (default <corpus_dir>/leg_b)')
+                   help='work root (default <corpus_dir>/leg_b[/stop])')
+    p.add_argument('--cue-side', dest='cue_side', default='op',
+                   choices=('op', 'stop'),
+                   help="'stop' = endo/anticipatory: cue is Anchor's own "
+                        "response, labels are the NEXT turn's usage")
     args = p.parse_args()
 
     cdir = Path(corpus_dir(args.corpus))
     pooled = cdir / 'pooled'
     walker_db = cdir / 'walker' / 'walker.db'
-    work_root = Path(args.work) if args.work else cdir / 'leg_b'
+    work_root = Path(args.work) if args.work else \
+        (cdir / 'leg_b' if args.cue_side == 'op' else cdir / 'leg_b' / 'stop')
     work_root.mkdir(parents=True, exist_ok=True)
 
     from arm_tables import arm as arm_table   # frozen fit → gain tables
-    cues, soft = load_cues(walker_db)
-    print('[leg_b] %d cues, arms: %s' % (len(cues), args.arms), flush=True)
+    cues, soft = load_cues(walker_db, cue_side=args.cue_side,
+                           logs_db=pooled / 'brain_logs.db')
+    if args.cue_side == 'stop':
+        # anticipatory label: usage at the NEXT moment — shift the join
+        soft = {(k[0], k[1], k[2] - 1, k[3]): v for k, v in soft.items()}
+    print('[leg_b] %d cues (%s side), arms: %s'
+          % (len(cues), args.cue_side, args.arms), flush=True)
 
     arm_gains = {
         'A0': None,
@@ -138,6 +188,10 @@ def main():
         'A1t': json.dumps(arm_table('A1t')),
         'A1a': json.dumps(arm_table('A1a')),
         'A1k3': json.dumps(arm_table('A1k3')),
+        'A1stk': json.dumps(arm_table('A1stk')),  # stack-only (o0 zeroed) —
+                                                  # the walker-faithful endo
+                                                  # shape: the cue text rides
+                                                  # only as history, no j0
         'C1': json.dumps(arm_table('A1')),   # A1 gains, donor stack
     }
 
@@ -174,8 +228,11 @@ def main():
     # epoch — the FIRST LABELED cue is not enough: a no_recall seq-0 turn is
     # unlabeled yet still enters the next cue's stack as history (it was a
     # real turn; recall just didn't fire), so seq≥1 cues legitimately
-    # diverge. Caught live: dev20 session i072d57b, exactly this shape. ──
-    if 'A1' in results and 'A0f' in results:
+    # diverge. Caught live: dev20 session i072d57b, exactly this shape.
+    # OP SIDE ONLY: at a stop cue, seq0's stack contains the just-finished
+    # turn — A1 ≢ A0f there BY DESIGN, so the identity property doesn't
+    # exist on the stop side. ──
+    if 'A1' in results and 'A0f' in results and args.cue_side == 'op':
         firsts = {(sid, epoch, seq) for sid, epoch, seq, ts, _ in cues
                   if seq == 0}
         mismatches = []

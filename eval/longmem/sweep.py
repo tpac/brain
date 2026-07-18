@@ -156,7 +156,10 @@ def sweep(corpus_hash: str, surface: str, variance: int, label: str,
 
         # Copy the frozen brain into this run's work dir → byte-identical start,
         # query phase can't mutate the shared corpus.
-        src = corpus_item_dir(corpus_hash, qid)
+        # Pooled corpora (§20.18) hold ONE shared brain: the manifest stamps
+        # each item's brain_dir at the pooled path — honor it over the
+        # per-item layout convention.
+        src = it.get("brain_dir") or corpus_item_dir(corpus_hash, qid)
         work_qid = os.path.join(work_root, qid)
         if os.path.isdir(work_qid):
             shutil.rmtree(work_qid)
