@@ -169,15 +169,23 @@ def _fetch_interaction_template(name: str, version: int) -> str:
     return tmpl
 
 
-def _apply_interaction_override(brain, name: str, template: str) -> None:
-    """Register + activate `template` as a new version of `name` in THIS eval
-    brain only (production daemon untouched). Generalizes harness._apply_s1e_override
-    to any interaction; mirrors eval.encoder_eval.targeted_v24_eval."""
+def _apply_interaction_override(brain, name: str, template: str = None,
+                                parameters: str = None) -> None:
+    """Register + activate a new version of `name` in THIS eval brain only
+    (production daemon untouched). Generalizes harness._apply_s1e_override to
+    any interaction; mirrors eval.encoder_eval.targeted_v24_eval. Either side
+    can be overridden independently: template=None keeps the active template,
+    parameters=None keeps the active parameters (config-only interactions
+    like recall_laf override parameters with template='')."""
     existing = brain._interaction_dal.get_active(name)
-    params = existing.get('parameters', '') if existing else ''
+    if template is None:
+        template = existing.get('template', '') if existing else ''
+    if parameters is None:
+        parameters = existing.get('parameters', '') if existing else ''
     result = brain._interaction_dal.register(
-        name, template=template, parameters=params, created_by='eval-override-%s' % name)
-    if result.get('version', 1) > 1:
+        name, template=template, parameters=parameters,
+        created_by='eval-override-%s' % name)
+    if result.get('version', 1) > 1 or not existing:
         brain._interaction_dal.set_active(
             name, result['version'], set_by='eval-override-%s' % name)
 
