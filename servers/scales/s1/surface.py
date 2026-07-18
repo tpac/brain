@@ -11,6 +11,7 @@ Writes: S1 traces (O/K/Δ), tmp files for Hebbian + dashboard
 
 import json
 import os
+import re
 import time
 
 from servers.scales.dispatch import load_env
@@ -562,8 +563,19 @@ def _parse_surfacer_json(raw):
     # the raw_decode path doesn't cover.
     end = text.rfind("}") + 1
     if end > start:
+        candidate = text[start:end]
         try:
-            obj = json.loads(text[start:end])
+            obj = json.loads(candidate)
+            return obj if isinstance(obj, dict) else None
+        except json.JSONDecodeError:
+            pass
+        # Last resort: Haiku sometimes emits a trailing comma before a
+        # closing brace/bracket ('{"selected":[...], }') — observed twice
+        # in the 2026-07-18 pool60 build, both payloads otherwise complete
+        # (one carried a real selection that was being thrown away).
+        # Strip ',\s*}' / ',\s*]' and retry once.
+        try:
+            obj = json.loads(re.sub(r',\s*([}\]])', r'\1', candidate))
             return obj if isinstance(obj, dict) else None
         except json.JSONDecodeError:
             return None

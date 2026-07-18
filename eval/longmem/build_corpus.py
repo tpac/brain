@@ -75,9 +75,15 @@ _BENIGN_CAPS = {
     "revise_immutable": None,              # write-boundary rejection working
     "keepalive_tick": None,                # infra noise, not build data
     "warmup_anthropic": None,              # infra noise, not build data
-    "surface_haiku_unparseable": 1,        # constrained-decode whitespace spiral
-    "connect_to_unresolved": 2,            # encoder title loud-skip (2×/30d prod)
-    "aspect_integration": 5,               # designed loud-FILTERS only (see
+    # Caps below are calibrated for up-to-600-turn pooled builds (observed
+    # base rates: spiral ~1/170 turns, connect_to ~1/100 turns, aspect
+    # filters front-loaded while a fresh taxonomy fills). They distinguish
+    # dice from systemic — a systemic failure produces dozens, not these.
+    "surface_haiku_unparseable": 4,        # max_tokens spiral (the trailing-
+                                           # comma subclass is now parsed
+                                           # tolerantly and shouldn't appear)
+    "connect_to_unresolved": 6,            # encoder title loud-skip (2×/30d prod)
+    "aspect_integration": 12,              # designed loud-FILTERS only (see
                                            # _BENIGN_MESSAGES — the same source
                                            # also logs REAL classify/IO
                                            # failures, which stay RED); fresh
