@@ -138,6 +138,14 @@ def main():
             'has_q': bool(tfeat.get(t.key, (0, 0))[1]),
         })
 
+    # community golds are labeling artifacts — recall excludes the type
+    # (pipeline_contract 'recall' exclusion, 2026-07-20), so they are not
+    # legitimate targets; drop them from the gold set.
+    n_comm = sum(1 for r in recs if r['type'] == 'community')
+    recs = [r for r in recs if r['type'] != 'community']
+    print('community golds EXCLUDED (type filtered from recall): %d dropped'
+          ' · %d gold turns remain' % (n_comm, len(recs)))
+
     hit = lambda r: r is not None and r <= 5   # noqa: E731
 
     # ---- 1. reverse-engineering the uncaptured headroom
@@ -189,6 +197,7 @@ def main():
                      100 * o2,
                      *(100 * wc.get(n, 0) / len(g) for n in FIELD_NAMES)))
 
+    slice_table('ALL (ex-community) — clean headline', lambda r: 'all')
     slice_table('gold node TYPE', lambda r: r['type'])
     slice_table('gold node AGE at query', lambda r: r['age'])
     lens = sorted(r['op_len'] for r in recs)
