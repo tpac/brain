@@ -1526,7 +1526,7 @@ in the 9-day live health check: `_laf_fields` does NOT reach the trace substrate
 `cand_detail` compaction in `surface.py`) — the forward-feed leg of the old P2 assumption is broken until
 that 3-line fix lands (routed to the surface-lane stream).
 
-## 20 — Moment recognition: walker v2 + pre-registered sweep (Tom + Anchor, 2026-07-14) ◀ ACTIVE ARC
+## 20 — Moment recognition: walker v2 + pre-registered sweep (Tom + Anchor, 2026-07-14)
 
 ### 20.1 Objective and ship rule
 
@@ -2521,3 +2521,57 @@ this section (for P4; Stage-3 re-signs); (b) canary all-slot basis port into
 `q1_reverse.lane_attribution` (§20.13.3 adjudication) — separate small task;
 (c) 297 MB `walker.db.stale-jul15` in the laughing-darwin worktree — Tom's delete call;
 (d) branch push to origin — Tom's word.
+
+## 21 — The integrate function: fields, readouts, λ — the mesh measured (Tom + Anchor, 2026-07-20) ◀ ACTIVE ARC
+
+**Vocabulary (node 21231cc3, binding):** Msg / Layer (mechanism inside LAF) /
+Field (state: activation over all nodes) / LAF (msg → settled field) / mesh
+(verb: fields combining) / Moment (THE maintained field recall reads) /
+Readout (scalar from a field's shape, parameterizes the mesh).
+
+**The reframe that owns this arc (9cba610e):** msg 0 is an UPDATE EVENT on the
+standing Moment — integrate(O,K)→Δ with O = msg 0's settled field, K = the
+Moment. The object of study is the per-event update gain λ, not a choice
+between per-msg fields. "ok" → λ≈0; a decisive short prompt → small text,
+huge λ. Specificity sets the update, not size.
+
+**Measured (all runs 2026-07-20, both corpora, substrate below):**
+- Field-level oracle: static flat Moment 28.1% reach@5 (live, full 7.6k-node
+  field, 1,933 ex-community golds); fitted 1-param static mix λ=0.65 → 29.5%;
+  per-turn oracle-λ → 36.6%. **+7.1pp plasticity headroom, survives
+  re-baselining** (40b8cb7a). λ* genuinely varies: ~1/3 of turns λ*≈0.9,
+  ~35% interior, ~10% Moment-dominant.
+- Readout-router (logistic on 5 composed-field readouts as mesh weight):
+  +1.1pp with 2.6:1 gain:loss churn — first favorable-churn arm in the
+  recall arc (5514e5fa). But NO current readout tracks λ* (|ρ|≤0.07) — the
+  **λ-derivation hunt is the open problem**.
+- Gold-age gradient: fresh golds (<1d) 64% baseline; old golds (>7d) ~18%,
+  where nearly all mesh headroom lives (da3becf5).
+
+**Falsified this arc (runs behind every entry — do not reopen):**
+corrector score-transfer within-pool (0 rescues/1,389 misses, replicated
+pool60); community readouts as router (dead both corpora); community golds
+(labeling artifacts — and production now EXCLUDES community nodes from the
+recall pool, 865afae, registry-enforced with explicit-filter bypass);
+containment/alignment readouts (corpus-flip); pool-soft fitting of field
+meshes (wins pool, destroys field reach 63:155 — **fit field meshes on
+field objectives only**).
+
+**Substrate (the iteration instrument):** `field_cache_build.py` →
+`field_cache.npy` (composed per-(turn,slot) fields) + `lane_cache.npy`
+(RAW per-(turn,slot,lane) values, 5 lanes × 4 slots, 1.3GB live) +
+row-aligned index with FROZEN master list (engine row order drifts with
+brain changes — never map node→row from a fresh engine). Self-gating:
+composed base-parity vs eng.scores(as_of) top-25, 20/20 exact. Deliberate
+deviation: sparse lanes support-z (stamped in meta). Probes:
+`field_mesh_probe` (arms/oracle/readouts), `mesh_fit_probe` (fitted mesh +
+router through CV), `mesh_forensics{,2}` (miss autopsies),
+`lambda_probe` (the λ* oracle; known small endpoint understatement at
+λ∈{0,1} from inf·0 — interior clean).
+
+**Next (the λ-derivation hunt, free re-fits on the lane cache):** per-LAYER
+readouts (does specificity live in idf/sit rather than composed peak);
+msg-0 cross-layer disagreement (cosine vs episodic pointing apart → low λ);
+node-side conditioning (age — divisive temporal-density, b4733c4e); then
+recursive-vs-flat mesh through the composition gate. E1 (P4 eyeball gate)
+remains unsigned.

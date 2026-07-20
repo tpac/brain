@@ -279,3 +279,10 @@ Spread activation broke (precision-over-reach was the wrong tradeoff) → recogn
 - `1a2b641b` — Negotiation between structures
 - `2f7e5b03` — Recall purpose: instantiate state-of-mind
 - `bdb31184` — Memory is prediction. Recall is verification. Encoding is update.
+
+---
+
+## Current production notes (2026-07-20)
+
+- **Community nodes are excluded from the recall pool** (`pipeline_contract.NODE_TYPE_EXCLUSIONS['recall']`, enforced at `brain_recall.py` STEP 7 hydration). They keep participating in scoring substrate and graph structure; they cannot BE a result. Explicit dict filters on `type` bypass the exclusion (deliberate community queries still work). Rationale: communities are S2 navigation/consolidation structure whose synthesis text lexically echoes everything — surfacing them displaces real memories (node 3f135bea).
+- **The active recall-research arc is `docs/RECALL-SR-REDESIGN.md` §21** — the integrate-function reframe: msg 0 as an update event on the standing Moment, per-event update gain λ as the measured object, lane-resolved field cache as the iteration substrate.
