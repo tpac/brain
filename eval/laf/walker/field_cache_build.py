@@ -16,9 +16,15 @@ zero seas explode under plain z (enc z≈11 vs cosine z≈2, node 0ccc5481) —
 fitting meshes on an exploded substrate is worse than the variant gap.
 Stamped in the index meta as 'sparse_z' so downstream knows what it reads.
 
-Output (OUT_DIR): field_cache.npy [n_turns × 4 slots × n_nodes] float32,
-NaN = masked/missing; field_cache_index.json (turn keys + row pointers,
-gold/cand/sel rows, slot coverage, engine master hash).
+Output (OUT_DIR):
+  field_cache.npy  [n_turns × 4 slots × n_nodes] float32 COMPOSED fields
+  lane_cache.npy   [n_turns × 4 slots × 5 lanes × n_nodes] float32 RAW lane
+                   values (pre-gain, pre-z; NaN = masked/missing slot) — the
+                   derivation substrate: gains, z-variants (current/support/
+                   rank), λ sweeps and layer ablations all become free
+                   re-fits, no engine pass ever again (Tom go, 2026-07-20)
+  field_cache_index.json (turn keys + row pointers, gold/cand/sel rows,
+  frozen master list, slot coverage, engine master hash, lane order).
 
 Self-checks (printed; hard-fail on parity):
   1. raw parity — candidate-restricted op0 maxsim/sit vs cand_turn_scores
@@ -50,9 +56,11 @@ from reach_leg import rank_rows, TEXT_CAP                           # noqa: E402
 from tests.isolated_brain import IsolatedBrain                       # noqa: E402
 
 SLOTS = (('op', 0), ('op', 1), ('anchor', 1), ('op', 2))
+LANES = ('maxsim', 'sit', 'idf', 'pick', 'enc')   # lane_cache axis order
 SPARSE_Z = 'support'              # zero-sea lanes; see Z ROUTING above
 CACHE = OUT_DIR / 'field_cache.npy'          # DATA artifact — env-honoring
-INDEX = OUT_DIR / 'field_cache_index.json'   # (WALKER_DIR would clobber)
+LANE_CACHE = OUT_DIR / 'lane_cache.npy'      # (WALKER_DIR would clobber)
+INDEX = OUT_DIR / 'field_cache_index.json'
 PARITY_TURNS = 20
 PARITY_TOL = 1e-6                 # same engine, same vectors — exact
 
@@ -129,6 +137,11 @@ def main():
             str(CACHE) + ('.smoke' if smoke else ''), mode='w+',
             dtype=np.float32, shape=(len(gold_turns), len(SLOTS), n))
         fields[:] = np.nan
+        lanes = np.lib.format.open_memmap(
+            str(LANE_CACHE) + ('.smoke' if smoke else ''), mode='w+',
+            dtype=np.float32,
+            shape=(len(gold_turns), len(SLOTS), len(LANES), n))
+        lanes[:] = np.nan
         index, cov = [], {('%s%d' % (k, j)): 0 for k, j in SLOTS}
         worst_par, par_checked, base_par_ok = 0.0, 0, 0
         cfg_k0, w0 = configs()[0], weights(configs()[0])
@@ -178,12 +191,18 @@ def main():
                     'BASE-PARITY MISMATCH at %s' % (td.key,)
                 base_par_ok += 1
                 par_checked += 1
-            # -- compose + store per slot
+            # -- compose + store per slot; raw lanes alongside
             for si, (kind, j) in enumerate(SLOTS):
                 f = compose_slot(op, an, j, kind, n, node_mask)
                 if not np.isnan(f).all():
                     cov['%s%d' % (kind, j)] += 1
                 fields[ti, si, :] = f
+                src = op if kind == 'op' else an
+                if not np.isnan(src['maxsim'][:, j]).all():
+                    for li, ln in enumerate(LANES):
+                        raw = src[ln][:, j].astype(np.float32)
+                        raw[~node_mask] = np.nan
+                        lanes[ti, si, li, :] = raw
             # -- self-check 2: time-mask negative test
             dead = np.flatnonzero(~node_mask)
             if len(dead):
@@ -205,6 +224,7 @@ def main():
                       % (ti + 1, len(gold_turns), el / (ti + 1),
                          el / (ti + 1) * (len(gold_turns) - ti - 1) / 60))
         fields.flush()
+        lanes.flush()
 
     assert worst_par < PARITY_TOL, \
         'PARITY FAIL: worst |Δ| %.4f >= %s' % (worst_par, PARITY_TOL)
@@ -216,6 +236,7 @@ def main():
                              for k, v in cov.items()})
     (Path(str(INDEX) + ('.smoke' if smoke else ''))).write_text(json.dumps({
         'slots': ['%s%d' % (k, j) for k, j in SLOTS], 'n_nodes': n,
+        'lanes': list(LANES),
         'master_hash': master_hash, 'soft_hi': hi, 'sparse_z': SPARSE_Z,
         'dtype': 'float32',
         # row→node_id map frozen WITH the fields — a later engine load
