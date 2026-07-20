@@ -27,7 +27,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import open_walker, WALKER_DIR
+from walker_db import open_walker, OUT_DIR
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -43,7 +43,7 @@ SEED = 20260715
 N_TURNS = 400
 N_RANDOM_CFGS = 5
 TOL = 0.005                    # shuffled may not beat K0 by more than this
-REPORT = WALKER_DIR / 'shuffle_control.md'
+REPORT = OUT_DIR / 'shuffle_control.md'
 
 
 def top_distinct(results, k=3):
@@ -135,7 +135,7 @@ def load_donors(walker):
 
 def main():
     rng = random.Random(SEED)
-    results = json.loads((WALKER_DIR / 'q1_sweep_full.json').read_text())
+    results = json.loads((OUT_DIR / 'q1_sweep_full.json').read_text())
     tops = top_distinct(results, 3)
     pool = [c for c in configs() if c['K'] > 0
             and c['name'] not in {t['name'] for t in tops}]

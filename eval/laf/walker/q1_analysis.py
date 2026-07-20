@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import open_walker, WALKER_DIR
+from walker_db import open_walker, OUT_DIR
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -31,7 +31,7 @@ import q1_sweep                                                   # noqa: E402
 from q1_sweep import GAINS, compose, weights, configs, auc        # noqa: E402
 
 WINNER = 'K1-exp0.5-turnsum-zsum-opanchor-me0'
-OUT = WALKER_DIR / 'q1_analysis.json'
+OUT = OUT_DIR / 'q1_analysis.json'
 
 
 def val_auc(turns, score_fn):
@@ -73,7 +73,7 @@ def axis_marginals(results):
 
 
 def main():
-    results = json.loads((WALKER_DIR / 'q1_sweep_full.json').read_text())
+    results = json.loads((OUT_DIR / 'q1_sweep_full.json').read_text())
     walker = open_walker()
     q1_sweep.gate_provenance(walker)
     turns = q1_sweep.load(walker)

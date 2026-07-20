@@ -31,7 +31,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import WALKER_DIR, open_walker, open_brain_ro
+from walker_db import OUT_DIR, open_walker, open_brain_ro
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -45,8 +45,8 @@ from soft_usage import auc                                          # noqa: E402
 WINNER = 'K1-exp0.5-turnsum-zsum-opanchor-me0'
 N_BOOT = 500
 SEED = 20260716
-REPORT = WALKER_DIR / 'component_audit.md'
-OUT = WALKER_DIR / 'component_audit.json'
+REPORT = OUT_DIR / 'component_audit.md'
+OUT = OUT_DIR / 'component_audit.json'
 
 J0_COLS = [i for i, f in enumerate(FEATURES) if f.endswith('j0-op')]
 ALL_COLS = list(range(len(FEATURES)))

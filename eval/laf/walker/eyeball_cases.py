@@ -20,7 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import WALKER_DIR, open_walker, open_brain_ro
+from walker_db import OUT_DIR, open_walker, open_brain_ro
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -32,7 +32,7 @@ WINNER = 'K1-exp0.5-turnsum-zsum-opanchor-me0'
 MIN_SOFT = 0.80
 MIN_POOL = 8
 N_PER_CLASS = 4
-REPORT = WALKER_DIR / 'eyeball_cases.md'
+REPORT = OUT_DIR / 'eyeball_cases.md'
 
 
 def ranks_of(s):

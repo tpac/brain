@@ -37,7 +37,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import WALKER_DIR, GOLD_DIR
+from walker_db import OUT_DIR, WALKER_DIR, GOLD_DIR
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -50,7 +50,7 @@ from episodic_roles import K_MAX                                       # noqa: E
 TEXT_CAP = 500
 POSITIVE_EXPECT = {'pick': (0.08, 0.16), 'enc': (0.06, 0.14)}   # 9634cce9
 NOISE_PP = 0.042                       # gold-24 ±4pp band (§20.5) + slack
-REPORT = WALKER_DIR / 'reach_leg.md'
+REPORT = OUT_DIR / 'reach_leg.md'
 
 
 def load_cues():

@@ -16,7 +16,7 @@ zero seas explode under plain z (enc z≈11 vs cosine z≈2, node 0ccc5481) —
 fitting meshes on an exploded substrate is worse than the variant gap.
 Stamped in the index meta as 'sparse_z' so downstream knows what it reads.
 
-Output (WALKER_DIR): field_cache.npy [n_turns × 4 slots × n_nodes] float32,
+Output (OUT_DIR): field_cache.npy [n_turns × 4 slots × n_nodes] float32,
 NaN = masked/missing; field_cache_index.json (turn keys + row pointers,
 gold/cand/sel rows, slot coverage, engine master hash).
 
@@ -37,7 +37,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import WALKER_DIR, open_walker
+from walker_db import OUT_DIR, open_walker
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -51,8 +51,8 @@ from tests.isolated_brain import IsolatedBrain                       # noqa: E40
 
 SLOTS = (('op', 0), ('op', 1), ('anchor', 1), ('op', 2))
 SPARSE_Z = 'support'              # zero-sea lanes; see Z ROUTING above
-CACHE = WALKER_DIR / 'field_cache.npy'
-INDEX = WALKER_DIR / 'field_cache_index.json'
+CACHE = OUT_DIR / 'field_cache.npy'          # DATA artifact — env-honoring
+INDEX = OUT_DIR / 'field_cache_index.json'   # (WALKER_DIR would clobber)
 PARITY_TURNS = 20
 PARITY_TOL = 1e-6                 # same engine, same vectors — exact
 

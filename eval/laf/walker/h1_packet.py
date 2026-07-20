@@ -14,7 +14,7 @@ import random
 import sys
 from pathlib import Path
 
-from walker_db import open_walker, WALKER_DIR
+from walker_db import open_walker, OUT_DIR
 
 RNG = random.Random(11)
 STACK_DEPTH = 4          # previous turns rendered per moment
@@ -85,7 +85,7 @@ def main():
         for sess, epoch, seq in RNG.sample(pool, min(n, len(pool))):
             idx += 1
             lines.extend(render_moment(walker, idx, label, sess, epoch, seq))
-    (WALKER_DIR / 'h1_moments.md').write_text('\n'.join(lines) + '\n')
+    (OUT_DIR / 'h1_moments.md').write_text('\n'.join(lines) + '\n')
     walker.close()
     print('h1_moments.md written — %d moments' % idx)
     return 0

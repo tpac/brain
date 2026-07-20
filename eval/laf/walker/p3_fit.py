@@ -38,7 +38,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import WALKER_DIR, open_walker
+from walker_db import OUT_DIR, open_walker
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -56,8 +56,8 @@ TAIL_GAMMA = 0.5
 LAMBDA = 1.0
 LAMBDA_SENS = (0.1, 1.0, 10.0)
 SOFT_MARGIN = 0.10            # min soft_max gap to mint a soft-target pair
-REPORT = WALKER_DIR / 'p3_fit.md'
-OUT = WALKER_DIR / 'p3_fit.json'
+REPORT = OUT_DIR / 'p3_fit.md'
+OUT = OUT_DIR / 'p3_fit.json'
 
 FEATURES = ['%s·%s' % (ln, sl) for ln in LANES for sl in SLOTS] + ['M_e_f']
 

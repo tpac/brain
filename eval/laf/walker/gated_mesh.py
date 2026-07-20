@@ -32,7 +32,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import WALKER_DIR, open_walker
+from walker_db import OUT_DIR, open_walker
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -48,8 +48,8 @@ TOPQ = 5                          # jaccard top-q
 SOFT_MARGIN = 0.10
 HURT_CASES = {('ad249ee4', 1, 6), ('124cf35a', 0, 18),
               ('c2244e8e', 0, 16), ('9ec0b4e8', 0, 10)}
-REPORT = WALKER_DIR / 'gated_mesh.md'
-OUT = WALKER_DIR / 'gated_mesh.json'
+REPORT = OUT_DIR / 'gated_mesh.md'
+OUT = OUT_DIR / 'gated_mesh.json'
 
 
 def spearman(a, b):

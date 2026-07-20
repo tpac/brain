@@ -57,7 +57,7 @@ from pathlib import Path
 import numpy as np
 
 from walker_db import (open_walker, EXTRACT_VERSION, EMBED_VERSION,
-                       lanes_version, WALKER_DIR)
+                       lanes_version, OUT_DIR)
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -73,7 +73,7 @@ GAINS = {k[5:]: float(v) for k, v in DEFAULT_CONFIG.items()
          if k.startswith('gain_') and k != 'gain_proj'}
 V_OP = ['v_%s_op' % v.strip('_') for v in MAXSIM_VIEWS]
 V_AN = ['v_%s_anchor' % v.strip('_') for v in MAXSIM_VIEWS]
-REPORT = WALKER_DIR / 'q1_sweep.md'
+REPORT = OUT_DIR / 'q1_sweep.md'
 
 
 def gate_provenance(walker):
@@ -506,7 +506,7 @@ def main():
                      % len(results))
         lines.append('- SHUFFLE CONTROL PENDING on top-3 — no verdict before '
                      'it runs (registered order).')
-        (WALKER_DIR / 'q1_sweep_full.json').write_text(json.dumps(results))
+        (OUT_DIR / 'q1_sweep_full.json').write_text(json.dumps(results))
         REPORT.write_text('\n'.join(lines) + '\n')
         print('\n'.join(lines[:14]))
         print('... full report: %s' % REPORT)

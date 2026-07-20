@@ -30,7 +30,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import (open_walker, open_logs_ro, WALKER_DIR, lanes_version,
+from walker_db import (open_walker, open_logs_ro, WALKER_DIR, OUT_DIR, lanes_version,
                        gold_source_hash, GOLD_SOURCES,
                        EXTRACT_VERSION, EMBED_VERSION)
 
@@ -346,7 +346,7 @@ def main():
         'FAIL' if fails else 'GREEN',
         sum(s.startswith('PASS') for s in statuses),
         sum(s.startswith('WARN') for s in statuses), len(fails)))
-    (WALKER_DIR / 'walker_health.md').write_text('\n'.join(lines) + '\n')
+    (OUT_DIR / 'walker_health.md').write_text('\n'.join(lines) + '\n')
     walker.close()
     logs.close()
     print('\n'.join(lines))

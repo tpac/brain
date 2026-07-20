@@ -22,10 +22,10 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import WALKER_DIR
+from walker_db import OUT_DIR
 
-CACHE = WALKER_DIR / 'field_cache.npy'
-INDEX = WALKER_DIR / 'field_cache_index.json'
+CACHE = OUT_DIR / 'field_cache.npy'          # DATA artifact — env-honoring
+INDEX = OUT_DIR / 'field_cache_index.json'
 GAMMA = 0.5                      # Q1-winner exp decay
 TOPK_SRC = 100                   # containment source set
 TOPK_TGT = 500                   # containment target region

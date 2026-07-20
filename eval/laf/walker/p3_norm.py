@@ -41,7 +41,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import WALKER_DIR, GOLD_DIR, open_walker
+from walker_db import OUT_DIR, GOLD_DIR, open_walker
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -59,8 +59,8 @@ NORMS = tuple(Z_NORMS)          # the production registry IS the variant list
                                 # (insertion order keeps 'current' first)
 GATE_TIERS = ('gold_plus', 'gold')
 EYEBALL_CUES = 2
-REPORT = WALKER_DIR / 'p3_norm.md'
-OUT = WALKER_DIR / 'p3_norm.json'
+REPORT = OUT_DIR / 'p3_norm.md'
+OUT = OUT_DIR / 'p3_norm.json'
 
 
 def variant_sanity():

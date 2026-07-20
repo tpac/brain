@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import WALKER_DIR
+from walker_db import OUT_DIR
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -26,7 +26,7 @@ from servers.recall_laf import LafV1Engine, _unit                  # noqa: E402
 from q1_sweep import GAINS, compose, stack_messages, weights, configs  # noqa: E402
 from reach_leg import load_cues, cue_fields, rank_rows, needs_reach    # noqa: E402
 
-REPORT = WALKER_DIR / 'reach_winner.md'
+REPORT = OUT_DIR / 'reach_winner.md'
 
 
 def main():

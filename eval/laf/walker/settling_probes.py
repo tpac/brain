@@ -32,7 +32,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import WALKER_DIR, open_walker
+from walker_db import OUT_DIR, open_walker
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -53,8 +53,8 @@ CFG_B = cfg_for(2, 0.7)          # probe-B base: fits the j<=2 field rig
 N_SAMPLE = 120
 SEED = 20260717
 SOFT_MARGIN = 0.10
-REPORT = WALKER_DIR / 'settling_probes.md'
-OUT = WALKER_DIR / 'settling_probes.json'
+REPORT = OUT_DIR / 'settling_probes.md'
+OUT = OUT_DIR / 'settling_probes.json'
 
 
 # ------------------------------------------------------------------ A

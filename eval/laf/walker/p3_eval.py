@@ -39,7 +39,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import WALKER_DIR, GOLD_DIR, open_walker
+from walker_db import OUT_DIR, GOLD_DIR, open_walker
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -60,12 +60,12 @@ SEED = 20260715
 N_SHUFFLE_TURNS = 400
 TOL = 0.005
 EYEBALL_CUES = 2
-REPORT = WALKER_DIR / 'p3_eval.md'
-OUT = WALKER_DIR / 'p3_eval.json'
+REPORT = OUT_DIR / 'p3_eval.md'
+OUT = OUT_DIR / 'p3_eval.json'
 
 
 def load_coefs():
-    fit = json.loads((WALKER_DIR / 'p3_fit.json').read_text())
+    fit = json.loads((OUT_DIR / 'p3_fit.json').read_text())
     out = {}
     for arm in ARMS:
         coef = fit['results'][arm]['coef']

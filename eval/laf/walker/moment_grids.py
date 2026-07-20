@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import WALKER_DIR, open_walker
+from walker_db import OUT_DIR, open_walker
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -32,8 +32,8 @@ from q1_sweep import (GAINS, load, gate_provenance, configs,  # noqa: E402
 from servers.recall_laf import _zscore                        # noqa: E402
 from soft_usage import auc                                    # noqa: E402
 
-REPORT = WALKER_DIR / 'moment_grids.md'
-OUT = WALKER_DIR / 'moment_grids.json'
+REPORT = OUT_DIR / 'moment_grids.md'
+OUT = OUT_DIR / 'moment_grids.json'
 K_GRID = (1, 2, 3, 4, 5, 8)
 G_GRID = (0.3, 0.5, 0.7, 0.9)
 SPARSIFY_KEEP = 8            # per-message survivors in a ~25 pool

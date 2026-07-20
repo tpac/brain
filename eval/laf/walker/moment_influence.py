@@ -24,7 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import WALKER_DIR, open_walker
+from walker_db import OUT_DIR, open_walker
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -40,8 +40,8 @@ DELTAS = (0.1, 0.3, 0.6, 1.0)
 N_SAMPLE = 120
 J_LIMIT = 2                      # full-field slots j<=2 — all arms are K<=1
 SEED = 20260717
-REPORT = WALKER_DIR / 'moment_influence.md'
-OUT = WALKER_DIR / 'moment_influence.json'
+REPORT = OUT_DIR / 'moment_influence.md'
+OUT = OUT_DIR / 'moment_influence.json'
 
 
 # ---------------------------------------------------------------- part 1

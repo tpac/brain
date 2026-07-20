@@ -33,7 +33,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import WALKER_DIR, GOLD_DIR
+from walker_db import OUT_DIR, GOLD_DIR
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -45,7 +45,7 @@ from reach_leg import load_cues, cue_fields, rank_rows              # noqa: E402
 WINNER = 'K1-exp0.5-turnsum-zsum-opanchor-me0'
 EYEBALL_CUES = 4
 TIERS = ('gold_plus', 'gold', 'silver_plus', 'silver')
-REPORT = WALKER_DIR / 'q1_reverse.md'
+REPORT = OUT_DIR / 'q1_reverse.md'
 
 
 def lane_attribution(mats, ww, n, node_mask):

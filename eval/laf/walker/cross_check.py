@@ -55,7 +55,7 @@ from pathlib import Path
 import numpy as np
 
 from walker_db import (open_walker, lanes_version, check_lane_schema,
-                       EXTRACT_VERSION, EMBED_VERSION, WALKER_DIR)
+                       EXTRACT_VERSION, EMBED_VERSION, OUT_DIR)
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -70,7 +70,7 @@ COSINE_TOL = 1e-3
 # idf carries the known corpus-membership delta (see module docstring) —
 # gate on the MEDIAN staying tiny and report the tail loudly.
 IDF_MEDIAN_TOL = 1e-3
-REPORT = WALKER_DIR / 'cross_check.md'
+REPORT = OUT_DIR / 'cross_check.md'
 
 
 def gate_provenance(walker):

@@ -25,7 +25,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import WALKER_DIR, open_walker
+from walker_db import OUT_DIR, open_walker
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -39,8 +39,8 @@ from episodic_roles import K_MAX                                    # noqa: E402
 
 SOFT_MARGIN = 0.10
 WINNER = 'K1-exp0.5-turnsum-zsum-opanchor-me0'
-REPORT = WALKER_DIR / 'definitive_fit.md'
-OUT = WALKER_DIR / 'definitive_fit.json'
+REPORT = OUT_DIR / 'definitive_fit.md'
+OUT = OUT_DIR / 'definitive_fit.json'
 
 SLOTS = [('op', j) for j in range(K_MAX + 1)] + \
         [('anchor', j) for j in range(1, K_MAX + 1)]

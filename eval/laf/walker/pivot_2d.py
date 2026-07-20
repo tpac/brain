@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-from walker_db import WALKER_DIR, open_walker
+from walker_db import OUT_DIR, open_walker
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
@@ -32,7 +32,7 @@ from moment_grids import cfg_for, message_fields, mesh              # noqa: E402
 from gated_mesh import agreements, HURT_CASES                       # noqa: E402
 
 CFG = cfg_for(8, 0.7)
-REPORT = WALKER_DIR / 'pivot_2d.md'
+REPORT = OUT_DIR / 'pivot_2d.md'
 
 
 def peakedness(f0):
