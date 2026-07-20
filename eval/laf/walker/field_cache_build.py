@@ -217,7 +217,12 @@ def main():
     (Path(str(INDEX) + ('.smoke' if smoke else ''))).write_text(json.dumps({
         'slots': ['%s%d' % (k, j) for k, j in SLOTS], 'n_nodes': n,
         'master_hash': master_hash, 'soft_hi': hi, 'sparse_z': SPARSE_Z,
-        'dtype': 'float32', 'turns': index}))
+        'dtype': 'float32',
+        # row→node_id map frozen WITH the fields — a later engine load
+        # orders rows differently once the brain changes (archives/encodes),
+        # so arbitrary node lookups must come from here, never a fresh build
+        'master': list(eng._master[:n]),
+        'turns': index}))
     print('wrote %s (%d turns × %d slots × %d nodes)'
           % (CACHE, len(gold_turns), len(SLOTS), n))
     return 0
