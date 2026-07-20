@@ -73,16 +73,22 @@ def gold_rank(f, gr):
 
 def wsum(parts):
     """weighted nansum of (weight, field) — absent (all-NaN) parts drop;
-    returns all-NaN if nothing present (never a fake zero field)."""
-    acc, seen = None, False
+    returns None if nothing present. Nodes finite in NO part (dead at the
+    turn's as_of — NaN in every slot) stay NaN: zero-filling them made
+    them score-0 COMPETITORS in composite ranks while raw single-slot
+    fields correctly excluded them (2026-07-20 review BLOCKER — biased
+    every F0-vs-Moment delta toward F0)."""
+    acc, present = None, None
     for w, f in parts:
         if f is None or np.isnan(f).all():
             continue
-        x = w * np.where(np.isfinite(f), f, 0.0)
+        fin = np.isfinite(f)
+        x = w * np.where(fin, f, 0.0)
         acc = x if acc is None else acc + x
-        seen = True
-    if not seen:
+        present = fin if present is None else (present | fin)
+    if acc is None:
         return None
+    acc[~present] = np.nan
     return acc
 
 
