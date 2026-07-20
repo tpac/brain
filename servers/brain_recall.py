@@ -2002,6 +2002,12 @@ class BrainRecallMixin:
             self._log_error("recall_hydrate", e,
                             "Failed to bulk-hydrate %d nodes" % len(_hydrate_ids))
             _hydrated = {}
+        # Default type exclusions (pipeline_contract registry). An explicit
+        # dict filter on type overrides — a deliberate community query must
+        # not come back empty because of the default.
+        from .pipeline_contract import get_excluded_types
+        _excluded_types = get_excluded_types('recall') \
+            if not (filter and 'type' in filter) else set()
         for sr in scored_results:
             nid = sr['node_id']
             node = keyword_nodes.get(nid)
@@ -2009,6 +2015,8 @@ class BrainRecallMixin:
                 # Node came from embedding-only path — pre-batched above.
                 node = _hydrated.get(nid)
 
+            if node and (node.get('type') or '') in _excluded_types:
+                continue
             if node:
                 node['effective_activation'] = sr['blended_score']
                 node['embedding_similarity'] = sr['embedding_similarity']

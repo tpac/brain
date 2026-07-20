@@ -252,8 +252,11 @@ NODE_TYPE_EXCLUSIONS = {
     # Health check: coverage metrics for regular nodes only
     'health_check': {'community'},
 
-    # Recall: NO exclusions — community nodes participate in recall
-    'recall': set(),
+    # Recall: community nodes are S2 navigation/consolidation structure,
+    # not surfaceable memories (Tom, 2026-07-20) — excluded from the recall
+    # pool. Explicit dict filters on type bypass this (deliberate community
+    # queries — dashboard, S2, direct asks — still work).
+    'recall': {'community'},
 }
 
 
