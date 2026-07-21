@@ -5,20 +5,24 @@ free re-fits over the cache — the expensive-substrate-once design.
 
 A slot's field = Σ_lane gain·z(lane_j, node_mask) over ALIVE nodes at the
 turn's ts — the within-LAF mesh at production GAINS, one composed field per
-(turn, slot). Slots: op0 (q_vec), op1, anchor1, op2 (J_LIMIT=2 parity with
-moment_influence.turn_fields; j0-anchor never a cue — temporal-leak rule).
+(turn, slot). Slots: op0 (q_vec), op1, anchor1, op2, anchor2 (J_LIMIT=2
+parity with moment_influence.turn_fields; j0-anchor never a cue —
+temporal-leak rule). anchor2 added 2026-07-20: Tom's Moment kernel decays
+per MSG, not per turn — msg offsets are a1=−1, o1=−2, a2=−3, o2=−4, so the
+per-msg stack needs the anchor-side j=2 slot turn_fields always computed
+but the cache never stored.
 
-Z ROUTING (deliberate, NOT the shipped default): sparse zero-sea lanes
+Z ROUTING (== production since 2026-07-20): sparse zero-sea lanes
 (pick/enc/idf) go through support-z, dense lanes through current-z — the
-engine's own per-lane gating under the P3.0 'support' variant. Production
-ships z_norm='current' (plain z everywhere), but at full-field scale the
-zero seas explode under plain z (enc z≈11 vs cosine z≈2, node 0ccc5481) —
-fitting meshes on an exploded substrate is worse than the variant gap.
-Stamped in the index meta as 'sparse_z' so downstream knows what it reads.
+engine's own per-lane gating under the P3.0 'support' variant, which now
+SHIPS (K-store recall_laf v1 flips z_norm to 'support'; plain z exploded
+the zero seas at full-field scale — enc z≈11 vs cosine z≈2, node 0ccc5481).
+The build aligns throwaway isolated corpus brains that predate the flip.
+Stamped in the index meta as 'sparse_z' + 'z_norm_prod'.
 
 Output (OUT_DIR):
-  field_cache.npy  [n_turns × 4 slots × n_nodes] float32 COMPOSED fields
-  lane_cache.npy   [n_turns × 4 slots × 5 lanes × n_nodes] float32 RAW lane
+  field_cache.npy  [n_turns × 5 slots × n_nodes] float32 COMPOSED fields
+  lane_cache.npy   [n_turns × 5 slots × 5 lanes × n_nodes] float32 RAW lane
                    values (pre-gain, pre-z; NaN = masked/missing slot) — the
                    derivation substrate: gains, z-variants (current/support/
                    rank), λ sweeps and layer ablations all become free
@@ -55,7 +59,7 @@ from moment_influence import turn_fields                            # noqa: E402
 from reach_leg import rank_rows, TEXT_CAP                           # noqa: E402
 from tests.isolated_brain import IsolatedBrain                       # noqa: E402
 
-SLOTS = (('op', 0), ('op', 1), ('anchor', 1), ('op', 2))
+SLOTS = (('op', 0), ('op', 1), ('anchor', 1), ('op', 2), ('anchor', 2))
 LANES = ('maxsim', 'sit', 'idf', 'pick', 'enc')   # lane_cache axis order
 SPARSE_Z = 'support'              # zero-sea lanes; see Z ROUTING above
 CACHE = OUT_DIR / 'field_cache.npy'          # DATA artifact — env-honoring
@@ -129,6 +133,24 @@ def main():
             eng._refresh_titles(env.brain)
             eng._refresh_traces(env.brain)
         eng._brain_ref = env.brain
+        # Production ships z_norm='support' (K-store recall_laf v1, Tom-
+        # approved 2026-07-20). Corpus brains built before the flip lack the
+        # row — align the THROWAWAY isolated copy so eng.scores parity checks
+        # the convention production actually runs (frozen corpus on disk is
+        # never mutated). MERGE, don't replace: recall_laf's config is also
+        # the carrier of fitted gains — wholesale replacement would wipe a
+        # corpus brain's gains to module defaults and let base-parity pass
+        # against a config that brain never ran (review 2026-07-21).
+        stored_cfg = env.brain.get_interaction_config('recall_laf') or {}
+        if stored_cfg.get('z_norm') != 'support':
+            merged = dict(stored_cfg)
+            merged['z_norm'] = 'support'
+            r = env.brain._interaction_dal.register(
+                name='recall_laf', template='',
+                parameters=json.dumps(merged),
+                created_by='eval:field_cache_build')
+            env.brain.set_interaction_active(
+                'recall_laf', r['version'], set_by='eval:field_cache_build')
         n = eng._n
         master_hash = hashlib.sha256(
             ('|'.join(eng._master[:n])).encode()).hexdigest()[:16]
@@ -145,6 +167,7 @@ def main():
         index, cov = [], {('%s%d' % (k, j)): 0 for k, j in SLOTS}
         worst_par, par_checked, base_par_ok = 0.0, 0, 0
         cfg_k0, w0 = configs()[0], weights(configs()[0])
+        cfg_k0['z_norm'] = 'support'   # parity composes what the engine runs
         import time
         t0 = time.time()
         for ti, (td, g) in enumerate(gold_turns):
@@ -238,7 +261,7 @@ def main():
         'slots': ['%s%d' % (k, j) for k, j in SLOTS], 'n_nodes': n,
         'lanes': list(LANES),
         'master_hash': master_hash, 'soft_hi': hi, 'sparse_z': SPARSE_Z,
-        'dtype': 'float32',
+        'z_norm_prod': 'support', 'dtype': 'float32',
         # row→node_id map frozen WITH the fields — a later engine load
         # orders rows differently once the brain changes (archives/encodes),
         # so arbitrary node lookups must come from here, never a fresh build

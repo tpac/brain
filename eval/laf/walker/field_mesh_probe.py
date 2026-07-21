@@ -114,14 +114,19 @@ def main():
         F = fields[t['row']].astype(np.float32)
         f0, f1, a1, f2 = (F[S['op0']], F[S['op1']], F[S['anchor1']],
                           F[S['op2']])
+        a2 = F[S['anchor2']] if 'anchor2' in S else None
         gr = t['cand_rows'][t['gold_i']]
         if gr < 0:
             continue
-        mh = wsum([(GAMMA, f1), (GAMMA, a1), (GAMMA ** 2, f2)])
-        mh_ex1 = wsum([(GAMMA, a1), (GAMMA ** 2, f2)])
+        # per-MSG kernel (aee1772e): a1=γ, f1=γ², a2=γ³, f2=γ⁴
+        mh = wsum([(GAMMA, a1), (GAMMA ** 2, f1), (GAMMA ** 3, a2),
+                   (GAMMA ** 4, f2)])
+        mh_ex1 = wsum([(GAMMA ** 2, f1), (GAMMA ** 3, a2),
+                       (GAMMA ** 4, f2)])
         mfull = wsum([(1.0, f0), (1.0, mh)])
         tmax = None
-        parts = [(1.0, f0), (GAMMA, f1), (GAMMA, a1), (GAMMA ** 2, f2)]
+        parts = [(1.0, f0), (GAMMA, a1), (GAMMA ** 2, f1),
+                 (GAMMA ** 3, a2), (GAMMA ** 4, f2)]
         pres = [w * np.where(np.isfinite(f), f, -np.inf)
                 for w, f in parts if f is not None and not np.isnan(f).all()]
         if pres:
@@ -173,9 +178,11 @@ def main():
             side = int(r0 < rM)          # 1 = msg0 side wins
         ro = {
             'a_F0_Mh': align(f0, mh),                              # menu 1
-            'a_F1_Mhx': (align(f1, mh_ex1)
-                         if f1 is not None and mh_ex1 is not None
-                         and not np.isnan(f1).all() else np.nan),  # menu 2
+            # menu 2: msg −1 (= a1 under the per-msg kernel) vs the Moment
+            # built WITHOUT it
+            'a_A1_Mhx': (align(a1, mh_ex1)
+                         if a1 is not None and mh_ex1 is not None
+                         and not np.isnan(a1).all() else np.nan),
             'peak_F0': float(np.nanmax(f0)),
             'peak_Mh': float(np.nanmax(mh)),
             'conc_F0': conc(f0), 'conc_Mh': conc(mh),
@@ -193,7 +200,7 @@ def main():
             'conc_Mfull': conc(mfull),                              # menu 5
             'cont_F0_in_Mh': containment(f0, mh),
         }
-        ro['d_align'] = ro['a_F0_Mh'] - ro['a_F1_Mhx']              # menu 3
+        ro['d_align'] = ro['a_F0_Mh'] - ro['a_A1_Mhx']              # menu 3
         ro['d_peak'] = ro['peak_F0'] - ro['peak_Mh']
         ro['d_conc'] = ro['conc_F0'] - ro['conc_Mh']
         readouts.append(ro)

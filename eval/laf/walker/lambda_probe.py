@@ -51,6 +51,30 @@ def spearman(a, b):
     return float(np.corrcoef(ra, rb)[0, 1])
 
 
+def lambda_star(f0z, mhz, gr, grid=GRID):
+    """Per-turn λ oracle: gold rank per λ over the z-mixed field.
+    THE λ* machinery — layer_readout_probe imports this; never re-implement
+    (the wsum rule). Known small endpoint understatement at λ∈{0,1} from
+    inf·0 — interior clean. Returns {λ: rank} (empty if gold unscorable)."""
+    both = np.isfinite(f0z) & np.isfinite(mhz)
+    f0w = np.where(both, f0z, np.where(np.isfinite(f0z), f0z, -np.inf))
+    mhw = np.where(both, mhz, np.where(np.isfinite(mhz), mhz, -np.inf))
+    ranks = {}
+    for l in grid:
+        s = (1 - l) * mhw + l * f0w
+        if not np.isfinite(s[gr]):
+            continue
+        ranks[l] = int((s > s[gr]).sum()) + 1
+    return ranks
+
+
+def plateau_of(ranks):
+    """(lo, hi, mid) of the λ*-plateau — the flat argmin region."""
+    best = min(ranks.values())
+    pl = [l for l, r in ranks.items() if r == best]
+    return min(pl), max(pl), float(np.median(pl))
+
+
 def main():
     idx = json.loads(INDEX.read_text())
     fields = np.load(CACHE, mmap_mode='r')
@@ -67,29 +91,25 @@ def main():
 
     per_l_hits = {l: 0 for l in GRID}
     lam_mid, lam_lo, lam_hi, oracle_hit = [], [], [], 0
-    ros = []
+    ros, strong = [], []
+    s_hits = {l: 0 for l in GRID}
+    s_oracle = 0
     for tt in turns:
-        f0, mh = zn(tt.fields[0]), zn(tt.mh)
-        both = np.isfinite(f0) & np.isfinite(mh)
-        f0w = np.where(both, f0, np.where(np.isfinite(f0), f0, -np.inf))
-        mhw = np.where(both, mh, np.where(np.isfinite(mh), mh, -np.inf))
-        gr = tt.gr
-        ranks = {}
-        for l in GRID:
-            s = (1 - l) * mhw + l * f0w
-            if not np.isfinite(s[gr]):
-                continue
-            ranks[l] = int((s > s[gr]).sum()) + 1
+        ranks = lambda_star(zn(tt.fields[0]), zn(tt.mh), tt.gr)
         if not ranks:
             continue
-        best = min(ranks.values())
-        plateau = [l for l, r in ranks.items() if r == best]
-        lam_lo.append(min(plateau))
-        lam_hi.append(max(plateau))
-        lam_mid.append(float(np.median(plateau)))
-        oracle_hit += int(best <= 5)
+        lo, hi, mid = plateau_of(ranks)
+        lam_lo.append(lo)
+        lam_hi.append(hi)
+        lam_mid.append(mid)
+        oracle_hit += int(min(ranks.values()) <= 5)
         for l, r in ranks.items():
             per_l_hits[l] += int(r <= 5)
+        if tt.strong:               # gold-tier: soft-gold ∩ Haiku-picked
+            s_oracle += int(min(ranks.values()) <= 5)
+            for l, r in ranks.items():
+                s_hits[l] += int(r <= 5)
+        strong.append(tt.strong)
         ros.append(tt.ro)
 
     n = len(lam_mid)
@@ -104,6 +124,13 @@ def main():
           % (best_static, 100 * per_l_hits[best_static] / n,
              100 * oracle_hit / n,
              100 * (oracle_hit - per_l_hits[best_static]) / n))
+    ns = sum(strong)
+    if ns:
+        bs = max(GRID, key=lambda l: s_hits[l])
+        print('  gold-strong tier (soft ∩ Haiku-picked, n=%d): static '
+              'λ=%.2f → %.1f%% · oracle-λ → %.1f%% (headroom %.1fpp)'
+              % (ns, bs, 100 * s_hits[bs] / ns, 100 * s_oracle / ns,
+                 100 * (s_oracle - s_hits[bs]) / ns))
 
     lo, hi, mid = np.array(lam_lo), np.array(lam_hi), np.array(lam_mid)
     width = hi - lo

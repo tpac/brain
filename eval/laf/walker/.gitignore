@@ -1,4 +1,5 @@
 walker.db
 field_cache.npy*
 field_cache_index.json*
+lane_cache.npy*
 __pycache__/

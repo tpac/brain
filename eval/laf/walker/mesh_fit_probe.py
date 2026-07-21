@@ -6,7 +6,7 @@ weight, capture any of the field-level oracle headroom (+5.6pp 2-way)?
 
 Arms:
   M_full        static flat mesh F0 + M_h                    [baseline]
-  fitted-lin4   w·[F0,F1,A1,F2] fitted on train soft pairs   [best linear]
+  fitted-lin5   w·[F0,F1,A1,F2,A2] fitted on train soft pairs [best linear]
   router-soft   w0(r)·F0 + (1-w0(r))·M_h, w0 = σ(β·readouts) fitted on
                 train-fold oracle labels                     [fields vote]
   router-hard   choose F0 vs M_full by router, ONLY in the disagreement
@@ -37,6 +37,10 @@ from field_mesh_probe import relu, conc, topset, wsum, gold_rank    # noqa: E402
 
 CACHE = OUT_DIR / 'field_cache.npy'
 INDEX = OUT_DIR / 'field_cache_index.json'
+# per-MSG decay step (correction aee1772e: Tom's kernel decays per message,
+# not per turn — msg offsets from op0: a1=−1, f1=−2, a2=−3, f2=−4). The old
+# per-turn form (γ,γ,γ²) is DEAD — it silently under-weighted msg −1 for
+# weeks; do not resurrect it outside explicit kernel-comparison arms.
 GAMMA = 0.5
 FOLDS = 5
 SOFT_MARGIN = 0.10
@@ -65,20 +69,27 @@ def router_prob(w, X):
 
 class Turn:
     __slots__ = ('key', 'sess', 'row', 'gr', 'cand_rows', 'soft', 'fields',
-                 'mh', 'mfull', 'ro')
+                 'mh', 'mfull', 'ro', 'strong')
 
-    def __init__(self, t, fields, S):
+    def __init__(self, t, fields, S, gamma=GAMMA):
         self.key, self.row = tuple(t['key']), t['row']
         self.sess = t['key'][0]
         self.cand_rows = t['cand_rows']
         self.gr = t['cand_rows'][t['gold_i']]
         self.soft = np.array([np.nan if x is None else x
                               for x in t['soft']])
+        # gold tier: 'strong' = the soft-gold was ALSO Haiku-picked that
+        # turn (label robust to the echo critique); 'all' = every gold
+        self.strong = bool(t['sel'][t['gold_i']]) if t.get('sel') else False
         F = fields[t['row']].astype(np.float32)
         f0, f1, a1, f2 = (F[S['op0']], F[S['op1']], F[S['anchor1']],
                           F[S['op2']])
-        self.fields = (f0, f1, a1, f2)
-        self.mh = wsum([(GAMMA, f1), (GAMMA, a1), (GAMMA ** 2, f2)])
+        a2 = F[S['anchor2']] if 'anchor2' in S else None
+        self.fields = (f0, f1, a1, f2, a2)
+        parts = [(gamma, a1), (gamma ** 2, f1), (gamma ** 4, f2)]
+        if a2 is not None:
+            parts.insert(2, (gamma ** 3, a2))
+        self.mh = wsum(parts)
         self.mfull = wsum([(1.0, f0), (1.0, self.mh)])
         f1ok = f1 is not None and not np.isnan(f1).all()
         self.ro = None
@@ -93,8 +104,8 @@ class Turn:
 
 
 def cand_feats(t):
-    """[n_cand × 4] field values at candidate rows (NaN-safe)."""
-    out = np.full((len(t.cand_rows), 4), np.nan)
+    """[n_cand × n_fields] field values at candidate rows (NaN-safe)."""
+    out = np.full((len(t.cand_rows), len(t.fields)), np.nan)
     for fi, f in enumerate(t.fields):
         if f is None:
             continue
@@ -117,7 +128,7 @@ def soft_pairs(turns, keys):
         wi, li = np.nonzero((s[:, None] - s[None, :]) >= SOFT_MARGIN)
         if len(wi):
             rows.append(X[fin[wi]] - X[fin[li]])
-    return np.concatenate(rows) if rows else np.zeros((0, 4))
+    return np.concatenate(rows) if rows else np.zeros((0, 5))
 
 
 def oracle_label(t):
@@ -261,7 +272,7 @@ def main():
         return bf
 
     allkeys = {t.key for t in turns}
-    arms = [('M_full (static)', s_mfull), ('fitted-lin4', s_lin),
+    arms = [('M_full (static)', s_mfull), ('fitted-lin5', s_lin),
             ('router-soft', s_router_soft), ('router-hard', s_router_hard),
             ('oracle-2way', s_oracle2), ('oracle-5way', s_oracle5)]
     print('\narm               n      reach@5  reach@25  pool@5   soft_r'
