@@ -2535,43 +2535,72 @@ Moment. The object of study is the per-event update gain λ, not a choice
 between per-msg fields. "ok" → λ≈0; a decisive short prompt → small text,
 huge λ. Specificity sets the update, not size.
 
-**Measured (all runs 2026-07-20, both corpora, substrate below):**
-- Field-level oracle: static flat Moment 28.1% reach@5 (live, full 7.6k-node
-  field, 1,933 ex-community golds); fitted 1-param static mix λ=0.65 → 29.5%;
-  per-turn oracle-λ → 36.6%. **+7.1pp plasticity headroom, survives
-  re-baselining** (40b8cb7a). λ* genuinely varies: ~1/3 of turns λ*≈0.9,
-  ~35% interior, ~10% Moment-dominant.
-- Readout-router (logistic on 5 composed-field readouts as mesh weight):
-  +1.1pp with 2.6:1 gain:loss churn — first favorable-churn arm in the
-  recall arc (5514e5fa). But NO current readout tracks λ* (|ρ|≤0.07) — the
-  **λ-derivation hunt is the open problem**.
-- Gold-age gradient: fresh golds (<1d) 64% baseline; old golds (>7d) ~18%,
-  where nearly all mesh headroom lives (da3becf5).
+**The kernel correction (aee1772e, 2026-07-20 night):** the Moment's decay
+index was BUILT per-turn (γ,γ,γ² with both msgs of turn −1 tied); Tom's
+spec is per-MSG power decay — msg offsets from op0: a1=γ, f1=γ², a2=γ³,
+f2=γ⁴. Per-msg wins outright, and the a1/slot-weight anomalies of the
+per-turn era largely collapse into it (8cb92cd8): a1 is simply the closest
+msg; the residual same-speaker redundancy effect (f1 duplicates the O) is
+real but second-order (+0.5pp). γ itself is near-constant (audit: +2.3pp,
+K=4); the speaker/redundancy axis, not decay shape, carried the variance.
 
-**Falsified this arc (runs behind every entry — do not reopen):**
-corrector score-transfer within-pool (0 rescues/1,389 misses, replicated
-pool60); community readouts as router (dead both corpora); community golds
-(labeling artifacts — and production now EXCLUDES community nodes from the
-recall pool, 865afae, registry-enforced with explicit-filter bypass);
-containment/alignment readouts (corpus-flip); pool-soft fitting of field
-meshes (wins pool, destroys field reach 63:155 — **fit field meshes on
-field objectives only**).
+**Measured (2026-07-21 rerun, per-msg K, both corpora, commit a602a40):**
+- Honest λ frame (live, ex-community golds): static λ=0.65 → 30.7%,
+  oracle-λ → 39.1% (**+8.4pp — the headroom survives the kernel fix and
+  grows**, 362f21f6). 89% decisive, λ* wide. M_full 31.2%@5 / 60.3%@25.
+- **Gold-tier axis** (Turn.strong = soft ∩ Haiku-picked, the echo-robust
+  label): live strong tier (n=562) static 75.3% / oracle 84.9% (+9.6pp);
+  pool60 strong tier 99.5% static, ZERO headroom — **door 1 with a
+  confident label is solved; the entire mesh/λ problem is door-2-only,
+  now measured**. Gold audit (gold_audit.{py,md}): Haiku dropped 71% of
+  soft-golds, but eyeballs say that mostly indicts the old surface, not
+  the label (proven-miss cases); soft stays primary, tiers report both.
+- Readout landscape STABLE across the kernel change (not artifacts):
+  conc_sit −0.150 / conc_maxsim −0.147 (dense conc anti-predicts λ* on
+  every slot); peak_pick +0.113 the top positive (pick-share collapse in
+  high-conc turns — the episodic-evidence⇒commit thread); ov_F0_F1 defer
+  AUC 0.597. Lexical-spike theory and cross-layer disagreement: falsified.
+  λ̂-conc1 CV fit: +0.9pp, churn 29:11 — beats the 21-feature ridge.
+- Derivation audit (constants headroom ranking, live): λ +8.4 > slot
+  weights +6.3 > gain_maxsim +5.2 ≈ gain_idf +4.8 > gain_sit/pick ~4 >
+  γ +2.3 > gain_enc +0.8 (γ and gain_enc certified constant). Lane map:
+  maxsim is the spine (solo ≈ composite, ablate −6.5pp); sit derivable in
+  effect (R² 0.26, ablate −0.2pp) yet its conc is the best λ readout;
+  idf/pick orthogonal-but-small; enc marginal-zero.
+
+**Falsified (runs behind every entry — re-verified on the per-msg K
+2026-07-21 — do not reopen):** corrector score-transfer within-pool (live
+2/1336 = 0.1%, pool60 0/28); community readouts as router (dead both);
+community golds (labeling artifacts — production EXCLUDES community nodes
+from the recall pool, 865afae); containment/alignment readouts
+(corpus-flip); pool-soft fitting of field meshes (**fit field meshes on
+field objectives only**); A1-as-route (dissolved: mostly the per-turn
+kernel underweighting msg −1).
+
+**Production changes shipped with this arc:** z_norm='support' (K-store
+recall_laf v1, Tom-approved — sparse zero-sea lanes get support-z; cache
+and production conventions now match).
 
 **Substrate (the iteration instrument):** `field_cache_build.py` →
 `field_cache.npy` (composed per-(turn,slot) fields) + `lane_cache.npy`
-(RAW per-(turn,slot,lane) values, 5 lanes × 4 slots, 1.3GB live) +
-row-aligned index with FROZEN master list (engine row order drifts with
-brain changes — never map node→row from a fresh engine). Self-gating:
-composed base-parity vs eng.scores(as_of) top-25, 20/20 exact. Deliberate
-deviation: sparse lanes support-z (stamped in meta). Probes:
-`field_mesh_probe` (arms/oracle/readouts), `mesh_fit_probe` (fitted mesh +
-router through CV), `mesh_forensics{,2}` (miss autopsies),
-`lambda_probe` (the λ* oracle; known small endpoint understatement at
-λ∈{0,1} from inf·0 — interior clean).
+(RAW per-(turn,slot,lane) values, 5 lanes × 5 slots incl. anchor2/msg−3,
+1.65GB live) + row-aligned index with FROZEN master list (engine row order
+drifts with brain changes — never map node→row from a fresh engine) +
+gold-tier flags. Self-gating: composed base-parity vs eng.scores(as_of)
+top-25, 20/20 exact. Probes: `field_mesh_probe` (arms/oracle/readouts),
+`mesh_fit_probe` (Turn = THE per-msg kernel + fitted mesh/router CV),
+`lambda_probe` (λ* oracle — import lambda_star/plateau_of, never
+re-implement; known small endpoint understatement at λ∈{0,1}, interior
+clean), `layer_readout_probe` (per-(slot,layer) readouts; lane_z float64
+upcast is LOAD-BEARING — float32 tie-noise beats the 1e-9 std guard),
+`lambda_fit_probe` (CV'd λ̂), `derivation_audit` (constants/influence),
+`gold_audit` (label validity + examples), `mesh_forensics{,2}` (miss
+autopsies — pool60 runs need BRAIN_DB_DIR, cache-only probes don't).
 
-**Next (the λ-derivation hunt, free re-fits on the lane cache):** per-LAYER
-readouts (does specificity live in idf/sit rather than composed peak);
-msg-0 cross-layer disagreement (cosine vs episodic pointing apart → low λ);
-node-side conditioning (age — divisive temporal-density, b4733c4e); then
-recursive-vs-flat mesh through the composition gate. E1 (P4 eyeball gate)
-remains unsigned.
+**Next (the λ-derivation hunt, honest baseline, strong tier primary):**
+pick-lane conditioning (stable cross-kernel, favorable churn); slots +
+gain_idf dials from the audit ranking; node-side conditioning (age —
+divisive temporal-density, b4733c4e); mesh-formula sweep ({z-mix,
+rank-mix, raw-sum} × kernel family {power, harmonic, log} — Tom 6.3/6.6);
+500-char query-cap damage measurement (6.2); then recursive-vs-flat mesh
+through the composition gate. E1 (P4 eyeball gate) remains unsigned.
