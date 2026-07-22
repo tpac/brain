@@ -66,6 +66,31 @@ bare-cue recall surface for this message, if not this gold? (e.g. "lets do
 it" → nodes about how Tom operates when he greenlights: momentum, plan-first
 mandates, confirmation discipline.) Otherwise null.
 
+## Calibration rulings (Tom, 2026-07-21 — binding)
+
+- **Strata are exam doors.** `cue` golds exam contextless recall (door-1);
+  `window`/`session` golds exam conversation-state carry (door-2, Moments).
+  "Valid but needs context" is expressed through the stratum, never by
+  downgrading the verdict.
+- **Temporal-retrospective asks** ("what did we do last session on X"):
+  only nodes about the actual referent thread/period are gold. Older
+  topical background on X is a mislabel — it would misdirect the move.
+- **Pattern-class over stale instance.** For greenlight / commit-merge /
+  how-to / process cues, the gold class is nodes that speak to the
+  operator's strategy, preferences, or operational how-to (if such nodes
+  exist). An old event or other-thread decision is NOT gold even when its
+  content embeds relevant procedure — verdict echo_mislabel, and use
+  style_note to name the expected pattern class.
+- **Don't over-tighten helpfulness.** A lesson/principle node that speaks
+  to the mechanism the operator is asking about IS valid, even when the
+  message reads as a narrow factual question (e.g. a question about node
+  pulls is served by the pulls-behavior lesson).
+- **Same-session restatement.** A node that merely restates the plan
+  already present in the conversation window adds nothing — echo_mislabel.
+- `ambiguous` is a legitimate resting verdict; content-graft suspicion
+  (node content narrating events at/after the turn's date) is a valid
+  reason to use it.
+
 ## Cautions
 - **Content-graft**: node content may include revisions made AFTER the turn.
   The `created` date is trustworthy; a node whose content narrates events
