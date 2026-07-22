@@ -1,0 +1,202 @@
+[
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'killed' referred to a process/session crash (daemon hang) — pattern-class should be incident/root-cause diagnostics, not killed-experiment records."
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/38",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/39",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message asks a status question ('were actions taken') while the node states a phrasing-quality principle — semantic framing differs (action-status vs quality standard), so overlap scored low.",
+    "bridge": "Situation-lane match on 'reviewing S2 Healer question-field quality' or a graph walk from co-discussed healer/missing-fields nodes would surface it.",
+    "style_note": null
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/47",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/2",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "The prior-session plan/open-items node lives outside the shown window (only greeting turns visible); a bare error-status question has no lexical/semantic bridge to an 8-day-old plan node.",
+    "bridge": "A session-continuity field that surfaces the most recent 'next session plan' / open-items node whenever a new session's first substantive message references prior-session work.",
+    "style_note": "Session-opening 'did the fix go through' asks should surface the last session's plan/open-items node, not older architecture history."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A bare file/link share should surface material tied to the shared content (agent-memory-design critique) or the running eval's state, not generic partnership philosophy."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/20",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message names 'S2Healer' operationally ('isnt running?') while the node is a design/quality principle for the same field — lexical overlap exists but the bug-diagnosis framing outranked the quality-standard framing.",
+    "bridge": "Lexical/idf match on 'S2Healer' + 'question field' should surface it directly; a dedicated healer-question-field rule would strengthen the link.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/35",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/42",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/45",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Vague encouragement ('every test is a learning') just restates the eval-launch plan already stated three turns earlier in the window — nothing new to surface."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/50",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message uses generic 'recall problem or not' phrasing; the node's specific vocabulary (vocabulary/situation/graph-neighbor percentages) is more technical, so lexical/embedding overlap with the instruction is thin.",
+    "bridge": "IDF/keyword match on 'recall problem' plus a situation-lane tuned to 'diagnosing whether a miss is encode-side or recall-side' would surface it directly.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/53",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'check edges as well' extends the audit already underway — should surface nothing new; the job here is session-state carry (which node's edges), not a general embedder-redesign decision."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/54",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message narrowly names 'embedding model' + 'keyword capability'; the node's Layer1/Layer2 framing isn't named explicitly, so lexical match is indirect despite being the operative architecture.",
+    "bridge": "Graph walk from the ongoing Memrise-diagnosis thread, or a situation-lane on 'separating embedding-search failure from judge/answerer failure', would connect it.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/56",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/57",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/59",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message says generically 'similar to S2' without naming clustering dimensions; 'S2' alone is lexically broad across many S2 nodes, so this specific multi-parameter-clustering node didn't clearly outrank other S2 candidates.",
+    "bridge": "A session-arc match on 'S1 plugin architecture mirroring S2's independent units' or a graph walk from already-surfaced S2-design nodes would rank this correctly.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/60",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/61",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

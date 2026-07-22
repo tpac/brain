@@ -1,0 +1,202 @@
+[
+  {
+    "key": "9e561b45-fc9f-4cd3-b7a3-e3dc4ff45d09/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2be1295e-a8e3-49e4-aa52-fc6525c69251/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare cost/coverage tradeoff cues should surface Tom's effort-calibration preferences, not an unrelated past performance-measurement correction episode."
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/1/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/1/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'you can commit' greenlights should surface Tom's commit-discipline pattern, not an unrelated past stylistic-commit event."
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/1/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/1/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/1/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse placement-decision cues should surface Tom's fix-at-root-cause / no-patches-on-patches principle, not a stale unrelated dashboard-blocking record."
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/38",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/39",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface Tom's 'use structural traces, not content-matching' investigative principle, not this stale unrelated encoding-warning feature record."
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/43",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight/delegation cues ('whatever you think is best') should surface Tom's autonomy-delegation pattern, not an unrelated other-session cleanup-direction record."
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/46",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/8/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Fix and summarize' process cues should surface Tom's fix-then-report workflow preference, not a specific unrelated past code-review-fix commit."
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/8/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "31e8c3ff-a86c-4b4d-9361-09692d6a0768/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "31e8c3ff-a86c-4b4d-9361-09692d6a0768/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "31e8c3ff-a86c-4b4d-9361-09692d6a0768/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight cues ('go ahead and continue') should surface Tom's autonomy/checkpoint-discipline pattern, not a same-session milestone already visible in the window."
+  },
+  {
+    "key": "31e8c3ff-a86c-4b4d-9361-09692d6a0768/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "31e8c3ff-a86c-4b4d-9361-09692d6a0768/0/21",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "The generic 'industry standards' phrasing didn't lexically or semantically connect to the node's concrete checklist items (hardcoded paths, personal names, binary tracked), and required knowing this is the same brain/plugin repo from prior sessions.",
+    "bridge": "A situation-lane or topic tag on 'public repo / plugin release readiness' would graph-walk from the plugin-packaging discussion to this checklist.",
+    "style_note": null
+  },
+  {
+    "key": "31e8c3ff-a86c-4b4d-9361-09692d6a0768/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-planning 'what's your take' cues should surface Tom's session-parallelization/collision-avoidance preferences, not a superseded earlier-phase completion record."
+  },
+  {
+    "key": "509d64e6-0607-4d09-a184-ec512e9a04a9/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'green on my end' confirmations should surface Tom's test-before-commit discipline pattern, not an unrelated past session-close record."
+  },
+  {
+    "key": "509d64e6-0607-4d09-a184-ec512e9a04a9/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Commit and merge' directives should surface Tom's merge-gate discipline (full-suite confirm before merge), not an unrelated past commit ledger."
+  },
+  {
+    "key": "509d64e6-0607-4d09-a184-ec512e9a04a9/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Continue with phase N' cues should surface the current phase's own live state/blockers, not an earlier completed phase's milestone from the same arc."
+  },
+  {
+    "key": "509d64e6-0607-4d09-a184-ec512e9a04a9/0/11",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "The request's surface framing ('rescan for raw SQL', 'check DAL overlap') is generic auditing language that didn't lexically match the node's specific incident narrative (dispatch write-tagging, cluster guards), even though its core lesson directly applies.",
+    "bridge": "Lexical/idf hit on 'DAL migration completeness' or a node-class prior surfacing generalizable lessons tagged apart from their originating incident would reach it.",
+    "style_note": null
+  }
+]

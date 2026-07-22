@@ -1,0 +1,202 @@
+[
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse numbered task-cue ('drop 5, clean 6, focus 7'); should surface this session's own task-list state, not an unrelated old session summary."
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Confirmation+task-list cue; should surface session wrap-up/cleanup ritual convention nodes, not a specific stale push record."
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse cue to smoke-test recall; should surface recall-verification checklist/convention nodes, not the abstract recall-purpose principle."
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse push cue; should surface Tom's push-discipline/shared-state convention, not an old unrelated push event."
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/0/4",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message is a terse numbered reply; shares little lexical/semantic overlap with the community node's abstract title despite both being about probe-driven prompt validation.",
+    "bridge": "Situation-lane match on 'validating prompt accuracy via probes' or a graph walk from probe-related neighbor nodes.",
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse anaphoric parallel-execution cue; should surface nodes on running work concurrently, not an unrelated prompt-bias finding."
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse lettered-option cue ('B+C') resolved by this session's just-presented plan; should surface that plan, not an unrelated 'Phase B' decision."
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/4",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Continuation cue for an in-progress run; should surface this run's own stop-conditions/progress state, not an unrelated harness-failure lesson."
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse confirmation ('both fixes'); should surface this session's own current fix-list state, not an unrelated old eval metric."
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3657abde-f90b-4a18-988c-cd5d0523df12/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3657abde-f90b-4a18-988c-cd5d0523df12/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Confirmation cue for 'clean up first'; should surface Tom's cleanup/refactor-discipline preference, not a stale unrelated cleanup tally."
+  },
+  {
+    "key": "3657abde-f90b-4a18-988c-cd5d0523df12/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3657abde-f90b-4a18-988c-cd5d0523df12/3/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3657abde-f90b-4a18-988c-cd5d0523df12/3/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Vague forward-looking question; should surface pending backlog/roadmap items, not a completed historical Phase 0 record."
+  },
+  {
+    "key": "3657abde-f90b-4a18-988c-cd5d0523df12/3/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse commit imperative; should surface commit-discipline/review convention, not unrelated historical date anchors."
+  },
+  {
+    "key": "3657abde-f90b-4a18-988c-cd5d0523df12/3/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3657abde-f90b-4a18-988c-cd5d0523df12/3/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse push directive; should surface commit/push ritual convention, not a specific stale push record instance."
+  }
+]

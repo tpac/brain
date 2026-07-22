@@ -1,0 +1,202 @@
+[
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/112",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/25",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "The S2 design doc uses abstract framing (autonomy gradient, commit modes) with no lexical overlap to Tom's concrete 'overkill/enrichment' phrasing, and its situation field targets 'building S2' not 'arguing a feature doesn't need to be S2'.",
+    "bridge": "A situation-lane match on 'deciding whether new background work needs an S2 unit' or a graph walk from the just-discussed TemporalIndexer node to its architectural parent (this design doc) would have surfaced it.",
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Act as outside code reviewer' / audit-style process cues should surface Tom's standing call-stack-audit rule or verify-before-concluding principle, not this one dated instance of it being applied to unrelated files."
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/35",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/42",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/41",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Detailed bug-fix directives should surface Tom's standing call-stack-audit rule or verify-before-concluding principle, not this one dated instance of it being applied to unrelated files."
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/44",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/48",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'Clean up' greenlights should surface Tom's general cleanup discipline/preferences (dead-code-removal criteria, clean-as-you-go convention), not a specific historic cleanup tally from an unrelated session."
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/50",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/51",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Check bugs first' should surface Tom's standing call-stack-audit rule or verify-before-concluding principle, not this one dated instance of it being applied to unrelated files."
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/53",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/55",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Act as code reviewer' process cues should surface Tom's standing call-stack-audit rule or verify-before-concluding principle, not this one dated instance of it being applied to unrelated files."
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/56",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'great' acknowledgments should surface confirmation-discipline / how-Tom-signals-approval-to-proceed patterns, not a specific past emotional callback moment."
+  }
+]

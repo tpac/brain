@@ -1,0 +1,202 @@
+[
+  {
+    "key": "7c3447b8-2424-415c-bd3b-2828481ad312/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Vague progress note → surface the named trajectory (recall-latency/keepalive work), not an unrelated old scope-discipline anecdote."
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node's embedding centers on recall_topical's validity table; lexical distance from 'cut recall_by_aspect' phrasing missed the row-level match.",
+    "bridge": "Lexical/idf hit on 'recall_by_aspect' or a graph-walk from the tool-audit cluster surfaces the exact backing data.",
+    "style_note": null
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse approval ask → surface the just-proposed change set or Tom's review preference, not an unrelated Allen-relations decision."
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Commit+wording ask → surface self-channel delegate-with-return-path design or Tom's terse-instruction preference, not an unrelated authority moment."
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'yeah push' → surface push/deploy discipline (branch state, PR conventions) for the live branch, not a stale unrelated session's commit log."
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/0/12",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node's situation targets presence-staleness bugs; message concerns a different subsystem (recall miss), so lexical/situation lanes miss the shared diagnose-first principle.",
+    "bridge": "A cross-domain 'diagnose-before-fixing' principle tag/aspect link would surface it regardless of subsystem-specific wording.",
+    "style_note": null
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/1/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/1/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/2/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'and merge' → surface the current branch's merge/PR status, not an unrelated older SKILL.md merge-decision sharing only the word 'merge'."
+  },
+  {
+    "key": "1f42a190-1ada-4b1f-a393-524bfc5c3c68/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c960c535-0dd3-42e0-a4d3-63a1d3e8556c/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Plugin-duplication note → surface the dual-install/version-skew diagnosis, not a naming decision sharing only 'Brain'/'Anchor' wording."
+  },
+  {
+    "key": "29ad0386-17e9-4de1-a35c-62cdba68a861/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "29ad0386-17e9-4de1-a35c-62cdba68a861/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "29ad0386-17e9-4de1-a35c-62cdba68a861/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-close ask → surface which streams are actually live (self-channel presence), not a stale other-thread division-of-labor record."
+  },
+  {
+    "key": "ae3b72d5-42d2-44d6-8226-4c6c0407d1ba/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'amend and push, notify everyone' → surface push/notify checklist or self-channel broadcast pattern, not an unrelated deferred-handoff record."
+  },
+  {
+    "key": "bc34734d-cdee-4338-929e-748df9b4f718/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bc34734d-cdee-4338-929e-748df9b4f718/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bc34734d-cdee-4338-929e-748df9b4f718/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bc34734d-cdee-4338-929e-748df9b4f718/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'anything else open?' → surface the actual open-thread list (recall timeout, review cleanups), not an unrelated old trust-delegation moment."
+  },
+  {
+    "key": "bc34734d-cdee-4338-929e-748df9b4f718/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'over kill?' → surface Tom's review-scoping preferences (right-sized review) not an unrelated old field-removal decision."
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'commit and redeploy' → surface deploy-discipline nodes (redeploy vs restart distinction) not an unrelated old daemon-lifecycle milestone."
+  }
+]

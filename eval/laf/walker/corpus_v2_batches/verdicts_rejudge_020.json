@@ -1,0 +1,202 @@
+[
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c5371769-a7b6-4f20-8ed8-659535c7a626/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'resume' should surface the specific paused task Anchor described (the standalone commit) or Tom's check-in/wait cadence, not an unrelated old restart-failure lesson."
+  },
+  {
+    "key": "c5371769-a7b6-4f20-8ed8-659535c7a626/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c5371769-a7b6-4f20-8ed8-659535c7a626/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5a3e66fd-b697-4f12-a7b3-95d7a4c92490/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'let's do 2' (a menu pick) should surface parallel-stream collision/worktree-isolation discipline, not an unrelated old test-cleanup fact."
+  },
+  {
+    "key": "5a3e66fd-b697-4f12-a7b3-95d7a4c92490/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Vague 'so what's next?' should surface the live roadmap doc (DAL-CLEANUP-PLAN phase sequence), not a stale unrelated architecture-removal event."
+  },
+  {
+    "key": "5a3e66fd-b697-4f12-a7b3-95d7a4c92490/1/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5a3e66fd-b697-4f12-a7b3-95d7a4c92490/1/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Handoff requests should surface this session's actual completed work list, not an unrelated older session's plan (keywords-kill arc)."
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/0/0",
+    "verdict": "ambiguous",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/1/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Write cleanly what's the plan' should surface the current locked-absorb/consolidation plan just discussed, not an unrelated older session's roadmap (S2 community)."
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/1/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/1/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'That and all aspects of information preservation' needs nodes on what fields/data are actually lost in merges (source_refs, access_count, voice), not cluster-identification/churn mechanics."
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/1/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Decouple and plan and build' should surface the principle 'structural/mechanical transfer needs no LLM judgment' as it applies to absorb, not Community's unrelated add_to_existing finding."
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/3/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/3/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A commit-and-broadcast directive should surface the generic cross-stream heads-up/broadcast discipline, not one specific other stream's own milestone record."
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/3/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Doc-update requests should surface Tom's doc-update preference (update existing docs, don't create new ones; verbose only where needed), not a stale unrelated session's commit count."
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/4/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'do now and commit' should surface Tom's commit/ask-before-acting discipline (exactly what Haiku picked instead), not an unrelated stale test-cleanup fact."
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message says 'boot msgs' generically; node's content/situation use 'Frame wire-up' phrasing — low lexical overlap, only moderate semantic closeness.",
+    "bridge": "Situation-lane match on the 'boot rendering' topic, plus a graph walk from the boot-capture work node already active this session.",
+    "style_note": null
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'spin a new stream and chat with it' should surface the self-channel courier mechanism (self_send/self_inbox design), not a same-session milestone record."
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/0/19",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/1/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Is it shipped with the plugin?' needs nodes on commit/permanence discipline (committed vs. working-tree-only), not the cross-project-portability goal."
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/5/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Recall + suggest if high-impact' should surface Anchor's agency/collaboration-norm principles (hammer-builds-hammers, bottleneck-moved), not a recall-design evaluation criterion."
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/5/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'closing session, thanks' should surface a session-wrap-up pattern (summarize commits/open items), not the S1S encoder prompt's unrelated closing text."
+  },
+  {
+    "key": "9e561b45-fc9f-4cd3-b7a3-e3dc4ff45d09/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

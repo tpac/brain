@@ -1,0 +1,202 @@
+[
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'show me X' with anaphoric referent resolves entirely within the visible window (the pending diff) — no memory node needed, and not a stale prompt-versioning decision."
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/10",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message's terms (recency days-vs-months, combining mechanisms, 'real brain') share little lexical overlap with the node's dominant framing (retrieval-vs-recognition philosophy, field-usage audit stats); embedding centers on self-assessment, not the PAM/CLS/HippoRAG research citations buried in the body.",
+    "bridge": "A situation-lane tuned to 'recall mechanism design' or a graph walk from the modulation/fatigue nodes just surfaced this session would have pulled the research citations forward.",
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/11",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node is 16 days old and names now-fixed writers (segment_boundary, embed_queue) rather than today's specific temporal_extract/lock symptoms, so lexical/idf match on the newer incident's terms was weak despite the same topical class.",
+    "bridge": "idf match on 'write_lock'/'unserialised writes' or a graph walk from the freshly-encoded bug node 71f3d669 (same topic, same day) would have reached it.",
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Simple/robust/clean directives should surface Tom's own architecture principles (clean-architecture-first, tough-tests-first, 'where does this live'), not a stale other-session cleanup task list."
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Anaphoric 'update the same node' should resolve via recent conversation-window/episodic tracking to node 71f3d669 itself, not an unrelated older backup-restore decision."
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Confirmation-style 'no more leaks right?' should surface the per-session state table just enumerated (fatigue/segment/counters), not a differently-scoped session-continuity architecture node."
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-opener 'hey Anchor' should surface identity/continuity nodes (collaborator identity, Anchor concept, key quotes — what Haiku actually picked), not a specific historical boot-prompt incident."
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/7",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message's phrasing ('Candidates block', 'recently surfaced') doesn't share vocabulary with the node's framing (_to_candidate, strip-and-refetch, double-fetch) even though both describe the same tool-result-to-candidate code path — a mechanism match, not a lexical one.",
+    "bridge": "A graph walk from surface.py-mechanism nodes already touched this session, or an episodic-recency boost (node created same session, 0.3d old) would have surfaced it.",
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/9",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message is a short imperative ('check whats locking database') with no proper nouns; the node's specific terms (encoding agent, logs_conn, brain_logs.db) need a pattern-class link the surface lexical match didn't quite make despite ranking close (6th).",
+    "bridge": "A node-class prior for 'past DB-lock root-cause lessons' or direct lexical match on 'database is locked' would have pulled this above the cutoff.",
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Anaphoric 'B to everything' (confirming the write-queue architecture) should surface the recall_write_queue design just stated in-window, not an unrelated proactive-signal-pushing backlog idea."
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

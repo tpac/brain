@@ -1,0 +1,202 @@
+[
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/51",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/52",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare greeting → session-opening/current-focus nodes (Frame arc, how sessions typically start), not one specific old identity narrative"
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/18",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message says only generic 'rejection'/'brake agents', never the technical terms (record_rejections, over-suppression, fingerprint); lexical/semantic distance from the bug's own vocabulary despite being the live topic.",
+    "bridge": "Episodic recency / graph walk from the just-discussed rejection-table code, or a conversation-window field carrying the live S2-rejection thread forward.",
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'other session is done' → this session's own in-progress checkpoint/arc, not a different session's stale punch list from weeks earlier"
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/31",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/32",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "70e990c8-22fc-41c7-a009-3aadcb95a5d0/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "70e990c8-22fc-41c7-a009-3aadcb95a5d0/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/21",
+    "verdict": "ambiguous",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/38",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

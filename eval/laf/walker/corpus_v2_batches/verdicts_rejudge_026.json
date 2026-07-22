@@ -1,0 +1,202 @@
+[
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface this session's own just-completed review findings (already in context), not an unrelated 2-week-old absorb-code review lesson."
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface THIS session's own open-items/thread state, not a different session's wrap notes from two months earlier."
+  },
+  {
+    "key": "5ff18d71-a9df-49ab-8029-eaebd45ed869/0/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5ff18d71-a9df-49ab-8029-eaebd45ed869/0/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5ff18d71-a9df-49ab-8029-eaebd45ed869/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'merge it' should surface Tom's merge/commit discipline or the live cross-stream convergence state, not an unrelated older merge fact."
+  },
+  {
+    "key": "f6ed7808-39de-476c-896b-325572a248cc/0/11",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message is a generic status check with no worktree/ownership vocabulary, so lexical/semantic lanes wouldn't connect it to the shared-tree ownership correction.",
+    "bridge": "A situation-lane tagged to multi-stream/shared-tree sessions, or a node-class prior for ownership corrections, would fire regardless of surface wording.",
+    "style_note": null
+  },
+  {
+    "key": "f6ed7808-39de-476c-896b-325572a248cc/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'do it' should surface Tom's commit-to-main preference/greenlight patterns, not an unrelated older keywords-kill session plan."
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message names 'dal' and 'efficiency' but not the node's specific vocabulary (held instances, repository aggregate), so lexical overlap is weak.",
+    "bridge": "An IDF/keyword lane on 'DAL'+'efficiency' combined with an architecture-node-class prior would surface this precedent.",
+    "style_note": null
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/11",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node uses different-domain vocabulary (trace_id/placeholder migration) than the leak-fix scoping request, so lexical/semantic lanes miss despite the shared scope-drift pattern.",
+    "bridge": "A style-recall device for Anchor's known scope-drift correction pattern, primed whenever Tom asks to 'scope' a fix.",
+    "style_note": null
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'commit that, close the stream' should surface commit-to-main/session-wrap preference nodes, not an unrelated self-channel coordination milestone."
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/14",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node's vocabulary (episodic references, source_refs) is topically distant from 'journal redesign doc', so lexical/semantic lanes miss the structural-template fit.",
+    "bridge": "A node-class prior for 'planning-doc structure templates', keyed to document-building intent rather than topic, would surface it.",
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'yes, any more?' should surface nodes tracking the live S2-unit-mapping work-in-progress, not an unrelated deferred surface-caching decision."
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/25",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Node's vocabulary (pivot detection, §5/§3) differs from 'recent moves relocating out of Frame', so lexical lanes miss the real dependency between the two Frame-section decisions.",
+    "bridge": "A graph walk from Frame/Recent-moves-tagged nodes, or a situation-lane for 'Frame section semantics', would connect them.",
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/26",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message is a bare 'should be committed, can you check' sharing no vocabulary with the compaction/handoff-doc episode.",
+    "bridge": "A style-recall device for Tom's verify-before-confirming discipline, primed on any check/verify cue, would surface it.",
+    "style_note": null
+  }
+]

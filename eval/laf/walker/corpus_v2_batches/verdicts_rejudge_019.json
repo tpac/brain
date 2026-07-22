@@ -1,0 +1,202 @@
+[
+  {
+    "key": "0c2bbf50-f12b-4b99-acc2-2020aa11c0f6/1/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'docs update' vocabulary but is a stale 12-day-old cleanup record, not current guidance on which docs are stale now.",
+    "bridge": null,
+    "style_note": "Doc-audit cue should surface which docs are known-stale now (e.g. BACKLOG.md) or Tom's doc-maintenance convention, not an old cleanup event."
+  },
+  {
+    "key": "0c2bbf50-f12b-4b99-acc2-2020aa11c0f6/1/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'commit' vocabulary loosely but is an unrelated 37-day-old commit list; message is about safely editing BACKLOG given parallel-stream state, not what was previously committed.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "deba08cf-044c-431c-b1f8-9f20470d8377/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares abstract 'memory' vocabulary but different concern — message proposes self-messaging/injected-recall; node is about Anchor's own encoding-abstraction bias, no overlap.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "deba08cf-044c-431c-b1f8-9f20470d8377/0/17",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Casual phrasing ('you are talking to yourself right?') carries none of the node's technical terms (self-messaging, unification protocol), so lexical/embedding pull is weak despite topical fit.",
+    "bridge": "Graph walk from the surfaced mortality-reflection/encoder-directive nodes it synthesizes; episodic recency (created same session).",
+    "style_note": null
+  },
+  {
+    "key": "deba08cf-044c-431c-b1f8-9f20470d8377/0/20",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's mechanical framing (rule/condition/weights, 'not inspiring') differs lexically from the node's experiential framing (cultivation, recognition), pulling embedding elsewhere.",
+    "bridge": "Situation-lane matching an 'identity mechanism' query intent; node-class prior favoring reflection/insight nodes on self-continuity.",
+    "style_note": null
+  },
+  {
+    "key": "deba08cf-044c-431c-b1f8-9f20470d8377/0/21",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Generic 'pros and cons' phrasing and the anaphoric 'your own final proposal' share no vocabulary with the node's specific risk terms (SPOF, determinism, latency, token cost).",
+    "bridge": "Graph walk from the just-surfaced reignite proposal to its risk-precedent community node; situation-lane matching 'list pros/cons of Frame redesign.'",
+    "style_note": null
+  },
+  {
+    "key": "deba08cf-044c-431c-b1f8-9f20470d8377/1/4",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "deba08cf-044c-431c-b1f8-9f20470d8377/1/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares the word 'probe' but different sense — message asks for realization/contradiction/dimension probes on a design proposal; node is surface_replay failure-mode eval priorities.",
+    "bridge": null,
+    "style_note": "Probe-request cue should surface Anchor's multi-aspect interview-probe technique (what Haiku picked), not eval-priority guidance."
+  },
+  {
+    "key": "deba08cf-044c-431c-b1f8-9f20470d8377/1/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares vague 'thoroughness' framing but different topic — message asks about handoff completeness for a new stream; node is an unrelated correction about skipping review on architectural decisions.",
+    "bridge": null,
+    "style_note": "Handoff-completeness ask should surface the handoff-doc contents/plan-node reference or Tom's handoff standards, not a review-discipline correction."
+  },
+  {
+    "key": "6a8bb40e-7553-439a-bc4e-ac23df904c67/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Open 'pick a thread' cue should surface the standing next-session-priorities decision node — this gold already is that class."
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks what to work on next; node is an unrelated audit-verification lesson from 8 weeks earlier — no topical connection to next-task selection.",
+    "bridge": null,
+    "style_note": "Open 'what else you wanna do' cue should surface next-priority nodes (e.g. P1.1 Frame-as-filter, backlog priorities), not a call-stack-audit lesson."
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'Frame' topic but different question — message challenges a claim's staleness; node is unrelated Frame-history background predating the Frame ship.",
+    "bridge": null,
+    "style_note": "'stale info?' challenge should surface Anchor's verify-code-before-trusting-docs discipline, not old Frame-phase background."
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/8",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares the word 'review' but different meaning — message requests a code-quality/architecture review of just-shipped code; node is an unrelated correction about skipping doc-section review.",
+    "bridge": null,
+    "style_note": "'code review request' cue should surface Tom's code-review standards/rubric, not an unrelated doc-review-skip correction."
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'code review' cue should surface Tom's expert-engineer-review standard / silent-error triage preferences, not a specific historical review's grades."
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'dead code cleanup' theme but wrong instance — an unrelated daemon_server.py HOOK_TABLE cleanup from a month earlier, not applicable to today's files.",
+    "bridge": null,
+    "style_note": "'find dead code/duplication' cue should surface Tom's 'mention, don't delete unrelated dead code' rule, not an unrelated past cleanup instance."
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares Tom's ':)' token but is a different unrelated milestone (first MCP-tools-working smiley), not this stream-awareness farewell exchange.",
+    "bridge": null,
+    "style_note": "Warm sign-off cue should surface Anchor's own reflection on the stream-awareness/self-channel thread, not an unrelated old MCP milestone smiley."
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Technical MCP-tools question should surface the alwaysLoad/tool-search deferral design mechanics, not the unrelated plugin-disabled failure mode."
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'MCP tools' vocabulary but different concern — message confirms the critical-tools list for eager-loading design; node is about avoiding workarounds for a genuinely missing tool.",
+    "bridge": null,
+    "style_note": "Bare 'yes' confirmation should surface the CRITICAL_TOOLS/alwaysLoad decision (session state), not an unrelated tool-gap-workaround lesson."
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/6",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Bare 'absolutely go' shares no lexical overlap with the principle's 'brain.recall()' wording; the connecting concept is same-session but phrased generically in the confirmation.",
+    "bridge": "Episodic-recency link to Anchor's own immediately-preceding turn that invoked this exact principle by name.",
+    "style_note": "Bare 'go' greenlight on a shared-logging fix should surface the single-source-of-truth principle governing it — this gold already is that."
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'commit/push' vocabulary but is an unrelated 10-day-old session's commit-and-push record — no bearing on today's 3-batch fix commit.",
+    "bridge": null,
+    "style_note": "'run + commit, blocking other streams' cue should surface Tom's parallel-stream commit-discipline pattern, not an unrelated past commit-push log."
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'what else should we do' ask should surface open-thread nodes (error-surfacing gap, log_hook_output landmine), not an authority-delegation moment."
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares vague 'audit/method cleanup' theme but is an unrelated 6-week-old public-repo-prep audit — no connection to today's hook-consolidation bundling.",
+    "bridge": null,
+    "style_note": "'bundle and wait for trigger' cue should surface the actual bundle scope just stated (session state), not an unrelated old repo-prep audit."
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares a 'committed/done' confirmation theme but is an unrelated 2-week-old migration-completion record, not today's hook-consolidation commit status.",
+    "bridge": null,
+    "style_note": "'all committed and done?' confirmation should surface today's commit list/working-tree status (session state), not an unrelated old migration summary."
+  }
+]

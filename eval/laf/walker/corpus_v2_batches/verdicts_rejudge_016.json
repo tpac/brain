@@ -1,0 +1,202 @@
+[
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/41",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/42",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/43",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/51",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare greenlight after a regression review — expect nodes on Tom's iterate-before-ship discipline or the D31/speaker-misattribution fix, not judge-classification lessons."
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/55",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/58",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/59",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/60",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/65",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/66",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect nodes on Tom's actual next-step ask for THIS thread (Phase B eval gate/source_refs), not an unrelated session's Tier1-3 ranking."
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/15",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": "Insight sits inside an unrelated May-14 diagnosis-bias episode; lexical/semantic distance from 'eval before launch' phrasing, and the situation field doesn't name this pre-launch gate moment.",
+    "bridge": "Situation-lane match on 'encoder eval methodology' generically, or a graph walk from the encoder-quality-contract cluster.",
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect nodes on how Tom wants remaining session time spent generally, or this session's actual live plan — not a prior session's rest-of-session queue."
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse commit+split confirmation — expect nodes on Tom's atomic-commit-splitting preference or this session's actual commit list, not an old session's hashes."
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-close cue — expect nodes on Tom's closing ritual (commit/push/docs) or this session's actual close state, not a different day's close record."
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c8efdee6-3896-4f05-aebc-36674e1d6e1a/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c8efdee6-3896-4f05-aebc-36674e1d6e1a/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'commit and continue' — expect nodes on Tom's commit-cadence preference or this session's actual commits, not an unrelated session's commit hashes."
+  },
+  {
+    "key": "c8efdee6-3896-4f05-aebc-36674e1d6e1a/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse status check — expect nodes on this session's actual commit state or Tom's verification habits, not a different session's commit tally."
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-open greeting — expect boot/identity/partnership nodes or the actual live work-in-progress, not an unrelated session-close moment."
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

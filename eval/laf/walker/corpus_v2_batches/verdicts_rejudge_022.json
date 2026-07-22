@@ -1,0 +1,202 @@
+[
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare recall for 'point by point, still relevant?' should surface FRAME-DESIGN-doc-specific status/content nodes, not an identity-continuity reflection."
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'yes, next doc' greenlights want nodes about Tom's doc-cleanup sequencing preference or the live next-doc queue, not a stale prior docs/ audit record."
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'yes section by section' wants nodes about how Tom paces doc walkthroughs (confirm per section), not the identity-axiom authoring moment."
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/8",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Static-mix likely embedding-distant: message uses anaphoric 'archive it/what's in there' for HOOK-BRAIN-INTEGRATION.md, sharing no rare tokens with the old dead-files-audit node's phrasing.",
+    "bridge": "Graph walk from the doc-cleanup arc, or lexical match on the filename itself, would surface the prior archive verdict for this exact doc.",
+    "style_note": null
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Let's continue' wants nodes carrying the session's live task queue/arc, not an unrelated coverage-pressure correction from a different doc effort 8 days later."
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/1/1",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Cross-stream push-sequencing context (36 commits ahead, other streams landing) lives in deep session state; nothing in 'anything to commit?' cosine-matches it.",
+    "bridge": "A running-session field or episodic recency on multi-stream commit activity would surface this commit-ordering principle.",
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Blanket-authorization cues ('I approve all edits') want nodes about Tom's approval-granting pattern, not the sibling-debug_log introspection moment."
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/0/10",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "The analogous S2Aspect no-review-gate decision lives in a different subsystem's history; no lexical bridge from 'review with dimensions' to 'Aspect auto-merge'.",
+    "bridge": "A graph walk across S2-unit review-architecture decisions, or a 'review-gate design' situation-lane, would connect the two.",
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/13",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": "Message is an action command ('find traces'), lexically distant from the insight's 'synthesis names the pattern' framing — the fit is topical, not token-level.",
+    "bridge": "Situation-lane match on 'judging consolidation quality' or graph walk from the consolidation-eval arc.",
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Corpus-calibration directives want nodes about Tom's eval methodology (baseline-first, A/B/C plan), not the unrelated S1 encode-decision quality gate."
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/20",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "No lexical overlap between 'full-text elaborate examples' and 'v15.9 event_time regression' — the shared concept (minimal-example harm) is abstract, not token-level.",
+    "bridge": "A node-class prior treating 'example-quality lessons' as a family, or lexical/idf on 'minimal-shape example', would surface it.",
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/22",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/32",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/2/6",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's generalization-testing intent shares no tokens with 'C4/D31/B1 contamination' jargon — the match is at the eval-methodology level, not lexical.",
+    "bridge": "A node-class prior for 'eval-methodology lessons' or graph walk from the current corpus-eval arc would surface it.",
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/3/4",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "'Update the documents' doesn't lexically cue 'NEXT-WORK doc stale' — the connection is the general doc-staleness risk, not shared vocabulary.",
+    "bridge": "A node-class prior for 'doc-hygiene lessons' or a situation-lane on 'updating docs after session work' would surface it.",
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/4/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Fix and push to main' greenlights want nodes about current commit/push-ordering discipline, not an unrelated stale pending-push record from a different fix."
+  },
+  {
+    "key": "30564925-d1d4-436f-af2e-117dc743576d/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'What is it trying to solve?' (re: confidence) wants the confidence-mechanism problem-statement research itself, not the unrelated Boot/Frame significance insight."
+  },
+  {
+    "key": "30564925-d1d4-436f-af2e-117dc743576d/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Decay-justification pushback wants nodes from the confidence-design research thread itself, not the mortality/continuity reflection."
+  },
+  {
+    "key": "30564925-d1d4-436f-af2e-117dc743576d/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "30564925-d1d4-436f-af2e-117dc743576d/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Green light to update test' wants nodes about test-integrity/green-light discipline for this specific change, not an unrelated absorb-wiring milestone."
+  },
+  {
+    "key": "30564925-d1d4-436f-af2e-117dc743576d/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

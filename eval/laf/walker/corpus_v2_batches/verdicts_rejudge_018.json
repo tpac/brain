@@ -1,0 +1,202 @@
+[
+  {
+    "key": "89ca7460-e4ac-4423-8330-c07c9db1cc7e/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "89ca7460-e4ac-4423-8330-c07c9db1cc7e/1/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "89ca7460-e4ac-4423-8330-c07c9db1cc7e/1/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface Tom's standing test-edit/deletion permission policy or test-staleness discipline, not a stale call-stack audit event."
+  },
+  {
+    "key": "89ca7460-e4ac-4423-8330-c07c9db1cc7e/1/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Process greenlights like this should surface Tom's incremental-review/dead-code-cleanup discipline, not an unrelated old DB-write audit."
+  },
+  {
+    "key": "89ca7460-e4ac-4423-8330-c07c9db1cc7e/2/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Commit greenlights should surface Tom's commit discipline (review + self-check before committing), not a stale doc-staleness lesson."
+  },
+  {
+    "key": "89ca7460-e4ac-4423-8330-c07c9db1cc7e/2/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "89ca7460-e4ac-4423-8330-c07c9db1cc7e/3/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Blanket approvals should surface Tom's approval/greenlight pattern nodes, not an old call-stack-audit event unrelated to this plan."
+  },
+  {
+    "key": "89ca7460-e4ac-4423-8330-c07c9db1cc7e/3/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e69a5ba7-02ca-4ba0-a03c-e678616ad242/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e69a5ba7-02ca-4ba0-a03c-e678616ad242/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e69a5ba7-02ca-4ba0-a03c-e678616ad242/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'commit' should surface Tom's commit-discipline nodes (review, push-timing calls), not an unrelated commit-push event from a prior session."
+  },
+  {
+    "key": "e69a5ba7-02ca-4ba0-a03c-e678616ad242/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e69a5ba7-02ca-4ba0-a03c-e678616ad242/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e69a5ba7-02ca-4ba0-a03c-e678616ad242/0/17",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Terse timing-fix framing ('last run should...write before the run ended') shares no vocabulary with the node's 'concurrency surface' framing; embedding read them as different specific bugs despite same-session recency.",
+    "bridge": "Episodic same-session recency + graph walk from the just-discussed S2 gating fixes would surface this class-of-bug generalization.",
+    "style_note": null
+  },
+  {
+    "key": "e69a5ba7-02ca-4ba0-a03c-e678616ad242/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e69a5ba7-02ca-4ba0-a03c-e678616ad242/0/19",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message asks about guardian pushback + cleanup scope; shares little lexical overlap with the node's 'agent summaries miss implicit assertions' framing despite being minutes-old same-session content.",
+    "bridge": "Episodic recency (same-session, minutes old) + graph walk from the test-cleanup thread would surface this lesson.",
+    "style_note": null
+  },
+  {
+    "key": "e69a5ba7-02ca-4ba0-a03c-e678616ad242/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e69a5ba7-02ca-4ba0-a03c-e678616ad242/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Commit greenlights should surface Tom's commit-review discipline, not an unrelated 56-day-old session-close record."
+  },
+  {
+    "key": "0c2bbf50-f12b-4b99-acc2-2020aa11c0f6/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0c2bbf50-f12b-4b99-acc2-2020aa11c0f6/0/7",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0c2bbf50-f12b-4b99-acc2-2020aa11c0f6/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0c2bbf50-f12b-4b99-acc2-2020aa11c0f6/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare tuning confirmations should surface prior decisions/rationale on this exact parameter, not an unrelated encoding-regression finding."
+  },
+  {
+    "key": "0c2bbf50-f12b-4b99-acc2-2020aa11c0f6/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0c2bbf50-f12b-4b99-acc2-2020aa11c0f6/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse numbered 'let's do it' confirmations should surface Tom's momentum/greenlight patterns or the actual queued items, not a different session's leftover plan."
+  },
+  {
+    "key": "0c2bbf50-f12b-4b99-acc2-2020aa11c0f6/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

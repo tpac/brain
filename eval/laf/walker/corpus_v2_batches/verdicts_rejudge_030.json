@@ -1,0 +1,26 @@
+[
+  {
+    "key": "85aa5ab4-a799-4b32-be37-538d732b6ed2/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'session'/infrastructure vocabulary but wrong instance — a 63-day-old Session #15 wrap-up milestone, not the live A/B deploy-and-session-id-source decision this message is resolving.",
+    "bridge": null,
+    "style_note": "Bare 'a'/'b' shorthand resolves via the immediately-prior turn (the commit-redeploy-vs-restart choice); expect that turn's own content or a deploy-decision node, not an old session handoff record."
+  },
+  {
+    "key": "83b3c2e1-3ef4-425f-9569-7e1d8b17de68/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'session identity'/'daemon restart' vocabulary but is the wrong mechanism — sid-rotation-across-/resume volatility, not the WorktreeCreate hook's missing session_id-in-payload bug this restart is meant to fix.",
+    "bridge": null,
+    "style_note": "Expect the restart-after-servers-change convention node, or the session_id env-var-backfill mechanism just traced in the prior turn — not the /resume identity-volatility community node."
+  },
+  {
+    "key": "83b3c2e1-3ef4-425f-9569-7e1d8b17de68/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'merge'/'worktree files survived' vocabulary but is a stale, unrelated instance — the dal-cleanup-2 merge from 19 days earlier, not today's watch-env-default branch merge.",
+    "bridge": null,
+    "style_note": "Bare 'merge it' resolves to the watch-env-default branch from the visible window; expect Tom's merge-vs-push discipline (merge now, push only on explicit say-so) or this branch's own state, not an unrelated older merge's file-survival fact."
+  }
+]

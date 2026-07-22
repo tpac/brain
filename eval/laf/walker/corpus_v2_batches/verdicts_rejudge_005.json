@@ -1,0 +1,202 @@
+[
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/2/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare ops instruction to pause/save eval subprocs; expected gold would be ops-status or background-task-handling nodes, not an unrelated daemon-restart-failure lesson."
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/2/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Temporal-retrospective ask about 'last session' (Apr 25-26 eval work); gold is a different, older (Apr 15) session's open item — wrong referent thread."
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'do it all/repackage plugin' resolves to this session's muster+test todo list; gold is an unrelated 23-day-old milestone that only shares 'repackage plugin' vocabulary."
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/3",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Terse greenlight shares no lexical/semantic tokens with a 36-day-old decision node; embedding distance and recency both work against it.",
+    "bridge": "Style-recall for bare 'do what's best' cues could boost brain-philosophy/decision nodes over event records; node-class prior favoring standing principles on autonomy grants.",
+    "style_note": "Bare 'go and do what you think is best' should surface Tom's standing philosophy/preferences for brain content and autonomous judgment, not a specific past event."
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Same-day milestone's title emphasizes 'muster shipped'/env-gate rather than the embedded synthesis-scout correction, so the specific query token 'synthesis scout' didn't pull it above rank 6.",
+    "bridge": "Lexical/idf boost on 'synthesis scout' plus episodic recency (created same session, hours old) would surface it.",
+    "style_note": null
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Asking to frame/solve the general recall challenge should surface recall-philosophy/architecture principle nodes, not a stale specific identity-recall validation event from weeks earlier."
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'great (I assume you started?)' progress-check should surface background-task/status-tracking pattern nodes, not an unrelated identity-parroting correction from weeks earlier."
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/20",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node content elaborates the neuroscience mapping (LTD, reconsolidation, schema forgetting) beyond what the truncated prior-turn text shows; the correction message's own vocabulary ('reconsolidation', 'coupled recall/encoding') wasn't weighted enough against generic architecture candidates.",
+    "bridge": "Conversation-window field / graph walk from the immediately-preceding same-session assistant turn that this node was encoded from.",
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/1/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A factual 'what does the quality eval entail' question wants the harness-structure description itself, not a community node about a different concern (eval-prod fidelity gaps)."
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/1/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/1/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight 'lets ship' should surface Tom's standing ship/commit-discipline conventions, not a stale git-status fact from a different session."
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/1/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Canonical example: ops request to analyze error logs and report, labeled only because the response is tool-heavy — matches an S2 tool-use-capture design decision by vocabulary, not need."
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Anaphoric 'it ended long ago?' resolves to the just-fired S2 run's status; gold is an unrelated incident record from a different cold-start bug 16 days earlier."
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/9",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message uses 'capacity/brake/architecture' phrasing with no lexical overlap ('lock','deadlock','CPU') against a month-old lesson about a different specific incident, so cosine/lexical signals both missed it.",
+    "bridge": "Situation-lane match on daemon-lock/concurrency-safety concept; graph walk from the write-lock code change to this prior concurrency lesson.",
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Request to switch macOS user (later clarified as handing the plugin to another operator) needs distribution-readiness/onboarding nodes, not the distinct cross-project-portability goal."
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/21",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Abstract phrasing ('What will make you get there') carries no lexical/topical link to 'abstracting away memories'; the connection is only visible via the session's broader introspection/self-authorship arc, not the message itself.",
+    "bridge": "Running session-arc field / episodic recency linking this turn's self-authorship theme to the earlier encoding-bias self-correction.",
+    "style_note": null
+  }
+]

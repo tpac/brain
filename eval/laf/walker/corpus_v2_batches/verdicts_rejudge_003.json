@@ -1,0 +1,202 @@
+[
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/26",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/29",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Pattern-class: should surface the operative process rule (e.g. Test Integrity: STOP on failure, ask first), not a stale one-off baseline count."
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/38",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/40",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/43",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/44",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/47",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/49",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'ship' greenlight should surface Tom's ship-readiness/momentum patterns, not an unrelated stale-doc lesson."
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/55",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Vague 'next encode' cue should surface encoding-cadence mechanism nodes, not an unrelated Anchor-quality-variability lesson."
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/6",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message says 'KPIs we already looked at to date' — a session-history pointer; lexical/embedding lanes don't share vocabulary with the specific KPI names in the node, so neither connects it.",
+    "bridge": "Episodic/session-recency lane for 'past eval KPIs discussed' plus lexical match on 'KPI' would surface this scorecard.",
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/12",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": "Query is about token/prompt-size limits; the node's core claim (synthesis scout empty-response) shares no lexical overlap with 'size'/'limits', and its detailed root-cause content postdates this turn (content-graft risk).",
+    "bridge": "Same-session episodic recency (bug just flagged two turns earlier) would connect it structurally even without lexical overlap.",
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/15",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Vague 'what else' should surface this session's own quality-measurement findings (edge descriptions, noun retention), not an old recall-philosophy reflection."
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse pushback should surface the actual Quote-scout narrative-fit issue, not an unrelated voice-bias field-design decision."
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/34",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/38",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/42",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/45",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/1/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/1/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/1/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'A is good' should surface how Tom evaluates/finalizes phrasing choices, not an unrelated boot-diagnosis node."
+  }
+]

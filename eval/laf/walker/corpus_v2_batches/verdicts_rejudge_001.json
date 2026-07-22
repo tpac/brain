@@ -1,0 +1,202 @@
+[
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/65",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/67",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the 'verify before claiming' rule itself (id:1d2bc83c) — the actual referent of 'what we said 3 days ago', not this aspiration node."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/68",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/76",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/81",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/84",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the general 'use MCP tools, not raw SQL/bash' preference (Haiku's own pick) — pattern-class rule, not the query_logs shipped-fact record."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/88",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/90",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: nodes from the actual referent period (Apr 20-21 S1/boot architecture, LongMemEval v8) — not an older Apr 7 session reflection."
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: worktree-mechanism nodes (daemon runs from main not worktree, never delete a worktree) — matches what Haiku actually picked."
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: Tom's delegation-trust pattern ('I trust you to fix it', 'Tom trusts Anchor's pattern detection') — not an old parroting correction."
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: nothing specific to this test-edit approval — not the unrelated Healer-prompt-sections approval milestone from a different thread."
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: nodes on the actual live orphan-edge/archive-deletion bug this session — not an older query-expansion consolidation design doc."
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "1c7be23c-66ab-4af8-aa6d-0b6b064babaf/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "1c7be23c-66ab-4af8-aa6d-0b6b064babaf/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "1c7be23c-66ab-4af8-aa6d-0b6b064babaf/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: nodes on the actual edge-deletion/orphan bug being fixed this session (matches Haiku's own picks) — not the older content-absorption clarification."
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: nothing beyond the backup timestamps already in hand — not the general 'backup before destructive op' rule (this is a restore, not a write)."
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

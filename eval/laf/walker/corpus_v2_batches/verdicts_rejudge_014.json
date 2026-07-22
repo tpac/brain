@@ -1,0 +1,202 @@
+[
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the specific §8.6 truncation/threshold options under discussion, not the separate per-ref-embedding schema pick."
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/21",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node's general pipeline vocabulary shares no terms with 'co_accessed'/'engram cohort boost magnitude'; situation names pipeline debugging generically, not this specific mechanism decision.",
+    "bridge": "Graph walk from the decision-15/engram-cohort thread to this pipeline-map node, or a situation-lane for 'reasoning about score-vs-edge mechanism placement'.",
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the session-end commit/push ritual convention or current uncommitted-work status, not an unrelated past commit milestone."
+  },
+  {
+    "key": "cfb74766-0eb8-417a-a950-78c922f9b090/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Temporal-retrospective ask — should surface the actual last EX.CO session (2026-04-21–22 AdCP/GAM work), not older CTV Launch Kit background."
+  },
+  {
+    "key": "cfb74766-0eb8-417a-a950-78c922f9b090/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface nodes about Tom's observed behavioral patterns (reframe-corrections, spiral thinking), not Anchor's self-reflection quote."
+  },
+  {
+    "key": "cfb74766-0eb8-417a-a950-78c922f9b090/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse anaphoric 'whats 7.6?' — should surface the actual §7.6 blocker definition, not an unrelated v15.6 encoder char-count finding."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'restart, test' — should surface the operational restart/verification convention, not a bundled historical daemon-resilience research node."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'lets do it' greenlight — should surface how Tom operates on greenlights (momentum, confirmation discipline), not an unrelated documentation-encoding rule."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'agreed' confirmation — should surface the actual pending write-semantics decision content, not an unrelated past commit tally."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/29",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'push forward' — should surface the current Phase A remaining-steps list, not an unrelated stale Phase E commit milestone."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Code-review request — should surface Tom's review-discipline preference (senior-engineer, findings-first), not a stale specific past review's fact record."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/40",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Let's do all' greenlight — should surface Tom's batching/momentum preference pattern, not an unrelated deferred backlog item."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/41",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface Tom's preference for minimal/efficient encoding (trust organic capture), not an unrelated dead-table finding."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/42",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-close arrange-next-session cue — should surface the SESSION-HANDOFF convention/format, not a stale specific past punch-list instance."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/50",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

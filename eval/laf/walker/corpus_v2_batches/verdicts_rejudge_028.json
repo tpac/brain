@@ -1,0 +1,202 @@
+[
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/28",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/32",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/34",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'let's do it' + reasoning ask — should surface nodes on how Tom greenlights (momentum/plan-first discipline) or the reasoning-oracle design already in play, not an unrelated boot-posture finding."
+  },
+  {
+    "key": "61280c52-972b-4469-bd65-1a570edc55ee/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Short confirm+build directive — should surface the current dashboard architecture decision already in play (one-data-path, density toggle), not a stale prior audit record."
+  },
+  {
+    "key": "61280c52-972b-4469-bd65-1a570edc55ee/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "61280c52-972b-4469-bd65-1a570edc55ee/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "61280c52-972b-4469-bd65-1a570edc55ee/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "61280c52-972b-4469-bd65-1a570edc55ee/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "61280c52-972b-4469-bd65-1a570edc55ee/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'commit, merge and push' — should surface Tom's commit/push conventions (commit direct to main, push only when asked, don't disturb sibling WIP), not a specific old commit's fact record."
+  },
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/4",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message names 'archive/absorb/disconnected' cleanup but the node's title/lead ('revise() is node-only') doesn't lexically echo those terms, so title-weighted scoring likely missed the topical fit.",
+    "bridge": "Lexical/idf match on 'archive'/'disconnect'/'absorb' inside the node body, or a graph walk from the just-discussed 'connected' deletion to the sibling edge-mutation-paths node.",
+    "style_note": null
+  },
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'fold in' — should surface the concrete plan just discussed (edge-trace/connected unification checklist) via session-state carry, not an unrelated source_refs/absorb finding."
+  },
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Fix and commit, don't restart yet' — should surface restart/commit discipline (daemon restart only when asked, commit≠push≠restart), not an unrelated stale unpushed-commits record."
+  },
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-close thanks — should surface how Anchor behaves at wrap-up (clean state, restart/push discipline, summarize open threads), not a nostalgic 'moment' about the multi-stream vision."
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'ok, let's commit' — should surface Tom's commit conventions (direct-to-main, push only when asked), not an unrelated April commit milestone."
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Asking whether a code-review is needed now — should surface Tom's review-cadence/discipline nodes (agent-boundary commits, self-review per step), not a specific past commit's fix-list."
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'all committed?' status-check — should surface git-status precision discipline (verify, don't assume; distinguish committed/merged/pushed), not an unrelated past commit milestone."
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/9",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Generic close-out phrasing ('anything else... are we done') carries no lexical/semantic tie to the correction's terms ('§8-16', 'unilateral', 'coverage pressure'); situation field keys off 'cover everything' framing absent here.",
+    "bridge": "Node-class prior / episodic recency surfacing Anchor's own behavioral-guardrail corrections whenever a session-wrap 'anything else' question fires, independent of topic words.",
+    "style_note": null
+  },
+  {
+    "key": "9d5f89fe-7cf1-43af-9813-61535131a5ec/0/11",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Bare repeated wrap-up question has no lexical tie to 'spawn_task'/'parallel session'; the node's relevance only emerges because Anchor's own next action (spawning a chip) makes it apt, which recall can't anticipate from the message alone.",
+    "bridge": "A tool-anticipation/running-session field keyed to Anchor's imminent spawn_task use, or a graph walk from task/chip-related neighbors already in the session's recent nodes.",
+    "style_note": null
+  }
+]

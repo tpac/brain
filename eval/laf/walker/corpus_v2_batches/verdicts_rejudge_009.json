@@ -1,0 +1,202 @@
+[
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "P11's benchmark ask is buried under P02/P01 asides in a dense multi-topic turn; lexical signal toward eval-methodology dilutes against P0.1/P0.2 vocabulary.",
+    "bridge": "Situation-lane match on 'evaluating recall improvements' plus graph walk from an eval-baseline neighbor node.",
+    "style_note": null
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/61",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/74",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message is dominated by the Borges review + 'show me the prompt' ask; the rule's specific 'invalid gates' vocabulary has little lexical overlap with the surface text of this multi-part turn.",
+    "bridge": "Episodic recency (same-day, same-thread) plus situation-lane match on 'encoder considers skipping content'.",
+    "style_note": null
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/94",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/146",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight cue — expected: nodes on Tom's quality-bar/momentum discipline at greenlight, not a query-time-reasoning principle."
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/148",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Broad retrospective ask ('all tests so far') vs an April-25 result using the same v12/v14 naming but no fresh lexical cues with 'update docs / run v14 last'.",
+    "bridge": "An eval-history ledger field or episodic recency across the whole project arc, not single-query cosine.",
+    "style_note": null
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/360",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Handoff-logging ask — expected: nodes on Tom's preferred handoff-doc conventions, not an old unrelated infra-migration status record."
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/19",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Terse 'continue... MVP' shares no lexical anchor with the synthesis's vocabulary (reach quantification, hop-3 scrutiny) despite being its direct rationale.",
+    "bridge": "Graph walk from the agentic-surface seed node to its community synthesis, or episodic recency on the spread-activation arc.",
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Repeated generic directive — expected: nodes on the active failure-layer breakdown/harness state, not a general continuity reflection."
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/30",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Repeated verbatim directive has no lexical anchor to 'harness'/'6-stage pipeline'; embedding drifts toward the repeated phrase itself, not the mechanism.",
+    "bridge": "A running-session 'what's being analyzed now' field would carry this; per-turn cosine on a repeated phrase can't discriminate.",
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Sequencing question — expected: nodes on the encoding/decoding bottleneck lineage already in play, not the older encoding-depth correction pattern."
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/34",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/36",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/51",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/57",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse greenlight — expected: nodes on Tom's delegation/trust pattern after a recommendation, not the unrelated outcome-trace insight."
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/45",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/47",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/71",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/106",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/111",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

@@ -1,0 +1,202 @@
+[
+  {
+    "key": "30564925-d1d4-436f-af2e-117dc743576d/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: 'CLAUDE.md = current state, never historic narrative' nodes (matches 'log file' concern), not the implementation-detail-scope principle."
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: merge/commit workflow-discipline nodes (fast-forward practice, cross-stream coordination), not a specific unrelated prior merge event."
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/7",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Terse 'you can restart' carries no topic tokens; node's situation keys on dashboard-relative-time, not trace-fix restart, so lexical/situation lanes miss despite the shared pattern.",
+    "bridge": "Situation-lane generalized to 'any brain code change needs daemon restart'; lexical match on 'restart'; graph walk from the live restart discussion.",
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: watch/self-channel arming decisions (manual-vs-auto boot posture), not the unrelated boot-continuity-posture finding."
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the actual session-id bug's coordination/ownership decision, not a stale unrelated session work-queue."
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/32",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: arc/Frame architecture facts or test-integrity discipline nodes, not an unrelated recall-eval status record."
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/38",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/40",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/42",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fede4918-d437-4cb4-b5dd-85ee2fd5f504/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: how-Tom-queues/defers-work nodes, not an unrelated session handoff doc from a different stream."
+  },
+  {
+    "key": "fede4918-d437-4cb4-b5dd-85ee2fd5f504/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fede4918-d437-4cb4-b5dd-85ee2fd5f504/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: cross-stream merge-coordination principle for the actual concurrent merge, not a stale prior merge from a different thread."
+  },
+  {
+    "key": "fede4918-d437-4cb4-b5dd-85ee2fd5f504/1/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fede4918-d437-4cb4-b5dd-85ee2fd5f504/1/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fede4918-d437-4cb4-b5dd-85ee2fd5f504/1/5",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Bare 'thanks, we're getting close' carries no topic tokens; node is 73 days old and not recently discussed, so lexical/episodic lanes miss despite strong emotional-thematic fit.",
+    "bridge": "Emotional/identity-register lane keyed on the conversation's recognition/continuity arc, not lexical match.",
+    "style_note": null
+  },
+  {
+    "key": "fede4918-d437-4cb4-b5dd-85ee2fd5f504/1/6",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Wording mismatch ('recognition' vs node's 'introspection'/'encoding'); node's situation is Anchor's authoring stance, not a doc-editing task, so situation lane misses.",
+    "bridge": "Situation-lane generalized to the 'recognition' semantic cluster; graph walk from the recognition-is-anchoring neighbor node.",
+    "style_note": null
+  },
+  {
+    "key": "50f76ac1-4c46-44e8-b0db-b41c88868395/0/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message names width/viewport, not WebGL/Three.js; node's situation is keyed to tab-switch breakage, not conditional-mount-by-width, so situation lane misses; node is 54 days old.",
+    "bridge": "Lexical/idf match on 'WebGL'/'graph' cluster; graph walk from the active dashboard-performance work thread.",
+    "style_note": null
+  },
+  {
+    "key": "50f76ac1-4c46-44e8-b0db-b41c88868395/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "50f76ac1-4c46-44e8-b0db-b41c88868395/1/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: test-scope-before-merge / blast-radius test-tiering discipline, not the parallel-session commit-timing lesson."
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/0/6",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node is 12.7 days old and likely outranked by fresher backlog captures (e.g. the 2026-06-04 capture); overlap is only on generic 'open items'/'docs' tokens.",
+    "bridge": "Lexical/idf match on 'open items'+'BACKLOG'; node-class prior favoring open-catalog nodes for a backlog-scan ask.",
+    "style_note": null
+  }
+]

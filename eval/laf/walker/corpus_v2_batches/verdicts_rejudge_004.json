@@ -1,0 +1,202 @@
+[
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/1/18",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message frames the worry abstractly ('kpi very similar', 'measurement problem'); seed_7's content is dense with specific structural-fix bullets and per-axis percentages — low lexical/semantic overlap despite being the directly relevant precedent for the same suspicion.",
+    "bridge": "Episodic-recency link across sibling eval-result nodes (seed_6/7/8/9 chain) plus a situation-lane match for 'kpi convergence / measurement doubt' would surface seed_7 here.",
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/14",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/15",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "For a multi-point 'yes to all + new idea' confirmation, expected surface is the concrete next actionable step, not a same-session principle already fully spelled out two turns earlier."
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/39",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/43",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/47",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'ready' cue — expected surface is the active Phase A test plan / what 'Fix 1' actually is under verification, not an unrelated older connect-then-journal finding."
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Directive 'all errors should be loud' — expected surface is the established loud-by-default logging convention/backlog item, not an unrelated older call-stack audit record."
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Directive 'run a3 now' — expected surface is the A3 checklist items themselves (which patches must be verified), not a separate retrospective full-KPI-monitoring plan."
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse follow-up 'legacy meaning they wont be used?' — expected surface is the legacy-vs-field cohort naming clarification itself, not the narrower title/question-isolation side note."
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/32",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/39",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/43",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Directive 'check it all looks good' — expected surface is this session's own most-recent traces/encoding-cycle data, not an older unrelated bug-fix trilogy from a prior encoder version."
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/46",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/47",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight cue 'let's commit push to origin' — expected surface is the commit/push convention or the current session's pending-diff status, not an old commit record from a different day."
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/52",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/54",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/58",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/59",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

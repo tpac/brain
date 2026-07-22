@@ -1,0 +1,202 @@
+[
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/13",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message doesn't name the specific fix (survive-and-absorb/soft-archive); that description sits several turns earlier, decayed out of the window/recency signal.",
+    "bridge": "Wider conversation-window carry (M_h) reaching back to the fix-description turn, or graph walk from the S2Consolidate hub node.",
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Tom's standing rule: accept loss over risky/inferred reconnection when authoritative intent is missing."
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/23",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message says 'patterns of code spread to unify' with no lexical overlap to 'scale'/'flatten'/'bounded work'; node is 4.9d old, not recently touched.",
+    "bridge": "Situation-lane match ('when tempted to have one scale do everything'), or a cross-cutting-constraint prior during architecture-cleanup asks.",
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/39",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/44",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/45",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message asks generically 'why 3 rounds' without naming recall_batch/get_nodes or the 2-round decision; node is a 16.5d-old snapshot with no recent reinforcement.",
+    "bridge": "Graph walk from the ENCODING_TOOLS tool-list mention, or situation-lane match on 'debugging future encoder regressions'.",
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/55",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/57",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/59",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/61",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/67",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

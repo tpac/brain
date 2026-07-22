@@ -1,0 +1,202 @@
+[
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'going to sleep, continue tomorrow' cues expect handoff/continuity patterns (how Anchor closes sessions, 'pointer in memory, nothing lost overnight'), not an old unrelated baseline-eval report."
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare resumption ('ok im back') expects session-continuity/momentum patterns — how a paused thread gets picked back up — not an unrelated old milestone about identity ownership."
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/30",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/33",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Community-synthesis nodes carry broad abstracted language; the granular follow-up (K-runs, delta-trace specifics) doesn't lexically match the synthesis title/content despite direct topical fit.",
+    "bridge": "Node-class prior surfacing session-arc community syntheses on continued architecture threads; graph walk from the decision nodes it cites, already in the activation set.",
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/35",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Yes fold it all... revise the doc' expects doc-consolidation/decision-log discipline or Tom's plan-before-fresh-session habit, not an unrelated Phase B.1 fact about revise()'s field-delta capture."
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/36",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/38",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'let's fold the rest' (deferring confabulation to S3) expects doc-folding/scope-deferral patterns, not an unrelated git merge-safety lesson."
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/39",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'commit and open new streams starting with phase 0' expects Tom's stream-spawning/phase-gated-launch pattern for this project, not an unrelated phase-slicing plan from a different feature."
+  },
+  {
+    "key": "5f0beb3c-91f5-465d-a827-24757a500ade/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'commit and redeploy' expects Tom's commit/redeploy discipline (scope to touched files, verify daemon health), not an unrelated month-old plan for a different workstream."
+  },
+  {
+    "key": "5f0beb3c-91f5-465d-a827-24757a500ade/0/4",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's literal terms ('worktrees', 'clean') diverge from the node's dominant lexical/semantic center (merge-correctness/test-gating), so cosine match falls on a different facet of the same lesson.",
+    "bridge": "Lexical/idf rescue on shared token 'worktree'; situation-lane match on 'committing in a shared worktree with active sibling streams'.",
+    "style_note": null
+  },
+  {
+    "key": "0ab360bc-3906-4c7e-83a0-912eb32c6408/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0ab360bc-3906-4c7e-83a0-912eb32c6408/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'can you commit?' expects Tom's commit-scope discipline (explicit paths, leave other streams' state untouched), not a specific unrelated commit event from 51 days earlier."
+  },
+  {
+    "key": "0ab360bc-3906-4c7e-83a0-912eb32c6408/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0ab360bc-3906-4c7e-83a0-912eb32c6408/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0ab360bc-3906-4c7e-83a0-912eb32c6408/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'we still dont know' (an open-question marker) expects nodes on how Tom/Anchor track open evals/questions, not an unrelated architecture thread about communities-in-recall."
+  },
+  {
+    "key": "9ec0b4e8-ca9a-4535-9614-96b14c646f81/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9ec0b4e8-ca9a-4535-9614-96b14c646f81/0/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Terse imperative ('I want the plugin to work, not a workaround') carries little literal vocabulary overlap with the synthesis title/content beyond generic 'plugin' terms.",
+    "bridge": "Situation-lane matching 'root-cause diagnosis in progress, resist workaround'; graph walk from the manifest-drift finding already surfaced earlier this turn's window.",
+    "style_note": null
+  },
+  {
+    "key": "9ec0b4e8-ca9a-4535-9614-96b14c646f81/0/6",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "The exact 62/121 finding was stated two turns earlier than the shown 3-turn window, so window-based lexical/episodic signal is present but faint; same-session fatigue dampening likely suppressed a recently-surfaced node.",
+    "bridge": "Episodic recency lane (discussed within the same session, last ~10 min) should rank it near top; a running-session field would carry it forward without re-derivation.",
+    "style_note": null
+  },
+  {
+    "key": "9ec0b4e8-ca9a-4535-9614-96b14c646f81/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'redo not overlay... this can drift' expects deployment/build-artifact discipline (e.g. prune-then-unzip pattern), not an unrelated task-scope-drift correction from a different feature."
+  },
+  {
+    "key": "b0908385-9bdb-4cf1-b213-04858331d16f/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'commit thanks' expects Tom's commit-scope discipline, not a specific unrelated commit milestone from ~52 days earlier."
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

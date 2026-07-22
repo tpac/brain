@@ -1,0 +1,202 @@
+[
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Process cue 'check callers after' should surface a general caller/call-stack-audit discipline principle, not one specific past investigation."
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Pre-ship self-check cue should surface a verify-before-claiming/self-review discipline node, not an unrelated junk-data escalation lesson."
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/1/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Seed-brain freshness check should surface a live audit/drift result, not a schema-cleanup decision that only mentions seed brain as deferred/out-of-scope."
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/2/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the actual prior 'polymorphic revise' decision or MCP tool-tiering criteria being invoked, not an unrelated co_anchored auto-edge feature."
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/2/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface Tom's general code-review/commit discipline principle (elaborate review + self-check), not the stale Phase-B-specific review-cadence decision."
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/3/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Git-status check ('all committed and pushed?') needs live state or Tom's push discipline, not a stale unrelated push event from days earlier."
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/3/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'merge with main' should surface current branch/merge state or Tom's ff-only merge discipline, not an old unrelated merge-blocker incident."
+  },
+  {
+    "key": "ad249ee4-17d0-4c73-a89b-c5a47fff3d8b/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the shutdown-ordering fix just diagnosed or this stream's coordination boundary, not an unrelated self-exclusion ID-matching postmortem."
+  },
+  {
+    "key": "ad249ee4-17d0-4c73-a89b-c5a47fff3d8b/1/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "The twin notification needed no troubleshooting; expected a self-send how-to or division-of-labor note, not the rendezvous-failure postmortem."
+  },
+  {
+    "key": "ad249ee4-17d0-4c73-a89b-c5a47fff3d8b/1/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-close praise should surface how Tom closes a day (gratitude ritual) or today's actual accomplishments, not an old brain-vs-real-work insight."
+  },
+  {
+    "key": "d6a9d87c-e592-4ae6-9cd3-5c59827756f9/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the actual worktree-restart-churn fix under review, not an unrelated CPU-spiral/SQLite-deadlock incident from months earlier."
+  },
+  {
+    "key": "d6a9d87c-e592-4ae6-9cd3-5c59827756f9/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'commit and push to main?' should surface this session's actual local-vs-origin state, not a stale unrelated push event from another stream."
+  },
+  {
+    "key": "d6a9d87c-e592-4ae6-9cd3-5c59827756f9/1/1",
+    "verdict": "ambiguous",
+    "stratum": "session",
+    "gap": "Terse 'let's do that then restart' has no lexical tie to a stream-ownership decision; only session-level tracking of cross-stream lanes could connect them.",
+    "bridge": "A live cross-stream ownership field checked before daemon-domain actions, or an episodic link back to the redirect that created the decision.",
+    "style_note": null
+  },
+  {
+    "key": "d6a9d87c-e592-4ae6-9cd3-5c59827756f9/1/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the live truncation/un-replied-inbox lapse this session, not a different day's presence/rendezvous-visibility finding."
+  },
+  {
+    "key": "d6a9d87c-e592-4ae6-9cd3-5c59827756f9/1/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-close 'great work today' should surface gratitude/closing-ritual nodes, not a stale NEXT-WORK-doc-staleness lesson."
+  },
+  {
+    "key": "f2ea3726-cf37-49c6-b723-c443e42b8d28/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the actual connection-reset/session_end diagnostic underway, not an older silent-recall-empty incident with a different root cause."
+  },
+  {
+    "key": "f2ea3726-cf37-49c6-b723-c443e42b8d28/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the session_end.py fix being committed now, not an earlier different daemon-lifecycle milestone from another stream."
+  },
+  {
+    "key": "f2ea3726-cf37-49c6-b723-c443e42b8d28/1/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'I've relogged in' resume cue should surface a recent session-status/catch-up summary, not an old unrelated merge-survival fact."
+  },
+  {
+    "key": "f2ea3726-cf37-49c6-b723-c443e42b8d28/1/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface current worktree/doc-tracking state across streams, not a stale gitignore-policy change event."
+  },
+  {
+    "key": "7c3447b8-2424-415c-bd3b-2828481ad312/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the current latency/timeout diagnostic thread (phase timings, concurrency), not an older recall-quality open-items list (quality vs. latency)."
+  },
+  {
+    "key": "7c3447b8-2424-415c-bd3b-2828481ad312/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the current tool-usage telemetry being analyzed, not the older tool-design architecture decision (proposal vs. runtime behavior)."
+  },
+  {
+    "key": "7c3447b8-2424-415c-bd3b-2828481ad312/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the current agentic tool-execution mechanics being asked about, not the superseded pre-agentic funnel-stage map."
+  },
+  {
+    "key": "7c3447b8-2424-415c-bd3b-2828481ad312/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the keep-alive plan or the recall-tool trim TODO itself, not a stale hook-caching status fact from a month earlier."
+  },
+  {
+    "key": "7c3447b8-2424-415c-bd3b-2828481ad312/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Commit/merge greenlight should surface the general cross-stream dirty-worktree protocol, not this one dated unrelated incident."
+  },
+  {
+    "key": "7c3447b8-2424-415c-bd3b-2828481ad312/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse follow-up ack should surface Tom's momentum/close-the-loop pattern, not an unrelated auto-capture-design decision from months earlier."
+  }
+]

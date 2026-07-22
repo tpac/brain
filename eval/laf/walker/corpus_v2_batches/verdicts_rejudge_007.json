@@ -1,0 +1,202 @@
+[
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/63",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/66",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/68",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/70",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "bare 'Let's do A' resolving an SKILL.md tension call — recall should surface the specific prior option-list turn (agent verdict on the reframe), not session-close bookkeeping."
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/72",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/74",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/76",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'wrap, thanks' is a pure session-close cue — should surface Tom's wrap/commit conventions or session-close discipline nodes, not an unrelated encoding-prompt design decision."
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message says 'contradicts Anchor as it' anaphorically pointing to SKILL.md's identity framing; lexical overlap with the correction's 'parrot'/'hollow identity' vocab is near-zero so cosine/lexical signals miss the conceptual match.",
+    "bridge": "Situation-lane matching 'identity contradiction / hollow parroting' plus a window field carrying the just-finished SKILL.md identity rewrite as active context.",
+    "style_note": null
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/4",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Query 'session object' is generic phrasing; the node's title/content uses 'session_context pipeline / encoder-rich-surface-starved-closure-gutted' vocabulary with no shared rare tokens, so lexical and embedding match is weak despite strong topical fit.",
+    "bridge": "Lexical/idf boost tying 'session' to session_context nodes, plus a situation-lane for 'auditing session continuity / what to document about SessionContext'.",
+    "style_note": null
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Let's commit and move to the next' is a pure continuation cue — should surface commit-practice or punch-list-ordering nodes, not the session_context architecture gap finding."
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/32",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/4",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Terse continuation ('lets do them') carries no lexical overlap with 'pre-work items / audit emergent aspects'; the referent is purely conversational continuity from the immediately prior turn, which cosine/FTS can't see.",
+    "bridge": "Episodic recency boost for the just-stated proposal, plus conversation-window (M_h) field carrying the immediately-prior itemized list forward.",
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/31",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/53",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "bare 'confirmed' approving Phase F edits — recall should surface the current Stage 1A/1B plan or Tom's approval-cadence pattern, not an unrelated 40-day-old eval-kill decision."
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/61",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'find the right spot to commit' names a commit-granularity preference — recall should surface Tom's small-testable-commits / natural-stopping-point pattern, not a specific stale Phase E milestone record."
+  }
+]
