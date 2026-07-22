@@ -1,0 +1,202 @@
+[
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/20",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's '...' placeholder concern is embedded in an absorb/kv thread; node's situation targets event_time regression, so situation-lane + episodic distance (18d) miss the link.",
+    "bridge": "Lexical match on the '...'/placeholder convention, or a node-class prior surfacing example-authoring lesson nodes.",
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/58",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'add that to the doc' should surface FRAME-DESIGN's open-question conventions, not the unrelated NEXT-WORK staleness lesson."
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-open greetings should surface Tom's session-start pattern (synthesize+direction), not an unrelated session-close moment."
+  },
+  {
+    "key": "30564925-d1d4-436f-af2e-117dc743576d/0/7",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/66",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Critical 'too engineered' feedback should surface Tom's first-principles-over-patches directive, not an unrelated self-awareness reflection."
+  },
+  {
+    "key": "509d64e6-0607-4d09-a184-ec512e9a04a9/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'continue phase N' should surface the live phase checklist or Tom's phased-execution habits, not a stale unrelated Phase-0 event."
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/12",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message's 'refs'/'v22' tokens are anaphoric to the eval table at t-1; situation targets prompt-diff review, not failure diagnosis, so situation-lane underweights it.",
+    "bridge": "Episodic recency (same day) plus a graph walk from the failure-diagnosis node, or lexical boost on 'source_refs'+'v22'.",
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/68",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Stepwise 'do A then B then commit' should surface Tom's commit/session-boundary conventions, not a stale unrelated local-commit inventory."
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'clean dead code' requests should surface Tom's dead-code discipline rules, not a stale unrelated cleanup event from a different file."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/56",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'no leakage' should surface the live parallel-session scoping pattern, not an unrelated continuity reflection quote."
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/54",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5ff18d71-a9df-49ab-8029-eaebd45ed869/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'merge it' should surface Tom's merge discipline (verify state, coordinate streams), not a stale single-incident merge-survival record."
+  },
+  {
+    "key": "5ff18d71-a9df-49ab-8029-eaebd45ed869/0/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/65",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Terse 'consolidate passed?' shares no CONSOLIDATE/EVOLVE/KEEP/SKIP tokens; embeds toward run-status not concept; node's situation targets explaining the framework.",
+    "bridge": "Situation-lane tuned to 'what does X mean' clarification asks, or a graph walk from the live consolidation-trace node to this concept node.",
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/40",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/55",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Casual 'half the cost?' lacks 'hit rate'/'cache'/'savings' tokens; embedding of the colloquial question doesn't align tightly with the technical fact node's phrasing.",
+    "bridge": "Same-session episodic-recency boost plus a conversation-window field (M_h) carrying the cache table already shown this session.",
+    "style_note": null
+  }
+]

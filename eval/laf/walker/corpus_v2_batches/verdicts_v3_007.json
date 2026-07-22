@@ -1,0 +1,154 @@
+[
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse status check on a live background S2 run needs live daemon state, not a memory node; expected class (if any) is process-monitoring convention, not old incident history."
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Audit-request cue ('check exactly what it does') expects the general verify-before-claiming discipline node, not an unrelated specific past audit record."
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/50",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/35",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/68",
+    "verdict": "ambiguous",
+    "stratum": "session",
+    "gap": "Message frames a surfaced-but-unused (declarative-vs-behavior) problem; node addresses a different axis (encoding as story vs abstracted rule) — situation fields and rare tokens don't align despite thematic closeness.",
+    "bridge": "A memory-quality situation-lane linking encoding-abstraction critiques to behavior-translation discussions, or a graph walk from the quoted rule node to its encoding-critique neighbors.",
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare copy-to-library request needs no content recall; expected class would be archiving/session-close convention, not a stale punch-list tally from a different session."
+  },
+  {
+    "key": "c960c535-0dd3-42e0-a4d3-63a1d3e8556c/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Naming coincidence (Brain/Anchor labels) — expected serve is prior plugin-install/dedup history, not the deferred skill-namespace-rename decision."
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/36",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3657abde-f90b-4a18-988c-cd5d0523df12/3/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Commit/push greenlight cue expects Tom's commit-push discipline or session-end ritual pattern (what Haiku actually picked), not a stale specific commit bundle from a different day."
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/1/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'Anything to commit?' expects Tom's commit-discipline/session-ritual pattern class (matches what Haiku actually picked), not a specific 28-day-old commit milestone."
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/42",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Message explicitly names the target ('issue within recall anthropic api usage') — expected serve is the anthropic-client-timeout/connection node (what Haiku actually picked), not a tool-usage-analysis finding."
+  },
+  {
+    "key": "8c28df4e-421a-417c-8c97-388033529975/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

@@ -1,0 +1,202 @@
+[
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/45",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/2/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/0/34",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message discusses Phase 1/2 abstractly; low lexical/semantic overlap with the deferred-enrichment decision, whose referent lives in session context beyond the shown window, not recent turns.",
+    "bridge": "A running session-arc field tracking the episodic-references decision log (Phase 1/2 status) would carry this decision into context.",
+    "style_note": null
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/9",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "'Let's continue' is a bare 2-word cue with no lexical/semantic link to a different-session correction about unilateral committing; no episodic-recency boost either.",
+    "bridge": "A style-recall device surfacing pacing/review-discipline guardrail nodes whenever a bare continuation cue appears during multi-item work.",
+    "style_note": null
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface current partnership-texture/stream-awareness nodes, not an unrelated past ':)' milestone."
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/32",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight ('Ship B') cues should surface nodes about Tom's follow-through/decision patterns, not an unrelated identity-purpose insight."
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the actual EPISODIC-REFERENCES §7.6 content node, not a numerically-coincidental version-benchmark finding."
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the current session's live doc-audit task list/next-doc queue, not an older unrelated full docs/ audit record."
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/12",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/39",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'commit' greenlights should surface Tom's commit-to-main/verify-before-commit conventions, not an unrelated past milestone."
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c8efdee6-3896-4f05-aebc-36674e1d6e1a/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/112",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/39",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

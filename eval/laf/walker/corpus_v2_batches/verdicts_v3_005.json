@@ -1,0 +1,202 @@
+[
+  {
+    "key": "9ec0b4e8-ca9a-4535-9614-96b14c646f81/0/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Anaphoric 'a' + short directive shares almost no lexical/semantic overlap with a skill-specific manifest node; situation names skills, not the servers/ rot just diagnosed.",
+    "bridge": "Graph walk from the just-discussed servers-rot finding to this sibling manifest-discipline node; or situation-lane on 'build manifest is source of truth'.",
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/32",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "06fe1193-e163-40ee-96dc-342eaec47d4a/1/5",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/34",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/15",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "06fe1193-e163-40ee-96dc-342eaec47d4a/1/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: status nodes for the in-flight reranker eval job or Tom's background-job-check cadence — not an unrelated daemon crash-loop mechanism."
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/0/4",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "50f76ac1-4c46-44e8-b0db-b41c88868395/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0ab360bc-3906-4c7e-83a0-912eb32c6408/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: Tom's commit-discipline/preference nodes — not an unrelated historical commit event from a different fix."
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: Tom's test-scope trust pattern ('find relevant and commit' = trust Anchor's judgment) — Haiku's own pick names this almost verbatim."
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: Tom's commit-then-ask-what's-next cadence or CLAUDE.md-specific discipline — not a generic dependency-chain principle."
+  },
+  {
+    "key": "deba08cf-044c-431c-b1f8-9f20470d8377/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "180cd489-710c-4221-9f68-71f15bf2f05e/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: nodes on monitoring background jobs / wait-for-event discipline — not an unrelated authenticity-check pattern."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/40",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the three just-proposed options themselves, or Tom's 'do everything offered' cadence — not an unrelated deferred-items list."
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/20",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/1/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/2",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": "Message asks which doc section maps to the prompt (structural); node is about example-completeness craft, a different facet of the same v17-prompt project — low direct overlap.",
+    "bridge": "Situation-lane match on 'writing/reviewing encoder prompt examples' once section 7.6 is reached; graph link from section-7 sub-structure to prompt-craft rules.",
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/54",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the general 'verify before claiming' rule (Haiku itself picked this) — not this specific day's call-stack-audit instance."
+  },
+  {
+    "key": "85aa5ab4-a799-4b32-be37-538d732b6ed2/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/29",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the 'Test Integrity: STOP when a test fails' rule or 'no silent failures' discipline nodes — not a stale test-count fact."
+  }
+]

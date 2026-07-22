@@ -82,8 +82,11 @@ def render(b, i):
 
 def main():
     keys = None
+    prefix = 'calibration_batch_%d.md'
     if len(sys.argv) > 2 and sys.argv[1] == '--keys':
         keys = [k.strip() for k in sys.argv[2].split(',') if k.strip()]
+        if len(sys.argv) > 4 and sys.argv[3] == '--prefix':
+            prefix = sys.argv[4] + '_%d.md'
     bundles = [json.loads(x) for x in BUNDLES.open()]
     BATCH_DIR.mkdir(exist_ok=True)
 
@@ -96,12 +99,11 @@ def main():
         n_files = 0
         for ci in range(0, len(chosen), BATCH):
             chunk = chosen[ci:ci + BATCH]
-            p = BATCH_DIR / ('calibration_batch_%d.md' % (ci // BATCH))
+            p = BATCH_DIR / (prefix % (ci // BATCH))
             p.write_text('\n'.join(render(b, ci + i)
                                    for i, b in enumerate(chunk)))
             n_files += 1
-        print('calibration: %d turns → %d files in %s'
-              % (len(chosen), n_files, BATCH_DIR))
+        print('%d turns → %d files in %s' % (len(chosen), n_files, BATCH_DIR))
         return 0
 
     for bi in range(0, len(bundles), BATCH):

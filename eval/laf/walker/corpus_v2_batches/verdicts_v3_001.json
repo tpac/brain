@@ -1,0 +1,202 @@
+[
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/78",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": "Message is about writing forward-looking handoff docs for tomorrow, not reading a stale status doc — lexical/semantic overlap with the node's reading-focused NEXT-WORK framing is thin.",
+    "bridge": "Situation-lane match if broadened to 'writing/verifying handoff docs for continuation', or a graph walk from a session-handoff-doc cluster.",
+    "style_note": null
+  },
+  {
+    "key": "d6a9d87c-e592-4ae6-9cd3-5c59827756f9/1/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface nodes about the live self-channel delivery lapse (truncation, un-replied inbox) or the active twin-coordination thread this session, not a different day's presence/rendezvous-visibility finding."
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the same-session aspect-decoder candidate-selection discussion (item 2 of the pre-work list), not an unrelated recall-architecture seed-selection node."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the active identity-logging design thread (write-path check, boot stderr) or Tom's pattern of broadening a fix's scope, not an unrelated render_boot_v2 rejection from a different redesign."
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/25",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0ab360bc-3906-4c7e-83a0-912eb32c6408/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface nodes about the actual effort-level (off vs low) benchmark/probe being discussed, or Tom's preference for honest open-question framing over overclaiming, not the unrelated community-in-recall open thread."
+  },
+  {
+    "key": "70e990c8-22fc-41c7-a009-3aadcb95a5d0/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/10",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the live division-of-labor already established with the other stream this session (the drop/new-ids diagnosis and split), not an unrelated older coordination milestone."
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "89ca7460-e4ac-4423-8330-c07c9db1cc7e/2/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9e561b45-fc9f-4cd3-b7a3-e3dc4ff45d09/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "06fe1193-e163-40ee-96dc-342eaec47d4a/1/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the just-created emb_bench eval files/paths from this session, not an unrelated dashboard-merge fact from a different thread."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/76",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c5371769-a7b6-4f20-8ed8-659535c7a626/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the paused task itself (the standalone logging-fix commit, waiting on the parallel stream's commit) already established in the visible window, not an unrelated background-task-restart lesson."
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/46",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ad249ee4-17d0-4c73-a89b-c5a47fff3d8b/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the shutdown-ordering root-cause finding just produced this turn, or the established coordination boundary with this specific stream, not an unrelated self-exclusion ID-matching bug."
+  },
+  {
+    "key": "6a8bb40e-7553-439a-bc4e-ac23df904c67/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/58",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface nodes about node_source_refs / trace-reference wiring status (schema v27, remember() signature gap), not the unrelated revise()-history-substrate decision."
+  }
+]

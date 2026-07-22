@@ -81,12 +81,34 @@ mandates, confirmation discipline.) Otherwise null.
   exist). An old event or other-thread decision is NOT gold even when its
   content embeds relevant procedure — verdict echo_mislabel, and use
   style_note to name the expected pattern class.
+  **BOUNDARY (do not over-apply):** this demotes stale *events / milestones
+  / status records / other-thread history*. It does NOT demote a node that
+  *carries a decision, constraint, guardrail, or mechanism the current move
+  depends on* — those stay valid even when old or same-session. Test: is the
+  node a record of *what happened*, or does it state *a rule/decision/limit
+  that governs what to do now*? The latter is valid. Example: "I restarted
+  the daemon — what changes in surface?" → the decision node listing the
+  surface-render-trim changes just shipped IS valid (it answers the move),
+  not a stale echo.
 - **Don't over-tighten helpfulness.** A lesson/principle node that speaks
   to the mechanism the operator is asking about IS valid, even when the
   message reads as a narrow factual question (e.g. a question about node
   pulls is served by the pulls-behavior lesson).
+- **Surface-distance is a MISS, never an echo.** Low lexical/semantic
+  overlap between an anaphoric or terse message ("do it", "restart", "both
+  in parallel?") and a node is a reason recall *missed* (goes in `gap`), NOT
+  evidence of echo_mislabel. For anaphoric/terse cues, resolve the referent
+  from the window FIRST, then ask whether the node serves that resolved
+  need — judge the need, not the surface tokens. echo_mislabel is reserved
+  for when the node genuinely does not serve the move (it only resembles the
+  RESPONSE), not for when the move-relevant node simply shares few words
+  with a short message.
 - **Same-session restatement.** A node that merely restates the plan
-  already present in the conversation window adds nothing — echo_mislabel.
+  already visible in the shown conversation window adds nothing —
+  echo_mislabel. BOUNDARY: this is ONLY for nodes whose content is contained
+  in the visible window. A same-session node that carries a decision,
+  ownership split, gate, or constraint NOT fully spelled out in the shown
+  turns is valid — recalling it genuinely informs the move.
 - `ambiguous` is a legitimate resting verdict; content-graft suspicion
   (node content narrating events at/after the turn's date) is a valid
   reason to use it.

@@ -19,11 +19,12 @@ const SCHEMA = {
   },
   required: ['batch', 'n', 'wrote'],
 }
-if (!Array.isArray(args) || !args.length) {
+const batches = typeof args === 'string' ? JSON.parse(args) : args
+if (!Array.isArray(batches) || !batches.length) {
   throw new Error('pass args = [{bi, n}, ...]')
 }
 phase('Judge')
-const results = await parallel(args.map(({ bi, n }) => () => {
+const results = await parallel(batches.map(({ bi, n }) => () => {
   const id = String(bi).padStart(3, '0')
   return agent(
     `You are a corpus gold judge. Read ${DIR}/corpus_v2_judge_prompt.md (your full rubric — the ` +
@@ -34,9 +35,9 @@ const results = await parallel(args.map(({ bi, n }) => () => {
     `in presentation order, keys copied EXACTLY from the turn headers — as pure JSON (a bare array, ` +
     `no wrapper) to ${DIR}/corpus_v2_batches/verdicts_batch_${id}.json; (2) return {batch: ${bi}, ` +
     `n: <number of verdicts written>, wrote: "<the file path>"} via the structured output.`,
-    { label: `judge:batch_${id}`, schema: SCHEMA }
+    { label: `judge:batch_${id}`, schema: SCHEMA, model: 'sonnet' }
   )
 }))
 const done = results.filter(Boolean)
-log(`${done.length}/${args.length} batches judged`)
-return { judged: done.map(r => r.batch), failed: args.length - done.length }
+log(`${done.length}/${batches.length} batches judged`)
+return { judged: done.map(r => r.batch), failed: batches.length - done.length }

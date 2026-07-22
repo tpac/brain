@@ -1,0 +1,202 @@
+[
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/20",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node's situation frames a temporal event_time under-emission diagnosis, not authoring absorb examples; low lexical overlap and cross-domain semantics buried it at rank 79.",
+    "bridge": "situation re-enrichment generalizing the placeholder-'...'-example harm lesson, or lexical match on 'example'/'full text'/'...'",
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shared 'S1 Scribe/journal/encode' vocabulary but the gold is a self-channel encoding bug, not the Frame/Journal/Recent-moves object de-confusion the message needs.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/58",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Only 'doc' vocabulary in common; gold is about NEXT-WORK.md staleness, message is appending a discussion point to a design doc — semantically distant.",
+    "bridge": null,
+    "style_note": "Terse anaphoric 'add that to the doc' — expected class: design-doc maintenance conventions / how Tom keeps living docs, not a stale planning-doc lesson."
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-opener greeting — expected class: how Tom/Anchor open sessions, partnership stance, active session-start behavior (the pattern nodes Haiku surfaced), not a stale session-close moment."
+  },
+  {
+    "key": "30564925-d1d4-436f-af2e-117dc743576d/0/7",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/66",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is another session's CLAUDE.md doc additions (correction_enrich/structured outputs); message needs the <>-placeholder convention + consolidation-fix status — different content, deep miss.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is a bare identity/excitement reflection; message is a push-back on over-engineering wanting the simpler abstraction — reflection doesn't serve the simplify need.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "509d64e6-0607-4d09-a184-ec512e9a04a9/0/7",
+    "verdict": "ambiguous",
+    "stratum": "session",
+    "gap": "Node's situation describes checking Phase 0 accomplishments, not continuing Phase 4; same DAL-cleanup thread but a different, completed phase, so situation/episodic signals under-fire.",
+    "bridge": "running session-field carry of the DAL-cleanup project thread, or graph walk from a surfaced phase-4/plan node to its phase-0 sibling",
+    "style_note": "Terse session-continuation 'continue phase 4' — expected class: the phase-4 plan/status and the DAL-cleanup roadmap, not an older phase's completion event."
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-resume 'good morning... back to our S1 work' — expected class: the current session's S1-scout work state, not a stale cross-session S2-community-first plan that would misdirect."
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/12",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node's situation is design-time ('implementing v22 prompt / reviewing the diff'), not failure-forensics; 'prompt diff' semantics sit off the 'show me the failure' query framing.",
+    "bridge": "episodic recency (v22-prompt node created same-session ~0.4d ago) or situation re-enrichment linking source_refs teaching to the over-anchoring failure it caused",
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/68",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is a stale cross-session commit list; the anaphoric 'do A then B then commit' has no lexical/semantic tie to it beyond 'commit'/'session'.",
+    "bridge": null,
+    "style_note": "Terse anaphoric 'do A - after that B, then commit' — expected class: what the current punch-list items A/B are and Tom's commit-sequencing workflow."
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Only generic 'dead code' overlap; gold is a stale specific daemon_server.py cleanup instance in a different file, not the dead-code discipline the directive invokes.",
+    "bridge": null,
+    "style_note": "Dead-code/duplication directive — expected class: Tom's dead-code discipline rules/how-to (the discipline nodes Haiku surfaced), not one old cleanup event."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/56",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": "Gold is a philosophical memory reflection; the concrete need ('what info should we have encoded and didn't') points at entity-feature pairs — reflection's situation is reflective, not diagnostic, so it sank to rank 546.",
+    "bridge": "situation re-enrichment toward the concrete encoding-gap framing, or window-field carry of the Memrise/discriminator-loss context",
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "'sessions' lexical false-match; gold is a continuity reflection about seamless session narrative, unrelated to the session_id state-leakage the message is chasing.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shared 'fields/example/encoder' vocabulary but different pipeline stage: message is about decode-side inject real-estate/render, gold is about encode-side prompt example authoring.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/54",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "'embedding/recall' semantic proximity but gold is a two-layer recall-pipeline architecture proposal, not an answer about the embedder's token/keyword capability the message asks for.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "'session/context' lexical near-match; gold is the SESSION_CONTEXT rolling-journal challenge, unrelated to the episodic-references doc section editing the message continues.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "'correction' vocabulary match but different concept: gold is about outcome-traces closing the feedback loop, message is the edges-vs-correction_of retrieval blind spot.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5ff18d71-a9df-49ab-8029-eaebd45ed869/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Topical 'watch'/'merge' overlap but gold is a stale prior-merge survival event, not merge how-to or the current /watch merge state the greenlight needs.",
+    "bridge": null,
+    "style_note": "Terse commit-merge greenlight 'merge it' — expected class: Tom's merge/commit-to-main discipline and the current /watch merge readiness, not an old cross-stream merge-survival fact."
+  },
+  {
+    "key": "5ff18d71-a9df-49ab-8029-eaebd45ed869/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/65",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "'consolidation' semantic match but gold is the conceptual four-decision framework, serving neither the 'did it pass?' status check nor the example-signaling problem the message raises.",
+    "bridge": null,
+    "style_note": "Terse status query 'consolidate passed?' — expected class: the current consolidation fix/error status, not the CONSOLIDATE/EVOLVE/KEEP/SKIP framework."
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is an unrelated recall-latency ship-state record; no meaningful tie to the aspects-git-tracking or session_id-in-traces questions the message asks.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/40",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/55",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node's situation and title are caching-framed ('cache performance / caching ROI'); the message's 'single round' cue doesn't lexically hit the caching node, so it sat at rank 14.",
+    "bridge": "episodic recency (same-session ~0.0d node) or window-field carry of the single-round/caching cost eval just produced",
+    "style_note": null
+  }
+]

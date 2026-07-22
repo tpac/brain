@@ -1,0 +1,202 @@
+[
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/45",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is about tool-exposure (batch vs individual, two callers); the message is about how to PRESENT good-encoding examples in SKILL.md. Only shares encoder/remember_batch vocabulary.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/1/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message picks version A of the encoder-closing prompt; gold diagnoses the BOOT prompt's six-part structure — adjacent identity/prompt topic, not the closing being confirmed.",
+    "bridge": null,
+    "style_note": "'A is good' — surface the in-progress closing/identity-prompt versions being chosen, or how Tom confirms a pick."
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/2/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks to write a NEW eval-platform doc; gold is the CLAUDE.md three-way-split decision. Shares 'documentation/where content lives' vocabulary but not the eval-doc need.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/0/35",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Situation targets 'apply fractal to S0 / why S0 differs from S1', not 'what S0 captures'; title lacks a 'tool use' lexical hook, so situation-lane and lexical both missed.",
+    "bridge": "Situation-lane re-enrichment to cover 'what S0 captures'; lexical on 'S0'.",
+    "style_note": null
+  },
+  {
+    "key": "cfb74766-0eb8-417a-a950-78c922f9b090/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Temporal-retrospective: gold is the CTV-kit thread (Apr 14-20), but the last EX.CO session was AdCP (Apr 21-22). Older topical background misdirects the move.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/60",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is a completed April session-plan; message is a May session-close + move to active bugs. Shares 'active bugs/next session' but the stale cross-session queue serves nothing.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/9",
+    "verdict": "ambiguous",
+    "stratum": "cue",
+    "gap": "Gold is a count-divergence finding in the same gate (_drop_archived_selected), recent (2d); but the message asks for the DEFINITION of surface_selected_archived, which the finding doesn't give.",
+    "bridge": "Episodic recency (same-file finding, 2d old).",
+    "style_note": null
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Very fresh node (0.2d); milestone framing ('env-gate killed') is semantically distant from 'did we use synthesis'; ranked 6, just outside top-5.",
+    "bridge": "Lexical/idf on 'synthesis scout'; episodic same-session recency.",
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/12",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Broad milestone framing ('shipped, eval 0.917') is semantically distant from 'taking liberties / investigate archives'; situation is 'reviewing what was built', not 'auditing behavior'.",
+    "bridge": "Graph walk from consolidation-encoder neighbors; situation re-enrichment.",
+    "style_note": null
+  },
+  {
+    "key": "cfb74766-0eb8-417a-a950-78c922f9b090/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks about TOM's patterns; gold is an Anchor self-quote about its own bias and the-brain-as-mirror. Shares reflective vocabulary, wrong subject.",
+    "bridge": null,
+    "style_note": "Surface Tom-behavior nodes: how he corrects (by reframe), prioritizes (impact then cost), thinks in spirals."
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message is a mechanical 'what does get_title do' question; gold is a behavioral lesson about using get_node to pull threads. Shares the get_node token, different concern.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/50",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Situation 'when designing recall discovery' vs the message's diagnostic frame; the abstraction shares little vocabulary with 'which items failed / recall problem'.",
+    "bridge": "Situation-lane / lexical on 'recall problem'.",
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/19",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "The rule is a behavioral abstraction ('recall the brain first') sharing no vocabulary with 'feed encoder memories, don't crush it'; matches only at the meta 'designing brain mechanics' level.",
+    "bridge": "Node-class prior boosting design-discipline rules on brain-design cues; situation match on 'designing brain component'.",
+    "style_note": null
+  },
+  {
+    "key": "29ad0386-17e9-4de1-a35c-62cdba68a861/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is a stale April cleanup-direction decision; message needs parallel-session commit/coordination discipline. Shares 'commit/cleanup/session' vocabulary only.",
+    "bridge": null,
+    "style_note": "Surface cross-session discipline: commit-before-collision, coordinate with live streams (what Haiku picked)."
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/0",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare greeting — surface identity-bearing/orientation + current-focus context, not one specific historic event."
+  },
+  {
+    "key": "180cd489-710c-4221-9f68-71f15bf2f05e/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Greenlight to do a code review; gold is a stale specific F3 bug-fix timeline, not review methodology. Shares 'code review' vocabulary.",
+    "bridge": null,
+    "style_note": "Surface review how-to: lean-vs-elaborate calibration, self-review + boundary-commit discipline."
+  },
+  {
+    "key": "50f76ac1-4c46-44e8-b0db-b41c88868395/1/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "No telemetry line; gold is the presence-proof event, but items 1-3 are daemon-singleton lifecycle fixes — only the 'multiple Anchors' aside is thematically adjacent.",
+    "bridge": null,
+    "style_note": "'let's do 1-3' greenlight — surface the in-session daemon-singleton task list, not the presence-proof event."
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/43",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Canonical echo shape: an ops request ('check the encoding looks good on traces') labeled with a past encoding-bug lesson. Shared 'encoding' vocabulary, no help verifying THIS cycle.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Same stale April session-plan gold; message is tier-2 orphan recovery + cheap error-logging. Shares 'active bugs/todo/next session' only.",
+    "bridge": null,
+    "style_note": "Surface in-flight tier-2/consolidation-recovery context, or the cheap-first greenlight pattern."
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/47",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is a SUPERSEDED v3+ latency mechanism; message asks why encoding splits into 3 rounds. Shares 'encoding rounds' but the superseded latency node doesn't answer the split.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is past-consolidation edge-recovery (orphan repair); message is edge-families-to-aspects migration order/reuse. Different task, minimal overlap (deep rank 1653).",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/42",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Greenlight + 'encoder is lazy' caution; gold is an edge-type usage audit. Shares 'edge type' with the temporal-edge work but doesn't serve the greenlight/laziness message.",
+    "bridge": null,
+    "style_note": "Surface encoder-behavior cautions (encoder laziness, keep prompts lean) or the temporal-edge suggestions being approved."
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/4/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "HIT via echo: response text is about pushing commits to main; gold is a stale commit-state snapshot (5 unpushed commits) from another session — doesn't serve the fix+push greenlight.",
+    "bridge": null,
+    "style_note": "Surface push/commit discipline: commit-to-main preference, push-before-new-work, or how Tom greenlights."
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/42",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message: run the v20 A/B but sanity-read the prompt first; gold is a call-stack/race-condition audit lesson. Shares 'verify before' at best, not prompt review.",
+    "bridge": null,
+    "style_note": "Surface pre-ship verify discipline: read/baseline before running, analyze-before-ship."
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Age ~30d; broad 'improve eval system' intent vs the node's narrower situation ('debugging eval/prod discrepancies'); shares 'eval' but ranked 320.",
+    "bridge": "Lexical/idf on 'eval system'; situation-lane broadening to the improvement intent.",
+    "style_note": null
+  }
+]

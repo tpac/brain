@@ -1,0 +1,154 @@
+[
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "S2-run status/timing — the timer-fix verification firing this session, or how long an S2 run takes — not an old duplicate-community incident."
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/50",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/35",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/68",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-wrap / library-copy convention — how Tom closes and archives sessions — not a stale other-session commit tally."
+  },
+  {
+    "key": "c960c535-0dd3-42e0-a4d3-63a1d3e8556c/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/36",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "The in-window DAL-exposure / _primary-embedding arc decision — not an unrelated S2 deploy-priority node."
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3657abde-f90b-4a18-988c-cd5d0523df12/3/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Tom's commit-push discipline / session-end ritual (the pattern class), not a stale other-session push event."
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/1/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Tom's commit discipline / what's uncommitted this session (the pattern class), not a stale Phase-E milestone from another session."
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/42",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Second clause ('issue within recall anthropic api usage') dominated the query embedding, pulling toward timeout/API nodes and diluting the recall_by_aspect-cut signal.",
+    "bridge": "Lexical/idf on the rare token 'recall_by_aspect' surfaces the query-blind cut-candidate finding directly.",
+    "style_note": null
+  },
+  {
+    "key": "8c28df4e-421a-417c-8c97-388033529975/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

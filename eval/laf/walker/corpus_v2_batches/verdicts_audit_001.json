@@ -1,0 +1,202 @@
+[
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/78",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d6a9d87c-e592-4ae6-9cd3-5c59827756f9/1/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node is a dense timestamped rendezvous-failure diagnosis; the message is a short colloquial 'did I get a msg', low lexical overlap, and its situation targets 'diagnosing rendezvous failure', not 'did a twin message reach me'.",
+    "bridge": "Episodic recency (created day before, same twin thread) or a situation-lane rewrite toward 'why a twin message may not have surfaced'.",
+    "style_note": null
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Principle content and situation are recall-pipeline-specific (candidate counts, judge format); the message is MCP write-param flexibility, so the shared abstraction (interface change) is semantic-only, not lexical.",
+    "bridge": "Node re-enrichment generalizing the situation beyond the recall pipeline to any interface change; semantic match on 'changing a component'.",
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/25",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0ab360bc-3906-4c7e-83a0-912eb32c6408/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Referent is the off-vs-adaptive-low effort thread; a bare-cue recall should surface the encoder-effort probe/investigation and the discipline of marking findings OPEN rather than overclaiming resolution."
+  },
+  {
+    "key": "70e990c8-22fc-41c7-a009-3aadcb95a5d0/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/10",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message is generic ('plan, purpose, architecture') with no lexical anchor to the reflection; node reads as system-identity while the query reads as feature-planning, so semantic match is diluted.",
+    "bridge": "Running session field / M_h carrying the recognition-over-retrieval thread into the identity-purpose reflection.",
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/10",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Action cue 'coordinate with the other stream' wants cross-stream coordination how-to/protocol (division of labor, shared-index discipline), not a stale milestone of the first-ever coordination event."
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "89ca7460-e4ac-4423-8330-c07c9db1cc7e/2/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Vague 'leverage this session's context for a task' should surface the session's warm open threads (e.g. the 23 pre-existing test failures) and how Anchor picks follow-on work, not a system-identity reflection."
+  },
+  {
+    "key": "9e561b45-fc9f-4cd3-b7a3-e3dc4ff45d09/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "06fe1193-e163-40ee-96dc-342eaec47d4a/1/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'where are the files located?' should surface this session's own file artifacts (the emb_bench eval scripts/results) or Tom's file-location conventions, not an unrelated traces-tab merge fact."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/76",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c5371769-a7b6-4f20-8ed8-659535c7a626/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse greenlight 'you can resume' should surface the parked thread — the standalone logging-fix commit plus the wait-for-other-stream commit-coordination discipline — not a daemon-restart-task-failure lesson."
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/16",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/46",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ad249ee4-17d0-4c73-a89b-c5a47fff3d8b/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Action cue 'send it to the other stream to consider' should surface self-channel send/coordination how-to (self_send usage, cross-stream protocol), not a stale self-exclusion-guard fragility finding."
+  },
+  {
+    "key": "6a8bb40e-7553-439a-bc4e-ac23df904c67/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/58",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'how about references to traces?' should surface the source_refs / node_source_refs trace-reference encoding substrate, not the revise-history-via-trace-events decision."
+  }
+]

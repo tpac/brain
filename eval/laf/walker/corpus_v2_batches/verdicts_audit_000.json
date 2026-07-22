@@ -1,0 +1,202 @@
+[
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Retrospective 'last session / past day' cue: surface the actual prior-session summary/handoff and recent-day work, not a 2-week-old reflection."
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse verify cue: surface the session's recall change under test and how to verify it, not a recall-philosophy principle."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight cue: surface how Tom operates on go (momentum, step-by-step) or the current session's next step, not a stale surface-work commit tally."
+  },
+  {
+    "key": "3657abde-f90b-4a18-988c-cd5d0523df12/3/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Commit greenlight: surface Tom's commit discipline (coherent slices, elaborate review) or the session's commit plan, not an unrelated time-anchor node."
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/52",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Vague retrospective ('errors fixed last session, leftovers?'): surface the actual prior-session fix/handoff record, not a stale work-queue plan."
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/32",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "89ca7460-e4ac-4423-8330-c07c9db1cc7e/3/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Commit+redeploy greenlight: surface redeploy discipline (commit-first, redeploy.sh) or the current session's ship state, not a week-old daemon-lifecycle milestone."
+  },
+  {
+    "key": "61280c52-972b-4469-bd65-1a570edc55ee/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d6a9d87c-e592-4ae6-9cd3-5c59827756f9/1/1",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Bare 'do that then restart' is anaphoric and contentless; the only shared token is 'restart', which points at the very domain the node says this stream must not touch, so embedding can't match a labor-division decision.",
+    "bridge": "Episodic recency / running session field: a node created this session carrying stream-ownership should be live state, carried forward each turn.",
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/71",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight cue: surface how Tom operates on go or migration how-to; the anchor-priors finding is already fully stated in the visible window (same-session restatement)."
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Commit greenlight: surface Tom's commit discipline (elaborate review, commit settled work first), not a 24-day-old different-session commit tally."
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/39",
+    "verdict": "ambiguous",
+    "stratum": "cue",
+    "gap": "Message is an abstract 'do you have a plan across all axes' meta-ask; the node is concrete single-run benchmark numbers, so semantic distance is high with only weak axis-term lexical overlap.",
+    "bridge": "Situation-lane: node situation 'tracking eval trajectory/axes' overlaps the comparison-axes ask; idf on axis terms (info_extraction, temporal, abstention).",
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/0/12",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Short anaphoric 'their gold standard' proposal; embedding doesn't match the node's 'hypothesis_better / pass-rate' framing, and the node's situation is interpreting pass rates, a near-but-distinct trigger.",
+    "bridge": "Situation-lane on gold-standard-eval; episodic recency of recent same-topic eval nodes.",
+    "style_note": null
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/8",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Anaphoric 'archive all of it / whats in there' names no doc, so lexical/semantic signal can't identify HOOK-BRAIN-INTEGRATION.md and the dead-files audit that lists it never matches the bare message.",
+    "bridge": "Running session field / conversation-window carrying the doc under review; graph walk from a surfaced doc-cleanup neighbor.",
+    "style_note": null
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

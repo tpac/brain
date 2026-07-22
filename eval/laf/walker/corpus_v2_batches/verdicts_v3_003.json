@@ -1,0 +1,202 @@
+[
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/45",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect Tom's clean-as-you-go / delete-not-configure dead-code principles, not a specific past cleanup event."
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/22",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "83b3c2e1-3ef4-425f-9569-7e1d8b17de68/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect restart-after-servers-change convention/lesson nodes, not session-identity-rotation architecture."
+  },
+  {
+    "key": "5f0beb3c-91f5-465d-a827-24757a500ade/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect commit/redeploy discipline principles (review-then-commit, verify), not an unrelated stale session plan."
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/1/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect this run's own live status/plan, not an older unrelated harness-reliability postmortem."
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/47",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect Anchor's autonomy/ownership principles ('it's Anchor's brain, take positions'), not a stale architecture decision."
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/3",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message says 'eval benchmarks' with no shared terms with the node's 'cross-query artifacts/embeddings'; 24d-old sub-thread reduces episodic/recency signal.",
+    "bridge": "Situation-lane match on 'evaluating recall improvements', or a graph walk from the just-discussed P0.1/ANN neighbor, would have surfaced it.",
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect this session's own Frame-Phase-2 rollout next-steps, not an unrelated older 'Phase 2' priority ranking."
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e69a5ba7-02ca-4ba0-a03c-e678616ad242/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect Tom's commit-discipline principle (review + self-check before committing), not a stale unrelated push/commit record."
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/2/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/3/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect live current git-state tracking, not a stale record of a different stream's earlier push."
+  },
+  {
+    "key": "e69a5ba7-02ca-4ba0-a03c-e678616ad242/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect this session's own open-item ledger/status, not an unrelated older deferred-feature decision."
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect parallel-eval/concurrent-run handling notes, not an unrelated prompt-bias finding."
+  },
+  {
+    "key": "e69a5ba7-02ca-4ba0-a03c-e678616ad242/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect handoff-doc-writing decisions (update not recreate, one living doc), not a stale different session's close-event record."
+  },
+  {
+    "key": "c8efdee6-3896-4f05-aebc-36674e1d6e1a/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect commit/redeploy discipline principles, not a stale fact about unrelated older commits."
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/13",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message's 'dataset...without hours' shares no lexical overlap with the node's 'recall eval/infrastructure fixed' phrasing; the open-item is from an earlier sub-thread.",
+    "bridge": "Episodic recency on the still-open recall-eval action item, or a running-arc field carrying pending-work status forward, would have surfaced it.",
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

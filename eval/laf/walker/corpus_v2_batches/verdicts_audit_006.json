@@ -1,0 +1,202 @@
+[
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/45",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message is anaphoric ('3 rounds') with no encoder/tool tokens; node is titled as an adoption decision and its situation targets performance/version checks, not round-count debugging.",
+    "bridge": "Graph walk from a surfaced encoder-tools/max_rounds neighbor to this adoption node; or situation rewrite covering round-count debugging.",
+    "style_note": null
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/2/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/30",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node reads as RESOLVED historical reliability (title 'has never completed... RESOLVED 2026-04-15'); embedding leans past-tense and fresher S2 nodes outrank it for a live-error trigger.",
+    "bridge": "Situation-lane (node situation = 'investigating S2 reliability issues' matches directly); lexical S2+error.",
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/0/34",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Node is a different subsystem's phase-2 (recall-pipeline split); its situation ('split recall pipeline into paths') doesn't describe this tool-use phasing trigger, so situation/semantic lanes diverge despite shared phase-1/2 framing.",
+    "bridge": "Node re-enrichment to name Tom's general phase-deferral preference; style/pattern-recall for his phasing stance.",
+    "style_note": null
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/9",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Bare greenlight ('let's continue') carries near-zero lexical/semantic signal; node is a cross-session behavioral correction with no token overlap and no running-session-field to bind it.",
+    "bridge": "Running session field (M_h) + style-recall for Tom-pattern greenlight discipline nodes.",
+    "style_note": "A greenlight should surface Anchor's momentum discipline: pause-for-review, plan-first, don't power through or commit unilaterally under coverage pressure."
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A warm relational sign-off should surface relational-continuity and self-channel/stream-awareness nodes, not a prior session's smiley moment."
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/32",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'whats 7.6?' should surface the node defining doc section 7.6 (encoder-prompt worked examples), not the similarly-numbered v15.6 encoder-size finding."
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A greenlight to continue ('next doc') should surface this session's docs-cleanup arc and remaining docs, not a stale prior-session audit verdict."
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/12",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/39",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'what do you recommend next' should surface the session's Phase-1 outcome and backlog next-steps; this node merely restates the Phase-1 results already on screen in the window."
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'lets do it and commit' should surface commit discipline (verify-then-commit, commit-to-main), not an unrelated past commit milestone."
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/8",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c8efdee6-3896-4f05-aebc-36674e1d6e1a/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/112",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/39",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

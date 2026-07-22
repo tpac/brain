@@ -1,0 +1,202 @@
+[
+  {
+    "key": "9ec0b4e8-ca9a-4535-9614-96b14c646f81/0/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node framed around 'plugin skills/manifest drift'; message is terse frustration with only 'plugin' as lexical overlap; situation targets 'committed skill disappears at runtime', a different trigger than 'make the plugin work'.",
+    "bridge": "Graph walk from the MCP-not-injected memory named in the window to this manifest-discipline node; or situation-lane 'plugin broken at runtime -> check build manifest'.",
+    "style_note": "Terse real-fix demand — surface nodes about Tom's permanent-solve / no-workaround discipline."
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/32",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "06fe1193-e163-40ee-96dc-342eaec47d4a/1/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/34",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Vague identity nudge — surface Anchor identity nodes about brain-is-memory / its relationship to its own memory."
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/15",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "06fe1193-e163-40ee-96dc-342eaec47d4a/1/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'ready?' — referent is the in-flight reranker A/B run; surface episodic/session context of the running job, not a daemon node."
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Action cue — surface self-channel operational how-to (self_send/presence/watch), not a past first-coordination milestone."
+  },
+  {
+    "key": "50f76ac1-4c46-44e8-b0db-b41c88868395/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Commit/push greenlight — surface commit-and-push-to-main discipline nodes, not a stale Phase-2 feature milestone."
+  },
+  {
+    "key": "0ab360bc-3906-4c7e-83a0-912eb32c6408/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse commit cue — surface commit-discipline nodes (path-scoped staging, self-review, commit-to-main), not a stale commit event."
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Terse ops directive; node's situation is parallel-session-specific so the situation-lane misses a solo commit, and a commit directive embeds far from a discipline lesson.",
+    "bridge": "Style-recall on commit greenlights surfacing operator commit-discipline nodes; or re-enrich the node's situation to generalize beyond parallel sessions.",
+    "style_note": "Commit/merge cue — commit-settled-work / commit-to-main-then-continue discipline is the right class."
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Commit greenlight — surface commit-discipline / greenlight-momentum nodes, not a dependency-chain principle."
+  },
+  {
+    "key": "deba08cf-044c-431c-b1f8-9f20470d8377/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "180cd489-710c-4221-9f68-71f15bf2f05e/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Anaphoric 'check it' — referent is the hanging test suite; surface test-hang / daemon-test-contention context."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/40",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Canonical 'Let's do all' — referent is the window's A/B/C options; surface those current-work-item nodes or greenlight-momentum patterns."
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/20",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/1/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/54",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "85aa5ab4-a799-4b32-be37-538d732b6ed2/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Anaphoric a/b — referent is the window's task options; surface the current SessionContext-refactor work-item nodes."
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/29",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Execute-with-discipline greenlight — surface Tom's execution-standard nodes (plan-first, test integrity, no silent failures) or the scout-design work, not a stale test baseline."
+  }
+]
