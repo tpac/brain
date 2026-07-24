@@ -30,7 +30,9 @@ import numpy as np
 
 from walker_db import OUT_DIR, WALKER_DB, open_ro, open_brain_ro
 
-sys.path.insert(0, str(OUT_DIR))
+sys.path.append(str(OUT_DIR))   # DATA dir may be another tree: append so
+                                 # THIS tree's code wins, while main-tree-only
+                                 # helpers (lambda_probe, miss_anatomy) resolve
 from lambda_probe import zn                                          # noqa: E402
 from layer_readout_probe import lane_z                             # noqa: E402
 from miss_anatomy import rank_in                                    # noqa: E402

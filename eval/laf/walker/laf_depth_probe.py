@@ -28,7 +28,9 @@ from walker_db import OUT_DIR
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))                 # `servers` — before any use
-sys.path.insert(0, str(OUT_DIR))
+sys.path.append(str(OUT_DIR))   # DATA dir may be another tree: append so
+                                 # THIS tree's code wins, while main-tree-only
+                                 # helpers (lambda_probe, miss_anatomy) resolve
 from servers.recall_laf import zscore_variant                       # noqa: E402
 from lambda_probe import zn                                         # noqa: E402
 import laf_lane_audit as A                                         # noqa: E402

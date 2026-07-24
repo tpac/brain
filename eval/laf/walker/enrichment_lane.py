@@ -31,7 +31,9 @@ import numpy as np
 
 from walker_db import OUT_DIR, WALKER_DB, open_ro, open_brain_ro
 
-sys.path.insert(0, str(OUT_DIR))
+sys.path.append(str(OUT_DIR))   # DATA dir may be another tree: append so
+                                 # THIS tree's code wins, while main-tree-only
+                                 # helpers (lambda_probe, miss_anatomy) resolve
 from lambda_probe import zn                                           # noqa: E402
 from layer_readout_probe import lane_z                              # noqa: E402
 from servers.recall_laf import zscore_variant                       # noqa: E402
@@ -111,13 +113,15 @@ def build_qvecs(w):
     return qv
 
 
-def seed_rows(lanes_mm, row, S, n):
-    """maxsim-top5 seed rows + a {row: maxsim_z} lookup. Seeds are a pure
-    function of (cue, graph) — the drift-proof choice (spec §SEEDS)."""
+def seed_rows(lanes_mm, row, S, n, k=K_SEEDS):
+    """maxsim-top-k seed rows + a {row: maxsim_z} lookup. Seeds are a pure
+    function of (cue, graph) — the drift-proof choice (spec §SEEDS). k is a
+    dial because a sparse lane's reach ceiling IS its support size
+    (056bb6d0): widening seeds is the only way to lift it, gain cannot."""
     raw_mx = lanes_mm[row].astype(np.float32)[S['op0'], 0]       # maxsim=lane0
     mxz = lane_z(raw_mx, 'maxsim', np.isfinite(raw_mx), n)
     fin = np.where(np.isfinite(mxz), mxz, -np.inf)
-    seeds = [int(x) for x in np.argsort(-fin)[:K_SEEDS]]
+    seeds = [int(x) for x in np.argsort(-fin)[:k]]
     return seeds, {si: float(mxz[si]) for si in seeds}
 
 

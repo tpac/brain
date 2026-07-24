@@ -26,7 +26,9 @@ import numpy as np
 
 from walker_db import OUT_DIR, open_brain_ro
 
-sys.path.insert(0, str(OUT_DIR))
+sys.path.append(str(OUT_DIR))   # DATA dir may be another tree: append so
+                                 # THIS tree's code wins, while main-tree-only
+                                 # helpers (lambda_probe, miss_anatomy) resolve
 from miss_anatomy import rank_in                                     # noqa: E402
 import laf_lane_audit as A                                          # noqa: E402
 import laf_gate_audit as G                                          # noqa: E402

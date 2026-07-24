@@ -30,7 +30,9 @@ import numpy as np
 
 from walker_db import OUT_DIR
 
-sys.path.insert(0, str(OUT_DIR))
+sys.path.append(str(OUT_DIR))   # DATA dir may be another tree: append so
+                                 # THIS tree's code wins, while main-tree-only
+                                 # helpers (lambda_probe, miss_anatomy) resolve
 from p3_fit import fit_logistic                                     # noqa: E402
 from soft_usage import auc                                          # noqa: E402
 from lambda_probe import zn                                         # noqa: E402
