@@ -1,13 +1,13 @@
 """Dynamic gains — can per-message features set the lane gains?
 
 Tom's ask: a smart regression with as many params as possible to learn how
-to set gains DYNAMICALLY from the cue + lane shapes + graph shapes + their
+to set gains DYNAMICALLY from the cue + lane shapes + enrichment shapes + their
 interactions. The formulation:
 
     score(node) = Σ_lane [ w_L0 + Σ_j w_Lj·φ_j ] · z_lane(node)
 
 The gain on each lane is a linear readout of the per-message features φ
-(lane peaks/gaps/supports, graph support/convergence). Because φ is
+(lane peaks/gaps/supports, enrichment support/convergence). Because φ is
 turn-constant, it survives within-turn pairwise differencing ONLY as a GATE
 on lane-z — a bilinear logistic. Fitted coefficients ARE production gains
 (deploy as K-store values, zero code) with the φ-gate as the new part.
@@ -37,7 +37,7 @@ from lambda_probe import zn                                         # noqa: E402
 from miss_anatomy import rank_in                                    # noqa: E402
 import laf_lane_audit as A                                         # noqa: E402
 
-LANES6 = ('maxsim', 'sit', 'idf', 'pick', 'enc', 'graph')
+LANES6 = ('maxsim', 'sit', 'idf', 'pick', 'enc', 'enrichment')
 FOLDS = 5
 LAM = 1.0
 SOFT_MARGIN = 0.10
@@ -46,7 +46,7 @@ REPORT = OUT_DIR / 'laf_dynamic_gains.md'
 # per-message features φ (observable at inference — NO gold peeking)
 PHI = ('maxsim_peak', 'maxsim_gap', 'maxsim_std', 'sit_peak', 'idf_peak',
        'log_idf_sup', 'log_pick_sup', 'log_enc_sup',
-       'log_graph_sup', 'graph_peak', 'graph_conv2', 'graph_maxconv')
+       'log_enrichment_sup', 'enrichment_peak', 'enrichment_conv2', 'enrichment_maxconv')
 
 
 def top2gap(z):
@@ -69,15 +69,15 @@ def phi_raw(t):
         float(np.nanstd(zl['maxsim'][np.isfinite(zl['maxsim'])])),
         pk('sit'), pk('idf'),
         np.log1p(sup('idf')), np.log1p(sup('pick')), np.log1p(sup('enc')),
-        np.log1p(t['graph_support']),
-        float(np.nanmax(t['graph_z'])) if np.isfinite(t['graph_z']).any() else 0.0,
-        float(t['graph_n_conv2']), float(t['graph_max_conv']),
+        np.log1p(t['enrichment_support']),
+        float(np.nanmax(t['enrichment_z'])) if np.isfinite(t['enrichment_z']).any() else 0.0,
+        float(t['enrichment_n_conv2']), float(t['enrichment_max_conv']),
     ])
 
 
 def lane_at(t, ln):
     """Lane z at the turn's candidate rows (absent cand row → 0)."""
-    z = t['graph_z'] if ln == 'graph' else t['zl'][ln]
+    z = t['enrichment_z'] if ln == 'enrichment' else t['zl'][ln]
     cr = t['cand_rows']
     out = np.zeros(len(cr))
     ok = cr >= 0
@@ -193,9 +193,9 @@ def reach_dynamic(turns, w, mu, sd, lanes):
     for t in turns:
         phi = (phi_raw(t) - mu) / sd
         gains = {ln: float(w0[i] + wj[i] @ phi) for i, ln in enumerate(lanes)}
-        f = np.zeros_like(t['graph_z'])
+        f = np.zeros_like(t['enrichment_z'])
         for ln in lanes:
-            z = t['graph_z'] if ln == 'graph' else t['zl'][ln]
+            z = t['enrichment_z'] if ln == 'enrichment' else t['zl'][ln]
             f = f + gains[ln] * z
         f[~t['alive']] = np.nan
         mix = A.LAM * zn(f) + (1 - A.LAM) * zn(t['mh'])

@@ -131,10 +131,10 @@ def main():
         p['rank'] = ranks[i]
         p['stratum'] = t['stratum']
         p['cur_maxz'] = t['cur_maxz']
-        p['gold_in_graph'] = t['gold_in_graph']
+        p['gold_in_enrichment'] = t['gold_in_enrichment']
         p['node_id'] = nid
         # gold's best lane + its z there
-        zg = {**t['zl'], 'graph': t['graph_z']}
+        zg = {**t['zl'], 'enrichment': t['enrichment_z']}
         best_ln, best_r = None, None
         for ln, z in zg.items():
             r = rank_in(z, t['gr'])
@@ -250,7 +250,7 @@ def main():
               'access_count'):
         L.append('| %s (median) | %.0f | %.0f |'
                  % (k, med(tail, k), med(rows, k)))
-    for k in ('has_situation', 'has_question', 'has_quote', 'gold_in_graph'):
+    for k in ('has_situation', 'has_question', 'has_quote', 'gold_in_enrichment'):
         L.append('| %s (share) | %.0f%% | %.0f%% |'
                  % (k, 100 * np.mean([bool(r.get(k)) for r in tail]),
                     100 * np.mean([bool(r.get(k)) for r in rows])))
@@ -268,7 +268,7 @@ def main():
           'Coefficients are log-odds per SD; AUC is held-out. This separates '
           '"correlated with" from "carries independent signal".', '']
     feats = ['cur_maxz', 'degree', 'co_degree', 'content_len', 'age_days',
-             'access_count', 'has_situation', 'has_question', 'gold_in_graph']
+             'access_count', 'has_situation', 'has_question', 'gold_in_enrichment']
     X, y, sess = [], [], []
     for i, r in enumerate(rows):
         if r['rank'] is None or r.get('age_days') is None:

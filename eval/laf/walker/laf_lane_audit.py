@@ -1,12 +1,12 @@
-"""LAF composition audit — the graph lane as a first-class 6th lane.
+"""LAF composition audit — the enrichment lane as a first-class 6th lane.
 
 Answers Tom's three questions on the REACH substrate (rank gold among all
-7684 nodes → reach@5, where the graph lane's rescue value actually lives):
+7684 nodes → reach@5, where the enrichment lane's rescue value actually lives):
 
   RECORD   per-(turn × lane) atomic dump (support, gold rank-in-lane tie-fair,
-           sole-reacher, peak) for all 6 lanes incl graph → laf_atoms.jsonl
+           sole-reacher, peak) for all 6 lanes incl enrichment → laf_atoms.jsonl
   GAINS?   add-one / leave-one-out marginal reach + JOINT coordinate-ascent
-           refit of the 6-gain vector — does adding graph shift the others?
+           refit of the 6-gain vector — does adding enrichment shift the others?
            (LAF composition is non-additive: cd74b974)
   SETTLE   per-lane displacement — mean gold-rank MOVEMENT each lane causes
            (b6a4dc6b: a field is measured by how it moves anchors)
@@ -18,7 +18,7 @@ variance first, so a gain is a pure influence dial.
 
 GATE 0 (parity) runs first: recompose f0 from lanes at current gains, assert
 == field_cache. Baseline reach must reproduce the committed 51%. Precompute
-z-lanes + graph_z + mh ONCE per turn → gain vectors re-score in milliseconds.
+z-lanes + enrichment_z + mh ONCE per turn → gain vectors re-score in milliseconds.
 
 Read-only. Run:  ./dev python3 eval/laf/walker/laf_lane_audit.py
 """
@@ -35,7 +35,7 @@ from lambda_probe import zn                                          # noqa: E40
 from layer_readout_probe import lane_z                             # noqa: E402
 from miss_anatomy import rank_in                                    # noqa: E402
 from servers.recall_laf import zscore_variant                      # noqa: E402
-import graph_lane as GL                                            # noqa: E402
+import enrichment_lane as GL                                            # noqa: E402
 
 CUTOFF = '2026-05-11'
 LANES = ('maxsim', 'sit', 'idf', 'pick', 'enc')       # cache lane order
@@ -116,7 +116,7 @@ def gate0(idx, fields, lanes_mm, S, n):
 
 
 def build(spec=GL.DEFAULT_SCORE_SPEC):
-    """Precompute per valid turn: z-lanes (5), graph_z, mh, gold row, meta.
+    """Precompute per valid turn: z-lanes (5), enrichment_z, mh, gold row, meta.
     Everything a gain vector needs to re-score in one dot product."""
     (idx, fields, lanes_mm, S, m2i, n, verds, bundles, qvecs,
      node_meta, adj) = load_turns()
@@ -154,9 +154,9 @@ def build(spec=GL.DEFAULT_SCORE_SPEC):
         turn_dt = GL.iso(bd['ts'])
         qv = qvecs.get(tuple(t['key']))
         seeds, sz = GL.seed_rows(lanes_mm, t['row'], S, n)
-        g_raw, kept = GL.graph_activation(seeds, sz, adj, qv, turn_dt,
+        g_raw, kept = GL.enrichment_activation(seeds, sz, adj, qv, turn_dt,
                                           node_meta, n, spec)
-        graph_z = zscore_variant(g_raw, n, mask=alive, kind='support')
+        enrichment_z = zscore_variant(g_raw, n, mask=alive, kind='support')
         # gold's convergence (n seeds reaching it) — a per-message feature
         neigh = GL.aggregate_neighbors(seeds, sz, adj, qv, turn_dt)
         gd = neigh.get(gr)
@@ -175,12 +175,12 @@ def build(spec=GL.DEFAULT_SCORE_SPEC):
             'door': 'door-1' if v['stratum'] == 'cue' else 'door-2',
             'gr': gr, 'alive': alive,
             'zl': zl, 'raw_epi': raw_epi,
-            'graph_z': graph_z, 'graph_raw': g_raw, 'mh': mh,
-            'graph_support': len(kept), 'graph_n_conv2': n_conv2,
-            'graph_max_conv': max_conv,
+            'enrichment_z': enrichment_z, 'enrichment_raw': g_raw, 'mh': mh,
+            'enrichment_support': len(kept), 'enrichment_n_conv2': n_conv2,
+            'enrichment_max_conv': max_conv,
             'cand_rows': cand_rows, 'soft': soft, 'sel': sel,
             'gold_type': node_meta.get(gr, (None, 0))[0],
-            'gold_in_graph': gr in kept,
+            'gold_in_enrichment': gr in kept,
             'gold_seeds': len(gd['seeds']) if gd else 0,
             'cur_maxz': float(np.nanmax(zl['maxsim'])),
         })
@@ -200,27 +200,27 @@ def build(spec=GL.DEFAULT_SCORE_SPEC):
     return turns, n
 
 
-def f0_of(t, gains, g_graph):
-    f = np.zeros_like(t['graph_z'])
+def f0_of(t, gains, g_enrichment):
+    f = np.zeros_like(t['enrichment_z'])
     for ln in LANES:
         f = f + gains[ln] * t['zl'][ln]
-    if g_graph:
-        f = f + g_graph * t['graph_z']
+    if g_enrichment:
+        f = f + g_enrichment * t['enrichment_z']
     f[~t['alive']] = np.nan
     return f
 
 
-def mix_rank(t, gains, g_graph):
-    f0 = f0_of(t, gains, g_graph)
+def mix_rank(t, gains, g_enrichment):
+    f0 = f0_of(t, gains, g_enrichment)
     mix = LAM * zn(f0) + (1 - LAM) * zn(t['mh'])
     return rank_in(mix, t['gr'])
 
 
-def reach(turns, gains, g_graph, stratum=None, at=5):
+def reach(turns, gains, g_enrichment, stratum=None, at=5):
     sub = [t for t in turns if stratum is None or t['stratum'] == stratum]
     h = n = 0
     for t in sub:
-        r = mix_rank(t, gains, g_graph)
+        r = mix_rank(t, gains, g_enrichment)
         if r is None:
             continue
         n += 1
@@ -228,8 +228,8 @@ def reach(turns, gains, g_graph, stratum=None, at=5):
     return 100.0 * h / n if n else 0.0, n
 
 
-def strata_row(turns, gains, g_graph):
-    return {s: reach(turns, gains, g_graph, s)[0]
+def strata_row(turns, gains, g_enrichment):
+    return {s: reach(turns, gains, g_enrichment, s)[0]
             for s in (None, 'cue', 'window', 'session')}
 
 
@@ -238,23 +238,23 @@ def main():
 
     # baseline parity (must ~= committed 51%)
     base_all, N = reach(turns, GAINS, 0.0)
-    L = ['# LAF composition audit — graph as a 6th lane (reach substrate)', '',
+    L = ['# LAF composition audit — enrichment as a 6th lane (reach substrate)', '',
          'n=%d clean valids ≥%s · composition f0=Σgain·z(lane), '
          'mix=%.2f·zn(f0)+%.2f·zn(mh) · tie-fair ranks' % (N, CUTOFF, LAM, 1 - LAM),
          '', 'CROSS-CHECK baseline reach@5 = %.0f%% (committed 51%%) — %s'
          % (base_all, 'MATCH' if abs(base_all - 51) <= 2 else 'DRIFT!'), '']
 
     # ── RECORD: atomic per-(turn × lane) dump + descriptive ──────────────
-    ALL6 = LANES + ('graph',)
+    ALL6 = LANES + ('enrichment',)
     with ATOMS.open('w') as fh:
         for t in turns:
             rec = {'key': t['key'], 'stratum': t['stratum'],
                    'gold_type': t['gold_type'], 'cur_maxz': t['cur_maxz'],
                    'mix_rank': mix_rank(t, GAINS, 0.0),
-                   'graph_support': t['graph_support'],
-                   'gold_in_graph': t['gold_in_graph'],
+                   'enrichment_support': t['enrichment_support'],
+                   'gold_in_enrichment': t['gold_in_enrichment'],
                    'lanes': {}}
-            zg = {**t['zl'], 'graph': t['graph_z']}
+            zg = {**t['zl'], 'enrichment': t['enrichment_z']}
             reach_ranks = {}
             for ln in ALL6:
                 z = zg[ln]
@@ -283,7 +283,7 @@ def main():
           '|---|---|---|---|---|']
     for ln in ALL6:
         for lbl, grp in (('hit', hits), ('miss', miss)):
-            zs = [({**t['zl'], 'graph': t['graph_z']})[ln] for t in grp]
+            zs = [({**t['zl'], 'enrichment': t['enrichment_z']})[ln] for t in grp]
             sup = np.mean([np.sum(np.abs(z) > 1e-9) for z in zs])
             gzs = [z[t['gr']] for t, z in zip(grp, zs)
                    if np.isfinite(z[t['gr']])]
@@ -292,10 +292,10 @@ def main():
             L.append('| %s | %s | %.0f | %s | %.0f%% |'
                      % (ln, lbl, sup,
                         '%.2f' % np.mean(gzs) if gzs else '—', g5))
-    # sole-reacher census incl graph
+    # sole-reacher census incl enrichment
     sole = Counter()
     for t in turns:
-        zg = {**t['zl'], 'graph': t['graph_z']}
+        zg = {**t['zl'], 'enrichment': t['enrichment_z']}
         rr = [ln for ln in ALL6 if (rank_in(zg[ln], t['gr']) or 99) <= 5]
         if len(rr) == 1:
             sole[rr[0]] += 1
@@ -305,9 +305,9 @@ def main():
         L.append('| %s | %d | %.0f%% |' % (ln, c, 100 * c / N))
     L.append('')
 
-    # ── GAINS? — graph gain sweep (per stratum) ──────────────────────────
-    L += ['## GAINS? (1) graph-gain sweep — reach@5 per stratum', '',
-          '| gain_graph | all | cue | window | session |', '|---|---|---|---|---|']
+    # ── GAINS? — enrichment gain sweep (per stratum) ──────────────────────────
+    L += ['## GAINS? (1) enrichment-gain sweep — reach@5 per stratum', '',
+          '| gain_enrichment | all | cue | window | session |', '|---|---|---|---|---|']
     GRID = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0, 1.25, 1.5]
     best_g, best_r = 0.0, base_all
     for g in GRID:
@@ -316,7 +316,7 @@ def main():
             best_r, best_g = r[None], g
         L.append('| %.2f | %.1f%% | %.1f%% | %.1f%% | %.1f%% |'
                  % (g, r[None], r['cue'], r['window'], r['session']))
-    L += ['', '- best fixed gain_graph = **%.2f** → reach@5 %.1f%% '
+    L += ['', '- best fixed gain_enrichment = **%.2f** → reach@5 %.1f%% '
           '(baseline %.1f%%, %+.1fpp)' % (best_g, best_r, base_all,
                                           best_r - base_all), '']
 
@@ -324,7 +324,7 @@ def main():
     # graph neighbor). Same N as baseline. CROSS-CHECK rescuable ≈ 52 (the
     # committed hop_refine base-union count) — a self-verifying gate.
     rescuable = sum(1 for t in turns
-                    if mix_rank(t, GAINS, 0.0) > 5 and t['gold_in_graph'])
+                    if mix_rank(t, GAINS, 0.0) > 5 and t['gold_in_enrichment'])
     ceil_pct = base_all + 100.0 * rescuable / N
     xc = 'MATCH' if abs(rescuable - 52) <= 3 else 'DRIFT vs committed 52!'
     L += ['- rescuable misses (gold ∈ base-union graph neighbors): **%d** / '
@@ -335,22 +335,22 @@ def main():
 
     # ── GAINS? — marginal (LOO) at current gains + best graph ────────────
     L += ['## GAINS? (2) leave-one-out — does each lane earn its place?', '',
-          'reach@5 with one lane zeroed (graph at best fixed gain=%.2f). '
+          'reach@5 with one lane zeroed (enrichment at best fixed gain=%.2f). '
           'Big drop = load-bearing; ~0 = dead weight; rise = harmful.'
           % best_g, '', '| lane zeroed | reach@5 | Δ vs full |', '|---|---|---|']
     full6 = dict(GAINS)
     full_r, _ = reach(turns, full6, best_g)
-    L.append('| (none — full+graph) | %.1f%% | — |' % full_r)
+    L.append('| (none — full+enrichment) | %.1f%% | — |' % full_r)
     for ln in LANES:
         g = {k: (0.0 if k == ln else v) for k, v in full6.items()}
         r, _ = reach(turns, g, best_g)
         L.append('| %s | %.1f%% | %+.1fpp |' % (ln, r, r - full_r))
     r_nog, _ = reach(turns, full6, 0.0)
-    L.append('| graph | %.1f%% | %+.1fpp |' % (r_nog, r_nog - full_r))
+    L.append('| enrichment | %.1f%% | %+.1fpp |' % (r_nog, r_nog - full_r))
     L.append('')
 
     # ── GAINS? — joint MULTI-START coordinate-ascent refit ───────────────
-    L += ['## GAINS? (3) joint refit — does adding graph shift the others?',
+    L += ['## GAINS? (3) joint refit — does adding enrichment shift the others?',
           '', 'MULTI-START coordinate ascent (keep best over diverse inits, '
           '4 passes each) on reach@5, grid {0,.25,.5,.75,1,1.25,1.5}. Greedy '
           'ascent from one start is unreliable (coupled gains → local optima); '
@@ -362,54 +362,54 @@ def main():
              {ln: (1.0 if ln == 'maxsim' else 0.0) for ln in LANES},
              {ln: (1.5 if ln == 'maxsim' else 0.25) for ln in LANES}]
 
-    def coord_ascent(init_g, init_gg, include_graph, passes=4):
+    def coord_ascent(init_g, init_gg, include_enrichment, passes=4):
         g, gg = dict(init_g), init_gg
-        keys = list(LANES) + (['graph'] if include_graph else [])
+        keys = list(LANES) + (['enrichment'] if include_enrichment else [])
         for _ in range(passes):
             for k in keys:
                 best_val, best_score = None, -1
                 for cand in CA_GRID:
-                    if k == 'graph':
+                    if k == 'enrichment':
                         s, _ = reach(turns, g, cand)
                     else:
                         s, _ = reach(turns, {**g, k: cand}, gg)
                     if s > best_score:
                         best_score, best_val = s, cand
-                if k == 'graph':
+                if k == 'enrichment':
                     gg = best_val
                 else:
                     g[k] = best_val
         r, _ = reach(turns, g, gg)
         return g, gg, r
 
-    def multistart(include_graph, extra_inits=()):
+    def multistart(include_enrichment, extra_inits=()):
         best = None
         for ig in list(INITS) + list(extra_inits):
-            g, gg, r = coord_ascent(ig, best_g if include_graph else 0.0,
-                                    include_graph)
+            g, gg, r = coord_ascent(ig, best_g if include_enrichment else 0.0,
+                                    include_enrichment)
             if best is None or r > best[2]:
                 best = (g, gg, r)
         return best
 
     g_nog, _, r_refit_nog = multistart(False)
-    # +graph search also SEEDED from the no-graph optimum (gain_graph=0
-    # reachable → +graph ≥ no-graph by construction; any shortfall is ascent
+    # +enrichment search also SEEDED from the no-enrichment optimum (gain_enrichment=0
+    # reachable → +enrichment ≥ no-enrichment by construction; any shortfall is ascent
     # noise, not a real "graph hurts").
     g_wg, gg_wg, r_refit_wg = multistart(True, extra_inits=[g_nog])
-    # clean marginal: graph swept ON TOP of the fixed no-graph optimum
+    # clean marginal: graph swept ON TOP of the fixed no-enrichment optimum
     gtop, rtop = 0.0, r_refit_nog
     for g in CA_GRID:
         r, _ = reach(turns, g_nog, g)
         if r > rtop:
             rtop, gtop = r, g
-    L += ['| arm | maxsim | sit | idf | pick | enc | graph | reach@5 |',
+    L += ['| arm | maxsim | sit | idf | pick | enc | enrichment | reach@5 |',
           '|---|---|---|---|---|---|---|---|',
           '| current (shipped) | 1.00 | 0.50 | 0.50 | 0.50 | 0.30 | 0.00 | %.1f%% |'
           % base_all,
-          '| refit, no graph | %.2f | %.2f | %.2f | %.2f | %.2f | 0.00 | %.1f%% |'
+          '| refit, no enrichment | %.2f | %.2f | %.2f | %.2f | %.2f | 0.00 | %.1f%% |'
           % (g_nog['maxsim'], g_nog['sit'], g_nog['idf'], g_nog['pick'],
              g_nog['enc'], r_refit_nog),
-          '| no-graph optimum + graph on top | %.2f | %.2f | %.2f | %.2f | %.2f'
+          '| no-enrichment optimum + graph on top | %.2f | %.2f | %.2f | %.2f | %.2f'
           ' | %.2f | %.1f%% |'
           % (g_nog['maxsim'], g_nog['sit'], g_nog['idf'], g_nog['pick'],
              g_nog['enc'], gtop, rtop),
@@ -419,14 +419,14 @@ def main():
 
     # ── SETTLE — per-lane displacement (gold-rank movement) ──────────────
     L += ['## SETTLE — per-lane displacement (mean gold-rank pull)', '',
-          'Δrank = rank(without lane) − rank(full+graph), over turns where '
+          'Δrank = rank(without lane) − rank(full+enrichment), over turns where '
           'gold rankable. Positive = the lane pulls the gold UP the field '
           '(b6a4dc6b: a field is measured by how it moves anchors).',
           '', '| lane | median Δrank | mean Δrank | % turns helped |',
           '|---|---|---|---|']
     base_ranks = {t['key']: mix_rank(t, full6, best_g) for t in turns}
     for ln in ALL6:
-        if ln == 'graph':
+        if ln == 'enrichment':
             gains_wo, gg_wo = full6, 0.0
         else:
             gains_wo, gg_wo = {**full6, ln: 0.0}, best_g

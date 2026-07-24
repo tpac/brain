@@ -1,4 +1,4 @@
-"""Graph lane (design B, spec 8a93d799) — the primitive + its GATE.
+"""Enrichment lane (design B, spec 8a93d799) — the primitive + its GATE.
 
 A STANDALONE LAF lane that lights up 1-hop neighbors of the maxsim-top5
 seeds, filtered to the base union (co_accessed ∪ semantic-desc≥80) and
@@ -20,7 +20,7 @@ corpus_v2_hop_refine anatomy — 345 clean-valid misses, 71 rescue rows,
 base-union 52/71 rescues kept at 16.1 noise/turn. If the seed→neighbor→
 filter doesn't reproduce those, NOTHING downstream is trustworthy.
 
-Read-only. Run:  ./dev python3 eval/laf/walker/graph_lane.py
+Read-only. Run:  ./dev python3 eval/laf/walker/enrichment_lane.py
 """
 import json
 import sys
@@ -173,7 +173,7 @@ def score_neighbor(d, tgt_type, spec):
     return act
 
 
-def graph_activation(seeds, seed_z, adj, qv, turn_dt, node_meta, n,
+def enrichment_activation(seeds, seed_z, adj, qv, turn_dt, node_meta, n,
                      spec=DEFAULT_SCORE_SPEC):
     """Raw graph activation over ALL n master rows (0 = not a kept neighbor).
     Also returns the kept-neighbor rows for support bookkeeping."""
@@ -266,7 +266,7 @@ def _self_check():
                 else:
                     base_noise_kept += 1
 
-    print('# graph_lane self-check vs committed hop_refine anatomy\n')
+    print('# enrichment_lane self-check vs committed hop_refine anatomy\n')
     exp = {'n_miss': 345, 'rescue_rows': 71, 'base_rescue_kept': 52,
            'noise_per_turn': 16.1}
     got = {'n_miss': n_miss, 'rescue_rows': rescue_rows,

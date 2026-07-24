@@ -2,7 +2,7 @@
 
 THREE QUESTIONS (Tom, 2026-07-24):
   1. @5 is one harsh threshold — expand every verdict to @10 and @25. This
-     matters concretely: the graph lane is HEAVY-TAILED (laf_gate_audit T12 —
+     matters concretely: the enrichment lane is HEAVY-TAILED (laf_gate_audit T12 —
      rank 419→168, 80→23 rescues swamped by 1-rank taxes), and a rescue that
      lands at rank 23 scores 0 at @5 but converts at @25. A lane can be
      negative at @5 and positive at @25; only measuring both distinguishes
@@ -63,7 +63,7 @@ def prep_merged(turns, mode):
         U = np.flatnonzero(t['alive'])
         epi = merged_epi(t, mode)
         cols = [t['zl']['maxsim'][U], t['zl']['sit'][U], t['zl']['idf'][U],
-                epi[U], t['graph_z'][U]]
+                epi[U], t['enrichment_z'][U]]
         ZU = np.column_stack(cols).astype(np.float64)
         zmh = zn(t['mh'])[U]
         gpos = int(np.searchsorted(U, t['gr']))
@@ -151,12 +151,12 @@ def main():
                        ('HARMFUL' if hi < 0 else 'NOISE'))))
     L.append('')
 
-    # graph at three depths, tuned base, gain swept
+    # enrichment at three depths, tuned base, gain swept
     g_in, _, _ = G.multistart(P)
-    L += ['### D1b. Graph lane at three depths (tuned base, gain swept)', '',
+    L += ['### D1b. Enrichment lane at three depths (tuned base, gain swept)', '',
           'The heavy-tail test: a rescue landing at rank 23 is invisible at @5 '
           'and counts at @25.', '',
-          '| gain_graph | @5 | @10 | @25 |', '|---|---|---|---|']
+          '| gain_enrichment | @5 | @10 | @25 |', '|---|---|---|---|']
     for g in GGRID:
         row = []
         for at in DEPTHS:
@@ -168,7 +168,7 @@ def main():
     for at in DEPTHS:
         cand = [(G.reach_fast(P, g_in, g, at=at)[0], g) for g in GGRID]
         bestg[at] = max(cand)[1]
-    L += ['', '- best graph gain per depth: ' + ' · '.join(
+    L += ['', '- best enrichment gain per depth: ' + ' · '.join(
         '@%d → %.2f (%+.1fpp)'
         % (at, bestg[at], G.reach_fast(P, g_in, bestg[at], at=at)[0] - base[at])
         for at in DEPTHS), '']
@@ -176,7 +176,7 @@ def main():
     # ══ D2. per-lane SOLO reach at three depths ══
     L += ['## D2. Per-lane solo reach (lane alone ranks gold ≤ k)', '',
           '| lane | support (med) | @5 | @10 | @25 |', '|---|---|---|---|---|']
-    ALL6 = tuple(LANES5) + ('graph',)
+    ALL6 = tuple(LANES5) + ('enrichment',)
     for li, ln in enumerate(ALL6):
         sup, rows = [], {at: 0 for at in DEPTHS}
         tot = 0

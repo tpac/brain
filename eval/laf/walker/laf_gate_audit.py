@@ -1,4 +1,4 @@
-"""Door 1 (held-out gain retune) + Door 2 (graph as a GATED ACTION).
+"""Door 1 (held-out gain retune) + Door 2 (enrichment as a GATED ACTION).
 
 WHY THIS EXISTS. laf_lane_audit answered "are the gains mistuned?" and "does
 graph add reach?" IN-SAMPLE, and read reach@5 only. Two consequences, both
@@ -54,7 +54,7 @@ def prep(turns):
     out = []
     for t in turns:
         U = np.flatnonzero(t['alive'])
-        cols = [t['zl'][ln][U] for ln in LANES5] + [t['graph_z'][U]]
+        cols = [t['zl'][ln][U] for ln in LANES5] + [t['enrichment_z'][U]]
         ZU = np.column_stack(cols).astype(np.float64)
         zmh = zn(t['mh'])[U]
         gpos = int(np.searchsorted(U, t['gr']))
@@ -79,10 +79,10 @@ def rank_fast(p, g6):
     return greater + (ties - 1) / 2.0 + 1
 
 
-def hits_fast(prepped, g5, graph_gain=0.0, at=5):
-    """Per-turn hit indicators. graph_gain: scalar or per-turn array."""
-    gg = (np.full(len(prepped), float(graph_gain))
-          if np.isscalar(graph_gain) else np.asarray(graph_gain, dtype=float))
+def hits_fast(prepped, g5, enrichment_gain=0.0, at=5):
+    """Per-turn hit indicators. enrichment_gain: scalar or per-turn array."""
+    gg = (np.full(len(prepped), float(enrichment_gain))
+          if np.isscalar(enrichment_gain) else np.asarray(enrichment_gain, dtype=float))
     hv = []
     for i, p in enumerate(prepped):
         g6 = np.array([g5[ln] for ln in LANES5] + [gg[i]])
@@ -91,15 +91,15 @@ def hits_fast(prepped, g5, graph_gain=0.0, at=5):
     return np.array(hv)
 
 
-def reach_fast(prepped, g5, graph_gain=0.0, at=5):
-    h = hits_fast(prepped, g5, graph_gain, at)
+def reach_fast(prepped, g5, enrichment_gain=0.0, at=5):
+    h = hits_fast(prepped, g5, enrichment_gain, at)
     m = np.isfinite(h)
     return (100.0 * h[m].mean() if m.any() else 0.0), int(m.sum())
 
 
-def ranks_fast(prepped, g5, graph_gain=0.0):
-    gg = (np.full(len(prepped), float(graph_gain))
-          if np.isscalar(graph_gain) else np.asarray(graph_gain, dtype=float))
+def ranks_fast(prepped, g5, enrichment_gain=0.0):
+    gg = (np.full(len(prepped), float(enrichment_gain))
+          if np.isscalar(enrichment_gain) else np.asarray(enrichment_gain, dtype=float))
     out = []
     for i, p in enumerate(prepped):
         g6 = np.array([g5[ln] for ln in LANES5] + [gg[i]])
@@ -124,7 +124,7 @@ def parity_check(turns, prepped):
 
 
 # ── gain fitting ─────────────────────────────────────────────────────────
-def coord_ascent(prepped, init5, init_g, fit_graph, passes=3):
+def coord_ascent(prepped, init5, init_g, fit_enrichment, passes=3):
     g5, gg = dict(init5), float(init_g)
     for _ in range(passes):
         for ln in LANES5:
@@ -134,7 +134,7 @@ def coord_ascent(prepped, init5, init_g, fit_graph, passes=3):
                 if s > bs:
                     bs, best = s, c
             g5[ln] = best
-        if fit_graph:
+        if fit_enrichment:
             best, bs = gg, -1.0
             for c in GGRID:
                 s, _ = reach_fast(prepped, g5, c)
@@ -144,13 +144,13 @@ def coord_ascent(prepped, init5, init_g, fit_graph, passes=3):
     return g5, gg
 
 
-def multistart(prepped, fit_graph=False, extra=()):
+def multistart(prepped, fit_enrichment=False, extra=()):
     inits = [A.GAINS, {ln: 0.5 for ln in LANES5},
              {ln: (1.5 if ln == 'maxsim' else 0.25) for ln in LANES5}]
     best = None
     for i5 in list(inits) + list(extra):
-        g5, gg = coord_ascent(prepped, i5, 0.5 if fit_graph else 0.0,
-                              fit_graph)
+        g5, gg = coord_ascent(prepped, i5, 0.5 if fit_enrichment else 0.0,
+                              fit_enrichment)
         r, _ = reach_fast(prepped, g5, gg)
         if best is None or r > best[2]:
             best = (g5, gg, r)
@@ -189,7 +189,7 @@ def main():
     tt = [p['t'] for p in P]
     N = len(P)
 
-    L = ['# Door 1 + Door 2 — held-out gains, then graph as a gated action',
+    L = ['# Door 1 + Door 2 — held-out gains, then enrichment as a gated action',
          '', 'n=%d clean valids ≥%s · %d-fold session-grouped CV · tie-fair '
          'ranks · fast scorer parity vs audited path |Δ| %.3fpp'
          % (N, A.CUTOFF, FOLDS, worst), '']
@@ -314,11 +314,11 @@ def main():
     for g in GRID:
         r, _ = reach_fast(P, ship, g)
         row.append('%.1f' % r)
-    L.append('| graph | ' + ' | '.join(row) + ' |')
+    L.append('| enrichment | ' + ' | '.join(row) + ' |')
     L.append('')
 
     # ══════════════ DOOR 2 ══════════════
-    L += ['## DOOR 2 — graph as a gated action (vs always-on lane)', '']
+    L += ['## DOOR 2 — enrichment as a gated action (vs always-on lane)', '']
 
     cmz = np.array([t['cur_maxz'] for t in tt])
     qs = np.percentile(cmz, [25, 50, 75])
@@ -327,16 +327,16 @@ def main():
     # T7 gate calibration
     L += ['### T7. Gate calibration — cur_maxz quartiles (is the moment '
           'reach-starved?)', '',
-          '| quartile | cur_maxz range | n | shipped reach@5 | graph-rescuable '
-          '| graph support (median) | gold∈graph |', '|---|---|---|---|---|---|---|']
+          '| quartile | cur_maxz range | n | shipped reach@5 | enrichment-rescuable '
+          '| graph support (median) | gold∈enrichment |', '|---|---|---|---|---|---|---|']
     for q in range(4):
         idx = [i for i in range(N) if quart[i] == q]
         rng_lo = cmz[idx].min()
         rng_hi = cmz[idx].max()
         resc = sum(1 for i in idx
-                   if not (h_ship[i] == 1) and tt[i]['gold_in_graph'])
-        sup = np.median([tt[i]['graph_support'] for i in idx])
-        ging = 100 * np.mean([tt[i]['gold_in_graph'] for i in idx])
+                   if not (h_ship[i] == 1) and tt[i]['gold_in_enrichment'])
+        sup = np.median([tt[i]['enrichment_support'] for i in idx])
+        ging = 100 * np.mean([tt[i]['gold_in_enrichment'] for i in idx])
         L.append('| Q%d | %.2f–%.2f | %d | %.1f%% | %d (%.0f%% of its misses) '
                  '| %.0f | %.0f%% |'
                  % (q + 1, rng_lo, rng_hi, len(idx),
@@ -350,7 +350,7 @@ def main():
 
     # T8 gated arms, held-out (threshold + gain fit on train)
     L += ['### T8. Gated vs always-on graph — held-out', '',
-          'ALWAYS-ON: one gain for every turn. GATED: fire graph only when '
+          'ALWAYS-ON: one gain for every turn. GATED: fire enrichment only when '
           'cur_maxz ≤ threshold (fit threshold+gain on TRAIN, apply on TEST). '
           'Base gains = the held-out refit per fold.', '',
           '| arm | held-out reach@5 | Δ vs refit base | fires on |',
@@ -392,7 +392,7 @@ def main():
         chosen.append((bt, bgg, bg))
         print('gate fold %d: thr=%s g=%.2f (always %.2f)'
               % (f, 'none' if bt is None else '%.2f' % bt, bgg, bg))
-    L += ['| refit base (no graph) | %.1f%% | — | — |' % r_cv,
+    L += ['| refit base (no enrichment) | %.1f%% | — | — |' % r_cv,
           '| + graph ALWAYS-ON | %.1f%% | %+.1fpp | 100%% |'
           % (100 * np.nanmean(h_always), 100 * np.nanmean(h_always) - r_cv),
           '| + graph GATED | %.1f%% | %+.1fpp | %.0f%% |'
@@ -418,7 +418,7 @@ def main():
         s, _ = reach_fast(P, g_in, g)
         if s > bs:
             bs, bestg = s, g
-    # CHARACTERIZATION gain: what graph DOES when it fires, independent of
+    # CHARACTERIZATION gain: what enrichment DOES when it fires, independent of
     # whether the optimizer wants it. Without this, a best-gain of 0.00
     # makes T9/T12/T13 compare gain-0 against gain-0 (vacuous tables).
     charg = bestg if bestg > 0 else 0.5
@@ -427,13 +427,13 @@ def main():
           'value concentrated in LOW quartiles while the global average is '
           '~0, the lane washed out (768e827a pattern) and gating would '
           'recover it.', '',
-          '- optimizer\'s best fixed graph gain on the tuned base: **%.2f**'
+          '- optimizer\'s best fixed enrichment gain on the tuned base: **%.2f**'
           % bestg,
           '- characterization gain used below: **%.2f**%s' % (charg,
             ' (forced nonzero — the optimizer wanted 0, so a 0-vs-0 table '
             'would say nothing about the lane\'s behaviour)'
             if bestg == 0 else ''), '',
-          '| quartile | n | base | +graph | Δ |', '|---|---|---|---|---|']
+          '| quartile | n | base | +enrichment | Δ |', '|---|---|---|---|---|']
     h_b = hits_fast(P, g_in, 0.0)
     h_g = hits_fast(P, g_in, charg)
     for q in range(4):
@@ -451,10 +451,10 @@ def main():
     # gated-vs-always comparison becomes vacuous).
     L += ['### T9b. Forced gate arms (gain %.2f) — held-out base, gate not fit'
           % charg, '',
-          'Fire graph only below a cur_maxz threshold. Gate NOT fitted here — '
+          'Fire enrichment only below a cur_maxz threshold. Gate NOT fitted here — '
           'each threshold reported directly, so a tie at gain 0 cannot hide '
           'the comparison.', '',
-          '| gate | fires on | reach@5 | Δ vs no-graph |', '|---|---|---|---|']
+          '| gate | fires on | reach@5 | Δ vs no-enrichment |', '|---|---|---|---|']
     base_r, _ = reach_fast(P, g_in, 0.0)
     for lbl, thr in ([('always-on', None)]
                      + [('cur_maxz ≤ Q%d' % (k + 1), qs[k])
@@ -468,7 +468,7 @@ def main():
 
     # T12 rank-movement distribution + churn (reach@5 is threshold-blind)
     L += ['### T12. Rank movement — what reach@5 cannot see', '',
-          'Gold rank with graph off vs on (tuned base, characterization gain '
+          'Gold rank with enrichment off vs on (tuned base, characterization gain '
           '%.2f). reach@5 only counts crossings of 5; this shows the whole '
           'distribution — a lane can move golds a lot and score 0.0pp.'
           % charg, '',
@@ -481,7 +481,7 @@ def main():
                  if a is not None and b is not None and a <= 5 < b)
     lost = sum(1 for a, b in zip(r_on, r_off)
                if a is not None and b is not None and b <= 5 < a)
-    L += ['| turns where graph moved the gold at all | %d (%.0f%%) |'
+    L += ['| turns where enrichment moved the gold at all | %d (%.0f%%) |'
           % (int((d != 0).sum()), 100 * (d != 0).mean()),
           '| median Δrank (improvement, moved turns) | %+.1f |'
           % (np.median(d[d != 0]) if (d != 0).any() else 0.0),
@@ -492,31 +492,31 @@ def main():
           '| golds LOST from @5 | %d |' % lost,
           '| net @5 | %+d |' % (gained - lost), '']
 
-    # T14 rescue anatomy — where graph's prize lives
+    # T14 rescue anatomy — where enrichment's prize lives
     L += ['### T14. Rescue anatomy — which golds are graph-reachable', '',
           '| slice | rescuable golds | share of slice misses |',
           '|---|---|---|']
     miss_i = [i for i in range(N) if h_ship[i] != 1]
     for key, label in (('stratum', 'stratum'), ('gold_type', 'gold type')):
-        vals = Counter(tt[i][key] for i in miss_i if tt[i]['gold_in_graph'])
+        vals = Counter(tt[i][key] for i in miss_i if tt[i]['gold_in_enrichment'])
         tot = Counter(tt[i][key] for i in miss_i)
         for v, c in vals.most_common(8):
             L.append('| %s=%s | %d | %.0f%% of %d |'
                      % (label, v, c, 100 * c / tot[v], tot[v]))
     L.append('')
-    conv = Counter(tt[i]['gold_seeds'] for i in miss_i if tt[i]['gold_in_graph'])
+    conv = Counter(tt[i]['gold_seeds'] for i in miss_i if tt[i]['gold_in_enrichment'])
     L += ['- gold convergence among rescuable (how many seeds reached it): %s'
           % ', '.join('%d seeds: %d' % (k, v) for k, v in sorted(conv.items())),
           '']
 
     # T10/T11 sorting substrate — the measurement laf_lane_audit skipped
     L += ['### T10. SORTING substrate — within-pool ordering (held-out CV)',
-          '', 'Does graph improve the order Haiku consumes? Pairwise logistic '
+          '', 'Does enrichment improve the order Haiku consumes? Pairwise logistic '
           'on candidate lane-z, session-CV. picked = echo-prone; soft-usage = '
           'answer-need (the honest target).', '',
           '| lanes | picked-AUC | soft-AUC |', '|---|---|---|']
-    for label, lanes in (('5 lanes (no graph)', LANES5),
-                         ('6 lanes (+graph)', LANES6)):
+    for label, lanes in (('5 lanes (no enrichment)', LANES5),
+                         ('6 lanes (+enrichment)', LANES6)):
         pa = cv_auc(turns, lanes, False, 'picked')
         sa = cv_auc(turns, lanes, False, 'soft')
         L.append('| %s | %.4f | %.4f |' % (label, pa, sa))
@@ -527,11 +527,11 @@ def main():
         np.array([x['cur_maxz'] for x in turns]), qs)) if q == 0]
     L += ['### T11. SORTING inside the fire regime (Q1 cur_maxz only, n=%d)'
           % len(lowq), '',
-          'The gated hypothesis: graph earns its place where the moment is '
+          'The gated hypothesis: enrichment earns its place where the moment is '
           'reach-starved. Same CV, restricted to Q1.', '',
           '| lanes | picked-AUC | soft-AUC |', '|---|---|---|']
-    for label, lanes in (('5 lanes (no graph)', LANES5),
-                         ('6 lanes (+graph)', LANES6)):
+    for label, lanes in (('5 lanes (no enrichment)', LANES5),
+                         ('6 lanes (+enrichment)', LANES6)):
         try:
             pa = cv_auc(lowq, lanes, False, 'picked')
             sa = cv_auc(lowq, lanes, False, 'soft')
@@ -547,7 +547,7 @@ def main():
     b = open_brain_ro()
     titles = dict(b.execute('SELECT id, title FROM nodes').fetchall())
     b.close()
-    L += ['### T13. Eyeball — turns where graph moved the gold most', '',
+    L += ['### T13. Eyeball — turns where enrichment moved the gold most', '',
           '| Δrank | rank off→on | stratum | cur_maxz | gold type | seeds | gold title |',
           '|---|---|---|---|---|---|---|']
     mv = sorted(((r_off[i] - r_on[i], i) for i in range(N)
