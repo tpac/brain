@@ -131,8 +131,10 @@ def main():
         mix = min(rk.values()) if rk else None
         f0r = rank_in(tt.fields[0], gr)
         # sole-reacher: lanes that ALONE rank gold ≤5
-        reachers = [ln for ln in LANES
-                    if lstat[ln]['grank'] is not None and lstat[ln]['grank'] <= 5]
+        reach_ranks = {ln: lstat[ln]['grank'] for ln in LANES}
+        reach_ranks['M_h'] = mhr             # current-vs-history flip needs M_h
+        reachers = [ln for ln, r in reach_ranks.items()
+                    if r is not None and r <= 5]
         recs.append({
             'key': key, 'sess': t['key'][0],
             'door': 'door-1' if v['stratum'] == 'cue' else 'door-2',
@@ -251,7 +253,7 @@ def main():
             if not rk:
                 continue
             lam = lam_map(k)
-            r = rk.get(lam, min(rk.values()))
+            r = rk.get(lam)          # strict: missing λ = miss
             if r is not None and r <= 5:
                 h += 1
         return 100.0*h/len(keys) if keys else 0.0
@@ -269,49 +271,58 @@ def main():
     key2i = {r['key']: i for i, r in enumerate(recs)}
     y_orac = np.array([min(lam_rank[r['key']], key=lam_rank[r['key']].get)
                        if lam_rank[r['key']] else best_fixed_lam for r in recs])
-    Xs = (X - X.mean(0)) / (X.std(0) + 1e-9)
-    Xs = np.hstack([Xs, np.ones((N, 1))])
-
-    def cv_reach(Xmat):
+    def cv_reach(Xraw):
         hit = 0
         for fi in range(5):
             tr = fold != fi
             te = fold == fi
-            beta, *_ = lstsq(Xmat[tr], y_orac[tr], rcond=None)
-            pred = np.clip(Xmat[te] @ beta, 0, 1)
+            mu, sd = Xraw[tr].mean(0), Xraw[tr].std(0) + 1e-9   # train-only scaler
+            Xtr = np.hstack([(Xraw[tr] - mu) / sd, np.ones((tr.sum(), 1))])
+            Xte = np.hstack([(Xraw[te] - mu) / sd, np.ones((te.sum(), 1))])
+            beta, *_ = lstsq(Xtr, y_orac[tr], rcond=None)
+            pred = np.clip(Xte @ beta, 0, 1)
             pred = np.round(pred, 1)
             for j, r in enumerate([recs[i] for i in np.where(te)[0]]):
                 rk = lam_rank[r['key']]
                 lam = float(pred[j])
                 lam = min(GRID, key=lambda g: abs(g-lam))
-                rr = rk.get(lam, min(rk.values())) if rk else None
+                rr = rk.get(lam) if rk else None   # strict
                 if rr is not None and rr <= 5:
                     hit += 1
         return 100.0*hit/N
 
-    router_reach = cv_reach(Xs)
-    # shuffle control: permute features across turns, refit
-    rngseed = np.arange(N)[::-1]           # deterministic permutation (no RNG)
-    Xshuf = np.hstack([Xs[rngseed, :-1], np.ones((N, 1))])
-    shuf_reach = cv_reach(Xshuf)
+    router_reach = cv_reach(X)
+    # shuffle control: 10 seeded random permutations of feature rows
+    rng = np.random.default_rng(42)
+    shuf_runs = []
+    for _ in range(10):
+        perm = rng.permutation(N)
+        shuf_runs.append(cv_reach(X[perm]))
+    shuf_reach = float(np.mean(shuf_runs))
+    shuf_sd = float(np.std(shuf_runs))
 
     L += ['| config | reach@5 | vs best-fixed |', '|---|---|---|',
           '| best FIXED λ=%.1f | %.1f%% | — |' % (best_fixed_lam, best_fixed),
           '| held-out router (CV) | %.1f%% | %+.1fpp |' % (router_reach, router_reach - best_fixed),
-          '| SHUFFLE control | %.1f%% | %+.1fpp |' % (shuf_reach, shuf_reach - best_fixed),
+          '| SHUFFLE control (10 perms) | %.1f%%±%.1f | %+.1fpp |' % (shuf_reach, shuf_sd, shuf_reach - best_fixed),
           '| oracle-λ (ceiling) | %.1f%% | %+.1fpp |' % (oracle, oracle - best_fixed),
           '']
     # door↔door transfer
     d1 = np.array([r['door'] == 'door-1' for r in recs])
     def transfer(train_mask, test_mask):
-        beta, *_ = lstsq(Xs[train_mask], y_orac[train_mask], rcond=None)
-        pred = np.clip(Xs[test_mask] @ beta, 0, 1)
+        mu, sd = X[train_mask].mean(0), X[train_mask].std(0) + 1e-9
+        Xtr = np.hstack([(X[train_mask] - mu) / sd,
+                         np.ones((train_mask.sum(), 1))])
+        Xte = np.hstack([(X[test_mask] - mu) / sd,
+                         np.ones((test_mask.sum(), 1))])
+        beta, *_ = lstsq(Xtr, y_orac[train_mask], rcond=None)
+        pred = np.clip(Xte @ beta, 0, 1)
         hit = 0
         tekeys = [recs[i] for i in np.where(test_mask)[0]]
         for j, r in enumerate(tekeys):
             rk = lam_rank[r['key']]
             lam = min(GRID, key=lambda g: abs(g-float(pred[j])))
-            rr = rk.get(lam, min(rk.values())) if rk else None
+            rr = rk.get(lam) if rk else None       # strict
             if rr is not None and rr <= 5:
                 hit += 1
         return beta, 100.0*hit/len(tekeys)

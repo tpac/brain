@@ -9,7 +9,11 @@ rescue (neighbor == gold) or noise. Four refinement axes tested:
   R2  convergence — neighbor reached from ≥2 distinct seeds (Tom's
       convergence-first principle, measured at 1 hop).
   R3  co_accessed strength — co_access_count / recency of last_strengthened
-      for the behavioral channel.
+      for the behavioral channel. CAVEAT (review 2026-07-24): co_access_count
+      is the PRESENT-DAY cumulative counter, not time-gated to the turn — a
+      time-leaky feature. It showed NO separation anyway (axis dead) and the
+      count-based filter was rejected from the final spec, so no conclusion
+      rests on it; do not resurrect this axis without a time-gated recount.
   R4  target priors — neighbor node type / content size.
 
 Output: per-axis separation + a CUMULATIVE filter curve (rescues kept vs

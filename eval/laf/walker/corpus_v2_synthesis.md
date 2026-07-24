@@ -32,8 +32,8 @@ strong = soft-gold AND Haiku-picked that turn. Protocol prediction: mislabels co
 
 | tier | n | echo% | valid% |
 |---|---|---|---|
-| strong | 562 | 22% | 75% |
-| non-strong | 1589 | 62% | 37% |
+| strong | 625 | 21% | 76% |
+| non-strong | 1526 | 64% | 35% |
 
 ## 4. Failure-mode codebook — bridge devices on VALID misses (n=453)
 

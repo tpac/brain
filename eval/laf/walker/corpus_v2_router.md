@@ -40,13 +40,14 @@ Of golds reached (≤5) by exactly ONE lane, which lane? This is the "one lane g
 
 | lane | sole-reacher count | as %% of all golds |
 |---|---|---|
-| maxsim | 72 | 10% |
-| pick | 69 | 10% |
-| sit | 30 | 4% |
-| idf | 23 | 3% |
-| enc | 5 | 1% |
+| maxsim | 62 | 9% |
+| pick | 46 | 7% |
+| M_h | 29 | 4% |
+| sit | 25 | 4% |
+| idf | 21 | 3% |
+| enc | 3 | 0% |
 
-- 199/707 golds (28%) are reached by exactly one lane — the conditional-lane population. 184 reached by ≥2 lanes (redundant), 324 by none.
+- 186/707 golds (26%) are reached by exactly one lane — the conditional-lane population. 226 reached by ≥2 lanes (redundant), 295 by none.
 
 ## C. Held-out per-message router fit (4 guards)
 
@@ -54,7 +55,7 @@ Of golds reached (≤5) by exactly ONE lane, which lane? This is the "one lane g
 |---|---|---|
 | best FIXED λ=0.7 | 52.1% | — |
 | held-out router (CV) | 48.8% | -3.3pp |
-| SHUFFLE control | 48.4% | -3.7pp |
+| SHUFFLE control (10 perms) | 49.0%±0.4 | -3.1pp |
 | oracle-λ (ceiling) | 56.7% | +4.7pp |
 
 **Cross-population transfer (the hallucination killer):**
@@ -63,4 +64,4 @@ Of golds reached (≤5) by exactly ONE lane, which lane? This is the "one lane g
 - learned-weight SIGN FLIPS across doors: 2 / 8 features (β stable → real signal)
 
 ## Verdict
-- router beats best-fixed by -3.3pp on held-out; shuffle by -3.7pp. Router ≈ shuffle or ≤ best-fixed → NO cheap router; lever is a new reach signal + the confidence gate.
+- router beats best-fixed by -3.3pp on held-out; shuffle by -3.1pp. Router ≈ shuffle or ≤ best-fixed → NO cheap router; lever is a new reach signal + the confidence gate.

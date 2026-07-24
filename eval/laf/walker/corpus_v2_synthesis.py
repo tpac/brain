@@ -32,6 +32,13 @@ def pct(n, d):
 def main():
     verds = {json.loads(x)['key']: json.loads(x) for x in V.open()}
     bundles = {json.loads(x)['key']: json.loads(x) for x in B.open()}
+    # strong tier UNCONDITIONALLY from the index (Turn.strong semantics needs
+    # only sel/gold_i) — the bundle telemetry gate is about mix computability
+    # and silently dropped 156 rows' strong flag (code-review 2026-07-24)
+    idx = json.loads((OUT_DIR / 'field_cache_index.json').read_text())
+    strong_by_key = {'%s/%d/%d' % tuple(t['key']):
+                     bool(t['sel'][t['gold_i']]) if t.get('sel') else False
+                     for t in idx['turns']}
     rows = []
     for k, v in verds.items():
         b = bundles.get(k)
@@ -44,7 +51,7 @@ def main():
             'bridge': v.get('bridge'), 'gap': v.get('gap'),
             'style_note': v.get('style_note'), 'rubric': v.get('rubric'),
             'mix': tel.get('mix_rank'), 'f0': tel.get('f0_rank'),
-            'mh': tel.get('mh_rank'), 'strong': tel.get('strong'),
+            'mh': tel.get('mh_rank'), 'strong': strong_by_key.get(k, False),
             'age': g.get('age_days'), 'gtype': g.get('type'),
             'v0': b.get('v0_stratum'),
         })

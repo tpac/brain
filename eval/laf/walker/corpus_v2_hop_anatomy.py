@@ -61,9 +61,10 @@ def main():
         if nid in m2i:
             node_meta[m2i[nid]] = (typ, created, clen or 0)
     edges = []           # (src_i, tgt_i, relation, desc_len, created_at)
-    deg = Counter()
-    for src, tgt, rel, dlen, created in b.execute(
-            "SELECT e.source_id, e.target_id, r.relation, "
+    deg = Counter()      # DISTINCT-edge degree — multi-relation edges count
+    seen_eid = set()     # once (review 2026-07-24: 7.8% of edges carry >1
+    for eid, src, tgt, rel, dlen, created in b.execute(
+            "SELECT e.edge_id, e.source_id, e.target_id, r.relation, "
             "LENGTH(COALESCE(r.description,'')), e.created_at "
             "FROM edges e JOIN edge_relations r ON r.edge_id=e.edge_id "
             "WHERE (r.archived IS NULL OR r.archived=0)"):
@@ -71,8 +72,10 @@ def main():
         if si is None or ti is None:
             continue
         edges.append((si, ti, rel, dlen or 0, created))
-        deg[si] += 1
-        deg[ti] += 1
+        if eid not in seen_eid:
+            seen_eid.add(eid)
+            deg[si] += 1
+            deg[ti] += 1
     b.close()
     adj = defaultdict(list)  # node_i -> [(other_i, rel, dlen, created)]
     for si, ti, rel, dlen, created in edges:
@@ -147,7 +150,7 @@ def main():
     noise_rel = Counter(rel for rel, _, _ in noise_rows)
     resc_rel = Counter(r['rel'] for r in rescues)
     tot_r, tot_n = sum(resc_rel.values()), len(noise_rows)
-    L += ['## Edge-relation character — rescue share vs noise share (lift)', '',
+    L += ['## Edge-relation character — rescue share vs noise share (lift; rows are per-(edge,relation) by design — multi-relation edges credit each relation)', '',
           '| relation | rescue n | rescue % | noise % | LIFT |',
           '|---|---|---|---|---|']
     for rel, c in resc_rel.most_common(14):

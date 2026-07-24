@@ -113,8 +113,10 @@ def main():
         m = [r['mix'] for r in sub if r['mix'] is not None]
         if not m:
             return
-        L.append('| %s | %d | %.0f%% | %.0f%% | %.0f |'
-                 % (lbl, len(sub), 100*sum(x <= 5 for x in m)/len(m),
+        n_lbl = ('%d' % len(sub) if len(m) == len(sub)
+                 else '%d (ranked %d)' % (len(sub), len(m)))
+        L.append('| %s | %s | %.0f%% | %.0f%% | %.0f |'
+                 % (lbl, n_lbl, 100*sum(x <= 5 for x in m)/len(m),
                     100*sum(x <= 25 for x in m)/len(m), np.median(m)))
     for st in ('cue', 'window', 'session'):
         reach_row(st, [r for r in recs if r['stratum'] == st])

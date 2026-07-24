@@ -5,8 +5,13 @@ Per gold turn (field_cache_index.json, 2152), emit the judge bundle:
   - 2-3 prior turns + the turn's own anchor response + 1 turn after
     (the 361692d0 rule — a single cue is 'somewhat worthless')
   - the gold node FULL (title/content/situation/type/age at turn time),
-    with the content-graft warning when the node was revised after the
-    turn (a0ac8ce4 time-leak guard — candidates.node_revised_after_turn)
+    plus a revised_after_turn flag (candidates.node_revised_after_turn).
+    NOTE: the flag is stored in the JSONL but deliberately NOT rendered to
+    judges — it fires on 99% of golds (any-touch: healer, access marks), so
+    per-node display adds no discrimination; the a0ac8ce4 content-graft
+    caution lives in the judge prompt instead (calibration decision,
+    2026-07-21). Known residual risk: graft detection relies on the judge
+    noticing anachronistic content.
   - the turn's Haiku picks (sel=1) with titles, the gold's soft score
   - mechanical telemetry (mix/F0/M_h tie-fair ranks, strong tier, v0
     stratum) — kept in the JSONL for synthesis; the judge renderer
