@@ -51,8 +51,14 @@ REPORT = OUT_DIR / 'enrichment_widen.md'
 
 def load_communities(b, m2i):
     """(node_row -> set(community_row), community_row -> set(member_rows),
-    set(corridor community_rows)). Direction verified: the community node is
-    the SOURCE of community_member, the member is the TARGET."""
+    set(corridor community_rows), community_row -> internal_fraction).
+
+    Direction verified: the community node is the SOURCE of community_member,
+    the member is the TARGET. `cohesion` (internal_fraction) is returned so a
+    community-admitted node can be scored by REAL data — how much of its
+    community's story is internal (77b2617c) — instead of a hand-picked
+    constant. Corridors are low-cohesion by definition (dbf9146e), so this
+    correctly makes loose-bundle admissions weak rather than uniform."""
     of_node = defaultdict(set)
     members = defaultdict(set)
     for src, tgt in b.execute(
@@ -71,7 +77,16 @@ def load_communities(b, m2i):
             "WHERE key='community_is_corridor'"):
         if str(val).lower() == 'true' and nid in m2i:
             corridor.add(m2i[nid])
-    return of_node, members, corridor
+    cohesion = {}
+    for nid, val in b.execute(
+            "SELECT node_id, value FROM node_metadata_kv "
+            "WHERE key='community_internal_fraction'"):
+        if nid in m2i:
+            try:
+                cohesion[m2i[nid]] = float(val)
+            except (TypeError, ValueError):
+                pass
+    return of_node, members, corridor, cohesion
 
 
 def community_expand(seeds, of_node, members, min_seeds, restrict=None):
@@ -106,7 +121,7 @@ def main():
     b = open_brain_ro()
     node_meta = EL.build_node_meta(b, m2i)
     adj = EL.build_adjacency(b, m2i)
-    of_node, members, corridor = load_communities(b, m2i)
+    of_node, members, corridor, _cohesion = load_communities(b, m2i)
     b.close()
     print('communities: %d with members · %d corridors · %d nodes with '
           'membership (%.0f%% of master)'
