@@ -312,6 +312,37 @@ class ConsolidationEncoder(IntegrationUnit):
             if comm_names:
                 lines.append('    Communities: %s' % ', '.join(list(comm_names)[:3]))
 
+            # Intra-cluster edges — every edge BETWEEN cluster members, with
+            # direction. These used to be dropped entirely (the per-node block
+            # below renders external edges only) and collapsed into the
+            # directionless CORRECTION_EDGE / TENSION_EDGE evidence flags.
+            # That blindness is how supersession pairs got merged BACKWARDS:
+            # the encoder knew "a correction edge exists" but not which node
+            # supersedes which, so the survivor ladder's age-correlated
+            # signals picked the stale node (journal audit 2026-07-25 —
+            # a 07-23 opener absorbed into its 07-21 predecessor).
+            # Contract: tests/test_s2_consolidation_supersession.py pins that
+            # intra-member directed edges appear here. Do not re-filter them.
+            # Each physical edge lives in both members' edge_details (outgoing
+            # on the actor, incoming on the target) — render outgoing only,
+            # so each relation appears exactly once, from the actor's side.
+            intra_lines = []
+            all_details = cluster.get('edge_details', {})
+            for nid in cluster['nodes']:
+                for nbr_id, edges_list in all_details.get(nid, {}).items():
+                    if nbr_id not in cluster['nodes']:
+                        continue
+                    for e in edges_list:
+                        if e.get('direction') != 'outgoing':
+                            continue
+                        desc = e.get('description', '')
+                        desc_str = ' — %s' % desc if desc else ''
+                        intra_lines.append('      %s → %s → %s%s' % (
+                            nid[:8], e.get('relation', '?'), nbr_id[:8], desc_str))
+            if intra_lines:
+                lines.append('    Intra-cluster edges (direction: actor → relation → target):')
+                lines.extend(intra_lines)
+
             # Render each node richly
             lines.append('    Nodes:')
             for nid in cluster['nodes']:

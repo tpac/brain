@@ -141,6 +141,7 @@ class ConsolidationDecoder(IntegrationUnit):
 
         Currently detects:
         - Community nodes with 0 members (failed edge creation)
+        - Superseded handoff nodes (live successor exists) — see below
         """
         archived = []
 
@@ -169,6 +170,59 @@ class ConsolidationDecoder(IntegrationUnit):
                 archived.append({'id': nid, 'title': title, 'reason': 'community with 0 members'})
                 print('[consolidation] Healed: archived orphan community "%s" (%s)' % (
                     title[:50], nid[:8]), flush=True)
+
+        # Superseded handoffs: a handoff (session opener) is a consumable —
+        # a directive list addressed to one future session. Once a live
+        # successor exists (`supersedes` edge, both endpoints handoff), the
+        # predecessor's surface value is negative: it competes with the real
+        # opener in recall and, left live, clusters with its successor here —
+        # which is how consolidation absorbed a 07-23 opener INTO its 07-21
+        # predecessor (survivor-ladder age-bias, journal audit 2026-07-25).
+        # Retiring it pre-clustering is deterministic lifecycle, not judgment:
+        # archive is soft (content + audit metadata kept), and unlike knowledge
+        # types there is no reasoning worth re-surfacing — the successor was
+        # written complete. Keyed on the edge, not the type alone, so untyped
+        # openers are simply left alone (fail-safe). locked/critical excluded
+        # here to avoid archive_node's guard logging errors on every cycle.
+        # Deliberately NOT the correction_improvement aspect: that list is
+        # LLM-grown (58 verbs incl. improves/flags/restates) and would
+        # silently widen an archive trigger as the classifier files new
+        # verbs. Exact replacement semantics only: `supersedes` + its
+        # inverse `superseded_by` (source=actor, so the retired predecessor
+        # is the target resp. the source).
+        superseded_handoffs = self.brain.conn.execute("""
+            SELECT old_id, old_title, MIN(new_id) FROM (
+                SELECT t.id AS old_id, t.title AS old_title, s.id AS new_id
+                FROM edges e
+                JOIN edge_relations er ON er.edge_id = e.edge_id
+                JOIN nodes s ON s.id = e.source_id
+                JOIN nodes t ON t.id = e.target_id
+                WHERE er.relation = 'supersedes' AND er.archived = 0
+                AND s.type = 'handoff' AND t.type = 'handoff'
+                AND s.archived = 0 AND t.archived = 0
+                AND t.locked = 0 AND t.critical = 0
+                UNION ALL
+                SELECT s.id, s.title, t.id
+                FROM edges e
+                JOIN edge_relations er ON er.edge_id = e.edge_id
+                JOIN nodes s ON s.id = e.source_id
+                JOIN nodes t ON t.id = e.target_id
+                WHERE er.relation = 'superseded_by' AND er.archived = 0
+                AND s.type = 'handoff' AND t.type = 'handoff'
+                AND s.archived = 0 AND t.archived = 0
+                AND s.locked = 0 AND s.critical = 0
+            ) GROUP BY old_id, old_title
+        """).fetchall()
+
+        for nid, title, successor_id in superseded_handoffs:
+            reason = 'handoff superseded by %s' % successor_id[:8]
+            r = self.brain.archive_node(
+                nid, archived_by='s2:consolidation',
+                reason=reason, extra={'superseded_by': successor_id})
+            if r.get('ok'):
+                archived.append({'id': nid, 'title': title, 'reason': reason})
+                print('[consolidation] Healed: archived superseded handoff "%s" (%s)' % (
+                    (title or '')[:50], nid[:8]), flush=True)
 
         if archived:
             # Use 'O' not 'delta' — heal is an observation, not a consolidation action.
