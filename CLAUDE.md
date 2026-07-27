@@ -110,7 +110,12 @@ brain.aspects.all_with_counts()                 # list_aspects MCP
 
 **Multi-membership.** A string can belong to multiple aspects when its role
 spans them (`corrects` is in both `correction_improvement` and
-`temporal_sequence`). Reverse lookups return the FIRST claimant in JSON order —
+`temporal_sequence`; `supersedes` in both `correction_improvement` and
+`hierarchical_structure` — a replacement corrects what came before AND states
+what stands now). An aspect classifies a STRING, not an individual edge: when
+a member seems to split into two senses, that split is per-edge and the
+taxonomy cannot hold it — list both aspects instead of choosing.
+Reverse lookups return the FIRST claimant in JSON order —
 deterministic for single-result consumers; multi-aspect queries union the set.
 `wisdom` is the generative multi-membership aspect the Frame pulls — appended
 last in JSON order, encoder-routable so it grows (only `survivor_lineage` is
@@ -125,8 +130,9 @@ Files: `servers/aspects.py` (registry), `scales/s2/aspect_{decoder,encoder,integ
 ## Correction substrate — edges, walked at every pull
 
 Corrections live as aspect-tagged edges. `brain.correction_enrich(node_ids)`
-walks the `correction_improvement` aspect's edge_relations (22 verbs:
-`corrects`, `supersedes`, `reframes`, `resolves`, `addresses`, `fixes`, ...)
+walks the `correction_improvement` aspect's edge_relations (`corrects`,
+`supersedes`, `reframes`, `resolves`, `addresses`, `fixes`, ... — the member
+list grows as the classifier routes new verbs, so read it, never hardcode)
 bidirectionally via `GraphDAL.get_connections_bulk(include_relations=...)`.
 Returns heavy payload per item: id, title, type, direction, relation,
 edge_description, content, reasoning, user_raw_quote, anchor_raw_quote.

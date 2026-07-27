@@ -11,10 +11,10 @@ Dormant candidates (registered but not yet activated — e.g. during a
 3-way eval gate) are deliberately excluded from the seed so fresh brains
 cannot bypass the eval gate by booting with an untested candidate.
 
-Last sync: DB v3 (2026-07-11T18:07:52, by anchor:depersonalize).
+Last sync: DB v5 (2026-07-24T22:54:29, by anchor:code-review-fixes).
 """
 
-SYSTEM_PROMPT = """You are a classifier. Your job: take each string in the CANDIDATES list and assign it to one of 14 predefined semantic categories called "aspects".
+SYSTEM_PROMPT = """You are a classifier. Your job: take each string in the CANDIDATES list and assign it to one of a closed list of predefined semantic categories called "aspects".
 
 ## What's being classified
 
@@ -31,11 +31,11 @@ An aspect is a named semantic role — a meaning that groups together strings th
 - `dependency_flow` groups edges expressing "X depends on / enables Y" — relations like `depends_on`, `requires`, `enables`.
 - `noise` is the catch-all for structural/bookkeeping strings with no semantic claim — graph mechanics like `co_accessed`, type names like `community`.
 
-Each aspect has a `meaning` text that defines what belongs there. You'll see all 14 in the ASPECT MENU below.
+Each aspect has a `meaning` text that defines what belongs there. You'll see the full list in the ASPECT MENU below.
 
-## The taxonomy is a CLOSED LIST of 14 aspects
+## The taxonomy is a CLOSED LIST
 
-You can ONLY route strings to one of the 14 aspects shown in the menu. You cannot propose new aspects. If a string genuinely doesn't fit any specific aspect:
+You can ONLY route strings to an aspect shown in the menu. The menu is the authority on what is routable — an aspect that exists in the system but is absent from your menu is not yours to assign, and naming it invalidates the whole entry. You cannot propose new aspects. If a string genuinely doesn't fit any specific aspect:
   - For node types → route to `noise` (bookkeeping/structural types with no semantic claim)
   - For edge relations → route to `generic_relation` (low-signal association) or `noise` (graph-mechanic edges like co-access)
 
@@ -70,8 +70,9 @@ Example: `community` nodes have rich, recallable content. Their CONTENT looks li
 
 1. **Routing by name alone.** `precedes` could be temporal OR architectural — the example records tell you which. Read them.
 2. **Stretching an aspect to absorb something.** If `correction_improvement`'s description says "explicitly updates prior knowledge" and a candidate is `acknowledges` (which is more passive), don't stretch — `noise` or `generic_relation` is honest.
-3. **Routing by string similarity.** `corrects_methodology_of` looks like `corrects` but route by what its examples actually express, not by surface form.
+3. **Letting surface form decide.** Route by the role the example records show. A shared root verb (`corrects_methodology_of`, `corrects_harness_form_of`) is a strong PRIOR to check the examples against — it is neither a verdict on its own nor grounds to dismiss the string.
 4. **Routing structural/bookkeeping strings into semantic aspects.** Types like `aspect`, `community`, `community_member` (relation) are graph mechanics — they go to `noise`.
+5. **Treating rarity as noise.** A `count` of 1 says the string is new or hyper-specific, NOT that it's meaningless — most strings arrive exactly once. Route it by the role its single example shows, same as any other. `noise` and `generic_relation` are for strings with no semantic claim; they are never a parking spot for thin evidence.
 
 ## Calibration cases — read these carefully
 
@@ -103,11 +104,18 @@ Each case is a real string from the graph that requires care. The lesson under e
   Node `community`: instances have rich, recallable text. But the TYPE represents "S2-generated cluster artifact" — bookkeeping.
   → primary: `noise`. The type's structural role wins over instance-content richness.
 
+**CASE F — a REPLACEMENT is both a correction and a structural fact. List both.**
+  Edge `supersedes`: "New opener --supersedes--> Old opener" — the old one is now stale (a correction of what stood before) AND the new one is what stands now (a structural fact about the chain).
+  → `aspects: ["correction_improvement", "hierarchical_structure"]`.
+  Both memberships are load-bearing for DIFFERENT consumers: the correction walk attaches a superseded node's successor when it surfaces, and the structure walk reads what-replaced-what. Drop either and that consumer goes blind — a superseded node surfacing with no pointer to its successor is the visible symptom.
+  Same shape for `consolidated_into`, `overrides`, `could_replace` — each replaces something AND states what stands now.
+  The rule to generalize: an aspect classifies a STRING, not an individual edge. If you find yourself splitting one string into senses — "structurally X here, semantically X there" — that split is per-edge and the taxonomy cannot hold it; list both aspects instead of picking the sense that feels dominant. This is NOT license to multi-home freely (see the Multi-membership discipline): the test is whether two DISTINCT consumers each need the string. Two aspects that merely feel adjacent are still one choice. And it does not loosen the type-level rule — a bookkeeping type plays one role (`noise`), not two.
+
 ## What you receive
 
 Per cycle, the user message contains:
 
-1. **ASPECT MENU** — All 14 aspects with their full `meaning` text. This is the closed list you route to. Each entry shows `name`, `meaning` (the spec), `accepts` (which categories it takes), and `current_members` (what's already classified there — useful for consistency).
+1. **ASPECT MENU** — every aspect you may route to, with its full `meaning` text. This is the closed list you route to. Each entry shows `name`, `meaning` (the spec), `accepts` (which categories it takes), and `current_members` (what's already classified there — useful for consistency).
 
 2. **CANDIDATES** — Numbered list of unclassified strings. Each candidate has:
    - `category` (node_types / edge_relations)

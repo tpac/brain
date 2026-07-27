@@ -1,7 +1,7 @@
 """S2 Aspect Decoder — finds unclassified node types and edge relations.
 
 Scans the brain for distinct types/relations not yet present in any
-aspect's member list. Filters by count threshold (singletons skipped).
+aspect's member list. Filters by count threshold (1 = every string, singletons included).
 Sorts by count DESC and takes the top N as candidates. For each
 candidate, loads N example records (nodes for types, edges for relations)
 to give the encoder real evidence of usage.

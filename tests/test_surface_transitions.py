@@ -129,6 +129,52 @@ class TestDecodeTransitions(BrainTestBase):
         self.assertIn(node_b['id'][:8], correction_ids,
                       'Correcting node B not found in correction chain for node A')
 
+    def test_correction_enrich_walks_every_replacement_verb(self):
+        """Each replacement verb in the seed must actually surface end-to-end.
+
+        The membership contract test asserts these verbs are in the
+        correction_improvement aspect; this asserts the consequence — that a
+        node joined by one of them surfaces its counterpart through
+        correction_enrich. Membership alone passes the moment someone appends a
+        string, even if the aspect plumbing or the relation filter in
+        get_connections_bulk regresses underneath it. The verb list is the same
+        constant the membership contract test pins (REPLACEMENT_VERBS in
+        tests/test_aspects_contract.py), so adding a verb there covers it here
+        too — one place, not two tuples drifting apart.
+        """
+        from tests.test_aspects_contract import REPLACEMENT_VERBS
+        for verb in REPLACEMENT_VERBS:
+            with self.subTest(relation=verb):
+                old = self.brain.remember(
+                    type='handoff', title='Opener superseded by %s' % verb,
+                    content='The previous state, replaced via %s.' % verb)
+                new = self.brain.remember(
+                    type='handoff', title='Opener that replaced via %s' % verb,
+                    content='The current state, arrived via %s.' % verb)
+                self.brain.connect_typed(
+                    source_id=new['id'], target_id=old['id'],
+                    relation=verb, weight=0.5,
+                    description='the newer opener replaces the older one',
+                    encoding_source='test:replacement_verbs')
+
+                enriched = self.brain.correction_enrich({old['id']})
+                chain = (enriched.get(old['id'])
+                         or enriched.get(old['id'][:8]) or [])
+                self.assertTrue(
+                    chain,
+                    'correction_enrich found nothing for a node replaced via '
+                    '%s — the replacement is invisible to recall' % verb)
+                self.assertIn(
+                    new['id'][:8], {e['id'] for e in chain},
+                    'the replacing node is missing from the chain for %s' % verb)
+                # The verb itself must survive the walk. Without this, a
+                # relation-mislabel regression (emitting a generic 'related',
+                # or collapsing the per-relation loop) keeps the id and loses
+                # the meaning every consumer renders.
+                self.assertIn(
+                    verb, {e.get('relation') for e in chain},
+                    'chain for %s carries the wrong relation label' % verb)
+
     def test_hebbian_surface_selected_to_co_accessed_edges(self):
         """surface-selected IDs → _hebbian_strengthen: creates co_accessed edges.
 

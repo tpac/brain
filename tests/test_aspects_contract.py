@@ -28,6 +28,16 @@ def _load_seed():
         return json.load(f)
 
 
+# Verbs that REPLACE prior knowledge. Every one must live in
+# correction_improvement, because `brain.correction_enrich()` walks that aspect
+# alone — a replacement verb missing from it means superseded nodes surface with
+# no pointer to their successor. Shared with
+# tests/test_surface_transitions.py::test_correction_enrich_walks_every_replacement_verb
+# so the membership contract and the end-to-end behaviour cover the same list.
+REPLACEMENT_VERBS = ('supersedes', 'superseded_by', 'absorbed_into',
+                     'consolidated_into')
+
+
 class TestSeedExists(unittest.TestCase):
     def test_seed_file_exists(self):
         self.assertTrue(os.path.isfile(SEED_PATH),
@@ -182,6 +192,27 @@ class TestSeedLoadsViaRegistry(unittest.TestCase):
         # specific markers
         self.assertIn('correction', a.node_types)
         self.assertIn('corrects', a.edge_relations)
+
+    def test_replacement_verbs_are_correction_class(self):
+        """`supersedes`/`superseded_by` must be in correction_improvement.
+
+        `brain.correction_enrich()` walks correction_improvement ALONE, so a
+        replacement verb missing from it means every superseded node surfaces
+        with no pointer to its successor — the exact bug the seed shipped until
+        2026-07-24 (332 supersedes edges, none reaching recall). They stay
+        multi-homed in hierarchical_structure too; this pins the correction
+        half, which is the one recall depends on.
+        """
+        rels = self.registry.correction_improvement.edge_relations
+        for verb in REPLACEMENT_VERBS:
+            with self.subTest(verb=verb):
+                self.assertIn(
+                    verb, rels,
+                    "%s is a replacement verb — correction_enrich() must see it"
+                    % verb)
+        # Still structurally homed as well — multi-membership, not a move.
+        self.assertIn('supersedes',
+                      self.registry.hierarchical_structure.edge_relations)
 
     def test_healer_display_labels_present(self):
         # All 8 healer-facing aspects should carry display_label metadata

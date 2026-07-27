@@ -318,6 +318,67 @@ class TestAspectSelfHeal(unittest.TestCase):
                 os.environ['ASPECTS_JSON_PATH'] = orig
             shutil.rmtree(tmpdir, ignore_errors=True)
 
+    def test_missing_member_of_existing_aspect_healed(self):
+        """A seed MEMBER the working copy lacks is appended.
+
+        Without this, a curated membership fix ships to fresh installs only and
+        every existing brain keeps the defect while the seed-based contract
+        tests stay green — how `absorbed_into` and then `supersedes` each sat
+        outside the correction walk in production while the seed was correct.
+        """
+        import json
+        import shutil
+        import tempfile
+        from servers.scales.s2.aspect_contract import (
+            ensure_aspects_user_copy, SEED_ASPECTS_JSON_PATH)
+
+        with open(SEED_ASPECTS_JSON_PATH) as f:
+            seed = json.load(f)
+        tmpdir = tempfile.mkdtemp()
+        orig = os.environ.get('ASPECTS_JSON_PATH')
+        try:
+            wc = os.path.join(tmpdir, 'aspects_v1.json')
+            # Working copy has every aspect, but its correction_improvement is
+            # missing the replacement verbs the seed carries — and holds a
+            # classifier-grown member of its own that must survive the heal.
+            stale = {k: {kk: (list(vv) if isinstance(vv, list) else vv)
+                         for kk, vv in v.items()}
+                     for k, v in seed.items()}
+            ci = stale['correction_improvement']['edge_relations']
+            for verb in ('supersedes', 'superseded_by'):
+                while verb in ci:
+                    ci.remove(verb)
+            ci.append('classifier_grown')
+            with open(wc, 'w') as f:
+                json.dump(stale, f)
+
+            os.environ['ASPECTS_JSON_PATH'] = wc
+            logged = []
+            self.assertTrue(ensure_aspects_user_copy(log_fn=logged.append))
+            with open(wc) as f:
+                healed = json.load(f)
+            ci_healed = healed['correction_improvement']['edge_relations']
+            for verb in ('supersedes', 'superseded_by'):
+                self.assertIn(verb, ci_healed)
+            # additive: the classifier's own member survives
+            self.assertIn('classifier_grown', ci_healed)
+            # appended, not inserted — pin the WHOLE prior list as a prefix,
+            # not just the first 8. The verbs removed above sit past index 8, so
+            # a slice comparison passes even if the heal inserted at index 8.
+            self.assertEqual(ci_healed[:len(ci)], ci)
+            self.assertEqual(ci_healed[len(ci):], ['supersedes', 'superseded_by'])
+            # loud: the heal announced itself
+            self.assertTrue(logged, 'member heal must call log_fn')
+            self.assertIn('supersedes', logged[0])
+            # idempotent
+            self.assertFalse(ensure_aspects_user_copy())
+        finally:
+            if orig is None:
+                os.environ.pop('ASPECTS_JSON_PATH', None)
+            else:
+                os.environ['ASPECTS_JSON_PATH'] = orig
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
 
 if __name__ == '__main__':
     unittest.main()

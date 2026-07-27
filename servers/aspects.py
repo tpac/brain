@@ -195,9 +195,13 @@ class AspectRegistry:
         self._reverse_node = {}
         self._reverse_edge = {}
 
-        # First-boot: seed user-dir copy from the repo baseline if missing
+        # Seed the user-dir copy on first boot; self-heal aspects/members the
+        # working copy is missing relative to the seed. Heals are logged, not
+        # silent — they change which edges the correction walk sees.
         try:
-            ensure_aspects_user_copy()
+            ensure_aspects_user_copy(
+                log_fn=lambda msg: self._brain._log_warning(
+                    'aspect_registry_heal', msg))
         except Exception as e:
             try:
                 self._brain._log_warning(

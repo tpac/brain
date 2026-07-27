@@ -222,9 +222,11 @@
       "redefines",
       "rejected_for",
       "overrides",
-      "absorbed_into"
+      "absorbed_into",
+      "supersedes",
+      "superseded_by"
     ],
-    "meaning": "Knowledge or edges that explicitly UPDATE / AMEND / FIX prior knowledge \u2014 there's a target being corrected. Node types that ARE corrections; edges where one node fixes, supersedes-semantically, or improves another. NOT: extensions that elaborate without amending (extension_refinement). Test: does this REPLACE or FIX something that was wrong? If yes \u2192 correction. If it just BUILDS ON without amending \u2192 extension.",
+    "meaning": "Knowledge or edges that explicitly UPDATE / AMEND / FIX / REPLACE prior knowledge \u2014 there's a target being corrected. Node types that ARE corrections; edges where one node fixes, replaces, or improves another (`corrects`, `supersedes`, `reframes`, `fixes`, `resolves`). `supersedes` / `superseded_by` are multi-homed HERE and in hierarchical_structure \u2014 a replacement both corrects what came before and states what stands now; list both, never pick one. NOT: extensions that elaborate without amending (extension_refinement). Test: does this REPLACE or FIX something that was wrong or outdated? If yes \u2192 correction. If it just BUILDS ON without amending \u2192 extension.",
     "dimension": "semantic",
     "locked": true,
     "metadata": {
@@ -425,7 +427,7 @@
       "operates_within",
       "fits_into"
     ],
-    "meaning": "Edges expressing CONTAINMENT or SUPERSESSION \u2014 part_of, includes, contains, supersedes-structurally. Skeleton of what contains what and what replaces what at structural level. NOT: dependency (X needs Y to exist, not contain Y) or extension (refining vs containing). Test: is X a STRUCTURAL PIECE of Y, or does Y CONTAIN X? If yes \u2192 hierarchical. If X just RELIES on Y \u2192 dependency.",
+    "meaning": "Edges expressing CONTAINMENT or SUPERSESSION \u2014 part_of, includes, contains, supersedes. Skeleton of what contains what and what replaces what. `supersedes` / `superseded_by` are multi-homed HERE and in correction_improvement (a replacement is also a correction of the replaced) \u2014 list both, never pick one. NOT: dependency (X needs Y to exist, not contain Y) or extension (refining vs containing). Test: is X a STRUCTURAL PIECE of Y, or does Y CONTAIN X? If yes \u2192 hierarchical. If X just RELIES on Y \u2192 dependency.",
     "dimension": "semantic",
     "locked": true,
     "metadata": {

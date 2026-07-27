@@ -816,9 +816,22 @@ class ConsolidationDecoder(IntegrationUnit):
         return dict(edges)
 
     def _has_correction_edge(self, node_ids):
-        """Check if any correction edge exists between cluster members."""
-        correction_rels = set(self.brain.aspects.relations_in(
-            ['correction_improvement', 'hierarchical_structure']))
+        """Check if any correction edge exists between cluster members.
+
+        Reads the `correction_improvement` aspect — the same one
+        `brain.correction_enrich()` walks, so the decoder and recall agree on
+        what counts as "these two already resolved each other".
+
+        SCOPE: correction only. Containment relations (`part_of`, `abstracts`,
+        `contains`, ~364 live edges) are NOT correction evidence and are not
+        flagged here — but they are also the strongest available signal that
+        two high-cosine nodes are a part and its whole rather than duplicates,
+        and nothing currently carries that signal to the encoder (the cluster's
+        own intra-pair edges are filtered out of the prompt as internal). A
+        separate containment flag is the missing piece.
+        """
+        correction_rels = set(
+            self.brain.aspects.correction_improvement.edge_relations)
         if not correction_rels:
             correction_rels = {'corrects', 'corrected_by', 'supersedes', 'superseded_by'}
         return self.brain._graph.has_edge_between(
