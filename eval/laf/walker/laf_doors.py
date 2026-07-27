@@ -31,6 +31,22 @@ cue effect measured +2.9 to +4.1pp on the blend-fit gains, so door-1 is the
 one place in this arc where the effect may exceed its own detection floor.
 Smaller n, but a bigger and un-cancelled effect.
 
+SCOPE LIMIT ON THE lambda RESULT (review 2026-07-25 — must travel with the
+claim). A.build() filters to turns rankable under the PRODUCTION mix, i.e.
+lambda=0.65 (793 built -> 707 kept, 11% dropped). Turns with no usable history
+are therefore excluded UPSTREAM of this fit -- and those are exactly the turns
+where lambda=1.0 would matter most (nothing to blend). Measured on what
+survives: 0/707 golds have non-finite zn(mh), so the arms here do share one
+ranking universe and the comparison is clean. But "the fit never chose
+lambda=1.0" is scoped to TURNS THAT HAVE USABLE HISTORY; it says nothing about
+history-less turns (session openers). Testing those needs a corpus built
+without the lambda=0.65 rankability filter.
+
+(The 0*NaN hazard this check was looking for is real in principle -- at
+lambda<1.0 a NaN zmh would poison mix and silently shrink the universe
+relative to lambda=1.0 -- but it does not fire on this corpus, and the
+`else zf0` branch in rank_lam guards the lambda=1.0 end regardless.)
+
 Read-only. Run:  ./dev python3 eval/laf/walker/laf_doors.py
 """
 import json
@@ -47,7 +63,6 @@ from lambda_probe import zn                                         # noqa: E402
 import enrichment_lane as EL                                       # noqa: E402
 import laf_lane_audit as A                                         # noqa: E402
 import laf_real_perf as RP                                         # noqa: E402
-from laf_confirm import refit_light                                # noqa: E402
 from enrichment_widen import load_communities                      # noqa: E402
 
 FOLD_SEEDS = (0, 1, 2, 3, 4)
