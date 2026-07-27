@@ -87,6 +87,47 @@ class TestHealSupersededHandoffs(SupersessionBase):
         self.assertEqual(self._archived(old), 1)
         self.assertEqual(self._archived(new), 0)
 
+    def test_inverted_stored_orientation_still_retires_older(self):
+        # Finding 1 of the a4f934c review: add_relation reuses the pair's
+        # physical edge row in either orientation (Hebbian co-access creates
+        # them in recall order), so `supersedes` can be STORED inverted —
+        # old as source, new as target. The heal must not trust orientation:
+        # created_at decides, and the OLDER node retires regardless.
+        old = self._node('opener corrupt-direction old')
+        new = self._node('opener corrupt-direction new')
+        self.brain.connect(old, new, relation='supersedes')  # inverted on purpose
+
+        self._decoder()._heal_graph()
+
+        self.assertEqual(self._archived(old), 1)
+        self.assertEqual(self._archived(new), 0)
+
+    def test_self_loop_never_archives(self):
+        # Finding 2: connect(x, x, 'supersedes') succeeds at the DAL; the
+        # heal must not archive a node as superseded by itself.
+        x = self._node('opener self-loop')
+        self.brain.connect(x, x, relation='supersedes')
+
+        self._decoder()._heal_graph()
+
+        self.assertEqual(self._archived(x), 0)
+
+    def test_equal_created_at_skips(self):
+        # No date ground truth → never guess an archive.
+        a = self._node('opener twin a')
+        b = self._node('opener twin b')
+        ts = self.brain.conn.execute(
+            'SELECT created_at FROM nodes WHERE id = ?', (a,)).fetchone()[0]
+        self.brain.conn.execute(
+            'UPDATE nodes SET created_at = ? WHERE id = ?', (ts, b))
+        self.brain.conn.commit()
+        self.brain.connect(b, a, relation='supersedes')
+
+        self._decoder()._heal_graph()
+
+        self.assertEqual(self._archived(a), 0)
+        self.assertEqual(self._archived(b), 0)
+
     def test_parallel_openers_untouched(self):
         # Two live threads, deliberately NO supersedes edge — both stay live.
         t1 = self._node('opener thread A')
@@ -169,15 +210,14 @@ class TestIntraClusterEdgeRenderContract(SupersessionBase):
     def test_intra_cluster_edge_rendered_with_direction(self):
         old = self._node('opener old')
         new = self._node('opener new')
-        # Mirror shape as _load_edge_data produces: the same physical edge
-        # appears under both members, outgoing on the actor.
+        # Production shape (get_neighbors_bulk): an intra-cluster edge is
+        # assigned to its SOURCE member only, direction='outgoing'. The
+        # target member has NO mirror entry.
         edge_details = {
             new: {old: [{'relation': 'supersedes', 'description': 'newer opener',
                          'title': 'opener old', 'type': 'handoff',
                          'direction': 'outgoing'}]},
-            old: {new: [{'relation': 'supersedes', 'description': 'newer opener',
-                         'title': 'opener new', 'type': 'handoff',
-                         'direction': 'incoming'}]},
+            old: {},
         }
         text = self._encoder()._format_clusters([self._cluster(old, new, edge_details)])
 

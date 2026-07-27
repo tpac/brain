@@ -167,7 +167,8 @@ class ConsolidationDecoder(IntegrationUnit):
                 nid, archived_by='s2:consolidation',
                 reason='community with 0 members')
             if r.get('ok'):
-                archived.append({'id': nid, 'title': title, 'reason': 'community with 0 members'})
+                archived.append({'id': nid, 'title': title or '',
+                                 'reason': 'community with 0 members'})
                 print('[consolidation] Healed: archived orphan community "%s" (%s)' % (
                     title[:50], nid[:8]), flush=True)
 
@@ -188,41 +189,56 @@ class ConsolidationDecoder(IntegrationUnit):
         # LLM-grown (58 verbs incl. improves/flags/restates) and would
         # silently widen an archive trigger as the classifier files new
         # verbs. Exact replacement semantics only: `supersedes` + its
-        # inverse `superseded_by` (source=actor, so the retired predecessor
-        # is the target resp. the source).
-        superseded_handoffs = self.brain.conn.execute("""
-            SELECT old_id, old_title, MIN(new_id) FROM (
-                SELECT t.id AS old_id, t.title AS old_title, s.id AS new_id
-                FROM edges e
-                JOIN edge_relations er ON er.edge_id = e.edge_id
-                JOIN nodes s ON s.id = e.source_id
-                JOIN nodes t ON t.id = e.target_id
-                WHERE er.relation = 'supersedes' AND er.archived = 0
-                AND s.type = 'handoff' AND t.type = 'handoff'
-                AND s.archived = 0 AND t.archived = 0
-                AND t.locked = 0 AND t.critical = 0
-                UNION ALL
-                SELECT s.id, s.title, t.id
-                FROM edges e
-                JOIN edge_relations er ON er.edge_id = e.edge_id
-                JOIN nodes s ON s.id = e.source_id
-                JOIN nodes t ON t.id = e.target_id
-                WHERE er.relation = 'superseded_by' AND er.archived = 0
-                AND s.type = 'handoff' AND t.type = 'handoff'
-                AND s.archived = 0 AND t.archived = 0
-                AND s.locked = 0 AND s.critical = 0
-            ) GROUP BY old_id, old_title
+        # inverse `superseded_by`.
+        #
+        # Stored edge orientation is ADVISORY here, never trusted for the
+        # archive direction: add_relation reuses the pair's existing physical
+        # edge row in either orientation (surface-pick Hebbian co-access
+        # creates those rows in recall order), so a later `supersedes` can be
+        # stored inverted — see brain node id:c3f37710 ("co_accessed fixing
+        # direction by accident is the steady state"). The edge tells us a
+        # supersession relationship EXISTS for the pair; created_at decides
+        # which node retires. Older-by-created_at is ground truth for opener
+        # chains (a successor is by definition newer). Equal timestamps or
+        # self-loops → skip, fail-safe.
+        supersession_pairs = self.brain.conn.execute("""
+            SELECT s.id, s.created_at, s.locked, s.critical, s.title,
+                   t.id, t.created_at, t.locked, t.critical, t.title
+            FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
+            JOIN nodes s ON s.id = e.source_id
+            JOIN nodes t ON t.id = e.target_id
+            WHERE er.relation IN ('supersedes', 'superseded_by')
+            AND er.archived = 0
+            AND s.type = 'handoff' AND t.type = 'handoff'
+            AND s.archived = 0 AND t.archived = 0
+            AND s.id != t.id
         """).fetchall()
 
-        for nid, title, successor_id in superseded_handoffs:
-            reason = 'handoff superseded by %s' % successor_id[:8]
+        seen_pairs = set()
+        for row in supersession_pairs:
+            a = {'id': row[0], 'created': row[1], 'locked': row[2],
+                 'critical': row[3], 'title': row[4]}
+            b = {'id': row[5], 'created': row[6], 'locked': row[7],
+                 'critical': row[8], 'title': row[9]}
+            key = frozenset((a['id'], b['id']))
+            if key in seen_pairs:
+                continue
+            seen_pairs.add(key)
+            if not a['created'] or not b['created'] or a['created'] == b['created']:
+                continue  # no date ground truth — never guess an archive
+            older, newer = (a, b) if a['created'] < b['created'] else (b, a)
+            if older['locked'] or older['critical']:
+                continue  # quiet skip; don't bounce off archive_node's guard
+            reason = 'handoff superseded by %s' % newer['id'][:8]
             r = self.brain.archive_node(
-                nid, archived_by='s2:consolidation',
-                reason=reason, extra={'superseded_by': successor_id})
+                older['id'], archived_by='s2:consolidation',
+                reason=reason, extra={'superseded_by': newer['id']})
             if r.get('ok'):
-                archived.append({'id': nid, 'title': title, 'reason': reason})
+                archived.append({'id': older['id'], 'title': older['title'] or '',
+                                 'reason': reason})
                 print('[consolidation] Healed: archived superseded handoff "%s" (%s)' % (
-                    (title or '')[:50], nid[:8]), flush=True)
+                    (older['title'] or '')[:50], older['id'][:8]), flush=True)
 
         if archived:
             # Use 'O' not 'delta' — heal is an observation, not a consolidation action.
@@ -878,11 +894,10 @@ class ConsolidationDecoder(IntegrationUnit):
 
         SCOPE: correction only. Containment relations (`part_of`, `abstracts`,
         `contains`, ~364 live edges) are NOT correction evidence and are not
-        flagged here — but they are also the strongest available signal that
-        two high-cosine nodes are a part and its whole rather than duplicates,
-        and nothing currently carries that signal to the encoder (the cluster's
-        own intra-pair edges are filtered out of the prompt as internal). A
-        separate containment flag is the missing piece.
+        flagged here. They DO reach the encoder now — the intra-cluster edge
+        block in the encoder render shows every relation between members,
+        verbatim with direction — so the encoder can see "part and its whole"
+        even though no boolean flag fires for it.
         """
         correction_rels = set(
             self.brain.aspects.correction_improvement.edge_relations)

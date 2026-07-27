@@ -323,9 +323,16 @@ class ConsolidationEncoder(IntegrationUnit):
             # a 07-23 opener absorbed into its 07-21 predecessor).
             # Contract: tests/test_s2_consolidation_supersession.py pins that
             # intra-member directed edges appear here. Do not re-filter them.
-            # Each physical edge lives in both members' edge_details (outgoing
-            # on the actor, incoming on the target) — render outgoing only,
-            # so each relation appears exactly once, from the actor's side.
+            # Shape note: get_neighbors_bulk assigns an intra-cluster edge to
+            # its SOURCE member only (direction='outgoing'); the target
+            # member's edge_details has no mirror entry. The outgoing-only
+            # filter is therefore currently a no-op for intra edges — kept as
+            # a defensive guard so a future both-owners loader can't make
+            # every edge render twice, once per direction.
+            # CAVEAT: the stored direction can be inverted — add_relation
+            # hangs relations on the pair's existing physical row in either
+            # orientation (brain node id:c3f37710). The arrow is evidence,
+            # not ground truth; created dates render per node alongside it.
             intra_lines = []
             all_details = cluster.get('edge_details', {})
             for nid in cluster['nodes']:
