@@ -44,9 +44,14 @@ import laf_lane_audit as A                                         # noqa: E402
 import laf_real_perf as RP                                         # noqa: E402
 from enrichment_widen import load_communities                      # noqa: E402
 
-FOLD_SEEDS = (0, 1, 2)
+FOLD_SEEDS = (0, 1, 2, 3, 4)   # >=3 partitions is the rule (9ca6cd5b); 5 here
+                               # because the retune's own number now needs it
 FOLDS = 5
 PASSES = 2
+ERA_CUT = '2026-05-11'         # wide-corpus era split: the retune's gain looks
+                               # concentrated in the PRE-cutoff (older) golds,
+                               # which lines up with age being the strongest
+                               # structural predictor of a miss (-0.570)
 REPORT = OUT_DIR / 'laf_confirm.md'
 
 
@@ -123,9 +128,12 @@ def run_corpus(label, cutoff):
             gpos = int(np.searchsorted(U, t['gr']))
             if gpos >= len(U) or U[gpos] != t['gr']:
                 continue
+            bd = bundles.get(t['key'])
+            ts = (bd['ts'] or '') if bd else ''
             rows.append({'Z': np.column_stack(cols).astype(np.float64),
                          'zmh': zn(t['mh'])[U], 'g': gpos,
-                         'sess': t['sess'], 'stratum': t['stratum']})
+                         'sess': t['sess'], 'stratum': t['stratum'],
+                         'era': 'pre-cutoff' if ts < ERA_CUT else 'post-cutoff'})
         prep[name] = (rows, lanes, fixed)
     lens = {k: len(v[0]) for k, v in prep.items()}
     if len(set(lens.values())) != 1:
@@ -154,7 +162,8 @@ def run_corpus(label, cutoff):
             print('    seed %d %-34s reach@5 %.1f%%'
                   % (seed, name, 100 * np.nanmean(H)))
     strata = [p['stratum'] for p in prep['A shipped'][0]]
-    return out, strata, lens['A shipped']
+    eras = [p['era'] for p in prep['A shipped'][0]]
+    return out, strata, eras, lens['A shipped']
 
 
 def main():
@@ -170,25 +179,54 @@ def main():
     for label, cutoff in (('quality (≥2026-05-11) — PRIMARY', '2026-05-11'),
                           ('wide (all valid golds) — SENSITIVITY', '0000')):
         print('=== %s ===' % label)
-        out, strata, n = run_corpus(label, cutoff)
+        out, strata, eras, n = run_corpus(label, cutoff)
         L += ['## %s · n=%d' % (label, n), '',
-              '| fold seed | A shipped | B refit 5 | C +enrichment | C−A (95% CI) | C−B (95% CI) |',
-              '|---|---|---|---|---|---|']
-        ca_ok, cb_ok = [], []
+              '| fold seed | A shipped | B refit 5 | C +enrichment | **B−A (95% CI)** | C−A (95% CI) | C−B (95% CI) |',
+              '|---|---|---|---|---|---|---|']
+        ca_ok, cb_ok, ba_ok = [], [], []
         for seed in FOLD_SEEDS:
             HA = out[(seed, 'A shipped')]
             HB = out[(seed, 'B refit 5')]
             HC = out[(seed, 'C refit 5 + enrichment K=20+corr')]
+            mba, _, lba, hba = RP.boot(HB, HA)
             ma, _, la, ha = RP.boot(HC, HA)
             mb, _, lb, hb = RP.boot(HC, HB)
             ca_ok.append(la > 0)
             cb_ok.append(lb > 0)
+            ba_ok.append(lba > 0)
             L.append('| %d | %.1f%% | %.1f%% | %.1f%% | %+.2f [%+.2f, %+.2f] | '
-                     '%+.2f [%+.2f, %+.2f] |'
+                     '%+.2f [%+.2f, %+.2f] | %+.2f [%+.2f, %+.2f] |'
                      % (seed, 100 * np.nanmean(HA), 100 * np.nanmean(HB),
-                        100 * np.nanmean(HC), ma, la, ha, mb, lb, hb))
-        L += ['', '- **C vs A excludes 0 in %d/%d fold seeds** · C vs B in %d/%d'
-              % (sum(ca_ok), len(ca_ok), sum(cb_ok), len(cb_ok)), '']
+                        100 * np.nanmean(HC), mba, lba, hba, ma, la, ha,
+                        mb, lb, hb))
+        L += ['', '- **B (retune) vs A excludes 0 in %d/%d fold seeds** · '
+              'C vs A in %d/%d · C vs B in %d/%d'
+              % (sum(ba_ok), len(ba_ok), sum(ca_ok), len(ca_ok),
+                 sum(cb_ok), len(cb_ok)), '']
+
+        # era split — does the retune's gain live in the OLDER golds?
+        er = np.array(eras)
+        if len(set(eras)) > 1:
+            L += ['### Era split — is the retune an OLD-gold effect?', '',
+                  'The retune looked ~0 on the quality corpus and +1.5–1.9pp on '
+                  'the wide one; the wide corpus differs only by adding '
+                  'pre-%s golds. If the gain sits in that slice, the retune is '
+                  'an old-gold effect (consistent with age being the strongest '
+                  'miss predictor, −0.570).' % ERA_CUT, '',
+                  '| era | n | A shipped | B refit 5 | Δ (B−A) |',
+                  '|---|---|---|---|---|']
+            for e in ('pre-cutoff', 'post-cutoff'):
+                m = er == e
+                if not m.any():
+                    continue
+                a = np.mean([np.nanmean(out[(sd, 'A shipped')][m])
+                             for sd in FOLD_SEEDS])
+                bb = np.mean([np.nanmean(out[(sd, 'B refit 5')][m])
+                              for sd in FOLD_SEEDS])
+                L.append('| %s | %d | %.1f%% | %.1f%% | %+.1fpp |'
+                         % (e, int(m.sum()), 100 * a, 100 * bb,
+                            100 * (bb - a)))
+            L.append('')
 
         # per stratum, pooled over fold seeds (449fb9a7: never quote the blend)
         L += ['### Per stratum (fold seeds pooled)', '',
