@@ -255,6 +255,49 @@ class TestConsolidationAbsorbDetection(BrainTestBase):
         self.assertEqual(result.get('skipped_recorded'), 1)   # real skip stamped
         self.assertEqual(self._rejection_count(), 1)
 
+    def test_edge_resolved_cluster_also_fingerprinted(self):
+        # Policy change 2026-07-27 (journal finding #4): suppression follows
+        # the encoder's DECISION, not its edge vocabulary. A KEEP that draws
+        # an edge — whatever the verb (`resolves`, `depends_on`, ...) — must
+        # still stamp a fingerprint, or verb-mismatched resolutions re-propose
+        # every cycle. Under the old policy this cluster was exempt.
+        from servers.scales.s2 import consolidation as consol_mod
+        n1 = self.brain.remember(type='fact', title='kept a', content='c')['id']
+        n2 = self.brain.remember(type='fact', title='kept b', content='c')['id']
+        u = self._unit()
+
+        def _encoder_keeps(clusters):
+            # KEEP resolution with a verb the decoder's skip-list doesn't know.
+            self.brain.connect(n1, n2, relation='resolves')
+            return {'write_actions': 1, 'rounds': 2, 'actions': 1,
+                    'action_details': [{'tool': 'brain_batch', 'input': {
+                        'operations': [{'op': 'connect', 'source_id': n1,
+                                        'target_id': n2,
+                                        'relation': 'resolves'}]}}]}
+
+        with mock.patch.object(consol_mod.ConsolidationDecoder, 'run',
+                               return_value=self._fake_decode(n1, n2, 'needs_judgment')), \
+             mock.patch.object(consol_mod.ConsolidationEncoder, 'run',
+                               side_effect=_encoder_keeps):
+            u.run()
+
+        self.assertEqual(self._rejection_count(), 1)
+
+        # The fingerprint must be re-derivable NEXT cycle: it was recorded
+        # with post-encode updated_at, so a proposal rebuilt from the current
+        # DB state must be filtered out.
+        from servers.scales.s2.rejection_table import filter_rejected
+        fresh = {nid: self.brain.conn.execute(
+            'SELECT updated_at FROM nodes WHERE id = ?', (nid,)).fetchone()[0]
+            for nid in (n1, n2)}
+        proposal = {'type': 'consolidation_cluster',
+                    'members': sorted([n1, n2]),
+                    'member_updated_at': fresh}
+        surviving, suppressed = filter_rejected(self.brain, [proposal])
+        self.assertEqual(surviving, [],
+                         'edge-resolved cluster re-proposed despite fingerprint')
+        self.assertEqual(suppressed, 1)
+
 
 if __name__ == '__main__':
     unittest.main()
