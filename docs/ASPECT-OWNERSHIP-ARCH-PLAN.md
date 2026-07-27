@@ -680,6 +680,32 @@ test-stub shortcuts.
   (2026-06-16) and is pinned by `tests/test_aspects_path_isolation.py`. `IsolatedBrain` and
   `BrainTestBase` must redirect *after* import, which no import-time constant supports.
 
+## Small deferred items — real, low-cost, would otherwise evaporate
+
+These came out of the pre-commit review of the 2026-07-25 aspect fix and are too small to be steps,
+but each is a genuine defect. Fold them into whichever step touches the same file.
+
+- **`ensure_aspects_user_copy` can break noise-exclusivity.** It is now a second writer of semantic
+  member lists and the only one that doesn't enforce `noise ∩ semantic = ∅` (the invariant
+  `_validate` logs an error on, per `id:4d190406`). Latent today — verified no overlap in either the
+  seed or the working copy — but the live `noise` already carries classifier-grown members the seed
+  lacks (`test_marker`, `system_note`, `co_member`, `member`), so a future curated seed edit filing
+  one of those under a semantic aspect would re-break it every boot with nothing to repair it. Step 3
+  (validate at the door) covers this for free.
+- **First-boot seed copy is not atomic.** `aspect_contract.py:114` uses `shutil.copy2` while the heal
+  write one screen below goes to real trouble with tempfile + `os.replace` and documents why. Two
+  processes constructing a Brain concurrently on first boot can leave a partial file, after which
+  every subsequent boot takes the `except (OSError, json.JSONDecodeError): return False` path and
+  never re-seeds — permanently the empty-registry state the function's own comment calls
+  catastrophic. Fix: copy into a tempfile + `os.replace`, and on `JSONDecodeError` move the corrupt
+  file aside and re-seed rather than returning False. Belongs with Step 1.
+- **`_render_py`'s `constant` parameter is accepted and never used** (`sync_prompts.py`) — the
+  template hardcodes `SYSTEM_PROMPT`. A `SEED_PROMPTS` entry declaring any other constant name would
+  be permanently out of sync and have its constant renamed on every sync. Latent; one-line fix.
+- **Three aspect names sitting in `noise.edge_relations`** (`temporal_sequence`,
+  `extension_refinement`, `validation_evidence`) — audited harmless (`id:40e7125a`), one-line
+  cleanup, do it whenever Step 5 or Step 6 opens the JSON.
+
 ## Also noted, outside this boundary
 
 `ASPECT['model'] = 'claude-sonnet-4-6'` and `max_tokens` in `aspect_contract.py:19-20` are **dead for
