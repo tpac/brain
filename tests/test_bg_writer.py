@@ -143,6 +143,30 @@ class TestDrainProcessesAccess(BrainTestBase):
         self.assertEqual(after[0], before + 1)
         self.assertEqual(after[1], '2026-05-18T12:00:02')
 
+    def test_drain_never_bumps_updated_at(self):
+        # Contract (2026-07-27): reads must never look like writes.
+        # updated_at means "a write mutated this row" — access marks carry
+        # their semantics in last_accessed/access_count only. The old
+        # access-bump of updated_at broke the community idle gate
+        # (always-firing), churned consolidation SKIP fingerprints, and got
+        # the recall_recent tool deleted. Regression here = all of that back.
+        result = self.brain.remember(
+            type='test', title='updated-at-invariant',
+            content='content',
+            encoding_source='anchor:test')
+        nid = result['id']
+        before = self.brain.conn.execute(
+            'SELECT updated_at FROM nodes WHERE id = ?', (nid,)).fetchone()[0]
+
+        recall_write_queue.enqueue_access(nid, 'sess1', '2026-05-18T12:00:00')
+        recall_write_queue.drain_once(self.brain)
+
+        after = self.brain.conn.execute(
+            'SELECT updated_at FROM nodes WHERE id = ?', (nid,)).fetchone()[0]
+        self.assertEqual(after, before,
+                         'access drain bumped updated_at — reads must never '
+                         'look like writes')
+
     def test_drain_two_sessions_two_increments(self):
         result = self.brain.remember(
             type='test', title='drain-target-2sess',

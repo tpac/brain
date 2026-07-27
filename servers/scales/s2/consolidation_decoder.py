@@ -469,16 +469,15 @@ class ConsolidationDecoder(IntegrationUnit):
     def _get_changed_node_ids(self, since_iso):
         """Node IDs created or revised since the cutoff, from node timestamps.
 
-        Keys on created_at/revised_at — NOT updated_at. updated_at is bumped by
-        the recall access-mark drain (recall_write_queue), so keying on it would
-        pull every *recalled* node into the change-set: that both defeats the
-        incremental scan (a busy brain re-scans most of the graph each cycle) and
-        — via the `already_reviewed.difference_update(changed_ids)` in
-        _scan_embeddings — drops a recalled node's suppression edge out of the
-        reviewed set, so settled pairs re-surface every cycle. revised_at moves
-        only on a real revise()/absorb — exactly when re-checking for new
-        near-duplicates is warranted. Community nodes are excluded (consolidation
-        scans non-community nodes only). Empty cutoff returns the full active set.
+        Keys on created_at/revised_at — NOT updated_at. revised_at moves only
+        on a real revise()/absorb — exactly when re-checking for new
+        near-duplicates is warranted; updated_at also moves on non-content
+        writes (archive, metadata) that don't change what the dedup scan
+        judges. (Historically updated_at was also bumped by the recall
+        access-mark drain — fixed 2026-07-27, reads no longer look like
+        writes — but revised_at remains the tighter key here.) Community
+        nodes are excluded (consolidation scans non-community nodes only).
+        Empty cutoff returns the full active set.
         """
         c = self.brain.conn
         if not since_iso:

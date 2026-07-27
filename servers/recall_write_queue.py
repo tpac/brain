@@ -269,19 +269,21 @@ def drain_once(brain) -> None:
             # Atomic +1 per (node, session) pair via executemany. The
             # `archived = 0` filter makes the UPDATE a silent no-op on
             # archived nodes (race between enqueue and drain — intended,
-            # not an error). Activation bump is a fixed 0.1 per recall. This
-            # drain is the sole access-mark writer and bumps updated_at — which
-            # is why consolidation's incremental scan keys on revised_at, not
-            # updated_at (see consolidation_decoder._get_changed_node_ids).
+            # not an error). Activation bump is a fixed 0.1 per recall.
+            # Deliberately does NOT touch updated_at: reads must never look
+            # like writes. Access semantics live in last_accessed; updated_at
+            # means "a write mutated this row" (contract.py field spec) —
+            # the old access-bump broke that for every consumer (community
+            # idle gate always-firing, consolidation fingerprint churn, the
+            # deleted recall_recent tool). Pinned by test_bg_writer.
             conn.executemany(
                 'UPDATE nodes SET '
                 '    access_count = access_count + 1, '
                 '    activation = MIN(1.0, activation + 0.1), '
                 '    recency_score = 1.0, '
-                '    last_accessed = ?, '
-                '    updated_at = ? '
+                '    last_accessed = ? '
                 'WHERE id = ? AND archived = 0',
-                [(ts, ts, nid) for (nid, _sid), ts in access_snap.items()])
+                [(ts, nid) for (nid, _sid), ts in access_snap.items()])
             with _lock:
                 _stats['access_drained_total'] += len(access_snap)
 
