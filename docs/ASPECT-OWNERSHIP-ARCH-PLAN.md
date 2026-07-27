@@ -234,7 +234,14 @@ place to live.
 
 ---
 
-## Step 2 — Collapse two registry constructors into one
+## Step 2 — Collapse two registry constructors into one — **SHIPPED 2026-07-27 (`ebe79e6`)**
+
+One `_adopt(data)` behind both constructors; from_dict inherits _load's shape guards.
+Measured divergence at landing: 189 strings (grown from the 29 below). The strengthened
+test pins first-claimant primaries (`supersedes`/`absorbed_into` → correction_improvement)
+plus whole-seed agreement; the pinned assertions fail on the pre-fix from_dict (verified).
+`_adopt` is deliberately the seam for Step 6's precomputed exclusion policies — derived
+sets stay load-time, never per-read on the recall path.
 
 **Problem.** `_load` (`aspects.py:262`) builds reverse-lookup maps with `setdefault` — **first**
 claimant wins. `from_dict` (`aspects.py:534`) uses plain assignment — **last** claimant wins. Two
@@ -273,7 +280,18 @@ lines and makes the disagreement unrepresentable. Then strengthen
 
 ---
 
-## Step 3 — Validate at the write door, not at process start
+## Step 3 — Validate at the write door, not at process start — **SHIPPED 2026-07-27 (`f43f352`)**
+
+**One refinement to the target below:** "the 12 invariants become one call" split into two
+tiers on contact with the code — the STRUCTURAL set (`validate_taxonomy` in aspect_store.py:
+object entries, unique non-empty member strings, required presence, noise-exclusivity)
+gates every write and reports at boot; the seed-only CURATION standards (locked, meaning
+length, display labels, no-extra-aspects) stay as tests, because the working copy
+legitimately grows emergent unlocked aspects and a gate enforcing curation would refuse
+valid classifier writes. add_members refuses (file intact, AspectContractError); the heal
+refuses its WRITE not the boot; an invalid seed refuses to be copied from; boot logs every
+violation while loading degraded. `from_dict` stays unvalidated (test-stub surface). The
+deferred "heal can re-break noise-exclusivity" item below is closed by this.
 
 **Problem.** Validation is bound to a process lifecycle event instead of to data change. Five
 enforcement points with overlapping rules and none covering the whole:
@@ -693,13 +711,9 @@ test-stub shortcuts.
 These came out of the pre-commit review of the 2026-07-25 aspect fix and are too small to be steps,
 but each is a genuine defect. Fold them into whichever step touches the same file.
 
-- **`ensure_aspects_user_copy` can break noise-exclusivity.** It is now a second writer of semantic
-  member lists and the only one that doesn't enforce `noise ∩ semantic = ∅` (the invariant
-  `_validate` logs an error on, per `id:4d190406`). Latent today — verified no overlap in either the
-  seed or the working copy — but the live `noise` already carries classifier-grown members the seed
-  lacks (`test_marker`, `system_note`, `co_member`, `member`), so a future curated seed edit filing
-  one of those under a semantic aspect would re-break it every boot with nothing to repair it. Step 3
-  (validate at the door) covers this for free.
+- ~~**`ensure_aspects_user_copy` can break noise-exclusivity.**~~ **CLOSED by Step 3** — the heal
+  (now `reconcile_working_copy`) validates its result and refuses the write on any structural
+  violation, including noise-exclusivity.
 - **First-boot seed copy is not atomic.** `aspect_contract.py:114` uses `shutil.copy2` while the heal
   write one screen below goes to real trouble with tempfile + `os.replace` and documents why. Two
   processes constructing a Brain concurrently on first boot can leave a partial file, after which
