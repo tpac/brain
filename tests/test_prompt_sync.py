@@ -179,3 +179,113 @@ class TestFreshBrainSeeding:
                 "seed_interactions() must skip any interaction already in the DB.")
         finally:
             brain.close()
+
+
+class TestSyncComparison:
+    """The DB→.py comparison itself: what counts as drift, and what a repair
+    is allowed to touch.
+
+    The comparison has two independent halves with different repairs, and the
+    distinction is load-bearing:
+      · BODY drift  → the seed would boot a fresh brain on the wrong prompt.
+                      Repair is a full regenerate.
+      · HEADER drift → the body is right but the `Last sync:` line lies about
+                      which version it mirrors (what a hand-edited-then-
+                      registered seed produces). Repair MUST be a one-line
+                      patch: the rest of a seed docstring can be hand-written
+                      (that a prompt is a dormant fallback, where the real code
+                      lives) and a regenerate silently deletes it.
+    """
+
+    def _interaction(self, template, version):
+        return {'template': template, 'version': version,
+                'parameters': '{}', 'created_by': 'test',
+                'created_at': '2026-01-01T00:00:00.000000+00:00'}
+
+    def _write(self, path, text):
+        with open(path, 'w') as f:
+            f.write(text)
+
+    def test_header_repair_preserves_hand_written_docs(self):
+        """A stale version line is patched in place; hand-written prose stays."""
+        from servers.tools.sync_prompts import (
+            _patch_header_version, _read_header_version, _render_py)
+        inter = self._interaction('BODY', 7)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'seed.py')
+            hand_written = (
+                '"""Seed for interaction `x` — DB is authoritative at runtime.\n'
+                '\n'
+                'HAND-WRITTEN: this prompt is a dormant fallback; the real work\n'
+                'lives in scouts/temporal.py.\n'
+                '\n'
+                'Last sync: DB v3 (2020-01-01T00:00:00, by someone).\n'
+                '"""\n'
+                '\n'
+                'SYSTEM_PROMPT = """BODY"""\n')
+            self._write(path, hand_written)
+            assert _read_header_version(path) == 3
+
+            assert _patch_header_version(path, inter) is True
+            after = open(path).read()
+            assert 'HAND-WRITTEN: this prompt is a dormant fallback' in after, (
+                'header repair regenerated the file and ate hand-written docs')
+            assert 'lives in scouts/temporal.py' in after
+            assert _read_header_version(path) == 7
+            assert 'SYSTEM_PROMPT = """BODY"""' in after
+            # and it is NOT the generic rendered template
+            assert after != _render_py('x', 'SYSTEM_PROMPT', inter)
+
+    def test_header_inserted_when_absent(self):
+        """A docstring with no provenance line gets one, keeping its content."""
+        from servers.tools.sync_prompts import (
+            _patch_header_version, _read_header_version)
+        inter = self._interaction('BODY', 2)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'seed.py')
+            self._write(path,
+                        '"""Older seed with NO provenance line.\n'
+                        '\n'
+                        'KEEP ME: debugging pointer.\n'
+                        '"""\n'
+                        '\n'
+                        'SYSTEM_PROMPT = """BODY"""\n')
+            assert _read_header_version(path) is None
+            assert _patch_header_version(path, inter) is True
+            after = open(path).read()
+            assert 'KEEP ME: debugging pointer.' in after
+            assert _read_header_version(path) == 2
+
+    def test_header_repair_is_idempotent(self):
+        from servers.tools.sync_prompts import _patch_header_version
+        inter = self._interaction('BODY', 4)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'seed.py')
+            self._write(path,
+                        '"""Doc.\n\nLast sync: DB v1 (x, by y).\n"""\n'
+                        '\nSYSTEM_PROMPT = """BODY"""\n')
+            assert _patch_header_version(path, inter) is True
+            once = open(path).read()
+            assert _patch_header_version(path, inter) is True
+            assert open(path).read() == once
+
+    def test_non_utf8_seed_does_not_crash_the_reader(self):
+        """A mojibake seed reports as drift rather than aborting the run."""
+        from servers.tools.sync_prompts import (
+            _patch_header_version, _read_header_version)
+        inter = self._interaction('BODY', 1)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'seed.py')
+            with open(path, 'wb') as f:
+                f.write(b'"""Doc \xff\xfe bad bytes.\n\nLast sync: DB v1 (x, by y).\n"""\n')
+            assert _read_header_version(path) is None      # drift, not a crash
+            assert _patch_header_version(path, inter) is False   # falls back
+
+    def test_render_py_is_byte_stable(self):
+        """Same DB row renders identically — the comparison can't false-positive."""
+        from servers.tools.sync_prompts import _render_py
+        inter = self._interaction('BODY with \\n escapes and "quotes"', 9)
+        a = _render_py('x', 'SYSTEM_PROMPT', inter)
+        b = _render_py('x', 'SYSTEM_PROMPT', inter)
+        assert a == b
+        assert 'Last sync: DB v9' in a

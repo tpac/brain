@@ -15,6 +15,7 @@ Architecture reminder:
 """
 import argparse
 import os
+import re
 import sqlite3
 import sys
 from datetime import datetime, timezone
@@ -147,6 +148,66 @@ def _read_current_constant(path, constant):
         return None
 
 
+# The provenance line _render_py writes. Parsed back out so a stale version can
+# be detected and repaired WITHOUT regenerating the file: everything else in a
+# seed docstring may be hand-written (a note that this prompt is a dormant
+# fallback, a pointer to where the real code lives), and whole-file
+# regeneration silently eats it.
+_LAST_SYNC_RE = re.compile(r'^Last sync: DB v(\d+) .*$', re.MULTILINE)
+
+
+def _read_header_version(path):
+    """Version recorded in the file's `Last sync:` line, or None if absent.
+
+    None means the header carries no provenance line at all (hand-written seed,
+    or an older template) — treated as drift so it gets one.
+    """
+    try:
+        with open(path, encoding='utf-8') as f:
+            m = _LAST_SYNC_RE.search(f.read())
+    except (OSError, UnicodeDecodeError):
+        return None
+    return int(m.group(1)) if m else None
+
+
+def _patch_header_version(path, interaction):
+    """Correct the file's `Last sync:` provenance in place. True if patched.
+
+    The surgical repair for the header-stale case: the body already matches the
+    active version, so the file needs its provenance corrected, not rebuilt.
+    Preserves every other line, including hand-written documentation — a seed
+    docstring may carry notes a regenerate cannot reproduce (that a prompt is a
+    dormant fallback, where the real code lives).
+
+    Two shapes handled: an existing `Last sync:` line is replaced; a docstring
+    with no provenance line at all gets one appended as its last line. Returns
+    False only when there's no module docstring to patch, leaving the caller to
+    fall back to a full regenerate.
+    """
+    try:
+        with open(path, encoding='utf-8') as f:
+            text = f.read()
+    except (OSError, UnicodeDecodeError):
+        return False
+    fresh_line = 'Last sync: DB v%d (%s, by %s).' % (
+        interaction['version'],
+        interaction['created_at'][:19] if interaction.get('created_at') else '?',
+        interaction.get('created_by') or '?')
+    patched, n = _LAST_SYNC_RE.subn(lambda _m: fresh_line, text, count=1)
+    if not n:
+        # No provenance line — insert one at the end of the module docstring.
+        if not text.startswith('"""'):
+            return False
+        close = text.find('"""', 3)
+        if close == -1:
+            return False
+        head = text[:close].rstrip('\n')
+        patched = '%s\n\n%s\n%s' % (head, fresh_line, text[close:])
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(patched)
+    return True
+
+
 def sync(conn, check_only=False, log=print):
     """Sync all seed prompts DB → .py. Returns list of (name, status) tuples.
 
@@ -162,22 +223,39 @@ def sync(conn, check_only=False, log=print):
             log('  %-34s  missing in DB — seed cannot be synced' % name)
             continue
         path = os.path.join(root, rel_path)
-        current = _read_current_constant(path, constant)
         fresh = inter['template']
-        if current == fresh:
+        # TWO independent comparisons, because they have different repairs:
+        #   body   — the prompt constant vs the active template. Wrong body =
+        #            the seed would boot a fresh brain on the wrong prompt.
+        #            Repair is a full regenerate.
+        #   header — the version in the `Last sync:` line vs the active version.
+        #            A hand-edited-then-registered seed has a correct body and a
+        #            lying header, and constant-only comparison called that
+        #            "in sync". Repair is a one-line patch, NOT a regenerate:
+        #            the rest of the docstring may be hand-written and a
+        #            regenerate would silently delete it.
+        current = _read_current_constant(path, constant)
+        body_ok = (current == fresh)
+        header_ok = (_read_header_version(path) == inter['version'])
+        if body_ok and header_ok:
             results.append((name, 'no-change'))
             log('  %-34s  v%d  already in sync' % (name, inter['version']))
             continue
         if check_only:
+            drift = 'header' if body_ok else 'body'
             results.append((name, 'would-change'))
-            log('  %-34s  v%d  OUT OF SYNC (%s chars -> %s chars)' % (
-                name, inter['version'],
+            log('  %-34s  v%d  OUT OF SYNC (%s: %s chars -> %s chars)' % (
+                name, inter['version'], drift,
                 '?' if current is None else len(current),
                 len(fresh)))
             continue
-        text = _render_py(name, constant, inter)
+        if body_ok and _patch_header_version(path, inter):
+            results.append((name, 'synced'))
+            log('  %-34s  v%d  patched header in %s' % (
+                name, inter['version'], rel_path))
+            continue
         with open(path, 'w') as f:
-            f.write(text)
+            f.write(_render_py(name, constant, inter))
         results.append((name, 'synced'))
         log('  %-34s  v%d  wrote %s (%d chars)' % (
             name, inter['version'], rel_path, len(fresh)))

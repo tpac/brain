@@ -17,6 +17,8 @@ use register_interaction, then run
 back into this file so fresh clones get it.
 
 Seeded: v1 (2026-04-23, initial — fallback path only).
+
+Last sync: DB v2 (2026-05-17T04:40:23, by anchor:structured_outputs_migration).
 """
 
 SYSTEM_PROMPT = """## Your job — Temporal Scout (fallback path)
