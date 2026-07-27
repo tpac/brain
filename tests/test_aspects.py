@@ -3,8 +3,8 @@
 Covers Step 2 scope: data shapes, from_dict construction, attribute access,
 reverse lookups, cross-aspect unions, discovery/enumeration, surface helpers.
 
-The brain-loading + validation paths (_load + _validate) are stubbed in
-Step 2 — exercised by Step 6 tests when wired to Brain.
+Also covers the write door (TestWriteDoorGate): add_members merge/refusal,
+heal refusal, and degraded-but-loud boot on a malformed working copy.
 """
 
 import unittest
@@ -312,6 +312,132 @@ class TestRequiredAspectsConstant(unittest.TestCase):
     def test_immutable(self):
         # tuple, not list — can't be mutated
         self.assertIsInstance(REQUIRED_ASPECTS, tuple)
+
+
+class _StubBrain:
+    """Log-capturing stand-in for the registry's brain dependency."""
+
+    def __init__(self):
+        self.errors = []
+        self.warnings = []
+
+    def _log_error(self, category, exc, detail=''):
+        self.errors.append((category, str(exc), detail))
+
+    def _log_warning(self, category, message, detail=''):
+        self.warnings.append((category, message, detail))
+
+
+class TestWriteDoorGate(unittest.TestCase):
+    """The registry's write door: add_members merges + reloads, REFUSES a
+    structurally invalid result (file untouched), and a heal whose result
+    would break the invariants is refused. Boot with a malformed working
+    copy stays alive but logs every violation."""
+
+    def setUp(self):
+        import json
+        import os
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        self._orig_env = os.environ.get('ASPECTS_JSON_PATH')
+        self.work = os.path.join(self.tmp, 'aspects_v1.json')
+        os.environ['ASPECTS_JSON_PATH'] = self.work
+        from servers.aspect_store import SEED_ASPECTS_JSON_PATH
+        with open(SEED_ASPECTS_JSON_PATH) as f:
+            self.seed = json.load(f)
+        with open(self.work, 'w') as f:
+            json.dump(self.seed, f)
+        self.brain = _StubBrain()
+        self.registry = AspectRegistry(self.brain)
+
+    def tearDown(self):
+        import os
+        import shutil
+        if self._orig_env is None:
+            os.environ.pop('ASPECTS_JSON_PATH', None)
+        else:
+            os.environ['ASPECTS_JSON_PATH'] = self._orig_env
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _file_bytes(self):
+        with open(self.work, 'rb') as f:
+            return f.read()
+
+    def test_add_members_writes_and_registry_sees_it_immediately(self):
+        n = self.registry.add_members(
+            [{'category': 'edge_relations', 'value': 'door_test_rel',
+              'aspects': ['correction_improvement']}],
+            source='test')
+        self.assertEqual(n, 1)
+        # in-memory view refreshed without any invalidation call
+        self.assertIn('door_test_rel',
+                      self.registry.correction_improvement.edge_relations)
+        # and it's on disk
+        import json
+        with open(self.work) as f:
+            data = json.load(f)
+        self.assertIn('door_test_rel',
+                      data['correction_improvement']['edge_relations'])
+
+    def test_add_members_refuses_noise_overlap_and_leaves_file_intact(self):
+        before = self._file_bytes()
+        with self.assertRaises(AspectContractError):
+            self.registry.add_members(
+                [{'category': 'edge_relations', 'value': 'corrects',
+                  'aspects': ['noise']}],
+                source='test')
+        self.assertEqual(self._file_bytes(), before)   # write refused
+        # registry snapshot unharmed
+        self.assertNotIn('corrects', self.registry.noise.edge_relations)
+        self.assertTrue(any('write refused' in e[1] for e in self.brain.errors),
+                        self.brain.errors)
+
+    def test_heal_refused_when_result_would_break_exclusivity(self):
+        import json
+        import os
+        import servers.aspects as aspects_mod
+        # Working copy grows a classifier-judged noise member...
+        with open(self.work) as f:
+            cur = json.load(f)
+        cur['noise']['edge_relations'].append('contested_rel')
+        with open(self.work, 'w') as f:
+            json.dump(cur, f)
+        # ...and a (temp) seed later files the same string as semantic.
+        bad_seed = {k: {kk: (list(vv) if isinstance(vv, list) else vv)
+                        for kk, vv in v.items()} for k, v in self.seed.items()}
+        bad_seed['correction_improvement']['edge_relations'].append('contested_rel')
+        seed_path = os.path.join(self.tmp, 'seed.json')
+        with open(seed_path, 'w') as f:
+            json.dump(bad_seed, f)
+        before = self._file_bytes()
+        orig = aspects_mod.SEED_ASPECTS_JSON_PATH
+        aspects_mod.SEED_ASPECTS_JSON_PATH = seed_path
+        try:
+            logged = []
+            changed = aspects_mod.reconcile_working_copy(log_fn=logged.append)
+        finally:
+            aspects_mod.SEED_ASPECTS_JSON_PATH = orig
+        self.assertFalse(changed)                      # heal refused
+        self.assertEqual(self._file_bytes(), before)   # file untouched
+        self.assertTrue(any('heal REFUSED' in m for m in logged), logged)
+
+    def test_malformed_working_copy_boots_degraded_and_loud(self):
+        import json
+        with open(self.work) as f:
+            cur = json.load(f)
+        cur['junk_entry'] = 'not-an-object'
+        with open(self.work, 'w') as f:
+            json.dump(cur, f)
+        brain = _StubBrain()
+        registry = AspectRegistry(brain)               # must not raise
+        # degraded: the malformed entry is skipped, the rest loads
+        self.assertIn('correction_improvement', registry.all())
+        self.assertNotIn('junk_entry', registry.all())
+        # loud: the violation reached the error log
+        self.assertTrue(
+            any('junk_entry' in e[2] for e in brain.errors
+                if e[0] == 'aspect_contract'),
+            brain.errors)
 
 
 if __name__ == '__main__':
