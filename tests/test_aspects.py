@@ -392,6 +392,19 @@ class TestWriteDoorGate(unittest.TestCase):
         self.assertTrue(any('write refused' in e[1] for e in self.brain.errors),
                         self.brain.errors)
 
+    def test_add_members_refuses_unknown_aspect_name(self):
+        # A typo'd aspect name must fail loud, never setdefault-create a
+        # meaning-less husk aspect. New aspects are a human edit to the JSON.
+        before = self._file_bytes()
+        with self.assertRaises(AspectContractError) as ctx:
+            self.registry.add_members(
+                [{'category': 'edge_relations', 'value': 'some_rel',
+                  'aspects': ['correction_improvment']}],   # sic — typo
+                source='test')
+        self.assertIn('correction_improvment', str(ctx.exception))
+        self.assertEqual(self._file_bytes(), before)
+        self.assertNotIn('correction_improvment', self.registry.all())
+
     def test_heal_refused_when_result_would_break_exclusivity(self):
         import json
         import os

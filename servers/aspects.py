@@ -492,12 +492,32 @@ class AspectRegistry:
             except Exception:
                 pass
             raise
+        # Closed list at the door: a name not already in the file is refused,
+        # never setdefault-created. Nothing legitimately creates an aspect
+        # through a member write — new aspects are a deliberate human edit to
+        # the JSON — so an unknown name here is a typo or a confused writer,
+        # and the silent alternative is a meaning-less husk aspect that every
+        # consumer then trips over.
+        targeted = {a for c in classifications for a in c['aspects']}
+        unknown = sorted(a for a in targeted
+                         if not isinstance(data.get(a), dict))
+        if unknown:
+            detail = ('add_members(%s) REFUSED — unknown or malformed aspect '
+                      'names: %s (new aspects are a human edit to '
+                      'aspects_v1.json, never a write-door side effect)' % (
+                          source or 'unattributed', unknown))
+            try:
+                self._brain._log_error(
+                    'aspect_registry_write', Exception('write refused'), detail)
+            except Exception:
+                pass
+            print('[aspects] %s' % detail, flush=True)
+            raise AspectContractError(detail)
         added = 0
         for c in classifications:
             category = c['category']  # 'node_types' or 'edge_relations'
             for aspect_name in c['aspects']:
-                entry = data.setdefault(aspect_name, {})
-                members = entry.setdefault(category, [])
+                members = data[aspect_name].setdefault(category, [])
                 if c['value'] not in members:
                     members.append(c['value'])
                     added += 1
