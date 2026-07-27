@@ -154,7 +154,15 @@ no disconnection contract and can import freely).
 
 ---
 
-## Step 1 — Make `AspectRegistry` the single write door
+## Step 1 — Make `AspectRegistry` the single write door — **SHIPPED 2026-07-27 (`9381593`)**
+
+**Landed as planned with one deviation:** the boot reconcile runs inside the registry
+constructor (public as `brain.aspects.reconcile_with_seed()`), not as a separate
+`brain.py` call — every construction site (daemon, IsolatedBrain, test brains, fresh
+eval brains) materializes correctly by default, and a construct-then-reconcile split
+would log spurious empty-registry warnings on every fresh boot. Also folded in from
+the deferred list: atomic first-boot seed copy + corrupt-working-copy
+quarantine-and-reseed. `invalidate()`/`_refresh_if_dirty()` deleted, not wired.
 
 **Problem.** The registry is the read object for `aspects_v1.json` and writes nothing. Both writers
 reach around it: `AspectEncoder._write_aspects` (`aspect_encoder.py:381`) and
@@ -705,6 +713,11 @@ but each is a genuine defect. Fold them into whichever step touches the same fil
 - **Three aspect names sitting in `noise.edge_relations`** (`temporal_sequence`,
   `extension_refinement`, `validation_evidence`) — audited harmless (`id:40e7125a`), one-line
   cleanup, do it whenever Step 5 or Step 6 opens the JSON.
+- **`run_aspect_cycles_on_clone.py --wipe-members` is broken since `2109376`** (pre-dates
+  Step 1): the member-level seed heal re-heals wiped members back at Brain construction, so
+  the "harder eval" starting state gets un-wiped. Default (keep-seeds) mode unaffected.
+  Eval-script-only; fix is to make the script strip members AFTER Brain construction, or
+  seed its work file from a non-seed baseline.
 
 ## Also noted, outside this boundary
 
