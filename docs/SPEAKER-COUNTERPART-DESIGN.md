@@ -127,26 +127,55 @@ role-loaded; survives only as the name of the *install's default human*, see
 meaningful (see §5 policy). Old keys `human_identity` / `agent_identity` are
 **removed everywhere** — no read-side aliases (§7 migration, §8 guards).
 
-### 3.2 SessionContext
+### 3.2 Counterpart lives behind ONE accessor — the SessionContext field is DEFERRED
 
-New field `counterpart: str`, added to `SessionContext.set_env()` — the single
-mutator for per-session identity fed from the boot hook (`session_context.py:222`,
-"the daemon never introspects Claude"). Twin of **`cwd`, not `project`**:
-branch/project are *derived* daemon-side (a git call on the fed-in cwd);
-counterpart has **no derivation** — there is no git-equivalent for "who is the
-human" — so like cwd it must be fed directly. The hook is the only layer that
-can know it.
+REVISED 2026-07-26 (Tom ruled). An earlier draft added `counterpart: str` to
+`SessionContext.set_env()` and threaded it through `save()`/`load()`,
+`context_boot`, and the boot hook payload. **That is deferred.** What ships is a
+single accessor:
 
-- Fed at boot via `context_boot` → `set_env()`; **never agent-authored, never
-  daemon-read-from-env** (that would re-introduce the singleton bug in a new
-  spot — see §4.1).
-- Source chain, all resolved **hook-side**: per-session declaration (future —
-  boot arg / whoami handshake) → install default (config, §4) → `''` (unset →
-  one-shot warn, render fallbacks apply).
-- Persisted in `session_state` via `save()` with the other env fields;
-  survives daemon restart.
-- Surfaced in presence/peek (follow-up F2 wires the display; the field ships
-  now).
+```python
+# Brain — the ONE place that answers "who spoke this event?"
+def speaker_for(self, ctx, ref_type) -> str:
+    """Resolve the per-event speaker. TODAY: self_name for Anchor's own events,
+    the install-default counterpart for the other side. `ctx` is accepted and
+    deliberately unused for the counterpart branch — that is the seam.
+    LATER(multi-user): return ctx.counterpart instead of the install default."""
+```
+
+**Why the field is deferred.** `counterpart` today carries a *constant*: one
+counterpart, one config value, identical in every session. Threading a constant
+through six files buys nothing observable and costs exactly what Tom flagged —
+a fifth SessionContext env field, each with its own truthy/three-state
+semantics, hand-listed in `save()` and `load()`, plus a new boot-payload field
+and dispatch routing. That is "patch a new parameter everywhere blindly."
+
+**Why the accessor is not just deferral.** The §5.1 asymmetry says a
+per-session value can have no fallback at any layer — so shipping a global and
+going per-session later would normally mean revisiting every stamp site
+(patching it twice, worse than doing it once). The accessor collapses that to
+**one line in one place**: today it reads the install default, later it reads
+`ctx.counterpart`. `ctx` is already threaded to the call site, so no plumbing is
+needed when the switch happens.
+
+What this preserves from the original design, unchanged:
+- The daemon still never holds a *mutable identity singleton*:
+  `brain.operator_name`, `TraceDAL.set_identity`, `_human_identity`,
+  `_agent_identity`, `_stamp_identity` are all still deleted (§3.3, §5.3).
+  Reading an install-default config value inside one accessor is not the same
+  bug — the bug was identity state scattered across Brain and the DAL with
+  every writer trusting it.
+- `self_name` stays global and legitimately so (§2).
+- Unset semantics are unchanged (§3.4): the accessor returns `''`, never a
+  sentinel.
+
+**When the field lands** (F4, or the first real second counterpart): add
+`counterpart` to `set_env()` as a twin of **`cwd`, not `project`** —
+branch/project are *derived* daemon-side from the fed-in cwd, while counterpart
+has no derivation (there is no git-equivalent for "who is the human"), so like
+cwd it must be fed from the hook, resolved hook-side (declaration → install
+default → `''`), persisted in `session_state`, and surfaced in presence (F2).
+That paragraph is the spec for later; it is not this arc.
 
 ### 3.2a `set_env()` semantics — truthy-only, like `cwd`
 
@@ -340,23 +369,27 @@ So the value that *should* flow per session (hook → boot → identity) dies at
 the banner, while the value that *does* stamp traces is a daemon-owned
 singleton. Exactly inverted from "daemon is downstream-only" (id:16f06758).
 
-**The correction:**
+**The correction (revised 2026-07-26 for the §3.2 accessor scope):**
 1. Retire the duplication — one install-default value (keep
    `BRAIN_OPERATOR_NAME`, retire `BRAIN_USER`/`default_user`, OR the reverse;
-   they must not both survive).
-2. The boot hook resolves counterpart (install default now, per-session signal
-   later) and sends it in the `context_boot` payload.
-3. `_handle_context_boot` routes it through `set_env(counterpart=...)` — the
-   same rail cwd/branch/project already ride — instead of dead-ending at the
-   banner. (The banner keeps rendering it; it just also lands on
-   SessionContext.)
-4. The daemon's trace-stamp reads `ctx.counterpart`; `brain.operator_name` and
-   `set_identity` are deleted.
+   they must not both survive). This happens **now** — two live values for one
+   concept is the actual mess, independent of multi-user.
+2. `brain.speaker_for(ctx, ref_type)` (§3.2) becomes the single reader of that
+   install default. `brain.operator_name`, `TraceDAL.set_identity` and the DAL's
+   identity fields are deleted.
+3. **Deferred** (F4): the boot hook resolving a per-session counterpart and
+   sending it in the `context_boot` payload; `_handle_context_boot` routing it
+   through `set_env(counterpart=…)`. Only the accessor's counterpart branch
+   changes when this lands.
+4. Path B's dead end is *not* wired up in this arc — it is **removed**. The boot
+   `user` arg stops being resolved and sent, since the banner (§4.0) reads the
+   accessor and nothing else consumed it. That deletes code rather than adding
+   it.
 
-Result: the "where does identity come from" question is answered entirely
-hook-side and can evolve (config → declared → authenticated) with zero daemon
-change. The daemon only ever receives a counterpart on the session and stamps
-it.
+Result: the "where does identity come from" question has exactly **one** answer
+site. It can evolve (install config → hook-declared → authenticated) by changing
+that site, and the eventual hook-side resolution stays the right long-term shape
+— the daemon receives the value rather than introspecting Claude.
 
 ---
 
@@ -391,17 +424,21 @@ its naming.
 already states its charter — binding "the per-turn invariants in ONE place …
 the four S0 turn events — user_message, assistant_message, heartbeat,
 self_message." **Speaker is a per-turn invariant, so it belongs here by that
-function's own contract**, and the site has both `brain` (→ `self_name`) and
-`ctx` (→ `counterpart`) in hand. Both dialogue writes already route through it:
-`:201` (user_message, at prompt-arrival) and `:626` (assistant_message, at
-Stop).
+function's own contract**, and the site has both `brain` and `ctx` in hand. Both
+dialogue writes already route through it: `:201` (user_message, at
+prompt-arrival) and `:626` (assistant_message, at Stop).
+
+It stamps through the one accessor — `speaker = brain.speaker_for(ctx,
+ref_type)` (§3.2). Passing `ctx` from day one is precisely what makes the later
+per-session switch a one-line change *inside the accessor* instead of a sweep
+across every writer.
 
 Policy (contract-owned — `trace_contract.py` exports `SPEAKER_POLICY`; the
 writer reads it rather than hardcoding):
 
 | ref_type | speaker | why |
 |---|---|---|
-| `user_message` | `ctx.counterpart` | the session's other side; entered at boot via `set_env()` (§4.1) |
+| `user_message` | `brain.speaker_for(ctx, …)` → install default today, `ctx.counterpart` later (§3.2) | the session's other side |
 | `assistant_message` | `brain.self_name` | Anchor spoke |
 | `self_message` | `brain.self_name` | a message from another stream of Anchor **is** Anchor — identity-true (§2); `session_id` carries which instance |
 | `heartbeat` | **omit** | no utterance; nobody spoke |
@@ -715,10 +752,10 @@ migration test noticing it has no mapping.
 | `servers/trace_contract.py` | `SPEAKER_POLICY` + render (1123-1126) + payload validation |
 | `servers/embed_queue.py:356-385` | read `speaker`; identical output format |
 | `servers/brain_voice.py:354-356,411` | banner → first-person + conditional counterpart sentence; **drop `[BRAIN]`/`[/BRAIN]` at boot only** (§4.0). Update the `render_boot_v2` docstring + module header (`:7`, `:278`, `:313-334`) which describe the envelope |
-| `servers/session_context.py:222` | `counterpart` in `set_env()` + `save()`/`load()` persistence |
-| `servers/dispatch_read.py:186` | `_handle_context_boot` routes `counterpart` through `set_env()` (not just the banner) |
-| `hooks/scripts/boot_brain.py:51-73` | resolve counterpart hook-side; retire the `BRAIN_USER`/`default_user` duplicate (§4.1); send in `context_boot` payload |
-| dispatch / `daemon_hooks.py` S0 writers | read `ctx.counterpart` → stamp speaker on `user_message` |
+| `servers/brain.py` (new) | `speaker_for(ctx, ref_type)` — the ONE identity answer site (§3.2), carrying the `LATER(multi-user)` seam |
+| `hooks/scripts/boot_brain.py:51-73` | **remove** the now-dead `user` resolution + payload arg; retire the `BRAIN_USER`/`default_user` duplicate (§4.1). Deletes code |
+| `servers/dispatch_read.py:186` | drop the `user` arg plumbing from `_handle_context_boot` / `record_boot_render` if nothing else consumes it |
+| ~~`servers/session_context.py`~~ | **DEFERRED (F4)** — no `counterpart` field, no `save()`/`load()` change, no 5th env field in this arc (§3.2) |
 | `hooks/scripts/brain-env.sh:17` | env var comment; one install-default var only |
 
 ### Dashboard — an API shape change, not just a grep
@@ -920,7 +957,9 @@ real §11 follow-up id, so a marker can't rot into a lie.
 | `servers/scales/self_channel/presence.py` | roster needs a counterpart filter or it becomes cross-counterpart noise (id:030be61c, id:81c3982b) | F2 |
 | `servers/dispatch_self.py` | `self_send`/`self_peek` same-counterpart default, cross is deliberate | F2 |
 | Layer-2 participant node (wherever it is first minted) | entity **kind** (human/agent/stream) + relationship/trust live here, NOT per-event (§2) | §2 |
-| `hooks/scripts/boot_brain.py` (counterpart resolution) | per-session declaration → later authentication; daemon needs no change (§4.1) | F4 |
+| `servers/brain.py` `speaker_for()` counterpart branch | **the primary seam** — return `ctx.counterpart` instead of the install default; this is the one-line switch the whole deferral rests on (§3.2) | F4 |
+| `servers/session_context.py:222` (`set_env`) | add `counterpart` as a `cwd`-twin (fed, not derived) + `save()`/`load()`; spec written in §3.2 | F4 |
+| `hooks/scripts/boot_brain.py` | resolve a per-session counterpart hook-side and send it in the boot payload → later authentication | F4 |
 | `servers/contract.py` (voice quote fields) | node-field voice rename, eval-gated | F5 |
 | `servers/embed_queue.py:368` | sentinel inconsistency: DAL refuses to stamp placeholder tokens (`dal_logs.py:500`) but embed injects `OPERATOR`/`ANCHOR` when absent — so sentinels DO reach vector space. Fixing changes embed text for pre-identity rows → re-embedding → breaks §6. Deferred deliberately | §3.4 |
 
@@ -935,6 +974,32 @@ real §11 follow-up id, so a marker can't rot into a lie.
 
 All review questions are now resolved. No open questions remain for §§1-11;
 what's left is the section-by-section walk of §§3, 5, 6, 8, 9, 10 mechanics.
+
+**REVISION, 2026-07-26 (Tom ruled) — scope narrowed to one accessor.** Three
+review spots resolved together:
+
+- **`counterpart` on SessionContext is DEFERRED to F4** (§3.2). It carries a
+  constant today (one counterpart, one config value, same in every session), so
+  threading it through `set_env`/`save`/`load`/`context_boot`/boot-payload buys
+  nothing observable and *is* the "patch a parameter everywhere" failure. What
+  ships is `brain.speaker_for(ctx, ref_type)` — one accessor, `ctx` passed from
+  day one, so the later per-session switch is one line in one place. This also
+  resolves the fifth-env-field concern and makes the arc ~4 files smaller (and
+  net-deletes the dead boot `user` path).
+- **`speaker` IS stored on Anchor's own events** — 93% of stored values are the
+  same constant (`tool_result` alone is 36,588 of 44,300 s0 rows, and render
+  never reads its speaker), *but* `tool_result` is eagerly embedded
+  (`EAGER_TRACE_REF_TYPES = SAID_AND_DID_REF_TYPES`), so the name is **already
+  frozen into those vectors** as `'Anchor via Bash: …'`. Not storing it in
+  metadata would let render and vector disagree on a rename. And since the
+  backfill (`5cff407`) already stamped all 57,672 traces with *two* identity
+  fields, one field is a **reduction** of what is stored today, not an addition.
+  (Correction: an earlier note claimed this "shrinks the migration" — it does
+  not, materially; both variants touch every row.)
+- **The arc's two halves are separable, and both still ship**: the rename earns
+  its place unconditionally (the other side can already be an agent or another
+  stream — 134 `self_message` rows exist now); the per-session *plumbing* does
+  not, and is deferred.
 
 Resolved (all Tom, 2026-07-24):
 - ~~Q1~~ → **keep `BRAIN_OPERATOR_NAME`** as the install-default env (§4); the
