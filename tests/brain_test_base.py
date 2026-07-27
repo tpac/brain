@@ -272,7 +272,7 @@ class BrainTestBase(unittest.TestCase):
         # CALL time from the ASPECTS_JSON_PATH env var, so a fresh Brain would
         # otherwise read (and auto-heal could WRITE) the operator's live file.
         # Point the env var at the per-test tmp dir before Brain() loads;
-        # ensure_aspects_user_copy seeds it from the seed so every required
+        # reconcile_working_copy seeds it from the seed so every required
         # aspect (the contract) is present. tearDown ALWAYS restores this
         # (finally), even if Brain() raises here.
         self._orig_aspects_json_path = os.environ.get('ASPECTS_JSON_PATH')

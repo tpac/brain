@@ -6,17 +6,14 @@ Sorts by count DESC and takes the top N as candidates. For each
 candidate, loads N example records (nodes for types, edges for relations)
 to give the encoder real evidence of usage.
 
-The encoder reads the aspects_v1.json menu directly — decoder only
+The encoder reads the menu via brain.aspects — decoder only
 produces the candidate list + examples. No suppression, no clustering,
 no batching across cycles — closed-list classification means every
 string gets a home and re-running is cheap.
 """
 
-import json
-import os
-
 from .base import IntegrationUnit
-from .aspect_contract import ASPECT, aspects_json_path
+from .aspect_contract import ASPECT
 
 
 class AspectDecoder(IntegrationUnit):
@@ -108,29 +105,17 @@ class AspectDecoder(IntegrationUnit):
     # ─── helpers ─────────────────────────────────────────────────────
 
     def _load_classified_strings(self):
-        """Read aspects_v1.json and return {node_types: set, edge_relations: set}.
+        """Registry view of every classified string: {node_types: set, edge_relations: set}.
 
         Strings that already appear in any aspect's member list are
-        considered classified and won't be re-proposed.
+        considered classified and won't be re-proposed. Reads brain.aspects —
+        fresh by construction, since every taxonomy write goes through the
+        registry's door and re-derives its maps.
         """
-        json_path = aspects_json_path()
-        try:
-            with open(json_path, 'r') as f:
-                data = json.load(f)
-        except (OSError, json.JSONDecodeError) as e:
-            self.brain._log_error(
-                self.NAME, e,
-                'failed to read %s — treating all strings as unclassified' % json_path)
-            return {'node_types': set(), 'edge_relations': set()}
-
-        node_types = set()
-        edge_relations = set()
-        for aspect_def in data.values():
-            for t in aspect_def.get('node_types', []):
-                node_types.add(t)
-            for r in aspect_def.get('edge_relations', []):
-                edge_relations.add(r)
-        return {'node_types': node_types, 'edge_relations': edge_relations}
+        reg = self.brain.aspects
+        names = list(reg.all().keys())
+        return {'node_types': set(reg.types_in(names)),
+                'edge_relations': set(reg.relations_in(names))}
 
     def _scan_distinct(self):
         """Return (type_rows, relation_rows) sorted by count DESC.

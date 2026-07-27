@@ -316,11 +316,13 @@ class Brain(
                 print(f'[brain] Embedder load failed (optional): {e}')
 
         # AspectRegistry — first-class semantic-role API exposed as
-        # brain.aspects. Eager validation: loads aspects from aspects_v1.json,
-        # checks REQUIRED_ASPECTS present, logs a warning if any are missing
-        # (doesn't block). Read-only Brain instances (skip_embedder=True for
-        # background scale runs in runner.py) still validate — _load is a
-        # cheap JSON read.
+        # brain.aspects, and the ONE door for aspects_v1.json writes.
+        # Construction materializes the working copy (seed copy on first
+        # boot + additive heal — reconcile_working_copy), then loads and
+        # validates: checks REQUIRED_ASPECTS present, logs a warning if any
+        # are missing (doesn't block). Read-only Brain instances
+        # (skip_embedder=True for background scale runs in runner.py) still
+        # validate — the load is a cheap JSON read.
         #
         # AspectRegistry must be ready before any edge embedding runs: the
         # embed_queue worker (Brain.backfill_edge_embeddings) dereferences

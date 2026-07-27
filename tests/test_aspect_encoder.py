@@ -48,7 +48,7 @@ class TestNoiseExclusivityGuard(unittest.TestCase):
         enc = _encoder()
         cls = [{'category': 'edge_relations', 'value': 'foo_rel',
                 'aspects': ['noise', 'correction_improvement']}]
-        accepted, rejected = enc._validate_classifications(cls, _props('foo_rel'), {})
+        accepted, rejected = enc._validate_classifications(cls, _props('foo_rel'))
         self.assertEqual(rejected, [])
         self.assertEqual(accepted[0]['aspects'], ['correction_improvement'])
 
@@ -56,13 +56,13 @@ class TestNoiseExclusivityGuard(unittest.TestCase):
         enc = _encoder()
         cls = [{'category': 'edge_relations', 'value': 'baz_rel',
                 'aspects': ['correction_improvement', 'noise']}]
-        accepted, _ = enc._validate_classifications(cls, _props('baz_rel'), {})
+        accepted, _ = enc._validate_classifications(cls, _props('baz_rel'))
         self.assertEqual(accepted[0]['aspects'], ['correction_improvement'])
 
     def test_pure_noise_preserved(self):
         enc = _encoder()
         cls = [{'category': 'edge_relations', 'value': 'bar_rel', 'aspects': ['noise']}]
-        accepted, _ = enc._validate_classifications(cls, _props('bar_rel'), {})
+        accepted, _ = enc._validate_classifications(cls, _props('bar_rel'))
         self.assertEqual(accepted[0]['aspects'], ['noise'])
 
     def test_two_semantic_aspects_untouched(self):
@@ -71,14 +71,14 @@ class TestNoiseExclusivityGuard(unittest.TestCase):
         enc = _encoder()
         cls = [{'category': 'edge_relations', 'value': 'qux_rel',
                 'aspects': ['dependency_flow', 'temporal_sequence']}]
-        accepted, _ = enc._validate_classifications(cls, _props('qux_rel'), {})
+        accepted, _ = enc._validate_classifications(cls, _props('qux_rel'))
         self.assertEqual(accepted[0]['aspects'], ['dependency_flow', 'temporal_sequence'])
 
     def test_guard_logs_loud(self):
         enc = _encoder()
         cls = [{'category': 'edge_relations', 'value': 'foo_rel',
                 'aspects': ['noise', 'correction_improvement']}]
-        enc._validate_classifications(cls, _props('foo_rel'), {})
+        enc._validate_classifications(cls, _props('foo_rel'))
         self.assertTrue(
             any('stripped noise' in e[0] for e in enc.brain.errors),
             "noise-strip should log loudly to the brain errors table")

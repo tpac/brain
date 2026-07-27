@@ -1,24 +1,22 @@
-"""S2 Aspect Encoder — classifies candidates into the 14 aspects via Sonnet.
+"""S2 Aspect Encoder — classifies candidates into the required aspects via Sonnet.
 
-Reads aspects_v1.json (the menu + current member lists), builds a prompt
-with the menu + candidate strings + example records, calls Sonnet once,
-parses the JSON response, validates each classification, and merges
-into aspects_v1.json. Auto-merge — no operator review gate in v1.
+Reads the taxonomy via brain.aspects (the menu + current member lists),
+builds a prompt with the menu + candidate strings + example records, calls
+Sonnet once, parses the JSON response, validates each classification, and
+writes through the registry's door (brain.aspects.add_members). Auto-merge —
+no operator review gate in v1.
 
-Writes both the merged result (aspects_v1.json) and an audit record
-(aspects_proposed.json) so the per-cycle delta is inspectable.
+Also writes an audit record (aspects_proposed.json) so the per-cycle delta
+is inspectable.
 
-The unit does NOT mutate brain state — pure JSON in / JSON out.
+The unit does NOT mutate brain state — taxonomy in / taxonomy out.
 """
 
-import json
-import os
-import tempfile
-
+from servers.aspect_store import atomic_json_write
 from servers.trace_contract import build_delta_metadata
 
 from .base import IntegrationUnit
-from .aspect_contract import ASPECT, aspects_json_path, aspects_proposed_path
+from .aspect_contract import ASPECT, aspects_proposed_path
 
 
 # Which categories each aspect accepts. Derived from the design — not
@@ -74,7 +72,7 @@ class AspectEncoder(IntegrationUnit):
             self.trace('delta', 'aspect_classified', 'No proposals to process')
             return {'classified': 0, 'rejected': 0, 'errors': [], 'journal': ''}
 
-        aspects = self._load_aspects()
+        aspects = self.brain.aspects.all()   # {name: Aspect} — registry view
         user_content = self._format_prompt(aspects, proposals)
         result, telemetry = self._call_llm('s2_aspects', user_content)
 
@@ -101,10 +99,10 @@ class AspectEncoder(IntegrationUnit):
                                       list(result.keys()) if isinstance(result, dict) else 'n/a'))
             return {'classified': 0, 'rejected': 0, 'errors': [err], 'journal': ''}
 
-        # Validate + merge
-        accepted, rejected = self._validate_classifications(classifications, proposals, aspects)
-        self._merge_into_aspects(aspects, accepted)
-        self._write_aspects(aspects)
+        # Validate, then write through the registry's single door — it merges
+        # (idempotent append), writes atomically, and re-derives its own maps.
+        accepted, rejected = self._validate_classifications(classifications, proposals)
+        self.brain.aspects.add_members(accepted, source=self.ENCODING_SOURCE)
         self._write_audit_trail(accepted, rejected)
 
         # Per-aspect counts for trace. Multi-membership: each classification
@@ -173,7 +171,10 @@ class AspectEncoder(IntegrationUnit):
     # ─── prompt construction ─────────────────────────────────────────
 
     def _format_prompt(self, aspects, proposals):
-        """Build the user message: ASPECT MENU + CANDIDATES."""
+        """Build the user message: ASPECT MENU + CANDIDATES.
+
+        `aspects` is the {name: Aspect} view from brain.aspects.all().
+        """
         lines = []
 
         lines.append('═' * 70)
@@ -195,12 +196,12 @@ class AspectEncoder(IntegrationUnit):
             'generic_relation', 'noise',
         ]
         for name in order:
-            aspect = aspects.get(name, {})
+            aspect = aspects.get(name)
             accepts = sorted(ASPECT_ACCEPTS.get(name, set()))
-            members_n = aspect.get('node_types', [])
-            members_e = aspect.get('edge_relations', [])
+            members_n = list(aspect.node_types) if aspect else []
+            members_e = list(aspect.edge_relations) if aspect else []
             lines.append('── %s ──' % name)
-            lines.append('  meaning: %s' % aspect.get('meaning', ''))
+            lines.append('  meaning: %s' % (aspect.meaning if aspect else ''))
             lines.append('  accepts: %s' % ', '.join(accepts))
             if members_n:
                 lines.append('  current node_types: %s' % ', '.join(sorted(members_n)))
@@ -250,7 +251,7 @@ class AspectEncoder(IntegrationUnit):
 
     # ─── validation + merge ──────────────────────────────────────────
 
-    def _validate_classifications(self, classifications, proposals, aspects):
+    def _validate_classifications(self, classifications, proposals):
         """Drop classifications that target invalid aspects or wrong categories.
 
         Multi-membership: each classification carries `aspects` (a list, primary
@@ -351,49 +352,7 @@ class AspectEncoder(IntegrationUnit):
 
         return accepted, rejected
 
-    def _merge_into_aspects(self, aspects, accepted):
-        """Add each value to EACH of its classified aspects' member lists.
-
-        Multi-membership: a value can appear in multiple aspects' lists.
-        Idempotent — duplicates filtered.
-        """
-        for c in accepted:
-            field = c['category']  # 'node_types' or 'edge_relations'
-            for aspect_name in c['aspects']:
-                aspect_def = aspects.setdefault(aspect_name, {})
-                members = aspect_def.setdefault(field, [])
-                if c['value'] not in members:
-                    members.append(c['value'])
-
-    # ─── file I/O ────────────────────────────────────────────────────
-
-    def _load_aspects(self):
-        json_path = aspects_json_path()
-        try:
-            with open(json_path, 'r') as f:
-                return json.load(f)
-        except (OSError, json.JSONDecodeError) as e:
-            self.brain._log_error(
-                self.NAME, e,
-                'failed to read %s — encoder cannot proceed' % json_path)
-            raise
-
-    def _write_aspects(self, aspects):
-        """Atomic write: temp file + rename."""
-        json_path = aspects_json_path()
-        d = os.path.dirname(json_path)
-        fd, tmp = tempfile.mkstemp(prefix='aspects_v1_', suffix='.json.tmp', dir=d)
-        try:
-            with os.fdopen(fd, 'w') as f:
-                json.dump(aspects, f, indent=2, sort_keys=False)
-                f.write('\n')
-            os.replace(tmp, json_path)
-        except Exception:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
+    # ─── audit trail ─────────────────────────────────────────────────
 
     def _write_audit_trail(self, accepted, rejected):
         """Write per-cycle audit JSON (overwrites prior cycle's audit).
@@ -408,13 +367,7 @@ class AspectEncoder(IntegrationUnit):
             'classifications_rejected': rejected,
         }
         try:
-            proposed_path = aspects_proposed_path()
-            d = os.path.dirname(proposed_path)
-            fd, tmp = tempfile.mkstemp(prefix='aspects_proposed_', suffix='.json.tmp', dir=d)
-            with os.fdopen(fd, 'w') as f:
-                json.dump(record, f, indent=2)
-                f.write('\n')
-            os.replace(tmp, proposed_path)
+            atomic_json_write(aspects_proposed_path(), record)
         except Exception as e:
             self.brain._log_error(
                 self.NAME, e,

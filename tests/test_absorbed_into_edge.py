@@ -274,7 +274,7 @@ class TestAbsorbedIntoEdge(BrainTestBase):
 
 
 class TestAspectSelfHeal(unittest.TestCase):
-    """ensure_aspects_user_copy self-heals a missing REQUIRED aspect into an
+    """reconcile_working_copy self-heals a missing REQUIRED aspect into an
     EXISTING working copy — how survivor_lineage reaches an already-running
     brain with no manual migration. Must preserve existing/grown members."""
 
@@ -282,8 +282,8 @@ class TestAspectSelfHeal(unittest.TestCase):
         import json
         import shutil
         import tempfile
-        from servers.scales.s2.aspect_contract import (
-            ensure_aspects_user_copy, SEED_ASPECTS_JSON_PATH)
+        from servers.aspects import reconcile_working_copy
+        from servers.aspect_store import SEED_ASPECTS_JSON_PATH
 
         with open(SEED_ASPECTS_JSON_PATH) as f:
             seed = json.load(f)
@@ -300,7 +300,7 @@ class TestAspectSelfHeal(unittest.TestCase):
                 json.dump(stale, f)
 
             os.environ['ASPECTS_JSON_PATH'] = wc
-            self.assertTrue(ensure_aspects_user_copy())   # heal happened
+            self.assertTrue(reconcile_working_copy())   # heal happened
             with open(wc) as f:
                 healed = json.load(f)
             self.assertIn('survivor_lineage', healed)     # missing required added
@@ -310,7 +310,7 @@ class TestAspectSelfHeal(unittest.TestCase):
             self.assertIn('operator_grown',
                           healed['correction_improvement']['edge_relations'])
             # idempotent: nothing missing now → no-op
-            self.assertFalse(ensure_aspects_user_copy())
+            self.assertFalse(reconcile_working_copy())
         finally:
             if orig is None:
                 os.environ.pop('ASPECTS_JSON_PATH', None)
@@ -329,8 +329,8 @@ class TestAspectSelfHeal(unittest.TestCase):
         import json
         import shutil
         import tempfile
-        from servers.scales.s2.aspect_contract import (
-            ensure_aspects_user_copy, SEED_ASPECTS_JSON_PATH)
+        from servers.aspects import reconcile_working_copy
+        from servers.aspect_store import SEED_ASPECTS_JSON_PATH
 
         with open(SEED_ASPECTS_JSON_PATH) as f:
             seed = json.load(f)
@@ -354,7 +354,7 @@ class TestAspectSelfHeal(unittest.TestCase):
 
             os.environ['ASPECTS_JSON_PATH'] = wc
             logged = []
-            self.assertTrue(ensure_aspects_user_copy(log_fn=logged.append))
+            self.assertTrue(reconcile_working_copy(log_fn=logged.append))
             with open(wc) as f:
                 healed = json.load(f)
             ci_healed = healed['correction_improvement']['edge_relations']
@@ -371,7 +371,7 @@ class TestAspectSelfHeal(unittest.TestCase):
             self.assertTrue(logged, 'member heal must call log_fn')
             self.assertIn('supersedes', logged[0])
             # idempotent
-            self.assertFalse(ensure_aspects_user_copy())
+            self.assertFalse(reconcile_working_copy())
         finally:
             if orig is None:
                 os.environ.pop('ASPECTS_JSON_PATH', None)

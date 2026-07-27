@@ -4,8 +4,9 @@ live $BRAIN_DB_DIR/aspects_v1.json.
 Bug (observed 2026-06-16): ASPECTS_JSON_PATH was a module-level constant
 resolved at IMPORT time — before IsolatedBrain set BRAIN_DB_DIR in __enter__.
 So a top-level `from servers.scales.s2... import ...` froze the path at the
-LIVE user-dir file, and ensure_aspects_user_copy (run at Brain.__init__ via
-AspectRegistry._load) healed the live file even though the DB was isolated.
+LIVE user-dir file, and the seed reconcile (reconcile_working_copy, run at
+Brain.__init__ via AspectRegistry) healed the live file even though the DB
+was isolated.
 
 Fix: resolve the aspects path at CALL time (aspects_json_path()), so a later
 os.environ change takes effect. IsolatedBrain additionally pins

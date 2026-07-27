@@ -26,34 +26,18 @@ from_dict() constructs a registry without a brain (for tests/seeding); the
 production path is _load(), which reads aspects_v1.json directly.
 """
 
+import json
+import os
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
 
-
-# ─────────────────────────────────────────────────────────────────
-# Required aspects — code routes on these by string. Must always exist
-# in the brain. Test asserts equivalence with aspects_v1.json keys.
-# ─────────────────────────────────────────────────────────────────
-REQUIRED_ASPECTS: tuple = (
-    # Node-facing (used by Frame)
-    'identity_bearing',     # principle / identity / vision / rule / operator types
-    'episodic_anchor',      # moment / anchor_quote / user_quote / quote types
-    'active_thread',        # open / tension / hypothesis / aspiration types
-    'lesson_insight',       # lesson / insight / validation / reflection types
-    'wisdom',               # generative subset (insight/lesson/principle/vision/reflection/meta_learning/philosophy) — Frame's "What I've learned"
-
-    # Edge-facing (used by S2 community / consolidation / healer)
-    'generic_relation',         # related, related_to (skip set in community/consolidation)
-    'noise',                    # co_accessed, emergent_bridge (skip set + structural)
-    'correction_improvement',   # corrects, supersedes
-    'extension_refinement',     # extends, refines, elaborates
-    'explanation_causation',    # explains, causes
-    'dependency_flow',          # depends_on, enables
-    'contradiction_conflict',   # contradicts, challenges
-    'validation_evidence',      # validates, demonstrates
-    'hierarchical_structure',   # part_of, supersedes_structurally
-    'temporal_sequence',        # follows_from, leads_to
-    'survivor_lineage',         # absorbed_into — archived→living-descendant redirect
+# Required-name contract lives in the byte-level core; re-exported here so
+# consumers keep one import surface (servers.aspects) for taxonomy names.
+from .aspect_store import (
+    REQUIRED_ASPECTS,  # noqa: F401 — re-export
+    SEED_ASPECTS_JSON_PATH,
+    aspects_json_path,
+    atomic_json_write,
 )
 
 
@@ -84,6 +68,148 @@ def render_edge_aspects_block(aspects):
     return ('## Edge Aspects (%d from brain.aspects)\n\n%s\n\n'
             'Avoid `related_to` — pick a specific relation.' % (
                 len(lines), '\n'.join(lines)))
+
+
+def reconcile_working_copy(log_fn=None) -> bool:
+    """Seed the working aspects file from the repo seed, and SELF-HEAL.
+
+    Three jobs, all idempotent and safe to call on every boot:
+      1. First boot — working copy missing → copy the whole seed (atomic).
+      2. Missing aspect — the seed has a REQUIRED aspect the working copy
+         lacks → add the whole aspect from the seed.
+      3. Missing member — a REQUIRED aspect's seed `node_types` /
+         `edge_relations` list names a string the working copy's list lacks
+         → APPEND it. This is how a curated membership fix (e.g. multi-homing
+         a replacement verb into correction_improvement, which recall walks)
+         reaches an existing brain. Without it a seed member edit propagates
+         to fresh installs only, and every existing brain keeps the defect
+         while the seed-based contract tests pass.
+
+    An UNPARSEABLE working copy is quarantined (renamed aside, preserving the
+    operator's classifier-grown members for manual recovery) and re-seeded —
+    the old return-False path left the registry permanently empty on every
+    subsequent boot, which its own comments called catastrophic.
+
+    ADDITIVE ONLY, in both directions of scope:
+      · Members are appended, never reordered or removed — operator- and
+        AspectIntegration-grown lists survive, and append-at-end cannot
+        evict anything from the first-8 window `render_edge_aspects_block`
+        shows the encoders.
+      · A seed REMOVAL does not propagate. Retiring a member (or moving one
+        between aspects) still needs a supervised migration; this heals
+        omissions, not disagreements.
+      · Only REQUIRED aspects are touched. Emergent/unlocked aspects are the
+        classifier's to own.
+
+    Never writes the seed itself (tests may point the working path at it).
+    Returns True if the file was created or modified. `log_fn(message)` — when
+    given — is called with a one-line summary of what was healed: a member heal
+    silently changes which edges `correction_enrich` walks, so it announces
+    itself rather than being inferred from behaviour later.
+    """
+    json_path = aspects_json_path()
+    if not os.path.exists(SEED_ASPECTS_JSON_PATH):
+        return False
+    # Never heal the seed into itself.
+    if os.path.abspath(json_path) == os.path.abspath(SEED_ASPECTS_JSON_PATH):
+        return False
+    try:
+        with open(SEED_ASPECTS_JSON_PATH) as f:
+            seed = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        # Broken plugin install — nothing trustworthy to reconcile from.
+        if log_fn:
+            try:
+                log_fn('repo seed unreadable — reconcile skipped: %r' % e)
+            except Exception:
+                pass
+        return False
+    if not os.path.exists(json_path):
+        atomic_json_write(json_path, seed)
+        return True
+
+    # Working copy exists — self-heal any missing REQUIRED aspect from the seed.
+    try:
+        with open(json_path) as f:
+            cur = json.load(f)
+    except json.JSONDecodeError:
+        # Corrupt working copy (e.g. a partial first-boot copy from before the
+        # write was atomic). Quarantine it — the operator's classifier-grown
+        # members live in there and deserve a recovery path — then re-seed.
+        from datetime import datetime, timezone
+        stamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')  # clock-ok — quarantine filename
+        quarantine = '%s.corrupt-%s' % (json_path, stamp)
+        os.replace(json_path, quarantine)
+        atomic_json_write(json_path, seed)
+        summary = ('working copy unparseable — quarantined to %s and re-seeded '
+                   'from the repo baseline. Classifier-grown members are in the '
+                   'quarantined file; recover manually.' % quarantine)
+        print('[aspects] %s' % summary, flush=True)
+        if log_fn:
+            try:
+                log_fn(summary)
+            except Exception:
+                pass
+        return True
+    except OSError:
+        return False
+    missing = [n for n in REQUIRED_ASPECTS if n in seed and n not in cur]
+    # Missing MEMBERS of required aspects that both files carry (job 3).
+    # Shape-guarded the same way AspectRegistry._load guards: a working copy
+    # can carry a malformed entry (hand-edit, partial write), and an unguarded
+    # deref here would abort the WHOLE heal — including job 2 above, whose
+    # failure leaves survivor_lineage empty and silently disables the
+    # absorbed_into archive exemption. A malformed entry is skipped, not fatal.
+    member_heals = []          # (aspect, category, [strings]) — for the caller's log
+    skipped_malformed = []
+    for n in REQUIRED_ASPECTS:
+        if n not in seed or n not in cur:
+            continue           # job 1/2 territory, or not seeded at all
+        if not isinstance(cur[n], dict) or not isinstance(seed[n], dict):
+            skipped_malformed.append(n)
+            continue
+        for category in ('node_types', 'edge_relations'):
+            have = cur[n].get(category)
+            want = seed[n].get(category)
+            if have is None:
+                have = []      # absent key is a legitimate empty list
+            if not isinstance(have, list) or not isinstance(want or [], list):
+                skipped_malformed.append('%s.%s' % (n, category))
+                continue
+            gap = [s for s in (want or []) if s not in have]
+            if gap:
+                member_heals.append((n, category, gap))
+    if not missing and not member_heals:
+        if skipped_malformed and log_fn:
+            try:
+                log_fn('working copy has malformed entries, skipped: %s'
+                       % ', '.join(skipped_malformed))
+            except Exception:
+                pass
+        return False
+    for n in missing:
+        cur[n] = seed[n]
+    for n, category, gap in member_heals:
+        cur[n].setdefault(category, []).extend(gap)   # append — never reorder
+    parts = ['+aspect %s' % n for n in missing]
+    parts += ['%s.%s += %s' % (n, category, ','.join(gap))
+              for n, category, gap in member_heals]
+    if skipped_malformed:
+        parts.append('SKIPPED malformed: %s' % ', '.join(skipped_malformed))
+    summary = 'healed working copy from seed: ' + '; '.join(parts)
+    atomic_json_write(json_path, cur)
+    # Announce AFTER the write lands, so a failed write can't leave a log line
+    # claiming a heal that didn't happen. Two channels on purpose: stdout is the
+    # only one that reliably reaches a log at Brain.__init__ time (a short-lived
+    # process whose logs-db write hits `database is locked` degrades to a stderr
+    # nobody reads), and log_fn gives the daemon a queryable row.
+    print('[aspects] %s' % summary, flush=True)
+    if log_fn:
+        try:
+            log_fn(summary)
+        except Exception:
+            pass                                      # never break boot on a log
+    return True
 
 
 class AspectContractError(Exception):
@@ -143,13 +269,14 @@ class Aspect:
 
 
 class AspectRegistry:
-    """First-class API for the aspects system.
+    """First-class API for the aspects system — the ONE door, reads AND writes.
 
     Production: instantiated once at Brain.__init__, exposed as brain.aspects.
-    Loads from aspects_v1.json eagerly; validates required aspects are present
-    (logs loudly if any are missing — see _validate). The in-memory cache
-    invalidates on a dirty flag (see invalidate()) so a rewritten JSON file is
-    picked up on next access.
+    Construction reconciles the working copy with the repo seed (first-boot
+    copy + additive heal — see reconcile_working_copy), then loads and
+    validates. All writes to aspects_v1.json go through this object
+    (add_members / reconcile_with_seed); every write re-derives the in-memory
+    maps, so the cache cannot go stale and needs no invalidation protocol.
 
     Testing/seeding: use from_dict() to construct without a brain — bypasses
     the load path, takes a pre-built dict of aspect specs.
@@ -160,48 +287,8 @@ class AspectRegistry:
         self._aspects: dict = {}
         self._reverse_node: dict = {}   # type_string → aspect_name
         self._reverse_edge: dict = {}   # relation_string → aspect_name
-        self._dirty: bool = True
-        self._load()
-        self._validate()
-
-    # ── Loading + invalidation ──
-
-    def _load(self) -> None:
-        """Load aspects from aspects_v1.json — single source of truth.
-
-        Migrated 2026-05-08: was previously reading brain aspect-nodes
-        (type='aspect') with member lists in metadata. Now reads JSON file
-        directly. The brain aspect-nodes are legacy and slated for archive.
-
-        Per-operator state (2026-05-17): the working file lives next to
-        brain.db ($BRAIN_DB_DIR/aspects_v1.json), not in the repo. On
-        first boot the repo seed is copied to the user dir; all subsequent
-        encoder writes stay there. The repo file is the shipped baseline,
-        never touched by runtime.
-
-        Multi-membership: a string can appear in multiple aspects' member
-        lists. Reverse maps (_reverse_node, _reverse_edge) store the FIRST
-        aspect that claimed the string in JSON-iteration order — preserves
-        the prior single-aspect API contract for `by_node_type`/`by_edge_relation`
-        while letting the underlying data carry richer multi-aspect membership.
-        """
-        import json
-        import os
-        from servers.scales.s2.aspect_contract import (
-            aspects_json_path, ensure_aspects_user_copy)
-        ASPECTS_JSON_PATH = aspects_json_path()
-
-        self._aspects = {}
-        self._reverse_node = {}
-        self._reverse_edge = {}
-
-        # Seed the user-dir copy on first boot; self-heal aspects/members the
-        # working copy is missing relative to the seed. Heals are logged, not
-        # silent — they change which edges the correction walk sees.
         try:
-            ensure_aspects_user_copy(
-                log_fn=lambda msg: self._brain._log_warning(
-                    'aspect_registry_heal', msg))
+            reconcile_working_copy(log_fn=self._heal_log)
         except Exception as e:
             try:
                 self._brain._log_warning(
@@ -210,6 +297,41 @@ class AspectRegistry:
                     repr(e))
             except Exception:
                 pass
+        self._load()
+        self._validate()
+
+    def _heal_log(self, msg: str) -> None:
+        try:
+            self._brain._log_warning('aspect_registry_heal', msg)
+        except Exception:
+            pass
+
+    # ── Loading + writing (the door) ──
+
+    def _load(self) -> None:
+        """Load aspects from aspects_v1.json — a PURE read, no side effects.
+
+        Seed materialization / self-heal is NOT here — it happens once at
+        __init__ (and on explicit reconcile_with_seed() calls), so the read
+        path never writes the file it reads.
+
+        Per-operator state (2026-05-17): the working file lives next to
+        brain.db ($BRAIN_DB_DIR/aspects_v1.json), not in the repo. On
+        first boot the repo seed is copied to the user dir; all subsequent
+        writes stay there. The repo file is the shipped baseline, never
+        touched by runtime.
+
+        Multi-membership: a string can appear in multiple aspects' member
+        lists. Reverse maps (_reverse_node, _reverse_edge) store the FIRST
+        aspect that claimed the string in JSON-iteration order — preserves
+        the prior single-aspect API contract for `by_node_type`/`by_edge_relation`
+        while letting the underlying data carry richer multi-aspect membership.
+        """
+        ASPECTS_JSON_PATH = aspects_json_path()
+
+        self._aspects = {}
+        self._reverse_node = {}
+        self._reverse_edge = {}
 
         if not os.path.exists(ASPECTS_JSON_PATH):
             try:
@@ -219,7 +341,6 @@ class AspectRegistry:
                     ASPECTS_JSON_PATH)
             except Exception:
                 pass
-            self._dirty = False
             return
 
         try:
@@ -233,7 +354,6 @@ class AspectRegistry:
                     repr(e))
             except Exception:
                 pass
-            self._dirty = False
             return
 
         for name, entry in data.items():
@@ -262,8 +382,6 @@ class AspectRegistry:
                 self._reverse_node.setdefault(t, name)
             for r in aspect.edge_relations:
                 self._reverse_edge.setdefault(r, name)
-
-        self._dirty = False
 
     def _validate(self) -> None:
         """Check structural invariants on the loaded aspects; log loudly on any break.
@@ -308,17 +426,70 @@ class AspectRegistry:
                     except Exception:
                         pass  # never let logging block validation
 
-    def invalidate(self) -> None:
-        """Mark cache stale. Next access reloads from aspects_v1.json.
-
-        Provided for callers (e.g. AspectIntegration) that rewrite
-        aspects_v1.json and need the in-memory registry to pick up the change.
+    def reconcile_with_seed(self) -> bool:
+        """Re-run the seed reconcile (first-boot copy + additive heal) and
+        reload if it changed anything. Runs automatically at construction;
+        public for callers that update the seed mid-process (tests, redeploy
+        flows). Returns True if the working copy was created or modified.
         """
-        self._dirty = True
-
-    def _refresh_if_dirty(self) -> None:
-        if self._dirty:
+        changed = reconcile_working_copy(log_fn=self._heal_log)
+        if changed:
             self._load()
+            self._validate()
+        return changed
+
+    def add_members(self, classifications, source: str = '') -> int:
+        """The single write door for classifier output.
+
+        `classifications`: [{'category': 'node_types'|'edge_relations',
+        'value': str, 'aspects': [names, primary first]}] — the shape
+        AspectEncoder._validate_classifications emits. Each value is appended
+        to each listed aspect's member list (idempotent — duplicates skipped).
+
+        Reads the file fresh at write time, writes atomically, then re-derives
+        the in-memory maps from what was just written — the writer owns the
+        cache, so no invalidation protocol exists or is needed.
+
+        NOTE (accepted, narrow): a boot-time reconcile in a concurrent
+        short-lived process can still interleave with this read-modify-write.
+        The reconcile only writes when the working copy is behind the seed,
+        and it re-heals idempotently on the next boot — self-correcting, not
+        durable loss. Both writers now live in this file; if locking is ever
+        needed, this is where it goes.
+
+        Returns the number of (aspect, member) additions actually written.
+        Raises on an unreadable working copy — a write must never proceed
+        from (and then clobber the file with) an empty in-memory guess.
+        """
+        path = aspects_json_path()
+        try:
+            with open(path, 'r') as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            try:
+                self._brain._log_error(
+                    'aspect_registry_write', e,
+                    'add_members: cannot read %s — refusing to write' % path)
+            except Exception:
+                pass
+            raise
+        added = 0
+        for c in classifications:
+            category = c['category']  # 'node_types' or 'edge_relations'
+            for aspect_name in c['aspects']:
+                entry = data.setdefault(aspect_name, {})
+                members = entry.setdefault(category, [])
+                if c['value'] not in members:
+                    members.append(c['value'])
+                    added += 1
+        if not added:
+            return 0
+        atomic_json_write(path, data)
+        self._load()
+        self._validate()
+        print('[aspects] add_members(%s): +%d memberships' % (
+            source or 'unattributed', added), flush=True)
+        return added
 
     # ── Per-aspect access ──
 
@@ -335,14 +506,11 @@ class AspectRegistry:
         """
         if name.startswith('_'):
             raise AttributeError(name)
-        # Bypass _refresh_if_dirty + _aspects access via getattr to avoid
-        # recursion when the registry is partly constructed.
+        # __dict__ access (not getattr) to avoid recursion when the registry
+        # is partly constructed.
         aspects = self.__dict__.get('_aspects')
         if aspects is None:
             raise AttributeError(name)
-        if self.__dict__.get('_dirty'):
-            self._refresh_if_dirty()
-            aspects = self._aspects
         if name in aspects:
             return aspects[name]
         raise AspectContractError(
@@ -356,20 +524,17 @@ class AspectRegistry:
         Use this for emergent aspects whose existence isn't guaranteed by
         the contract. Required aspects can use the attribute form safely.
         """
-        self._refresh_if_dirty()
         return self._aspects.get(name)
 
     # ── Reverse lookups ──
 
     def by_node_type(self, t: str) -> Optional[Aspect]:
         """Find the aspect whose node_types contains this type, or None."""
-        self._refresh_if_dirty()
         name = self._reverse_node.get(t)
         return self._aspects.get(name) if name else None
 
     def by_edge_relation(self, r: str) -> Optional[Aspect]:
         """Find the aspect whose edge_relations contains this relation, or None."""
-        self._refresh_if_dirty()
         name = self._reverse_edge.get(r)
         return self._aspects.get(name) if name else None
 
@@ -377,7 +542,6 @@ class AspectRegistry:
 
     def types_in(self, names: Iterable[str]) -> tuple:
         """Union of node_types across the named aspects (insertion-ordered, deduped)."""
-        self._refresh_if_dirty()
         seen = []
         for n in names:
             a = self._aspects.get(n)
@@ -390,7 +554,6 @@ class AspectRegistry:
 
     def relations_in(self, names: Iterable[str]) -> tuple:
         """Union of edge_relations across the named aspects (insertion-ordered, deduped)."""
-        self._refresh_if_dirty()
         seen = []
         for n in names:
             a = self._aspects.get(n)
@@ -405,7 +568,6 @@ class AspectRegistry:
 
     def all(self) -> dict:
         """All aspects keyed by name. Returns a fresh dict — safe to iterate."""
-        self._refresh_if_dirty()
         return dict(self._aspects)
 
     def all_with_counts(self) -> list:
@@ -414,7 +576,6 @@ class AspectRegistry:
         Each entry: {name, meaning, node_types_count, edge_relations_count,
         node_types_preview, edge_relations_preview, dimension, locked}.
         """
-        self._refresh_if_dirty()
         out = []
         for name, a in self._aspects.items():
             out.append({
@@ -431,29 +592,24 @@ class AspectRegistry:
 
     def required(self) -> dict:
         """Required aspects only (those named in REQUIRED_ASPECTS)."""
-        self._refresh_if_dirty()
         return {n: a for n, a in self._aspects.items() if n in REQUIRED_ASPECTS}
 
     def emergent(self) -> dict:
         """Emergent (non-required) aspects only."""
-        self._refresh_if_dirty()
         return {n: a for n, a in self._aspects.items() if n not in REQUIRED_ASPECTS}
 
     def by_dimension(self, dim: str) -> dict:
         """Aspects in one dimension (e.g., 'semantic', 'temporal' once present)."""
-        self._refresh_if_dirty()
         return {n: a for n, a in self._aspects.items() if a.dimension == dim}
 
     def dimensions(self) -> set:
         """Set of all dimensions present in the brain right now."""
-        self._refresh_if_dirty()
         return {a.dimension for a in self._aspects.values()}
 
     # ── Surface-specific (edge enrichment for embeddings) ──
 
     def relation_meaning_map(self) -> dict:
         """{relation_string: meaning_text} for edge enrichment in surface."""
-        self._refresh_if_dirty()
         out = {}
         for a in self._aspects.values():
             for r in a.edge_relations:
@@ -496,7 +652,6 @@ class AspectRegistry:
 
     def type_meaning_map(self) -> dict:
         """{type_string: meaning_text} — symmetric to relation_meaning_map."""
-        self._refresh_if_dirty()
         out = {}
         for a in self._aspects.values():
             for t in a.node_types:
@@ -519,7 +674,6 @@ class AspectRegistry:
         instance._aspects = {}
         instance._reverse_node = {}
         instance._reverse_edge = {}
-        instance._dirty = False
         for name, spec in data.items():
             aspect = Aspect(
                 name=name,
