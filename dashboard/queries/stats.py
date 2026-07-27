@@ -130,11 +130,15 @@ def query_insights():
         warn('queries.stats', 'S1 trace coverage insight failed', exc=e)
 
     _7d = utc_cutoff(days=7)
+    # Quote capture is detected via the structured fields (user_raw_quote /
+    # anchor_raw_quote in node_metadata_kv) and quote-typed nodes — never
+    # name-string content heuristics: operator/agent names are per-install.
     quotes = direct_query(
         "SELECT COUNT(*) FROM nodes WHERE archived = 0 "
         "AND created_at > ? "
-        "AND (content LIKE '%Tom said%' OR content LIKE '%Tom:%' "
-        "     OR content LIKE '%Claude:%' OR title LIKE '%quote%')",
+        "AND (type = 'quote' OR EXISTS ("
+        "SELECT 1 FROM node_metadata_kv kv WHERE kv.node_id = nodes.id "
+        "AND kv.key IN ('user_raw_quote', 'anchor_raw_quote')))",
         args=(_7d,), db_path=db,
     )
     types = dict(direct_query(
@@ -146,7 +150,7 @@ def query_insights():
         insights.append({
             "severity": "high", "icon": "\U0001f4ad",
             "title": "Zero quotes preserved this week",
-            "detail": "Tom's exact words and Claude's own insights weren't captured.",
+            "detail": "No node this week carries a verbatim quote (user_raw_quote / anchor_raw_quote).",
         })
 
     if not daemon_alive():
