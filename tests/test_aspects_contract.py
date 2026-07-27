@@ -266,6 +266,24 @@ class TestMultiMembershipShape(unittest.TestCase):
             for r in spec['edge_relations']:
                 resolved = registry.by_edge_relation(r)
                 self.assertIsNotNone(resolved, 'by_edge_relation(%s) returned None' % r)
+        # Pin FIRST-claimant on real multi-homed members — this is what caught
+        # the from_dict/_load disagreement (last-claimant reported
+        # hierarchical_structure / survivor_lineage for these instead).
+        self.assertEqual(registry.by_edge_relation('supersedes').name,
+                         'correction_improvement')
+        self.assertEqual(registry.by_edge_relation('absorbed_into').name,
+                         'correction_improvement')
+        # And per-string agreement between the two construction paths, whole
+        # seed: from_dict must resolve every string exactly like a file-loaded
+        # registry would (one _adopt body — this pins that it stays one).
+        for t, primary in registry._reverse_node.items():
+            self.assertEqual(primary, next(
+                n for n, s in self.seed.items() if t in s['node_types']),
+                'first-claimant violated for node type %s' % t)
+        for r, primary in registry._reverse_edge.items():
+            self.assertEqual(primary, next(
+                n for n, s in self.seed.items() if r in s['edge_relations']),
+                'first-claimant violated for edge relation %s' % r)
 
 
 class TestLineageFamiliesContract(unittest.TestCase):

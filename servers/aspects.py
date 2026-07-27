@@ -329,9 +329,7 @@ class AspectRegistry:
         """
         ASPECTS_JSON_PATH = aspects_json_path()
 
-        self._aspects = {}
-        self._reverse_node = {}
-        self._reverse_edge = {}
+        self._adopt({})
 
         if not os.path.exists(ASPECTS_JSON_PATH):
             try:
@@ -356,6 +354,26 @@ class AspectRegistry:
                 pass
             return
 
+        self._adopt(data)
+
+    def _adopt(self, data: dict) -> None:
+        """Build aspects + reverse-lookup maps from a taxonomy dict — the ONE
+        constructor body behind both _load (file) and from_dict (tests).
+
+        Reverse maps use setdefault: the FIRST aspect to claim a string in
+        dict-iteration order wins — the documented multi-membership contract.
+        The two constructors used to disagree here (from_dict let the LAST
+        claimant win), which flipped the reported primary for every
+        multi-homed string (`supersedes`, `absorbed_into`, the wisdom types).
+
+        Shape-guarded: non-dict entries are skipped, malformed member lists
+        coerce to empty — a hand-edited working copy degrades per-entry, not
+        wholesale. This is also the seam for load-time derivations (Step 6's
+        precomputed exclusion policies belong here, not per-read).
+        """
+        self._aspects = {}
+        self._reverse_node = {}
+        self._reverse_edge = {}
         for name, entry in data.items():
             if not isinstance(entry, dict):
                 continue
@@ -671,22 +689,5 @@ class AspectRegistry:
         """
         instance = cls.__new__(cls)
         instance._brain = brain
-        instance._aspects = {}
-        instance._reverse_node = {}
-        instance._reverse_edge = {}
-        for name, spec in data.items():
-            aspect = Aspect(
-                name=name,
-                node_types=tuple(spec.get('node_types', [])),
-                edge_relations=tuple(spec.get('edge_relations', [])),
-                meaning=spec.get('meaning', ''),
-                dimension=spec.get('dimension', 'semantic'),
-                locked=spec.get('locked', False),
-                metadata=dict(spec.get('metadata', {})),
-            )
-            instance._aspects[name] = aspect
-            for t in aspect.node_types:
-                instance._reverse_node[t] = name
-            for r in aspect.edge_relations:
-                instance._reverse_edge[r] = name
+        instance._adopt(data)
         return instance
