@@ -16,6 +16,14 @@ a reader that resolves the path by some other means would have been missed (none
 not re-examined. Numbers below were measured against the live brain and the shipped seed on
 2026-07-25 and are perishable — re-derive before acting on any of them.
 
+**A coverage failure worth inheriting.** The first draft of this plan presented
+`INTENTIONAL_EDGE_TYPES` as an urgent discovery. It is a deliberate operator deferral from a month
+earlier (`id:28f7fe69`), and Step 0A now says so. The cause: the review recalled the aspect *storage*
+history and passed those constraints to the review agents, but never recalled the aspect *filter*
+history — so the agents found real code, correctly, and the synthesis mistook a parked decision for a
+new one. **Any future review of this surface must recall both halves.** The brain prevents
+re-litigation only for the questions you actually ask it about.
+
 **The governing constraint.** Three storage architectures were weighed (brain node `id:9edc4cf5`)
 and Option B won: the taxonomy is a **JSON config file**, sole source of truth. The aspects-as-nodes
 path is retired. Nothing here relocates the data. "DAL-first" in this repo is a rule about the
@@ -29,25 +37,44 @@ states that make a hazard structurally impossible over ones that document it.
 
 ---
 
+## Execution posture — read this before starting any step
+
+**Each step is: show the code → short discussion → agree → implement → verify.** Not "hand the step
+to a session and let it run." Tom does not read the code, so the walk-through *is* his review — and a
+plan is exactly the artifact that can bake in a wrong premise (`id:6a1af480`), which is why the
+premise gets checked against the real code before anything is written.
+
+Concretely, per step: open the actual files and confirm the Problem section still describes what is
+there; bring the measurement (re-derive any number quoted here — they are all perishable); state what
+changes and what could break; get the nod; then implement, verify, and commit.
+
+"Executable cold" in this doc means each step **carries enough context to be understood** without
+this conversation. It does **not** mean unattended execution. A step whose Problem section no longer
+matches the code should stop and report, not adapt silently.
+
 ## Dependency summary
 
-**Steps 0A and 0B are not architecture work.** They are live correctness bugs the review surfaced,
-they are independent of everything else, and they should be scheduled first on impact alone.
+**Step 0A is not work — it is a parked operator decision. Do not schedule it.** (Read its section.)
+**Step 0B is the one genuinely urgent, genuinely new item**, and it needs a word with the LAF stream
+first: it changes numbers that stream is actively producing.
 
 ```
-0A ─┐  (independent, urgent)
-0B ─┘  (independent, urgent)
+0B   (urgent — but coordinate with the live LAF stream before touching it)
 
 1 ──► 2 ──► 3 ──► 5
 │                 ▲
 └──► 4 ───────────┘
-     └──► 6
+     └──► 6   ◄── highest-value substantive step
 
 7, 8, 9, 10  (independent — any order, any session)
 ```
 
 - **Step 1** is the keystone: it dissolves five defects at once and is the prerequisite for 2, 3, 5.
-- **Steps 1 and 4** are independent of each other and together make Steps 2/3/5 unnecessary-rather-than-fixed.
+- **Step 6** is the highest-value *substantive* step: eight filter lists frozen at whenever someone
+  typed them, which never see a verb the classifier adds. It is the real version of what Step 0A
+  looked like.
+- **Steps 1 and 4** are independent of each other and together make Steps 2/3/5
+  unnecessary-rather-than-fixed.
 - **Steps 7–10** are standalone cleanups; 9 is the cheapest legibility-per-line on the list.
 
 **Cross-thread collision warning.** Step 7 touches `consolidation_contract.suppression_relations`,
@@ -57,41 +84,34 @@ note it on the node.
 
 ---
 
-## Step 0A — Replace the `INTENTIONAL_EDGE_TYPES` whitelist with a derived exclusion set
+## Step 0A — `INTENTIONAL_EDGE_TYPES` — ALREADY PARKED BY THE OPERATOR. Do not schedule this.
 
-**Problem.** `servers/brain_constants.py:298-307` defines a 30-string closed whitelist written before
-the aspect taxonomy existed. `brain_recall._enrich_results` (`servers/brain_recall.py:2243`) filters
-each node's `_neighbors` through it on the **top 3 results of every `recall()` call** and on all of
-`recall_node()`. `daemon_hooks.py:388` then promotes `_neighbors` into `_graph.degree_1`, so this
-reaches Anchor.
+**Status: deferred on purpose, one month ago, by Tom. Not a new finding.** Brain node `id:28f7fe69`
+records a full audit of exactly this class — three hardcoded edge-filter lists predating the aspect
+registry. Two were fixed (`LINEAGE_FAMILIES` → aspects union, commit `5be197be`;
+`EXCLUDED_EDGE_TYPES` → noise guard, commit `4d190406`). This was the third, and Tom's words on the
+node are explicit:
 
-Measured live: **760 distinct relations, 29 of them in the whitelist. 25,557 of 36,210 edge_relation
-rows (70.6%) are dropped.** Every verb AspectIntegration has ever routed is invisible here —
-`grounds`, `refines`, `reframes`, `resolves`, `absorbed_into`, and 57 of 58 live
-`correction_improvement` members. The whitelist cannot grow: nothing writes to it and the classifier
-that mints new verbs has never heard of it.
+> *"intentional edge types shouldnt be done here. I've taken the idea and also you'll remember it
+> for the right time and or a different stream. let's do the fixes."*
 
-**Target state.** Invert it — a blacklist derived from the registry rather than a whitelist of
-literals. `servers/dispatch_read.py:153` already does exactly this with `EXCLUDED_EDGE_TYPES` for the
-same conceptual job; one of the two neighbor paths was migrated and this one was not. If Step 6 has
-already landed, use its `structural_exclusions(brain)`; if not, inline
-`relations_in(['noise']) - {'community_member'}` and leave a pointer to Step 6.
+**Why it was parked, and why that still holds:** the swap is conceptually ready — the noise guard
+removed the only technical blocker — but it **changes production recall behavior** and needs its own
+eval stream with recall-quality benchmarks. It is not a side-fix, and it is not this plan's business.
 
-**Files & call sites.** `servers/brain_constants.py:298-307` (the constant),
-`servers/brain_recall.py:2243` (the filter), `servers/brain_recall.py:2103` and `:2271` (the two
-entry points). Check `dispatch_read.py:153` for the shape to copy.
+**Scope, stated accurately** (the first draft of this doc overstated it): the constant has exactly
+**one** use site — `brain_recall._enrich_results` (`servers/brain_recall.py:2243`), which attaches
+`_neighbors` for display. Called on the top 3 of a recall and in `recall_node`; `_neighbors` is read
+only by `daemon_hooks.py:388`, which promotes it to context. It does **not** touch candidate
+selection, scoring, ranking, or the LAF field. The measured 25,566-of-36,219-rows figure is real and
+is about that neighbor-context list — not about recall being 70% broken.
 
-**Verification.** `tests/integration/test_recall_pipeline.py`, `tests/test_surface_transitions.py`.
-Add a test asserting a classifier-minted verb (e.g. `grounds`) survives into `_neighbors` — that is
-the regression this bug is. Before/after, count `_neighbors` on a recall of a well-connected node.
+**If and when it is picked up:** it wants its own session with a recall-quality benchmark, and Step 6
+should land first so `structural_exclusions(brain)` already exists to swap in.
 
-**Blast radius.** Widens what Anchor sees in `_graph.degree_1` on every recall — an intended increase,
-but it changes injected-context volume. Check the surface token budget after; if the widening is too
-blunt, cap by count rather than by re-narrowing the relation set.
-
-**Depends on.** None. Independent and urgent.
-
-**Respects.** Settled #1 (no data relocation — this only changes which relations are read).
+**Lesson recorded.** This item came back as a "discovery" because this review recalled the aspect
+*storage* history and fed it to the review agents, but never recalled the aspect *filter* history.
+Any future review of this surface must recall BOTH. See `id:28f7fe69` and `id:40e7125a` first.
 
 ---
 
@@ -359,11 +379,13 @@ Two consequences measurable right now:
    the seed lacks, zero seed-only entries. The seed is not a baseline; it is a stale minority. The
    reconcile is one-way and additive, so the seed can never correct a bad classification.
 2. **`noise.edge_relations` contains `temporal_sequence`, `extension_refinement`,
-   `validation_evidence` — three *aspect names* filed as relation verbs.** Either real edges carry
-   those literal strings (in which case genuine temporal edges are being dropped from the encoder
-   catalog by `_filter_noise_relations`), or the classifier echoed the menu it was shown. **The file
-   cannot distinguish these**, because there is no count, no date, and no rationale. That is the
-   provenance gap costing something today, not hypothetically.
+   `validation_evidence` — three *aspect names* filed as relation verbs.** The file cannot tell you
+   whether real edges carry those literal strings or the classifier echoed the menu it was shown —
+   which is the provenance gap in miniature. **The brain can, and did:** node `id:40e7125a` audited
+   this a month ago and confirmed no real edge uses those strings as relation values, so it is
+   harmless today and a one-line cleanup. Keep it as the worked example of *why* records matter —
+   answering it required a human-run audit that a `count_at` field would have answered for free —
+   but do not treat it as an open question, and fix the three entries whenever this step lands.
 
 And because the heal is additive-only *and* a member is a bare string, a manual retirement is
 reverted on the next boot with no way to express intent. Removal is not awkward — it is
