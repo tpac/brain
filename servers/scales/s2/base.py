@@ -579,6 +579,12 @@ class IntegrationUnit:
         if not system_prompt:
             print('[%s] WARNING: no interaction prompt for %s' % (
                 self.NAME, interaction_name), flush=True)
+            # Loud: a missing prompt means this unit silently does nothing
+            # every cycle — surface it in the errors table, not just stdout.
+            self.brain._log_error(
+                '%s_missing_prompt' % self.NAME,
+                RuntimeError('no interaction prompt for %s' % interaction_name),
+                'unit cannot run its LLM step')
             return None, telemetry
 
         # Ensure API key

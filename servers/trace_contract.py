@@ -86,6 +86,9 @@ REF_TYPES = {
                          "scout_findings"],    # muster scouts: their candidates
     ("s1", "delta"):   ["additionalContext",       # what reached Anchor
                          "encoding_run",            # what the encoder produced
+                         "encoding_run_failed",     # LLM loop died — no writes; NOT read by
+                                                    # trace_links (coverage joins on encoding_run
+                                                    # only, so a failed run never claims turns)
                          "node_revised",            # field-level revise emitted by S1 encoder
                          "edge_relation_revised",   # connect upsert / archive emitted by S1 encoder
                          "journal_note"],           # S1 Scribe residue — one note (subject=ref_id) per row
