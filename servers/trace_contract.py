@@ -709,19 +709,13 @@ JOURNAL_ARC_MARKER = '## Arc'         # the arc heading (§7.2: "Arc — ONE lin
                                       # S1 Scribe today; any S2 unit later.
 
 
-def _extract_fenced_block(text, marker):
-    """Pull a fenced block out of an encoder's final text: find the `marker`
-    section heading and return the content of its first fenced ``` block.
-
-    Three-valued so writers can tell the cases apart and stay loud:
-      • **None** — no `marker` section, or a marker with no parseable fence
-        (missing open/close fence). The caller distinguishes "no section" from
-        "format drift" by re-checking `marker in text`.
-      • **''** — a fenced block that's empty (a legit clean run), distinct
-        from drift.
-      • **str** — the fence content.
-    Extracting ONLY the fence (not the whole section) keeps surrounding prose
-    from being mis-parsed as content.
+def _fenced_section_scan(text, marker):
+    """The ONE scanner for a journal section — finds the `marker` heading and
+    its own fenced ``` block, returning `(section_start, section_end, content)`
+    with the section span as [start, end) character offsets and `content` the
+    fence body (language tag skipped, stripped). None when the section is
+    absent or its fence is malformed. Both the extractors and the strip below
+    ride this, so the section-ownership rules can't drift apart.
     """
     if not text:
         return None
@@ -750,7 +744,52 @@ def _extract_fenced_block(text, marker):
     close_fence = rest.find('```')
     if close_fence == -1:
         return None
-    return rest[:close_fence].strip()
+    content_end_in_after = (open_fence + 3
+                            + (nl + 1 if nl != -1 else 0)
+                            + close_fence + 3)
+    return (idx, idx + len(marker) + content_end_in_after,
+            rest[:close_fence].strip())
+
+
+def _extract_fenced_block(text, marker):
+    """Pull a fenced block out of an encoder's final text: find the `marker`
+    section heading and return the content of its first fenced ``` block.
+
+    Three-valued so writers can tell the cases apart and stay loud:
+      • **None** — no `marker` section, or a marker with no parseable fence
+        (missing open/close fence). The caller distinguishes "no section" from
+        "format drift" by re-checking `marker in text`.
+      • **''** — a fenced block that's empty (a legit clean run), distinct
+        from drift.
+      • **str** — the fence content.
+    Extracting ONLY the fence (not the whole section) keeps surrounding prose
+    from being mis-parsed as content.
+    """
+    scan = _fenced_section_scan(text, marker)
+    return scan[2] if scan else None
+
+
+def strip_journal_sections(text):
+    """Remove the journal sections (`## Arc` / `## Review` heading + fenced
+    block) from an encoder's final text, returning the payload remainder.
+
+    This is harvest's envelope rule for single-shot agents: their response
+    carries a JSON payload AND the journal fence in one text, and
+    `extract_json`'s rfind-based scan would be corrupted by a `]`/`}` inside
+    a fence that follows the payload — so the journal is stripped first.
+    Sections that are absent or malformed (drift) are left untouched.
+    """
+    if not text:
+        return text
+    stripped_any = False
+    for marker in (JOURNAL_ARC_MARKER, JOURNAL_REVIEW_MARKER):
+        scan = _fenced_section_scan(text, marker)
+        if scan:
+            text = text[:scan[0]] + text[scan[1]:]
+            stripped_any = True
+    # Only tidy whitespace when a section was actually removed — a text with
+    # no journal sections passes through byte-identical.
+    return text.strip() if stripped_any else text
 
 
 def extract_review_block(text):

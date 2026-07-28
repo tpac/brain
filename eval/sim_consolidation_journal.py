@@ -99,8 +99,7 @@ def main():
 
         # 1b. Assembly check (deterministic) — exactly what the encoder will build.
         enc0 = ConsolidationEncoder(brain, config=CONSOLIDATION)
-        asm = enc0._append_closure(
-            enc0._inject_review_block(enc0._inject_edge_aspects(v9)))
+        asm = enc0.journal.decorate_system(enc0._inject_edge_aspects(v9))
         checks = {
             'edge aspects renamed':        '## Edge Aspects' in asm and '## Edge Families' not in asm,
             'survivor_lineage excluded':   'absorbed_into' not in asm,
