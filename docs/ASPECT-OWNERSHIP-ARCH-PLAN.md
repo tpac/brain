@@ -330,7 +330,7 @@ it must log loudly and leave the prior file intact rather than half-writing.
 
 ---
 
-## Step 4 — Move per-aspect facts into the JSON entry — **IMPLEMENTED 2026-07-28 (`91119f7`, branch `claude/cranky-hawking-baaa76`) — MERGE + RESTART HELD**
+## Step 4 — Move per-aspect facts into the JSON entry — **SHIPPED 2026-07-28 (`91119f7`, merged `d614ae0`, live in daemon)**
 
 > **STATUS 2026-07-28.** Landed as specified, plus three additions. (1) A
 > reconcile **job 4** heals missing fact fields from the seed — the plan
@@ -344,9 +344,10 @@ it must log loudly and leave the prior file intact rather than half-writing.
 > guard. Deviations: absent-fact defaults are CONSERVATIVE
 > (`prompt_visible=False`), not literal-mirroring — a refused heal quiets
 > vocabulary blocks rather than leaking noise verbs into them. Classifier
-> menu verified byte-identical. Merge to main + daemon restart held on
-> operator instruction (parallel streams; another stream changed the
-> agents interface — re-verify `scales/s2/base.py` inheritance on rebase).
+> menu verified byte-identical. Merged `d614ae0` after a conflict-free
+> rebase over the runner-seam refactor (945feba); deployed by a sibling
+> stream's daemon restart and verified live (16 aspects, facts loaded,
+> 303 derived lineage relations, `_schema` healed into the working copy).
 
 **Problem.** The JSON is the declared source of truth for aspect membership, but four per-aspect
 *facts* live in Python name-keyed literals, and the aspect name list is enumerated **six** times:
