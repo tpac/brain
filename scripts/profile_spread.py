@@ -71,7 +71,6 @@ def _instrumented_build_edge_coeffs(brain, brain_conn, activated_nodes,
     import os as _os
     import numpy as np
     from servers.dal_graph import GraphDAL
-    from servers.pipeline_contract import TRAVERSE_EXCLUDED_EDGES
     from servers.scales.s1.surface_contract import (
         _compose_enriched_edge_text,
         _desc_vecs_batched,
@@ -80,7 +79,7 @@ def _instrumented_build_edge_coeffs(brain, brain_conn, activated_nodes,
     )
 
     gdal = GraphDAL(brain_conn)
-    excluded = set(TRAVERSE_EXCLUDED_EDGES)
+    excluded = set(brain.aspects.traversal_exclusions)
     _SPREAD_LIMIT = int(_os.environ.get(
         'BRAIN_SPREAD_NEIGHBOR_LIMIT', str(SPREAD_NEIGHBOR_LIMIT_DEFAULT)))
 

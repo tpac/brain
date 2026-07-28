@@ -303,10 +303,10 @@ INTENTIONAL_EDGE_TYPES = {
     'related_to', 'caused_by', 'supports', 'blocks', 'example_of', 'evolved_from',
     'contradicts', 'refers_to',
 }
-# Edges excluded from graph traversal during recall.
-# co_accessed: NOW surface-selected only (clean). Old noise edges deleted 2026-04-02.
-# emergent_bridge: Auto-discovered weak connections — excluded from traversal.
-EXCLUDED_EDGE_TYPES = {'emergent_bridge'}
+# Traversal exclusions derive from the noise aspect at load time —
+# brain.aspects.structural_exclusions. (EXCLUDED_EDGE_TYPES deleted 2026-07-28:
+# a dated 1-member snapshot whose "co_accessed is clean" premise died when
+# Hebbian co-access writes resumed.)
 
 # Situation embeddings — WHEN knowledge matters (second vector dimension)
 SITUATION_WEIGHT = 0.2          # Additive boost for situation match during recall

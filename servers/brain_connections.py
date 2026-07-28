@@ -321,13 +321,10 @@ class BrainConnectionsMixin:
         Create a bridge edge between source and target.
         Returns created edge info or None if bridge already exists.
         """
-        # Check no direct edge already exists
-        existing = self.conn.execute(
-            'SELECT weight FROM edges WHERE source_id = ? AND target_id = ?',
-            (source_id, target_id)
-        ).fetchone()
-
-        if existing:
+        # Check no direct edge already exists — BOTH directions. Edges are
+        # stored single-direction (v22), so a one-direction check misses a
+        # pre-existing reversed edge and creates a duplicate bridge.
+        if self._graph.get_edge_id(source_id, target_id) is not None:
             return None
 
         # Get titles

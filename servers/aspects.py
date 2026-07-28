@@ -441,6 +441,28 @@ class AspectRegistry:
             for r in aspect.edge_relations:
                 self._reverse_edge.setdefault(r, name)
 
+        # Load-time derived policies — computed once per adopt, never per
+        # read (the writer owns the cache, so these can never go stale).
+        # Replaces the dated literals TRAVERSE_EXCLUDED_EDGES /
+        # EXCLUDED_EDGE_TYPES, whose "co_accessed is clean now" premise
+        # (2026-04-02) died when Hebbian co-access writes resumed.
+        #
+        # Two policies, one deliberate difference (Tom, 2026-07-28):
+        # · structural_exclusions — the FULL noise set. For flat READS
+        #   (connection lists on node pulls): noise carries no semantic
+        #   claim, and per the standing decision (id:49d734ad) that hides
+        #   community_member too.
+        # · traversal_exclusions — noise MINUS community_member. For graph
+        #   DYNAMICS (traverse, spread activation, Anchor's graph_expand):
+        #   community edges carry activation and narrative context —
+        #   conduction is not visibility, so the hide decision doesn't
+        #   silence them here.
+        noise = self._aspects.get('noise')
+        self.structural_exclusions: frozenset = (
+            frozenset(noise.edge_relations) if noise else frozenset())
+        self.traversal_exclusions: frozenset = (
+            self.structural_exclusions - {'community_member'})
+
     def reconcile_with_seed(self) -> bool:
         """Re-run the seed reconcile (first-boot copy + additive heal) and
         reload if it changed anything. Runs automatically at construction;

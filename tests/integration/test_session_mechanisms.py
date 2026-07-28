@@ -218,28 +218,35 @@ class Test03_SurfaceSelectedHebbian(unittest.TestCase):
         self.assertEqual(before, after,
                         "recall() should not create co_accessed edges")
 
-    def test_co_accessed_in_traversal(self):
-        """co_accessed should NOT be in EXCLUDED_EDGE_TYPES (it's clean now)."""
-        from servers.brain_constants import EXCLUDED_EDGE_TYPES
-        self.assertNotIn('co_accessed', EXCLUDED_EDGE_TYPES)
-
-    def test_emergent_bridge_still_excluded(self):
-        from servers.brain_constants import EXCLUDED_EDGE_TYPES
-        self.assertIn('emergent_bridge', EXCLUDED_EDGE_TYPES)
+    def test_exclusion_policies_derive_from_noise_aspect(self):
+        """Two load-time policies, one deliberate difference (Tom, 2026-07-28):
+        structural_exclusions is the FULL noise set (flat reads — hide
+        decision id:49d734ad includes community_member); traversal_exclusions
+        is noise MINUS community_member (graph dynamics keep conducting
+        through communities — conduction is not visibility). The old
+        EXCLUDED_EDGE_TYPES literal's 'co_accessed is clean now' premise
+        (2026-04-02) died when Hebbian co-access writes resumed."""
+        structural = self.brain.aspects.structural_exclusions
+        traversal = self.brain.aspects.traversal_exclusions
+        self.assertEqual(
+            structural,
+            frozenset(self.brain.aspects.relations_in(['noise'])))
+        self.assertIn('community_member', structural)
+        self.assertNotIn('community_member', traversal)
+        self.assertEqual(traversal, structural - {'community_member'})
+        for rel in ('co_accessed', 'emergent_bridge'):
+            self.assertIn(rel, traversal)
 
 
 
 class Test05_StructuralGraph(unittest.TestCase):
     """Structural graph separation — noise edges excluded from traversal.
 
-    WHAT: co_accessed (was 94K noise, now clean surface-selected) included.
-    emergent_bridge excluded. Traversal only follows structural edges.
-
     WHY: The old graph was a hairball — 2-hop reached 91% of nodes.
     With structural-only: 2-hop reaches ~4%. Real topology exists.
 
-    WHERE: brain_constants.py EXCLUDED_EDGE_TYPES
-    EFFECT: graph traversal in brain_recall.py _traverse_graph()
+    WHERE: brain.aspects.structural_exclusions (noise aspect, load-time)
+    EFFECT: graph traversal in pipeline_contract.traverse / graph_expand
     """
 
     @classmethod
@@ -255,8 +262,9 @@ class Test05_StructuralGraph(unittest.TestCase):
         os.remove(cls.test_db)
 
     def test_excluded_types(self):
-        from servers.brain_constants import EXCLUDED_EDGE_TYPES
-        self.assertEqual(EXCLUDED_EDGE_TYPES, {'emergent_bridge'})
+        exclusions = self.brain.aspects.traversal_exclusions
+        self.assertIn('emergent_bridge', exclusions)
+        self.assertIn('co_accessed', exclusions)
 
     def test_structural_edges_exist(self):
         """There should be intentional edges for traversal.

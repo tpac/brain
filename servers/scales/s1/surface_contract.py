@@ -1055,10 +1055,9 @@ def _build_edge_coeffs(brain, brain_conn, activated_nodes, query_vec,
     in Python.
     """
     from servers.dal_graph import GraphDAL
-    from servers.pipeline_contract import TRAVERSE_EXCLUDED_EDGES
 
     gdal = GraphDAL(brain_conn)
-    excluded = set(TRAVERSE_EXCLUDED_EDGES)
+    excluded = set(brain.aspects.traversal_exclusions)
 
     # Per-source neighbor cap. Default from contract (SPREAD_NEIGHBOR_LIMIT_DEFAULT).
     # Env override: BRAIN_SPREAD_NEIGHBOR_LIMIT — used by eval variants.

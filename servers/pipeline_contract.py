@@ -409,7 +409,9 @@ EDGE_REF_FIELDS = ('relation', 'weight', 'description')
 #
 # Callers: boot (S0), MCP recall, S1 Surface, get_node/get_nodes.
 
-TRAVERSE_EXCLUDED_EDGES = {'co_accessed', 'emergent_bridge'}
+# Traversal exclusions derive from the noise aspect at load time —
+# brain.aspects.structural_exclusions (see AspectRegistry._adopt). The old
+# TRAVERSE_EXCLUDED_EDGES literal was a dated snapshot of "what noise meant".
 
 
 def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
@@ -439,7 +441,7 @@ def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
     graph_dal = brain._graph
     seen = set(resolved_ids)
     neighbors = []
-    excluded = set(TRAVERSE_EXCLUDED_EDGES)
+    excluded = set(brain.aspects.traversal_exclusions)
 
     for full_id in resolved_ids:
         rows = graph_dal.get_neighbors(

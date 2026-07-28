@@ -145,12 +145,13 @@ def _handle_graph_expand(brain, args, graph_changes):
     if not node_ids:
         return {"ok": True, "result": {"neighbors": []}}
 
-    from .brain_constants import EXCLUDED_EDGE_TYPES
     node_dal = brain._nodes
     graph_dal = brain._graph
     seen = set(node_ids)
     neighbors = []
-    excluded = set(EXCLUDED_EDGE_TYPES)
+    # Same noise-derived exclusion every traversal uses (was a drifted
+    # 1-member literal that leaked co_accessed edges into graph_expand).
+    excluded = set(brain.aspects.traversal_exclusions)
 
     for seed_id in node_ids:
         full_id = seed_id

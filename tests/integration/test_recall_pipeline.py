@@ -174,10 +174,13 @@ class TestGraphExpand(unittest.TestCase):
         self.assertEqual(result['result']['neighbors'], [])
 
     def test_expand_excludes_noise_edges(self):
-        """Graph expand should not follow emergent_bridge edges."""
-        from servers.daemon_dispatch import _handle_graph_expand
-        from servers.brain_constants import EXCLUDED_EDGE_TYPES
-        self.assertIn('emergent_bridge', EXCLUDED_EDGE_TYPES)
+        """Graph expand excludes the traversal set (was a drifted 1-member
+        literal that leaked co_accessed edges) — community_member deliberately
+        NOT excluded here: Anchor's manual graph walk keeps community links."""
+        exclusions = self.brain.aspects.traversal_exclusions
+        self.assertIn('emergent_bridge', exclusions)
+        self.assertIn('co_accessed', exclusions)
+        self.assertNotIn('community_member', exclusions)
 
 
 if __name__ == '__main__':

@@ -27,7 +27,6 @@ from .brain_constants import (
 )
 
 
-
 class BrainRememberMixin:
     """Remember methods for Brain."""
 
@@ -1601,110 +1600,6 @@ class BrainRememberMixin:
             self._maybe_commit()
         return {'backfilled': count, 'remaining': len(rows) - count}
 
-    def _compute_group_vectors(self, node_id: str, title: str, content: str,
-                               situation: str = None, **metadata_fields):
-        """Compute and store multi-vector group embeddings for a node.
-
-        v23: This function is NO LONGER called from remember()/revise().
-        Group vectors are computed by backfill_vectors() in idle maintenance.
-        Kept for backward compat and manual use.
-
-        Architecture: 4 groups defined in pipeline_contract.EMBEDDING_GROUPS.
-        - title: always computed (diagnostic pointer)
-        - blend (_primary): stored separately on write path (skip here)
-        - high_meta: situation + quotes — only if fields exist
-        - other_meta: reasoning + correction_pattern + emergent — only if fields exist
-
-        Vectors stored in node_enrichments with vector_type matching the group name.
-        """
-        from . import embedder
-        from .pipeline_contract import (EMBEDDING_GROUPS, EMBEDDING_SKIP_FIELDS,
-                                        EMBEDDING_FIELD_CHAR_LIMIT)
-
-        if not embedder.is_ready():
-            # A condition, not an exception — but boot-worthy (a node stored
-            # without its group vectors silently degrades recall), so log it as
-            # an error with a real type/message rather than a bare None.
-            self._log_error('group_vectors_skip',
-                            RuntimeError('embedder not ready — group vectors skipped'),
-                            'node %s stored without group vectors' % node_id[:8])
-            return
-
-        # Build field value lookup: all available fields for this node
-        field_values = {'title': title, 'content': content}
-        if situation:
-            field_values['situation'] = situation
-        for k, v in metadata_fields.items():
-            if v and isinstance(v, str) and v.strip() and k not in EMBEDDING_SKIP_FIELDS:
-                field_values[k] = v
-
-        # Also read any KV metadata not passed as args (emergent fields)
-        try:
-            dal = self._meta_kv
-            kv = dal.get(node_id)
-            for k, v in kv.items():
-                if k not in field_values and k not in EMBEDDING_SKIP_FIELDS and v and v.strip():
-                    field_values[k] = v
-        except Exception as _e:
-            self._log_error('enrichment_field_values', _e, 'collecting field values for enrichment')
-
-        for group_name, group_config in EMBEDDING_GROUPS.items():
-            # Skip blend — it's the primary embedding (_primary in node_enrichments)
-            if group_config.get('vector_type') == '_primary':
-                continue
-
-            vector_type = group_config['vector_type']
-            group_fields = group_config.get('fields', [])
-
-            # Collect text parts for this group
-            parts = []
-            for field_name in group_fields:
-                if field_name == '_emergent':
-                    # Emergent: any KV field not explicitly in ANY group
-                    all_explicit = set()
-                    for g in EMBEDDING_GROUPS.values():
-                        all_explicit.update(f for f in g.get('fields', []) if f != '_emergent')
-                    for k, v in field_values.items():
-                        if k not in all_explicit and k not in ('title', 'content'):
-                            parts.append(v[:EMBEDDING_FIELD_CHAR_LIMIT])
-                elif field_name == '_edge_descriptions':
-                    # Edge context: descriptions via GraphDAL helper.
-                    # Centralizes: archived=0 (v25), noise exclusion
-                    # (co_accessed, emergent_bridge, community_member),
-                    # min_length, and the weight-ordered LIMIT.
-                    try:
-                        descriptions = self._graph.get_edge_descriptions_for(
-                            node_id, limit=5)
-                        for desc in descriptions:
-                            parts.append(desc[:EMBEDDING_FIELD_CHAR_LIMIT])
-                    except Exception as _e:
-                        self._log_error('edge_context_descriptions', _e,
-                                        'building edge_context for %s' % node_id[:8])
-                else:
-                    val = field_values.get(field_name, '')
-                    if val:
-                        parts.append(val[:EMBEDDING_FIELD_CHAR_LIMIT])
-
-            # Skip group if no data (unless always_compute)
-            if not parts and not group_config.get('always_compute'):
-                continue
-
-            if not parts:
-                continue  # Even always_compute needs at least one field
-
-            # Embed and store
-            embed_text = ". ".join(parts)
-            blob = embedder.embed_document(embed_text)
-            if blob:
-                self.conn.execute(
-                    '''INSERT OR REPLACE INTO node_enrichments
-                       (id, node_id, vector_type, text, embedding, model, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                    (f'{node_id}_{vector_type}', node_id, vector_type,
-                     embed_text[:500], blob, embedder.stats.get('model_name', ''),
-                     self.now()))
-
-        self._maybe_commit()
 
     # _store_node_metadata removed 2026-04-13 — old node_metadata table dropped.
 

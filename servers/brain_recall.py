@@ -43,7 +43,6 @@ from .brain_constants import (
     TRAVERSE_SEMANTIC_THRESHOLD,
     TRAVERSE_CONVERGENCE_BOOST,
     FRESHNESS_MULTIPLIERS,
-    EXCLUDED_EDGE_TYPES,
     SITUATION_WEIGHT,
     SITUATION_THRESHOLD,
     NOISE_FLOOR_THRESHOLD,
@@ -514,17 +513,6 @@ class BrainRecallMixin:
     def list_interactions(self):
         """List all registered interactions with latest versions."""
         return self._interaction_dal.list_all()
-
-    def get_interaction(self, name: str, version: int = 0):
-        """Get an interaction by name, optionally a specific version.
-
-        version=0 (default) returns the currently-active version (via the
-        interaction_active pointer), NOT the max-numbered version. See
-        InteractionDAL.get_active.
-        """
-        if version:
-            return self._interaction_dal.get_version(name, version)
-        return self._interaction_dal.get_active(name)
 
     def semantic_recall(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """
