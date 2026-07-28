@@ -44,7 +44,9 @@ COMMUNITY_DETECTION = {
     'cluster_overlap_threshold': 0.60,
 
     # ── Drift detection ──
-    # foreign_affinity > home_affinity × drift_ratio triggers a drift proposal.
+    # foreign_affinity > max(home_affinity, floor) × drift_ratio triggers a
+    # drift proposal (the floor keeps the ratio a real lever at home_aff 0).
+    # Targets are existing communities only — never same-run clusters.
     # Per-node override: _sys_drift_threshold in metadata_kv. Encoder raises
     # this on rejection (e.g. 1.6, 1.7) so weak drift doesn't re-propose.
     'drift_ratio': 1.5,

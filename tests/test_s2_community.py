@@ -500,5 +500,151 @@ class TestCommunityIdleGate(BrainTestBase):
         self.assertIsNone(u._should_skip())
 
 
+class TestDriftDetection(BrainTestBase):
+    """Drift proposals target EXISTING communities only, and the
+    _sys_drift_threshold lever works even at home_aff == 0 (bug bc024ee6:
+    run-local new_cluster targets were unsuppressible phantoms, and a ratio
+    on a zero home base made the rejection lever inert)."""
+
+    needs_embedder = False
+
+    def _node(self, title):
+        return self.brain.remember(type='decision', title=title, content='c',
+                                   encoding_source='test')['id']
+
+    def _community(self, title, members):
+        cid = self.brain.remember(
+            type='community', title=title, content='c',
+            encoding_source='s2:community_detection')['id']
+        for m in members:
+            self.brain.connect(cid, m, relation='community_member', weight=0.3)
+        return cid
+
+    def _empty_s1_delta(self):
+        return {
+            'encoding_runs': [], 'surface_selections': [],
+            'new_node_ids': set(), 'co_surface_pairs': [],
+        }
+
+    def _decode(self):
+        from servers.scales.s2.community_decoder import CommunityDecoder
+        decoder = CommunityDecoder(self.brain)
+        state = decoder._read_community_state()
+        return decoder._decode(self._empty_s1_delta(), state,
+                               is_cold_start=True)
+
+    def _drifts(self, result):
+        return [p for p in result['proposals'] if p['type'] == 'drift']
+
+    def _two_communities_estranged_node(self):
+        """Node x placed in home A but all its typed neighbors are in B."""
+        x = self._node('estranged x')
+        home_rest = [self._node('a%d' % i) for i in range(2)]
+        foreign = [self._node('b%d' % i) for i in range(4)]
+        self._community('home A', [x] + home_rest)
+        b_id = self._community('foreign B', foreign)
+        for m in foreign:
+            self.brain.connect(x, m, relation='implements', weight=0.8)
+        return x, b_id
+
+    def test_zero_home_drift_fires_on_existing_community(self):
+        """home_aff == 0 with strong foreign affinity still surfaces drift,
+        and the target is the existing community's real id."""
+        x, b_id = self._two_communities_estranged_node()
+
+        drifts = self._drifts(self._decode())
+        mine = [p for p in drifts if p['node_id'] == x]
+        self.assertEqual(len(mine), 1)
+        self.assertEqual(mine[0]['foreign'][0]['id'], b_id)
+
+    def test_drift_never_targets_same_run_clusters(self):
+        """A placed node adjacent to an unplaced cluster produces NO drift —
+        the cluster is a new_community proposal, not a drift target."""
+        x = self._node('placed x')
+        self._community('home A', [x, self._node('a1'), self._node('a2')])
+        cluster = [self._node('c%d' % i) for i in range(5)]
+        for i in range(len(cluster)):
+            for j in range(i + 1, len(cluster)):
+                self.brain.connect(cluster[i], cluster[j],
+                                   relation='implements', weight=0.8)
+        for m in cluster:
+            self.brain.connect(x, m, relation='implements', weight=0.8)
+
+        result = self._decode()
+        for p in self._drifts(result):
+            for f in p['foreign']:
+                self.assertNotIn('new_cluster', str(f['id']))
+        self.assertNotIn(x, [p['node_id'] for p in self._drifts(result)])
+        # The cluster signal is not lost — it routes as a structural proposal
+        # (new_community, or add_to_existing when overlap converts it).
+        structural = [p for p in result['proposals']
+                      if p['type'] in ('new_community', 'add_to_existing')]
+        self.assertGreaterEqual(len(structural), 1)
+
+    def test_threshold_lever_works_at_zero_home(self):
+        """Raising _sys_drift_threshold suppresses a zero-home candidate —
+        the lever the encoder uses on rejection must not be inert."""
+        x, _ = self._two_communities_estranged_node()
+        self.brain._meta_kv.set(x, '_sys_drift_threshold', '10')
+
+        drifts = self._drifts(self._decode())
+        self.assertNotIn(x, [p['node_id'] for p in drifts])
+
+    def test_weak_foreign_below_scaled_floor_is_quiet(self):
+        """At home_aff == 0 the bar is floor × ratio (0.225), not the bare
+        floor (0.15) — weak foreign affinity no longer fires."""
+        x = self._node('weak x')
+        self._community('home A', [x, self._node('a1'), self._node('a2')])
+        b_member = self._node('b0')
+        others = [self._node('o%d' % i) for i in range(4)]
+        self._community('foreign B', [b_member] + [self._node('b%d' % i)
+                                                   for i in range(1, 4)])
+        # 5 typed neighbors, only 1 in B → foreign_aff ≈ 0.2 < 0.225
+        for m in [b_member] + others:
+            self.brain.connect(x, m, relation='implements', weight=0.8)
+
+        drifts = self._drifts(self._decode())
+        self.assertNotIn(x, [p['node_id'] for p in drifts])
+
+    def test_foreign_targets_sorted_strongest_first(self):
+        """foreign[0] feeds the rejection fingerprint and quota confidence —
+        it must be the strongest target, not community-row order."""
+        x = self._node('torn x')
+        self._community('home A', [x, self._node('a1'), self._node('a2')])
+        weak = [self._node('w0')]
+        strong = [self._node('s%d' % i) for i in range(3)]
+        # Weak community created FIRST so row order would put it at [0].
+        weak_id = self._community('weak B', weak + [self._node('w%d' % i)
+                                                    for i in range(1, 4)])
+        strong_id = self._community('strong C', strong)
+        # 4 typed neighbors: 1 in B (0.25), 3 in C (0.75) — both above bar.
+        for m in weak + strong:
+            self.brain.connect(x, m, relation='implements', weight=0.8)
+
+        drifts = self._drifts(self._decode())
+        mine = [p for p in drifts if p['node_id'] == x]
+        self.assertEqual(len(mine), 1)
+        self.assertEqual(mine[0]['foreign'][0]['id'], strong_id)
+        self.assertEqual(mine[0]['foreign'][1]['id'], weak_id)
+
+    def test_positive_home_drift_behavior_preserved(self):
+        """home_aff ≥ floor keeps today's exact semantics: foreign must beat
+        home × ratio (live example: 25% home vs 100% target moved cleanly)."""
+        x = self._node('leaning x')
+        a1 = self._node('a1')
+        foreign = [self._node('b%d' % i) for i in range(3)]
+        self._community('home A', [x, a1, self._node('a2')])
+        b_id = self._community('foreign B', foreign)
+        # 4 typed neighbors: 1 home, 3 foreign → 0.25 home, 0.75 foreign
+        self.brain.connect(x, a1, relation='implements', weight=0.8)
+        for m in foreign:
+            self.brain.connect(x, m, relation='implements', weight=0.8)
+
+        drifts = self._drifts(self._decode())
+        mine = [p for p in drifts if p['node_id'] == x]
+        self.assertEqual(len(mine), 1)
+        self.assertEqual(mine[0]['foreign'][0]['id'], b_id)
+
+
 if __name__ == '__main__':
     unittest.main()
