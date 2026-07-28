@@ -189,3 +189,53 @@ def build_frame(brain, session_id: str) -> str:
         _render_recent_moves(brain, session_id),
     ]
     return "\n".join(s for s in sections if s).strip() + "\n"
+
+
+# ── Standing items — boot-only, operator-extensible type injection ──
+# NOT a Frame section: the Frame renders on every recall turn; standing items
+# are a wake-up ritual (see them once, act, archive). Injected by
+# render_boot_v2 after the Frame.
+#
+# BRAIN_BOOT_INJECT_TYPES (~/.config/brain/env, comma-separated) picks which
+# node types surface at boot. Ships with `journals-escalation` — the landing
+# type for journal open-items the encoders promoted (trace_contract
+# JOURNAL_ESCALATION_TYPE) — so escalations reach a human by default. Users
+# extend their boot with their own types the same way.
+
+BOOT_INJECT_TYPES_DEFAULT = 'journals-escalation'
+BOOT_INJECT_CAP = 10
+
+
+def render_standing_items(brain) -> str:
+    """Every live node of the configured types, newest first, capped.
+
+    Empty string when nothing qualifies — a clean boot adds nothing. The
+    lifecycle exit is on the node: handle it, then archive (or revise) it and
+    it leaves the next boot.
+    """
+    import os
+    raw = os.environ.get('BRAIN_BOOT_INJECT_TYPES', BOOT_INJECT_TYPES_DEFAULT)
+    types = [t.strip() for t in raw.split(',') if t.strip()]
+    if not types:
+        return ''
+    result = brain.filter_nodes(field='type', include=types,
+                                limit=BOOT_INJECT_CAP + 1, rich=False)
+    if (result or {}).get('error'):
+        # Loud by default — an error dict is not "nothing standing".
+        brain._log_error('boot_standing_items_filter',
+                         ValueError(str(result.get('error'))),
+                         'render_standing_items: filter_nodes errored for types=%r' % types)
+        return ''
+    nodes = (result or {}).get('nodes') or []
+    if not nodes:
+        return ''
+    overflow = len(nodes) > BOOT_INJECT_CAP
+    nodes = nodes[:BOOT_INJECT_CAP]
+    lines = ['## Standing items']
+    for n in nodes:
+        lines.append('- [%s] %s (id:%s, since %s)' % (
+            n.get('type', '?'), n.get('title', '?'),
+            (n.get('id') or '')[:8], (n.get('created_at') or '')[:10]))
+    if overflow:
+        lines.append("- (+more — filter_nodes(field='type', include=%r))" % types)
+    return '\n'.join(lines)

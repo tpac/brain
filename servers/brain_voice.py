@@ -384,6 +384,21 @@ class BrainVoice:
             out.append("(no partnership context — Frame unavailable at boot)")
             out.append("")
 
+        # ── Standing items — boot-only, BRAIN_BOOT_INJECT_TYPES-driven ──
+        # Escalated journal items (and any operator-configured types) reach
+        # a human here. Failure-isolated like the Frame: boot never breaks
+        # on an injection read.
+        try:
+            from servers.scales.s1.frame import render_standing_items
+            standing = render_standing_items(brain)
+        except Exception as e:
+            brain._log_error('boot_standing_items_failed', e,
+                             'render_boot_v2: standing-items build raised — boot continues without it')
+            standing = ''
+        if standing:
+            out.append(standing)
+            out.append("")
+
         brain.save()
 
         # ── Embedder status ──

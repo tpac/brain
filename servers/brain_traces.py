@@ -169,30 +169,109 @@ class BrainTracesMixin:
         heavy get_node per note here, and the consumer already holds the node.
         """
         from .trace_contract import (JOURNAL_CONTINUITY_RUNS,
-                                      JOURNAL_CONTINUITY_RUNS_DEFAULT)
+                                      JOURNAL_CONTINUITY_RUNS_DEFAULT,
+                                      JOURNAL_RESOLVE_TAGS, JOURNAL_OPEN_TAGS,
+                                      JOURNAL_OPEN_PIN_CAP)
         events = self.query_traces(
             ref_type='journal_note', scale=scale, ref_id=subject,
             session_id=session_id, chain_suffix=unit, hours=None, limit=limit,
         ).get('events', [])
-        if not subject:  # continuity: keep notes from the most recent K runs
+        open_meta = {}   # id(event) → {'open_runs': N, 'first_seen': iso}
+        if not subject:  # continuity: resolve-filter + K runs + open pins
             if k is None:
                 key = 's1e' if scale == 's1' else unit
                 k = JOURNAL_CONTINUITY_RUNS.get(key, JOURNAL_CONTINUITY_RUNS_DEFAULT)
-            seen, kept = [], []
+
+            def _tag(e):
+                return ((e.get('metadata') or {}).get('tag') or '').strip().casefold()
+
+            def _subj(e):
+                return (e.get('ref_id') or '').strip().casefold()
+
+            # Pass 1 — resolve-filtering, newest→oldest across ALL fetched
+            # events: a `resolved`/`retire` note retires every strictly-older
+            # note with the same (normalized) subject. Read-time only; the
+            # trace rows are untouched. The resolve note itself stays until it
+            # ages out — it documents the resolution.
+            resolved_seen, alive = set(), []
             for e in events:                       # created_at DESC
+                s = _subj(e)
+                if s and s in resolved_seen:
+                    continue
+                if s and _tag(e) in JOURNAL_RESOLVE_TAGS:
+                    resolved_seen.add(s)
+                alive.append(e)
+
+            # Pass 2 — the K-run window over surviving notes.
+            seen, window = [], []
+            for e in alive:
                 ch = e.get('chain_id') or ''
                 if ch not in seen:
                     if len(seen) >= k:
                         break
                     seen.append(ch)
-                kept.append(e)
-            events = kept
+                window.append(e)
+
+            # Pass 3 — open pins: the newest surviving `open`-tagged note per
+            # subject stays visible beyond the window until resolved (capped).
+            # ×N persistence = distinct runs mentioning the subject, computed
+            # over the post-resolve SURVIVORS — a resolve closes the epoch, so
+            # a re-opened subject starts at ×1 with a fresh first_seen. The
+            # reader does the bumping, never the encoder.
+            # Horizon note: everything here operates within the `limit` newest
+            # fetched events (~dozens of runs). That bound is the backstop of
+            # last resort — the ×N nudge fires at JOURNAL_OPEN_NUDGE_RUNS,
+            # long before any pin could age past the horizon.
+            runs_by_subj, first_seen = {}, {}
+            for e in alive:
+                s = _subj(e)
+                if not s:
+                    continue
+                if _tag(e) in JOURNAL_RESOLVE_TAGS:
+                    continue  # a resolve closes an epoch; it doesn't open one
+                ch = e.get('chain_id')
+                if ch:
+                    runs_by_subj.setdefault(s, set()).add(ch)
+                c = e.get('created_at') or ''
+                if c and (s not in first_seen or c < first_seen[s]):
+                    first_seen[s] = c
+
+            in_window = {id(e) for e in window}
+            pinned, pinned_subjects, pins_dropped = [], set(), 0
+            for e in alive:                        # newest first
+                if _tag(e) not in JOURNAL_OPEN_TAGS:
+                    continue
+                s = _subj(e)
+                if not s or s in pinned_subjects:
+                    continue
+                pinned_subjects.add(s)
+                open_meta[id(e)] = {
+                    'open_runs': len(runs_by_subj.get(s, ())) or 1,
+                    'first_seen': first_seen.get(s, ''),
+                }
+                if id(e) not in in_window:
+                    if len(pinned) < JOURNAL_OPEN_PIN_CAP:
+                        pinned.append(e)
+                    else:
+                        pins_dropped += 1
+            if pins_dropped:
+                # Loud by default: a dropped pin is an unresolved open item
+                # silently leaving the encoder's sight.
+                self._log_warning(
+                    'journal_open_pin_overflow',
+                    '%s/%s: %d open item(s) beyond the %d-pin cap dropped from '
+                    'continuity — resolve or promote some' % (
+                        scale, unit or session_id, pins_dropped,
+                        JOURNAL_OPEN_PIN_CAP))
+
+            events = window + pinned
         return [{
             'tag': (e.get('metadata') or {}).get('tag', ''),
             'note': (e.get('metadata') or {}).get('note', ''),
             'subject': e.get('ref_id', ''),
             'chain_id': e.get('chain_id', ''),
             'created_at': e.get('created_at', ''),
+            **open_meta.get(id(e), {}),
         } for e in events]
 
     def write_journal_notes(self, *, final_text, chain_id, scale, session_id=''):

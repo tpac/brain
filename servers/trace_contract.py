@@ -497,6 +497,20 @@ def build_journal_note_metadata(*, note, tag=''):
 
 JOURNAL_NOTE_DELIMITER = '·'
 
+# ── Journal lifecycle verbs (2026-07-28, audit finding #6) ──
+# Read-time only — traces stay append-only. `resolved`/`retire` drops older
+# same-subject notes from the continuity prefix; `open` pins the newest note
+# per subject beyond the K-run window until resolved. Matching is normalized
+# (casefold+strip) EXACT subject equality — the corpus showed paraphrase
+# references never match, so the instruction teaches exact-copy.
+JOURNAL_RESOLVE_TAGS = ('resolved', 'retire')
+JOURNAL_OPEN_TAGS = ('open', 'still-open')   # still-open: pre-existing wild alias
+JOURNAL_OPEN_PIN_CAP = 10        # max pinned subjects carried beyond the window
+JOURNAL_OPEN_NUDGE_RUNS = 5      # open ×N at/past this → render the promote nudge
+# The escalation type is boot-visible: render_standing_items (frame.py) injects
+# all live nodes of the types in BRAIN_BOOT_INJECT_TYPES at session boot.
+JOURNAL_ESCALATION_TYPE = 'journals-escalation'
+
 # Self-grounding by design (no `brain`/`trace`/`operator`/agent-verb/identity
 # tokens): the block means the same dropped into any host prompt or standing
 # alone, so a host-prompt edit can't silently shift the journal, and the block
@@ -515,12 +529,16 @@ JOURNAL_REVIEW_INSTRUCTION = (
     "dead-end — examples, not a list).\n"
     "`subject` — what the note is about: the specific thing touched (its id), "
     "a tool or input handed in, or the run itself.\n\n"
+    "To clear a handled note, write `resolved %s <its exact subject> %s why` "
+    "— one line per subject.\n"
+    "Mark a persisting item once: `open %s subject %s note` — it stays "
+    "visible until resolved; don't re-assert it each run.\n\n"
     "Put the notes under a `## Review` heading, inside a fenced code block — "
     "one note per line as `tag %s subject %s note`. A clean run is an empty "
     "fence — leave it empty rather than saying there's nothing to note.\n\n"
     "Time is precious — actions are already logged automatically; no need "
     "to rephrase. Stay sharp."
-) % (JOURNAL_NOTE_DELIMITER, JOURNAL_NOTE_DELIMITER)
+) % ((JOURNAL_NOTE_DELIMITER,) * 6)
 
 
 def render_journal_review_block(examples=''):
@@ -609,7 +627,28 @@ def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES'):
     for n in notes:
         tag = (n.get('tag') or '').strip()
         head = ('%s · ' % tag) if tag else ''
-        lines.append('- %s%s · %s' % (head, n.get('subject', ''), n.get('note', '')))
+        line = '- %s%s · %s' % (head, n.get('subject', ''), n.get('note', ''))
+        # Open items render their persistence: the loader computed ×N (distinct
+        # runs mentioning the subject) and pins the newest note beyond the
+        # window. Past the threshold, the nudge appears ON the item, in the run
+        # that should act — zero standing prompt cost.
+        runs = n.get('open_runs') or 0
+        if runs:
+            since = (n.get('first_seen') or '')[5:10]
+            line = '- %s ×%d%s · %s · %s' % (
+                tag or 'open', runs,
+                (' since %s' % since) if since else '',
+                n.get('subject', ''), n.get('note', ''))
+            if runs >= JOURNAL_OPEN_NUDGE_RUNS:
+                # Tool-neutral phrasing: encoders write nodes through different
+                # doors (brain_batch remember op, remember_batch) — name the
+                # node type, not a tool signature.
+                line += (
+                    "\n  ⚠ long-lived — resolve it, or promote it out of the "
+                    "journal: create a `%s`-type node carrying it, then write "
+                    "`resolved · %s · promoted to <id>`"
+                    % (JOURNAL_ESCALATION_TYPE, n.get('subject', '')))
+        lines.append(line)
     return '\n'.join(lines) + '\n\n'
 
 
