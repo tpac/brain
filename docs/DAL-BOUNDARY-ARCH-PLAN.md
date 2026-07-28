@@ -87,7 +87,9 @@ Steps 0–4 are safe parallel-session material. 5→6 is one arc. 10 waits for c
 
 ---
 
-## Step 0 — Correctness fixes (small, independent, do first)
+## Step 0 — Correctness fixes — **SHIPPED 2026-07-28 (`77e5fcb`)**
+
+(Landed with a refinement: two exclusion policies — see the resolved decision box above.)
 
 **Problem.** Three verified defects found in passing:
 1. `brain_connections.py:325-328` — bridge-creation existence check queries ONE direction
@@ -114,7 +116,7 @@ targeted recall tests for the graph_expand change. Grep proves the deletions.
 **Blast radius.** Small; #3 changes MCP graph_expand output deliberately.
 **Depends on.** None. **Respects.** id:6e0279b7.
 
-## Step 1 — Finish the interaction-registry door
+## Step 1 — Finish the interaction-registry door — **SHIPPED 2026-07-28 (`58273cf`)**
 
 **Problem.** The door is half-built: `brain.get_interaction`/`set_interaction_active`/
 `list_interactions` exist but `register` has none, so callers reach past the wall —
@@ -126,7 +128,12 @@ Layering decided once, not per call site.
 **Verification.** `test_prompt_sync.py`, `test_contract_sync.py`, interaction tests.
 **Blast radius.** ~10 lines. **Depends on.** None.
 
-## Step 2 — Same-connection duplicate DAL construction + stub-tolerance guards
+## Step 2 — Same-connection duplicate DAL construction + stub-tolerance guards — **SHIPPED 2026-07-28 (`58273cf`)**
+
+(Review at the commit boundary caught a NameError on the spread stored-embeddings branch —
+fixtures never reach it, so targeted tests were blind; plus a missed brain-free test caller,
+an unresolved-id batch lookup in muster, and a door-defaults divergence. All fixed in the
+same commit. The session-DAL param threading altitude item is noted for Step 6's arc.)
 
 **Problem.** Sites construct throwaway DALs on connections whose cached instance already exists
 (`brain.py:254-262` holds one of each — the DAL-CLEANUP deferral reason "parallel-stream file"
