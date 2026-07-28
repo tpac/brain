@@ -463,11 +463,20 @@ class CommunityDecoder(IntegrationUnit):
                 home = node_to_community[nid]
                 home_aff = len(nbrs & home['members']) / len(nbrs) if nbrs else 0
 
+                # Drift targets are EXISTING communities only — targets must
+                # have persistent ids so rejection fingerprints can suppress
+                # re-proposals. A same-run cluster is already a new_community
+                # proposal; once created it becomes a drift target next cycle.
                 for comm in community_state:
                     if comm['id'] == home['id']:
                         continue
                     foreign_aff = len(nbrs & comm['members']) / len(nbrs)
-                    if foreign_aff > home_aff * drift_ratio and foreign_aff > min_foreign_aff:
+                    # max(home_aff, floor) keeps the ratio a real lever when
+                    # home_aff == 0: a fully-estranged node still surfaces,
+                    # but raising _sys_drift_threshold raises its bar too
+                    # (a ratio on a zero base was inert).
+                    if (foreign_aff > max(home_aff, min_foreign_aff) * drift_ratio
+                            and foreign_aff > min_foreign_aff):
                         if nid not in drift_candidates:
                             drift_candidates[nid] = {
                                 'home': home, 'home_aff': home_aff,
@@ -476,17 +485,10 @@ class CommunityDecoder(IntegrationUnit):
                         drift_candidates[nid]['foreign'].append(
                             (comm['id'], comm['title'], foreign_aff))
 
-                # Also check affinity to NEW clusters
-                for cid, members in valid_clusters.items():
-                    foreign_aff = len(nbrs & members) / len(nbrs)
-                    if foreign_aff > home_aff * drift_ratio and foreign_aff > min_foreign_aff:
-                        if nid not in drift_candidates:
-                            drift_candidates[nid] = {
-                                'home': home, 'home_aff': home_aff,
-                                'drift_ratio': drift_ratio,
-                                'foreign': []}
-                        drift_candidates[nid]['foreign'].append(
-                            ('new_cluster_%d' % cid, 'new cluster', foreign_aff))
+            # foreign[0] is the fingerprint key and the quota confidence —
+            # it must be the STRONGEST target, not community-row order.
+            for drift in drift_candidates.values():
+                drift['foreign'].sort(key=lambda t: -t[2])
 
         # Step 5d: Community health seam (2026-06-23). ONE tunable + ONE fact.
         #   typed int_frac < low_cohesion → the community is loose enough to act
