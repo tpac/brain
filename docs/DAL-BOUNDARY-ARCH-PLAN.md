@@ -39,7 +39,14 @@ guardrail-sanctioned (`tests/test_traces_layer_guardrail.py` WRITE_OK).
 
 ---
 
-## ⚠ OPERATOR DECISION NEEDED — `community_member` visibility
+## ⚠ RESOLVED 2026-07-28 — `community_member` is HIDDEN (standing decision applied)
+
+The standing operator decision (id:49d734ad) governs: hide `community_member` from default edge
+reads. The aspects plan's Step 6 carried a correction block to match; its carve-out is void. The
+impact analysis (S2 machinery reads communities via dedicated queries) clears the one dependency
+that argued for keeping it. Original contradiction record kept below for context.
+
+## ~~⚠ OPERATOR DECISION NEEDED~~ — `community_member` visibility
 
 Two committed artifacts disagree about one string, and the recorded decision was never implemented:
 
