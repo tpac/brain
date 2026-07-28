@@ -1810,9 +1810,33 @@ class Brain(
             print('brain: %s in %s: %s' % (event_type, source, file_text),
                   file=sys.stderr)
 
+    def loud(self, source: str, context: str = ''):
+        """Context manager: run a stage loudly — any exception is logged to the
+        errors table (via _log_error, which never raises) and SWALLOWED so the
+        caller's next stage still runs. The one primitive for "this step may
+        fail but must not take the rest down, and must never fail silently":
+
+            with brain.loud('s1e_postprocess', 'journal/arc write'):
+                ...
+
+        For a failure that must ABORT (log + stop), just let it raise and log
+        at the catch site — this helper is only for the continue case.
+        """
+        from contextlib import contextmanager
+
+        @contextmanager
+        def _stage():
+            try:
+                yield
+            except Exception as e:
+                self._log_error(source, e, context)
+        return _stage()
+
     def _log_error(self, source: str, error: Exception, context: str = '',
                    ctx=None):
         """Log an error to brain_logs.db + brain.log with rate limiting.
+        NEVER raises — _log_event guards the whole write with a stderr
+        last-resort, so callers need no try/except around this.
 
         Replaces silent `except: pass` blocks. Errors are stored in the logs
         DB and surfaced at boot. `error=None` is a valid call — callers log a

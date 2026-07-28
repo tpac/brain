@@ -575,17 +575,35 @@ class BrainTracesMixin:
         maintained counter. The old `conversational_count` desynced across
         resume/restart (boot reset it while the traces stayed truthful), which
         starved the Scribe — so the gate now derives the count from the event
-        log that never lies. Anchors on the most recent `encoding_prompt` S1
-        trace (written at encode start); counts s0 user_message turns after it.
-        No prior encode → counts all turns, so a fresh session fires at the
-        threshold. Same turn definition the encoder reads (trace_contract).
+        log that never lies.
+
+        Anchors on the most recent SUCCESSFUL run — the latest `encoding_run`
+        delta — not the latest attempt. Anchoring on `encoding_prompt` (the
+        old form) meant a run that failed AFTER writing its prompt trace
+        silently reset the cadence: its turns were skipped, not retried, and
+        a failed tail encode was never retried at all (found live 2026-07-28,
+        fb78aab9 #38). The count anchors at that successful run's START (its
+        chain's encoding_prompt timestamp), so turns that arrived while it ran
+        still count as unencoded. Failed attempts stay "due"; the daemon's
+        retry cooldown paces the re-fire and scribe_repeated_failure escalates
+        a wedged session. No prior successful encode → counts all turns, so a
+        fresh session fires at the threshold. Same turn definition the encoder
+        reads (trace_contract).
         """
         if not session_id:
             return 0
         last = self._trace_dal.get_by_ref_type(
-            'encoding_prompt', scale='s1', session_id=session_id,
+            'encoding_run', scale='s1', session_id=session_id,
             hours=None, limit=1)
-        since = last[0]['created_at'] if last else ''
+        since = ''
+        if last:
+            chain = last[0].get('chain_id') or ''
+            prompts = self._trace_dal.get_by_ref_type(
+                'encoding_prompt', scale='s1', session_id=session_id,
+                hours=None, limit=50)
+            since = next((p['created_at'] for p in prompts
+                          if p.get('chain_id') == chain),
+                         last[0]['created_at'])
         return self._trace_dal.conversational_turns_since(session_id, since)
 
     def get_conversation_around(self, node_id: str = None,

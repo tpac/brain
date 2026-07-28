@@ -76,6 +76,19 @@ SCRIBE_RETRY_COOLDOWN_SECONDS = 120
 # is frozen at a fixed value, so its `% ENCODE_EVERY` rate-limit never trips).
 SCRIBE_MAX_FAILED_RETRIES = 3
 
+# Wall-clock ceiling for one whole S1E run_llm_loop (all rounds + SDK retries +
+# the stream fallback). Healthy runs finish in 2-4 min; the multipliers turned
+# one stuck stream into a 5.5h hang holding the single-flight lock (2026-07-28).
+# Past the deadline the loop raises → the loud failure path records
+# encoding_run_failed and the cooldown paces the retry.
+SCRIBE_RUN_DEADLINE_SECONDS = 1200
+
+# If the single-flight lock has been held longer than this, the encode thread
+# is presumed hung (blocked read the deadline can't preempt, or a leaked lock).
+# The poll can't kill a thread — it logs `scribe_hung` once per incident so the
+# outage is visible instead of silent.
+SCRIBE_HUNG_ALARM_SECONDS = 1800
+
 # ═══════════════════════════════════════════════════════════════
 # ENCODING AGENT CONFIG
 # ═══════════════════════════════════════════════════════════════

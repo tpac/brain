@@ -1077,11 +1077,27 @@ class BrainDaemon:
         import time as _time
         from servers.scales.s1.encode_contract import (
             SCRIBE_RETRY_COOLDOWN_SECONDS, SCRIBE_MAX_FAILED_RETRIES,
-            SCRIBE_CANDIDATE_WINDOW_MIN)
+            SCRIBE_CANDIDATE_WINDOW_MIN, SCRIBE_HUNG_ALARM_SECONDS)
         spawned = False
         acquired = False
         try:
             if not self._encode_lock.acquire(blocking=False):
+                # An encode is already running. If it's been running past the
+                # hung-alarm threshold, the thread is presumed stuck (a blocked
+                # read the loop deadline can't preempt) — it holds the single-
+                # flight lock, so NO session can encode. We can't kill a Python
+                # thread; make the outage visible, once per incident.
+                started = getattr(self, '_encode_started_at', 0)
+                if (started and not getattr(self, '_encode_hung_warned', False)
+                        and _time.time() - started > SCRIBE_HUNG_ALARM_SECONDS):
+                    self._encode_hung_warned = True
+                    self.brain._log_error(
+                        'scribe_hung',
+                        RuntimeError('encode running %ds — thread presumed '
+                                     'hung; single-flight lock held, no '
+                                     'session can encode'
+                                     % int(_time.time() - started)),
+                        'session=%s' % getattr(self, '_encode_session', '?'))
                 return  # an encode is already running
             acquired = True
             now = _time.time()
@@ -1146,6 +1162,9 @@ class BrainDaemon:
                     self.brain.activity.record_encode_run()
 
             scribe = S1Scribe(self.brain, session_id=sid, counter=due['counter'])
+            self._encode_started_at = now      # hung-alarm baseline
+            self._encode_session = sid[:8]
+            self._encode_hung_warned = False
             run_unit_in_background(scribe, name='s1e', lock=self._encode_lock,
                                    on_complete=_count_encode)
             spawned = True  # lock ownership transferred to the encode thread

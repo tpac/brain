@@ -267,6 +267,14 @@ def run_unit_in_background(unit, name, lock, on_complete=None):
             print("[%s] STARTING" % name, flush=True)
             result = unit.run()
             elapsed_ms = int((time.time() - t0) * 1000)
+            if isinstance(result, dict) and result.get('error'):
+                # A caught-and-returned failure is NOT completion: skip
+                # on_complete so the caller's cooldown/failure state stands
+                # (for the Scribe, that's what paces the retry — clearing it
+                # here would re-fire a failing session every poll tick).
+                print("[%s] FAILED (returned error) after %dms: %s" % (
+                    name, elapsed_ms, result['error']), flush=True)
+                return
             actions = result.get('actions', 0) if isinstance(result, dict) else 0
             print("[%s] DONE: %d actions in %dms" % (name, actions, elapsed_ms), flush=True)
 
@@ -303,7 +311,7 @@ def run_unit_in_background(unit, name, lock, on_complete=None):
 def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                  user_content, tools, dispatch_fn, log_fn=None,
                  user_preamble=None, get_nodes_config=None, capture_label=None,
-                 effort=None):
+                 effort=None, deadline_seconds=None):
     """Generic LLM tool loop — call model, process tool_use, dispatch, repeat.
 
     Used by all scale encode agents. Scale-specific logic is in what
@@ -340,6 +348,11 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             context. None = default batch-size-driven rendering. Consumers with
             tight token budgets (S2 encoders) pass their own lean config.
 
+        deadline_seconds: Optional wall-clock ceiling for the whole loop
+            (all rounds + SDK retries + the stream fallback). Checked before
+            each round and before the fallback re-issue; past it the loop
+            raises RuntimeError — the caller's failure path owns the loud
+            handling. None (default) = unbounded.
         effort: Optional API effort level ('low'|'medium'|'high'|'max').
             Passed as output_config={'effort': ...} on every request. None
             (default) omits output_config entirely — the API default (high).
@@ -433,6 +446,19 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         finally:
             _cap_round[0] += 1
 
+    # Wall-clock deadline for the WHOLE loop (all rounds + retries). The
+    # per-request client timeout bounds a single read, but SDK retries × the
+    # stream fallback × multi-round accumulation multiplied one stuck encode
+    # into a 5.5-hour hang holding the Scribe's single-flight lock (fb78aab9,
+    # 2026-07-28). None = unbounded (S2 units keep their own pacing).
+    loop_t0 = time.time()
+
+    def _check_deadline(where):
+        if deadline_seconds and time.time() - loop_t0 > deadline_seconds:
+            raise RuntimeError(
+                'run_llm_loop deadline exceeded (%ds) at %s' % (
+                    deadline_seconds, where))
+
     def _create_message(msgs):
         """Create message with streaming. Returns (final_message, ttft_ms,
         total_ms). ttft_ms is the time from request issue to the first
@@ -464,6 +490,9 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             # Defensive fallback — if event iteration breaks for any reason,
             # re-issue without timing. Costs an extra API call only on bug,
             # never on happy path. Better than nuking the encoder cycle.
+            # Past the deadline, re-raise instead of doubling down — the
+            # fallback re-issue is one of the hang multipliers.
+            _check_deadline('stream fallback')
             with client.messages.stream(
                     model=model, max_tokens=max_tokens,
                     system=system_param, messages=msgs, tools=tools,
@@ -584,6 +613,7 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         if not tool_uses:
             break
 
+        _check_deadline('round %d' % (rounds + 1))
         tool_results, _ = _dispatch_tool_uses(response)
 
         api_messages.append({"role": "assistant", "content": [

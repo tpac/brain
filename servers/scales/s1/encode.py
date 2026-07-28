@@ -44,7 +44,8 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         if log_fn:
             log_fn("S1 encode: %s" % msg)
 
-    from servers.scales.s1.encode_contract import ENCODING_AGENT
+    from servers.scales.s1.encode_contract import (
+        ENCODING_AGENT, SCRIBE_RUN_DEADLINE_SECONDS)
 
     t0 = time.time()
     profile = []
@@ -206,7 +207,8 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             tools=tools,
             dispatch_fn=dispatch_fn,
             log_fn=_log,
-            capture_label=capture_label)
+            capture_label=capture_label,
+            deadline_seconds=SCRIBE_RUN_DEADLINE_SECONDS)
     except Exception as e:
         # The LLM loop itself died — no writes happened this run. Loud by
         # default: errors table + a `encoding_run_failed` delta so the run is
@@ -216,13 +218,10 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         _step("FAILED")
         profile_str = " → ".join("%s:%dms" % (n, t) for n, t in profile)
         print('[s1e] ERROR: Sonnet API call failed: %s PROFILE: %s' % (e, profile_str), flush=True)
-        try:
-            brain._log_error('s1e_run_failed', e,
-                             'session=%s stop=%d — LLM loop failed, no writes this run'
-                             % (session_id[:8], counter))
-        except Exception:
-            pass
-        try:
+        brain._log_error('s1e_run_failed', e,
+                         'session=%s stop=%d — LLM loop failed, no writes this run'
+                         % (session_id[:8], counter))
+        with brain.loud('s1e_failed_trace_write', 'recording encoding_run_failed delta'):
             dispatch_fn('trace_append', {
                 'chain_id': enc_chain, 'scale': 's1', 'event_type': 'delta',
                 'ref_type': 'encoding_run_failed',
@@ -231,12 +230,6 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
                              'inputs_processed': len(messages)},
                 'session_id': session_id,
             })
-        except Exception as te:
-            try:
-                brain._log_error('s1e_failed_trace_write', te,
-                                 'could not record encoding_run_failed delta')
-            except Exception:
-                pass
         return {"error": str(e), "profile": profile}
 
     _step("done")
@@ -258,7 +251,10 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     # trace, which coverage attribution and the dashboard both read.
     final_text = result.get('final_text', '')
     journal_entry = ''
-    try:
+    with brain.loud('s1e_postprocess',
+                    'journal/arc post-process failed — writes intact, '
+                    'continuing to delta trace; session=%s stop=%d'
+                    % (session_id[:8], counter)):
         if lived:
             # New residue (Piece 4): the `## Review` note contract, SESSION-BOUND.
             # write_journal_notes extracts the fence + writes one journal_note
@@ -290,25 +286,16 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         else:
             journal_entry = _save_journal(brain, dispatch_fn, session_id, counter, final_text) or ''
             _save_session_context(brain, dispatch_fn, session_id, final_text)
-    except Exception as e:
-        # _log_error writes to the same logs DB that just failed (the live
-        # failure mode here is `database is locked`) — guard it so logging
-        # can't kill the delta write below.
-        print('[s1e] ERROR: post-process failed: %s' % e, flush=True)
-        try:
-            brain._log_error('s1e_postprocess', e,
-                             'journal/arc post-process failed — writes intact, '
-                             'continuing to delta trace; session=%s stop=%d'
-                             % (session_id[:8], counter))
-        except Exception:
-            pass
 
     # 8. Delta trace — unified shape across S1E + S2 encoders. Own guard:
     # losing this trace makes the run invisible (dashboard "0 actions") and
     # pushes coverage attribution onto the next run — so a failure here is
     # loud, and post-process failures above can't reach it.
     # Outcomes: count write actions by tool (remember / revise / connect / …).
-    try:
+    with brain.loud('s1e_delta_write',
+                    'encoding_run delta lost — run shows 0 actions on '
+                    'dashboard, coverage attribution falls to next run; '
+                    'session=%s stop=%d' % (session_id[:8], counter)):
         action_details = result.get('action_details', [])
         outcomes = {}
         for a in action_details:
@@ -365,15 +352,6 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         if _tel_warn:
             brain._log_error('s1e_telemetry_gap', ValueError(_tel_warn),
                              'delta trace missing LLM telemetry')
-    except Exception as e:
-        print('[s1e] ERROR: encoding_run delta write failed: %s' % e, flush=True)
-        try:
-            brain._log_error('s1e_delta_write', e,
-                             'encoding_run delta lost — run shows 0 actions on '
-                             'dashboard, coverage attribution falls to next run; '
-                             'session=%s stop=%d' % (session_id[:8], counter))
-        except Exception:
-            pass
 
     result['profile'] = profile
     if muster_summary is not None:

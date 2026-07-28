@@ -276,31 +276,42 @@ class TestSessionContextPersistence:
     def test_turns_since_last_encode_trace_pull(self):
         # The S1 Scribe cadence is derived LIVE from traces — no stored counter.
         # Pins the definition: a turn == one s0 user_message; <task-notification>
-        # ignitions don't count; only turns AFTER the last s1 encoding_prompt count.
+        # ignitions don't count; only turns after the last SUCCESSFUL encode
+        # (encoding_run delta) count, anchored at that run's START (its chain's
+        # encoding_prompt). A failed run (prompt, no delta) must NOT reset the
+        # cadence — failed runs stay due and get retried (2026-07-28).
         sid = 'cadence-sess'
         c = self.brain.logs_conn
         _n = [0]
-        def ins(scale, etype, ref_type, ts, summary='hi'):
+        def ins(scale, etype, ref_type, ts, summary='hi', chain=None):
             _n[0] += 1
             c.execute(
                 "INSERT INTO trace_events (id, chain_id, scale, event_type, ref_type, "
                 "ref_id, summary, metadata, session_id, interaction_id, created_at) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                ('t%07d' % _n[0], '%s-x-%d' % (scale, _n[0]), scale, etype, ref_type,
-                 '', summary, None, sid, None, ts))
+                ('t%07d' % _n[0], chain or '%s-x-%d' % (scale, _n[0]), scale, etype,
+                 ref_type, '', summary, None, sid, None, ts))
         # 3 turns, no encode yet → counts all 3
         ins('s0', 'K', 'user_message', '2026-06-13T10:00:01+00:00')
         ins('s0', 'K', 'user_message', '2026-06-13T10:00:02+00:00')
         ins('s0', 'K', 'user_message', '2026-06-13T10:00:03+00:00')
         c.commit()
         assert self.brain.turns_since_last_encode(sid) == 3
-        # encode runs, then 2 real turns + 1 task-notification ignition after it
-        ins('s1', 'O', 'encoding_prompt', '2026-06-13T10:00:04+00:00')
+        # SUCCESSFUL encode (prompt + run delta on one chain), then 2 real
+        # turns + 1 task-notification ignition after it
+        ins('s1', 'O', 'encoding_prompt', '2026-06-13T10:00:04+00:00', chain='s1e-cad-1')
+        ins('s1', 'delta', 'encoding_run', '2026-06-13T10:00:04.900000+00:00', chain='s1e-cad-1')
         ins('s0', 'K', 'user_message', '2026-06-13T10:00:05+00:00')
         ins('s0', 'K', 'user_message', '2026-06-13T10:00:06+00:00')
         ins('s0', 'K', 'user_message', '2026-06-13T10:00:07+00:00', summary='<task-notification> wake')
         c.commit()
         assert self.brain.turns_since_last_encode(sid) == 2   # ignition excluded; only real turns since encode
+        # FAILED encode (prompt, no run delta) — cadence does NOT reset; the
+        # count keeps growing so the session stays due for a retry.
+        ins('s1', 'O', 'encoding_prompt', '2026-06-13T10:00:08+00:00', chain='s1e-cad-2')
+        ins('s0', 'K', 'user_message', '2026-06-13T10:00:09+00:00')
+        c.commit()
+        assert self.brain.turns_since_last_encode(sid) == 3   # 2 pre-fail + 1 post-fail
 
     def test_parallel_sessions_count_cadence_independently(self):
         # The cross-session fix: the Scribe cadence is per-session, derived live
@@ -314,14 +325,14 @@ class TestSessionContextPersistence:
         c = self.brain.logs_conn
         _n = [0]
 
-        def ins(sid, scale, etype, ref_type, ts, summary='hi'):
+        def ins(sid, scale, etype, ref_type, ts, summary='hi', chain=None):
             _n[0] += 1
             c.execute(
                 "INSERT INTO trace_events (id, chain_id, scale, event_type, ref_type, "
                 "ref_id, summary, metadata, session_id, interaction_id, created_at) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                ('p%07d' % _n[0], '%s-%s-%d' % (scale, sid[:6], _n[0]), scale, etype,
-                 ref_type, '', summary, None, sid, None, ts))
+                ('p%07d' % _n[0], chain or '%s-%s-%d' % (scale, sid[:6], _n[0]),
+                 scale, etype, ref_type, '', summary, None, sid, None, ts))
 
         # Interleave: A, B, A, B, A → A has 3 turns, B has 2, in real time order.
         ins(a, 's0', 'K', 'user_message', '2026-06-13T10:00:01+00:00')
@@ -334,8 +345,10 @@ class TestSessionContextPersistence:
         assert self.brain.turns_since_last_encode(a) == 3
         assert self.brain.turns_since_last_encode(b) == 2
 
-        # A encodes. This must reset ONLY A's cadence — B's count is untouched.
-        ins(a, 's1', 'O', 'encoding_prompt', '2026-06-13T10:00:06+00:00')
+        # A encodes SUCCESSFULLY (prompt + run delta on one chain). This must
+        # reset ONLY A's cadence — B's count is untouched.
+        ins(a, 's1', 'O', 'encoding_prompt', '2026-06-13T10:00:06+00:00', chain='s1e-A-1')
+        ins(a, 's1', 'delta', 'encoding_run', '2026-06-13T10:00:06.900000+00:00', chain='s1e-A-1')
         c.commit()
         assert self.brain.turns_since_last_encode(a) == 0   # A's backlog cleared
         assert self.brain.turns_since_last_encode(b) == 2   # B unaffected by A's encode
