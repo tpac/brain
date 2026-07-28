@@ -13,7 +13,7 @@ needs Sonnet) cannot.
 """
 from types import SimpleNamespace as NS
 
-from servers.aspects import render_edge_aspects_block, EDGE_ASPECT_PROMPT_SKIP
+from servers.aspects import render_edge_aspects_block
 from servers.trace_contract import (
     render_prompt_closure, render_journal_review_block, JOURNAL_REVIEW_INSTRUCTION)
 from servers.scales.s2.base import IntegrationUnit
@@ -48,12 +48,19 @@ def test_closure_shape():
 
 
 def test_edge_aspects_skip_and_heading():
+    # Visibility is the per-aspect `prompt_visible` fact (aspects_v1.json,
+    # Step 4) — the render skips prompt-invisible and node-only aspects.
     fake = {
-        'correction_improvement': NS(edge_relations=('corrects', 'supersedes')),
-        'survivor_lineage':       NS(edge_relations=('absorbed_into',)),   # skipped
-        'noise':                  NS(edge_relations=('co_accessed',)),     # skipped
-        'generic_relation':       NS(edge_relations=('related_to',)),      # skipped
-        'identity_bearing':       NS(edge_relations=()),                   # node-only → skipped
+        'correction_improvement': NS(edge_relations=('corrects', 'supersedes'),
+                                     prompt_visible=True),
+        'survivor_lineage':       NS(edge_relations=('absorbed_into',),
+                                     prompt_visible=False),  # skipped
+        'noise':                  NS(edge_relations=('co_accessed',),
+                                     prompt_visible=False),  # skipped
+        'generic_relation':       NS(edge_relations=('related_to',),
+                                     prompt_visible=False),  # skipped
+        'identity_bearing':       NS(edge_relations=(),
+                                     prompt_visible=True),   # node-only → skipped
     }
     b = render_edge_aspects_block(fake)
     assert '## Edge Aspects' in b and '## Edge Families' not in b   # renamed
@@ -62,12 +69,27 @@ def test_edge_aspects_skip_and_heading():
     assert 'noise' not in b and 'generic_relation' not in b
     assert 'identity_bearing' not in b
     assert 'Avoid `related_to`' in b
-    assert EDGE_ASPECT_PROMPT_SKIP == ('generic_relation', 'noise', 'survivor_lineage')
+
+
+def test_seed_declares_the_structural_trio_invisible():
+    # The seed's prompt_visible facts reproduce the deleted
+    # EDGE_ASPECT_PROMPT_SKIP contract: exactly the two catch-alls + the
+    # system aspect stay out of encoder vocabulary blocks.
+    import json
+    import os
+    seed_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        'servers', 'scales', 's2', 'aspects_v1.json')
+    with open(seed_path) as f:
+        seed = json.load(f)
+    invisible = {n for n, spec in seed.items() if not spec['prompt_visible']}
+    assert invisible == {'generic_relation', 'noise', 'survivor_lineage'}
 
 
 def test_edge_aspects_empty_when_nothing_to_show():
     assert render_edge_aspects_block({}) == ''
-    assert render_edge_aspects_block({'noise': NS(edge_relations=('co_accessed',))}) == ''
+    assert render_edge_aspects_block(
+        {'noise': NS(edge_relations=('co_accessed',), prompt_visible=False)}) == ''
 
 
 # ── the assembly (the ordering contract) ──
@@ -84,7 +106,8 @@ class _Stub(IntegrationUnit):
 
 
 def test_assembly_order_and_done_last():
-    fake = {'correction_improvement': NS(edge_relations=('corrects', 'supersedes'))}
+    fake = {'correction_improvement': NS(edge_relations=('corrects', 'supersedes'),
+                                         prompt_visible=True)}
     s = _Stub(fake)
     body = 'BODY...\n\n## Speed\n\nbe decisive.'
     asm = s._append_closure(s._inject_review_block(s._inject_edge_aspects(body)))

@@ -1,4 +1,4 @@
-"""Aspect taxonomy — reads the 14 aspects + member counts from the live brain.
+"""Aspect taxonomy — reads the aspects + member counts from the live brain.
 
 `aspects_v1.json` is the single source of truth (servers/scales/s2/aspects_v1.json
 in the repo as a seed; the live working copy lives at $BRAIN_DB_DIR/aspects_v1.json
@@ -109,7 +109,8 @@ def query_aspects():
 
     out = []
     for name, payload in data.items():
-        if not isinstance(payload, dict):
+        # '_'-prefixed keys are in-file documentation (_schema), not aspects.
+        if name.startswith('_') or not isinstance(payload, dict):
             continue
         node_types = payload.get('node_types', []) or []
         edge_relations = payload.get('edge_relations', []) or []

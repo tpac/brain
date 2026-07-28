@@ -74,7 +74,7 @@ Type `community`, encoding_source `s2:community_detection`.
 ### Aspects (`servers/aspects.py`, `servers/scales/s2/aspects_v1.json`)
 - Unified taxonomy for both node TYPES and edge RELATIONS (replaces the
   retired `EdgeFamilyIntegration` + `s2_edge_families` interaction)
-- 14 required aspects locked + auto-healed at boot; emergent aspects
+- 16 required aspects locked + auto-healed at boot; emergent aspects
   discovered by `AspectIntegration` (planned, see SESSION-HANDOFF-2026-05-04)
 - Decoder uses `brain.aspects.all()` to build `{relation: aspect_name}` map
   for typed adjacency; `noise` + `generic_relation` skipped as low-signal
@@ -136,7 +136,7 @@ Type `community`, encoding_source `s2:community_detection`.
 | ~~`servers/scales/s2/edge_families.py`~~ | Edge type classification unit (DELETED 2026-05-04 — replaced by aspects) |
 | ~~`servers/scales/s2/edge_families_v1.json`~~ | Initial 21-family classification (DELETED 2026-05-04 — replaced by `aspects_v1.json`) |
 | `servers/aspects.py` | AspectRegistry + Aspect value object (post-2026-05-04) |
-| `servers/scales/s2/aspects_v1.json` | Unified seed for 14 required aspects (post-2026-05-04) |
+| `servers/scales/s2/aspects_v1.json` | Unified seed for the 16 required aspects (post-2026-05-04) |
 | `servers/scales/s2/base.py` | Shared S2 infrastructure |
 | `servers/scales/runner.py` | Structured trace metadata + full tool input logging |
 | `servers/scales/s1/encode_contract.py` | Exclude community nodes from S1E catalog |

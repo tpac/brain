@@ -18,9 +18,11 @@ Two tiers:
 Consumers (every name string in the codebase flows through here):
   - Frame: brain.aspects.identity_bearing.node_types (etc.)
   - S2 community/consolidation: brain.aspects.relations_in(['noise', ...])
+  - S2 classifier: per-aspect facts (routable/accepts) drive menu + validation
   - Healer: brain.aspects.<name>.metadata.display_label
-  - Surface: brain.aspects.relation_meaning_map() for embedding composition
-  - MCP: list_aspects, filter_nodes(field='aspect'), recall(filter={'aspect':...})
+  - Surface: brain.aspects.relation_meaning_map() for embedding composition;
+    spread activation rides brain.aspects.lineage_relations
+  - MCP graph_expand: brain.aspects.traversal_exclusions
 
 from_dict() constructs a registry without a brain (for tests/seeding); the
 production path is _load(), which reads aspects_v1.json directly.
@@ -48,19 +50,19 @@ from .aspect_store import (
 # IntegrationUnit._inject_edge_aspects; S1E/surface may adopt). Mirrors the
 # journal block's render-fn-+-base-method split.
 # ─────────────────────────────────────────────────────────────────
-EDGE_ASPECT_PROMPT_SKIP = ('generic_relation', 'noise', 'survivor_lineage')
 
 
 def render_edge_aspects_block(aspects):
     """Render the edge-relation aspect vocabulary as a prompt block so an encoder
     picks specific relations over generic ones. `aspects` is the name→Aspect dict
-    from brain.aspects.all(). Skips structural/system aspects (EDGE_ASPECT_PROMPT_SKIP)
-    and node-only aspects (no edge relations); each shown aspect lists its first 8
-    relations. Returns '' when there's nothing to show.
+    from brain.aspects.all(). Skips prompt-invisible aspects (the per-aspect
+    `prompt_visible` fact in aspects_v1.json — structural/system aspects declare
+    false) and node-only aspects (no edge relations); each shown aspect lists its
+    first 8 relations. Returns '' when there's nothing to show.
     """
     lines = []
     for name, aspect in sorted(aspects.items()):
-        if name in EDGE_ASPECT_PROMPT_SKIP or not aspect.edge_relations:
+        if not aspect.prompt_visible or not aspect.edge_relations:
             continue
         lines.append('- **%s**: %s' % (
             name, ', '.join(list(aspect.edge_relations[:8]))))
@@ -71,10 +73,18 @@ def render_edge_aspects_block(aspects):
                 len(lines), '\n'.join(lines)))
 
 
+# Per-aspect fact fields (Step 4) — healed from the seed when a REQUIRED
+# aspect's working-copy entry lacks them (reconcile job 4). The registry
+# loads the WORKING copy, so without this heal an existing brain never
+# receives the facts and every derived consumer (classifier routing, prompt
+# visibility, lineage ride-along) runs on defaults while seed-based tests pass.
+ASPECT_FACT_KEYS = ('accepts', 'routable', 'prompt_visible', 'structural_lineage')
+
+
 def reconcile_working_copy(log_fn=None) -> bool:
     """Seed the working aspects file from the repo seed, and SELF-HEAL.
 
-    Three jobs, all idempotent and safe to call on every boot:
+    Four jobs, all idempotent and safe to call on every boot:
       1. First boot — working copy missing → copy the whole seed (atomic).
       2. Missing aspect — the seed has a REQUIRED aspect the working copy
          lacks → add the whole aspect from the seed.
@@ -85,6 +95,11 @@ def reconcile_working_copy(log_fn=None) -> bool:
          reaches an existing brain. Without it a seed member edit propagates
          to fresh installs only, and every existing brain keeps the defect
          while the seed-based contract tests pass.
+      4. Missing fact field — a REQUIRED aspect's working-copy entry lacks
+         one of ASPECT_FACT_KEYS that the seed carries → copy the seed's
+         value. A PRESENT value is never overwritten (additive, like
+         members): a deliberate working-copy divergence survives; only
+         omissions heal.
 
     An UNPARSEABLE working copy is quarantined (renamed aside, preserving the
     operator's classifier-grown members for manual recovery) and re-seeded —
@@ -177,6 +192,10 @@ def reconcile_working_copy(log_fn=None) -> bool:
                 pass
         return False
     missing = [n for n in REQUIRED_ASPECTS if n in seed and n not in cur]
+    # In-file documentation keys (_schema) travel with job 2: copied when
+    # absent so working copies stay self-documenting. Additive like all
+    # heals — an existing doc entry is never overwritten.
+    missing_docs = [k for k in seed if k.startswith('_') and k not in cur]
     # Missing MEMBERS of required aspects that both files carry (job 3).
     # Shape-guarded the same way AspectRegistry._load guards: a working copy
     # can carry a malformed entry (hand-edit, partial write), and an unguarded
@@ -202,7 +221,18 @@ def reconcile_working_copy(log_fn=None) -> bool:
             gap = [s for s in (want or []) if s not in have]
             if gap:
                 member_heals.append((n, category, gap))
-    if not missing and not member_heals:
+    # Missing FACT fields of required aspects (job 4).
+    fact_heals = []            # (aspect, [keys]) — for the caller's log
+    for n in REQUIRED_ASPECTS:
+        if n not in seed or n not in cur:
+            continue
+        if not isinstance(cur[n], dict) or not isinstance(seed[n], dict):
+            continue           # already reported by job 3's shape guard
+        gap = [k for k in ASPECT_FACT_KEYS
+               if k not in cur[n] and k in seed[n]]
+        if gap:
+            fact_heals.append((n, gap))
+    if not missing and not missing_docs and not member_heals and not fact_heals:
         if skipped_malformed and log_fn:
             try:
                 log_fn('working copy has malformed entries, skipped: %s'
@@ -212,8 +242,13 @@ def reconcile_working_copy(log_fn=None) -> bool:
         return False
     for n in missing:
         cur[n] = seed[n]
+    for k in missing_docs:
+        cur[k] = seed[k]
     for n, category, gap in member_heals:
         cur[n].setdefault(category, []).extend(gap)   # append — never reorder
+    for n, gap in fact_heals:
+        for k in gap:
+            cur[n][k] = seed[n][k]                    # fill — never overwrite
     heal_violations = validate_taxonomy(cur)
     if heal_violations:
         # The healed result would be structurally invalid (e.g. a seed member
@@ -221,8 +256,11 @@ def reconcile_working_copy(log_fn=None) -> bool:
         # noise-exclusivity). Refuse the WRITE, keep the prior file, boot
         # continues on the un-healed copy. Loud on both channels — this needs
         # a human to reconcile the seed edit with the working copy.
-        summary = ('heal REFUSED — healed result fails structural validation: '
-                   + '; '.join(heal_violations))
+        summary = ('heal REFUSED — healed result fails structural validation '
+                   '(NOTE: an unhealed pre-Step-4 copy loads with conservative '
+                   'derived-policy defaults — classifier inert, encoder '
+                   'vocabulary blocks empty, lineage ride-along dead — until '
+                   'a human reconciles): ' + '; '.join(heal_violations))
         print('[aspects] %s' % summary, flush=True)
         if log_fn:
             try:
@@ -231,8 +269,11 @@ def reconcile_working_copy(log_fn=None) -> bool:
                 pass
         return False
     parts = ['+aspect %s' % n for n in missing]
+    parts += ['+docs %s' % k for k in missing_docs]
     parts += ['%s.%s += %s' % (n, category, ','.join(gap))
               for n, category, gap in member_heals]
+    parts += ['%s facts += %s' % (n, ','.join(gap))
+              for n, gap in fact_heals]
     if skipped_malformed:
         parts.append('SKIPPED malformed: %s' % ', '.join(skipped_malformed))
     summary = 'healed working copy from seed: ' + '; '.join(parts)
@@ -284,6 +325,19 @@ class Aspect:
     dimension: str = 'semantic'
     locked: bool = False
     metadata: dict = field(default_factory=dict)
+    # Per-aspect facts (aspects_v1.json, Step 4) — replace the deleted Python
+    # literals ASPECT_ACCEPTS / order / EDGE_ASPECT_PROMPT_SKIP /
+    # LINEAGE_FAMILIES. Every required aspect carries explicit values (seed +
+    # reconcile job 4); the defaults exist for entries WITHOUT facts (emergent
+    # aspects, or a pre-Step-4 working copy loaded after a REFUSED heal) and
+    # are chosen to degrade CONSERVATIVELY, not to mirror the old literals:
+    # routable=False (classifier goes inert + loud rejections, never
+    # mis-routes), prompt_visible=False (vocabulary block goes quiet, never
+    # offers noise verbs), structural_lineage=False (nothing extra rides).
+    accepts: tuple = ()             # ('node_types',) / ('edge_relations',) / both
+    routable: bool = False          # may the S2 classifier route strings here?
+    prompt_visible: bool = False    # shown in encoder prompt vocabulary blocks?
+    structural_lineage: bool = False  # edges ride along in spread activation?
 
     def __contains__(self, item: str) -> bool:
         return item in self.node_types or item in self.edge_relations
@@ -426,8 +480,8 @@ class AspectRegistry:
         self._reverse_node = {}
         self._reverse_edge = {}
         for name, entry in data.items():
-            if not isinstance(entry, dict):
-                continue
+            if name.startswith('_') or not isinstance(entry, dict):
+                continue   # '_'-prefixed keys are in-file docs (_schema)
             node_types = entry.get('node_types', []) or []
             edge_relations = entry.get('edge_relations', []) or []
             if not isinstance(node_types, list):
@@ -435,6 +489,9 @@ class AspectRegistry:
             if not isinstance(edge_relations, list):
                 edge_relations = []
 
+            accepts = entry.get('accepts', []) or []
+            if not isinstance(accepts, list):
+                accepts = []
             aspect = Aspect(
                 name=name,
                 node_types=tuple(node_types),
@@ -443,6 +500,11 @@ class AspectRegistry:
                 dimension=entry.get('dimension', 'semantic') or 'semantic',
                 locked=bool(entry.get('locked', False)),
                 metadata=entry.get('metadata') or {},
+                accepts=tuple(a for a in accepts
+                              if a in ('node_types', 'edge_relations')),
+                routable=bool(entry.get('routable', False)),
+                prompt_visible=bool(entry.get('prompt_visible', False)),
+                structural_lineage=bool(entry.get('structural_lineage', False)),
             )
             self._aspects[name] = aspect
             for t in aspect.node_types:
@@ -473,6 +535,14 @@ class AspectRegistry:
             frozenset(noise.edge_relations) if noise else frozenset())
         self.traversal_exclusions: frozenset = (
             self.structural_exclusions - {'community_member'})
+        # Union of edge relations across structural-lineage aspects (the
+        # per-aspect `structural_lineage` fact) — edges whose relation type
+        # itself carries meaning ride along in spread activation even with
+        # weak enriched-text cosine. Replaces surface_contract's deleted
+        # LINEAGE_FAMILIES literal, whose hardcoded names drifted dead once
+        # already (five stale aspect names, silent until 2026-06-08).
+        self.lineage_relations: frozenset = frozenset(self.relations_in(
+            [n for n, a in self._aspects.items() if a.structural_lineage]))
 
     def reconcile_with_seed(self) -> bool:
         """Re-run the seed reconcile (first-boot copy + additive heal) and
@@ -533,7 +603,8 @@ class AspectRegistry:
         # consumer then trips over.
         targeted = {a for c in classifications for a in c['aspects']}
         unknown = sorted(a for a in targeted
-                         if not isinstance(data.get(a), dict))
+                         if a.startswith('_')       # docs keys, never targets
+                         or not isinstance(data.get(a), dict))
         if unknown:
             detail = ('add_members(%s) REFUSED — unknown or malformed aspect '
                       'names: %s (new aspects are a human edit to '
@@ -654,7 +725,8 @@ class AspectRegistry:
         return dict(self._aspects)
 
     def all_with_counts(self) -> list:
-        """Aspect summaries with member counts + previews — for list_aspects MCP.
+        """Aspect summaries with member counts + previews — introspection
+        surface (eval tooling; no MCP tool exposes it today).
 
         Each entry: {name, meaning, node_types_count, edge_relations_count,
         node_types_preview, edge_relations_preview, dimension, locked}.
@@ -750,7 +822,14 @@ class AspectRegistry:
         For tests and seeding paths. The data shape mirrors aspects_v1.json:
             {name: {node_types: [...], edge_relations: [...],
                     meaning: '...', dimension: 'semantic',
-                    locked: bool, metadata: {...}}}
+                    locked: bool, metadata: {...},
+                    accepts: ['node_types'|'edge_relations', ...],
+                    routable: bool, prompt_visible: bool,
+                    structural_lineage: bool}}
+        Omitting the fact fields gives the conservative defaults (see
+        Aspect) — a stub without routable=True is invisible to the
+        classifier, without prompt_visible=True invisible to vocabulary
+        blocks.
         """
         instance = cls.__new__(cls)
         instance._brain = brain

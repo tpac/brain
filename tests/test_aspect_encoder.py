@@ -7,21 +7,30 @@ invariant noise ∩ {any other aspect} = ∅, which is what lets downstream
 exclusion filters trust "not in noise" == "is real knowledge".
 
 These exercise _validate_classifications directly with a stub brain — no
-LLM, no daemon, no real aspect data needed (validation reads ASPECT_ACCEPTS,
-a module constant, not the seed file).
+LLM, no daemon. Validation derives its closed list + accepts-categories from
+brain.aspects (the per-aspect `routable`/`accepts` facts, Step 4), so the
+stub carries a real registry built from the repo seed.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from servers.aspect_store import SEED_ASPECTS_JSON_PATH
+from servers.aspects import AspectRegistry
 from servers.scales.s2.aspect_encoder import AspectEncoder
+
+with open(SEED_ASPECTS_JSON_PATH) as _f:
+    _SEED_REGISTRY = AspectRegistry.from_dict(None, json.load(_f))
 
 
 class _StubBrain:
+    aspects = _SEED_REGISTRY
+
     def __init__(self):
         self.errors = []
 
@@ -40,6 +49,41 @@ def _encoder():
 def _props(*values):
     return [{'category': 'edge_relations', 'value': v, 'count': 3, 'examples': []}
             for v in values]
+
+
+class TestMenuDerivation(unittest.TestCase):
+    """The ASPECT MENU derives from the per-aspect facts (routable / accepts /
+    prompt_visible) instead of the deleted ASPECT_ACCEPTS + `order` literals.
+    Pins that the derivation reproduces the hand-curated menu this replaced —
+    verified byte-identical against the pre-Step-4 prompt when it shipped."""
+
+    def setUp(self):
+        self.enc = _encoder()
+        self.prompt = self.enc._format_prompt(
+            _SEED_REGISTRY.all(),
+            [{'category': 'edge_relations', 'value': 'x', 'count': 1,
+              'examples': []}])
+
+    def test_menu_order_matches_the_replaced_literal(self):
+        expected = [
+            'identity_bearing', 'episodic_anchor', 'active_thread',
+            'lesson_insight', 'wisdom',
+            'correction_improvement',
+            'extension_refinement', 'explanation_causation', 'dependency_flow',
+            'contradiction_conflict', 'validation_evidence',
+            'hierarchical_structure', 'temporal_sequence',
+            'generic_relation', 'noise',
+        ]
+        shown = [line[3:-3].strip() for line in self.prompt.splitlines()
+                 if line.startswith('── ') and line.endswith(' ──')
+                 and not line.startswith('── #')]
+        self.assertEqual(shown, expected)
+
+    def test_menu_header_counts_routable_aspects(self):
+        self.assertIn('ASPECT MENU — 15 aspects', self.prompt)
+
+    def test_non_routable_aspect_never_offered(self):
+        self.assertNotIn('survivor_lineage', self.prompt)
 
 
 class TestNoiseExclusivityGuard(unittest.TestCase):

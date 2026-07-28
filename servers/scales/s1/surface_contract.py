@@ -1197,13 +1197,15 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
     norm_q = float(np.linalg.norm(blended))
 
     # ── Lineage relations (union across the structural-lineage aspects) ──
-    # Read from brain.aspects (single source of truth). Consulted only under
-    # the 'lineage' recall variant (_LINEAGE_PASS, below): these edges bypass
-    # the per-hop median gate. relations_in() returns the UNION, so a verb in
-    # several aspects rides along if ANY of them is a lineage aspect.
+    # brain.aspects.lineage_relations — derived at registry load from the
+    # per-aspect `structural_lineage` fact in aspects_v1.json. Consulted only
+    # under the 'lineage' recall variant (_LINEAGE_PASS, below): these edges
+    # bypass the per-hop median gate. It is a UNION across the lineage
+    # aspects, so a verb in several aspects rides along if ANY of them
+    # declares structural_lineage.
     lineage_relations = frozenset()
     try:
-        lineage_relations = frozenset(brain.aspects.relations_in(LINEAGE_FAMILIES))
+        lineage_relations = brain.aspects.lineage_relations
     except Exception as _e:
         # Optional, but a registry read-failure is worth surfacing — without
         # it lineage ride-along silently degrades to "nothing rides".
@@ -1396,7 +1398,7 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
 #
 #  2. Aspect-aware ride-along. Instead of a hardcoded relation allowlist,
 #     read brain.aspects (the AspectRegistry) and treat edges whose aspect
-#     is in LINEAGE_FAMILIES as structural — they ride along even when
+#     declares structural_lineage — they ride along even when
 #     their enriched-text cosine is weak. New aspects emerging via
 #     AspectIntegration inherit the behavior automatically (when they map
 #     to one of the lineage names). Floor for lineage transmission is the
@@ -1413,39 +1415,28 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
 # field. Render layer can ignore it for compat.
 # ═══════════════════════════════════════════════════════════════
 
-# Aspect names whose semantic role is structural-lineage rather than
-# topical-similarity. Edges in these aspects ride along even with weak
-# enriched-text cosine, because the relation type itself carries the
+# Structural-lineage ride-along: aspects whose semantic role is lineage
+# rather than topical-similarity declare `structural_lineage: true` in
+# aspects_v1.json — the first-class flag on the aspect itself, which is the
+# drift-proof end state (an earlier hardcoded name list here held five
+# aspect names that had stopped existing, so lineage silently stopped
+# riding until 2026-06-08). Edges in these aspects ride along even with
+# weak enriched-text cosine, because the relation type itself carries the
 # meaning, not the description embedding.
 #
-# These MUST be current aspect names from aspects_v1.json (brain.aspects).
-# Relations are resolved from the registry at runtime via
-# brain.aspects.relations_in(LINEAGE_FAMILIES) — a UNION, so a verb that
-# belongs to several aspects (e.g. `revises` ∈ correction_improvement AND
-# temporal_sequence) rides as lineage as long as ANY of its aspects is
-# listed here. New verbs AspectIntegration adds to these aspects inherit
+# brain.aspects.lineage_relations is the UNION of relations across the
+# flagged aspects, derived once at registry load — a verb that belongs to
+# several aspects (e.g. `revises` ∈ correction_improvement AND
+# temporal_sequence) rides as lineage as long as ANY of its aspects carries
+# the flag. New verbs AspectIntegration adds to flagged aspects inherit
 # the behavior automatically.
 #
-# These four cover every structural-lineage intent the earlier draft
-# listed: corrections (correction_improvement); extension / refinement /
-# evolution (extension_refinement); composition + versioning / supersedes
-# (hierarchical_structure); dependency / prerequisite (dependency_flow).
-# Kept narrow on purpose — temporal_sequence is excluded so generic
-# ordering (before/after/during) doesn't turn this into "everything rides."
-#
-# Fixed 2026-06-08: the earlier draft hardcoded 5 family names that no
-# longer exist as aspects (evolution_and_change, version_and_replacement,
-# composition_and_structure, dependency_and_prerequisite,
-# refinement_and_correction), so dependency_flow and the evolves/supersedes
-# lineage silently stopped riding along. The drift-proof end state is a
-# first-class structural flag on the aspect itself — see the parked
-# "query-conditional aspect weighting in spread activation" idea.
-LINEAGE_FAMILIES = frozenset({
-    'correction_improvement',
-    'extension_refinement',
-    'hierarchical_structure',
-    'dependency_flow',
-})
+# The seed flags four aspects: corrections (correction_improvement);
+# extension / refinement / evolution (extension_refinement); composition +
+# versioning / supersedes (hierarchical_structure); dependency /
+# prerequisite (dependency_flow). Kept narrow on purpose —
+# temporal_sequence is unflagged so generic ordering (before/after/during)
+# doesn't turn this into "everything rides."
 
 # Per-hop z-gate strictness. k controls how many σ above hop mean an edge
 # must be to transmit. Larger k = stricter cut = narrower spread. Hop 0
@@ -1496,7 +1487,7 @@ def spread_activation_cluster(seed_ids, query_vec, brain, prior_vecs=None):
         for name, aspect in brain.aspects.all().items():
             for r in aspect.edge_relations:
                 rel_to_family[r] = name
-        lineage_relations = frozenset(brain.aspects.relations_in(LINEAGE_FAMILIES))
+        lineage_relations = brain.aspects.lineage_relations
     except Exception as _e:
         brain._log_error('cluster_spread_aspect_config', _e,
                          'loading brain.aspects in spread_activation_cluster')

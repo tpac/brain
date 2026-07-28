@@ -19,33 +19,25 @@ from .base import IntegrationUnit
 from .aspect_contract import ASPECT, aspects_proposed_path
 
 
-# Which categories each aspect accepts. Derived from the design — not
+# Which aspects the classifier may route to, and which categories each takes,
+# are per-aspect FACTS in aspects_v1.json (`routable`, `accepts`) — read via
+# the registry, never hardcoded here. `accepts` is design intent, not
 # discoverable from current member lists alone (an aspect with empty
 # node_types might be edge-only by design or just not yet populated).
-# 15 of the 16 required aspects are LLM-routable here. Only survivor_lineage is
-# excluded (system-generated absorbed_into edges, never classified). `wisdom` IS
-# routable so it GROWS: it's a multi-membership view (its node types also live in
-# lesson_insight/identity_bearing), and the encoder multi-homes generative types
-# into it, guided by the aspect's `meaning`. The decoder proposes only
-# unclassified strings, so existing types stay as seeded while NEW generative
-# types auto-join wisdom alongside their primary aspect.
-ASPECT_ACCEPTS = {
-    'identity_bearing':       {'node_types'},
-    'episodic_anchor':        {'node_types'},
-    'active_thread':          {'node_types'},
-    'lesson_insight':         {'node_types'},
-    'wisdom':                 {'node_types'},
-    'correction_improvement': {'node_types', 'edge_relations'},
-    'extension_refinement':   {'edge_relations'},
-    'explanation_causation':  {'edge_relations'},
-    'dependency_flow':        {'edge_relations'},
-    'contradiction_conflict': {'edge_relations'},
-    'validation_evidence':    {'edge_relations'},
-    'hierarchical_structure': {'edge_relations'},
-    'temporal_sequence':      {'edge_relations'},
-    'generic_relation':       {'edge_relations'},
-    'noise':                  {'node_types', 'edge_relations'},
-}
+# survivor_lineage declares routable=false (system-generated absorbed_into
+# edges, never classified). `wisdom` IS routable so it GROWS: it's a
+# multi-membership view (its node types also live in lesson_insight /
+# identity_bearing), and the encoder multi-homes generative types into it,
+# guided by the aspect's `meaning`. The decoder proposes only unclassified
+# strings, so existing types stay as seeded while NEW generative types
+# auto-join wisdom alongside their primary aspect.
+
+
+def _routing_map(aspects):
+    """{aspect_name: accepts-set} for the routable aspects — the classifier's
+    closed list, derived from the per-aspect facts. `aspects` is the
+    name→Aspect dict from brain.aspects.all()."""
+    return {name: set(a.accepts) for name, a in aspects.items() if a.routable}
 
 
 class AspectEncoder(IntegrationUnit):
@@ -176,33 +168,32 @@ class AspectEncoder(IntegrationUnit):
         `aspects` is the {name: Aspect} view from brain.aspects.all().
         """
         lines = []
+        routing = _routing_map(aspects)
 
         lines.append('═' * 70)
         lines.append('ASPECT MENU — %d aspects, closed list. Route every candidate to one of these.'
-                     % len(ASPECT_ACCEPTS))
+                     % len(routing))
         lines.append('═' * 70)
         lines.append('')
 
-        # Render aspects in a stable order: required-node-only first (Frame),
-        # then both, then required-edge-only, then catch-alls. Helps the
-        # encoder build a mental map.
-        order = [
-            'identity_bearing', 'episodic_anchor', 'active_thread', 'lesson_insight',
-            'wisdom',
-            'correction_improvement',
-            'extension_refinement', 'explanation_causation', 'dependency_flow',
-            'contradiction_conflict', 'validation_evidence',
-            'hierarchical_structure', 'temporal_sequence',
-            'generic_relation', 'noise',
-        ]
+        # Render routable aspects in a stable order: node-only first (Frame),
+        # then the semantic rest, then catch-alls (the prompt-invisible
+        # structural aspects) last. Helps the encoder build a mental map.
+        # Groups derive from the per-aspect facts; within a group, taxonomy
+        # (JSON) order — reproduces the hand-curated order this replaced.
+        def _menu_group(name):
+            if routing[name] == {'node_types'}:
+                return 0
+            return 1 if aspects[name].prompt_visible else 2
+
+        order = sorted(routing, key=_menu_group)
         for name in order:
-            aspect = aspects.get(name)
-            accepts = sorted(ASPECT_ACCEPTS.get(name, set()))
-            members_n = list(aspect.node_types) if aspect else []
-            members_e = list(aspect.edge_relations) if aspect else []
+            aspect = aspects[name]
+            members_n = list(aspect.node_types)
+            members_e = list(aspect.edge_relations)
             lines.append('── %s ──' % name)
-            lines.append('  meaning: %s' % (aspect.meaning if aspect else ''))
-            lines.append('  accepts: %s' % ', '.join(accepts))
+            lines.append('  meaning: %s' % aspect.meaning)
+            lines.append('  accepts: %s' % ', '.join(sorted(routing[name])))
             if members_n:
                 lines.append('  current node_types: %s' % ', '.join(sorted(members_n)))
             if members_e:
@@ -265,6 +256,7 @@ class AspectEncoder(IntegrationUnit):
         for p in proposals:
             candidates_by_value[(p['category'], p['value'])] = p
 
+        routing = _routing_map(self.brain.aspects.all())
         accepted = []
         rejected = []
         seen = set()
@@ -292,9 +284,10 @@ class AspectEncoder(IntegrationUnit):
                 rejected.append({'classification': c, 'reason': 'value+category not in candidate list'})
                 continue
 
-            # Validate every listed aspect against the closed list. Reject on
-            # unknown aspect names (encoder hallucination).
-            invalid = [a for a in aspects_list if a not in ASPECT_ACCEPTS]
+            # Validate every listed aspect against the closed list (the
+            # routable aspects from the registry). Reject on unknown or
+            # non-routable aspect names (encoder hallucination).
+            invalid = [a for a in aspects_list if a not in routing]
             if invalid:
                 rejected.append({'classification': c,
                                  'reason': 'aspects not in closed list: %s' % invalid})
@@ -304,7 +297,7 @@ class AspectEncoder(IntegrationUnit):
             # accept the entry with the filtered list (first survivor = new
             # primary). If nothing survives, reject. Logged so we can see
             # how often the encoder picks the wrong category.
-            valid_for_cat = [a for a in aspects_list if category in ASPECT_ACCEPTS[a]]
+            valid_for_cat = [a for a in aspects_list if category in routing[a]]
             dropped = [a for a in aspects_list if a not in valid_for_cat]
             if not valid_for_cat:
                 rejected.append({'classification': c,

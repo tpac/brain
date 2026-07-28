@@ -6,7 +6,7 @@ guard. That is the ONLY path that activates S2 — do not add another. Each
 unit checks its own traces to decide whether it should fire.
 
 Ordering matters:
-1. AspectIntegration — classify new node types / edge relations into the 14 aspects
+1. AspectIntegration — classify new node types / edge relations into the required aspects
 2. Consolidation — clean the graph (merge convergent nodes)
 3. Community detection — detect structure on clean graph
 4. Healer — fill missing findability fields on nodes that lack them (uses community context)

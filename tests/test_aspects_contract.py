@@ -24,8 +24,45 @@ SEED_PATH = os.path.join(
 
 
 def _load_seed():
+    """Seed WITHOUT the '_'-prefixed documentation keys (_schema) — the
+    aspect entries every curation test iterates. Use _load_seed_raw for the
+    file as-is."""
+    return {k: v for k, v in _load_seed_raw().items() if not k.startswith('_')}
+
+
+def _load_seed_raw():
     with open(SEED_PATH) as f:
         return json.load(f)
+
+
+class TestSchemaDocEntry(unittest.TestCase):
+    """The `_schema` entry is the file's own documentation (JSON has no
+    comments; '_'-prefixed keys are the reserved convention, skipped by the
+    registry loader, the validator, the write door, and the dashboard).
+    It must document every key an aspect entry carries — a new field without
+    an explainer fails here."""
+
+    def test_schema_documents_every_entry_key(self):
+        raw = _load_seed_raw()
+        self.assertIn('_schema', raw)
+        doc = raw['_schema']
+        entry_keys = set()
+        for name, spec in raw.items():
+            if not name.startswith('_'):
+                entry_keys |= set(spec.keys())
+        undocumented = entry_keys - set(doc.keys())
+        self.assertEqual(
+            undocumented, set(),
+            'aspect entry keys missing a _schema explainer: %s' % undocumented)
+
+    def test_schema_is_skipped_by_the_registry(self):
+        from servers.aspects import AspectRegistry
+        registry = AspectRegistry.from_dict(None, _load_seed_raw())
+        self.assertNotIn('_schema', registry.all())
+
+    def test_schema_passes_the_write_gate(self):
+        from servers.aspect_store import validate_taxonomy
+        self.assertEqual(validate_taxonomy(_load_seed_raw()), [])
 
 
 # Verbs that REPLACE prior knowledge. Every one must live in
@@ -85,7 +122,9 @@ class TestSeedShape(unittest.TestCase):
 
     def test_each_entry_has_required_fields(self):
         required_fields = {'node_types', 'edge_relations', 'meaning',
-                           'dimension', 'locked', 'metadata'}
+                           'dimension', 'locked', 'metadata',
+                           'accepts', 'routable', 'prompt_visible',
+                           'structural_lineage'}
         for name, spec in self.seed.items():
             with self.subTest(aspect=name):
                 missing = required_fields - set(spec.keys())
@@ -93,6 +132,39 @@ class TestSeedShape(unittest.TestCase):
                     missing, set(),
                     "%s missing required fields: %s" % (name, missing)
                 )
+
+    def test_accepts_is_nonempty_and_valid(self):
+        # This assertion is what makes a JSON-only aspect addition safe: an
+        # entry cannot ship without declaring which categories it takes.
+        for name, spec in self.seed.items():
+            with self.subTest(aspect=name):
+                accepts = spec['accepts']
+                self.assertTrue(accepts, "%s.accepts is empty" % name)
+                self.assertTrue(
+                    set(accepts) <= {'node_types', 'edge_relations'},
+                    "%s.accepts has unknown categories: %s" % (name, accepts))
+
+    def test_fact_flags_are_booleans(self):
+        for name, spec in self.seed.items():
+            for flag in ('routable', 'prompt_visible', 'structural_lineage'):
+                with self.subTest(aspect=name, flag=flag):
+                    self.assertIsInstance(spec[flag], bool)
+
+    def test_only_survivor_lineage_is_non_routable(self):
+        # survivor_lineage is system-written (absorbed_into), never offered
+        # to the classifier. Everything else routes. A new non-routable
+        # aspect is a deliberate edit — update this pin consciously.
+        non_routable = {name for name, spec in self.seed.items()
+                        if not spec['routable']}
+        self.assertEqual(non_routable, {'survivor_lineage'})
+
+    def test_prompt_invisible_set_is_the_structural_trio(self):
+        # The catch-alls + the system aspect stay out of encoder vocabulary
+        # blocks (the deleted EDGE_ASPECT_PROMPT_SKIP contract, now declared).
+        invisible = {name for name, spec in self.seed.items()
+                     if not spec['prompt_visible']}
+        self.assertEqual(
+            invisible, {'generic_relation', 'noise', 'survivor_lineage'})
 
     def test_no_aspect_is_empty(self):
         # Required aspects must have at least one member somewhere — otherwise
@@ -270,39 +342,50 @@ class TestMultiMembershipShape(unittest.TestCase):
                 'first-claimant violated for edge relation %s' % r)
 
 
-class TestLineageFamiliesContract(unittest.TestCase):
-    """surface_contract.LINEAGE_FAMILIES must be current aspect names.
-
-    Spread activation resolves these names against brain.aspects at runtime
-    (relations_in). A name that isn't an aspect silently matches nothing — the
-    2026-06-08 bug, where 5 of 8 hardcoded family names were dead so
-    dependency_flow + multi-membership lineage stopped riding along. This locks
-    the names to aspects_v1.json so the drift cannot recur unnoticed.
+class TestLineageDerivation(unittest.TestCase):
+    """Spread activation's lineage ride-along derives from the per-aspect
+    `structural_lineage` fact in aspects_v1.json (Step 4) — the deleted
+    LINEAGE_FAMILIES literal is the drift class this replaces (the 2026-06-08
+    bug: 5 of 8 hardcoded family names were dead, so dependency_flow +
+    multi-membership lineage silently stopped riding along). Derivation means
+    the names cannot go stale; these tests pin the seed's deliberate flag
+    choices and that the derived union is live.
     """
 
     def setUp(self):
         self.seed = _load_seed()
+        from servers.aspects import AspectRegistry
+        self.registry = AspectRegistry.from_dict(None, self.seed)
 
-    def test_all_lineage_families_are_current_aspects(self):
-        from servers.scales.s1.surface_contract import LINEAGE_FAMILIES
-        stale = set(LINEAGE_FAMILIES) - set(self.seed.keys())
+    def test_seed_flags_exactly_the_four_lineage_aspects(self):
+        flagged = {name for name, spec in self.seed.items()
+                   if spec.get('structural_lineage')}
         self.assertEqual(
-            stale, set(),
-            "LINEAGE_FAMILIES contains names that are not aspects in "
-            "aspects_v1.json: %s" % stale)
+            flagged,
+            {'correction_improvement', 'extension_refinement',
+             'hierarchical_structure', 'dependency_flow'},
+            "seed structural_lineage flags changed — deliberate edit only "
+            "(this set drives spread-activation ride-along)")
 
-    def test_lineage_families_nonempty(self):
-        from servers.scales.s1.surface_contract import LINEAGE_FAMILIES
-        self.assertTrue(LINEAGE_FAMILIES, "LINEAGE_FAMILIES must not be empty")
+    def test_lineage_relations_derived_and_nonempty(self):
+        self.assertTrue(
+            self.registry.lineage_relations,
+            "derived lineage_relations is empty — ride-along silently dead")
 
-    def test_lineage_families_carry_edge_relations(self):
-        # A lineage family with no edge_relations contributes nothing to the
-        # ride-along union — almost certainly a stale or wrong name.
-        from servers.scales.s1.surface_contract import LINEAGE_FAMILIES
-        for name in LINEAGE_FAMILIES:
-            self.assertTrue(
-                self.seed.get(name, {}).get('edge_relations'),
-                "lineage family %r has no edge_relations in aspects_v1.json" % name)
+    def test_lineage_aspects_carry_edge_relations(self):
+        # A flagged aspect with no edge_relations contributes nothing to the
+        # ride-along union — almost certainly a wrong flag.
+        for name, spec in self.seed.items():
+            if spec.get('structural_lineage'):
+                self.assertTrue(
+                    spec.get('edge_relations'),
+                    "lineage aspect %r has no edge_relations" % name)
+
+    def test_union_covers_every_flagged_aspect(self):
+        for name, spec in self.seed.items():
+            if spec.get('structural_lineage'):
+                for r in spec['edge_relations']:
+                    self.assertIn(r, self.registry.lineage_relations)
 
 
 class TestStructuralValidity(unittest.TestCase):
@@ -356,6 +439,34 @@ class TestStructuralValidity(unittest.TestCase):
         broken = {k: v for k, v in self.seed.items() if k != 'survivor_lineage'}
         violations = validate_taxonomy(broken)
         self.assertTrue(any('survivor_lineage' in v for v in violations), violations)
+
+    def test_validator_catches_malformed_fact_fields(self):
+        # Invariant 5: accepts must be a non-empty unique subset of the two
+        # categories; the three flags must be booleans — when present.
+        # Absence is legitimate (emergent aspects, pre-heal working copies).
+        from servers.aspect_store import validate_taxonomy
+        import copy
+        broken = copy.deepcopy(self.seed)
+        broken['noise']['accepts'] = []
+        broken['wisdom']['accepts'] = ['node_types', 'everything']
+        broken['lesson_insight']['routable'] = 'yes'
+        violations = validate_taxonomy(broken)
+        self.assertTrue(any("'noise'.accepts" in v for v in violations), violations)
+        self.assertTrue(any("'wisdom'.accepts" in v for v in violations), violations)
+        self.assertTrue(any("'lesson_insight'.routable" in v for v in violations),
+                        violations)
+
+    def test_validator_allows_absent_fact_fields(self):
+        # A pre-Step-4 working copy (no fact keys anywhere) must still pass
+        # the structural gate — presence is seed curation, not structure.
+        from servers.aspect_store import validate_taxonomy
+        import copy
+        legacy = copy.deepcopy(self.seed)
+        for spec in legacy.values():
+            for k in ('accepts', 'routable', 'prompt_visible',
+                      'structural_lineage'):
+                spec.pop(k, None)
+        self.assertEqual(validate_taxonomy(legacy), [])
 
 
 if __name__ == '__main__':
