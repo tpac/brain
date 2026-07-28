@@ -382,9 +382,10 @@ class BrainDaemon:
         working, or the operator away) correctly count as idle and re-warm.
 
         Scope: this warms `brain.anthropic_client`, the client the S1 surface
-        step reuses. The encoder / S2 units / scouts each build their own
-        anthropic.Anthropic() per use and are NOT covered here — by design,
-        since the recall timeout this addresses is a surface-path problem.
+        step reuses. The encoders / S2 units (via runner.make_client) and the
+        scouts each build their own client per use and are NOT covered here —
+        by design, since the recall timeout this addresses is a surface-path
+        problem.
         """
         CHECK_CADENCE_S = 30.0    # how often to re-check idle; cheap, bounded
         last_ping = time.time()   # avoid double-warming right after boot warmup

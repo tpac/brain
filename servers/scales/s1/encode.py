@@ -55,10 +55,9 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     load_env()
     _step("env_loaded")
 
-    import anthropic
-    from ..runner import ANTHROPIC_CLIENT_TIMEOUT
+    from ..runner import make_client
     try:
-        client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
+        client = make_client()
     except Exception as e:
         print('[s1e] ERROR: Cannot create Anthropic client: %s' % e, flush=True)
         return {"error": str(e)}

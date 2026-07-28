@@ -384,9 +384,8 @@ class CommunityEncoder(IntegrationUnit):
         Each chunk gets one encoder-agent call. Between chunks, community_state
         is refreshed so later chunks see what earlier ones created.
         """
-        import anthropic
         from ..dispatch import load_env
-        from ..runner import run_llm_loop
+        from ..runner import run_llm_loop, make_client, retry_on_transient_api_error
         from .community_decoder import CommunityDecoder
 
         system_prompt = self.brain.get_interaction_prompt(
@@ -414,9 +413,7 @@ class CommunityEncoder(IntegrationUnit):
 
         tools = self._get_tool_schemas()
         dispatch_fn = self._make_dispatch()
-        # Single shared S2 timeout — see base.ANTHROPIC_CLIENT_TIMEOUT.
-        from .base import ANTHROPIC_CLIENT_TIMEOUT
-        client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
+        client = make_client()
 
         # Residue continuity — the last few runs' review notes, rendered by base.
         journal_prefix = self._load_journal_notes_prefix()
@@ -460,7 +457,6 @@ class CommunityEncoder(IntegrationUnit):
             user_content = journal_prefix + user_content
 
             try:
-                from .base import retry_on_transient_api_error
                 result = retry_on_transient_api_error(
                     lambda: run_llm_loop(
                         client=client,

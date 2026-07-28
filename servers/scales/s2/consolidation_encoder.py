@@ -103,9 +103,8 @@ class ConsolidationEncoder(IntegrationUnit):
         Clusters are split into chunks of max_proposals_per_call.
         Each chunk gets one Sonnet call.
         """
-        import anthropic
         from ..dispatch import load_env
-        from ..runner import run_llm_loop
+        from ..runner import run_llm_loop, make_client, retry_on_transient_api_error
 
         system_prompt = self.brain.get_interaction_prompt(
             's2_consolidation_enrichment')
@@ -131,9 +130,7 @@ class ConsolidationEncoder(IntegrationUnit):
             load_env()
 
         tools = self._get_tool_schemas()
-        # Single shared S2 timeout — see base.ANTHROPIC_CLIENT_TIMEOUT.
-        from .base import ANTHROPIC_CLIENT_TIMEOUT
-        client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
+        client = make_client()
 
         # Residue continuity — the last few runs' review notes, rendered by base.
         journal_prefix = self._load_journal_notes_prefix()
@@ -185,7 +182,6 @@ class ConsolidationEncoder(IntegrationUnit):
                 pass
 
             try:
-                from .base import retry_on_transient_api_error
                 result = retry_on_transient_api_error(
                     lambda: run_llm_loop(
                         client=client,

@@ -1,4 +1,4 @@
-"""Tests for retry_on_transient_api_error in servers/scales/s2/base.py.
+"""Tests for retry_on_transient_api_error in servers/scales/runner.py.
 
 Ensures the S2 retry wrapper:
 - Retries on APITimeoutError, APIConnectionError, InternalServerError
@@ -72,11 +72,11 @@ class TestRetryTransient(unittest.TestCase):
 
     def setUp(self):
         # Short backoff keeps tests under 1s
-        from servers.scales.s2 import base as s2_base
-        self.s2_base = s2_base
+        from servers.scales import runner
+        self.runner = runner
         self._orig_sleep = time.sleep
-        # Monkey-patch sleep in the base module to avoid real delay
-        self._sleep_patcher = patch.object(s2_base.time, 'sleep')
+        # Monkey-patch sleep in the runner module to avoid real delay
+        self._sleep_patcher = patch.object(runner.time, 'sleep')
         self.mock_sleep = self._sleep_patcher.start()
 
     def tearDown(self):
@@ -86,7 +86,7 @@ class TestRetryTransient(unittest.TestCase):
 
     def test_success_first_try_no_retry(self):
         counter = _Counter(raise_n=0, exc=None, return_value='payload')
-        out = self.s2_base.retry_on_transient_api_error(counter)
+        out = self.runner.retry_on_transient_api_error(counter)
         self.assertEqual(out, 'payload')
         self.assertEqual(counter.calls, 1)
         self.mock_sleep.assert_not_called()
@@ -95,7 +95,7 @@ class TestRetryTransient(unittest.TestCase):
         import anthropic
         err = _make_api_error(anthropic.APITimeoutError)
         counter = _Counter(raise_n=1, exc=err)
-        out = self.s2_base.retry_on_transient_api_error(
+        out = self.runner.retry_on_transient_api_error(
             counter, attempts=2, base_backoff_s=0.1)
         self.assertEqual(out, 'ok')
         self.assertEqual(counter.calls, 2)
@@ -105,7 +105,7 @@ class TestRetryTransient(unittest.TestCase):
         import anthropic
         err = _make_api_error(anthropic.APIConnectionError)
         counter = _Counter(raise_n=1, exc=err)
-        out = self.s2_base.retry_on_transient_api_error(
+        out = self.runner.retry_on_transient_api_error(
             counter, attempts=2, base_backoff_s=0.1)
         self.assertEqual(out, 'ok')
         self.assertEqual(counter.calls, 2)
@@ -114,7 +114,7 @@ class TestRetryTransient(unittest.TestCase):
         import anthropic
         err = _make_api_error(anthropic.InternalServerError)
         counter = _Counter(raise_n=1, exc=err)
-        out = self.s2_base.retry_on_transient_api_error(
+        out = self.runner.retry_on_transient_api_error(
             counter, attempts=2, base_backoff_s=0.1)
         self.assertEqual(out, 'ok')
         self.assertEqual(counter.calls, 2)
@@ -123,7 +123,7 @@ class TestRetryTransient(unittest.TestCase):
         import httpx
         err = httpx.ReadTimeout('read timed out')
         counter = _Counter(raise_n=1, exc=err)
-        out = self.s2_base.retry_on_transient_api_error(
+        out = self.runner.retry_on_transient_api_error(
             counter, attempts=2, base_backoff_s=0.1)
         self.assertEqual(out, 'ok')
         self.assertEqual(counter.calls, 2)
@@ -135,7 +135,7 @@ class TestRetryTransient(unittest.TestCase):
         err = _make_api_error(anthropic.BadRequestError)
         counter = _Counter(raise_n=99, exc=err)
         with self.assertRaises(anthropic.BadRequestError):
-            self.s2_base.retry_on_transient_api_error(
+            self.runner.retry_on_transient_api_error(
                 counter, attempts=3, base_backoff_s=0.1)
         # Only one call — no retries on non-transient
         self.assertEqual(counter.calls, 1)
@@ -148,7 +148,7 @@ class TestRetryTransient(unittest.TestCase):
         err = _make_api_error(anthropic.RateLimitError)
         counter = _Counter(raise_n=99, exc=err)
         with self.assertRaises(anthropic.RateLimitError):
-            self.s2_base.retry_on_transient_api_error(
+            self.runner.retry_on_transient_api_error(
                 counter, attempts=3, base_backoff_s=0.1)
         self.assertEqual(counter.calls, 1)
 
@@ -156,7 +156,7 @@ class TestRetryTransient(unittest.TestCase):
         err = ValueError('something else')
         counter = _Counter(raise_n=99, exc=err)
         with self.assertRaises(ValueError):
-            self.s2_base.retry_on_transient_api_error(
+            self.runner.retry_on_transient_api_error(
                 counter, attempts=3, base_backoff_s=0.1)
         self.assertEqual(counter.calls, 1)
 
@@ -167,7 +167,7 @@ class TestRetryTransient(unittest.TestCase):
         err = _make_api_error(anthropic.APITimeoutError)
         counter = _Counter(raise_n=99, exc=err)
         with self.assertRaises(anthropic.APITimeoutError):
-            self.s2_base.retry_on_transient_api_error(
+            self.runner.retry_on_transient_api_error(
                 counter, attempts=2, base_backoff_s=0.1)
         self.assertEqual(counter.calls, 2)  # attempts=2 => 1 retry
         # One sleep call (between attempt 1 and 2)
@@ -178,7 +178,7 @@ class TestRetryTransient(unittest.TestCase):
         err = _make_api_error(anthropic.APITimeoutError)
         counter = _Counter(raise_n=99, exc=err)
         with self.assertRaises(anthropic.APITimeoutError):
-            self.s2_base.retry_on_transient_api_error(
+            self.runner.retry_on_transient_api_error(
                 counter, attempts=3, base_backoff_s=2.0)
         # attempts=3 → 2 sleeps: 2s, 4s
         self.assertEqual(self.mock_sleep.call_count, 2)
@@ -192,7 +192,7 @@ class TestRetryTransient(unittest.TestCase):
         err = _make_api_error(anthropic.APITimeoutError)
         counter = _Counter(raise_n=1, exc=err)
         logs = []
-        self.s2_base.retry_on_transient_api_error(
+        self.runner.retry_on_transient_api_error(
             counter, attempts=2, base_backoff_s=0.1,
             log_fn=lambda msg: logs.append(msg))
         self.assertEqual(len(logs), 1)
@@ -202,7 +202,7 @@ class TestRetryTransient(unittest.TestCase):
     def test_log_fn_not_called_on_success(self):
         counter = _Counter(raise_n=0, exc=None)
         logs = []
-        self.s2_base.retry_on_transient_api_error(
+        self.runner.retry_on_transient_api_error(
             counter, log_fn=lambda msg: logs.append(msg))
         self.assertEqual(logs, [])
 

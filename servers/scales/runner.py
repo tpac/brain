@@ -95,6 +95,156 @@ def sum_usage(total, usage):
     return total
 
 
+def make_client():
+    """The ONE construction point for the encoder lane's Anthropic client.
+
+    Every encoder execution path (the run_llm_loop callers and run_llm_once)
+    builds its client here, so the provider SDK stays behind this module's
+    seam — swapping providers means reimplementing this module's internals,
+    nothing above it. (Recall-lane sites — surface, scouts, query expansion,
+    the daemon's shared warm client — have their own lifecycles and sit
+    outside this seam.)
+    """
+    import anthropic
+    return anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
+
+
+def run_llm_once(client, model, max_tokens, system_prompt, user_content):
+    """Single-shot LLM call — the degenerate (no tools, one round) runner entry.
+
+    The single-shot counterpart to run_llm_loop, behind the same provider
+    seam: 1h cache_control on the byte-stable system prompt (mirrors the
+    loop's BP1; a no-op below the model's cacheable floor — s2_healer ~2.5K
+    tok sits under Haiku 4.5's 4096 floor, s2_aspects on Sonnet clears it),
+    telemetry via read_usage. Returns the RAW response text — envelope
+    parsing (extract_json, journal harvest) is the caller's/contract's
+    concern, so the text surface stays available to both.
+
+    Exceptions propagate — failure policy (log-and-skip, retry) belongs to
+    the caller, mirroring run_llm_loop.
+
+    Returns:
+        (raw_text, telemetry): telemetry is {'elapsed_ms', **USAGE_FIELDS}.
+    """
+    t0 = time.time()
+    response = client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        system=[{"type": "text", "text": system_prompt,
+                 "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
+        messages=[{"role": "user", "content": user_content}])
+    telemetry = {'elapsed_ms': int((time.time() - t0) * 1000),
+                 **read_usage(response)}
+    return response.content[0].text.strip(), telemetry
+
+
+def extract_json(text):
+    """Extract JSON array or object from LLM response text.
+
+    Handles markdown code fences, leading/trailing text.
+    Returns parsed JSON (list or dict), or None on failure.
+    """
+    # Strip markdown fences
+    if '```' in text:
+        parts = text.split('```')
+        if len(parts) >= 3:
+            text = parts[1]
+            if text.startswith('json'):
+                text = text[4:]
+            text = text.strip()
+
+    # Find JSON array or object
+    # Try array first (most common for batched proposals)
+    start = text.find('[')
+    if start >= 0:
+        end = text.rfind(']') + 1
+        if end > start:
+            try:
+                return json.loads(text[start:end])
+            except json.JSONDecodeError:
+                pass
+
+    # Try object
+    start = text.find('{')
+    if start >= 0:
+        end = text.rfind('}') + 1
+        if end > start:
+            try:
+                return json.loads(text[start:end])
+            except json.JSONDecodeError:
+                pass
+
+    return None
+
+
+# Per-batch retry policy for transient API errors. The SDK's built-in
+# max_retries handles pre-stream failures (connect refused, 5xx before
+# body, rate-limit). It can't retry once a stream has started and stalls
+# mid-body (httpx ReadTimeout) — that's what this wrapper covers.
+#
+# attempts=2 means one retry. First failure => 8s backoff then retry.
+# Second failure => give up, batch fails, work moves on. This caps the
+# wall-clock cost of a stuck batch at ~2*timeout + backoff and recovers
+# the happy-path on transient blips.
+RETRY_ATTEMPTS = 2
+RETRY_BACKOFF_BASE_S = 8.0
+
+
+def retry_on_transient_api_error(fn, *, attempts=RETRY_ATTEMPTS,
+                                 base_backoff_s=RETRY_BACKOFF_BASE_S,
+                                 log_fn=None):
+    """Call fn() with retry on transient Anthropic SDK exceptions.
+
+    Retries on: APITimeoutError, APIConnectionError, InternalServerError
+    (5xx from Anthropic). Also catches httpx TimeoutException as a safety
+    net in case a raw httpx error leaks through streaming.
+
+    Does NOT retry on: BadRequestError, AuthenticationError, PermissionDenied,
+    NotFoundError, UnprocessableEntityError, RateLimitError. Those either
+    indicate a client bug (retry won't help) or are already handled by the
+    SDK's built-in max_retries (rate limit respects Retry-After header).
+
+    Args:
+        fn: zero-arg callable that makes the API call
+        attempts: total attempts including the first call; 2 = one retry
+        base_backoff_s: seconds to wait before first retry; doubles each attempt
+        log_fn: optional logger invoked on retry with a one-line message
+
+    Returns: whatever fn() returns
+
+    Raises: the last exception if all attempts fail (transient), or the
+        original exception immediately if non-transient
+    """
+    import anthropic
+    try:
+        import httpx
+        httpx_timeout = (httpx.TimeoutException,)
+    except Exception:
+        httpx_timeout = ()
+
+    transient = (
+        anthropic.APITimeoutError,
+        anthropic.APIConnectionError,
+        anthropic.InternalServerError,
+    ) + httpx_timeout
+
+    last_err = None
+    for i in range(attempts):
+        try:
+            return fn()
+        except transient as e:
+            last_err = e
+            if i < attempts - 1:
+                sleep_s = base_backoff_s * (2 ** i)
+                if log_fn:
+                    log_fn('transient API error (%s): %s — retrying in %.0fs '
+                           '(attempt %d/%d)' % (
+                               type(e).__name__, e, sleep_s, i + 2, attempts))
+                time.sleep(sleep_s)
+    # Exhausted retries — re-raise the last error so callers can log + skip
+    raise last_err
+
+
 def run_unit_in_background(unit, name, lock, on_complete=None):
     """Run an in-process integration unit on a daemon worker thread.
 
