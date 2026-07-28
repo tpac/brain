@@ -163,7 +163,18 @@ def reconcile_working_copy(log_fn=None) -> bool:
             except Exception:
                 pass
         return True
-    except OSError:
+    except OSError as e:
+        # Working copy exists but can't be read (permissions, I/O). Loud on
+        # both channels — a silent False here would look identical to
+        # "nothing to heal" while the registry boots from a file the heal
+        # couldn't even open.
+        msg = 'working copy unreadable — reconcile skipped: %r' % e
+        print('[aspects] %s' % msg, flush=True)
+        if log_fn:
+            try:
+                log_fn(msg)
+            except Exception:
+                pass
         return False
     missing = [n for n in REQUIRED_ASPECTS if n in seed and n not in cur]
     # Missing MEMBERS of required aspects that both files carry (job 3).
