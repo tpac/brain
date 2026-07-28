@@ -288,22 +288,32 @@ I'm Anchor, I have 7677 memories, 349 locked.
 Precedent for a conditional clause exists two lines down: `MY_STREAM_ID` is
 already `if session_id:`-gated (`brain_voice.py:358`).
 
-**Removing the envelope at boot — safe, and scoped.** Verified: **nothing parses
-`[BRAIN]`/`[/BRAIN]`** anywhere in `servers/`, `hooks/`, `dashboard/`, `tests/`,
-or `skills/` — every occurrence is a string-literal *emitter*, no regex, split,
-or strip. `wrap_for_hook` is a passthrough (the operator channel was killed
-2026-03-28), so nothing downstream depends on the markers either.
+**Removing the envelope at boot — safe in production, and scoped.** Verified
+(re-verified 2026-07-27): **no production code parses `[BRAIN]`/`[/BRAIN]`** —
+every occurrence in `servers/`, `hooks/`, `dashboard/`, `skills/` is a
+string-literal *emitter*, no regex, split, or strip. `wrap_for_hook` is a
+passthrough (the operator channel was killed 2026-03-28), so nothing downstream
+depends on the markers either. **Tests DO parse them** (earlier "nothing
+anywhere" claim was wrong for `tests/`): `tests/test_brain_voice.py`
+`.index()`/`.find()`s the markers in boot output — five envelope tests break on
+removal, and two more assert the exact `"Anchor. The brain is yours"` text
+broken by the reword. Those seven tests update in this arc (§9).
 
 There is even precedent that the markers can *harm*: `daemon_hooks.py:1153-1155`
 records that an earlier `[BRAIN] GIT CONTEXT` block caused Claude Code to
 `chdir` into the trailing marker (`ENOENT chdir '<repo>' -> '[/BRAIN]'`) — the
 harness read the marker as data.
 
-**Scope of the removal: boot only.** The envelope stays everywhere else — Bash
-safety warnings (`daemon_hooks.py:982-1035`), host-environment notices
-(`:1095-1105`), keyless-boot notices (`:454-464`), edit auto-suggest
-(`brain_voice.py:133-234`), and the per-turn recall injection. The line is
-principled: those are **interjections** — the brain interrupting mid-flow — which
+**Scope of the removal: boot only.** The envelope stays at the live
+interjection sites — Bash safety warnings (`daemon_hooks.py:982-1035`),
+keyless-boot notices (`:454-464`), edit auto-suggest (`brain_voice.py:133-234`),
+and the recall-failure notice (`pre_response_recall.py:98`). Two census
+corrections (2026-07-27): the host-environment notice (`:1095-1105`) builds the
+markers but is **log-only** (`return {"output": ""}` — never reaches context),
+and the per-turn recall injection is **already unmarked** ("Brain activated N
+memories:", `surface_contract.py`) — so "marker for interjections" is the
+prescriptive rule, not a description of the highest-volume path today. The line
+is principled: those are **interjections** — the brain interrupting mid-flow — which
 is precisely what the locked distinct-voice decision (id:279e065f) exists for, and
 a channel marker earns its place there. Boot is **Anchor's own waking
 statement**; now that its content is first-person, a channel marker contradicts
@@ -363,7 +373,10 @@ the two:
 
   *Side finding, not this arc:* `context_boot` therefore runs a full
   `self.recall()` plus locked/recent assembly at every boot whose results
-  nobody reads — dead boot latency. Worth its own cleanup.
+  nobody reads — dead boot latency. Correction (2026-07-27): the recall is
+  driven by the hardcoded `task="session start"` (`brain_voice.py:341`), NOT by
+  `user` — removing the `user` arg does not stop it. Tracked as node
+  id:ba210861; its own cleanup.
 
 So the value that *should* flow per session (hook → boot → identity) dies at
 the banner, while the value that *does* stamp traces is a daemon-owned
@@ -384,7 +397,13 @@ singleton. Exactly inverted from "daemon is downstream-only" (id:16f06758).
 4. Path B's dead end is *not* wired up in this arc — it is **removed**. The boot
    `user` arg stops being resolved and sent, since the banner (§4.0) reads the
    accessor and nothing else consumed it. That deletes code rather than adding
-   it.
+   it. **The path has TWO heads** (2026-07-27): `boot_brain.py:51-73` (daemon
+   path) AND `boot_brain.py:117-119` (`_boot_via_direct`, the no-daemon
+   fallback — resolves `BRAIN_USER` again and calls
+   `format_boot_context(user=...)` in-process). Remove both, plus the `user=`
+   params in the `context_boot` / `format_boot_context` / `record_boot_render`
+   signatures and their test callers (`tests/test_core.py:541`,
+   `tests/relearning.py:912`, `tests/test_brain_voice.py:162`).
 
 Result: the "where does identity come from" question has exactly **one** answer
 site. It can evolve (install config → hook-declared → authenticated) by changing
@@ -428,6 +447,17 @@ function's own contract**, and the site has both `brain` and `ctx` in hand. Both
 dialogue writes already route through it: `:201` (user_message, at
 prompt-arrival) and `:626` (assistant_message, at Stop).
 
+**Two census corrections (2026-07-27) to the "one writer" claim:**
+1. `_s0_trace` also emits a FIFTH ref_type the policy must own:
+   `anchor_touched` (`daemon_hooks.py:674`) — takes the structural row (omit),
+   and the §8.1 policy-derived fixture must include it.
+2. One S0 turn event bypasses `_s0_trace` entirely: `Brain.stamp_boot_liveness`
+   (`brain.py:1002-1006`, called from `brain_voice.py:349`) writes the boot
+   heartbeat via a direct `_trace_dal.append` — already on the writer list in
+   `test_trace_contract_sync.py:21`. Its policy row is `heartbeat → omit`, so
+   no stamp is needed there; it just bounds the "single writer" claim and must
+   stay on the §8 contract-test writer list.
+
 It stamps through the one accessor — `speaker = brain.speaker_for(ctx,
 ref_type)` (§3.2). Passing `ctx` from day one is precisely what makes the later
 per-session switch a one-line change *inside the accessor* instead of a sweep
@@ -461,6 +491,17 @@ site can stamp it correctly regardless of what it holds. Only `user_message`
 requires session scope, and its single site (`daemon_hooks.py:201`) has `ctx` in
 hand. Had the policy needed a per-session value on `tool_result`, the
 `brain_remember` site would have been an unfixable gap.
+
+Mechanics note (2026-07-27): `post_tool_trace.py` never touches `TraceDAL` — it
+sends `{"cmd": "trace_append"}` over TCP into the generic, ref_type-agnostic
+`_handle_trace_append` (`dispatch_observability.py:11-45`). "Stamping at :86"
+means writing `speaker` into the wire payload; the hook process reads
+`BRAIN_SELF_NAME` from env (global — exactly the §5.1 asymmetry). The §5.3
+chokepoint sits at the DAL, which that wire path crosses, so stragglers through
+this open door still hit the guard. Also: the `brain_remember` row is degenerate
+by design — session-less (`chain_id='archive-…'`), no `tool` key — it renders
+under the `tool_result` label and embeds as `'Anchor via tool: …'`; leave it,
+don't "fix" it mid-arc.
 
 **Explicit values always win** (`setdefault` semantics at the writer). This is
 the N-party hook: a future multi-participant ingestion (Slack) passes each
@@ -575,12 +616,22 @@ rule from this moment on:
    shape. Its current ad-hoc self-detecting steps (column-type probes,
    `_add_column_if_missing`) are fine for additive shape changes but cannot
    safely gate a *data* rewrite (the probe would mean scanning JSON every boot).
-   *Verified:* `LOG_TABLES` has no meta/kv table today (`debug_log`,
-   `dream_log`, `hook_errors`, `session_state`, `interactions`,
-   `interaction_active`, `trace_events`) — so `logs_meta` is a genuine
-   addition, not a duplicate. It must live **in the logs DB**, not as another
-   `brain_meta` key: a version has to travel with the file it describes, or
-   restoring one DB from a different backup makes the version lie.
+   *Verified (census corrected 2026-07-27):* `LOG_TABLES` has ELEVEN tables
+   (`debug_log`, `dream_log`, `hook_errors`, `session_state`, `interactions`,
+   `interaction_active`, `trace_events`, `trace_embeddings`, `self_inflight`,
+   `self_delivered`, `boot_renders`) — and no meta/kv table among them, so
+   `logs_meta` is a genuine addition. Caveat from the LIVE db: the actual
+   `brain_logs.db` carries an **orphan `schema_migrations` table** (3 rows from
+   2026-03-31, a pre-Python migration system; zero code references).
+   Recommendation: v1 drops it (the runner's auto-backup covers recovery), so
+   `logs_meta` isn't the second half-dead version store in the same file.
+   Two mechanics facts: `ensure_logs_schema` lives in `schema.py:1527` (not
+   `dal_logs.py`), and its signature is `ensure_logs_schema(conn)` — **no
+   `db_path`** — so the auto-backup rule requires a signature change at the
+   `brain.py:231` call site. `logs_meta` must live **in the logs DB**, not as
+   another `brain_meta` key: a version has to travel with the file it
+   describes, or restoring one DB from a different backup makes the version
+   lie.
 2. **Any step that rewrites or drops data auto-backups first**
    (`{db}.bak-v{N}-{ts}`), inside the runner — because on the fleet no operator
    is there to do it. This promotes the manual CLAUDE.md "cp before destructive
@@ -603,11 +654,22 @@ migration already completes before the port opens. Constraint for this arc:
 
 **But port-ordering does NOT neutralize the hazard — it sharpens it.** A closed
 port raises `ConnectionRefusedError`, which `daemon_client` reports as *"daemon
-may be dead"* — indistinguishable from a corpse. Any concurrent session's
-`ensure_daemon()` or the MCP health monitor can therefore decide the daemon is
-down and `launchctl kickstart -k` it, **SIGKILLing a daemon that is mid-migration**
-— and the whole Brain init (embedder load, ~4-6s) already eats a chunk of the
-~20s `_GRACE_DEADLINE_S` budget before the migration even starts.
+may be dead"* — indistinguishable from a corpse. **Corrected mechanism
+(2026-07-27):** `ensure_daemon()` is NOT the assassin — the booting daemon holds
+the fcntl singleton flock from before `_load_brain()`
+(`daemon_server.py:149-151`), and `ensure_daemon` blocks on that same flock
+before any kickstart (`daemon_client.py:220-225`), then re-checks under it. The
+real kill path is **`recover_daemon()`** (`daemon_client.py:404-453`), which
+never touches the flock: the MCP health monitor (`brain_mcp.py:1249` — its own
+10×2s ≈ 20s budget, a distinct constant from `ensure_daemon`'s
+`_GRACE_DEADLINE_S`) and every hook via `hook_common.py:295` call it, and after
+~20s of refused pings it `launchctl kickstart -k`s — **SIGKILLing a daemon that
+is mid-migration**. Brain init (embedder load, ~4-6s) already eats a chunk of
+that budget before the migration even starts. The recovery cooldown/breaker
+(`_RECOVERY_COOLDOWN_S=30`, max 5 attempts per 10 min) bounds the storm — with
+an idempotent migration the boot eventually completes after repeated kills
+rather than never — but "eventually, after up to five SIGKILLs mid-rewrite" is
+not a plan.
 
 **Resolution: make the rewrite fast enough that the window never opens.** Do it
 in **SQL, not a Python row loop** — SQLite's JSON1 functions are available and
@@ -654,11 +716,25 @@ UPDATE trace_events
 …the `agent_identity` variant for `assistant_message` / `tool_result` /
 `self_message`, and a bare `json_remove` for `heartbeat` / structural / S1 / S2.
 
+**Half-keyed rows (gap found 2026-07-27):** `_stamp_identity` stamps each key
+*independently* (`if self._human_identity:` / `if self._agent_identity:`), so a
+fleet install with only one env var configured produces rows carrying ONE old
+key — e.g. a `user_message` with `agent_identity` but no `human_identity`. The
+guarded statements above skip such rows forever (guard key absent, ref_type
+mismatch on the others), leaving old-key residue in migrated data. Fix: a final
+sweep statement — bare `json_remove` of both keys wherever either survives
+after the speaker-setting statements, count logged. Nothing is lost: the
+skipped key is the *wrong-side* name for that ref_type (useless under §5
+policy). §8.1's fixture gains a half-keyed row class.
+
 **Idempotent + crash-safe by construction:** every statement is guarded on the
 old key still being present, so an interrupted run re-runs harmlessly and
 already-migrated rows are skipped. The version is stamped **only after all
 statements complete**, so a SIGKILL mid-way retries rather than silently marking
-the DB migrated.
+the DB migrated. **Do not copy the ordering from `schema.py`** (2026-07-27):
+the brain.db runner this mirrors stamps its version (`:1267-1271`) *before*
+`_backfill_data` runs (`:1286`) — the exact inversion of this rule. Mirror the
+pattern, not that ordering.
 
 On the dev machine the first execution can additionally be run under the
 maintenance lock with the replay verification (§10) before merging — but the
@@ -704,8 +780,9 @@ lock-protected.
 - **Contract tests:** hard-fail the suite on old keys in any writer, on the
   policy map drifting from `trace_contract`, and on the DAL stamping outside
   the policy.
-- **D28** (`quality_contract.py:590`, `identity_tokens_concrete`) updates to
-  the `speaker` key — same dimension, new vocabulary.
+- **D28** (`servers/scales/s1/quality_contract.py:590`,
+  `D28_identity_tokens_concrete`) updates to the `speaker` key — same
+  dimension, new vocabulary.
 - **`./dev sync-prompts --check`** guards interaction-prompt drift if any
   active prompt mentions the old keys.
 
@@ -757,6 +834,10 @@ migration test noticing it has no mapping.
 | `servers/dispatch_read.py:186` | drop the `user` arg plumbing from `_handle_context_boot` / `record_boot_render` if nothing else consumes it |
 | ~~`servers/session_context.py`~~ | **DEFERRED (F4)** — no `counterpart` field, no `save()`/`load()` change, no 5th env field in this arc (§3.2) |
 | `hooks/scripts/brain-env.sh:17` | env var comment; one install-default var only |
+| `hooks/scripts/boot_brain.py:117-119` | second `BRAIN_USER` head (`_boot_via_direct`, no-daemon fallback) — removed together with `:51-73` (§4.1) |
+| `servers/brain.py:1002-1006` (`stamp_boot_liveness`) | second heartbeat writer, bypasses `_s0_trace` — policy row omit, no stamp; stays on the §8 writer list (§5.2) |
+| `servers/brain_assembly.py:745` | stale envelope-describing docstring (`[BRAIN-To-*]` merge that no longer happens) — update with §4.0 |
+| `eval/laf/walker/embed.py:29` | `HUMAN_IDENTITY = 'Tom'` keyed to the OLD metadata key — update to `speaker` or the walker eval silently breaks post-migration |
 
 ### Dashboard — an API shape change, not just a grep
 The dashboard reads the DB read-only, but it **re-publishes the identity keys as
@@ -768,7 +849,9 @@ one, so the response shape changes and Python + JS must move together:
 | `dashboard/queries/_meta.py:14-33` | helper returns a `(human, agent)` **tuple** → returns a single `speaker` |
 | `dashboard/queries/recalls.py:96-105,187-188` | stops emitting the pair; emits `speaker` |
 | `dashboard/queries/traces.py:3,51` | same |
-| `static/tabs/live.js:144`, `static/tabs/traces.js:192`, `static/lib/trace_detail.js` | `identityChipHTML(human, agent)` → `identityChipHTML(speaker)`; the `ev.human_identity \|\| ev.agent_identity` guard becomes a single check |
+| `static/lib/dom.js:128-143` | the chip helper pair lives HERE (not trace_detail.js): `identityChip()` / `identityChipHTML(human, agent)` → single `speaker` arg |
+| `static/tabs/live.js:144`, `static/tabs/traces.js:192` | call sites; the `ev.human_identity \|\| ev.agent_identity` guard becomes a single check |
+| `static/lib/trace_detail.js:148,320` | the keys appear as SUPPRESSORS (`_DELTA_KNOWN`; the `_renderGeneric` filter) — swap to `speaker` or the new key leaks into the generic metadata dump |
 
 Both halves ship from the same repo copy, so they update atomically on dashboard
 restart. One residual: a **browser tab left open on the old JS** would read
@@ -777,8 +860,12 @@ mitigation — hard-refresh after deploy; noted rather than engineered around.
 
 ### Tests
 `test_identity_stamping.py` (rewrite to policy), `test_dashboard_setup.py`,
-`test_mcp_roundtrip.py`, `test_trace_system.py`, `test_trace_render.py`,
-`test_trace_embed_render.py` + new contract tests (§8).
+`test_mcp_roundtrip.py` (`:500-518` pins `agent_identity` rendering verbatim —
+the strongest rename guard in the suite), `test_trace_system.py`,
+`test_trace_render.py`, `test_trace_embed_render.py`,
+**`test_brain_voice.py`** (five envelope assertions + two exact-banner-text
+assertions — §4.0), `test_core.py:541` / `relearning.py:912`
+(`context_boot(user=…)` callers — §4.1) + new contract tests (§8).
 
 ### Docs (living only — archives are history, untouched)
 `docs/EPISODIC-REFERENCES.md` (§5.3 templates, §15.1 language),
@@ -793,16 +880,24 @@ Grep active versions for old vocabulary → `register_interaction` +
 
 Do **not** mass-rename these. Verified 2026-07-24 across all nine files:
 
-- **Zero identity-source hardcodes.** No code reads a literal `'Tom'` as the
-  operator's name — the identity plumbing is already env/ctx-driven. Nothing
-  here blocks a second counterpart.
+- **Daemon identity plumbing is clean** — no `servers/` or `hooks/` code reads
+  a literal `'Tom'` as the operator's name; identity flows env/ctx only.
+  One real behavioral hardcode exists OUTSIDE it (found 2026-07-27):
+  `dashboard/queries/stats.py:136` keys a quote-capture insight on SQL
+  `LIKE '%Tom said%'` — already silently wrong on the second install.
+  Independent of this arc (node content, not trace keys); being fixed as its
+  own change.
 - **~90% are decision-provenance comments** — `"Tom 2026-07-02"`, `"per Tom"`,
   `"Tom's spec"`, `"Tom's standing rule (node 8178593a)"` (`encode.py`,
   `encode_contract.py`, `surface_contract.py`, `trace_links.py`,
   `scouts/muster.py`, `scouts/runners.py`, `presence.py`, `self_contract.py`).
   These attribute *who decided what*. **Leave them untouched** — they are
   legitimate attribution history, and rewriting them would destroy provenance
-  for zero gain.
+  for zero gain. (Census note 2026-07-27: the full runtime footprint is ~29
+  files — the nine above plus the 8 `servers/scales/s1/examples/` few-shot
+  files (shipped prompt content, the densest concentration; also correctly
+  left alone), 4 dashboard files, and ~8 more `servers/` comment sites. The
+  conclusion stands; the original census covered about a third of it.)
 - **The only functional occurrences** are in `quality_contract.py:172,289,295,302,314`
   — concrete names inside LLM-facing eval criteria (e.g. `'situation names the
   actor ("When Tom corrected X")'`, `Group 4: Partnership & voice (Tom's lens)`).
@@ -972,8 +1067,35 @@ real §11 follow-up id, so a marker can't rot into a lie.
 
 ## 12. Decision log
 
-All review questions are now resolved. No open questions remain for §§1-11;
-what's left is the section-by-section walk of §§3, 5, 6, 8, 9, 10 mechanics.
+All 2026-07-24/26 review questions are resolved. Two amendments from the
+2026-07-27 fresh-eyes pass are AWAITING RULING (below); what's left besides
+them is the section-by-section walk of §§3, 5, 6, 8, 9, 10 mechanics.
+
+**REVIEW, 2026-07-27 (fresh-eyes verification pass, separate stream).** Every
+code claim re-verified against HEAD by four independent traces. Factual
+corrections folded in place (§§4.0, 4.1, 5.2, 7.1, 7.1a, 7.2, 8, 9): the
+bypass heartbeat writer + `anchor_touched`, the second `BRAIN_USER` head,
+`test_brain_voice.py` breakage, LOG_TABLES census, the watchdog-path
+correction (`recover_daemon`, not `ensure_daemon`), dashboard chip/suppressor
+attribution, the walker-eval hardcode, the orphan `schema_migrations` table,
+and the `schema.py` stamp-ordering warning. **Architecture endorsed.** Two
+amendments NOT folded, awaiting Tom's ruling:
+
+1. **Accessor shape:** rename `speaker_for(ctx, ref_type)` →
+   **`counterpart_for(ctx)`**. No real call site uses the `ref_type` arg — the
+   stamp site holds `SPEAKER_POLICY` itself; the banner wants "who am I with,"
+   not "who spoke a user_message"; the no-ctx `tool_result` writers never call
+   the accessor at all. Same ruling preserved (one accessor, ctx-threaded
+   seam, one-line F4 switch); the signature stops promising a resolution it
+   doesn't perform. Speaker resolution = `SPEAKER_POLICY[ref_type]` →
+   `self_name` / `counterpart_for(ctx)` / omit, applied at the writer.
+2. **Runner shape:** the logs runner shares a ~30-line versioned-migration
+   envelope with `ensure_schema` (read version → backup-if-rewriting → run due
+   steps → stamp LAST), extracted in `schema.py`; logs-side consumer now,
+   brain.db moves onto it as its own later step. Rationale: the envelope is
+   where the crash-safety ordering lives, and the existing brain.db runner
+   gets that ordering wrong (§7.2) — a parallel hand-copy would inherit or
+   re-derive it.
 
 **REVISION, 2026-07-26 (Tom ruled) — scope narrowed to one accessor.** Three
 review spots resolved together:

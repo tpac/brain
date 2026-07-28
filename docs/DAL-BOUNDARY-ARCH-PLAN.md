@@ -41,10 +41,13 @@ guardrail-sanctioned (`tests/test_traces_layer_guardrail.py` WRITE_OK).
 
 ## ⚠ RESOLVED 2026-07-28 — `community_member` is HIDDEN (standing decision applied)
 
-The standing operator decision (id:49d734ad) governs: hide `community_member` from default edge
-reads. The aspects plan's Step 6 carried a correction block to match; its carve-out is void. The
-impact analysis (S2 machinery reads communities via dedicated queries) clears the one dependency
-that argued for keeping it. Original contradiction record kept below for context.
+The standing operator decision (id:49d734ad) governs flat READS: hide `community_member` from
+default connection renders. Tom's same-day refinement: graph DYNAMICS (traverse, spread
+activation, graph_expand) keep conducting through community edges — conduction is not
+visibility. Shipped as two load-time policies on the registry: `structural_exclusions` (full
+noise — reads; DAL swap still pending, aspects Step 6) and `traversal_exclusions` (noise −
+community_member — LIVE at the three traversal sites since 2026-07-28). Original contradiction
+record kept below for context.
 
 ## ~~⚠ OPERATOR DECISION NEEDED~~ — `community_member` visibility
 

@@ -460,18 +460,20 @@ additive-only stays correct — it *widens* what additive can express).
 
 ## Step 6 — Name the second concept inside `noise`; unify nine exclusion literals
 
-> **CORRECTION 2026-07-28 — `community_member` is HIDDEN, not carved out.** This step's target
-> below encodes the superseded side of a settled decision. The standing operator call
-> (id:49d734ad, Tom: "Hide and align with exclusion list for now!") is to exclude
-> `community_member` from default edge reads like the rest of `noise`; the consolidation-decoder
-> dependency this step cites was impact-analyzed SAFE (S2 machinery reads communities via
-> dedicated queries, not default node reads). So: `structural_exclusions(brain) =
-> relations_in(['noise'])` — no carve-out — and the `dal_graph.py:63` comment flips to match.
-> The trap paragraph below becomes the intended behavior, not a trap. Blast note: hiding drops
-> `community_member` (7,237 edges) from default `get_connections_bulk` renders — deliberate.
-> Also read `docs/DAL-BOUNDARY-ARCH-PLAN.md` §"Handoff to aspects Step 6" for five consumer
-> sites this step's file list misses (incl. a VectorDAL+CachedVectorDAL lockstep signature
-> change).
+> **CORRECTION 2026-07-28 (refined same day) — two policies, PARTIALLY SHIPPED.** The standing
+> operator call (id:49d734ad, "Hide and align with exclusion list for now!") governs flat READS;
+> Tom refined it 2026-07-28: graph DYNAMICS keep conducting through community edges — conduction
+> is not visibility. Both policies now exist, derived at `AspectRegistry._adopt`:
+> · `brain.aspects.structural_exclusions` = `relations_in(['noise'])` — full noise, for read
+>   exclusion. THE REMAINING WORK OF THIS STEP: swap the DAL defaults + `get_node` reads onto it
+>   (hiding drops `community_member`, 7,237 edges, from default connection renders — deliberate;
+>   impact-analyzed SAFE, S2 machinery uses dedicated queries). Flip the `dal_graph.py:63` comment.
+> · `brain.aspects.traversal_exclusions` = noise − {community_member} — ALREADY LIVE (2026-07-28)
+>   at `pipeline_contract.traverse`, spread activation (`surface_contract`), and MCP
+>   `graph_expand`; the `TRAVERSE_EXCLUDED_EDGES` / `EXCLUDED_EDGE_TYPES` literals are deleted.
+> The cohesion/adjacency policies below are still open. Also read
+> `docs/DAL-BOUNDARY-ARCH-PLAN.md` §"Handoff to aspects Step 6" for five consumer sites this
+> step's file list misses (incl. a VectorDAL+CachedVectorDAL lockstep signature change).
 
 **Problem.** Nine independent hardcoded "noise exclusion" sets coexist with
 `relations_in(['noise'])`, and no two agree — cardinalities 1, 2, 2, 2, 3, 5, 7 against a live
