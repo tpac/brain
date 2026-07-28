@@ -61,6 +61,28 @@ def _get_recently_surfaced(brain, session_id):
     return recently_surfaced
 
 
+def seen_node_ids(recent_messages):
+    """Short (8-char) ids of nodes already injected in this session's window.
+
+    Reads the per-turn `surfaced` lists the hook already fetched
+    (get_session_turns with_surfaced=True) — no extra query. Used to drop
+    already-shown nodes from the candidate pool BEFORE the final cap: the
+    v13 design said out-of-scope is structural (<shown> vs <candidate>),
+    but the same id kept re-entering <candidates> and Haiku re-picked it
+    over the never-select-again rule (verified in the 2026-07-27 20:58
+    capture: 3a507484 re-selected with its <shown> element in-prompt).
+    Selected-only by construction — spread/expanded nodes are not in the
+    `surfaced` lists and are NOT deduped here (known gap, separate fix).
+    """
+    seen = set()
+    for t in recent_messages or []:
+        for s in (t.get('surfaced') or []):
+            sid = str(s.get('id') or '')[:8]
+            if sid:
+                seen.add(sid)
+    return seen
+
+
 def _call_surface(brain, candidates_data, user_message,
                   recent_messages, session_id, result, frame=''):
     """Call Haiku to surface relevant nodes from candidates.

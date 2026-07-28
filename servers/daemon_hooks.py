@@ -334,6 +334,27 @@ def hook_recall(brain, args, graph_changes):
             brain._log_error('surface_recent_messages', _e, 'fetching recent messages from traces')
         pt.mark('traces')
 
+        # Already-shown dedup, BEFORE the final cap (so replacements flow
+        # in): nodes surfaced in this session's window never re-enter
+        # <candidates>. The v13 <shown> prompt rule alone doesn't hold —
+        # Haiku re-picked shown nodes with the element in-prompt (2026-07-27
+        # capture) — so out-of-scope is now structural, in code. The seen
+        # set reuses the turns pulled above (no extra query). Haiku's
+        # agentic tools can still fetch a shown node deliberately; only
+        # ambient re-injection stops. Falls back to the plain cap when the
+        # turns pull failed (recent_messages empty → seen empty).
+        from .scales.s1.surface import seen_node_ids
+        _seen = seen_node_ids(recent_messages)
+        if _seen:
+            kept = [r for r in results
+                    if str(r.get('id') or '')[:8] not in _seen]
+            n_dropped = len(results) - len(kept)
+            if n_dropped:
+                capped = kept[:_CF['max_candidates']]
+                stats = result.get('_retrieval_stats') or {}
+                stats['seen_dropped'] = n_dropped
+                result['_retrieval_stats'] = stats
+
         # Batch enrichment: one call, 5 queries for all 25 nodes
         node_ids = [r.get("id", "") for r in capped if r.get("id")]
         rich_nodes = brain.get_node(node_ids)

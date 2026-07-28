@@ -716,5 +716,84 @@ class TestAnchorTouched(BrainTestBase):
         self.assertEqual(len(self._touched_rows(sid)), 0)
 
 
+class TestSeenCandidateDedup(BrainTestBase):
+    """Already-surfaced nodes must not re-enter the candidate pool.
+
+    The v13 <shown> element + never-select-again prompt rule did NOT stop
+    re-injection (Haiku re-picked a shown node with the element in-prompt,
+    2026-07-27 capture) — so the dedup is structural: hook_recall drops
+    seen ids from the pool before the final cap. This test pins it.
+    """
+
+    def _recall(self, sid, message):
+        from servers.daemon_hooks import hook_recall
+        return hook_recall(self.brain, {"prompt": message, "message": message,
+                                        "session_id": sid}, [])
+
+    def _wire_prior_surfaced(self, sid, node_id, title):
+        """Simulate a prior turn on `sid` whose surface selected node_id:
+        a user_message s0 trace carrying recall_chain + the matching
+        surface_selected K trace (the shapes get_session_turns joins on)."""
+        import json as _json
+        chain = 's1r-%s-77' % sid[:8]
+        tconn = self.brain._trace_dal.conn
+        tconn.execute(
+            "INSERT INTO trace_events (id, chain_id, scale, event_type, ref_type, "
+            "metadata, summary, session_id, created_at) "
+            "VALUES ('te5t5een', ?, 's0', 'K', 'user_message', ?, 'prior turn', ?, ?)",
+            ('s0-%s-77' % sid[:8],
+             _json.dumps({'content': 'earlier question', 'recall_chain': chain}),
+             sid, '2026-01-01T00:00:00+00:00'))
+        tconn.execute(
+            "INSERT INTO trace_events (id, chain_id, scale, event_type, ref_type, "
+            "metadata, summary, session_id, created_at) "
+            "VALUES ('te5t5el3', ?, 's1', 'K', 'surface_selected', ?, 'sel', ?, ?)",
+            (chain,
+             _json.dumps({'selected': ['%s|%s' % (node_id[:8], title)]}),
+             sid, '2026-01-01T00:00:01+00:00'))
+        tconn.commit()
+
+    def test_seen_node_dropped_from_pool(self):
+        from unittest.mock import patch
+        r = self.brain.remember(type='rule', title='Seen dedup target rule',
+                                content='Distinctive dedup target content')
+        other = self.brain.remember(type='lesson', title='Seen dedup other lesson',
+                                    content='Distinctive dedup target content too')
+        sid = 'seen-dedup-sess'
+        self._wire_prior_surfaced(sid, r['id'], 'Seen dedup target rule')
+
+        captured = {}
+
+        def spy(brain, ctx, candidates_data, user_message, **kwargs):
+            captured['ids'] = [c.get('id') for c in candidates_data]
+            return None
+
+        with patch('servers.daemon_hooks._run_surface', side_effect=spy):
+            self._recall(sid, 'Distinctive dedup target content')
+
+        ids = captured.get('ids') or []
+        self.assertTrue(ids, 'no candidates reached the surface call')
+        self.assertNotIn(r['id'], ids,
+                         'already-surfaced node re-entered the candidate pool')
+        self.assertIn(other['id'], ids,
+                      'unseen node should still be in the pool')
+
+    def test_fresh_session_pool_untouched(self):
+        from unittest.mock import patch
+        r = self.brain.remember(type='rule', title='Fresh pool rule',
+                                content='Distinctive fresh pool content')
+        captured = {}
+
+        def spy(brain, ctx, candidates_data, user_message, **kwargs):
+            captured['ids'] = [c.get('id') for c in candidates_data]
+            return None
+
+        with patch('servers.daemon_hooks._run_surface', side_effect=spy):
+            self._recall('fresh-sess-no-history', 'Distinctive fresh pool content')
+
+        self.assertIn(r['id'], captured.get('ids') or [],
+                      'no prior surfacing — nothing should be dropped')
+
+
 if __name__ == '__main__':
     unittest.main()
