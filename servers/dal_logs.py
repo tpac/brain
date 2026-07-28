@@ -1354,7 +1354,14 @@ class TraceDAL:
                         sid, _, title = item.partition('|')
                         if sid:
                             entries.append({'id': sid, 'title': title})
-                    surfaced_by_chain[r[0]] = entries
+                    # UNION per chain, not last-row-wins: after an interrupt
+                    # two prompts share one s1r chain, each with its own
+                    # surface_selected row — overwriting dropped one turn's
+                    # selections from every consumer (<shown> render AND the
+                    # seen-dedup filter). Dedup by id, order preserved.
+                    prev = surfaced_by_chain.setdefault(r[0], [])
+                    have = {e['id'] for e in prev}
+                    prev.extend(e for e in entries if e['id'] not in have)
                 for i, rc in user_refs:
                     turns[i]['surfaced'] = surfaced_by_chain.get(rc, [])
 

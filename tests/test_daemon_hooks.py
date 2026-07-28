@@ -778,6 +778,32 @@ class TestSeenCandidateDedup(BrainTestBase):
         self.assertIn(other['id'], ids,
                       'unseen node should still be in the pool')
 
+    def test_all_seen_pool_skips_surface(self):
+        # Every candidate already surfaced this window → skip the Haiku
+        # call entirely (approve), never render an empty candidate menu.
+        from unittest.mock import patch
+        r = self.brain.remember(type='rule', title='All seen rule',
+                                content='All seen distinctive content')
+        sid = 'all-seen-sess'
+        self._wire_prior_surfaced(sid, r['id'], 'All seen rule')
+
+        called = {}
+
+        def spy(brain, ctx, candidates_data, user_message, **kwargs):
+            called['yes'] = True
+            return None
+
+        fake = {'results': [{'id': r['id'], 'title': 'All seen rule',
+                             'score': 0.9, 'type': 'rule'}],
+                '_retrieval_stats': {}}
+        with patch.object(self.brain, 'recall', return_value=fake), \
+                patch('servers.daemon_hooks._run_surface', side_effect=spy):
+            out = self._recall(sid, 'all seen distinctive content')
+
+        self.assertEqual(out['json'], {'decision': 'approve'})
+        self.assertNotIn('yes', called,
+                         'surface must not run on a fully-seen pool')
+
     def test_fresh_session_pool_untouched(self):
         from unittest.mock import patch
         r = self.brain.remember(type='rule', title='Fresh pool rule',

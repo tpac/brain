@@ -743,7 +743,8 @@ def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
 def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
                   graph_neighbors, additional_context, enriched, results,
                   recall_ref, interaction_id, session_id, expansion=None,
-                  frame='', telemetry=None, pt=None, selection_reason=''):
+                  frame='', telemetry=None, pt=None, selection_reason='',
+                  seen_dropped=0):
     """Write S1 surface traces: O (candidates), K (surfaced), Δ (additionalContext).
 
     `expansion` carries activation data from spread_activation when present —
@@ -779,6 +780,20 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
     # K: surfaced detail
     sel_detail = ['%s|%s' % (c.get('id', '')[:8], c.get('title', ''))
                   for c in candidates_data if c.get('id', '')[:8] in selected_ids]
+    # Haiku picks resolved OUTSIDE the candidate menu (conversation /
+    # <shown> text) are surfaced too — record them, or they never enter
+    # the seen-dedup set and ambient re-injection survives through
+    # exactly this path (a98143f review, finding 6). Rare (loud-logged
+    # as haiku_id_outside_candidates), so the per-id title lookup is fine.
+    _in_menu = {c.get('id', '')[:8] for c in candidates_data}
+    for _sid in selected_ids:
+        if _sid and _sid not in _in_menu:
+            try:
+                _full = brain._nodes.resolve_id(_sid)
+                _title = (brain._nodes.get_title(_full) or '') if _full else ''
+            except Exception:
+                _title = ''
+            sel_detail.append('%s|%s' % (_sid, _title))
 
     # Expanded detail
     exp_detail = ['%s|%s|%s' % (
@@ -842,6 +857,11 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
     # so Surface now carries BOTH cost and loop detail — the gap this closes.
     k_metadata = {
         'selected': sel_detail, 'expanded': exp_detail,
+        # Seen-dedup observability: how many pool candidates the hook
+        # dropped as already-surfaced this window. Without this the filter
+        # is write-only telemetry — unverifiable in production, the exact
+        # silent-no-op failure the dedup replaced (a98143f review, finding 2).
+        'seen_dropped': int(seen_dropped or 0),
         # S1Surface journal (2026-07-11): Haiku's recall-level `reason` —
         # in practice the why-nothing-was-picked note (the prompt asks for
         # it only on empty selections). Not rendered to Anchor; the K trace
@@ -1028,7 +1048,10 @@ def run_surface(brain, ctx, candidates_data, user_message,
                           None, enriched, results,
                           recall_ref, interaction_id, session_id,
                           frame=frame, telemetry=telemetry, pt=pt,
-                          selection_reason=selection_reason)
+                          selection_reason=selection_reason,
+                          seen_dropped=((result.get('_retrieval_stats') or {})
+                                    .get('seen_dropped', 0)
+                                    if isinstance(result, dict) else 0))
         except Exception as e:
             brain._log_error('trace_s1_surface_empty', e, 'S1 surface trace (no selection)')
         _write_surface_result_file(recall_ref, surface_prompt, "(no selection)", brain)
@@ -1191,7 +1214,10 @@ def run_surface(brain, ctx, candidates_data, user_message,
                       enriched, results,
                       recall_ref, interaction_id, session_id,
                       expansion=expansion, frame=frame, telemetry=telemetry, pt=pt,
-                      selection_reason=selection_reason)
+                      selection_reason=selection_reason,
+                      seen_dropped=((result.get('_retrieval_stats') or {})
+                                    .get('seen_dropped', 0)
+                                    if isinstance(result, dict) else 0))
     except Exception as e:
         brain._log_error('trace_s1_surface', e, 'S1 surface trace capture')
 

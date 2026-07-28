@@ -266,11 +266,19 @@ def hook_recall(brain, args, graph_changes):
         # Pass ctx directly — already loaded above, skip the redundant DB
         # lookup recall would otherwise do. ctx mutations (fatigue, segment)
         # are saved at turn end in post_response_common.
-        result = brain.recall(query=enriched, limit=_CF['max_candidates'],
+        # Over-fetch by seen_dedup_headroom: the seen-dedup filter below
+        # drops already-surfaced nodes, and without headroom recall's own
+        # truncation leaves nothing to backfill with — the pool would only
+        # shrink (a98143f review, finding 1).
+        result = brain.recall(query=enriched,
+                              limit=_CF['max_candidates']
+                              + _CF.get('seen_dedup_headroom', 0),
                               ctx=ctx, source='hook')
     except Exception as e:
         brain._log_error('recall_first_attempt', e, 'hook_recall')
-        result = brain.recall(query=enriched, limit=_CF['max_candidates'],
+        result = brain.recall(query=enriched,
+                              limit=_CF['max_candidates']
+                              + _CF.get('seen_dedup_headroom', 0),
                               ctx=ctx, source='hook')
 
     results = result.get("results", [])
@@ -334,8 +342,12 @@ def hook_recall(brain, args, graph_changes):
             brain._log_error('surface_recent_messages', _e, 'fetching recent messages from traces')
         pt.mark('traces')
 
-        # Already-shown dedup, BEFORE the final cap (so replacements flow
-        # in): nodes surfaced in this session's window never re-enter
+        # Already-shown dedup, BEFORE the final cap — replacements backfill
+        # from the seen_dedup_headroom over-fetch at the recall call above
+        # (without it recall's own truncation leaves nothing to backfill:
+        # a98143f review, finding 1). Window-bounded, not session-bounded:
+        # a node re-enters once it slides out of the recent-messages window
+        # (deliberate — distance earns a refresher). Within the window it can't re-enter
         # <candidates>. The v13 <shown> prompt rule alone doesn't hold —
         # Haiku re-picked shown nodes with the element in-prompt (2026-07-27
         # capture) — so out-of-scope is now structural, in code. The seen
@@ -421,6 +433,15 @@ def hook_recall(brain, args, graph_changes):
         pt.log(brain, 'hook_recall', n_results=0)
         return {"json": {"decision": "approve"}}
 
+    if not capped:
+        # Every candidate was already surfaced this window (seen-dedup ate
+        # the whole pool, headroom included) — the context already holds
+        # them all. Skip the Haiku call instead of rendering an empty
+        # <candidates n="0"> menu (a98143f review, finding 4).
+        brain.save()
+        pt.log(brain, 'hook_recall', n_results=len(results), all_seen=1)
+        return {"json": {"decision": "approve"}}
+
     brain.save()
 
     # ── S1 Surface: push relevant memories into awareness ──
@@ -447,10 +468,13 @@ def hook_recall(brain, args, graph_changes):
         # 401 — skip it (noted once, not one error per user turn). Recall
         # candidates were still computed locally; MCP recall stays live.
         if brain.llm_available:
+            # `results=capped` — traces must count the pool the surface
+            # actually saw (post seen-dedup, post cap), not recall's raw
+            # over-fetched list (a98143f review, finding 3).
             additional_context = _run_surface(
                 brain, ctx, candidates_data, user_message,
                 recent_messages=recent_messages,
-                result=result, enriched=enriched, results=results,
+                result=result, enriched=enriched, results=capped,
                 recall_ref=recall_ref, session_id=session_id,
                 graph_changes=graph_changes,
                 query_vec=_query_vec, prior_vecs=_prior_vecs,

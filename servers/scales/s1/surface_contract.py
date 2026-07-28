@@ -161,6 +161,12 @@ SURFACE_FETCH_TOOLS = ('recall_topical', 'recall_by_time')
 CANDIDATE_POOL = {
     'content_limit': 1000,
     'max_candidates': 25,
+    # Over-fetch so the seen-dedup filter (already-surfaced nodes dropped
+    # from the pool) has ranked replacements to backfill from. Without it
+    # the filter only SHRINKS the pool — recall truncates at its limit
+    # before the filter runs (a98143f review, finding 1). Sized to the
+    # seen-set ceiling: the window holds ~4 selections × ~4 turns.
+    'seen_dedup_headroom': 15,
     'include_metadata': True,   # situation, reasoning, user_raw_quote
 }
 
