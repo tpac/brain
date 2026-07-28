@@ -189,29 +189,22 @@ class IntegrationUnit:
 
     # ── Shared S2 infrastructure ──
 
-    def _load_journal_notes_prefix(self):
-        """Residue continuity (the journal): render the last K note-bearing
-        runs' notes into a prompt prefix. The read counterpart to the encoder's
-        write_journal_notes(). Scoped by this unit (scale + NAME); K defaults
-        from JOURNAL_CONTINUITY_RUNS. Empty string when there are no recent
-        notes — a clean history adds nothing.
+    @property
+    def journal(self):
+        """This unit's binding to the journal component — continuity read,
+        instruction decoration, residue harvest, in one object. Scoped by
+        (scale, unit NAME), cached per unit instance. See scales/journal.py.
         """
-        from servers.trace_contract import render_journal_notes_prefix
-        # Failure-isolated, mirroring write_journal_notes: a transient logs.db
-        # read error must never abort an otherwise-valid encode — degrade to
-        # no continuity, log loud.
-        try:
-            notes = self.brain.journal_notes(scale=self.SCALE, unit=self.NAME)
-            return render_journal_notes_prefix(notes)
-        except Exception as e:
-            self.brain._log_error('s2_%s_journal_read' % self.NAME, e,
-                                  'residue continuity read failed — encoding without it')
-            return ''
+        if getattr(self, '_journal_binding', None) is None:
+            from ..journal import JournalBinding
+            self._journal_binding = JournalBinding(
+                self.brain, scale=self.SCALE, unit=self.NAME)
+        return self._journal_binding
 
     def _inject_edge_aspects(self, system_prompt):
         """Append the edge-relation aspect vocabulary so the encoder picks
         specific relations over generic ones. Shared single source across
-        S2/S1 encoders — same inject pattern as _inject_review_block. The block
+        S2/S1 encoders — same tail-append pattern as the journal blocks. The block
         (skip set + heading + render) lives in servers.aspects; here we just
         feed it brain.aspects and append. No-op append when there's nothing
         to show.
@@ -219,28 +212,6 @@ class IntegrationUnit:
         from servers.aspects import render_edge_aspects_block
         block = render_edge_aspects_block(self.brain.aspects.all())
         return system_prompt.rstrip() + ('\n\n' + block if block else '')
-
-    def _inject_review_block(self, system_prompt):
-        """Append the shared residue-review block — the WRITE-side counterpart
-        to _load_journal_notes_prefix. The block is single-sourced in
-        trace_contract (`render_journal_review_block`) and never baked into the
-        registered prompt, so it iterates in one place and every encoder on the
-        note contract gets it live. Concern = the review CONTENT only; the
-        terminal-turn/DONE closure is a SEPARATE inject (`_append_closure`), so
-        removing or relocating the review never drags the closure with it.
-        """
-        from servers.trace_contract import render_journal_review_block
-        return system_prompt.rstrip() + "\n\n" + render_journal_review_block()
-
-    def _append_closure(self, system_prompt):
-        """Append the run's CLOSURE (terminal-turn definition + `## Review`
-        placement + DONE) as the LAST block of the prompt. Single-sourced in
-        trace_contract (`render_prompt_closure`), independent of the review
-        block. Call this AFTER all other prompt assembly so DONE is genuinely
-        last.
-        """
-        from servers.trace_contract import render_prompt_closure
-        return system_prompt.rstrip() + "\n\n" + render_prompt_closure()
 
     def _make_encoder_dispatch(self, archive_guard=None):
         """Build the dispatch function S2 encoders use for brain_batch calls.
@@ -460,15 +431,13 @@ class IntegrationUnit:
         FIRST `## Review` fence, so a single post-loop write over the accumulated
         final_text would drop every batch's notes but the first. Writing per
         batch, all sharing this run's chain_id, groups them as one run's notes.
-        The journal write is failure-isolated by the caller's per-batch
-        try/except (a journal hiccup never aborts the run)."""
+        The journal write is failure-isolated inside harvest (a journal hiccup
+        never aborts the run)."""
         self._accumulate_run(total, result)
         batch_text = result.get('final_text', '')
         if batch_text:
             total['final_text'] += '\n--- batch %d ---\n%s' % (batch_num, batch_text)
-            self.brain.write_journal_notes(
-                final_text=batch_text, chain_id=self.chain_id(),
-                scale=self.SCALE, session_id='')
+            self.journal.harvest(batch_text, self.chain_id())
         for trunc in result.get('truncations', []):
             self.brain._log_error(
                 trunc_source,

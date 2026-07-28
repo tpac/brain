@@ -1,11 +1,11 @@
 """Contract test for the shared encoder prompt-closers — the edge-aspect block,
-the residue review block, and the run closure — and how IntegrationUnit assembles
-them. These three are single-sourced (servers.aspects + servers.trace_contract)
-and appended by base methods (`_inject_edge_aspects` → `_inject_review_block` →
-`_append_closure`); this pins their shape + ordering so a future edit to the
-closure wording (e.g. dropping the literal DONE the runner-loop convention
-expects, or breaking the `## Review` reference) fails loudly in CI rather than
-silently shipping a malformed prompt.
+the residue review block, and the run closure — and how they assemble. The
+texts are single-sourced (servers.aspects + servers.trace_contract); the
+assembly is the journal component (`_inject_edge_aspects` → JournalBinding
+.decorate_system). This pins shape + ordering so a future edit to the closure
+wording (e.g. dropping the literal DONE the runner-loop convention expects, or
+breaking the `## Review` reference) fails loudly in CI rather than silently
+shipping a malformed prompt.
 
 Deterministic, no brain/embedder/LLM — a SimpleNamespace stub feeds the aspect
 dict, so this runs in CI where the real eval (sim_consolidation_journal.py,
@@ -110,7 +110,7 @@ def test_assembly_order_and_done_last():
                                          prompt_visible=True)}
     s = _Stub(fake)
     body = 'BODY...\n\n## Speed\n\nbe decisive.'
-    asm = s._append_closure(s._inject_review_block(s._inject_edge_aspects(body)))
+    asm = s.journal.decorate_system(s._inject_edge_aspects(body))
 
     # all three present, in order: edge aspects → review → closure
     i_edge = asm.index('## Edge Aspects')
@@ -121,6 +121,26 @@ def test_assembly_order_and_done_last():
     assert asm.rstrip().endswith('"DONE".')
     # body preserved ahead of the closers
     assert asm.index('## Speed') < i_edge
+
+
+def test_single_shot_decoration_has_no_closure():
+    """multi_round=False (a single-shot request) gets the review block but NO
+    closure — there is no terminal-turn ambiguity to disambiguate, and a DONE
+    instruction on a one-turn call is noise."""
+    s = _Stub({})
+    asm = s.journal.decorate_system('BODY...', multi_round=False)
+    assert 'A review' in asm
+    assert '## Finishing' not in asm and 'DONE' not in asm
+
+
+def test_arc_binding_orders_arc_before_review():
+    """An arc-bound binding (the S1 Scribe) appends `## Arc` before the review
+    block — §7.2 order, pinned since a fenceless Arc reaching forward into the
+    Review fence is the silent-corruption case the scanner guards."""
+    from servers.scales.journal import JournalBinding
+    b = JournalBinding(None, scale='s1', session_id='sess', arc=True)
+    asm = b.decorate_system('BODY...')
+    assert asm.index('## Arc') < asm.index('A review') < asm.index('## Finishing')
 
 
 def test_inject_edge_aspects_noop_when_empty():

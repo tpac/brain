@@ -35,7 +35,7 @@ class CommunityEncoder(IntegrationUnit):
     K_SOURCES = ['llm_enrichment', 'journal_notes']
 
     # Residue flows to journal_note trace rows via brain.write_journal_notes,
-    # read back via _load_journal_notes_prefix (the note contract). The old
+    # read back via the journal binding's continuity() (the note contract). The old
     # s2_community_journal brain_meta blob is orphaned and no longer read.
 
     def __init__(self, brain, dispatch_fn=None, config=None):
@@ -400,13 +400,12 @@ class CommunityEncoder(IntegrationUnit):
             print('[s2ce] WARNING: no enrichment prompt', flush=True)
             return None
 
-        # Prompt closers — all single-sourced in base/contract, identical
-        # across S2/S1 encoders: the edge-aspect vocabulary, then the residue
-        # review block, then the run closure (terminal-turn + DONE). Closure is
-        # appended LAST and is independent of the review block.
+        # Prompt closers — the edge-aspect vocabulary, then the journal
+        # component's system-tail decoration (review block + closure, DONE
+        # genuinely last). Single-sourced: aspects in servers/aspects.py, the
+        # journal blocks in trace_contract via scales/journal.py.
         system_prompt = self._inject_edge_aspects(system_prompt)
-        system_prompt = self._inject_review_block(system_prompt)
-        system_prompt = self._append_closure(system_prompt)
+        system_prompt = self.journal.decorate_system(system_prompt)
 
         if not os.environ.get('ANTHROPIC_API_KEY'):
             load_env()
@@ -416,7 +415,7 @@ class CommunityEncoder(IntegrationUnit):
         client = make_client()
 
         # Residue continuity — the last few runs' review notes, rendered by base.
-        journal_prefix = self._load_journal_notes_prefix()
+        journal_prefix = self.journal.continuity()
 
         # Batch proposals
         batch_size = self.config.get('max_proposals_per_call', 15)

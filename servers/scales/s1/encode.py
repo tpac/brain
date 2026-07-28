@@ -20,6 +20,16 @@ from servers.trace_contract import build_delta_metadata
 from servers.daemon_config import brain_tmp_dir
 
 
+def _journal(brain, session_id=''):
+    """The Scribe's journal binding — session-walled residue plus the
+    `## Arc` opt-in (S1E owns the session arc; S2 units don't). Constructed
+    per use site so the standalone builder callers (evals, tests) need no
+    signature change; decorate-only sites may pass brain=None (decoration
+    never touches the brain)."""
+    from servers.scales.journal import JournalBinding
+    return JournalBinding(brain, scale='s1', session_id=session_id, arc=True)
+
+
 def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
                  muster_enabled=None):
     """S1 turn encoder: gather → prompt → trace O/K → LLM loop → post-process.
@@ -273,16 +283,10 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             # lands at activation (replacement-before-removal). No eval confound:
             # the Frozen-Corpus sweep queries with a FRESH session_id, so Recent
             # moves is empty in BOTH arms there regardless of this flag.
-            try:
-                brain.write_journal_notes(final_text=final_text, chain_id=enc_chain,
-                                          scale='s1', session_id=session_id)
-            except Exception as e:
-                brain._log_error('s1e_journal_notes_write', e,
-                                 'residue note write failed — run otherwise intact')
+            _journal(brain, session_id).harvest(
+                final_text, enc_chain,
+                arc_limit=ENCODING_AGENT.get('session_context_limit', 800))
             journal_entry = ''
-            brain.write_session_arc(
-                final_text=final_text, session_id=session_id,
-                limit=ENCODING_AGENT.get('session_context_limit', 800))
         else:
             journal_entry = _save_journal(brain, dispatch_fn, session_id, counter, final_text) or ''
             _save_session_context(brain, dispatch_fn, session_id, final_text)
@@ -433,12 +437,7 @@ def _build_system_prompt(prompt_instructions=None, lived=None):
     # control arm.
     if lived:
         try:
-            from servers.trace_contract import (render_journal_arc_block,
-                                                 render_journal_review_block,
-                                                 render_prompt_closure)
-            prompt = prompt.rstrip() + "\n\n" + render_journal_arc_block()
-            prompt = prompt.rstrip() + "\n\n" + render_journal_review_block()
-            prompt = prompt.rstrip() + "\n\n" + render_prompt_closure()
+            prompt = _journal(None).decorate_system(prompt)
         except Exception as e:
             print('[s1e] WARNING: could not inject arc/review block/closure: %s' % e, flush=True)
     return prompt
@@ -735,17 +734,7 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
     # runs in THIS conversation; never carries across sessions). Old arm = the
     # legacy `### Encoding Journal` blob. self-labeled block either way.
     if lived:
-        try:
-            from servers.trace_contract import render_journal_notes_prefix
-            journal_block = render_journal_notes_prefix(
-                brain.journal_notes(scale='s1', session_id=session_id))
-        except Exception as e:
-            try:
-                brain._log_error('s1e_journal_notes_read', e,
-                                 'residue continuity read failed — encoding without it')
-            except Exception:
-                pass
-            journal_block = ''
+        journal_block = _journal(brain, session_id).continuity()
     else:
         blob = (brain.get_config('encoding_journal_%s' % session_id, '')
                 or 'First run — no previous encoding in this session.')
