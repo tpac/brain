@@ -1865,7 +1865,11 @@ class Brain(
         matches LogsDAL.get_recent_errors — no caller ever wanted 10."""
         try:
             return self._logs_dal.get_recent_errors(hours=hours, limit=limit)
-        except Exception:
+        except Exception as e:
+            # Can't log this to the errors table (it's the thing that failed)
+            # — stderr/stdout is the minimum-loudness channel, so an empty
+            # diagnose result is distinguishable from a broken errors read.
+            print('[brain] get_recent_errors failed: %r' % e, flush=True)
             return []
 
     def log_debug(self, event_type: str, source: str, **kwargs) -> Dict[str, Any]:
