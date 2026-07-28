@@ -94,12 +94,6 @@ class TestSeedShape(unittest.TestCase):
                     "%s missing required fields: %s" % (name, missing)
                 )
 
-    def test_node_types_and_edge_relations_are_lists(self):
-        for name, spec in self.seed.items():
-            with self.subTest(aspect=name):
-                self.assertIsInstance(spec['node_types'], list)
-                self.assertIsInstance(spec['edge_relations'], list)
-
     def test_no_aspect_is_empty(self):
         # Required aspects must have at least one member somewhere — otherwise
         # they're a husk. Emergent aspects (when they appear later) may be
@@ -244,16 +238,6 @@ class TestMultiMembershipShape(unittest.TestCase):
     def setUp(self):
         self.seed = _load_seed()
 
-    def test_member_strings_are_well_formed(self):
-        # Lists of strings, no nested structure, no empty strings
-        for name, spec in self.seed.items():
-            for t in spec['node_types']:
-                self.assertIsInstance(t, str, '%s node_type entry not a string' % name)
-                self.assertTrue(t, '%s has empty node_type entry' % name)
-            for r in spec['edge_relations']:
-                self.assertIsInstance(r, str, '%s edge_relation entry not a string' % name)
-                self.assertTrue(r, '%s has empty edge_relation entry' % name)
-
     def test_reverse_lookup_resolves_deterministically(self):
         # If a string is in N aspects, by_X should still resolve to ONE.
         # The contract: first aspect to claim it (JSON iteration order) wins.
@@ -266,6 +250,24 @@ class TestMultiMembershipShape(unittest.TestCase):
             for r in spec['edge_relations']:
                 resolved = registry.by_edge_relation(r)
                 self.assertIsNotNone(resolved, 'by_edge_relation(%s) returned None' % r)
+        # Pin FIRST-claimant on real multi-homed members — this is what caught
+        # the from_dict/_load disagreement (last-claimant reported
+        # hierarchical_structure / survivor_lineage for these instead).
+        self.assertEqual(registry.by_edge_relation('supersedes').name,
+                         'correction_improvement')
+        self.assertEqual(registry.by_edge_relation('absorbed_into').name,
+                         'correction_improvement')
+        # And per-string agreement between the two construction paths, whole
+        # seed: from_dict must resolve every string exactly like a file-loaded
+        # registry would (one _adopt body — this pins that it stays one).
+        for t, primary in registry._reverse_node.items():
+            self.assertEqual(primary, next(
+                n for n, s in self.seed.items() if t in s['node_types']),
+                'first-claimant violated for node type %s' % t)
+        for r, primary in registry._reverse_edge.items():
+            self.assertEqual(primary, next(
+                n for n, s in self.seed.items() if r in s['edge_relations']),
+                'first-claimant violated for edge relation %s' % r)
 
 
 class TestLineageFamiliesContract(unittest.TestCase):
@@ -303,34 +305,57 @@ class TestLineageFamiliesContract(unittest.TestCase):
                 "lineage family %r has no edge_relations in aspects_v1.json" % name)
 
 
-class TestNoiseExclusivityContract(unittest.TestCase):
-    """noise ∩ {every other aspect} must be ∅ — for both relations and node_types.
+class TestStructuralValidity(unittest.TestCase):
+    """The seed satisfies the FULL structural invariant set — one call.
 
-    `noise` is the "no semantic claim" bucket; anything in it must NOT also carry
-    a semantic claim via another aspect, or "not in noise" exclusion filters would
-    drop real knowledge. AspectRegistry._validate logs this loudly at load; this
-    locks it statically so a bad edit (or a misclassification merged into the
-    seed) fails in CI instead of silently corrupting exclusion downstream.
+    validate_taxonomy is the single home of the structural rules (entries are
+    objects; member lists are unique non-empty strings; all required aspects
+    present; noise ∩ semantic = ∅). The registry's write door refuses on it
+    and the boot load reports on it, so pinning the seed against the same
+    function means the shipped baseline can never fail the gate a write is
+    held to. Replaces the hand-rolled lists-shape / well-formed-members /
+    noise-exclusivity tests, which each re-implemented one slice of it.
+
+    Seed-only CURATION standards (locked, meaning length, display labels,
+    no-extra-aspects) deliberately stay as separate tests above — the working
+    copy legitimately grows emergent unlocked aspects, so those must never
+    enter the write gate.
     """
 
     def setUp(self):
         self.seed = _load_seed()
 
-    def test_noise_does_not_overlap_any_semantic_aspect(self):
-        noise = self.seed.get('noise', {})
-        noise_e = set(noise.get('edge_relations', []))
-        noise_n = set(noise.get('node_types', []))
-        for name, spec in self.seed.items():
-            if name == 'noise':
-                continue
-            edge_overlap = noise_e & set(spec.get('edge_relations', []))
-            node_overlap = noise_n & set(spec.get('node_types', []))
-            self.assertEqual(
-                edge_overlap, set(),
-                "noise shares edge_relations with %s: %s" % (name, sorted(edge_overlap)))
-            self.assertEqual(
-                node_overlap, set(),
-                "noise shares node_types with %s: %s" % (name, sorted(node_overlap)))
+    def test_seed_passes_the_write_gate(self):
+        from servers.aspect_store import validate_taxonomy
+        self.assertEqual(validate_taxonomy(self.seed), [])
+
+    def test_validator_catches_noise_overlap(self):
+        # The 2026-07-24 class of defect: a noise member that also carries a
+        # semantic claim. The validator must name both sides.
+        from servers.aspect_store import validate_taxonomy
+        import copy
+        broken = copy.deepcopy(self.seed)
+        broken['noise']['edge_relations'].append('corrects')
+        violations = validate_taxonomy(broken)
+        self.assertTrue(any('noise-exclusivity' in v and 'corrects' in v
+                            for v in violations), violations)
+
+    def test_validator_catches_malformed_and_duplicate_members(self):
+        from servers.aspect_store import validate_taxonomy
+        import copy
+        broken = copy.deepcopy(self.seed)
+        broken['correction_improvement']['edge_relations'].append('')
+        broken['correction_improvement']['edge_relations'].append('corrects')
+        violations = validate_taxonomy(broken)
+        self.assertTrue(any('malformed member' in v for v in violations), violations)
+        self.assertTrue(any("duplicate member 'corrects'" in v for v in violations),
+                        violations)
+
+    def test_validator_catches_missing_required_aspect(self):
+        from servers.aspect_store import validate_taxonomy
+        broken = {k: v for k, v in self.seed.items() if k != 'survivor_lineage'}
+        violations = validate_taxonomy(broken)
+        self.assertTrue(any('survivor_lineage' in v for v in violations), violations)
 
 
 if __name__ == '__main__':

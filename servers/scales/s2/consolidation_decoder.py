@@ -141,6 +141,7 @@ class ConsolidationDecoder(IntegrationUnit):
 
         Currently detects:
         - Community nodes with 0 members (failed edge creation)
+        - Superseded handoff nodes (live successor exists) — see below
         """
         archived = []
 
@@ -166,9 +167,78 @@ class ConsolidationDecoder(IntegrationUnit):
                 nid, archived_by='s2:consolidation',
                 reason='community with 0 members')
             if r.get('ok'):
-                archived.append({'id': nid, 'title': title, 'reason': 'community with 0 members'})
+                archived.append({'id': nid, 'title': title or '',
+                                 'reason': 'community with 0 members'})
                 print('[consolidation] Healed: archived orphan community "%s" (%s)' % (
                     title[:50], nid[:8]), flush=True)
+
+        # Superseded handoffs: a handoff (session opener) is a consumable —
+        # a directive list addressed to one future session. Once a live
+        # successor exists (`supersedes` edge, both endpoints handoff), the
+        # predecessor's surface value is negative: it competes with the real
+        # opener in recall and, left live, clusters with its successor here —
+        # which is how consolidation absorbed a 07-23 opener INTO its 07-21
+        # predecessor (survivor-ladder age-bias, journal audit 2026-07-25).
+        # Retiring it pre-clustering is deterministic lifecycle, not judgment:
+        # archive is soft (content + audit metadata kept), and unlike knowledge
+        # types there is no reasoning worth re-surfacing — the successor was
+        # written complete. Keyed on the edge, not the type alone, so untyped
+        # openers are simply left alone (fail-safe). locked/critical excluded
+        # here to avoid archive_node's guard logging errors on every cycle.
+        # Deliberately NOT the correction_improvement aspect: that list is
+        # LLM-grown (58 verbs incl. improves/flags/restates) and would
+        # silently widen an archive trigger as the classifier files new
+        # verbs. Exact replacement semantics only: `supersedes` + its
+        # inverse `superseded_by`.
+        #
+        # Stored edge orientation is ADVISORY here, never trusted for the
+        # archive direction: add_relation reuses the pair's existing physical
+        # edge row in either orientation (surface-pick Hebbian co-access
+        # creates those rows in recall order), so a later `supersedes` can be
+        # stored inverted — see brain node id:c3f37710 ("co_accessed fixing
+        # direction by accident is the steady state"). The edge tells us a
+        # supersession relationship EXISTS for the pair; created_at decides
+        # which node retires. Older-by-created_at is ground truth for opener
+        # chains (a successor is by definition newer). Equal timestamps or
+        # self-loops → skip, fail-safe.
+        supersession_pairs = self.brain.conn.execute("""
+            SELECT s.id, s.created_at, s.locked, s.critical, s.title,
+                   t.id, t.created_at, t.locked, t.critical, t.title
+            FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
+            JOIN nodes s ON s.id = e.source_id
+            JOIN nodes t ON t.id = e.target_id
+            WHERE er.relation IN ('supersedes', 'superseded_by')
+            AND er.archived = 0
+            AND s.type = 'handoff' AND t.type = 'handoff'
+            AND s.archived = 0 AND t.archived = 0
+            AND s.id != t.id
+        """).fetchall()
+
+        seen_pairs = set()
+        for row in supersession_pairs:
+            a = {'id': row[0], 'created': row[1], 'locked': row[2],
+                 'critical': row[3], 'title': row[4]}
+            b = {'id': row[5], 'created': row[6], 'locked': row[7],
+                 'critical': row[8], 'title': row[9]}
+            key = frozenset((a['id'], b['id']))
+            if key in seen_pairs:
+                continue
+            seen_pairs.add(key)
+            if not a['created'] or not b['created'] or a['created'] == b['created']:
+                continue  # no date ground truth — never guess an archive
+            older, newer = (a, b) if a['created'] < b['created'] else (b, a)
+            if older['locked'] or older['critical']:
+                continue  # quiet skip; don't bounce off archive_node's guard
+            reason = 'handoff superseded by %s' % newer['id'][:8]
+            r = self.brain.archive_node(
+                older['id'], archived_by='s2:consolidation',
+                reason=reason, extra={'superseded_by': newer['id']})
+            if r.get('ok'):
+                archived.append({'id': older['id'], 'title': older['title'] or '',
+                                 'reason': reason})
+                print('[consolidation] Healed: archived superseded handoff "%s" (%s)' % (
+                    (older['title'] or '')[:50], older['id'][:8]), flush=True)
 
         if archived:
             # Use 'O' not 'delta' — heal is an observation, not a consolidation action.
@@ -399,16 +469,15 @@ class ConsolidationDecoder(IntegrationUnit):
     def _get_changed_node_ids(self, since_iso):
         """Node IDs created or revised since the cutoff, from node timestamps.
 
-        Keys on created_at/revised_at — NOT updated_at. updated_at is bumped by
-        the recall access-mark drain (recall_write_queue), so keying on it would
-        pull every *recalled* node into the change-set: that both defeats the
-        incremental scan (a busy brain re-scans most of the graph each cycle) and
-        — via the `already_reviewed.difference_update(changed_ids)` in
-        _scan_embeddings — drops a recalled node's suppression edge out of the
-        reviewed set, so settled pairs re-surface every cycle. revised_at moves
-        only on a real revise()/absorb — exactly when re-checking for new
-        near-duplicates is warranted. Community nodes are excluded (consolidation
-        scans non-community nodes only). Empty cutoff returns the full active set.
+        Keys on created_at/revised_at — NOT updated_at. revised_at moves only
+        on a real revise()/absorb — exactly when re-checking for new
+        near-duplicates is warranted; updated_at also moves on non-content
+        writes (archive, metadata) that don't change what the dedup scan
+        judges. (Historically updated_at was also bumped by the recall
+        access-mark drain — fixed 2026-07-27, reads no longer look like
+        writes — but revised_at remains the tighter key here.) Community
+        nodes are excluded (consolidation scans non-community nodes only).
+        Empty cutoff returns the full active set.
         """
         c = self.brain.conn
         if not since_iso:
@@ -824,11 +893,10 @@ class ConsolidationDecoder(IntegrationUnit):
 
         SCOPE: correction only. Containment relations (`part_of`, `abstracts`,
         `contains`, ~364 live edges) are NOT correction evidence and are not
-        flagged here — but they are also the strongest available signal that
-        two high-cosine nodes are a part and its whole rather than duplicates,
-        and nothing currently carries that signal to the encoder (the cluster's
-        own intra-pair edges are filtered out of the prompt as internal). A
-        separate containment flag is the missing piece.
+        flagged here. They DO reach the encoder now — the intra-cluster edge
+        block in the encoder render shows every relation between members,
+        verbatim with direction — so the encoder can see "part and its whole"
+        even though no boolean flag fires for it.
         """
         correction_rels = set(
             self.brain.aspects.correction_improvement.edge_relations)

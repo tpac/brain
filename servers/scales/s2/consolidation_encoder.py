@@ -312,6 +312,44 @@ class ConsolidationEncoder(IntegrationUnit):
             if comm_names:
                 lines.append('    Communities: %s' % ', '.join(list(comm_names)[:3]))
 
+            # Intra-cluster edges — every edge BETWEEN cluster members, with
+            # direction. These used to be dropped entirely (the per-node block
+            # below renders external edges only) and collapsed into the
+            # directionless CORRECTION_EDGE / TENSION_EDGE evidence flags.
+            # That blindness is how supersession pairs got merged BACKWARDS:
+            # the encoder knew "a correction edge exists" but not which node
+            # supersedes which, so the survivor ladder's age-correlated
+            # signals picked the stale node (journal audit 2026-07-25 —
+            # a 07-23 opener absorbed into its 07-21 predecessor).
+            # Contract: tests/test_s2_consolidation_supersession.py pins that
+            # intra-member directed edges appear here. Do not re-filter them.
+            # Shape note: get_neighbors_bulk assigns an intra-cluster edge to
+            # its SOURCE member only (direction='outgoing'); the target
+            # member's edge_details has no mirror entry. The outgoing-only
+            # filter is therefore currently a no-op for intra edges — kept as
+            # a defensive guard so a future both-owners loader can't make
+            # every edge render twice, once per direction.
+            # CAVEAT: the stored direction can be inverted — add_relation
+            # hangs relations on the pair's existing physical row in either
+            # orientation (brain node id:c3f37710). The arrow is evidence,
+            # not ground truth; created dates render per node alongside it.
+            intra_lines = []
+            all_details = cluster.get('edge_details', {})
+            for nid in cluster['nodes']:
+                for nbr_id, edges_list in all_details.get(nid, {}).items():
+                    if nbr_id not in cluster['nodes']:
+                        continue
+                    for e in edges_list:
+                        if e.get('direction') != 'outgoing':
+                            continue
+                        desc = e.get('description', '')
+                        desc_str = ' — %s' % desc if desc else ''
+                        intra_lines.append('      %s → %s → %s%s' % (
+                            nid[:8], e.get('relation', '?'), nbr_id[:8], desc_str))
+            if intra_lines:
+                lines.append('    Intra-cluster edges (direction: actor → relation → target):')
+                lines.extend(intra_lines)
+
             # Render each node richly
             lines.append('    Nodes:')
             for nid in cluster['nodes']:

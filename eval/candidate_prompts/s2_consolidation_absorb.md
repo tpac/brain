@@ -80,13 +80,13 @@ Same three nodes, opposite outcome: the claim test separates "one shared noun" f
 
 ## What You Receive
 
-- **CONSOLIDATION JOURNAL** — what previous runs decided. Your continuity.
 - **CLUSTERS** — each cluster contains 2-5 convergent nodes. You get:
   - Pre-classification (the decoder's algorithmic guess — useful, not final)
   - Similarity scores (content cosine and title cosine — two independent dimensions)
   - Full node content, situation, reasoning, metadata
   - Behavioral evidence: co-recall, judge preference, query coverage, catalog blindness
   - **External edges** per node, with direction arrow (→ outgoing, ← incoming), relation, description, and neighbor. These tell you what each node means in context.
+  - **Intra-cluster edges** — every edge BETWEEN cluster members, rendered `actor → relation → target`. Supersession and correction direction lives here — read it before choosing a survivor.
   - Community membership (thematic neighborhood)
   - Locked / critical status
 
@@ -95,6 +95,7 @@ Same three nodes, opposite outcome: the claim test separates "one shared noun" f
 Rank candidates by signal. Any of these alone can decide it:
 
 - **`locked` or `critical`** — see **Locked Nodes — Hard Rules** below. Locked is the top of the canonicity ladder: always the survivor / absorb-target, never absorbed; two locked → KEEP.
+- **Live supersession direction** — the Intra-cluster edges block shows `supersedes` / `superseded_by` between members: the SUCCESSOR is the survivor, full stop. This outranks every signal below — `judge_preference`, `recall_count`, and edge richness all accrue with age and systematically vote for the STALE node in a time-ordered chain. Direction beats popularity.
 - **Highest `judge_preference`** — the surfacer has already voted. Trust the vote.
 - **Highest `recall_count`** — higher means more graph positioning work has accrued around this node. Preserves the scaffolding.
 - **Richer external edges** — more relationships means more context the graph already uses. Survivors with poor edges orphan easily.
@@ -290,7 +291,7 @@ One node supersedes another. A correction, a refinement, a deeper understanding 
 
 **When:** correction edge between them, or same topic with title similarity high + content diverging (same name, different understanding).
 
-**The key:** the newer node's existing content is already good; write the merged `content` to absorb what was UNIQUE in the older one. The survivor is always the newer node unless it's locked or the older has clearly better graph positioning.
+**The key:** the newer node's existing content is already good; write the merged `content` to absorb what was UNIQUE in the older one. The survivor is always the newer node unless it's locked. Graph positioning is NOT a reason to pick the older node — absorb migrates the absorbed node's edges to the survivor automatically, so nothing is orphaned; 'better positioned' usually just means 'older', and picking the older node stamps stale framing on newer knowledge.
 
 ```
 brain_batch({operations: [
@@ -379,6 +380,8 @@ Same truth from different angles. A finding and a principle. A moment and an ins
 
 **When:** type mismatch, independent confirmation from different sources, complementary perspectives.
 
+Session openers / handoff nodes of PARALLEL live threads (formulaic titles, similar format, NO supersession edge between them) are per-thread state — KEEP, never absorb: each addresses a different successor session, and merging them cross-wires two live threads.
+
 **Type difference is a hint to run the claim test — not a blanket KEEP.** Content cosine 0.92 between a `finding`, a `decision`, and a `fact` on one topic means they're *about* the same thing; apply the claim test per pair. Different types *often* means different claims — the finding diagnoses, the decision resolves, the fact records a detail — and those you KEEP. But not always: a `finding` can BE the evidence for a `decision` (one claim → absorb the finding in, as in the partition example's Claim A), and a `bug` + a `fact` can be one incident's problem-and-fix (one claim → absorb). And a four-node mixed cluster can hold two claims → partition into two survivors. So: type difference → run the claim test → KEEP / absorb / partition as the claims fall. Do not auto-keep just because the types differ.
 
 ```
@@ -437,7 +440,7 @@ Put all operations for ALL clusters in ONE `brain_batch` call. Don't make multip
 - **judge_preference — both selected regularly** — both serve distinct needs. KEEP.
 - **Neither ever selected** — possibly low-value noise. ABSORB to concentrate; if both are weak, the merger is still cleaner than two weak fragments.
 - **CATALOG_BLIND** — strongest ABSORB signal. The duplication was accidental.
-- **CORRECTION_EDGE** — always EVOLVE. The correction was intentional; respect it.
+- **CORRECTION_EDGE** — read the verb and direction in the Intra-cluster edges block before acting. `corrects` → CONTRADICTION: keep both, never archive the correct node. `supersedes` → run the supersession test: the older holds prior-state detail worth recovering on its own terms → SUPERSESSION (keep both); the older is a stale value the newer fully restates → EVOLVE, absorbed into the NEWER node.
 - **LOCKED / CRITICAL** — governed by **Locked Nodes — Hard Rules**, which OVERRIDE every signal above (CATALOG_BLIND and CORRECTION_EDGE included). A locked node is never the absorbed id; two locked → KEEP, and if a `similar_to` edge already exists → emit nothing.
 
 ## Constraints
@@ -465,25 +468,6 @@ RICH: "Absorbed B into A; let B's `depends_on → lock_manager` and incoming `va
 
 ## Speed
 
-Target: **2 rounds.**
-- Round 1: read clusters. If you need a deeper look at any node, call `get_nodes`. Then `brain_batch` with all actions.
-- Round 2: journal + DONE.
+Be decisive. One optional `get_nodes` if you need a deeper look, then `brain_batch` with all actions — don't over-inspect.
 
 Do NOT recall or search — everything you need is in the cluster data.
-
-## Encoding Journal
-
-Your response must end with a structured journal entry:
-
-```
-CONSOLIDATED: [absorbed titles → survivor title, with survivor ID] (why this survivor, what was absorbed)
-EVOLVED: [absorbed older title → survivor title, with survivor ID] (what unique value carried forward)
-KEPT: [titles] (why distinct despite similarity)
-SKIPPED: [titles] (why — format similarity, distinct knowledge)
-OBSERVATIONS: [patterns across clusters — what does this batch reveal about the brain?]
-WATCHING: [clusters that need more context before deciding]
-```
-
-Respond with the journal and "DONE". No explanation beyond the journal.
-
-DONE

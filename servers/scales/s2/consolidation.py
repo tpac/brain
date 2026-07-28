@@ -79,27 +79,6 @@ class Consolidation(ConsolidationDecoder):
             print('[s2-consolidation] Capped to %d clusters (of %d total)' % (
                 max_per_run, stats.get('clusters_formed', '?')), flush=True)
 
-        # Snapshot suppression edges before encoder runs so we can detect
-        # which input clusters the encoder actually acted on. Any cluster
-        # with no new intra-cluster similar_to/consolidated_into edge after
-        # the run is recorded as a rejection (SKIP path) — no edge written
-        # on the graph, fingerprint in s2_rejections prevents re-proposal.
-        def _snapshot_suppression_pairs():
-            # Active suppression edges only — archived rows don't count
-            # as current suppression. TODO(v25-dal): could migrate to a
-            # GraphDAL.get_pairs_with_relations helper if a second caller
-            # appears.
-            pairs = set()
-            for row in self.brain.conn.execute(
-                "SELECT e.source_id, e.target_id FROM edges e "
-                "JOIN edge_relations er ON er.edge_id = e.edge_id "
-                "WHERE er.relation IN ('similar_to','consolidated_into') "
-                "AND er.archived = 0"):
-                pairs.add((min(row[0], row[1]), max(row[0], row[1])))
-            return pairs
-
-        pre_edges = _snapshot_suppression_pairs()
-
         # Snapshot which cluster members are already archived. An ABSORB
         # (whether via the `absorb` op or the legacy revise+archive dance)
         # archives the absorbed peer but writes NO similar_to/consolidated_into
@@ -133,57 +112,67 @@ class Consolidation(ConsolidationDecoder):
             return {'actions': 0, 'clusters': len(clusters),
                     'stats': stats, 'error': 'encoding failed'}
 
-        # Detect clusters that got no suppression edge this run → SKIPPED →
-        # record a rejection fingerprint so the decoder doesn't resurface them.
-        post_edges = _snapshot_suppression_pairs()
-        new_edges = post_edges - pre_edges
-        # Members archived during this run → their cluster was ABSORBed.
+        # Fingerprint EVERY processed cluster (2026-07-27) — suppression
+        # follows the encoder's decision itself, not its edge vocabulary.
+        # Previously only no-new-edge clusters were fingerprinted and edges
+        # did the rest — but the decoder's skip-list knows 4 verbs while the
+        # encoder resolves pairs in open text (`resolves` ×455, `addresses`
+        # ×240, `reframes` ×101 live edges, plus the prompt's own "link
+        # survivors with a REAL relation"), so verb-mismatched resolutions
+        # re-proposed every cycle (journal finding #4, id:2ace76f3).
+        # A fingerprint invalidates when a member's updated_at changes —
+        # a real write, now that access marks no longer touch it — so
+        # legitimate re-review after content change is preserved.
+        # Excluded from fingerprinting:
+        # - ABSORBed clusters (member archived this run): the scan's
+        #   archived=0 filter already suppresses them; stamping would
+        #   pollute s2_rejections.
+        # - Invalid-op clusters: the merge was thwarted, not decided —
+        #   never stamp, force a retry next cycle.
         newly_archived = _snapshot_archived(all_member_ids) - pre_archived
-        # Nodes the encoder TRIED to act on with an invalid op (e.g. `op:
-        # consolidate` instead of a real op — dispatch dropped it). A cluster
-        # touching one of these wrote no suppression edge NOT because the
-        # encoder chose SKIP, but because its merge was thwarted. Treat it as a
-        # failed attempt to retry — never stamp a fingerprint, which would
-        # abandon the merge AND suppress the cluster until a member changes.
         invalid_touched = node_ids_touched_by_invalid_ops(
             encode_result.get('action_details', []))
-        skipped_proposals = []
+        processed_proposals = []
+        fingerprint_members = set()
         invalid_op_clusters = 0
         for c in clusters:
             members = c.get('nodes', [])
             if invalid_touched and (set(members) & invalid_touched):
                 invalid_op_clusters += 1
                 continue
-            # ABSORB: a member archived this run means the cluster was merged.
-            # absorb writes no suppression edge, so without this the merge
-            # would be mis-stamped as a SKIP rejection (false suppression +
-            # s2_rejections pollution). An archived member ⇒ handled.
             if set(members) & newly_archived:
                 continue
-            handled = False
-            for i in range(len(members)):
-                for j in range(i + 1, len(members)):
-                    key = (min(members[i], members[j]),
-                           max(members[i], members[j]))
-                    if key in new_edges:
-                        handled = True
-                        break
-                if handled:
-                    break
-            if not handled and len(members) >= 2:
-                skipped_proposals.append({
-                    'type': 'consolidation_cluster',
-                    'members': sorted(members),
-                    'member_updated_at': {
-                        nid: c.get('node_details', {}).get(nid, {}).get('updated_at', '')
-                        for nid in members
-                    },
-                })
+            if len(members) >= 2:
+                processed_proposals.append(c)
+                fingerprint_members.update(members)
+
+        # Fingerprint on POST-encode updated_at: the encoder may have revised
+        # members this run (CONTRADICTION revises the corrector); decode-time
+        # timestamps would mismatch on the next cycle's re-derivation and the
+        # fingerprint would never suppress. One fresh read covers all members.
+        fresh_updated = {}
+        member_list = sorted(fingerprint_members)
+        for k in range(0, len(member_list), 900):
+            chunk = member_list[k:k + 900]
+            ph = ','.join('?' * len(chunk))
+            for row in self.brain.conn.execute(
+                    "SELECT id, updated_at FROM nodes WHERE id IN (%s)" % ph,
+                    chunk):
+                fresh_updated[row[0]] = row[1] or ''
+
         recorded = record_rejections(
-            self.brain, skipped_proposals,
-            integration_unit='s2:consolidation') if skipped_proposals else 0
+            self.brain,
+            [{
+                'type': 'consolidation_cluster',
+                'members': sorted(c.get('nodes', [])),
+                'member_updated_at': {
+                    nid: fresh_updated.get(nid, '')
+                    for nid in c.get('nodes', [])
+                },
+            } for c in processed_proposals],
+            integration_unit='s2:consolidation') if processed_proposals else 0
         if recorded:
-            print('[s2-consolidation] Recorded %d SKIP rejections' % recorded,
+            print('[s2-consolidation] Recorded %d cluster fingerprints' % recorded,
                   flush=True)
         if invalid_op_clusters:
             self.brain._log_warning(

@@ -38,6 +38,7 @@ from .aspect_store import (
     SEED_ASPECTS_JSON_PATH,
     aspects_json_path,
     atomic_json_write,
+    validate_taxonomy,
 )
 
 
@@ -124,6 +125,17 @@ def reconcile_working_copy(log_fn=None) -> bool:
             except Exception:
                 pass
         return False
+    seed_violations = validate_taxonomy(seed)
+    if seed_violations:
+        # A structurally invalid seed must not be copied or healed from —
+        # refuse the whole reconcile rather than propagate the breakage.
+        if log_fn:
+            try:
+                log_fn('repo seed fails structural validation — reconcile '
+                       'skipped: %s' % '; '.join(seed_violations))
+            except Exception:
+                pass
+        return False
     if not os.path.exists(json_path):
         atomic_json_write(json_path, seed)
         return True
@@ -191,6 +203,22 @@ def reconcile_working_copy(log_fn=None) -> bool:
         cur[n] = seed[n]
     for n, category, gap in member_heals:
         cur[n].setdefault(category, []).extend(gap)   # append — never reorder
+    heal_violations = validate_taxonomy(cur)
+    if heal_violations:
+        # The healed result would be structurally invalid (e.g. a seed member
+        # edit colliding with a classifier-grown noise member breaks
+        # noise-exclusivity). Refuse the WRITE, keep the prior file, boot
+        # continues on the un-healed copy. Loud on both channels — this needs
+        # a human to reconcile the seed edit with the working copy.
+        summary = ('heal REFUSED — healed result fails structural validation: '
+                   + '; '.join(heal_violations))
+        print('[aspects] %s' % summary, flush=True)
+        if log_fn:
+            try:
+                log_fn(summary)
+            except Exception:
+                pass
+        return False
     parts = ['+aspect %s' % n for n in missing]
     parts += ['%s.%s += %s' % (n, category, ','.join(gap))
               for n, category, gap in member_heals]
@@ -298,7 +326,6 @@ class AspectRegistry:
             except Exception:
                 pass
         self._load()
-        self._validate()
 
     def _heal_log(self, msg: str) -> None:
         try:
@@ -329,9 +356,7 @@ class AspectRegistry:
         """
         ASPECTS_JSON_PATH = aspects_json_path()
 
-        self._aspects = {}
-        self._reverse_node = {}
-        self._reverse_edge = {}
+        self._adopt({})
 
         if not os.path.exists(ASPECTS_JSON_PATH):
             try:
@@ -356,6 +381,39 @@ class AspectRegistry:
                 pass
             return
 
+        # Loud, non-fatal: a structurally invalid working copy still boots
+        # (a refusing boot would brick the brain) but every violation is
+        # reported — _adopt's shape coercion no longer hides anything. The
+        # WRITE side (add_members / reconcile) refuses on the same validator,
+        # so violations here mean a hand-edit or pre-gate legacy state.
+        for v in validate_taxonomy(data):
+            try:
+                self._brain._log_error(
+                    'aspect_contract',
+                    Exception('taxonomy structural violation'), v)
+            except Exception:
+                pass  # never let logging block the load
+
+        self._adopt(data)
+
+    def _adopt(self, data: dict) -> None:
+        """Build aspects + reverse-lookup maps from a taxonomy dict — the ONE
+        constructor body behind both _load (file) and from_dict (tests).
+
+        Reverse maps use setdefault: the FIRST aspect to claim a string in
+        dict-iteration order wins — the documented multi-membership contract.
+        The two constructors used to disagree here (from_dict let the LAST
+        claimant win), which flipped the reported primary for every
+        multi-homed string (`supersedes`, `absorbed_into`, the wisdom types).
+
+        Shape-guarded: non-dict entries are skipped, malformed member lists
+        coerce to empty — a hand-edited working copy degrades per-entry, not
+        wholesale. This is also the seam for load-time derivations (Step 6's
+        precomputed exclusion policies belong here, not per-read).
+        """
+        self._aspects = {}
+        self._reverse_node = {}
+        self._reverse_edge = {}
         for name, entry in data.items():
             if not isinstance(entry, dict):
                 continue
@@ -383,49 +441,6 @@ class AspectRegistry:
             for r in aspect.edge_relations:
                 self._reverse_edge.setdefault(r, name)
 
-    def _validate(self) -> None:
-        """Check structural invariants on the loaded aspects; log loudly on any break.
-
-        With JSON-source loading, "auto-heal" is no longer meaningful — the JSON
-        file IS the spec. An invariant break is a deployment / local-edit mistake
-        that must surface clearly, not silently self-repair.
-        """
-        # (1) Required-aspect presence — config/deployment issue → warning.
-        missing = [n for n in REQUIRED_ASPECTS if n not in self._aspects]
-        if missing:
-            try:
-                self._brain._log_warning(
-                    'aspect_contract',
-                    'Required aspects missing from aspects_v1.json — registry will not be self-consistent',
-                    'missing=%s' % missing)
-            except Exception:
-                pass  # never let logging block validation
-
-        # (2) Noise-exclusivity invariant — data-integrity break → error.
-        # `noise` is the "no semantic claim" bucket. A string that lives in noise
-        # AND a semantic aspect would make "not in noise" exclusion drop real
-        # knowledge. The encoder strips this at write time
-        # (aspect_encoder._validate_classifications), but a hand-edit, a
-        # migration, or a direct member-list write could reintroduce it — so
-        # surface it loudly here, on every load, regardless of source.
-        noise = self._aspects.get('noise')
-        if noise is not None:
-            noise_e, noise_n = set(noise.edge_relations), set(noise.node_types)
-            for name, aspect in self._aspects.items():
-                if name == 'noise':
-                    continue
-                edge_overlap = noise_e & set(aspect.edge_relations)
-                node_overlap = noise_n & set(aspect.node_types)
-                if edge_overlap or node_overlap:
-                    try:
-                        self._brain._log_error(
-                            'aspect_contract',
-                            Exception('noise overlaps a semantic aspect — exclusion invariant broken'),
-                            'aspect=%s edge_overlap=%s node_overlap=%s' % (
-                                name, sorted(edge_overlap), sorted(node_overlap)))
-                    except Exception:
-                        pass  # never let logging block validation
-
     def reconcile_with_seed(self) -> bool:
         """Re-run the seed reconcile (first-boot copy + additive heal) and
         reload if it changed anything. Runs automatically at construction;
@@ -435,7 +450,6 @@ class AspectRegistry:
         changed = reconcile_working_copy(log_fn=self._heal_log)
         if changed:
             self._load()
-            self._validate()
         return changed
 
     def add_members(self, classifications, source: str = '') -> int:
@@ -459,7 +473,12 @@ class AspectRegistry:
 
         Returns the number of (aspect, member) additions actually written.
         Raises on an unreadable working copy — a write must never proceed
-        from (and then clobber the file with) an empty in-memory guess.
+        from (and then clobber the file with) an empty in-memory guess — and
+        raises AspectContractError when the merged result fails structural
+        validation (validate_taxonomy): the write is refused, the prior file
+        stays intact, and the violations are logged. The encoder's
+        per-classification filter prevents this in normal operation; the gate
+        is the backstop for every other writer, present and future.
         """
         path = aspects_json_path()
         try:
@@ -473,20 +492,51 @@ class AspectRegistry:
             except Exception:
                 pass
             raise
+        # Closed list at the door: a name not already in the file is refused,
+        # never setdefault-created. Nothing legitimately creates an aspect
+        # through a member write — new aspects are a deliberate human edit to
+        # the JSON — so an unknown name here is a typo or a confused writer,
+        # and the silent alternative is a meaning-less husk aspect that every
+        # consumer then trips over.
+        targeted = {a for c in classifications for a in c['aspects']}
+        unknown = sorted(a for a in targeted
+                         if not isinstance(data.get(a), dict))
+        if unknown:
+            detail = ('add_members(%s) REFUSED — unknown or malformed aspect '
+                      'names: %s (new aspects are a human edit to '
+                      'aspects_v1.json, never a write-door side effect)' % (
+                          source or 'unattributed', unknown))
+            try:
+                self._brain._log_error(
+                    'aspect_registry_write', Exception('write refused'), detail)
+            except Exception:
+                pass
+            print('[aspects] %s' % detail, flush=True)
+            raise AspectContractError(detail)
         added = 0
         for c in classifications:
             category = c['category']  # 'node_types' or 'edge_relations'
             for aspect_name in c['aspects']:
-                entry = data.setdefault(aspect_name, {})
-                members = entry.setdefault(category, [])
+                members = data[aspect_name].setdefault(category, [])
                 if c['value'] not in members:
                     members.append(c['value'])
                     added += 1
         if not added:
             return 0
+        violations = validate_taxonomy(data)
+        if violations:
+            detail = 'add_members(%s) REFUSED — merged result fails ' \
+                     'structural validation: %s' % (
+                         source or 'unattributed', '; '.join(violations))
+            try:
+                self._brain._log_error(
+                    'aspect_registry_write', Exception('write refused'), detail)
+            except Exception:
+                pass
+            print('[aspects] %s' % detail, flush=True)
+            raise AspectContractError(detail)
         atomic_json_write(path, data)
         self._load()
-        self._validate()
         print('[aspects] add_members(%s): +%d memberships' % (
             source or 'unattributed', added), flush=True)
         return added
@@ -671,22 +721,5 @@ class AspectRegistry:
         """
         instance = cls.__new__(cls)
         instance._brain = brain
-        instance._aspects = {}
-        instance._reverse_node = {}
-        instance._reverse_edge = {}
-        for name, spec in data.items():
-            aspect = Aspect(
-                name=name,
-                node_types=tuple(spec.get('node_types', [])),
-                edge_relations=tuple(spec.get('edge_relations', [])),
-                meaning=spec.get('meaning', ''),
-                dimension=spec.get('dimension', 'semantic'),
-                locked=spec.get('locked', False),
-                metadata=dict(spec.get('metadata', {})),
-            )
-            instance._aspects[name] = aspect
-            for t in aspect.node_types:
-                instance._reverse_node[t] = name
-            for r in aspect.edge_relations:
-                instance._reverse_edge[r] = name
+        instance._adopt(data)
         return instance

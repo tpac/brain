@@ -1,9 +1,9 @@
-"""Aspect store — byte-level core for aspects_v1.json.
+"""Aspect store — byte-level core + structural contract for aspects_v1.json.
 
-Touches bytes; never interprets them. The semantic layer (AspectRegistry in
-servers/aspects.py) is the ONE public door for reading and writing taxonomy
-content — everything here is its plumbing: path resolution, the required-name
-contract, and the single atomic JSON writer.
+Path resolution, the required-name contract, the single atomic JSON writer,
+and the structural validator every write is gated on. The semantic layer
+(AspectRegistry in servers/aspects.py) is the ONE public door for reading
+and writing taxonomy content — everything here is its plumbing.
 
 This module imports nothing from servers/ so the dependency is strictly
 one-directional (aspects.py → here, scales/s2 → here). The import cycle the
@@ -77,6 +77,78 @@ def aspects_proposed_path() -> str:
 # Repo seed — frozen baseline shipped with the plugin. Never written.
 SEED_ASPECTS_JSON_PATH = os.path.join(
     os.path.dirname(__file__), 'scales', 's2', 'aspects_v1.json')
+
+
+def validate_taxonomy(data) -> list:
+    """Structural invariants any taxonomy copy must satisfy. Returns a list of
+    violation strings — empty means valid.
+
+    This is the STRUCTURAL set, shared by the seed and the working copy: it
+    is what a write must never produce, so the registry's door refuses on it
+    and the boot load reports it. Seed-only CURATION standards (locked flags,
+    meaning length, display labels, no-extra-aspects) live in
+    tests/test_aspects_contract.py — the working copy legitimately grows
+    emergent unlocked aspects, so the gate must not enforce those.
+
+    Invariants:
+      1. every entry is an object
+      2. node_types / edge_relations, when present, are lists of unique,
+         non-empty strings
+      3. every REQUIRED_ASPECTS name is present
+      4. noise-exclusivity: a string in `noise` appears in NO other aspect
+         (either category) — "not in noise" exclusion filters trust this
+    """
+    violations = []
+    if not isinstance(data, dict):
+        return ['taxonomy root is %s, expected object' % type(data).__name__]
+
+    entries = {}
+    for name, entry in data.items():
+        if not isinstance(entry, dict):
+            violations.append("aspect '%s': entry is %s, expected object"
+                              % (name, type(entry).__name__))
+            continue
+        entries[name] = entry
+        for category in ('node_types', 'edge_relations'):
+            members = entry.get(category)
+            if members is None:
+                continue
+            if not isinstance(members, list):
+                violations.append("aspect '%s'.%s: %s, expected list"
+                                  % (name, category, type(members).__name__))
+                continue
+            seen = set()
+            for m in members:
+                if not isinstance(m, str) or not m:
+                    violations.append("aspect '%s'.%s: malformed member %r"
+                                      % (name, category, m))
+                elif m in seen:
+                    violations.append("aspect '%s'.%s: duplicate member '%s'"
+                                      % (name, category, m))
+                else:
+                    seen.add(m)
+
+    missing = [n for n in REQUIRED_ASPECTS if n not in data]
+    if missing:
+        violations.append('required aspects missing: %s' % missing)
+
+    noise = entries.get('noise')
+    if noise is not None:
+        for category in ('node_types', 'edge_relations'):
+            members = noise.get(category)
+            noise_set = set(members) if isinstance(members, list) else set()
+            if not noise_set:
+                continue
+            for name, entry in entries.items():
+                if name == 'noise':
+                    continue
+                other = entry.get(category)
+                overlap = noise_set & set(other) if isinstance(other, list) else set()
+                if overlap:
+                    violations.append(
+                        "noise-exclusivity broken: noise shares %s with '%s': %s"
+                        % (category, name, sorted(overlap)))
+    return violations
 
 
 def atomic_json_write(path: str, data) -> None:
