@@ -13,24 +13,26 @@ S2 units share common infrastructure for:
 - Reading S1 traces (what changed since last run)
 - Deciding whether to run (_should_run)
 - Calling LLM with learnable prompts from interactions table
-- JSON extraction from LLM responses
+  (transport, retry, and JSON envelope parsing live behind the
+  runner seam — scales/runner.py)
 
 These live here so every S2 unit (community, dedup, confidence, etc.)
 uses the same patterns. S3 can tune any unit's LLM behavior by
 revising its interaction entry.
 """
 
-import json
 import os
 import time
 from datetime import datetime, timezone, timedelta
 
 
-# Single shared Anthropic client timeout — see scales/runner.py.
 # read_usage / sum_usage: the canonical token-telemetry contract shared with
 # run_llm_loop, so _call_llm and _accumulate_run don't re-derive it. read_usage
 # + sum_usage are also re-exported here for the encoder subclasses (e.g. healer).
-from ..runner import ANTHROPIC_CLIENT_TIMEOUT, read_usage, sum_usage  # noqa: F401 — re-export for callers
+# Provider mechanics (client construction, single-shot call, retry, JSON
+# envelope parsing) live behind the runner seam — see scales/runner.py.
+from ..runner import (read_usage, sum_usage,  # noqa: F401 — re-export for callers
+                      make_client, run_llm_once, extract_json)
 from ..dispatch import ATTRIBUTED_WRITE_COMMANDS, stamp_project_provenance
 
 
@@ -75,73 +77,6 @@ def apply_encoder_attribution(cmd, cmd_args, *, encoding_source, run_chain_id,
         cmd_args.setdefault('chain_id', run_chain_id)
     return stamp_project_provenance(cmd, cmd_args, project)
 
-
-# Per-batch retry policy for transient API errors. The SDK's built-in
-# max_retries handles pre-stream failures (connect refused, 5xx before
-# body, rate-limit). It can't retry once a stream has started and stalls
-# mid-body (httpx ReadTimeout) — that's what this wrapper covers.
-#
-# attempts=2 means one retry. First failure => 8s backoff then retry.
-# Second failure => give up, batch fails, work moves on. This caps the
-# wall-clock cost of a stuck batch at ~2*timeout + backoff and recovers
-# the happy-path on transient blips.
-RETRY_ATTEMPTS = 2
-RETRY_BACKOFF_BASE_S = 8.0
-
-
-def retry_on_transient_api_error(fn, *, attempts=RETRY_ATTEMPTS,
-                                 base_backoff_s=RETRY_BACKOFF_BASE_S,
-                                 log_fn=None):
-    """Call fn() with retry on transient Anthropic SDK exceptions.
-
-    Retries on: APITimeoutError, APIConnectionError, InternalServerError
-    (5xx from Anthropic). Also catches httpx TimeoutException as a safety
-    net in case a raw httpx error leaks through streaming.
-
-    Does NOT retry on: BadRequestError, AuthenticationError, PermissionDenied,
-    NotFoundError, UnprocessableEntityError, RateLimitError. Those either
-    indicate a client bug (retry won't help) or are already handled by the
-    SDK's built-in max_retries (rate limit respects Retry-After header).
-
-    Args:
-        fn: zero-arg callable that makes the API call
-        attempts: total attempts including the first call; 2 = one retry
-        base_backoff_s: seconds to wait before first retry; doubles each attempt
-        log_fn: optional logger invoked on retry with a one-line message
-
-    Returns: whatever fn() returns
-
-    Raises: the last exception if all attempts fail (transient), or the
-        original exception immediately if non-transient
-    """
-    import anthropic
-    try:
-        import httpx
-        httpx_timeout = (httpx.TimeoutException,)
-    except Exception:
-        httpx_timeout = ()
-
-    transient = (
-        anthropic.APITimeoutError,
-        anthropic.APIConnectionError,
-        anthropic.InternalServerError,
-    ) + httpx_timeout
-
-    last_err = None
-    for i in range(attempts):
-        try:
-            return fn()
-        except transient as e:
-            last_err = e
-            if i < attempts - 1:
-                sleep_s = base_backoff_s * (2 ** i)
-                if log_fn:
-                    log_fn('transient API error (%s): %s — retrying in %.0fs '
-                           '(attempt %d/%d)' % (
-                               type(e).__name__, e, sleep_s, i + 2, attempts))
-                time.sleep(sleep_s)
-    # Exhausted retries — re-raise the last error so callers can log + skip
-    raise last_err
 
 
 class IntegrationUnit:
@@ -561,9 +496,8 @@ class IntegrationUnit:
             aspect) thread this into their delta trace via build_delta_metadata,
             so their production deltas stop recording elapsed_ms=0/output_tokens=0
             (this is run_llm_loop's per-call telemetry, hand-built here because
-            this path uses a plain messages.create, not the loop).
+            this path uses the runner's single-shot entry, not the loop).
         """
-        import anthropic
         from ..dispatch import load_env
 
         # Load learnable prompt and config
@@ -593,25 +527,14 @@ class IntegrationUnit:
 
         t0 = time.time()
         try:
-            client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
-            # 1h cache on the (stable, byte-identical) system prompt so repeat
-            # _call_llm calls within a run/hour read it from cache instead of
-            # re-billing full input — mirrors run_llm_loop's BP1. No-op below
-            # the model's cacheable floor: s2_healer (~2.5K tok) sits under
-            # Haiku 4.5's 4096 floor, so this only engages once a _call_llm
-            # prompt clears the floor (s2_aspects on Sonnet already does).
-            response = client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                system=[{"type": "text", "text": system_prompt,
-                         "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
-                messages=[{"role": "user", "content": user_content}])
-
-            telemetry = {'elapsed_ms': int((time.time() - t0) * 1000),
-                         **read_usage(response)}
-
-            raw = response.content[0].text.strip()
-            return self._extract_json(raw), telemetry
+            # Transport + caching live behind the runner seam (run_llm_once:
+            # 1h cache_control on the byte-stable system prompt, read_usage
+            # telemetry). This method keeps only the unit concerns: the
+            # interaction-table prompt/config load above, the JSON envelope
+            # expectation, and the log-and-return-None failure policy below.
+            raw, telemetry = run_llm_once(
+                make_client(), model, max_tokens, system_prompt, user_content)
+            return extract_json(raw), telemetry
 
         except Exception as e:
             print('[%s] LLM call failed: %s' % (self.NAME, e), flush=True)
@@ -619,41 +542,3 @@ class IntegrationUnit:
             telemetry['elapsed_ms'] = int((time.time() - t0) * 1000)
             return None, telemetry
 
-    @staticmethod
-    def _extract_json(text):
-        """Extract JSON array or object from LLM response text.
-
-        Handles markdown code fences, leading/trailing text.
-        Returns parsed JSON (list or dict), or None on failure.
-        """
-        # Strip markdown fences
-        if '```' in text:
-            parts = text.split('```')
-            if len(parts) >= 3:
-                text = parts[1]
-                if text.startswith('json'):
-                    text = text[4:]
-                text = text.strip()
-
-        # Find JSON array or object
-        # Try array first (most common for batched proposals)
-        start = text.find('[')
-        if start >= 0:
-            end = text.rfind(']') + 1
-            if end > start:
-                try:
-                    return json.loads(text[start:end])
-                except json.JSONDecodeError:
-                    pass
-
-        # Try object
-        start = text.find('{')
-        if start >= 0:
-            end = text.rfind('}') + 1
-            if end > start:
-                try:
-                    return json.loads(text[start:end])
-                except json.JSONDecodeError:
-                    pass
-
-        return None
