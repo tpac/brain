@@ -59,6 +59,32 @@ if "<task-notification>" in user_message:
     register_only = True
 
 
+def _first_full_recall_this_session(session_id):
+    """True exactly once per session, on its first NON-register_only recall.
+
+    New sessions ride a cold path (Anthropic-side new-session latency: fork
+    and fresh sessions timed out at 20s while the daemon finished fine — the
+    trace was written, only the injection was lost, 2026-07-27). That first
+    call gets a 30s budget; steady state keeps 20s so a hung daemon still
+    surfaces fast. Marker file, not daemon state — the timeout must be
+    decided before we talk to the daemon at all. Marker creation failure
+    degrades to the normal timeout, never blocks the hook.
+    """
+    if not session_id:
+        return False
+    import tempfile
+    base = os.environ.get('BRAIN_TMP_DIR') or tempfile.gettempdir()
+    marker = os.path.join(base, 'brain-hook-first-%s-%s' % (
+        os.getuid(), session_id[:8]))
+    if os.path.exists(marker):
+        return False
+    try:
+        open(marker, 'w').close()
+    except OSError:
+        return False
+    return True
+
+
 def main():
     t0 = time.time()
     if not daemon_available():
@@ -76,14 +102,21 @@ def main():
     # Call daemon — it handles Layer 1 + Layer 2 judge + Layer 3 graph expand.
     # register_only does no Haiku/recall (just a trace write), so it fails fast
     # rather than carrying the 20s Haiku-tail budget on the prompt path.
+    if register_only:
+        _recall_timeout = 4.0   # trace write only, no Haiku
+    elif _first_full_recall_this_session(hook_input.get("session_id", "")):
+        _recall_timeout = 30.0  # new-session cold path (2026-07-27; hooks.json
+                                # UserPromptSubmit timeout is 32 to stay above)
+    else:
+        _recall_timeout = 20.0  # covers Haiku tail latency under load
+                                # (2026-05-02, 14→20). See FRAME-DESIGN.md
+                                # and node 2340b053.
     resp = daemon_call_raw("hook_recall", {
         "prompt": hook_input.get("prompt", ""),
         "message": hook_input.get("message", ""),
         "session_id": hook_input.get("session_id", ""),
         "register_only": register_only,  # short answers: register turn, skip recall+Haiku
-    }, timeout=4.0 if register_only else 20.0)  # 20s covers Haiku tail latency
-                       # under load (2026-05-02, 14→20). See FRAME-DESIGN.md
-                       # and node 2340b053. register_only needs none of it.
+    }, timeout=_recall_timeout)
 
     if not resp.get("ok"):
         # Register-only failure is best-effort too — approve silently rather than
