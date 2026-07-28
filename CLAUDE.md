@@ -254,7 +254,7 @@ S2 operates when the operator is idle. It sees the full graph, not just one turn
 
 Candidate future units (correction-chain resolution, hub splitting, orphan weaving, re-embedding) live in `docs/S2-DESIGN.md`.
 
-**Ordering:** Consolidation → Community → Healer → AspectIntegration. Each subsequent unit benefits from the previous.
+**Ordering:** AspectIntegration → Community → Healer → Consolidation. Consolidation runs LAST so every earlier unit's writes (aspect classifications, community placements, healer field-fills) land before it reads the graph and stamps its cluster fingerprints — nothing later in the cycle can re-arm a just-recorded fingerprint.
 
 ### Suppression
 

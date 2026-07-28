@@ -40,11 +40,20 @@ def run_s2(brain):
     # tests/test_aspect_decoder.py. Downstream gating concern (#2 in the
     # backlog) was already moot — none of the other decoders read
     # aspect_scan traces; they gate on their own internal state.
+    # Consolidation runs LAST (2026-07-28, Tom): every earlier unit's writes
+    # (healer field-fills, community placements, aspect classifications) land
+    # BEFORE consolidation reads the graph and stamps its cluster
+    # fingerprints — so nothing later in the same cycle bumps a member's
+    # updated_at and re-arms a just-recorded fingerprint. Under the old
+    # order (consolidation before healer) every new-node cluster was
+    # consolidation-examined twice: healer's question-fill invalidated the
+    # fresh fingerprint each cycle. Consolidation also benefits from healed
+    # fields and current community membership in its cluster payloads.
     units = [
         AspectIntegration(brain),
-        Consolidation(brain),
         CommunityDetection(brain),
         Healer(brain),
+        Consolidation(brain),
     ]
 
     results = {}
