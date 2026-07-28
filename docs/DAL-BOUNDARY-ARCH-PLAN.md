@@ -31,9 +31,11 @@ guardrail-sanctioned (`tests/test_traces_layer_guardrail.py` WRITE_OK).
   aspects-derived-policy swap. This plan does NOT do it — but §"Handoff to aspects Step 6" below
   records the consumer sites Step 6's list misses and **one contradiction requiring an operator
   decision**.
-- The LAF/recall stream has an unmerged branch (`claude/ecstatic-einstein-874830`) touching
-  `hook_recall`. Steps 5–6 here touch the recall hot path — **check `self_presence` and land after
-  that branch merges.**
+- ~~The LAF/recall stream has an unmerged branch touching `hook_recall`.~~ **MERGED to main
+  2026-07-28 (`27ff524`)** — the Steps 5–6 fence is lifted. Their fix still needs a daemon
+  restart to go live; check `self_presence` before restarting under an active sibling. Line
+  numbers in `brain_recall.py`/`recall_write_queue.py` cited below drifted with that merge —
+  re-grep (standing rule).
 
 ---
 
@@ -271,10 +273,11 @@ Verified sites, each with the DAL target named:
   (`find_unembedded_relations`/`store_relation_embedding` — TraceDAL already has this exact pair);
   falsifies `dal_graph.py:105` "ALL edge SQL lives here".
 - `brain_connections.py:283-306` two-hop bridge SQL → GraphDAL.
-- `recall_write_queue.py:461-472` hebbian strengthen UPDATEs + `:271-283` access-mark
-  `executemany` → `GraphDAL.strengthen_co_access` / `NodeDAL.bump_access_batch` (the bg-conn
-  exception covers the CONNECTION, not raw SQL — the file already constructs GraphDAL); the
-  revised_at-not-updated_at invariant moves into the DAL docstring where it belongs.
+- `recall_write_queue.py` hebbian strengthen UPDATEs + access-mark `executemany` →
+  `GraphDAL.strengthen_co_access` / `NodeDAL.bump_access_batch` (the bg-conn exception covers the
+  CONNECTION, not raw SQL — the file already constructs GraphDAL). Invariant updated by `d238f60`
+  (2026-07-28): access marks touch `last_accessed` ONLY — "reads must never look like writes",
+  no `updated_at` bump at all. That invariant moves into the DAL method's docstring.
 - `brain_recall.py:336-346` degree cache UNION scan → `GraphDAL.degree_by_node(exclude_relations)`
   (aspects Step 6 swaps the literal; this moves the query).
 - `brain_recall.py:275-278` rerank embedding fetch — **bypasses CachedVectorDAL entirely** (pays
