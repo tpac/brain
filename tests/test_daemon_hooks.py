@@ -619,7 +619,7 @@ class TestWorktreeHooks(BrainTestBase):
         self.assertEqual(self.brain.get_config("current_worktree", "SENTINEL"), "SENTINEL")
         # Persisted immediately (not just cached): a fresh load from logs_conn sees it.
         from servers.session_context import SessionContext
-        reloaded = SessionContext.load(self.brain.logs_conn, sid)
+        reloaded = SessionContext.load(self.brain._session_state, sid)
         self.assertEqual(reloaded.worktree, "emb-bench")
 
     def test_worktree_remove_clears_session_worktree(self):

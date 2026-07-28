@@ -285,16 +285,15 @@ def seed_interactions(brain):
     from .scales.s1.scouts.prompts.temporal_prompt import SYSTEM_PROMPT as S1_SCOUT_TEMPORAL_PROMPT
     from .scales.s1.scouts.prompts.facts_prompt import SYSTEM_PROMPT as S1_SCOUT_FACTS_PROMPT
 
-    dal = brain._interaction_dal
-    existing = {i['name'] for i in dal.list_all()}
+    existing = {i['name'] for i in brain.list_interactions()}
 
     def _register(name, template, params_dict, created_by):
         if name in existing:
             return
-        dal.register(name,
-                     template=template,
-                     parameters=json.dumps(params_dict),
-                     created_by=created_by)
+        brain.register_interaction(name,
+                                   template=template,
+                                   parameters=json.dumps(params_dict),
+                                   created_by=created_by)
 
     # Encoder agents — prompts seeded from sibling .py files.
     # 's1e' is the current name (only 's1e' is seeded / read at runtime).
@@ -326,10 +325,7 @@ def seed_interactions(brain):
     # 'judge' was renamed to 'surface' in commit 620fb4f (2026-05-03);
     # this seed only knows about 'surface'. Old 'judge' rows in older
     # brains are orphans — clean them out manually if they exist.
-    if 'surface' not in existing:
-        dal.register('surface', template=SURFACE_PROMPT_V1,
-                     parameters=json.dumps(SURFACE_CONFIG_V1),
-                     created_by='anchor')
+    _register('surface', SURFACE_PROMPT_V1, SURFACE_CONFIG_V1, 'anchor')
     _register('voice_surface', '', VOICE_CONFIG_V1, 'anchor')
     _register('boot', '', BOOT_CONFIG_V1, 'anchor')
     _register('pre_edit', '', PRE_EDIT_CONFIG_V1, 'anchor')
@@ -337,11 +333,8 @@ def seed_interactions(brain):
 
     # s2_community config knob (distinct from enrichment prompt — this is
     # decoder parameters, not an LLM template).
-    if 's2_community' not in existing:
-        from .scales.s2.community_contract import COMMUNITY_DETECTION
-        dal.register('s2_community', template='',
-                     parameters=json.dumps(COMMUNITY_DETECTION),
-                     created_by='s2:community_detection')
+    from .scales.s2.community_contract import COMMUNITY_DETECTION
+    _register('s2_community', '', COMMUNITY_DETECTION, 's2:community_detection')
 
     # s2_edge_families and s2_node_families seeds — REMOVED 2026-05-04
     # (Step 12 of unified-aspects). Replaced by the unified aspect taxonomy in

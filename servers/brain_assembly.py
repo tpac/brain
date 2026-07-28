@@ -812,8 +812,6 @@ class BrainAssemblyMixin:
         - Skip pairs already in pending_consolidation
         """
         from . import embedder
-        from .dal import VectorDAL
-        from .dal_logs import LogsDAL
         from datetime import datetime, timezone, timedelta
 
         if not embedder.is_ready():
@@ -852,7 +850,7 @@ class BrainAssemblyMixin:
             node_dates[nid] = created_at
 
         # Compare within each type group
-        logs_dal = LogsDAL(self.logs_conn)
+        logs_dal = self._logs_dal
         new_pairs = 0
         cutoff_hours = min_age_hours
 

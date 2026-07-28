@@ -762,12 +762,12 @@ def expand_node(brain, node_ref: str = '', hops: int = 1, **_) -> List[Dict[str,
         node_id = None
         if node_ref and len(node_ref) >= 8 and re.match(r'^[0-9a-f]+$', node_ref[:8]):
             # Looks like an id (full or 8-char prefix)
-            n = brain.get_node(node_ref) if hasattr(brain, 'get_node') else None
+            n = brain.get_node(node_ref)
             if n:
                 node_id = n.get('id') if isinstance(n, dict) else None
         if not node_id and node_ref:
             # Fuzzy title lookup
-            found = brain.find_node_by_title(node_ref) if hasattr(brain, 'find_node_by_title') else None
+            found = brain.find_node_by_title(node_ref)
             if isinstance(found, dict):
                 node_id = found.get('id')
             elif isinstance(found, list) and found:

@@ -663,7 +663,7 @@ class Brain(
         if ctx is None:
             from .session_context import SessionContext, SessionContextCorrupt
             try:
-                ctx = SessionContext.load(self.logs_conn, session_id)
+                ctx = SessionContext.load(self._session_state, session_id)
             except SessionContextCorrupt as e:
                 self._log_error('session_context_load', e,
                                 'session_env_for session=%s' % (session_id or '')[:8])
@@ -739,6 +739,20 @@ class Brain(
         """
         return self._interaction_dal.set_active(name, version, set_by)
 
+    def register_interaction(self, name: str, template: str = '',
+                             parameters: str = '',
+                             created_by: str = 'anchor') -> dict:
+        """Register a new version of an interaction (prompt + config).
+
+        Does NOT activate it (version 1 of a new name auto-activates —
+        otherwise nothing would be readable). Flip the runtime pointer with
+        set_interaction_active. Completes the interaction-registry door:
+        callers never touch _interaction_dal directly.
+        """
+        return self._interaction_dal.register(
+            name=name, template=template, parameters=parameters,
+            created_by=created_by)
+
     def get_or_create_session(self, session_id: str) -> 'SessionContext':
         """Get or create a SessionContext for a given session_id.
 
@@ -789,7 +803,7 @@ class Brain(
             # racing thread's already-modified state.
             from .session_context import SessionContextCorrupt
             try:
-                ctx = SessionContext.load(self.logs_conn, session_id)
+                ctx = SessionContext.load(self._session_state, session_id)
             except SessionContextCorrupt as e:
                 self._log_error('session_context_load', e,
                                 'get_or_create_session session=%s' % (session_id or '')[:8])
@@ -816,7 +830,7 @@ class Brain(
         with self.write_lock:
             for ctx in list(self._session_contexts.values()):
                 try:
-                    ctx.save(self.logs_conn)
+                    ctx.save(self._session_state)
                     n += 1
                 except Exception as _e:
                     try:
@@ -1022,7 +1036,7 @@ class Brain(
         if ctx is not None:
             try:
                 with self.write_lock:  # serialize the shared logs_conn write
-                    ctx.save(self.logs_conn)
+                    ctx.save(self._session_state)
             except Exception as _e:
                 try:
                     self._log_error('session_context_discard', _e,
@@ -1083,7 +1097,7 @@ class Brain(
             existing = self._session_contexts.get(sid)
             if existing is None:
                 try:
-                    existing = SessionContext.load(self.logs_conn, sid)
+                    existing = SessionContext.load(self._session_state, sid)
                 except SessionContextCorrupt as e:
                     self._log_error('session_context_load', e,
                                     'reset_session_activity session=%s' % (sid or '')[:8])
@@ -1108,7 +1122,7 @@ class Brain(
             # brain.session_id property + _log_error/_log_warning). C-refactor
             # threads session_id through every call site and drops this write.
             self._meta.set('session_id', sid)
-            ctx.save(self.logs_conn)
+            ctx.save(self._session_state)
             self._session_contexts[sid] = ctx
         return is_resume
 
@@ -1846,8 +1860,9 @@ class Brain(
             ctx=ctx,
         )
 
-    def get_recent_errors(self, hours: int = 24, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get recent errors from brain_logs.db via DAL."""
+    def get_recent_errors(self, hours: int = 24, limit: int = 20) -> List[Dict[str, Any]]:
+        """Get recent errors from brain_logs.db via DAL. Default limit
+        matches LogsDAL.get_recent_errors — no caller ever wanted 10."""
         try:
             return self._logs_dal.get_recent_errors(hours=hours, limit=limit)
         except Exception:

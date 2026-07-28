@@ -57,9 +57,6 @@ from .brain_constants import (
     ZSCORE_STATS_KEY_MEAN,
     ZSCORE_STATS_KEY_STD,
 )
-from .dal import NodeDAL, VectorDAL
-from .dal_graph import GraphDAL
-from .dal_logs import LogsDAL
 from .db_backends.sqlite import commit_unless_batched
 
 
@@ -359,10 +356,7 @@ class BrainRecallMixin:
         When given a list, uses batched queries (5 queries total instead of N×4).
         This is the canonical way to get a node. For the bare DB row, use NodeDAL.get_naked_node().
         """
-        from .dal_metadata import MetadataDAL
-
-        conn = self.conn
-        ndal = NodeDAL(conn)
+        ndal = self._nodes
 
         # ── Dispatch: single vs batch ──
         single = isinstance(node_id_or_ids, str)
@@ -392,8 +386,7 @@ class BrainRecallMixin:
         # ── 2. Batch fetch all metadata via MetadataDAL.get_all_bulk.
         # Single SQL source for KV reads — same DAL the correction-enrich
         # pipeline uses for its scoped fetch.
-        from .dal_metadata import MetadataDAL
-        meta_by_node = MetadataDAL(conn).get_all_bulk(found_ids)
+        meta_by_node = self._meta_kv.get_all_bulk(found_ids)
         for nid in found_ids:
             if nid in meta_by_node:
                 nodes[nid]['_metadata'] = meta_by_node[nid]
@@ -422,8 +415,7 @@ class BrainRecallMixin:
         # ── 5. Batch fetch all connections via GraphDAL (v25) ──
         # DAL centralizes: archived=0 default, noise-relation exclusion,
         # direction detection, per-neighbor relation grouping.
-        from .dal_graph import GraphDAL
-        connections_by_owner = GraphDAL(conn).get_connections_bulk(found_ids)
+        connections_by_owner = self._graph.get_connections_bulk(found_ids)
 
         for nid in found_ids:
             conns = connections_by_owner.get(nid, [])

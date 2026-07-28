@@ -75,16 +75,16 @@ class TestSessionContextPersistence:
     def test_save_and_load(self):
         from servers.session_context import SessionContext
         ctx = SessionContext(session_id='persist-test', stop_counter=10)
-        ctx.save(self.brain.logs_conn)
+        ctx.save(self.brain._session_state)
 
-        loaded = SessionContext.load(self.brain.logs_conn, 'persist-test')
+        loaded = SessionContext.load(self.brain._session_state, 'persist-test')
         assert loaded is not None
         assert loaded.session_id == 'persist-test'
         assert loaded.stop_counter == 10
 
     def test_load_nonexistent_returns_none(self):
         from servers.session_context import SessionContext
-        loaded = SessionContext.load(self.brain.logs_conn, 'nonexistent')
+        loaded = SessionContext.load(self.brain._session_state, 'nonexistent')
         assert loaded is None
 
     def test_load_corrupt_blob_raises_typed_signal(self):
@@ -95,7 +95,7 @@ class TestSessionContextPersistence:
         from servers.dal_logs import SessionStateDAL
         SessionStateDAL(self.brain.logs_conn).set('corrupt-sess', '_session_context', 'not json{')
         with pytest.raises(SessionContextCorrupt):
-            SessionContext.load(self.brain.logs_conn, 'corrupt-sess')
+            SessionContext.load(self.brain._session_state, 'corrupt-sess')
         # the brain caller catches the signal and degrades gracefully (no crash)
         assert self.brain.session_env_for('corrupt-sess') == {
             'cwd': '', 'branch': '', 'worktree': '', 'project': ''}
@@ -103,12 +103,12 @@ class TestSessionContextPersistence:
     def test_save_updates_existing(self):
         from servers.session_context import SessionContext
         ctx = SessionContext(session_id='update-test', stop_counter=5)
-        ctx.save(self.brain.logs_conn)
+        ctx.save(self.brain._session_state)
 
         ctx.stop_counter = 15
-        ctx.save(self.brain.logs_conn)
+        ctx.save(self.brain._session_state)
 
-        loaded = SessionContext.load(self.brain.logs_conn, 'update-test')
+        loaded = SessionContext.load(self.brain._session_state, 'update-test')
         assert loaded.stop_counter == 15
 
     def test_save_and_load_cwd_branch(self):
@@ -120,8 +120,8 @@ class TestSessionContextPersistence:
         ctx.branch = 'claude/x'
         ctx.worktree = 'emb-bench'
         ctx.project = 'brain'
-        ctx.save(self.brain.logs_conn)
-        loaded = SessionContext.load(self.brain.logs_conn, 'env-test')
+        ctx.save(self.brain._session_state)
+        loaded = SessionContext.load(self.brain._session_state, 'env-test')
         assert loaded.cwd == '/work/tree/x'
         assert loaded.branch == 'claude/x'
         assert loaded.worktree == 'emb-bench'
@@ -150,7 +150,7 @@ class TestSessionContextPersistence:
         from servers.session_context import SessionContext
         is_resume = self.brain.reset_session_activity(session_id='env-sess', cwd='/work/tree/y')
         assert is_resume is False                    # never booted → new session
-        after = SessionContext.load(self.brain.logs_conn, 'env-sess')
+        after = SessionContext.load(self.brain._session_state, 'env-sess')
         assert after.cwd == '/work/tree/y'          # stamped from the boot feed
         assert after.branch                          # derived (real branch or 'unknown')
 
@@ -229,7 +229,7 @@ class TestSessionContextPersistence:
         ctx = SessionContext(session_id='wt-resume')
         ctx.boot_time = self.brain.now()       # mark booted → next reset is a RESUME
         ctx.worktree = 'feature-x'
-        ctx.save(self.brain.logs_conn)
+        ctx.save(self.brain._session_state)
         self.brain._session_contexts['wt-resume'] = ctx
         # cwd that git can't resolve → detect_git_env → (‘unknown’, None)
         self.brain.reset_session_activity(session_id='wt-resume', cwd='/no/such/dir')
@@ -252,7 +252,7 @@ class TestSessionContextPersistence:
         # Re-boot the SAME session (resume) — different cwd to prove identity still
         # refreshes while accumulated state is preserved.
         assert self.brain.reset_session_activity(session_id='resume-sess', cwd='/w/b') is True
-        after = SessionContext.load(self.brain.logs_conn, 'resume-sess')
+        after = SessionContext.load(self.brain._session_state, 'resume-sess')
         assert after.stop_counter == 7               # chain-id sequence preserved (no dup chains)
         assert after.message_count == 4
         assert after.segment_id == 2
@@ -267,10 +267,10 @@ class TestSessionContextPersistence:
         self.brain.reset_session_activity(session_id='restart-sess', cwd='/w/a')
         ctx = self.brain._session_contexts['restart-sess']
         ctx.stop_counter = 9
-        ctx.save(self.brain.logs_conn)               # persist before the "restart"
+        ctx.save(self.brain._session_state)               # persist before the "restart"
         self.brain._session_contexts.clear()         # simulate daemon restart
         assert self.brain.reset_session_activity(session_id='restart-sess', cwd='/w/a') is True
-        after = SessionContext.load(self.brain.logs_conn, 'restart-sess')
+        after = SessionContext.load(self.brain._session_state, 'restart-sess')
         assert after.stop_counter == 9               # survived the restart + re-boot
 
     def test_turns_since_last_encode_trace_pull(self):
@@ -353,11 +353,11 @@ class TestSessionContextPersistence:
         from servers.session_context import SessionContext
         ctx1 = SessionContext(session_id='sess-1', stop_counter=10)
         ctx2 = SessionContext(session_id='sess-2', stop_counter=20)
-        ctx1.save(self.brain.logs_conn)
-        ctx2.save(self.brain.logs_conn)
+        ctx1.save(self.brain._session_state)
+        ctx2.save(self.brain._session_state)
 
-        loaded1 = SessionContext.load(self.brain.logs_conn, 'sess-1')
-        loaded2 = SessionContext.load(self.brain.logs_conn, 'sess-2')
+        loaded1 = SessionContext.load(self.brain._session_state, 'sess-1')
+        loaded2 = SessionContext.load(self.brain._session_state, 'sess-2')
         assert loaded1.stop_counter == 10
         assert loaded2.stop_counter == 20
 
@@ -463,13 +463,13 @@ class TestSessionContextReplacesSingleton:
         """If daemon restarts, loading the saved context preserves session_id."""
         from servers.session_context import SessionContext
         ctx = SessionContext(session_id='stable-session', stop_counter=50)
-        ctx.save(self.brain.logs_conn)
+        ctx.save(self.brain._session_state)
 
         # Simulate daemon restart — new Brain instance, same DB
         from servers.brain import Brain
         brain2 = Brain(self.brain.db_path)
 
-        loaded = SessionContext.load(brain2.logs_conn, 'stable-session')
+        loaded = SessionContext.load(brain2._session_state, 'stable-session')
         assert loaded is not None
         assert loaded.session_id == 'stable-session'
         assert loaded.stop_counter == 50

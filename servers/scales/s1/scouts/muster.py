@@ -110,8 +110,7 @@ def build_muster_context(
     )
 
     # Fetch catalog node dicts for algorithmic scouts (temporal, later
-    # entity/others). If the brain doesn't have a batch getter, fall back
-    # to per-id lookup.
+    # entity/others) — one batched get_node call.
     catalog_nodes = _fetch_catalog_nodes(brain, catalog_node_ids)
 
     # Shared Anthropic client so cache warm-up carries across LLM scouts
@@ -332,22 +331,19 @@ def _fetch_catalog_nodes(brain, node_ids: set) -> List[Dict[str, Any]]:
     if not node_ids:
         return []
     try:
-        # Most brains expose get_nodes (batch) or get_node (per id).
-        if hasattr(brain, 'get_nodes'):
-            return list(brain.get_nodes(list(node_ids)) or [])
-        if hasattr(brain, 'get_node'):
-            out = []
-            for nid in node_ids:
-                try:
-                    n = brain.get_node(nid)
-                    if n:
-                        out.append(n)
-                except Exception:
-                    continue
-            return out
-    except Exception:
+        # brain.get_node(list) batches (5 queries total instead of N×4) and
+        # returns {resolved_full_id: node} — short input ids come back under
+        # their resolved keys and missing ids are omitted, so consume values,
+        # never index by the input id.
+        return list((brain.get_node(list(node_ids)) or {}).values())
+    except Exception as e:
+        try:
+            brain._log_error('scout_muster', e,
+                             'catalog batch fetch failed — scouts see an '
+                             'empty catalog this round')
+        except Exception:
+            pass
         return []
-    return []
 
 
 def _metrics(outputs: Dict[str, Dict[str, Any]], elapsed_ms: int) -> Dict[str, Any]:

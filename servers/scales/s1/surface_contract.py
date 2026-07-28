@@ -1028,7 +1028,7 @@ def _bulk_load_stored_edge_embeddings(brain_conn, edge_keys,
     return out
 
 
-def _build_edge_coeffs(brain, brain_conn, activated_nodes, query_vec,
+def _build_edge_coeffs(brain, activated_nodes, query_vec,
                       cached_edge_coeffs):
     """Collect outgoing edges from all currently activated nodes; compute
     their transmission coefficients.
@@ -1054,9 +1054,10 @@ def _build_edge_coeffs(brain, brain_conn, activated_nodes, query_vec,
     queries per recall instead of 200+). Per-owner neighbor cap enforced
     in Python.
     """
-    from servers.dal_graph import GraphDAL
-
-    gdal = GraphDAL(brain_conn)
+    # brain's held instance — the old brain_conn param existed only to avoid
+    # admitting the brain dependency this function already has (brain.aspects,
+    # brain._log_error), and rebuilt a GraphDAL once per spread hop.
+    gdal = brain._graph
     excluded = set(brain.aspects.traversal_exclusions)
 
     # Per-source neighbor cap. Default from contract (SPREAD_NEIGHBOR_LIMIT_DEFAULT).
@@ -1097,7 +1098,7 @@ def _build_edge_coeffs(brain, brain_conn, activated_nodes, query_vec,
     # semantics. Empty result on any failure — caller falls through to
     # on-demand embed for all edges (correctness preserved).
     stored_embeddings = _bulk_load_stored_edge_embeddings(
-        brain_conn, edge_keys, brain=brain,
+        brain.conn, edge_keys, brain=brain,
         error_label='edge_embedding_read_spread')
 
     edges_out = []
@@ -1273,7 +1274,7 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
             active_sources = [n for n, _ in raw_active]
 
         edges = _build_edge_coeffs(
-            brain, brain.conn, active_sources, blended,
+            brain, active_sources, blended,
             cached_edge_coeffs)
 
         if not edges:
@@ -1528,7 +1529,7 @@ def spread_activation_cluster(seed_ids, query_vec, brain, prior_vecs=None):
             break
 
         edges = _build_edge_coeffs(
-            brain, brain.conn, active_sources, blended,
+            brain, active_sources, blended,
             cached_edge_coeffs)
 
         if not edges:

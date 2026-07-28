@@ -17,13 +17,12 @@ Usage:
     ctx = SessionContext.from_hook_args(args)
     chain = ctx.s0_chain()  # 's0-{session_short}-{stop}'
 
-    # Persist across daemon restarts:
-    ctx.save(conn)
-    ctx = SessionContext.load(conn, session_id)
+    # Persist across daemon restarts (dal = brain._session_state):
+    ctx.save(dal)
+    ctx = SessionContext.load(dal, session_id)
 """
 import json
 import uuid
-import sqlite3
 from typing import Dict
 from datetime import datetime, timezone
 
@@ -243,7 +242,7 @@ class SessionContext:
         if project is not None:
             self.project = project
 
-    def save(self, conn: sqlite3.Connection):
+    def save(self, dal):
         """Save session context to DB. Creates or updates.
 
         Includes fatigue + activity counters as JSON — single row replaces
@@ -267,16 +266,17 @@ class SessionContext:
             'segment_node_ids': self.segment_node_ids,
             'node_activity': self.node_activity,
         })
-        # SessionStateDAL is the sole gateway to session_state; wrap the conn
-        # we're handed (SessionContext has no Brain ref to reach a held DAL).
-        from .dal_logs import SessionStateDAL
-        SessionStateDAL(conn).set(self.session_id, '_session_context', data)
+        dal.set(self.session_id, '_session_context', data)
 
     @classmethod
-    def load(cls, conn: sqlite3.Connection, session_id: str) -> 'SessionContext':
-        """Load session context from DB. Returns None if not found."""
-        from .dal_logs import SessionStateDAL
-        value = SessionStateDAL(conn).get(session_id, '_session_context')
+    def load(cls, dal, session_id: str) -> 'SessionContext':
+        """Load session context from DB. Returns None if not found.
+
+        `dal` is a SessionStateDAL — production callers pass the brain's held
+        instance (brain._session_state); brain-free tests construct one over
+        their own connection.
+        """
+        value = dal.get(session_id, '_session_context')
         if not value:
             return None
         try:

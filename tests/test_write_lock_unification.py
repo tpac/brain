@@ -139,7 +139,7 @@ class GetOrCreateSessionRaceTests(BrainTestBase):
         ctx = self.brain.get_or_create_session(session_id)
         ctx.stop_counter = 42
         ctx.fatigue = {'node-x': 7}
-        ctx.save(self.brain.logs_conn)
+        ctx.save(self.brain._session_state)
         # Re-fetch via get_or_create — should see the modified state
         ctx2 = self.brain.get_or_create_session(session_id)
         self.assertEqual(ctx2.stop_counter, 42,

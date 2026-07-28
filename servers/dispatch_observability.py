@@ -229,7 +229,7 @@ def _handle_set_interaction_active(brain, args, graph_changes):
     except (TypeError, ValueError):
         return {"ok": False, "error": "version must be an integer"}
     try:
-        result = brain._interaction_dal.set_active(name, version, set_by)
+        result = brain.set_interaction_active(name, version, set_by)
         return {"ok": True, "result": result}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
@@ -257,7 +257,7 @@ def _handle_register_interaction(brain, args, graph_changes):
         return {"ok": False, "error": "name is required"}
 
     try:
-        result = brain._interaction_dal.register(
+        result = brain.register_interaction(
             name=name,
             template=template,
             parameters=parameters,
@@ -265,7 +265,7 @@ def _handle_register_interaction(brain, args, graph_changes):
         # Registration does NOT activate. Return the newly-registered version
         # plus the currently-active version so the caller knows whether it
         # took effect at runtime.
-        active = brain._interaction_dal.get_active(name)
+        active = brain.get_interaction(name)
         return {"ok": True, "result": {
             "name": name,
             "registered_version": result.get("version"),

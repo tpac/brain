@@ -19,6 +19,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+from servers.dal_logs import SessionStateDAL
 from servers.session_context import SessionContext
 
 
@@ -87,6 +88,7 @@ class TestPersistenceRoundTrip(unittest.TestCase):
 
     def setUp(self):
         self.conn = sqlite3.connect(':memory:')
+        self._dal = SessionStateDAL(self.conn)
         # Mirror the session_state DDL from schema.py (logs DB).
         self.conn.execute(
             'CREATE TABLE session_state ('
@@ -102,9 +104,9 @@ class TestPersistenceRoundTrip(unittest.TestCase):
         ctx.bump_node_activity('nid-1', '2026-05-25T10:00:00+00:00')
         ctx.bump_node_activity('nid-2', '2026-05-25T10:05:00+00:00')
         ctx.bump_node_activity('nid-1', '2026-05-25T10:10:00+00:00')
-        ctx.save(self.conn)
+        ctx.save(self._dal)
 
-        loaded = SessionContext.load(self.conn, 'sess-A')
+        loaded = SessionContext.load(self._dal, 'sess-A')
         self.assertIsNotNone(loaded)
         self.assertIn('nid-1', loaded.node_activity)
         self.assertIn('nid-2', loaded.node_activity)
@@ -134,7 +136,7 @@ class TestPersistenceRoundTrip(unittest.TestCase):
             ('sess-old', '_session_context', '', legacy, '2026-05-25T00:00:00+00:00'))
         self.conn.commit()
 
-        loaded = SessionContext.load(self.conn, 'sess-old')
+        loaded = SessionContext.load(self._dal, 'sess-old')
         self.assertIsNotNone(loaded)
         self.assertEqual(loaded.node_activity, {})
         # Other fields still load correctly.
@@ -148,15 +150,15 @@ class TestPersistenceRoundTrip(unittest.TestCase):
         """Two sessions saved to the same DB → load returns isolated state."""
         a = SessionContext(session_id='sess-A')
         a.bump_node_activity('nid-X', '2026-05-25T10:00:00+00:00')
-        a.save(self.conn)
+        a.save(self._dal)
 
         b = SessionContext(session_id='sess-B')
         b.bump_node_activity('nid-X', '2026-05-25T10:05:00+00:00')
         b.bump_node_activity('nid-Y', '2026-05-25T10:06:00+00:00')
-        b.save(self.conn)
+        b.save(self._dal)
 
-        loaded_a = SessionContext.load(self.conn, 'sess-A')
-        loaded_b = SessionContext.load(self.conn, 'sess-B')
+        loaded_a = SessionContext.load(self._dal, 'sess-A')
+        loaded_b = SessionContext.load(self._dal, 'sess-B')
 
         self.assertEqual(set(loaded_a.node_activity.keys()), {'nid-X'})
         self.assertEqual(set(loaded_b.node_activity.keys()), {'nid-X', 'nid-Y'})

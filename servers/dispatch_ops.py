@@ -163,16 +163,15 @@ def _handle_diagnose(brain, args, graph_changes):
 
     # Vector cache diagnostics (added 2026-04-19 for recall thrash debugging).
     try:
-        cache_stats = brain._vec_dal.cache_stats() if hasattr(brain, '_vec_dal') else {}
+        cache_stats = brain._vec_dal.cache_stats()
     except Exception as e:
         cache_stats = {'error': str(e)}
 
-    # Recent errors — hours defaults to 2.
+    # Recent errors — hours defaults to 2. The door degrades to [] on its
+    # own internal failure, so no handler-side try/except: a second swallow
+    # here would hide which layer failed.
     hours = int(args.get('hours', 2))
-    try:
-        recent_errors = brain._logs_dal.get_recent_errors(hours=hours) if hasattr(brain, '_logs_dal') else []
-    except Exception:
-        recent_errors = []
+    recent_errors = brain.get_recent_errors(hours=hours)
 
     result = {
         'timestamp': ts,

@@ -574,8 +574,7 @@ def _hebbian_strengthen(brain, session_id, stop_counter):
             return
 
         # Resolve short IDs to full IDs.
-        from servers.dal import NodeDAL
-        dal = NodeDAL(brain.conn)
+        dal = brain._nodes
         full_ids = []
         for sid in surface_ids:
             full_id = dal.resolve_id(sid)
@@ -833,9 +832,7 @@ def hook_idle_maintenance(brain, args, graph_changes):
 
     # 3d. Edge decay — apply half-life decay to auto-generated edges
     try:
-        from .dal_graph import GraphDAL
-        graph_dal = GraphDAL(brain.conn)
-        decay_result = graph_dal.decay_edges()
+        decay_result = brain._graph.decay_edges()
         decayed = decay_result.get('decayed', 0)
         pruned = decay_result.get('pruned', 0)
         if decayed or pruned:
@@ -893,9 +890,7 @@ def hook_idle_maintenance(brain, args, graph_changes):
 
     # 9. DB maintenance (prune old logs, clean orphans)
     try:
-        from servers.dal_logs import LogsDAL
-        logs_dal = LogsDAL(brain.logs_conn)
-        maint = logs_dal.run_maintenance(graph_conn=brain.conn)
+        maint = brain._logs_dal.run_maintenance(graph_conn=brain.conn)
         total_pruned = maint.get('total_pruned', 0)
         total_orphans = maint.get('total_orphans', 0)
         if total_pruned > 0 or total_orphans > 0:
@@ -1222,7 +1217,7 @@ def hook_worktree_context(brain, args, graph_changes):
             ctx = brain.get_or_create_session(session_id)
             ctx.set_env(cwd=cwd, branch=branch, worktree=worktree_name,
                         project=project)
-            ctx.save(brain.logs_conn)
+            ctx.save(brain._session_state)
 
     try:
         brain.scan_host_environment()
@@ -1243,7 +1238,7 @@ def hook_worktree_cleanup(brain, args, graph_changes):
             ctx = brain.get_or_create_session(session_id)
             old_worktree = ctx.worktree
             ctx.set_env(worktree="")
-            ctx.save(brain.logs_conn)
+            ctx.save(brain._session_state)
     if old_worktree:
         graph_changes.append("WORKTREE: removed %s" % old_worktree)
     return {"output": ""}

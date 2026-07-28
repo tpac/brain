@@ -73,7 +73,7 @@ class TestSelfPresence(BrainTestBase):
         ctx.cwd = '/Users/t/brain/.claude/worktrees/emb-bench'
         ctx.branch = 'emb-bench-eval'
         ctx.worktree = 'emb-bench'
-        ctx.save(self.brain.logs_conn)
+        ctx.save(self.brain._session_state)
         out = presence.build_presence(self.brain, my_session_id='other', limit=10, rich=True)
         entry = next(s for s in out['streams'] if s['session_id'] == 'streamWT00')
         self.assertEqual(entry['worktree'], 'emb-bench')
@@ -117,7 +117,7 @@ class TestSelfPresence(BrainTestBase):
         ctx.cwd = '/Users/tom/brain/.claude/worktrees/foo'
         ctx.branch = 'claude/foo-123'
         ctx.worktree = 'foo'
-        ctx.save(self.brain.logs_conn)
+        ctx.save(self.brain._session_state)
         p = presence.peek(self.brain, 'streamENV0')
         self.assertEqual(p['cwd'], '/Users/tom/brain/.claude/worktrees/foo')
         self.assertEqual(p['branch'], 'claude/foo-123')
