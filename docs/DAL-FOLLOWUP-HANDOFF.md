@@ -1,3 +1,9 @@
+> **SUPERSEDED 2026-07-28 — absorbed into `docs/DAL-BOUNDARY-ARCH-PLAN.md`.**
+> M1 (edge_exists direction bug) SHIPPED in DAL Step 0 (`77e5fcb`). ITEM 1
+> (`NodeDAL.update_fields`) lives on as that plan's Step 8; H1 (filter_nodes
+> metadata N+1) as its Step 3. The execution details below (leave-raw list,
+> ratchet discipline) stay authoritative for those two items.
+
 # DAL follow-up — execution brief (post-compaction)
 
 Self-contained spec for two pieces left after the DAL cleanup arc (Phases 0–6, all
