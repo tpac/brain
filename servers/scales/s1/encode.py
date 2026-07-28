@@ -229,8 +229,9 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         profile_str = " → ".join("%s:%dms" % (n, t) for n, t in profile)
         print('[s1e] ERROR: Sonnet API call failed: %s PROFILE: %s' % (e, profile_str), flush=True)
         brain._log_error('s1e_run_failed', e,
-                         'session=%s stop=%d — LLM loop failed, no writes this run'
-                         % (session_id[:8], counter))
+                         'session=%s stop=%d — LLM loop failed; writes from '
+                         'completed rounds (if any) are kept, turns stay '
+                         'unencoded and will retry' % (session_id[:8], counter))
         with brain.loud('s1e_failed_trace_write', 'recording encoding_run_failed delta'):
             dispatch_fn('trace_append', {
                 'chain_id': enc_chain, 'scale': 's1', 'event_type': 'delta',
