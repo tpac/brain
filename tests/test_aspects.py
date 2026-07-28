@@ -434,6 +434,43 @@ class TestWriteDoorGate(unittest.TestCase):
         self.assertEqual(self._file_bytes(), before)   # file untouched
         self.assertTrue(any('heal REFUSED' in m for m in logged), logged)
 
+    def test_reconcile_heals_missing_fact_fields(self):
+        # Job 4: a pre-Step-4 working copy (no accepts/routable/... anywhere)
+        # receives the seed's per-aspect facts on reconcile. Without this the
+        # registry — which loads the WORKING copy — would run every derived
+        # consumer (classifier routing, prompt visibility, lineage ride-along)
+        # on defaults while seed-based tests pass.
+        import json
+        import servers.aspects as aspects_mod
+        from servers.aspects import ASPECT_FACT_KEYS
+        with open(self.work) as f:
+            cur = json.load(f)
+        for spec in cur.values():
+            for k in ASPECT_FACT_KEYS:
+                spec.pop(k, None)
+        # A deliberately divergent PRESENT value must survive the heal.
+        cur['temporal_sequence']['prompt_visible'] = False
+        with open(self.work, 'w') as f:
+            json.dump(cur, f)
+        logged = []
+        changed = aspects_mod.reconcile_working_copy(log_fn=logged.append)
+        self.assertTrue(changed)
+        with open(self.work) as f:
+            healed = json.load(f)
+        for name, spec in healed.items():
+            if name.startswith('_'):
+                continue                     # _schema docs, not an aspect
+            for k in ASPECT_FACT_KEYS:
+                self.assertIn(k, spec, '%s.%s not healed' % (name, k))
+        # facts match the seed...
+        self.assertEqual(healed['survivor_lineage']['routable'], False)
+        self.assertEqual(healed['dependency_flow']['structural_lineage'], True)
+        # ...except the present value, which was preserved, not overwritten
+        self.assertEqual(healed['temporal_sequence']['prompt_visible'], False)
+        self.assertTrue(any('facts +=' in m for m in logged), logged)
+        # idempotent: second run finds nothing to heal
+        self.assertFalse(aspects_mod.reconcile_working_copy())
+
     def test_malformed_working_copy_boots_degraded_and_loud(self):
         import json
         with open(self.work) as f:

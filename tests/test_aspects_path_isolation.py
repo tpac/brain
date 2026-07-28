@@ -71,6 +71,7 @@ class TestAspectsPathIsolation(unittest.TestCase):
             self.skipTest("no production brain.db to isolate")
         work = os.path.join(tempfile.mkdtemp(prefix='aspects_override_'),
                             'aspects_v1.json')
+        prior = os.environ.get('ASPECTS_JSON_PATH')
         os.environ['ASPECTS_JSON_PATH'] = work
         try:
             with IsolatedBrain():
@@ -82,7 +83,12 @@ class TestAspectsPathIsolation(unittest.TestCase):
             # Restored to the caller's value on exit (not popped).
             self.assertEqual(os.environ.get('ASPECTS_JSON_PATH'), work)
         finally:
-            os.environ.pop('ASPECTS_JSON_PATH', None)
+            # Restore, don't pop — popping would strip the conftest
+            # live-file guard from every test after this one.
+            if prior is None:
+                os.environ.pop('ASPECTS_JSON_PATH', None)
+            else:
+                os.environ['ASPECTS_JSON_PATH'] = prior
             shutil.rmtree(os.path.dirname(work), ignore_errors=True)
 
 

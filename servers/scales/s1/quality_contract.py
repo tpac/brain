@@ -463,7 +463,7 @@ DIMENSIONS = {
             'temporal verbs on time-order claims',
         ],
         'violates': [
-            'related_to for what is actually correction (loses LINEAGE_FAMILIES ride-along, loses correction_enrich attach)',
+            'related_to for what is actually correction (loses structural-lineage ride-along, loses correction_enrich attach)',
             'caused_by for time-order only',
             'extends where content invalidates target',
         ],

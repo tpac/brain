@@ -2,7 +2,7 @@
 
 Thin wrapper following the same pattern as Healer / CommunityDetection /
 Consolidation. Decoder finds unclassified strings, encoder routes them
-into the 14 aspects, applier merges into aspects_v1.json. All file I/O,
+into the routable aspects, applier merges into aspects_v1.json. All file I/O,
 no brain mutations.
 """
 

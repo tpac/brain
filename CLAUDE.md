@@ -95,9 +95,16 @@ edit to the JSON (REQUIRED_ASPECTS + seed + contract tests; self-heals into
 working copies via `ensure_aspects_user_copy`).
 
 **Source of truth: `servers/scales/s2/aspects_v1.json`** — aspect `name`,
-`meaning`, `locked`, `dimension`, plus the `node_types` / `edge_relations`
-member lists (the work product; grows as new strings appear). `AspectRegistry`
-loads it at `Brain.__init__`. Single API: `brain.aspects`.
+`meaning`, `locked`, `dimension`, the per-aspect facts (`accepts`, `routable`,
+`prompt_visible`, `structural_lineage` — consumed as derived policy: classifier
+closed list + menu, encoder vocabulary blocks, spread-activation lineage
+ride-along via `brain.aspects.lineage_relations`), plus the `node_types` /
+`edge_relations` member lists (the work product; grows as new strings appear).
+`AspectRegistry` loads it at `Brain.__init__`. Single API: `brain.aspects`.
+Adding an aspect = the JSON entry (facts included) + one `REQUIRED_ASPECTS`
+line — no other code change; contract tests refuse a half-landed entry.
+`_`-prefixed keys in the JSON are in-file documentation (`_schema` explains
+every field) — skipped by the loader, validator, write door, and dashboard.
 
 ```python
 brain.aspects.identity_bearing.node_types       # tuple
@@ -105,7 +112,7 @@ brain.aspects.by_name('correction_improvement') # Optional[Aspect]
 brain.aspects.by_node_type('principle')         # reverse lookup (first claimant)
 brain.aspects.types_in([...]) / relations_in([...])  # union
 brain.aspects.relation_meaning_map()            # surface edge enrichment
-brain.aspects.all_with_counts()                 # list_aspects MCP
+brain.aspects.all_with_counts()                 # listing/introspection (eval)
 ```
 
 **Multi-membership.** A string can belong to multiple aspects when its role

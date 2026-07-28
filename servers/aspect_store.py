@@ -97,6 +97,15 @@ def validate_taxonomy(data) -> list:
       3. every REQUIRED_ASPECTS name is present
       4. noise-exclusivity: a string in `noise` appears in NO other aspect
          (either category) — "not in noise" exclusion filters trust this
+      5. per-aspect fact fields, when present, are well-shaped: `accepts`
+         is a non-empty list drawn from {node_types, edge_relations};
+         `routable` / `prompt_visible` / `structural_lineage` are booleans.
+         Presence itself is a seed-curation standard (tests), not a gate —
+         emergent aspects and pre-heal working copies legitimately lack them.
+
+    Keys starting with '_' are reserved for in-file documentation
+    (`_schema`) — JSON has no comments. Skipped here and by every reader
+    (registry _adopt, dashboard); refused as write targets by add_members.
     """
     violations = []
     if not isinstance(data, dict):
@@ -104,6 +113,8 @@ def validate_taxonomy(data) -> list:
 
     entries = {}
     for name, entry in data.items():
+        if name.startswith('_'):
+            continue
         if not isinstance(entry, dict):
             violations.append("aspect '%s': entry is %s, expected object"
                               % (name, type(entry).__name__))
@@ -127,6 +138,20 @@ def validate_taxonomy(data) -> list:
                                       % (name, category, m))
                 else:
                     seen.add(m)
+        accepts = entry.get('accepts')
+        if accepts is not None:
+            if (not isinstance(accepts, list) or not accepts
+                    or any(a not in ('node_types', 'edge_relations')
+                           for a in accepts)
+                    or len(set(accepts)) != len(accepts)):
+                violations.append(
+                    "aspect '%s'.accepts: %r — expected a non-empty unique "
+                    "subset of ['node_types', 'edge_relations']" % (name, accepts))
+        for flag in ('routable', 'prompt_visible', 'structural_lineage'):
+            val = entry.get(flag)
+            if val is not None and not isinstance(val, bool):
+                violations.append("aspect '%s'.%s: %r, expected boolean"
+                                  % (name, flag, val))
 
     missing = [n for n in REQUIRED_ASPECTS if n not in data]
     if missing:

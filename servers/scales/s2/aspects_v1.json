@@ -1,4 +1,18 @@
 {
+  "_schema": {
+    "_about": "This file IS the aspect taxonomy — the single source of truth for the semantic roles that group the brain's open-text node types and edge relations. An aspect answers: what JOB does this kind of node/edge do? (carry identity, record a correction, mark graph plumbing, ...). Code never hardcodes these groupings; it reads them from here via brain.aspects (AspectRegistry, servers/aspects.py). Keys starting with '_' are documentation like this block — the loader, validator, write door, and dashboard all skip them.",
+    "_editing": "Adding an aspect = add a full entry here (all fields below, including the four facts) + one name in REQUIRED_ASPECTS (servers/aspect_store.py). Contract tests refuse a half-landed entry. Member lists are the classifier's territory — hand-edit them only as a deliberate curation fix; every runtime write goes through AspectRegistry's door, which validates and refuses structural violations (e.g. a string in noise AND a semantic aspect).",
+    "meaning": "The SPEC: what belongs in this aspect, written for the S2 classifier (Sonnet) that routes new strings here by reading exactly this text. Quality matters — the classifier reasons from the meaning, not from similarity to existing members. Also embedded for recall scoring.",
+    "node_types": "WORK PRODUCT, not spec: the node-type strings the classifier (and the seed curation) has filed under this aspect so far. Grows as the encoder invents new types. A string may live in several aspects (multi-membership); the FIRST aspect to claim it in file order is its primary for reverse lookups.",
+    "edge_relations": "Same as node_types but for edge relation verbs (corrects, extends, depends_on, ...). Multi-membership and first-claimant-order apply identically.",
+    "dimension": "Which axis of grouping this aspect lives on. Only 'semantic' exists today; the field is the hook for future axes (e.g. temporal).",
+    "locked": "True for the required aspects code routes on by name — maintenance must never remove or rename them. Emergent (classifier-discovered) aspects would ship unlocked.",
+    "metadata": "Free-form per-aspect extras. Today: display_label, the human-readable name the Healer shows in prompts.",
+    "accepts": "FACT: which member categories this aspect is defined over — ['node_types'], ['edge_relations'], or both. Design intent, not derivable from current members (an empty list might mean 'edge-only by design' or 'not yet populated'). The classifier's validation drops a routing whose category the aspect does not accept.",
+    "routable": "FACT: may the S2 classifier route new strings here? false = system-owned membership (survivor_lineage: its absorbed_into edges are written by the absorb op, never classified). Non-routable aspects are left out of the classifier's menu AND rejected by its validation.",
+    "prompt_visible": "FACT: does this aspect's edge vocabulary appear in encoder prompts (the 'Edge Aspects' block that steers S1/S2 encoders toward specific verbs)? false for the catch-alls (noise, generic_relation) and system aspects — offering 'related_to' or 'co_accessed' as vocabulary would invite exactly the writes we filter out.",
+    "structural_lineage": "FACT: do edges in this aspect ride along in spread activation even when their text similarity to the query is weak? true for aspects whose relation TYPE itself carries the meaning (corrections, refinements, hierarchy, dependencies) — following a 'corrects' edge matters regardless of wording. Kept narrow: temporal_sequence is false so generic before/after ordering doesn't make everything ride."
+  },
   "identity_bearing": {
     "node_types": [
       "principle",
@@ -17,9 +31,15 @@
       "craft_rule"
     ],
     "edge_relations": [],
-    "meaning": "Locked, axiomatic statements that DEFINE how the partnership operates \u2014 values, principles, identity claims, non-negotiable rules, declared visions. The brain treats these as foundational. NOT: things we've LEARNED that happen to feel important (those go to lesson_insight). Test: would this still hold if all our experience were erased? If yes \u2192 identity_bearing. If it EARNED its standing through doing the work \u2192 lesson_insight.",
+    "meaning": "Locked, axiomatic statements that DEFINE how the partnership operates — values, principles, identity claims, non-negotiable rules, declared visions. The brain treats these as foundational. NOT: things we've LEARNED that happen to feel important (those go to lesson_insight). Test: would this still hold if all our experience were erased? If yes → identity_bearing. If it EARNED its standing through doing the work → lesson_insight.",
     "dimension": "semantic",
     "locked": true,
+    "accepts": [
+      "node_types"
+    ],
+    "routable": true,
+    "prompt_visible": true,
+    "structural_lineage": false,
     "metadata": {}
   },
   "episodic_anchor": {
@@ -49,9 +69,15 @@
       "journal"
     ],
     "edge_relations": [],
-    "meaning": "Specific moments, quoted phrases, named events, inflection points \u2014 knowledge bound to a particular point in time and shaped what came after. The thing happened; the node captures the happening itself. NOT: lessons extracted from those moments (lesson_insight) or events still unfolding (active_thread). Test: is this primarily a TIMESTAMP-bound record of something that occurred? If yes \u2192 episodic_anchor.",
+    "meaning": "Specific moments, quoted phrases, named events, inflection points — knowledge bound to a particular point in time and shaped what came after. The thing happened; the node captures the happening itself. NOT: lessons extracted from those moments (lesson_insight) or events still unfolding (active_thread). Test: is this primarily a TIMESTAMP-bound record of something that occurred? If yes → episodic_anchor.",
     "dimension": "semantic",
     "locked": true,
+    "accepts": [
+      "node_types"
+    ],
+    "routable": true,
+    "prompt_visible": true,
+    "structural_lineage": false,
     "metadata": {}
   },
   "active_thread": {
@@ -75,9 +101,15 @@
       "backlog"
     ],
     "edge_relations": [],
-    "meaning": "Unresolved threads \u2014 work-in-progress, open questions, identified gaps, untested hypotheses, directional goals, things still being worked through. Signals 'currently active' to consumers asking what's not yet closed. NOT: things that are CLOSED and now teach us (lesson_insight) or foundational values (identity_bearing). Test: is this still OPEN? If yes \u2192 active_thread.",
+    "meaning": "Unresolved threads — work-in-progress, open questions, identified gaps, untested hypotheses, directional goals, things still being worked through. Signals 'currently active' to consumers asking what's not yet closed. NOT: things that are CLOSED and now teach us (lesson_insight) or foundational values (identity_bearing). Test: is this still OPEN? If yes → active_thread.",
     "dimension": "semantic",
     "locked": true,
+    "accepts": [
+      "node_types"
+    ],
+    "routable": true,
+    "prompt_visible": true,
+    "structural_lineage": false,
     "metadata": {}
   },
   "lesson_insight": {
@@ -129,9 +161,15 @@
       "overview"
     ],
     "edge_relations": [],
-    "meaning": "Reusable knowledge derived from experience \u2014 decisions, findings, lessons, insights, validations, mental models, mechanisms, patterns. The brain LEARNED these from specific situations and they're now usable across contexts. NOT: declared values that didn't have to be earned (identity_bearing) or moments themselves (episodic_anchor). Test: was this EARNED through doing the work? If yes \u2192 lesson_insight.",
+    "meaning": "Reusable knowledge derived from experience — decisions, findings, lessons, insights, validations, mental models, mechanisms, patterns. The brain LEARNED these from specific situations and they're now usable across contexts. NOT: declared values that didn't have to be earned (identity_bearing) or moments themselves (episodic_anchor). Test: was this EARNED through doing the work? If yes → lesson_insight.",
     "dimension": "semantic",
     "locked": true,
+    "accepts": [
+      "node_types"
+    ],
+    "routable": true,
+    "prompt_visible": true,
+    "structural_lineage": false,
     "metadata": {}
   },
   "generic_relation": {
@@ -158,9 +196,15 @@
       "shares_pattern_with",
       "relevant_to"
     ],
-    "meaning": "Edges with REAL but VAGUE semantic content \u2014 'X is related to Y' where there's a genuine connection but no specific role to claim. Catch-all for legitimate associations that don't fit a more specific aspect. NOT: graph mechanics with no semantic claim (those go to noise). Test: is there ANY semantic intent here? If yes but unspecific \u2192 generic_relation. If no semantic claim, just structural/system-derived \u2192 noise.",
+    "meaning": "Edges with REAL but VAGUE semantic content — 'X is related to Y' where there's a genuine connection but no specific role to claim. Catch-all for legitimate associations that don't fit a more specific aspect. NOT: graph mechanics with no semantic claim (those go to noise). Test: is there ANY semantic intent here? If yes but unspecific → generic_relation. If no semantic claim, just structural/system-derived → noise.",
     "dimension": "semantic",
     "locked": true,
+    "accepts": [
+      "edge_relations"
+    ],
+    "routable": true,
+    "prompt_visible": false,
+    "structural_lineage": false,
     "metadata": {}
   },
   "noise": {
@@ -185,9 +229,16 @@
       "extension_refinement",
       "validation_evidence"
     ],
-    "meaning": "Strings without semantic claim \u2014 graph mechanics (co_accessed, emergent_bridge), bookkeeping types (community, aspect, file, project, test, vocabulary), system artifacts. Generated by the brain's machinery, not by knowledge. NOT: vague semantic links (those have meaning, however weak \u2014 generic_relation). Test: is this a SYSTEM ARTIFACT or a BOOKKEEPING TYPE that exists for storage/lookup, not for knowledge? If yes \u2192 noise.",
+    "meaning": "Strings without semantic claim — graph mechanics (co_accessed, emergent_bridge), bookkeeping types (community, aspect, file, project, test, vocabulary), system artifacts. Generated by the brain's machinery, not by knowledge. NOT: vague semantic links (those have meaning, however weak — generic_relation). Test: is this a SYSTEM ARTIFACT or a BOOKKEEPING TYPE that exists for storage/lookup, not for knowledge? If yes → noise.",
     "dimension": "semantic",
     "locked": true,
+    "accepts": [
+      "node_types",
+      "edge_relations"
+    ],
+    "routable": true,
+    "prompt_visible": false,
+    "structural_lineage": false,
     "metadata": {}
   },
   "correction_improvement": {
@@ -226,9 +277,16 @@
       "supersedes",
       "superseded_by"
     ],
-    "meaning": "Knowledge or edges that explicitly UPDATE / AMEND / FIX / REPLACE prior knowledge \u2014 there's a target being corrected. Node types that ARE corrections; edges where one node fixes, replaces, or improves another (`corrects`, `supersedes`, `reframes`, `fixes`, `resolves`). `supersedes` / `superseded_by` are multi-homed HERE and in hierarchical_structure \u2014 a replacement both corrects what came before and states what stands now; list both, never pick one. NOT: extensions that elaborate without amending (extension_refinement). Test: does this REPLACE or FIX something that was wrong or outdated? If yes \u2192 correction. If it just BUILDS ON without amending \u2192 extension.",
+    "meaning": "Knowledge or edges that explicitly UPDATE / AMEND / FIX / REPLACE prior knowledge — there's a target being corrected. Node types that ARE corrections; edges where one node fixes, replaces, or improves another (`corrects`, `supersedes`, `reframes`, `fixes`, `resolves`). `supersedes` / `superseded_by` are multi-homed HERE and in hierarchical_structure — a replacement both corrects what came before and states what stands now; list both, never pick one. NOT: extensions that elaborate without amending (extension_refinement). Test: does this REPLACE or FIX something that was wrong or outdated? If yes → correction. If it just BUILDS ON without amending → extension.",
     "dimension": "semantic",
     "locked": true,
+    "accepts": [
+      "node_types",
+      "edge_relations"
+    ],
+    "routable": true,
+    "prompt_visible": true,
+    "structural_lineage": true,
     "metadata": {
       "display_label": "corrects/improves"
     }
@@ -262,9 +320,15 @@
       "modeled_on",
       "evolves_from"
     ],
-    "meaning": "Edges where one node makes another MORE specific, detailed, elaborated, or developed \u2014 without correcting it. The target gets richer, not changed. NOT: corrections that amend (correction_improvement) or causation that explains why (explanation_causation). Test: is the target NOW WRONG because of this edge? If yes \u2192 correction. If just MORE DETAILED / EVOLVED \u2192 extension.",
+    "meaning": "Edges where one node makes another MORE specific, detailed, elaborated, or developed — without correcting it. The target gets richer, not changed. NOT: corrections that amend (correction_improvement) or causation that explains why (explanation_causation). Test: is the target NOW WRONG because of this edge? If yes → correction. If just MORE DETAILED / EVOLVED → extension.",
     "dimension": "semantic",
     "locked": true,
+    "accepts": [
+      "edge_relations"
+    ],
+    "routable": true,
+    "prompt_visible": true,
+    "structural_lineage": true,
     "metadata": {
       "display_label": "extends/refines"
     }
@@ -303,9 +367,15 @@
       "distinguishes",
       "manifests_in"
     ],
-    "meaning": "Edges that answer WHY \u2014 one node provides the cause, reason, root, motivation, or justification of another. The relationship is REASONING-level, not temporal or structural. NOT: 'X happens after Y' (temporal_sequence) or 'X needs Y to exist' (dependency_flow). Test: can you read it as 'because of X, Y'? If yes \u2192 explanation. If only the time-order matters \u2192 temporal. If only existence/correctness depends \u2192 dependency.",
+    "meaning": "Edges that answer WHY — one node provides the cause, reason, root, motivation, or justification of another. The relationship is REASONING-level, not temporal or structural. NOT: 'X happens after Y' (temporal_sequence) or 'X needs Y to exist' (dependency_flow). Test: can you read it as 'because of X, Y'? If yes → explanation. If only the time-order matters → temporal. If only existence/correctness depends → dependency.",
     "dimension": "semantic",
     "locked": true,
+    "accepts": [
+      "edge_relations"
+    ],
+    "routable": true,
+    "prompt_visible": true,
+    "structural_lineage": false,
     "metadata": {
       "display_label": "explains/causes"
     }
@@ -343,9 +413,15 @@
       "context_for",
       "must_validate_against"
     ],
-    "meaning": "Edges expressing structural PREREQUISITE \u2014 X depends on / requires / enables / blocks Y for existence or correctness. About NEED, not about WHY (explanation) or TIME (temporal). NOT: 'X causes Y' (explanation) or 'X happens before Y in time' (temporal). Test: does removing X break Y? If yes \u2192 dependency. If X just precedes Y temporally without making Y impossible \u2192 temporal. If X explains why Y is the way it is \u2192 explanation.",
+    "meaning": "Edges expressing structural PREREQUISITE — X depends on / requires / enables / blocks Y for existence or correctness. About NEED, not about WHY (explanation) or TIME (temporal). NOT: 'X causes Y' (explanation) or 'X happens before Y in time' (temporal). Test: does removing X break Y? If yes → dependency. If X just precedes Y temporally without making Y impossible → temporal. If X explains why Y is the way it is → explanation.",
     "dimension": "semantic",
     "locked": true,
+    "accepts": [
+      "edge_relations"
+    ],
+    "routable": true,
+    "prompt_visible": true,
+    "structural_lineage": true,
     "metadata": {
       "display_label": "depends on/enables"
     }
@@ -367,9 +443,15 @@
       "weakens",
       "questions"
     ],
-    "meaning": "Edges where one node OPPOSES another \u2014 contradicts, challenges, undermines, violates, distorts. Productive tension between opposing claims that CO-EXIST in disagreement. NOT: corrections that amend / replace (those are correction_improvement). Test: do these two CO-EXIST in tension, or does one REPLACE the other? Co-exist in tension \u2192 contradiction. Replace \u2192 correction.",
+    "meaning": "Edges where one node OPPOSES another — contradicts, challenges, undermines, violates, distorts. Productive tension between opposing claims that CO-EXIST in disagreement. NOT: corrections that amend / replace (those are correction_improvement). Test: do these two CO-EXIST in tension, or does one REPLACE the other? Co-exist in tension → contradiction. Replace → correction.",
     "dimension": "semantic",
     "locked": true,
+    "accepts": [
+      "edge_relations"
+    ],
+    "routable": true,
+    "prompt_visible": true,
+    "structural_lineage": false,
     "metadata": {
       "display_label": "contradicts/challenges"
     }
@@ -400,9 +482,15 @@
       "describes",
       "example_of"
     ],
-    "meaning": "Edges where one node SUPPORTS / CONFIRMS / TESTS / DEMONSTRATES another \u2014 provides empirical or logical evidence for a claim, hypothesis, design. NOT: explanation (which gives the WHY, not evidence). Test: is this OBSERVATION / MEASUREMENT / TEST / EXAMPLE evidence? If yes \u2192 validation. If reasoning-level WHY \u2192 explanation.",
+    "meaning": "Edges where one node SUPPORTS / CONFIRMS / TESTS / DEMONSTRATES another — provides empirical or logical evidence for a claim, hypothesis, design. NOT: explanation (which gives the WHY, not evidence). Test: is this OBSERVATION / MEASUREMENT / TEST / EXAMPLE evidence? If yes → validation. If reasoning-level WHY → explanation.",
     "dimension": "semantic",
     "locked": true,
+    "accepts": [
+      "edge_relations"
+    ],
+    "routable": true,
+    "prompt_visible": true,
+    "structural_lineage": false,
     "metadata": {
       "display_label": "validates/demonstrates"
     }
@@ -427,9 +515,15 @@
       "operates_within",
       "fits_into"
     ],
-    "meaning": "Edges expressing CONTAINMENT or SUPERSESSION \u2014 part_of, includes, contains, supersedes. Skeleton of what contains what and what replaces what. `supersedes` / `superseded_by` are multi-homed HERE and in correction_improvement (a replacement is also a correction of the replaced) \u2014 list both, never pick one. NOT: dependency (X needs Y to exist, not contain Y) or extension (refining vs containing). Test: is X a STRUCTURAL PIECE of Y, or does Y CONTAIN X? If yes \u2192 hierarchical. If X just RELIES on Y \u2192 dependency.",
+    "meaning": "Edges expressing CONTAINMENT or SUPERSESSION — part_of, includes, contains, supersedes. Skeleton of what contains what and what replaces what. `supersedes` / `superseded_by` are multi-homed HERE and in correction_improvement (a replacement is also a correction of the replaced) — list both, never pick one. NOT: dependency (X needs Y to exist, not contain Y) or extension (refining vs containing). Test: is X a STRUCTURAL PIECE of Y, or does Y CONTAIN X? If yes → hierarchical. If X just RELIES on Y → dependency.",
     "dimension": "semantic",
     "locked": true,
+    "accepts": [
+      "edge_relations"
+    ],
+    "routable": true,
+    "prompt_visible": true,
+    "structural_lineage": true,
     "metadata": {
       "display_label": "part of/supersedes"
     }
@@ -479,9 +573,15 @@
       "meets",
       "concludes"
     ],
-    "meaning": "PURE CHRONOLOGICAL edges \u2014 X happens at T1, Y at T2, T1<T2. Time-order only, no reasoning or dependency claim. NOT: 'X causes Y' (even if causal-sequential, classify as explanation_causation when reasoning matters) and not dependency. Test: if you remove the TIME aspect, does the edge still mean something? If only the time-order matters \u2192 temporal. If REASONING matters \u2192 explanation. If EXISTENCE depends \u2192 dependency.",
+    "meaning": "PURE CHRONOLOGICAL edges — X happens at T1, Y at T2, T1<T2. Time-order only, no reasoning or dependency claim. NOT: 'X causes Y' (even if causal-sequential, classify as explanation_causation when reasoning matters) and not dependency. Test: if you remove the TIME aspect, does the edge still mean something? If only the time-order matters → temporal. If REASONING matters → explanation. If EXISTENCE depends → dependency.",
     "dimension": "semantic",
     "locked": true,
+    "accepts": [
+      "edge_relations"
+    ],
+    "routable": true,
+    "prompt_visible": true,
+    "structural_lineage": false,
     "metadata": {
       "display_label": "follows from/leads to"
     }
@@ -491,9 +591,15 @@
     "edge_relations": [
       "absorbed_into"
     ],
-    "meaning": "Edges recording where an archived node's knowledge SURVIVED \u2014 the source node was absorbed/merged into the living target that now carries it forward. The redirect from a dead node to its living descendant; resolve_live walks it to return the living form for any history-sourced id. By construction the source is archived (and in a chain A\u2192B\u2192C the target is too), so these edges intentionally span archived\u2192archived/live and are EXEMPT from dangling-edge archival \u2014 archiving them would sever the redirect. NOT: supersession between live nodes (hierarchical_structure) or amendment of a claim (correction_improvement); absorbed_into is multi-homed in correction_improvement for the correction walk and here for the lineage/redirect role.",
+    "meaning": "Edges recording where an archived node's knowledge SURVIVED — the source node was absorbed/merged into the living target that now carries it forward. The redirect from a dead node to its living descendant; resolve_live walks it to return the living form for any history-sourced id. By construction the source is archived (and in a chain A→B→C the target is too), so these edges intentionally span archived→archived/live and are EXEMPT from dangling-edge archival — archiving them would sever the redirect. NOT: supersession between live nodes (hierarchical_structure) or amendment of a claim (correction_improvement); absorbed_into is multi-homed in correction_improvement for the correction walk and here for the lineage/redirect role.",
     "dimension": "semantic",
     "locked": true,
+    "accepts": [
+      "edge_relations"
+    ],
+    "routable": false,
+    "prompt_visible": false,
+    "structural_lineage": false,
     "metadata": {
       "display_label": "absorbed into"
     }
@@ -517,6 +623,12 @@
     "meaning": "Earned understanding that shapes how Anchor thinks — the generative insights, lessons, principles, and visions that define the partnership's way of reasoning. The inspiring, high-influence subset surfaced as Anchor's wisdom layer (boot + recall, focus-adaptive — relevance-ranked to the session arc when present, influence-sampled at boot). Multi-membership: these types also belong to lesson_insight (earned through doing the work) or identity_bearing (axiomatic); wisdom marks the ones that are GENERATIVE — re-encountering them shifts how I think, not just what I know. NOT operational rules (identity_bearing's rule/operator/procedure), NOT tactical record-keeping (lesson_insight's decision/fact/finding/mechanism/bug). Test: would running into this again change my frame of mind, not just add a fact? If yes → wisdom.",
     "dimension": "semantic",
     "locked": true,
+    "accepts": [
+      "node_types"
+    ],
+    "routable": true,
+    "prompt_visible": true,
+    "structural_lineage": false,
     "metadata": {}
   }
 }

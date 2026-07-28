@@ -330,7 +330,23 @@ it must log loudly and leave the prior file intact rather than half-writing.
 
 ---
 
-## Step 4 — Move per-aspect facts into the JSON entry
+## Step 4 — Move per-aspect facts into the JSON entry — **IMPLEMENTED 2026-07-28 (`91119f7`, branch `claude/cranky-hawking-baaa76`) — MERGE + RESTART HELD**
+
+> **STATUS 2026-07-28.** Landed as specified, plus three additions. (1) A
+> reconcile **job 4** heals missing fact fields from the seed — the plan
+> missed that the registry loads the WORKING copy, which predates the
+> fields on existing brains. (2) A `_schema` in-file documentation entry
+> (operator request): `_`-prefixed JSON keys are reserved docs, skipped by
+> every reader; a test refuses undocumented entry keys. (3) Review found a
+> test-isolation leak — raw `Brain(db_path=tmp)` tests healed the LIVE
+> aspects_v1.json from the repo seed (it received the four fields early,
+> verified harmless/correct); closed by a conftest ASPECTS_JSON_PATH
+> guard. Deviations: absent-fact defaults are CONSERVATIVE
+> (`prompt_visible=False`), not literal-mirroring — a refused heal quiets
+> vocabulary blocks rather than leaking noise verbs into them. Classifier
+> menu verified byte-identical. Merge to main + daemon restart held on
+> operator instruction (parallel streams; another stream changed the
+> agents interface — re-verify `scales/s2/base.py` inheritance on rebase).
 
 **Problem.** The JSON is the declared source of truth for aspect membership, but four per-aspect
 *facts* live in Python name-keyed literals, and the aspect name list is enumerated **six** times:

@@ -117,8 +117,10 @@ Worked, shipped, ran in production for 4 days.
 - **60 brain aspect-nodes archived** (14 required + 46 emergent legacy from
   EdgeFamilyIntegration history). Backup at
   `~/AgentsContext/brain/brain.db.bak-20260508-145220`.
-- **Closed list of 14 aspects.** No emergent aspects. Adding a 15th is a
-  deliberate human JSON edit, not encoder behavior.
+- **Closed list of required aspects (16 today).** No emergent aspects. Adding
+  one is a deliberate human JSON edit, not encoder behavior — the entry's
+  per-aspect facts (`accepts`, `routable`, `prompt_visible`,
+  `structural_lineage`) travel with it.
 - **Multi-membership.** A string can belong to multiple aspects (e.g.,
   `corrects` is in both `correction_improvement` and `temporal_sequence`).
   Reverse lookups return the first aspect in JSON iteration order, so the

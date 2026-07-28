@@ -17,6 +17,33 @@ To run with the right Python without thinking about it:
 """
 import os
 import sys
+import tempfile
+
+import pytest
+
+
+# Live-brain aspects file guard. aspects_json_path() resolves from env at
+# CALL time and falls back to the OPERATOR'S LIVE $BRAIN_DB_DIR/
+# aspects_v1.json — and AspectRegistry (constructed by every Brain.__init__)
+# runs reconcile_working_copy, which WRITES that file (seed heal). Any test
+# that builds a raw Brain(db_path=tmp) without pinning ASPECTS_JSON_PATH
+# therefore heals the live taxonomy from the repo seed under test
+# (observed 2026-07-28: a worktree suite run stamped unmerged schema fields
+# into the live file via test_prompt_sync / test_daemon).
+#
+# Function-scoped + self-healing on purpose: it fills the var only when
+# ABSENT, so deliberate overrides (BrainTestBase, IsolatedBrain,
+# run_aspect_cycles_on_clone) always win, and a test that pops the var
+# doesn't strip protection from the tests after it.
+_ASPECTS_GUARD_PATH = os.path.join(
+    tempfile.mkdtemp(prefix='pytest_aspects_guard_'), 'aspects_v1.json')
+
+
+@pytest.fixture(autouse=True)
+def _aspects_live_file_guard():
+    if not os.environ.get('ASPECTS_JSON_PATH'):
+        os.environ['ASPECTS_JSON_PATH'] = _ASPECTS_GUARD_PATH
+    yield
 
 
 # Hermetic key: brain.llm_available gates surface/encode/S2/warms on a
