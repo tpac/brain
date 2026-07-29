@@ -81,11 +81,20 @@ class BrainDaemon:
         # Write serialization lives on the brain (brain.write_lock) — see
         # Brain.__init__. Daemon acquires it via _locked_exec / autosave.
         self._pool = ThreadPoolExecutor(max_workers=THREAD_POOL_SIZE)
-        # S1 Scribe single-flight: at most one encode at a time across all
-        # sessions. The daemon owns encode concurrency now that the Scribe is
-        # poll-driven (brain.scribe_due decides; this lock serializes; the encode
-        # thread releases it). threading.Lock (not RLock) → cross-thread release.
-        self._encode_lock = threading.Lock()
+        # S1 Scribe concurrency: a hard cap of MAX_CONCURRENT_ENCODES encodes at
+        # once across all sessions (BoundedSemaphore — an over-count release
+        # raises rather than silently inflating the cap). The daemon owns encode
+        # concurrency now that the Scribe is poll-driven (brain.scribe_due decides
+        # who's due; this semaphore caps how many run; the encode thread releases a
+        # permit when it completes). Per-session single-flight rides on top via
+        # _encode_inflight: a session already encoding is excluded from selection,
+        # so it can't double-encode even though an encode outlives the retry
+        # cooldown. _encode_inflight: {session_id: start-epoch} (also the hung-alarm
+        # baseline); _encode_hung_warned: {session_id: True} once warned per incident.
+        from servers.scales.s1.encode_contract import MAX_CONCURRENT_ENCODES
+        self._encode_sema = threading.BoundedSemaphore(MAX_CONCURRENT_ENCODES)
+        self._encode_inflight = {}
+        self._encode_hung_warned = {}
         # Per-session Scribe retry cooldown. A failed/skipped encode never resets
         # the cadence, so the session stays "due" — without this the ~5s poll
         # would re-fire it every tick. {session_id: last-attempt epoch}; a
@@ -1066,41 +1075,49 @@ class BrainDaemon:
     def _run_scribe_poll(self):
         """Poll for a session whose S1 Scribe is due and fire it. Thread pool.
 
-        Single-flight via _encode_lock — one encode at a time across sessions.
-        A busy lock makes this a cheap no-op: the skipped session isn't lost, it
-        re-qualifies and drains on a later poll (most-overdue first — the
-        multi-session "queue"). The daemon owns concurrency; brain.scribe_due()
-        owns the decision (who's due) via higher session functions. The encode
-        runs on its own thread (run_unit_in_background), so this poll returns
-        fast; the encode thread releases _encode_lock when it completes.
+        Capped concurrency via _encode_sema — at most MAX_CONCURRENT_ENCODES
+        encodes at once across sessions — plus per-session single-flight
+        (_encode_inflight) so one session can't double-encode. All permits busy,
+        or the only due session already encoding, makes this a cheap no-op: the
+        skipped session isn't lost, it re-qualifies and drains on a later poll
+        (most-overdue first — the multi-session "queue"). The daemon owns
+        concurrency; brain.scribe_due() owns the decision (who's due) via higher
+        session functions. The encode runs on its own thread
+        (run_unit_in_background), so this poll returns fast; the encode thread
+        releases its permit and clears its in-flight slot when it completes.
         """
         import time as _time
         from servers.scales.s1.encode_contract import (
             SCRIBE_RETRY_COOLDOWN_SECONDS, SCRIBE_MAX_FAILED_RETRIES,
-            SCRIBE_CANDIDATE_WINDOW_MIN, SCRIBE_HUNG_ALARM_SECONDS)
+            SCRIBE_CANDIDATE_WINDOW_MIN, SCRIBE_HUNG_ALARM_SECONDS,
+            MAX_CONCURRENT_ENCODES)
         spawned = False
         acquired = False
+        claimed_sid = None
         try:
-            if not self._encode_lock.acquire(blocking=False):
-                # An encode is already running. If it's been running past the
-                # hung-alarm threshold, the thread is presumed stuck (a blocked
-                # read the loop deadline can't preempt) — it holds the single-
-                # flight lock, so NO session can encode. We can't kill a Python
-                # thread; make the outage visible, once per incident.
-                started = getattr(self, '_encode_started_at', 0)
-                if (started and not getattr(self, '_encode_hung_warned', False)
-                        and _time.time() - started > SCRIBE_HUNG_ALARM_SECONDS):
-                    self._encode_hung_warned = True
-                    self.brain._log_error(
-                        'scribe_hung',
-                        RuntimeError('encode running %ds — thread presumed '
-                                     'hung; single-flight lock held, no '
-                                     'session can encode'
-                                     % int(_time.time() - started)),
-                        'session=%s' % getattr(self, '_encode_session', '?'))
-                return  # an encode is already running
-            acquired = True
             now = _time.time()
+            # Hung-encode surfacing: a thread stuck past the alarm still holds one
+            # of the MAX_CONCURRENT_ENCODES permits and can't be killed — make the
+            # lost slot visible once per incident (per session), not silent. Runs
+            # every poll (not only when all permits are busy), so a single stuck
+            # encode among free permits is still surfaced.
+            for _hsid, _hstart in list(self._encode_inflight.items()):
+                if (now - _hstart > SCRIBE_HUNG_ALARM_SECONDS
+                        and not self._encode_hung_warned.get(_hsid)):
+                    self._encode_hung_warned[_hsid] = True
+                    try:
+                        self.brain._log_error(
+                            'scribe_hung',
+                            RuntimeError('encode running %ds — thread presumed '
+                                         'hung; holds 1 of %d encode permits'
+                                         % (int(now - _hstart), MAX_CONCURRENT_ENCODES)),
+                            'session=%s' % _hsid[:8])
+                    except Exception:
+                        pass
+
+            if not self._encode_sema.acquire(blocking=False):
+                return  # all MAX_CONCURRENT_ENCODES permits in use — next poll retries
+            acquired = True
 
             # Prune attempts older than the candidate window — those sessions
             # have aged out of consideration anyway (keeps the dicts bounded).
@@ -1113,11 +1130,15 @@ class BrainDaemon:
             self._scribe_failures = {s: f for s, f in self._scribe_failures.items()
                                      if s in self._scribe_attempts}
             # Cooling = attempted within the cooldown → exclude from selection so
-            # a failing (still-"due") session can't monopolize the poll.
+            # a failing (still-"due") session can't monopolize the poll. In-flight
+            # sessions are excluded too (per-session single-flight): a session
+            # mid-encode stays most-overdue until it completes, so without this it
+            # would be re-selected every poll and double-encode.
             cooling = {s for s, t in self._scribe_attempts.items()
                        if now - t < SCRIBE_RETRY_COOLDOWN_SECONDS}
+            skip = cooling | set(self._encode_inflight)
 
-            due = self.brain.scribe_due(now=now, skip_sessions=cooling)
+            due = self.brain.scribe_due(now=now, skip_sessions=skip)
             if not due:
                 return
             sid = due['session_id']
@@ -1161,31 +1182,43 @@ class BrainDaemon:
                 if write_actions > 0:
                     self.brain.activity.record_encode_run()
 
+            def _release_slot(_sid=sid):
+                # Runs in the encode thread's finally (success OR crash), beside
+                # the permit release, so a crashed encode can't leave a session
+                # wedged as in-flight (blocked from ever re-encoding).
+                self._encode_inflight.pop(_sid, None)
+                self._encode_hung_warned.pop(_sid, None)
+
             scribe = S1Scribe(self.brain, session_id=sid, counter=due['counter'])
-            self._encode_started_at = now      # hung-alarm baseline
-            self._encode_session = sid[:8]
-            self._encode_hung_warned = False
-            run_unit_in_background(scribe, name='s1e', lock=self._encode_lock,
-                                   on_complete=_count_encode)
-            spawned = True  # lock ownership transferred to the encode thread
+            self._encode_inflight[sid] = now   # per-session single-flight + hung baseline
+            self._encode_hung_warned.pop(sid, None)
+            claimed_sid = sid
+            run_unit_in_background(scribe, name='s1e', lock=self._encode_sema,
+                                   on_complete=_count_encode, on_release=_release_slot)
+            spawned = True  # permit + in-flight slot ownership transferred to the thread
         except Exception as e:
             try:
                 self.brain._log_error('scribe_poll', e, 'Scribe reactor poll')
             except Exception:
                 pass
         finally:
-            # Release the encode lock only if we acquired it but did NOT hand it
-            # to an encode thread (nothing due, or an error before spawn). A
-            # failed release means the lock state is corrupt and the encoder is
+            # Release the permit only if we acquired it but did NOT hand it to an
+            # encode thread (nothing due, or an error before spawn). Undo any
+            # in-flight slot claimed in the same breath — a pre-spawn failure
+            # would otherwise wedge that session out of encoding forever. A failed
+            # release means the semaphore state is corrupt and the encoder is
             # jammed — log loud, don't swallow.
             if acquired and not spawned:
+                if claimed_sid is not None:
+                    self._encode_inflight.pop(claimed_sid, None)
+                    self._encode_hung_warned.pop(claimed_sid, None)
                 try:
-                    self._encode_lock.release()
+                    self._encode_sema.release()
                 except Exception as _re:
                     try:
                         self.brain._log_error(
                             'scribe_lock_release_failed', _re,
-                            'encode lock release failed — encoder may be jammed')
+                            'encode permit release failed — encoder may be jammed')
                     except Exception:
                         pass
             self._scribe_poll_running = False

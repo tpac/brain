@@ -415,7 +415,9 @@ def _build_system_prompt(prompt_instructions=None, lived=None):
         try:
             with open(prompt_path) as f:
                 prompt = f.read()
-        except Exception:
+        except Exception as e:
+            print('[s1e] WARNING: could not read seed prompt %s — using stub: %s'
+                  % (prompt_path, e), flush=True)
             prompt = "You are the encoding agent. Encode focused nodes. Batch operations. 2-3 rounds."
     try:
         from servers.contract import generate_field_summary

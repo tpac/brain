@@ -245,7 +245,7 @@ def retry_on_transient_api_error(fn, *, attempts=RETRY_ATTEMPTS,
     raise last_err
 
 
-def run_unit_in_background(unit, name, lock, on_complete=None):
+def run_unit_in_background(unit, name, lock, on_complete=None, on_release=None):
     """Run an in-process integration unit on a daemon worker thread.
 
     The unit runs on the daemon's OWN brain and writes through its
@@ -257,9 +257,11 @@ def run_unit_in_background(unit, name, lock, on_complete=None):
 
     Owns only thread lifecycle: it runs unit.run(), invokes on_complete with the
     run's write_actions (so callers can gate on "actually wrote material" — e.g.
-    the S2 activity counter), and releases `lock` in finally so a crash can't
-    wedge the encoder. The caller acquires the lock and transfers ownership to
-    this thread.
+    the S2 activity counter), releases `lock` in finally, then fires the optional
+    on_release() cleanup. lock.release() and on_release() both run on success AND
+    crash, so a caller can free per-run state (e.g. a per-session single-flight
+    slot) without leaking it when the encode dies. The caller acquires the lock
+    and transfers ownership to this thread.
     """
     def _thread_fn():
         t0 = time.time()
@@ -304,6 +306,16 @@ def run_unit_in_background(unit, name, lock, on_complete=None):
                 pass
         finally:
             lock.release()
+            if on_release is not None:
+                try:
+                    on_release()
+                except Exception as _re:
+                    try:
+                        unit.brain._log_error(
+                            'scale_runner_on_release', _re,
+                            '%s on_release callback failed' % name)
+                    except Exception:
+                        pass
 
     threading.Thread(target=_thread_fn, daemon=True, name=name).start()
 

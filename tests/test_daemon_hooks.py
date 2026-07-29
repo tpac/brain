@@ -321,16 +321,21 @@ class TestScribeReactor(unittest.TestCase):
         from servers.daemon_server import BrainDaemon
         cap = {'spawned': [], 'logged': [], 'on_complete': None, 'encode_runs': 0}
 
-        def fake_run(unit, name, lock, on_complete=None):
+        def fake_run(unit, name, lock, on_complete=None, on_release=None):
             cap['spawned'].append(unit)
             cap['on_complete'] = on_complete
             lock.release()   # mimic the encode thread's finally
+            if on_release is not None:
+                on_release()  # clears the in-flight slot, as the real finally does
 
         def _record_encode():
             cap['encode_runs'] += 1
 
+        from servers.scales.s1.encode_contract import MAX_CONCURRENT_ENCODES
         fake = types.SimpleNamespace(
-            _encode_lock=threading.Lock(),
+            _encode_sema=threading.BoundedSemaphore(MAX_CONCURRENT_ENCODES),
+            _encode_inflight={},
+            _encode_hung_warned={},
             _scribe_poll_running=True,
             _scribe_attempts=dict(attempts or {}),
             _scribe_failures=dict(failures or {}),
@@ -578,24 +583,54 @@ class TestScribeReactor(unittest.TestCase):
             {'active': ENCODE_EVERY + 3}, now=now, boot_time=now)   # just booted
         self.assertIsNone(due)
 
-    def test_poll_single_flight_skips_when_encode_running(self):
-        # Single-flight: while an encode holds _encode_lock, the poll is a no-op
-        # — it never even asks scribe_due. The skipped session re-qualifies and
-        # drains on a later poll (level trigger). This is the old gate's
-        # lock-contention guarantee, now at the daemon poll.
+    def test_poll_skips_when_all_permits_busy(self):
+        # Hard cap: when every encode permit is in use, the poll is a no-op — it
+        # never even asks scribe_due. Skipped sessions re-qualify and drain on a
+        # later poll (level trigger). Replaces the old global single-flight guard.
         import threading
         import types
         from servers.daemon_server import BrainDaemon
         decided = []
-        lock = threading.Lock()
-        lock.acquire()   # an encode is "running"
+        sema = threading.BoundedSemaphore(1)
+        sema.acquire()   # the only permit is taken → cap reached
         fake = types.SimpleNamespace(
-            _encode_lock=lock, _scribe_poll_running=True,
-            brain=types.SimpleNamespace(scribe_due=lambda: decided.append(1)))
+            _encode_sema=sema, _encode_inflight={}, _encode_hung_warned={},
+            _scribe_poll_running=True,
+            brain=types.SimpleNamespace(
+                scribe_due=lambda **k: decided.append(1),
+                _log_error=lambda *a, **k: None))
         BrainDaemon._run_scribe_poll(fake)
-        self.assertEqual(decided, [], 'a busy lock must skip the decision')
+        self.assertEqual(decided, [], 'all permits busy must skip the decision')
         self.assertFalse(fake._scribe_poll_running, 'poll flag must clear')
-        self.assertTrue(lock.locked(), 'the running encode keeps the lock')
+        self.assertEqual(sema._value, 0, 'the busy permit is untouched')
+
+    def test_poll_excludes_in_flight_session_from_selection(self):
+        # Per-session single-flight: a session already encoding is passed to
+        # scribe_due in the skip set, so it can't be re-selected mid-encode. Its
+        # cadence hasn't reset, so without this it would stay most-overdue and
+        # double-encode. A free permit remains, so the decision still runs.
+        import threading
+        import time
+        import types
+        from servers.daemon_server import BrainDaemon
+        from servers.scales.s1.encode_contract import MAX_CONCURRENT_ENCODES
+        seen = {}
+
+        def sd(now=None, skip_sessions=None):
+            seen['skip'] = set(skip_sessions or ())
+            return None   # nothing else due
+        fake = types.SimpleNamespace(
+            _encode_sema=threading.BoundedSemaphore(MAX_CONCURRENT_ENCODES),
+            _encode_inflight={'busy-sess': time.time()},   # mid-encode, not yet hung
+            _encode_hung_warned={},
+            _scribe_poll_running=True,
+            _scribe_attempts={}, _scribe_failures={},
+            brain=types.SimpleNamespace(
+                scribe_due=sd, _log_error=lambda *a, **k: None))
+        BrainDaemon._run_scribe_poll(fake)
+        self.assertIn('busy-sess', seen['skip'],
+                      'an in-flight session must be excluded from selection')
+        self.assertFalse(fake._scribe_poll_running, 'poll flag must clear')
 
 
 class TestWorktreeHooks(BrainTestBase):

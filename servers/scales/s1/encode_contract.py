@@ -83,11 +83,23 @@ SCRIBE_MAX_FAILED_RETRIES = 3
 # encoding_run_failed and the cooldown paces the retry.
 SCRIBE_RUN_DEADLINE_SECONDS = 1200
 
-# If the single-flight lock has been held longer than this, the encode thread
-# is presumed hung (blocked read the deadline can't preempt, or a leaked lock).
+# If an encode permit has been held longer than this, that encode thread is
+# presumed hung (blocked read the deadline can't preempt, or a leaked permit).
 # The poll can't kill a thread — it logs `scribe_hung` once per incident so the
 # outage is visible instead of silent.
 SCRIBE_HUNG_ALARM_SECONDS = 1800
+
+# Hard cap on concurrent S1 Scribe encodes across all sessions. Each encode is a
+# multi-round Sonnet stream; this bounds (a) concurrent Sonnet load against the
+# org's per-model rate bucket (encoders + S2 share the Sonnet bucket) and (b)
+# daemon-process contention — GIL, CPU, the ONNX query-embedder recall shares,
+# network — that would otherwise inflate the latency-critical recall hook. It
+# caps DISTINCT sessions encoding at once, not re-encodes of one: per-session
+# single-flight rides on top in the daemon poll (_encode_inflight). Recall (Haiku)
+# is a separate rate bucket, so this is about process headroom, not Haiku's API
+# limit. 4 = headroom for parallel worktree streams without threatening recall
+# latency (2026-07-28); revisit against the tier's Sonnet ITPM/OTPM if raised.
+MAX_CONCURRENT_ENCODES = 4
 
 # ═══════════════════════════════════════════════════════════════
 # ENCODING AGENT CONFIG
