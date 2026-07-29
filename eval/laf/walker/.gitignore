@@ -3,3 +3,5 @@ field_cache.npy*
 field_cache_index.json*
 lane_cache.npy*
 __pycache__/
+roles_lane_cache.npy
+roles_lane_index.json

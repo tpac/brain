@@ -1,8 +1,34 @@
 # Eval Platform — Reference for Digging In
 
-**Last updated:** 2026-05-30 — Frozen Corpus matured: sweep now **scores every item** with a **recall-conditional** rate (the gate stopped hard-excluding composed answers), **`--interaction-override`** added for DORMANT-version A/B, first 20-item baseline run. Prior: 2026-05-29 Frozen Corpus two-stage architecture; 2026-05-10 artifacts/analyzer/run-diff/harness reliability.
+**Last updated:** 2026-07-29 — LAF walker section added (the recall-lane offline substrate now has a documented home here; role-expansion artifacts included). Prior: 2026-05-30 — Frozen Corpus matured: sweep now **scores every item** with a **recall-conditional** rate (the gate stopped hard-excluding composed answers), **`--interaction-override`** added for DORMANT-version A/B, first 20-item baseline run. Prior: 2026-05-29 Frozen Corpus two-stage architecture; 2026-05-10 artifacts/analyzer/run-diff/harness reliability.
 
 Originally built 2026-04-25/26 as the bias-detection broader eval. Now expanded into a deeper diagnostic platform with per-item artifact bundles for post-hoc analysis without re-running.
+
+---
+
+## LAF walker — the recall-lane offline substrate (`eval/laf/walker/`)
+
+The walker is the OTHER eval platform: offline replay of recall over cached
+per-turn lane values, for LAF composition work (reach@K over the corpus-v2
+verdicts; doors discipline: door-1 `cue` / door-2 `window`+`session`, fit and
+scored per door — `laf_doors.py`). Full conventions live in the scripts'
+docstrings and `docs/RECALL-SR-REDESIGN.md` §19–20; corpus truth in
+`corpus_v2_synthesis.md`.
+
+**Artifact chain (check `build_meta` stamps before trusting any of it):**
+`walker.db` (turns/candidates/lanes, local artifact, never committed) →
+`field_cache.npy` + `lane_cache.npy` + `field_cache_index.json`
+(`field_cache_build.py`; dense per-turn per-node lanes — the reach substrate)
+→ `cand_turn_episodic` (v1 pick/enc roles, `episodic_roles.py`) →
+`cand_turn_episodic_roles` + `roles_lane_cache.npy` (v2 conn/auth roles,
+`episodic_roles_v2.py` + `roles_lane_cache.py`, 2026-07-29 role-expansion
+arc; backfill provenance + validation in `role_backfill_audit.py`).
+
+**Before building new lane/role machinery:** the moment-selection, role-join,
+support-z, per-door fit, and paired-bootstrap machinery all exist — extend
+`laf_doors.py`/`role_arms.py` patterns, don't re-derive. Vectors never need
+rebuilding for a role change (it's a re-join; see `roles_lane_cache.py`
+docstring).
 
 ---
 
