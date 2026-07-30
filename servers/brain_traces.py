@@ -284,6 +284,8 @@ class BrainTracesMixin:
         happened: `{'written': int, 'malformed': int, 'status': str}` where
         status is one of:
           • 'ok'                 — a non-empty review processed (counts tell the rest)
+          • 'salvaged'           — no `## Review` heading, but a heading-less fence
+                                   of valid notes was harvested (drift, logged loud)
           • 'empty_review'       — a fenced review that was empty (a legit clean run)
           • 'no_review_section'  — the encoder emitted no `## Review` at all
           • 'no_review_extracted'— `## Review` present but no parseable fence (drift)
@@ -300,22 +302,38 @@ class BrainTracesMixin:
         """
         from .trace_contract import (extract_review_block, parse_journal_notes,
                                       build_journal_note_metadata,
+                                      salvage_review_fence,
                                       JOURNAL_REVIEW_MARKER)
         try:
+            salvaged = False
             block = extract_review_block(final_text)
             if block is None:
-                if JOURNAL_REVIEW_MARKER in (final_text or ''):
+                # Drift salvage: the encoder sometimes writes a valid notes
+                # fence but drops the heading — harvest it (strict gate in
+                # salvage_review_fence) rather than lose the batch's residue.
+                # Still a warning: drift stays visible, just no longer lossy.
+                block = salvage_review_fence(final_text)
+                if block is not None:
+                    salvaged = True
+                    self._log_warning(
+                        'journal_note_review_salvaged',
+                        'chain=%s: no %r heading, but a valid heading-less notes '
+                        'fence was found — salvaged (format drift)'
+                        % (chain_id, JOURNAL_REVIEW_MARKER))
+                elif JOURNAL_REVIEW_MARKER in (final_text or ''):
                     self._log_warning(
                         'journal_note_no_review_extracted',
                         'chain=%s: %r present but no parseable fenced block'
                         % (chain_id, JOURNAL_REVIEW_MARKER))
                     return {'written': 0, 'malformed': 0,
                             'status': 'no_review_extracted'}
-                self._log_warning(
-                    'journal_note_no_review_section',
-                    'chain=%s: encoder final_text (%d chars) has no %r section'
-                    % (chain_id, len(final_text or ''), JOURNAL_REVIEW_MARKER))
-                return {'written': 0, 'malformed': 0, 'status': 'no_review_section'}
+                else:
+                    self._log_warning(
+                        'journal_note_no_review_section',
+                        'chain=%s: encoder final_text (%d chars) has no %r section'
+                        % (chain_id, len(final_text or ''), JOURNAL_REVIEW_MARKER))
+                    return {'written': 0, 'malformed': 0,
+                            'status': 'no_review_section'}
             if block == '':
                 # Fenced review present but empty — the legit "clean run, nothing
                 # to note" case. Visible (debug), not an alarm.
@@ -355,7 +373,7 @@ class BrainTracesMixin:
                     'chain=%s: parsed %d notes but wrote 0 (all failed subject/build)'
                     % (chain_id, len(notes)))
             return {'written': len(events), 'malformed': len(malformed),
-                    'status': 'ok'}
+                    'status': 'salvaged' if salvaged else 'ok'}
         except Exception as e:
             self._log_error('journal_note_write_failed', e, 'chain=%s' % chain_id)
             return {'written': 0, 'malformed': 0, 'status': 'error'}

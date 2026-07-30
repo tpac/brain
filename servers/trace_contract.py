@@ -807,6 +807,48 @@ def extract_arc_block(text):
     return _extract_fenced_block(text, JOURNAL_ARC_MARKER)
 
 
+def salvage_review_fence(text):
+    """Drift salvage for the write door: notes the encoder fenced WITHOUT the
+    `## Review` heading. Observed on Haiku community runs — a perfectly formed
+    notes fence loses its heading and the whole batch's residue was dropped on
+    the strict marker match.
+
+    Strict all-or-nothing gate, so a code/table fence can never be harvested:
+    a fence qualifies only when `parse_journal_notes` accepts EVERY non-blank
+    line (>=1 note, zero malformed). Well-formed journal sections are stripped
+    first so an `## Arc` fence is never mistaken for notes. Multiple qualifying
+    fences → the LAST one (the closure puts the review at the end of the final
+    reply). Returns the fence content, or None when nothing qualifies — an
+    empty heading-less fence does NOT qualify (indistinguishable from a stray
+    code block, unlike a fenced `## Review` where empty means a clean run).
+    """
+    remainder = strip_journal_sections(text)
+    if not remainder:
+        return None
+    salvaged = None
+    pos = 0
+    while True:
+        open_fence = remainder.find('```', pos)
+        if open_fence == -1:
+            break
+        rest = remainder[open_fence + 3:]
+        nl = rest.find('\n')          # skip an optional language tag
+        if nl == -1:
+            break
+        body = rest[nl + 1:]
+        close_fence = body.find('```')
+        if close_fence == -1:
+            break
+        pos = open_fence + 3 + nl + 1 + close_fence + 3
+        content = body[:close_fence].strip()
+        if not content:
+            continue
+        notes, malformed = parse_journal_notes(content)
+        if notes and not malformed:
+            salvaged = content
+    return salvaged
+
+
 # Per-encoder continuity window: how many of an encoder's most recent
 # note-bearing runs the "where things stand" read pulls into the next run's
 # prompt. Bounds the READ, never storage — notes are append-only and retained

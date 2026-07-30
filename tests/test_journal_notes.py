@@ -176,6 +176,96 @@ class TestJournalNotesWrite(BrainTestBase):
         out = self.brain.journal_notes(scale='s2', unit='consolidation', k=5)
         assert {x['tag'] for x in out} == {'friction', 'doubt'}   # not '- friction'
 
+    def test_headingless_valid_fence_salvaged(self):
+        # Observed Haiku drift (community batch 2, chain s2-20260729180005):
+        # a perfectly formed notes fence with the `## Review` heading dropped.
+        # Salvage harvests it — status 'salvaged', still a (loud) warning.
+        final = (
+            "All eight proposals acted:\n"
+            "- **[1-6]** connected as community members.\n\n"
+            "```\n"
+            "resolved · proposal_1_2_3 · six members connected across three communities\n"
+            "drift_none_detected · proposals_4_5 · all placements above threshold\n"
+            "```\n"
+        )
+        r = self.brain.write_journal_notes(
+            final_text=final, chain_id='s2-20260101000010-consolidation', scale='s2')
+        assert r['written'] == 2 and r['status'] == 'salvaged'
+        out = self.brain.journal_notes(scale='s2', unit='consolidation', k=5)
+        assert {x['subject'] for x in out} == {'proposal_1_2_3', 'proposals_4_5'}
+
+    def test_headingless_code_fence_not_salvaged(self):
+        # A code fence must never be harvested as notes — strict gate: every
+        # line must parse, so one delimiter-less line disqualifies the fence.
+        final = ("Rejected everything.\n\n"
+                 "```\n"
+                 "def foo():\n"
+                 "    return 1\n"
+                 "```\n")
+        r = self.brain.write_journal_notes(
+            final_text=final, chain_id='s2-20260101000011-consolidation', scale='s2')
+        assert r == {'written': 0, 'malformed': 0, 'status': 'no_review_section'}
+
+    def test_headingless_mixed_fence_not_salvaged(self):
+        # One valid note + one malformed line → all-or-nothing gate rejects.
+        final = ("```\n"
+                 "doubt · nodeX · a real note\n"
+                 "this line has no delimiter\n"
+                 "```\n")
+        r = self.brain.write_journal_notes(
+            final_text=final, chain_id='s2-20260101000012-consolidation', scale='s2')
+        assert r['status'] == 'no_review_section' and r['written'] == 0
+
+    def test_headingless_empty_fence_not_salvaged(self):
+        # An empty heading-less fence is indistinguishable from a stray code
+        # block — NOT treated as a clean run (that requires the heading).
+        r = self.brain.write_journal_notes(
+            final_text="Nothing to do.\n```\n```\n",
+            chain_id='s2-20260101000013-consolidation', scale='s2')
+        assert r['status'] == 'no_review_section' and r['written'] == 0
+
+    def test_salvage_takes_last_qualifying_fence(self):
+        # The closure puts the review at the end — with several qualifying
+        # fences, the LAST one is the review.
+        final = ("```\n"
+                 "old · nodeA · earlier fence, not the review\n"
+                 "```\n"
+                 "Some prose between.\n"
+                 "```\n"
+                 "resolved · nodeB · the actual review notes\n"
+                 "```\n")
+        r = self.brain.write_journal_notes(
+            final_text=final, chain_id='s2-20260101000014-consolidation', scale='s2')
+        assert r['written'] == 1 and r['status'] == 'salvaged'
+        out = self.brain.journal_notes(scale='s2', unit='consolidation', k=5)
+        assert {x['subject'] for x in out} == {'nodeB'}
+
+    def test_arc_fence_not_mistaken_for_review(self):
+        # A well-formed `## Arc` section is stripped before the salvage scan —
+        # its fence must never be harvested as review notes, even when the
+        # arc line happens to parse as one.
+        final = ("## Arc\n"
+                 "```\n"
+                 "milestone · nodeC · arc line that looks like a note\n"
+                 "```\n"
+                 "No review this run.\n")
+        r = self.brain.write_journal_notes(
+            final_text=final, chain_id='s2-20260101000015-consolidation', scale='s2')
+        assert r['status'] == 'no_review_section' and r['written'] == 0
+
+    def test_broken_review_section_with_valid_fence_elsewhere_salvaged(self):
+        # Notes fenced BEFORE a fenceless `## Review` heading: the extractor
+        # finds no fence after the marker (drift), but salvage recovers the
+        # notes from the earlier fence.
+        final = ("```\n"
+                 "resolved · nodeD · notes landed before the heading\n"
+                 "```\n"
+                 "## Review\n"
+                 "(forgot the fence here)\n")
+        r = self.brain.write_journal_notes(
+            final_text=final, chain_id='s2-20260101000016-consolidation', scale='s2')
+        assert r['written'] == 1 and r['status'] == 'salvaged'
+
 
 class TestJournalNotesRecallGuard(BrainTestBase):
     """journal_note must never leak into Anchor's recall. Structural guard:
