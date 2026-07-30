@@ -234,7 +234,8 @@ class BrainRememberMixin:
         return rels
 
     def archive_node(self, node_id: str, archived_by: str,
-                     reason: str = '', extra: Dict[str, Any] = None) -> Dict[str, Any]:
+                     reason: str = '', survivor_id: str = None,
+                     extra: Dict[str, Any] = None) -> Dict[str, Any]:
         """Archive a node. Single path for all callers.
 
         What it does:
@@ -251,7 +252,15 @@ class BrainRememberMixin:
             archived_by: Who is archiving. Convention: "s2:consolidation",
                          "s2:community_detection", "hook:integrity", "anchor", etc.
             reason: Human-readable reason for the archive.
-            extra: Optional dict of additional metadata to store (e.g. consolidated_into).
+            survivor_id: Live node this one's content survives in (absorb,
+                         supersession). Writes the `_sys_archived_survivor_id`
+                         pointer resolve_live walks + the `absorbed_into`
+                         lineage edge. A first-class parameter, NOT an extra
+                         key — a misspelled extra key silently loses lineage
+                         (the `superseded_by` bug, 2026-07-30).
+            extra: Optional dict of additional AUDIT metadata to store.
+                   Never carries behavior; survivor-looking keys are refused
+                   loudly (see tripwire below).
 
         Returns:
             Dict with ok=True/False and details.
@@ -288,10 +297,26 @@ class BrainRememberMixin:
             '_sys_archived_reason': reason or 'no reason provided',
             '_sys_archived_at': ts,
         }
+        if survivor_id:
+            audit['_sys_archived_survivor_id'] = str(survivor_id)
         if extra:
             for k, v in extra.items():
-                if v is not None:
-                    audit['_sys_archived_%s' % k] = str(v)
+                if v is None:
+                    continue
+                # Tripwire: survivor semantics must go through the survivor_id
+                # PARAMETER — a survivor-looking extra key is the exact
+                # misspelling that silently orphaned 9 handoff nodes
+                # (`superseded_by`, 2026-07-30). Refuse it loudly rather than
+                # store a pointer resolve_live will never walk.
+                if k in ('survivor_id', 'superseded_by', 'survivor',
+                         'consolidated_into', 'absorbed_into'):
+                    self._log_warning(
+                        'archive_survivor_key_in_extra',
+                        "extra key %r on archive of %s looks like survivor "
+                        "lineage — dropped; pass survivor_id= instead"
+                        % (k, node_id[:8]), 'archived_by=%s' % archived_by)
+                    continue
+                audit['_sys_archived_%s' % k] = str(v)
         try:
             self._meta_kv.set_many(full_id, audit)
         except Exception as _e:
@@ -319,16 +344,15 @@ class BrainRememberMixin:
                 full_id, archived_by=archived_by,
                 exempt_relations=self.archive_exempt_relations())
 
-            # 3b. Survivor-redirect edge. When this archive is a MERGE (caller
-            # passed a survivor via extra={'survivor_id': ...} — the absorb op
-            # and any consolidation merge both route here), record
+            # 3b. Survivor-redirect edge. When this archive carries a survivor
+            # (the absorb op, consolidation merges, handoff supersession all
+            # route here via the survivor_id parameter), record
             # absorbed→survivor as a first-class `absorbed_into` edge,
             # multi-homed in correction_improvement (correction_enrich walks it)
             # + survivor_lineage (the redirect/archival-exempt role). Written
             # AFTER the soft-archive above (which exempts it) so it lands and
             # stays archived=0. `_sys_archived_survivor_id` is still written
             # (step 2 audit) as the backfill source + resolve_live's read path.
-            survivor_id = (extra or {}).get('survivor_id')
             if survivor_id and survivor_id != full_id:
                 try:
                     self._graph.add_relation(
@@ -420,7 +444,7 @@ class BrainRememberMixin:
                            archived husk. Auto-transfers above cover only the
                            unambiguously-additive dimensions; everything
                            judgment-laden (confidence, title, ...) is explicit.
-        Then archive_node(absorbed, extra={survivor_id}) for provenance.
+        Then archive_node(absorbed, survivor_id=...) for provenance.
 
         Guards: absorbed must be archivable (NOT locked/critical) — the type
         constraint that makes "a locked node is always the survivor" structural.
@@ -569,7 +593,7 @@ class BrainRememberMixin:
                 arch = self.archive_node(
                     absorbed_id, archived_by=archived_by,
                     reason=reason or 'absorbed into %s' % survivor_id[:8],
-                    extra={'survivor_id': survivor_id})
+                    survivor_id=survivor_id)
                 report['absorbed_archived'] = arch.get('ok', False)
                 if arch.get('ok'):
                     success = True

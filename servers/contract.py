@@ -430,6 +430,16 @@ GET_NODES_FULL_FORMAT = {
 # filtered field it should surface. Keep in sync with the DAL's SELECT.
 SKINNY_NODE_FIELDS = ('id', 'title', 'type', 'confidence', 'created_at')
 
+# Survivor-pointer walk budget for NodeDAL.resolve_live — how many
+# archived→survivor redirects an id may take before it's declared orphaned.
+# Supersession chains (session-opener handoffs) grow one hop per generation;
+# the 2026-07-30 backfill compressed the existing chains to depth 1, so this
+# is headroom for organic growth, not a working depth. Cost of a higher cap
+# is per-LEVEL queries (trivial); the real ceiling guard is cycle detection,
+# not this number. If real chains approach it, add an S2 pointer-compression
+# pass rather than raising it again.
+RESOLVE_LIVE_MAX_HOPS = 12
+
 
 def _truncate(s: str, limit: int) -> str:
     """Cap `s` at `limit` chars, ending in '…' when truncation occurred.

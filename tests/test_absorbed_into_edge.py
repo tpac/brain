@@ -190,13 +190,55 @@ class TestAbsorbedIntoEdge(BrainTestBase):
 
     # ── archive_node atomicity (standalone path) ──
 
+    def test_survivor_param_writes_pointer_and_edge(self):
+        """The survivor_id PARAMETER is the one lineage door: it must write
+        both the `_sys_archived_survivor_id` pointer (resolve_live's read
+        path) and the absorbed_into edge."""
+        survivor = self._node('survivor')
+        victim = self._node('victim')
+        r = self.brain.archive_node(victim, archived_by='test',
+                                    reason='superseded', survivor_id=survivor)
+        self.assertTrue(r['ok'], r)
+        kv = self.brain.conn.execute(
+            "SELECT value FROM node_metadata_kv WHERE node_id=? "
+            "AND key='_sys_archived_survivor_id'", (victim,)).fetchone()
+        self.assertEqual(kv[0], survivor)
+        self.assertEqual(len(self._absorbed_into(victim)), 1)
+        resolved = self.brain._nodes.resolve_live([victim], on_orphan='mark')
+        self.assertEqual(resolved['live'], [survivor])
+        self.assertEqual(resolved['orphans'], [])
+
+    def test_survivor_lookalike_extra_key_refused_loudly(self):
+        """A survivor-looking key in `extra` is the misspelling that silently
+        orphaned 9 handoff nodes (`superseded_by`, 2026-07-30). It must be
+        DROPPED (extra is pure audit — no second lineage vocabulary) and
+        warned about; no pointer, no edge."""
+        survivor = self._node('survivor')
+        victim = self._node('victim')
+        r = self.brain.archive_node(victim, archived_by='test',
+                                    reason='superseded',
+                                    extra={'superseded_by': survivor,
+                                           'note': 'kept-audit-key'})
+        self.assertTrue(r['ok'], r)
+        rows = dict(self.brain.conn.execute(
+            "SELECT key, value FROM node_metadata_kv WHERE node_id=? "
+            "AND key LIKE '_sys_archived_%'", (victim,)).fetchall())
+        self.assertNotIn('_sys_archived_superseded_by', rows)
+        self.assertNotIn('_sys_archived_survivor_id', rows)
+        self.assertEqual(rows.get('_sys_archived_note'), 'kept-audit-key')
+        self.assertEqual(self._absorbed_into(victim), [])
+        warned = self.brain._logs_dal.conn.execute(
+            "SELECT COUNT(*) FROM debug_log "
+            "WHERE source='archive_survivor_key_in_extra'").fetchone()[0]
+        self.assertGreaterEqual(warned, 1)
+
     def test_standalone_archive_commits_atomically(self):
         """A standalone archive_node (not inside a batch) still commits node +
         edges + absorbed_into in one go via the in_batch envelope."""
         survivor = self._node('survivor')
         victim = self._node('victim')
         r = self.brain.archive_node(victim, archived_by='test',
-                                    extra={'survivor_id': survivor})
+                                    survivor_id=survivor)
         self.assertTrue(r['ok'], r)
         self.assertEqual(self.brain.conn.execute(
             'SELECT archived FROM nodes WHERE id=?', (victim,)).fetchone()[0], 1)

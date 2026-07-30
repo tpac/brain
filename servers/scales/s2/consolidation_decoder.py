@@ -233,7 +233,7 @@ class ConsolidationDecoder(IntegrationUnit):
             reason = 'handoff superseded by %s' % newer['id'][:8]
             r = self.brain.archive_node(
                 older['id'], archived_by='s2:consolidation',
-                reason=reason, extra={'superseded_by': newer['id']})
+                reason=reason, survivor_id=newer['id'])
             if r.get('ok'):
                 archived.append({'id': older['id'], 'title': older['title'] or '',
                                  'reason': reason})

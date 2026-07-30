@@ -235,7 +235,7 @@ class NodeDAL:
                 if kv.get(self._SURVIVOR_META_KEY)}
 
     def resolve_live(self, ids, *, on_orphan: str = 'drop',
-                     max_hops: int = 8) -> Dict[str, Any]:
+                     max_hops: int = None) -> Dict[str, Any]:
         """Resolve a set of node ids to their live survivors. READ-ONLY.
 
         For each input id: a LIVE node passes through unchanged; an ARCHIVED
@@ -261,6 +261,9 @@ class NodeDAL:
         the orphan input ids in `orphans`. Either way orphans never appear in
         `live`.
         """
+        if max_hops is None:
+            from .contract import RESOLVE_LIVE_MAX_HOPS
+            max_hops = RESOLVE_LIVE_MAX_HOPS
         inputs = [i for i in (ids or []) if i]
         if not inputs:
             return {'live': [], 'redirected': {}, 'orphans': []}
