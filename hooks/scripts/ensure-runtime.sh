@@ -31,6 +31,13 @@ REQ_FILE="$PLUGIN_DIR/requirements.txt"
 PY_VERSION="${BRAIN_PY_VERSION:-3.11}"
 UV_VERSION="${BRAIN_UV_VERSION:-0.5.11}"  # pinned for reproducibility
 
+# Corporate networks TLS-intercept HTTPS with a proxy CA that lives in the OS
+# keychain but not in uv's bundled Rust cert store — uv's downloads (Python,
+# PyPI deps) then die with `invalid peer certificate: UnknownIssuer` (work
+# laptop install, 2026-07-30). Native TLS makes uv use the OS trust store,
+# which also contains the standard public roots — a no-op on clean networks.
+export UV_NATIVE_TLS=1
+
 # Fast path — already bootstrapped (predicate: runtime-state.sh).
 if brain_runtime_ready "$PLUGIN_DIR"; then
     exit 0
@@ -213,7 +220,7 @@ fi
 # install path or model name can't break the python invocation.
 MODEL_NAME="$(BRAIN_PLUGIN_DIR="$PLUGIN_DIR" "$VENV_PY" -c "import json, os; print(json.load(open(os.path.join(os.environ['BRAIN_PLUGIN_DIR'], '.claude-plugin', 'plugin.json'))).get('config', {}).get('embedder', {}).get('model_name', 'nomic-ai/nomic-embed-text-v1.5-Q'))" 2>/dev/null || echo 'nomic-ai/nomic-embed-text-v1.5-Q')"
 echo "[brain-boot]   [4/4] pre-fetching embedding model ($MODEL_NAME)..." >&2
-if ! BRAIN_PREFETCH_MODEL="$MODEL_NAME" "$VENV_PY" -c "import os; from fastembed import TextEmbedding; TextEmbedding(model_name=os.environ['BRAIN_PREFETCH_MODEL'])" >&2; then
+if ! BRAIN_PREFETCH_MODEL="$MODEL_NAME" "$VENV_PY" -c "import os, truststore; truststore.inject_into_ssl(); from fastembed import TextEmbedding; TextEmbedding(model_name=os.environ['BRAIN_PREFETCH_MODEL'])" >&2; then
     echo "[brain-boot] WARN: model pre-fetch failed — daemon will download it on first recall (slower); continuing" >&2
 fi
 

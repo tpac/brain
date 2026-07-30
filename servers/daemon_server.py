@@ -10,6 +10,20 @@ the same lock.
 """
 
 import sys
+
+# OS trust store injection — corporate networks TLS-intercept HTTPS with a
+# proxy CA that lives in the system keychain, which Python's bundled certifi
+# ignores; every outbound call (Anthropic API, embedding-model fetch) then
+# dies with UnknownIssuer. Patch ssl.SSLContext to defer to the OS store
+# before anything can build an SSL context. Missing package (a venv
+# bootstrapped before truststore entered requirements.txt) falls back to
+# certifi — the prior behavior — and says so in daemon.log.
+try:
+    import truststore
+    truststore.inject_into_ssl()
+except Exception as _e:
+    print(f"[daemon] WARN: OS trust store injection unavailable ({_e}) — TLS uses bundled certifi", file=sys.stderr)
+
 import os
 import json
 import socket

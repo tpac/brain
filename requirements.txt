@@ -14,3 +14,6 @@ anthropic>=0.86,<1.0
 numpy>=1.24,<3.0
 sqlite-vec>=0.1,<1.0
 dateparser>=1.4,<2.0    # temporal scout date extraction (servers/scales/s1/scouts/temporal.py)
+truststore>=0.10,<1.0   # OS trust store for TLS — corporate proxy CAs live in the
+                        # system keychain, not in certifi's bundle; without this every
+                        # HTTPS call on a TLS-intercepting network dies UnknownIssuer
