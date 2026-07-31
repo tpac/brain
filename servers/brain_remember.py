@@ -33,14 +33,20 @@ _TITLE_TOKEN_RE = re.compile(r'[a-z0-9]+')
 
 
 def _title_tokens(text):
-    """Normalize a title to its token sequence: NFKC → lowercase → split on
-    every non-alphanumeric run (hyphen/underscore/em-dash/percent variance
-    vanishes; numbers and hashes survive — they're the distinctive tokens).
-    No stemming, no stopwords: predictability IS the safety property of the
-    near-title matcher."""
+    """Normalize a title to its token sequence: NFKD → strip combining marks
+    → lowercase → split on every non-alphanumeric run (hyphen/underscore/
+    em-dash/percent variance vanishes; numbers and hashes survive — they're
+    the distinctive tokens). No stemming, no stopwords: predictability IS
+    the safety property of the near-title matcher.
+
+    The diacritic strip mirrors FTS5 unicode61's remove_diacritics default —
+    the two tokenizers must agree or a probe goes dead: unicode61 indexes
+    'über' as 'uber', and a bare [a-z0-9] scan would emit the probe 'ber',
+    which matches nothing (bug 69c2cbab #4 — tokenizer correspondence)."""
     import unicodedata
-    return _TITLE_TOKEN_RE.findall(
-        unicodedata.normalize('NFKC', text or '').lower())
+    decomposed = unicodedata.normalize('NFKD', text or '')
+    stripped = ''.join(c for c in decomposed if not unicodedata.combining(c))
+    return _TITLE_TOKEN_RE.findall(stripped.lower())
 
 
 def _token_edit_distance(a, b, cap):
@@ -1823,23 +1829,34 @@ class BrainRememberMixin:
 
     def _title_candidate_rows(self, tokens, limit=500):
         """The ONE lexical candidate door for title→node matching: probe the
-        FTS5 title index (OR over `tokens`, prefix-tolerant so a partial-word
-        token still hits) and hydrate (id, title) for the live matches.
-        Shared by _match_catalog_title (write path) and find_node_by_title's
-        lexical pass (interactive) — neither scans the nodes table.
+        FTS5 index TITLE-SCOPED (`title:"tok"*` per probe, OR'd, prefix-
+        tolerant) and hydrate (id, title) for the live matches. Shared by
+        _match_catalog_title (write path) and find_node_by_title's lexical
+        pass (interactive) — neither scans the nodes table.
 
-        bm25 weights titles 10x over content, so title-bearing hits rank
-        first; `limit` is generous headroom, not a relevance cut — probe
-        tokens are the query's longest (rarest), so real pools are tiny.
-        Returns [] when FTS has nothing (or is unavailable — Fts5DAL.search
+        The column scope is load-bearing for the pigeonhole recall guarantee:
+        an unscoped MATCH ranks title-hits against every node that merely
+        MENTIONS a probe token in content, and bm25 ORDER BY + LIMIT then
+        makes the pool a relevance cut that can rank a qualifying title out
+        (bug 69c2cbab #1). Title-only matching makes the pool exactly "titles
+        carrying a probe token" — but recall is still only guaranteed when
+        that pool fits `limit`, so saturation is SURFACED, never assumed away.
+
+        Returns (rows, saturated): rows are live (id, title) pairs;
+        saturated=True means the FTS pool hit `limit` and recall can no
+        longer be assumed — the write path must refuse rather than match.
+        Empty rows when FTS has nothing (or is unavailable — Fts5DAL.search
         already logs that loud)."""
-        ids = self._fts.search(' '.join(tokens), limit=limit, prefix=True)
+        ids = self._fts.search(' '.join(tokens), limit=limit, prefix=True,
+                               column='title', min_token_len=1)
         if not ids:
-            return []
+            return [], False
+        saturated = len(ids) >= limit
         ph = ','.join('?' * len(ids))
-        return self.conn.execute(
+        rows = self.conn.execute(
             'SELECT id, title FROM nodes WHERE archived = 0 '
             'AND id IN (%s)' % ph, ids).fetchall()
+        return rows, saturated
 
     def _match_catalog_title(self, title_query, exclude_ids=None):
         """Deterministic catalog-title match for connect_to (write path).
@@ -1876,12 +1893,28 @@ class BrainRememberMixin:
         q = _title_tokens(title_query)
         if not q:
             return None, None
-        probes = sorted(set(q), key=lambda t: (-len(t), t))
-        probes = probes[:NEAR_TITLE_MAX_OPS + 1]
-        rows = self._title_candidate_rows(probes)
         # Margin needs to see runner-up distances up to best+MARGIN, so the
         # DP cap extends past MAX_OPS; beyond the cap everything is "too far".
         cap = NEAR_TITLE_MAX_OPS + NEAR_TITLE_MARGIN - 1
+        # Pigeonhole must cover the CAP, not just the acceptance bar: the
+        # margin gate reasons about runners out to distance `cap`, and a
+        # runner missing every probe is invisible — which silently turns a
+        # photo-finish refusal into an acceptance (bug 69c2cbab #2). cap+1
+        # probes ⇒ any title within `cap` ops shares at least one.
+        probes = sorted(set(q), key=lambda t: (-len(t), t))
+        probes = probes[:cap + 1]
+        rows, saturated = self._title_candidate_rows(probes)
+        if saturated:
+            # The FTS pool hit its limit: candidates may have been cut, so
+            # neither uniqueness nor margin can be trusted. Refuse loudly —
+            # same posture as ambiguity (never guess at a write boundary).
+            reason = ("title candidate pool saturated — recall guarantee "
+                      "cannot hold; pass the node id")
+            self._log_warning(
+                'connect_to_pool_saturated',
+                'probe pool hit limit for query %r — refusing'
+                % title_query[:90])
+            return None, reason
         scored = []
         skip = exclude_ids or ()
         for nid, title in rows:
@@ -1920,12 +1953,19 @@ class BrainRememberMixin:
         return best_id, None
 
     def _apply_connect_to(self, src_id, connect_to_spec, sibling_map=None,
-                          encoding_source=None):
+                          encoding_source=None, exclude_ids=None):
         """Resolve and create edges for each connect_to entry from src_id.
 
         Each entry is independent — failures on one don't affect others.
         All failures log loudly; the function never raises and never blocks
         the surrounding write path.
+
+        exclude_ids: batch-created node ids, removed from CATALOG candidacy
+        in the title match (sibling resolution stays Pass 1, exact-only, by
+        design). Without this, a just-created sibling sitting 1-2 ops from a
+        real catalog target ties it into an ambiguity refusal — or wins the
+        edge outright (bug 69c2cbab #3). Batch callers pass their created
+        set; the single-node remember() path has no siblings to exclude.
 
         encoding_source: provenance for the edges minted here — the creating
         node's resolved source (e.g. 'anchor' for a direct-MCP remember,
@@ -1987,7 +2027,8 @@ class BrainRememberMixin:
         for entry in connect_to_spec:
             title_query = entry.get('title', entry) if isinstance(entry, dict) else entry
             target_id, relation_pairs, reason = self._resolve_connect_to_entry(
-                entry, sibling_map=sibling_map, exclude_self=src_id)
+                entry, sibling_map=sibling_map, exclude_self=src_id,
+                exclude_ids=exclude_ids)
             if target_id is None:
                 # Resolution failed — already logged via _log_error. Surface
                 # the reason so the caller can self-correct in the moment.
@@ -2072,10 +2113,12 @@ class BrainRememberMixin:
         # emit a directional edge_relation_revised trace per edge.
         connect_to_failed = []  # [{title, reason}] across all nodes
         connect_to_made = []    # [{src_id, target_id, relation, edge_id, deltas}]
+        created_set = set(created_ids)
         for src_id, ct_spec in deferred_connects:
             r = self._apply_connect_to(
                 src_id, ct_spec, sibling_map=sibling_map,
-                encoding_source=node_sources.get(src_id, 'anchor'))
+                encoding_source=node_sources.get(src_id, 'anchor'),
+                exclude_ids=created_set)
             connections_created += len(r['created'])
             connect_to_made.extend(r['created'])  # entries are src-tagged by _apply_connect_to
             connect_to_failed.extend(r['failed'])
@@ -2087,7 +2130,6 @@ class BrainRememberMixin:
         # contract). Failures are loud and reported, never silently skipped
         # (the pre-2026-07-30 fuzzy version continued without a word).
         if connect_to:
-            created_set = set(created_ids)
             for entry in connect_to:
                 target_id, relation_pairs, fail_reason = (
                     self._resolve_connect_to_entry(entry, sibling_map=None,
@@ -2435,7 +2477,11 @@ class BrainRememberMixin:
         q_tokens = _title_tokens(title_query)
         text_ids = []
         if q_tokens:
-            for nid, title in self._title_candidate_rows(q_tokens):
+            # Interactive lookup is best-effort: saturation just bounds the
+            # lexical pool (Path 2 embeddings backstop); only the WRITE path
+            # must refuse on it.
+            candidate_rows, _saturated = self._title_candidate_rows(q_tokens)
+            for nid, title in candidate_rows:
                 t_lower = title.lower()
                 pos = 0
                 for tok in q_tokens:

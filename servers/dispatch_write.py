@@ -1012,7 +1012,8 @@ def _handle_brain_batch(brain, args, graph_changes):
             # its connect_to edges the same provenance.
             r = brain._apply_connect_to(
                 src_id, ct_spec, sibling_map=sibling_map,
-                encoding_source=top_encoding_source or 'anchor')
+                encoding_source=top_encoding_source or 'anchor',
+                exclude_ids=set(sibling_map.values()))
             connect_to_edges += len(r['created'])
             connect_to_made.extend(r['created'])  # entries src-tagged by _apply_connect_to
             connect_to_failed.extend(r['failed'])

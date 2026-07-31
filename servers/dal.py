@@ -587,7 +587,8 @@ class Fts5DAL:
 
     def search(self, query: str, limit: int = 30,
                include_archived: bool = False,
-               prefix: bool = False) -> List[str]:
+               prefix: bool = False, column: str = '',
+               min_token_len: int = 2) -> List[str]:
         """Full-text search. Returns node_ids ranked by BM25 relevance.
 
         Title matches weighted 10x over content.
@@ -610,7 +611,8 @@ class Fts5DAL:
         extractor produced near-duplicate noise. Porter stemming on
         title+content provides the same lexical signal without the noise.
         """
-        safe_query = self._sanitize_query(query, prefix=prefix)
+        safe_query = self._sanitize_query(query, prefix=prefix, column=column,
+                                          min_token_len=min_token_len)
         if not safe_query:
             return []
         try:
@@ -662,7 +664,8 @@ class Fts5DAL:
                   % (node_id, e), file=_sys.stderr)
 
     @staticmethod
-    def _sanitize_query(query: str, prefix: bool = False) -> str:
+    def _sanitize_query(query: str, prefix: bool = False,
+                        column: str = '', min_token_len: int = 2) -> str:
         """Sanitize query for FTS5 MATCH syntax.
 
         Wraps each meaningful term in quotes, joins with OR.
@@ -671,17 +674,30 @@ class Fts5DAL:
         prefix=True appends the FTS5 prefix operator to each term
         (`"conf"*` matches 'configuration') — used by title-match candidate
         generation so a partial-word query token still finds its titles.
+
+        column scopes every term to one indexed column (`title:"conf"*`) —
+        title-match candidate generation uses it so nodes that merely MENTION
+        a probe token in content can't enter (or crowd) the pool. Without it,
+        bm25 ranking + LIMIT makes the pool a relevance cut over
+        title-and-content matches, which broke the pigeonhole recall
+        guarantee (bug 69c2cbab #1).
         """
         from .brain_constants import TFIDF_STOP_WORDS
         words = query.strip().split()
-        terms = [w for w in words if w.lower() not in TFIDF_STOP_WORDS and len(w) > 1]
+        # min_token_len=2 (default) drops single-char noise for general
+        # search. The title-match door passes 1: its probes are chosen by
+        # the pigeonhole argument, and a silently-dropped probe is a DEAD
+        # probe that shrinks the recall guarantee (bug 69c2cbab #4).
+        terms = [w for w in words if w.lower() not in TFIDF_STOP_WORDS
+                 and len(w) >= min_token_len]
         if not terms:
-            terms = [w for w in words if len(w) > 1]
+            terms = [w for w in words if len(w) >= min_token_len]
         if not terms:
             return ''
         star = '*' if prefix else ''
+        col = '%s:' % column if column else ''
         # Quote each term, join with OR (any match, not all)
-        return ' OR '.join('"%s"%s' % (t.replace('"', ''), star)
+        return ' OR '.join('%s"%s"%s' % (col, t.replace('"', ''), star)
                            for t in terms[:8])
 
 

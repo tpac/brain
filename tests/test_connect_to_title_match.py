@@ -139,6 +139,99 @@ class TestConnectToCatalogTitleMatch(BrainTestBase):
         self.assertEqual(len(r['created']), 1)
         self.assertEqual(r['created'][0]['target_id'], nid)
 
+    # ── recall-guarantee regressions (bug 69c2cbab) ──
+
+    def test_probe_count_covers_dp_cap(self):
+        """69c2cbab #2: the margin gate reasons about runners out to `cap`
+        (=3), so probes must cover cap, not just the acceptance bar. A d=3
+        runner sharing ONLY the 4th-longest token was invisible with 3
+        probes — margin passed and a photo-finish was ACCEPTED. With cap+1
+        probes it is seen, and the match refuses."""
+        # 4 distinct-length long tokens pin probe selection deterministically.
+        self._mk('aaaaaaaaaa bbbbbbbbb cccccccc ddddddd one two three four five')  # d=0 base
+        # Best candidate: d=2 from the query (two short-token subs).
+        # (base above IS the best at d=2; runner below at d=3.)
+        r = self._connect('aaaaaaaaaa bbbbbbbbb cccccccc ddddddd uno dos three four five')
+        # sanity: with no runner, the 2-op match accepts
+        self.assertEqual(len(r['created']), 1)
+        # Runner at d=3 from the SAME query, sharing only 'ddddddd' (the 4th
+        # probe) among the long tokens.
+        self._mk('xxxxxxxxxx yyyyyyyyy zzzzzzzz ddddddd uno dos three four five')
+        r2 = self._connect('aaaaaaaaaa bbbbbbbbb cccccccc ddddddd uno dos three four five')
+        self.assertEqual(r2['created'], [])
+        self.assertIn('photo-finish', r2['failed'][0]['reason'])
+
+    def test_content_mentions_cannot_crowd_pool(self):
+        """69c2cbab #1: the candidate probe is title-scoped — a node that
+        merely MENTIONS probe tokens in content must not enter the pool."""
+        target = self._mk('zebrafish study alpha protocol design notes')
+        self.brain.remember(type='fact', title='completely unrelated title',
+                            content='zebrafish zebrafish zebrafish study '
+                                    'alpha protocol design notes',
+                            encoding_source='anchor')
+        rows, saturated = self.brain._title_candidate_rows(
+            ['zebrafish', 'protocol', 'study', 'alpha'])
+        ids = {r[0] for r in rows}
+        self.assertIn(target, ids)
+        self.assertFalse(saturated)
+        self.assertEqual(len(ids), 1, 'content-only mention entered the pool')
+
+    def test_saturated_pool_refuses(self):
+        """69c2cbab #1: when the FTS pool hits its limit, recall can no
+        longer be assumed — the write path must refuse, not match."""
+        target_title = 'saturation probe target with many distinct tokens'
+        self._mk(target_title)
+        real_door = self.brain._title_candidate_rows
+        self.brain._title_candidate_rows = (
+            lambda tokens, limit=500: (real_door(tokens, limit)[0], True))
+        try:
+            r = self._connect(target_title)
+        finally:
+            del self.brain._title_candidate_rows
+        self.assertEqual(r['created'], [])
+        self.assertIn('saturated', r['failed'][0]['reason'])
+
+    def test_per_node_connect_to_excludes_batch_siblings(self):
+        """69c2cbab #3: a just-created sibling 1 op from a real catalog
+        target must not tie it into an ambiguity refusal — per-node
+        connect_to excludes the batch's own creations from catalog
+        candidacy (sibling resolution stays exact-only Pass 1)."""
+        catalog = self._mk('recall pipeline stage one design for surface selection')
+        result = self.brain.remember_batch(nodes=[
+            {'type': 'fact', 'title': 'source node in batch', 'content': 'c',
+             'encoding_source': 'anchor',
+             'connect_to': [{'title': 'recall pipeline stage six design for '
+                                      'surface selection',
+                             'relation': 'extends',
+                             'why': 'near-title ref to catalog node only'}]},
+            {'type': 'fact',
+             'title': 'recall pipeline stage two design for surface selection',
+             'content': 'sibling 1 op from the entry', 'encoding_source': 'anchor'},
+        ])
+        made = result.get('connect_to_made') or []
+        self.assertEqual(len(made), 1, result.get('connect_to_failed'))
+        self.assertEqual(made[0]['target_id'], catalog)
+
+    def test_tokenizer_correspondence_no_dead_probes(self):
+        """69c2cbab #4: _title_tokens and FTS5 (porter unicode61,
+        remove_diacritics default) must tokenize compatibly — every token
+        the matcher emits for a realistic-nasty title must find that title
+        through the FTS door, alone and as a probe set."""
+        titles = [
+            'cap-of-4 change: 19% — done (4549bfd)',
+            'LAF_v1 scoring über-lane at 52-gold ceiling',
+            'Runner seam Phase 1 live (945feba, 2026-07-28): encoder-lane SDK',
+            'consolidation scoring ceilings converge across scored runs',
+        ]
+        for title in titles:
+            nid = self._mk(title)
+            toks = _title_tokens(title)
+            self.assertTrue(toks, title)
+            for tok in toks:
+                rows, _ = self.brain._title_candidate_rows([tok])
+                self.assertIn(nid, {r[0] for r in rows},
+                              'dead probe %r for title %r' % (tok, title))
+
     def test_archived_nodes_invisible(self):
         nid = self._mk('archived target title that must never resolve here')
         self.brain.archive_node(nid, archived_by='test')
