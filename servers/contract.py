@@ -430,6 +430,19 @@ GET_NODES_FULL_FORMAT = {
 # filtered field it should surface. Keep in sync with the DAL's SELECT.
 SKINNY_NODE_FIELDS = ('id', 'title', 'type', 'confidence', 'created_at')
 
+# connect_to catalog-title matching (write path) — deterministic token
+# matching, NO vectors (decision 2026-07-30: a wrong edge outlives a missing
+# one; cosine near-misses put a wrong node 0.003 below a right one). A title
+# resolves when its normalized token sequence is within MAX_OPS Levenshtein
+# token-edits of the query — distance 0 is the exact match (any length);
+# distance 1..MAX_OPS additionally requires the query to carry at least
+# MIN_TOKENS distinct tokens (short strings false-positive on containment)
+# and the runner-up candidate to sit at least MARGIN ops further out
+# (a photo-finish is a reason to refuse, not a tiebreak to win).
+NEAR_TITLE_MAX_OPS = 2
+NEAR_TITLE_MIN_TOKENS = 5
+NEAR_TITLE_MARGIN = 2
+
 # Survivor-pointer walk budget for NodeDAL.resolve_live — how many
 # archived→survivor redirects an id may take before it's declared orphaned.
 # Supersession chains (session-opener handoffs) grow one hop per generation;

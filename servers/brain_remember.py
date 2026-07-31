@@ -27,6 +27,42 @@ from .brain_constants import (
 )
 
 
+# ── connect_to catalog-title matching (deterministic, no vectors) ──
+
+_TITLE_TOKEN_RE = re.compile(r'[a-z0-9]+')
+
+
+def _title_tokens(text):
+    """Normalize a title to its token sequence: NFKC → lowercase → split on
+    every non-alphanumeric run (hyphen/underscore/em-dash/percent variance
+    vanishes; numbers and hashes survive — they're the distinctive tokens).
+    No stemming, no stopwords: predictability IS the safety property of the
+    near-title matcher."""
+    import unicodedata
+    return _TITLE_TOKEN_RE.findall(
+        unicodedata.normalize('NFKC', text or '').lower())
+
+
+def _token_edit_distance(a, b, cap):
+    """Levenshtein over token SEQUENCES (order-sensitive on purpose — a
+    reordered title is not 'a bit off'). Early-exits at `cap`: any distance
+    beyond it returns cap+1 — callers only need 'too far', not how far."""
+    if abs(len(a) - len(b)) > cap:
+        return cap + 1
+    prev = list(range(len(b) + 1))
+    for i, ta in enumerate(a):
+        cur = [i + 1]
+        row_min = cur[0]
+        for j, tb in enumerate(b):
+            c = min(prev[j + 1] + 1, cur[j] + 1, prev[j] + (ta != tb))
+            cur.append(c)
+            row_min = min(row_min, c)
+        if row_min > cap:
+            return cap + 1
+        prev = cur
+    return min(prev[-1], cap + 1)
+
+
 class BrainRememberMixin:
     """Remember methods for Brain."""
 
@@ -1636,7 +1672,8 @@ class BrainRememberMixin:
     # connect_to resolution — sibling-aware, sequencing-agnostic
     # ═══════════════════════════════════════════════════════════════
 
-    def _resolve_connect_to_entry(self, entry, sibling_map=None, exclude_self=None):
+    def _resolve_connect_to_entry(self, entry, sibling_map=None,
+                                  exclude_self=None, exclude_ids=None):
         """Resolve a connect_to entry to (target_id, relation_pairs, reason).
 
         sibling_map: {lowercased_title: node_id} for nodes created in the
@@ -1644,11 +1681,11 @@ class BrainRememberMixin:
                      keys are lowered when the map is built (see
                      remember_batch sibling_map construction) AND lowered
                      again at lookup. Sibling exact-match (case-insensitive)
-                     wins over catalog fuzzy-match — NEW wins on title
+                     wins over the catalog-title pass — NEW wins on title
                      collision. If you mean an existing catalog node, use
                      revise on its id, not duplicate-title remember.
-                     (Catalog fuzzy-match itself preserves case — only the
-                     batch-sibling lookup is normalized.)
+                     (Catalog matching is _match_catalog_title — token-exact
+                     or bounded near-title, deterministic, no vectors.)
         exclude_self: source node_id; resolution to this id is treated as a
                       self-reference and rejected.
 
@@ -1743,17 +1780,21 @@ class BrainRememberMixin:
         if not target_id and sibling_map:
             target_id = sibling_map.get(title_query.lower())
 
-        # Pass 2: catalog fallback via fuzzy title match
+        # Pass 2: catalog title — deterministic token matching only (exact =
+        # distance 0 at any length; near = distance ≤ NEAR_TITLE_MAX_OPS behind
+        # floor/uniqueness/margin gates). Vectors are deliberately absent from
+        # the write path (decision 2026-07-30): a wrong edge outlives a missing
+        # one. find_node_by_title (interactive fuzzy search) is NOT called here.
+        ambiguous_reason = None
         if not target_id:
             try:
-                match = self.find_node_by_title(title_query, threshold=0.75)
-                if match:
-                    target_id = match.get('id')
+                target_id, ambiguous_reason = self._match_catalog_title(
+                    title_query, exclude_ids=exclude_ids)
             except Exception as e:
                 reason = "title lookup failed: %s" % str(e)[:120]
                 self._log_error(
                     'connect_to_failed', e,
-                    'find_node_by_title for %r' % title_query[:80])
+                    'catalog title match for %r' % title_query[:80])
                 return None, [], reason
 
         # Self-reference guard
@@ -1766,15 +1807,98 @@ class BrainRememberMixin:
 
         # Unresolved — neither sibling nor catalog matched
         if not target_id:
-            reason = ("title %r resolved to no node (fuzzy match < 0.75; "
-                      "pass an exact title or an 8+ char node id)" % title_query[:80])
+            reason = ambiguous_reason or (
+                "title %r resolved to no node (pass the node id, the "
+                "sibling's exact title, or the exact catalog title)"
+                % title_query[:80])
             self._log_error(
                 'connect_to_unresolved',
                 ValueError("connect_to title resolved to nothing"),
-                'title=%s' % title_query[:80])
+                'title=%s%s' % (title_query[:80],
+                                ' | %s' % ambiguous_reason if ambiguous_reason
+                                else ''))
             return None, [], reason
 
         return target_id, relation_pairs, None
+
+    def _match_catalog_title(self, title_query, exclude_ids=None):
+        """Deterministic catalog-title match for connect_to (write path).
+
+        Token-sequence Levenshtein against live titles:
+          • distance 0 — exact normalized match, accepted at any length
+            (a verbatim copy is unambiguous intent);
+          • distance 1..NEAR_TITLE_MAX_OPS — the bounded-tolerance rung:
+            requires ≥ NEAR_TITLE_MIN_TOKENS distinct query tokens, a UNIQUE
+            best candidate, and the runner-up ≥ NEAR_TITLE_MARGIN ops further
+            out. Acceptance logs loud (connect_to_near_title) with both
+            strings — tolerance is visible, never silent.
+        Ambiguity (two candidates tied at best, duplicates at distance 0, or
+        a photo-finish inside the margin) REFUSES rather than picks.
+
+        Pre-filter with guaranteed recall: a title within K ops of the query
+        misses at most K query tokens, so of any K+1 distinct probe tokens at
+        least one must appear — one C-speed LIKE scan bounds the candidate
+        pool without false negatives. Probes are the longest tokens (rarest,
+        LIKE-safe: tokens are [a-z0-9]+ by construction).
+
+        Returns (target_id, None) on acceptance, (None, reason) on an
+        ambiguity refusal (caller surfaces the reason), (None, None) when
+        nothing is within the bar.
+
+        exclude_ids: node ids removed from candidacy entirely (batch-level
+        connect_to passes its own creations — a sibling sharing the target's
+        title must not tie the true catalog node into an ambiguity refusal).
+        """
+        from .contract import (NEAR_TITLE_MAX_OPS, NEAR_TITLE_MIN_TOKENS,
+                               NEAR_TITLE_MARGIN)
+        q = _title_tokens(title_query)
+        if not q:
+            return None, None
+        probes = sorted(set(q), key=lambda t: (-len(t), t))
+        probes = probes[:NEAR_TITLE_MAX_OPS + 1]
+        where = ' OR '.join("title LIKE '%' || ? || '%'" for _ in probes)
+        rows = self.conn.execute(
+            'SELECT id, title FROM nodes WHERE archived = 0 AND (%s)' % where,
+            probes).fetchall()
+        # Margin needs to see runner-up distances up to best+MARGIN, so the
+        # DP cap extends past MAX_OPS; beyond the cap everything is "too far".
+        cap = NEAR_TITLE_MAX_OPS + NEAR_TITLE_MARGIN - 1
+        scored = []
+        skip = exclude_ids or ()
+        for nid, title in rows:
+            if nid in skip:
+                continue
+            d = _token_edit_distance(q, _title_tokens(title), cap)
+            if d <= cap:
+                scored.append((d, nid, title))
+        within = [s for s in scored if s[0] <= NEAR_TITLE_MAX_OPS]
+        if not within:
+            return None, None
+        within.sort(key=lambda s: s[0])
+        best_d, best_id, best_title = within[0]
+        tied = [s for s in within if s[0] == best_d]
+        if len(tied) > 1:
+            reason = ("title matches %d nodes at distance %d (%s) — refusing "
+                      "ambiguous match; pass the node id"
+                      % (len(tied), best_d,
+                         ', '.join(s[1][:8] for s in tied[:4])))
+            return None, reason
+        if best_d == 0:
+            return best_id, None
+        # Near acceptance gates: length floor + margin to the runner-up.
+        if len(set(q)) < NEAR_TITLE_MIN_TOKENS:
+            return None, None
+        runner_d = min((s[0] for s in scored if s[1] != best_id),
+                       default=cap + 1)
+        if runner_d - best_d < NEAR_TITLE_MARGIN:
+            reason = ("near-title photo-finish (best=%d, runner-up=%d) — "
+                      "refusing; pass the node id" % (best_d, runner_d))
+            return None, reason
+        self._log_warning(
+            'connect_to_near_title',
+            'near-title accepted at distance %d: query=%r matched=%r (%s)'
+            % (best_d, title_query[:90], best_title[:90], best_id[:8]))
+        return best_id, None
 
     def _apply_connect_to(self, src_id, connect_to_spec, sibling_map=None,
                           encoding_source=None):
@@ -1876,7 +2000,9 @@ class BrainRememberMixin:
         Args:
             nodes: List of dicts, each with the same fields remember() accepts
                    (type, title, content, keywords, situation, reasoning, etc.)
-            connect_to: List of existing node titles to fuzzy-match and connect all new nodes to
+            connect_to: List of catalog targets (node id or exact/near title —
+                        deterministic ladder, no vectors) to connect all new
+                        nodes to
 
         Returns:
             {nodes_created, results: [{id, title, related_nodes}], connections_created}
@@ -1935,54 +2061,41 @@ class BrainRememberMixin:
             connect_to_made.extend(r['created'])  # entries are src-tagged by _apply_connect_to
             connect_to_failed.extend(r['failed'])
 
-        # Fuzzy-match connect_to titles
+        # Batch-level connect_to: same edge from EVERY created node to one
+        # catalog target. Resolution rides the SAME deterministic ladder as
+        # per-node entries (_resolve_connect_to_entry: id → catalog exact/near;
+        # sibling_map deliberately absent — siblings are excluded here by
+        # contract). Failures are loud and reported, never silently skipped
+        # (the pre-2026-07-30 fuzzy version continued without a word).
         if connect_to:
             created_set = set(created_ids)
             for entry in connect_to:
-                # Accept three formats:
-                # 1. String: "node title" → relation='related', no description
-                # 2. Dict old: {title, why, relation} → single relation
-                # 3. Dict new: {title, relations: [{relation, why}, ...]} → multiple relations
-                if isinstance(entry, dict):
-                    title_query = entry.get('title', '')
-                else:
-                    title_query = str(entry)
-
-                match = self.find_node_by_title(title_query, threshold=0.75)
-                if not match or match.get('id') in created_set:
+                target_id, relation_pairs, fail_reason = (
+                    self._resolve_connect_to_entry(entry, sibling_map=None,
+                                                   exclude_ids=created_set))
+                if not target_id:
+                    connect_to_failed.append(
+                        {'title': entry.get('title', '') if isinstance(entry, dict)
+                                  else str(entry)[:80],
+                         'reason': fail_reason})
                     continue
-
-                # Build list of (relation, description) pairs to create
-                relation_pairs = []
-                if isinstance(entry, dict) and 'relations' in entry:
-                    # New format: multiple relations
-                    for rel_spec in entry['relations']:
-                        rel = rel_spec.get('relation', 'related')
-                        desc = rel_spec.get('why', rel_spec.get('description', ''))
-                        relation_pairs.append((rel, desc))
-                elif isinstance(entry, dict):
-                    # Old format: single relation
-                    rel = entry.get('relation', 'related')
-                    desc = entry.get('why', '')
-                    relation_pairs.append((rel, desc))
-                else:
-                    # String format
-                    relation_pairs.append(('related', ''))
+                if target_id in created_set:
+                    continue  # sibling — batch-level targets catalog only
 
                 for node_id in created_ids:
                     for rel, desc in relation_pairs:
                         try:
-                            edge_res = self.connect_typed(node_id, match['id'], relation=rel,
+                            edge_res = self.connect_typed(node_id, target_id, relation=rel,
                                               weight=0.6, description=desc,
                                               encoding_source=node_sources.get(node_id, 'anchor'))
                             connections_created += 1
                             connect_to_made.append({
-                                'src_id': node_id, 'target_id': match['id'],
+                                'src_id': node_id, 'target_id': target_id,
                                 'relation': rel,
                                 'edge_id': (edge_res or {}).get('edge_id'),
                                 'deltas': (edge_res or {}).get('deltas', [])})
                         except Exception as _e:
-                            self._log_error('batch_connect_to', _e, 'connecting %s → %s' % (node_id[:8], match['id'][:8]))
+                            self._log_error('batch_connect_to', _e, 'connecting %s → %s' % (node_id[:8], target_id[:8]))
 
         return {
             'nodes_created': len(created_ids),
