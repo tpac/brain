@@ -82,6 +82,12 @@ def main():
     w.close()
 
     turns, _enr, _n = D.build_corpus('2026-05-11')
+    ts_of = {}
+    w2 = open_walker()
+    for sess, epoch, seq, ts in w2.execute(
+            'SELECT session_id, epoch, seq, ts FROM turns'):
+        ts_of[(sess, int(epoch), int(seq))] = ts
+    w2.close()
     print('corpus turns: %d' % len(turns))
 
     from tests.isolated_brain import IsolatedBrain
@@ -111,18 +117,23 @@ def main():
         n_scored = 0
 
         for t in turns:
-            key = t['key'].split('/')
-            q = qvs.get((key[0], int(key[1]), int(key[2])))
+            kp = t['key'].split('/')
+            key = (kp[0], int(kp[1]), int(kp[2]))
+            q = qvs.get(key)
             if q is None:
                 continue
             gid = master[int(t['gr'])]
             gi = eng._idx.get(gid)
             if gi is None or gi >= n:
                 continue
-            ts = t.get('turn_dt')
+            # RAW stored string, never .isoformat(): _asof_masks compares ISO
+            # strings lexicographically, and a tz-naive datetime's isoformat
+            # omits the '+00:00' offset — sorting before every stored stamp and
+            # silently over-masking. Every sibling call site passes the raw ts.
+            ts = ts_of.get(key)
             node_mask = None
-            if ts is not None:
-                node_mask, _tm = eng._asof_masks(ts.isoformat(), n)
+            if ts:
+                node_mask, _tm = eng._asof_masks(ts, n)
 
             cos = {}
             for v in views:

@@ -105,25 +105,10 @@ def main():
             qv[(sess, epoch, seq)] = unit(q)
     w.close()
 
-    # adjacency for the hop check (complementary verbs, as in T2)
-    aspects = json.loads(
-        (REPO / 'servers/scales/s2/aspects_v1.json').read_text())
-    corrective_all = set(
-        (aspects.get('correction_improvement') or {}).get('edge_relations') or [])
-    b = open_brain_ro()
-    adj = {}
-    for s_, t_, rel, created in b.execute(
-            "SELECT e.source_id, e.target_id, r.relation, e.created_at "
-            "FROM edges e JOIN edge_relations r ON r.edge_id=e.edge_id "
-            "WHERE (r.archived IS NULL OR r.archived=0)"):
-        si, ti = m2i.get(s_), m2i.get(t_)
-        if si is None or ti is None:
-            continue
-        if verb_class(rel, corrective_all) != 'complementary':
-            continue
-        adj.setdefault(si, []).append((ti, created))
-        adj.setdefault(ti, []).append((si, created))
-    b.close()
+    # lane cache + slot index are loop-INVARIANT — open once, not per turn.
+    lanes_mm = np.load(OUT_DIR / 'lane_cache.npy', mmap_mode='r')
+    S = {s: i for i, s in enumerate(idx['slots'])}
+    sit_li = A.LANES.index('sit')
 
     turns, _enr, n = D.build_corpus('2026-05-11')
     gains = np.array([A.GAINS[ln] for ln in A.LANES])
@@ -142,14 +127,9 @@ def main():
         if q is None:
             continue
         zl = {ln: t['zl'][ln] for ln in A.LANES}
-        zmh = np.full(n_nodes, np.nan)
-        zmh[U] = zn(t['mh'])[U]
         # raw sit values are not carried on the turn dict → recover the lane's
         # raw vector from the lane cache
-        lanes_mm = np.load(OUT_DIR / 'lane_cache.npy', mmap_mode='r')
-        S = {s: i for i, s in enumerate(idx['slots'])}
-        raw = lanes_mm[t['row_idx']][S['op0'], A.LANES.index('sit')].astype(
-            np.float64)
+        raw = lanes_mm[t['row_idx']][S['op0'], sit_li].astype(np.float64)
         gi = int(t['gr'])
         tdt = t.get('turn_dt')
 

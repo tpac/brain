@@ -2629,10 +2629,14 @@ beyond the mean HURTS: σ shrinks monotonically and churn rises. Do NOT apply
 the published "all-but-the-top" recipe; it was validated on diverse corpora,
 ours is narrow-domain and its top PCs carry real topic structure.
 
-**Why the corpus cannot adjudicate it.** Centred gold ranks worsen, but the
-loss concentrates at @25 (−5.5pp, pool composition) and is ~zero at @5 (−0.6pp,
-ordering). That asymmetry is the signature of label circularity: corpus-v2
-golds were minted from pools RAW cosine produced. Operator eyeball is therefore
+**Why the corpus cannot adjudicate it.** As-of honest (post-review fix, the
+first run masked no future nodes): raw 35.6%@5 / 71.9%@25 → centred **36.9%@5**
+/ 67.3%@25. Centering IMPROVES ordering (+1.3pp@5) and loses pool membership
+(−4.6pp@25). That divergence is the signature of label circularity: corpus-v2 golds were
+minted from pools RAW cosine produced, so a geometry change promotes nodes that
+were never eligible to be labelled. (Cross-check: the as-of-honest raw arm
+reproduces the per-view census's `_primary` row exactly — 11 / 35.6% / 71.9% —
+two independently-written probes agreeing to the digit.) Operator eyeball is therefore
 the only non-circular judge — package at
 `eval/laf/walker/centering_eyeball.md` (14 random turns, raw vs centred).
 **Tom's ruling on that package is the arc's first gate.**

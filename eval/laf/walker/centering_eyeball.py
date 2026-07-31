@@ -134,9 +134,15 @@ def main():
                 'overlap': len(set(o_raw) & set(o_cen)),
             })
 
+    short = {}
+    for nid, v in meta.items():
+        short.setdefault(nid[:8], []).append(v)
+
     def line(sid, other, gold):
-        ty, ti, _c = meta.get(
-            next((x for x in meta if x[:8] == sid), ''), ('?', sid, 0))
+        hits = short.get(sid) or []
+        ty, ti, _c = hits[0] if hits else ('?', sid, 0)
+        if len(hits) > 1:            # prefix collision: say so, don't guess
+            ti = '[AMBIGUOUS 8-char prefix] ' + ti
         mark = '**★GOLD**' if sid == gold else ('=' if sid in other else '+')
         return '%s `%s` [%s] %s' % (mark, sid, ty, ti[:78])
 

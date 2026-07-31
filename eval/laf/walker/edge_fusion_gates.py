@@ -190,6 +190,7 @@ def main():
                     acc[(vc, gname)][1].append(m)
         return acc
 
+    rng = np.random.default_rng(20260729)
     pops = [('ALL (audited baseline)', rows, ('pick', 'enc')),
             ('NOT-PICKED-BEFORE', [r for r in rows if not r['picked_before']],
              ('pick', 'enc')),
@@ -213,7 +214,10 @@ def main():
                     cells.append('—')
                     continue
                 d = np.asarray(g) - np.asarray(m)
-                rng = np.random.default_rng(20260729)
+                # ONE generator for the whole table (hoisted): re-seeding per
+                # cell made every cell's CI draw the identical resample
+                # indices, so the 12 intervals were perfectly correlated
+                # rather than independent.
                 boots = np.array([
                     d[rng.integers(0, d.size, d.size)].mean()
                     for _ in range(2000)])

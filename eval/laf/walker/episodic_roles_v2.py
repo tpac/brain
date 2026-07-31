@@ -214,11 +214,10 @@ def roles_v2_from_sims(eng, conn_map, auth_map, sims, as_of, trace_created):
 
 # ── independent slow path for self-check part 2 ───────────────────────────
 
-def slow_roles(brain, logs, eng, sims, as_of, trace_created):
-    """conn/auth for one query, recomputed from fresh SQL per moment — no
-    shared map objects with the fast path."""
-    cm = build_conn_map(brain, logs)      # rebuilt fresh (cheap enough at
-    am = build_auth_map(brain, logs)      # sample size; objects not shared)
+def slow_roles(eng, cm, am, sims, as_of, trace_created):
+    """conn/auth for one query via an INDEPENDENTLY-built map pair. The
+    independence the self-check needs is from the fast path's map OBJECTS, not
+    from rebuilding per sample — rebuilding ran a whole-graph query per call."""
     return roles_v2_from_sims(eng, cm, am, sims, as_of, trace_created)
 
 
@@ -298,8 +297,10 @@ def main():
                 op_vec, anchor_vec, q_vec = src
                 op_j = q_vec if j == 0 else op_vec
                 for kind, vec in (('op', op_j), ('anchor', anchor_vec)):
-                    if vec is not None:
-                        queries.append((j, kind, vec))
+                    if vec is None:
+                        c['j_missing_%s_vec' % kind] += 1   # loud-by-default:
+                        continue                            # count the skip
+                    queries.append((j, kind, vec))
             if not queries:
                 continue
             j_max = max(j for j, _, _ in queries)
@@ -364,11 +365,13 @@ def main():
                 worst1 = max(worst1, abs(a[0] - b[0]), abs(a[1] - b[1]))
         # part 2 — role lookup: fresh-SQL slow path must agree.
         worst2 = 0.0
+        cm_ind = build_conn_map(brain_c, logs_c)   # built ONCE, independent of
+        am_ind = build_auth_map(brain_c, logs_c)   # the fast path's objects
         for key, j, kind, vec, ts in sample[:10]:
             sims = trace_mat @ vec
             fast = roles_v2_from_sims(eng, conn_map, auth_map, sims, ts,
                                       trace_created)
-            slow = slow_roles(brain_c, logs_c, eng, sims, ts, trace_created)
+            slow = slow_roles(eng, cm_ind, am_ind, sims, ts, trace_created)
             for r in set(fast) | set(slow):
                 a, b = fast.get(r, (0.0, 0.0)), slow.get(r, (0.0, 0.0))
                 worst2 = max(worst2, abs(a[0] - b[0]), abs(a[1] - b[1]))

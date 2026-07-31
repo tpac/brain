@@ -72,9 +72,10 @@ def main():
     master = idx['master']
 
     w = open_walker()
-    qv_raw, keys = [], []
-    for sess, epoch, seq, q in w.execute(
-            'SELECT session_id, epoch, seq, q_vec FROM turns'):
+    qv_raw, keys, ts_of = [], [], {}
+    for sess, epoch, seq, q, ts in w.execute(
+            'SELECT session_id, epoch, seq, q_vec, ts FROM turns'):
+        ts_of[(sess, epoch, seq)] = ts
         if q:
             qv_raw.append(np.frombuffer(q, dtype=np.float32).astype(np.float64))
             keys.append((sess, epoch, seq))
@@ -93,6 +94,11 @@ def main():
         M0 = np.asarray(eng._mats[VIEW][:n], dtype=np.float64)
         have = np.isfinite(M0).all(axis=1)
         M0 = M0[have]
+        # Row-aligned creation stamps: the label-dependent half MUST mask nodes
+        # that did not exist at turn time, or the rank denominator includes the
+        # future. Captured here because the engine closes with this block.
+        created_all = np.asarray(eng._created[:n], dtype='<U40')
+        created = created_all[have]
         row_ids = [master_id for i, master_id in
                    enumerate(eng._master[:n]) if have[i]]
         rid = {sid: i for i, sid in enumerate(row_ids)}
@@ -155,6 +161,17 @@ def main():
     for t_, v in top:
         L.append('| %s | %d | %+.3f |' % (t_, len(v), float(np.mean(v))))
 
+    # gold rows (with the raw turn timestamp) — needed inside the arm loop now
+    gold_rows = []
+    for t in turns:
+        k = t['key'].split('/')
+        key = (k[0], int(k[1]), int(k[2]))
+        qi = qmap.get(key)
+        gi = rid.get(master[int(t['gr'])])
+        if qi is None or gi is None:
+            continue
+        gold_rows.append((qi, gi, ts_of.get(key)))
+
     # ── per-arm space metrics ──
     rows = []
     base_top = None
@@ -179,10 +196,22 @@ def main():
         else:
             churn = float(np.mean([
                 len(set(a) & set(b_)) / TOPK for a, b_ in zip(tops, base_top)]))
+        # Gold ranks are computed HERE, as-of masked, so the 245MB sims matrix
+        # can be dropped before the next arm allocates its own (retaining one
+        # per arm held ~1.5GB).
+        ranks = []
+        for qi, gi, ts in gold_rows:
+            row = sims[qi]
+            if ts:
+                row = np.where(created <= ts, row, -np.inf)
+            r = tie_fair(np.where(np.isfinite(row), row, np.nan), gi)
+            if r is not None:
+                ranks.append(r)
         rows.append({'name': name, 'pair_mean': pair.mean(),
                      'q_mean': sims.mean(), 'q_std': sims.std(),
                      'head': float(np.median(head)), 'churn': churn,
-                     'sims': sims})
+                     'ranks': ranks})
+        del sims, srt, Md, Qd, Mn, Qn
     L += ['', '## 3. Dynamic range (label-free) + 4. churn vs raw', '',
           '| arm | random-pair cos | query→node cos mean | sigma | '
           'head spread (cos@1−cos@25) | top-25 overlap w/ raw |',
@@ -192,21 +221,13 @@ def main():
                  % (r['name'], r['pair_mean'], r['q_mean'], r['q_std'],
                     r['head'], 100 * r['churn']))
 
-    # ── 5. label-dependent: gold rank ──
-    gold_rows = []
-    for t in turns:
-        k = t['key'].split('/')
-        qi = qmap.get((k[0], int(k[1]), int(k[2])))
-        gi = rid.get(master[int(t['gr'])])
-        if qi is None or gi is None:
-            continue
-        gold_rows.append((qi, gi))
+    # ── 5. label-dependent: gold rank (as-of masked, computed in the loop) ──
     L += ['', '## 5. LABEL-DEPENDENT (secondary — depends on corpus-v2 gold)',
-          '', 'n=%d turns with a gold in this view' % len(gold_rows), '',
+          '', 'n=%d turns with a gold in this view · nodes created after each '
+          'turn are masked out (as-of honest)' % len(gold_rows), '',
           '| arm | median gold rank | @5 | @25 |', '|---|---|---|---|']
     for r in rows:
-        ranks = [tie_fair(r['sims'][qi], gi) for qi, gi in gold_rows]
-        ranks = [x for x in ranks if x is not None]
+        ranks = r['ranks']
         L.append('| %s | %.0f | %.1f%% | %.1f%% |'
                  % (r['name'], float(np.median(ranks)),
                     100.0 * sum(1 for x in ranks if x <= 5) / len(ranks),

@@ -96,7 +96,10 @@ def main():
                             out[lane, c] = s
             return out
 
-        cache = np.zeros((len(turn_rows), 2, n_nodes), dtype=np.float32)
+        # NaN, not zero: a zero row is indistinguishable from 'no activation'
+        # to a consumer, so an unfilled turn would score as measured. NaN keeps
+        # the gap visible under the harness's isfinite conventions.
+        cache = np.full((len(turn_rows), 2, n_nodes), np.nan, dtype=np.float32)
         rows_map, n_noq = {}, 0
         for t in turn_rows:
             key = (t['key'][0], int(t['key'][1]), int(t['key'][2]))
@@ -133,6 +136,9 @@ def main():
             raise SystemExit('roles_lane_cache: cross-artifact MISMATCH — '
                              'nothing written.')
 
+    if n_noq:
+        print('WARNING: %d turns had no q_vec/ts — their rows stay NaN. Any '
+              'consumer must mask them, not read them as zero.' % n_noq)
     np.save(CACHE, cache)
     INDEX.write_text(json.dumps({
         'lanes': ['conn', 'auth'], 'n_nodes': n_nodes,
