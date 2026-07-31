@@ -1,0 +1,202 @@
+[
+  {
+    "key": "2bbd15b4-2fc0-4451-9d32-2123e36a1e96/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2bbd15b4-2fc0-4451-9d32-2123e36a1e96/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2bbd15b4-2fc0-4451-9d32-2123e36a1e96/0/9",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message says only 'push to main'; shares no lexical overlap with the node's 'worktree/parallel session' framing, so embedding likely reads it as a generic merge-ops query, not the coordination-guardrail principle.",
+    "bridge": "Pattern-class style-recall for greenlight/merge cues — surface operator how-to/guardrail nodes matched to push/merge intents, not just topical matches.",
+    "style_note": null
+  },
+  {
+    "key": "2bbd15b4-2fc0-4451-9d32-2123e36a1e96/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2bbd15b4-2fc0-4451-9d32-2123e36a1e96/0/13",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2bbd15b4-2fc0-4451-9d32-2123e36a1e96/0/14",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2bbd15b4-2fc0-4451-9d32-2123e36a1e96/0/17",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'yes' greenlights on an active build should surface the build's own governing risk/decision nodes (parked assessments, prior design threads) — this gold already is that."
+  },
+  {
+    "key": "2bbd15b4-2fc0-4451-9d32-2123e36a1e96/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2bbd15b4-2fc0-4451-9d32-2123e36a1e96/0/21",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Terse imperative ('activate /watch') carries almost no descriptive vocabulary; a bare command's embedding doesn't align well with the long architecture-description node it names.",
+    "bridge": "Exact-match lexical boost on literal skill/command tokens ('/watch') routing straight to that skill's design node.",
+    "style_note": null
+  },
+  {
+    "key": "a5d7548b-5cf5-4d21-a16b-10e64ba03a1d/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a5d7548b-5cf5-4d21-a16b-10e64ba03a1d/0/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a5d7548b-5cf5-4d21-a16b-10e64ba03a1d/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a5d7548b-5cf5-4d21-a16b-10e64ba03a1d/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a5d7548b-5cf5-4d21-a16b-10e64ba03a1d/0/10",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a5d7548b-5cf5-4d21-a16b-10e64ba03a1d/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a5d7548b-5cf5-4d21-a16b-10e64ba03a1d/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a5d7548b-5cf5-4d21-a16b-10e64ba03a1d/0/14",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a5d7548b-5cf5-4d21-a16b-10e64ba03a1d/0/15",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Casual planning tone ('silver nodes', 'rate relevance') shares little lexical overlap with the node's technical Disease-A/B taxonomy vocabulary and specific stats.",
+    "bridge": "Session-arc/running-topic field carrying today's established taxonomy vocabulary (Disease A/B) forward so later casual references still connect.",
+    "style_note": null
+  },
+  {
+    "key": "a5d7548b-5cf5-4d21-a16b-10e64ba03a1d/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a5d7548b-5cf5-4d21-a16b-10e64ba03a1d/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a5d7548b-5cf5-4d21-a16b-10e64ba03a1d/0/20",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Long multi-topic message (three cosine-linking proposals) dilutes the embedding away from the narrower source_refs-design sub-topic; near-miss (rank 6) suggests discrimination, not reach, failure.",
+    "bridge": "Title/lexical exact-match normalizing 'source-ref' vs 'source_refs' phrasing would likely close the one-rank gap.",
+    "style_note": null
+  },
+  {
+    "key": "a5d7548b-5cf5-4d21-a16b-10e64ba03a1d/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a5d7548b-5cf5-4d21-a16b-10e64ba03a1d/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a5d7548b-5cf5-4d21-a16b-10e64ba03a1d/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a5d7548b-5cf5-4d21-a16b-10e64ba03a1d/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

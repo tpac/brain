@@ -1,0 +1,202 @@
+[
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/29",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks for a holistic outside code review; gold is a stale April 3 specific call-stack-audit event whose file-level content (daemon_hooks.py, brain_recall.py) doesn't overlap the temporal-infra/API-key work in scope now.",
+    "bridge": "N/A (mislabel) - the general call-stack-audit principle node (c15e64cb) is the right class, not this stale specific instance.",
+    "style_note": "For 'review my code end to end' cues, expected class is Tom's audit-discipline principles/rules (call stacks before big changes, shallow-investigation-bias), not a stale specific past audit's file list."
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'Haiku vs Sonnet' vocabulary but wrong domain - message is about handing surface-eval runs to Haiku+Sonnet for review, gold is about S2 community-node generation quality comparison; lexical overlap without semantic fit.",
+    "bridge": "N/A (mislabel) - fit would need a node about multi-model surface/eval review methodology, not community-node quality comparison.",
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/34",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Bare command 'surface_replay' shares no lexical tokens with the node's abstention-data content (item IDs, candidate counts); node was created 2 days earlier so episodic recency is moderate, not immediate.",
+    "bridge": "Episodic-recency link to the active surface-v5-abstention investigation thread, or a running-session field carrying 'currently analyzing surface abstention failures'.",
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/35",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'Haiku selection' vocabulary but different axis - message is about source-neutrality (tool-fetched vs original candidates), gold is an aggregate score-band-ceiling synthesis from a different investigation.",
+    "bridge": "N/A (mislabel) - fit needs a node specifically about tool-result vs cosine-candidate selection bias, not the aggregate pass-rate synthesis.",
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/42",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks to summarize THIS session's work/results/todo; gold is a time-anchor cluster of unrelated older dates (Apr 13-May 2) with zero overlap to this session's actual work (API-key cleanup, temporal infra, code review).",
+    "bridge": "N/A (mislabel) - right fit is an in-session running summary/journal-note carrying this session's actual deltas, not an unrelated old time-anchor cluster.",
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Bare item-number request ('analyze 5 while 6 runs') gives no referent connecting to this old v15.3 regression table for different item IDs from a different eval run - link only visible in hindsight once analysis reveals the same answerer-arithmetic failure class.",
+    "bridge": "N/A (mislabel) - a generalized 'answerer arithmetic/synthesis failure' principle node, not a stale item-specific table from a different run, is the right class.",
+    "style_note": "Terse parallel-item tracking cues ('analyze X while Y runs') should surface general failure-mode patterns (answerer synthesis/arithmetic gaps) rather than a stale item-specific regression table."
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/0/15",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Query frames the question as 'eval'/'Anchor'/'Haiku' identity-mapping rather than the node's 'surface prompt'/'personal names' framing - lexical mismatch likely pulled ranking toward eval-structure nodes instead.",
+    "bridge": "A situation-lane tag for 'is X the same entity as Anchor' identity questions, or a graph link from eval-role nodes to the locked Haiku-is-surface correction, would surface it higher.",
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'benchmark' vocabulary but different topic - message asks about the answerer's specific model role in this eval harness, node is a general reflection on external memory benchmarks (LoCoMo/MemoryAgentBench).",
+    "bridge": "N/A (mislabel) - right fit is a node about the eval harness's Encoder/Surface/Answerer role separation and model-choice rationale, not the external-benchmark reflection.",
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message phrasing ('revising in case of corrections', 'contradictions') diverges lexically from the node's title ('three flavors of correction'); likely crowded out by many nearby same-session correction_of discussion nodes.",
+    "bridge": "Tighter lexical/semantic match on 'flavors of correction the encoder must catch' should rank top-5; a situation-lane match for 'reading conversation for encoding, checking revisions' would help surface it over session-crowding nodes.",
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares broad 'recall failing'/'recognition' framing but the old node's specific hypotheses (cosine floor, vocabulary noise) predate and don't address the actual mechanism here (missing edge descriptions blocking cross-cluster bridges).",
+    "bridge": "N/A (mislabel) - the right fit is a node specifically about edge-description-as-recall-signal (e.g. the 'edges are surface #5 of 6' lesson Anchor itself cites), not this generic old crisis node.",
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/6",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares the abstract word 'correction' but the node is about wanting outcome-traces for a feedback loop (a different S2 concern) while the message is about the correction_of-vs-edges blind spot just diagnosed - no real overlap beyond the word.",
+    "bridge": "N/A (mislabel) - right fit would be the correction_enrich() Layer-3.5 decision or the correction_improvement-vs-extension_refinement aspect classification directly under discussion.",
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message directs a specific 'kill correction_of' cleanup scope; gold is a heavily content-grafted decision node (updated weeks later, 2026-06-07) describing an unrelated cleanup scope (judge extraction, pipeline_contract split, brain_precision deletion) from a different session.",
+    "bridge": "N/A (mislabel) - the concurrent same-day 'Kill correction_of entirely' decision node (surfaced later at turn 472) is the right fit.",
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/11",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/15",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message is about designing an encoder before/after test plan for the correction-render change; gold's useful lesson (aggregate pass-rate unreliable, prefer structural metrics) is buried inside a stale specific v15.8-v15.10 version-comparison writeup rather than phrased as a portable methodology principle.",
+    "bridge": "A node-class prior for 'testing methodology pitfalls' would surface the aggregate-pass-rate-unreliable lesson generically instead of this specific old version-comparison writeup.",
+    "style_note": "For before/after test-plan cues, the pattern class is Tom's eval-discipline principles (aggregate pass rate is an unreliable signal, prefer structural metrics, baseline first) - not a stale specific version-comparison report."
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/41",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message is a detailed bug-fix directive for the s1_scout_facts scout; gold is a stale April 3 call-stack-audit event from an unrelated earlier session - overlap is only the generic 'verify code' framing.",
+    "bridge": "N/A (mislabel) - if audit-discipline were relevant, the general rule node (c15e64cb) should surface, not this stale specific instance.",
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/44",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks to ship the current 15.11+v6+fix bundle and show prompt diffs; gold is an unrelated stale v14 ship-checklist milestone from a different session weeks earlier with different specific patches.",
+    "bridge": "N/A (mislabel) - right fit is a trace/summary of the actual just-shipped diff for this bundle, not the old v14 checklist.",
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/48",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Bare 'Clean up' cue is a terse greenlight; gold is a stale specific April cleanup's line-count/commit-count report from an unrelated earlier session, not the operative cleanup-discipline pattern.",
+    "bridge": "N/A (mislabel) - a pattern-class node (e.g. the 'before we wrap' cleanup ritual: dead-code scan + contract-constant audit) is the right fit, and was already among Haiku's own picks this turn.",
+    "style_note": "Bare 'Clean up' should surface Tom's cleanup-ritual pattern (dead-code scan + contract-constant audit before wrap) or cleanup-scope discipline - not a stale numeric report from an unrelated earlier session."
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/49",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/50",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/51",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'check bugs first' should surface Tom's bug-triage discipline/preferences (prioritize new/active bugs before further shipping) - not an unrelated stale next-session planning queue from a different month."
+  }
+]

@@ -1,0 +1,202 @@
+[
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message says 'connected to new nodes/path'; node says 'no graph edge to survivor/_sys_archived_survivor_id' — same topic, mismatched vocabulary masks the fit.",
+    "bridge": "Situation-lane match on 'archived-node survivor edges' + episodic recency (created 2 days prior, same investigation thread).",
+    "style_note": null
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight-plus-design-ask expects Tom's DAL-first/efficiency principle nodes, not a completed historical DAL Phase-2 migration record."
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Why not commit to main?' expects Tom's commit-policy/strategy nodes (e.g. commit settled work before continuing), not an unrelated old milestone commit."
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/10",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Let's scope them' expects the get_title-leak fix planning nodes for the two identified sites, not the unrelated scope-drift correction it lexically collides with."
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/15",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message says 'map it'/'connected to recall' without pipeline-stage vocabulary; embedding likely weighted toward the fresh node-presentation discussion over the older recall-funnel doc it should extend.",
+    "bridge": "Graph walk from the just-built node-presentation spine to its recall-side counterpart, or lexical/idf hit on 'recall pipeline'.",
+    "style_note": null
+  },
+  {
+    "key": "02f6521a-de69-4c48-b590-8549be8021ef/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Closing/'commit that and close the stream' cue expects session-wrap/commit-discipline nodes, not the unrelated self-channel broadcast milestone it collides with on 'stream'."
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/6",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node is a month old and framed around 'closure-gutted'/session-end loss; message asks about journal persistence/scoping in fresher session vocabulary, so it's outranked by same-day nodes on the identical thread.",
+    "bridge": "Situation-lane match on 'session continuity gaps' plus episodic linkage into the ongoing journal-design thread.",
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/7",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/9",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Older (2026-04-22) per-unit-need framing competes on identical vocabulary against several same-day fresher nodes on the same journal-usage question, likely deprioritized by recency.",
+    "bridge": "Idf/lexical match on 'journal used per unit' plus a graph link from the newer fleet-state node back to this earlier per-unit finding.",
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/10",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/16",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/19",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

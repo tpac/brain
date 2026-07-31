@@ -1,0 +1,202 @@
+[
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/11",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/12",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/15",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Lexical: node says 'l4_lane/convergence/why dropped'; message says 'haiku raise more info' — no shared rare tokens; 4 packed complaints dilute embedding match.",
+    "bridge": "Situation-lane match on 'surface pipeline drops computed signals' + graph walk from the Step-4 render node would surface it.",
+    "style_note": null
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect Tom's review-standard nodes (architecture cleanliness bar, silent-error audit discipline) — not a specific past review's grade sheet."
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect dead-code discipline pattern nodes (1 small fix per big build; mention-don't-delete unrelated dead code) — not one past cleanup instance."
+  },
+  {
+    "key": "1a9b2904-fb83-4f74-98a2-ebfa00a477cb/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect nodes about Tom's recurring milestone-marking trait or collaboration warmth generally, not one specific dated instance."
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect nodes about the actual eager-load/critical-tool decision being implemented, not an unrelated MCP-tool-usage lesson."
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect Tom's momentum/greenlight pattern nodes ('go for it' = build now) — Haiku picked this; gold is an unrelated old principle."
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/14",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/15",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/23",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect verification-discipline nodes ('committed ≠ live') or this bundle's own status, not an unrelated older project's completion summary."
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/29",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message names 'archive_guarded/locked node'; node describes the separate cluster-scope guard — different guard vocab, no lexical overlap, and the node is 38 days old (no episodic boost).",
+    "bridge": "Graph walk from the lock-guard/archive_node neighbor, or a 'consolidation guard family' edge, would surface this sibling guard.",
+    "style_note": null
+  },
+  {
+    "key": "3ce74143-e7b1-4670-b390-de58865f23b7/0/30",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node framed as 'axiom/identity' encoder guidance; message frames it as a consolidation instruction — situation field targets encoder review, not consolidation design, weakening the embedding match.",
+    "bridge": "Lexical/idf on 'locked node' + a situation-lane spanning both encoder and consolidation contexts would connect them.",
+    "style_note": null
+  },
+  {
+    "key": "c5371769-a7b6-4f20-8ed8-659535c7a626/0/1",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c5371769-a7b6-4f20-8ed8-659535c7a626/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect the paused task's own state (the held commit plan) or a park-until-go discipline node, not an unrelated daemon-restart lesson."
+  },
+  {
+    "key": "c5371769-a7b6-4f20-8ed8-659535c7a626/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

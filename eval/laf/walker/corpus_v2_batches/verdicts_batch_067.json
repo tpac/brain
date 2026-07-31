@@ -1,0 +1,202 @@
+[
+  {
+    "key": "e5a774c8-116f-4ecb-9777-15a4acc2df62/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare skill-invocation cue; should surface Tom's architecture-review preferences or the locked DAL-split lesson, not an old session's stated intent."
+  },
+  {
+    "key": "e5a774c8-116f-4ecb-9777-15a4acc2df62/0/3",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e5a774c8-116f-4ecb-9777-15a4acc2df62/0/9",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's generic 'dead code/dedup/boundaries' phrasing doesn't share the lesson's specific vocab ('disabled hooks','removed MCP tools'); old node, no recent touch.",
+    "bridge": "Lexical link between generic process language and the hook/MCP-removal specifics, or situation-lane tuned to skill-design cues.",
+    "style_note": null
+  },
+  {
+    "key": "e5a774c8-116f-4ecb-9777-15a4acc2df62/0/11",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Anaphoric 'them/streams' surfaces launch-vocabulary, not the rule's 'worktree=identity+boundary' framing; month-old node, no recent touch.",
+    "bridge": "Graph walk from a surfaced worktree-discipline neighbor, or episodic recency for the stream-contract rule.",
+    "style_note": null
+  },
+  {
+    "key": "e5a774c8-116f-4ecb-9777-15a4acc2df62/0/12",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e5a774c8-116f-4ecb-9777-15a4acc2df62/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e5a774c8-116f-4ecb-9777-15a4acc2df62/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare launch-confirmation; should surface stream-launch/worktree-isolation rules (e.g. the four-guide stream contract), not the unrelated commit-scope caution."
+  },
+  {
+    "key": "e5a774c8-116f-4ecb-9777-15a4acc2df62/0/16",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e5a774c8-116f-4ecb-9777-15a4acc2df62/0/17",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e5a774c8-116f-4ecb-9777-15a4acc2df62/0/18",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e5a774c8-116f-4ecb-9777-15a4acc2df62/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Casual stream-status update; should surface current DAL-arc coordination state, not a month-old unrelated self-channel traffic snapshot."
+  },
+  {
+    "key": "e5a774c8-116f-4ecb-9777-15a4acc2df62/0/27",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "'ok lets go' doesn't lexically match the pattern's trigger phrase 'surprise me'; same behavioral class, different surface text, so embedding/lexical paths missed it.",
+    "bridge": "Style-recall for Tom's greenlight/autonomy patterns keyed by conversational function, not literal phrase match.",
+    "style_note": null
+  },
+  {
+    "key": "e5a774c8-116f-4ecb-9777-15a4acc2df62/0/28",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e5a774c8-116f-4ecb-9777-15a4acc2df62/0/29",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e5a774c8-116f-4ecb-9777-15a4acc2df62/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'What's the next step' should surface the current DAL-arc's own next-step record (Phase D plan), not an unrelated month-old recall-refactor tier list."
+  },
+  {
+    "key": "e5a774c8-116f-4ecb-9777-15a4acc2df62/0/31",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Many competing CLAUDE.md nodes share the same lexical field ('CLAUDE.md','stale','trim'), diluting rank against this 79-day-old principle.",
+    "bridge": "Node-class prior favoring the single most-current CLAUDE.md rule over near-duplicate rivals.",
+    "style_note": null
+  },
+  {
+    "key": "d0b3c7e1-1dc0-4867-a2ac-cc0bb729fc73/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d0b3c7e1-1dc0-4867-a2ac-cc0bb729fc73/0/11",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Question's phrasing ('who created a node') doesn't echo the principle's title vocabulary; its situation field targets dashboard-design decisions, not live Q&A.",
+    "bridge": "Situation-lane rewritten to cover live technical Q&A framing, not just dashboard-design triggers.",
+    "style_note": null
+  },
+  {
+    "key": "d0b3c7e1-1dc0-4867-a2ac-cc0bb729fc73/0/12",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message paraphrases prior turns ('wrapped','exact path') rather than naming 'batch vs individual tools'; 3-month-old node, low lexical overlap with anaphoric phrasing.",
+    "bridge": "Graph walk from the 'wrapped/attribution' neighbor, or lexical link from 'brain_batch' to the batch/individual decision.",
+    "style_note": null
+  },
+  {
+    "key": "d0b3c7e1-1dc0-4867-a2ac-cc0bb729fc73/0/14",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d0b3c7e1-1dc0-4867-a2ac-cc0bb729fc73/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Humorous revert-confirmation; should surface the current attribution-fix's minimal-diff design, not an unrelated revise_batch tool-approval decision."
+  },
+  {
+    "key": "d0b3c7e1-1dc0-4867-a2ac-cc0bb729fc73/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'green light'; should surface Tom's greenlight/deploy-discipline pattern or the live attribution-fix ship checklist, not an unrelated archived-node-leak ship record."
+  },
+  {
+    "key": "d0b3c7e1-1dc0-4867-a2ac-cc0bb729fc73/0/17",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "'rebase and commit and merge' is bare git-mechanics phrasing; low lexical overlap with the lesson's cautionary framing, and the lesson ties to a different prior fix's merge.",
+    "bridge": "Episodic/recency lane for week-old dirty-main lessons tied to active merge actions.",
+    "style_note": null
+  },
+  {
+    "key": "d0b3c7e1-1dc0-4867-a2ac-cc0bb729fc73/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d0b3c7e1-1dc0-4867-a2ac-cc0bb729fc73/0/20",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

@@ -1,0 +1,202 @@
+[
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/13",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Situation pins recall_recent's own surprising-results trigger, not a generic wrap-up review ask; no shared lexical tokens; 9.9d stale, not session-recent.",
+    "bridge": "Node-class prior for unresolved/backlog bug nodes on 'anything worth doing' review queries; idf boost on 'worth doing'.",
+    "style_note": null
+  },
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/15",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Closing/thanks sign-off — expect Tom's praise/wrap-up moments (e.g. 'Thanks Anchor, well done'), not a cleanup-arc motivational node."
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse commit greenlight — expect Tom's commit/push conventions (commit to main, push only when asked), not an unrelated old milestone."
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/4",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "85d-old foundational decision outranked by newer embedder/test chatter; lexical overlap on 'embedder'/'singleton' but not 'isolatedBrain'.",
+    "bridge": "idf/keyword boost on 'singleton'+'daemon-first architecture'; demote-recency bias so foundational decisions surface.",
+    "style_note": null
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/5",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": "The one relevant nugget (daemon+test embedder contention) is buried inside a broader pass/fail-count fact, diluting salience toward baseline counts.",
+    "bridge": "Situation-lane match on 'resource contention during tests'; keyword boost on 'daemon crash'/'contention' sub-content.",
+    "style_note": null
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Process cue ('do you need a code-review') — expect Tom's review-timing strategy nodes, not a stale specific commit's fix list."
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'commit' greenlight — expect commit/push convention or momentum-continuation nodes, not an unrelated cadence milestone."
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse status check ('all committed?') — expect verify-before-claiming/precise-git-state discipline nodes, not an unrelated review-bypass correction."
+  },
+  {
+    "key": "6c681906-a81c-4225-9e6d-3d2c612e54c9/0/10",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node's concrete example (3D-viz session) skews embedding away from this generic wrap-up phrasing; 70.5d stale.",
+    "bridge": "Node-class prior for 'session-close discipline' pattern nodes on end-of-session wrap-up queries.",
+    "style_note": null
+  },
+  {
+    "key": "9d5f89fe-7cf1-43af-9813-61535131a5ec/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9d5f89fe-7cf1-43af-9813-61535131a5ec/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node's specific content (HOOK_TABLE, daemon_server.py) shares few tokens with this thread's vocabulary (_CONTROL_FIELDS, auto_connect).",
+    "bridge": "Node-class prior for dead-code-cleanup nodes on 'what dead code across the system' queries; idf boost on 'dead code'.",
+    "style_note": null
+  },
+  {
+    "key": "9d5f89fe-7cf1-43af-9813-61535131a5ec/0/3",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Headline framing is 'trace-pull cadence shipped' (milestone), burying the dead-code detail in prose, low lexical salience for 'dead code'.",
+    "bridge": "Sub-fact extraction/tagging of 'dead code removed' within milestone nodes; lexical boost on 'dead code'/'removed'.",
+    "style_note": null
+  },
+  {
+    "key": "9d5f89fe-7cf1-43af-9813-61535131a5ec/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9d5f89fe-7cf1-43af-9813-61535131a5ec/0/6",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "24d-old specific failure list shares no lexical tokens with 'stuck'/'green'; not discussed this session; semantic match to a stale fact is weak.",
+    "bridge": "Situation-lane match ('seeing test failures — check BACKLOG.md first') firing during live full-suite runs with unexpected results.",
+    "style_note": null
+  },
+  {
+    "key": "9d5f89fe-7cf1-43af-9813-61535131a5ec/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Anything else worth doing' — expect unaddressed backlog items or session-close discipline nodes, not spawn_task mechanics."
+  },
+  {
+    "key": "9d5f89fe-7cf1-43af-9813-61535131a5ec/0/12",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8c28df4e-421a-417c-8c97-388033529975/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8c28df4e-421a-417c-8c97-388033529975/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8c28df4e-421a-417c-8c97-388033529975/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8c28df4e-421a-417c-8c97-388033529975/0/4",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Baseline numbers were established earlier in this session, outside the shown window; same-session episodic pull apparently didn't fire.",
+    "bridge": "Episodic same-session recency field prioritizing the research thread's latest findings; lexical boost on 'hit@' metric tokens.",
+    "style_note": null
+  },
+  {
+    "key": "8c28df4e-421a-417c-8c97-388033529975/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Vague reconnection cue ('check where we stopped') — expect episodic recap of the immediately preceding exchange, not a grounding-check correction."
+  }
+]

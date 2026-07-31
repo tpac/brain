@@ -1,0 +1,202 @@
+[
+  {
+    "key": "fede4918-d437-4cb4-b5dd-85ee2fd5f504/1/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fede4918-d437-4cb4-b5dd-85ee2fd5f504/1/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fede4918-d437-4cb4-b5dd-85ee2fd5f504/1/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node is an S2-absorb session handoff (different thread entirely); shares only generic 'docs/session' vocabulary with the message's 2-doc split ask.",
+    "bridge": "Episodic recency lane would down-weight it; needs situation-field match on 'doc splitting/parallel-stream doc merge', not present.",
+    "style_note": null
+  },
+  {
+    "key": "fede4918-d437-4cb4-b5dd-85ee2fd5f504/1/4",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message names 'another stream working on merging and sorting docs' but not 'BACKLOG.md' itself, so lexical match to the node's title term is weak.",
+    "bridge": "Situation-lane match on 'gitignored shared doc + concurrent stream editing' would reach it; lexical/idf alone misses the generalization.",
+    "style_note": null
+  },
+  {
+    "key": "fede4918-d437-4cb4-b5dd-85ee2fd5f504/1/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node is a deep 73-day-old identity-philosophy quote; text-similarity to Anchor's own 'recognition, continuity' reply pulled it in, but the terse close needed nothing.",
+    "bridge": "Node-class prior (demote bare reflective quotes for confirmation cues) would suppress this; no device should surface it here.",
+    "style_note": "Bare closers ('agree, thanks, getting close') should surface how-Tom-closes-sessions patterns (holding, not pushing, confirmation discipline), not deep identity philosophy."
+  },
+  {
+    "key": "fede4918-d437-4cb4-b5dd-85ee2fd5f504/1/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node is about encoding-vs-introspection practice; message is a doc-editing instruction about recognition being load-bearing — adjacent vocabulary, different application.",
+    "bridge": "Would need situation-lane distinguishing 'introspective friction as encoding lever' from 'add doc emphasis' — the node the response actually leaned on (de715d2b) differs from this gold.",
+    "style_note": null
+  },
+  {
+    "key": "50f76ac1-4c46-44e8-b0db-b41c88868395/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node fixes a tab-switch resize bug; message asks about width-gated default loading — a different WebGL concern, matched only on shared 'graph/tab/WebGL' tokens.",
+    "bridge": "Situation-lane keyed on 'load-gating by viewport width' vs 'resize-on-tab-switch' would separate these; lexical overlap alone conflates them.",
+    "style_note": null
+  },
+  {
+    "key": "50f76ac1-4c46-44e8-b0db-b41c88868395/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node is an older full-arc milestone summary (Phase 2, dated weeks earlier); message is a narrow commit/push/preview request that doesn't need a retrospective.",
+    "bridge": "Node-class prior demoting large milestone summaries for action-only asks would help; episodic recency lane should prefer the just-shipped fix instead.",
+    "style_note": null
+  },
+  {
+    "key": "50f76ac1-4c46-44e8-b0db-b41c88868395/1/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "50f76ac1-4c46-44e8-b0db-b41c88868395/1/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Casual phrasing ('pulled code, restarted, should be fine?') lacks the technical tokens (flock, ensure_daemon, lock) the dense community synthesis is written in.",
+    "bridge": "Episodic recency (same-day node) plus a graph walk from the just-discussed daemon-fix neighbor would surface it despite the lexical gap.",
+    "style_note": null
+  },
+  {
+    "key": "50f76ac1-4c46-44e8-b0db-b41c88868395/1/3",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's casual 'anything interesting' doesn't share tokens with the rule's formal terms ('footprint', 'announced merge'), so lexical/idf missed it.",
+    "bridge": "Situation-lane on 'auditing worktrees for unmerged work' plus a graph walk from a surfaced git-workflow neighbor would reach it.",
+    "style_note": null
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/0/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/0/4",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Terse 'no need for full suite, find relevant, commit/merge' shares no tokens with 'stale branch', 'merge-tree', or 'semantic correctness'.",
+    "bridge": "Style-recall (Tom's commit/merge pattern nodes) plus situation-lane on 'test-gating a merge' would reach it despite the terse phrasing.",
+    "style_note": null
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node's specific advice (commit early despite a held daemon restart, for sibling rebase) doesn't match this message's actual need (deciding which tests are 'relevant').",
+    "bridge": "Situation-lane distinguishing 'restart-holding parallel-session' from 'test-scope selection' would avoid the false match; overlap is only on 'commit'.",
+    "style_note": "Bare 'commit/merge' instructions should surface merge test-gating discipline (the stale-branch-merge lesson), not the restart-holding rebase-target lesson."
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node is a 12-day-old v20.1-era open-questions snapshot; the actual open items the response found (CR4, keywords) are unrelated to this stale list.",
+    "bridge": "Episodic recency should prefer the live/current BACKLOG.md state over an old dated snapshot; node-class prior should demote superseded open-question lists.",
+    "style_note": "Vague 'look for other open items' cues should surface the current backlog/triage state, not a stale dated open-questions snapshot."
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/0/7",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node is a specific old investigation (judge-failure call-stack audit); message's 'check callers after' is a generic process cue, not that instance.",
+    "bridge": "Only lexical overlap on 'verify/audit' pulled this in; a pattern-class caller-audit principle would serve better than this stale instance.",
+    "style_note": "Process cues like 'double check yourself and scan on cleaning / check callers' should surface a general caller/call-stack-audit discipline principle, not one specific past investigation."
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node is about escalating junk/corrupted test data immediately; message is about double-checking an A/B eval before committing — different vigilance context.",
+    "bridge": "Situation-lane distinguishing 'data corruption escalation' from 'pre-commit self-verification' would separate these; overlap is only thematic vigilance.",
+    "style_note": null
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/1/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Casual 'register that interaction' doesn't lexically match the technical function name 'register_interaction' as tightly as the rule's phrasing.",
+    "bridge": "Lexical/idf match on 'register_interaction' plus situation-lane on 'registering a new encoder prompt version' would close the gap.",
+    "style_note": null
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/1/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node explicitly says seed-brain content was deferred/out of scope at that time; it doesn't inform whether seed brain is stale today — false match on 'seed brain' term only.",
+    "bridge": "Node-class prior should demote a node that self-declares its topic out of scope; situation-lane on 'seed brain freshness check' would need a newer node.",
+    "style_note": null
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/1/6",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/2/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message uses the neologism 'recast' (coined by Anchor in the prior turn) which has zero lexical overlap with the node's actual name 'polymorphic revise'.",
+    "bridge": "Conversation-window field (M_h) tracking the just-introduced term 'recast', plus a graph walk from the edge-revise design discussion, would reach it.",
+    "style_note": null
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/2/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node describes an unrelated co_anchored auto-edge feature; only the shared token 'revise' ties it to this revise_edge/MCP-surface decision.",
+    "bridge": "Situation-lane distinguishing 'co_anchored auto-edge wiring' from 'revise_edge MCP exposure decision' would prevent the false match.",
+    "style_note": null
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/2/8",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message states the architecture principle generically (centralized async re-embed queue) without naming 'embed_queue.py' or 'trace embedding', so lexical/embedding match to this specific prior correction is weak.",
+    "bridge": "A graph walk from a surfaced embed_queue/async-architecture neighbor, or a situation-lane on 'centralizing async re-embedding', would connect the generic principle to this precedent.",
+    "style_note": null
+  }
+]

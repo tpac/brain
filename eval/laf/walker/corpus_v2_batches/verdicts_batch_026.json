@@ -1,0 +1,202 @@
+[
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/26",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Terse verb carries no lexical/semantic tie to 'session handoff protocol'; node is 34d stale vs a same-day close, so episodic recency doesn't help either.",
+    "bridge": "Style-recall for terse wrap-up/commit cues, or a running-session-state field flagging session-close pattern.",
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/29",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface FD/EMFILE-type diagnostic patterns, not the general DB-cleanup community synthesis."
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/32",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface loud-failure-audit/test-integrity discipline, not a content-grafted, unrelated cleanup-scope decision."
+  },
+  {
+    "key": "70e990c8-22fc-41c7-a009-3aadcb95a5d0/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "70e990c8-22fc-41c7-a009-3aadcb95a5d0/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Process cue — should surface commit-message/attribution discipline patterns, not an unrelated prior session's close event."
+  },
+  {
+    "key": "70e990c8-22fc-41c7-a009-3aadcb95a5d0/0/6",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Node framed as 'v15.7 draft review', not 'conversation_now write-path'; lexical mismatch amid many temporal-prompt versions.",
+    "bridge": "Lexical hit on 'brain_now()'/'eval inherits conversation date' phrasing, or a graph walk from the encode.py trace.",
+    "style_note": null
+  },
+  {
+    "key": "70e990c8-22fc-41c7-a009-3aadcb95a5d0/0/7",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/3",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Competes with fresher v16/v19 rubric-lock nodes on the same axis; 12.8d-old scope decision ranks below closer temporal neighbors.",
+    "bridge": "Episodic recency-weighting toward the just-locked rubric axis, or a graph walk from the 'voice symmetry' cluster.",
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight confirmation — should surface the just-locked v19 rubric table itself (same-session), not an older encoder-evolution synthesis."
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Status-clarity ask — should surface a session-progress/done-vs-next summary device, not an example-completeness craft rule."
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/10",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message doesn't use 'placeholder'/'full behavior' vocabulary; embeds near many neighboring encoder-quality nodes, diluting rank.",
+    "bridge": "Lexical/idf link between 'contradict/degrade' and the rule's own 'violates/degrades' fields.",
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/11",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message frames this as a 'contract-refinement' meta-decision; embedding doesn't land near the generic 'recall the brain first' phrasing.",
+    "bridge": "Situation-lane match on 'about to redesign/tune a brain mechanic', or a style-recall device for meta-decision cues.",
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface actual source_refs/episodic-anchor design docs, not an old philosophical reflection on retrieval-vs-recognition."
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/16",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message never names 'pipeline_contract.py'/'per-scale'; the pattern was already internalized, so it competes with the live build task for rank.",
+    "bridge": "Lexical hit on 'contract'+'scale', or a graph walk from a 'contract' architecture neighbor.",
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Depth/diversity ask — should surface the just-drafted example-coverage-wave proposal (same-session), not an unrelated older identity-authoring moment."
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the example-completeness craft rule or wave-coverage plan, not a same-day node born from this very exchange."
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/22",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Bare numbered reply carries no topic tokens; the v15.9-versioned framing ranks below the live A6/A7 depth-push thread.",
+    "bridge": "Graph walk from the 'examples need depth/completeness' craft-rule neighbor, or conversation-window carry of the depth theme.",
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Reflective observation on S3 editing prompts — should surface the S2/S3 interactions-table architecture, not v15.9's file-level edit history."
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight + build ask — should surface eval/ directory conventions or Tom's platform-structuring preferences, not a past emotional moment."
+  }
+]

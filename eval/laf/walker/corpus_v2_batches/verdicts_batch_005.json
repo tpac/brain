@@ -1,0 +1,202 @@
+[
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/29",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about the Test Integrity rule / no-silent-failures discipline / thoroughness standard — not a specific historical test-count baseline."
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/33",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node uses 'BP1/BP2, 1h TTL, 5min TTL' phrasing while message says '1 hour'/'5 mins'; competing similarly-named caching nodes (e.g. three-breakpoint variant) dilute rank.",
+    "bridge": "Lexical/idf boost aligning '1 hour'/'5 mins' phrasing with node's BP1/BP2 TTL terms; disambiguate from superseded three-breakpoint node.",
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/38",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/40",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/43",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/44",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/47",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/49",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about greenlight/momentum patterns or shipping discipline — not the unrelated NEXT-WORK-doc-staleness lesson."
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/53",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/54",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message uses schema-shape language ('type vs types') not the tension node's registry/hardcoding vocabulary — mismatch despite shared 'emergent types' theme.",
+    "bridge": "Situation-lane match on 'emergence within boundaries' theme, or graph-walk from same-session type-design nodes already surfaced.",
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/55",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about S1 Scribe's encoding cadence/cycle mechanics (the referent of 'brain encodes') — not the unrelated Anchor-quality-variability lesson."
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/56",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/57",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/59",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/5",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message ('bring 1-2 official longmem tests') shares no lexical overlap with node's infra-fix terms (per_axis, seed discipline, clean brain).",
+    "bridge": "Episodic/session-thread continuity surfacing recent longmem-eval-redesign decisions, not lexical/embedding match alone.",
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/11",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

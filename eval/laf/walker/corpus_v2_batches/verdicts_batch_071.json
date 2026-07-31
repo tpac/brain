@@ -1,0 +1,202 @@
+[
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/7",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message uses forward-looking design vocabulary (maxcosine/traverse/edge-cosine) while the node reports a past ablation in backward-looking terms (buries essentials/inject-precision/rank-36); situation targets 'deciding whether to keep/rebuild spread', not 'designing a new beam algorithm'.",
+    "bridge": "Graph walk from an already-surfaced LAF-cluster neighbor, or situation-lane match on 'choosing a recall ranking metric'.",
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/15",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/17",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Terse directive 'let's measure the fusion' shares only the generic word 'fusion' with the node; short imperatives embed poorly, and the node's situation targets 'tempted to adopt RRF', not a go-ahead command.",
+    "bridge": "Session/window-carry field linking 'the fusion' to the earlier-established sum/max/RRF sweep topic, or episodic recency to the last RRF discussion.",
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/22",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Node's dense technical vocabulary (KV-MemNN, HippoRAG, source_refs coverage) shares only the bare word 'episodic' with the trigger; its situation targets 'deciding whether to build the boost', not 'give inventory of layers'; no recent reactivation of the finding in the visible window.",
+    "bridge": "Lexical/idf join on 'episodic'; situation-lane match to 'reporting layer status'; graph walk from the LAF-cluster neighbor.",
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/26",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'lets do it' + 'run a code review' should surface Tom's code-review/commit discipline or greenlight-momentum patterns, not an unrelated old gain-tuning decision about a previous-turn field."
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/32",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/40",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/45",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message's framing ('unique recall qualities') shares little vocabulary with the thesis node's language ('underutilized recalls', 'edges non-negotiable'); situation targets 'tempted to conclude read-side exhausted', not 'asked for a take on LAF's shape'; thesis is ~2 weeks old with no recent reactivation.",
+    "bridge": "Situation-lane match on 'assessing whether the architecture direction is worth pursuing'; graph walk from the LAF-cluster hub.",
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/48",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/49",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/51",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/52",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/54",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/55",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/59",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/62",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/63",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/64",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "'This prompt' resolves only via the immediately preceding turn; the node's specific content (de-biasing a handoff draft) shares little lexical overlap with the short confirmation-question; situation targets 'reviewing a handoff prompt for bias', not 'should I click launch'.",
+    "bridge": "Conversation-window field (M_h) linking the just-written handoff prompt to the de-biasing lesson; graph walk from the handoff/plan node just created.",
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/65",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/66",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A bare 'yes, stream started' should surface the CURRENT thread's own handoff/coordination state (the P1 stream, self-channel status), not an older unrelated endo-recall handoff from a different work thread."
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/67",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Abstract identity question ('what are you', 'does AI need you') shares little lexical overlap with the node's quote-based content; the node is 3+ months old with no recent reactivation, and the message is framed from Anchor's own self-description angle rather than Tom's original quote framing.",
+    "bridge": "Situation-lane match on 'explaining the Tom-Anchor relationship'; a style/Tom-quote-recall device weighting reflective quotes for identity questions.",
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/71",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

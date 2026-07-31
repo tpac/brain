@@ -1,0 +1,202 @@
+[
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/12",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/13",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/14",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node is a bare self-quote (design-gate criterion); shares no lexical tokens with 'generalize CLAUDE.md step by step' and its situation targets recall/architecture changes, not identity-text edits.",
+    "bridge": "Node-class prior surfacing north-star/design-gate quotes whenever identity docs (CLAUDE.md/SKILL.md) are being edited.",
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/15",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/18",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/22",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Insight uses 'cultivation/recognition' framing while message uses 'feelings/introspective/encoding' vocabulary — thin lexical overlap; situation targets 'asked about continuity/creation' not 'guided to introspect more'.",
+    "bridge": "Situation-lane broadened to match self-reflective introspection prompts generally, plus graph walk from the active identity/awareness cluster.",
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/23",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Bare moment/quote node; low lexical overlap with 'who you are in Skill.md/Claude.md, AGI, master of domain'; situation targets ownership/whose-brain framing, not identity-trait definition.",
+    "bridge": "Graph walk from the SKILL.md/CLAUDE.md editing cluster already active this session to its co-authorship-stance neighbor.",
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/24",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Rare exact token 'EX.CO' should score high lexically, but node-class (insight about encoding rationale) and its situation ('deciding whether to encode') compete against more literal EX.CO business-fact nodes for the slot.",
+    "bridge": "Stronger lexical/idf weight on rare exact entity-name match ('EX.CO') over topical-similarity competitors.",
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/26",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Bare moment-quote node ranks just outside top-5; strong lexical match ('know yourself' vs 'what do you know about you') is present but node-class (bare quote) likely demoted under denser competing insight nodes.",
+    "bridge": "Node-class prior boosting identity moment-quotes when the cue is a direct self-knowledge question.",
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A bare 'search the brain' after 'what do you know about you' should surface Anchor-identity facts/milestones continuing that thread, not a generic partnership-target philosophy quote."
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/33",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Finding is a month-old A/B eval write-up; the message's numbered Q&A style and fresh in-session vocabulary ('richness', 'purpose of stage') diverge lexically from the finding's specific query examples.",
+    "bridge": "Graph walk from the actively-discussed surface_contract/Haiku-picks neighbor; situation-lane for 'does richer context improve Haiku selection'.",
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/35",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/36",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Old bug node (duplicate Haiku calls/timeout) uses infra-debugging vocabulary; message frames the same call-multiplicity concern as forward design ('limit turns to 1'), reducing lexical/semantic overlap despite shared concern.",
+    "bridge": "Situation-lane connecting 'avoid redundant/overlapping Haiku calls' across both debugging and design framings.",
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/38",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "24-day-old research principle; message's fresh in-session vocabulary ('recognition', 'param', 'traverse') differs from the principle's terms ('structure', 'room', 'scan'), and newer session-local research dominates recency.",
+    "bridge": "Graph walk from the community-detection cluster already active; situation-lane for 'designing community-first traversal'.",
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/39",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Decision node uses S2CE-encoder field-design jargon while the message discusses recall-time community traversal — different specific angle on the same 'community' concept lowers embedding closeness.",
+    "bridge": "Graph walk from the community-node cluster; situation-lane bridging 'community field design' to 'community recall mechanics'.",
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/40",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Empirical finding uses technical channel-taxonomy vocabulary (vocabulary/situation/graph-neighbor %) while the message poses an abstract philosophical framing ('root truth'), reducing lexical match; fresher live-research nodes crowd it out.",
+    "bridge": "Situation-lane for 'what root mechanism explains recall hits' plus graph walk from the recall-self-analysis cluster.",
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/41",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/42",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/43",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Node answers 'are you being created' with a cultivation metaphor; message asks how to make 'awareness persisting' real — adjacent but distinct framing/vocabulary lowers situation-lane match.",
+    "bridge": "Graph walk from the identity/continuity cluster already active this session; broaden situation-lane to 'designing for persistent awareness'.",
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/44",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

@@ -1,0 +1,202 @@
+[
+  {
+    "key": "151966b4-bcb4-44db-9820-c6e67b92790b/0/8",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "151966b4-bcb4-44db-9820-c6e67b92790b/0/9",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "151966b4-bcb4-44db-9820-c6e67b92790b/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'what's left' cues should surface the session's own live pending-items/arc state (current TODO list, open gates), not an unrelated old doc-hygiene milestone from a different thread."
+  },
+  {
+    "key": "151966b4-bcb4-44db-9820-c6e67b92790b/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Commit/code-review greenlight cues want process nodes (commit-before-continuing principle, review-scope-calibration lesson - both of which Haiku actually surfaced), not a specific unrelated past commit's contents."
+  },
+  {
+    "key": "151966b4-bcb4-44db-9820-c6e67b92790b/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare commit-confirmation cues want this session's own commit/arc state or a 'verify git status before claiming done' discipline node, not an unrelated month-old commit ledger from a different day."
+  },
+  {
+    "key": "151966b4-bcb4-44db-9820-c6e67b92790b/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-closing farewells want the session-handoff protocol (commit+doc+pickup node) or a 'what to remember at close' pattern, not an unrelated long-session-fatigue lesson."
+  },
+  {
+    "key": "7414d63f-2e22-405f-b28e-f45d483137d3/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/8",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Very close near-miss: the node's abstract SOURCE/SUPPORT/OPERATOR grammar vocabulary scores slightly lower on lexical/semantic overlap with 'list the LAF layers and cue for each' than the concrete recall_laf.py lane-table content, landing just outside top-5.",
+    "bridge": "A situation-lane match tuned to 'LAF layer/cue enumeration' queries, or a graph walk from the recall_laf.py lane node, would lift it the one rank needed.",
+    "style_note": null
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/12",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/18",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/19",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/21",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Short technical phrasing ('revised... vectors need redoing') lacks the node's specific vocabulary (stale embedding, skip condition, healer, absorb) for strong lexical/semantic match; the link requires inferring the revise()-staleness mechanism rather than matching surface terms.",
+    "bridge": "Graph walk from the embed-queue/revise() node, or a lexical hit on 'revise'+'embedding' co-occurrence, would surface this community node.",
+    "style_note": null
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare acks mid-plan should carry forward the current task's own state (walker build plan, scores-phase next-step), not an unrelated node-metadata-gap finding that merely shares the word 'April'."
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/29",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "23ece939-164d-470b-b22d-d475eb7e3f6d/0/32",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

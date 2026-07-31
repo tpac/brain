@@ -1,0 +1,202 @@
+[
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'anything to commit?' should surface commit/session-closure conventions (e.g. 'Session end ritual: commit, push, repackage plugin' — what Haiku actually picked), not a month-old unrelated Phase-E tally."
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/27",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8b62b5b8-b29f-4d32-b777-acbd2e751a24/1/28",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Generic 'prepare for next session' phrasing lexically thin; embedding likely favored closer same-session competitors (triage list, closure checklist) that share stronger closing-session vocabulary.",
+    "bridge": "Node-class prior for session-close queries surfacing the mechanism-level 'doc is load-bearing' node over lexically-closer competitors; situation-lane on 'closing session with unfinished architecture work'.",
+    "style_note": null
+  },
+  {
+    "key": "cfb74766-0eb8-417a-a950-78c922f9b090/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cfb74766-0eb8-417a-a950-78c922f9b090/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cfb74766-0eb8-417a-a950-78c922f9b090/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cfb74766-0eb8-417a-a950-78c922f9b090/0/4",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node's situation field ('diagnosing recall failures...') frames it as meta-diagnostic rather than a name-lookup query, so situation-lane match was weak; lexical overlap on 'Ronen'/'EX.CO' present but diluted by diagnostic framing.",
+    "bridge": "Lexical bridge on 'Ronen'+'EX.CO' conflicting-framing terms, or a cross-check triggered on person-entity name lookups against known naming conflicts.",
+    "style_note": null
+  },
+  {
+    "key": "cfb74766-0eb8-417a-a950-78c922f9b090/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'hey Anchor' opener should surface recent working-state / boot-Frame identity content (what's in flight, current focus) — not a specific historical event about Anchor authoring its own boot prompt."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/6",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'whats 7.6?' should resolve via window to the EPISODIC-REFERENCES.md §7.6 worked-examples content just discussed — not a numerically-similar 'v15.6 encoder' finding."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/11",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Point 4 ('Vector... whats in there?') is one clause in a 5-point numbered message; scoring likely diluted across the whole multi-topic turn, and bare 'Vector' lacks lexical overlap with 'node_enrichments'/'v23' terms.",
+    "bridge": "Phrase-level anchoring on the numbered sub-point ('Vector... whats in there') rather than whole-message embedding; lexical bridge on 'VectorDAL'.",
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/15",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Casual phrasing ('advance selectors...dates') doesn't lexically match the node's technical terms ('entity_dates', 'pre-index'); situation field targets temporal-retrieval design work rather than a live API-capability survey question.",
+    "bridge": "Lexical bridge on 'date'/'temporal' plus a situation-lane tuned to 'what selectors exist' node-API survey queries.",
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/16",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'restart, test' should surface deploy/migration-verification discipline (restart-then-verify-schema checklist), not an unrelated daemon-crash-history corridor."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'lets do it' greenlight should surface how Tom operates on greenlight — momentum, plan-first mandates, confirmation discipline — not an unrelated documentation-encoding rule."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'agreed' confirmation should surface Tom's decision-making pattern on idempotency/convention choices, not a stale unrelated commit-tally fact."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/29",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'push forward' continuation should surface active Phase-A step-tracking / momentum context, not an unrelated historical 'Phase E' milestone from a different arc."
+  }
+]

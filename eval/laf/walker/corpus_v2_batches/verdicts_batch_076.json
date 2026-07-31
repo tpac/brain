@@ -1,0 +1,202 @@
+[
+  {
+    "key": "552abf3d-c8f4-4054-99ce-cae63c451196/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "552abf3d-c8f4-4054-99ce-cae63c451196/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Query is forward-looking ('new' Anthropic developments); node states existing/current mechanism facts, so the recency framing pulled the match away from the baseline doc it actually needed.",
+    "bridge": "Lexical/idf match on 'cache floor'/'breakpoints' plus a situation-lane for 'checking current caching mechanics before evaluating new features'.",
+    "style_note": null
+  },
+  {
+    "key": "552abf3d-c8f4-4054-99ce-cae63c451196/0/6",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "552abf3d-c8f4-4054-99ce-cae63c451196/0/7",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "552abf3d-c8f4-4054-99ce-cae63c451196/0/8",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "552abf3d-c8f4-4054-99ce-cae63c451196/0/9",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node's title ('zero caching wired') reads stale against the session's already-established 'caching is wired' framing, diluting the match to a terse 2nd-run efficiency question.",
+    "bridge": "Situation-lane match on 'evaluating cache placement / 2nd run' plus episodic recency from the same caching-audit thread.",
+    "style_note": null
+  },
+  {
+    "key": "552abf3d-c8f4-4054-99ce-cae63c451196/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse anaphoric correction ('I mean S1Scribe') — should surface S1Scribe-specific caching mechanism/hit-rate facts, not the unrelated S2/S1Surface rate-limit-contention finding."
+  },
+  {
+    "key": "552abf3d-c8f4-4054-99ce-cae63c451196/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'perfect thanks' closes the caching thread — should surface the caching fixes just landed or a confirmation-discipline pattern, not unrelated dead-code-retirement history."
+  },
+  {
+    "key": "552abf3d-c8f4-4054-99ce-cae63c451196/0/12",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Bare 'commit and merge?' prompt shares little lexical/semantic overlap with the node's specific incident narrative (dirty main, sibling stream names).",
+    "bridge": "Node-class prior / style-recall for commit-merge cues plus a situation-lane tagged 'about to push a branch to main'.",
+    "style_note": null
+  },
+  {
+    "key": "552abf3d-c8f4-4054-99ce-cae63c451196/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8374909-02f2-47f2-b8a3-16525fe83cf0/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8374909-02f2-47f2-b8a3-16525fe83cf0/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight cue ('just merge, ill redeploy soon') — should surface Tom's merge/redeploy process preferences, not an unrelated past plugin-builder milestone."
+  },
+  {
+    "key": "454a4418-c51d-44da-97c4-f9d876c65a5f/0/0",
+    "verdict": "ambiguous",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "454a4418-c51d-44da-97c4-f9d876c65a5f/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "454a4418-c51d-44da-97c4-f9d876c65a5f/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "454a4418-c51d-44da-97c4-f9d876c65a5f/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Process cue (dedup/verify/report findings) — should surface Tom's general code-review workflow preferences, not a specific unrelated past DAL-cleanup review instance."
+  },
+  {
+    "key": "454a4418-c51d-44da-97c4-f9d876c65a5f/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "454a4418-c51d-44da-97c4-f9d876c65a5f/0/16",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Terse status question ('all committed and merged?') shares little vocabulary with the node's specific dirty-tree incident narrative.",
+    "bridge": "Style-recall for merge-confirmation cues plus a situation-lane for 'about to push/verify a branch merged to main'.",
+    "style_note": null
+  },
+  {
+    "key": "c6239770-48be-4f48-b45f-fd4c2903debb/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Rule-setting cue on dead-code/refactor policy — should surface Tom's general clean-as-you-go/commit-discipline principles, not a specific past session's cleanup action list."
+  },
+  {
+    "key": "c6239770-48be-4f48-b45f-fd4c2903debb/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c6239770-48be-4f48-b45f-fd4c2903debb/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c6239770-48be-4f48-b45f-fd4c2903debb/0/6",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "57802d34-37a8-45f3-99ff-b550132a2022/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "57802d34-37a8-45f3-99ff-b550132a2022/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "57802d34-37a8-45f3-99ff-b550132a2022/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

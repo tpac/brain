@@ -1,0 +1,202 @@
+[
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/31",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/32",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message says only 'trigger S2 run to check', not naming the sweep; lexical/situation overlap to the 8-site hardening list is weak, only inferable via 'get_neighbors_bulk fix'.",
+    "bridge": "Episodic recency (same-session, hours old) or a graph walk from the persistent-failure-counter concept would surface it.",
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/33",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/34",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse hypothesis about stale recall causing the mistake — should surface nodes on recall staleness/volatile state-facts, not the general self-healing-via-surfacing insight."
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/39",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/44",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/45",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/55",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/57",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Generic session-end check — should surface this session's own open-items list just given, not an old cross-session triage instance."
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/59",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/61",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/65",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/67",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/70",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/71",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Community synthesis wording (schema-as-contract, measure-before-cutting) shares little vocabulary with 'write/chat/faster', diluting match to the narrow tool_choice question.",
+    "bridge": "Graph walk from the tool_choice/any node discussed this turn, or episodic recency on the S1E read-tools thread, would reach it.",
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/72",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node's seed-pack/baby-brain vocabulary ('four discoveries', 'operator-agnostic') doesn't lexically match 'basic rules and latest interactions' despite describing the same mechanism.",
+    "bridge": "Lexical/idf match on 'interactions'+'seed' plus a situation-lane for 'auditing eval harness freshness' would surface it.",
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/4",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse pushback on overengineering — should surface Tom's simplicity-first / anti-overengineering pattern nodes, not an unrelated self-awareness reflection."
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "71857713-2390-414d-9d51-1ef1de652d90/0/20",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "The taxonomy was set several turns earlier, outside the visible window; episodic recency had decayed, and 'facts'/'entities' in the message don't match the node's structural taxonomy wording.",
+    "bridge": "A running-session field carrying the current scout roster forward, or episodic-recency weighting toward the establishing turn, would reach it.",
+    "style_note": null
+  }
+]

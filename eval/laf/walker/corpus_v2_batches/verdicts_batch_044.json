@@ -1,0 +1,194 @@
+[
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Lexical overlap thin (counter/session vs session_id/rotation); node's situation targets /resume identity rotation, not the conversational_count cadence field, so semantic match was weak.",
+    "bridge": "Graph walk from the boot-guard/session-identity node surfaced by the prior turn's diagnosis would have reached it.",
+    "style_note": null
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/4",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node frames the same trace-vs-counter lesson through a different specific case (presence liveness bug), so lexical/situation match to this encoding-cadence phrasing was weak.",
+    "bridge": "Graph walk from the presence-decision node (quoted directly in the response) would have surfaced this sibling finding.",
+    "style_note": null
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/9",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": "Message reuses generic 'traces layer' phrasing; node's embedding leans on S2 encoder-delta-schema vocabulary (community encoder, DELTA_METADATA) absent here, so semantic match was weak despite shared theme.",
+    "bridge": "Graph walk from trace_contract.py-adjacent nodes surfaced via the conversation.py/DAL seam discussion could have reached it.",
+    "style_note": null
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/12",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'a bit of an overkill?' should surface effort-calibration patterns (right-sizing review/agent scope to the diff), not an unrelated field-removal decision."
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'commit and redploy' should surface Tom's commit/deploy conventions (servers/* restart vs redeploy.sh), not an unrelated past milestone."
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'What did code-review said?' refers to this session's just-run review (already in window); bare-cue recall should surface review-calibration patterns, not an unrelated historical review incident."
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/18",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Terse phrasing lacks explicit 'handoff'/'doc'/'commit' tokens the node's lexical/situation fields key on, and the node is 54 days old with no recent episodic reinforcement.",
+    "bridge": "A session-close style-recall lane (node-class prior for 'session wrap' cues) would surface this handoff-protocol mechanism.",
+    "style_note": null
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Anything else open on this session A?' refers to the current session (in window); should surface only this session's own open items, not a differently-dated wrap-list."
+  },
+  {
+    "key": "c3a2e74c-40a4-46f6-983b-97005bf6624b/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare close-out 'no need, ill do it later' should surface nothing or Tom's deferred-task tracking habits, not an unrelated dated open item."
+  },
+  {
+    "key": "5ff18d71-a9df-49ab-8029-eaebd45ed869/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5ff18d71-a9df-49ab-8029-eaebd45ed869/0/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5ff18d71-a9df-49ab-8029-eaebd45ed869/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5ff18d71-a9df-49ab-8029-eaebd45ed869/0/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5ff18d71-a9df-49ab-8029-eaebd45ed869/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'merge it' should surface Tom's merge/coordination discipline (verify no conflicts, sync parallel streams), not a specific unrelated past merge event."
+  },
+  {
+    "key": "f6ed7808-39de-476c-896b-325572a248cc/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f6ed7808-39de-476c-896b-325572a248cc/0/11",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Deep multi-stream shared-tree context isn't in the shown window; lexical overlap ('streams','commit') is thin against the node's /watch-specific framing, and episodic distance (15d, different session) weakened the signal.",
+    "bridge": "Situation-lane matching 'shared tree, other streams committing' plus episodic recency from earlier /watch-coordination nodes would reach it.",
+    "style_note": null
+  },
+  {
+    "key": "f6ed7808-39de-476c-896b-325572a248cc/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'do it' should surface momentum/confirmation-discipline or commit conventions, not a stale unrelated session plan."
+  },
+  {
+    "key": "f6ed7808-39de-476c-896b-325572a248cc/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Doc-update instruction should surface Tom's doc-update conventions (update existing docs, don't create new; current-state-only), not a specific past doc-hygiene event."
+  }
+]

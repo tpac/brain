@@ -1,0 +1,202 @@
+[
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/29",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse commit greenlight; expected class = Tom's commit/merge workflow prefs or the in-window plan itself, not a day-spanning commit-hub log."
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Vague 'where were we'; expected class = current session arc/on-deck item (peripheral vision design), not a 9-day-old unrelated backup-restore decision."
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/35",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's generic error-report wording ('lots of errors') shares no lexical overlap with node's specific incident vocabulary (48eae71c, critical boost, 3x boost).",
+    "bridge": "Node-class prior for 'problem reported' cues would surface this real-time-fix rule ahead of topic-specific nodes.",
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/36",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node's narrative is a specific April incident (48eae71c hallucination boost); message's anaphoric 'what you reported on' needs window, and vocabulary (latency, timeout) doesn't match node's terms.",
+    "bridge": "Situation-lane match on 'verifying a just-applied brain fix' plus episodic recency (this session's own diagnosis) would outrank the older instance.",
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/4",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Rank 8 near-miss: several competing L0-L5-adjacent architecture/decision nodes crowd top-5, diluting this canonical doc's distinct signal.",
+    "bridge": "Situation-lane match on 'flow chart of pipeline stages' would prioritize this comprehensive architecture doc over partial neighbors.",
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message uses live-walkthrough stage labels (4a/4b/stage 5) defined in the prior turn; node uses L0-L5 naming -- vocabulary mismatch despite same topic.",
+    "bridge": "Graph walk from the stage-labeled discussion nodes to this L0-L5 community node, or lexical bridge on 'convergence'/'data flow integrity'.",
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/9",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's generic 'discuss next steps' phrasing shares no vocabulary with node's specific NEXT-WORK.md/commit-mismatch incident language.",
+    "bridge": "Node-class prior for 'building a next-steps agenda' cues, or lexical match on 'next steps'/'outstanding work'.",
+    "style_note": "Vague 'next steps' cue; expected class = verify-before-presenting caution or the actual open-threads list already carried in session state."
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/17",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/18",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/1/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/6",
+    "verdict": "ambiguous",
+    "stratum": "cue",
+    "gap": "Node's visible content is a June-dated revision (content-graft); May's generic cleanup ask doesn't match the specific commit-hash-heavy text now shown.",
+    "bridge": "Episodic recency (this session's own cleanup commits) or a node-class prior for 'clean the code' cues would outrank the evolved hub.",
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'commit + check no leakage'; expected class = session-leakage/segment-isolation technical status, not a philosophical continuity quote."
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse anaphoric 'show me the track changes on these'; expected class = the actual referenced file diff already in window, not an unrelated encoder-prompt decision."
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'yes' confirmation; expected class = the specific plan just confirmed (aspects file-location convention) or Tom's greenlight/confirmation-discipline patterns, not a same-day CLAUDE.md style rule."
+  }
+]

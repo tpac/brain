@@ -1,0 +1,202 @@
+[
+  {
+    "key": "0ab360bc-3906-4c7e-83a0-912eb32c6408/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9ec0b4e8-ca9a-4535-9614-96b14c646f81/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9ec0b4e8-ca9a-4535-9614-96b14c646f81/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node describes a stale-cache/socket-protocol bug; lexical mismatch with generic 'how does plugin announce capabilities' phrasing, situation lane not tied to this trigger.",
+    "bridge": "Window-aware graph walk from the MCP-blocker turn to sibling bug nodes about plugin/MCP mismatches.",
+    "style_note": null
+  },
+  {
+    "key": "9ec0b4e8-ca9a-4535-9614-96b14c646f81/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes on Tom's real-fix-not-workaround preference/principle, not the unrelated skill-manifest-drift incident."
+  },
+  {
+    "key": "9ec0b4e8-ca9a-4535-9614-96b14c646f81/0/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node's vocabulary (symlink, double-daemon race) doesn't lexically match 'repo-rot mcp.json...do we need it', though it's the directly relevant prior decision.",
+    "bridge": "Lexical/idf match on 'mcp.json' plus episodic recency (decision made 3 days earlier in same repo work).",
+    "style_note": null
+  },
+  {
+    "key": "9ec0b4e8-ca9a-4535-9614-96b14c646f81/0/4",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Principle phrased abstractly ('dev/prod parity') while message says 'repo/plugin' — lexical gap despite the response citing this exact principle.",
+    "bridge": "Situation-lane match ('setting up any new environment...something works in one context but not another') would bridge the phrasing gap.",
+    "style_note": null
+  },
+  {
+    "key": "9ec0b4e8-ca9a-4535-9614-96b14c646f81/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9ec0b4e8-ca9a-4535-9614-96b14c646f81/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Tom's redo-not-overlay / drift-prevention preference nodes, not the unrelated scope-drift correction."
+  },
+  {
+    "key": "9ec0b4e8-ca9a-4535-9614-96b14c646f81/0/10",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message says 'open a new task' while node title uses 'parallel session' framing — vocabulary mismatch masks a directly cue-level fit.",
+    "bridge": "Lexical/idf bridge on 'task'/'spawn', or situation-lane match on deciding whether to spawn a session.",
+    "style_note": null
+  },
+  {
+    "key": "9ec0b4e8-ca9a-4535-9614-96b14c646f81/0/12",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b0908385-9bdb-4cf1-b213-04858331d16f/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "The actual commit's own node (aspects-path-isolation fix) or Tom's terse-commit pattern, not an unrelated old milestone."
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A plain greeting needs no specific gold; at most current open-thread/arc nodes, not an unrelated old session-close moment."
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/3",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message phrase 'no match' vs node's 'No matching deferred tools found' — near-miss lexically; sibling ToolSearch-lesson nodes competing for rank diluted signal.",
+    "bridge": "Exact-phrase lexical match on 'select:' plus dedup/consolidation of near-duplicate ToolSearch lesson nodes.",
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message vocabulary ('so much to do') doesn't lexically overlap with node's 'NEXT-WORK doc...stale' framing despite matching the exact mechanism.",
+    "bridge": "Situation-lane match ('building a work agenda...verify against recent commits') would surface this over generic vocabulary.",
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/6",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message names 'endo-recall' explicitly but several sibling endo-surface architecture nodes compete for the same slot, diluting rank.",
+    "bridge": "Exact keyword match on 'endo' plus node-class prior favoring the core architecture node over siblings.",
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/8",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/9",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/13",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node type [quote] is short and often under-ranked; lexical overlap on 'purpose'/'function' exists but quote-nodes are demoted by node-class weighting.",
+    "bridge": "Node-class prior promoting TRIZ-methodology quotes for 'what is the purpose/function of X' framing.",
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/19",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/25",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message uses domain terms (source_refs, episodic misses, natural formula) that don't lexically overlap with 'node specificity weighting' despite matching one point precisely.",
+    "bridge": "Graph walk from the actively-discussed hub-bias/spread cluster would surface this architecture node as a connected neighbor.",
+    "style_note": null
+  }
+]

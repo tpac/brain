@@ -1,0 +1,202 @@
+[
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/46",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/47",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse commit/push directive; expected class: commit-push/session-closure ritual conventions, not a stale other-session ship record."
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/52",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/54",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/57",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Quote-type node ranked just outside top-5; node-class prior likely demotes bare quotes/reflections beneath dense architecture-cluster candidates on broad identity questions.",
+    "bridge": "Node-class boost for identity/quote reflections on 'what have we built' style questions; demote the architecture-hub candidates crowding it out.",
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/58",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/59",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/60",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/63",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Benchmark-landscape fact scored low despite direct topical fit; long reference-fact content and fact-type demotion likely diluted its score against a strategy-style ask.",
+    "bridge": "Idf boost on distinctive benchmark names (LongMemEval/LoCoMo/BEAM/MemoryArena) plus a node-class allowance for reference facts on 'avoid single-benchmark' asks.",
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/2/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/2/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Doc-for-next-session request; expected class: 'doc is load-bearing' session-handoff protocol nodes, not an unrelated CLAUDE.md restructuring decision."
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/0/2",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Decision phrased in internal shorthand ('F1 resolved: β') days earlier; lexical mismatch against this turn's concrete terms (scouts/v14/vectors/production) and no visible-window mention of F1.",
+    "bridge": "A running session-arc/decision-log field carrying the F1 muster+v14 resolution forward, plus a lexical bridge on 'ship together'.",
+    "style_note": null
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'do it all' ship confirmation; expected class: session-end ritual conventions (commit/push/repackage), not an unrelated older shipped milestone."
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight/autonomy cue ('do what you think is best'); expected class: nodes about Tom's autonomy-granting stance ('it's Anchor's brain, take positions'), not the brain-vs-docs division-of-labor decision."
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/6",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Same-day finding ranked far outside top-5 despite exact topical match ('dampening'); fresh node likely lacks accumulated access/recency weight new nodes need to compete.",
+    "bridge": "Episodic-recency lane for same-day findings plus a direct lexical hit on 'hub dampening'/'fatigue' should have promoted it.",
+    "style_note": null
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/8",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/10",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Standing backup rule scored low despite direct lexical match on 'backup'; generic rule-type nodes likely deprioritized relative to specific/recent facts for a routine-sounding ask.",
+    "bridge": "Exact lexical match on 'backup' plus a node-class prior favoring standing safety rules on any backup/destructive-ops mention.",
+    "style_note": null
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/12",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/1/16",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Same watchdog decision hit rank 1 two turns earlier; recent re-access likely triggered synaptic-fatigue dampening that suppressed its score on this repeat mention.",
+    "bridge": "Without a heavy recency-fatigue penalty, the direct lexical 'watchdog' match should re-surface; needs fatigue-decay tuning for legitimately-recurring topics.",
+    "style_note": null
+  },
+  {
+    "key": "4516336b-085f-45c2-8b67-e0b157841a96/2/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

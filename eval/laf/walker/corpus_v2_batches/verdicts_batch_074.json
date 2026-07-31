@@ -1,0 +1,202 @@
+[
+  {
+    "key": "9fe626ac-ca16-405e-8d4a-07f770d430a5/0/36",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'add to backlog' greenlight should surface nodes about Tom's backlog-management discipline/practice (e.g. BACKLOG staleness caution, append-only race-condition deferral), not an unrelated stale 11-item MCP-tooling backlog entry."
+  },
+  {
+    "key": "2b0adcfc-e101-4834-9b0e-378223ad038d/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'status?' should surface the current session's active-work tracker (the running surface v12 A/B sweep), not an unrelated month-old consolidation-absorb handoff doc."
+  },
+  {
+    "key": "2b0adcfc-e101-4834-9b0e-378223ad038d/0/6",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": "Message is a terse diff request; node's stored content is largely post-turn (v13/v14 design dated 2026-07-07+), so fit at turn-time is unclear and the concrete root-cause line may already be visible in the truncated prior turn.",
+    "bridge": "Episodic recency / conversation-window field (M_h) surfacing the immediately-preceding root-cause explanation already in the same exchange.",
+    "style_note": null
+  },
+  {
+    "key": "2b0adcfc-e101-4834-9b0e-378223ad038d/0/7",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2b0adcfc-e101-4834-9b0e-378223ad038d/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'lets drill down' on failed cases should surface nodes about THIS eval's actual failure mechanisms (gold defects, judge inconsistency), not an unrelated older falsified-fixes list from a different recall-burial investigation."
+  },
+  {
+    "key": "2b0adcfc-e101-4834-9b0e-378223ad038d/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'do a dedicated encoding run with dormant v29' should surface the v29/S1E activation status or encoding-test procedure, not a stale status record of one already-shipped sub-piece (catalog widening)."
+  },
+  {
+    "key": "2b0adcfc-e101-4834-9b0e-378223ad038d/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'other stream did it' should surface nodes about cross-stream coordination patterns (division of labor, self-channel notification), not an unrelated month-old cross-stream fix-plan checklist."
+  },
+  {
+    "key": "2b0adcfc-e101-4834-9b0e-378223ad038d/0/12",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8309e704-aa2a-4e32-825e-9081352adaf4/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8309e704-aa2a-4e32-825e-9081352adaf4/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'exact plan to mitigate the issue' should surface the current BPE-id mitigation layers already under discussion (schema pattern, parse recovery), not an unrelated 2-month-old agentic-surface build-plan milestone."
+  },
+  {
+    "key": "8309e704-aa2a-4e32-825e-9081352adaf4/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'sounds good' greenlight should surface Tom's build-confirmation pattern nodes (what 'sounds good' authorizes), not the same-session BPE root-cause bug already fully restated in the visible window."
+  },
+  {
+    "key": "8309e704-aa2a-4e32-825e-9081352adaf4/0/12",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message is a general 'make sure I see issues' principle with little lexical overlap to the Logs-tab overhaul's specific terms (unified feed, warnings, error grouping); the mechanism lives 2+ weeks deep in session history, past the shown window.",
+    "bridge": "Situation-lane keyed to 'dashboard visibility of issues' plus a graph walk from a surfaced dashboard-architecture neighbor.",
+    "style_note": null
+  },
+  {
+    "key": "8309e704-aa2a-4e32-825e-9081352adaf4/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'wanna do a code-review?' should surface Tom's code-review/verification-discipline pattern (the call-stack-audit rule itself), not one specific old audit instance from a different session."
+  },
+  {
+    "key": "8309e704-aa2a-4e32-825e-9081352adaf4/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'wanna do a code-review before commit?' should surface Tom's general review-before-commit expectation/rule, not a specific old admitted incident of skipping review on an unrelated doc."
+  },
+  {
+    "key": "8309e704-aa2a-4e32-825e-9081352adaf4/0/15",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message ('dont see any S1 encodings, dashboard bug or real bug') shares little surface vocabulary with the stored bug's specific cause (stale import); situation-lane paraphrase is close but the node sits weeks back, competing with fresher dashboard content.",
+    "bridge": "Situation-lane boost for 'missing encoding activity' diagnostic framing; episodic recency dampened by newer same-topic nodes.",
+    "style_note": null
+  },
+  {
+    "key": "8309e704-aa2a-4e32-825e-9081352adaf4/0/16",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8309e704-aa2a-4e32-825e-9081352adaf4/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8309e704-aa2a-4e32-825e-9081352adaf4/0/21",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8309e704-aa2a-4e32-825e-9081352adaf4/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8309e704-aa2a-4e32-825e-9081352adaf4/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8309e704-aa2a-4e32-825e-9081352adaf4/0/29",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8309e704-aa2a-4e32-825e-9081352adaf4/0/35",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8309e704-aa2a-4e32-825e-9081352adaf4/0/38",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'sum up the session, write to a doc' should surface Tom's session-handoff-doc conventions (one living doc, doc load-bearing for future self), not an unrelated month-old doc-hygiene/archival event."
+  },
+  {
+    "key": "8309e704-aa2a-4e32-825e-9081352adaf4/0/39",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b12ab854-ff68-4d94-b727-b3484a687aa3/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

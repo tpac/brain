@@ -1,0 +1,202 @@
+[
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/18",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'better, can be a bit trimmed?' — bare-cue should surface trim/simplicity preferences for this same prompt edit, not the unrelated S1E closing-design stance."
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'How often was it called?' — should surface recall_verbatim's own usage/scoreboard stats, not the unrelated recall_episodes capability-gap proof."
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/25",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Let's cut it' — should surface the episodic-bridge/verbatim-cut rationale or Tom's tool-cut heuristics, not recall_topical's separate keep decision."
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/28",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/29",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/30",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Casual phrasing ('check yourself for coherency', 'probe test it') doesn't share vocabulary with the node's title/content (probe family, compliance/counterfactual); node is 50d old, single mention.",
+    "bridge": "Lexical/idf lane on 'probe'/'coherency' tokens, or situation-lane match on 'iterating on S1E prompt, choosing which probe to run'.",
+    "style_note": null
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/32",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9fe626ac-ca16-405e-8d4a-07f770d430a5/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9fe626ac-ca16-405e-8d4a-07f770d430a5/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Terse elliptical command ('commit and merge to main') carries almost no lexical overlap with the lesson's vocabulary (dirty main, other-stream work, coordination).",
+    "bridge": "Node-class prior / style-recall device surfacing Tom's merge-discipline lessons whenever the action-type 'merge to main' fires, regardless of specific referent.",
+    "style_note": null
+  },
+  {
+    "key": "9fe626ac-ca16-405e-8d4a-07f770d430a5/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9fe626ac-ca16-405e-8d4a-07f770d430a5/0/15",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message uses 'effort' (Sonnet API param) while the node discusses 'thinking'/budget_tokens — different lever, different lexical field, despite being the same underlying question.",
+    "bridge": "Situation-lane match on 'evaluating thinking-mode tiers for the encoder' or graph walk from a neighboring encoder-cost/effort node.",
+    "style_note": null
+  },
+  {
+    "key": "9fe626ac-ca16-405e-8d4a-07f770d430a5/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'yeah lets try high vs medium effort' — should surface prior effort/thinking-tier experiment learnings (e.g. the thinking-off-vs-low finding), not an unrelated code-review bug."
+  },
+  {
+    "key": "9fe626ac-ca16-405e-8d4a-07f770d430a5/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'merge it to main, restart after' — should surface current-arc merge/restart checklist state, not a stale unrelated deferred-decision from a different session."
+  },
+  {
+    "key": "9fe626ac-ca16-405e-8d4a-07f770d430a5/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9fe626ac-ca16-405e-8d4a-07f770d430a5/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'i thought we were doing this already' — should surface the live do-no-harm gate's actual status/plan, not an unrelated old lexical-v2 revert decision."
+  },
+  {
+    "key": "9fe626ac-ca16-405e-8d4a-07f770d430a5/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'status?' — should surface the current do-no-harm eval's build/sweep progress, not the unrelated old S2-measurement-philosophy resolution."
+  },
+  {
+    "key": "9fe626ac-ca16-405e-8d4a-07f770d430a5/0/27",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight cue ('lets launch v29!') — should surface confirmation/momentum patterns for how Tom finalizes launches, independent of this milestone's own post-hoc activation record (content-graft suspicion)."
+  },
+  {
+    "key": "9fe626ac-ca16-405e-8d4a-07f770d430a5/0/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'let's archive... mark everywhere done' — should surface the current v29-rebuild capstone/wrap-up state, not an unrelated already-resolved dead-code item."
+  },
+  {
+    "key": "9fe626ac-ca16-405e-8d4a-07f770d430a5/0/35",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

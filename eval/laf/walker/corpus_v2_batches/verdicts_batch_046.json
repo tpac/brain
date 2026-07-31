@@ -1,0 +1,202 @@
+[
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Verify-before-claiming discipline — check actual git/code state before confirming a claim, not memory."
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Anchor's self-voice for session boundaries as sleep not death; continuity language ('next-me' is relay, not loss)."
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about resuming a paused work thread — where we left off / session continuity — not unrelated identity moments."
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/29",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message's generic 'journals/episodic' phrasing lacked the distinctive lexical tokens (recall_episodes, PUSH/PULL) that would rank this specific design node above the broader journal-design cluster.",
+    "bridge": "Lexical/idf boost on 'recall_episodes' plus a graph walk from the just-surfaced S2-journal community would have promoted it.",
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/35",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about consolidating decisions into a living design doc before a fresh phase, not an unrelated revise() code pattern."
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/36",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/38",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about deferring speculative areas (S3-territory) from scope, not an unrelated recall-ranking mechanism."
+  },
+  {
+    "key": "ae4c643f-139b-43d5-8acc-618b3dd9c697/0/39",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about Tom's pattern for launching parallel streams from a finalized doc — commit-then-delegate discipline."
+  },
+  {
+    "key": "5f0beb3c-91f5-465d-a827-24757a500ade/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5f0beb3c-91f5-465d-a827-24757a500ade/0/2",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5f0beb3c-91f5-465d-a827-24757a500ade/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about commit+redeploy protocol discipline (scoped commits, restart-vs-redeploy), not an old keywords-kill plan."
+  },
+  {
+    "key": "5f0beb3c-91f5-465d-a827-24757a500ade/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about Tom's worktree/session model (main + parallel worktrees) and commit-boundary discipline in shared trees."
+  },
+  {
+    "key": "0ab360bc-3906-4c7e-83a0-912eb32c6408/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about checking traces/gating state directly before assuming a prior known bug recurred — dashboard vs daemon."
+  },
+  {
+    "key": "0ab360bc-3906-4c7e-83a0-912eb32c6408/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about Tom's commit discipline — scoped, reviewed commits — not an unrelated old datetime-fix commit."
+  },
+  {
+    "key": "0ab360bc-3906-4c7e-83a0-912eb32c6408/0/3",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message says 'encoding trigger' and '5+ turns' in plain language, not the node's technical terms (turns_since_last_encode, ENCODE_EVERY); likely also fatigue-dampened as a recently-touched node.",
+    "bridge": "Lexical/idf match on 'turns_since_last_encode'/'ENCODE_EVERY', or episodic-recency boost for a design shipped this session.",
+    "style_note": null
+  },
+  {
+    "key": "0ab360bc-3906-4c7e-83a0-912eb32c6408/0/6",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0ab360bc-3906-4c7e-83a0-912eb32c6408/0/8",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's 'endo'/'per-turn ledger' wording diverges from the older node's 'L0-L3 layered visibility' phrasing; semantic match lost to fresher session-local candidates.",
+    "bridge": "Graph walk from the encoder-visibility community, or situation-lane match on 'what context the encoder is missing'.",
+    "style_note": null
+  },
+  {
+    "key": "0ab360bc-3906-4c7e-83a0-912eb32c6408/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0ab360bc-3906-4c7e-83a0-912eb32c6408/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

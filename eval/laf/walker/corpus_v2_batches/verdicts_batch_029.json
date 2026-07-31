@@ -1,0 +1,202 @@
+[
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/19",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f9be1729-415c-4131-b25a-c5a723124e08/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "expected: node verifying current commit/task state vs docs before presenting agenda, not the stale-NEXT-WORK instance"
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/0/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "message says '30+ dims' vs node's '36 dims' — lexical/number mismatch, plus message's co_anchored+eval sub-questions diluted the embedding toward other topics",
+    "bridge": "idf/lexical match on 'dimensions contract'/'source ref' terms; graph walk from quality_contract.py node",
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "surface Tom's 'trusts probes over his own review' principle + the specific co_anchored/eval-plan answers, not old synthesis"
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/0/9",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "message's abstract framing ('merge out of statelessness') doesn't share vocabulary with the node's Hawaii/NYC example or 'compute vs recall' framing",
+    "bridge": "situation-lane match on eval-design principle; graph walk from encode/recall coupling cluster",
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "expected: a node about Path A/B validation design or gold-standard test coverage, not the hypothesis-exceeds-gold interpretation insight"
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/0/14",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "message says generic 'seed brain' while node is keyed to the specific file/version-bump convention ('interaction_seed.py', surface v8) — lexical + instance mismatch",
+    "bridge": "lexical match on 'seed brain'; node-class prior favoring mechanism/convention nodes for imperative instructions",
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "expected: nodes about current dashboard-session coordination/API surface, not an unrelated 50-day-old commit-count milestone"
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "surface the two options just discussed (window field) or Tom's parallelization pattern, not the unrelated v15 bias finding"
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "surface what B/C concretely refer to in this turn's options (window field), not a 'Phase B' decision matched only on the letter B"
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/6",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "message is directive/imperative ('raise it, save brains, parallel it') with little descriptive overlap to the node's declarative pipeline-stage prose; low lexical anchor",
+    "bridge": "graph walk from harness node via 's1e_runs/s2_runs' field mention; episodic recency of the active longmem run",
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/9",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "message is a narrow factual request ('show me... failed and what we answered') lacking the node's vocabulary ('judge', 'false negative', 'gold calibration')",
+    "bridge": "situation-lane match to 'interpreting eval pass rates after answerer upgrade'; graph walk from probe/harness cluster",
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "surface current run progress/stage status (window field), not an unrelated harness-crash-prevention history node"
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/13",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "message's technical specifics (numbers-as-words, probe questions) dominate the embedding over the short meta-principle quote; weak lexical overlap beyond 'probes'",
+    "bridge": "episodic recency — same-session quote just spoken; graph walk from the freshly-created 'Tom reviews via probes' node",
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/15",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "message ('look at all scouts', 'language around examples') is generic, missing the node's specific bug vocabulary ('SILENT_PARTIAL', 'category_statement')",
+    "bridge": "graph walk from the quote-scout node already surfaced this turn; situation-lane on quote-scout empty-result debugging",
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/16",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "surface the two fix proposals just enumerated (window field) or Tom's terse-approval pattern, not the unrelated old eval result"
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "expected: nodes about current documentation set / this session's actual accomplishments, not an unrelated old Phase C/D/E status"
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/1/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "expected: nodes tracking actual episodic-roadmap step status, not an unrelated session-wrap task sequence from a different session"
+  },
+  {
+    "key": "818d5d32-78cf-471e-8ae1-006156a6c823/2/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3657abde-f90b-4a18-988c-cd5d0523df12/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

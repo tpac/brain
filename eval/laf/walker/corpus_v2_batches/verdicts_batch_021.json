@@ -1,0 +1,202 @@
+[
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/7",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the actual referenced node (71f3d669, the bug diagnosis) or recent cross-session handoff mechanics, not an unrelated recall-silence incident."
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: principle/rule nodes about clean-architecture philosophy (Haiku's picks: 'tough tests first', 'ask where this lives architecturally') — not a stale other-session cleanup decision."
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/15",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Lexical overlap on 'merge'/'main' existed but score was diluted by heavier co-occurring fatigue/aspect-modulation vocabulary from the same turns.",
+    "bridge": "Episodic-recency boost for a same-day merge event, or conversation-window field (M_h) weighting recent branch-state mentions.",
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/17",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "cc209e2f-5af5-4cda-bbfd-84c71a640274/1/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: identity/collaborator principle nodes or an open-thread summary (Haiku's picks: 'collaborator not assistant', identity concept, key quote) — not a stale one-off boot-incident."
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/5",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": "Node was created same-day and narrates the resolution (surface v8) that lands only after this exact turn — content-graft suspicion clouds turn-time fit despite direct topical match.",
+    "bridge": "If genuinely available at turn-time, situation-lane match on 'haiku recently-surfaced' or a graph walk from the surface-pipeline neighbor would surface it.",
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/10",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/11",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's redesign vocabulary (batching, connection, queue) doesn't lexically match the older decision's framing (deliberate latency trade-off, GIL, WAL busy_timeout).",
+    "bridge": "Situation-lane match on 'recall write-lock policy' or a graph walk from the recall_write_queue design neighbor.",
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/15",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node's historical/disabled framing ('DISABLED', 'waiting for judge-selected signal') doesn't lexically match the live comparison question ('difference between X and Y').",
+    "bridge": "Lexical/idf match on 'hebbian' plus a graph walk from the _hebbian_strengthen code-reference neighbor.",
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: pattern-class nodes about Tom's session-end/momentum directives (Haiku's picks: 'don't wrap up mid-session', 'must encode at session end') — not an unrelated eval-baseline handoff doc."
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/22",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's code-level phrasing ('silent exceptions', 'try catch') diverges lexically from the node's write-verification framing; buried at rank 525 under a huge candidate pool.",
+    "bridge": "Node-class prior for 'loud-by-default' identity-bearing lessons, or lexical/idf match on 'silent failure' phrasing.",
+    "style_note": null
+  }
+]

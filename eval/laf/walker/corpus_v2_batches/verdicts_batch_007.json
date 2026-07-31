@@ -1,0 +1,202 @@
+[
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'S1/Surface' vocabulary but node is naming-rename history, not the correction-pattern symmetry the message needs; different trigger entirely.",
+    "bridge": "A node listing S1S's specially-treated mechanisms (corrects/supersedes) would serve; no legitimate bridge to this rename-history node.",
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/27",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/39",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'encoding' but node is an old round/get_node-call benchmark from an unrelated session, not about today's v12-vs-v14 comparison scope.",
+    "bridge": "A node about the specific v12-vs-v14 encoder A/B methodology would serve; none surfaced here.",
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/43",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/47",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'round/latency' vocabulary but node is explicitly SUPERSEDED (dead v3+ architecture); irrelevant to today's live brain_batch round-split issue.",
+    "bridge": "A node diagnosing why the CURRENT encoder splits into 3 rounds (brain_batch rule not firing) would serve; this old profile doesn't.",
+    "style_note": null
+  },
+  {
+    "key": "bedfa9b3-e870-4204-be98-2c23aad5ac32/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "'check brain' shares no lexical tokens with the health-check/signal-queue design language; likely outranked by literal 'brain status' phrasing.",
+    "bridge": "A style-recall prior for terse ops commands, keyed to Tom's 'consult brain issues in real time' principle, would reach it.",
+    "style_note": "Bare 'check brain' should surface Tom's principle: Anchor must proactively relay brain health, not carry issues silently."
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/3",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message uses fresh terms (S1Scribe, recall route, vector table) vs. gold's prior-session phrasing (Surface, v14 Scribe); cross-session lexical mismatch.",
+    "bridge": "Episodic recency across the session boundary (last decision of prior session) + situation-lane match on 'deciding what to promote' would reach it.",
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/5",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "'Remove that hook' is terse/anaphoric; shares no lexical tokens with 'reload/metadata/cached', and node is 13+ days old — weak lexical+recency signal.",
+    "bridge": "Graph walk from the actively-discussed hook/test-integrity node to this one via a 'depends_on' edge would reach it.",
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "'ready' is a bare confirmation; gold is a stale, already-fixed finding about a different round-split cause than today's brain_batch×2 case.",
+    "bridge": "None legitimate — today's specific brain_batch×2 split needs a fresh diagnosis node, not yet written.",
+    "style_note": "Bare 'ready' before a verification reveal should surface Tom's greenlight/momentum pattern, not a stale unrelated encoder-gap finding."
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/9",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "'reduce cycles'/'MCP vs Prompt' only partially lexically overlaps 'prompt rewrite'/'batch tools'; precedent is from an older, different session.",
+    "bridge": "Graph walk from active round-reduction (Fix 1) nodes to this historical A/B precedent, or lexical match on 'batch tools'.",
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Both mention 'edges' but node is an S2 cleanup trim-rule for related/related_to, unrelated to today's connect_to ordering/testing message.",
+    "bridge": "A node about connect_to/remember_batch test-contract design would serve; no legitimate bridge to this trim rule.",
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares a code-quality theme but node is a specific call-stack-audit instance, not the 'errors should be loud/visible' principle invoked here.",
+    "bridge": "A node stating Tom's 'loud by default' error-visibility principle would serve; none surfaced.",
+    "style_note": "'All errors should be loud' should surface Tom's 'loud by default' philosophy nodes, not this unrelated audit instance."
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'run a3, do all checks' should surface the A3 patch-checklist itself (already in-window), not the separate broader KPI-monitoring decision."
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/26",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/28",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/32",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A terse ordering question should surface the launch plan's dependency rationale (why verify-before-switch), not a same-session status recap."
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/39",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares LongMemEval axis vocabulary but node reports backward-looking old score history (v3→v8) vs. the message's forward-looking plan ask.",
+    "bridge": "A node defining the current axis/methodology framework would serve; this stale score-history node doesn't.",
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/43",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'encoding/session' theme but node lists six already-fixed historical bugs from 18 days earlier — stale-instance, not this cycle's check.",
+    "bridge": "A post-launch validation checklist (Phase F) or fresh per-cycle quality-report node would serve; this old bug-list doesn't.",
+    "style_note": null
+  },
+  {
+    "key": "8ec23bbe-99d6-42de-87e9-ad2060ed82c7/0/44",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "'decoding<>S1S'/'surfaced'/'cut off text' doesn't lexically match 'enrichment/formatter'; 18-day-old node likely outranked by newer Phase-1 nodes.",
+    "bridge": "Graph walk from active Phase-1 Surface nodes to this earlier unification decision via a 'builds-on' edge would reach it.",
+    "style_note": null
+  }
+]

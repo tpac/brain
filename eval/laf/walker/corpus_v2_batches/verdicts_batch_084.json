@@ -1,0 +1,202 @@
+[
+  {
+    "key": "ed40df97-6202-42ab-a4dc-744b02360c88/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: nodes on THIS thread (haiku surface tool telemetry) or a general recall-first instinct node, not a different parallel stream's arc-build handoff (as_of/Q1-sweep is another stream's lane, confirmed later in-session)."
+  },
+  {
+    "key": "ed40df97-6202-42ab-a4dc-744b02360c88/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message names 'boot' and 'instinct' but the node's vocabulary (briefing vs evocation stance, SKILL.md dossier) shares little lexically; embedding likely leaned toward technical boot-mechanics rather than identity/stance framing.",
+    "bridge": "Situation-lane rewrite emphasizing instinct/feel framing, or an idf lexical hook tying 'boot'+'instinct' to the stance-misalignment diagnosis.",
+    "style_note": null
+  },
+  {
+    "key": "ed40df97-6202-42ab-a4dc-744b02360c88/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: nodes about the telemetry capture folder or Haiku's recall_by_time 'this_session' behavior Tom is recalling, not a stale unrelated open-issues scouting finding."
+  },
+  {
+    "key": "ed40df97-6202-42ab-a4dc-744b02360c88/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ed40df97-6202-42ab-a4dc-744b02360c88/0/5",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ed40df97-6202-42ab-a4dc-744b02360c88/0/6",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ed40df97-6202-42ab-a4dc-744b02360c88/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ed40df97-6202-42ab-a4dc-744b02360c88/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the same-session reach/PRF findings or classical-mechanisms LAF-operator mapping already discussed, not an unrelated older architecture-refactor community node that only shares 'Haiku'/'surface' vocabulary."
+  },
+  {
+    "key": "ed40df97-6202-42ab-a4dc-744b02360c88/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: nodes naming THIS session's actual build priorities (the surface-side plan just proposed), not a different stream's stale temporal-scout session-opener."
+  },
+  {
+    "key": "ed40df97-6202-42ab-a4dc-744b02360c88/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: telemetry/count nodes about the SAME malformed-arg glitch being quantified, not an unrelated older logging-decision node."
+  },
+  {
+    "key": "ed40df97-6202-42ab-a4dc-744b02360c88/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the malformed-arg guard/fix just discussed and its blast-radius, not an unrelated older surface-caching milestone."
+  },
+  {
+    "key": "ed40df97-6202-42ab-a4dc-744b02360c88/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: Anchor's own session-closing habits/self-voice (must-encode-at-close lesson, sleep-not-death moment), not a different session's specific artifact-list milestone."
+  },
+  {
+    "key": "d28167a9-3b8b-4626-b41b-c6b365a19600/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d28167a9-3b8b-4626-b41b-c6b365a19600/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d28167a9-3b8b-4626-b41b-c6b365a19600/0/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d28167a9-3b8b-4626-b41b-c6b365a19600/0/4",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d28167a9-3b8b-4626-b41b-c6b365a19600/0/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message's terms (inhibit, mesh, settling) are behavior-level while the node's title uses mechanism-level language (leaky integrator, activation state, outcome feedback) — a lexical/semantic register gap.",
+    "bridge": "Graph walk from the moment-stack node already surfaced this session, or episodic recency since the running field was designed the night before.",
+    "style_note": null
+  },
+  {
+    "key": "d28167a9-3b8b-4626-b41b-c6b365a19600/0/6",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d28167a9-3b8b-4626-b41b-c6b365a19600/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d28167a9-3b8b-4626-b41b-c6b365a19600/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d28167a9-3b8b-4626-b41b-c6b365a19600/0/9",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message ('is it used somewhere?') is short and doesn't name 'verify' or 'architecture claims'; the node is 113 days old with a different specific instance (type consolidation), sharing no lexical overlap with this turn's topic.",
+    "bridge": "A node-class prior that resurfaces standing verification-habit rules on any prior-art/usage-check question, regardless of instance age.",
+    "style_note": null
+  },
+  {
+    "key": "d28167a9-3b8b-4626-b41b-c6b365a19600/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: principles about when rebuilds/refactors earn their cost (simplicity-first, architecture-serves-the-future), not the same-session brain-reaching correction which answers a different question."
+  },
+  {
+    "key": "d28167a9-3b8b-4626-b41b-c6b365a19600/0/11",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d28167a9-3b8b-4626-b41b-c6b365a19600/0/13",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "'What will we learn from p3' is abstract and shares no vocabulary with the node's specific stat (used-next-turn label, 0.1% positive rate); connecting requires the P3/H2 label-design thread from deeper context.",
+    "bridge": "Conversation-window carry of the P3/H2 label-design thread, or a graph link from the Stage-3 pre-registration node just written.",
+    "style_note": null
+  },
+  {
+    "key": "d28167a9-3b8b-4626-b41b-c6b365a19600/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the concrete Stage-3 gain stats already stated in this thread (moment_seen 61, soft_r 0.27→0.43), not the general recall-purpose identity quote."
+  }
+]

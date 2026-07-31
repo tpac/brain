@@ -1,0 +1,202 @@
+[
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/38",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/41",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "surface nodes about Tom's pre-launch eval discipline pattern, not the old Session #9 kill-list instance"
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/42",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "surface nodes about Tom's pre-ship sanity-check habits, not an unrelated call-stack-audit event"
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/43",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/51",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "surface nodes about Tom's greenlight/action-message pattern (terse imperative = act, not confirm) or the specific regression being fixed, not a judge-classification lesson"
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/55",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/58",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/59",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "surface nodes about Tom's ship-then-document discipline pattern, not an unrelated older session's ship record"
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/60",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "surface nodes about Tom's next-session prioritization pattern, not an unrelated older session's queue"
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/62",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Bare one-word command carries almost no lexical/semantic signal; embedding can't distinguish it from many other terse commands, and the node's situation targets background-task restart failures, not a direct manual restart invocation.",
+    "bridge": "Episodic recency (recent restart-after-code-change context) or a keyword-specific alias mapping bare 'restart' to the standing daemon-restart-reliability lesson.",
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/65",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e8b7e76d-7f41-457a-8a18-cecdb4234ff5/0/66",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "surface nodes about how Tom likes next-step forks framed generically (ranked, tied to current session work), not a stale unrelated ranking from a different scope"
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/3",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message is long and multi-topic (plan explanation plus a research-refresh ask); the short distinctive phrase 'point to the source instead' is diluted among many other keywords, weakening lexical/embedding match.",
+    "bridge": "IDF/lexical bridge keyed on the rule phrase, or a graph walk from the episodic-reference-design neighbor already adjacent in the graph.",
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/4",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/12",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message uses coordination vocabulary (another session, dashboard, touch) with no lexical overlap to the old Session #13 story's terms (last_activity, ping); situation field describes daemon internals, not cross-session dashboard coordination.",
+    "bridge": "Graph walk from a surfaced architecture-boundary neighbor, or a situation-lane broadened to 'staying in your lane across parallel sessions.'",
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/16",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/18",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "surface nodes about Tom's session-budget prioritization preference (finish high-leverage substrate before docs), not a stale unrelated session plan"
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/20",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message concerns SESSION-HANDOFF/BACKLOG terseness; the node's situation and content are scoped narrowly to a CLAUDE.md drift example, so lexical/situation match is weak even though the underlying principle generalizes.",
+    "bridge": "Situation-lane generalized to 'any always-loaded doc,' or node re-enrichment broadening the situation field beyond CLAUDE.md specifically.",
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/21",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "'the identity document' is a bare anaphoric reference with zero shared tokens against the node's title/content; resolving it requires session memory of which doc was created earlier that session, beyond embedding similarity.",
+    "bridge": "Running-session field tracking 'docs touched/created this session,' or episodic recency linking the phrase to the most recently created doc.",
+    "style_note": null
+  }
+]

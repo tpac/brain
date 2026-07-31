@@ -1,0 +1,202 @@
+[
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/23",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node situation field frames the trigger as 'noticing dashboard/response divergence' rather than the blunt 'timeouting' complaint; lexical/situation-lane phrasing mismatch likely cost rank despite topical closeness.",
+    "bridge": "Broaden situation field to include blunt symptom phrasing ('hook recall timing out repeatedly'); boost rare-token lexical weight on 'timeout'.",
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'SQLite'/'logs db' vocabulary with the message but is a stale storage-engine-choice decision, not the write-contention mechanics or deprecation strategy the message actually needs.",
+    "bridge": "Node-class prior demoting old architecture-choice decisions in favor of current mechanism nodes (WAL single-writer, contention) for this query.",
+    "style_note": "Expected pattern class: nodes about WAL single-writer-slot mechanics or Tom's producer-deprecation preferences, not the original engine-selection decision."
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares generic vocabulary ('signal', 'channel', 'system') with the surrounding cleanup conversation but the node's actual content (system-reminder channel authority) is an unrelated topic to signal-producer deprecation decisions.",
+    "bridge": "Tighter topic/situation-lane separation between 'channel authority/prompt weight' cluster and 'signal producer cleanup' cluster.",
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/29",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'CLAUDE.md'/'docs' vocabulary but describes a different parallel session's specific additions (correction_enrich, structured outputs), not the add_relation section or Tom's lean-docs preference the message is about.",
+    "bridge": "Node-class prior favoring Tom's standing doc-leanness preference over a specific other-session's-additions record; finer situation-lane separation by section topic.",
+    "style_note": "Expected pattern class: Tom's lean-CLAUDE.md preference / doc-bloat lesson nodes, not a record of unrelated additions from another session."
+  },
+  {
+    "key": "04d89d82-0645-4b55-af8d-81622fb9f1cc/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'commit' vocabulary but is a stale specific-session commit milestone, not the commit-approval/discipline pattern the greenlight cue needs.",
+    "bridge": "Style-recall for terse commit-greenlight cues; node-class prior demoting stale per-session milestones in favor of process/preference nodes.",
+    "style_note": "Expected: Tom's commit discipline pattern (elaborate review + self-check before committing) — which is exactly what Haiku picked instead."
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'dead code'/'cleanup' vocabulary but is a stale specific cleanup instance (HOOK_TABLE), not the general dead-code-discipline principle the terse imperative needs.",
+    "bridge": "Node-class prior favoring 'clean as you go' principle nodes over specific historical cleanup batches for this cue.",
+    "style_note": "Expected pattern class: dead-code/clean-as-you-go principle nodes — exactly what Haiku picked instead ('Clean as you go', 'Delete dead code rather than configure it')."
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'cleanup'/'dead code'/'tests' vocabulary but is a stale unrelated session's milestone, not a process preference or how-to for the active cleanup directive.",
+    "bridge": "Node-class prior demoting stale milestone/event nodes in favor of standing dead-code-discipline preference nodes for terse process cues.",
+    "style_note": "Expected: a clean-as-you-go / no-dead-code preference or discipline node, not a specific past session's line-count tally."
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'commit' vocabulary but is a stale fact about a different session's local commits, not the commit-discipline pattern the greenlight needs.",
+    "bridge": "Style-recall for terse commit-greenlight cues; node-class prior favoring standing commit-discipline principle over stale per-session commit facts.",
+    "style_note": "Expected: Tom's commit discipline principle (review before committing) — matches what Haiku actually picked."
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'restart'/'mid-session' vocabulary but describes an unrelated mechanism (brain_mcp.py code-reload needing a new session), not the force-restart-on-hang design being discussed.",
+    "bridge": "Situation-lane split distinguishing 'code-reload requires new session' from 'health-monitor force-restart on hang' clusters.",
+    "style_note": null
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'daemon'/'restart'/'resilience' vocabulary broadly but the node's actual content (test isolation, unix sockets, RSS watchdog) is unrelated to the SessionEnd-hook/plugin-repackaging design being discussed.",
+    "bridge": "Finer situation-lane gating so broad community/synthesis nodes don't surface for narrowly-scoped current design questions.",
+    "style_note": null
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'session'/'MCP' vocabulary but is about config-reload timing (CLAUDE.md vs MCP server), unrelated to the daemon-shutdown-on-idle design being greenlit.",
+    "bridge": "Situation-lane separation of 'config reload mechanics' from 'session-lifetime/shutdown design' clusters; style-recall for terse numbered-item greenlights.",
+    "style_note": "Expected: nodes about Tom's pattern when finalizing scoped design items, or the actual session-owns-daemon-lifetime design being confirmed."
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/13",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Node's situation field ('designing vector freshness architecture') targets design-time recall, not this debugging-an-error trigger; the referenced screenshot content sits outside the shown window entirely.",
+    "bridge": "Broaden situation field to also cover 'debugging bg_writer_worker_stalled errors'; graph-walk from the error's own log-field neighbors.",
+    "style_note": null
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/14",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Very recent (0.8d old) architecture node likely diluted among many other current-session candidates; lexical overlap on 'thread'/'lock'/'stuck' is generic rather than matching the specific 'conn_bg_writer' term.",
+    "bridge": "Stronger episodic-recency weighting for same-day-shipped architecture nodes; lexical/idf boost on 'conn_bg_writer'/'write_lock'.",
+    "style_note": null
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/15",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Lexical overlap on 'vectors'/'backfill'/'lock' present but situation field ('debugging the embedding pipeline') doesn't foreground the exact 'transact once vs. lock' phrasing used in the message.",
+    "bridge": "Lexical/idf weighting tuned to 'vectorize'/'transact once' phrasing; situation-lane refinement to include the compute-then-transact framing.",
+    "style_note": null
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/18",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'code'/'changes'/audit-adjacent vocabulary but is a specific past verification event about a judge-failure diagnosis, not the concrete lock/batching mechanism nodes the message's ask actually needs.",
+    "bridge": "Node-class prior favoring specific mechanism/pattern nodes (lock-hold minimization, batched drain) over a generic past-audit lesson.",
+    "style_note": null
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/21",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/24",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'recall'/latency vocabulary but conflates the internal hook_recall latency-breakdown insight with the external longmem-eval-runtime comparison the message actually asks about.",
+    "bridge": "Topic disambiguation between 'internal phase-timing bottleneck' and 'external eval wall-time benchmark' clusters; lexical/idf on '500 turns'/'longmem'.",
+    "style_note": null
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/27",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/28",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/32",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "03641c22-3e55-4155-b589-0b6d3c804fe8/0/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares broad 'memory systems' vocabulary only; the node is an unrelated theoretical paper on semantic-memory limits, while the message is a casual joking dismissal of the prior positioning pitch.",
+    "bridge": "Node-class prior demoting distant theoretical/research nodes for casual reactive quips; nothing in the held device set closely bridges this gap.",
+    "style_note": "Expected: nodes about Tom's humor-deflection pattern or staying grounded in what's actually validated, not a research paper on memory-system limits."
+  }
+]

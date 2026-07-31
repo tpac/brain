@@ -1,0 +1,18 @@
+[
+  {
+    "key": "779dc3e0-01ac-4448-a8ea-15116c817484/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "779dc3e0-01ac-4448-a8ea-15116c817484/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

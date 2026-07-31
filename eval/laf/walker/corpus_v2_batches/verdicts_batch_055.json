@@ -1,0 +1,202 @@
+[
+  {
+    "key": "37a32ee9-9770-46ac-ab03-0a87b6762647/0/43",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "37a32ee9-9770-46ac-ab03-0a87b6762647/0/44",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "37a32ee9-9770-46ac-ab03-0a87b6762647/0/45",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "99dcd838-2cd4-44cd-b62f-9b1f55b5202a/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "99dcd838-2cd4-44cd-b62f-9b1f55b5202a/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message asserts the Arc/journal split in Tom's own words without saying 'Frame'; lexical/embedding overlap with the Frame-labeled node is weak despite the same underlying concept.",
+    "bridge": "Lexical alias mapping (arc~session-arc~Frame) or a graph walk from the journal-redesign hub node would surface this Frame/Journal/Arc finding.",
+    "style_note": null
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'show me the prompt' should surface the V1 journal review-block draft under discussion, not S1 Scribe's unrelated prompt closing."
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/9",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/11",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/13",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Skeptical pushback echoes Tom's Q1-4 grounding concerns from several turns earlier, outside the 3-turn window and not lexically close to this message.",
+    "bridge": "Session-scoped episodic recency beyond the 3-turn window, or a running-session field carrying Tom's earlier scrutiny, would reach it.",
+    "style_note": null
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "For 'is X in a contract?' should surface trace_contract.py's review-block/parser text, not base.py's unrelated continuity-methods mechanism."
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/21",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "After a token-cutoff, recall should surface state-recovery/resume-protocol nodes, not an unrelated past marathon-session close moment."
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'we restarted' should surface post-restart health-check practice for this work, not a stale unrelated handover-staleness correction."
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/26",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/28",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e742c502-d7dd-496e-8719-1d318960c2c7/0/29",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

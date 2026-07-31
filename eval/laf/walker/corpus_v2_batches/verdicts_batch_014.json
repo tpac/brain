@@ -1,0 +1,202 @@
+[
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/34",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/46",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/53",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Old unrelated 'kills list' from a past session shares no lexical/semantic tie to today's bare 'confirmed' on Phase F doc edits.",
+    "bridge": "None legitimate — label is a mislabel; a true bridge would need session-state carry to today's Phase F status, not this node.",
+    "style_note": "Bare 'confirmed' — expected surfacing: Tom's confirmation-discipline/greenlight patterns or the live Phase F/Stage 1A status, not an unrelated old kills list."
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/61",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Stale Phase-E commit ledger (different work slice, 9 days old) shares only the word 'commit' with today's ask to find a commit point.",
+    "bridge": "Node-class prior demoting stale event-ledgers in favor of Tom's commit-slicing preference/workflow nodes.",
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/71",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/72",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node created same session but its situation field targets 'starting Stage 1C implementation', not a retrospective-verification question; keywords/KV lexical overlap present but phrasing mismatch plus freshness under-weighted vs semantic distance.",
+    "bridge": "Episodic-recency boost (same-session, just-created) combined with a situation-lane rephrased toward 'confirming a migration's dual-state safety'.",
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/74",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message uses 'aspect', 'json', 'brain's structure' vocabulary; gold's title/content use 'type/relation nodes', 'lazy promotion', 'migration' — no lexical overlap despite direct topical relevance.",
+    "bridge": "Graph walk from the aspects-design cluster, or a situation-lane match on 'deciding whether to create node rows for type/relation strings'.",
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/76",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/78",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is about READING a stale NEXT-WORK doc and over-crediting done work; this message is about WRITING forward continuity docs — inverse direction, only 'docs' vocabulary shared.",
+    "bridge": "None strong — a true bridge needs a doc/handoff-accuracy node from the producing side, not the consuming-side lesson.",
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/79",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d5c6e94-9963-4324-8674-5429daee2aa4/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "'The recall document' is an anaphoric pointer into a set of docs discussed this session; the gold is an unrelated empirical channel-proportions finding with no lexical tie to which doc is meant.",
+    "bridge": "Conversation-window field (M_h) to resolve 'the recall document' referent, then a graph walk to the actual doc's content.",
+    "style_note": "Vague pointer 'hmmm there is the recall document' — expected surfacing: the actual named doc's live content or the current recall-arc status, not an old empirical finding."
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/3",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message says 'Aspect encoder should... produce json format' but never says 'node examples' or 'string lists'; gold's title vocabulary is distant from the message's phrasing despite matching intent.",
+    "bridge": "Situation-lane match on 'writing the aspect encoder prompt' should have fired; lexical/idf weighting underweights the paraphrase gap.",
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/4",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "'Go back to recall which was the original task' needs deep-session history (the mission stated many turns earlier) to resolve; the target-function principle sits outside the shown window with no lexical tie to 'recall' as a scheduling word here.",
+    "bridge": "Running session-arc field carrying the original mission statement, or episodic recall of the founding turns of this thread.",
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/7",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message says 'other S2 Integrate functions' generically; gold node's title says 'Dedup' (an older per-unit name), so lexical/idf matching misses the structural analogy.",
+    "bridge": "Node-class prior surfacing S2-unit-shape exemplars generically, or a graph walk along the Dedup/Consolidation lineage edge.",
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares only the word 'encoder'; gold is about the S1 Scribe's failure to create concept-grounding nodes, unrelated to this message's aspect-JSON-exposure/eval-plan question.",
+    "bridge": "None legitimate — mislabel; a real bridge would need an aspect-eval-methodology node, not this S1 encoding gap.",
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Old 'next session plan' node is about S2 Community quality work, not S2Aspect; only 'S2' vocabulary overlaps with the current fresh-brain/S2Aspect lifecycle question.",
+    "bridge": "None strong — node-class prior should instead surface the steady-state/backlog-drain principle (already in Haiku's own picks) over a stale per-session plan.",
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/13",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "S2CE's Round-2-cost finding concerns output-token latency in Community Enrichment, a different concern (cost) and different unit than the batch-size-for-classification-quality question being asked.",
+    "bridge": "None strong — the true bridge is a lost-in-the-middle/attention-degradation node, not a cost-breakdown node from a different unit.",
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "No lexical or semantic tie between the three-channel recall-discovery finding and this message's aspect-inventory example-formatting/confidence-scoring question.",
+    "bridge": "None — clear topic mismatch; no device should have reached this node for this cue.",
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/21",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Rule's canonical example is spread-activation redesign; this message is about aspect-taxonomy redesign — same principle, no shared vocabulary ('recall the brain first' vs 'aspects not distinct').",
+    "bridge": "Node-class prior surfacing operating-rule nodes whenever 'redesign'/'reconsider definitions' language appears, regardless of subsystem name.",
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "'Improve temporal and contradiction/correction... look at mistakes' is a specific classifier-tuning ask; gold is about mitigating meta-level S2 risks (ground truth, cost, alerting) — different register, only 'weakness'/'improve' loosely shared.",
+    "bridge": "None strong — the true bridge is an error-analysis/prompt-iteration precedent node, not the risk-mitigation architecture node.",
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Archive-by-source stats from an unrelated April session share no tie to this recap request about aspect-encoder eval/production status.",
+    "bridge": "None — the session-arc/recent-moves field should carry the actual current status instead.",
+    "style_note": "Generic status ask ('recap... what's left to do') — expected surfacing: current session-arc/active-thread nodes (aspect eval + migration status), not archive stats."
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'lets do it' — same-session restatement adds nothing; if anything, expected class is momentum/greenlight-pattern nodes, not a just-stated mechanism restated back."
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "v9.5 baseline handoff (recall-eval numbers, different sprint) is not the referent of 'all the other plans', which per the window means the recall-arc/Frame-punch-list/backlog threads.",
+    "bridge": "None strong — a running session-arc field carrying the actual open-plans list (recall arc, Frame punch list, backlog) would serve this, not an old unrelated handoff.",
+    "style_note": "Vague retrospective ('where were we with all the other plans') — expected surfacing: current backlog/plan nodes (recall arc, Frame punch list, S2 backlog), not an old unrelated handoff doc."
+  }
+]

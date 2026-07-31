@@ -1,0 +1,202 @@
+[
+  {
+    "key": "d28167a9-3b8b-4626-b41b-c6b365a19600/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d28167a9-3b8b-4626-b41b-c6b365a19600/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse ops cue ('anything to commit?') should surface commit/session-end discipline nodes, not an unrelated stale Frame-Phase-3 commit event."
+  },
+  {
+    "key": "d28167a9-3b8b-4626-b41b-c6b365a19600/0/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse greenlight ('fix it') should surface Tom's fix-execution principles (root-cause-only, no workarounds), not an unrelated month-old attribution-fix event."
+  },
+  {
+    "key": "d941adcf-ec81-4a0e-9d6a-cc6da2e54517/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d941adcf-ec81-4a0e-9d6a-cc6da2e54517/0/1",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "H2 sign-off is a same-thread but deep-session decision (2.4d prior, outside the shown window); message's abstract phrasing ('more data', 'triple check contribution') shares no lexical/rare-token overlap with the K=8/decay-family specifics.",
+    "bridge": "Session-arc/running-thread field carrying forward the just-locked Q1 sweep parameters into the immediately following planning turn.",
+    "style_note": null
+  },
+  {
+    "key": "d941adcf-ec81-4a0e-9d6a-cc6da2e54517/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d941adcf-ec81-4a0e-9d6a-cc6da2e54517/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight cue ('lets do leg a') should surface Tom's momentum/confirmation-discipline patterns, not restate a mechanism already fully visible in the shown window."
+  },
+  {
+    "key": "d941adcf-ec81-4a0e-9d6a-cc6da2e54517/0/8",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d941adcf-ec81-4a0e-9d6a-cc6da2e54517/0/9",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d941adcf-ec81-4a0e-9d6a-cc6da2e54517/0/10",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message uses Tom's own vocabulary (endo-recall, pretool, stop-cue, msgs) while the node frames the same gap as 'corpus is prompt-anchored'; different vocabulary for the same idea defeats lexical and situation matching.",
+    "bridge": "Situation-lane match on 'endo recognition system / tool-use / Stop coverage' plus a graph walk from the endo-surface neighbor cluster.",
+    "style_note": null
+  },
+  {
+    "key": "d941adcf-ec81-4a0e-9d6a-cc6da2e54517/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d941adcf-ec81-4a0e-9d6a-cc6da2e54517/0/20",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d941adcf-ec81-4a0e-9d6a-cc6da2e54517/0/21",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d941adcf-ec81-4a0e-9d6a-cc6da2e54517/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d941adcf-ec81-4a0e-9d6a-cc6da2e54517/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "36b1e4a8-a753-448d-9881-a42f7e79f3b8/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "36b1e4a8-a753-448d-9881-a42f7e79f3b8/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse compression cue ('one line, what was it for?') should surface the Frame-purpose principle already in play, not an unrelated identity quote matched on shared 'previous words' vocabulary."
+  },
+  {
+    "key": "36b1e4a8-a753-448d-9881-a42f7e79f3b8/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare anaphoric cue ('what is it?') referring to the Frame should surface Frame-structure/design nodes; the gold is a different-topic identity moment matched purely on the repeated phrase 'what is it'."
+  },
+  {
+    "key": "36b1e4a8-a753-448d-9881-a42f7e79f3b8/0/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "779dc3e0-01ac-4448-a8ea-15116c817484/0/0",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "779dc3e0-01ac-4448-a8ea-15116c817484/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "779dc3e0-01ac-4448-a8ea-15116c817484/0/9",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "779dc3e0-01ac-4448-a8ea-15116c817484/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "779dc3e0-01ac-4448-a8ea-15116c817484/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "779dc3e0-01ac-4448-a8ea-15116c817484/0/15",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

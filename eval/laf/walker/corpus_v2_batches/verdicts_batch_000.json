@@ -1,0 +1,202 @@
+[
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "'killed' token overlaps old kill-list title but this turn is Tom reporting today's daemon/hook crash — different session, different sense of the word.",
+    "bridge": null,
+    "style_note": "Bare 'killed' → surface Tom's terse-report pattern or the just-diagnosed incident thread, not an unrelated stale feature-kill list."
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares vector/embedding vocabulary but different concern: read-cache architecture request vs an unrelated write-path embedding-timing decision from days earlier.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/24",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares S2/decoder vocabulary and tabular format but wrong subsystem — community-detection naming heuristic vs consolidation decoder proposal counts.",
+    "bridge": null,
+    "style_note": "Expect consolidation-pipeline/suppression mechanics nodes (fingerprint vs edge), not community-detection open items."
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'consolidation' term but wrong era — an early offline query-expansion proposal, not the current CONSOLIDATE/EVOLVE/KEEP/SKIP action framework being asked about.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/34",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/36",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": "Message embeds the situation/enrichments quote directly; node is about a different table (node_metadata) — lexical overlap on 'migration'/'table' but no shared specific tokens.",
+    "bridge": "Situation-lane / pattern-node boost for 'migration artifact, dual-write, stale table' as an analog precedent Tom explicitly asked to check for.",
+    "style_note": null
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/37",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message uses generic audit language ('revisit, dead code, redundancy, confusing architecture') with no lexical overlap to the node's 'call stack, race conditions, daemon_hooks.py' vocabulary.",
+    "bridge": "Node-class prior surfacing audit/verification-discipline lessons on any 'check yourself before concluding' cue.",
+    "style_note": "Generic self-audit request → surface Anchor's verification/call-stack-audit discipline nodes, not incidental content matches."
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/38",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'session cleanup/archived' vocabulary but wrong instance — a much older maintenance session's stats, not today's specific archive/revise decision on 6 nodes.",
+    "bridge": null,
+    "style_note": "Expect a node-lifecycle policy (how Tom wants last-session nodes handled) or the current session's own encoding journal, not a stale numeric report."
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/39",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'missing question/situation field' vocabulary but wrong mechanism — question-wording quality guidance, not whether the healer process actually ran/acted.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/40",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/46",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5a1dad9f-588a-4227-b581-6483447ec445/0/47",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Farewell/praise message carries no technical content; node is an unrelated eval-framework mechanism description — no genuine lexical or semantic link.",
+    "bridge": null,
+    "style_note": "Session-close cue → surface 'encode before ending / don't lose the session' discipline lessons, not an eval-architecture mechanism node."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Retrospective 'did the fix go through' → only the immediately-prior session's actual fix (community_size commit), not an older standing plan."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'encoded nodes/fields' vocabulary but wrong era — an 8-day-old dispatch bug, not the request to review last session's actual encoded nodes.",
+    "bridge": null,
+    "style_note": "'Load recent nodes you encoded' → surface the actual last-session encoding journal/nodes, not an unrelated historical bug fix."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Both are 'about the brain' but different aspect — ownership philosophy vs the operational correction (query memory, not git) and the identity/partnership nodes actually pulled next.",
+    "bridge": null,
+    "style_note": "'Not git, your brain!' → surface the recent-work chronicle/identity-arc nodes Anchor actually used next, not a brain-ownership lesson."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'yes' continuing an eval run → surface task-continuation/momentum nodes, not the broad partnership-target insight."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'gaps/misses' vocabulary but wrong subsystem — S2CE community-narrative depth gaps vs characterizing S1E/recall retrieval misses.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'healer/question field' tokens but wrong aspect — wording-quality guidance vs the operational question of whether healer is actually running.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/24",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Overlaps 'daemon' lexically but frames eval-vs-daemon gap, not the node's daemon-vs-full-pipeline tunnel-vision framing — same theme, different specific angle.",
+    "bridge": "Graph walk from an already-surfaced 'encoding failure' or 'daemon' neighbor; situation-lane match on 'debugging whether daemon is the problem.'",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/27",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Bare 'ok whats next' carries no lexical signal toward a NEXT-WORK-staleness caution; needs pattern-class retrieval, not token match.",
+    "bridge": "Style-recall: a Tom-pattern node for 'whats next' cues surfacing 'verify against reality before presenting as open' discipline.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/35",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'embedding/CPU/S1Surface' vocabulary but different mechanism — embed_queue draining-timing decision vs the actual explanation (API-wait CPU, surfacer skip-on-empty-recall).",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "No topical overlap — message is variant-shipping/scheduling plus temporal-cognition research request; node is the unrelated partnership-target insight, correctly a deep miss (rank 217).",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/42",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "No lexical or semantic link between 'encoder gets lazy with longer prompts' and the node's edge-type frequency audit finding.",
+    "bridge": null,
+    "style_note": "'Encoder gets lazy with more prompt' → surface the lazy-encoder/prompt-length behavior rule, not an edge-type frequency audit."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/45",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node merely restates the v8-launch decision already live in the visible conversation window; message is a reflective remark needing no such detail recall.",
+    "bridge": null,
+    "style_note": "Reflective 'it's a journey' remark → surface resilience/iterative-learning pattern nodes, not a same-session decision already known."
+  }
+]

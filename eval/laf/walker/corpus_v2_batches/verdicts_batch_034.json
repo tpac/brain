@@ -1,0 +1,202 @@
+[
+  {
+    "key": "c5371769-a7b6-4f20-8ed8-659535c7a626/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c5371769-a7b6-4f20-8ed8-659535c7a626/0/18",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c5371769-a7b6-4f20-8ed8-659535c7a626/0/21",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5a3e66fd-b697-4f12-a7b3-95d7a4c92490/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5a3e66fd-b697-4f12-a7b3-95d7a4c92490/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare numeric reply to Anchor's own numbered recovery options — should surface the specific options given, or worktree/collision-isolation patterns."
+  },
+  {
+    "key": "5a3e66fd-b697-4f12-a7b3-95d7a4c92490/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Vague 'what's next' should surface the active session's own roadmap/tracker (DAL-cleanup phase plan), not an unrelated old architecture-deletion event."
+  },
+  {
+    "key": "5a3e66fd-b697-4f12-a7b3-95d7a4c92490/1/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5a3e66fd-b697-4f12-a7b3-95d7a4c92490/1/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message is abstract self-reflective phrasing with no lexical overlap to the node's concrete example (timeline slider); situation field's scenario doesn't textually match generic wrap-vs-continue wording, and node is 52 days stale.",
+    "bridge": "A style-recall lane matching Tom's session-wrap phrasing to Anchor's own scope-discipline pattern nodes, independent of surface lexical overlap.",
+    "style_note": null
+  },
+  {
+    "key": "5a3e66fd-b697-4f12-a7b3-95d7a4c92490/1/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5a3e66fd-b697-4f12-a7b3-95d7a4c92490/1/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'check errors' should surface currently-active root causes (host-suspend restarts, Haiku latency timeouts), not an old already-resolved WAL-contention bug."
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/1/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/1/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/1/4",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "General-principle node has no lexical bridge to the message's anaphoric 'these 2 locked'; situation field talks generically about implementing survivor selection, not the live unlock-to-merge framing.",
+    "bridge": "Graph walk from the just-surfaced locked-absorb community/finding nodes into this sibling architecture node via the design cluster.",
+    "style_note": null
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/1/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the active session's own plan/tracker for the locked-absorb work, not a stale unrelated S2-community session plan from a different thread."
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/1/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/1/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Vague 'that and all other aspects' should surface the field-by-field preservation audit content itself, not the earlier cluster-misidentification finding."
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/1/13",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message frames 'merge/absorb' as an aspirational new function while the node describes a diagnosed encoder BUG emitting those as invalid ops — same vocabulary, different framing, so semantic scoring undershoots despite the node being same-day fresh.",
+    "bridge": "Episodic recency boost for same-session very-recent nodes, or a situation-lane match on 'the encoder already wants to emit absorb'.",
+    "style_note": null
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/1/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'decouple and build' should surface the current track-split plan for absorb/consolidation-prompt, not an unrelated older S2-community (S2CE) structural-ops finding."
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/2/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/2/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/3/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/3/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/3/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the general 'update existing docs, not new ones' practice node, or this session's own doc set, not a stale unrelated session's closing tally."
+  },
+  {
+    "key": "bbbd6dec-318c-40fd-b8dd-598e6e561505/4/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'do now and commit' should surface the current xhigh-review findings being fixed, not an unrelated stale test-cleanup session's commit tally."
+  }
+]

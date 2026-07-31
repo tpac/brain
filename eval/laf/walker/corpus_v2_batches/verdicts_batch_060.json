@@ -1,0 +1,202 @@
+[
+  {
+    "key": "e7188c02-9aa1-4bcb-9abb-188be6183432/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e7188c02-9aa1-4bcb-9abb-188be6183432/0/7",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Node's situation targets future self-correction moments, not this historical edge_context incident — framing mismatch overrode shared 'embeddings'/'0 rows' lexical overlap.",
+    "bridge": "Episodic recency (created same session, 0.3d old) + lexical match on 'edge_context'/'0 rows' would have surfaced it.",
+    "style_note": null
+  },
+  {
+    "key": "e7188c02-9aa1-4bcb-9abb-188be6183432/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface nodes on Tom's code-review standards (effort calibration, when to invoke) not a specific past review instance."
+  },
+  {
+    "key": "e7188c02-9aa1-4bcb-9abb-188be6183432/0/10",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Situation field targets diagnosing why nodes aren't surfacing generally, not a specific node's embedding-shape check — aggregate vs instance framing mismatch.",
+    "bridge": "Lexical/idf match on 'embeddings'/'vector types'/'shape' plus a node-class prior for foundational mechanism lessons.",
+    "style_note": null
+  },
+  {
+    "key": "e7188c02-9aa1-4bcb-9abb-188be6183432/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e7188c02-9aa1-4bcb-9abb-188be6183432/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e7188c02-9aa1-4bcb-9abb-188be6183432/0/16",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node is an 'event' record of a past architectural migration; message is a forward action ('dedup now') — event-framing vs action-framing mismatch despite shared 'situation' term.",
+    "bridge": "Graph walk from this session's active situation-drift bug node, or lexical match on '_situation'/'field cohort'.",
+    "style_note": null
+  },
+  {
+    "key": "e7188c02-9aa1-4bcb-9abb-188be6183432/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface nodes on Tom's session-closure checklist (commit, push, docs, next steps), not one past session's commit list."
+  },
+  {
+    "key": "c2244e8e-18af-492b-b5d0-5d8a4dc78736/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c2244e8e-18af-492b-b5d0-5d8a4dc78736/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface nodes on how to verify a shipped trace/telemetry change went live, not an unrelated older shipped feature."
+  },
+  {
+    "key": "c2244e8e-18af-492b-b5d0-5d8a4dc78736/0/7",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message is a generic 'commit and merge' greenlight with no 'dirty tree'/'other stream' wording; node's specific narrated instance didn't lexically match the terse phrasing.",
+    "bridge": "Style-recall: a Tom-pattern prior for commit/merge greenlight cues (missing device) would surface this guardrail lesson.",
+    "style_note": null
+  },
+  {
+    "key": "c2244e8e-18af-492b-b5d0-5d8a4dc78736/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface nodes on cross-stream daemon-restart coordination / self-wake scheduling practice, not an unrelated todo list."
+  },
+  {
+    "key": "c2244e8e-18af-492b-b5d0-5d8a4dc78736/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c2244e8e-18af-492b-b5d0-5d8a4dc78736/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c2244e8e-18af-492b-b5d0-5d8a4dc78736/0/14",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c2244e8e-18af-492b-b5d0-5d8a4dc78736/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c2244e8e-18af-492b-b5d0-5d8a4dc78736/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c2244e8e-18af-492b-b5d0-5d8a4dc78736/0/17",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Node narrates a specific 'commit everything' refusal with concrete filenames; 'let's do it all' cleanup phrasing shares little lexically despite the same underlying caution.",
+    "bridge": "Style-recall: a Tom-pattern prior for broad 'do it all'/'commit everything' greenlight cues (missing device).",
+    "style_note": null
+  },
+  {
+    "key": "c2244e8e-18af-492b-b5d0-5d8a4dc78736/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface nodes on the code-review-before-merge policy (hot-path discipline), not a specific past review finding."
+  },
+  {
+    "key": "3456844c-fd76-4aeb-84ff-0c95c41522e3/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/4",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

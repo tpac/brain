@@ -1,0 +1,202 @@
+[
+  {
+    "key": "75a82d4e-11a7-474b-9b10-1e05c23f296d/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c2b1764f-cb16-4e75-952b-f38f95301110/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c2b1764f-cb16-4e75-952b-f38f95301110/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Numbered mixed confirm/question ('yes dedup', S2 question) should surface this session's own S2/CLAUDE.md decision context, not an unrelated dashboard audit."
+  },
+  {
+    "key": "c2b1764f-cb16-4e75-952b-f38f95301110/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare self-review question ('you satisfied?') should surface Tom's actual documented CLAUDE.md style rule (lean, no function-level detail), not an unrelated SKILL.md finding."
+  },
+  {
+    "key": "c2b1764f-cb16-4e75-952b-f38f95301110/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Numbered terse verdicts ('thats a waste'/'no need'/'shorten') should surface Tom's trim-decision-pattern nodes for this session, not an unrelated S1E journal-design node."
+  },
+  {
+    "key": "c2b1764f-cb16-4e75-952b-f38f95301110/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse factual cue ('file size now?') anaphoric to CLAUDE.md should surface this session's own line/char-count milestones, not an unrelated S1E prompt-size finding."
+  },
+  {
+    "key": "c2b1764f-cb16-4e75-952b-f38f95301110/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Confirmation clause ('yes, trim 3 and squeeze 6') needs no new recall - the full decision list is already visible in-window; suppress restating it."
+  },
+  {
+    "key": "c2b1764f-cb16-4e75-952b-f38f95301110/0/6",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message doesn't name 'singleton/Preview/launch UX'; lexical distance from the node's specific historical framing, and its situation targets a resolved-issue occasion, not doc-editing.",
+    "bridge": "Graph walk from the /dashboard skill artifact node, or a situation rewrite naming 'documenting the dashboard architecture in CLAUDE.md'.",
+    "style_note": null
+  },
+  {
+    "key": "c2b1764f-cb16-4e75-952b-f38f95301110/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c2b1764f-cb16-4e75-952b-f38f95301110/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'commit thanks' should surface Tom's commit-discipline preferences (commit settled work before continuing; fast per-commit QA), not an unrelated old architecture milestone."
+  },
+  {
+    "key": "950b220f-8bc8-4e03-b160-1b33c08bc208/0/0",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "950b220f-8bc8-4e03-b160-1b33c08bc208/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'seems so random, why test it' should surface Tom's empirical-testing principle ('when you can test it, test it'), not an unrelated timeout-bump correction."
+  },
+  {
+    "key": "950b220f-8bc8-4e03-b160-1b33c08bc208/0/3",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "950b220f-8bc8-4e03-b160-1b33c08bc208/0/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message says 'idf keywords... easy wins' but not 'log-additive/recomposition/residual'; lexical gap from the node's parity-harness framing despite shared idf2 concept.",
+    "bridge": "Graph walk from the LAF §19 ladder node citing Piece 1 parity harness as the source of the idf2+situation residual finding.",
+    "style_note": null
+  },
+  {
+    "key": "950b220f-8bc8-4e03-b160-1b33c08bc208/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Technical question about FTS/IDF/situation should surface the actual field-mechanics nodes (situation-as-standalone-field finding), not an unrelated eval-judge inhibition decision."
+  },
+  {
+    "key": "950b220f-8bc8-4e03-b160-1b33c08bc208/0/9",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message frames it as 'recency Activation field... turned off/on'; node is framed as 'boost + decay-for-free' from a month-old session - lexical/temporal distance despite same concept.",
+    "bridge": "Lexical bridge on 'recency' plus a graph link from the current field-registry/gains node to its origin design proposal.",
+    "style_note": null
+  },
+  {
+    "key": "950b220f-8bc8-4e03-b160-1b33c08bc208/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "950b220f-8bc8-4e03-b160-1b33c08bc208/0/27",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "950b220f-8bc8-4e03-b160-1b33c08bc208/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Generic close-out ask ('remember/revise memories') should surface Tom's session-wrap encoding preferences, not an unrelated co_accessed edge-creation policy."
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'What should a real time judge need' should surface the live Haiku surface-judge design node (coverage/relevance/marginal-value framework), not the offline corpus gold-judge protocol."
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Repeated 'real time judge' question should surface the live surface-judge framework, not the offline corpus judge's need/tier-scoring rules."
+  },
+  {
+    "key": "911aa3a2-ad57-4e74-91de-59152e7ddd1b/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'sounds good' should surface Tom's build-confirmation-signal pattern (proceed-to-build cue), not an unrelated Haiku-gating decision from a different project."
+  }
+]

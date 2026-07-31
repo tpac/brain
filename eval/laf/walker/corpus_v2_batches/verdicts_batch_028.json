@@ -1,0 +1,202 @@
+[
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/22",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/23",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message shares little surface vocabulary with the correction's phrasing ('unilateral decisions', 'coverage pressure'); situation field frames it as 'move fast' license, not 'review before commit'.",
+    "bridge": "Situation-lane matching 'pause before committing' + a node-class boost for review-discipline corrections.",
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'agree, commit / split for more info' should surface Tom's commit-cadence preferences (atomic commits, hold for push go-ahead), not an unrelated old commit list."
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A session-close cue should surface the closing RITUAL/convention (commit, push, docs, encode), not one prior session's specific commit/test tally."
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eef35877-b3ea-4293-83bc-d95d309811c1/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Copy this session and dashboard, closing both' should surface the conversation-library/session-closure convention, not an unrelated punch-list snapshot."
+  },
+  {
+    "key": "c8efdee6-3896-4f05-aebc-36674e1d6e1a/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c8efdee6-3896-4f05-aebc-36674e1d6e1a/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c8efdee6-3896-4f05-aebc-36674e1d6e1a/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node type is a bare 'desire' (unconfirmed aspiration) — likely demoted by node-class prior despite close lexical/semantic overlap with 'inline agent search'.",
+    "bridge": "Node-class prior surfacing architectural-aspiration nodes when a message enacts them; lexical match on 'search inline/online' tokens.",
+    "style_note": null
+  },
+  {
+    "key": "c8efdee6-3896-4f05-aebc-36674e1d6e1a/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Commit and continue' should surface Tom's commit/push conventions (atomic units, hold for go-ahead), not an unrelated old commit pair from a different session."
+  },
+  {
+    "key": "c8efdee6-3896-4f05-aebc-36674e1d6e1a/0/10",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's second half ('silent errors') dominates lexically/semantically, pulling rank toward error-surfacing nodes and diluting the match to the doc-consolidation pattern in the first half.",
+    "bridge": "Split-intent handling so 'prepare handoff doc' activates the closeout-pattern node independent of the errors clause; situation-lane on 'starting next session'.",
+    "style_note": null
+  },
+  {
+    "key": "c8efdee6-3896-4f05-aebc-36674e1d6e1a/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Great all committed?' should surface Tom's push-confirmation ritual (verify clean tree, hold for explicit go before push), not an unrelated session's commit tally."
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A session-open greeting should surface how Tom opens sessions (exploration before direction) or Anchor's boot/partnership framing — not a prior session's CLOSE moment."
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Lexical mismatch ('contamination', 'parallel sessions' vs 'session_context_tail', 'journal'); node is 23d old and untouched this session, so no episodic boost.",
+    "bridge": "Graph walk from the already-surfaced surface.py neighbor; lexical/idf overlap on 'session-scoped'/'per-session' terms.",
+    "style_note": null
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/6",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node describes 6 generic boot categories, not 'shuffle recently-active sessions'; lexical overlap is thin ('worktree', 'per session' vs 'personality layer', 'categories').",
+    "bridge": "Situation-lane on boot-design queries; episodic recency boost since boot architecture was already touched this session.",
+    "style_note": null
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Live session', 'worktree' scoping cue should surface the SessionContext/live-session architecture, not an unrelated same-day plan (keywords-kill agenda)."
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/9",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Topic (SessionContext architecture) recurs across many turns this session — node was likely already surfaced earlier and fatigue-dampened despite staying on-topic.",
+    "bridge": "Loosen fatigue decay for a foundational architecture node while its topic remains the active thread across turns.",
+    "style_note": null
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/13",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Community/synthesis node type may be demoted by node-class prior relative to granular technical nodes; this session's own activation deep-dive turns crowd it out.",
+    "bridge": "Node-class prior letting community-synthesis nodes surface on direct topical asks; conversation-window boost for the session's recurring subject.",
+    "style_note": null
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Numbered anaphoric directive ('drop 5, clean 6, focus on 7') needs the session's own live task list (window/Moment carry) — no long-term memory node substitutes for the actual task definitions."
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Let's check recall' should surface a recall-verification methodology/checklist, not the abstract 'instantiate state-of-mind' principle, which never features in the actual check."
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/17",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "19783585-c00b-4c96-89e7-672d97e85374/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Did you push everything?' should surface Tom's push-completeness/hold-for-go convention, not one unrelated old push arc from a different session."
+  }
+]

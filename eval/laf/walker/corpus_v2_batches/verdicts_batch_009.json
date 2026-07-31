@@ -1,0 +1,202 @@
+[
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/1",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node uses schema-design vocabulary (per-field vectors, blended embeddings) while query asks about runtime traversal/matching — same concept, different lexical register; embedding may not bridge.",
+    "bridge": "Graph walk from a spread_activation seed to this mechanism node, or a lexical bridge on 'embedder'/'field vector' tokens.",
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/7",
+    "verdict": "ambiguous",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/10",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message uses generic phrasing ('search the brain', 'longmem eval') without the specific terms (seed_5, brain-presence) the node's title/content use — lexical mismatch on a broad ask.",
+    "bridge": "Situation-lane match on 'search the brain about longmem eval results' plus episodic recency for the most recent eval run.",
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A terse 'did you start?' check should surface background-task-tracking or autonomous-execution-expectation nodes, not an unrelated identity correction."
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/18",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Query is framed as an external-search imperative ('go read research online') while the node is a contemplative internal synthesis — different register despite matching topic; node is 13.7d stale for episodic recency.",
+    "bridge": "Situation-lane match for 'considering external research to inspire recall design', or a graph walk from an idle-research-ops neighbor.",
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/0/25",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message frames this as a verification/debug ask ('trace every step') while the node is framed as a design decision ('scout set expanded to 4') — situation field targets design not audit, so the situation lane misses.",
+    "bridge": "Lexical/idf bridge on the token 'scout', or a graph walk from an S1E-pipeline hub neighbor.",
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/1/0",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/1/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node describes a stale architecture snapshot (755 nodes, brute-force loop) whose specifics no longer match the just-fixed live system, reducing cosine match to the present-tense 'time it takes' framing.",
+    "bridge": "Graph walk from a recall-latency cluster seed, or episodic-recency boost since latency was actively discussed this session.",
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/1/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/1/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A confused 'which variant is which' cue should surface the variant-scoreboard/comparison-table itself, not an unrelated consumer-view architecture matrix."
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/1/10",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node's finding is framed around a differently-named prior experiment (Surface-unification Jaccard) with no shared item IDs or config labels, so lexical overlap with 'bc8a6e93_abs'/'J'/'50-->30' is near zero.",
+    "bridge": "A shared 'Haiku selection non-determinism' situation-lane tag, or a graph walk connecting prior haiku-variance findings via a common edge.",
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/1/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A 'lets ship' greenlight should surface Tom's shipping/threshold preferences or the current diff being shipped, not an unrelated prior session's local-commit-handoff note."
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/1/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/1/14",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node phrases the mechanism as 'daemon always too busy to idle' while the message says 'running very rarely' — different phrasing plus likely fatigue-dampening from this exact topic being surfaced earlier this same session.",
+    "bridge": "Episodic recency boost (topic was raised earlier this session) or a graph walk from the S2-scheduling hub node.",
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/1/16",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c64be2c-a174-4dfb-91b9-aca9f81fff29/1/19",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A terse 'did it end already?' status check should surface the just-fired S2 run's own tracking state, not an unrelated April-15 community-duplication incident."
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

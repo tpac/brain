@@ -1,0 +1,202 @@
+[
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/45",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks about today's session-progress logging mechanism (encoder/surface asymmetry); gold is a session-closing handoff protocol (commit+doc+node) - different topic sharing only 'session' vocabulary.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/46",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks what consumers use the Frame for; gold is the S1S encoder-prompt closing text (motivational identity language) - shares 'encoder' vocabulary only, doesn't serve the need.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/48",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/49",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks Anchor to write a design doc for itself now for the Frame work; gold is a stale build inventory from an unrelated earlier session (CLAUDE.md split, edge descriptions) - no connection.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/53",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Query names the exact phenomenon ('haiku errors') but the node's title emphasizes specific failure-rate/root-cause framing (64-84%, timeout) not echoed lexically in the terse question.",
+    "bridge": "Lexical/idf boost on 'Haiku' + 'error/latency' co-occurrence; situation-lane match for 'investigating judge reliability'.",
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/54",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks to investigate ID hallucination pattern; gold is an unrelated older call-stack audit conclusion about race conditions - topically adjacent ('verify before concluding') but not the needed content.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/56",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/57",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f02e85d9-b63e-4406-9807-074115b8e5bc/0/58",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks to add spread-activation discussion to FRAME-DESIGN.md; gold is about NEXT-WORK.md being stale from an unrelated earlier session - shares only the generic 'doc' keyword.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message explicitly requests 'latest nodes (1 day)'; lexical overlap is weak since the node's title uses a commit hash and specific numbers not echoed in the request phrasing.",
+    "bridge": "Episodic-recency lane boosting nodes created within 24h, directly matching the explicit 'latest nodes (1 day)' request.",
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks Anchor to remind Tom what Q1/Q2 (specific FRAME-DESIGN open questions) are; gold is an unrelated philosophical reflection on memory from an old session - matched via 'memory/remember' phrasing, not the actual referents.",
+    "bridge": null,
+    "style_note": "Should surface the actual Q1/Q2 FRAME-DESIGN open-question text via conversation-window carry, not a memory-philosophy reflection node."
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/7",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks specific Phase 2 Frame architecture questions (updates, examples, clients, cross-session seeding); gold is an unrelated old session's S2-community-then-bugs work plan - no topical connection.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message directs the Frame constructor to reuse existing brain query functions; gold is an old Judge/Anchor/Encoder field-visibility comparison matrix - topically adjacent (consumer views) but doesn't serve the reuse directive.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/11",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message argues recency over access_count staleness in the Frame-ranking bug context; node's specific 'decode funnel 2%->51%' framing lacks lexical overlap with 'locked nodes'/'access_count stagnation' phrasing.",
+    "bridge": "Principle-level embedding closeness between 'recency vs frequency ranking' phrasing and the node's WHY-IT-WORKS section; lexical bridge on 'recency'.",
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/12",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message asks about 'node type families' analogous to edge families in a numbered reply to Tom's own point; node teaches type->aspect routing using different vocabulary ('aspect' not 'family'), a lexical mismatch.",
+    "bridge": "Lexical bridge connecting 'type families' phrasing to the node's 'aspect taxonomy' framing; graph walk from the active families discussion.",
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/13",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Anaphoric 'the same s2... both' refers to the edge-family classifier just discussed; node names a specific v1/v2 detail not restated in the message, weak added lexical signal beyond terms already used broadly this session.",
+    "bridge": "Episodic recency (same-session prior reference) + graph walk from the active node-families work in progress.",
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/14",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message reacts to the type-schema surprise from the immediately prior turn; node's specific concept-privilege correction shares the topic (node-type behavior) but a different specific claim, weakening direct lexical overlap.",
+    "bridge": "Graph walk from the type-family discussion nodes active this session; situation-lane match on 'node type real vs assumed behavior' confusion.",
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/15",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks about S2_edge_families cold-start on a fresh brain; gold is an unrelated architecture node about general S2->S3 output structures - shares only the 'S2' term, doesn't address the fresh-brain concern.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Terse '1. i just did 2. yes' confirms the restart+commit-shape questions from the immediately prior turn; gold is an unrelated older N=15 priority-ranking decision with no connection.",
+    "bridge": null,
+    "style_note": "Should surface Tom's greenlight/confirmation patterns, or window-carry of the restart+commit-shape question just asked - not an old N=15 priority-ranking decision."
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks to document deferred items before Phase 3; gold is an unrelated 'Phase E' commit-push milestone from a different project thread - shares only 'phase'/'commit' vocabulary.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/25",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message directs 'fix the leak, reinsert cross-session' continuing the prior leak-fix work; gold is an unrelated session-closing handoff protocol (commit+doc+node) - mislabeled via generic 'session' vocabulary.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare confirmation cue - should surface the specific boot-rewrite decision just discussed (window carry) or a Tom confirmation-pattern node, not a continuity-reflection quote."
+  }
+]

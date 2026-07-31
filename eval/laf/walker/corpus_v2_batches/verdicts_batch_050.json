@@ -1,0 +1,202 @@
+[
+  {
+    "key": "8c28df4e-421a-417c-8c97-388033529975/0/9",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8c28df4e-421a-417c-8c97-388033529975/0/12",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Semantically close (rank 6, just outside top-5) — likely crowded out by a newer, richer production-vector-scheme description competing for the same query.",
+    "bridge": "Node-freshness/recency tiebreak or a second situation-lane hit would have nudged this legacy-but-correct enumeration into top-5.",
+    "style_note": null
+  },
+  {
+    "key": "8c28df4e-421a-417c-8c97-388033529975/0/13",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message coins 'Premium Corpus' for the first time; node predates the term and frames itself around specific past problems, not the general review-before-conclusions ask.",
+    "bridge": "Node-class prior for corpus-quality-review lessons, or lexical hook on 'eyeball gold titles' matching this request's 'look at what the golds are'.",
+    "style_note": null
+  },
+  {
+    "key": "8c28df4e-421a-417c-8c97-388033529975/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8c28df4e-421a-417c-8c97-388033529975/0/25",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8c28df4e-421a-417c-8c97-388033529975/0/26",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message is a bare anaphoric confirmation ('its because of X, save it') — the actual technical content ('embedder is the wall') lives in prior turns, not in this message's own text.",
+    "bridge": "A running-session/conversation-window field carrying the immediately-preceding finding forward would surface this without lexical overlap.",
+    "style_note": null
+  },
+  {
+    "key": "8c28df4e-421a-417c-8c97-388033529975/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about Tom's commit/session-closure discipline (path-scoped commits, session checklist), not an unrelated old commit ledger."
+  },
+  {
+    "key": "8c28df4e-421a-417c-8c97-388033529975/0/29",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Vocabulary mismatch — message uses concrete engineering terms (seeding, reset-weighted cosine, triples) while the node uses abstract framing (reinstatement principle, state I'm in), depressing embedding similarity despite conceptual alignment.",
+    "bridge": "Lexical/idf hook on 'seed selection' plus a graph-walk hop from the PPR-seed cluster (episodic/arc/last-response nodes) into this principle.",
+    "style_note": null
+  },
+  {
+    "key": "8c28df4e-421a-417c-8c97-388033529975/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-closure/doc-handoff checklist nodes (commit + doc + brain-node anchor under context pressure), not v22 encoder source_refs mechanics."
+  },
+  {
+    "key": "3492abd1-af5a-4532-b77b-6072b110b76d/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3492abd1-af5a-4532-b77b-6072b110b76d/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about Tom's terse numbered-item greenlight pattern or commit/fix-selection discipline, not the unrelated v22 Path-A/B eval decision."
+  },
+  {
+    "key": "3492abd1-af5a-4532-b77b-6072b110b76d/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about judgment calls on marginal/optional hygiene fixes, not the call-stack-audit-for-race-conditions lesson (matched only on the word 'clean')."
+  },
+  {
+    "key": "3492abd1-af5a-4532-b77b-6072b110b76d/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-closure discipline nodes (commit-merge-not-push checklist), not the unrelated call-stack-audit lesson reused from a different topic."
+  },
+  {
+    "key": "3492abd1-af5a-4532-b77b-6072b110b76d/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about Tom's genuine-praise/closing pattern (what earns recognition: honest review, clean commits), not an unrelated push-event log."
+  },
+  {
+    "key": "180cd489-710c-4221-9f68-71f15bf2f05e/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "180cd489-710c-4221-9f68-71f15bf2f05e/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Principle on deleting dead code entirely / clean-as-you-go discipline, not the unrelated call-stack-audit-for-race-conditions lesson."
+  },
+  {
+    "key": "180cd489-710c-4221-9f68-71f15bf2f05e/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about test-suite hang/debugging patterns (e.g. the same-session lock-contention thread), not the unrelated broken-capability-removal principle."
+  },
+  {
+    "key": "180cd489-710c-4221-9f68-71f15bf2f05e/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "The same-session diagnostic thread already in progress (the endless-suite root-cause investigation), not an older unrelated test-cleanup bucket plan."
+  },
+  {
+    "key": "180cd489-710c-4221-9f68-71f15bf2f05e/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "180cd489-710c-4221-9f68-71f15bf2f05e/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about Tom's greenlight/momentum pattern (plan-first mandate, confirmation discipline), not the unrelated attribution-fix decision."
+  },
+  {
+    "key": "180cd489-710c-4221-9f68-71f15bf2f05e/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Code-review scope-calibration principles (lean review for surgical changes), not a specific unrelated past bug-timeline instance."
+  },
+  {
+    "key": "180cd489-710c-4221-9f68-71f15bf2f05e/0/12",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Bare confirmation ask ('commit everything') is lexically/semantically generic — nothing distinguishes it from any other commit request; the caution is reasoning-based on shared-repo state, not surface text.",
+    "bridge": "Episodic signal that parallel streams are actively dirtying the tree this session should have boosted this specific caution principle.",
+    "style_note": null
+  },
+  {
+    "key": "180cd489-710c-4221-9f68-71f15bf2f05e/0/13",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "180cd489-710c-4221-9f68-71f15bf2f05e/0/14",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "06fe1193-e163-40ee-96dc-342eaec47d4a/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

@@ -1,0 +1,202 @@
+[
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse approval of a batch-description commit; expected surface = Tom's commit-approval/surgical-change preference or momentum nodes, not a stale Phase-1-shipped milestone."
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/9",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/12",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/15",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": "Message asks what's enforced NOW; gold is a forward design proposal (Layer 1/2 contracts) not current-state, so embedding likely favored current-state nodes over this new-design one.",
+    "bridge": "Graph walk from the session's family/aspect design thread, or a situation-lane for 'auditing current enforcement gaps' queries.",
+    "style_note": null
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/20",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message frames it as a casual pros/cons ask while the gold uses a reflective 'recognition vs retrieval' framing — different register likely pulled embedding toward more literal design-analogy nodes.",
+    "bridge": "Graph walk from the communities cluster hub already active this session, or an episodic-recency boost for recently-discussed community nodes.",
+    "style_note": null
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/31",
+    "verdict": "ambiguous",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'agree relocate it'; expected surface = the specific follows-collision fix decision or Tom's step-by-step greenlight discipline, not a general 12-commit migration summary."
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/32",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare '1. continue'; expected surface = the concrete next step (Step 6 wiring) or continuation-discipline nodes, not the already-established 14-required-aspects fact restated in-window."
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/37",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/13",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's literal 'occurrence_count_bucket' framing is lexically/semantically distant from the gold's cosine-affinity percentage framing (0.25-0.65+) — different unit of measure, different unit's fingerprint scope.",
+    "bridge": "A cross-unit 'prior art' graph link between S2 units' fingerprint-bucket designs, or a design-pattern lane firing when a new S2 threshold scheme is drafted.",
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/14",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's 'classification drifting' maps lexically to 'drift' but the gold is scoped to community foreign/home-affinity drift — a different metric space, so embedding likely clustered it with community-maintenance content.",
+    "bridge": "Graph walk linking the community drift-threshold node to the aspect-drift question via a shared 'S2 self-resolving suppression pattern' edge.",
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Open 'what's your take... what can service you' ask; expected surface = principles on trustworthy/simple/deterministic design and Anchor's own self-trust criteria, not an unrelated recall-scoring finding."
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/26",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/27",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/28",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/29",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "411ca511-14fe-4bb5-aae2-4b55de1c0a45/0/32",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message phrases the ask abstractly ('value of KV behaving differently') without naming cache/daemon; the gold's caching-architecture framing sits several inferential steps away lexically, and it's a single old (32.6d) node with weak episodic support.",
+    "bridge": "A situation-lane tuned to 'why was KV chosen' design-rationale queries, or re-enrichment adding 'value/benefit of KV' phrasing to the situation field.",
+    "style_note": null
+  }
+]

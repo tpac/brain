@@ -1,0 +1,202 @@
+[
+  {
+    "key": "57802d34-37a8-45f3-99ff-b550132a2022/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'anything to commit/merge?' → surface this session's actual pending diff (the S2 idle-hook fix), not an unrelated month-old cluster-fix merge."
+  },
+  {
+    "key": "57802d34-37a8-45f3-99ff-b550132a2022/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "57802d34-37a8-45f3-99ff-b550132a2022/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'push to origin' vocabulary but wrong instance — a 5-week-old push event/warning tied to a different commit hash, not this merge's origin sync.",
+    "bridge": null,
+    "style_note": "'push it to origin plz' → surface current git-sync state or push discipline generally, not a stale one-off push record."
+  },
+  {
+    "key": "57802d34-37a8-45f3-99ff-b550132a2022/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'daemon restart-churn' vocabulary but wrong incident — an already-resolved session_end/shutdown bug, not this session's two-run_s2-spawners regression.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "57802d34-37a8-45f3-99ff-b550132a2022/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "57802d34-37a8-45f3-99ff-b550132a2022/0/15",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "57802d34-37a8-45f3-99ff-b550132a2022/0/26",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "57802d34-37a8-45f3-99ff-b550132a2022/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Bare 'lets do it all' greenlight has zero topical link to a 62-day-old, unrelated trace-emission phase-completion fact.",
+    "bridge": null,
+    "style_note": "'Lets do it all' greenlight → surface momentum/plan-execution pattern nodes, not an unrelated stale phase-completion record."
+  },
+  {
+    "key": "57802d34-37a8-45f3-99ff-b550132a2022/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'session' framing but wrong instance — an unrelated 93-day-old productivity milestone tally, not this session's actual handoff state.",
+    "bridge": null,
+    "style_note": "Session-handoff question → surface the actual handoff/checkpoint pattern for this thread, not a stale unrelated milestone."
+  },
+  {
+    "key": "077f1a7f-6dbc-4d0d-9561-feaa99f091a9/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Hey A, sup?' → surface the actual recent-work recap (encoder-journal, LAF P2 queue) used in the reply, not one arbitrary unrelated pending design."
+  },
+  {
+    "key": "077f1a7f-6dbc-4d0d-9561-feaa99f091a9/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Casual short message names only 'EX.CO'; lexical/idf match to the specific project node exists but competing generic company-overview candidates outranked it.",
+    "bridge": "Project-name lexical match ('EX.CO') should directly promote the active-project record over generic overview/context nodes.",
+    "style_note": null
+  },
+  {
+    "key": "5e5710c0-0fdd-409a-b604-15f3666f1a29/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5e5710c0-0fdd-409a-b604-15f3666f1a29/0/4",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5e5710c0-0fdd-409a-b604-15f3666f1a29/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'other stream' framing but wrong instance — a month-old, different-stream division-of-labor decision, not this triage/coordination moment.",
+    "bridge": null,
+    "style_note": "Cross-stream coordination question → surface this session's own coordination-miss lesson (who commits a shared verdict), not a stale unrelated ownership split."
+  },
+  {
+    "key": "5e5710c0-0fdd-409a-b604-15f3666f1a29/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'session close' framing but wrong instance — an 18-day-old close record with a different push/commit state, not this stream's actual clean state.",
+    "bridge": null,
+    "style_note": "'We can close the stream' → surface a close-checklist pattern or this stream's own current git state, not a stale unrelated close event."
+  },
+  {
+    "key": "8ff1f970-634c-413a-a9d1-ef976a4ff102/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8ff1f970-634c-413a-a9d1-ef976a4ff102/0/1",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Terse 'trust you on this' carries no lexical signal toward a specific test-scope-trust pattern; needs style-recall, not token match.",
+    "bridge": "Style-recall: surface Tom's trust/delegation-of-judgment pattern nodes on bare confirmation cues like 'trust you.'",
+    "style_note": null
+  },
+  {
+    "key": "8ff1f970-634c-413a-a9d1-ef976a4ff102/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'test suite' vocabulary but wrong concern — a test-file cleanup-bucket plan, not this session's full-suite-necessity policy question.",
+    "bridge": null,
+    "style_note": "Test-suite-scope question → surface the actual QA-tiering preference (full suite for merges, targeted for surgical changes), not a cleanup-bucket plan."
+  },
+  {
+    "key": "8ff1f970-634c-413a-a9d1-ef976a4ff102/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'session-opener prompt' framing but wrong instance — an unrelated 13-day-old Phase 3 journal-wiring handoff, not this daemon-lifecycle Step 6 handoff.",
+    "bridge": null,
+    "style_note": "Handoff-prompt request → surface this arc's own checkpoint content, not a stale unrelated Phase 3 handoff artifact."
+  },
+  {
+    "key": "8ff1f970-634c-413a-a9d1-ef976a4ff102/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares an identity/self-reflection theme but wrong specific moment — a visualization-costume reflection, not this credit-attribution ('you or Fable') moment.",
+    "bridge": null,
+    "style_note": "Praise/credit moment → surface the just-encoded proof-point correction (the de-priming catch) or an Anchor-vs-Fable authorship node, not an unrelated reflection."
+  },
+  {
+    "key": "91cb2ca9-c53d-4b50-a5d8-d4ec797b04d1/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "91cb2ca9-c53d-4b50-a5d8-d4ec797b04d1/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'surface pipeline' vocabulary but wrong concern — a dedup/frame_replay fix, not this candidates-file-writing retirement decision.",
+    "bridge": null,
+    "style_note": "'Deprecate the file writing' → surface the CANDIDATES_FILE mechanism itself or its retirement rationale, not an unrelated dedup fix."
+  },
+  {
+    "key": "91cb2ca9-c53d-4b50-a5d8-d4ec797b04d1/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'lets do it' greenlight for the review fixes → surface Tom's plan-first/full-authority delegation pattern generally, not one stale specific delegation moment."
+  },
+  {
+    "key": "91cb2ca9-c53d-4b50-a5d8-d4ec797b04d1/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'test suite status' framing but wrong instance — an unrelated 12-day-old baseline record, not this session's actual daemon-lifecycle/window-fix progress.",
+    "bridge": null,
+    "style_note": "'What have we done and whats left' → surface this session's own checkpoint/journal state, not a stale unrelated test-baseline fact."
+  },
+  {
+    "key": "91cb2ca9-c53d-4b50-a5d8-d4ec797b04d1/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'restart/push deferred' framing but wrong instance — an unrelated 28-day-old handoff decision, not this session's actual commit-merge-restart action.",
+    "bridge": null,
+    "style_note": "'Commit, merge, restart' → surface current commit/restart discipline or this session's own pending diff, not a stale unrelated deferred handoff."
+  }
+]

@@ -1,0 +1,202 @@
+[
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'what about quality?' after count-lift data should surface THIS session's quality-axis findings (brain-presence/composition results), not an unrelated month-old encoding-richness framework."
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/17",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "'it' (scout-vs-S1S fix locus) resolves outside the shown window; node's situation ('Facts scout doing its job') doesn't lexically echo the message's generic fix-placement phrasing.",
+    "bridge": "Graph walk from the Facts-scout node, or episodic recency from the (unshown) turn that first raised noun-retention as the problem.",
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "vague 'what else can we learn and improve?' should surface this session's concrete measurement findings (edge quality, noun retention), not an older cross-session self-reflection."
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/19",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message says 'cache markers'; node uses 'cache hit rate/cache-read/cache-write' — near-miss lexically, and 'after all the changes' framing reads as forward-looking vs the node's past-tense baseline stat.",
+    "bridge": "Lexical/idf match on 'cache' plus the situation-lane hit on 'evaluating caching ROI'.",
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/21",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/34",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/37",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message says 'topic by topic'; node's stored anecdote (brain_surface.py, 'Partnership :)') shares no vocabulary, and its situation is scoped to 'structured list of items', not 'reviewing a document'.",
+    "bridge": "A style-recall device for confirm-before-execute / process-preference cues, not literal lexical or embedding match.",
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/38",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/42",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/0/45",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/1/3",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/1/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/1/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/1/10",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/1/11",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Bare phrase 'it's our brain' shares no rare tokens with the principle's dense content; embedding of a 7-word terse assertion is weak signal against a long principle node.",
+    "bridge": "Style-recall lane for ownership/partnership assertions ('it's our brain') pulling identity/partnership-principle nodes directly.",
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/1/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "bare version-pick 'A is good. I' should surface the actual candidate closing-text drafts being compared, not an unrelated old boot-diagnosis node."
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/1/15",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/1/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/1/20",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message is meta ('reasoned on recall really?') without restating Hawaii/NYC arithmetic keywords; node's dense encode-vs-answer principle sits semantically apart from the check-in phrasing.",
+    "bridge": "Conversation-window field (M_h) carrying forward the just-surfaced multi_session mechanism node by recency, not re-embedding.",
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/7",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message is planning/meta language ('phase by phase', 'partner not servant') without repeating the Hawaii/NYC failure-mechanism keywords the node is built from.",
+    "bridge": "Conversation-window field — node was surfaced one turn prior and should stay active via recency, not re-matched by embedding.",
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/8",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/12",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message describes the S2/Surface split abstractly ('config seems static... how is it done') without naming the two-file split, so lexical overlap with the concept node is thin.",
+    "bridge": "Episodic recency — node was created this same turn window and should be carried forward rather than re-found by embedding.",
+    "style_note": null
+  },
+  {
+    "key": "fd829e08-35b9-408b-9ea6-d50cc9e19aec/2/13",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Numbered reply list continuing the design debate shares little vocabulary ('fresh brain coherence', 'S2/S3 tuner') with the terse decision title/content it's actually responding to.",
+    "bridge": "Conversation-window field — the decision was stated one turn earlier and should be carried by recency, not re-embedded.",
+    "style_note": null
+  }
+]

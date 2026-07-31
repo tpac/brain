@@ -1,0 +1,202 @@
+[
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/31",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect nodes about Tom's doc-hygiene/audit criteria or general archiving preferences, not a specific past audit's file list."
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/34",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "80eaec64-5bec-4251-9ae0-46551b981a9f/0/35",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3900d731-e2e6-43ba-bbce-130102a8b742/2/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect nodes about resolving issues immediately when choosing among proposed fixes, not the generic 'don't carry problems' rule."
+  },
+  {
+    "key": "3900d731-e2e6-43ba-bbce-130102a8b742/2/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "3900d731-e2e6-43ba-bbce-130102a8b742/1/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare greeting — expect general session-opening/relational anchors or nothing, not a specific dated event."
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect nodes reflecting actual current-session pending items (session-state carry) or Tom's 'what's next' pattern, not a stale unrelated plan."
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/7",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": "Community-synthesis node may not have existed in this form at turn time (content spans later conclusions); if available, its broad rollup dilutes focus vs the narrow cue.",
+    "bridge": "Graph walk to the specific investigation-thread node rather than the rolled-up synthesis; episodic recency on the prior turn's finding.",
+    "style_note": null
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/15",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message names 'surface'/'cache' generically; node is a broad 5-item status list where the caching detail is buried mid-content, diluting cosine focus on the caching claim specifically.",
+    "bridge": "Idf match on 'cache_control'/'1024 tokens' terms, or a node-class prior favoring implementation-status facts for direct technical questions.",
+    "style_note": null
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Numbered terse reply — expect nodes reflecting Tom's selection-order preferences or actual session state, not a stale unrelated punch list."
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/21",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message is imperative ('search your brain') not descriptive; phrasing differs from the rule's declarative title, diluting embedding similarity — landed just outside top-5 (rank 6).",
+    "bridge": "Lexical/idf boost on shared imperative phrasing ('search your brain' / 'recall the brain first') would have nudged rank 6 into top-5.",
+    "style_note": null
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/22",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/23",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node is a 32-day-old generic callstack reference; message's 'apples to apples' phrasing differs from the node's stage-by-stage timing vocabulary, weakening overlap.",
+    "bridge": "Situation-lane match on 'debugging S1 Surface latency' or graph walk from an active surface-investigation neighbor node.",
+    "style_note": null
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Numbered terse reply — expect nodes about Tom's numbered-selection review pattern or current options, not unrelated pilot data."
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/33",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/34",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expect Tom's general benchmark/measure-first principle, not this specific old dampening baseline's numbers."
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/36",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/38",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message uses generic terms ('write locking', 'collisions'); node title frames around a commit/deployment, a lexical/style mismatch costing cosine rank despite topical match.",
+    "bridge": "Lexical/idf match on shared tokens 'write_lock'/'collision', or graph walk from concurrently-active edge-embedding-arc neighbor nodes.",
+    "style_note": null
+  },
+  {
+    "key": "35968677-8c2b-427a-8650-ef33e14daa28/0/40",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-closing ritual — expect the commit+push+repackage+copy-conversation checklist nodes (as Haiku picked), not a stale commit fact."
+  }
+]

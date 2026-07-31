@@ -1,0 +1,202 @@
+[
+  {
+    "key": "34383af5-6449-464d-86e6-c2d3e6f82a6e/0/9",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message is a raw validator error string with none of the abstract 'boot dossier vs stance recoverability' vocabulary; lexical/semantic lanes wouldn't bridge that gap.",
+    "bridge": "Situation-lane keyed on SKILL.md file identity, or a graph walk from the SKILL.md-refactor decision node touched in this same arc.",
+    "style_note": null
+  },
+  {
+    "key": "34383af5-6449-464d-86e6-c2d3e6f82a6e/0/10",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "34383af5-6449-464d-86e6-c2d3e6f82a6e/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "34383af5-6449-464d-86e6-c2d3e6f82a6e/0/13",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "34383af5-6449-464d-86e6-c2d3e6f82a6e/1/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "34383af5-6449-464d-86e6-c2d3e6f82a6e/1/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface this session's own pending items (bin/bin cleanup, push status) or the just-approved review-fix plan, not an unrelated old session's deferred list."
+  },
+  {
+    "key": "34383af5-6449-464d-86e6-c2d3e6f82a6e/1/12",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "34383af5-6449-464d-86e6-c2d3e6f82a6e/1/13",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Different literal domain (idle-maintenance hook vs API-key notice) though same abstract 'invisible background signal' lesson; lexical/embedding lanes wouldn't cluster these together.",
+    "bridge": "A node-class prior recognizing 'silent background state invisible to Claude' as a recurring lesson family, independent of the specific subsystem named.",
+    "style_note": null
+  },
+  {
+    "key": "83869523-fc3a-40a4-ab06-e2b1e08cc5d1/0/0",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "83869523-fc3a-40a4-ab06-e2b1e08cc5d1/0/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "83869523-fc3a-40a4-ab06-e2b1e08cc5d1/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the session-closure checklist convention (commit/push/docs/encode) or a check of this session's own loose threads, not an unrelated old session's commit ledger."
+  },
+  {
+    "key": "b7a5c48c-f429-4949-9e12-05032ef0a4d0/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b7a5c48c-f429-4949-9e12-05032ef0a4d0/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the current session's own stated goal (the Q1 sweep pre-registration already in the letter) or a general 'define session goal' pattern, not a stale earlier-phase gate decision."
+  },
+  {
+    "key": "b7a5c48c-f429-4949-9e12-05032ef0a4d0/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface nodes about how Tom operates when he greenlights work (momentum, confirmation discipline) or the just-proposed plan itself, not an unrelated MCP-prompt finding."
+  },
+  {
+    "key": "b7a5c48c-f429-4949-9e12-05032ef0a4d0/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the concrete pending ask from Tom (the H1 fidelity read) or a general note about looping Tom in during async work, not an unrelated walker-fix triage decision."
+  },
+  {
+    "key": "b7a5c48c-f429-4949-9e12-05032ef0a4d0/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b7a5c48c-f429-4949-9e12-05032ef0a4d0/0/8",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "The message bundles 15 distinct moment critiques; the task-notification signal (M01/M13) is diluted by unrelated content about epoch seams and history gaps.",
+    "bridge": "A lexical/rare-token lane keyed on 'task-notification' should surface this node directly despite the surrounding dilution.",
+    "style_note": null
+  },
+  {
+    "key": "b7a5c48c-f429-4949-9e12-05032ef0a4d0/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b7a5c48c-f429-4949-9e12-05032ef0a4d0/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the actual machine-turn-handling options under discussion (recall-skip alternatives) or Tom's artifact-review preference pattern, not an unrelated old eval-handoff doc."
+  },
+  {
+    "key": "b7a5c48c-f429-4949-9e12-05032ef0a4d0/0/11",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Different vocabulary ('dead node'/'inhibited'/'neighbors' vs the node's 'dampening'/'degree-based fatigue'/'traversal') plus the node's age likely down-weighted it in the candidate pool.",
+    "bridge": "Situation-lane matching on 'fatigue mechanism scope', or a lexical synonym bridge linking 'dead/inhibited' to 'fatigue/dampening'.",
+    "style_note": null
+  },
+  {
+    "key": "b7a5c48c-f429-4949-9e12-05032ef0a4d0/0/13",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b7a5c48c-f429-4949-9e12-05032ef0a4d0/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b7a5c48c-f429-4949-9e12-05032ef0a4d0/0/17",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "The old finding uses a different system's vocabulary (production recall's 'z-weighted multi-group averaging'/'_primary rank') vs the current moment-engine investigation's own new terms, and it's from an unrelated 22-day-old arc so episodic recency wouldn't connect it.",
+    "bridge": "A node-class prior surfacing known failure-mode-taxonomy findings whenever a 'why wasn't this gold selected' reverse-engineering request fires.",
+    "style_note": null
+  },
+  {
+    "key": "b7a5c48c-f429-4949-9e12-05032ef0a4d0/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface nodes about self-assessing context/capacity before starting new heavy work, or the self-salvage/handoff pattern, not an unrelated old 'good run' reflection."
+  },
+  {
+    "key": "ed40df97-6202-42ab-a4dc-744b02360c88/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

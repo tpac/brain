@@ -1,0 +1,202 @@
+[
+  {
+    "key": "c7bfbfd0-d6c3-4326-9f8c-117aeedb8943/0/6",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c7bfbfd0-d6c3-4326-9f8c-117aeedb8943/0/7",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message uses conversational phrasing (map what we provide, tool uses, guidance) while node uses formal L0-L3 layer/provenance vocabulary — low lexical overlap despite same topic.",
+    "bridge": "Situation-lane match on 'designing what context the encoder receives' plus a graph walk from the just-surfaced encoder-mining synthesis neighbor.",
+    "style_note": null
+  },
+  {
+    "key": "c7bfbfd0-d6c3-4326-9f8c-117aeedb8943/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c7bfbfd0-d6c3-4326-9f8c-117aeedb8943/0/9",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message says 'attach it to doc' but never names docs/ or gitignore; the anaphoric doc referent and the gitignore-scope nuance aren't lexically present in the terse message.",
+    "bridge": "Conversation-window field carrying the doc path (docs/S1-SCRIBE-REDESIGN.md) forward to trigger the docs/-tracking fact via situation-lane match.",
+    "style_note": null
+  },
+  {
+    "key": "87a2234d-dbe8-4a3b-859f-5aafb9b9077c/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "87a2234d-dbe8-4a3b-859f-5aafb9b9077c/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Tom paraphrases the architecture as 'separation between model/data and consumer representation' rather than the node's own naming (get_rich_node/render_rich_node) — lexical mismatch despite identical concept; node is also 83 days old, likely decayed.",
+    "bridge": "Semantic/situation-lane match on 'data vs representation separation' independent of exact function names; recency boost would also help given the live discussion.",
+    "style_note": null
+  },
+  {
+    "key": "87a2234d-dbe8-4a3b-859f-5aafb9b9077c/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A 'code-review after, commit, merge, deploy' process cue should surface Tom's standing commit/review discipline (elaborate self-check before committing), not a specific old findings list from an unrelated review."
+  },
+  {
+    "key": "87a2234d-dbe8-4a3b-859f-5aafb9b9077c/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "87a2234d-dbe8-4a3b-859f-5aafb9b9077c/0/9",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node states a write-time design principle (store substance, pointer-not-content for large fields) in abstract O/K/delta framing, while the message is a casual read-time complaint about big tool outputs — thin lexical overlap, and the node is ~85 days old.",
+    "bridge": "Graph walk from the same-day trace-render-fix node (which shares this design lineage) would surface it; situation-lane match on 'reviewing trace quality' would also help.",
+    "style_note": null
+  },
+  {
+    "key": "87a2234d-dbe8-4a3b-859f-5aafb9b9077c/0/10",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message paraphrases as 'mirror the exact convention' / 'contracts' while node uses specific implementation names (GET_NODES_SMALL/FULL_FORMAT, render_rich_node) — plus the node is only ~2hrs old and may be dampened by same-session fatigue after heavy earlier discussion.",
+    "bridge": "Episodic recency weighting for a same-session, hours-old shipped decision; conversation-window carry of 'the get_nodes fix we just shipped'.",
+    "style_note": null
+  },
+  {
+    "key": "87a2234d-dbe8-4a3b-859f-5aafb9b9077c/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Numbered terse confirmations ('1. rich / 2. yes to your rec / 3. include') should surface the live trace-tool convention plan under discussion this session, not an unrelated old prompt-vs-MCP migration milestone that merely shares the word 'rich'."
+  },
+  {
+    "key": "87a2234d-dbe8-4a3b-859f-5aafb9b9077c/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "87a2234d-dbe8-4a3b-859f-5aafb9b9077c/0/13",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "87a2234d-dbe8-4a3b-859f-5aafb9b9077c/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "87a2234d-dbe8-4a3b-859f-5aafb9b9077c/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A bare greenlight like 'let's do it... we can redeploy' should surface redeploy discipline/gating rules (suite-gate before deploy, never redeploy a dirty main tree), not the unrelated git-tracking history of redeploy.sh itself."
+  },
+  {
+    "key": "87a2234d-dbe8-4a3b-859f-5aafb9b9077c/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A bare 'redeploy' command should surface redeploy safety/gating rules (suite-gate, dirty-tree check, daemon-restart behavior), not an unrelated test-redundancy-tracing lesson from a different workstream."
+  },
+  {
+    "key": "87a2234d-dbe8-4a3b-859f-5aafb9b9077c/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A worktree-prune request should surface the operational rule (prune from the main session, never from inside the worktree being removed; -d safe-delete once merged), not a historical event log of a past, unrelated cleanup batch."
+  },
+  {
+    "key": "87a2234d-dbe8-4a3b-859f-5aafb9b9077c/0/24",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "The bare term 'dedup task' doesn't lexically match the node's title framing ('row construction unification'), and resolving 'the dedup task' to task_135e4038 requires the anaphoric prior-turn reference rather than the message alone.",
+    "bridge": "Conversation-window field (M_h) resolving 'the dedup task' to task_135e4038, then a direct id/title lookup.",
+    "style_note": null
+  },
+  {
+    "key": "87a2234d-dbe8-4a3b-859f-5aafb9b9077c/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'Dedup' is overloaded in this brain (S2 semantic node-merging vs. plain TraceDAL code refactor) — a bare 'launch a task for dedup' should surface disambiguation toward the specific live TraceDAL row-construction task (task_135e4038), not an unrelated older test-cleanup bucket plan."
+  },
+  {
+    "key": "87a2234d-dbe8-4a3b-859f-5aafb9b9077c/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A terse 'you can prune worktree' greenlight should surface the worktree-prune operational rule (main-session-only pruning, -d safe delete after merge verification), not a stale event record of a different, earlier 4-worktree cleanup."
+  },
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/4",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "The bare 'sure lets commit and merge' carries almost no lexical content; recognizing that a dirty-main/multi-stream-repo check-before-merge lesson applies requires deeper session/project knowledge not present in the visible window.",
+    "bridge": "A style-recall device for terse commit/merge confirmations (Tom-pattern: always verify main's dirty state before pushing) would surface this standing practice.",
+    "style_note": null
+  },
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/8",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/13",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

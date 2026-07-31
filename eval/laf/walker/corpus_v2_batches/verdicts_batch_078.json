@@ -1,0 +1,202 @@
+[
+  {
+    "key": "91cb2ca9-c53d-4b50-a5d8-d4ec797b04d1/0/20",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message is generic ('writing here... show you the prompt') with no lexical overlap to 'duplication'; node's situation frames debugging the dupe bug, not verifying a just-shipped fix.",
+    "bridge": "Episodic recency (fix shipped 0.7d ago, same session) plus the conversation-window carrying the t-3 fix-summary turn would surface it.",
+    "style_note": "Vague 'show you the prompt' cues right after a fix ships should surface the fix's exact correct-behavior spec, not generic surface-architecture nodes."
+  },
+  {
+    "key": "91cb2ca9-c53d-4b50-a5d8-d4ec797b04d1/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "91cb2ca9-c53d-4b50-a5d8-d4ec797b04d1/0/22",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "91cb2ca9-c53d-4b50-a5d8-d4ec797b04d1/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "91cb2ca9-c53d-4b50-a5d8-d4ec797b04d1/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "91cb2ca9-c53d-4b50-a5d8-d4ec797b04d1/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'ready to eval?' greenlights should surface Tom's eval-methodology/gating preferences (ship-gate bar, A/B design), not a stale general eval-system-gaps diagnosis."
+  },
+  {
+    "key": "91cb2ca9-c53d-4b50-a5d8-d4ec797b04d1/0/28",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message paraphrases the flaw abstractly ('isnt simulating real conversations') without the node's lexical anchors (tail-slice, anchor-stop, tool-use absent).",
+    "bridge": "Situation-lane match on 'corpus doesn't reflect real conversation dynamics' plus a graph walk from the just-discussed cold-question limitation would reach it.",
+    "style_note": null
+  },
+  {
+    "key": "91cb2ca9-c53d-4b50-a5d8-d4ec797b04d1/0/38",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'Thanks A' closes should surface general reflections on Tom's affirmation/collaboration-rhythm pattern, not a specific different-arc closing instance."
+  },
+  {
+    "key": "05f20395-4e85-4bde-bbef-71b700094487/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "05f20395-4e85-4bde-bbef-71b700094487/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "05f20395-4e85-4bde-bbef-71b700094487/0/4",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "05f20395-4e85-4bde-bbef-71b700094487/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight 'let's do that' for a plan step should surface nodes on Tom's stepwise execution/deploy discipline, not an unrelated deferred-redeploy decision."
+  },
+  {
+    "key": "05f20395-4e85-4bde-bbef-71b700094487/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "05f20395-4e85-4bde-bbef-71b700094487/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'go and land' greenlights should surface deploy/commit discipline nodes (test tier before merge), not an unrelated backlog-sweep pattern."
+  },
+  {
+    "key": "05f20395-4e85-4bde-bbef-71b700094487/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'push' cues should surface Tom's push/deploy discipline (don't defer pushes, verify sync), not an unrelated old milestone."
+  },
+  {
+    "key": "05f20395-4e85-4bde-bbef-71b700094487/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "05f20395-4e85-4bde-bbef-71b700094487/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "05f20395-4e85-4bde-bbef-71b700094487/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight-to-plan-a-deprecation cues should surface Tom's deprecation/test-triage methodology (1-by-1 triage, delete-don't-patch), not an unrelated old session-plan."
+  },
+  {
+    "key": "05f20395-4e85-4bde-bbef-71b700094487/0/23",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "05f20395-4e85-4bde-bbef-71b700094487/0/24",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "05f20395-4e85-4bde-bbef-71b700094487/0/26",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "05f20395-4e85-4bde-bbef-71b700094487/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message doesn't share tokens with the node ('dirty tree', 'other stream') — it reads as a routine rebase-then-merge instruction after a multi-day gap.",
+    "bridge": "A merge/rebase-to-main trigger should pattern-match to standing merge-safety lessons via node-class prior; a graph walk from a 'commit to main' hub would reach it.",
+    "style_note": null
+  }
+]

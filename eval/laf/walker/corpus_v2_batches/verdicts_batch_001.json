@@ -1,0 +1,202 @@
+[
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/50",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Ask is 'recall or encoding problem?' but reply never invokes recall-channel theory — pure encoding-side finding (Memrise never encoded); wrong mechanism for this check.",
+    "bridge": "Episodic recency to the actual Memrise/encoding-diff nodes from this session, not general recall-channel theory.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/53",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Lexical overlap only on 'edges' — gold is about training embeddings on edge PAIRS, message asks to inspect the Memrise node's actual graph edges.",
+    "bridge": "Graph walk from the already-surfaced Memrise node to its real edges; lexical match on graph-structure sense of 'edges'.",
+    "style_note": "Bare-cue 'check edges' should surface the specific node/edges under investigation, not general architecture ideas."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/54",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks a narrow capability question (does the model do keyword-finding); gold describes 2-layer recall architecture design — not invoked in the reply.",
+    "bridge": "A node about nomic's lexical-overlap behavior specifically, or episodic link to the cosine-test that follows.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/56",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks what info was lost at ENCODE time; gold is an older reflection on RECALL/surfacing philosophy — different failure mode, no overlap.",
+    "bridge": "Situation-lane match to a node about encode-time specificity loss, not recall-time philosophical reflection.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/57",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message cites 'many encoders in S2' generally; gold's specific shipped-implementation detail (CONSOLIDATE/EVOLVE/KEEP/SKIP, eval score) isn't drawn on in the reply.",
+    "bridge": "Graph neighbor from the S2 unit names (Consolidation/Community/Healer) already active in the reply.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/58",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Community synthesis diffuses many themes (dual-register, lazy encoder); no sharp lexical peg to 'temporal problem' or 'fragility' phrasing used in the message.",
+    "bridge": "Situation-lane match on 'encoding quality design tradeoffs' plus same-session episodic recency.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/59",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message is about binding new nodes across plugins AT WRITE TIME; gold describes S2's post-hoc clustering-by-parameter — different mechanism despite 'connections' overlap.",
+    "bridge": "Graph walk from the S1 plugin-architecture nodes already active this session, not S2 clustering theory.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/60",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/61",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/63",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Broad strategic 'are we heading right' question; no direct lexical overlap with vendor names (Mem0/Zep/MemGPT) in the comparison node — needed deep identity context.",
+    "bridge": "Situation-lane match on strategic self-assessment + graph neighbor from identity/architecture hub nodes.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/64",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/65",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message is existential self-assessment (evolve vs please); gold is a UX/session-boot feature spec — shares 'Anchor/session' framing but different register.",
+    "bridge": "Situation-lane on genuine-opinion/self-assessment reflections, not session-boot UX design specs.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/66",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message lists exactly what the encoder receives; insight node covers same ground via 'query-aware edges' phrasing — 13-day distance, no lexical overlap on 'already know'.",
+    "bridge": "Situation-lane match on encoder-context completeness + graph neighbor from S1 encoder architecture hub.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/67",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Precise temporal ask ('3 days ago... before presenting a conclusion') names the verify-before-claiming rule; gold is an unrelated 30-day-old aspiration — wrong thread.",
+    "bridge": "Temporal-anchor match on '3 days ago' + lexical match on 'conclusion' pointing to id:1d2bc83c instead.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/68",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message is about surfacing-not-becoming-behavior; gold is about abstraction bias in ENCODING quality (story vs lesson) — different failure mode, no overlap.",
+    "bridge": "Situation-lane on memory-in-context-vs-behavior distinction, not encoding-abstraction quotes.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/70",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "The four-classes analysis was established ~12 turns earlier in-session (turn 28), just outside the 3-turn window; no episodic-recency signal carried it forward.",
+    "bridge": "Episodic recency / running-session field carrying forward same-session analysis beyond the 3-turn window.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/74",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message asks to enumerate/expand decoder types; the S2 rejection-memory caution is a cross-scale analogy (S1 decoders vs S2 lesson) — no lexical overlap.",
+    "bridge": "Graph neighbor from decoder-architecture hub + situation-lane on decoder-pitfall warnings.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/75",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/76",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/77",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message discusses reducing encoder effort abstractly; the concrete _build_user_content implementation node sits 14 days outside window, no direct lexical trigger.",
+    "bridge": "Graph neighbor from encoder-architecture hub + lexical match on encoder input-assembly specifics.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/79",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "The TF-IDF decision (Option A) was Anchor's own stance from ~17 turns earlier in-session, now being reversed; no episodic-recency signal carried it forward.",
+    "bridge": "Episodic recency / session field for own-prior-turn decisions within the same session.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/80",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message asks broadly about session-start priming; the NEXT-WORK staleness caution is a specific 14-day-old incident with no lexical trigger in this message.",
+    "bridge": "Situation-lane on 'session handoff accuracy' + graph neighbor from continuity/handoff hub nodes.",
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/81",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/82",
+    "verdict": "ambiguous",
+    "stratum": "session",
+    "gap": "dead node",
+    "bridge": null,
+    "style_note": "Bare 'Promise' confirmation should surface nodes on how Tom operates at greenlights — commitment discipline, follow-through patterns."
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/84",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message flags raw SQL SELECT for NODE queries; gold's primary subject is query_logs (hook errors/debug logs), not filter_nodes (the actual node-query tool).",
+    "bridge": "Lexical match on 'filter_nodes'/MCP node-query tool rather than query_logs.",
+    "style_note": "Should surface 'use MCP tools not raw SQL' rule + filter_nodes tool details, not the query_logs tool."
+  }
+]

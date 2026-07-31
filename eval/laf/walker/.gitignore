@@ -5,3 +5,5 @@ lane_cache.npy*
 __pycache__/
 roles_lane_cache.npy
 roles_lane_index.json
+untouched_golds.json
+trigger_rewrites.json

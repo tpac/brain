@@ -1,0 +1,202 @@
+[
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/0/6",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Node's situation frames a general multi-producer budget contract, not signal char-limiting; lexical/situation mismatch plus it dates from earlier the same session (episodic decay).",
+    "bridge": "Episodic recency (same-session, ~1-2h prior) + situation-lane match on 'additionalContext channel budget'.",
+    "style_note": null
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/0/7",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/0/9",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/1/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/1/1",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/5/7",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/5/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "caaeb80c-65b2-49ab-9558-aba3694b0f8b/5/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-closeout pattern nodes: what to summarize/carry forward (e.g. session-end doc-update discipline), not an encoder-prompt artifact."
+  },
+  {
+    "key": "9e561b45-fc9f-4cd3-b7a3-e3dc4ff45d09/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9e561b45-fc9f-4cd3-b7a3-e3dc4ff45d09/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2be1295e-a8e3-49e4-aa52-fc6525c69251/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Cost-conscious effort-scaling preference nodes (e.g. test/review tier by blast radius, cap heavy token ops)."
+  },
+  {
+    "key": "2be1295e-a8e3-49e4-aa52-fc6525c69251/2/1",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message never says 'architecture change' or 'stale reference'; that framing lives in the situation field, and the DAL-refactor context is deeper session, not the shown window.",
+    "bridge": "Session-thread awareness (DAL architecture cleanup) + situation-lane match on 'audit before release'.",
+    "style_note": null
+  },
+  {
+    "key": "cec6f542-1979-49b0-af0c-e3229e9ef509/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/1/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/1/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Commit-discipline/session-project nodes (explicit-paths rule, or the dashboard fix just built), not an unrelated style-alignment commit."
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/1/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/1/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Parallel-stream ownership/identity-confusion correction (dirty-tree isn't mine), not the doc-review-bypass correction."
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/1/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Multi-stream identity-blindness / ownership-confusion nodes from this same episode, not encoding-motivation philosophy."
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/1/10",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/1/11",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Root-cause-over-symptom fix principle, or the benchmark-first/eval-gate rule for encoder changes."
+  }
+]

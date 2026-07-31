@@ -1,0 +1,202 @@
+[
+  {
+    "key": "a7015e87-977e-49d7-9d05-1d23a156a130/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a7015e87-977e-49d7-9d05-1d23a156a130/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Broad 'what's open' asks should surface cross-project priorities, not a narrow recall-only thread Tom just said he's done with."
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface nodes about Tom's general plan-narration/process preference, not a stale other-thread trust-delegation event."
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/10",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Retrospective ask ('sum up what we did') shares no lexical/semantic tokens with the milestone's specifics (Phase 0, connect_to, co_anchored) — needs session-arc continuity, not vector similarity.",
+    "bridge": "A running session-arc field carrying the last-shipped milestone at session pause/resume would surface this directly.",
+    "style_note": null
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/11",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message paraphrases ('traces pull doesn't pull journal logs') in different vocabulary than the node's terms (EAGER_TRACE_SCALES) — lexical bridge missed despite topical closeness.",
+    "bridge": "Lexical bridge from 'journal logs'/'traces pull' to EAGER_TRACE_SCALES; or graph walk from the journal_note contract neighbor.",
+    "style_note": null
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/14",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/15",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "'you can merge to main' names the merge action directly, but the guardrail's specific vocabulary (dirty tree, sibling stream, code review) doesn't lexically overlap with the short instruction.",
+    "bridge": "Node-class prior promoting merge/guardrail lessons on any 'merge to main' instruction in a shared-tree repo.",
+    "style_note": null
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/17",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/20",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Terse anaphoric cue ('open the prompt session with it') has no lexical overlap with 'session handoff protocol' or 'commit + doc + brain node' — needs referent resolution, not vector similarity.",
+    "bridge": "Conversation-window/session field linking 'open new session' actions to the handoff-protocol mechanism node.",
+    "style_note": null
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/22",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/27",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2f570a84-cdad-4e3e-9a2e-48c94c1ad594/0/29",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface Anchor's own session-boundary/closing-ritual voice (e.g. sleep-not-death framing), not an unrelated session-leak-fix decision."
+  },
+  {
+    "key": "2bbd15b4-2fc0-4451-9d32-2123e36a1e96/0/0",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2bbd15b4-2fc0-4451-9d32-2123e36a1e96/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2bbd15b4-2fc0-4451-9d32-2123e36a1e96/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message is about fixing prompt content ('correct wrong-signature examples'); no mention of 'sync-prompts' — the deploy rule sits beyond the literal ask.",
+    "bridge": "Graph walk from prompt-editing action to the deploy-discipline rule via a prompt-maintenance neighbor; node-class prior for dev-workflow rules.",
+    "style_note": null
+  },
+  {
+    "key": "2bbd15b4-2fc0-4451-9d32-2123e36a1e96/0/4",
+    "verdict": "ambiguous",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "2bbd15b4-2fc0-4451-9d32-2123e36a1e96/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface nodes about cross-encoder generalization of the omission-detection principle, not an unrelated community-auto-archive decision."
+  }
+]

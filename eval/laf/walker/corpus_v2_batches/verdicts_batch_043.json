@@ -1,0 +1,202 @@
+[
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/2/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Terse 'S1encoding vs s1 surfaces' phrasing is lexically distant from the node's narrative language ('select'/'enrichment'/naming collision); no session-recency link to this 59-day-old node.",
+    "bridge": "Situation-lane on 'S1 responsibility clarification' or a graph walk from the S2-encoder-gate node would surface it.",
+    "style_note": null
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/2/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'and merge' → expect nodes on Tom's merge/commit conventions and cross-stream coordination discipline, not a topically-different pending merge decision from another thread."
+  },
+  {
+    "key": "a472726b-267b-4da4-91a4-da2ae2deefaf/2/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message confirms DB state ('does interactions table hold latest surface') without using 'registration vs activation' wording; 30-day-old node, no episodic tie-in.",
+    "bridge": "Lexical/idf match on 'interactions table' + situation-lane for 'prompt went live without activation' would reach it.",
+    "style_note": null
+  },
+  {
+    "key": "1f42a190-1ada-4b1f-a393-524bfc5c3c68/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Coding-task cue (revise_edge round-trip test) → expect nodes on MCP round-trip testing philosophy/patterns, not an unrelated co_anchored auto-edge architecture note."
+  },
+  {
+    "key": "34ae8525-2075-4ccd-82a1-e65917158a50/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c960c535-0dd3-42e0-a4d3-63a1d3e8556c/0/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c960c535-0dd3-42e0-a4d3-63a1d3e8556c/0/4",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c960c535-0dd3-42e0-a4d3-63a1d3e8556c/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare diagnostic report ('2 plugins, Brain and Anchor') → expect nodes on plugin/MCP connection mechanics (symlink vs real install, dual daemon), not skill-rename planning."
+  },
+  {
+    "key": "c99c1af7-843b-43a1-9ca4-8f58a643bd02/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "29ad0386-17e9-4de1-a35c-62cdba68a861/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "29ad0386-17e9-4de1-a35c-62cdba68a861/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Numbered greenlight list ('1. archive 2. another session...') → expect nodes on cross-session commit/coordination discipline, not a stale unrelated cleanup plan."
+  },
+  {
+    "key": "29ad0386-17e9-4de1-a35c-62cdba68a861/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Stream-closing farewell → expect nodes on self-channel goodbye/handoff conventions, not an unrelated past division-of-labor decision."
+  },
+  {
+    "key": "ae3b72d5-42d2-44d6-8226-4c6c0407d1ba/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ae3b72d5-42d2-44d6-8226-4c6c0407d1ba/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'amend and push' → expect nodes on Tom's git commit/push discipline generally, not a stale unrelated deferred-item node from a different session."
+  },
+  {
+    "key": "bc34734d-cdee-4338-929e-748df9b4f718/0/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bc34734d-cdee-4338-929e-748df9b4f718/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bc34734d-cdee-4338-929e-748df9b4f718/0/7",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bc34734d-cdee-4338-929e-748df9b4f718/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Vague 'hard to explain' meta-ask → expect elevator-pitch/laypeople-framing nodes (e.g. cross-session persistence advantage), not an internal encoding-bias reflection."
+  },
+  {
+    "key": "bc34734d-cdee-4338-929e-748df9b4f718/0/11",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bc34734d-cdee-4338-929e-748df9b4f718/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bc34734d-cdee-4338-929e-748df9b4f718/0/19",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'did anyone build it' follow-up → expect this session's fresh Karpathy-wiki competitor findings, not an older unrelated self-messaging-novelty analysis."
+  },
+  {
+    "key": "bc34734d-cdee-4338-929e-748df9b4f718/0/22",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message says 'SQL that isnt in dal' tersely; node's phrasing ('raw-SQL guardrail'/'DAL Phase 6') differs lexically, and node is 12 days old with no session-recency tie.",
+    "bridge": "Lexical/idf match on 'SQL'+'DAL' should reach it; graph walk from the sibling raw-SQL-violation lesson Haiku picked would connect too.",
+    "style_note": null
+  },
+  {
+    "key": "bc34734d-cdee-4338-929e-748df9b4f718/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'anything else open' check-in → expect nodes naming this session's actual open items (push pending, deferred followups), not a stale unrelated trust quote."
+  },
+  {
+    "key": "bc34734d-cdee-4338-929e-748df9b4f718/0/24",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node's situation emphasizes auditing journal-overclaim accuracy, not 'raw_quote' specifically; term underweighted in embedding, 13-day-old node with no same-session anchor.",
+    "bridge": "Lexical/idf on 'user_raw_quote LOST' + graph walk from the new texture-loss node (depends_on this one) would surface it.",
+    "style_note": null
+  },
+  {
+    "key": "bc34734d-cdee-4338-929e-748df9b4f718/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'add quote2' suggestion → expect field-design anti-pattern nodes (numbered-field cardinality, field-name-as-encoding-prompt), not a source_refs-anchoring-timing lesson."
+  }
+]

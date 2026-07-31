@@ -1,0 +1,202 @@
+[
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'do a code review' cue should surface process/rule nodes on how Anchor reviews (batching, indexes, DAL-first conventions), not a stale unrelated past review's specific grades."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'trace events'/'migration' tokens with an unrelated feature (node revision-history moving to trace events), not the identity-backfill migration being requested.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/34",
+    "verdict": "ambiguous",
+    "stratum": "session",
+    "gap": "Node frames 'coverage pressure → bypass review'; here Anchor already presented a decision table and Tom is granting trust after review, not before it — situation match is inverted, weakening embedding score.",
+    "bridge": "Style-recall lane for greenlight/trust cues surfacing confirmation-discipline correction nodes would have reached this.",
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/35",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message says 'vectorizing', node title says 'Embedded Calls' — rare-token mismatch, and the node is 36 days stale, framed around a specific fastembed SIGSEGV fix rather than the general lesson.",
+    "bridge": "Situation-lane match on 'silent failure' + idf boost on 'embed' would surface this general lesson for an embedding-audit ask.",
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/36",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Only 'boot' overlaps; the node concerns a rejected brain_surface.py fetch-method design from 7 weeks earlier, unrelated to where the identity write-path check should live.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/40",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message resolves via the immediately preceding A/B/C trace-API menu (fully in-window); gold is an unrelated 5-day-old deferred backlog note with no lexical/semantic bridge.",
+    "bridge": null,
+    "style_note": "Bare 'Let's do all' greenlight cues should surface momentum/confirmation-discipline patterns (or nothing, since the referent is fully in-window), not an unrelated stale backlog item."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/41",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'efficient'/'write' surface words but the node targets a different DB table (recall_log) unrelated to how today's memories should be encoded.",
+    "bridge": null,
+    "style_note": "Should surface encoder-efficiency lessons (round/call-count discipline for remember_batch), not an unrelated dead-table finding."
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/42",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "A different session's punch list (boot wire-up, SKILL.md, session_context leak) — no connection to today's episodic-refs doc-update request beyond generic 'next session' phrasing.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/43",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/44",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "50-day-old node uses 'pass benchmarks'/'middle of pack' framing rather than 'market leaders'; lexical drift plus staleness likely under-ranked the load-bearing prior position.",
+    "bridge": "idf boost on 'compare'/'benchmark' framing, ignoring staleness penalty, would surface this established position.",
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/50",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares the word 'examples' but concerns encoder-prompt engineering discipline (S1/S2 field additions), not writing worked comparison examples for the identity-research doc.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/51",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'what makes us different' framing but the ask is self-critical (deep misses, simplifications) while the node is a self-affirming positioning reflection from 7 weeks earlier — wrong direction, stale instance.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fd6e527c-0da9-4450-b2b8-baae02ed4599/0/52",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node narrates the original Session 9 naming arc (eval→insight→philosophy) from two months earlier; no connection to today's request to log insights/open-questions into the episodic docs.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Session-opener greetings should surface identity-continuity/'who I am' wisdom generically (Frame boot sampling), not one specific dated naming-moment narrative."
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'encoder' vocabulary but concerns a different deferred feature (Anchor-touch working memory) from a prior session, not eval-methodology guidance for encoder quality.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/4",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "9-day-old principle about pipeline-vs-local-quality mismatch isn't lexically close to 'scan more nodes / use opus agents'; needs a semantic leap from its 'v15.11 atomization' framing to a general eval-scale-up ask.",
+    "bridge": "Situation-lane match on 'evaluating encoder improvements against pipeline gains' plus a graph link from the eval-methodology thread would surface it.",
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node benchmarks encoder round/call-count efficiency — unrelated to greenlighting a 300-node stratified quality-scan sample; only 'encoder' overlaps.",
+    "bridge": null,
+    "style_note": "Bare 'Let's go' greenlight after a plan proposal should surface momentum/confirmation-discipline or plan-execution patterns, not an unrelated efficiency benchmark."
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Both are 'audit' events but different specific incidents (race-condition/call-stack check vs. SQL datetime-truncation bug) 51 days apart — no substantive overlap beyond the word 'audit'.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Both use 'rejection' but for different mechanisms — the message is about schema-validation rejection for a missing relation field; the gold is the S2 decoder's proposal-suppression fingerprinting bug.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/20",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Bare status update about the parallel datetime-fix session finishing — no connection to an unrelated 3-week-old punch-list note; likely matched on generic 'next session' phrasing.",
+    "bridge": null,
+    "style_note": "Bare status pings like 'ok other session is done' should surface session-handoff/synthesis patterns for resuming after a parallel stream, not a stale unrelated punch list."
+  },
+  {
+    "key": "9b829bfa-afd2-4eeb-90da-92ba30c39686/0/22",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Node states the specific next-session priority order set earlier the same day; the message's generic 'plan the rest of session + fresh session after' phrasing doesn't lexically echo 'render expansion'/'source_refs'.",
+    "bridge": "Episodic recency (same day, same project) plus situation-lane on 'next session priorities' would surface this directly.",
+    "style_note": null
+  }
+]

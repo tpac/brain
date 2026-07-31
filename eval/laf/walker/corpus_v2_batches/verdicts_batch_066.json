@@ -1,0 +1,202 @@
+[
+  {
+    "key": "b9960372-0638-4073-aab0-eb1134310128/0/30",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b9960372-0638-4073-aab0-eb1134310128/0/34",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse commit-check cue; expected class = Tom's commit-discipline/test-scope-trust principles, not an unrelated milestone from a different thread."
+  },
+  {
+    "key": "b9960372-0638-4073-aab0-eb1134310128/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Anaphoric 'it' = the friend-handoff doc; expected class = the current DISTRIBUTION-READINESS.md status node, not a generic docs-folder inventory fact."
+  },
+  {
+    "key": "89336314-d1de-4918-9841-309aa0c1ccf9/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "89336314-d1de-4918-9841-309aa0c1ccf9/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'commit, merge, prune' cue; expected class = worktree-deletion-safety rules or commit/merge discipline principles, not a stale unrelated merge event."
+  },
+  {
+    "key": "4d6a5f65-f499-4f47-9c96-5463444e2182/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message cites the 'trace tools render bounded' git-log phrase; node title uses commit hash 'dc90dc2' with no shared tokens, and situation frames a status-check, not a refactor-plan context.",
+    "bridge": "Lexical match on 'trace tools render bounded' phrase or entity-extraction of the referenced commit hash; same-day episodic recency lane.",
+    "style_note": null
+  },
+  {
+    "key": "4d6a5f65-f499-4f47-9c96-5463444e2182/1/3",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "'No silent errors' phrase closely matches a different, more prominent same-name principle node, likely outranking this stale-branch-merge lesson; no shared tokens with 'stale branch'/'merge-tree'.",
+    "bridge": "Lexical/idf on commit+merge combined with a shared-main situation lane, or graph walk from the neighboring 'no silent errors' node.",
+    "style_note": null
+  },
+  {
+    "key": "4d6a5f65-f499-4f47-9c96-5463444e2182/1/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'prune worktree' cue; expected class = the standing rule never delete a worktree without alerting the user, not a stale prior cleanup event."
+  },
+  {
+    "key": "bccbe8b4-8ac7-4010-a981-aa707672630d/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message is generic ('continue S1Scribe, refresh memory') without naming the specific doc; more diffuse same-topic decision/track nodes likely outranked the master pickup-spec artifact.",
+    "bridge": "Node-class prior favoring pickup/artifact docs on broad refresh queries, or a recency lane (created 0.7d prior).",
+    "style_note": null
+  },
+  {
+    "key": "bccbe8b4-8ac7-4010-a981-aa707672630d/0/4",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message is a vague delegated-recall ('that leak', 'I dont remember exactly') with no lexical anchors (no connect_to/MCP schema/sibling); weak embedding link to the specific April fix node.",
+    "bridge": "Graph walk from a surfaced connect_to-leak neighbor, or style-recall for delegated-memory ('you should remember') cues.",
+    "style_note": null
+  },
+  {
+    "key": "bccbe8b4-8ac7-4010-a981-aa707672630d/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Probe-request cue; expected class = probe-methodology/interview-technique nodes (how Tom runs stateless-Sonnet probes), not an unrelated grounding finding from a different prompt review."
+  },
+  {
+    "key": "bccbe8b4-8ac7-4010-a981-aa707672630d/0/7",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bccbe8b4-8ac7-4010-a981-aa707672630d/0/8",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bccbe8b4-8ac7-4010-a981-aa707672630d/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bccbe8b4-8ac7-4010-a981-aa707672630d/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bccbe8b4-8ac7-4010-a981-aa707672630d/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Self-improvement-priming ask; expected class = Anchor's own self-improvement identity statements/eagerness-stance nodes, not the separate outcome-traces feedback-loop want."
+  },
+  {
+    "key": "bccbe8b4-8ac7-4010-a981-aa707672630d/0/15",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bccbe8b4-8ac7-4010-a981-aa707672630d/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bccbe8b4-8ac7-4010-a981-aa707672630d/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bccbe8b4-8ac7-4010-a981-aa707672630d/0/22",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message paraphrases the principle in Tom's own words ('generic trace querying tools') rather than the node's exact API terms ('query_traces','TraceDAL'), diluting lexical match despite clear semantic fit.",
+    "bridge": "Lexical/idf on 'query_traces'+'TraceDAL' co-occurrence, or graph walk from the surfaced 'DAL-first rule' neighbor node.",
+    "style_note": null
+  },
+  {
+    "key": "bccbe8b4-8ac7-4010-a981-aa707672630d/0/23",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Informal tool names ('get episodes','get_session_turns') vs the node's formal API/behavior; anaphoric 'what you're looking for' needs window resolution, diluting the query embedding.",
+    "bridge": "Lexical match on 'recall_episodes'+'tool_result' pairing, or graph walk from a neighbor already discussing ref_type filtering.",
+    "style_note": null
+  },
+  {
+    "key": "bccbe8b4-8ac7-4010-a981-aa707672630d/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bccbe8b4-8ac7-4010-a981-aa707672630d/0/27",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bccbe8b4-8ac7-4010-a981-aa707672630d/0/28",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Terse merge-command carries no lexical anchor to 'stale branch'/'test-gate main'; embedding likely favored more topically-adjacent same-session decision nodes over this older general principle.",
+    "bridge": "Situation-lane match for 'merging on shared main' scenarios, or a style-recall device surfacing Tom's standing commit-merge principles on any greenlight cue.",
+    "style_note": null
+  },
+  {
+    "key": "e5a774c8-116f-4ecb-9777-15a4acc2df62/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Broad 'pick a 3rd cleanup topic' ask; expected class = the actual TraceDAL-unification precedent or DAL-splitting-pattern nodes (dal_metadata.py/dal_vector_cached.py), not dashboard UI redesign."
+  }
+]

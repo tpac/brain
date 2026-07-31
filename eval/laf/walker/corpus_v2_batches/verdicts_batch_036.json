@@ -1,0 +1,202 @@
+[
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/36",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message discusses hook turn-classification in engineering terms; node's self-observation framing shares no lexical overlap, only the deeper architectural link (anchor-anchor threads) ties them.",
+    "bridge": "Graph walk from the earlier self-observation node (same session, 2 days prior) via episodic/session-thread linkage, not lexical match.",
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/38",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/39",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/41",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message asks generically for 'a clear contract'; node's vocabulary (STRUCTURAL_FIELDS, get_writable_fields) is specific/technical, so lexical/embedding match to the generic ask ranked very low.",
+    "bridge": "Lexical/idf weight on 'contract' plus a situation-lane match on 'adding/organizing fields or decisions into one source of truth'.",
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/43",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about Tom's autonomy-grant/delegation pattern (green light, trust-and-proceed) rather than a specific unrelated cleanup-scope decision."
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/3/46",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/4/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message asks abstractly about 'misplaced functions/decisions' and 'right architecture' with no shared vocabulary against the node's concrete 'flat dispatcher' terms, so lexical signal is weak despite direct topical fit.",
+    "bridge": "Situation-lane match — the node's situation field ('wondering whether [a hook] should be broken into smaller pieces') directly mirrors the architecture-misplacement question.",
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/8/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce507d3d-d9a3-4a18-a1ae-2b7b202c8d9f/8/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "31e8c3ff-a86c-4b4d-9361-09692d6a0768/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "31e8c3ff-a86c-4b4d-9361-09692d6a0768/0/3",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "31e8c3ff-a86c-4b4d-9361-09692d6a0768/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "31e8c3ff-a86c-4b4d-9361-09692d6a0768/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "31e8c3ff-a86c-4b4d-9361-09692d6a0768/0/12",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message is a bare anaphoric question ('how would you know...') with no lexical link to the specific concurrent-stream facts logged earlier this session; embedding can't resolve a generic question to a specific historical fact node.",
+    "bridge": "Episodic recency / conversation-window field carrying the session's own recent self-channel traffic facts forward to this turn.",
+    "style_note": null
+  },
+  {
+    "key": "31e8c3ff-a86c-4b4d-9361-09692d6a0768/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "31e8c3ff-a86c-4b4d-9361-09692d6a0768/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about Tom's doc-hygiene preference (keep unresolved threads, cut resolved ones) rather than the unrelated code-rescan ritual."
+  },
+  {
+    "key": "31e8c3ff-a86c-4b4d-9361-09692d6a0768/0/20",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message uses different vocabulary ('industry standards', 'repackage plugin') than the node's specific blockers ('hardcoded paths', 'personal names', 'binary'), so lexical overlap is thin despite same-topic fit.",
+    "bridge": "Situation-lane match ('preparing the brain repo for public release') combined with lexical weight on 'plugin'/'repo'.",
+    "style_note": null
+  },
+  {
+    "key": "31e8c3ff-a86c-4b4d-9361-09692d6a0768/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about Tom's confirmation/momentum pattern (trust-and-proceed on green light) rather than an unrelated old session-close event."
+  },
+  {
+    "key": "31e8c3ff-a86c-4b4d-9361-09692d6a0768/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "509d64e6-0607-4d09-a184-ec512e9a04a9/0/3",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message asks a specific technical question ('moving raw SQL sites to dal layer') while the node states the general design principle in older phrasing ('incremental adoption, one table at a time'); thin lexical overlap despite direct conceptual fit.",
+    "bridge": "Lexical/idf weight on 'DAL'/'raw SQL' plus graph walk from other recently-accessed DAL-migration nodes.",
+    "style_note": null
+  },
+  {
+    "key": "509d64e6-0607-4d09-a184-ec512e9a04a9/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about Tom's confirmation/trust pattern on green-light replies rather than an unrelated old session-close event."
+  },
+  {
+    "key": "509d64e6-0607-4d09-a184-ec512e9a04a9/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "509d64e6-0607-4d09-a184-ec512e9a04a9/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about Tom's merge/commit discipline (explicit-path commits, FF-preference over shared trees) rather than an unrelated old launch-session ledger."
+  },
+  {
+    "key": "509d64e6-0607-4d09-a184-ec512e9a04a9/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

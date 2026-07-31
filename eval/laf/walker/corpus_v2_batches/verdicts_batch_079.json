@@ -1,0 +1,202 @@
+[
+  {
+    "key": "b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/6",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/8",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about the current bespoke-DAL audit pattern/principle (generic-door-over-SQL), not a stale full-arc-complete milestone from a different session."
+  },
+  {
+    "key": "b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/11",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/14",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Abstract architecture-opinion language shares no lexical/semantic overlap with the concrete scribe_due/DAL-method correction; situation field targets 'about to write bespoke DAL method', not this debate.",
+    "bridge": "Episodic recency (same session, ~1-2h prior) plus graph walk from the id:71b34243 neighbor Anchor already surfaced one turn back.",
+    "style_note": null
+  },
+  {
+    "key": "b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about how LLMs navigate/imitate code structure (training-prior, one-rule routing), not the older brain-is-shared-layer/LLM-as-interpreter encoding philosophy."
+  },
+  {
+    "key": "b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A general spec-first workflow principle (if one exists), not a specific other-project sequencing decision from a different arc (Stage-1 revise contract)."
+  },
+  {
+    "key": "b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/18",
+    "verdict": "ambiguous",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Tom's build-confirmation pattern ('sounds good'+'go' = proceed now) or the traces-layer move plan itself being greenlit, not the unrelated seed-dedup cleanup item."
+  },
+  {
+    "key": "b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A code-review-necessity/test-update-discipline principle (lean vs elaborate calibration), not a specific other-session code-review's fix list."
+  },
+  {
+    "key": "b646b1b1-58ae-4d50-b6c3-c94690a77e6b/0/32",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a40e5d72-0371-47f2-9044-cc181eabb70c/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a40e5d72-0371-47f2-9044-cc181eabb70c/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Tom's cleanup-while-working directive pattern or a live code-quality principle, not the unrelated resolved test-suite-hang finding."
+  },
+  {
+    "key": "a40e5d72-0371-47f2-9044-cc181eabb70c/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Tom's commit/merge discipline pattern (worktree-branch-then-merge convention), not a specific stale merge event from a different topic."
+  },
+  {
+    "key": "151966b4-bcb4-44db-9820-c6e67b92790b/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "151966b4-bcb4-44db-9820-c6e67b92790b/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "151966b4-bcb4-44db-9820-c6e67b92790b/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "151966b4-bcb4-44db-9820-c6e67b92790b/0/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Bare anaphoric 'delete 2' shares no lexical tokens with 'aspects_proposed.json'; node's situation targets auditing the shipped package generically, not resolving a numbered list item.",
+    "bridge": "Conversation-window field (M_h) to resolve '2'->aspects_proposed.json, then lexical/idf match on the resolved filename.",
+    "style_note": null
+  },
+  {
+    "key": "151966b4-bcb4-44db-9820-c6e67b92790b/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "151966b4-bcb4-44db-9820-c6e67b92790b/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "151966b4-bcb4-44db-9820-c6e67b92790b/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "151966b4-bcb4-44db-9820-c6e67b92790b/0/7",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

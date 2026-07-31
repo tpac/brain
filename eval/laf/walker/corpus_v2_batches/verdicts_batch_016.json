@@ -1,0 +1,202 @@
+[
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "For 'how do we set up eval benchmarks' process cues, gold class = baseline-first directives (v9.5 baseline, benchmark-before-architecture rule), not the historical recall-architecture-evolution synthesis."
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/4",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Lexical overlap on 'longmem'/'axis' exists but the node's situation frames it as analyzing eval scores after the fact, not as an instruction to run stratified axis sampling now.",
+    "bridge": "Lexical/idf boost on 'longmem'+'diverse axis' tokens, or a situation-lane rewrite naming 'when planning a stratified eval run'.",
+    "style_note": null
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/10",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/61",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "For 'did you verify the scouts/classifier actually did X' process cues, gold class = classifier-mechanics / scout-behavior nodes, not the encode-vs-answer composition principle."
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/62",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/74",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/94",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "For 'rerun eval before we launch it' shipping-process cues, gold class = benchmark-before-ship discipline nodes, not the unrelated V5 vector-enrichment contract."
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/146",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "For terse ship-greenlight cues ('B ofcourse, not shipping anything that isn't great'), gold class = Tom's quality/shipping-discipline nodes (don't ship without validation), not the query-time-composition principle."
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/147",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/148",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "For 'update docs, split encoding from decoding analysis' process cues, gold class = this session's own encode-vs-decode bucket breakdown, not the stale April eval-to-prod comparison stat."
+  },
+  {
+    "key": "26a2f595-5910-427b-9381-13e65abe6777/0/360",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "For 'log results and explain structure for next session' handoff cues, gold class = handoff-writing convention/practice, not the stale unrelated Session-#15 infra handoff content."
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/6",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Node is framed as a production-shipping milestone (dense history text) rather than 'what did the scout do this run', so situation-lane match is weak despite exact lexical overlap on 'scout'/'disabled'.",
+    "bridge": "Graph walk from the just-surfaced quote-scout finding to this milestone, or episodic-recency boost since both discuss scout gating within the same session.",
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/9",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "For 'what's your plan/purpose/architecture' planning cues, gold class = the specific technical purpose principle for the proposal at hand (e.g. recognition-over-retrieval), not the broad partnership-substrate reflection."
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/11",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Technical architecture-talk in this session sits far in embedding space from this older (39d) philosophical reflection despite direct conceptual fit, and its age likely adds fatigue dampening.",
+    "bridge": "Situation-lane match on 'purpose of recognition vs retrieval' or a style-recall lane for Anchor's own philosophical identity reflections.",
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/16",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "For terse 'continue in agent mode / build the MVP' delegation cues, gold class = how Tom delegates and trusts background work, not old (already-superseded) spread-activation measurement history."
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/21",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message uses investigative/operational phrasing ('what was there, how was it pulled') while the node states an abstract design principle — low lexical overlap despite strong conceptual fit, and it competes against denser technical mechanism nodes on the same topic.",
+    "bridge": "Situation-lane match on 'evaluating what recall's purpose should measure' or a graph walk from the recognition-over-retrieval architecture node.",
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "For repeated vague 'analyze recall deeply, what's missing' cues, gold class = the recall pipeline's own bottleneck/architecture-breakdown nodes, not the unrelated session-continuity philosophy insight."
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "For repeated vague 'analyze recall deeply, what's missing' cues, gold class = recall's own architecture/bottleneck breakdown nodes, not the eval harness's generic pipeline-stage mechanism."
+  }
+]

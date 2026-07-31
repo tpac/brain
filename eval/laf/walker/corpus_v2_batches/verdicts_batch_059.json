@@ -1,0 +1,202 @@
+[
+  {
+    "key": "f3241c24-dace-49da-8d27-2eee4f2524a7/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f3241c24-dace-49da-8d27-2eee4f2524a7/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f3241c24-dace-49da-8d27-2eee4f2524a7/0/18",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Ask concerns Surface's own prompt/turn-size hypothesis; the node's vocabulary is Encoder-specific (max_messages, encoder spiral) — same principle, different component name, diluting the match.",
+    "bridge": "A cross-component 'context-length degrades agent' node-class tag, or graph walk from Surface's cap-table design back to this Encoder precedent.",
+    "style_note": null
+  },
+  {
+    "key": "f3241c24-dace-49da-8d27-2eee4f2524a7/0/19",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message asks a direct technical Q (input_tokens missing, tool/loop telemetry); gold is framed as historical narrative (schema fragmentation, node IDs) — low lexical overlap despite same infra topic.",
+    "bridge": "Lexical/idf hit on 'build_delta_metadata', or graph walk from the S2 unit nodes already active this session.",
+    "style_note": null
+  },
+  {
+    "key": "f3241c24-dace-49da-8d27-2eee4f2524a7/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about how Anchor structures docs written FOR its own recall (node-ID citation, structural spine) — the pattern class — not one specific past doc instance."
+  },
+  {
+    "key": "f3241c24-dace-49da-8d27-2eee4f2524a7/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about Tom's confirm-before-execute / 1-by-1 protocol for spawned streams — not an unrelated self-channel coordination milestone."
+  },
+  {
+    "key": "f3241c24-dace-49da-8d27-2eee4f2524a7/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about Tom's guardrails for spawned streams — confirm-before-edit, research/benchmark-before-acting — not a stale unrelated priority list."
+  },
+  {
+    "key": "f3241c24-dace-49da-8d27-2eee4f2524a7/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about descoping/relaunching the current trace-telemetry task — not an unrelated stale (Strict Tool Use, remember_batch) priority list."
+  },
+  {
+    "key": "d2cae5e9-0307-4369-86f5-eb61fa2b0c07/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d2cae5e9-0307-4369-86f5-eb61fa2b0c07/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d2cae5e9-0307-4369-86f5-eb61fa2b0c07/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d2cae5e9-0307-4369-86f5-eb61fa2b0c07/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about Tom's confirmation-then-proceed signal, or continuity of the live LAF/dynamical-fusion thread — not an unrelated aspect-encoder example-count decision."
+  },
+  {
+    "key": "d2cae5e9-0307-4369-86f5-eb61fa2b0c07/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d2cae5e9-0307-4369-86f5-eb61fa2b0c07/0/13",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Terse present-tense check-in ('we should have edges embedding now') shares no lexical overlap with the April design-rationale node's formal phrasing; old-node vs casual-confirmation creates an embedding gap.",
+    "bridge": "Episodic-recency link within this edge-embedding subthread, or graph walk from the temporally-closer 'Async edge embedding' node to this rationale.",
+    "style_note": null
+  },
+  {
+    "key": "d2cae5e9-0307-4369-86f5-eb61fa2b0c07/0/20",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d2cae5e9-0307-4369-86f5-eb61fa2b0c07/0/21",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message bundles the episodic-layer question among hub-dampening/aspect-ranking asks in one long turn, diluting the 'episodic' cue; node's dominant vocabulary (empirical non-rescue, state-index) diverges from the forward-looking phrasing.",
+    "bridge": "Situation-lane match on 'deciding whether to build the episodic-matrix boost', or an idf hit on 'episodic'.",
+    "style_note": null
+  },
+  {
+    "key": "d2cae5e9-0307-4369-86f5-eb61fa2b0c07/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d2cae5e9-0307-4369-86f5-eb61fa2b0c07/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about Tom's code-review discipline/preference (boundary-commit review, elaborate self-check) — not one specific stale review's findings."
+  },
+  {
+    "key": "d2cae5e9-0307-4369-86f5-eb61fa2b0c07/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "The just-discussed field_recall/operators.py review findings (spread-scale bug, ablation issues) — not an unrelated pipeline masking/round-trip smell."
+  },
+  {
+    "key": "d2cae5e9-0307-4369-86f5-eb61fa2b0c07/0/29",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about the current LAF handoff structure (§18.18.1 next-stream marker, node-ID list) or Anchor's own-doc-authorship pattern — not a different thread's (endo-recall) handoff."
+  },
+  {
+    "key": "d2cae5e9-0307-4369-86f5-eb61fa2b0c07/0/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nodes about the current session's LAF next-steps ranking (Q4 reverse-engineering, spread-scale fix) — not an unrelated May-18 surface_contract refactor tier list."
+  },
+  {
+    "key": "e7188c02-9aa1-4bcb-9abb-188be6183432/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e7188c02-9aa1-4bcb-9abb-188be6183432/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e7188c02-9aa1-4bcb-9abb-188be6183432/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e7188c02-9aa1-4bcb-9abb-188be6183432/0/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Terse imperative ('get rid of meaning') carries no lexical overlap with the older correction's phrasing (directive vs context framing); no episodic link back to the just-surfaced meaning explanation.",
+    "bridge": "Graph walk from the just-discussed 'meaning' explanation node to its upstream correction edge, or recency boost since same topic though older.",
+    "style_note": null
+  }
+]

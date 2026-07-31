@@ -1,0 +1,202 @@
+[
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message is a dense numbered multi-part critique; the node's distinctive phrase ('doubt, friction, surprise') sits inside a long list, diluting embedding focus, and the node's situation field frames a retrospective ('why removed') rather than a live-edit request.",
+    "bridge": "Lexical/idf hit on the exact quoted phrase '(doubt, friction, surprise)'; or a graph walk from the just-surfaced review-block-design neighbor.",
+    "style_note": null
+  },
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/13",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message discusses aspect renaming/exclusion, not 'encoder structure' or 'sibling'; the node is 53 days old from the original aspect_encoder build, so lexical overlap and episodic recency are both low.",
+    "bridge": "Situation-lane match on 'implementing an encoder, watch sibling structure'; a node-class prior surfacing reusable methodology precedents on cross-encoder unification asks.",
+    "style_note": null
+  },
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A live code-review checklist for this exact plan (drift/dead-code/plan-compliance criteria), or the call-stack-audit RULE itself — not a stale 84-day-old diagnosis of an unrelated judge-latency incident."
+  },
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "The generalized 'checked dirty main for other-stream work before pushing' lesson (a governing discipline), not a specific old self-channel status log from a different incident."
+  },
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message's verbs (commit/merge/prune) match generically, but the node is an unrelated event record from a different date with no shared distinctive tokens beyond 'worktree'; episodic recency (11.6d) is stale relative to the same-session worktree ops already visible in window.",
+    "bridge": "Episodic-recency lane tuned to git-lifecycle events; lexical/idf on 'prune worktree'.",
+    "style_note": null
+  },
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message shares only generic 'plan' vocabulary with a milestone about an unrelated April recall-normalization closeout; no lexical/semantic overlap on 'journal'.",
+    "bridge": "A live session/current-open-threads field would beat topic-similarity retrieval here — no single node bridges this correctly.",
+    "style_note": null
+  },
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks about consolidation-run *volume* (why so many); the gold node is about a dashboard *display* fix for the same subsystem — topically adjacent but the specific mechanism (mark_accessed bumping updated_at) differs, so it sits near but off-target.",
+    "bridge": "Lexical/idf on 'consolidation runs'; a situation-lane tuned to the live diagnostic session rather than dashboard-view history.",
+    "style_note": null
+  },
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message is about a dead-code path bypassing revise() for title renames; the gold is about source_refs/correction lineage — a different subsystem, only 'revise'-verb-level overlap.",
+    "bridge": "No strong device — this pairing reflects genuine topic distance rather than a recoverable signal miss.",
+    "style_note": null
+  },
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/22",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c25010d4-4b15-45aa-a459-86f2bbb10f96/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message is a generic backlog query ('what else... on our plate'); the gold is a month-old, mostly-resolved test-cleanup status update with no direct lexical tie to backlog language.",
+    "bridge": "A live current-open-threads field (session/plan-doc state) would beat topic-similarity retrieval into a stale status record.",
+    "style_note": "Current genuinely-open threads or a live plan/TODO doc, not a month-old bucket-completion status record."
+  },
+  {
+    "key": "ad5b58f3-89e3-42f8-b35e-4ad3258f37ef/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message blends three sub-asks (scout timeout confirmation, S1Scribe timeout question, 'why might it break') in one message, diluting embedding focus; the finding also predates this scout ('facts', not 'synthesis') by two months, thinning lexical/rare-token overlap.",
+    "bridge": "Mechanism/situation-lane matching 'scout output-cap fragility' against 'why might it break'; graph walk from the surfaced synthesis-scout timeout neighbor.",
+    "style_note": null
+  },
+  {
+    "key": "ad5b58f3-89e3-42f8-b35e-4ad3258f37ef/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message is a short 'leave it, commit and merge' instruction with no mention of other streams; the node's distinctive vocabulary (dirty tree, other-stream coordination) has no lexical anchor in this message.",
+    "bridge": "Style-recall for merge/commit imperatives — a node-class prior surfacing 'check dirty main before pushing' for any commit-and-merge command in this shared-tree repo.",
+    "style_note": null
+  },
+  {
+    "key": "ad5b58f3-89e3-42f8-b35e-4ad3258f37ef/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Nothing special, or a session-close/handoff-acknowledgment pattern — not an unrelated historical bug about a different (Create, not this Delete) worktree hook."
+  },
+  {
+    "key": "8df57ef3-a147-4519-95d4-2b247f610055/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8df57ef3-a147-4519-95d4-2b247f610055/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message is a narrow how-to question about /simplify's scope; the gold is an unrelated absorb() signature decision from a different project thread — no shared vocabulary.",
+    "bridge": "None — the mismatch reflects the label rather than a recoverable signal gap.",
+    "style_note": null
+  },
+  {
+    "key": "8df57ef3-a147-4519-95d4-2b247f610055/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "8df57ef3-a147-4519-95d4-2b247f610055/0/4",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message names three topics ('journal work,' 'Frame work,' 'DAL') in one line, spreading embedding mass across all three, diluting the match specifically to the journal-architecture node.",
+    "bridge": "Lexical/idf hit on 'journal work' as the specific matched span; an entity-level lane that isolates one named topic per multi-topic message.",
+    "style_note": null
+  },
+  {
+    "key": "8df57ef3-a147-4519-95d4-2b247f610055/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message quotes a specific (possibly fabricated) claim about 'Category-B methods' verbatim; the gold node shares no lexical tokens with that quote and covers a different function (dead params in journal render functions) from a different day.",
+    "bridge": "None strong — different underlying content, closer to genuine non-match than a recoverable miss.",
+    "style_note": null
+  },
+  {
+    "key": "8df57ef3-a147-4519-95d4-2b247f610055/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message is a terse 'archive that node' instruction anaphoric to the immediately-preceding Category-B claim; the gold is an unrelated S2Consolidate survivor-edge finding sharing only the generic 'archive' vocabulary.",
+    "bridge": "An anaphora-resolution device pointing back to the actually-referenced node would help more than any topical retrieval lane.",
+    "style_note": null
+  },
+  {
+    "key": "8df57ef3-a147-4519-95d4-2b247f610055/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message is about running architecture-review on the test suite; the gold is an old commit-push milestone from an unrelated project phase — essentially no lexical or semantic connection.",
+    "bridge": "None.",
+    "style_note": null
+  },
+  {
+    "key": "8df57ef3-a147-4519-95d4-2b247f610055/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message is a short factual lookup ('how is our tool called?'); the gold is a placement-decision node about SKILL.md vs Frame — thematically adjacent (both touch SKILL.md) but no direct token overlap with the actual factual need (the tool's name).",
+    "bridge": "A simple entity/name-lookup lane (skill registry) would serve this better than topical-similarity retrieval into an architecture-placement decision.",
+    "style_note": "A simple factual record of the tool's own name/location, not a decision about where reference docs belong."
+  },
+  {
+    "key": "de8a4532-a877-4970-b51e-c641492ba918/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

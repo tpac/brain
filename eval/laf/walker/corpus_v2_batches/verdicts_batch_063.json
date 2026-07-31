@@ -1,0 +1,202 @@
+[
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's biology/psychology vision framing shares little vocabulary with the node's engineering critique (mismatches, algorithm, stateless) despite matching conceptually.",
+    "bridge": "Situation-lane match on 'framing recall architecture decisions'; graph walk from recall-purpose cluster neighbors.",
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/4",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'lets with that' continuing the pilot — should surface the just-established judge state, not an old unrelated eval-path decision."
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/10",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/11",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Prescriptive 'encourage episodic links' phrasing reads differently from the node's retrospective resolved-diagnosis framing despite shared 'episodic' token.",
+    "bridge": "Lexical/idf boost on shared 'episodic' token; graph walk from the episodic-design decision node Haiku surfaced instead.",
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/15",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Vague 'who defines need' challenge — should surface the equivalence-set/need concept just introduced, not an unrelated citation."
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/25",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'prune tree' means THIS worktree — should surface current branch/worktree state, not an old unrelated cleanup event."
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/29",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/31",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/33",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/34",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/36",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse close-out — nothing new needed; if anything, session-wrap/commit-hygiene conventions, not an unrelated dead-code item."
+  },
+  {
+    "key": "c7bfbfd0-d6c3-4326-9f8c-117aeedb8943/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Query framed forward ('let's finish/refresh') while the node's revised content reads as already-complete, a tense/framing mismatch that likely hurt cosine match.",
+    "bridge": "Lexical boost on 'journal'+'encoder'+'S1Scribe'; situation-lane match on 'When resuming after this session'.",
+    "style_note": null
+  }
+]

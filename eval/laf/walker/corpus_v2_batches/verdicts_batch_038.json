@@ -1,0 +1,202 @@
+[
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/19",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message asks forward ('how would you change it') while gold reads past-tense 'already corrected'; dense same-session absorb/MCP nodes crowd the ranking despite direct lexical overlap on 'absorb'.",
+    "bridge": "Idf boost on 'absorb MCP description' pair + episodic same-day recency to outrank competing absorb-topic nodes.",
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface the general craft-rule that examples must model full behavior (all fields, no placeholders), not a stale unrelated v15.9 temporal-encoder instance."
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/23",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Coordination-greenlight cues should surface the live in-window bug diagnosis (drop/new-ids session-id volatility) already established, not an old unrelated first-broadcast milestone."
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/27",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/30",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/32",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface a node about production-faithful probe/interview design specifically, not the unrelated replay_turn dual-purpose (benchmark+onboarding) insight."
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/33",
+    "verdict": "ambiguous",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/2/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/2/3",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Broad meta-ask ('pull info on examples craft/dedication') dilutes across many similar craft nodes; generic lexical overlap ranks it below several sibling craft nodes with sharper phrasing.",
+    "bridge": "A community/cluster node linking all examples-craft nodes, or a graph-walk from one surfaced craft node to its siblings.",
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/2/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface examples-craft doctrine nodes (dedicated-sitting, cross-profession range) or corpus-injection design notes, not an unrelated D31 type-discipline eval finding."
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/3/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Doc-update-at-session-end requests should surface the handoff-protocol mechanism (commit+doc+brain node) or the shared-worktree-ownership correction actually invoked in the response, not the NEXT-WORK-staleness lesson."
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/4/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare push-greenlight cues should surface general commit/push discipline (explicit-path commits, push-before-next-session norms), not a stale specific commit list from an unrelated fix."
+  },
+  {
+    "key": "30564925-d1d4-436f-af2e-117dc743576d/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface nodes about the confidence-field design problem itself (dead-field diagnosis, decay rationale), not the unrelated boot/Frame insight."
+  },
+  {
+    "key": "30564925-d1d4-436f-af2e-117dc743576d/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "30564925-d1d4-436f-af2e-117dc743576d/0/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "30564925-d1d4-436f-af2e-117dc743576d/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Should surface a live audit of confidence's current usage sites (render, surface, encoders), not a historical INSERT-column persistence bug."
+  },
+  {
+    "key": "30564925-d1d4-436f-af2e-117dc743576d/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'green light' cues should surface general greenlight/test-discipline patterns, not an unrelated absorb-wiring milestone from a different stream."
+  },
+  {
+    "key": "30564925-d1d4-436f-af2e-117dc743576d/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Feedback about Anchor's own over-locking habit should surface a node on that behavior pattern, not the unrelated S2 consolidation locked-node architecture doc."
+  },
+  {
+    "key": "30564925-d1d4-436f-af2e-117dc743576d/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'commit and merge?' cues should surface commit/merge discipline nodes (shared-index hazard, fast-forward habits), not an unrelated CLAUDE.md style preference."
+  },
+  {
+    "key": "30564925-d1d4-436f-af2e-117dc743576d/0/9",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message is only three words ('commit and merge?') with no lexical overlap to 'settled work' or 'parallel session'; too thin for lexical/embedding match despite genuine topical fit.",
+    "bridge": "Style-recall prior for terse commit/merge greenlights + a running-session field carrying the active multi-stream state.",
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node is a general meta-rule (recall-before-redesign) with no lexical tie to 'traces', 'brain_batch', or 'event bus'; its situation field doesn't name this domain, weakening embedding match.",
+    "bridge": "A node-class prior that injects Anchor's own process-rules whenever the message contains redesign/architecture-question signal words.",
+    "style_note": null
+  }
+]

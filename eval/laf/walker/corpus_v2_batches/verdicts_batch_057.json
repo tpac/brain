@@ -1,0 +1,202 @@
+[
+  {
+    "key": "fbbe7cd9-f9d7-4ffc-b084-9465e0c46ab0/0/10",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message paraphrases the handoff ask generically ('write a document', 'a prompt for a new session') without the node's own vocabulary (architecture doc, brain node, S1-Architecture); embedding likely tracked the surrounding community-bug conversation topic instead; node is 64.9d old, no episodic/recency boost.",
+    "bridge": "A node-class prior surfacing 'handoff protocol' nodes whenever a message asks for both a doc and a next-session prompt; situation-lane tuned to 'closing a session with unfinished work'.",
+    "style_note": null
+  },
+  {
+    "key": "fbbe7cd9-f9d7-4ffc-b084-9465e0c46ab0/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse task-completion cue ('a. done my part') should surface the specific open items Anchor owes (redeploy+push+doc handoff) or Tom's completion-confirmation pattern, not an unrelated Healer/Aspect trace-completeness finding."
+  },
+  {
+    "key": "fbbe7cd9-f9d7-4ffc-b084-9465e0c46ab0/0/13",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fbbe7cd9-f9d7-4ffc-b084-9465e0c46ab0/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fbbe7cd9-f9d7-4ffc-b084-9465e0c46ab0/0/17",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a2f5afab-1a0a-4884-861c-d0ac9f629b0c/0/3",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bea6e3fa-c556-4a3d-b098-8a1dbbfdedb8/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bea6e3fa-c556-4a3d-b098-8a1dbbfdedb8/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bea6e3fa-c556-4a3d-b098-8a1dbbfdedb8/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Anaphoric technical check ('hold on, is this purely algorithmic?') should surface the concrete structural-fields derive proposal under discussion, not an unrelated decoder-labeling mechanism that merely shares the word 'algorithmic'."
+  },
+  {
+    "key": "bea6e3fa-c556-4a3d-b098-8a1dbbfdedb8/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Clarifying question about decoder/encoder field-attachment should surface the concrete community structural-fields design thread, not the unrelated general S1R decode-fast/encode-deep architecture decision."
+  },
+  {
+    "key": "bea6e3fa-c556-4a3d-b098-8a1dbbfdedb8/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bea6e3fa-c556-4a3d-b098-8a1dbbfdedb8/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare greenlight ('nod :)') to begin Phase 1 of the community structural-fields work should surface Tom's phase-checkpoint/greenlight pattern or the just-agreed Phase-1 plan, not an unrelated old DAL milestone."
+  },
+  {
+    "key": "bea6e3fa-c556-4a3d-b098-8a1dbbfdedb8/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bea6e3fa-c556-4a3d-b098-8a1dbbfdedb8/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bea6e3fa-c556-4a3d-b098-8a1dbbfdedb8/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Process directive ('shove a code-review at the right moment') should surface Tom's code-review-timing preference generally, not a specific other-thread (journal-port) milestone record."
+  },
+  {
+    "key": "bea6e3fa-c556-4a3d-b098-8a1dbbfdedb8/0/17",
+    "verdict": "ambiguous",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "bea6e3fa-c556-4a3d-b098-8a1dbbfdedb8/0/22",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Terse confirmation 'lets commit and merge' shares no lexical tokens with the merge-discipline lesson's specific content (dirty tree, other-stream check); embedding likely matched generic merge/commit vocabulary; the lesson is 2.4d old with no episodic tie to this thread.",
+    "bridge": "Style-recall for merge-greenlight cues surfacing Tom's dirty-tree-check pattern; a node-class prior privileging guardrail lessons over plain event records at merge moments.",
+    "style_note": "'lets commit and merge' as bare greenlight should surface Tom's merge-discipline pattern (check dirty main / other-stream work before pushing), not stale unrelated instances."
+  },
+  {
+    "key": "bea6e3fa-c556-4a3d-b098-8a1dbbfdedb8/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Verification question about live traces/journal output should surface here-and-now telemetry/trace-reading guidance, not a completed test-plan design summary from an earlier verification phase."
+  },
+  {
+    "key": "124cf35a-9b7c-44a0-9a7c-398a97a6a945/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message frames the ask as a purely visual/diagram request; lexical overlap with the principle's abstract wording (scale, bounded work, flatten levels) is near-zero; the principle's situation targets scale-design decisions, not diagram-generation requests.",
+    "bridge": "Graph walk from the already-surfaced S1/S2-unification finding to its governing scale-principle neighbor; a situation-lane tuned to 'preserve legitimate divergence' asks.",
+    "style_note": null
+  },
+  {
+    "key": "124cf35a-9b7c-44a0-9a7c-398a97a6a945/0/3",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message uses conversational reasoning language ('I believe the trigger today is the hook but actually trace based') rather than the node's technical terms (turns_since_last_encode, S0 traces layer, DAL); lexical overlap is low.",
+    "bridge": "Lexical/idf match on 'trace' + 'trigger' + 'Scribe' shared with the decision title; graph walk from an already-surfaced cadence/ENCODE_EVERY neighbor.",
+    "style_note": null
+  },
+  {
+    "key": "124cf35a-9b7c-44a0-9a7c-398a97a6a945/0/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "124cf35a-9b7c-44a0-9a7c-398a97a6a945/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "124cf35a-9b7c-44a0-9a7c-398a97a6a945/0/10",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message frames the ask as a stylistic preference ('prefer not to use DAL... higher functions') rather than the architecture's specific vocabulary (repository aggregate, held DAL instances, construction sites); the node's situation targets 'planning/verifying Phase 2', not a live design ask.",
+    "bridge": "Lexical/idf match on the 'DAL' keyword; a graph walk from a DAL-policy neighbor; situation-lane match on the 'DAL-first' rule wording.",
+    "style_note": null
+  },
+  {
+    "key": "124cf35a-9b7c-44a0-9a7c-398a97a6a945/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Process directive ('code-review before the full suite') should surface Tom's code-review-timing preference generally, not a specific other-thread (journal-port) milestone record."
+  },
+  {
+    "key": "124cf35a-9b7c-44a0-9a7c-398a97a6a945/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare greenlight for a bug-fix option ('yes go with the robust fix') should surface Tom's fix-selection preference (favor defense-in-depth over minimal patches) or the specific re-encode-loop regression under discussion, not an unrelated recall-scoring design principle."
+  }
+]

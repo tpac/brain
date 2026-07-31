@@ -1,0 +1,202 @@
+[
+  {
+    "key": "88cc6960-1c34-4bcc-8fae-f3cfdeca32d5/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "88cc6960-1c34-4bcc-8fae-f3cfdeca32d5/0/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "88cc6960-1c34-4bcc-8fae-f3cfdeca32d5/0/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "88cc6960-1c34-4bcc-8fae-f3cfdeca32d5/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "88cc6960-1c34-4bcc-8fae-f3cfdeca32d5/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: this session's actual remaining-items list (telemetry gap, S2 fix), not an unrelated old session's handoff plan."
+  },
+  {
+    "key": "4893691c-6662-4f80-ac67-c9170ea4fe6e/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: Tom's reuse/unify/simplicity operating principle or anti-duplication mandate, not a stale trajectory moment."
+  },
+  {
+    "key": "4893691c-6662-4f80-ac67-c9170ea4fe6e/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "4893691c-6662-4f80-ac67-c9170ea4fe6e/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "4893691c-6662-4f80-ac67-c9170ea4fe6e/0/8",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "4893691c-6662-4f80-ac67-c9170ea4fe6e/0/12",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "4893691c-6662-4f80-ac67-c9170ea4fe6e/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the guardian's own scope/rules or Tom's authorize-then-delete practice, not a different incident's consolidate-to-bypass workaround."
+  },
+  {
+    "key": "4893691c-6662-4f80-ac67-c9170ea4fe6e/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the actual S2-revise/chain_id linking convention or a dashboard-triage checklist, not a generic 66-day-old silent-failure story."
+  },
+  {
+    "key": "4893691c-6662-4f80-ac67-c9170ea4fe6e/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the just-made S1/S2 chain-threading asymmetry finding itself, not a tangential tool-schema-freshness mechanism."
+  },
+  {
+    "key": "4893691c-6662-4f80-ac67-c9170ea4fe6e/0/18",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "4893691c-6662-4f80-ac67-c9170ea4fe6e/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: nodes on Tom's task-briefing mandate (plan-first, before/after confirm, self-contained scan), not an unrelated old keywords-kill session plan."
+  },
+  {
+    "key": "4893691c-6662-4f80-ac67-c9170ea4fe6e/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: how Tom typically closes out a finished arc / shows appreciation, not a different-topic full-authority delegation quote."
+  },
+  {
+    "key": "fbbe7cd9-f9d7-4ffc-b084-9465e0c46ab0/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fbbe7cd9-f9d7-4ffc-b084-9465e0c46ab0/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fbbe7cd9-f9d7-4ffc-b084-9465e0c46ab0/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: dead-code check scoped to this journal-port area (base.py/community_encoder.py residue), not an unrelated stale commit."
+  },
+  {
+    "key": "fbbe7cd9-f9d7-4ffc-b084-9465e0c46ab0/0/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fbbe7cd9-f9d7-4ffc-b084-9465e0c46ab0/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fbbe7cd9-f9d7-4ffc-b084-9465e0c46ab0/0/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message states 'other stream is committing' without lexical overlap ('dirty main', 'merge conflict') to the node's specific old file-list scenario.",
+    "bridge": "Style-recall for merge/commit cues (Tom's merge-discipline pattern) + episodic recency of a same-shaped situation now unfolding.",
+    "style_note": null
+  },
+  {
+    "key": "fbbe7cd9-f9d7-4ffc-b084-9465e0c46ab0/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the actual merge-verification practice (check dirty tree / confirm via git status), not an unrelated 25-day-old self-channel traffic fact."
+  },
+  {
+    "key": "fbbe7cd9-f9d7-4ffc-b084-9465e0c46ab0/0/8",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message paraphrases as 'the community size solution' while the node is framed as a bug-report finding; solution-request framing vs bug-report framing mismatched lexically/semantically.",
+    "bridge": "Episodic-recency lane (same-day, same-thread) plus lexical bridge on the shared 'community size' token.",
+    "style_note": null
+  },
+  {
+    "key": "fbbe7cd9-f9d7-4ffc-b084-9465e0c46ab0/0/9",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

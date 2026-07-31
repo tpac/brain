@@ -1,0 +1,202 @@
+[
+  {
+    "key": "509d64e6-0607-4d09-a184-ec512e9a04a9/0/8",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "509d64e6-0607-4d09-a184-ec512e9a04a9/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares 'DAL' vocabulary but node is about consolidation write-tagging failures, not a full-repo raw-SQL/overlap audit request.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "509d64e6-0607-4d09-a184-ec512e9a04a9/0/14",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node is Anchor's self-authored identity axiom; message is a plain 'point by point' doc-walk continuation with no identity content yet.",
+    "bridge": null,
+    "style_note": "Terse continuation should surface the live Frame-design audit plan/next-item pointer, not the identity axiom moment."
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Numbered checklist phrasing (#3-#12) has weak lexical/embedding overlap with the prose wiring-gaps node; situation lane keys to 'Phase 3 wire-up', not point-by-point review.",
+    "bridge": "Graph walk from Frame/encoder neighbor nodes + situation-lane match on 'Frame wiring gaps' would surface it despite numbered-list phrasing.",
+    "style_note": null
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/3",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is an unrelated April docs/ audit's file list; 'next doc' refers to this session's own live doc-cleanup queue, not that historical audit.",
+    "bridge": null,
+    "style_note": "Bare 'yes, next doc' should surface the session's own remaining-docs list, not a stale prior audit's outcome."
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is an April self-authored identity-axiom moment; message is a bare 'yes section by section' continuation, matched only via later identity-adjacent response vocabulary.",
+    "bridge": null,
+    "style_note": "Bare confirmation should surface the live section-walk plan/next-section pointer, not the identity axiom moment."
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/7",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold lists a different, unrelated 17-file dead-files audit; message asks specifically what's inside HOOK-BRAIN-INTEGRATION.md, which this node doesn't describe.",
+    "bridge": null,
+    "style_note": "A 'what's in this doc' question should surface that doc's own contents/summary node, not an unrelated dead-files list."
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold narrates one specific past correction (committing §8-16 unreviewed); 'let's continue' is a generic greenlight naming no other-thread specifics.",
+    "bridge": null,
+    "style_note": "Greenlight cue should surface a distilled review-pacing principle, not the one-off March correction narrative."
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/10",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/0/13",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/1/0",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "467af92b-f5ff-47eb-a425-62d21c196e67/1/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is a general cross-session commit-sequencing principle; message is a simple status check answered by git state, not sequencing strategy.",
+    "bridge": null,
+    "style_note": "Status-check cue should surface current git-state facts or a check-status-first habit, not the worktree sequencing principle."
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is about reading sibling sessions via debug_log; message is Tom granting edit/commit approval authority — a different mechanism.",
+    "bridge": null,
+    "style_note": "Approval-granting cue should surface Tom's session-scoped authority-granting pattern, not sibling-session visibility."
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is about recall being stateless across turns generally; message asks specifically when co_accessed edges are created — a different mechanism.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/0/9",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Generic tokens ('examples','agents') split cosine mass across many similar example-related nodes rather than concentrating on this one.",
+    "bridge": "IDF-weighting on 'importance of examples in agents' + situation-lane match to encoder-prompt auditing would rank it higher.",
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is a review-gate policy for AspectIntegration (auto-merge, no gate); message asks for a dimensional review approach for Consolidation specifically.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/7",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message uses session-coined shorthand 'OVER' which the node's own text doesn't literally contain ('over-absorption','content-orphaning' instead).",
+    "bridge": "Episodic recency (same-session, hours old) + graph walk from the cluster0 finding node would surface it.",
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/10",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/11",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message states the mechanic in Tom's own words without echoing the node's phrasing ('mechanics vs craft', 'MCP descriptions'); node is 5+ weeks old, past recency window.",
+    "bridge": "IDF/synonym linking 'MCP functions influence behavior' to 'mechanics in MCP descriptions' + situation-lane match would reach it.",
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is an April synthesis-quality principle; message is a direct data-retrieval instruction (find real consolidation traces) the principle doesn't help execute.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9c57b9a0-3f95-4d88-a3e2-cee589820e87/1/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is the S1 encoder's own 'new AND useful' encode-gate rule; message describes building a human-judged corpus for S2 consolidation calibration — a different unit/concern.",
+    "bridge": null,
+    "style_note": null
+  }
+]

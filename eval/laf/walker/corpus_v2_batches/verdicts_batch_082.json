@@ -1,0 +1,202 @@
+[
+  {
+    "key": "0e58f628-ca31-4d73-b3f1-a09c09e61770/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0e58f628-ca31-4d73-b3f1-a09c09e61770/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0e58f628-ca31-4d73-b3f1-a09c09e61770/0/15",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message uses generic terms ('accurate', 'blind spots') with no lexical overlap to the pilot's domain jargon (8 cues, lens-circularity, content-graft); embedding distance likely high given the abstraction gap.",
+    "bridge": "Episodic recency (node is 15.8d old, same eval arc) or situation-lane match on 'trusting a corpus/harness before believing it' would surface it.",
+    "style_note": null
+  },
+  {
+    "key": "0e58f628-ca31-4d73-b3f1-a09c09e61770/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight-with-caveat cue ('Ok let's do it... the areas I wouldn't [catch]') — expected class: nodes about Tom's confirm-then-flag-blind-spots pattern, or the actual capture-harness design doc, not an unrelated tool-cut decision."
+  },
+  {
+    "key": "0e58f628-ca31-4d73-b3f1-a09c09e61770/0/17",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0e58f628-ca31-4d73-b3f1-a09c09e61770/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0e58f628-ca31-4d73-b3f1-a09c09e61770/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0e58f628-ca31-4d73-b3f1-a09c09e61770/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0e58f628-ca31-4d73-b3f1-a09c09e61770/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Deferral/prioritization cue ('let's pass on X for now... remember 2 and 3') — lexical collision on 'degrading' with an unrelated S2 community-health bug; expected class: the actual v15/replay-bench decision nodes from this same arc."
+  },
+  {
+    "key": "ddfdd606-b970-4f1b-b7cb-eed75758e7c5/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ddfdd606-b970-4f1b-b7cb-eed75758e7c5/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ddfdd606-b970-4f1b-b7cb-eed75758e7c5/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ddfdd606-b970-4f1b-b7cb-eed75758e7c5/0/14",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c8b4c3fa-c0af-490e-8be3-9722b09276e9/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c8b4c3fa-c0af-490e-8be3-9722b09276e9/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message is abstract ('effort, impact, risk') with zero lexical overlap to the correction's specifics (consumers, encoding_source, provenance); semantic distance high since the correction is a concrete past incident, not a general risk-framing.",
+    "bridge": "Situation-lane match on 'weighing whether a fix is worth building' plus style-recall for Tom's cost/benefit evaluation pattern would reach it.",
+    "style_note": null
+  },
+  {
+    "key": "c8b4c3fa-c0af-490e-8be3-9722b09276e9/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c8b4c3fa-c0af-490e-8be3-9722b09276e9/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Resume-after-gap cue ('ran out of credits... pick up the work') — expected class: nodes about how Anchor should resume/verify interrupted work, not an unrelated backlog-sweep-catches-stale-items pattern."
+  },
+  {
+    "key": "c8b4c3fa-c0af-490e-8be3-9722b09276e9/0/15",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c8b4c3fa-c0af-490e-8be3-9722b09276e9/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "c8b4c3fa-c0af-490e-8be3-9722b09276e9/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare greenlight ('lets do it') — expected class: nodes about how Tom greenlights work (momentum, plan-first mandates, confirmation discipline), not an unrelated S1E milestone from a different thread."
+  },
+  {
+    "key": "c8b4c3fa-c0af-490e-8be3-9722b09276e9/0/20",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "34383af5-6449-464d-86e6-c2d3e6f82a6e/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "34383af5-6449-464d-86e6-c2d3e6f82a6e/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "34383af5-6449-464d-86e6-c2d3e6f82a6e/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse follow-through cue ('ok lets add gitignore') — expected class: nodes about Tom's build-artifact/git-hygiene preferences, not an unrelated orphaned-db cleanup item."
+  },
+  {
+    "key": "34383af5-6449-464d-86e6-c2d3e6f82a6e/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

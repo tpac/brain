@@ -1,0 +1,202 @@
+[
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/2/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: Tom's general code-review/commit discipline principle, not a stale Phase-B-specific review-cadence decision."
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/3/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: current-session git/commit state (local vs origin diff), not an unrelated past push event from another stream."
+  },
+  {
+    "key": "3260e6ce-a28c-4a68-8dde-942b9dd2e9cd/3/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: current session's ahead/behind git status or merge-safety practice, not a stale unrelated merge-blocker from another branch."
+  },
+  {
+    "key": "ad249ee4-17d0-4c73-a89b-c5a47fff3d8b/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ad249ee4-17d0-4c73-a89b-c5a47fff3d8b/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: self_send mechanics / cross-stream messaging how-to (e.g. resolve-to-short, presence-check), not the short-ID exclusion-bug postmortem."
+  },
+  {
+    "key": "ad249ee4-17d0-4c73-a89b-c5a47fff3d8b/0/7",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ad249ee4-17d0-4c73-a89b-c5a47fff3d8b/0/8",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ad249ee4-17d0-4c73-a89b-c5a47fff3d8b/0/9",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message phrases the need conversationally ('sync with/speak to a stream') rather than the tool-name vocabulary (self_presence/self_peek) the node embeds near, so lexical/semantic match was weak.",
+    "bridge": "A situation-lane mapping colloquial phrasings ('sync/speak/talk to a stream') to the canonical self-channel vocabulary section would surface it.",
+    "style_note": null
+  },
+  {
+    "key": "ad249ee4-17d0-4c73-a89b-c5a47fff3d8b/1/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ad249ee4-17d0-4c73-a89b-c5a47fff3d8b/1/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: simple self_send how-to or division-of-labor note, not the presence-rendezvous postmortem — the send needed no troubleshooting."
+  },
+  {
+    "key": "ad249ee4-17d0-4c73-a89b-c5a47fff3d8b/1/6",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "'Go into watch mode' doesn't lexically match the node's technical terms (Monitor, peek_inbox, poller); 6-day-old node may have decayed despite exact topical fit.",
+    "bridge": "Lexical/idf match on '/watch' + 'watch mode' phrase to the node title, or episodic recency boost given /watch was being redesigned that day.",
+    "style_note": null
+  },
+  {
+    "key": "ad249ee4-17d0-4c73-a89b-c5a47fff3d8b/1/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: how Tom closes a session (gratitude/affection rituals), not an old philosophical insight about brain-vs-real-work."
+  },
+  {
+    "key": "d6a9d87c-e592-4ae6-9cd3-5c59827756f9/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the actual worktree-daemon-restart fix status (commit 54ab520), not an unrelated CPU-spiral/SQLite-deadlock incident months earlier."
+  },
+  {
+    "key": "d6a9d87c-e592-4ae6-9cd3-5c59827756f9/0/8",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d6a9d87c-e592-4ae6-9cd3-5c59827756f9/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: current session's actual push/commit state, not a stale unrelated push event from a different stream days earlier."
+  },
+  {
+    "key": "d6a9d87c-e592-4ae6-9cd3-5c59827756f9/1/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d6a9d87c-e592-4ae6-9cd3-5c59827756f9/1/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the concrete fix-list just proposed or daemon-restart execution steps, not a stream-ownership/division-of-labor decision."
+  },
+  {
+    "key": "d6a9d87c-e592-4ae6-9cd3-5c59827756f9/1/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: truncation/reply-discipline awareness (a truncated msg never replied to), not the presence-rendezvous postmortem, which doesn't apply."
+  },
+  {
+    "key": "d6a9d87c-e592-4ae6-9cd3-5c59827756f9/1/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: session-closing gratitude/ritual nodes (matches Haiku's kiss-emoji/TEAMWORK picks), not a stale NEXT-WORK-doc-staleness lesson."
+  },
+  {
+    "key": "d6a9d87c-e592-4ae6-9cd3-5c59827756f9/1/4",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d6a9d87c-e592-4ae6-9cd3-5c59827756f9/1/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f2ea3726-cf37-49c6-b723-c443e42b8d28/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the actual connection-reset/session_end diagnostic, not the older silent-recall-empty incident with a different root cause."
+  },
+  {
+    "key": "f2ea3726-cf37-49c6-b723-c443e42b8d28/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message's phrasing doesn't share vocabulary with the node's 'retrace call stacks/race conditions' framing; node's situation ties to an unrelated judge-failure investigation.",
+    "bridge": "A node-class prior for 'do a full call-stack/code audit before concluding' would generalize past the specific unrelated incident it's anchored to.",
+    "style_note": null
+  },
+  {
+    "key": "f2ea3726-cf37-49c6-b723-c443e42b8d28/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: the session_end.py fix being committed now, not an earlier different daemon-lifecycle milestone (9a91f08) from another stream."
+  },
+  {
+    "key": "f2ea3726-cf37-49c6-b723-c443e42b8d28/1/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: connection-reset/session-liveness follow-up or uncommitted-work check (what comes next), not an unrelated old-merge survival fact."
+  }
+]

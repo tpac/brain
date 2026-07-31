@@ -1,0 +1,202 @@
+[
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/53",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks to sweep all agents needing JSON-schema treatment; gold is a stale defensive-parsing fix (superseded by Structured Outputs) for a different crash — lexical overlap on 'Haiku JSON parsing' but wrong mechanism and situation.",
+    "bridge": "Node-class prior demoting superseded fixes; a re-enrichment noting 'superseded by output_config rollout' would keep it out of this pool.",
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/54",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/55",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message is a rich 'act as code reviewer' directive; gold is a stale specific-instance record of a past call-stack audit ('applied' narrative from a different day), not a general review/audit strategy node — pattern-class over stale instance.",
+    "bridge": "The general call-stack-audit rule (c15e64cb) or a code-review-discipline node would be the right class; graph walk from that rule rather than its one applied instance.",
+    "style_note": "Operator's general code-review/audit-before-concluding discipline nodes — not a specific past applied instance."
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/56",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "'great' is a bare ack with almost no content; the gold is an unrelated ':)' emotional-moment node from a different session — cosine likely matched on generic acknowledgment-tone proximity, no situation match.",
+    "bridge": "Style-recall for terse acks (Tom-pattern nodes for how he signals approval) would be the right device, not this one-off smiley moment.",
+    "style_note": "Nodes about how Tom signals approval/momentum after good work (standing-by, next-steps continuity), not an unrelated smiley moment."
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/59",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message is detailed feedback on surface render field usefulness; gold is an unrelated self-reflective 'abstraction bias' insight from session #13, weeks earlier — shares meta/self-reflective tone but wrong situation (encoding bias, not render fields).",
+    "bridge": "A situation-lane keyed to 'surface render field usefulness' would reach the actually relevant SURFACE_FORMAT/render_rich_node nodes instead.",
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/60",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/62",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message is generic ('the current live code... contract pattern like rest of system') with low lexical overlap to the node's specific terms (pipeline_contract.py, get_rich_node, service function); situation targets 'deciding where a new function should live', not 'auditing live code for pattern compliance'.",
+    "bridge": "Graph walk from the pipeline_contract.py/get_rich_node architecture nodes already touched this session, or episodic recency from the same-session contract-organization discussion.",
+    "style_note": null
+  },
+  {
+    "key": "7c734d20-c220-45bf-ba5c-8c65433b07b8/4/64",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message is an identity correction ('your memories are not the memory doc, it's your brain'); gold is a DB-table-location trivia fact (recall_log/trace_events location) — only generic 'brain' vocabulary overlap, situation is about lock-contention debugging, unrelated.",
+    "bridge": "Nothing structural should reach it for this cue; a node-class prior deprioritizing infra trivia for identity-correction moments would help.",
+    "style_note": "Nodes about the brain-vs-doc identity principle (Anchor's memory lives in the brain graph, not a markdown file), not DB table trivia."
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/7",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/8",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "The node's dominant framing (batch-query performance: 25 sequential calls to 4 queries) diverges lexically from the specific ask ('difference in outputs to Haiku'); the load-bearing detail (render config controls what's displayed, independent of how much is fetched) is buried mid-content, not in title/situation, so embedding relevance is weak despite conceptual fit.",
+    "bridge": "A situation-lane surfacing the 'config controls display, not storage' detail explicitly, or graph walk from the correction_enrich cluster nodes already touched this session.",
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/10",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Bare 'great lets do it' carries almost no content; gold is an unrelated abstention-failure-mode lesson from a different investigation — cosine likely matched on generic 'lets do it' phrasing, no situation match (abstention test interpretation vs. code refactor greenlight).",
+    "bridge": "Episodic recency plus a conversation-window field carrying the just-discussed refactor plan would surface the actually relevant plan, not this stale lesson.",
+    "style_note": "'Execute Don't Instruct' collaborative-protocol / momentum-after-greenlight discipline nodes (Haiku actually picked one) — general execution norms, not an unrelated abstention post-mortem."
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks specifically about git-sync order between two live concurrent sessions; gold is about session-CLOSE handoff protocol (commit+doc+brain-node) for a different scenario — topical 'session' overlap but situation mismatch (closing a session vs. syncing two live ones).",
+    "bridge": "A situation-lane distinguishing 'session handoff at close' from 'concurrent worktree sync' would avoid this false match; no node yet may exist for the concurrent-sync case specifically.",
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'Yes commit' should surface this session's own just-discussed commit-sequencing reasoning, not an unrelated old Frame Phase 3 commit-chain record."
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks narrowly about catalog-scan visibility of one manually-created node; gold addresses a related but distinct sub-issue (query-aware EDGE selection quality for the encoder, not catalog inclusion of new nodes) — lexical overlap on 'encoder'/'sees' without situational match.",
+    "bridge": "A node specifically about catalog-scan mechanics / new-node-to-encoder visibility timing would be the right target; graph walk from the encoder-visibility thread nodes already active this session would help more.",
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Terse anaphoric clarifier ('today as in this encoding session') carries little independent content; gold is about the encoder's entity-grounding gap (no concept node for Anchor/Tom/brain) — an unrelated encoding pattern.",
+    "bridge": "Episodic recency / conversation-window field carrying the immediately preceding exchange forward is the real fix, not this stale gap node.",
+    "style_note": "Nodes on encoder catalog-scan timing / same-cycle visibility of newly-created nodes — the actual thread being pursued."
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/18",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message supplies a concrete design parameter (5-turn encoder window); gold is a generic meta-rule ('recall the brain before designing mechanics') — thematically adjacent but doesn't serve incorporating the stated constraint; situation targets redesign-onset moments, not mid-design parameter refinement.",
+    "bridge": "Nothing structural needed since the message resolves in-conversation; a node-class prior demoting generic meta-rules once concrete design is already underway.",
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message is about trace-coverage investigation for remember/session-awareness; gold is about encoder PROMPT-EXAMPLE completeness — unrelated beyond generic 'encoder' vocabulary; situation targets prompt-writing, not trace investigation.",
+    "bridge": "Lexical/idf on 'session aware', 'trace', 'remember' specifically would reach the actually-relevant trace-coverage nodes instead.",
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message defers the S1Encoder redesign to a doc and refocuses on cleanup; gold is a specific encoding-quality regression lesson (v14 dropped detection patterns) — shares 'encoder' vocabulary but wrong situational fit (diagnosing under-encoding vs. a scope-deferral decision).",
+    "bridge": "A node-class prior distinguishing 'encoder design meta-decisions' from 'encoder prompt regression diagnostics' would avoid the conflation.",
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message references item '1' (surface_contract.py file split) from a punch list; gold is a stale 'Surface Phase 1' record about _graph_expand defects from a different arc weeks earlier — same label collision causes lexical overlap despite being a different sub-project.",
+    "bridge": "Episodic recency plus a conversation-window field (the punch-list item just enumerated in-session) would reach the correct, current file-split plan instead of this same-named-but-different historic thread.",
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message asks for caller/purpose tracing of an in-window component; gold is an abstract design principle (query-time reasoning vs. pre-computed answers) unrelated to code-tracing mechanics.",
+    "bridge": "Graph walk from the component actually being traced (_graph_expand, established in-window) would be the correct bridge; this node's situation (benchmark composition) doesn't match.",
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/25",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message covers post-selection redesign points (drop WHY, honorable mentions, drop L4 lane); gold is about pre-selection candidate-richness A/B testing (Jaccard divergence) — a different mechanism despite shared 'Haiku selection quality' vocabulary; situation targets evaluating the S1 Surface unification A/B choice.",
+    "bridge": "No exact node yet for post-selection information design; lexical overlap on 'Haiku selections' pulled this in as noise.",
+    "style_note": null
+  },
+  {
+    "key": "43c7e545-ec11-4696-912e-bd27aeebd811/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Message is about CLAUDE.md drift cleanup and commit coordination before a merge; gold is an S2 gating cascade bug from 9 days earlier — unrelated beyond generic 'graph state change' vibes.",
+    "bridge": "Nothing structural connects 'commit CLAUDE.md fix' with this S2 bug; a node-class prior demoting old bug-diagnosis nodes for commit-coordination cues would help.",
+    "style_note": null
+  }
+]

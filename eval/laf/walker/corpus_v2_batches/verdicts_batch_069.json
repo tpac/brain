@@ -1,0 +1,202 @@
+[
+  {
+    "key": "83ff6d6f-2655-48ad-a891-06467482896c/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Terse 3-word cue ('and merge to main') shares no lexical overlap with the node's 'dirty tree'/'other-stream' vocabulary; generic merge phrasing looks equally close to unrelated merge/ship-decision nodes.",
+    "bridge": "Style-recall for merge/commit-to-main cues (Tom-pattern node); node-class prior favoring Anchor's merge-safety discipline lessons over one-off ship decisions.",
+    "style_note": "Merge-to-main cues should surface Anchor's standing merge-safety discipline (check dirty tree/other-stream work before push), not a stale one-off ship decision."
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/6",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Vague self-assessment cues ('will this make you smarter') should surface the just-built scorecard/instrument or Tom's measure-before-trusting discipline, not an older standalone Phase-A ceiling finding."
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/10",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Abstract self-assessment phrasing ('smarter... efficient detailed way') doesn't share technical tokens ('reverse-regression', 'hit@5', 'selector') with the finding despite naming the same concept ('reverse engineer from golds new activation fields').",
+    "bridge": "Lexical/keyword match on 'reverse-engineer' + 'activation fields'; graph walk from the LAF research-thread nodes surfaced earlier this session.",
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/11",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/12",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": "Live-in-session request ('build and run', 'reverse engineering is spot a far node...') is concrete and operational, while the node is an abstracted multi-day community synthesis narrative — an abstraction-level mismatch plausibly missed by cosine.",
+    "bridge": "Episodic/session-recency boost for the active research-thread community node; graph walk from nodes touched earlier in this same session.",
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/13",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Vocabulary mismatch: message asks about 'inhibition'/'reverse engineers'/nodes that 'should have really not been there', while the node uses distinct technical terms ('same-session echo', 'content-graft time-leak') for the same concept.",
+    "bridge": "Situation-lane match on 'reviewing gold candidates for legitimacy'; graph walk from the judge-protocol node cluster.",
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/14",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare cue 'graph-fix' should surface the CURRENT session's live graph-operator rebuild work (relational reinstatement, sparse top-25 seed, the f04f6db7 scale bug), not a 3-month-old unrelated graph-restructuring milestone."
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/20",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Broad reflective synthesis request doesn't name 'question field' specifically; the node is one narrow finding among many equally-plausible activation-field findings in the session's arc, diluting cosine/lexical signal.",
+    "bridge": "Graph walk from the LAF activation-field node cluster; situation-lane match on 'activation fields we're missing'.",
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/21",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Broad audit request ('each activation field... no broken stuff, wrong assumptions') doesn't mention 'question field' by name; the node is one of many field-specific prior findings the audit must draw on.",
+    "bridge": "Graph walk from the fields-under-audit cluster; lexical match if the audit response names the field explicitly.",
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/23",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Casual phrasing ('dont really mean much', 'SUM(weight) is actually on') doesn't share technical tokens ('creation paths', 'strengthening triggers') with the reference node; the node's age (84 days) likely deprioritizes it under recency-weighted scoring.",
+    "bridge": "FTS/lexical match on 'weight'; node re-enrichment to sharpen the title/situation field for this exact question.",
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/26",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "The 2-word fragment ('of edges') carries almost no independent lexical signal on its own; the recall system needed the resolved anaphora (prior turn's 'label/type... description field') to reach this exact fact node — a surface-distance miss, not a mislabel.",
+    "bridge": "Conversation-window field (M_h) carrying the prior turn's content into the query; episodic recency (same-session discussion a few turns back).",
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse status update ('i accidently stopped the inline agent') should surface something about background-task recovery/checkpoint discipline or the specific episodic agent's own progress state, not an unrelated spread-code audit."
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/32",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Short direct question ('anything else to commit/merge to main?') lacks the node's specific vocabulary ('dirty tree', 'other-stream work'); likely outcompeted by more surface-similar conflict/merge nodes surfaced this same session.",
+    "bridge": "Style-recall for commit/merge cues (Tom-pattern node); graph walk from recently-active merge-decision nodes.",
+    "style_note": null
+  },
+  {
+    "key": "a27d5563-9539-44c5-954d-e7094bd644ed/0/35",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'lets do doc' should surface the actual doc being landed (RECALL-SR-REDESIGN.md current state) or doc/code merge-cleanliness status, not an unrelated doc-integrity audit of a different section."
+  },
+  {
+    "key": "f8e17756-fb18-4d59-b656-84544bb4a297/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

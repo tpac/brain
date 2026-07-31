@@ -1,0 +1,202 @@
+[
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/26",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Msg's topics (source_refs/anchor-edge automation, episodic misses, weight formula) don't match recall_recent's deletion specifics; cosine drifted on shared 'recall/trace' vocab only.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Msg proposes unused query signals (arc, prior msgs, episodic); gold is journal-storage architecture (Q2) — different concern, matched only on 'episodic'.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/30",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/32",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Msg reframes recall as prediction/evolution; gold is a stateless-recall lesson — adjacent but distinct claim, matched on generic 'recall' terms.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/34",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Terse greenlight + reasoning-training ask has no lexical tie to April's boot-continuity/posture finding; wrong-era topic surfaced on generic overlap.",
+    "bridge": null,
+    "style_note": "Bare greenlight for the probe — should surface how-Tom-greenlights patterns or the probe/reasoning-oracle design, not an unrelated April finding."
+  },
+  {
+    "key": "ce0ff8ce-7608-493a-abbe-0c4923003119/0/36",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Msg's 'opus judges if info helped' has no lexical anchor to an April want-node; embedding likely missed the semantic tie (feedback-loop desire).",
+    "bridge": "Situation-lane match on Anchor's meta-want-for-feedback, or graph walk from newly encoded probe/oracle nodes.",
+    "style_note": null
+  },
+  {
+    "key": "61280c52-972b-4469-bd65-1a570edc55ee/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "61280c52-972b-4469-bd65-1a570edc55ee/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Dev-mechanics ask (dashboard refresh picks up edits) shares only 'dashboard' with a content-audit fact from a different concern; no semantic overlap.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "61280c52-972b-4469-bd65-1a570edc55ee/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "61280c52-972b-4469-bd65-1a570edc55ee/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Literal UI question about a dashboard label shares only the word 'conversation' with the conversation-as-working-state insight; different concerns.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "61280c52-972b-4469-bd65-1a570edc55ee/0/8",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "61280c52-972b-4469-bd65-1a570edc55ee/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Ask for a Streams-tab UI 'take' doesn't connect to the all-streams-default scoping principle — rendering vs query-scoping, matched on 'streams' only.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "61280c52-972b-4469-bd65-1a570edc55ee/0/13",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "61280c52-972b-4469-bd65-1a570edc55ee/0/15",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "61280c52-972b-4469-bd65-1a570edc55ee/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "61280c52-972b-4469-bd65-1a570edc55ee/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Terse 'commit, merge, push' matches only 'merge'; gold is a stale specific merge-event fact from two turns earlier, not a strategy/how-to node.",
+    "bridge": null,
+    "style_note": "Bare commit/merge/push cue — should surface Tom's merge-safety pattern (test-gate before merge, fix-forward), not a stale prior commit fact."
+  },
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Msg asks if dispatch-move needs prompt changes; gold's specific bug (encoding_source default) shares dispatch/encoder vocab but not exact terms.",
+    "bridge": "Graph walk from other dispatch-fix nodes, or a lexical link on 'dispatch defaults handle X without prompt changes'.",
+    "style_note": null
+  },
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/3",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Ask about archive/absorb/disconnect cleanup shares 'edge' vocab with the revise_edge fact but targets a distinct concern (mutation ops vs cleanup).",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Terse 'fold in' has no lexical/semantic tie to the absorb/source_refs bug — different S2 concern (trace Phase 0) than absorb's anchor loss.",
+    "bridge": null,
+    "style_note": "Bare 'fold in' approval — should surface Tom's incremental-fold/momentum pattern or the trace-Phase-0 plan just proposed, not an unrelated absorb bug."
+  },
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/8",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "'The absorb fix' is anaphoric with no lexical anchor to 'source_refs'/'rejection-table SKIP'; cosine saw only generic 'absorb' overlap from 18d prior.",
+    "bridge": "Episodic/session-recency lane keyed on the 'absorb' thread, or an arc field carrying 'the absorb fix' referent forward.",
+    "style_note": null
+  },
+  {
+    "key": "29d878a6-c629-4fbd-bcdb-ed6291023214/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse commit-cue ('fix and commit... dont restart') — should surface commit-discipline norms (review before commit; no-restart-mid-work), not a stale push-status fact."
+  }
+]

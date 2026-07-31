@@ -1,0 +1,202 @@
+[
+  {
+    "key": "124cf35a-9b7c-44a0-9a7c-398a97a6a945/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "124cf35a-9b7c-44a0-9a7c-398a97a6a945/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'fix forward' greenlight -> expect nodes on Tom's fix-in-place-vs-revert preference or the two named bugs' fix constraints, not archived-id resolve-forward design lore."
+  },
+  {
+    "key": "124cf35a-9b7c-44a0-9a7c-398a97a6a945/0/18",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message uses colloquial 'trace time vs time used to encode' phrasing; node uses academic 'bi-temporal / fact-true time vs encoding time' terms -- lexical mismatch, plus the 44-day-old node wasn't recently touched.",
+    "bridge": "Semantic/synonym match linking 'trace vs encode time' conversational phrasing to the bi-temporal principle's academic terminology.",
+    "style_note": null
+  },
+  {
+    "key": "124cf35a-9b7c-44a0-9a7c-398a97a6a945/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse config directive (5h window + revert threading) -> expect nodes carrying the decision just made or Tom's revert-vs-defer discipline, not an unrelated latency root-cause finding."
+  },
+  {
+    "key": "124cf35a-9b7c-44a0-9a7c-398a97a6a945/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight 'fix them, commit and merge' -> expect nodes on Tom's commit/merge discipline (path-scoped commits, suite-gate before merge), not a stale unrelated bug timeline."
+  },
+  {
+    "key": "124cf35a-9b7c-44a0-9a7c-398a97a6a945/0/23",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "124cf35a-9b7c-44a0-9a7c-398a97a6a945/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'merge to main plz' -> expect nodes on Tom's merge discipline (checking other streams' dirty state, rebase-then-ff), not an unrelated self-channel status fact."
+  },
+  {
+    "key": "ca9f5b79-503e-4b81-8fba-23a6eff25814/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "ca9f5b79-503e-4b81-8fba-23a6eff25814/0/1",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Node's situation keys on the literal phrase 'commit everything'; this message says 'commit and merge thx' -- situation-field mismatch, and no visible cross-stream/worktree cue in the shown window to surface the multi-stream lesson.",
+    "bridge": "Node-class prior surfacing commit-discipline lessons on any commit/merge greenlight, not gated on the exact situation phrase.",
+    "style_note": "Bare 'commit and merge thx' -> expect nodes on Tom's commit/merge scope-confirmation discipline in shared-tree/multi-stream repos."
+  },
+  {
+    "key": "84f99c55-9418-4759-b477-c70aca9b5669/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "84f99c55-9418-4759-b477-c70aca9b5669/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Confirmation 'yes, show me the list...' -> expect nodes on Tom's worktree-pruning criteria or the just-surfaced worktree list, not a stale session punch-list fact."
+  },
+  {
+    "key": "84f99c55-9418-4759-b477-c70aca9b5669/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "84f99c55-9418-4759-b477-c70aca9b5669/0/4",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "84f99c55-9418-4759-b477-c70aca9b5669/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6c3a4beb-af9c-483b-bb19-9e4eadaa4b90/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6c3a4beb-af9c-483b-bb19-9e4eadaa4b90/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Vague 'dashboard does seem broken now though' -> expect nodes on dashboard restart/reconnect mechanics (server restart drops open tabs, headless-preview visibility gating), not the old monolith-refactor event."
+  },
+  {
+    "key": "6c3a4beb-af9c-483b-bb19-9e4eadaa4b90/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight 'you can commit and merge to main' -> expect nodes on Tom's merge discipline (cross-stream dirty-tree check, rebase-then-ff), not an unrelated stale Traces-tab merge fact."
+  },
+  {
+    "key": "f3241c24-dace-49da-8d27-2eee4f2524a7/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f3241c24-dace-49da-8d27-2eee4f2524a7/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f3241c24-dace-49da-8d27-2eee4f2524a7/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight 'code-review, fixes, merge to main...' -> expect nodes on Tom's review-then-fix-then-merge cadence/discipline, not an unrelated S2 journal-port milestone."
+  },
+  {
+    "key": "f3241c24-dace-49da-8d27-2eee4f2524a7/0/4",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f3241c24-dace-49da-8d27-2eee4f2524a7/0/9",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f3241c24-dace-49da-8d27-2eee4f2524a7/0/13",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message frames it as 'warm up' mechanisms failing; node's situation frames it as 'auditing Anthropic client construction' -- situation/framing mismatch, and the node's specific terms don't lexically overlap the message.",
+    "bridge": "Situation-lane rewrite linking 'first recall after restart times out' directly to this TODO's post-suspend client-hang mechanism.",
+    "style_note": null
+  },
+  {
+    "key": "f3241c24-dace-49da-8d27-2eee4f2524a7/0/14",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "f3241c24-dace-49da-8d27-2eee4f2524a7/0/15",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Node's situation is framed narrowly ('check whether a sibling session restarted') vs this message's broader ask (classify all recent timeouts by restart-proximity) -- situation mismatch, plus the 16-day-old node is topically superseded by the fresher warmup discussion.",
+    "bridge": "Episodic-recency boost plus situation-lane broadening from 'sibling-restart' framing to general restart-vs-warm timeout classification.",
+    "style_note": null
+  }
+]

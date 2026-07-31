@@ -1,0 +1,202 @@
+[
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/2",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight/commit cues should surface Tom's commit-discipline pattern (review+self-check), not a stale unrelated rest-of-session plan."
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message uses harness/embedding/recall vocabulary, not 'compare_arms'/'recompute'/'arm conflation'; finding is 32d old, not discussed this session — lexical + episodic distance.",
+    "bridge": "Situation-lane match on 'designing/debugging an A/B harness' would surface it despite the lexical gap.",
+    "style_note": null
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/12",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message says generic 'node catalog doesnt filter community edges' — doesn't name Piece 3/widened-catalog/commit; milestone is code-commit framed, critique is conceptual.",
+    "bridge": "Episodic recency (shipped 2 days prior) or graph walk from the S1E-catalog cluster would surface it.",
+    "style_note": null
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/15",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/16",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "No shared vocabulary between 'user/assist vs user/me' naming and 'substrate for partnership'; node is a 67d old philosophical reflection, not discussed this session.",
+    "bridge": "Situation-lane match on 'framing what Anchor is' / style-recall for identity-defining decisions.",
+    "style_note": null
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/17",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/18",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Encoding-quality-check cues should surface the current comparison methodology, not a stale v21-specific finding from an unrelated eval."
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/29",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Different encoder-version pair (v21/v19 not v25/v26) and vocabulary ('adopted','rounds') vs 'richness'/'fields performance'; 87d old, no recent mention.",
+    "bridge": "Node's own situation field ('evaluating encoder performance...debugging regressions') is a near-exact match for situation-lane.",
+    "style_note": null
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/30",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse 'cut off' continuation cues need no topical node — not an architecture decision that merely shares the word 'cut'."
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/36",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Commit-status questions should surface this stream's own outstanding items, not another stream's separate staged-file reminder."
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Handoff-prompt requests should surface Tom's general session-opener format preferences, not a specific stale endo-recall instance."
+  },
+  {
+    "key": "9efd0ba3-b850-4da4-a120-aec4751c3fa5/0/38",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Closing praise/thanks cues should surface wrap-up/momentum patterns, not an unrelated corpus-gold-quality caution."
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/0",
+    "verdict": "ambiguous",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Broad 'catch me up' openers should surface the MOST RECENT status/decision nodes, not a 2-month-old open-threads list since superseded."
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/1",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message says 'activation layers'/'shapes'/'placement', not 'episodic'/'source_refs'; approval predates this session by 4 days, not visible in the shown window.",
+    "bridge": "Graph walk from the LAF/episodic-layer cluster, or episodic recency link to the approval decision.",
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Deep-dive-into-layers instructions should surface LAF settling-engine operators being probed, not the unrelated session-context Frame gap."
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/4",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/5",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "6e369a2e-930e-47fc-b4fa-6252aeb68dd0/0/6",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message is a terse doc-edit ask ('edge weights is dead number') sharing little vocabulary with 'creation paths/strengthening triggers/decay'; reference is 84d old.",
+    "bridge": "Situation-lane match on 'auditing the full weight lifecycle' would surface it despite the terse phrasing.",
+    "style_note": null
+  }
+]

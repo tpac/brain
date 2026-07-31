@@ -1,0 +1,202 @@
+[
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/33",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/34",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/35",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message uses date-kind vocabulary (created/updated/event/sequence), not edge-relation verbs (before/after/during); lexical mismatch diluted the match despite topical fit.",
+    "bridge": "Lexical/idf bridge on temporal-edge-type terms; graph walk from a temporal-tagged neighbor already in session.",
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/36",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/37",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/51",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/55",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Quote-symmetry request is bundled inside a 3-point numbered reply with unrelated items (pacing, session-check), diluting embedding signal despite lexical overlap (raw_quote).",
+    "bridge": "Lexical/idf weight on 'raw_quote'/'symmetry'; situation-lane match to 'calibrating quote scout examples'.",
+    "style_note": null
+  },
+  {
+    "key": "0dbe2c67-c8dc-4ee4-bc8d-d59888ba92dd/0/57",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse deference cue ('Following your lead') — should surface autonomy/momentum patterns or the live eval's current state, not an unrelated trace-design insight."
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/18",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message carries no passivity/laziness vocabulary; only deeper session knowledge (this is a self-development/eval session, operator stepping away) ties it to the correction's situation.",
+    "bridge": "Situation-lane match on 'autonomous operating mode during development sessions'; style-recall for greenlight/handoff cues.",
+    "style_note": null
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/45",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/47",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/64",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message asks generically about 'current product' vs new version without naming facts-v2/scrutiny/ORT specifics; needs session window to know what 'current product' denotes.",
+    "bridge": "Situation-lane match ('need current production state'); graph walk to the latest ship-state node when defining the Arm A baseline.",
+    "style_note": null
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/71",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/106",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/111",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/112",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "d25b97d8-13e8-4272-ad5f-4dd3efd775df/0/121",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/8",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/15",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message uses 'vectors table'/'vectorizing...queues'/'enrichment' framing rather than the node's own terms (node_enrichments, embed_queue), causing lexical mismatch despite semantic identity.",
+    "bridge": "Lexical/idf bridge on 'vectorizing'/'queue'/'enrichment' synonyms; graph walk from an embed_queue-related neighbor.",
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/24",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Short anaphoric question ('why cant it go with...') lacks the node's explicit vocabulary (embed_queue, D2, debounced); resolving 'it' = temporal indexing needs window context.",
+    "bridge": "Graph walk from the embed_queue/vector-freshness neighbor already surfaced this session; situation-lane on inline-vs-async embedding choice.",
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Process cue ('continue to the surface prompt') — should surface the CURRENT surface-v6 prompt work-in-progress state, not a month-old unrelated render-trim decision."
+  },
+  {
+    "key": "88aed353-0945-4ebd-b454-ac749b0067f0/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

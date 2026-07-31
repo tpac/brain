@@ -1,0 +1,202 @@
+[
+  {
+    "key": "1c7be23c-66ab-4af8-aa6d-0b6b064babaf/0/12",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "1c7be23c-66ab-4af8-aa6d-0b6b064babaf/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected: nodes about the specific edge-deletion/orphan bug being introduced, not the older resolved content-absorption concern."
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Greenlight cue ('gogogogo') — expected: nodes on Tom's go-ahead/momentum pattern or the live backup task, not a stale synthesis insight."
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/6",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message's 'which operation/yesterday's fix' wording doesn't lexically match node's 'brain_batch incoming-edge migration limitation' framing; cross-session referent adds distance.",
+    "bridge": "Graph walk from the two-fix decision node to this constraint node; situation-lane on 'consolidation edge migration limits'.",
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Directive/greenlight cue — expected: nodes on migration-plan specifics (why exclude co_accessed), not a fix-summary already stated."
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/10",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's vague 'a while back' phrasing shares no rare tokens with node's specific 'encoding_source defaults manual' term; recency favors the newer dispatch bug.",
+    "bridge": "Episodic/lexical match on 'dispatch'+'silent drop' history; style-recall for vague retrospective phrasing.",
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Directive cue — expected: nodes on Tom's error-visibility preference or live tier2/todo state, not a stale unrelated session plan."
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/14",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Generic 'make sure it isn't creating more bugs' has no lexical overlap with node's specific terms (backlog draining, pair-level fingerprint, cold-start).",
+    "bridge": "Graph walk from recent fix/decision nodes to this sibling suppression node; situation-lane on 'auditing consolidation for remaining gaps'.",
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/15",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/16",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/18",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Bare 'tier 2' referent was established many turns earlier, outside the vector/window range; short message has no lexical cue tying it to the recovery plan node.",
+    "bridge": "Session/window field carrying the 'tier 2' referent forward; episodic recency to the plan node.",
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse correction ('archive*') — expected: nodes on Tom's accept-loss standing preference or live tier1/2 tally, not a stale snapshot."
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/22",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Cleanup cue — expected: a standing pre-ship audit principle, not one specific past audit event from 19 days earlier."
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/24",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "eba17631-1caf-4f2c-a4ef-245a132f1862/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  }
+]

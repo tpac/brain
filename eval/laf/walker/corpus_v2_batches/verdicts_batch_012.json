@@ -1,0 +1,202 @@
+[
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node is a session_id accessor code-smell fix; message is a Frame active-threads scope design clarification — shared 'session' vocabulary, no real need overlap.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/31",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node explains off-menu ID selection is fine; message worries about irrelevant active-thread candidates reaching Haiku — different problem, only 'Haiku' overlaps.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/36",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node is an old S2 community deployment-priority decision; message is about embedding vector_type exposure — no lexical or topical overlap at all.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/43",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold covers §3 (Frame plain-English descriptions); message asks about §7's purpose — same document, wrong section, no real fit.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/49",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message is a bare 'get 3rd party research' request with no lexical trace of the Bad/Good proposal; nothing textual for signal families to match against.",
+    "bridge": "Conversation-window field (M_h) carrying the live Bad/Good proposal, or episodic-recency boost on the just-discussed node.",
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/50",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is a big-picture community synthesis of surface-selection discipline; message narrowly asks Anchor to define its own phrase 'push back' — only 'synthesis' overlaps.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/53",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold's 'Session #12' label string-matches punch-list item 12 in the message; content (encoding-first strategy) is unrelated to updating SKILL.md/CLAUDE.md.",
+    "bridge": null,
+    "style_note": "'lets do X' greenlights should surface actual item-12 content/status or Tom's greenlight pattern — not a coincidentally-numbered stale decision."
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/54",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": "Node is a related identity-document precedent (boot prompt design) in different vocabulary from the SKILL.md-focused message — weak embedding link, no shared terms.",
+    "bridge": "Graph walk from SKILL.md-editing context to the sibling boot-prompt precedent, or situation-lane match on 'writing identity docs'.",
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/55",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/56",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold explains Anchor's quality variability (context/compaction); message is about SKILL.md contradictions and side-agent tool use — no real overlap beyond 'Anchor'.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/59",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is a broad retrieval-vs-recognition reflection; message is a narrow mechanical edit approval (typo fix + trim a description) — no need overlap.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/60",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/63",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is a general encoding-practice rule (markdown vs brain nodes); message is about editing SKILL.md's brain-contents section — topically distant (rank 1148 reflects it).",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/66",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is a technical diagnosis of a synthesis-scout prompt-format bug; message gives mechanical SKILL.md edit instructions — unrelated subsystems.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/67",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's casual phrasing ('trust the mcp tools explanation... howtos') shares no vocabulary with the node's abstract framing ('mechanics in MCP, craft in prompt').",
+    "bridge": "Lexical/idf match on 'mcp tools' + 'howto', or graph walk from the actively-discussed MCP-split decision.",
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/68",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is a stale git-state fact from an earlier session's commits; message is 'let's do A' planning for this session's next step — unrelated content.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/70",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold merely restates the punch-list status Anchor already displayed verbatim in the visible window — same-session restatement, adds nothing new.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/72",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is an old identity-recall milestone from weeks back; message asks for the current end-to-end recall pipeline recap — older background, not the actual referent thread.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/74",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is a stale silent-failure-audit fact from a different session; message is 'commit + copy chat log' — no topical connection.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "e3d738b7-6984-40e6-a061-c5f7d3488fba/0/76",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is an encoding-prompt design decision from a different thread; message is a bare session-wrap acknowledgment — no overlap.",
+    "bridge": null,
+    "style_note": "Bare wrap-ups should surface Tom's session-closing pattern or actual current status, not an unrelated prompt-design decision."
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is a specific 'parroting CLAUDE.md' correction instance; message is a mechanical CLAUDE.md-reduction/contradiction-audit task — instance doesn't serve this specific edit work.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Message's casual scope phrasing ('repo only, not me personally') shares no vocabulary with the node's framing terms ('three-way split', 'documentation philosophy') despite matching intent.",
+    "bridge": "Situation-lane match on 'deciding CLAUDE.md scope/content', or graph walk from the already-active CLAUDE.md community hub.",
+    "style_note": null
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/3",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is unrelated closing praise from an entirely different earlier session; message is numbered execution directives for doc restructuring — no fit.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold's 'session_context' (encoder's rolling arc) is a different concept than the message's 'session object' (SessionContext class) — name collision, not real overlap.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b4914e53-7af9-492f-8ff1-7bc831b7fd10/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Gold is a generic 'understand dependencies before changing' principle; message is a plain commit-and-move-on confirmation for already-done doc work — no real need.",
+    "bridge": null,
+    "style_note": "Terse 'commit and move on' should surface next punch-list item or commit-message convention, not a generic architecture-caution principle."
+  }
+]

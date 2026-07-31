@@ -1,0 +1,202 @@
+[
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/85",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/88",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "7c18ff15-fa35-4ea4-b674-436e949e8c07/0/90",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Praise/closing cue — should surface nodes about genuine session-closing reflection or partnership-working patterns, not the 'bought in or tired' challenge pattern (Tom isn't testing here, he's affirming)."
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/0",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/1",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Message's API-shape question shares little lexical surface with the lesson's behavioral framing ('pull on threads'); embedding likely clustered on the technical filter_nodes/get_node exchange, not the higher-altitude lesson.",
+    "bridge": "Lexical/idf match on 'get_node' plus a graph walk from the filter_nodes technical-answer node to this lesson via a shared get_node concept edge.",
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/5",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Frustrated worktree exclamation — should surface worktree/branch-safety rules or the recurring worktree-pain history, not an S2 consolidation design principle."
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/6",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/8",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/9",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Bare anaphoric 'make it a contract' has no lexical anchor to 'pipeline_contract.py misplacement'; the lesson's function-placement framing doesn't share surface vocabulary with the vector-dependency edit being proposed.",
+    "bridge": "Graph walk from the pipeline_contract.py discussion node surfaced this turn to this lesson via a placement-precedent edge; lexical match on 'pipeline_contract.py'.",
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/11",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "The decision is 3+ days old and outside the visible window (different session); its 'compute synchronously' framing doesn't lexically match Tom's 'don't delete, heal slowly' correction, so episodic recency and lexical overlap both miss.",
+    "bridge": "Episodic/session field surfacing prior architecture decisions about revise()'s embedding responsibilities when revise-path behavior is being redesigned.",
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/12",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'you lead' greenlight cue — should surface nodes about Tom granting autonomy/trust in Anchor's judgment (e.g. 'I trust you to fix it...'), not a stale parroting correction from an unrelated earlier session."
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Demand for a clean root-cause fix (not a patch) — should surface the 'fix the root cause, no workarounds' principle, not a call-stack-audit-after-changes lesson."
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'approved' confirmation — should surface this session's live arc (the situation-field deprecation work being approved) or a general approval-pattern node, not an unrelated Healer-prompt milestone from a different session."
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/20",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/21",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/22",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/23",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/25",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "590ffe6e-01cc-4c93-a6b4-75b7c64424b2/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Directive to methodically redo lost work — should surface a commit-often/git-safety discipline node, not the session-closing handoff-doc protocol (this is mid-session, not a close)."
+  },
+  {
+    "key": "1c7be23c-66ab-4af8-aa6d-0b6b064babaf/0/2",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "1c7be23c-66ab-4af8-aa6d-0b6b064babaf/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Confirmatory follow-up on ad-server fulfillment scope — should surface the specific AdCP/ad-server technical mapping (e.g. Media Buy Protocol task surface) rather than restate the already-discussed general AdCP concept."
+  }
+]

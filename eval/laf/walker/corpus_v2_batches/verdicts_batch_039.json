@@ -1,0 +1,202 @@
+[
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares vocabulary ('traces', 'encoder') with the response but the node concerns read-access surfaces (get_traces/query_traces), not the delta-field additions (cost, interaction_id, truncation) actually asked about.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Expected pattern class for 'commit merge to master' is nodes about Tom's merge/push conventions (opt-in push, local-only-unless-asked) or the actual current merge, not a stale prior merge event."
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "An old unrelated dashboard-formatting bug instance shares only the word 'restart' with the moment; it doesn't serve verifying this specific trace-fix restart.",
+    "bridge": null,
+    "style_note": "Expected class = nodes on how Anchor should handle restarts (use the restart MCP tool, don't hand commands to Tom) — matches what Haiku actually picked here — not an old dashboard bug."
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/10",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node describes literal field-preservation mechanics of revise(); message asks about the description's psychological/priming effect on the caller — lexical overlap ('preserved'/'replaced') without conceptual fit.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/13",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/16",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node concerns boot continuity/posture design, an entirely different concept from confusion over /watch pacing-mode deprecation; only loose word overlap ('session', 'continuity').",
+    "bridge": null,
+    "style_note": "For confused status-check questions about /watch's mode, expect the /watch pacing-mode decision/correction nodes (timer vs monitor history), not boot-continuity findings."
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/17",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/20",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/24",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Old unrelated work-queue plan (S2 community quality, from a much earlier session) has no lexical or semantic tie to the session_id routing bug being fixed now.",
+    "bridge": null,
+    "style_note": "Expected class = nodes about the actual current bug (self-channel session_id routing) or coordination-with-other-stream conventions, not a stale unrelated backlog plan."
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/28",
+    "verdict": "ambiguous",
+    "stratum": "session",
+    "gap": "Content-graft: the node's 'resolved' conclusion likely didn't exist yet at this mid-investigation turn; even setting that aside, deep-session narrative linking the trace-pull idea to that eventual conclusion isn't established this early.",
+    "bridge": "Episodic recency once the investigation concludes later in the session; not reachable from this earlier, still-open point in the thread.",
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/32",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Unrelated old open item about recall-eval infrastructure (from a much earlier session); no connection to the arc-emptiness / test-fixing request in this turn.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/33",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/36",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "The anaphoric 'we thought X' postmortem ask needs a specific belief-node from several turns earlier in the same session; episodic/session-scope matching missed it, and the node's situation field describes the original symptom, not a retrospective-explanation trigger.",
+    "bridge": "Episodic recency / a running session-arc field carrying same-day nodes forward, since the conversation-window alone (3 turns) doesn't reach back far enough.",
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/37",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Unrelated past process violation (spawning Brain() directly bypassing the daemon) shares only a loose 'daemon boundary' theme with the session-ID authority question; different concern entirely.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/38",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Unrelated old dashboard-audit fact (2026-05-25) has no tie to the session-ID scan / code-review / session-close request being made now.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/40",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares the surface word 'leak' but the node concerns an actual RSS/ONNX memory-arena leak from weeks earlier; the current 'leaky encoding run' is unrelated trace-payload verbosity, not a memory leak.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/41",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17d21ad4-1d59-4562-97f7-29ec0c3b3e25/0/42",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Unrelated past bug about correction-rendering (fetch-but-drop of anchor_raw_quote) has no connection to correcting the backlog document about the non-error encoding run.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "4cb11a89-dc31-4183-b84b-c146440e559d/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fede4918-d437-4cb4-b5dd-85ee2fd5f504/0/11",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Shares the token 'Haiku' but the node is an old specific commit (hook-timeout bump + Haiku-ID leading-zero recovery), unrelated to the deferral decision about bundling upcoming caching+eval analysis.",
+    "bridge": null,
+    "style_note": "Expected class = nodes about the current planning items (A1/A2/A3) or Tom's prioritization/bundling patterns, not a stale unrelated commit event."
+  },
+  {
+    "key": "fede4918-d437-4cb4-b5dd-85ee2fd5f504/0/12",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Same recurring stale-merge-event node (dal-cleanup-2, 2026-05-31); no connection to the B1 (boot banner naming) / C1 (Stop-only delivery) design decisions in this turn.",
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "fede4918-d437-4cb4-b5dd-85ee2fd5f504/0/13",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": "Node is about an unrelated older merge (dal-cleanup-2, 2026-05-31), not the actual referenced merge (the other stream's S2 absorb work, same day) — temporal/topic mismatch.",
+    "bridge": null,
+    "style_note": "For 'other stream merged, let's commit' cues, expected pattern = nodes about current merge/commit conventions or the actual referenced merge, not a stale unrelated past merge record."
+  },
+  {
+    "key": "fede4918-d437-4cb4-b5dd-85ee2fd5f504/0/14",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Strong semantic fit but different framing (solution-design phrasing vs. the node's diagnostic 'three reasons' framing) likely reduced lexical/embedding overlap.",
+    "bridge": "Situation-lane matching diagnostic lessons to solution-design messages, or a graph walk from the earlier A2-thread nodes.",
+    "style_note": null
+  }
+]

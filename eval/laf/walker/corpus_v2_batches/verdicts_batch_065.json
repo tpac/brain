@@ -1,0 +1,202 @@
+[
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/15",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/18",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Terse worry question ('did we eliminate Frame?') shares only the common word 'Frame' with the finding's title; node's situation field frames journal-redesign work, not the elimination worry, and its 13-day age gets no episodic boost.",
+    "bridge": "Situation-lane on 'Frame status/scope' + graph walk from the just-surfaced Frame-stays decision to this sibling finding.",
+    "style_note": null
+  },
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A confirmation + deferred-note request about Frame design; expected class is the ledger/deferred-items practice or the actual Frame decision just made, not an old recall-quality lesson."
+  },
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare 'sounds good' greenlight; expected class is nodes about Tom's confirmation/momentum discipline or the timeline/catalog design just being confirmed, not an unrelated old pushback quote about over-engineering."
+  },
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/31",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/36",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/37",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/39",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/42",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/43",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": "Different vocabulary ('session bound' vs 'surface-starved/closure-gutted'); node is a 58-day-old audit finding with no episodic recency signal, so lexical/semantic distance from the terse scoping question stays large despite topical adjacency.",
+    "bridge": "Graph walk from 'residue is session-bound' correction to this pipeline-gap node; situation-lane on session-scoping design context.",
+    "style_note": null
+  },
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/44",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Confirmation + handoff-process question; expected class is nodes about Tom's/Anchor's handoff or session-close discipline (e.g. checking loose threads), not another thread's stale specific tier-ranked task list."
+  },
+  {
+    "key": "17b4db8b-b5e6-4343-a248-a80fc159ea96/0/45",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Confirmation-seeking question about document completeness; expected class is a general principle on writing docs for future-Anchor recall (if one exists) or the doc's own completeness/uncommitted status, not an unrelated other-document's record."
+  },
+  {
+    "key": "b9960372-0638-4073-aab0-eb1134310128/0/1",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b9960372-0638-4073-aab0-eb1134310128/0/6",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "'What's the next step' process cue; expected class is the just-established critical-path plan (Goal A) or Tom's general prioritization preference, not a stale other-thread's specific S2-community plan."
+  },
+  {
+    "key": "b9960372-0638-4073-aab0-eb1134310128/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b9960372-0638-4073-aab0-eb1134310128/0/8",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b9960372-0638-4073-aab0-eb1134310128/0/10",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b9960372-0638-4073-aab0-eb1134310128/0/15",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b9960372-0638-4073-aab0-eb1134310128/0/16",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b9960372-0638-4073-aab0-eb1134310128/0/18",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "A general question about skill-name collision handling; expected class is nodes about skill/namespace conflict rules, not this specific skill's own rename-deferral decision."
+  },
+  {
+    "key": "b9960372-0638-4073-aab0-eb1134310128/0/24",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b9960372-0638-4073-aab0-eb1134310128/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b9960372-0638-4073-aab0-eb1134310128/0/26",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "b9960372-0638-4073-aab0-eb1134310128/0/27",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Bare platform-scope confirmation ('mac for now'); expected class is the actual known bug/decision in the file being shipped mac-only (e.g. the setsid incompatibility), not an unrelated sleep/resume encoding principle."
+  }
+]

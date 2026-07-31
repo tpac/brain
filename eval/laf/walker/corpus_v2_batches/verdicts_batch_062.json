@@ -1,0 +1,202 @@
+[
+  {
+    "key": "de8a4532-a877-4970-b51e-c641492ba918/0/5",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": "Episodic-layer mention is one clause in a multi-topic message (temporal/revise/created dominate); embedding likely averaged toward the temporal-fields topic, diluting the episodic phrase.",
+    "bridge": "Query-segmentation (split by sentence) would isolate 'episodic layer' clause for its own cosine match against this principle.",
+    "style_note": null
+  },
+  {
+    "key": "de8a4532-a877-4970-b51e-c641492ba918/0/6",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "de8a4532-a877-4970-b51e-c641492ba918/0/9",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "de8a4532-a877-4970-b51e-c641492ba918/0/11",
+    "verdict": "ambiguous",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "de8a4532-a877-4970-b51e-c641492ba918/0/13",
+    "verdict": "valid",
+    "stratum": "window",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "de8a4532-a877-4970-b51e-c641492ba918/0/17",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "de8a4532-a877-4970-b51e-c641492ba918/0/19",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "de8a4532-a877-4970-b51e-c641492ba918/0/20",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse pick among the just-proposed corpus-scope options (engineering vs diverse) — should surface that fork/census, not hybrid-search RRF."
+  },
+  {
+    "key": "de8a4532-a877-4970-b51e-c641492ba918/0/21",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "de8a4532-a877-4970-b51e-c641492ba918/0/23",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "de8a4532-a877-4970-b51e-c641492ba918/0/24",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "de8a4532-a877-4970-b51e-c641492ba918/0/25",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "de8a4532-a877-4970-b51e-c641492ba918/0/27",
+    "verdict": "ambiguous",
+    "stratum": "cue",
+    "gap": "Casual celebratory remark shares little lexical/semantic overlap with the abstract retrieval-vs-recognition reflection from March; embedding stays in practical/logistics space.",
+    "bridge": "Situation-lane on 'memory persists across sessions' theme, or style-recall surfacing Anchor's own reflective register.",
+    "style_note": null
+  },
+  {
+    "key": "de8a4532-a877-4970-b51e-c641492ba918/0/28",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Closure remark about the brain replacing conversation copies — should surface the copy-chat-retirement decision, not general recall principles."
+  },
+  {
+    "key": "de8a4532-a877-4970-b51e-c641492ba918/0/29",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "de8a4532-a877-4970-b51e-c641492ba918/0/30",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "49bfe8df-6799-44aa-a80d-2ea0fa16fef1/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "49bfe8df-6799-44aa-a80d-2ea0fa16fef1/0/1",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse acceptance of the cue-sourcing plan — should surface momentum/greenlight discipline or the plan just proposed, not partnership philosophy."
+  },
+  {
+    "key": "49bfe8df-6799-44aa-a80d-2ea0fa16fef1/0/2",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "49bfe8df-6799-44aa-a80d-2ea0fa16fef1/0/4",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": "Terse go-ahead to run judges and check usage — should surface cap-heavy-token-ops discipline, not the Judge/Anchor/Encoder view matrix."
+  },
+  {
+    "key": "49bfe8df-6799-44aa-a80d-2ea0fa16fef1/0/6",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "49bfe8df-6799-44aa-a80d-2ea0fa16fef1/0/7",
+    "verdict": "echo_mislabel",
+    "stratum": "none",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "49bfe8df-6799-44aa-a80d-2ea0fa16fef1/0/8",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/0",
+    "verdict": "valid",
+    "stratum": "cue",
+    "gap": null,
+    "bridge": null,
+    "style_note": null
+  },
+  {
+    "key": "5d0a280c-2ca7-4c85-8f30-5324f2b969d9/0/1",
+    "verdict": "valid",
+    "stratum": "session",
+    "gap": "Message is forward-looking planning language (verify corpus before building fields) with no baseline-metric vocabulary; embedding didn't bridge to this backward-looking hit@5 measurement.",
+    "bridge": "Graph walk from the corpus-audit neighbor (cos_next lens node) surfaced this session, or situation-lane on verify-before-build.",
+    "style_note": null
+  }
+]
