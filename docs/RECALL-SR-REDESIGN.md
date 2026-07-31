@@ -2604,3 +2604,64 @@ divisive temporal-density, b4733c4e); mesh-formula sweep ({z-mix,
 rank-mix, raw-sum} × kernel family {power, harmonic, log} — Tom 6.3/6.6);
 500-char query-cap damage measurement (6.2); then recursive-vs-flat mesh
 through the composition gate. E1 (P4 eyeball gate) remains unsigned.
+
+---
+
+## 22 — Embedding GEOMETRY: anisotropy is the root cause (2026-07-29/30) ◀ ACTIVE ARC
+
+**Read first:** brain node `id:9f85079c` (the opener) and `id:ce53652a` (the
+measurement). Probes + reports: `eval/laf/walker/` (commits `d3fc206`,
+`d69ac18`).
+
+**The finding.** The `_primary` space is severely anisotropic: random UNRELATED
+node pairs sit at cosine **0.6933**; the corpus mean vector is **83%** of a
+typical vector's length; ~**100 of 768** dimensions are effectively used; PC1 is
+only 4.5%. The dominant structure is therefore the MEAN (where the cloud sits),
+not a top PC (how it is shaped). This single fact explains the long-standing
+"everything scores 0.54–0.63" complaint, the 0.086 between-view mean spread
+(§ per-view census, `id:e6473add`), why a 0.02 batch-noise wobble moves gold
+rank ~18 places, and why community coherence read as a whisper.
+
+**The lever.** Centering — subtract the mean, each side by its own (doc/query
+prefixes place the two distributions differently) — yields **2.6× head
+separation** (cos@1−cos@25: 0.048 → 0.127) and perfect isotropy. Removing PCs
+beyond the mean HURTS: σ shrinks monotonically and churn rises. Do NOT apply
+the published "all-but-the-top" recipe; it was validated on diverse corpora,
+ours is narrow-domain and its top PCs carry real topic structure.
+
+**Why the corpus cannot adjudicate it.** Centred gold ranks worsen, but the
+loss concentrates at @25 (−5.5pp, pool composition) and is ~zero at @5 (−0.6pp,
+ordering). That asymmetry is the signature of label circularity: corpus-v2
+golds were minted from pools RAW cosine produced. Operator eyeball is therefore
+the only non-circular judge — package at
+`eval/laf/walker/centering_eyeball.md` (14 random turns, raw vs centred).
+**Tom's ruling on that package is the arc's first gate.**
+
+**Corollaries.** Communities are geometrically coherent (+0.23 centred vs
+random, only +0.07 raw — centering un-hid it); the synthesised community node
+sits at 0.90 cos to its members' centroid (validated centroid proxy);
+theme/residual split ≈ 57/43; orphans are genuinely distant from every centroid
+(+0.12, holding in every age band). ANN indexing (IVF-PQ, HNSW) is irrelevant
+at 8k nodes — only the residual-decomposition IDEA transfers.
+
+**Fusion law settled.** max = alternative sufficient routes (OR); sum =
+independent evidence (AND). `source_refs` max ✓, `epi_max` ✓, lane sum ✓ —
+maxsim over 6 views is a max applied to EVIDENCE, i.e. misapplied. Centering,
+per-view z and community-z are one idea at three scales (deviation from the
+right reference class); for scores ACROSS classes, z the score, never centre
+the vector.
+
+**Next.** (1) detector-miss audit — orphans whose best-community-fit exceeds the
+member median (0.537) should have been assigned; (2) per-view z before the max,
+and gate `other_meta`/`edge_context` (they supply non-golds' max 2.5×/1.8× more
+than golds'); (3) **the reference-class sweep** — global / top-N local /
+community-z / theme-space projection, a hierarchy not competitors; (4) the
+per-query view SELECTOR — best-single-view oracle is **60.4%@5** vs maxsim's
+31.8%, the α-entmax half of the original design that never shipped.
+
+**Do not reopen:** conn/auth as episodic lane activation (null, data gap);
+stored edge direction as a traversal signal (zero, measured twice); inhibition
+as reach (4 vs 5 turns); the existing EMBEDDING_GROUPS weights applied to
+maxsim (measured harmful, 28.4%@5); the nanmax field-richness bias (coverage is
+uniform — no fix needed); the relation registry as a reach lever (loses to a
+plain `desc≥80` filter).
