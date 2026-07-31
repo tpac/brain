@@ -37,10 +37,10 @@ Everything else makes a good salvage better. These three make it exist.
    tier — state the assumption rather than blocking on a question the operator may not be there to
    answer. Score the four conditions (below); write the verdict as one line in the handoff node.
    **It has a consumer: no-fork means the letter must carry the mental model, not just the state.**
-3. **Close the encode gap FIRST.** `ENCODE_EVERY = 5` and the tail path needs
-   `SCRIBE_TAIL_IDLE_SECONDS = 3600` — so the arc that just closed is almost certainly unencoded,
-   and there is no tool to force a Scribe run. `remember()` the last arc's decisions yourself — the
-   correction, the pivot, the operator's ruling — before assembling anything.
+3. **Close the encode gap FIRST.** The Scribe encodes on a cadence, not on demand, and I can't
+   force a run — so the arc that just closed is almost certainly not in the brain yet.
+   `remember()` its decisions myself — the correction, the pivot, the operator's ruling — before
+   assembling anything.
 4. **Assemble, don't author from memory.** The Scribe's nodes are NOT in your context unless you
    recall them. `query_traces(scale='s1', ref_type='encoding_run', session_id=<mine>)` for what it
    wrote; `query_traces(ref_type='journal_note', session_id=<mine>)` for the reasoning residue;
@@ -62,12 +62,11 @@ Everything else makes a good salvage better. These three make it exist.
     gap-node line. (§3.) This is the successor's first read; the node is its second.
 11. **Verify delivery, then re-poll background work, then arm or hand off.**
     - `recall("<2–3 queries the successor would actually open with>")` → node in top 5?
-      Levers in order: **title** (highest-weighted view), then `situation`, then keywords/question.
-      **Two attempts max.** Embedding is async (~5s via `embed_queue`) and a `revise` *deletes* the
-      old vector first — so a miss straight after a write is a timing artifact, not a wording
-      problem. If it still misses, stop tuning and make delivery explicit: `get_node(<id>)` in the
-      launch prompt's Orient line. (`type=handoff` is in no aspect, so the Frame will not carry it
-      at boot; recall fires on the first prompt, not at `SessionStart`.)
+      Levers in order: **title**, then `situation`, then keywords. **Two attempts max.**
+      A miss immediately after writing is a timing artifact — embedding is queued, not synchronous —
+      so wait a beat before believing it. If it still misses, stop tuning and make delivery
+      explicit: `get_node(<id>)` in the launch prompt's Orient line. Never rely on ambient boot
+      delivery for a handoff node; the Orient line is the guarantee.
     - Re-poll in-flight background work *now* (an inventory taken earlier is stale): per item
       **wait / kill / hand off its output path** into the launch prompt. A spawned sibling survives
       independently — note it, and if it's live on an adjacent thread consider `self_send` rather

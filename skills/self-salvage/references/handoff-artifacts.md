@@ -35,13 +35,12 @@ can't disappear. **Spend proportionate care here — it outlives every other art
   thread is waiting on a human.)
 - **The boot self-test** — three questions the successor must answer without reading further.
 - **`situation` written in the words the successor's first prompt will actually use** — not a
-  description of the session. Descriptive writer-voice phrasing ("when opening the X continuation
-  session") measured 14% top-25 entry against trigger-register phrasing's 54% on this brain. Name
-  the actions and the utterances that should trigger it.
+  description of the session. "When opening the X continuation session" is a label; what retrieves
+  is the actions and phrasings that should bring this to mind. If a handoff won't retrieve, this is
+  usually why.
 - **Verify-before-use list** — the 2–3 state claims the successor must cheaply re-derive, **each
-  with one clause saying how it was checked**. Unchecked claims don't get the label. A prior handoff
-  shipped substrate numbers 2–3× wrong that were nearly built on; another shipped a wrong claim
-  *labeled "verified real"* because verification had checked a counter, not the substrate.
+  with one clause saying how it was checked**. Unchecked claims don't get the label. The dangerous
+  shape is a claim marked *verified* where the verification checked a proxy rather than the thing.
 - **The fork verdict, one line**, and what follows from it (no-fork ⇒ this letter must carry the
   mental model, not just the state).
 - **Negative space, ≤6 lines** — this session's closures plus the one most-tempting older path.
@@ -96,8 +95,8 @@ the OS clears `/tmp`, so the successor must degrade to brain+git losing speed, n
 Lean. Lean on the brain; don't paste history. **This is the successor's first read.**
 
 **MUST**
-1. **Orient** — `recall <node id>` *and* `get_node(<id>)`, plus the doc head to read first. Include
-   the explicit `get_node` — `type=handoff` is in no aspect, so the Frame won't carry it at boot.
+1. **Orient** — `recall <node id>` *and* `get_node(<id>)`, plus the doc head to read first. The
+   explicit `get_node` is the guarantee; boot does not reliably surface a handoff node on its own.
 2. **Next** — the immediate task and the *first concrete action*. Open on the **first gate**, not on
    state.
 3. **Gates** — where to STOP and ask; name the first one explicitly. **Before asking the operator
