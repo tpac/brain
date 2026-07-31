@@ -1821,6 +1821,26 @@ class BrainRememberMixin:
 
         return target_id, relation_pairs, None
 
+    def _title_candidate_rows(self, tokens, limit=500):
+        """The ONE lexical candidate door for title→node matching: probe the
+        FTS5 title index (OR over `tokens`, prefix-tolerant so a partial-word
+        token still hits) and hydrate (id, title) for the live matches.
+        Shared by _match_catalog_title (write path) and find_node_by_title's
+        lexical pass (interactive) — neither scans the nodes table.
+
+        bm25 weights titles 10x over content, so title-bearing hits rank
+        first; `limit` is generous headroom, not a relevance cut — probe
+        tokens are the query's longest (rarest), so real pools are tiny.
+        Returns [] when FTS has nothing (or is unavailable — Fts5DAL.search
+        already logs that loud)."""
+        ids = self._fts.search(' '.join(tokens), limit=limit, prefix=True)
+        if not ids:
+            return []
+        ph = ','.join('?' * len(ids))
+        return self.conn.execute(
+            'SELECT id, title FROM nodes WHERE archived = 0 '
+            'AND id IN (%s)' % ph, ids).fetchall()
+
     def _match_catalog_title(self, title_query, exclude_ids=None):
         """Deterministic catalog-title match for connect_to (write path).
 
@@ -1835,11 +1855,13 @@ class BrainRememberMixin:
         Ambiguity (two candidates tied at best, duplicates at distance 0, or
         a photo-finish inside the margin) REFUSES rather than picks.
 
-        Pre-filter with guaranteed recall: a title within K ops of the query
-        misses at most K query tokens, so of any K+1 distinct probe tokens at
-        least one must appear — one C-speed LIKE scan bounds the candidate
-        pool without false negatives. Probes are the longest tokens (rarest,
-        LIKE-safe: tokens are [a-z0-9]+ by construction).
+        Candidate generation rides the FTS5 title index (_title_candidate_rows
+        — the ONE indexed door every lexical title consumer shares): a title
+        within K ops of the query misses at most K query tokens, so probing
+        the K+1 longest tokens (pigeonhole) keeps recall while the index keeps
+        it off a table scan. FTS rows are written synchronously in remember()
+        and revise(), so just-created and just-renamed nodes are immediately
+        matchable — none of the async-vector blindness the old fuzzy path had.
 
         Returns (target_id, None) on acceptance, (None, reason) on an
         ambiguity refusal (caller surfaces the reason), (None, None) when
@@ -1856,10 +1878,7 @@ class BrainRememberMixin:
             return None, None
         probes = sorted(set(q), key=lambda t: (-len(t), t))
         probes = probes[:NEAR_TITLE_MAX_OPS + 1]
-        where = ' OR '.join("title LIKE '%' || ? || '%'" for _ in probes)
-        rows = self.conn.execute(
-            'SELECT id, title FROM nodes WHERE archived = 0 AND (%s)' % where,
-            probes).fetchall()
+        rows = self._title_candidate_rows(probes)
         # Margin needs to see runner-up distances up to best+MARGIN, so the
         # DP cap extends past MAX_OPS; beyond the cap everything is "too far".
         cap = NEAR_TITLE_MAX_OPS + NEAR_TITLE_MARGIN - 1
@@ -2407,19 +2426,35 @@ class BrainRememberMixin:
         """
         scored = {}  # id → result dict, dedup by node
 
-        # Path 1: Text matching — fast SQL LIKE on title
-        query_lower = title_query.lower()
-        text_rows = self.conn.execute(
-            "SELECT id, title, type, SUBSTR(content, 1, 200) "
-            "FROM nodes WHERE archived = 0 AND LOWER(title) LIKE ?",
-            ("%" + query_lower.replace(" ", "%") + "%",)
-        ).fetchall()
-        for nid, title, ntype, snippet in text_rows:
-            scored[nid] = {
-                "id": nid, "title": title, "type": ntype,
-                "similarity": 0.95,  # text match = high confidence
-                "content_snippet": snippet or "",
-            }
+        # Path 1: lexical — FTS-indexed candidates (_title_candidate_rows,
+        # the same door the connect_to write path uses; no table scan),
+        # verified by in-order token containment: every query token appears
+        # in the title, in order, as a substring — the semantics the old
+        # `LIKE %w%w%` full scan implemented, minus its cross-word false
+        # positives and minus the scan.
+        q_tokens = _title_tokens(title_query)
+        text_ids = []
+        if q_tokens:
+            for nid, title in self._title_candidate_rows(q_tokens):
+                t_lower = title.lower()
+                pos = 0
+                for tok in q_tokens:
+                    pos = t_lower.find(tok, pos)
+                    if pos == -1:
+                        break
+                    pos += len(tok)
+                else:
+                    text_ids.append(nid)
+        if text_ids:
+            ph = ','.join('?' * len(text_ids))
+            for nid, title, ntype, snippet in self.conn.execute(
+                    "SELECT id, title, type, SUBSTR(content, 1, 200) "
+                    "FROM nodes WHERE id IN (%s)" % ph, text_ids).fetchall():
+                scored[nid] = {
+                    "id": nid, "title": title, "type": ntype,
+                    "similarity": 0.95,  # text match = high confidence
+                    "content_snippet": snippet or "",
+                }
 
         # Path 2: Embedding similarity — semantic fallback
         if embedder.is_ready() and len(scored) < top_k:

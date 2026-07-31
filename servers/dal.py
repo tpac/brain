@@ -586,7 +586,8 @@ class Fts5DAL:
         self.conn = conn
 
     def search(self, query: str, limit: int = 30,
-               include_archived: bool = False) -> List[str]:
+               include_archived: bool = False,
+               prefix: bool = False) -> List[str]:
         """Full-text search. Returns node_ids ranked by BM25 relevance.
 
         Title matches weighted 10x over content.
@@ -609,7 +610,7 @@ class Fts5DAL:
         extractor produced near-duplicate noise. Porter stemming on
         title+content provides the same lexical signal without the noise.
         """
-        safe_query = self._sanitize_query(query)
+        safe_query = self._sanitize_query(query, prefix=prefix)
         if not safe_query:
             return []
         try:
@@ -661,11 +662,15 @@ class Fts5DAL:
                   % (node_id, e), file=_sys.stderr)
 
     @staticmethod
-    def _sanitize_query(query: str) -> str:
+    def _sanitize_query(query: str, prefix: bool = False) -> str:
         """Sanitize query for FTS5 MATCH syntax.
 
         Wraps each meaningful term in quotes, joins with OR.
         Caps at 8 terms to prevent explosion.
+
+        prefix=True appends the FTS5 prefix operator to each term
+        (`"conf"*` matches 'configuration') — used by title-match candidate
+        generation so a partial-word query token still finds its titles.
         """
         from .brain_constants import TFIDF_STOP_WORDS
         words = query.strip().split()
@@ -674,8 +679,10 @@ class Fts5DAL:
             terms = [w for w in words if len(w) > 1]
         if not terms:
             return ''
+        star = '*' if prefix else ''
         # Quote each term, join with OR (any match, not all)
-        return ' OR '.join('"%s"' % t.replace('"', '') for t in terms[:8])
+        return ' OR '.join('"%s"%s' % (t.replace('"', ''), star)
+                           for t in terms[:8])
 
 
 class SourceRefDAL:
