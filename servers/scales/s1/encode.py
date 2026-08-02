@@ -233,28 +233,18 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
                          'completed rounds (if any) are kept, turns stay '
                          'unencoded and will retry' % (session_id[:8], counter))
         # Salvage the actions that ran before the failure (RunLoopError
-        # carries them) — bounded by the TRACE_DETAIL gate so the trace row
-        # never inherits the very payload that killed the run.
-        from servers.trace_contract import TRACE_DETAIL
-        _in_cap = TRACE_DETAIL['failed_action_input_cap']
-        partial = [{'tool': a.get('tool'),
-                    'ops': len((a.get('input') or {}).get('operations', []))
-                           if isinstance(a.get('input'), dict) else 0,
-                    'input_head': json.dumps(a.get('input'))[:_in_cap]
-                                  if a.get('input') is not None else '',
-                    'result_chars': a.get('result_chars'),
-                    'result_head': (a.get('result_head') or '')
-                                   if a.get('result_truncated') else '',
-                    'error': a.get('error')}
-                   for a in getattr(e, 'partial_actions', [])]
+        # carries them). Bounding + record shape live in the traces layer
+        # (build_failed_run_metadata) — this consumer just hands them over.
+        from servers.trace_contract import build_failed_run_metadata
         with brain.loud('s1e_failed_trace_write', 'recording encoding_run_failed delta'):
             dispatch_fn('trace_append', {
                 'chain_id': enc_chain, 'scale': 's1', 'event_type': 'delta',
                 'ref_type': 'encoding_run_failed',
                 'summary': 'FAILED: %s' % str(e)[:200],
-                'metadata': {'error': str(e)[:500], 'stop_counter': counter,
-                             'inputs_processed': len(messages),
-                             'partial_actions': partial},
+                'metadata': build_failed_run_metadata(
+                    error=e, stop_counter=counter,
+                    inputs_processed=len(messages),
+                    partial_actions=getattr(e, 'partial_actions', None)),
                 'session_id': session_id,
             })
         return {"error": str(e), "profile": profile}

@@ -571,13 +571,14 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             else:
                 result_text = "ERROR: %s" % result.get("error", "Unknown")
             result_chars = len(result_text)
-            # Oversized-result guard (TRACE_DETAIL gate): one brain_batch
+            # Oversized-result guard (trace-mode caps): one brain_batch
             # result of ~6M chars pushed the next request past the API's 1M
             # token cap and 400-killed the run (2026-07-31). Truncate before
             # the conversation sees it, dump the full payload for forensics,
             # and log loud — a result this size is always a bug upstream.
-            from servers.trace_contract import TRACE_DETAIL
-            cap = TRACE_DETAIL['tool_result_cap']
+            from servers.trace_contract import trace_detail
+            _td = trace_detail()
+            cap = _td['tool_result_cap']
             result_truncated = result_chars > cap
             if result_truncated:
                 # No file dump — full-payload capture belongs to a future
@@ -658,7 +659,7 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                 # (the runner has no brain reference).
                 action_rec["result_truncated"] = True
                 action_rec["result_head"] = \
-                    result_text[:TRACE_DETAIL['result_head_cap']]
+                    result_text[:_td['result_head_cap']]
             actions.append(action_rec)
             _log("  [%s] %s" % (tu.name, action_summary))
         return tool_results, tool_uses

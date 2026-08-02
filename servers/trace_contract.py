@@ -314,26 +314,75 @@ RUN_TELEMETRY_FIELDS = (
 )
 
 
-# ── TRACE DETAIL GATE ──
-# How extensive trace recording is — ONE knob, contract-first (a future
-# K-store interaction can override it without code change). Consumed by the
-# runner's tool loop and the S1E failure path. All values are CHARACTER caps.
-TRACE_DETAIL = {
-    # A single formatted tool result larger than this is truncated before it
-    # enters the LLM conversation (the 1M-token 400 killer: one brain_batch
-    # result hit ~6M chars, 2026-07-31). Forensics ride the trace substrate
-    # (result_chars + result_head on the action record) — deliberately NO
-    # file dump; full-payload capture belongs to a future unified debug mode,
-    # not another ad-hoc tmp writer. Generous: normal encoder results are <10K.
-    'tool_result_cap': 200_000,
-    # Per-action `input` cap when partial action_details are salvaged onto an
-    # encoding_run_failed trace — trace rows must stay bounded even when the
-    # run died precisely because something was enormous.
-    'failed_action_input_cap': 2_000,
-    # Head of an oversized tool result preserved inline (in the truncation
-    # marker + the loud error context) so the trace shows WHAT the content was.
-    'result_head_cap': 500,
+# ── TRACE DETAIL MODES ──
+# How extensive trace recording is — discrete MODES, not a per-field dial:
+# either we're debugging (open everything up) or we're not (record the bare
+# minimum, so the trace store never grows from routine operation). Consumers
+# call trace_detail() and read caps off the active mode; nobody hardcodes a
+# number. All values are CHARACTER caps.
+#
+# `tool_result_cap`: a single formatted tool result larger than this is
+#   truncated before it enters the LLM conversation (the 1M-token 400 killer:
+#   one brain_batch result hit ~6M chars, 2026-07-31). Forensics ride the
+#   trace substrate (result_chars + result_head on the action record) —
+#   deliberately NO file dump; full-payload capture belongs to the future
+#   unified debug mechanism that will also retire the ad-hoc tmp writers.
+# `failed_action_input_cap`: per-action `input` head salvaged onto an
+#   encoding_run_failed trace — bounded even when the run died precisely
+#   because something was enormous.
+# `result_head_cap`: head of an oversized tool result preserved inline so
+#   the trace shows WHAT the content was.
+TRACE_MODES = {
+    'normal': {
+        'tool_result_cap': 200_000,
+        'failed_action_input_cap': 2_000,
+        'result_head_cap': 500,
+    },
+    'debug': {
+        'tool_result_cap': 800_000,   # still bounded — the API cap is real
+        'failed_action_input_cap': 50_000,
+        'result_head_cap': 10_000,
+    },
 }
+
+
+def trace_detail():
+    """Caps for the ACTIVE trace mode. BRAIN_TRACE_MODE env selects
+    ('normal' default; unknown values fall back to normal — never crash a
+    write path over a config typo). The single door consumers read through,
+    so switching modes never touches consumer code."""
+    import os
+    return TRACE_MODES.get(os.environ.get('BRAIN_TRACE_MODE', 'normal'),
+                           TRACE_MODES['normal'])
+
+
+def build_failed_run_metadata(*, error, stop_counter, inputs_processed,
+                              partial_actions=None):
+    """Metadata payload for an `encoding_run_failed` delta — the failure-path
+    sibling of build_delta_metadata. Owns the bounding of salvaged action
+    records (RunLoopError.partial_actions) so consumers hand over raw actions
+    and never touch the record structure. Bounded by the active trace mode:
+    a failed-run trace row must stay small even when the run died precisely
+    because something was enormous."""
+    import json as _json
+    d = trace_detail()
+    in_cap = d['failed_action_input_cap']
+    partial = []
+    for a in (partial_actions or []):
+        inp = a.get('input')
+        partial.append({
+            'tool': a.get('tool'),
+            'ops': len((inp or {}).get('operations', []))
+                   if isinstance(inp, dict) else 0,
+            'input_head': _json.dumps(inp)[:in_cap] if inp is not None else '',
+            'result_chars': a.get('result_chars'),
+            'result_head': (a.get('result_head') or '')
+                           if a.get('result_truncated') else '',
+            'error': a.get('error'),
+        })
+    return {'error': str(error)[:500], 'stop_counter': stop_counter,
+            'inputs_processed': inputs_processed,
+            'partial_actions': partial}
 
 
 def build_run_telemetry(*, elapsed_ms=0, rounds=0, truncated=0,
