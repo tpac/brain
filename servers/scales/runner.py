@@ -54,9 +54,13 @@ class RunLoopError(Exception):
     next API call 400s) are exactly the ones that lose their action log.
     `__cause__` holds the original exception."""
 
-    def __init__(self, message, partial_actions=None):
+    def __init__(self, message, partial_actions=None, msgs=None):
         super().__init__(message)
         self.partial_actions = partial_actions or []
+        # The conversation exactly as the model saw it (tool results already
+        # capped) at failure time — the encoder-side handler records it as
+        # the `failed_run` payload (docs/TRACE-MODES-DESIGN.md).
+        self.msgs = msgs or []
 
 
 # The created/revised/archived node-lifecycle split is no longer re-derived
@@ -249,6 +253,10 @@ def retry_on_transient_api_error(fn, *, attempts=RETRY_ATTEMPTS,
             # (8ef9431) — match transience on the CAUSE, or the wrapper would
             # silently disable retry for every round-≥1 failure (found by
             # code review, node c98efe35). Non-transient → re-raise as before.
+            # Retrying re-runs the whole loop, including writes that already
+            # landed — pre-wrap semantics, kept deliberately: encoder writes
+            # are idempotent-enough and a lost batch costs more than a
+            # doubled edge.
             if not (isinstance(e, transient)
                     or isinstance(getattr(e, '__cause__', None), transient)):
                 raise
@@ -693,7 +701,11 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         # forensics the failure path needs (the 1M-token 400s left no record
         # of which ops ran). Re-raise wrapped, actions attached; __cause__
         # keeps the original for callers matching on exception type/message.
-        raise RunLoopError(str(e), partial_actions=actions) from e
+        # The original type name rides the message — error logs and trace
+        # summaries grep by anthropic class names, not by the wrapper.
+        raise RunLoopError('%s: %s' % (type(e).__name__, e),
+                           partial_actions=actions,
+                           msgs=api_messages) from e
 
     final_text = "".join(b.text for b in response.content if b.type == "text")
     write_actions = [a for a in actions if a['tool'] in WRITE_TOOLS]

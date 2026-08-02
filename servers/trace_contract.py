@@ -339,7 +339,11 @@ TRACE_MODES = {
         'result_head_cap': 500,
     },
     'debug': {
-        'tool_result_cap': 800_000,   # still bounded — the API cap is real
+        # tool_result_cap is deliberately mode-INVARIANT: it bounds what the
+        # LLM SEES, so a debug value would make debug runs a different
+        # conversation than the runs they reproduce. Capture is observation-
+        # neutral — debug widens what's recorded, never what the model reads.
+        'tool_result_cap': 200_000,
         'failed_action_input_cap': 50_000,
         'result_head_cap': 10_000,
     },
@@ -356,8 +360,39 @@ def trace_detail():
                            TRACE_MODES['normal'])
 
 
+# ── Payload recording contract (docs/TRACE-MODES-DESIGN.md) ─────────────────
+# Fat payloads live in FILES under {db_dir}/payloads/{date}/{chain_id}/, never
+# in trace rows. `kind` is the gate-config key verbatim AND the filename
+# segment — a kind that needs two formats is two kinds, so the extension is
+# fixed here. brain.record_payload / brain.read_payload (brain_traces.py) are
+# the only writer/reader; sanctioned direct-file readers: the dashboard
+# (daemon-down debuggability) and the eval harness (daemonless corpus brains).
+PAYLOAD_KIND_EXT = {
+    'prompt': 'md',           # assembled agent prompt, readable as a document
+    'judge': 'json',          # surface/judge output (S1R chain)
+    'round_payload': 'json',  # full per-round request payload (eval capture)
+    'tool_result': 'txt',     # full untruncated tool result
+    'failed_run': 'json',     # full msgs at RunLoopError time — the 2AM story
+}
+
+# Named shapes for the `trace_recording` K-store interaction — modes as config
+# versions, not an env dial. Fresh brains seed NORMAL as v1 (active) and DEBUG
+# as v2 (dormant); "entering debug" = set_interaction_active, one MCP call, no
+# restart. Capture is observation-neutral: these gates change what's RECORDED,
+# never what the model sees (that's tool_result_cap, mode-invariant above).
+TRACE_RECORDING_NORMAL = {
+    'kinds': {'prompt': True, 'judge': True, 'failed_run': True,
+              'round_payload': False, 'tool_result': False},
+    'retention_days': 14,
+}
+TRACE_RECORDING_DEBUG = {
+    'kinds': {k: True for k in PAYLOAD_KIND_EXT},
+    'retention_days': 14,
+}
+
+
 def build_failed_run_metadata(*, error, stop_counter, inputs_processed,
-                              partial_actions=None):
+                              partial_actions=None, payload_pointer=None):
     """Metadata payload for an `encoding_run_failed` delta — the failure-path
     sibling of build_delta_metadata. Owns the bounding of salvaged action
     records (RunLoopError.partial_actions) so consumers hand over raw actions
@@ -380,9 +415,15 @@ def build_failed_run_metadata(*, error, stop_counter, inputs_processed,
                            if a.get('result_truncated') else '',
             'error': a.get('error'),
         })
-    return {'error': str(error)[:500], 'stop_counter': stop_counter,
-            'inputs_processed': inputs_processed,
-            'partial_actions': partial}
+    md = {'error': str(error)[:500], 'stop_counter': stop_counter,
+          'inputs_processed': inputs_processed,
+          'partial_actions': partial}
+    if payload_pointer:
+        # Relative pointer to the failed_run payload file (the full msgs at
+        # failure time) — enrichment only; the bounded forensics above stay
+        # self-sufficient when the file is pruned.
+        md['payload_pointer'] = payload_pointer
+    return md
 
 
 def build_run_telemetry(*, elapsed_ms=0, rounds=0, truncated=0,
