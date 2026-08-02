@@ -324,9 +324,10 @@ RUN_TELEMETRY_FIELDS = (
 # `tool_result_cap`: a single formatted tool result larger than this is
 #   truncated before it enters the LLM conversation (the 1M-token 400 killer:
 #   one brain_batch result hit ~6M chars, 2026-07-31). Forensics ride the
-#   trace substrate (result_chars + result_head on the action record) —
-#   deliberately NO file dump; full-payload capture belongs to the future
-#   unified debug mechanism that will also retire the ad-hoc tmp writers.
+#   trace substrate (result_chars + result_head on the action record); full
+#   capture is the payload recorder below (`record_payload` — the `failed_run`
+#   kind is wired; per-round/tool_result wiring lands in rollout step 2 of
+#   docs/TRACE-MODES-DESIGN.md, which also retires the ad-hoc tmp writers).
 # `failed_action_input_cap`: per-action `input` head salvaged onto an
 #   encoding_run_failed trace — bounded even when the run died precisely
 #   because something was enormous.
@@ -380,15 +381,27 @@ PAYLOAD_KIND_EXT = {
 # as v2 (dormant); "entering debug" = set_interaction_active, one MCP call, no
 # restart. Capture is observation-neutral: these gates change what's RECORDED,
 # never what the model sees (that's tool_result_cap, mode-invariant above).
+# Both shapes derive from PAYLOAD_KIND_EXT so a new kind can never be
+# silently absent from one of them (the recorder additionally overlays the
+# active config onto these defaults, so kinds added after a brain's config
+# was seeded still resolve — see brain_traces._payload_kind_enabled).
+# NOTE: `round_payload`/`tool_result` call sites land in rollout step 2 —
+# until then flipping debug records nothing for those kinds.
+_NORMAL_ON_KINDS = ('prompt', 'judge', 'failed_run')
 TRACE_RECORDING_NORMAL = {
-    'kinds': {'prompt': True, 'judge': True, 'failed_run': True,
-              'round_payload': False, 'tool_result': False},
+    'kinds': {k: k in _NORMAL_ON_KINDS for k in PAYLOAD_KIND_EXT},
     'retention_days': 14,
 }
 TRACE_RECORDING_DEBUG = {
     'kinds': {k: True for k in PAYLOAD_KIND_EXT},
     'retention_days': 14,
 }
+
+# Cap on the error string inside a `failed_run` payload file (the payload
+# SHAPE {'error', 'messages'} is owned by brain.record_failed_run — consumers
+# never build it). Distinct from build_failed_run_metadata's 500-char trace-
+# row cap: the file can afford more context.
+FAILED_RUN_ERROR_CAP = 2_000
 
 
 def build_failed_run_metadata(*, error, stop_counter, inputs_processed,

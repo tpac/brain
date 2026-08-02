@@ -329,10 +329,17 @@ def seed_interactions(brain):
     # Payload-recorder gates (docs/TRACE-MODES-DESIGN.md): modes as named
     # config versions — v1 normal (auto-activates), v2 debug (dormant).
     # "Entering debug" = set_interaction_active('trace_recording', 2).
-    if 'trace_recording' not in existing:
-        from .trace_contract import (TRACE_RECORDING_DEBUG,
-                                     TRACE_RECORDING_NORMAL)
+    # Each registration guards on its own absence (version count, not just
+    # the name) so a boot that crashed between the two self-heals on the
+    # next seed instead of losing the debug version forever; >= 2 versions
+    # (including externally-registered ones) → never add more.
+    from .trace_contract import (TRACE_RECORDING_DEBUG,
+                                 TRACE_RECORDING_NORMAL)
+    _tr_versions = next((i['total_versions'] for i in brain.list_interactions()
+                         if i['name'] == 'trace_recording'), 0)
+    if _tr_versions == 0:
         _register('trace_recording', '', TRACE_RECORDING_NORMAL, 'anchor')
+    if _tr_versions < 2:
         brain.register_interaction('trace_recording', template='',
                                    parameters=json.dumps(TRACE_RECORDING_DEBUG),
                                    created_by='anchor')

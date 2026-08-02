@@ -75,6 +75,49 @@ class TestPayloadRecorder(BrainTestBase):
                 if e.get('source') == 'record_payload_unknown_kind']
         self.assertEqual(len(errs), 1)
 
+    def test_stale_config_missing_kind_falls_back_to_contract_default(self):
+        """A kind added to the contract after a brain's config was seeded
+        must resolve to its contract default (and log the gap), never
+        silently not-record."""
+        import json as _json
+        self.brain.register_interaction(
+            'trace_recording', template='',
+            parameters=_json.dumps({'kinds': {'prompt': True},
+                                    'retention_days': 14}))
+        versions = 3  # v1 normal, v2 debug seeded; ours is v3
+        self.brain.set_interaction_active('trace_recording', versions)
+        # failed_run is absent from the active config but ON in the contract
+        # defaults — it must still record.
+        ptr = self.brain.record_payload('s1e-abc-14', 'failed_run',
+                                        {'error': 'x', 'messages': [1]})
+        self.assertIsNotNone(ptr)
+        errs = [e for e in self.brain.get_recent_errors(hours=1, limit=50)
+                if e.get('source') == 'record_payload_config_missing_kind']
+        self.assertGreaterEqual(len(errs), 1)
+
+    def test_record_failed_run_owns_shape_and_skips_msgless(self):
+        class Boom(Exception):
+            pass
+        err = Boom('it died')
+        err.msgs = [{'role': 'user', 'content': 'hi'}]
+        ptr = self.brain.record_failed_run('s1e-abc-15', err)
+        self.assertTrue(ptr.endswith('000-failed_run.json'))
+        body = self.brain.read_payload(ptr)
+        self.assertIn('"it died"', body)
+        self.assertIn('"messages"', body)
+        # No msgs (round-0 / unwrapped failure) → nothing recorded.
+        self.assertIsNone(self.brain.record_failed_run('s1e-abc-15',
+                                                       Boom('bare')))
+
+    def test_chain_id_is_sanitized_into_a_path_segment(self):
+        ptr = self.brain.record_payload('s1e/../../evil', 'prompt', 'x')
+        self.assertIsNotNone(ptr)
+        # Pointer stays inside payloads/ and survives its own read guard.
+        self.assertTrue(ptr.startswith('payloads' + os.sep))
+        self.assertEqual(self.brain.read_payload(ptr), 'x')
+        self.assertFalse(
+            os.path.exists(os.path.join(os.path.dirname(self.tmp), 'evil')))
+
     # ── append-only ─────────────────────────────────────────────
 
     def test_collision_gets_attempt_ordinal_never_overwrites(self):

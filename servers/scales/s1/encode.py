@@ -238,15 +238,11 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         # The full conversation at failure time (RunLoopError.msgs, tool
         # results already capped) is recorded as the failed_run payload —
         # the 2AM story: the next 6M-char-class incident is diagnosable
-        # from the trace row + one file, in normal mode. Round-0 failures
-        # arrive unwrapped (no msgs) — the prompt itself is what failed_run
-        # would show, and nothing ran yet.
+        # from the trace row + one file, in normal mode. The traces layer
+        # owns the payload shape and caps; round-0 failures arrive unwrapped
+        # (no msgs) and record nothing — the prompt kind is that half.
         from servers.trace_contract import build_failed_run_metadata
-        failed_ptr = brain.record_payload(
-            enc_chain, 'failed_run',
-            {'error': str(e)[:2000],
-             'messages': getattr(e, 'msgs', None) or []}
-            if getattr(e, 'msgs', None) else None)
+        failed_ptr = brain.record_failed_run(enc_chain, e)
         with brain.loud('s1e_failed_trace_write', 'recording encoding_run_failed delta'):
             dispatch_fn('trace_append', {
                 'chain_id': enc_chain, 'scale': 's1', 'event_type': 'delta',

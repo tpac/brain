@@ -48,12 +48,19 @@ class TestInteractionSeeding:
         assert not missing, "Seed missing core interactions: %s" % missing
 
     def test_seed_is_idempotent(self):
-        """Running seed twice doesn't create duplicates."""
+        """Running seed twice doesn't create duplicates.
+
+        Idempotency = re-seeding adds NOTHING: same names, same version
+        counts. (Not "exactly one version" — trace_recording deliberately
+        seeds two: v1 normal active, v2 debug dormant, per
+        docs/TRACE-MODES-DESIGN.md "modes as config versions".)
+        """
         from servers.interaction_seed import seed_interactions
         seed_interactions(self.brain)
+        before = {i['name']: i['total_versions'] for i in self.dal.list_all()}
         seed_interactions(self.brain)
-        all_interactions = self.dal.list_all()
-        assert all(i['total_versions'] == 1 for i in all_interactions)
+        after = {i['name']: i['total_versions'] for i in self.dal.list_all()}
+        assert after == before
 
     def test_surface_has_prompt_and_config(self):
         """Fresh brains seed a real surface prompt whose layout the runtime

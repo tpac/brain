@@ -596,10 +596,13 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             cap = _td['tool_result_cap']
             result_truncated = result_chars > cap
             if result_truncated:
-                # No file dump — full-payload capture belongs to a future
-                # unified debug mode, not another ad-hoc tmp writer. The
-                # bounded head + result_chars on the action record (below)
-                # are the forensics that ride the trace substrate.
+                # The bounded head + result_chars on the action record
+                # (below) are the forensics that ride the trace substrate.
+                # Full capture is the traces-layer payload recorder
+                # (brain.record_payload) — the runner has no brain, so the
+                # tool_result kind gets wired via record_round_fn in rollout
+                # step 2 (docs/TRACE-MODES-DESIGN.md), never as a file dump
+                # here.
                 _log("OVERSIZED tool result: %s returned %d chars (cap %d) — "
                      "truncated" % (tu.name, result_chars, cap))
                 result_text = (
@@ -611,8 +614,11 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                 "type": "tool_result", "tool_use_id": tu.id,
                 "content": result_text,
             })
-            action_summary = tu.input.get("title", tu.input.get("query",
-                tu.input.get("node_id", "")))[:60]
+            # `or` chain, not .get defaults: a model can emit an explicit
+            # {"title": null} — .get(key, default) returns that None, and
+            # None[:60] would kill the whole run for a log nicety.
+            action_summary = (tu.input.get("title") or tu.input.get("query")
+                              or tu.input.get("node_id") or "")[:60]
             result_ids = []
             # Authoritative node-lifecycle split — the dispatch handler returned
             # it as a TOP-LEVEL `affected` (sibling of `result`), computed where
@@ -686,12 +692,15 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                 break
 
             _check_deadline('round %d' % (rounds + 1))
-            tool_results, _ = _dispatch_tool_uses(response)
-
+            # Append the assistant turn BEFORE dispatching its tool calls:
+            # if dispatch raises, RunLoopError.msgs (→ the failed_run
+            # payload) must show the tool_use that died, not a conversation
+            # ending cleanly one round earlier.
             api_messages.append({"role": "assistant", "content": [
                 {"type": b.type, **({"text": b.text} if b.type == "text" else
                                     {"id": b.id, "name": b.name, "input": b.input})}
                 for b in response.content]})
+            tool_results, _ = _dispatch_tool_uses(response)
             api_messages.append({"role": "user", "content": tool_results})
             response, ttft_ms, total_ms = _create_message(api_messages)
             _track_usage(response, rounds + 1, ttft_ms=ttft_ms, total_ms=total_ms)

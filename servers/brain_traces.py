@@ -767,11 +767,9 @@ class BrainTracesMixin:
         """Date-first, chain-second. The date dir is the chain's FIRST
         payload's day: a chain dir already existing under yesterday is reused
         so a run straddling midnight stays one `ls`."""
-        from datetime import datetime, timedelta
-        from .clock import iso_now
+        from .clock import iso_cutoff, iso_now
         today = iso_now()[:10]
-        yesterday = (datetime.strptime(today, '%Y-%m-%d')
-                     - timedelta(days=1)).strftime('%Y-%m-%d')
+        yesterday = iso_cutoff(days=1)[:10]
         for day in (today, yesterday):
             d = os.path.join(self._payload_root(), day, chain_id)
             if os.path.isdir(d):
@@ -780,48 +778,82 @@ class BrainTracesMixin:
         os.makedirs(d, exist_ok=True)
         return d, today
 
+    def _payload_kind_enabled(self, kind, chain_id):
+        """Gate resolution for one payload kind. Effective policy = the
+        contract's NORMAL defaults (complete by construction over
+        PAYLOAD_KIND_EXT) overlaid with the active `trace_recording` config —
+        so a kind added to the contract AFTER a brain's config was seeded
+        still resolves (to its contract default) instead of silently never
+        recording; the config-missing gap is loud-logged (rate-limited by
+        _log_error's fingerprint dedup, so a wired call site reminds
+        periodically rather than spamming or going quiet forever)."""
+        from .trace_contract import TRACE_RECORDING_NORMAL
+        cfg = self.get_interaction_config('trace_recording')
+        cfg_kinds = cfg.get('kinds')
+        effective = dict(TRACE_RECORDING_NORMAL['kinds'])
+        if isinstance(cfg_kinds, dict):
+            if kind not in cfg_kinds:
+                self._log_error(
+                    'record_payload_config_missing_kind',
+                    ValueError('kind %r absent from active trace_recording '
+                               'config — using contract default' % (kind,)),
+                    context='chain=%s' % chain_id)
+            effective.update(cfg_kinds)
+        elif cfg:
+            # Config exists but `kinds` is malformed — degrading to the
+            # contract defaults must be loud, not the silent branch in an
+            # otherwise loud function ("the interesting run is always the
+            # one you weren't capturing").
+            self._log_error(
+                'record_payload_malformed_config',
+                ValueError('trace_recording config has non-dict kinds: %r'
+                           % (cfg_kinds,)),
+                context='chain=%s' % chain_id)
+        return bool(effective.get(kind))
+
     def record_payload(self, chain_id, kind, content, *, seq=None):
         """Write one payload file for a chain; return its pointer (path
-        RELATIVE to db_dir) or None (gated off / unknown kind / empty).
+        RELATIVE to db_dir) or None (gated off / unknown kind / empty /
+        write failed — failures loud-log, never raise into the caller).
 
         The ONE capture writer — call sites hold zero knowledge of gates,
         paths, or formats. Gating: the `trace_recording` K-store interaction
         (per-kind on/off; modes are named config versions — see
-        TRACE_RECORDING_NORMAL/DEBUG in trace_contract.py). Never raises into
-        the caller's run: any failure loud-logs and returns None.
+        TRACE_RECORDING_NORMAL/DEBUG in trace_contract.py). Performance
+        charter: compact JSON (no indent — the C json encoder holds the GIL;
+        `jq .` the file instead), and this is never called on the recall hot
+        path.
 
         Chain dirs are APPEND-ONLY: files open with O_EXCL and collisions get
         an attempt ordinal (`000-prompt.2.md`) — a Scribe idle-tail retry
         reuses the same chain_id, and overwriting would destroy exactly the
         failed attempt's forensics. The retention pass is the only deleter.
+        chain_id is sanitized into a path segment: the writer must be as
+        traversal-proof as read_payload's guard, or a chain containing '/'
+        creates dirs outside payloads/ that the pruner never sees.
         """
-        from .trace_contract import PAYLOAD_KIND_EXT, TRACE_RECORDING_NORMAL
-        try:
+        from .trace_contract import PAYLOAD_KIND_EXT
+        pointer = None
+        with self.loud('record_payload',
+                       'chain=%s kind=%s' % (chain_id, kind)):
             if not chain_id or content in (None, '', {}, []):
                 return None
             ext = PAYLOAD_KIND_EXT.get(kind)
             if ext is None:
-                # Loud once per kind per process — a typo'd kind at a wired
-                # call site must be visible, not silently record nothing.
-                seen = getattr(self, '_payload_unknown_kinds', None)
-                if seen is None:
-                    seen = self._payload_unknown_kinds = set()
-                if kind not in seen:
-                    seen.add(kind)
-                    self._log_error('record_payload_unknown_kind',
-                                    ValueError('unknown payload kind %r'
-                                               % (kind,)),
-                                    context='chain=%s' % chain_id)
+                # A typo'd kind at a wired call site must be visible —
+                # _log_error's fingerprint rate-limit dedups repeats.
+                self._log_error('record_payload_unknown_kind',
+                                ValueError('unknown payload kind %r'
+                                           % (kind,)),
+                                context='chain=%s' % chain_id)
                 return None
-            cfg = self.get_interaction_config('trace_recording')
-            kinds = (cfg.get('kinds') if isinstance(cfg.get('kinds'), dict)
-                     else TRACE_RECORDING_NORMAL['kinds'])
-            if not kinds.get(kind):
+            if not self._payload_kind_enabled(kind, chain_id):
                 return None
             if not isinstance(content, str):
-                content = json.dumps(content, indent=2, ensure_ascii=False,
+                content = json.dumps(content, ensure_ascii=False,
                                      default=str)
-            chain_dir, day = self._payload_chain_dir(chain_id)
+            safe_chain = re.sub(r'[^A-Za-z0-9._-]', '_', str(chain_id))
+            chain_dir, day = self._payload_chain_dir(safe_chain)
             base = '%03d-%s' % (int(seq or 0), kind)
             for attempt in range(1, 100):
                 name = ('%s.%s' % (base, ext) if attempt == 1
@@ -832,63 +864,102 @@ class BrainTracesMixin:
                                  os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
                 except FileExistsError:
                     continue
-                with os.fdopen(fd, 'w') as f:
+                with os.fdopen(fd, 'w', encoding='utf-8') as f:
                     f.write(content)
-                return os.path.join('payloads', day, chain_id, name)
+                pointer = os.path.join('payloads', day, safe_chain, name)
+                return pointer
             raise RuntimeError('100 attempt ordinals exhausted for %s' % base)
-        except Exception as e:
-            try:
-                self._log_error('record_payload', e,
-                                context='chain=%s kind=%s' % (chain_id, kind))
-            except Exception:
-                pass
+        return pointer  # loud() swallowed a failure → None
+
+    def record_failed_run(self, chain_id, error):
+        """Record the `failed_run` payload for a dead agent run — the full
+        conversation at failure time. The LAYER owns the payload shape
+        ({'error', 'messages'}) and its cap; consumers hand over the raw
+        exception (RunLoopError carries `.msgs`, already bounded by
+        tool_result_cap). Round-0 / unwrapped failures have no msgs and
+        record nothing — the prompt kind is that half of the story.
+        Returns the pointer or None."""
+        from .trace_contract import FAILED_RUN_ERROR_CAP
+        msgs = getattr(error, 'msgs', None)
+        if not msgs:
             return None
+        return self.record_payload(
+            chain_id, 'failed_run',
+            {'error': str(error)[:FAILED_RUN_ERROR_CAP], 'messages': msgs})
 
     def prune_payloads_if_due(self, now=None):
         """Age-prune {db_dir}/payloads/ date dirs older than retention_days
-        (from the trace_recording config). Rides the S2 maintenance cycle
-        with its own brain_meta stamp (per-unit gating convention) — NOT the
-        logs-size check, which is size-triggered and never fires for files.
-        Once per day is plenty: date-first layout makes it one listdir.
-        Wall-clock deliberately (system bookkeeping, exempt from
-        conversation-time). Never raises; returns date-dirs removed."""
+        (from the trace_recording config). Self-gated: an in-memory hourly
+        throttle keeps the per-poll cost at ~zero, the `s2_payload_prune_
+        last_ts` brain_meta stamp (S2 naming convention) enforces
+        once-per-day, and the stamp is written AFTER a successful prune so a
+        mid-run failure retries within the hour instead of silently waiting
+        a day. Wall-clock deliberately (system bookkeeping, exempt from
+        conversation-time). Never raises; returns date-dirs actually
+        removed — failed removals loud-log and don't count."""
         import shutil
         import time as _time
-        from datetime import datetime, timedelta
+        from datetime import datetime, timezone
+        from .clock import iso_cutoff
         from .trace_contract import TRACE_RECORDING_NORMAL
         try:
             now = now if now is not None else _time.time()
-            last = float(self.get_config('payload_prune_last_ts') or 0)
+            if now - getattr(self, '_payload_prune_checked', 0) < 3_600:
+                return 0
+            self._payload_prune_checked = now
+            last = float(self.get_config('s2_payload_prune_last_ts') or 0)
             if now - last < 86_400:
                 return 0
-            self.set_config('payload_prune_last_ts', str(now))
-            days = (self.get_interaction_config('trace_recording')
-                    .get('retention_days')
-                    or TRACE_RECORDING_NORMAL['retention_days'])
-            cutoff = (datetime.utcfromtimestamp(now)
-                      - timedelta(days=int(days))).strftime('%Y-%m-%d')
+            days = self.get_interaction_config(
+                'trace_recording').get('retention_days')
+            if days is None:
+                days = TRACE_RECORDING_NORMAL['retention_days']
+            days = int(days)
+            if days < 0:
+                # A negative value would compute a FUTURE cutoff and delete
+                # today's dirs out from under live runs — refuse loudly.
+                self._log_error('payload_prune_bad_retention',
+                                ValueError('retention_days=%d — using '
+                                           'default' % days))
+                days = TRACE_RECORDING_NORMAL['retention_days']
+            # days=0 legitimately means "keep only today": cutoff is today,
+            # and the strict `<` below never touches today's dir.
+            cutoff = iso_cutoff(
+                days=days,
+                at=datetime.fromtimestamp(now, tz=timezone.utc))[:10]
             root = self._payload_root()
-            if not os.path.isdir(root):
-                return 0
-            removed = 0
-            for name in os.listdir(root):
-                if re.fullmatch(r'\d{4}-\d{2}-\d{2}', name) and name < cutoff:
-                    shutil.rmtree(os.path.join(root, name),
-                                  ignore_errors=True)
-                    removed += 1
+            removed, failed = 0, []
+            if os.path.isdir(root):
+                for name in os.listdir(root):
+                    if not (re.fullmatch(r'\d{4}-\d{2}-\d{2}', name)
+                            and name < cutoff):
+                        continue
+                    target = os.path.join(root, name)
+                    shutil.rmtree(target, ignore_errors=True)
+                    if os.path.exists(target):
+                        failed.append(name)   # counter must not lie
+                    else:
+                        removed += 1
+            if failed:
+                self._log_error(
+                    'payload_prune_failed_dirs',
+                    RuntimeError('could not remove: %s' % ', '.join(failed)))
+            self.set_config('s2_payload_prune_last_ts', str(now))
             return removed
         except Exception as e:
-            try:
-                self._log_error('payload_prune', e, context='')
-            except Exception:
-                pass
+            self._log_error('payload_prune', e, context='')
             return 0
 
     def read_payload(self, pointer):
         """Read a payload by its relative pointer → str, or None (pruned /
         missing / never recorded). The pointer must stay inside db_dir —
         absolute paths and traversal are rejected (pointers come from trace
-        metadata, which is data, not a path authority)."""
+        metadata, which is data, not a path authority). Only a MISSING file
+        is the silent 'pruned' answer; I/O failures (permissions, EIO) loud-
+        log — 'pruned' must never mask an outage sitting on intact files.
+        Bytes that don't decode (a crash mid-write splitting a multibyte
+        char) come back with replacement chars rather than raising —
+        degraded forensics beat none."""
         if not pointer or not isinstance(pointer, str):
             return None
         norm = os.path.normpath(pointer)
@@ -898,9 +969,12 @@ class BrainTracesMixin:
         path = os.path.join(os.path.dirname(os.path.abspath(self.db_path)),
                             norm)
         try:
-            with open(path, encoding='utf-8') as f:
+            with open(path, encoding='utf-8', errors='replace') as f:
                 return f.read()
-        except OSError:
+        except FileNotFoundError:
+            return None
+        except OSError as e:
+            self._log_error('read_payload', e, context=norm)
             return None
 
 

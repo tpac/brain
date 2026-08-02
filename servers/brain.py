@@ -1703,6 +1703,13 @@ class Brain(
             this method is safe to call frequently — it no-ops cheaply when
             not due.
         """
+        # Payload-file retention self-gates (in-memory hourly throttle +
+        # daily brain_meta stamp) and must NOT sit behind the S2 fire
+        # conditions below — a keyless brain (llm_available False) or one
+        # whose idle/encode gates rarely fire still needs its payloads/
+        # pruned, or debug-mode capture grows unbounded.
+        self.prune_payloads_if_due()
+
         # Keyless onboarding window: every S2 unit's encoder is LLM-driven —
         # skip the whole cycle until a key resolves (noted once, not per poll).
         if not self.llm_available:
@@ -1757,10 +1764,6 @@ class Brain(
         # Consume exactly the encode runs we gated on — runs that complete
         # during the (multi-minute) S2 cycle accrue toward the next one.
         self.activity.consume_encode_runs(encode_runs)
-
-        # Payload-file retention rides the maintenance cycle (own daily
-        # stamp inside; cheap no-op when not due) — see brain_traces.py.
-        self.prune_payloads_if_due(now)
 
         from servers.scales.s2.coordinator import run_s2
         results = run_s2(self)

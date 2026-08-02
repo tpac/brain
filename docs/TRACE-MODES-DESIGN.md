@@ -226,6 +226,26 @@ ab_encode's HARD_CHECKS; soft checks parse captured round bodies). Specifics:
   frozen inside each corpus item's brain dir). ab_encode's `wipe=True` now wipes
   payloads with the brain — correct for A/B (fresh run = fresh evidence).
 
+## Performance charter (Tom, 2026-08-02): capture never loads the system
+
+Recording is important but subordinate to the brain's main functions. Rules:
+
+- **Never on the recall hot path.** `record_payload` may be called from encoder
+  workers and the surface pipeline, never from inside recall scoring. When the
+  `judge` kind is wired (step 2), it records after the surface response is
+  already delivered — post-hoc, not in-line.
+- **Serialization stays cheap.** Compact JSON for anything large (no
+  `indent=2` on multi-MB payloads — CPython's C json encoder holds the GIL;
+  the 2AM reader can `jq .`). Payload sizes are bounded upstream by
+  `tool_result_cap` × rounds; if a payload kind can exceed a few MB, bound it
+  at the layer.
+- **Config reads stay off hot paths.** One SELECT per failure-path write is
+  fine; when step 2 wires per-round/per-prompt kinds, the gate config gets the
+  `LAFEngine.config` TTL-cache pattern — bounded staleness, no restart needed.
+- **Retention is idle-time work** (S2 maintenance cycle) and file writes are
+  best-effort: a recorder failure loud-logs and returns None; it never raises
+  into, retries inside, or slows the caller's run.
+
 ## Failed-run residue (Tom, via the S1E-reliability stream, 2026-08-02)
 
 Two gaps the sibling investigation surfaced; both belong to step 2:
@@ -243,6 +263,49 @@ Two gaps the sibling investigation surfaced; both belong to step 2:
    contract), and the next run's prompt assembly includes the chain's
    `encoding_run_failed` trace (with its `payload_pointer`) in the timeline, so
    the retry encodes with knowledge of the failure instead of amnesia.
+
+## Unified mutation-trace emitter (Tom, via the S1E-reliability stream, 2026-08-02)
+
+The graph-write twin of the agent-I/O capture above: what the recorder does for
+payloads, one emitter does for per-write traces. Scope added to this design
+because it's the same disease — hand-rolled capture scattered across call
+sites — on the write path.
+
+**Diagnosis (verified against dispatch_write.py):** per-write trace emission
+is hand-rolled per handler — `_emit_revise_trace` fires mid-transaction (a
+whole-batch rollback orphans the trace), `_emit_edge_traces` at five call
+sites with mixed pre/post-commit discipline, **creates emit nothing** (no
+`node_created` trace exists — finding 19b56d44), archives ride a side path,
+and the d857e84d attribution split (revise/connect sub-ops unattributed in
+batches) is a symptom of the same scatter.
+
+**Design: ONE emitter at the dispatch write chokepoint**, driven by the
+`affected` contract every handler already returns (verified: all six write
+handlers return `_affected(created/revised/archived)`, and brain_batch already
+accumulates them). The emitter runs **POST-COMMIT** and stamps session/chain
+once. Consequences, by construction:
+
+- `node_created` traces exist for free — the create hole closes structurally,
+  not by patching a sixth hand-rolled emit.
+- No mid-transaction orphans: nothing emits unless the write committed.
+- The attribution split dies: session/chain stamped at the one chokepoint.
+- Every future op is traced by construction — a handler must return
+  `affected` for the batch manifest anyway.
+- The five `_emit_*` call sites are deleted.
+
+**Downstream consumer waiting on this:** the partial-run catalog gap fix
+(finding 30cf1bce, design 5efe5e02) — `session_node_ids` unions per-write
+trace ids so a failed run's created nodes are visible to the retry's catalog.
+Deliberately NOT patched standalone (that would be the sixth hand-rolled
+emit). Invariants that fix must keep (Tom probed explicitly): `get_bulk`
+hydration stays the truth filter (only committed nodes hydrate), and
+coverage stays gated on the `encoding_run` success receipt — catalog
+visibility never suppresses re-encoding (principle c7d52ad0: "a failure can
+neither hide turns nor conjure nodes").
+
+**Sequencing:** the emitter is its own work item after step 1 ships — it
+touches dispatch_write.py (transaction discipline), needs the full-suite
+tier, and unblocks the catalog-gap fix as its first consumer.
 
 ## Rollout (two steps, no double-write)
 

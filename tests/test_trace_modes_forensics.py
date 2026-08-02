@@ -234,7 +234,11 @@ class TestRetryMatchesWrappedTransients(unittest.TestCase):
 class TestBuildFailedRunMetadata(unittest.TestCase):
 
     def setUp(self):
-        os.environ.pop('BRAIN_TRACE_MODE', None)
+        self._saved = os.environ.pop('BRAIN_TRACE_MODE', None)
+
+    def tearDown(self):
+        if self._saved is not None:
+            os.environ['BRAIN_TRACE_MODE'] = self._saved
 
     def test_salvaged_forensics_are_bounded(self):
         huge = 'X' * 5_000_000
