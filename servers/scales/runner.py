@@ -47,6 +47,18 @@ def _next_capture_seq():
 ANTHROPIC_CLIENT_TIMEOUT = 600.0
 
 
+class RunLoopError(Exception):
+    """run_llm_loop failed mid-run. Carries the actions accumulated before the
+    failure (`partial_actions`) so the caller's failure path can persist them —
+    without this, the runs that most need forensics (a tool result so large the
+    next API call 400s) are exactly the ones that lose their action log.
+    `__cause__` holds the original exception."""
+
+    def __init__(self, message, partial_actions=None):
+        super().__init__(message)
+        self.partial_actions = partial_actions or []
+
+
 # The created/revised/archived node-lifecycle split is no longer re-derived
 # here from tool names. Each dispatch write handler returns the authoritative
 # `affected` dict (it knows its op + has the brain result, incl. connect_to
@@ -558,6 +570,27 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                     get_nodes_config=get_nodes_config)
             else:
                 result_text = "ERROR: %s" % result.get("error", "Unknown")
+            result_chars = len(result_text)
+            # Oversized-result guard (TRACE_DETAIL gate): one brain_batch
+            # result of ~6M chars pushed the next request past the API's 1M
+            # token cap and 400-killed the run (2026-07-31). Truncate before
+            # the conversation sees it, dump the full payload for forensics,
+            # and log loud — a result this size is always a bug upstream.
+            from servers.trace_contract import TRACE_DETAIL
+            cap = TRACE_DETAIL['tool_result_cap']
+            result_truncated = result_chars > cap
+            if result_truncated:
+                # No file dump — full-payload capture belongs to a future
+                # unified debug mode, not another ad-hoc tmp writer. The
+                # bounded head + result_chars on the action record (below)
+                # are the forensics that ride the trace substrate.
+                _log("OVERSIZED tool result: %s returned %d chars (cap %d) — "
+                     "truncated" % (tu.name, result_chars, cap))
+                result_text = (
+                    result_text[:cap]
+                    + "\n\n[TRUNCATED by runner: result was %d chars, cap is %d. "
+                      "Do NOT retry this call — proceed with what is shown.]"
+                    % (result_chars, cap))
             tool_results.append({
                 "type": "tool_result", "tool_use_id": tu.id,
                 "content": result_text,
@@ -608,34 +641,51 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             # already threaded into build_delta_metadata by the run_llm_loop
             # encoders — gain the same per-call observability Surface's
             # tool_trace has. `input` is the args.
-            actions.append({"tool": tu.name, "summary": action_summary,
-                            "node_ids": result_ids,
-                            "created": affected.get("created") or [],
-                            "revised": affected.get("revised") or [],
-                            "archived": affected.get("archived") or [],
-                            "input": tu.input,
-                            "latency_ms": latency_ms,
-                            "result_count": result_count,
-                            "error": error})
+            action_rec = {"tool": tu.name, "summary": action_summary,
+                          "node_ids": result_ids,
+                          "created": affected.get("created") or [],
+                          "revised": affected.get("revised") or [],
+                          "archived": affected.get("archived") or [],
+                          "input": tu.input,
+                          "latency_ms": latency_ms,
+                          "result_count": result_count,
+                          "result_chars": result_chars,
+                          "error": error}
+            if result_truncated:
+                # Oversized result — bounded head rides the action record so
+                # the delta trace shows WHAT the content was, and the
+                # encoder-side loud scan can log it to the errors table
+                # (the runner has no brain reference).
+                action_rec["result_truncated"] = True
+                action_rec["result_head"] = \
+                    result_text[:TRACE_DETAIL['result_head_cap']]
+            actions.append(action_rec)
             _log("  [%s] %s" % (tu.name, action_summary))
         return tool_results, tool_uses
 
-    for rounds in range(max_rounds):
-        tool_uses = [b for b in response.content if b.type == "tool_use"]
-        if not tool_uses:
-            break
+    try:
+        for rounds in range(max_rounds):
+            tool_uses = [b for b in response.content if b.type == "tool_use"]
+            if not tool_uses:
+                break
 
-        _check_deadline('round %d' % (rounds + 1))
-        tool_results, _ = _dispatch_tool_uses(response)
+            _check_deadline('round %d' % (rounds + 1))
+            tool_results, _ = _dispatch_tool_uses(response)
 
-        api_messages.append({"role": "assistant", "content": [
-            {"type": b.type, **({"text": b.text} if b.type == "text" else
-                                {"id": b.id, "name": b.name, "input": b.input})}
-            for b in response.content]})
-        api_messages.append({"role": "user", "content": tool_results})
-        response, ttft_ms, total_ms = _create_message(api_messages)
-        _track_usage(response, rounds + 1, ttft_ms=ttft_ms, total_ms=total_ms)
-        _step("llm_r%d" % (rounds + 1))
+            api_messages.append({"role": "assistant", "content": [
+                {"type": b.type, **({"text": b.text} if b.type == "text" else
+                                    {"id": b.id, "name": b.name, "input": b.input})}
+                for b in response.content]})
+            api_messages.append({"role": "user", "content": tool_results})
+            response, ttft_ms, total_ms = _create_message(api_messages)
+            _track_usage(response, rounds + 1, ttft_ms=ttft_ms, total_ms=total_ms)
+            _step("llm_r%d" % (rounds + 1))
+    except Exception as e:
+        # Mid-run failure loses the actions accumulated so far — exactly the
+        # forensics the failure path needs (the 1M-token 400s left no record
+        # of which ops ran). Re-raise wrapped, actions attached; __cause__
+        # keeps the original for callers matching on exception type/message.
+        raise RunLoopError(str(e), partial_actions=actions) from e
 
     final_text = "".join(b.text for b in response.content if b.type == "text")
     write_actions = [a for a in actions if a['tool'] in WRITE_TOOLS]

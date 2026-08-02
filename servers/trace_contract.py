@@ -314,6 +314,28 @@ RUN_TELEMETRY_FIELDS = (
 )
 
 
+# ── TRACE DETAIL GATE ──
+# How extensive trace recording is — ONE knob, contract-first (a future
+# K-store interaction can override it without code change). Consumed by the
+# runner's tool loop and the S1E failure path. All values are CHARACTER caps.
+TRACE_DETAIL = {
+    # A single formatted tool result larger than this is truncated before it
+    # enters the LLM conversation (the 1M-token 400 killer: one brain_batch
+    # result hit ~6M chars, 2026-07-31). Forensics ride the trace substrate
+    # (result_chars + result_head on the action record) — deliberately NO
+    # file dump; full-payload capture belongs to a future unified debug mode,
+    # not another ad-hoc tmp writer. Generous: normal encoder results are <10K.
+    'tool_result_cap': 200_000,
+    # Per-action `input` cap when partial action_details are salvaged onto an
+    # encoding_run_failed trace — trace rows must stay bounded even when the
+    # run died precisely because something was enormous.
+    'failed_action_input_cap': 2_000,
+    # Head of an oversized tool result preserved inline (in the truncation
+    # marker + the loud error context) so the trace shows WHAT the content was.
+    'result_head_cap': 500,
+}
+
+
 def build_run_telemetry(*, elapsed_ms=0, rounds=0, truncated=0,
                         input_tokens=0, output_tokens=0,
                         cache_read_tokens=0, cache_creation_tokens=0):

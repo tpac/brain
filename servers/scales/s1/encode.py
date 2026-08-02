@@ -232,13 +232,29 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
                          'session=%s stop=%d — LLM loop failed; writes from '
                          'completed rounds (if any) are kept, turns stay '
                          'unencoded and will retry' % (session_id[:8], counter))
+        # Salvage the actions that ran before the failure (RunLoopError
+        # carries them) — bounded by the TRACE_DETAIL gate so the trace row
+        # never inherits the very payload that killed the run.
+        from servers.trace_contract import TRACE_DETAIL
+        _in_cap = TRACE_DETAIL['failed_action_input_cap']
+        partial = [{'tool': a.get('tool'),
+                    'ops': len((a.get('input') or {}).get('operations', []))
+                           if isinstance(a.get('input'), dict) else 0,
+                    'input_head': json.dumps(a.get('input'))[:_in_cap]
+                                  if a.get('input') is not None else '',
+                    'result_chars': a.get('result_chars'),
+                    'result_head': (a.get('result_head') or '')
+                                   if a.get('result_truncated') else '',
+                    'error': a.get('error')}
+                   for a in getattr(e, 'partial_actions', [])]
         with brain.loud('s1e_failed_trace_write', 'recording encoding_run_failed delta'):
             dispatch_fn('trace_append', {
                 'chain_id': enc_chain, 'scale': 's1', 'event_type': 'delta',
                 'ref_type': 'encoding_run_failed',
                 'summary': 'FAILED: %s' % str(e)[:200],
                 'metadata': {'error': str(e)[:500], 'stop_counter': counter,
-                             'inputs_processed': len(messages)},
+                             'inputs_processed': len(messages),
+                             'partial_actions': partial},
                 'session_id': session_id,
             })
         return {"error": str(e), "profile": profile}
@@ -255,6 +271,17 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             'max_tokens truncation: round %d used %s/%s output tokens' % (
                 trunc['round'], trunc['output_tokens'], trunc['max_tokens']),
             'S1E tool call likely corrupted, encoding data may be lost')
+
+    # Oversized-tool-result scan — the runner truncates and marks the action
+    # (it has no brain reference); the loud errors-table entry lands here.
+    for a in (result.get('action_details', []) + result.get('read_calls', [])):
+        if a.get('result_truncated'):
+            brain._log_error(
+                's1e_oversized_tool_result',
+                RuntimeError('%s returned %d chars — truncated to cap' % (
+                    a.get('tool'), a.get('result_chars', -1))),
+                'head: %s; session=%s stop=%d' % (
+                    (a.get('result_head') or '')[:200], session_id[:8], counter))
 
     # 7. Post-process (S1-specific: journal/residue, session context).
     # Guarded as a whole: the loop's writes already landed — a post-process
