@@ -326,6 +326,16 @@ def seed_interactions(brain):
     # this seed only knows about 'surface'. Old 'judge' rows in older
     # brains are orphans — clean them out manually if they exist.
     _register('surface', SURFACE_PROMPT_V1, SURFACE_CONFIG_V1, 'anchor')
+    # Payload-recorder gates (docs/TRACE-MODES-DESIGN.md): modes as named
+    # config versions — v1 normal (auto-activates), v2 debug (dormant).
+    # "Entering debug" = set_interaction_active('trace_recording', 2).
+    if 'trace_recording' not in existing:
+        from .trace_contract import (TRACE_RECORDING_DEBUG,
+                                     TRACE_RECORDING_NORMAL)
+        _register('trace_recording', '', TRACE_RECORDING_NORMAL, 'anchor')
+        brain.register_interaction('trace_recording', template='',
+                                   parameters=json.dumps(TRACE_RECORDING_DEBUG),
+                                   created_by='anchor')
     _register('voice_surface', '', VOICE_CONFIG_V1, 'anchor')
     _register('boot', '', BOOT_CONFIG_V1, 'anchor')
     _register('pre_edit', '', PRE_EDIT_CONFIG_V1, 'anchor')

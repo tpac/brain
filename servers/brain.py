@@ -1758,6 +1758,10 @@ class Brain(
         # during the (multi-minute) S2 cycle accrue toward the next one.
         self.activity.consume_encode_runs(encode_runs)
 
+        # Payload-file retention rides the maintenance cycle (own daily
+        # stamp inside; cheap no-op when not due) — see brain_traces.py.
+        self.prune_payloads_if_due(now)
+
         from servers.scales.s2.coordinator import run_s2
         results = run_s2(self)
         return {

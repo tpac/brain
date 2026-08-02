@@ -746,6 +746,163 @@ class BrainTracesMixin:
             pass
         return []
 
+    # ═══════════════════════════════════════════════════════════
+    # Payload recorder (docs/TRACE-MODES-DESIGN.md)
+    # ═══════════════════════════════════════════════════════════
+    # Fat payloads (full prompts, per-round payloads, failed-run conversations)
+    # live in FILES under {db_dir}/payloads/ — never in trace rows. The trace
+    # row stays the authoritative index (bounded forensics + this pointer);
+    # a deleted file degrades to a clean "pruned" read, so the user deleting
+    # payloads from outside is always safe.
+
+    def _payload_root(self):
+        """{db_dir}/payloads — derived from THIS brain instance's db_path,
+        never a global env var (a88343d6: env-resolved writer/reader path
+        seams split-brain silently). IsolatedBrain and eval's fresh brains
+        get their own root by construction."""
+        return os.path.join(os.path.dirname(os.path.abspath(self.db_path)),
+                            'payloads')
+
+    def _payload_chain_dir(self, chain_id):
+        """Date-first, chain-second. The date dir is the chain's FIRST
+        payload's day: a chain dir already existing under yesterday is reused
+        so a run straddling midnight stays one `ls`."""
+        from datetime import datetime, timedelta
+        from .clock import iso_now
+        today = iso_now()[:10]
+        yesterday = (datetime.strptime(today, '%Y-%m-%d')
+                     - timedelta(days=1)).strftime('%Y-%m-%d')
+        for day in (today, yesterday):
+            d = os.path.join(self._payload_root(), day, chain_id)
+            if os.path.isdir(d):
+                return d, day
+        d = os.path.join(self._payload_root(), today, chain_id)
+        os.makedirs(d, exist_ok=True)
+        return d, today
+
+    def record_payload(self, chain_id, kind, content, *, seq=None):
+        """Write one payload file for a chain; return its pointer (path
+        RELATIVE to db_dir) or None (gated off / unknown kind / empty).
+
+        The ONE capture writer — call sites hold zero knowledge of gates,
+        paths, or formats. Gating: the `trace_recording` K-store interaction
+        (per-kind on/off; modes are named config versions — see
+        TRACE_RECORDING_NORMAL/DEBUG in trace_contract.py). Never raises into
+        the caller's run: any failure loud-logs and returns None.
+
+        Chain dirs are APPEND-ONLY: files open with O_EXCL and collisions get
+        an attempt ordinal (`000-prompt.2.md`) — a Scribe idle-tail retry
+        reuses the same chain_id, and overwriting would destroy exactly the
+        failed attempt's forensics. The retention pass is the only deleter.
+        """
+        from .trace_contract import PAYLOAD_KIND_EXT, TRACE_RECORDING_NORMAL
+        try:
+            if not chain_id or content in (None, '', {}, []):
+                return None
+            ext = PAYLOAD_KIND_EXT.get(kind)
+            if ext is None:
+                # Loud once per kind per process — a typo'd kind at a wired
+                # call site must be visible, not silently record nothing.
+                seen = getattr(self, '_payload_unknown_kinds', None)
+                if seen is None:
+                    seen = self._payload_unknown_kinds = set()
+                if kind not in seen:
+                    seen.add(kind)
+                    self._log_error('record_payload_unknown_kind',
+                                    ValueError('unknown payload kind %r'
+                                               % (kind,)),
+                                    context='chain=%s' % chain_id)
+                return None
+            cfg = self.get_interaction_config('trace_recording')
+            kinds = (cfg.get('kinds') if isinstance(cfg.get('kinds'), dict)
+                     else TRACE_RECORDING_NORMAL['kinds'])
+            if not kinds.get(kind):
+                return None
+            if not isinstance(content, str):
+                content = json.dumps(content, indent=2, ensure_ascii=False,
+                                     default=str)
+            chain_dir, day = self._payload_chain_dir(chain_id)
+            base = '%03d-%s' % (int(seq or 0), kind)
+            for attempt in range(1, 100):
+                name = ('%s.%s' % (base, ext) if attempt == 1
+                        else '%s.%d.%s' % (base, attempt, ext))
+                path = os.path.join(chain_dir, name)
+                try:
+                    fd = os.open(path,
+                                 os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+                except FileExistsError:
+                    continue
+                with os.fdopen(fd, 'w') as f:
+                    f.write(content)
+                return os.path.join('payloads', day, chain_id, name)
+            raise RuntimeError('100 attempt ordinals exhausted for %s' % base)
+        except Exception as e:
+            try:
+                self._log_error('record_payload', e,
+                                context='chain=%s kind=%s' % (chain_id, kind))
+            except Exception:
+                pass
+            return None
+
+    def prune_payloads_if_due(self, now=None):
+        """Age-prune {db_dir}/payloads/ date dirs older than retention_days
+        (from the trace_recording config). Rides the S2 maintenance cycle
+        with its own brain_meta stamp (per-unit gating convention) — NOT the
+        logs-size check, which is size-triggered and never fires for files.
+        Once per day is plenty: date-first layout makes it one listdir.
+        Wall-clock deliberately (system bookkeeping, exempt from
+        conversation-time). Never raises; returns date-dirs removed."""
+        import shutil
+        import time as _time
+        from datetime import datetime, timedelta
+        from .trace_contract import TRACE_RECORDING_NORMAL
+        try:
+            now = now if now is not None else _time.time()
+            last = float(self.get_config('payload_prune_last_ts') or 0)
+            if now - last < 86_400:
+                return 0
+            self.set_config('payload_prune_last_ts', str(now))
+            days = (self.get_interaction_config('trace_recording')
+                    .get('retention_days')
+                    or TRACE_RECORDING_NORMAL['retention_days'])
+            cutoff = (datetime.utcfromtimestamp(now)
+                      - timedelta(days=int(days))).strftime('%Y-%m-%d')
+            root = self._payload_root()
+            if not os.path.isdir(root):
+                return 0
+            removed = 0
+            for name in os.listdir(root):
+                if re.fullmatch(r'\d{4}-\d{2}-\d{2}', name) and name < cutoff:
+                    shutil.rmtree(os.path.join(root, name),
+                                  ignore_errors=True)
+                    removed += 1
+            return removed
+        except Exception as e:
+            try:
+                self._log_error('payload_prune', e, context='')
+            except Exception:
+                pass
+            return 0
+
+    def read_payload(self, pointer):
+        """Read a payload by its relative pointer → str, or None (pruned /
+        missing / never recorded). The pointer must stay inside db_dir —
+        absolute paths and traversal are rejected (pointers come from trace
+        metadata, which is data, not a path authority)."""
+        if not pointer or not isinstance(pointer, str):
+            return None
+        norm = os.path.normpath(pointer)
+        if (os.path.isabs(norm) or norm.startswith('..')
+                or not norm.startswith('payloads' + os.sep)):
+            return None
+        path = os.path.join(os.path.dirname(os.path.abspath(self.db_path)),
+                            norm)
+        try:
+            with open(path, encoding='utf-8') as f:
+                return f.read()
+        except OSError:
+            return None
+
 
 # ═══════════════════════════════════════════════════════════════
 # JSONL Conversation Log Support (pre-trace history)

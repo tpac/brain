@@ -235,7 +235,18 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         # Salvage the actions that ran before the failure (RunLoopError
         # carries them). Bounding + record shape live in the traces layer
         # (build_failed_run_metadata) — this consumer just hands them over.
+        # The full conversation at failure time (RunLoopError.msgs, tool
+        # results already capped) is recorded as the failed_run payload —
+        # the 2AM story: the next 6M-char-class incident is diagnosable
+        # from the trace row + one file, in normal mode. Round-0 failures
+        # arrive unwrapped (no msgs) — the prompt itself is what failed_run
+        # would show, and nothing ran yet.
         from servers.trace_contract import build_failed_run_metadata
+        failed_ptr = brain.record_payload(
+            enc_chain, 'failed_run',
+            {'error': str(e)[:2000],
+             'messages': getattr(e, 'msgs', None) or []}
+            if getattr(e, 'msgs', None) else None)
         with brain.loud('s1e_failed_trace_write', 'recording encoding_run_failed delta'):
             dispatch_fn('trace_append', {
                 'chain_id': enc_chain, 'scale': 's1', 'event_type': 'delta',
@@ -244,7 +255,8 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
                 'metadata': build_failed_run_metadata(
                     error=e, stop_counter=counter,
                     inputs_processed=len(messages),
-                    partial_actions=getattr(e, 'partial_actions', None)),
+                    partial_actions=getattr(e, 'partial_actions', None),
+                    payload_pointer=failed_ptr),
                 'session_id': session_id,
             })
         return {"error": str(e), "profile": profile}
