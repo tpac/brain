@@ -244,7 +244,14 @@ def retry_on_transient_api_error(fn, *, attempts=RETRY_ATTEMPTS,
     for i in range(attempts):
         try:
             return fn()
-        except transient as e:
+        except Exception as e:
+            # RunLoopError wraps mid-run exceptions to carry partial_actions
+            # (8ef9431) — match transience on the CAUSE, or the wrapper would
+            # silently disable retry for every round-≥1 failure (found by
+            # code review, node c98efe35). Non-transient → re-raise as before.
+            if not (isinstance(e, transient)
+                    or isinstance(getattr(e, '__cause__', None), transient)):
+                raise
             last_err = e
             if i < attempts - 1:
                 sleep_s = base_backoff_s * (2 ** i)
