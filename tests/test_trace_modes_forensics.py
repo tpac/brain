@@ -68,6 +68,21 @@ class TestTraceDetail(unittest.TestCase):
             self.assertGreater(TRACE_MODES['debug'][cap],
                                TRACE_MODES['normal'][cap])
 
+    def test_recording_shapes_cover_exactly_the_contract_kinds(self):
+        """A kind rename in PAYLOAD_KIND_EXT with a stale _NORMAL_ON_KINDS
+        would silently flip that kind's normal default to off — pin the
+        derivations to the contract."""
+        from servers.trace_contract import (_NORMAL_ON_KINDS,
+                                            PAYLOAD_KIND_EXT,
+                                            TRACE_RECORDING_DEBUG,
+                                            TRACE_RECORDING_NORMAL)
+        self.assertLessEqual(set(_NORMAL_ON_KINDS), set(PAYLOAD_KIND_EXT))
+        self.assertEqual(set(TRACE_RECORDING_NORMAL['kinds']),
+                         set(PAYLOAD_KIND_EXT))
+        self.assertEqual(set(TRACE_RECORDING_DEBUG['kinds']),
+                         set(PAYLOAD_KIND_EXT))
+        self.assertTrue(all(TRACE_RECORDING_DEBUG['kinds'].values()))
+
 
 class TestTruncationGuard(unittest.TestCase):
     """Oversized tool results are truncated before the next API round."""

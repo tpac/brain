@@ -614,11 +614,13 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                 "type": "tool_result", "tool_use_id": tu.id,
                 "content": result_text,
             })
-            # `or` chain, not .get defaults: a model can emit an explicit
-            # {"title": null} — .get(key, default) returns that None, and
-            # None[:60] would kill the whole run for a log nicety.
-            action_summary = (tu.input.get("title") or tu.input.get("query")
-                              or tu.input.get("node_id") or "")[:60]
+            # `or` chain + str(), not .get defaults: a model can emit an
+            # explicit {"title": null} or a non-string ({"title": 123}) —
+            # either would TypeError at [:60] and kill the whole run for a
+            # log nicety.
+            action_summary = str(tu.input.get("title")
+                                 or tu.input.get("query")
+                                 or tu.input.get("node_id") or "")[:60]
             result_ids = []
             # Authoritative node-lifecycle split — the dispatch handler returned
             # it as a TOP-LEVEL `affected` (sibling of `result`), computed where

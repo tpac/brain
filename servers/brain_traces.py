@@ -842,6 +842,10 @@ class BrainTracesMixin:
             if ext is None:
                 # A typo'd kind at a wired call site must be visible —
                 # _log_error's fingerprint rate-limit dedups repeats.
+                # That dedup RELIES on the fingerprint being
+                # source:type:message[:100] and EXCLUDING context (which
+                # carries the per-chain id) — folding context in would
+                # defeat it and log one row per payload write.
                 self._log_error('record_payload_unknown_kind',
                                 ValueError('unknown payload kind %r'
                                            % (kind,)),
@@ -853,6 +857,12 @@ class BrainTracesMixin:
                 content = json.dumps(content, ensure_ascii=False,
                                      default=str)
             safe_chain = re.sub(r'[^A-Za-z0-9._-]', '_', str(chain_id))
+            if not re.search(r'[A-Za-z0-9]', safe_chain):
+                # Dot/punctuation-only names ('.', '..') are path syntax,
+                # not names — they'd land files outside the date layout
+                # where the retention pass never looks.
+                safe_chain = 'chain-' + (safe_chain.replace('.', '_')
+                                         or 'empty')
             chain_dir, day = self._payload_chain_dir(safe_chain)
             base = '%03d-%s' % (int(seq or 0), kind)
             for attempt in range(1, 100):
@@ -889,14 +899,16 @@ class BrainTracesMixin:
 
     def prune_payloads_if_due(self, now=None):
         """Age-prune {db_dir}/payloads/ date dirs older than retention_days
-        (from the trace_recording config). Self-gated: an in-memory hourly
-        throttle keeps the per-poll cost at ~zero, the `s2_payload_prune_
-        last_ts` brain_meta stamp (S2 naming convention) enforces
-        once-per-day, and the stamp is written AFTER a successful prune so a
-        mid-run failure retries within the hour instead of silently waiting
-        a day. Wall-clock deliberately (system bookkeeping, exempt from
-        conversation-time). Never raises; returns date-dirs actually
-        removed — failed removals loud-log and don't count."""
+        (from the trace_recording config). Self-gated — deliberately runs
+        AHEAD of the S2 fire conditions (a keyless brain still prunes): an
+        in-memory hourly throttle keeps the per-poll cost at ~zero and the
+        `s2_payload_prune_last_ts` brain_meta stamp enforces once-per-day.
+        The stamp is written only after a FULLY successful prune — both
+        exceptions and partially-failed removals retry within the hour,
+        loudly, instead of silently waiting a day. Wall-clock deliberately
+        (system bookkeeping, exempt from conversation-time). Never raises;
+        returns date-dirs actually removed — failed removals loud-log and
+        don't count."""
         import shutil
         import time as _time
         from datetime import datetime, timezone
@@ -941,10 +953,14 @@ class BrainTracesMixin:
                     else:
                         removed += 1
             if failed:
+                # No stamp on partial failure: the undeletable dirs retry
+                # within the hour (loudly, fingerprint-capped) instead of
+                # silently waiting a day.
                 self._log_error(
                     'payload_prune_failed_dirs',
                     RuntimeError('could not remove: %s' % ', '.join(failed)))
-            self.set_config('s2_payload_prune_last_ts', str(now))
+            else:
+                self.set_config('s2_payload_prune_last_ts', str(now))
             return removed
         except Exception as e:
             self._log_error('payload_prune', e, context='')

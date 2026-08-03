@@ -332,7 +332,10 @@ def seed_interactions(brain):
     # Each registration guards on its own absence (version count, not just
     # the name) so a boot that crashed between the two self-heals on the
     # next seed instead of losing the debug version forever; >= 2 versions
-    # (including externally-registered ones) → never add more.
+    # (including externally-registered ones) → never add more. Deliberate
+    # edge: a single OPERATOR-registered v1 gets the contract debug appended
+    # as v2 — an ADD, never an override (active pointer untouched), and it
+    # keeps the documented recipe (activate v2 = enter debug) coherent.
     from .trace_contract import (TRACE_RECORDING_DEBUG,
                                  TRACE_RECORDING_NORMAL)
     _tr_versions = next((i['total_versions'] for i in brain.list_interactions()

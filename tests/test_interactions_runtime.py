@@ -58,6 +58,9 @@ class TestInteractionSeeding:
         from servers.interaction_seed import seed_interactions
         seed_interactions(self.brain)
         before = {i['name']: i['total_versions'] for i in self.dal.list_all()}
+        # Pin the multi-version seed's FIRST-seed shape too: a bug that
+        # registers debug twice in one run would otherwise pass before==after.
+        assert before['trace_recording'] == 2
         seed_interactions(self.brain)
         after = {i['name']: i['total_versions'] for i in self.dal.list_all()}
         assert after == before

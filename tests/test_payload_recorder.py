@@ -8,6 +8,7 @@ loudness, midnight chain-dir reuse.
 """
 
 import os
+import re
 import sys
 import unittest
 
@@ -80,12 +81,11 @@ class TestPayloadRecorder(BrainTestBase):
         must resolve to its contract default (and log the gap), never
         silently not-record."""
         import json as _json
-        self.brain.register_interaction(
+        reg = self.brain.register_interaction(
             'trace_recording', template='',
             parameters=_json.dumps({'kinds': {'prompt': True},
                                     'retention_days': 14}))
-        versions = 3  # v1 normal, v2 debug seeded; ours is v3
-        self.brain.set_interaction_active('trace_recording', versions)
+        self.brain.set_interaction_active('trace_recording', reg['version'])
         # failed_run is absent from the active config but ON in the contract
         # defaults — it must still record.
         ptr = self.brain.record_payload('s1e-abc-14', 'failed_run',
@@ -110,13 +110,36 @@ class TestPayloadRecorder(BrainTestBase):
                                                        Boom('bare')))
 
     def test_chain_id_is_sanitized_into_a_path_segment(self):
-        ptr = self.brain.record_payload('s1e/../../evil', 'prompt', 'x')
+        """A traversal chain must not create ANY path outside its own
+        chain dir — assert the exact dirs the unsanitized joins would have
+        created (a deep-escape chain and the payloads-root 'evil' dir),
+        so this test goes red if the sanitizer is deleted."""
+        deep = '../' * 6 + 'escaped'  # enough .. to climb out of db_dir
+        ptr = self.brain.record_payload(deep, 'prompt', 'x')
         self.assertIsNotNone(ptr)
-        # Pointer stays inside payloads/ and survives its own read guard.
         self.assertTrue(ptr.startswith('payloads' + os.sep))
         self.assertEqual(self.brain.read_payload(ptr), 'x')
         self.assertFalse(
-            os.path.exists(os.path.join(os.path.dirname(self.tmp), 'evil')))
+            os.path.exists(os.path.join(os.path.dirname(self.tmp),
+                                        'escaped')))
+        ptr2 = self.brain.record_payload('s1e/../../evil', 'prompt', 'y')
+        self.assertEqual(self.brain.read_payload(ptr2), 'y')
+        self.assertFalse(
+            os.path.exists(os.path.join(self.tmp, 'payloads', 'evil')))
+
+    def test_dot_only_chain_stays_inside_date_layout(self):
+        """'.' and '..' are path syntax, not names — unsanitized they land
+        files where the date-pattern pruner never looks."""
+        for chain in ('.', '..'):
+            ptr = self.brain.record_payload(chain, 'prompt', 'dots')
+            # Pointer shape: payloads/{date}/{chain}/{file} — 4 segments,
+            # so the file is inside a date dir the pruner can reach.
+            self.assertEqual(len(ptr.split(os.sep)), 4, ptr)
+            self.assertEqual(self.brain.read_payload(ptr), 'dots')
+        root_files = [f for f in os.listdir(
+            os.path.join(self.tmp, 'payloads'))
+            if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', f)]
+        self.assertEqual(root_files, [])
 
     # ── append-only ─────────────────────────────────────────────
 

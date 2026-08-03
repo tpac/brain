@@ -264,48 +264,62 @@ Two gaps the sibling investigation surfaced; both belong to step 2:
    `encoding_run_failed` trace (with its `payload_pointer`) in the timeline, so
    the retry encodes with knowledge of the failure instead of amnesia.
 
-## Unified mutation-trace emitter (Tom, via the S1E-reliability stream, 2026-08-02)
+## Part 2 charter: unified mutation-trace emitter (own design session)
 
-The graph-write twin of the agent-I/O capture above: what the recorder does for
-payloads, one emitter does for per-write traces. Scope added to this design
-because it's the same disease — hand-rolled capture scattered across call
-sites — on the write path.
+The graph-write twin of the agent-I/O capture above — same disease
+(hand-rolled capture scattered across call sites), on the write path. Tom's
+ruling: this is NOT a section of this doc — it's **part 2 of the traces
+simplification arc**, with its own design session, so it isn't treated as an
+afterthought. This charter carries only the verified inventory and the open
+questions; **no spec is written here** — an earlier draft specced from a
+partial inventory and a code review caught two false load-bearing claims.
 
-**Diagnosis (verified against dispatch_write.py):** per-write trace emission
-is hand-rolled per handler — `_emit_revise_trace` fires mid-transaction (a
-whole-batch rollback orphans the trace), `_emit_edge_traces` at five call
-sites with mixed pre/post-commit discipline, **creates emit nothing** (no
-`node_created` trace exists — finding 19b56d44), archives ride a side path,
-and the d857e84d attribution split (revise/connect sub-ops unattributed in
-batches) is a symptom of the same scatter.
+**Verified inventory (code-review-checked against dispatch_write.py):**
 
-**Design: ONE emitter at the dispatch write chokepoint**, driven by the
-`affected` contract every handler already returns (verified: all six write
-handlers return `_affected(created/revised/archived)`, and brain_batch already
-accumulates them). The emitter runs **POST-COMMIT** and stamps session/chain
-once. Consequences, by construction:
+- **Eleven** hand-rolled emit call sites, three families:
+  `_emit_edge_traces` ×5 (mixed pre/post-commit discipline),
+  `_emit_revise_trace` ×2 (fires MID-transaction — a whole-batch rollback
+  orphans the trace), `_emit_edge_revise_trace` ×4.
+- **Creates emit nothing** — no `node_created` trace exists (finding
+  19b56d44); archives ride a side path.
+- The `affected` contract covers **node lifecycle only**, and only
+  partially by site: 4 `_handle_*` handlers + 2 batch `_op_*` helpers return
+  it; **five write paths return no `affected` at all** (`_handle_connect`,
+  `_handle_revise_edge`, `_handle_connect_batch`, `_handle_enrich`,
+  `_op_disconnect`). Edges are deliberately NOT in `affected`
+  (runner.py: "Edges are not in `affected`; they're directional
+  edge_relation_revised traces emitted by the handlers").
+- Consequence: an emitter driven solely by `affected` structurally CANNOT
+  replace the nine edge-trace sites. The central design question for part 2:
+  **extend the write-handler contract with an edge manifest** (affected
+  grows an edges channel every handler must return), or **scope emitter v1
+  to node ops** and leave edge emission as an explicit second phase.
+- The d857e84d attribution split (revise/connect sub-ops unattributed in
+  batches) is a symptom of the same scatter — the emitter should kill it by
+  stamping session/chain once at the chokepoint.
 
-- `node_created` traces exist for free — the create hole closes structurally,
-  not by patching a sixth hand-rolled emit.
-- No mid-transaction orphans: nothing emits unless the write committed.
-- The attribution split dies: session/chain stamped at the one chokepoint.
-- Every future op is traced by construction — a handler must return
-  `affected` for the batch manifest anyway.
-- The five `_emit_*` call sites are deleted.
+**Design properties to hold it to** (from this session's review): emission is
+POST-COMMIT (state the failure asymmetry explicitly: a missing trace is
+recoverable from the DB, an orphaned trace lies about the graph — prefer
+missing over lying, loud-wrapped); per-batch rollups, not per-op rows
+(brain_batch already accumulates `affected`); skeletal rows forever (normal
+mode); never slows the write path.
 
-**Downstream consumer waiting on this:** the partial-run catalog gap fix
-(finding 30cf1bce, design 5efe5e02) — `session_node_ids` unions per-write
-trace ids so a failed run's created nodes are visible to the retry's catalog.
-Deliberately NOT patched standalone (that would be the sixth hand-rolled
-emit). Invariants that fix must keep (Tom probed explicitly): `get_bulk`
-hydration stays the truth filter (only committed nodes hydrate), and
-coverage stays gated on the `encoding_run` success receipt — catalog
-visibility never suppresses re-encoding (principle c7d52ad0: "a failure can
-neither hide turns nor conjure nodes").
+**First consumer, parked until the emitter lands:** the partial-run catalog
+gap fix (finding 30cf1bce, design 5efe5e02) — `session_node_ids` unions
+per-write trace ids so a failed run's created nodes are visible to the
+retry's catalog. Deliberately NOT patched standalone (it would be the
+twelfth hand-rolled emit). Invariants it must keep (Tom probed explicitly):
+`get_bulk` hydration stays the truth filter, and coverage stays gated on the
+`encoding_run` success receipt — catalog visibility never suppresses
+re-encoding (principle c7d52ad0: "a failure can neither hide turns nor
+conjure nodes").
 
-**Sequencing:** the emitter is its own work item after step 1 ships — it
-touches dispatch_write.py (transaction discipline), needs the full-suite
-tier, and unblocks the catalog-gap fix as its first consumer.
+**Session shape:** start with an architecture-review-grade pass over
+dispatch_write.py's emission + transaction discipline (the eleven sites, the
+five no-`affected` paths, `commit_unless_batched` semantics), get the
+contract decision (edge manifest vs node-scope v1) ruled on, THEN spec.
+Full-suite test tier; own daemon-restart gate.
 
 ## Rollout (two steps, no double-write)
 
