@@ -179,7 +179,11 @@ function renderRecallEntry(evt) {
   const promptBtn  = div.querySelector('.hook-details-btn');
   const promptBody = div.querySelector('.surface-prompt-body');
   if (promptBtn && promptBody) _wirePromptToggle(promptBtn, promptBody, async () => {
-    const d = await api.recallPrompt({ recall_ref: evt.recall_ref });
+    // pointer = O(1) payload read; chain_id = fallback scan on expand;
+    // recall_ref = legacy /tmp branch for pre-migration rows.
+    const d = await api.recallPrompt({ pointer: evt.payload_pointer || '',
+                                       chain_id: evt.chain_id || '',
+                                       recall_ref: evt.recall_ref });
     return d.judge_prompt || d.error || '(no prompt available)';
   });
 
@@ -940,7 +944,7 @@ function _renderS2RunCard(run) {
 
   if (isConsol && showPromptBtn && consolPromptBody) {
     _wirePromptToggle(showPromptBtn, consolPromptBody, async () => {
-      const d = await api.consolidationPrompt(1);
+      const d = await api.consolidationPrompt({ chain_id: run.chain_id });
       return d.user_content || d.error || '(no prompt available)';
     });
   }

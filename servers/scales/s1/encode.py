@@ -10,14 +10,12 @@ Writes: nodes/edges via dispatch, traces (O/K), journal + session context via co
 """
 
 import os
-import json
 import re
 import time
 
 from servers.scales.dispatch import load_env
 from servers.scales.runner import run_llm_loop
 from servers.trace_contract import build_delta_metadata
-from servers.daemon_config import brain_tmp_dir
 
 
 def _journal(brain, session_id=''):
@@ -143,67 +141,24 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     tools = _get_tool_schemas()
     _step("tools(%d)" % len(tools))
 
-    # 4. Write prompt to tmp file (passive observer for dashboard + post-hoc
-    # eval inspection). Path includes FULL session_id + pid so parallel
-    # jobs don't clobber each other's files. 16-char prefix collided
-    # across jobs whose session_ids shared the same leading bytes — a real
-    # bug caught in the smoke_seed_2 run where arm-A jobs read arm-B's
-    # prompt files and wrongly flagged "scout_reports_absent" as failed.
-    _session_safe = (session_id or 'nosession').replace('/', '_').replace(' ', '_')
-    prompt_path = os.path.join(brain_tmp_dir(), "brain-encoding-prompt-%s-%d.json" % (
-        _session_safe, counter))
-    try:
-        with open(prompt_path, 'w') as f:
-            json.dump({
-                "counter": counter,
-                "session_id": session_id,
-                "system_prompt_chars": len(system_prompt),
-                "user_preamble": user_preamble,
-                "user_content": user_content,
-                "tools_count": len(tools),
-            }, f)
-        # Legacy counter-only path for dashboards that still expect it —
-        # overwrite is acceptable for dashboards, not for parallel eval.
-        try:
-            with open(os.path.join(brain_tmp_dir(), "brain-encoding-prompt-%d.json" % counter), 'w') as f:
-                json.dump({
-                    "counter": counter,
-                    "session_id": session_id,
-                    "system_prompt_chars": len(system_prompt),
-                    "user_preamble": user_preamble,
-                "user_content": user_content,
-                    "tools_count": len(tools),
-                }, f)
-        except Exception:
-            pass  # best-effort dashboard compat
-    except Exception as e:
-        print('[s1e] WARNING: could not write prompt file: %s' % e, flush=True)
+    # 4. Record the assembled prompt via the payload recorder (dashboard +
+    # post-hoc eval read it back by pointer/chain; per-arm eval brains land
+    # it inside their own db_dir by construction). The O trace below carries
+    # the returned db_dir-relative pointer as its ref_id.
+    enc_chain = 's1e-%s-%d' % (session_id[:8], counter)
+    prompt_pointer = brain.record_payload(
+        enc_chain, 'prompt', user_preamble + "\n\n" + user_content)
 
     # 5. Write S1 traces: O (observation) and K (knowledge)
     _write_pre_traces(brain, dispatch_fn, messages, user_content, counter,
-                      session_id, catalog_ids=catalog_ids)
+                      session_id, catalog_ids=catalog_ids,
+                      prompt_pointer=prompt_pointer)
 
     # 6. Run generic LLM loop (shared with S2+)
     _log("calling Sonnet with %d tools, %d chars context, effort=%s..." % (
         len(tools), len(user_content), enc_effort or 'default(high)'))
     _log("PROFILE so far: %s" % " → ".join("%s:%dms" % (n, t) for n, t in profile))
 
-    # Full-prompt capture label (eval/observability) — only computed when
-    # BRAIN_PROMPT_CAPTURE_DIR is set, so production stays a no-op. Keys the
-    # dump by arm + session + stop so control vs new (and each turn) never
-    # collide; runner.py adds round + a monotonic seq.
-    capture_label = None
-    if os.environ.get('BRAIN_PROMPT_CAPTURE_DIR'):
-        # Arm name: the harness (ab_encode) sets BRAIN_PROMPT_CAPTURE_ARM
-        # explicitly — required for same-template A/Bs (--control-lived) where
-        # BOTH arms run lived and the flag can't distinguish them. Flag-derived
-        # fallback keeps ad-hoc captures working without the env.
-        arm = os.environ.get('BRAIN_PROMPT_CAPTURE_ARM') or (
-            'new' if lived else 'control')
-        safe_sid = (session_id or 'nosession').replace('/', '_').replace(' ', '_')
-        capture_label = "%s__%s__stop%d" % (arm, safe_sid, counter)
-
-    enc_chain = 's1e-%s-%d' % (session_id[:8], counter)
     try:
         result = run_llm_loop(
             client=client,
@@ -217,7 +172,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             tools=tools,
             dispatch_fn=dispatch_fn,
             log_fn=_log,
-            capture_label=capture_label,
+            record_round_fn=brain.round_recorder(enc_chain),
             deadline_seconds=SCRIBE_RUN_DEADLINE_SECONDS)
     except Exception as e:
         # The LLM loop itself died — no writes happened this run. Loud by
@@ -241,7 +196,8 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         # from the trace row + one file, in normal mode. The traces layer
         # owns the payload shape and caps; round-0 failures arrive unwrapped
         # (no msgs) and record nothing — the prompt kind is that half.
-        from servers.trace_contract import build_failed_run_metadata
+        from servers.trace_contract import (build_failed_run_metadata,
+                                            build_journal_note_metadata)
         failed_ptr = brain.record_failed_run(enc_chain, e)
         with brain.loud('s1e_failed_trace_write', 'recording encoding_run_failed delta'):
             dispatch_fn('trace_append', {
@@ -253,6 +209,23 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
                     inputs_processed=len(messages),
                     partial_actions=getattr(e, 'partial_actions', None),
                     payload_pointer=failed_ptr),
+                'session_id': session_id,
+            })
+        # Reflective residue (docs/TRACE-MODES-DESIGN.md §Failed-run residue):
+        # a dead run must leave a journal note so the retry's continuity
+        # window shows the failure instead of amnesia. Same journal_note
+        # shape write_journal_notes emits — the read door needs no change.
+        with brain.loud('s1e_failed_journal_note',
+                        'recording failure journal note'):
+            dispatch_fn('trace_append', {
+                'chain_id': enc_chain, 'scale': 's1', 'event_type': 'delta',
+                'ref_type': 'journal_note', 'ref_id': 'encoding-run-failure',
+                'summary': 'run FAILED before finishing',
+                'metadata': build_journal_note_metadata(
+                    note='stop %d run FAILED: %s — turns stay unencoded and '
+                         'retry; writes from completed rounds (if any) were '
+                         'kept' % (counter, str(e)[:200]),
+                    tag='failure'),
                 'session_id': session_id,
             })
         return {"error": str(e), "profile": profile}
@@ -798,6 +771,12 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
     # in the XML label the v-next prompt names (<continuity> folds residue + arc;
     # <node_catalog>; <timeline>). The control arm keeps the legacy ### markdown
     # headers — byte-identical to the long-standing path.
+    # Failed-run residue (docs/TRACE-MODES-DESIGN.md §Failed-run residue):
+    # encoding_run_failed traces newer than the last successful run mean the
+    # turns below were ALREADY attempted and died — the retry must encode
+    # with knowledge of the failure, not amnesia.
+    failed_block = _render_failed_encodes(brain, session_id)
+
     if lived:
         continuity = ""
         if journal_block:   # self-labeled ("RECENT REVIEW NOTES …"); empty on a fresh session
@@ -807,6 +786,8 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
         body = ""
         if continuity:
             body += "<continuity>\n%s</continuity>\n\n" % continuity
+        if failed_block:
+            body += "<failed_encodes>\n%s</failed_encodes>\n\n" % failed_block
         if node_catalog:
             body += "<node_catalog>\n%s\n</node_catalog>\n\n" % node_catalog
         if scout_legend:    # explains the <scout_notes> inside the timeline
@@ -816,12 +797,65 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
         body = ""
         if journal_block:   # self-labeled
             body += "%s\n\n" % journal_block
+        if failed_block:
+            body += "### Previous encode attempts FAILED\n%s\n" % failed_block
         if prev_context:
             body += "### Session Context\n%s\n\n" % prev_context
         if node_catalog:
             body += "### %s\n" % node_catalog
         body += "### Conversation Timeline\n\n%s\n" % timeline
     return preamble, body, node_catalog, cataloged_ids
+
+
+def _render_failed_encodes(brain, session_id, cap=3):
+    """Render this session's encoding_run_failed traces newer than the last
+    successful encoding_run — a short block (≤`cap` newest) so the retry sees
+    what its predecessor attempted and how it died. Reads go through the
+    query_traces door (session-scoped pulls ignore wall-clock windows —
+    eval-replay safe); created_at comparison is transaction-time on both
+    sides. Returns '' when there's nothing to show; never raises."""
+    try:
+        # get_by_ref_type orders created_at DESC — limit bounds the pull:
+        # newest failures only, and one row is enough for the success mark.
+        failed = (brain.query_traces(ref_type='encoding_run_failed',
+                                     session_id=session_id, hours=None,
+                                     limit=cap * 2)
+                  or {}).get('events') or []
+        if not failed:
+            return ''
+        ok = (brain.query_traces(ref_type='encoding_run',
+                                 session_id=session_id, hours=None, limit=1)
+              or {}).get('events') or []
+        last_ok = max((e.get('created_at') or '' for e in ok), default='')
+        fresh = sorted((e for e in failed
+                        if (e.get('created_at') or '') > last_ok),
+                       key=lambda e: e.get('created_at') or '')
+        if not fresh:
+            return ''
+        lines = []
+        for e in fresh[-cap:]:
+            md = e.get('metadata') or {}
+            # Error text lands inside the XML-structured lived prompt —
+            # escape it so an API error echoing request content can't close
+            # the block or forge timeline tags (same guard as message text).
+            parts = ['stop %s FAILED: %s' % (
+                md.get('stop_counter', '?'),
+                _xml_escape(str(md.get('error') or
+                                e.get('summary') or '?')))]
+            n_partial = len(md.get('partial_actions') or [])
+            if n_partial:
+                parts.append('%d action(s) completed before death (their '
+                             'writes are already in the graph — do not '
+                             're-create them)' % n_partial)
+            if md.get('payload_pointer'):
+                parts.append('full conversation at failure: %s'
+                             % md['payload_pointer'])
+            lines.append('- ' + '; '.join(parts))
+        return '\n'.join(lines) + '\n'
+    except Exception as e:
+        brain._log_error('s1e_failed_encodes_block', e,
+                         'session=%s — omitting block' % (session_id or '')[:8])
+        return ''
 
 
 def _xml_escape(s):
@@ -1133,8 +1167,14 @@ def _render_provenance(links, frontier, turn, idx, titles=None):
 
 
 def _write_pre_traces(brain, dispatch_fn, messages, user_content, counter,
-                      session_id, catalog_ids=()):
+                      session_id, catalog_ids=(), prompt_pointer=None):
     """Write S1 encode traces: O (encoding prompt) and K (node catalog).
+
+    `prompt_pointer` — the db_dir-relative payload pointer for this run's
+    recorded prompt (brain.record_payload). It becomes the O trace's ref_id;
+    '' when recording was gated off or failed (readers render "no payload").
+    Pre-migration rows carry an absolute /tmp path here instead — readers
+    branch on pointer shape (time-bounded legacy).
 
     `catalog_ids` — the ids build_node_catalog actually rendered for this
     run. The K trace's ref_id carries them (8-char, comma-separated); the S2
@@ -1153,7 +1193,7 @@ def _write_pre_traces(brain, dispatch_fn, messages, user_content, counter,
         dispatch_fn('trace_append', {
             'chain_id': enc_chain, 'scale': 's1', 'event_type': 'O',
             'ref_type': 'encoding_prompt',
-            'ref_id': os.path.join(brain_tmp_dir(), 'brain-encoding-prompt-%d.json' % counter),
+            'ref_id': prompt_pointer or '',
             'summary': '%d turns, %d chars context, interaction: encoding-agent-v3' % (
                 turn_count, len(user_content)),
             'session_id': session_id})

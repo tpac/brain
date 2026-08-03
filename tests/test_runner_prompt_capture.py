@@ -1,26 +1,23 @@
-"""Full-prompt capture in run_llm_loop (eval/observability).
+"""Per-round capture in run_llm_loop (record_round_fn — TRACE-MODES step 2).
 
-When BRAIN_PROMPT_CAPTURE_DIR is set AND the caller passes a capture_label,
-run_llm_loop dumps the LITERAL per-round payload (system + messages) to a file
-so the actual prompt is recoverable without an unfaithful rebuild. OFF by
-default (no env, or no label) → zero files, zero production behavior change.
+run_llm_loop hands the LITERAL per-round request pieces to the caller's
+record_round_fn (brain.round_recorder closure) before each API call, so the
+actual prompt is recoverable without an unfaithful rebuild. The runner has no
+brain — the closure owns gating, shape (build_round_payload), and file writes.
 
 Contract locked here:
-  - full system TEXT is captured (not a length, the bug in the legacy dump)
-  - one file per round; the tool-result continuation (r1) carries the round-0
-    assistant + tool_result blocks
-  - files never overwrite each other (label + round + pid + monotonic seq)
-  - no label, or no env → no capture
+  - full system TEXT reaches the callback (not a length, the legacy-dump bug)
+  - one callback per round with the correct round index; the tool-result
+    continuation (r1) carries the round-0 assistant + tool_result blocks
+  - no callback (None) → no capture, zero behavior change
+  - a raising callback never kills the loop (capture must not break a cycle)
 """
-import json
 import os
 import sys
-import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from servers.scales import runner
 from servers.scales.runner import run_llm_loop
 
 
@@ -82,74 +79,52 @@ def _two_round_script():
     return [_Stream(r0), _Stream(r1)]
 
 
-def _run(client, capture_label):
+def _run(client, record_round_fn):
     return run_llm_loop(
         client=client, model='claude-test', max_tokens=256, max_rounds=3,
         system_prompt='FULL SYSTEM PROMPT «with unicode»', user_content='BODY',
         user_preamble='PREAMBLE', tools=[],
         dispatch_fn=lambda name, args: {'ok': True, 'result': {'id': 'n1'},
                                         'affected': {'created': ['n1']}},
-        log_fn=lambda m: None, capture_label=capture_label)
+        log_fn=lambda m: None, record_round_fn=record_round_fn)
 
 
-class TestPromptCapture(unittest.TestCase):
+class TestRecordRoundFn(unittest.TestCase):
 
-    def setUp(self):
-        self._prev = os.environ.get('BRAIN_PROMPT_CAPTURE_DIR')
-        self.tmp = tempfile.mkdtemp(prefix='promptcap-')
+    def test_callback_fires_per_round_with_full_pieces(self):
+        seen = []
+        _run(_Client(_two_round_script()),
+             lambda idx, parts: seen.append((idx, parts)))
+        self.assertEqual([idx for idx, _ in seen], [0, 1])
 
-    def tearDown(self):
-        if self._prev is None:
-            os.environ.pop('BRAIN_PROMPT_CAPTURE_DIR', None)
-        else:
-            os.environ['BRAIN_PROMPT_CAPTURE_DIR'] = self._prev
+        by_round = {idx: parts for idx, parts in seen}
+        # Full system TEXT (not a length) — the legacy-dump bug this pins.
+        for parts in by_round.values():
+            self.assertEqual(parts['system'], 'FULL SYSTEM PROMPT «with unicode»')
+            self.assertEqual(parts['model'], 'claude-test')
+            self.assertEqual(parts['tools'], [])
 
-    def _files(self):
-        return sorted(f for f in os.listdir(self.tmp) if f.endswith('.json'))
-
-    def test_captures_full_prompt_per_round(self):
-        os.environ['BRAIN_PROMPT_CAPTURE_DIR'] = self.tmp
-        _run(_Client(_two_round_script()), capture_label='new__sessX__stop5')
-        files = self._files()
-        self.assertEqual(len(files), 2, "expected r0 + r1 dumps, got %s" % files)
-
-        payloads = [json.load(open(os.path.join(self.tmp, f))) for f in files]
-        by_round = {p['round']: p for p in payloads}
-        self.assertEqual(set(by_round), {0, 1})
-
-        # Full system TEXT (not a length) — the legacy-dump bug this fixes.
-        for p in payloads:
-            self.assertEqual(p['system'], 'FULL SYSTEM PROMPT «with unicode»')
-            self.assertEqual(p['model'], 'claude-test')
-            self.assertEqual(p['label'], 'new__sessX__stop5')
-
-        # r0 payload = the initial user turn (preamble + body blocks).
+        # r0 = the initial user turn (preamble + body blocks).
         r0_texts = [b['text'] for m in by_round[0]['messages']
                     for b in m['content'] if b.get('type') == 'text']
         self.assertIn('PREAMBLE', r0_texts)
         self.assertIn('BODY', r0_texts)
 
-        # r1 payload carries the round-0 assistant tool_use + the tool_result
+        # r1 carries the round-0 assistant tool_use + the tool_result
         # continuation — i.e. the ACTUAL later-round prompt, not a rebuild.
         roles = [m['role'] for m in by_round[1]['messages']]
         self.assertEqual(roles, ['user', 'assistant', 'user'])
 
-    def test_no_overwrite_distinct_filenames(self):
-        os.environ['BRAIN_PROMPT_CAPTURE_DIR'] = self.tmp
-        _run(_Client(_two_round_script()), capture_label='new__sessX__stop5')
-        _run(_Client(_two_round_script()), capture_label='new__sessX__stop5')  # same label!
-        # 2 rounds × 2 runs = 4 files, all distinct despite the identical label.
-        self.assertEqual(len(self._files()), 4)
+    def test_none_callback_no_capture_loop_unchanged(self):
+        result = _run(_Client(_two_round_script()), None)
+        self.assertEqual(result['rounds'], 2)
+        self.assertEqual(result['final_text'], 'done')
 
-    def test_no_label_no_capture(self):
-        os.environ['BRAIN_PROMPT_CAPTURE_DIR'] = self.tmp
-        _run(_Client(_two_round_script()), capture_label=None)
-        self.assertEqual(self._files(), [])
-
-    def test_no_env_no_capture(self):
-        os.environ.pop('BRAIN_PROMPT_CAPTURE_DIR', None)
-        _run(_Client(_two_round_script()), capture_label='new__sessX__stop5')
-        self.assertEqual(self._files(), [])
+    def test_raising_callback_never_kills_the_loop(self):
+        def boom(idx, parts):
+            raise RuntimeError('capture exploded')
+        result = _run(_Client(_two_round_script()), boom)
+        self.assertEqual(result['final_text'], 'done')
 
 
 class TestEffortPassthrough(unittest.TestCase):

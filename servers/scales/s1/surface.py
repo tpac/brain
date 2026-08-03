@@ -19,7 +19,6 @@ from servers.scales.runner import read_usage, sum_usage
 from servers.scales.s1 import surface_capture
 from servers.trace_contract import (
     build_selection_metadata, build_run_telemetry, check_surface_telemetry)
-from servers.daemon_config import brain_tmp_dir
 
 
 # SURFACE_SELECTION_SCHEMA lives in surface_contract.py alongside the other
@@ -744,7 +743,7 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
                   graph_neighbors, additional_context, enriched, results,
                   recall_ref, interaction_id, session_id, expansion=None,
                   frame='', telemetry=None, pt=None, selection_reason='',
-                  seen_dropped=0):
+                  seen_dropped=0, judge_pointer=None):
     """Write S1 surface traces: O (candidates), K (surfaced), Δ (additionalContext).
 
     `expansion` carries activation data from spread_activation when present —
@@ -888,6 +887,13 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
         'phase_timing': pt.snapshot() if pt is not None else [],
         'outcome': 'served' if additional_context else 'empty',
     }
+    if judge_pointer:
+        # db_dir-relative pointer to this recall's `judge` payload
+        # (_record_judge_payload). The dashboard's polled feed reads it
+        # O(1) via read_payload_pointer — without it every poll row would
+        # glob the payloads tree (and a same-chain collision ordinal would
+        # sort wrong). Enrichment only: absent when the kind is gated off.
+        k_metadata['payload_pointer'] = judge_pointer
     # Loud guard — Haiku ran but recorded 0 output tokens means the cost
     # telemetry wasn't threaded. Log, don't block (write the full payload
     # regardless), same contract as the encoder check_delta_telemetry.
@@ -931,18 +937,19 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
     ])
 
 
-def _write_surface_result_file(recall_ref, surface_prompt, output, brain):
-    """Write surface result to tmp file for dashboard pickup."""
-    try:
-        path = os.path.join(brain_tmp_dir(), "brain-judge-result-%s.json" % recall_ref)  # keep filename for dashboard compat
-        with open(path, 'w') as f:
-            json.dump({
-                "recall_ref": recall_ref,
-                "surface_prompt": surface_prompt,
-                "surface_output": output,
-            }, f)
-    except Exception as e:
-        brain._log_error('surface_result_write', e, 'writing surface result file')
+def _record_judge_payload(ctx, recall_ref, surface_prompt, output, brain):
+    """Record the surface/judge result as a `judge` payload on the S1R chain
+    (docs/TRACE-MODES-DESIGN.md migration row f — replaces the retired /tmp
+    judge-result file). Returns the pointer (or None when gated off) — the
+    caller threads it into the K trace so the dashboard's polled feed reads
+    the payload O(1), falling back to a chain-layout scan only on card
+    expand. Direct file reads keep it daemon-down safe. Post-selection tail
+    position — never on the recall scoring path. record_payload never raises."""
+    return brain.record_payload(ctx.s1r_chain(), 'judge', {
+        "recall_ref": recall_ref,
+        "surface_prompt": surface_prompt,
+        "surface_output": output,
+    })
 
 
 def _drop_archived_selected(brain, selected_mode, selected_short_ids):
@@ -1043,6 +1050,8 @@ def run_surface(brain, ctx, candidates_data, user_message,
     if not selected:
         _write_surface_selected_file(brain, session_id, ctx.stop_counter,
                                      set())
+        judge_ptr = _record_judge_payload(ctx, recall_ref, surface_prompt,
+                                          "(no selection)", brain)
         try:
             _write_traces(brain, ctx, candidates_data, set(), [], [],
                           None, enriched, results,
@@ -1051,10 +1060,10 @@ def run_surface(brain, ctx, candidates_data, user_message,
                           selection_reason=selection_reason,
                           seen_dropped=((result.get('_retrieval_stats') or {})
                                     .get('seen_dropped', 0)
-                                    if isinstance(result, dict) else 0))
+                                    if isinstance(result, dict) else 0),
+                          judge_pointer=judge_ptr)
         except Exception as e:
             brain._log_error('trace_s1_surface_empty', e, 'S1 surface trace (no selection)')
-        _write_surface_result_file(recall_ref, surface_prompt, "(no selection)", brain)
         # Empty selections are corpus-worthy — a prompt candidate that
         # changes WHEN Haiku picks nothing needs these to be judged.
         surface_capture.finish(
@@ -1204,6 +1213,11 @@ def run_surface(brain, ctx, candidates_data, user_message,
     )
     _mark('surface_render')
 
+    # Judge payload first — its pointer rides the K trace below, so the
+    # dashboard's polled feed reads it O(1) instead of globbing payloads/.
+    judge_ptr = _record_judge_payload(ctx, recall_ref, surface_prompt,
+                                      additional_context, brain)
+
     # Trace writing — compat neighbor list for legacy readers, plus full
     # activation data in metadata for S3 / dashboard observability.
     try:
@@ -1217,12 +1231,10 @@ def run_surface(brain, ctx, candidates_data, user_message,
                       selection_reason=selection_reason,
                       seen_dropped=((result.get('_retrieval_stats') or {})
                                     .get('seen_dropped', 0)
-                                    if isinstance(result, dict) else 0))
+                                    if isinstance(result, dict) else 0),
+                      judge_pointer=judge_ptr)
     except Exception as e:
         brain._log_error('trace_s1_surface', e, 'S1 surface trace capture')
-
-    # Dashboard file
-    _write_surface_result_file(recall_ref, surface_prompt, additional_context, brain)
 
     # Replay-bench capture — written last, with the post-gate resolution
     # (production's actual picks are the concordance baseline for replay).

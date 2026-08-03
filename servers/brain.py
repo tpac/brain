@@ -737,7 +737,13 @@ class Brain(
         the new active version on the next read of get_interaction_prompt
         or get_interaction_config. See InteractionDAL.set_active.
         """
-        return self._interaction_dal.set_active(name, version, set_by)
+        result = self._interaction_dal.set_active(name, version, set_by)
+        if name == 'trace_recording':
+            # The payload recorder TTL-caches this config (performance
+            # charter) — invalidate so the next-read promise above holds
+            # for the one config that gates live capture.
+            self.invalidate_trace_recording_cache()
+        return result
 
     def register_interaction(self, name: str, template: str = '',
                              parameters: str = '',

@@ -25,6 +25,7 @@ Design: docs/TRACES-LAYER-DESIGN.md
 import json
 import os
 import re
+import time
 from bisect import bisect_left
 from functools import lru_cache
 from typing import Any, Dict, List
@@ -778,6 +779,30 @@ class BrainTracesMixin:
         os.makedirs(d, exist_ok=True)
         return d, today
 
+    # Gate-config TTL (seconds). Per-round/per-prompt kinds put the gate
+    # lookup on every agent round and every user prompt (judge), so the
+    # config read is TTL-cached (the LAFEngine.config pattern — performance
+    # charter, docs/TRACE-MODES-DESIGN.md). set_interaction_active
+    # invalidates on a `trace_recording` flip, so "entering debug" still
+    # bites on the very next write, not a TTL later.
+    TRACE_RECORDING_CFG_TTL_S = 60.0
+
+    def _trace_recording_config(self):
+        """Active `trace_recording` config dict, TTL-cached."""
+        now = time.monotonic()
+        if (getattr(self, '_trace_rec_cfg', None) is not None
+                and now - getattr(self, '_trace_rec_cfg_ts', 0.0)
+                < self.TRACE_RECORDING_CFG_TTL_S):
+            return self._trace_rec_cfg
+        self._trace_rec_cfg = self.get_interaction_config('trace_recording')
+        self._trace_rec_cfg_ts = now
+        return self._trace_rec_cfg
+
+    def invalidate_trace_recording_cache(self):
+        """Drop the cached gate config — called by set_interaction_active
+        when the `trace_recording` pointer flips."""
+        self._trace_rec_cfg = None
+
     def _payload_kind_enabled(self, kind, chain_id):
         """Gate resolution for one payload kind. Effective policy = the
         contract's NORMAL defaults (complete by construction over
@@ -788,7 +813,7 @@ class BrainTracesMixin:
         _log_error's fingerprint dedup, so a wired call site reminds
         periodically rather than spamming or going quiet forever)."""
         from .trace_contract import TRACE_RECORDING_NORMAL
-        cfg = self.get_interaction_config('trace_recording')
+        cfg = self._trace_recording_config()
         cfg_kinds = cfg.get('kinds')
         effective = dict(TRACE_RECORDING_NORMAL['kinds'])
         if isinstance(cfg_kinds, dict):
@@ -880,6 +905,35 @@ class BrainTracesMixin:
                 return pointer
             raise RuntimeError('100 attempt ordinals exhausted for %s' % base)
         return pointer  # loud() swallowed a failure → None
+
+    def round_recorder(self, chain_id, seq_base=0):
+        """Build the per-round capture closure for run_llm_loop's
+        `record_round_fn` — the runner has no brain by design, so each
+        caller hands it this closure over (brain, chain_id). The layer owns
+        the payload shape (build_round_payload) and the gate; with the
+        `round_payload` kind off (the normal config) the per-round cost is
+        one TTL-cached gate lookup. Never raises into the caller's loop.
+
+        `seq_base` — file-seq offset for multi-batch encoders that run
+        several run_llm_loop calls on ONE run chain (consolidation,
+        community): without it every batch's round 0 collides on
+        000-round_payload.json and batch identity dies in an attempt
+        ordinal. Pass batch_num*100 (rounds are single digits); the
+        payload's `round` field stays the in-batch index."""
+        from .trace_contract import build_round_payload
+
+        def _record(round_idx, parts):
+            try:
+                self.record_payload(
+                    chain_id, 'round_payload',
+                    build_round_payload(label=chain_id, round_idx=round_idx,
+                                        seq=seq_base + round_idx, **parts),
+                    seq=seq_base + round_idx)
+            except Exception as e:
+                self._log_error('round_recorder', e,
+                                context='chain=%s round=%s'
+                                        % (chain_id, round_idx))
+        return _record
 
     def record_failed_run(self, chain_id, error):
         """Record the `failed_run` payload for a dead agent run — the full

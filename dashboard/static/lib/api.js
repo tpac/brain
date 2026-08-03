@@ -118,7 +118,7 @@ export const api = {
   consolidationRuns:   (p = {}) => get('/api/consolidation-runs' + _qs(p)),
   communityRuns:       (p = {}) => get('/api/community-runs' + _qs(p)),
   healerRuns:          (p = {}) => get('/api/healer-runs' + _qs(p)),
-  consolidationPrompt: (batch=1)=> get('/api/consolidation-prompt?batch=' + batch),
+  consolidationPrompt: (p = {}) => get('/api/consolidation-prompt' + _qs(p)),
   traces:              (p = {}) => get('/api/traces' + _qs(p)),
   errors:              (p = {}) => get('/api/errors' + _qs(p)),
   nodes:               (p = {}) => get('/api/nodes' + _qs(p)),

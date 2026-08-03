@@ -488,30 +488,35 @@ def _fetch_new_errors(brain, baseline: int) -> List[Dict[str, Any]]:
 
 
 def _collect_prompt_snapshots(session_id: str, counters: List[int]) -> List[Dict[str, Any]]:
-    # Per-session tmp path so parallel jobs don't overwrite each other.
-    # Use FULL session_id — 16-char truncation collided between jobs whose
-    # session_ids shared a common prefix (e.g. smoke-conv_001_architecture-*).
-    sess_safe = (session_id or 'nosession').replace('/', '_').replace(' ', '_')
-    # Honor BRAIN_TMP_DIR via the single-source helper (this file already
-    # imports from servers, so no new coupling) — must match the WRITER.
-    from servers.daemon_config import brain_tmp_dir
-    tmp_dir = brain_tmp_dir()
+    # Encoder prompts live in the per-job brain's {db_dir}/payloads/
+    # (payload recorder), content = user_preamble + user_content markdown.
+    # capture_files_for owns the layout + the (seq, attempt) ordering —
+    # [-1] is the newest attempt (a retried stop's live prompt, not the
+    # dead first try). Per-job BRAIN_DB_DIR keeps parallel jobs from
+    # reading each other's payloads.
+    from eval.longmem.fresh_brain import capture_files_for
+    db_dir = os.environ.get('BRAIN_DB_DIR', '')
     out = []
     for c in counters:
-        path = os.path.join(tmp_dir, f"brain-encoding-prompt-{sess_safe}-{c}.json")
-        try:
-            data = json.loads(Path(path).read_text(encoding="utf-8"))
-        except Exception as e:
-            out.append({"counter": c, "read_error": str(e), "path": path})
+        matches = capture_files_for(db_dir, session_id,
+                                    prefix='s1e', kind='prompt', stop=c)
+        if not matches:
+            out.append({"counter": c, "read_error": "no prompt payload",
+                        "path": "payloads/*/s1e-%s-%d" % (
+                            (session_id or '')[:8], c)})
             continue
-        uc = data.get("user_content", "")
+        try:
+            uc = Path(matches[-1]).read_text(encoding="utf-8")
+        except Exception as e:
+            out.append({"counter": c, "read_error": str(e), "path": matches[-1]})
+            continue
         out.append({
             "counter": c,
             "user_content_chars": len(uc),
             "has_scout_reports": "## Scout reports" in uc,
             "has_timeline": "### Conversation Timeline" in uc,
             "scout_report_chars": _extract_section_chars(uc, "## Scout reports"),
-            "path": path,
+            "path": matches[-1],
         })
     return out
 

@@ -235,11 +235,12 @@ class TestS1EncodeTraces:
         """Simulate what encoding_agent + daemon_hooks write for S1 encode traces."""
         chain = 's1e-%s-%d' % (session_id[:8], counter)
 
-        # O: from encoding_agent.py
+        # O: from encode.py — ref_id is the db_dir-relative payload pointer
+        # (TRACE-MODES step 2 flipped the semantics from an absolute tmp path).
         self.dal.append(
             chain_id=chain, scale='s1', event_type='O',
             ref_type='encoding_prompt',
-            ref_id='/tmp/brain-encoding-prompt-%d.json' % counter,
+            ref_id='payloads/2026-08-03/%s/000-prompt.md' % chain,
             summary='%d turns, %d chars context' % (turn_count, chars),
             session_id=session_id)
         # K: from encoding_agent.py
@@ -284,11 +285,14 @@ class TestS1EncodeTraces:
         assert 'revise: Updated stale node' in delta['summary']
         assert 'Two changes' in delta['summary']
 
-    def test_o_references_prompt_file(self):
-        """O event ref_id points to the encoding prompt tmp file."""
+    def test_o_references_prompt_payload(self):
+        """O event ref_id is the prompt payload's db_dir-relative pointer."""
         chain = self._simulate_encode('sess-e', 102, 3, 10000, [], [], '')
         events = self.dal.get_chain(chain)
-        assert '/tmp/brain-encoding-prompt-102.json' in events[0]['ref_id']
+        ref = events[0]['ref_id']
+        assert ref.startswith('payloads/'), ref
+        assert not os.path.isabs(ref)
+        assert ref.endswith('-prompt.md'), ref
 
 
 # TestS0S1CrossReference — REMOVED (redundant). Its sole test

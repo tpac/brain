@@ -31,7 +31,7 @@ from eval.longmem.harness import (
     stratified_sample, _item_axis, _apply_s1e_override, _apply_surface_override,
 )
 from eval.longmem.replay import replay_item
-from eval.longmem.fresh_brain import create_fresh_eval_brain
+from eval.longmem.fresh_brain import create_fresh_eval_brain, enable_round_capture
 from eval.longmem.classifier import _scan_brain_for_gold
 from eval.longmem.corpus import (
     corpus_config_hash, corpus_dir, corpus_item_dir, manifest_path,
@@ -320,14 +320,13 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
     os.makedirs(corpus_dir(h), exist_ok=True)
 
     # Full-prompt capture (Tom, 2026-07-02): every S1E encode in a corpus build
-    # dumps its literal per-round payload — the REAL prompt fed to S1Scribe, not
-    # a rebuild — under the corpus itself. Files key as
-    # {arm}__ingest-{qid}__stop{n}-r{round}-{pid}-{seq}.json, so any regression
-    # in the A/B is inspectable at the exact prompt that produced it.
-    prompts_dir = os.path.join(corpus_dir(h), "prompts")
-    os.makedirs(prompts_dir, exist_ok=True)
-    os.environ["BRAIN_PROMPT_CAPTURE_DIR"] = prompts_dir
-    print(f"[corpus] full-prompt capture → {prompts_dir}", flush=True)
+    # records its literal per-round payload — the REAL prompt fed to S1Scribe,
+    # not a rebuild — via the payload recorder (enable_round_capture flips the
+    # round_payload gate per item brain; never debug mode). Payloads ship
+    # FROZEN inside each item's brain dir at {item_dir}/payloads/, so any
+    # regression in an A/B is inspectable at the exact prompt that produced it.
+    print("[corpus] full-prompt capture → per-item {item_dir}/payloads/",
+          flush=True)
 
     items_manifest = []
     t_run0 = time.time()
@@ -339,7 +338,6 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
         ac = sum(1 for it in items_manifest if it.get("answerable"))
         m = {
             "corpus_hash": h, "label": label, "created_at_epoch": time.time(),
-            "prompts_dir": prompts_dir,
             "config": config, "items": items_manifest,
             "answerable_count": ac,
             "unanswerable_count": len(items_manifest) - ac,
@@ -359,6 +357,7 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
 
         path = corpus_item_dir(h, qid)
         brain = create_fresh_eval_brain(path=path, wipe=True)
+        enable_round_capture(brain)   # payloads → {path}/payloads/, frozen with the item
 
         if s1e != "active":
             _apply_s1e_override(brain, s1e)
@@ -408,6 +407,9 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
         items_manifest.append({
             "qid": qid,
             "axis": axis,
+            # Captured round payloads, frozen with the item's brain (replaces
+            # the corpus-level prompts_dir of the retired capture-dir era).
+            "payloads_dir": os.path.join(path, "payloads"),
             "question": item["question"],
             "gold": _gold_str(item),
             "question_date": item.get("question_date"),
@@ -546,12 +548,10 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
     if ingest_surface != "active":
         os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"
     os.makedirs(corpus_dir(h), exist_ok=True)
-    prompts_dir = os.path.join(corpus_dir(h), "prompts")
-    os.makedirs(prompts_dir, exist_ok=True)
-    os.environ["BRAIN_PROMPT_CAPTURE_DIR"] = prompts_dir
 
     pooled_path = corpus_item_dir(h, "pooled")
     brain = create_fresh_eval_brain(path=pooled_path, wipe=True)
+    enable_round_capture(brain)   # payloads → {pooled_path}/payloads/
     if s1e != "active":
         _apply_s1e_override(brain, s1e)
     if ingest_surface != "active":
@@ -656,7 +656,8 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
     ac = sum(1 for it in items_manifest if it["answerable"])
     manifest = {
         "corpus_hash": h, "label": label, "created_at_epoch": time.time(),
-        "prompts_dir": prompts_dir,
+        # Round payloads live inside the pooled brain dir (recorder layout).
+        "prompts_dir": os.path.join(pooled_path, "payloads"),
         "config": config, "items": items_manifest,
         "answerable_count": ac,
         "unanswerable_count": len(items_manifest) - ac,

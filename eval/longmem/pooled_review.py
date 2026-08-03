@@ -127,14 +127,22 @@ def render(corpus_hash: str) -> str:
                 w('    - source_refs: %s' % refs)
 
     # ── Prompts index + one representative payload ──
+    # prompts_dir points at the pooled brain's payloads/ root (recorder
+    # layout: payloads/{date}/{chain}/NNN-round_payload.json) — walk it.
     pdir = m.get('prompts_dir') or os.path.join(corpus_dir(corpus_hash), 'prompts')
     w('\n---\n## Captured S1E prompts (`%s`)\n' % pdir)
-    files = sorted(os.listdir(pdir)) if os.path.isdir(pdir) else []
-    for fn in files:
-        w('- %s (%.1f KB)' % (fn, os.path.getsize(os.path.join(pdir, fn)) / 1024))
+    files = []
+    if os.path.isdir(pdir):
+        for root_dir, _dirs, names in os.walk(pdir):
+            for fn in sorted(names):
+                files.append(os.path.join(root_dir, fn))
+    files.sort()
+    for fp in files:
+        w('- %s (%.1f KB)' % (os.path.relpath(fp, pdir),
+                              os.path.getsize(fp) / 1024))
     if files:
-        w('\n### Representative payload — %s\n' % files[0])
-        with open(os.path.join(pdir, files[0])) as f:
+        w('\n### Representative payload — %s\n' % os.path.relpath(files[0], pdir))
+        with open(files[0]) as f:
             payload = f.read()
         w('```json\n%s\n```' % payload[:12000])
 

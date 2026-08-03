@@ -23,7 +23,6 @@ This viewer answers "what does each arm encode, and does the new arm mint fewer
 twins?" plus proves the pipeline works internally (embeddings, recall, capture).
 """
 import argparse
-import glob
 import json
 import os
 import re
@@ -114,18 +113,11 @@ def dedup_signal(nodes: list) -> dict:
     return {"count": len(pairs), "pairs": pairs[:8]}
 
 
-def _cap_sort_key(path: str) -> tuple:
-    """Order capture files by (stop, round, seq) NUMERICALLY. A lexical sort puts
-    'stop5' after 'stop10'/'stop12' — so cap_files[-1] would read the FIRST run's
-    thin prompt, not the last. This bug false-failed the lived-structure checks in
-    the first dry-run; the numeric key is the fix."""
-    m = re.search(r'stop(\d+)-r(\d+)-\d+-(\d+)', os.path.basename(path))
-    return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else (-1, -1, -1)
-
-
-def capture_files_for(capture_dir: str, arm: str, session: str) -> list:
-    return sorted(glob.glob(os.path.join(capture_dir, "%s__%s__*.json" % (arm, session))),
-                  key=_cap_sort_key)
+# Round payloads are read from each arm's OWN {db_dir}/payloads/ (recorded
+# by brain.record_payload via the trace_recording round_payload gate) —
+# capture_files_for in fresh_brain.py owns the glob + (stop, round) ordering.
+# The old capture-dir label glob (arm__session__stop*-r*) died with
+# BRAIN_PROMPT_CAPTURE_DIR; arm disambiguation is the per-arm brain dir.
 
 
 def run_assertions(brain, arm: str, question: str, cap_files: list,
@@ -195,8 +187,10 @@ HARD_CHECKS = {"embeddings_complete", "recall_live", "prompt_captured",
                "lived_timeline_xml", "arc_produced"}
 
 
-def run_arm(arm, version, qid, item, capture_dir, control_lived=False):
-    from eval.longmem.fresh_brain import create_fresh_eval_brain
+def run_arm(arm, version, qid, item, control_lived=False):
+    from eval.longmem.fresh_brain import (capture_files_for,
+                                          create_fresh_eval_brain,
+                                          enable_round_capture)
     from eval.longmem.replay import replay_item
 
     # Arm env — set BEFORE the brain/replay so the in-process encoder reads it.
@@ -208,17 +202,14 @@ def run_arm(arm, version, qid, item, capture_dir, control_lived=False):
         os.environ["BRAIN_S1E_LIVED_SEQUENCE"] = "1"
     else:
         os.environ.pop("BRAIN_S1E_LIVED_SEQUENCE", None)
-    os.environ["BRAIN_PROMPT_CAPTURE_DIR"] = capture_dir
-    # Explicit arm name for capture labels — with --control-lived both arms
-    # run lived, so encode.py's flag-derived arm would label everything
-    # 'new__' and the control arm's prompt_captured assertion goes falsely
-    # INVALID (seen 2026-07-03, effort A/B run 1).
-    os.environ["BRAIN_PROMPT_CAPTURE_ARM"] = arm
 
     tmpl, params = FETCHED[version]
     path = os.path.expanduser("~/AgentsContext/brain-ab-%s-%s" % (arm, qid))
     brain = create_fresh_eval_brain(path=path, wipe=True)   # resets BRAIN_DB_DIR/TMP_DIR
-    os.environ["BRAIN_PROMPT_CAPTURE_DIR"] = capture_dir     # re-assert (create_* set TMP_DIR)
+    # Per-kind gate flip, never debug mode — encoder behavior untouched;
+    # payloads land in THIS arm's brain dir (wipe=True wiped the old run's —
+    # fresh run = fresh evidence).
+    enable_round_capture(brain)
     inject_prompt(brain, tmpl, params)
 
     session = "ab-%s" % qid
@@ -228,7 +219,7 @@ def run_arm(arm, version, qid, item, capture_dir, control_lived=False):
                 log_prefix="[%s/%s]" % (arm, qid))
 
     nodes, edges = dump_nodes(brain), dump_edges(brain)
-    cap_files = capture_files_for(capture_dir, arm, session)
+    cap_files = capture_files_for(path, session)
     asserts = run_assertions(brain, arm, item["question"], cap_files,
                              session=session)
     try:
@@ -248,14 +239,11 @@ def main():
     ap.add_argument("--control-version", type=int, default=25)
     ap.add_argument("--new-version", type=int, default=26)
     ap.add_argument("--oracle", default="eval/longmem/data/longmemeval_oracle.json")
-    ap.add_argument("--capture-dir",
-                    default=os.path.expanduser("~/AgentsContext/ab-prompts"))
     ap.add_argument("--control-lived", action="store_true",
                     help="run the control arm lived too (same-template A/B — "
                          "e.g. effort via interaction parameters)")
     args = ap.parse_args()
 
-    os.makedirs(args.capture_dir, exist_ok=True)
     with open(args.oracle) as f:
         data = json.load(f)
     items = {it["question_id"]: it for it in data if it["question_id"] in args.qids}
@@ -273,7 +261,6 @@ def main():
         results[qid] = {}
         for arm, ver in arms:
             results[qid][arm] = run_arm(arm, ver, qid, items[qid],
-                                        args.capture_dir,
                                         control_lived=args.control_lived)
 
     # ── Report ──────────────────────────────────────────────────────────
@@ -300,7 +287,7 @@ def main():
                 tm = " @%s" % n["event_time"] if n["event_time"] else ""
                 print("      [%s] %s%s" % (n["type"], n["title"][:80], tm))
             print("    full prompts (actual, per round): %d files under %s"
-                  % (len(r["cap_files"]), args.capture_dir))
+                  % (len(r["cap_files"]), os.path.join(r["path"], "payloads")))
 
     # Headline: dedup delta (the encode-side value signal a recall-QA A/B can't see)
     print("\n\n%s\n# DEDUP DELTA (headline encode-side signal)\n%s" % ("#" * 70, "#" * 70))

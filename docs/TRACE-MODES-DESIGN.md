@@ -1,8 +1,13 @@
 # Trace Modes — One Recorder, One Switch, Files for Fat Payloads
 
-Status: PROPOSED v2 (2026-08-02) — awaiting Tom's approval before implementation.
-v2 incorporates a three-lens panel review (implementer / simplifier / consumer);
-every code claim below was verified against the repo by the panel.
+Status: APPROVED v2 — **SHIPPED** (step 1 recorder 2026-08-02, step 2 atomic
+migration 2026-08-03). The migration table below describes the six mechanisms
+as they stood pre-migration; rows (a)(b)(e)(f) now read as history — the
+recorder is the one capture writer. The `tool_result` payload kind has no
+call site yet (the truncated result appears verbatim inside round_payload
+msgs; wire a caller closure if the UNtruncated content is ever needed).
+v2 incorporated a three-lens panel review (implementer / simplifier /
+consumer); every code claim below was verified against the repo by the panel.
 Thread: trace-debug-unification (handoff node e25d60f3; motivating finding 74dfb59c —
 the 6M-char tool result whose diagnosis required stitching four capture sources).
 
@@ -332,12 +337,23 @@ reader lives in this repo. Two steps, each shipping alone:
    stamp per S2 gating convention — NOT the logs-size check, which is
    size-triggered, on the error-write path, and never fires for files), tests.
    Existing writers untouched.
-2. **Atomic migration**: wire all call sites (a,b,e,f) + `record_round_fn`
-   replaces `capture_label` + migrate dashboard endpoints and eval scripts +
-   delete old writers, `BRAIN_PROMPT_CAPTURE_DIR`, the three `/tmp` dashboard
-   readers + flip ref_id semantics + enable the grep-pin contract test
-   (allowlist: the operational state files above). Transition tests are the
-   safety net; old `/tmp`-pointing rows degrade to the legacy-read branch.
+2. **Atomic migration** — SHIPPED 2026-08-03: all call sites wired (a,b,e,f) +
+   `record_round_fn` replaces `capture_label` (closure factory:
+   `brain.round_recorder(chain_id)`; wired at S1 encode + both S2
+   run_llm_loop encoders) + dashboard endpoints and eval scripts migrated
+   (judge/consolidation read by chain layout via `dashboard/db.py`
+   `chain_payload_files`; eval flips the `round_payload` gate per fresh
+   brain — `fresh_brain.enable_round_capture` — and reads
+   `{db_dir}/payloads/`) + old writers, `BRAIN_PROMPT_CAPTURE_DIR`, and the
+   three `/tmp` dashboard readers deleted + ref_id semantics flipped +
+   grep-pin contract test live (`tests/test_capture_grep_pin.py`; allowlist:
+   the legacy judge read branch in dashboard/queries/recalls.py — the
+   operational state files are out of pin scope by construction). The
+   failed-run residue section shipped in the same change: failure path
+   writes a journal note; the next encode's prompt carries a
+   `<failed_encodes>` block; per-op ok=False inside ok=True batches
+   loud-logs at the shared encoder dispatch (`encoder_batch_op_failed`).
+   Old `/tmp`-pointing rows degrade to the legacy-read branch.
 
 ## Test surface
 

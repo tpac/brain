@@ -12,25 +12,7 @@ here too. Scale-specific logic lives in each scale's module (scales/s1/scribe.py
 
 import time
 import threading
-import os
 import json
-
-
-# Full-prompt capture (eval/observability). OFF unless BRAIN_PROMPT_CAPTURE_DIR
-# is set — production never sets it, so this is a no-op on the live path. When
-# set, run_llm_loop dumps the LITERAL per-round payload (system + messages) so
-# the actual prompt is recoverable without an unfaithful rebuild. The seq is a
-# process-monotonic tiebreaker so two captures can never overwrite each other,
-# even if the (label, round) key ever collides. See docs/S1-SCRIBE-REDESIGN.md.
-_CAPTURE_SEQ = 0
-_CAPTURE_SEQ_LOCK = threading.Lock()
-
-
-def _next_capture_seq():
-    global _CAPTURE_SEQ
-    with _CAPTURE_SEQ_LOCK:
-        _CAPTURE_SEQ += 1
-        return _CAPTURE_SEQ
 
 
 # Hard upper bound on any single Anthropic SDK call (S1 surface, S1
@@ -349,8 +331,8 @@ def run_unit_in_background(unit, name, lock, on_complete=None, on_release=None):
 
 def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                  user_content, tools, dispatch_fn, log_fn=None,
-                 user_preamble=None, get_nodes_config=None, capture_label=None,
-                 effort=None, deadline_seconds=None):
+                 user_preamble=None, get_nodes_config=None,
+                 record_round_fn=None, effort=None, deadline_seconds=None):
     """Generic LLM tool loop — call model, process tool_use, dispatch, repeat.
 
     Used by all scale encode agents. Scale-specific logic is in what
@@ -386,6 +368,15 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             hatch, which dumps full _corrections and can explode an encoder's
             context. None = default batch-size-driven rendering. Consumers with
             tight token budgets (S2 encoders) pass their own lean config.
+
+        record_round_fn: Optional callback(round_idx, parts) invoked with the
+            LITERAL per-round request pieces (model/effort/system/messages/
+            tools) right before each API call. The runner has no brain by
+            design — callers pass brain.round_recorder(chain_id), which owns
+            the payload shape, the `round_payload` gate, and never raises.
+            None = no per-round capture (production normal config anyway
+            gates the kind off). Replaces the retired BRAIN_PROMPT_CAPTURE_DIR
+            env machinery (docs/TRACE-MODES-DESIGN.md, rollout step 2).
 
         deadline_seconds: Optional wall-clock ceiling for the whole loop
             (all rounds + SDK retries + the stream fallback). Checked before
@@ -453,37 +444,25 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         "cache_control": {"type": "ephemeral", "ttl": "1h"},
     }]
 
-    # Full-prompt capture: dumps the literal payload (system + messages) per
-    # round when BRAIN_PROMPT_CAPTURE_DIR is set AND a caller labels the run.
-    # No-op otherwise. Never raises into the encode path — capture failure must
-    # not break a cycle. `_cap_round` counts rounds within THIS loop; the
-    # process-monotonic seq + pid make the filename collision-proof.
-    _capture_dir = os.environ.get('BRAIN_PROMPT_CAPTURE_DIR')
-    _cap_round = [0]
-
-    def _capture_payload(msgs):
-        if not (_capture_dir and capture_label):
+    # Per-round capture: hands the literal request pieces to the caller's
+    # record_round_fn (brain.round_recorder closure) before each API call.
+    # The closure owns gating + shape + file writes and never raises, but the
+    # runner still guards — capture failure must not break a cycle. The round
+    # index comes from the call site (same value _track_usage receives), so
+    # captured round labels can never desync from the telemetry rounds.
+    def _capture_payload(msgs, round_idx):
+        if record_round_fn is None:
             return
         try:
-            os.makedirs(_capture_dir, exist_ok=True)
-            seq = _next_capture_seq()
-            fn = os.path.join(_capture_dir, "%s-r%d-%d-%05d.json" % (
-                capture_label, _cap_round[0], os.getpid(), seq))
-            with open(fn, 'w') as f:
-                json.dump({
-                    "label": capture_label,
-                    "round": _cap_round[0],
-                    "seq": seq,
-                    "model": model,
-                    "effort": effort,              # None = API default (high)
-                    "system": system_prompt,       # full text, not a length
-                    "messages": msgs,              # full, every content block
-                    "tools": [t.get("name") for t in (tools or [])],
-                }, f, ensure_ascii=False)
+            record_round_fn(round_idx, {
+                "model": model,
+                "effort": effort,              # None = API default (high)
+                "system": system_prompt,       # full text, not a length
+                "messages": msgs,              # full, every content block
+                "tools": [t.get("name") for t in (tools or [])],
+            })
         except Exception as _e:
-            (log_fn or (lambda *_a: None))("[capture] prompt dump failed: %s" % _e)
-        finally:
-            _cap_round[0] += 1
+            (log_fn or (lambda *_a: None))("[capture] round record failed: %s" % _e)
 
     # Wall-clock deadline for the WHOLE loop (all rounds + retries). The
     # per-request client timeout bounds a single read, but SDK retries × the
@@ -498,14 +477,14 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                 'run_llm_loop deadline exceeded (%ds) at %s' % (
                     deadline_seconds, where))
 
-    def _create_message(msgs):
+    def _create_message(msgs, round_idx):
         """Create message with streaming. Returns (final_message, ttft_ms,
         total_ms). ttft_ms is the time from request issue to the first
         server event — isolates "server prefill / cache lookup / wait"
         from token-by-token generation time. None if iteration fails
         (we fall back to the unmeasured path so a diagnostic glitch
         can't kill an encoder cycle)."""
-        _capture_payload(msgs)   # literal per-round payload; no-op unless capturing
+        _capture_payload(msgs, round_idx)   # literal per-round payload; no-op unless capturing
         request_t0 = time.time()
         ttft_ms = None
         # effort rides in output_config; None omits it (API default = high).
@@ -560,7 +539,7 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         "cache_control": {"type": "ephemeral", "ttl": "5m"},
     })
     api_messages = [{"role": "user", "content": user_blocks}]
-    response, ttft_ms, total_ms = _create_message(api_messages)
+    response, ttft_ms, total_ms = _create_message(api_messages, 0)
     _track_usage(response, 0, ttft_ms=ttft_ms, total_ms=total_ms)
     _step("llm_r0")
 
@@ -598,11 +577,11 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             if result_truncated:
                 # The bounded head + result_chars on the action record
                 # (below) are the forensics that ride the trace substrate.
-                # Full capture is the traces-layer payload recorder
-                # (brain.record_payload) — the runner has no brain, so the
-                # tool_result kind gets wired via record_round_fn in rollout
-                # step 2 (docs/TRACE-MODES-DESIGN.md), never as a file dump
-                # here.
+                # The truncated form also appears verbatim in the next
+                # round_payload capture (record_round_fn); a separate
+                # tool_result kind for the UNtruncated content has no call
+                # site yet — the runner has no brain, so if it's ever wired
+                # it rides a caller closure, never a file dump here.
                 _log("OVERSIZED tool result: %s returned %d chars (cap %d) — "
                      "truncated" % (tu.name, result_chars, cap))
                 result_text = (
@@ -704,7 +683,7 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                 for b in response.content]})
             tool_results, _ = _dispatch_tool_uses(response)
             api_messages.append({"role": "user", "content": tool_results})
-            response, ttft_ms, total_ms = _create_message(api_messages)
+            response, ttft_ms, total_ms = _create_message(api_messages, rounds + 1)
             _track_usage(response, rounds + 1, ttft_ms=ttft_ms, total_ms=total_ms)
             _step("llm_r%d" % (rounds + 1))
     except Exception as e:

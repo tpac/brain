@@ -479,11 +479,11 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
             print(f"[harness] artifacts result dump failed (non-fatal): {e}", flush=True)
 
         # Capture every encoder + surface agent call for offline replay.
-        # encode.py writes /tmp/brain-encoding-prompt-{session}-{counter}.json
-        # per encoder window; surface.py writes the surface-selected dumps;
-        # judge dumps capture agentic tool traces. We copy them into the
-        # item's agent_calls/ subdir so we can replay any call with a future
-        # prompt revision without re-running the eval. Paired with the
+        # Encoder prompts + judge results live in the item brain's
+        # {db_dir}/payloads/ (payload recorder); surface.py writes the
+        # surface-selected state dumps under BRAIN_TMP_DIR. We copy them into
+        # the item's agent_calls/ subdir so we can replay any call with a
+        # future prompt revision without re-running the eval. Paired with the
         # interactions.jsonl snapshot (system prompts) this is full replay.
         try:
             stats = dumper.dump_agent_calls(session_ids=[

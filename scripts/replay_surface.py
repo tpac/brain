@@ -11,20 +11,21 @@ Haiku messages.create() call (no tool loop). Either:
 Reconstruction:
 
   --judge-result PATH    Apples-to-apples. Reads the EXACT prompt the daemon
-                         sent from the dashboard file written by surface.py
-                         (`/tmp/brain-judge-result-{recall_ref}.json`). The
-                         file contains `surface_prompt` = system + '---' +
-                         user_content, so we can split and replay byte-
-                         identical to what the daemon issued.
+                         sent from the `judge` payload surface.py records
+                         via brain.record_payload
+                         (`{BRAIN_DB_DIR}/payloads/{date}/s1r-*/NNN-judge.json`).
+                         The payload contains `surface_prompt` = system +
+                         '---' + user_content, so we can split and replay
+                         byte-identical to what the daemon issued.
 
-Default: latest dashboard file.
+Default: latest judge payload.
 
 Run:
     ./dev python3 scripts/replay_surface.py
-        # latest dashboard file — apples-to-apples replay
+        # latest judge payload — apples-to-apples replay
 
     ./dev python3 scripts/replay_surface.py --judge-result PATH
-        # specific dashboard file (e.g. for the 46s recall)
+        # specific payload file (e.g. for the 46s recall)
 
     ./dev python3 scripts/replay_surface.py --stream
         # also do a streaming run for TTFT and per-token timing
@@ -49,23 +50,29 @@ load_env()
 
 import anthropic  # noqa: E402
 from servers.scales.s1.surface_contract import SURFACE_MODEL  # noqa: E402
-from servers.daemon_config import brain_tmp_dir  # noqa: E402
 
 
 def _latest_judge_result_file() -> str:
-    tmp_dir = brain_tmp_dir()
-    paths = glob.glob(os.path.join(tmp_dir, 'brain-judge-result-*.json'))
+    # Judge payloads live under {BRAIN_DB_DIR}/payloads/ (the payload
+    # recorder — surface.py records one per recall on its s1r chain).
+    # mtime picks the newest across chains/attempts.
+    db_dir = os.environ.get('BRAIN_DB_DIR',
+                            os.path.expanduser('~/AgentsContext/brain'))
+    paths = glob.glob(os.path.join(
+        db_dir, 'payloads', '*', 's1r-*', '*-judge*.json'))
     paths = [p for p in paths if os.path.getsize(p) > 1000]  # skip stub files
     if not paths:
-        raise SystemExit('No judge-result file found in %s' % tmp_dir)
+        raise SystemExit('No judge payload found under %s/payloads '
+                         '(recall at least once, and check the '
+                         'trace_recording judge gate)' % db_dir)
     paths.sort(key=os.path.getmtime, reverse=True)
     return paths[0]
 
 
 def _build_request_from_judge_result(path: str) -> tuple[str, str, int, dict]:
-    """Read the dashboard surface-result file and split system/user.
+    """Read a judge payload and split system/user.
 
-    surface.py:_write_surface_result_file writes the exact prompt sent to
+    surface.py:_record_judge_payload records the exact prompt sent to
     Haiku as `surface_prompt = system + '\\n\\n---\\n\\n' + user_content`.
     Splitting on the literal '\\n\\n---\\n\\n' separator gives us byte-
     identical inputs to what the daemon issued. max_tokens isn't stored
@@ -168,7 +175,8 @@ def _run_streaming(client, system, user, max_tokens):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--judge-result', default=None,
-                        help='Path to dashboard /tmp/brain-judge-result-*.json. '
+                        help='Path to a judge payload '
+                             '(payloads/*/s1r-*/NNN-judge.json). '
                              'Default: latest. Replays byte-identical input.')
     parser.add_argument('--stream', action='store_true',
                         help='Also do a streaming run (reports TTFT + chunk gaps).')

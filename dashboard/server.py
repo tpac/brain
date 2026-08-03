@@ -15,6 +15,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse, parse_qs
 
+from . import db
 from . import log as dashboard_log
 from .daemon_client import DAEMON_PORT, daemon_alive, daemon_send
 from . import contract
@@ -122,7 +123,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_recalls(params)
         elif path == "/api/recall-prompt":
             recall_ref = params.get("recall_ref", [""])[0]
-            self._json(200, recalls.query_recall_prompt(recall_ref=recall_ref))
+            chain_id = params.get("chain_id", [""])[0]
+            pointer = params.get("pointer", [""])[0]
+            self._json(200, recalls.query_recall_prompt(
+                recall_ref=recall_ref, chain_id=chain_id, pointer=pointer))
         elif path == "/api/sessions":
             self._json(200, sessions.query_recent_sessions())
 
@@ -152,8 +156,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             hours = int(params.get("hours", ["24"])[0])
             self._json(200, {"runs": s2_runs.query_healer_runs(hours=hours)})
         elif path == "/api/consolidation-prompt":
-            batch = int(params.get("batch", ["1"])[0])
-            self._serve_consolidation_prompt(batch)
+            chain_id = params.get("chain_id", [""])[0]
+            self._serve_consolidation_prompt(chain_id)
 
         # Traces
         elif path == "/api/traces":
@@ -407,20 +411,54 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._json(500, {"error": str(e), "trace": traceback.format_exc()})
 
-    def _serve_consolidation_prompt(self, batch: int):
-        # The S2 consolidation encoder writes its prompt before invoking Sonnet;
-        # the dashboard reads it straight through. Honor the BRAIN_TMP_DIR env
-        # protocol (servers.daemon_config.brain_tmp_dir(); default /tmp) so the
-        # reader follows the writer when the tmp root is relocated.
-        prompt_path = os.path.join(os.environ.get('BRAIN_TMP_DIR', '/tmp'),
-                                   "brain-consolidation-prompt-%d.json" % batch)
-        if not os.path.exists(prompt_path):
-            return self._json(404, {"error": "No prompt file for batch %d" % batch})
-        try:
-            with open(prompt_path) as f:
-                self._json(200, json.load(f))
-        except Exception as e:
-            self._json(500, {"error": str(e)})
+    def _serve_consolidation_prompt(self, chain_id: str):
+        # The S2 consolidation encoder records each batch's prompt via
+        # brain.record_payload (full content); the dashboard reads it back
+        # by chain layout from {BRAIN_DB_DIR}/payloads/ — direct file read,
+        # daemon-down safe. Keyed by the run's chain_id (was: a batch number
+        # against one hardcoded /tmp file, which only ever showed batch 1).
+        if not chain_id:
+            return self._json(200, {"error": "chain_id required"})
+        files = db.chain_payload_files(chain_id, kind="prompt")
+        if not files:
+            # Legacy branch (time-bounded — delete once default views can't
+            # reach pre-migration runs): chains from before the migration
+            # recorded no payloads, but the retired writer's batch-1 tmp
+            # file may still be on disk.
+            legacy = os.path.join(os.environ.get('BRAIN_TMP_DIR', '/tmp'),
+                                  'brain-consolidation-prompt-1.json')
+            try:
+                with open(legacy) as f:
+                    return self._json(200, {
+                        "user_content": json.load(f).get("user_content", ""),
+                    })
+            except OSError:
+                pass
+            except Exception as e:
+                return self._json(200, {"error": str(e)})
+            return self._json(200, {"error": "no prompt payload for %s "
+                                             "(pruned, or recording gated "
+                                             "off)" % chain_id})
+        # Full prompts are 100KB+ each — bound the joined response so a
+        # 10-batch run can't ship a multi-MB blob to one card expand.
+        CAP = 500_000
+        parts, used = [], 0
+        for p in files:
+            try:
+                with open(p, encoding="utf-8", errors="replace") as f:
+                    body = f.read()
+            except OSError as e:
+                body = "(unreadable: %s)" % e
+            if len(files) > 1:
+                body = "── %s ──\n%s" % (os.path.basename(p), body)
+            if used + len(body) > CAP:
+                parts.append("… (%d more file(s) omitted — read them under "
+                             "payloads/*/%s/)" % (
+                                 len(files) - len(parts), chain_id))
+                break
+            parts.append(body)
+            used += len(body)
+        self._json(200, {"user_content": "\n\n".join(parts)})
 
 
 def run(port: int = None) -> None:

@@ -6,9 +6,18 @@ The dashboard reads two databases:
 
 All connections open in read-only mode (`mode=ro`) — the dashboard never
 writes to brain. Writers go through the daemon.
+
+Payload files: the dashboard is a sanctioned direct reader of
+{BRAIN_DB_DIR}/payloads/ (docs/TRACE-MODES-DESIGN.md) — its charter is
+reading the substrate when the daemon is down, so payload reads never route
+through daemon TCP. `read_payload_pointer` resolves a db_dir-relative
+pointer from a trace row; `chain_payload_files` finds a chain's payload
+files by layout (payloads/{date}/{chain}/NNN-{kind}.{ext}) for readers
+whose trace rows carry no pointer (judge, consolidation prompts).
 """
 
 import os
+import re
 import sqlite3
 from contextlib import contextmanager
 
@@ -28,6 +37,62 @@ def brain_db_path() -> str:
 
 def logs_db_path() -> str:
     return os.path.join(_brain_dir(), "brain_logs.db")
+
+
+def read_payload_pointer(pointer: str):
+    """Read a payload file by its db_dir-relative pointer (from a trace
+    row's ref_id/metadata). Returns str or None (pruned / missing / bad
+    pointer). Pointers are data, not a path authority — absolute paths and
+    traversal are rejected, mirroring brain.read_payload's guard."""
+    if not pointer or not isinstance(pointer, str):
+        return None
+    norm = os.path.normpath(pointer)
+    if (os.path.isabs(norm) or norm.startswith("..")
+            or not norm.startswith("payloads" + os.sep)):
+        return None
+    try:
+        with open(os.path.join(_brain_dir(), norm),
+                  encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def payload_sort_key(path: str):
+    """(seq, attempt) ordering for recorder filenames — NNN-{kind}.{ext}
+    with collision ordinals as NNN-{kind}.{A}.{ext}. A plain basename sort
+    is WRONG: '000-judge.2.json' < '000-judge.json' lexically ('2' < 'j'),
+    so sorted(...)[-1] would return the OLDEST attempt. The base file is
+    attempt 1; ordinals start at 2."""
+    name = os.path.basename(path)
+    m_seq = re.match(r"(\d+)-", name)
+    m_att = re.search(r"\.(\d+)\.[^.]+$", name)
+    return (int(m_seq.group(1)) if m_seq else -1,
+            int(m_att.group(1)) if m_att else 1)
+
+
+def chain_payload_files(chain_id: str, kind: str = ""):
+    """List a chain's payload files, sorted (seq, attempt) — [-1] is the
+    newest write. Returns absolute paths. `kind` filters to one payload
+    kind (the filename embeds the kind verbatim: NNN-{kind}.{ext}). Empty
+    when the chain never recorded or its files were pruned. chain_id lands
+    in a path segment — reject separators/traversal outright."""
+    if (not chain_id or "/" in chain_id or os.sep in chain_id
+            or ".." in chain_id):
+        return []
+    root = os.path.join(_brain_dir(), "payloads")
+    if not os.path.isdir(root):
+        return []
+    out = []
+    for day in os.listdir(root):
+        chain_dir = os.path.join(root, day, chain_id)
+        if not os.path.isdir(chain_dir):
+            continue
+        for name in os.listdir(chain_dir):
+            if kind and ("-%s." % kind) not in name:
+                continue
+            out.append(os.path.join(chain_dir, name))
+    return sorted(out, key=payload_sort_key)
 
 
 @contextmanager

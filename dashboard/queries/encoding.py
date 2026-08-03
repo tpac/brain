@@ -12,7 +12,8 @@ import json
 import os
 
 from ..clock import utc_cutoff
-from ..db import brain_db_path, fetch_by_id, logs_db_path, ro_connect
+from ..db import (brain_db_path, fetch_by_id, logs_db_path,
+                  read_payload_pointer, ro_connect)
 from ..log import warn
 from ..query import safe_query
 
@@ -226,31 +227,48 @@ def _query_encoding_chains(conn, limit: int, session_id: str, hours: int):
 
 @safe_query('queries.encoding', logs_db_path, default={})
 def query_encoding_prompt(conn, chain_id: str = ""):
-    """Lazy-load one run's full encoder prompt (user_content) on card expand.
+    """Lazy-load one run's full encoder prompt on card expand.
 
     Split out of query_encoding_runs so the polled list stays small: the prompt
     body is fetched only when the operator expands a specific run's card. Keyed
-    by chain_id → the run's encoding_prompt O trace → its ref_id (the tmp file
-    the encoder wrote) → user_content. Mirrors _serve_consolidation_prompt.
+    by chain_id → the run's encoding_prompt O trace → its ref_id, a db_dir-
+    relative payload pointer (brain.record_payload) read directly from
+    {BRAIN_DB_DIR}/payloads/ — daemon-down safe.
+
+    Legacy branch (time-bounded — delete once default views can't reach
+    pre-migration rows): old rows carry an absolute /tmp path to the retired
+    JSON dump; attempt that read, else report pruned.
     Returns {"user_content": str} or {"error": str} for the UI fallback."""
     if not chain_id:
         return {"error": "chain_id required"}
+    # ORDER BY created_at DESC: a retried run reuses the chain and writes a
+    # second O row with its own per-attempt pointer — the card must show the
+    # newest attempt's prompt (pre-migration this was masked because every
+    # row pointed at one overwritten tmp file).
     row = conn.execute(
         "SELECT ref_id FROM trace_events "
         "WHERE chain_id = ? AND scale = 's1' AND event_type = 'O' "
-        "AND ref_type = 'encoding_prompt' LIMIT 1",
+        "AND ref_type = 'encoding_prompt' "
+        "ORDER BY created_at DESC LIMIT 1",
         (chain_id,),
     ).fetchone()
-    prompt_file = row[0] if row else ''
-    if not prompt_file:
-        return {"error": "no prompt trace for chain %s" % chain_id}
-    if not os.path.exists(prompt_file):
-        return {"error": "prompt file no longer on disk (encoder tmp cleaned)"}
-    try:
-        with open(prompt_file) as f:
-            return {"user_content": json.load(f).get("user_content") or ""}
-    except Exception as e:
-        return {"error": str(e)}
+    ref = row[0] if row else ''
+    if not ref:
+        return {"error": "no prompt payload for chain %s (recording gated "
+                         "off, or trace missing)" % chain_id}
+    if os.path.isabs(ref):  # legacy pre-migration row
+        try:
+            with open(ref) as f:
+                return {"user_content": json.load(f).get("user_content") or ""}
+        except OSError:
+            return {"error": "prompt file no longer on disk (pre-migration "
+                             "tmp file cleaned)"}
+        except Exception as e:
+            return {"error": str(e)}
+    content = read_payload_pointer(ref)
+    if content is None:
+        return {"error": "payload pruned (or deleted from payloads/)"}
+    return {"user_content": content}
 
 
 def query_encoding_runs(limit: int = 10, session_id: str = '', hours: int = 24):

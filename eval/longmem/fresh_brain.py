@@ -85,6 +85,67 @@ def create_fresh_eval_brain(path: str = EVAL_BRAIN_DIR, wipe: bool = True):
     return brain
 
 
+def enable_round_capture(brain) -> None:
+    """Flip the `round_payload` payload kind ON for THIS eval brain.
+
+    Capture is a hard validity gate for the eval (ab_encode's
+    prompt_captured HARD_CHECK; soft checks parse captured round bodies).
+    The flip is a per-kind gate on a registered `trace_recording` version —
+    deliberately NOT the debug mode: an A/B must measure the production
+    configuration, and capture gates change what's RECORDED, never what the
+    encoder sees (probe-input-fidelity). Payloads land in this brain's own
+    {db_dir}/payloads/ — per-arm dirs replace the retired
+    BRAIN_PROMPT_CAPTURE_DIR/ARM filename labels."""
+    import json as _json
+    from servers.trace_contract import TRACE_RECORDING_NORMAL
+    cfg = {'kinds': dict(TRACE_RECORDING_NORMAL['kinds'], round_payload=True),
+           'retention_days': TRACE_RECORDING_NORMAL['retention_days']}
+    reg = brain.register_interaction(
+        'trace_recording', template='', parameters=_json.dumps(cfg),
+        created_by='eval-round-capture')
+    brain.set_interaction_active('trace_recording', reg['version'],
+                                 set_by='eval-round-capture')
+
+
+def capture_files_for(db_dir: str, session: str = '', *,
+                      prefix: str = 's1e', kind: str = 'round_payload',
+                      stop=None) -> list:
+    """Captured payload files inside one eval brain's {db_dir}/payloads/,
+    ordered (stop, seq, attempt) — [-1] is the newest write.
+
+    THE eval-side reader of the recorder layout
+    (payloads/{date}/{prefix}-{sid8}-{stop}/NNN-{kind}[.A].{ext}) — the
+    other eval consumers (artifacts.dump_agent_calls, the wiring check)
+    route through here so a layout change lands in one place. `session`
+    scopes to one session's chains ('' = any); `prefix` picks the chain
+    family (s1e encoder / s1r surface); `kind` filters one payload kind
+    ('' = all); `stop` pins a single stop counter. The attempt component
+    matters: collision ordinals ('000-prompt.2.md') sort lexically BEFORE
+    the base file, so a plain sorted(...)[-1] returns the OLDEST attempt —
+    the (seq, attempt) key returns the retry, not the corpse.
+
+    Replaces the retired capture-dir filename glob (arm disambiguation now
+    lives in per-arm brain dirs, not filename labels)."""
+    import glob as _glob
+    import re as _re
+    sid8 = (session or '')[:8]
+    chain_glob = '%s-%s-%s' % (prefix, sid8 or '*',
+                               '%d' % stop if stop is not None else '*')
+    file_glob = ('*-%s*' % kind) if kind else '*'
+    files = _glob.glob(os.path.join(
+        db_dir, 'payloads', '*', chain_glob, file_glob))
+
+    def _key(p):
+        name = os.path.basename(p)
+        stop_m = _re.search(r'-(\d+)$', os.path.basename(os.path.dirname(p)))
+        seq_m = _re.match(r'(\d+)-', name)
+        att_m = _re.search(r'\.(\d+)\.[^.]+$', name)
+        return (int(stop_m.group(1)) if stop_m else -1,
+                int(seq_m.group(1)) if seq_m else -1,
+                int(att_m.group(1)) if att_m else 1)
+    return sorted(files, key=_key)
+
+
 def reset_to_seeds(brain) -> dict:
     """Drop all non-seed nodes and their edges. Keeps the seed pack intact.
 

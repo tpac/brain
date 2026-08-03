@@ -169,8 +169,13 @@ def sweep(corpus_hash: str, surface: str, variance: int, label: str,
         # corpus dir. The frozen work copy should hold only the DB snapshot, not
         # build-time scratch. (brain.db / brain.db-wal / brain.db-shm don't match
         # the 'brain-*.json' pattern, so the DB is copied intact.)
+        # 'payloads' also stays behind: build-time round/prompt captures
+        # (enable_round_capture) are frozen evidence in the corpus item —
+        # copying them per rep would bloat the work dir by the full capture
+        # size and mix frozen s1e payloads with the sweep's own s1r writes.
         shutil.copytree(src, work_qid,
-                        ignore=shutil.ignore_patterns('brain-*.json'))
+                        ignore=shutil.ignore_patterns('brain-*.json',
+                                                      'payloads'))
 
         brain = create_fresh_eval_brain(path=work_qid, wipe=False)
         if surface != "active":

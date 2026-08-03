@@ -12,7 +12,6 @@ import os
 import time
 
 from servers.trace_contract import build_delta_metadata
-from servers.daemon_config import brain_tmp_dir
 
 from .base import IntegrationUnit
 from .consolidation_contract import CONSOLIDATION
@@ -169,16 +168,11 @@ class ConsolidationEncoder(IntegrationUnit):
             # Format this batch
             user_content = journal_prefix + self._format_clusters(batch)
 
-            # Write prompt to tmp file (passive observer for dashboard)
-            try:
-                import json as _json
-                prompt_path = os.path.join(
-                    brain_tmp_dir(), 'brain-consolidation-prompt-%d.json' % batch_num)
-                with open(prompt_path, 'w') as _pf:
-                    _json.dump({"batch": batch_num, "clusters": len(batch),
-                                "user_content": user_content[:50000]}, _pf)
-            except Exception:
-                pass
+            # Record this batch's prompt (full content — the old tmp file
+            # truncated at 50KB; the dashboard reads it back by chain_id
+            # from {db_dir}/payloads/). seq = batch number.
+            self.brain.record_payload(self.chain_id(), 'prompt',
+                                      user_content, seq=batch_num)
 
             try:
                 result = retry_on_transient_api_error(
@@ -191,7 +185,9 @@ class ConsolidationEncoder(IntegrationUnit):
                         user_content=user_content,
                         tools=tools,
                         dispatch_fn=dispatch_fn,
-                        log_fn=lambda msg: print('[s2-consolidation] %s' % msg, flush=True)),
+                        log_fn=lambda msg: print('[s2-consolidation] %s' % msg, flush=True),
+                        record_round_fn=self.brain.round_recorder(
+                            self.chain_id(), seq_base=batch_num * 100)),
                     log_fn=lambda msg: print('[s2-consolidation] %s' % msg, flush=True))
 
                 # Accumulate + per-batch journal + truncation logging — shared

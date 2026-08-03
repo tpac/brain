@@ -325,9 +325,10 @@ RUN_TELEMETRY_FIELDS = (
 #   truncated before it enters the LLM conversation (the 1M-token 400 killer:
 #   one brain_batch result hit ~6M chars, 2026-07-31). Forensics ride the
 #   trace substrate (result_chars + result_head on the action record); full
-#   capture is the payload recorder below (`record_payload` — the `failed_run`
-#   kind is wired; per-round/tool_result wiring lands in rollout step 2 of
-#   docs/TRACE-MODES-DESIGN.md, which also retires the ad-hoc tmp writers).
+#   capture is the payload recorder below (`record_payload` — `failed_run`
+#   and the per-round `round_payload` kinds are wired; the truncated result
+#   appears verbatim inside the round_payload msgs, so a separate
+#   `tool_result` capture site remains future work).
 # `failed_action_input_cap`: per-action `input` head salvaged onto an
 #   encoding_run_failed trace — bounded even when the run died precisely
 #   because something was enormous.
@@ -385,8 +386,9 @@ PAYLOAD_KIND_EXT = {
 # silently absent from one of them (the recorder additionally overlays the
 # active config onto these defaults, so kinds added after a brain's config
 # was seeded still resolve — see brain_traces._payload_kind_enabled).
-# NOTE: `round_payload`/`tool_result` call sites land in rollout step 2 —
-# until then flipping debug records nothing for those kinds.
+# NOTE: `round_payload` is wired (run_llm_loop's record_round_fn →
+# brain.round_recorder); `tool_result` has no call site yet — flipping debug
+# records nothing for that kind until one is wired.
 _NORMAL_ON_KINDS = ('prompt', 'judge', 'failed_run')
 TRACE_RECORDING_NORMAL = {
     'kinds': {k: k in _NORMAL_ON_KINDS for k in PAYLOAD_KIND_EXT},
@@ -402,6 +404,30 @@ TRACE_RECORDING_DEBUG = {
 # never build it). Distinct from build_failed_run_metadata's 500-char trace-
 # row cap: the file can afford more context.
 FAILED_RUN_ERROR_CAP = 2_000
+
+
+def build_round_payload(*, label, round_idx, seq, model, effort, system,
+                        messages, tools):
+    """The `round_payload` payload shape — one full per-round LLM request
+    exactly as issued (system + messages + tool names). Owned here so the
+    eval harness's body-parsing checks (ab_encode soft checks) and the
+    recorder stay pinned to one dict; keys match the retired
+    BRAIN_PROMPT_CAPTURE_DIR dump (`label, round, seq, model, effort,
+    system, messages, tools`) so existing parsers port unchanged.
+    `label` is the chain_id (the old arm__session__stop label died with the
+    filename-keyed capture dir); `seq` is the file seq — for multi-batch
+    encoders it carries the batch offset (round_recorder's seq_base), so a
+    payload file self-identifies which batch produced it."""
+    return {
+        'label': label,
+        'round': round_idx,
+        'seq': seq,
+        'model': model,
+        'effort': effort,              # None = API default (high)
+        'system': system,              # full text, not a length
+        'messages': messages,          # full, every content block
+        'tools': tools,                # names only
+    }
 
 
 def build_failed_run_metadata(*, error, stop_counter, inputs_processed,

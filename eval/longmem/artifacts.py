@@ -330,12 +330,13 @@ class EvalArtifactsDumper:
         self._write_json('result.json', result)
 
     def dump_agent_calls(self, session_ids: List[str]) -> Dict[str, int]:
-        """Collect per-call encoder + surface dumps from /tmp into agent_calls/.
+        """Collect per-call encoder + surface artifacts into agent_calls/.
 
-        encode.py writes /tmp/brain-encoding-prompt-{session_id}-{counter}.json
-        per encoder call, capturing user_content + user_preamble + tools_count.
-        surface.py writes /tmp/brain-{session_id}-{counter}-surface-selected.json
-        per surface call, capturing the selected node IDs and surface reasoning.
+        Encoder prompts and judge results live in the item brain's
+        {BRAIN_DB_DIR}/payloads/{date}/{chain}/ (the payload recorder — the
+        eval is a sanctioned direct reader; chains are s1e-{sid[:8]}-{stop}
+        and s1r-{sid[:8]}-{stop}). The surface-selected files are operational
+        state, still under BRAIN_TMP_DIR.
 
         Together with interactions.jsonl (which captures the system prompt
         version active at each call), this gives us full replay-ability:
@@ -347,46 +348,45 @@ class EvalArtifactsDumper:
         """
         import glob
         import shutil
-        # BRAIN_TMP_DIR env protocol — must match the daemon-side WRITERS
-        # (servers.daemon_config.brain_tmp_dir(); default /tmp). The eval harness
-        # sets this per-run (fresh_brain.create_fresh_eval_brain) so concurrent
-        # runs don't cross-copy each other's per-call dumps.
+        from eval.longmem.fresh_brain import capture_files_for
+        # Both env vars are set per-run by fresh_brain.create_fresh_eval_brain
+        # (to the item brain dir), so concurrent runs can't cross-copy.
+        db_dir = os.environ.get('BRAIN_DB_DIR', '')
         tmp_dir = os.environ.get('BRAIN_TMP_DIR', '/tmp')
         out_dir = self.run_dir / 'agent_calls'
         out_dir.mkdir(exist_ok=True)
         encoder_n = 0
         surface_n = 0
         errors = 0
+
         for sid in (session_ids or []):
-            # Encoder dumps — one per encoding window (counter stops 5, 10, ...)
-            for src in glob.glob(os.path.join(tmp_dir, f'brain-encoding-prompt-{sid}-*.json')):
+            # Encoder payloads — prompt + round_payload per encoding window;
+            # name by chain dir + file so stops/rounds stay distinguishable.
+            # capture_files_for owns the recorder layout — the one eval-side
+            # reader (kind='' = every payload kind on the chain).
+            for src in capture_files_for(db_dir, sid, prefix='s1e', kind=''):
                 try:
-                    name = os.path.basename(src).replace(
-                        f'brain-encoding-prompt-{sid}-', f's1e_{sid[:8]}_stop')
+                    name = '%s__%s' % (os.path.basename(os.path.dirname(src)),
+                                       os.path.basename(src))
                     shutil.copy2(src, out_dir / name)
                     encoder_n += 1
                 except Exception:
                     errors += 1
-            # Surface dumps — one per query (typically 1 per item but eval may
-            # have multiple if the query phase re-fires).
-            for src in glob.glob(os.path.join(tmp_dir, f'brain-{sid}-*-surface-selected.json')):
+            # Judge payloads — agentic surface output per recall.
+            for src in capture_files_for(db_dir, sid, prefix='s1r', kind=''):
                 try:
-                    name = os.path.basename(src).replace(
-                        f'brain-{sid}-', f'surface_{sid[:8]}_')
+                    name = '%s__%s' % (os.path.basename(os.path.dirname(src)),
+                                       os.path.basename(src))
                     shutil.copy2(src, out_dir / name)
                     surface_n += 1
                 except Exception:
                     errors += 1
-            # Judge results — agentic surface tool-trace + final selection.
-            # The WRITER (surface.py) names these from recall_ref =
-            # session_id[:8]-stop (daemon_hooks.py), NOT the full session_id —
-            # so glob on the 8-char prefix to match. A full-sid glob never
-            # matches (sid is ~18 chars: "query-"+uuid.hex[:12]) and silently
-            # captures zero judge dumps.
-            for src in glob.glob(os.path.join(tmp_dir, f'brain-judge-result-{sid[:8]}*.json')):
+            # Surface dumps — operational state file, one per query (typically
+            # 1 per item but eval may have multiple if the query phase re-fires).
+            for src in glob.glob(os.path.join(tmp_dir, f'brain-{sid}-*-surface-selected.json')):
                 try:
                     name = os.path.basename(src).replace(
-                        f'brain-judge-result-{sid[:8]}', f'judge_{sid[:8]}')
+                        f'brain-{sid}-', f'surface_{sid[:8]}_')
                     shutil.copy2(src, out_dir / name)
                     surface_n += 1
                 except Exception:

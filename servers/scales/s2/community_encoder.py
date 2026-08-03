@@ -467,7 +467,9 @@ class CommunityEncoder(IntegrationUnit):
                         tools=tools,
                         dispatch_fn=dispatch_fn,
                         get_nodes_config=S2CE_NODE_FORMAT,
-                        log_fn=lambda msg: print('[s2ce] %s' % msg, flush=True)),
+                        log_fn=lambda msg: print('[s2ce] %s' % msg, flush=True),
+                        record_round_fn=self.brain.round_recorder(
+                            self.chain_id(), seq_base=batch_num * 100)),
                     log_fn=lambda msg: print('[s2ce] %s' % msg, flush=True))
 
                 # Accumulate + per-batch journal + truncation logging — shared
