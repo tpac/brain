@@ -1027,61 +1027,6 @@ JOURNAL_CONTINUITY_RUNS_DEFAULT = 3
 RESIDUE_REF_TYPES = ('journal_note',)
 
 
-# ── METADATA PAYLOAD VALIDATION (the chokepoint guard) ──
-# validate_trace_event() checks the (scale, event_type, ref_type) envelope.
-# It historically said nothing about the metadata PAYLOAD — which is exactly
-# how two writers emitted two different shapes for the same `encoding_run`
-# ref_type, undetected, for weeks. This closes that hole: a ref_type with a
-# declared schema must carry every required key with the right type.
-# Keyed by ref_type (the unit of shape divergence). Covers every delta built by
-# build_delta_metadata — the S1 Scribe plus the four S2 units — so a malformed
-# payload on any of them is caught, not just encoding_run. (reclassify's
-# `community_assignments` is excluded: it only ever writes a bare summary marker,
-# with no build_delta_metadata payload to shape-check.)
-METADATA_REQUIRED_BY_REF_TYPE = {
-    'encoding_run':       DELTA_METADATA_SHAPE,  # S1 Scribe
-    'consolidated':       DELTA_METADATA_SHAPE,  # S2 consolidation
-    'community_enriched': DELTA_METADATA_SHAPE,  # S2 community
-    'healer_generated':   DELTA_METADATA_SHAPE,  # S2 healer
-    'aspect_classified':  DELTA_METADATA_SHAPE,  # S2 aspect integration
-    'journal_note':       JOURNAL_NOTE_METADATA_SHAPE,  # encoder residue (one note per row)
-    'anchor_touched':     ANCHOR_TOUCHED_SHAPE,  # S0 per-turn Anchor action aggregate
-}
-
-
-def validate_trace_metadata(event_type, ref_type, metadata):
-    """Validate a trace event's metadata payload against its ref_type schema.
-
-    Returns (ok, error_message). Two ways to pass:
-      • ref_types without a declared schema (permissive — we only lock shapes
-        that have a builder);
-      • a bare marker with NO metadata (None) — the delta ref_types double as
-        early-out/error markers (`self.trace('delta','consolidated','No clusters
-        to process')`), which legitimately carry no payload.
-    A PRESENT payload, though, must match the schema. The contract HELPS (catches
-    a malformed delta dict) without BLOCKING a no-op marker or dropping anything —
-    the caller logs loud and writes the full payload regardless.
-    """
-    schema = METADATA_REQUIRED_BY_REF_TYPE.get(ref_type or '')
-    if not schema:
-        return True, ""
-    if metadata is None:
-        return True, ""   # bare marker — no payload to shape-check
-    if not isinstance(metadata, dict):
-        return False, "metadata for ref_type '%s' must be a dict or None, got %s" % (
-            ref_type, type(metadata).__name__)
-    missing = [k for k in schema if k not in metadata]
-    if missing:
-        return False, "metadata for ref_type '%s' missing required keys: %s" % (
-            ref_type, missing)
-    bad = [k for k in schema
-           if not isinstance(metadata[k], schema[k])]
-    if bad:
-        return False, "metadata for ref_type '%s' wrong types on keys: %s" % (
-            ref_type, bad)
-    return True, ""
-
-
 # ── LLM-ENCODER TELEMETRY GUARD (loud at the write boundary) ──
 # A delta produced by an agent that actually called an LLM MUST carry the
 # cost/latency telemetry build_delta_metadata accepts (elapsed_ms + token
@@ -1296,6 +1241,67 @@ def build_edge_revise_metadata(*, edge_id, relation, reason, encoding_source='',
         'deltas':          list(deltas or []),
         'warnings':        list(warnings or []),
     }
+
+# ── METADATA PAYLOAD VALIDATION (the chokepoint guard) ──
+# PLACEMENT IS LOAD-BEARING: this block sits BELOW every *_METADATA_SHAPE it
+# references, because the registry dict is built at import time. Moving it above
+# a shape definition is a module-level NameError — and trace_contract is imported
+# by dal_logs, so the daemon stops booting. (validate_trace_metadata reads the
+# dict inside its body, at call time, so only the DICT has this constraint.)
+# validate_trace_event() checks the (scale, event_type, ref_type) envelope.
+# It historically said nothing about the metadata PAYLOAD — which is exactly
+# how two writers emitted two different shapes for the same `encoding_run`
+# ref_type, undetected, for weeks. This closes that hole: a ref_type with a
+# declared schema must carry every required key with the right type.
+# Keyed by ref_type (the unit of shape divergence). Covers every delta built by
+# build_delta_metadata — the S1 Scribe plus the four S2 units — so a malformed
+# payload on any of them is caught, not just encoding_run. (reclassify's
+# `community_assignments` is excluded: it only ever writes a bare summary marker,
+# with no build_delta_metadata payload to shape-check.)
+METADATA_REQUIRED_BY_REF_TYPE = {
+    'encoding_run':       DELTA_METADATA_SHAPE,  # S1 Scribe
+    'consolidated':       DELTA_METADATA_SHAPE,  # S2 consolidation
+    'community_enriched': DELTA_METADATA_SHAPE,  # S2 community
+    'healer_generated':   DELTA_METADATA_SHAPE,  # S2 healer
+    'aspect_classified':  DELTA_METADATA_SHAPE,  # S2 aspect integration
+    'journal_note':       JOURNAL_NOTE_METADATA_SHAPE,  # encoder residue (one note per row)
+    'anchor_touched':     ANCHOR_TOUCHED_SHAPE,  # S0 per-turn Anchor action aggregate
+}
+
+
+def validate_trace_metadata(event_type, ref_type, metadata):
+    """Validate a trace event's metadata payload against its ref_type schema.
+
+    Returns (ok, error_message). Two ways to pass:
+      • ref_types without a declared schema (permissive — we only lock shapes
+        that have a builder);
+      • a bare marker with NO metadata (None) — the delta ref_types double as
+        early-out/error markers (`self.trace('delta','consolidated','No clusters
+        to process')`), which legitimately carry no payload.
+    A PRESENT payload, though, must match the schema. The contract HELPS (catches
+    a malformed delta dict) without BLOCKING a no-op marker or dropping anything —
+    the caller logs loud and writes the full payload regardless.
+    """
+    schema = METADATA_REQUIRED_BY_REF_TYPE.get(ref_type or '')
+    if not schema:
+        return True, ""
+    if metadata is None:
+        return True, ""   # bare marker — no payload to shape-check
+    if not isinstance(metadata, dict):
+        return False, "metadata for ref_type '%s' must be a dict or None, got %s" % (
+            ref_type, type(metadata).__name__)
+    missing = [k for k in schema if k not in metadata]
+    if missing:
+        return False, "metadata for ref_type '%s' missing required keys: %s" % (
+            ref_type, missing)
+    bad = [k for k in schema
+           if not isinstance(metadata[k], schema[k])]
+    if bad:
+        return False, "metadata for ref_type '%s' wrong types on keys: %s" % (
+            ref_type, bad)
+    return True, ""
+
+
 
 
 def validate_trace_event(scale, event_type, ref_type=""):
