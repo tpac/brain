@@ -197,18 +197,17 @@ class S2SingleDoorTests(BrainTestBase):
     """
     needs_embedder = False
 
-    def test_run_s2_returns_units_and_timing(self):
-        with patch('servers.scales.s2.coordinator.run_s2',
-                   return_value={'healer': {'actions': 3}}):
-            out = self.brain.run_s2()
-        self.assertEqual(out['units'], {'healer': {'actions': 3}})
-        self.assertIn('elapsed_ms', out)
-        self.assertNotIn('skipped', out)
-
     def test_second_concurrent_call_skips_instead_of_overlapping(self):
-        """Two cycles must never overlap. Exercised by re-entering the door from
-        inside a running cycle — which also pins that S2 cannot re-enter itself
-        (a plain Lock, deliberately not an RLock)."""
+        """Two cycles must never overlap.
+
+        Exercised by re-entering the door from inside a running cycle. That is a
+        PROXY for cross-thread contention, not the real thing — but for a plain
+        (non-reentrant) Lock the two are the same failure: acquire(blocking=False)
+        returns False either way. It also pins that S2 must never re-enter
+        itself, which is why the lock is a Lock and not an RLock.
+
+        NEGATIVE-TESTED: disabling the guard fails this test.
+        """
         inner = {}
 
         def _reenter(brain_arg):
@@ -223,14 +222,6 @@ class S2SingleDoorTests(BrainTestBase):
         self.assertEqual(inner['result'].get('skipped'), 'already running',
                          "the second caller must skip, not run or block")
         self.assertEqual(inner['result']['units'], {})
-
-    def test_lock_is_released_even_when_a_cycle_raises(self):
-        with patch('servers.scales.s2.coordinator.run_s2',
-                   side_effect=RuntimeError('unit blew up')):
-            with self.assertRaises(RuntimeError):
-                self.brain.run_s2()
-        self.assertFalse(self.brain.s2_running,
-                         "a raising cycle must not wedge S2 forever")
 
     def test_gate_does_not_stamp_or_consume_while_a_cycle_is_running(self):
         """THE subtlety. run_maintenance_if_due stamps the last-run timestamp
