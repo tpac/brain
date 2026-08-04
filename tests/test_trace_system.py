@@ -154,6 +154,75 @@ class TestTraceDAL:
         with pytest.raises(ValueError, match="Unknown event_type"):
             self.dal.append(chain_id='test', scale='s0', event_type='tool_call')
 
+    def _ev(self, chain, ref_type, ref_id):
+        """A minimal well-formed append_batch event dict."""
+        return {'chain_id': chain, 'scale': 's0', 'event_type': 'delta',
+                'ref_type': ref_type, 'ref_id': ref_id, 'summary': '',
+                'metadata': None, 'session_id': '', 'interaction_id': None}
+
+    def test_append_batch_atomic_on_contract_violation(self):
+        """A bad event ANYWHERE in the batch must leave zero rows — and they
+        must not reappear when the next unrelated logs write commits.
+
+        Pre-fix, validation shared the insert loop, so event #2's raise came
+        AFTER event #1 was inserted. The commit was skipped, but on a
+        default-isolation connection that row stayed PENDING — and the next
+        write on the same connection (including the error log reporting this
+        very failure) committed it, publishing a partial set that lied by
+        omission. An unregistered ref_type is the realistic trigger.
+
+        NOTE for whoever refactors this: the ROLLBACK is what makes this pass,
+        not the pre-flight validation — verified by neutering each separately.
+        Pre-flight only avoids starting work it can't finish. Don't drop the
+        rollback on the theory that pre-flight covers this case.
+        """
+        with pytest.raises(ValueError, match="Trace contract violation"):
+            self.dal.append_batch([
+                self._ev('atomic-1', 'node_revised', 'n1'),
+                self._ev('atomic-1', 'definitely_not_a_registered_ref_type', 'n2'),
+            ])
+
+        assert self.dal.get_chain('atomic-1') == []
+
+        # The load-bearing half: an unrelated write on the same connection is
+        # exactly what used to commit the pending prefix.
+        self.dal.append(chain_id='atomic-unrelated', scale='s0',
+                        event_type='delta', ref_type='node_revised',
+                        ref_id='other')
+        assert self.dal.get_chain('atomic-1') == [], (
+            "a later write on the same connection resurrected the abandoned "
+            "prefix — append_batch is not atomic")
+
+    def test_append_batch_rolls_back_mid_insert_failure(self):
+        """The other guard: something raising DURING the insert loop (not a
+        contract violation) must also leave zero rows. Pre-flight validation
+        can't cover this path — only the rollback can."""
+        from unittest.mock import patch
+
+        real = self.dal._stamp_identity
+        seen = {'n': 0}
+
+        def _boom(md):
+            seen['n'] += 1
+            if seen['n'] == 2:
+                raise RuntimeError('injected mid-insert failure')
+            return real(md)
+
+        with patch.object(self.dal, '_stamp_identity', side_effect=_boom):
+            with pytest.raises(RuntimeError, match='injected'):
+                self.dal.append_batch([
+                    self._ev('atomic-2', 'node_revised', 'a'),
+                    self._ev('atomic-2', 'node_revised', 'b'),
+                ])
+
+        assert self.dal.get_chain('atomic-2') == []
+        self.dal.append(chain_id='atomic-unrelated-2', scale='s0',
+                        event_type='delta', ref_type='node_revised',
+                        ref_id='other')
+        assert self.dal.get_chain('atomic-2') == [], (
+            "the mid-insert prefix was committed by a later write — "
+            "rollback_unless_batched did not fire")
+
     def test_append_metadata_guard_fires_loud_but_writes(self, capsys):
         """CR6 real-path: a malformed delta payload on a schema'd ref_type is
         caught at the DAL chokepoint (where inline S1/S2 writes actually go) —

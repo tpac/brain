@@ -90,6 +90,24 @@ def commit_unless_batched(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
+def rollback_unless_batched(conn: sqlite3.Connection) -> None:
+    """Discard `conn`'s pending statements unless it's inside a batch envelope.
+
+    The mirror of `commit_unless_batched`, and it exists for the same reason: a
+    writer that raises part-way through a multi-statement write must not leave
+    an uncommitted prefix behind. On a default-isolation connection those rows
+    stay pending and are committed by the NEXT unrelated write on the same
+    connection — silently publishing a partial set.
+
+    Batch-aware: inside an envelope the OUTER transaction owns rollback, so
+    this is a no-op there (rolling back would destroy the caller's other work).
+    A rollback with no open transaction is itself a no-op, so this is safe to
+    call unconditionally on the failure path.
+    """
+    if not getattr(conn, 'in_batch', False):
+        conn.rollback()
+
+
 # Per-connection pragmas. Applied at every sqlite3.connect site via
 # apply_pragmas(conn). Reset when the connection closes, so every new
 # connection needs them.

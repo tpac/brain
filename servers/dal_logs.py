@@ -24,7 +24,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
 from .clock import iso_cutoff, iso_now
-from .db_backends.sqlite import commit_unless_batched
+from .db_backends.sqlite import commit_unless_batched, rollback_unless_batched
 
 
 def _new_trace_id(conn) -> str:
@@ -611,35 +611,66 @@ class TraceDAL:
         this per-event body is the write path's ONE implementation).
         Identity stamping applies per-event via setdefault semantics.
 
-        The metadata validation below is loud, never blocking. This is the
-        SINGLE chokepoint every writer passes (inline S1/S2 + the dispatched
-        command), so the guard actually fires in production: the
-        command-boundary check missed every in-process delta write (S2 units +
-        S1 Scribe run with dispatch=None).
+        ATOMIC: all events land or none do. Contract validation is pre-flight,
+        so a violation writes nothing; anything raising mid-insert rolls back
+        the pending rows. Callers may therefore batch a whole command's traces
+        in one append_batch without risking a partially-published set.
+
+        Two validations, deliberately different severities: `validate_trace_event`
+        BLOCKS (an unregistered triple is a programmer bug and must not reach the
+        table), while metadata-shape validation is loud but never blocking — the
+        row still lands. This is the SINGLE chokepoint every writer passes
+        (inline S1/S2 + the dispatched command), so the guard actually fires in
+        production: the command-boundary check missed every in-process delta
+        write (S2 units + S1 Scribe run with dispatch=None).
         """
         from .trace_contract import validate_trace_event, validate_trace_metadata
-        now = iso_now()
-        ids = []
+
+        # PRE-FLIGHT: validate every event before mutating anything, so a
+        # contract violation is a pure no-op — no INSERT work started and
+        # discarded, and no per-row stderr warnings emitted for rows that will
+        # never land. This is NOT what makes the batch atomic (the rollback
+        # below is); it's "don't start what you can't finish".
         for ev in events:
             ok, error = validate_trace_event(ev['scale'], ev['event_type'], ev.get('ref_type', ''))
             if not ok:
                 raise ValueError("Trace contract violation: %s" % error)
-            meta_ok, meta_err = validate_trace_metadata(
-                ev['event_type'], ev.get('ref_type', ''), ev.get('metadata'))
-            if not meta_ok:
-                self._warn_metadata_invalid(ev.get('ref_type', ''), meta_err)
-            self._maybe_warn_identity_unset(ev['scale'], ev.get('ref_type', ''))
-            metadata = self._stamp_identity(ev.get('metadata'))
-            meta_json = json.dumps(metadata) if metadata else None
-            trace_id = _new_trace_id(self.conn)
-            self.conn.execute(
-                'INSERT INTO trace_events '
-                '(id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, interaction_id, created_at) '
-                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                (trace_id, ev['chain_id'], ev['scale'], ev['event_type'], ev.get('ref_type', ''),
-                 ev.get('ref_id', ''), ev.get('summary', ''), meta_json,
-                 ev.get('session_id', ''), ev.get('interaction_id'), now))
-            ids.append(trace_id)
+
+        now = iso_now()
+        ids = []
+        try:
+            for ev in events:
+                # Non-blocking by design: shape drift warns (stderr) and the
+                # row still lands. Stays in this loop — it must not gate writes.
+                meta_ok, meta_err = validate_trace_metadata(
+                    ev['event_type'], ev.get('ref_type', ''), ev.get('metadata'))
+                if not meta_ok:
+                    self._warn_metadata_invalid(ev.get('ref_type', ''), meta_err)
+                self._maybe_warn_identity_unset(ev['scale'], ev.get('ref_type', ''))
+                metadata = self._stamp_identity(ev.get('metadata'))
+                meta_json = json.dumps(metadata) if metadata else None
+                trace_id = _new_trace_id(self.conn)
+                self.conn.execute(
+                    'INSERT INTO trace_events '
+                    '(id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, interaction_id, created_at) '
+                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    (trace_id, ev['chain_id'], ev['scale'], ev['event_type'], ev.get('ref_type', ''),
+                     ev.get('ref_id', ''), ev.get('summary', ''), meta_json,
+                     ev.get('session_id', ''), ev.get('interaction_id'), now))
+                ids.append(trace_id)
+        except Exception:
+            # THIS is the atomicity guarantee. Without it, a raise part-way
+            # through leaves the already-inserted rows PENDING: the commit below
+            # is skipped, but `self.conn` is default-isolation, so the next
+            # unrelated write on it — including the error log reporting this
+            # very failure — commits that prefix. The result is a partial trace
+            # set that lies by omission, which is strictly worse than no traces
+            # (a missing trace is recoverable from the graph; a partial one
+            # misrepresents it). Safe to fire: every logs writer in the repo
+            # ends with commit_unless_batched, so there is never another
+            # caller's pending work here to discard.
+            rollback_unless_batched(self.conn)
+            raise
         commit_unless_batched(self.conn)
         return ids
 
