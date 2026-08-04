@@ -111,17 +111,14 @@ atomic. Existing: `tests/test_trace_contract_sync.py`, any test touching TraceDA
    `launchctl kickstart`. Add a comment at the dict naming the constraint.
 2. `servers/trace_contract.py` — `REF_TYPES` (`:61`): add `node_created`, `node_archived`,
    `node_deleted` at `("s0","delta")`, `("s1","delta")`, `("s2","delta")`.
-2b. `servers/trace_contract.py` — **prune the dead `REF_TYPES` entries in this same edit**
-   (findings §E8, `node:384ddae3`): one edit and one review of the same table instead of a
-   second pass. Verified zero references in my tree: `confidence_adjust`, `kept_distinct`,
-   `stale_nodes`, `correction_chains`, `community_diff`, `graph_stats`. Plus **all of scale 3
-   and scale 4** (13 entries for scales with no code) — **deleted**, not moved to an
-   aspirational block; the aspiration lives in the S3 design docs, and a validated table
-   should not carry entries nothing can emit.
-   **Two traps:** (a) `recall_quality_signal` is **not** clean — `dashboard/static/tabs/live.js:623`
-   colors that ref_type, so the reader dies in the same commit or the entry stays;
-   (b) `scout_input` / `scout_findings` **STAY** — Tom ruled it (`node:57d30c1d`), 3 refs each,
-   nested otherwise-invisible work earns its trace. Never-written ≠ write-only.
+   **This step is ADDITIVE ONLY.** Findings `E8` proposed pruning ~15 dead `REF_TYPES`
+   entries in this same edit ("one edit, one review of the same table"). **Rejected**
+   (2026-08-04): six of those entries are pinned by assertions in
+   `tests/test_trace_system.py` and one has a live dashboard reader, so the prune means
+   deleting contract-pinning test assertions — an edit that must be reviewed on its own
+   merits, never as a footnote inside a commit whose headline is "add the emitter". It has
+   zero dependency on the emitter (additions here, removals there). Logged in
+   `docs/BACKLOG.md` (2026-08-04) with the verified inventory.
 3. `servers/trace_contract.py` — new metadata shapes + builders for the three new types,
    placed with their siblings; then register all five in the relocated
    `METADATA_REQUIRED_BY_REF_TYPE`. **Verified warning-silent:** all current producers use
