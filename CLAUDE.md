@@ -241,7 +241,14 @@ Truncation logged to brain errors table via `run_llm_loop`.
 
 S2 operates when the operator is idle. It sees the full graph, not just one turn. Multiple integration units, different triggers, same O/K/Δ pattern.
 
-**S2 Coordinator** (`scales/s2/coordinator.py`): the daemon polls `brain.run_maintenance_if_due(last_user_activity)` every few seconds. Brain owns the "is it time?" decision (idle threshold + min interval; last-run timestamp persisted in `brain_meta`). When due, the coordinator runs units in order — each checks its own traces to decide whether to fire.
+**S2 Coordinator** (`scales/s2/coordinator.py`): the daemon polls `brain.run_maintenance_if_due()` every few seconds. Two responsibilities, deliberately split:
+
+- **`brain.run_maintenance_if_due()` owns POLICY** — "is it time?" (boot grace, 1h min interval, 3min idle, ≥2 encode runs, 24h force-fire; last-run timestamp persisted in `brain_meta`). The only *scheduled* activation.
+- **`brain.run_s2()` owns EXECUTION and is THE single door** — every caller goes through it: the poll, evals, benchmarks, IsolatedBrain. It holds `brain._s2_lock` for the whole cycle (`acquire(blocking=False)` — a second caller returns `{'skipped': 'already running'}`, never queues). Ungated by design: the fire gates are scheduling policy, not a safety property.
+
+Never call `coordinator.run_s2()` directly — that bypasses the lock. The guard lives on the brain, not the daemon, because a guard held by ONE caller cannot protect the others: `daemon._s2_running` (still present, but only a pool-submission throttle) is exactly why a second caller could once run consolidation in parallel. `run_maintenance_if_due` checks `brain.s2_running` *before* it stamps the last-run timestamp — otherwise a skipped cycle would still burn the stamp and consume the encode runs it gated on.
+
+When due, the coordinator runs units inline, in order — each checks its own traces to decide whether to fire.
 
 **Per-unit idle-gating is each unit's own responsibility.** The coordinator firing ≠ a unit doing work. A unit whose expensive step (a graph scan) isn't gated will re-derive the same fixed point every cycle — Community and Consolidation both ran full O(graph) scans every ~15 min, 24/7, ~87% producing nothing. Each now persists its own last-run timestamp (`s2_<unit>_last_run_ts` in `brain_meta`) and skips unless the graph changed since then. Consolidation does one cold-start then incremental (`changed @ all.T`), stamping its cutoff only *after* the encoder completes so a mid-run failure retries. When adding an S2 unit with a non-trivial scan, gate it the same way. See `docs/S2-GATING-AND-TEST-CLEANUP-HANDOFF.md`.
 
