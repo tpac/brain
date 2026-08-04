@@ -78,11 +78,31 @@ class TestEmitterContract(unittest.TestCase):
             sorted({rt for _p, rt, _b, _r, _w in me.MANIFEST_TRACE_MAP}),
             sorted(tc.EMITTER_REF_TYPES))
 
-    def test_new_lifecycle_types_have_enforced_metadata_shapes(self):
-        for rt in ('node_created', 'node_archived', 'node_deleted'):
+    def test_every_emitter_ref_type_has_an_enforced_metadata_shape(self):
+        """All five, not just the new three. The revise pair's shapes were
+        DECLARED but unregistered for months — validation was dead for the two
+        highest-volume mutation events in the system."""
+        for rt in tc.EMITTER_REF_TYPES:
             self.assertIn(rt, tc.METADATA_REQUIRED_BY_REF_TYPE,
-                          "%s has exactly one producer and one builder — there is "
-                          "no legacy shape to grandfather, so enforce it" % rt)
+                          "%s can be written by the emitter but its metadata "
+                          "shape is not enforced" % rt)
+
+    def test_each_builder_satisfies_its_shape_with_minimal_args(self):
+        """Enforcement is only safe if the builders can't violate it. Minimal
+        args is the worst case: every optional field falls to its default, and
+        the shape requires ALL keys."""
+        minimal = {
+            'node_created': dict(node_id='n1'),
+            'node_archived': dict(node_id='n1'),
+            'node_deleted': dict(node_id='n1'),
+            'node_revised': dict(node_id='n1', reason='r'),
+            'edge_relation_revised': dict(edge_id='e1', relation='extends', reason='r'),
+        }
+        for _p, ref_type, builder, _r, _w in me.MANIFEST_TRACE_MAP:
+            md = builder(**minimal[ref_type])
+            ok, err = tc.validate_trace_metadata('delta', ref_type, md)
+            self.assertTrue(ok, "%s builder violates its own enforced shape: %s"
+                                % (ref_type, err))
 
     def test_adding_a_kind_needs_no_branch(self):
         """The unification is DATA, not code: every entry must be fully described
@@ -249,6 +269,56 @@ class TestEmitBehaviour(BrainTestBase):
                          "manifest/contract drift must be loud")
         self.assertEqual(len(self.brain._trace_dal.get_chain('test-emitter-unknown')), 1,
                          "...but the trace still goes out — loud, never blocking")
+
+    def test_enforcing_the_revise_pair_is_silent_on_real_production_writes(self):
+        """3e's safety claim, tested on the REAL path rather than by inspection.
+
+        Registering node_revised / edge_relation_revised makes
+        validate_trace_metadata start checking live traffic. It warns to stderr
+        and never blocks, so the rest of the suite would stay green even if every
+        write were spraying warnings — nothing would fail. This is the only test
+        that would notice.
+        """
+        import io
+        from contextlib import redirect_stderr
+        from servers.daemon_dispatch import dispatch_command
+
+        r = dispatch_command(self.brain, 'remember', {
+            'type': 'rule', 'title': 'emitter 3e probe',
+            'content': 'a node to revise so the revise trace has a real payload',
+        }, [])
+        node_id = (r.get('result') or {}).get('id') or (r.get('result') or {}).get('node_id')
+        self.assertTrue(node_id, "probe setup failed: %s" % r)
+
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            # A revise (node_revised) and a connect (edge_relation_revised) —
+            # both enforced ref_types, both on their real production paths.
+            dispatch_command(self.brain, 'revise', {
+                'node_id': node_id, 'reason': '3e probe',
+                'content': 'revised content so there is a real delta',
+            }, [])
+            dispatch_command(self.brain, 'connect', {
+                'source_id': node_id, 'target_id': node_id,
+                'relation': 'extends', 'reason': '3e probe',
+            }, [])
+        err = buf.getvalue()
+
+        # NOT VACUOUS: "no warning" also describes "nothing was written", so
+        # prove the enforced path actually ran. Both rows must exist, or this
+        # test would pass while validation was never reached.
+        wrote = self.brain.logs_conn.execute(
+            "SELECT ref_type, COUNT(*) FROM trace_events "
+            "WHERE ref_type IN ('node_revised','edge_relation_revised') "
+            "GROUP BY ref_type").fetchall()
+        self.assertEqual(
+            sorted(rt for rt, _n in wrote),
+            ['edge_relation_revised', 'node_revised'],
+            "the probe wrote no enforced rows, so this test proves nothing: %s" % wrote)
+
+        self.assertNotIn('trace metadata invalid', err,
+                         "enforcing the revise pair fires on live writes — 3e is "
+                         "NOT warning-silent:\n%s" % err)
 
     def test_happy_path_writes_the_rows(self):
         me.emit_mutation_traces(

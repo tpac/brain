@@ -1417,10 +1417,16 @@ METADATA_REQUIRED_BY_REF_TYPE = {
     'node_created':       NODE_CREATED_METADATA_SHAPE,
     'node_archived':      NODE_ARCHIVED_METADATA_SHAPE,
     'node_deleted':       NODE_DELETED_METADATA_SHAPE,
-    # NOTE: `node_revised` / `edge_relation_revised` are deliberately NOT here yet.
-    # Registering them starts validating live traffic, so it lands as its own
-    # commit (plan step 3e) — verified warning-silent first (every producer uses
-    # the builders), but kept separately revertable.
+    # The two mutation ref_types that predate the emitter. Their shapes were
+    # DECLARED but never enforced — validation was dead for exactly the two
+    # highest-volume mutation events in the system. Enforced as of 2026-08-04,
+    # after verifying it cannot fire on existing traffic: all three producers
+    # (dispatch_write's _emit_revise_trace, _emit_edge_revise_trace and
+    # _emit_edge_traces) build metadata via the builders below, no hand-built
+    # dicts anywhere, and each builder's minimal-args output satisfies its shape.
+    # Validation runs at WRITE time only, so historic rows are unaffected.
+    'node_revised':          REVISE_METADATA_SHAPE,
+    'edge_relation_revised': EDGE_REVISE_METADATA_SHAPE,
 }
 
 
