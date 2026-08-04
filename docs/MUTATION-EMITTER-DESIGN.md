@@ -1,13 +1,38 @@
 # Mutation-Trace Emitter — Design (Traces Part 2)
 
-**Status:** design approved in-session 2026-08-03 (Tom: manifest scope + additions +
-dead-code + touched-DAL unification). Implementation NOT started.
-**Charter:** brain node `98031b8e`; `docs/TRACE-MODES-DESIGN.md` §"Part 2 charter".
+> ## ⚠ 2026-08-03 — REVIEWED. DO NOT IMPLEMENT §3–§13 AS WRITTEN.
+>
+> A five-agent review found ~15 design-changing defects and **two instructions that
+> would cause production damage** (§4's shape registration is a module-level
+> `NameError` that stops the daemon booting; §9 deletes live boot behavior under a
+> function name that does not exist).
+>
+> **Read `docs/MUTATION-EMITTER-REVIEW-FINDINGS.md` FIRST, then this doc.** It carries
+> every finding with evidence and the correction, plus the list of what is confirmed
+> sound and must not be re-litigated.
+>
+> **What survives unchanged:** §1 (the evidence — twelve emit sites, all citations
+> verified), §2 (the five ruled properties), and the core architecture (one
+> manifest-driven emitter at a single chokepoint, post-commit). The design is right;
+> the work order is not.
+>
+> **Also:** every line number in this doc was resolved against `a25ca9b`, which is
+> BEHIND main (`bb7ed5a`) — the branch was never rebased. Refs into
+> `scales/s2/base.py`, `trace_contract.py`, `scales/runner.py` and `s1/surface.py`
+> must be re-resolved.
+>
+> Next action: rebase, then rewrite §3–§13 from the findings file, then Tom reviews
+> the final plan before any code is written.
+
+**Status:** design reviewed 2026-08-03; **rewrite pending**. Scope ruled by Tom
+(manifest + additions + dead-code + touched-DAL unification). Implementation NOT
+started, and blocked on the rewrite + Tom's approval of the final plan.
+**Charter:** brain node `98031b8e`; ruling `5fcb662c`; findings `docs/MUTATION-EMITTER-REVIEW-FINDINGS.md`.
 **Part 1 (sibling):** the payload recorder (agent-I/O capture) — same disease, read
 side. This doc is the write side: graph-mutation trace emission.
-**Evidence base:** four-agent architecture review pass, 2026-08-03 (timing map,
-manifest inventory, consumer map, attribution/boundary). Findings condensed into
-§1/§7; file:line refs verified against this tree.
+**Evidence base:** four-agent architecture review pass + a five-agent spec review,
+2026-08-03. §1/§7 hold the condensed evidence; the spec review's corrections live in
+the findings file.
 
 ---
 
