@@ -534,9 +534,14 @@ def query_healer_runs(hours: int = 24, limit: int = 30):
             # Only the unit's per-RUN delta makes a card. Unlike the other run
             # queries this one filters in Python (it needs the O/K rows in the
             # same forward pass, so the SQL can't pre-filter by ref_type).
-            # Without this the docstring was a lie: journal_note residue already
-            # rendered as phantom passes, and per-write mutation rows would add
-            # one card per healed field.
+            #
+            # PREVENTIVE, not corrective — measured 2026-08-04: healer chains
+            # carry ONLY healer_generated deltas (577 rows, all-time), so nothing
+            # is being un-phantomed today. It becomes load-bearing when the Healer
+            # is routed through dispatch (plan step 10) and its field-fills start
+            # emitting node_revised on this chain — one phantom card per healed
+            # field. The docstring's "one card per healer_generated delta" was
+            # aspirational before this line; now it is true.
             if (ref_type or '') in _NON_RUN_REF_TYPES:
                 continue
             o = last_o.get(chain_id, ('', ''))
