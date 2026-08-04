@@ -20,12 +20,22 @@ from ..db import brain_db_path, fetch_by_id, logs_db_path, ro_connect
 from ..log import warn
 
 
-# Mirror of servers/trace_contract.RESIDUE_REF_TYPES. The dashboard disconnection
-# contract forbids importing servers.* (see queries/aspects.py), so we replicate.
-# These ref_types are encoder *residue* (journal_note), event_type='delta' on the
-# unit's chain — the run-card delta query excludes them so notes don't show up as
-# phantom runs.
+# Mirror of servers/trace_contract.RESIDUE_REF_TYPES + EMITTER_REF_TYPES. The
+# dashboard disconnection contract forbids importing servers.* (see
+# queries/aspects.py), so we replicate. A consistency test pins these against the
+# server-side constants — mirror-and-pin, never import.
+#
+# Both families are event_type='delta' on the unit's chain without being the
+# unit's per-RUN integration delta, so an unfiltered pull renders them as phantom
+# run cards: residue is encoder *notes* (journal_note); emitter rows are per-WRITE
+# mutations (one per node/edge touched).
 _RESIDUE_REF_TYPES = ('journal_note',)
+_EMITTER_REF_TYPES = (
+    'node_created', 'node_archived', 'node_deleted',
+    'node_revised', 'edge_relation_revised',
+)
+# Everything the run-card queries must not mistake for a run.
+_NON_RUN_REF_TYPES = _RESIDUE_REF_TYPES + _EMITTER_REF_TYPES
 
 
 def _fetch_ok_deltas(conn, unit_keyword: str, hours: int, delta_columns: str,
@@ -41,13 +51,13 @@ def _fetch_ok_deltas(conn, unit_keyword: str, hours: int, delta_columns: str,
     are string-keyed.
     """
     since = utc_cutoff(hours=hours)
-    excl = ','.join(['?'] * len(_RESIDUE_REF_TYPES))
+    excl = ','.join(['?'] * len(_NON_RUN_REF_TYPES))
     delta_rows = conn.execute(
         "SELECT %s FROM trace_events WHERE chain_id LIKE ? "
         "AND event_type = 'delta' AND (ref_type IS NULL OR ref_type NOT IN (%s)) "
         "AND created_at > ? ORDER BY created_at DESC"
         % (delta_columns, excl),
-        ('%' + unit_keyword + '%', *_RESIDUE_REF_TYPES, since),
+        ('%' + unit_keyword + '%', *_NON_RUN_REF_TYPES, since),
     ).fetchall()
     ok_select = "chain_id, event_type, summary, created_at"
     if ok_extra_columns:
@@ -521,6 +531,14 @@ def query_healer_runs(hours: int = 24, limit: int = 30):
         elif event_type == 'K':
             last_k[chain_id] = (ref_type or '', summary or '')
         elif event_type == 'delta':
+            # Only the unit's per-RUN delta makes a card. Unlike the other run
+            # queries this one filters in Python (it needs the O/K rows in the
+            # same forward pass, so the SQL can't pre-filter by ref_type).
+            # Without this the docstring was a lie: journal_note residue already
+            # rendered as phantom passes, and per-write mutation rows would add
+            # one card per healed field.
+            if (ref_type or '') in _NON_RUN_REF_TYPES:
+                continue
             o = last_o.get(chain_id, ('', ''))
             k = last_k.get(chain_id, ('', ''))
             runs.append({

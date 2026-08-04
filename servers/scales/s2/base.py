@@ -292,16 +292,23 @@ class IntegrationUnit:
         """Find this unit's most recent completed run timestamp.
 
         Returns ISO timestamp string, or '' if never run. Counts only REAL
-        integration deltas — residue (journal_note) is excluded, so a run that
-        only journaled doesn't read as a completed integration. Goes through the
-        trace API (query_traces), not raw SQL; chain_suffix scopes to this unit's
-        chains and now escapes the '_' in names like community_detection.
+        integration deltas. Two exclusions, same reason — both share this run's
+        chain_id + event_type='delta' without being the unit's per-RUN delta:
+        residue (journal_note), so a run that only journaled doesn't read as a
+        completed integration; and per-mutation rows (EMITTER_REF_TYPES), so a
+        single node revise doesn't. Safe because every unit stamps its own delta
+        ref_type on every exit path, early-outs included.
+
+        Goes through the trace API (query_traces), not raw SQL; chain_suffix
+        scopes to this unit's chains and escapes the '_' in names like
+        community_detection.
         """
-        from ...trace_contract import RESIDUE_REF_TYPES
+        from ...trace_contract import RESIDUE_REF_TYPES, EMITTER_REF_TYPES
         try:
             res = self.brain.query_traces(
                 scale=self.SCALE, event_type='delta', chain_suffix=self.NAME,
-                exclude_ref_types=list(RESIDUE_REF_TYPES), hours=None, limit=1)
+                exclude_ref_types=list(RESIDUE_REF_TYPES) + list(EMITTER_REF_TYPES),
+                hours=None, limit=1)
             events = res.get('events', [])
             return events[0]['created_at'] if events else ''
         except Exception as e:

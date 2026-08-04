@@ -158,3 +158,33 @@ def test_all_sqlite_connects_are_read_only():
         + '\n  '.join(violations)
         + '\n\nUse dashboard.db.ro_connect() — it pins mode=ro.'
     )
+
+
+# ── 3. Mirrored constants must match their servers-side source ──
+# The disconnection contract forbids importing servers.*, so any constant the
+# dashboard needs is REPLICATED by hand. That trades one failure mode for
+# another: the copy silently drifts. Mirror-and-pin — the mirror is the only
+# legal mechanism, and this is the pin that makes drift loud.
+#
+# Importing servers.trace_contract HERE is fine and is not a contract breach:
+# the rule binds dashboard/ code, not the test suite that guards it.
+
+def test_mirrored_ref_type_constants_match_trace_contract():
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from servers.trace_contract import EMITTER_REF_TYPES, RESIDUE_REF_TYPES
+    from dashboard.queries.s2_runs import (
+        _EMITTER_REF_TYPES, _NON_RUN_REF_TYPES, _RESIDUE_REF_TYPES,
+    )
+
+    assert tuple(_RESIDUE_REF_TYPES) == tuple(RESIDUE_REF_TYPES), (
+        'dashboard._RESIDUE_REF_TYPES drifted from trace_contract.RESIDUE_REF_TYPES '
+        '— the run-card queries would count encoder notes as runs'
+    )
+    assert tuple(_EMITTER_REF_TYPES) == tuple(EMITTER_REF_TYPES), (
+        'dashboard._EMITTER_REF_TYPES drifted from trace_contract.EMITTER_REF_TYPES '
+        '— per-write mutation rows would render as phantom S2 run cards'
+    )
+    # The derived set the queries actually filter on must cover both families,
+    # or one of them leaks back into the run cards.
+    assert set(_NON_RUN_REF_TYPES) == set(RESIDUE_REF_TYPES) | set(EMITTER_REF_TYPES)

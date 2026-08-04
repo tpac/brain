@@ -68,6 +68,11 @@ REF_TYPES = {
                                               # NOT a conversational turn — see S0 TURN CLASSIFICATION.
     ("s0", "delta"):   ["assistant_message", "tool_result",
                          "node_revised", "edge_relation_revised",
+                         # Mutation events from the emitter (servers/mutation_emitter.py).
+                         # Registered at s0/s1/s2 — the same three scales the revise pair
+                         # occupies — because scale is derived per row from the mutation's
+                         # own encoding_source, so one command can emit at several scales.
+                         "node_created", "node_archived", "node_deleted",
                          "anchor_touched"],   # per-turn aggregate of what Anchor's own
                                               # MCP tools touched this turn (created/revised/
                                               # archived/recalled/endo) — the S0 mirror of the
@@ -91,6 +96,10 @@ REF_TYPES = {
                                                     # only, so a failed run never claims turns)
                          "node_revised",            # field-level revise emitted by S1 encoder
                          "edge_relation_revised",   # connect upsert / archive emitted by S1 encoder
+                         "node_created",            # node born (emitter) — closes the catalog gap
+                         "node_archived",           # node archived (emitter)
+                         "node_deleted",            # node HARD-deleted (emitter) — the trace is
+                                                    # the only surviving record of the node
                          "journal_note"],           # S1 Scribe residue — one note (subject=ref_id) per row
 
     # Scale 2: graph integration
@@ -125,6 +134,11 @@ REF_TYPES = {
                          "aspect_classified",       # S2 AspectIntegration: candidates merged into aspects_v1.json
                          "node_revised",            # field-level revise emitted by S2 units (healer, consolidation)
                          "edge_relation_revised",   # connect upsert / archive emitted by S2 units
+                         "node_created",            # node born (emitter)
+                         "node_archived",           # node archived (emitter) — S2 units archive
+                                                    # superseded nodes and dead communities
+                         "node_deleted",            # node HARD-deleted (emitter) — idle-maintenance
+                                                    # junk purge; the trace is the only record
                          "journal_note"],           # S2 unit residue (consolidation, community) — one note per row
 
     # Scale 3: reasoning integration
@@ -1027,6 +1041,25 @@ JOURNAL_CONTINUITY_RUNS_DEFAULT = 3
 RESIDUE_REF_TYPES = ('journal_note',)
 
 
+# Per-mutation ref_types written by the emitter (servers/mutation_emitter.py).
+# Excluded by the same consumers, for the same reason as residue: they share the
+# run's chain_id + event_type='delta', but they are per-WRITE rows, not the
+# unit's per-RUN integration delta. An unfiltered pull would read a single node
+# revise as "the run completed" and re-arm the S2 idle gate.
+#
+# Includes the pre-existing revise pair, not just the new types. Verified safe
+# (2026-08-04): every S2 unit stamps its OWN delta ref_type on every exit path —
+# `aspect_classified`, `community_enriched`, `consolidated`, `healer_generated` —
+# including the early-out and failure branches, so excluding the pair cannot
+# starve a unit's cold-start gate. 30 days of live traces confirm it.
+# Bonus: this also fixes the dashboard's pre-existing mis-enrichment of revise
+# rows as run cards.
+EMITTER_REF_TYPES = (
+    'node_created', 'node_archived', 'node_deleted',
+    'node_revised', 'edge_relation_revised',
+)
+
+
 # ── LLM-ENCODER TELEMETRY GUARD (loud at the write boundary) ──
 # A delta produced by an agent that actually called an LLM MUST carry the
 # cost/latency telemetry build_delta_metadata accepts (elapsed_ms + token
@@ -1242,6 +1275,118 @@ def build_edge_revise_metadata(*, edge_id, relation, reason, encoding_source='',
         'warnings':        list(warnings or []),
     }
 
+
+# ── NODE LIFECYCLE METADATA SHAPES (the emitter's new ref_types) ──
+# node_revised above covers "a node changed". These three cover the rest of a
+# node's life: born, archived, erased. All are written by ONE producer
+# (servers/mutation_emitter.py) via the builders below, so — as with the revise
+# pair — every key can be required: the builder always fills it.
+#
+# `type` and `title` ride along on all three deliberately. They make a row
+# self-describing, so a reader can say WHAT was archived or erased without
+# joining the nodes table — which for a HARD DELETE is not optional, because the
+# node is gone and the trace is the only surviving record of it.
+
+NODE_CREATED_METADATA_SHAPE = {
+    'node_id':         str,    # the new node
+    'type':            str,    # node type at birth
+    'title':           str,    # title at birth (nodes get retitled; this is the birth name)
+    'encoding_source': str,    # who created it (anchor, encoder:sonnet, s2:consolidation, ...)
+    'reason':          str,    # why, when the caller supplied one
+}
+
+
+def build_node_created_metadata(*, node_id, type='', title='',
+                                encoding_source='', reason=''):
+    """Build trace metadata for a node-creation event.
+
+    The row that closes the partial-run catalog gap: a run that dies before its
+    encoding_run delta still leaves one of these per node it created, so a
+    successor can find them by id instead of re-creating duplicates.
+    """
+    return {
+        'node_id':         node_id,
+        'type':            type or '',
+        'title':           title or '',
+        'encoding_source': encoding_source or '',
+        'reason':          reason or '',
+    }
+
+
+NODE_ARCHIVED_METADATA_SHAPE = {
+    'node_id':         str,    # the archived node
+    'type':            str,
+    'title':           str,
+    'archived_by':     str,    # archive attribution (distinct from encoding_source)
+    'encoding_source': str,    # who ran the command
+    'reason':          str,
+    'edge_relations':  list,   # [[edge_id, relation], ...] archived WITH the node
+    'vectors_deleted': int,    # embedding rows dropped by the cascade
+}
+
+
+def build_node_archived_metadata(*, node_id, type='', title='', archived_by='',
+                                 encoding_source='', reason='',
+                                 edge_relations=None, vectors_deleted=0):
+    """Build trace metadata for a node-archive event.
+
+    Replaces `archive_node`'s inline off-chain `tool_result` trace: archives now
+    land on the caller's real chain with real attribution.
+
+    `edge_relations` carries only the (edge_id, relation) pairs the archive
+    actually flipped — NOT every edge touching the node. The archive
+    deliberately exempts some relations (`absorbed_into` redirects survive), and
+    claiming those were archived would make the trace lie about the graph.
+    """
+    return {
+        'node_id':         node_id,
+        'type':            type or '',
+        'title':           title or '',
+        'archived_by':     archived_by or '',
+        'encoding_source': encoding_source or '',
+        'reason':          reason or '',
+        'edge_relations':  [list(p) for p in (edge_relations or [])],
+        'vectors_deleted': int(vectors_deleted or 0),
+    }
+
+
+NODE_DELETED_METADATA_SHAPE = {
+    'node_id':         str,    # the erased node — no longer resolvable anywhere
+    'type':            str,
+    'title':           str,
+    'deleted_by':      str,
+    'encoding_source': str,
+    'reason':          str,
+    'tables_hit':      list,   # which tables the cascade touched
+}
+
+
+def build_node_deleted_metadata(*, node_id, type='', title='', deleted_by='',
+                                encoding_source='', reason='', tables_hit=None):
+    """Build trace metadata for a HARD delete (delete_node_cascade).
+
+    Ruled by Tom 2026-08-04: hard deletes ARE recorded. The node itself is
+    erased — that decision stands (node:ca66f5bd) — but the operation is
+    observable, one row per node, carrying enough to say what went.
+
+    `title` matters more here than anywhere else: the only production hard-delete
+    path is the junk-vocabulary purge, which targets single-word vocabulary nodes
+    with under 30 characters of content. For those, the title IS the content, so
+    this row genuinely preserves what was erased rather than merely noting that
+    something was. It cannot reintroduce the recall pollution the erasure exists
+    to prevent, because mutation traces are outside the recall path entirely (not
+    in SAID_AND_DID_REF_TYPES, never eagerly embedded).
+    """
+    return {
+        'node_id':         node_id,
+        'type':            type or '',
+        'title':           title or '',
+        'deleted_by':      deleted_by or '',
+        'encoding_source': encoding_source or '',
+        'reason':          reason or '',
+        'tables_hit':      list(tables_hit or []),
+    }
+
 # ── METADATA PAYLOAD VALIDATION (the chokepoint guard) ──
 # PLACEMENT IS LOAD-BEARING: this block sits BELOW every *_METADATA_SHAPE it
 # references, because the registry dict is built at import time. Moving it above
@@ -1266,6 +1411,16 @@ METADATA_REQUIRED_BY_REF_TYPE = {
     'aspect_classified':  DELTA_METADATA_SHAPE,  # S2 aspect integration
     'journal_note':       JOURNAL_NOTE_METADATA_SHAPE,  # encoder residue (one note per row)
     'anchor_touched':     ANCHOR_TOUCHED_SHAPE,  # S0 per-turn Anchor action aggregate
+    # Node lifecycle, written only by servers/mutation_emitter.py. Enforced from
+    # the start — these have exactly one producer and one builder each, so there
+    # is no legacy shape to grandfather in.
+    'node_created':       NODE_CREATED_METADATA_SHAPE,
+    'node_archived':      NODE_ARCHIVED_METADATA_SHAPE,
+    'node_deleted':       NODE_DELETED_METADATA_SHAPE,
+    # NOTE: `node_revised` / `edge_relation_revised` are deliberately NOT here yet.
+    # Registering them starts validating live traffic, so it lands as its own
+    # commit (plan step 3e) — verified warning-silent first (every producer uses
+    # the builders), but kept separately revertable.
 }
 
 
