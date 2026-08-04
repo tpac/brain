@@ -116,6 +116,13 @@ class TestEmitterContract(unittest.TestCase):
             self.assertTrue(all(p.kind == p.KEYWORD_ONLY for p in params.values()),
                             "%s's builder must be keyword-only so a manifest row "
                             "can be splatted into it" % ref_type)
+            # _builder_kwargs injects encoding_source into EVERY builder call —
+            # scale and chain derive from it, so it is not optional. A builder
+            # without it TypeErrors at emit time, which would make the
+            # "one table row plus one builder" claim above false.
+            self.assertIn('encoding_source', params,
+                          "%s's builder must accept encoding_source — the emitter "
+                          "sets it on every row (it drives scale AND chain)" % ref_type)
 
 
 class TestBuildEvents(unittest.TestCase):

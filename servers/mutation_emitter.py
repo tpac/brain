@@ -33,11 +33,18 @@ WHAT THIS FILE GUARANTEES
       VOLUME is unchanged; only the commit count collapses.
     * Never raises into the caller. A trace failure is loud (brain._log_error)
       and the write still succeeds — the graph is the truth.
+
+FOR WHOEVER WIRES STEPS 4-7
+    A manifest row must be BUILDER-SHAPED: its keys are the builder's kwargs for
+    that slot, and slots differ (a revise row has deltas/warnings, a created row
+    has type/title). Unknown keys are dropped and logged rather than fatal — but
+    that logging is per command, so putting bookkeeping fields on rows (`op`,
+    `index`, sub-op scaffolding) turns the error feed into noise. Strip them where
+    the manifest is assembled, not here.
 """
 
 from .clock import brain_today
 from .trace_contract import (
-    EMITTER_REF_TYPES,
     build_edge_revise_metadata,
     build_node_archived_metadata,
     build_node_created_metadata,
@@ -267,5 +274,7 @@ def emit_mutation_traces(brain, cmd, manifest, *, session_id='', chain_id='',
                   % (cmd, e), file=sys.stderr, flush=True)
 
 
-__all__ = ['emit_mutation_traces', 'build_events', 'MANIFEST_TRACE_MAP',
-           'EMITTER_REF_TYPES']
+# EMITTER_REF_TYPES is deliberately NOT re-exported: trace_contract is its single
+# source and consumers (the S2 idle gate, the dashboard mirror) import it there. A
+# second import path for one constant only invites "which one do I import?".
+__all__ = ['emit_mutation_traces', 'build_events', 'MANIFEST_TRACE_MAP']
