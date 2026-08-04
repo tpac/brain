@@ -8,8 +8,15 @@ corrected design rulings. Durable — it should not go stale.
 citations live so staleness is contained to one file. Part 3 lives in
 [`TRACES-PART3-CHARTER.md`](TRACES-PART3-CHARTER.md).
 
-**Status:** design ruled and walked part-by-part with Tom on **2026-08-04**;
-**nothing implemented, production untouched**.
+**Status:** design ruled and walked part-by-part with Tom on **2026-08-04**. **Steps 1-3 of
+the plan are SHIPPED, MERGED AND LIVE**; the emitter itself is built but **DORMANT** (nothing
+calls it, so zero mutation rows exist yet). Steps 4-12 open — see
+[`MUTATION-EMITTER-PLAN.md`](MUTATION-EMITTER-PLAN.md) for state and work order.
+
+> **§1 is now partly HISTORY, not present tense.** It describes the world before the
+> migration, which is what makes it the evidence base — but two of its statements have been
+> fixed by steps 1-3 and are marked inline where that is true. The twelve emit sites are
+> still there; steps 4-8 remove them.
 
 History: the first draft (`2b7903c`) was reviewed by five scoped agents, which found the
 design sound and the work order unsafe — two of its instructions would have damaged
@@ -23,7 +30,10 @@ Rulings Tom made during the 2026-08-04 walkthrough, all folded in below:
 - Coverage is expressed in **aspects**: semantic aspects traced, `noise` excluded, with
   `community_member` as the single explicit exception (§5).
 - Eval/test dispatch sites stay traceless; `_log_failed_batch_ops` folds into the chokepoint (§4).
-- The dead-`REF_TYPES` prune joins the same contract edit; s3/s4 entries deleted.
+- The dead-`REF_TYPES` prune is **OUT of this arc** — it would mean deleting
+  contract-pinning test assertions, so it gets its own review. Logged in `docs/BACKLOG.md`
+  (2026-08-04) with the verified inventory. (An earlier line here said it joined the contract
+  edit; that was reversed once the prune's real cost was measured.)
 
 **Lineage.** Charter `node:98031b8e`; scope ruling `node:5fcb662c` (settled — manifest
 + additions + dead-code + touched-DAL unification); timing principle `node:17234b02`
@@ -60,7 +70,8 @@ to clean up (`dispatch_write.py:849`/`:852`).
 
 **Root structural fact.** Traces commit **unconditionally and immediately** on
 `brain_logs.db`: `TraceDAL` is bound to `logs_conn`, nothing anywhere sets
-`logs_conn.in_batch`, so `commit_unless_batched` at `dal_logs.py:643` always commits. Zero
+`logs_conn.in_batch`, so `commit_unless_batched` (`dal_logs.py:674` after step 2's
+hardening; was `:643`) always commits. Zero
 shared transaction state with `brain.db`. Any emit fired while `brain.conn` is inside the
 batch envelope (`BEGIN IMMEDIATE` `dispatch_write.py:871` → commit `:1029`) produces a
 durable trace for a graph write that can still roll back (`:1037`). The comment at
@@ -257,9 +268,10 @@ Three callers route through it: `daemon_server._dispatch` (`:763-784`),
    `:323`), because an unlocked `logs_conn` write is exactly how another thread's
    `commit_unless_batched` commits a partial batch. `dispatch_command` therefore does *not*
    acquire the lock — it is called inside each site's existing envelope. Note
-   `_log_failed_batch_ops` currently sits **outside** the lock at `s2/base.py:325`; do not
-   copy that placement, and fold that check into the chokepoint (where it generalizes to
-   every caller, MCP included).
+   `_log_failed_batch_ops` sat **outside** the lock — ✅ **FIXED by step 1**: it moved to
+   `dispatch_common.log_failed_batch_ops`, is called from inside the chokepoint (so inside
+   each caller's lock), and now covers every caller including MCP rather than the encoder
+   path alone.
 
 **Not `WRITE_COMMANDS`.** `MUTATION_COMMANDS` is a new frozenset because
 `WRITE_COMMANDS` (`scales/dispatch.py:82-87`) has ten members and **omits `revise_edge`** —
@@ -281,7 +293,7 @@ scales the existing pair occupies.
 
 **`node_archived` and the embedded lens — ruled.** Deleting `archive_node`'s inline emit is
 not free: that row is `tool_result`, and `EAGER_TRACE_REF_TYPES = SAID_AND_DID_REF_TYPES`
-includes `tool_result` (`trace_contract.py:198`, `embed_queue.py:46`) — so archives are
+includes `tool_result` (`trace_contract.py:212` after step 3's ref_type additions, `embed_queue.py:46`) — so archives are
 eagerly embedded and semantically reachable today (**1,203 rows** on `archive-%` chains,
 measured live). Ruling: keep `title`/`type`/`vectors_deleted` on the archived and deleted
 manifest rows (for a hard delete the trace is the only surviving record, so a bare id is
@@ -429,7 +441,7 @@ The weight-**decay** UPDATE (thousands of rows/pass) stays outside the primitive
 - **`EMITTER_REF_TYPES` covers the new types AND the existing pair.** Verified safe: each
   S2 unit writes its own delta ref_type (`aspect_classified`, `community_enriched`,
   `consolidated`, `healer_generated`), so excluding the pair from `_last_run_timestamp`
-  (`s2/base.py:331`) cannot strand a unit at cold start. The broader reading is chosen
+  (`s2/base.py:291` — ✅ the exclusion shipped in step 3) cannot strand a unit at cold start. The broader reading is chosen
   because it *also* fixes the dashboard's mis-enrichment of revise rows.
 - **Layering law**: all new reads go through `brain.query_traces` (`node:d1329a9f`). The
   `S1-ENCODER-ANCHOR-TOUCH.md:100-103` proposal to read via

@@ -4,13 +4,31 @@
 the *work order* only — and the only doc in this set that carries line numbers, so
 staleness is contained here.
 
-> **Citation stamp.** Every line number below was resolved against a tree at **`bb7ed5a`**
-> (main) + the two doc commits, on 2026-08-03. The prior draft's citations were resolved at
-> `a25ca9b` and were stale in four files. Re-resolve before executing if main has moved.
-> Known drift already applied: `METADATA_REQUIRED_BY_REF_TYPE` 1015→**1041**,
-> `REVISE_METADATA_SHAPE` 1189→**1215**, `EDGE_REVISE_METADATA_SHAPE` 1233→**1259**,
-> `_make_encoder_dispatch` 216→**251**, handler call 289→**324**,
-> `_last_run_timestamp` 294→**331**.
+> ## STATUS — steps 1-3 SHIPPED, MERGED, LIVE (2026-08-04)
+>
+> | step | state | commit |
+> |---|---|---|
+> | 1 — dispatch chokepoint | **DONE, live** | `537046d` (+ review fixes) |
+> | 2 — append_batch atomicity | **DONE, live** | `5e024d9` |
+> | (prereq) metadata-dict move | **DONE, live** | `053cfb0` — pure refactor, split out deliberately |
+> | 3b-3d — emitter + registration | **DONE, live, DORMANT** | `c93b86d` |
+> | 3e — enforce the revise pair | **DONE, live** | `e51727b` |
+> | step-3 review fixes | **DONE** | `aa98604`, `50288fc` |
+> | **4-12** | **OPEN — start at step 4** | |
+>
+> **The emitter writes nothing yet.** `dispatch_command` does not call it (verified: the only
+> references outside `servers/mutation_emitter.py` are comments). Steps 4-7 wire it one
+> handler at a time.
+>
+> **Citation stamp.** Citations were resolved against `bb7ed5a` on 2026-08-03, then
+> **re-resolved on 2026-08-04 after steps 1-3 moved lines in the very files this plan cites.**
+> Steps 1-3 edited `trace_contract.py` (the dict move + new ref_types shifted everything
+> below line 61), `dal_logs.py` (append_batch grew ~30 lines), `s2/base.py` (a 34-line helper
+> moved out), `daemon_dispatch.py`, `dispatch_common.py` and `tests/isolated_brain.py`.
+> Citations for steps 4-12 have been refreshed. **`dispatch_write.py` and `dal_graph.py` were
+> NOT touched by steps 1-3**, so the bulk of steps 4-9's citations are still first-resolution
+> accurate — but re-grep before executing, per the discipline that caught three stale claims
+> in the original spec.
 
 **Every step must be production-correct alone, not merely green.** Merging auto-deploys
 asynchronously: the daemon is launchd-pinned to the source checkout, and the next
@@ -24,7 +42,19 @@ guardrail tests, which are named for the invariant, not the feature).
 
 ---
 
-## Step 1 — The chokepoint (behavior-neutral refactor)
+## Step 1 — The chokepoint (behavior-neutral refactor) — ✅ DONE (`537046d`)
+
+> **Deviations from this plan, as built:**
+> - `MUTATION_COMMANDS` was written and then **removed** — nothing referenced it until the
+>   emitter, so it was speculative. It belongs in the step that uses it.
+> - `_log_failed_batch_ops` moved to `dispatch_common.log_failed_batch_ops` (beside its
+>   sibling `check_unknown_keys`), error key `encoder_batch_op_failed` → `batch_op_failed`,
+>   context label now the call's `encoding_source` rather than a unit name.
+> - A **fourth** caller was routed: `tests/test_connect_to_intra_batch.py`'s `_dispatch`
+>   helper, whose docstring claimed "the same path MCP and hooks use" — true again now.
+> - The mechanism had **zero** test coverage before being moved; a test was added and
+>   negative-tested. Production-verified by a before/after probe: 0 → 1 `batch_op_failed`
+>   rows on an identical failing batch.
 
 **Goal.** One execution path for every dispatch command, with attribution resolved before
 the handler runs. No traces change.
@@ -73,7 +103,17 @@ or defer it to step 6 and say which).
 
 ---
 
-## Step 2 — Harden `append_batch` (prerequisite for per-command rollups)
+## Step 2 — Harden `append_batch` (prerequisite for per-command rollups) — ✅ DONE (`5e024d9`)
+
+> **Deviation:** added `rollback_unless_batched(conn)` to `db_backends/sqlite.py` as the
+> mirror of `commit_unless_batched`, rather than inlining a `getattr(conn,'in_batch')` check
+> — so both halves of the commit discipline live in one place.
+>
+> **Correction found while reviewing it:** the ROLLBACK is what makes the batch atomic, not
+> the pre-flight validation. Verified by neutering each separately: without the rollback the
+> mid-insert test fails; without the pre-flight, both tests still pass. Pre-flight is kept
+> for what it actually does — fail before side effects. A comment claiming otherwise was
+> corrected, and the test carries a note so nobody drops the rollback.
 
 **Goal.** Make one-append-per-command safe *before* anything relies on it.
 
@@ -97,7 +137,28 @@ atomic. Existing: `tests/test_trace_contract_sync.py`, any test touching TraceDA
 
 ---
 
-## Step 3 — Contract registration + the emitter module (dormant)
+## Step 3 — Contract registration + the emitter module (dormant) — ✅ DONE (`053cfb0`, `c93b86d`, `e51727b`)
+
+> **Deviations from this plan, as built:**
+> - The metadata-dict move became its **own pure-refactor commit** (`053cfb0`) ahead of any
+>   registration, so the `NameError` hazard was never in a diff that also added behavior.
+>   Two facts learned by reading that shrank the job: `validate_trace_metadata` resolves the
+>   dict at CALL time (so only the dict has the ordering constraint), and defining new shapes
+>   above the dict sidesteps the trap entirely.
+> - The emitter **filters** manifest rows to each builder's kwargs and logs unknown keys,
+>   rather than splatting the row. Splatting means one spurious field raises and the
+>   loud-wrap drops EVERY trace for that command. Same severity choice `check_unknown_keys`
+>   makes. A test caught this on its first run.
+> - The one-writer grep-pin landed **now**, with a shrinking allowlist, instead of waiting
+>   for step 7 — so it guards the migration in flight. **Delete each allowlist entry as its
+>   legacy site dies** (`tests/test_mutation_emitter.py::TestOneWriterPin`).
+> - `3e` (enforcing the revise pair) revealed those shapes had been **declared but never
+>   registered** — validation was dead for the two highest-volume mutation events. Verified
+>   warning-silent three ways before landing, including a test that drives a real revise and
+>   connect through dispatch and asserts stderr is clean (the only test that could notice,
+>   since the warning is non-blocking).
+> - Closed a **pre-existing** gap in passing: the dashboard's replicated `RESIDUE_REF_TYPES`
+>   mirror had no pin at all. `test_dashboard_disconnection.py` now pins both mirrors.
 
 **Goal.** Everything the emitter needs exists and is tested; nothing calls it.
 
@@ -128,7 +189,8 @@ atomic. Existing: `tests/test_trace_contract_sync.py`, any test touching TraceDA
    `node_revised` and `edge_relation_revised` (decision record §6 — verified safe).
    **Not** added to `LLM_ENCODER_DELTA_REF_TYPES` (`:1091`) and **not** to
    `SAID_AND_DID_REF_TYPES` (`:198`) / `embed_queue.EAGER_TRACE_REF_TYPES` (`:46`).
-5. `servers/scales/s2/base.py:331` `_last_run_timestamp` — exclude `EMITTER_REF_TYPES` the
+5. `servers/scales/s2/base.py:291` (was `:331` before step 1 moved a helper out)
+   `_last_run_timestamp` — exclude `EMITTER_REF_TYPES` the
    way `RESIDUE_REF_TYPES` rows are excluded. **Land the exclusion here, in the same step
    that registers the types** — arming the gate after traffic starts would let mutation rows
    re-arm the S2 idle gate in the interim.
@@ -341,7 +403,8 @@ verifiable by its own test.
   `brain_batch` archive op — and it must use an **unguarded** `_make_encoder_dispatch()`.
   The consolidation encoder's closure carries `archive_guard=valid_archive_ids`
   (`consolidation_encoder.py:229-233`) which **drops** archives outside the cluster set and
-  logs `s2_consolidation_out_of_scope_archive` (`s2/base.py:264-277`). All three call sites
+  logs `s2_consolidation_out_of_scope_archive` (`s2/base.py:270`, re-resolved 2026-08-04).
+  All three call sites
   target out-of-cluster nodes (orphan communities, superseded handoffs, dead communities) —
   reusing the guarded closure would stop the orphan heal working **while reporting success**.
 - **Required test:** the orphan-community heal still archives; and `node_revised` rows join
