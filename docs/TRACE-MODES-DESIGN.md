@@ -352,7 +352,10 @@ reader lives in this repo. Two steps, each shipping alone:
    failed-run residue section shipped in the same change: failure path
    writes a journal note; the next encode's prompt carries a
    `<failed_encodes>` block; per-op ok=False inside ok=True batches
-   loud-logs at the shared encoder dispatch (`encoder_batch_op_failed`).
+   loud-logs at the dispatch chokepoint (`batch_op_failed`, in
+   `dispatch_common.log_failed_batch_ops` — moved there from the encoder
+   dispatch by the part-2 emitter's step 1, so it now covers every caller
+   including MCP, and runs inside the caller's write lock).
    Old `/tmp`-pointing rows degrade to the legacy-read branch.
 
 ## Test surface

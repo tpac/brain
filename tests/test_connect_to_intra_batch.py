@@ -26,7 +26,7 @@ Locks the design contract for the sibling-aware connect_to feature:
 import unittest
 from tests.brain_test_base import BrainTestBase
 from servers.dal_graph import GraphDAL
-from servers.daemon_dispatch import COMMAND_TABLE
+from servers.daemon_dispatch import COMMAND_TABLE, dispatch_command
 
 
 def _edges_from(brain, source_id):
@@ -43,11 +43,11 @@ def _edges_from(brain, source_id):
 
 
 def _dispatch(brain, cmd, args):
-    """Call a dispatch command via COMMAND_TABLE — same path MCP and hooks use."""
-    entry = COMMAND_TABLE.get(cmd)
-    if not entry:
+    """Call a dispatch command through `dispatch_command` — the same execution
+    chokepoint MCP, the encoder closure and IsolatedBrain all route through."""
+    if cmd not in COMMAND_TABLE:
         raise AssertionError("unknown command: %s" % cmd)
-    return entry.handler(brain, args, [])
+    return dispatch_command(brain, cmd, args, [])
 
 
 def _recent_errors(brain, source_prefix=''):

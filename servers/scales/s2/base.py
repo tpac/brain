@@ -78,42 +78,6 @@ def apply_encoder_attribution(cmd, cmd_args, *, encoding_source, run_chain_id,
     return stamp_project_provenance(cmd, cmd_args, project)
 
 
-def _log_failed_batch_ops(brain, unit_name, cmd, result):
-    """Loud-at-the-write-boundary scan for per-op failures inside an ok=True
-    batch result (docs/TRACE-MODES-DESIGN.md §Failed-run residue, gap 1): a
-    brain_batch can return ok=True while individual operations carry
-    ok=False — before this, a giant per-op error string never reached the
-    errors table and error scans missed it. Runs on every encoder dispatch
-    (the ONE dispatch S1 Scribe and all S2 units share). Never raises."""
-    try:
-        if not (isinstance(result, dict) and result.get('ok')):
-            return  # whole-call failures are already loud at the caller
-        inner = result.get('result')
-        per_op = inner.get('results') if isinstance(inner, dict) else None
-        if not isinstance(per_op, list):
-            return
-        failed = [r for r in per_op
-                  if isinstance(r, dict) and r.get('ok') is False]
-        if not failed:
-            return
-        heads = '; '.join(
-            '#%s %s: %s' % (r.get('index', '?'), r.get('op', '?'),
-                            str(r.get('error', ''))[:200])
-            for r in failed[:5])
-        brain._log_error(
-            'encoder_batch_op_failed',
-            RuntimeError('%d/%d op(s) failed inside an ok=True %s'
-                         % (len(failed), len(per_op), cmd)),
-            'unit=%s; %s' % (unit_name, heads))
-    except Exception as e:
-        # Never break the write path — but the loudness mechanism dying
-        # silently would reopen the exact gap it closes, so leave a trace
-        # in daemon.log (stderr) even when _log_error itself is what broke.
-        import sys as _sys
-        print('[%s] per-op failure scan broke: %s' % (unit_name, e),
-              file=_sys.stderr, flush=True)
-
-
 class IntegrationUnit:
     """Base contract for all integration units at any scale."""
 
@@ -269,7 +233,7 @@ class IntegrationUnit:
         if self.dispatch:
             return self.dispatch
 
-        from servers.daemon_dispatch import COMMAND_TABLE, check_unknown_keys
+        from servers.daemon_dispatch import dispatch_command
 
         brain = self.brain
         encoding_source = self.ENCODING_SOURCE
@@ -313,18 +277,14 @@ class IntegrationUnit:
                         surviving_ops.append(op)
                     cmd_args['operations'] = surviving_ops
 
-            entry = COMMAND_TABLE.get(cmd)
-            if entry:
-                check_unknown_keys(cmd, entry, cmd_args, brain)
-                # Serialize against daemon dispatch + autosave + embed_queue.
-                # S2 runs in-process but on a pool worker thread; without
-                # this, encoder writes can interleave with concurrent
-                # client writes (and with each other across S2 units).
-                with brain.write_lock:
-                    result = entry.handler(brain, cmd_args, [])
-                _log_failed_batch_ops(brain, unit_name, cmd, result)
-                return result
-            return {'ok': False, 'error': 'Unknown command: %s' % cmd}
+            # Serialize against daemon dispatch + autosave + embed_queue. S2
+            # runs in-process but on a pool worker thread; without this, encoder
+            # writes can interleave with concurrent client writes (and with each
+            # other across S2 units). dispatch_command runs INSIDE the lock —
+            # its per-op loudness check writes brain_logs.db, and that write must
+            # be serialized like every other shared-logs_conn write.
+            with brain.write_lock:
+                return dispatch_command(brain, cmd, cmd_args, [])
 
         return dispatch
 

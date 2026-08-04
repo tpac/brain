@@ -12,7 +12,10 @@ Commands are plain functions: handler(brain, args, graph_changes) -> dict
 
 from typing import Dict
 
-from .dispatch_common import CmdEntry, check_unknown_keys, _resolve_id, _pop_session_ctx
+from .dispatch_common import (
+    CmdEntry, check_unknown_keys, log_failed_batch_ops,
+    _resolve_id, _pop_session_ctx,
+)
 from .dispatch_write import (
     _handle_remember, _handle_remember_batch, _handle_revise, _handle_revise_batch,
     _handle_brain_batch, _handle_connect, _handle_connect_batch, _handle_revise_edge,
@@ -128,3 +131,39 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
 
 # "shutdown" is handled directly by daemon_server (needs to set self.running)
 # "hook_*" commands are dispatched via HOOK_TABLE in daemon_server
+
+
+def dispatch_command(brain, cmd, args, graph_changes):
+    """Execute a registry command. THE one execution path for every caller.
+
+    resolve entry -> validate the arg contract -> run the handler -> post-handler
+    loudness checks. Every dispatch caller routes through here: the daemon's TCP
+    loop (daemon_server._dispatch), the shared S1+S2 encoder closure
+    (scales/s2/base._make_encoder_dispatch), and IsolatedBrain.dispatch — the
+    surface the eval scripts run on. Handlers are never called directly.
+
+    THE CALLER OWNS THE WRITE LOCK. For write commands this must be called INSIDE
+    the caller's `brain.write_lock` envelope (daemon: `_locked_exec`; encoder:
+    `with brain.write_lock`), because the post-handler checks write brain_logs.db
+    — and an unlocked logs_conn write is how another thread's
+    commit_unless_batched lands a partial batch. This function deliberately does
+    not acquire the lock itself: lock policy stays with the caller that knows
+    whether it already holds it.
+
+    Registry lookup for POLICY (is_write, marks_dirty) stays with the caller;
+    this function owns EXECUTION.
+    """
+    entry = COMMAND_TABLE.get(cmd)
+    if entry is None:
+        return {"ok": False, "error": "Unknown command: {}".format(cmd)}
+
+    check_unknown_keys(cmd, entry, args, brain)
+
+    # Captured BEFORE the handler runs: handlers mutate `args` in place (see
+    # dispatch_common._pop_session_ctx), so anything read after the call is gone.
+    source = (args or {}).get('encoding_source') or 'anchor'
+
+    result = entry.handler(brain, args, graph_changes)
+
+    log_failed_batch_ops(brain, source, cmd, result)
+    return result

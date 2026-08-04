@@ -115,3 +115,47 @@ def check_unknown_keys(cmd: str, entry: 'CmdEntry', args: Dict[str, Any], brain)
             'accepted=%s' % sorted(entry.accepts))
     except Exception:
         pass
+
+
+def log_failed_batch_ops(brain, source: str, cmd: str, result) -> None:
+    """Loud-at-the-write-boundary scan for per-op failures inside an ok=True
+    batch result (docs/TRACE-MODES-DESIGN.md §Failed-run residue, gap 1): a
+    brain_batch can return ok=True while individual operations carry ok=False —
+    without this, a per-op error string never reaches the errors table and error
+    scans miss it entirely.
+
+    Called from `daemon_dispatch.dispatch_command`, so it covers EVERY caller
+    (daemon TCP / MCP, the S1+S2 encoder closure, IsolatedBrain) rather than the
+    encoder path alone. `source` is the attribution label — the call's
+    `encoding_source`, e.g. 's2:consolidation' or 'anchor'.
+
+    Never raises. Runs inside the caller's write lock (it writes brain_logs.db
+    via _log_error); see dispatch_command's docstring for why that matters.
+    """
+    try:
+        if not (isinstance(result, dict) and result.get('ok')):
+            return  # whole-call failures are already loud at the caller
+        inner = result.get('result')
+        per_op = inner.get('results') if isinstance(inner, dict) else None
+        if not isinstance(per_op, list):
+            return
+        failed = [r for r in per_op
+                  if isinstance(r, dict) and r.get('ok') is False]
+        if not failed:
+            return
+        heads = '; '.join(
+            '#%s %s: %s' % (r.get('index', '?'), r.get('op', '?'),
+                            str(r.get('error', ''))[:200])
+            for r in failed[:5])
+        brain._log_error(
+            'batch_op_failed',
+            RuntimeError('%d/%d op(s) failed inside an ok=True %s'
+                         % (len(failed), len(per_op), cmd)),
+            'source=%s; %s' % (source, heads))
+    except Exception as e:
+        # Never break the write path — but the loudness mechanism dying
+        # silently would reopen the exact gap it closes, so leave a trace
+        # in daemon.log (stderr) even when _log_error itself is what broke.
+        import sys as _sys
+        print('[dispatch:%s] per-op failure scan broke: %s' % (source, e),
+              file=_sys.stderr, flush=True)

@@ -46,7 +46,7 @@ from .daemon_config import (
     get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
 )
 from .daemon_launch import manages, spawn_detached_daemon
-from .daemon_dispatch import COMMAND_TABLE, check_unknown_keys
+from .daemon_dispatch import COMMAND_TABLE, dispatch_command
 from .dispatch_common import caller_session
 
 
@@ -764,8 +764,6 @@ class BrainDaemon:
             if entry is None:
                 return {"ok": False, "error": "Unknown command: {}".format(cmd)}
 
-            check_unknown_keys(cmd, entry, args, self.brain)
-
             # Caller identity for the touched accumulator — resolved BEFORE the
             # handler runs, because handlers that pass **args to a brain method
             # pop `_caller_session` (see dispatch_common._pop_session_ctx), so it
@@ -773,15 +771,18 @@ class BrainDaemon:
             # prefers an explicit session_id filter, else the proxy-stamped
             # `_caller_session` — the write tools send only the latter.
             caller_sess = caller_session(args)
+            # Execution goes through dispatch_command (the single chokepoint —
+            # arg-contract validation + per-op loudness live there). The registry
+            # lookup above stays here because lock/dirty POLICY is the daemon's.
             if entry.is_write:
                 def _write():
-                    result = entry.handler(self.brain, args, self.graph_changes)
+                    result = dispatch_command(self.brain, cmd, args, self.graph_changes)
                     if entry.marks_dirty:
                         self.dirty = True
                     return result
                 result = self._locked_exec(_write, cmd, args)
             else:
-                result = entry.handler(self.brain, args, self.graph_changes)
+                result = dispatch_command(self.brain, cmd, args, self.graph_changes)
             # Record what Anchor's own tools touched this turn (Piece 3a). Only
             # Anchor's TCP calls reach _dispatch — the in-process encoder bypasses
             # it (calls COMMAND_TABLE handlers directly via _make_encoder_dispatch)

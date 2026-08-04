@@ -21,7 +21,16 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from tests.brain_test_base import BrainTestBase
-from servers.daemon_dispatch import _handle_brain_batch
+from servers.daemon_dispatch import _handle_brain_batch, dispatch_command
+
+
+def _error_rows(brain, source):
+    """Error rows from debug_log for one `source` — what the dashboard reads."""
+    rows = brain.logs_conn.execute(
+        "SELECT source, metadata FROM debug_log "
+        "WHERE event_type='error' AND source = ? ORDER BY id DESC",
+        (source,)).fetchall()
+    return [{'source': r[0], 'metadata': r[1]} for r in rows]
 
 
 class TestBrainBatchTransaction(BrainTestBase):
@@ -32,6 +41,44 @@ class TestBrainBatchTransaction(BrainTestBase):
         args = {"operations": operations}
         args.update(extra)
         return _handle_brain_batch(self.brain, args, [])
+
+    def test_failed_sub_op_is_loud_through_the_chokepoint(self):
+        """A brain_batch returns ok=True even when a sub-op carries ok=False.
+        `dispatch_command` must scan for that and write a `batch_op_failed`
+        error row — otherwise a per-op error string never reaches the errors
+        table and error scans miss it entirely.
+
+        Routed through `dispatch_command` on purpose, NOT `_handle_brain_batch`:
+        the scan lives at the chokepoint, so calling the handler directly would
+        pass while the real dispatch path was broken. This mechanism had no test
+        when it was moved out of the encoder dispatch — this is that test.
+        """
+        before = len(_error_rows(self.brain, 'batch_op_failed'))
+
+        r = dispatch_command(self.brain, 'brain_batch', {
+            "operations": [
+                {"op": "remember", "type": "rule", "title": "good node",
+                 "content": "this op succeeds"},
+                # `revise` with no node_id — fails the per-op required-field
+                # pre-check, landing as ok=False inside an ok=True batch.
+                {"op": "revise", "reason": "no node_id supplied"},
+            ],
+        }, [])
+
+        # The batch as a whole reports success ...
+        self.assertTrue(r['ok'])
+        per_op = r['result']['results']
+        self.assertTrue(any(o.get('ok') is False for o in per_op),
+                        "expected one ok=False sub-op, got %s" % per_op)
+
+        # ... and the buried failure is loud anyway.
+        rows = _error_rows(self.brain, 'batch_op_failed')
+        self.assertEqual(
+            len(rows), before + 1,
+            "a per-op failure inside an ok=True batch must write exactly one "
+            "batch_op_failed row; saw %d new" % (len(rows) - before))
+        # The row must name the op that failed, or it can't be acted on.
+        self.assertIn('revise', rows[0]['metadata'])
 
     def test_single_commit_per_batch(self):
         """All N ops share one commit, not N commits. We count real

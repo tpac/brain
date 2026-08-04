@@ -61,7 +61,6 @@ class IsolatedBrain:
         self.brain = None
         self.brain_db = None
         self.logs_db = None
-        self._dispatch_fn = None
 
     def __enter__(self):
         if not self.production_dir:
@@ -206,16 +205,16 @@ class IsolatedBrain:
     def dispatch(self, cmd, args=None):
         """Execute a daemon command against the isolated brain.
 
-        Uses COMMAND_TABLE dispatch — same as MCP and hooks.
-        No TCP, no daemon process needed.
+        Routes through `dispatch_command` — the same execution chokepoint the
+        daemon and the encoder closure use, so eval/test runs exercise the real
+        arg-contract validation and per-op loudness path. No TCP, no daemon.
+
+        No write lock is taken: an isolated brain is single-threaded by
+        construction, with no daemon, autosave or embed_queue to serialize
+        against.
         """
-        if self._dispatch_fn is None:
-            from servers.daemon_dispatch import COMMAND_TABLE
-            self._dispatch_fn = COMMAND_TABLE
-        entry = self._dispatch_fn.get(cmd)
-        if not entry:
-            return {"ok": False, "error": "Unknown command: %s" % cmd}
-        return entry.handler(self.brain, args or {}, [])
+        from servers.daemon_dispatch import dispatch_command
+        return dispatch_command(self.brain, cmd, args or {}, [])
 
     def node_count(self):
         """Quick check: how many non-archived nodes."""
