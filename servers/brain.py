@@ -173,6 +173,23 @@ class Brain(
         # *warms* overlapping.)
         self._anthropic_warm_lock = threading.Lock()
 
+        # S2 single-flight. Held for a WHOLE S2 cycle by run_s2() — the one door
+        # to S2 activation. Same try-acquire(blocking=False) shape as the warm
+        # lock: a second caller skips rather than queueing, because two
+        # concurrent cycles are never wanted (consolidation is a multi-minute
+        # LLM run; overlapping passes duplicate work and race each other's
+        # fingerprints).
+        #
+        # WHY IT LIVES ON THE BRAIN, not the daemon: the daemon's `_s2_running`
+        # is an instance attribute of the server, so it could only ever block a
+        # second POLL entry. That is exactly how the 2026-06 parallel-run bug
+        # happened — a second caller (the idle hook) couldn't see it and wasn't
+        # seen by it. The guard belongs with the thing it guards, so ANY caller
+        # in this process is serialized: the poll thread, and anything arriving
+        # over TCP dispatch (including `eval`). Plain Lock, not RLock — S2 must
+        # never re-enter itself.
+        self._s2_lock = threading.Lock()
+
         # Open SQLite connection with WAL mode for concurrency. Pragma
         # set comes from db_backends.current — single source for every
         # connection in the daemon.
@@ -1684,6 +1701,63 @@ class Brain(
         return CommunityEncoder(
             self, None, COMMUNITY_DETECTION).backfill_all_communities()
 
+    @property
+    def s2_running(self) -> bool:
+        """True while an S2 cycle is in flight. Cheap, non-consuming check.
+
+        `run_maintenance_if_due` consults this BEFORE it stamps the last-run
+        timestamp — see the note at that call.
+        """
+        return self._s2_lock.locked()
+
+    def run_s2(self) -> Dict[str, Any]:
+        """Run every S2 unit once, NOW. **THE single door to S2 activation.**
+
+        Every caller comes through here — the daemon's maintenance poll (via
+        run_maintenance_if_due, which owns the "is it time?" policy), evals,
+        benchmarks, and IsolatedBrain. Nothing calls
+        `scales.s2.coordinator.run_s2` directly any more; this method owns the
+        single-flight guarantee, and a caller that bypasses it forfeits that.
+
+        POLICY vs EXECUTION — the split that makes one door possible:
+          run_maintenance_if_due()  answers "SHOULD we?"  (idle, min interval,
+                                    encode count, boot grace, force-fire)
+          run_s2()                  answers "do it, exactly ONCE"
+
+        A second concurrent call does not queue and does not block — it returns
+        immediately with `skipped`. Two overlapping cycles are never wanted:
+        consolidation is a multi-minute LLM run, and a second pass would
+        duplicate its work and race its own cluster fingerprints. That was the
+        2026-06 parallel-run bug (`node:daaf63a9`).
+
+        Deliberately UNGATED: the five fire gates are the poll's scheduling
+        policy, not a safety property. On a LIVE brain this therefore does real
+        work — Sonnet calls and graph mutations — possibly while the operator is
+        typing, which the idle gate exists to avoid. Calling it directly is a
+        deliberate act; the poll should be left to its cadence.
+
+        Scope note: `threading.Lock` is per-process, and that is sufficient —
+        the daemon is a launchd singleton holding THE Brain, and every caller
+        (poll thread, TCP dispatch, `eval`) shares it. A second OS process on
+        the same `brain.db` is already forbidden for a stronger reason: two
+        writer connections corrupt indexes.
+
+        Returns:
+            {'units': {unit_name: result}, 'elapsed_ms': int} when it ran, or
+            {'units': {}, 'skipped': 'already running'} when a cycle was live.
+        """
+        if not self._s2_lock.acquire(blocking=False):
+            return {'units': {}, 'skipped': 'already running'}
+        try:
+            import time as _time
+            from .scales.s2.coordinator import run_s2 as _run_units
+            t0 = _time.time()
+            units = _run_units(self)
+            return {'units': units,
+                    'elapsed_ms': int((_time.time() - t0) * 1000)}
+        finally:
+            self._s2_lock.release()
+
     def run_maintenance_if_due(self, now: Optional[float] = None
                                ) -> Optional[Dict[str, Any]]:
         """Run S2 maintenance iff idle, min-interval, and activity conditions are met.
@@ -1701,8 +1775,10 @@ class Brain(
         Args:
             now: Epoch seconds (default: time.time()). Injectable for tests.
 
-        This is the SINGLE production activation path for S2 (run_s2). No
-        other caller triggers maintenance; the daemon poll owns it.
+        This is the SINGLE production activation path for S2 — it owns the
+        POLICY ("is it time?"). Execution and single-flight belong to
+        `run_s2()`, the one door every caller shares. No other caller triggers
+        *scheduled* maintenance; the daemon poll owns this method.
 
         Returns: S2 coordinator results dict when a run fired, None when
             not due. Caller (daemon) is responsible for serializing calls;
@@ -1721,6 +1797,15 @@ class Brain(
         if not self.llm_available:
             self.note_llm_unavailable('S2 maintenance')
             return None
+
+        # A cycle is already in flight — bail BEFORE the gates, and crucially
+        # before the stamp + encode-run consumption below. run_s2() would skip
+        # anyway, but by then this method would have already advanced the
+        # last-run timestamp and eaten the encode runs it gated on: a cycle
+        # burned that never ran, and the next one starved.
+        if self.s2_running:
+            return None
+
         import time as _time
         from .brain_constants import (
             MAINTENANCE_IDLE_THRESHOLD_SECONDS,
@@ -1771,12 +1856,12 @@ class Brain(
         # during the (multi-minute) S2 cycle accrue toward the next one.
         self.activity.consume_encode_runs(encode_runs)
 
-        from servers.scales.s2.coordinator import run_s2
-        results = run_s2(self)
+        # Execution goes through the one door, which owns single-flight.
+        outcome = self.run_s2()
         return {
             'ran_at_epoch': now,
             'idle_seconds': idle_seconds,
-            'units': results,
+            'units': outcome.get('units', {}),
         }
 
 

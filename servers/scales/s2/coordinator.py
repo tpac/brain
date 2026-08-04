@@ -1,9 +1,17 @@
 """S2 Coordinator — runs all S2 integration units in order.
 
-run_s2() has a single production caller: the daemon's maintenance poll
-(Brain.run_maintenance_if_due), single-flighted by the daemon's _s2_running
-guard. That is the ONLY path that activates S2 — do not add another. Each
-unit checks its own traces to decide whether it should fire.
+**Do not call this function directly — go through `Brain.run_s2()`.**
+
+That method is the one door to S2 activation and it owns the single-flight
+guard, so every caller in the process is serialized: the daemon's maintenance
+poll (via `Brain.run_maintenance_if_due`, which owns the "is it time?" policy),
+plus evals, benchmarks and IsolatedBrain. The guard used to live on the daemon
+(`_s2_running`), which is why a second caller could once overlap it and run
+consolidation twice in parallel (node:daaf63a9) — a guard held by ONE caller
+cannot protect the others. Calling this module function directly bypasses the
+lock and re-opens that bug.
+
+Each unit checks its own traces to decide whether it should fire.
 
 Ordering matters:
 1. AspectIntegration — classify new node types / edge relations into the required aspects

@@ -184,3 +184,81 @@ class MaintenanceGateTests(BrainTestBase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class S2SingleDoorTests(BrainTestBase):
+    """brain.run_s2() — the one door, and the single-flight it owns.
+
+    The guard used to live on the daemon (`_s2_running`), an attribute of the
+    SERVER, so it could only block a second poll entry. That is how the
+    2026-06 parallel-run bug happened (node:daaf63a9): a second caller could
+    neither see it nor be seen by it. These tests pin the guard to the brain,
+    where every in-process caller shares it.
+    """
+    needs_embedder = False
+
+    def test_run_s2_returns_units_and_timing(self):
+        with patch('servers.scales.s2.coordinator.run_s2',
+                   return_value={'healer': {'actions': 3}}):
+            out = self.brain.run_s2()
+        self.assertEqual(out['units'], {'healer': {'actions': 3}})
+        self.assertIn('elapsed_ms', out)
+        self.assertNotIn('skipped', out)
+
+    def test_second_concurrent_call_skips_instead_of_overlapping(self):
+        """Two cycles must never overlap. Exercised by re-entering the door from
+        inside a running cycle — which also pins that S2 cannot re-enter itself
+        (a plain Lock, deliberately not an RLock)."""
+        inner = {}
+
+        def _reenter(brain_arg):
+            inner['result'] = self.brain.run_s2()
+            return {'healer': {'actions': 1}}
+
+        with patch('servers.scales.s2.coordinator.run_s2', side_effect=_reenter):
+            outer = self.brain.run_s2()
+
+        self.assertEqual(outer['units'], {'healer': {'actions': 1}},
+                         "the first caller must complete normally")
+        self.assertEqual(inner['result'].get('skipped'), 'already running',
+                         "the second caller must skip, not run or block")
+        self.assertEqual(inner['result']['units'], {})
+
+    def test_lock_is_released_even_when_a_cycle_raises(self):
+        with patch('servers.scales.s2.coordinator.run_s2',
+                   side_effect=RuntimeError('unit blew up')):
+            with self.assertRaises(RuntimeError):
+                self.brain.run_s2()
+        self.assertFalse(self.brain.s2_running,
+                         "a raising cycle must not wedge S2 forever")
+
+    def test_gate_does_not_stamp_or_consume_while_a_cycle_is_running(self):
+        """THE subtlety. run_maintenance_if_due stamps the last-run timestamp
+        BEFORE executing (so a concurrent poller skips on min-interval). If it
+        stamped and then run_s2() skipped because the lock was held, the cycle
+        would be burned without running AND the encode runs it gated on would
+        be eaten — starving the next one. So the gate must check first."""
+        now = 1_000_000.0
+        self.brain._boot_time = now - MAINTENANCE_BOOT_GRACE_SECONDS - 60
+        before_ts = now - MAINTENANCE_MIN_INTERVAL_SECONDS - 60
+        self.brain._maintenance_set_last_run_ts(before_ts)
+        self.brain.activity.last_user_activity = (
+            now - MAINTENANCE_IDLE_THRESHOLD_SECONDS - 60)
+        self.brain.activity.encode_runs_since_maintenance = (
+            MAINTENANCE_MIN_ENCODE_RUNS + 1)
+        expected_runs = self.brain.activity.encode_runs_since_maintenance
+
+        # Every gate is open — the ONLY thing that should stop it is the lock.
+        self.brain._s2_lock.acquire()
+        try:
+            result = self.brain.run_maintenance_if_due(now=now)
+        finally:
+            self.brain._s2_lock.release()
+
+        self.assertIsNone(result, "must not report a run that did not happen")
+        self.assertEqual(self.brain.activity.encode_runs_since_maintenance,
+                         expected_runs,
+                         "encode runs were consumed for a cycle that never ran")
+        self.assertAlmostEqual(
+            self.brain._maintenance_last_run_ts(), before_ts, places=3,
+            msg="last-run timestamp advanced for a cycle that never ran")

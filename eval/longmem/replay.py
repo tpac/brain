@@ -47,17 +47,6 @@ def _run_s1e_foreground(brain, dispatch_fn, counter, session_id) -> Dict[str, An
     return result
 
 
-def _run_s2_foreground(brain) -> Dict[str, Any]:
-    """Run S2 coordinator — consolidation, community, healer. All units decide internally whether to fire."""
-    from servers.scales.s2.coordinator import run_s2
-    t0 = time.time()
-    result = run_s2(brain)
-    elapsed_ms = int((time.time() - t0) * 1000)
-    if isinstance(result, dict):
-        result["_elapsed_ms"] = elapsed_ms
-    return result or {"_elapsed_ms": elapsed_ms}
-
-
 def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, str]]],
                 haystack_dates: Optional[List[str]] = None,
                 log_prefix: str = "[replay]",
@@ -196,7 +185,7 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
                     print(f"{log_prefix}   s2 firing", flush=True)
                     t0s = time.time()
                     try:
-                        s2_res = _run_s2_foreground(brain)
+                        s2_res = brain.run_s2()
                         stats["s2_runs"] += 1
                         stats["s2_ms_total"] += int((time.time() - t0s) * 1000)
                         stats["s2_deltas"].append(s2_res)
@@ -272,7 +261,7 @@ def finalize_item(brain, stats, encodings_since_s2, log_prefix="[replay]",
     for pass_idx in range(S2_FINAL_MAX_PASSES):
         t0s = time.time()
         try:
-            s2_result = _run_s2_foreground(brain)
+            s2_result = brain.run_s2()
             stats["s2_runs"] += 1
             elapsed = int((time.time() - t0s) * 1000)
             stats["s2_ms_total"] += elapsed
@@ -280,8 +269,11 @@ def finalize_item(brain, stats, encodings_since_s2, log_prefix="[replay]",
 
             did_work = False
             if isinstance(s2_result, dict):
-                for unit_name, unit_result in s2_result.items():
-                    if unit_name == "_elapsed_ms" or not isinstance(unit_result, dict):
+                # brain.run_s2() nests per-unit results under 'units', so unit
+                # names can no longer collide with bookkeeping keys — the old
+                # flat shape needed an explicit '_elapsed_ms' skip here.
+                for unit_name, unit_result in s2_result.get("units", {}).items():
+                    if not isinstance(unit_result, dict):
                         continue
                     if unit_result.get("actions", 0) > 0:
                         did_work = True
