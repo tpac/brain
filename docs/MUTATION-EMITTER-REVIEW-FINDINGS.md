@@ -464,6 +464,21 @@ rows are not cleaned up by a revert** and nothing in the repo prunes `trace_even
 the flip: `cp brain_logs.db brain_logs.db.bak-{ts}`, and record the cleanup shape
 (`DELETE FROM trace_events WHERE ref_type IN (...) AND created_at > '{flip_ts}'`).
 
+**E8 — ADDED SCOPE for the contract step: ~15 registered ref_types have zero writers.**
+(Found in the emission audit, not by the review agents — brain node `384ddae3`.) The
+`REF_TYPES` table documents events that have never been emitted, which actively misleads
+anyone reading it as a map of system behavior. Dead: the s2 legacy block
+(`recall_quality_signal`, `confidence_adjust`, `kept_distinct`, `stale_nodes`,
+`correction_chains`, `community_diff`, `graph_stats` — plus `evolved`, which has one stale
+reference to check first) and **all of scale 3 and scale 4** (13 entries for scales with no
+code). Prune the s2 legacy entries; either delete s3/s4 or move them out of the validated
+table into a clearly-marked aspirational block. Do it in the SAME edit that registers
+`node_created`/`node_archived`/`node_deleted` and fixes the dict/shape ordering (A1) — one
+edit, one review, instead of a second pass over the same table.
+**Do NOT confuse this with write-only traces:** Tom ruled `scout_input`/`scout_findings`
+**stay** (node `57d30c1d`) — nested, otherwise-invisible work earns its trace precisely
+because nothing else shows it. Never-written ≠ write-only.
+
 **E7 — Doc-structure defects to fix in the rewrite.** §12 (~90 lines of *charter*) sits
 inside the execution path between §11 and §13 and reads as backlog — move it to its own doc.
 §8's step-3 pointer cites §7 where it means §11. §4's registration block and §8's step 3 are
