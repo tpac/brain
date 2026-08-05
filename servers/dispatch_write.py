@@ -182,75 +182,16 @@ def _infer_scale_and_chain(brain, encoding_source, chain_id_override):
     return scale, chain_id
 
 
-def _emit_revise_trace(brain, node_id, reason, encoding_source, deltas,
-                       warnings=None, chain_id_override='', session_id=''):
-    """Emit a node_revised trace event for a revise() call.
-
-    Trace replaces the legacy _sys_revision_history KV blob as the canonical
-    revision history substrate. Emitted when EITHER deltas or warnings is
-    non-empty — so audit history captures both successful changes AND
-    attempted-but-rejected operations (immutable field passed, archive
-    blocked on locked node).
-
-    Scale inference from encoding_source:
-      - 's2:*' → 's2' (S2 maintenance units)
-      - 'encoder:*' → 's1' (S1 encoder)
-      - 'hook:*' → 's0' (lifecycle hooks)
-      - else → 's0' (direct MCP, anchor, default)
-
-    chain_id strategy (per Stage 1A spec):
-      - Caller-provided `chain_id_override` wins (encoder cycles pass theirs;
-        revises join the encoder's chain for grouped querying).
-      - Otherwise fall back to a date-based per-scale chain
-        (`{scale}-{YYYYMMDD}-revise`) so direct/operator revises group by day.
-
-    FAILURE-ISOLATED: the whole body is wrapped (a revise inside a brain_batch
-    runs in the batch transaction — a trace error here must log loudly, not
-    raise and roll back the revise it was recording).
-    """
-    warnings = warnings or []
-    if not deltas and not warnings:
-        return  # nothing to record
-
-    try:
-        from .trace_contract import build_revise_metadata
-        scale, chain_id = _infer_scale_and_chain(
-            brain, encoding_source, chain_id_override)
-        metadata = build_revise_metadata(
-            node_id=node_id, reason=reason,
-            encoding_source=encoding_source,
-            deltas=deltas, warnings=warnings)
-        parts = []
-        if deltas:
-            parts.append('revised %d field(s): %s' % (
-                len(deltas), ', '.join(d['field'] for d in deltas)))
-        if warnings:
-            parts.append('%d warning(s)' % len(warnings))
-        summary = '; '.join(parts) if parts else 'revise no-op'
-        brain._trace_dal.append(
-            chain_id=chain_id,
-            scale=scale,
-            event_type='delta',
-            ref_type='node_revised',
-            ref_id=node_id,
-            summary=summary,
-            metadata=metadata,
-            session_id=session_id,
-        )
-    except Exception as e:
-        brain._log_error('revise_trace_emit', e,
-                         'failed to emit trace for revise of %s' % str(node_id)[:8])
-
-
 def _emit_edge_revise_trace(brain, edge_id, relation, reason, encoding_source,
                             deltas, warnings=None,
                             chain_id_override='', session_id='',
                             source_id='', target_id=''):
     """Emit an edge_relation_revised trace event.
 
-    Mirrors _emit_revise_trace for nodes. Same emit-on-deltas-or-warnings
-    behavior, same scale inference, same chain_id strategy. ref_id encodes
-    the (edge_id, relation) tuple as f"{edge_id}:{relation}".
+    Same emit-on-deltas-or-warnings behavior, scale inference and chain_id
+    strategy as the mutation emitter's node_revised path (which replaced the
+    node-side sibling of this helper at step 4). ref_id encodes the
+    (edge_id, relation) tuple as f"{edge_id}:{relation}".
 
     source_id/target_id carry the directional pair into the metadata so the
     edge is reconstructable from the trace alone (edge_id is a one-way hash).
@@ -592,23 +533,26 @@ def _handle_revise(brain, args, graph_changes):
         except Exception as e2:
             print('[daemon_dispatch] ERROR logging write_verification: %s' % e2, file=sys.stderr)
 
-    # Emit node_revised trace event (replaces _sys_revision_history substrate).
-    # Includes warnings so audit history captures attempted-but-rejected ops.
-    _emit_revise_trace(
-        brain, node_id, reason,
-        args.get('encoding_source', ''),
-        result.get('deltas', []),
-        warnings=result.get('warnings', []),
-        chain_id_override=args.get('chain_id', ''),
-        session_id=caller_session(args),
-    )
-
     graph_changes.append("REVISE: [%s] %s" % (
         result.get("type", "?"), result.get("title", "")[:50]))
+    # Manifest row for the emitter (node_revised replaces the legacy
+    # _sys_revision_history substrate). Row warnings are the revise's OWN
+    # (attempted-but-rejected ops), captured before project_warnings are
+    # appended to the result — dispatch bookkeeping is not audit history and
+    # must not flip the emit gate. A no-change revise (empty deltas+warnings)
+    # stays in `affected` but the emitter stays silent.
+    row = {
+        "node_id": node_id,
+        "reason": reason,
+        "encoding_source": args.get('encoding_source', ''),
+        "deltas": result.get('deltas', []),
+        "warnings": list(result.get('warnings', [])),
+    }
     if project_warnings and isinstance(result, dict):
         result.setdefault('warnings', []).extend(project_warnings)
     return {"ok": True, "result": result,
-            "affected": _affected(revised=[node_id])}
+            "affected": _affected(revised=[node_id]),
+            "mutations": {"nodes": {"revised": [row]}}}
 
 
 def _handle_revise_batch(brain, args, graph_changes):
@@ -659,27 +603,29 @@ def _handle_revise_batch(brain, args, graph_changes):
     result = brain.revise_batch(resolved)
     graph_changes.append("REVISE_BATCH: %d revised" % result.get("revised", 0))
 
-    # Emit one node_revised trace event per revised row.
-    # Includes warnings so audit history captures attempted-but-rejected ops.
-    chain_id_override = args.get('chain_id', '')
-    session_id = caller_session(args)
+    # One manifest row per revised node, each carrying its OWN
+    # encoding_source — one batch can span scales and the emitter routes
+    # per row. Warnings included so audit history captures
+    # attempted-but-rejected ops.
     revised_ids = []
+    manifest_rows = []
     for row, spec in zip(result.get('results', []), resolved):
         if row.get('status') == 'revised':
             revised_ids.append(row['node_id'])
-            _emit_revise_trace(
-                brain, row['node_id'], spec.get('reason', ''),
-                spec.get('encoding_source', '') or top_encoding_source or '',
-                row.get('deltas', []),
-                warnings=row.get('warnings', []),
-                chain_id_override=chain_id_override,
-                session_id=session_id,
-            )
+            manifest_rows.append({
+                "node_id": row['node_id'],
+                "reason": spec.get('reason', ''),
+                "encoding_source": (spec.get('encoding_source', '')
+                                    or top_encoding_source or ''),
+                "deltas": row.get('deltas', []),
+                "warnings": list(row.get('warnings', [])),
+            })
 
     if project_warnings and isinstance(result, dict):
         result.setdefault('warnings', []).extend(project_warnings)
     return {"ok": True, "result": result,
-            "affected": _affected(revised=revised_ids)}
+            "affected": _affected(revised=revised_ids),
+            "mutations": {"nodes": {"revised": manifest_rows}}}
 
 
 def _op_archive(brain, op_spec, top_encoding_source, graph_changes):
@@ -802,7 +748,10 @@ def _handle_brain_batch(brain, args, graph_changes):
     # edge_relation_revised / co_anchored traces join the encoder's chain
     # instead of scattering to a date-fallback chain. Sub-handlers treat
     # chain_id as control (revise via DISPATCH_KEYS, remember pops it, connect
-    # passes explicit kwargs) so it never leaks onto a node.
+    # passes explicit kwargs) so it never leaks onto a node. NOTE: for manifest
+    # traces the chain override is captured at the dispatch chokepoint from the
+    # BATCH's args — a per-op chain_id is not honored (no producer sets one; if
+    # that changes, carry it on the manifest row).
     top_chain_id = args.get('chain_id', '')
     results = []
 
@@ -823,6 +772,20 @@ def _handle_brain_batch(brain, args, graph_changes):
             agg['created'].extend(aff.get('created') or [])
             agg['revised'].extend(aff.get('revised') or [])
             agg['archived'].extend(aff.get('archived') or [])
+
+    # Mutation manifest aggregated across sub-ops, same pop-off-each-sub-result
+    # pattern as `affected` — the rows must NOT stay in the per-op `results`
+    # (the agent-facing shape) and must return at TOP level, where
+    # dispatch_command emits them AFTER this handler's single commit. That
+    # post-commit hop is the point: the legacy inline emits fired mid-envelope
+    # and could orphan a trace for a batch that then rolled back. Only revise
+    # contributes today; steps 5-7 add the other ops' slots.
+    mutation_rows = {'nodes': {'revised': []}}
+
+    def _accumulate_mutations(m):
+        if m:
+            mutation_rows['nodes']['revised'].extend(
+                (m.get('nodes') or {}).get('revised') or [])
 
     # Wrap the whole batch in ONE SQLite transaction. Sub-handlers and DAL
     # writers gate their commits on brain.conn.in_batch (commit_unless_batched);
@@ -946,6 +909,7 @@ def _handle_brain_batch(brain, args, graph_changes):
                         op_args["chain_id"] = top_chain_id
                     r = _handle_revise(brain, op_args, graph_changes)
                     _accumulate(r.pop("affected", None))
+                    _accumulate_mutations(r.pop("mutations", None))
                     results.append({"op": "revise", "index": i, **r})
 
                 elif op == "connect":
@@ -1084,8 +1048,10 @@ def _handle_brain_batch(brain, args, graph_changes):
     }
     if project_warnings:
         _batch_result["warnings"] = project_warnings
-    return {"ok": True, "result": _batch_result, "affected": _affected(
-        created=agg['created'], revised=agg['revised'], archived=agg['archived'])}
+    return {"ok": True, "result": _batch_result,
+            "affected": _affected(created=agg['created'], revised=agg['revised'],
+                                  archived=agg['archived']),
+            "mutations": mutation_rows}
 
 
 def _handle_connect(brain, args, graph_changes):

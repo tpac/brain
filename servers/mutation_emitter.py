@@ -76,6 +76,30 @@ def _edge_ref_id(row):
     return '%s:%s' % (row.get('edge_id') or '', row.get('relation') or '')
 
 
+def _changed_summary(field_fmt, noop):
+    """Summary for deltas/warnings-carrying rows — the exact strings the
+    hand-rolled emitters wrote ('revised N field(s): …' for nodes,
+    'N field(s): …' for edges), so trace-stream readers see no drift."""
+    def _summary(row):
+        parts = []
+        if row.get('deltas'):
+            parts.append(field_fmt % (
+                len(row['deltas']),
+                ', '.join(d.get('field', '?') for d in row['deltas'])))
+        if row.get('warnings'):
+            parts.append('%d warning(s)' % len(row['warnings']))
+        return '; '.join(parts) if parts else noop
+    return _summary
+
+
+def _lifecycle_summary(verb):
+    """Summary for created/archived/deleted rows: the verb + what it hit."""
+    def _summary(row):
+        return '%s [%s] %s' % (verb, row.get('type') or '?',
+                               (row.get('title') or '')[:50])
+    return _summary
+
+
 # The whole mapping, and the only place mutation kinds are enumerated.
 #   path       where the rows live in the manifest
 #   ref_type   the registered trace ref_type
@@ -83,12 +107,13 @@ def _edge_ref_id(row):
 #              (_builder_kwargs); unknown keys are dropped and logged, not fatal
 #   ref_id     how to address the mutated thing
 #   emit_when  predicate; False means "nothing changed, stay silent"
+#   summary    human line for trace-stream readers (metadata stays canonical)
 MANIFEST_TRACE_MAP = (
-    (('nodes', 'created'),  'node_created',          build_node_created_metadata,  _node_ref_id, _always),
-    (('nodes', 'revised'),  'node_revised',          build_revise_metadata,        _node_ref_id, _changed),
-    (('nodes', 'archived'), 'node_archived',         build_node_archived_metadata, _node_ref_id, _always),
-    (('nodes', 'deleted'),  'node_deleted',          build_node_deleted_metadata,  _node_ref_id, _always),
-    (('edges',),            'edge_relation_revised', build_edge_revise_metadata,   _edge_ref_id, _changed),
+    (('nodes', 'created'),  'node_created',          build_node_created_metadata,  _node_ref_id, _always,  _lifecycle_summary('created')),
+    (('nodes', 'revised'),  'node_revised',          build_revise_metadata,        _node_ref_id, _changed, _changed_summary('revised %d field(s): %s', 'revise no-op')),
+    (('nodes', 'archived'), 'node_archived',         build_node_archived_metadata, _node_ref_id, _always,  _lifecycle_summary('archived')),
+    (('nodes', 'deleted'),  'node_deleted',          build_node_deleted_metadata,  _node_ref_id, _always,  _lifecycle_summary('deleted')),
+    (('edges',),            'edge_relation_revised', build_edge_revise_metadata,   _edge_ref_id, _changed, _changed_summary('%d field(s): %s', 'edge revise no-op')),
 )
 
 # The two ref_types that predate the emitter keep their date-fallback chain
@@ -110,7 +135,7 @@ def _accepted_kwargs(builder):
 # deltas/warnings, a created row has type/title), and a spurious key must not
 # cost the whole command its traces — see _builder_kwargs.
 _BUILDER_KWARGS = {rt: _accepted_kwargs(b)
-                   for _p, rt, b, _r, _w in MANIFEST_TRACE_MAP}
+                   for _p, rt, b, _r, _w, _s in MANIFEST_TRACE_MAP}
 
 
 def _builder_kwargs(ref_type, row, row_source, drops):
@@ -179,7 +204,7 @@ def build_events(brain, manifest, *, session_id='', chain_id='',
     if drops is None:
         drops = []
     events = []
-    for path, ref_type, builder, ref_id_of, emit_when in MANIFEST_TRACE_MAP:
+    for path, ref_type, builder, ref_id_of, emit_when, summary_of in MANIFEST_TRACE_MAP:
         for row in _rows_at(manifest, path):
             if not isinstance(row, dict):
                 raise TypeError('manifest %s row must be a dict, got %s'
@@ -205,7 +230,7 @@ def build_events(brain, manifest, *, session_id='', chain_id='',
                 'event_type': 'delta',
                 'ref_type': ref_type,
                 'ref_id': ref_id,
-                'summary': '',
+                'summary': summary_of(row),
                 'metadata': metadata,
                 'session_id': session_id or '',
                 'interaction_id': None,

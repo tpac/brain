@@ -14,8 +14,9 @@ from typing import Dict
 
 from .dispatch_common import (
     CmdEntry, check_unknown_keys, log_failed_batch_ops,
-    _resolve_id, _pop_session_ctx,
+    _resolve_id, _pop_session_ctx, caller_session,
 )
+from .mutation_emitter import emit_mutation_traces
 from .dispatch_write import (
     _handle_remember, _handle_remember_batch, _handle_revise, _handle_revise_batch,
     _handle_brain_batch, _handle_connect, _handle_connect_batch, _handle_revise_edge,
@@ -161,9 +162,25 @@ def dispatch_command(brain, cmd, args, graph_changes):
 
     # Captured BEFORE the handler runs: handlers mutate `args` in place (see
     # dispatch_common._pop_session_ctx), so anything read after the call is gone.
+    # Capturing identity here — not per handler — is the dispatch-level
+    # normalization the identity≠filter refactor left open: every mutation
+    # trace inherits the calling session without each handler re-resolving it.
     source = (args or {}).get('encoding_source') or 'anchor'
+    session_id = caller_session(args or {})
+    chain_id = (args or {}).get('chain_id') or ''
 
     result = entry.handler(brain, args, graph_changes)
+
+    # Mutation manifest: a converted handler returns what it changed under a
+    # `mutations` key; the emitter turns it into trace rows. Popped so the
+    # manifest never rides into the caller's tool result. Handlers not yet
+    # converted return no manifest and keep their inline _emit_* — the
+    # no-double-write property is structural, not remembered.
+    if isinstance(result, dict):
+        manifest = result.pop('mutations', None)
+        if manifest and result.get('ok'):
+            emit_mutation_traces(brain, cmd, manifest, session_id=session_id,
+                                 chain_id=chain_id, encoding_source=source)
 
     log_failed_batch_ops(brain, source, cmd, result)
     return result

@@ -337,7 +337,17 @@ maintains for exactly this question — "what JOB does this kind of edge do?"
 | `extension_refinement`, `explanation_causation`, `dependency_flow` | ✓ |
 | `contradiction_conflict`, `validation_evidence`, `hierarchical_structure` | ✓ |
 | `temporal_sequence`, `survivor_lineage`, `generic_relation` | ✓ |
-| **`noise`** — co_accessed, emergent_bridge, dreamed_from, dream_observation… | ✗ machinery |
+| **`noise`** — co_accessed, emergent_bridge, co_anchored, dreamed_from, dream_observation… | ✗ machinery |
+
+**`co_anchored` joined `noise` at step 4** (Tom, 2026-08-04). It was unclassified — in no
+aspect at all — despite 1,980 active edges at 136/week (6× emergent_bridge's rate), all
+dispatch-written machinery (`dispatch:co_anchored`, the structural twin of `co_accessed`'s
+operational engram). Consequences: revise's co_anchored refresh path stays deliberately dark
+(no `co_anchored_made` plumbing through `brain.revise` — the plan's step-4 bullet is
+superseded); remember's co_anchored edge traces STOP at step 6 (today they're written,
+orphanably — under the coverage rule they're excluded like emergent_bridge); and, beyond
+tracing, noise membership removes co_anchored from S2 community adjacency and blocks it in
+the encoder vocabulary — both correct for a dispatch-owned mechanical edge.
 
 **Derived, not listed.** The exclusion set is `brain.aspects.noise.edge_relations`, so a new
 machinery verb the S2 classifier files under `noise` is excluded automatically — no

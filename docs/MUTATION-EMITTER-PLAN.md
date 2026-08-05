@@ -14,11 +14,13 @@ staleness is contained here.
 > | 3b-3d — emitter + registration | **DONE, live, DORMANT** | `c93b86d` |
 > | 3e — enforce the revise pair | **DONE, live** | `e51727b` |
 > | step-3 review fixes | **DONE** | `aa98604`, `50288fc` |
-> | **4-12** | **OPEN — start at step 4** | |
+> | 4 — chokepoint hook + revise/revise_batch (+ batch revise accumulation) | **DONE, live** | see step 4 deviations |
+> | **5-12** | **OPEN — start at step 5** | |
 >
-> **The emitter writes nothing yet.** `dispatch_command` does not call it (verified: the only
-> references outside `servers/mutation_emitter.py` are comments). Steps 4-7 wire it one
-> handler at a time.
+> **The emitter is LIVE for the revise path as of step 4** — `dispatch_command` pops each
+> handler's `mutations` manifest and emits post-return; `node_revised` rows now come from
+> the emitter (single, batch, and brain_batch revise ops). All other mutation kinds still
+> ride their legacy inline `_emit_*` sites until steps 5-8 convert them.
 >
 > **Citation stamp.** Citations were resolved against `bb7ed5a` on 2026-08-03, then
 > **re-resolved on 2026-08-04 after steps 1-3 moved lines in the very files this plan cites.**
@@ -245,7 +247,45 @@ not.
 Each step's tests: the §6 pinned reader shapes against emitter-produced rows, plus that
 step's own new-type coverage. Tier: targeted test files per step; full suite at merge.
 
-### Step 4 — `revise` + `revise_batch` → `nodes.revised`
+### Step 4 — `revise` + `revise_batch` → `nodes.revised` — ✅ DONE
+
+> **Deviations from this plan, as built:**
+> - **The `dispatch_command` hook landed here** (this plan never named its step): identity
+>   (`caller_session(args)`) and `chain_id` captured BEFORE the handler runs (handlers
+>   mutate `args`); post-handler, `mutations` is **popped off the result** (never reaches
+>   the agent's tool result) and emitted only when `result['ok']`. Capturing identity at
+>   the chokepoint is the dispatch-level normalization the identity≠filter refactor left
+>   open (brain id:90761bb9) — not a local patch.
+> - **`co_anchored` → `noise` (Tom, 2026-08-04)**: the `brain.revise` /
+>   `co_anchored_made` bullet below is SUPERSEDED — the refresh path stays deliberately
+>   dark under the aspect coverage rule (see decision record §5). No pop-trap, no
+>   `brain.revise` return change. `aspects_v1.json` edited in this step;
+>   `reconcile_working_copy` case 3 heals it into live brains on restart.
+> - **The brain_batch revise branch converted NOW, not at step 7**: it splats `**r` into
+>   agent-visible `results[]`, so leaving `mutations` on the sub-result was the 6M-char
+>   class — instead the batch accumulates sub-manifests (`_accumulate_mutations`, the same
+>   pop pattern as `affected`) and returns them top-level. Batch revises therefore emit
+>   POST-COMMIT for the first time, and the rolled-back-batch → zero-traces acceptance
+>   test landed here (revise path) rather than waiting for step 7.
+> - **Direct-MCP revises now record `encoding_source='anchor'`** in trace metadata (the
+>   chokepoint's command-level default) where the legacy emit recorded `''`. Scale and
+>   chain fallback are unchanged; 'anchor' is the documented convention for unstamped
+>   direct writes — truthful drift, noted for readers diffing old vs new rows.
+> - **Review fix — the emitter now writes real summaries**: step 3 shipped it hardcoding
+>   `summary=''`, which would have blanked the human line legacy rows carried ("revised 2
+>   field(s): title, content") — all three step-4 reviewers flagged it. `MANIFEST_TRACE_MAP`
+>   gained a summary column with legacy-identical formats for the revise pair and
+>   `{verb} [type] title` for the three lifecycle kinds.
+> - **Known narrowing, documented not built**: a brain_batch sub-op's OWN `chain_id` no
+>   longer reaches its trace (the emitter's chain override is command-scoped; legacy honored
+>   per-op). Unreachable today — no producer sets per-op `chain_id` — so no row-level
+>   passthrough was added. If per-op chains become real, extend the manifest row and route
+>   it in `build_events` alongside `encoding_source`.
+> - **Tests migrated to the real door**: `test_revise_unified.py::TestTraceEvents` and
+>   `test_mcp_roundtrip.py::_dispatch` drove handlers directly (the pre-step-1 idiom) and
+>   went 0-trace when emission moved to the chokepoint — both now route
+>   `dispatch_command`. New pins: manifest-never-in-result (single + batch), rolled-back
+>   batch emits zero, batch revise emits exactly one post-commit.
 
 - `servers/dispatch_write.py` — `_handle_revise` (`:597`), `_handle_revise_batch` (`:670`);
   delete `_emit_revise_trace` (`:185`) when both are converted.
@@ -253,10 +293,8 @@ step's own new-type coverage. Tier: targeted test files per step; full suite at 
   (`spec.get('encoding_source','') or top_encoding_source or ''`) become row fields.
 - Emit gate is per row — a revise with empty deltas+warnings stays in `affected` and emits
   nothing (preserving `:610-611`'s unconditional `affected.revised`).
-- `brain.revise` returns `co_anchored_made` (mirroring `remember`'s collection at
-  `brain_remember.py:1105-1113`), closing the structurally-untraceable edge path at
-  `:1546-1560`. **`_handle_revise` returns `brain.revise`'s dict verbatim (`:610`)** — pop
-  the new key into the manifest in this same commit or it lands in the agent's tool result.
+- ~~`brain.revise` returns `co_anchored_made`~~ — superseded by the `co_anchored` → `noise`
+  ruling above.
 - Pins: `tests/test_revise_unified.py:55`, `tests/test_project_provenance.py`.
 
 ### Step 5 — `connect` + `connect_batch` + `revise_edge` → `edges[]`
@@ -280,6 +318,10 @@ step's own new-type coverage. Tier: targeted test files per step; full suite at 
 
 - `servers/dispatch_write.py` — `_handle_remember` (`:440`, `:447`),
   `_handle_remember_batch` (`:527`, `:535`).
+- **`co_anchored` edges do NOT enter the manifest** (ruled at step 4: `co_anchored` →
+  `noise`, decision record §5). Today remember's co_anchored edges get orphanable
+  `edge_relation_revised` traces via `_emit_edge_traces` — under the coverage rule they
+  STOP here, same treatment as `emergent_bridge`. Only `connect_to` edges ride `edges[]`.
 - **This step fixes the pop-then-read bug** (decision record §1.3): session now comes from
   the chokepoint, resolved before `_pop_session_ctx` mutates `args`. Un-skip the step-1
   regression pin here.

@@ -305,16 +305,17 @@ class TestLockedArchiveGuard(BrainTestBase):
 
     def test_locked_archive_emits_trace_event_with_warning(self):
         """Even with no deltas, archive-blocked must emit a trace event with warnings."""
-        from servers.daemon_dispatch import _handle_revise
+        from servers.daemon_dispatch import dispatch_command
 
         nid = _make_node(self.brain)
         self.brain.conn.execute(
             "UPDATE nodes SET locked = 1 WHERE id = ?", (nid,))
         self.brain.conn.commit()
 
-        # Dispatch path emits the trace
+        # Emission happens at the dispatch chokepoint (mutation emitter),
+        # so the test must enter through dispatch_command, not the handler.
         graph_changes = []
-        _handle_revise(self.brain, {
+        dispatch_command(self.brain, 'revise', {
             'node_id': nid, 'reason': 'attempt archive',
             'archived': True,
             'encoding_source': 'test:locked_archive',
@@ -410,42 +411,56 @@ class TestDeltas(BrainTestBase):
 
 # ═══════════════════════════════════════════════════════════════════════
 # Class E — Trace events emitted via dispatch
+#
+# Step 4 of the mutation-emitter migration: handlers return a `mutations`
+# manifest and dispatch_command emits it — the handler alone writes NO trace.
+# These tests therefore enter through dispatch_command (the one real door),
+# pinning the same invariants the legacy inline emit satisfied.
 # ═══════════════════════════════════════════════════════════════════════
 
 class TestTraceEvents(BrainTestBase):
     needs_embedder = False
 
+    def _dispatch(self, cmd, args):
+        from servers.daemon_dispatch import dispatch_command
+        return dispatch_command(self.brain, cmd, args, [])
+
     def test_single_revise_emits_one_trace(self):
         """Dispatch revise → exactly one node_revised trace event."""
-        from servers.daemon_dispatch import _handle_revise
-
         nid = _make_node(self.brain, situation='Original')
-        graph_changes = []
-        _handle_revise(self.brain, {
+        self._dispatch('revise', {
             'node_id': nid, 'reason': 'r', 'situation': 'New',
-        }, graph_changes)
+        })
 
         traces = _query_revise_traces(self.brain, nid)
         self.assertEqual(len(traces), 1)
         self.assertEqual(traces[0]['ref_type'], 'node_revised')
         self.assertEqual(traces[0]['event_type'], 'delta')
+        # The human summary line must match the legacy emit format exactly.
+        self.assertEqual(traces[0]['summary'], 'revised 1 field(s): situation')
+
+    def test_revise_result_carries_no_manifest(self):
+        """`mutations` is dispatch plumbing — it must never reach the caller's
+        tool result (the 6M-char class)."""
+        nid = _make_node(self.brain, situation='Original')
+        result = self._dispatch('revise', {
+            'node_id': nid, 'reason': 'r', 'situation': 'New',
+        })
+        self.assertNotIn('mutations', result)
 
     def test_revise_batch_emits_one_trace_per_row(self):
         """Dispatch revise_batch with 3 nodes → 3 trace events."""
-        from servers.daemon_dispatch import _handle_revise_batch
-
         n1 = _make_node(self.brain, situation='S1')
         n2 = _make_node(self.brain, situation='S2')
         n3 = _make_node(self.brain, situation='S3')
 
-        graph_changes = []
-        _handle_revise_batch(self.brain, {
+        self._dispatch('revise_batch', {
             'revisions': [
                 {'node_id': n1, 'reason': 'r1', 'situation': 'NS1'},
                 {'node_id': n2, 'reason': 'r2', 'situation': 'NS2'},
                 {'node_id': n3, 'reason': 'r3', 'situation': 'NS3'},
             ]
-        }, graph_changes)
+        })
 
         for nid in (n1, n2, n3):
             traces = _query_revise_traces(self.brain, nid)
@@ -455,13 +470,11 @@ class TestTraceEvents(BrainTestBase):
 
     def test_trace_metadata_shape(self):
         """Trace metadata matches REVISE_METADATA_SHAPE."""
-        from servers.daemon_dispatch import _handle_revise
-
         nid = _make_node(self.brain, situation='Original')
-        _handle_revise(self.brain, {
+        self._dispatch('revise', {
             'node_id': nid, 'reason': 'shape test', 'situation': 'New',
             'encoding_source': 'test:shape',
-        }, [])
+        })
 
         traces = _query_revise_traces(self.brain, nid)
         meta = traces[0]['metadata']
@@ -477,25 +490,21 @@ class TestTraceEvents(BrainTestBase):
 
     def test_chain_id_override_respected(self):
         """Caller-provided chain_id is used verbatim."""
-        from servers.daemon_dispatch import _handle_revise
-
         nid = _make_node(self.brain, situation='X')
-        _handle_revise(self.brain, {
+        self._dispatch('revise', {
             'node_id': nid, 'reason': 'r', 'situation': 'Y',
             'chain_id': 's2-20260504-aspect_integration',
-        }, [])
+        })
 
         traces = _query_revise_traces(self.brain, nid)
         self.assertEqual(traces[0]['chain_id'], 's2-20260504-aspect_integration')
 
     def test_chain_id_default_is_date_based(self):
         """No chain_id arg → date-based fallback chain (`{scale}-{YYYYMMDD}-revise`)."""
-        from servers.daemon_dispatch import _handle_revise
-
         nid = _make_node(self.brain, situation='X')
-        _handle_revise(self.brain, {
+        self._dispatch('revise', {
             'node_id': nid, 'reason': 'r', 'situation': 'Y',
-        }, [])
+        })
 
         traces = _query_revise_traces(self.brain, nid)
         chain = traces[0]['chain_id']
@@ -507,29 +516,84 @@ class TestTraceEvents(BrainTestBase):
 
     def test_scale_inferred_from_encoding_source(self):
         """encoding_source='s2:foo' → trace.scale='s2'."""
-        from servers.daemon_dispatch import _handle_revise
-
         nid = _make_node(self.brain, situation='X')
-        _handle_revise(self.brain, {
+        self._dispatch('revise', {
             'node_id': nid, 'reason': 'r', 'situation': 'Y',
             'encoding_source': 's2:healer',
-        }, [])
+        })
 
         traces = _query_revise_traces(self.brain, nid)
         self.assertEqual(traces[0]['scale'], 's2')
 
     def test_no_trace_when_no_changes_no_warnings(self):
         """revise(field=<same value>) with no warnings → no trace emitted."""
-        from servers.daemon_dispatch import _handle_revise
-
         nid = _make_node(self.brain, confidence=0.5)
-        _handle_revise(self.brain, {
+        self._dispatch('revise', {
             'node_id': nid, 'reason': 'noop', 'confidence': 0.5,
-        }, [])
+        })
 
         traces = _query_revise_traces(self.brain, nid)
         self.assertEqual(traces, [],
                          "expected no traces for no-op revise, got: %r" % traces)
+
+    def test_rolled_back_batch_emits_zero_traces(self):
+        """A brain_batch whose transaction rolls back must produce ZERO
+        node_revised traces — the property the legacy inline emits could not
+        guarantee (they fired mid-envelope). The manifest only reaches the
+        emitter if the handler returns, and the handler re-raises on
+        rollback, so this is structural."""
+        from servers.daemon_dispatch import dispatch_command
+
+        nid = _make_node(self.brain, situation='Original')
+
+        real_commit = self.brain.conn.commit
+        calls = {'n': 0}
+
+        def failing_commit():
+            # The batch's own final commit is the one that must fail; per-op
+            # commits are no-ops while in_batch is set.
+            calls['n'] += 1
+            raise RuntimeError('injected commit failure')
+
+        self.brain.conn.commit = failing_commit
+        try:
+            with self.assertRaises(RuntimeError):
+                dispatch_command(self.brain, 'brain_batch', {
+                    'operations': [{'op': 'revise', 'node_id': nid,
+                                    'reason': 'r', 'situation': 'New'}],
+                }, [])
+        finally:
+            self.brain.conn.commit = real_commit
+            try:
+                self.brain.conn.rollback()
+            except Exception:
+                pass
+
+        self.assertTrue(calls['n'] >= 1, 'injected commit never reached')
+        traces = _query_revise_traces(self.brain, nid)
+        self.assertEqual(traces, [],
+                         'rolled-back batch must leave zero mutation traces, '
+                         'got: %r' % traces)
+
+    def test_batch_revise_trace_lands_post_commit(self):
+        """revise inside brain_batch → one node_revised trace, emitted at the
+        chokepoint after the batch commit, and the manifest never appears in
+        the per-op results the agent sees."""
+        from servers.daemon_dispatch import dispatch_command
+
+        nid = _make_node(self.brain, situation='Original')
+        result = dispatch_command(self.brain, 'brain_batch', {
+            'operations': [{'op': 'revise', 'node_id': nid,
+                            'reason': 'r', 'situation': 'New'}],
+        }, [])
+
+        self.assertTrue(result.get('ok'))
+        self.assertNotIn('mutations', result)
+        for op_row in result['result']['results']:
+            self.assertNotIn('mutations', op_row)
+
+        traces = _query_revise_traces(self.brain, nid)
+        self.assertEqual(len(traces), 1)
 
 
 # ═══════════════════════════════════════════════════════════════════════

@@ -104,9 +104,9 @@ class TestScribeInProcessAttribution(BrainTestBase):
     """End-to-end: a revise through the Scribe's in-process dispatch lands its
     node_revised trace on the s1e run chain — not dispatch_write's
     '{scale}-{date}-revise' fallback. Exercises the REAL path against an
-    isolated brain: dispatch → _handle_brain_batch → _emit_revise_trace →
-    _infer_scale_and_chain. No Sonnet — just the chain routing the bg+TCP path
-    used to drop."""
+    isolated brain: dispatch_command → _handle_brain_batch → mutations
+    manifest → mutation_emitter. No Sonnet — just the chain routing the
+    bg+TCP path used to drop."""
 
     needs_embedder = False
 

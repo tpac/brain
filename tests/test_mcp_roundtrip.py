@@ -19,15 +19,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from tests.brain_test_base import BrainTestBase
 from servers.brain_mcp import TOOLS, CRITICAL_TOOLS
-from servers.daemon_dispatch import COMMAND_TABLE
+from servers.daemon_dispatch import COMMAND_TABLE, dispatch_command
 
 
 class TestMCPRoundTrip(BrainTestBase):
     """Test every MCP tool through daemon dispatch against a real brain."""
 
     def _dispatch(self, cmd, args):
-        """Simulate daemon dispatch — call handler, ENFORCE + unwrap the
-        {"ok": True, "result": ...} envelope.
+        """Simulate daemon dispatch — route through dispatch_command (THE one
+        execution path; handlers are never called directly, and since step 4
+        mutation-trace emission lives at that chokepoint), then ENFORCE +
+        unwrap the {"ok": True, "result": ...} envelope.
 
         Every table handler MUST return that envelope; the daemon sends the
         return verbatim, so a raw dict reaches the MCP client as a falsy `ok`
@@ -39,7 +41,7 @@ class TestMCPRoundTrip(BrainTestBase):
         the envelope here makes the violation fail for EVERY tool, in CI."""
         entry = COMMAND_TABLE.get(cmd)
         self.assertIsNotNone(entry, "No dispatch handler for: %s" % cmd)
-        raw = entry.handler(self.brain, args, [])
+        raw = dispatch_command(self.brain, cmd, args, [])
         self.assertIsInstance(raw, dict, "%s handler returned non-dict: %r" % (cmd, raw))
         self.assertIs(raw.get("ok"), True,
                       "%s handler must return the {'ok': True, 'result': ...} "

@@ -64,7 +64,7 @@ class TestEmitterContract(unittest.TestCase):
         s0, s1 OR s2. validate_trace_event raises on an unregistered triple and
         the emitter's loud-wrap would swallow it into an error row — meaning a
         missing registration is silent trace loss, not a crash. Pin all of it."""
-        for _path, ref_type, _b, _r, _w in me.MANIFEST_TRACE_MAP:
+        for _path, ref_type, _b, _r, _w, _s in me.MANIFEST_TRACE_MAP:
             for scale in ('s0', 's1', 's2'):
                 ok, err = tc.validate_trace_event(scale, 'delta', ref_type)
                 self.assertTrue(ok, "emitter can produce (%s, delta, %s) but the "
@@ -75,7 +75,7 @@ class TestEmitterContract(unittest.TestCase):
         run cards). If the map grows a kind that isn't in it, that kind starts
         re-arming the S2 gate and rendering as a phantom run card."""
         self.assertEqual(
-            sorted({rt for _p, rt, _b, _r, _w in me.MANIFEST_TRACE_MAP}),
+            sorted({rt for _p, rt, _b, _r, _w, _s in me.MANIFEST_TRACE_MAP}),
             sorted(tc.EMITTER_REF_TYPES))
 
     def test_every_emitter_ref_type_has_an_enforced_metadata_shape(self):
@@ -98,7 +98,7 @@ class TestEmitterContract(unittest.TestCase):
             'node_revised': dict(node_id='n1', reason='r'),
             'edge_relation_revised': dict(edge_id='e1', relation='extends', reason='r'),
         }
-        for _p, ref_type, builder, _r, _w in me.MANIFEST_TRACE_MAP:
+        for _p, ref_type, builder, _r, _w, _s in me.MANIFEST_TRACE_MAP:
             md = builder(**minimal[ref_type])
             ok, err = tc.validate_trace_metadata('delta', ref_type, md)
             self.assertTrue(ok, "%s builder violates its own enforced shape: %s"
@@ -109,7 +109,7 @@ class TestEmitterContract(unittest.TestCase):
         by its table row. If a builder stops accepting the row as kwargs, someone
         has started special-casing and the one-table property is gone."""
         import inspect
-        for path, ref_type, builder, ref_id_of, emit_when in me.MANIFEST_TRACE_MAP:
+        for path, ref_type, builder, ref_id_of, emit_when, summary_of in me.MANIFEST_TRACE_MAP:
             self.assertTrue(callable(builder) and callable(ref_id_of)
                             and callable(emit_when), ref_type)
             params = inspect.signature(builder).parameters
