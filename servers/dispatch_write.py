@@ -158,7 +158,9 @@ def _missing_reason_error(spec, prefix=''):
 
 
 def _infer_scale_and_chain(brain, encoding_source, chain_id_override):
-    """Shared by the revise trace emitters.
+    """Used by _emit_edge_traces (connect_to/co_anchored), the last legacy
+    emit path — both die at steps 6-7 when remember/brain_batch manifest
+    their edges. The emitter's _scale_and_chain is the same rule, one copy.
 
     Infers scale from encoding_source ('s2:*'→s2, 'encoder:*'→s1, else s0) and
     resolves the chain_id: a caller-provided override wins (encoder cycles pass
@@ -182,63 +184,22 @@ def _infer_scale_and_chain(brain, encoding_source, chain_id_override):
     return scale, chain_id
 
 
-def _emit_edge_revise_trace(brain, edge_id, relation, reason, encoding_source,
-                            deltas, warnings=None,
-                            chain_id_override='', session_id='',
-                            source_id='', target_id=''):
-    """Emit an edge_relation_revised trace event.
-
-    Same emit-on-deltas-or-warnings behavior, scale inference and chain_id
-    strategy as the mutation emitter's node_revised path (which replaced the
-    node-side sibling of this helper at step 4). ref_id encodes the
-    (edge_id, relation) tuple as f"{edge_id}:{relation}".
-
-    source_id/target_id carry the directional pair into the metadata so the
-    edge is reconstructable from the trace alone (edge_id is a one-way hash).
-
-    Used by every edge path: the connect upsert (deltas show create-via-INSERT
-    or field-preserving update), connect_batch, revise_edge, the connect_to /
-    co_anchored paths (via _emit_edge_traces), and disconnect (archived flip).
-
-    FAILURE-ISOLATED: the ENTIRE body is wrapped — scale/chain inference and
-    metadata build included, not just the append — so a trace-layer error logs
-    loudly and returns. Trace emission is observability; it must NEVER raise
-    into the caller and roll back the graph write that produced the edge.
-    """
-    warnings = warnings or []
-    if not deltas and not warnings:
-        return  # nothing to record
-
-    try:
-        from .trace_contract import build_edge_revise_metadata
-        scale, chain_id = _infer_scale_and_chain(
-            brain, encoding_source, chain_id_override)
-        metadata = build_edge_revise_metadata(
-            edge_id=edge_id, relation=relation, reason=reason,
-            encoding_source=encoding_source,
-            source_id=source_id, target_id=target_id,
-            deltas=deltas, warnings=warnings)
-        parts = []
-        if deltas:
-            parts.append('%d field(s): %s' % (
-                len(deltas), ', '.join(d['field'] for d in deltas)))
-        if warnings:
-            parts.append('%d warning(s)' % len(warnings))
-        summary = '; '.join(parts) if parts else 'edge revise no-op'
-        brain._trace_dal.append(
-            chain_id=chain_id,
-            scale=scale,
-            event_type='delta',
-            ref_type='edge_relation_revised',
-            ref_id='%s:%s' % (edge_id, relation),
-            summary=summary,
-            metadata=metadata,
-            session_id=session_id,
-        )
-    except Exception as e:
-        brain._log_error('edge_revise_trace_emit', e,
-                         'failed to emit trace for edge %s:%s' % (
-                             str(edge_id)[:12], relation))
+def _edge_row(result, relation, reason, encoding_source, source_id, target_id):
+    """Shape one edges[] manifest row from an edge-op result (add_relation /
+    revise_edge / remove_relation return shapes all carry edge_id + deltas).
+    Keys are exactly build_edge_revise_metadata's kwargs — builder-shaped by
+    construction. The emitter's _changed gate decides emission, so a no-op
+    row (empty deltas+warnings) is safe to include."""
+    return {
+        'edge_id': result.get('edge_id') or '',
+        'relation': result.get('relation') or relation,
+        'reason': reason,
+        'encoding_source': encoding_source or '',
+        'source_id': source_id or '',
+        'target_id': target_id or '',
+        'deltas': result.get('deltas') or [],
+        'warnings': list(result.get('warnings') or []),
+    }
 
 
 def _affected(created=None, revised=None, archived=None):
@@ -676,8 +637,10 @@ def _op_disconnect(brain, op_spec, top_encoding_source, top_session_id, args,
                    graph_changes):
     """brain_batch `disconnect` op — soft-archive ONE relation on an edge
     (other relations on the same edge survive; archived row kept for
-    forensics/recovery). Emits the archived-flag-flip edge trace. Edge-only —
-    no node lifecycle, so no `affected`."""
+    forensics/recovery). Edge-only — no node lifecycle, so no `affected`.
+    The manifest row carries remove_relation's OBSERVED deltas: a disconnect
+    of an already-archived or nonexistent relation has empty deltas and the
+    emitter stays silent, where the legacy emit fabricated a 0→1 flip."""
     # Resolve endpoints — mirrors _handle_connect/_handle_connect_batch. Without
     # this, short/title ids passed by an encoder miss get_edge_id (silent no-op)
     # and the edge trace records unresolved ids inconsistent with other edges.
@@ -685,24 +648,19 @@ def _op_disconnect(brain, op_spec, top_encoding_source, top_session_id, args,
     target_id = _resolve_id(brain, op_spec.get("target_id", ""))
     relation = op_spec.get("relation")
     archived_by = _resolve_archived_by(op_spec, top_encoding_source)
-    gdal = brain._graph
-    edge_id = gdal.get_edge_id(source_id, target_id)
     # remove_relation gates its own commit on conn.in_batch (True here) →
-    # deferred to the batch's single COMMIT.
-    gdal.remove_relation(source_id, target_id, relation, archived_by=archived_by)
+    # deferred to the batch's single COMMIT. It returns edge_id itself — no
+    # separate get_edge_id lookup.
+    r = brain._graph.remove_relation(
+        source_id, target_id, relation, archived_by=archived_by)
     graph_changes.append("DISCONNECT: %s -[%s]-> %s" % (
         source_id[:8], relation, target_id[:8]))
-    # Emit edge_relation_revised trace capturing the archived flag flip.
-    if edge_id:
-        _emit_edge_revise_trace(
-            brain, edge_id, relation,
-            op_spec.get('reason', '') or args.get('reason', ''),
-            archived_by,
-            deltas=[{'field': 'archived', 'old': 0, 'new': 1}],
-            chain_id_override=args.get('chain_id', ''),
-            session_id=top_session_id,
-            source_id=source_id, target_id=target_id)
-    return {"ok": True}
+    mutations = None
+    if r.get('edge_id'):
+        mutations = {"edges": [_edge_row(
+            r, relation, op_spec.get('reason', '') or args.get('reason', ''),
+            archived_by, source_id, target_id)]}
+    return {"ok": True, "mutations": mutations}
 
 
 def _handle_brain_batch(brain, args, graph_changes):
@@ -778,14 +736,16 @@ def _handle_brain_batch(brain, args, graph_changes):
     # (the agent-facing shape) and must return at TOP level, where
     # dispatch_command emits them AFTER this handler's single commit. That
     # post-commit hop is the point: the legacy inline emits fired mid-envelope
-    # and could orphan a trace for a batch that then rolled back. Only revise
-    # contributes today; steps 5-7 add the other ops' slots.
-    mutation_rows = {'nodes': {'revised': []}}
+    # and could orphan a trace for a batch that then rolled back. revise and
+    # the edge ops (connect, disconnect) contribute today; steps 6-7 add the
+    # remaining slots.
+    mutation_rows = {'nodes': {'revised': []}, 'edges': []}
 
     def _accumulate_mutations(m):
         if m:
             mutation_rows['nodes']['revised'].extend(
                 (m.get('nodes') or {}).get('revised') or [])
+            mutation_rows['edges'].extend(m.get('edges') or [])
 
     # Wrap the whole batch in ONE SQLite transaction. Sub-handlers and DAL
     # writers gate their commits on brain.conn.in_batch (commit_unless_batched);
@@ -922,6 +882,7 @@ def _handle_brain_batch(brain, args, graph_changes):
                         op_args["chain_id"] = top_chain_id
                     r = _handle_connect(brain, op_args, graph_changes)
                     _accumulate(r.pop("affected", None))
+                    _accumulate_mutations(r.pop("mutations", None))
                     results.append({"op": "connect", "index": i, **r})
 
                 elif op == "archive":
@@ -941,6 +902,7 @@ def _handle_brain_batch(brain, args, graph_changes):
                     r = _op_disconnect(brain, op_spec, top_encoding_source,
                                        top_session_id, args, graph_changes)
                     _accumulate(r.pop("affected", None))
+                    _accumulate_mutations(r.pop("mutations", None))
                     results.append({"op": "disconnect", "index": i, **r})
 
                 else:
@@ -1074,25 +1036,19 @@ def _handle_connect(brain, args, graph_changes):
         description=args.get("description"),
         encoding_source=encoding_source)
 
-    # Emit edge_relation_revised trace event capturing create-or-update deltas.
-    if result and (result.get('deltas') or result.get('warnings')):
-        _emit_edge_revise_trace(
-            brain, result['edge_id'], relation,
-            args.get('reason', ''),
-            encoding_source or '',
-            result.get('deltas', []),
-            warnings=result.get('warnings', []),
-            chain_id_override=args.get('chain_id', ''),
-            session_id=caller_session(args),
-            source_id=src_id, target_id=tgt_id,
-        )
-
     graph_changes.append(
         "CONNECT: %s -[%s]-> %s" % (
             args.get("source_id", "?")[:8],
             relation,
             args.get("target_id", "?")[:8]))
-    return {"ok": True, "result": {"connected": True}}
+    # Manifest row for the emitter — its _changed gate keeps an idempotent
+    # re-connect (no deltas, no warnings) silent, as the legacy emit did.
+    mutations = None
+    if result:
+        mutations = {"edges": [_edge_row(
+            result, relation, args.get('reason', ''),
+            encoding_source, src_id, tgt_id)]}
+    return {"ok": True, "result": {"connected": True}, "mutations": mutations}
 
 
 def _handle_revise_edge(brain, args, graph_changes):
@@ -1116,21 +1072,15 @@ def _handle_revise_edge(brain, args, graph_changes):
     if not result.get("ok"):
         return result
 
-    if result.get("deltas"):
-        _emit_edge_revise_trace(
-            brain, result["edge_id"], result["relation"],
-            args.get("reason", ""), args.get("encoding_source") or "",
-            result.get("deltas", []),
-            chain_id_override=args.get("chain_id", ""),
-            session_id=caller_session(args),
-            source_id=source_id, target_id=target_id)
-
     graph_changes.append(
         "REVISE_EDGE: %s -[%s]-> %s" % (
             str(args.get("source_id", "?"))[:8],
             result["relation"],
             str(args.get("target_id", "?"))[:8]))
-    return {"ok": True, "result": result}
+    return {"ok": True, "result": result,
+            "mutations": {"edges": [_edge_row(
+                result, result["relation"], args.get("reason", ""),
+                args.get("encoding_source") or "", source_id, target_id)]}}
 
 
 def _handle_connect_batch(brain, args, graph_changes):
@@ -1139,9 +1089,8 @@ def _handle_connect_batch(brain, args, graph_changes):
     if not connections:
         return {"ok": False, "error": "connections array is required"}
 
-    chain_id_override = args.get('chain_id', '')
-    session_id = caller_session(args)
     top_encoding_source = args.get('encoding_source', '')
+    edge_rows = []
 
     # Known per-connection keys — used to build a "did you mean" hint when a
     # caller sends an aliased key (e.g. from_id/to_id) instead of the canonical
@@ -1190,19 +1139,13 @@ def _handle_connect_batch(brain, args, graph_changes):
                 description=c.get("description"),
                 encoding_source=encoding_source)
             created += 1
-
-            # Emit one edge_relation_revised trace per row that actually changed.
-            if result and (result.get('deltas') or result.get('warnings')):
-                _emit_edge_revise_trace(
-                    brain, result['edge_id'], relation,
+            # One manifest row per connection, carrying the per-row resolved
+            # encoding_source; the emitter's _changed gate drops no-op rows.
+            if result:
+                edge_rows.append(_edge_row(
+                    result, relation,
                     c.get('reason', '') or args.get('reason', ''),
-                    encoding_source or '',
-                    result.get('deltas', []),
-                    warnings=result.get('warnings', []),
-                    chain_id_override=chain_id_override,
-                    session_id=session_id,
-                    source_id=src_id, target_id=tgt_id,
-                )
+                    encoding_source, src_id, tgt_id))
         except Exception as e:
             # No silent drops: a failed edge in a batch must surface, not vanish
             # — and now with its REASON in the response, not just the dashboard.
@@ -1219,7 +1162,7 @@ def _handle_connect_batch(brain, args, graph_changes):
         "edges_created": created,
         "failures": len(failure_details),
         "failure_details": failure_details,
-    }}
+    }, "mutations": {"edges": edge_rows}}
 
 
 def _handle_enrich(brain, args, graph_changes):

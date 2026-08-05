@@ -1422,10 +1422,11 @@ METADATA_REQUIRED_BY_REF_TYPE = {
     # DECLARED but never enforced — validation was dead for exactly the two
     # highest-volume mutation events in the system. Enforced as of 2026-08-04,
     # after verifying it cannot fire on existing traffic: all producers
-    # (the mutation emitter for node_revised as of step 4; dispatch_write's
-    # _emit_edge_revise_trace and _emit_edge_traces until steps 5-7 migrate
-    # them) build metadata via the builders below, no hand-built dicts
-    # anywhere, and each builder's minimal-args output satisfies its shape.
+    # (the mutation emitter for node_revised as of step 4 and the dispatch
+    # edge paths as of step 5; dispatch_write's _emit_edge_traces for
+    # connect_to/co_anchored until steps 6-7 migrate it) build metadata via
+    # the builders below, no hand-built dicts anywhere, and each builder's
+    # minimal-args output satisfies its shape.
     # Validation runs at WRITE time only, so historic rows are unaffected.
     'node_revised':          REVISE_METADATA_SHAPE,
     'edge_relation_revised': EDGE_REVISE_METADATA_SHAPE,

@@ -348,7 +348,7 @@ class TestOneWriterPin(unittest.TestCase):
     fails immediately.
     """
     ALLOWLIST = {
-        'servers/dispatch_write.py',   # 11 legacy _emit_* sites — steps 4-7
+        'servers/dispatch_write.py',   # _emit_edge_traces (connect_to/co_anchored) — steps 6-7
         'servers/brain_remember.py',   # archive_node inline trace — step 8
         'servers/mutation_emitter.py',  # the sanctioned writer
     }

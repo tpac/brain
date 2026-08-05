@@ -301,7 +301,36 @@ step's own new-type coverage. Tier: targeted test files per step; full suite at 
   ruling above.
 - Pins: `tests/test_revise_unified.py:55`, `tests/test_project_provenance.py`.
 
-### Step 5 — `connect` + `connect_batch` + `revise_edge` → `edges[]`
+### Step 5 — `connect` + `connect_batch` + `revise_edge` → `edges[]` — ✅ DONE
+
+> **Deviations from this plan, as built (lens: clean the area, don't just add — Tom):**
+> - **`_op_disconnect` converted HERE, not step 7** — its fabricated `0→1` flip is exactly
+>   what `remove_relation`'s observed-truth return kills; leaving it two steps out of sync
+>   with its own DAL primitive made no sense. brain_batch's manifest accumulator gained the
+>   `edges` slot, and connect/disconnect sub-ops pop into it.
+> - **`_emit_edge_revise_trace` deleted HERE, not step 7** — all four of its callers
+>   (connect, connect_batch, revise_edge, disconnect) converted in this step, so the
+>   same-commit deletion rule applies. `_emit_edge_traces` (connect_to/co_anchored) is now
+>   the LAST legacy emit path; `_infer_scale_and_chain` survives only for it.
+> - **Area cleanups ridden along**: the duplicated `enqueue_edge` try/except in
+>   `add_relation`/`rename_relation` collapsed into `GraphDAL._enqueue_edge_embed`; the
+>   duplicated birth-deltas lists in the INSERT/revive branches collapsed into one
+>   `_birth_deltas` helper (where the new `archived: 1→0` revive delta lives once);
+>   `_op_disconnect`'s separate `get_edge_id` lookup died with the fabricated flip.
+> - **`revise_edge` envelope**: ops moved into `_revise_edge_ops` (envelope-agnostic);
+>   the wrapper owns in_batch save/restore, rolls back on error AND on exception (a
+>   mid-op raise must not leave uncommitted writes for the next batch's entry-flush to
+>   silently commit), commits once (`# commit-ok` tagged for the txn-discipline pin).
+> - **Row shaping unified**: one `_edge_row()` shaper in dispatch_write feeds all four
+>   converted sites — builder-shaped by construction.
+> - **Same `'' → 'anchor'` metadata drift as step 4, on the edge path**: an unstamped
+>   `revise_edge` now records `encoding_source='anchor'` (chokepoint default) where legacy
+>   wrote `''`. Only revise_edge — connect/connect_batch resolve `'anchor'` upstream,
+>   disconnect resolves `'unknown'`. Scale/chain unchanged.
+> - **Tests migrated to the real door** (`TestEdgeTraceEvents` → dispatch_command), the
+>   revive pin now asserts the `archived: 1→0` delta explicitly; new pins:
+>   disconnect-of-archived-relation emits nothing (the observed-truth headline),
+>   edge results never carry `mutations`, rename+update = exactly one commit.
 
 - `servers/dal_graph.py:1253` `remove_relation` — return
   `{edge_id, relation, flipped, deltas}` from the actual rowcount-checked UPDATE. Kills
@@ -345,8 +374,8 @@ step's own new-type coverage. Tier: targeted test files per step; full suite at 
   `results[]` (`:967`, `:973`)** — pop new keys in this commit.
 - `brain.absorb` returns survivor-revise `deltas` (discarded at `brain_remember.py:625-630`)
   and migrated-edge rows (discarded at `:579`).
-- Delete `_emit_edge_traces` (`:319`), `_emit_edge_revise_trace` (`:245`), and
-  `_infer_scale_and_chain` (`:160`) — last callers gone.
+- Delete `_emit_edge_traces` (`:319`) and `_infer_scale_and_chain` (`:160`) — last callers
+  gone. (`_emit_edge_revise_trace` already died at step 5 with its four callers.)
 - **The orphan test is the point of this step**: a rolled-back `brain_batch` (`:1037`)
   produces **zero** mutation traces; an `absorb` savepoint unwind
   (`brain_remember.py:668`) produces zero traces for the unwound merge. Both are impossible

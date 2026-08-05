@@ -31,7 +31,7 @@ Result: the encoder can't build texture around nodes Anchor consciously committe
 | `_handle_remember_batch` | ✗ none | n/a |
 | `_handle_revise` | ✓ via the mutation emitter (`mutations` manifest → `ref_type=node_revised`) | yes (captured at the dispatch chokepoint) |
 | `_handle_revise_batch` | likely yes | likely yes |
-| `_handle_connect` | ✓ via `_emit_edge_revise_trace` (`ref_type=edge_relation_revised`) | yes |
+| `_handle_connect` | ✓ via the mutation emitter (`mutations` manifest → `ref_type=edge_relation_revised`) | yes (captured at the dispatch chokepoint) |
 | `_handle_get_node` / `_handle_get_nodes` | ✗ none | n/a |
 | `_handle_recall` (S1R chain) | ✓ but only when called from `hook_recall`; direct MCP recall has no S1R chain | partial |
 

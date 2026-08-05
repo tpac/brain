@@ -318,12 +318,12 @@ class TestEdgeTraceEvents(BrainTestBase):
 
     def test_connect_create_emits_trace_with_create_deltas(self):
         """Fresh create via dispatch emits trace with old=None deltas."""
-        from servers.daemon_dispatch import _handle_connect
+        from servers.daemon_dispatch import dispatch_command
         from servers.dal_graph import GraphDAL
         a = _make_node(self.brain)
         b = _make_node(self.brain)
 
-        _handle_connect(self.brain, {
+        dispatch_command(self.brain, 'connect', {
             'source_id': a, 'target_id': b, 'relation': 'extends',
             'description': 'why', 'weight': 0.7, 'reason': 'test create',
         }, [])
@@ -338,18 +338,18 @@ class TestEdgeTraceEvents(BrainTestBase):
 
     def test_connect_update_emits_trace_with_field_deltas(self):
         """Update via dispatch emits trace with field-level deltas."""
-        from servers.daemon_dispatch import _handle_connect
+        from servers.daemon_dispatch import dispatch_command
         from servers.dal_graph import GraphDAL
         a = _make_node(self.brain)
         b = _make_node(self.brain)
 
         # Initial create
-        _handle_connect(self.brain, {
+        dispatch_command(self.brain, 'connect', {
             'source_id': a, 'target_id': b, 'relation': 'extends',
             'description': 'orig', 'weight': 0.5, 'reason': 'init',
         }, [])
         # Update description only
-        _handle_connect(self.brain, {
+        dispatch_command(self.brain, 'connect', {
             'source_id': a, 'target_id': b, 'relation': 'extends',
             'description': 'updated', 'reason': 'desc shift',
         }, [])
@@ -366,17 +366,17 @@ class TestEdgeTraceEvents(BrainTestBase):
 
     def test_connect_no_op_emits_no_trace(self):
         """connect with no field changes → no trace emitted."""
-        from servers.daemon_dispatch import _handle_connect
+        from servers.daemon_dispatch import dispatch_command
         from servers.dal_graph import GraphDAL
         a = _make_node(self.brain)
         b = _make_node(self.brain)
 
-        _handle_connect(self.brain, {
+        dispatch_command(self.brain, 'connect', {
             'source_id': a, 'target_id': b, 'relation': 'extends',
             'description': 'X', 'weight': 0.5, 'reason': 'init',
         }, [])
         # Same values — no-op
-        _handle_connect(self.brain, {
+        dispatch_command(self.brain, 'connect', {
             'source_id': a, 'target_id': b, 'relation': 'extends',
             'description': 'X', 'weight': 0.5, 'reason': 'noop',
         }, [])
@@ -388,7 +388,7 @@ class TestEdgeTraceEvents(BrainTestBase):
 
     def test_connect_revive_emits_trace_with_create_deltas(self):
         """Connect on archived row → trace with create-style deltas (old=None)."""
-        from servers.daemon_dispatch import _handle_connect
+        from servers.daemon_dispatch import dispatch_command
         from servers.dal_graph import GraphDAL
         gdal = GraphDAL(self.brain.conn)
         a = _make_node(self.brain)
@@ -397,33 +397,40 @@ class TestEdgeTraceEvents(BrainTestBase):
         gdal.add_relation(a, b, 'extends', description='orig', weight=0.5)
         gdal.remove_relation(a, b, 'extends', archived_by='test')
 
-        _handle_connect(self.brain, {
+        dispatch_command(self.brain, 'connect', {
             'source_id': a, 'target_id': b, 'relation': 'extends',
             'description': 'revived', 'weight': 0.7, 'reason': 'revive',
         }, [])
 
         edge_id = gdal.get_edge_id(a, b)
         traces = _query_edge_revise_traces(self.brain, edge_id, 'extends')
-        # Most recent trace (the revive) should have create-style deltas
+        # Most recent trace (the revive): create-style field deltas (old=None,
+        # the documented "just created" signal) PLUS the archived 1→0 delta —
+        # the one row that distinguishes a revive from a plain create (step 5;
+        # nothing emitted it before).
         revive_trace = traces[-1]
-        self.assertTrue(all(d['old'] is None
-                            for d in revive_trace['metadata']['deltas']))
+        deltas = revive_trace['metadata']['deltas']
+        archived_deltas = [d for d in deltas if d['field'] == 'archived']
+        self.assertEqual(archived_deltas, [
+            {'field': 'archived', 'old': 1, 'new': 0}])
+        self.assertTrue(all(d['old'] is None for d in deltas
+                            if d['field'] != 'archived'))
 
     def test_disconnect_emits_archive_trace(self):
         """disconnect via brain_batch emits trace with archived flag flip."""
-        from servers.daemon_dispatch import _handle_brain_batch, _handle_connect
+        from servers.daemon_dispatch import dispatch_command
         from servers.dal_graph import GraphDAL
         a = _make_node(self.brain)
         b = _make_node(self.brain)
 
         # Setup: create the edge first
-        _handle_connect(self.brain, {
+        dispatch_command(self.brain, 'connect', {
             'source_id': a, 'target_id': b, 'relation': 'extends',
             'description': 'X', 'weight': 0.5, 'reason': 'init',
         }, [])
 
         # Then disconnect via brain_batch
-        _handle_brain_batch(self.brain, {
+        dispatch_command(self.brain, 'brain_batch', {
             'operations': [
                 {'op': 'disconnect', 'source_id': a, 'target_id': b,
                  'relation': 'extends', 'reason': 'cleanup'},
@@ -443,12 +450,12 @@ class TestEdgeTraceEvents(BrainTestBase):
 
     def test_chain_id_override_respected(self):
         """Caller-provided chain_id is used verbatim."""
-        from servers.daemon_dispatch import _handle_connect
+        from servers.daemon_dispatch import dispatch_command
         from servers.dal_graph import GraphDAL
         a = _make_node(self.brain)
         b = _make_node(self.brain)
 
-        _handle_connect(self.brain, {
+        dispatch_command(self.brain, 'connect', {
             'source_id': a, 'target_id': b, 'relation': 'extends',
             'description': 'X', 'reason': 'r',
             'chain_id': 's2-20260504-aspect_integration',
@@ -460,12 +467,12 @@ class TestEdgeTraceEvents(BrainTestBase):
 
     def test_scale_inferred_from_encoding_source(self):
         """encoding_source='s2:foo' → trace.scale='s2'."""
-        from servers.daemon_dispatch import _handle_connect
+        from servers.daemon_dispatch import dispatch_command
         from servers.dal_graph import GraphDAL
         a = _make_node(self.brain)
         b = _make_node(self.brain)
 
-        _handle_connect(self.brain, {
+        dispatch_command(self.brain, 'connect', {
             'source_id': a, 'target_id': b, 'relation': 'extends',
             'description': 'X', 'reason': 'r',
             'encoding_source': 's2:healer',
@@ -474,6 +481,99 @@ class TestEdgeTraceEvents(BrainTestBase):
         edge_id = GraphDAL(self.brain.conn).get_edge_id(a, b)
         traces = _query_edge_revise_traces(self.brain, edge_id, 'extends')
         self.assertEqual(traces[0]['scale'], 's2')
+
+    def test_disconnect_of_archived_relation_emits_no_trace(self):
+        """The observed-truth pin (step 5): disconnecting an already-archived
+        relation must emit NOTHING — the legacy path fabricated a 0→1 flip
+        trace for an archive that never happened."""
+        from servers.daemon_dispatch import dispatch_command
+        from servers.dal_graph import GraphDAL
+        a = _make_node(self.brain)
+        b = _make_node(self.brain)
+
+        dispatch_command(self.brain, 'connect', {
+            'source_id': a, 'target_id': b, 'relation': 'extends',
+            'description': 'X', 'reason': 'init'}, [])
+        edge_id = GraphDAL(self.brain.conn).get_edge_id(a, b)
+
+        disconnect = {'operations': [
+            {'op': 'disconnect', 'source_id': a, 'target_id': b,
+             'relation': 'extends', 'reason': 'cleanup'}]}
+        dispatch_command(self.brain, 'brain_batch', dict(disconnect), [])
+        n_after_first = len(_query_edge_revise_traces(
+            self.brain, edge_id, 'extends'))
+
+        # Second disconnect: row already archived → rowcount 0 → no trace.
+        dispatch_command(self.brain, 'brain_batch', dict(disconnect), [])
+        n_after_second = len(_query_edge_revise_traces(
+            self.brain, edge_id, 'extends'))
+        self.assertEqual(n_after_first, n_after_second,
+                         'disconnect of an archived relation fabricated a trace')
+
+    def test_edge_results_carry_no_manifest(self):
+        """`mutations` is dispatch plumbing — never in any edge tool result."""
+        from servers.daemon_dispatch import dispatch_command
+        a = _make_node(self.brain)
+        b = _make_node(self.brain)
+
+        r = dispatch_command(self.brain, 'connect', {
+            'source_id': a, 'target_id': b, 'relation': 'extends',
+            'description': 'X', 'reason': 'r'}, [])
+        self.assertNotIn('mutations', r)
+
+        r = dispatch_command(self.brain, 'revise_edge', {
+            'source_id': a, 'target_id': b, 'relation': 'extends',
+            'description': 'Y', 'reason': 'r'}, [])
+        self.assertNotIn('mutations', r)
+
+        r = dispatch_command(self.brain, 'connect_batch', {
+            'connections': [{'source_id': a, 'target_id': b,
+                             'relation': 'depends_on', 'description': 'Z'}],
+        }, [])
+        self.assertNotIn('mutations', r)
+
+        r = dispatch_command(self.brain, 'brain_batch', {
+            'operations': [{'op': 'disconnect', 'source_id': a,
+                            'target_id': b, 'relation': 'extends',
+                            'reason': 'r'}]}, [])
+        self.assertNotIn('mutations', r)
+        for op_row in r['result']['results']:
+            self.assertNotIn('mutations', op_row)
+
+    def test_revise_edge_rename_plus_update_is_atomic(self):
+        """revise_edge's rename+update path commits ONCE (step 5 envelope) —
+        legacy committed twice, leaving half a revise durable on failure
+        between the two ops."""
+        from servers.daemon_dispatch import dispatch_command
+        a = _make_node(self.brain)
+        b = _make_node(self.brain)
+        dispatch_command(self.brain, 'connect', {
+            'source_id': a, 'target_id': b, 'relation': 'extends',
+            'description': 'orig', 'reason': 'init'}, [])
+
+        real_commit = self.brain.conn.commit
+        commits = {'n': 0}
+
+        def counting_commit():
+            commits['n'] += 1
+            return real_commit()
+
+        self.brain.conn.commit = counting_commit
+        try:
+            r = dispatch_command(self.brain, 'revise_edge', {
+                'source_id': a, 'target_id': b, 'relation': 'extends',
+                'new_relation': 'depends_on', 'description': 'new',
+                'reason': 'rename+update'}, [])
+        finally:
+            self.brain.conn.commit = real_commit
+
+        self.assertTrue(r.get('ok'))
+        self.assertEqual(commits['n'], 1,
+                         'rename+update took %d commits, envelope broken'
+                         % commits['n'])
+        # Both halves landed
+        row = _get_edge_relation_row(self.brain, a, b, 'depends_on')
+        self.assertEqual(row['description'], 'new')
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -523,16 +623,16 @@ class TestWrapperFieldPreservation(BrainTestBase):
 
     def test_dispatch_handler_preserves_when_no_description_arg(self):
         """_handle_connect with no description arg → preserves existing."""
-        from servers.daemon_dispatch import _handle_connect
+        from servers.daemon_dispatch import dispatch_command
         a = _make_node(self.brain)
         b = _make_node(self.brain)
 
-        _handle_connect(self.brain, {
+        dispatch_command(self.brain, 'connect', {
             'source_id': a, 'target_id': b, 'relation': 'extends',
             'description': 'original', 'weight': 0.5, 'reason': 'init',
         }, [])
         # Same call without description → preserves
-        _handle_connect(self.brain, {
+        dispatch_command(self.brain, 'connect', {
             'source_id': a, 'target_id': b, 'relation': 'extends',
             'weight': 0.9, 'reason': 'weight bump',
         }, [])
@@ -693,9 +793,9 @@ class TestCreatorAttribution(BrainTestBase):
     def test_brain_batch_remember_connect_to_defaults_to_anchor(self):
         """brain_batch remember+connect_to with NO top-level source → edge
         'anchor' (the deferred connect_to falls back to 'anchor' — no proxy)."""
-        from servers.daemon_dispatch import _handle_brain_batch
+        from servers.daemon_dispatch import dispatch_command
         target = _make_node(self.brain, title='Target epsilon')
-        r = _handle_brain_batch(self.brain, {
+        r = dispatch_command(self.brain, 'brain_batch', {
             'operations': [
                 {'op': 'remember', 'type': 'concept', 'title': 'BB src',
                  'content': 'c',
@@ -712,10 +812,10 @@ class TestCreatorAttribution(BrainTestBase):
     def test_handle_connect_defaults_to_anchor_on_create(self):
         """Direct connect with no source → fresh edge tagged 'anchor'
         (via _handle_connect's `or 'anchor'`, not a proxy stamp)."""
-        from servers.daemon_dispatch import _handle_connect
+        from servers.daemon_dispatch import dispatch_command
         a = _make_node(self.brain)
         b = _make_node(self.brain)
-        _handle_connect(self.brain, {
+        dispatch_command(self.brain, 'connect', {
             'source_id': a, 'target_id': b, 'relation': 'extends',
             'description': 'w', 'reason': 'r',
         }, [])
@@ -723,10 +823,10 @@ class TestCreatorAttribution(BrainTestBase):
         self.assertEqual(row['encoding_source'], 'anchor')
 
     def test_connect_batch_defaults_to_anchor(self):
-        from servers.daemon_dispatch import _handle_connect_batch
+        from servers.daemon_dispatch import dispatch_command
         a = _make_node(self.brain)
         b = _make_node(self.brain)
-        _handle_connect_batch(self.brain, {
+        dispatch_command(self.brain, 'connect_batch', {
             'connections': [{'source_id': a, 'target_id': b,
                              'relation': 'extends', 'description': 'w'}],
         }, [])
@@ -735,10 +835,10 @@ class TestCreatorAttribution(BrainTestBase):
 
     def test_brain_batch_connect_op_defaults_to_anchor(self):
         """brain_batch connect op with NO top-level source → 'anchor'."""
-        from servers.daemon_dispatch import _handle_brain_batch
+        from servers.daemon_dispatch import dispatch_command
         a = _make_node(self.brain)
         b = _make_node(self.brain)
-        _handle_brain_batch(self.brain, {
+        dispatch_command(self.brain, 'brain_batch', {
             'operations': [
                 {'op': 'connect', 'source_id': a, 'target_id': b,
                  'relation': 'extends', 'description': 'w'},
@@ -752,17 +852,17 @@ class TestCreatorAttribution(BrainTestBase):
     def test_handle_connect_preserves_source_on_reconnect(self):
         """Re-connecting an existing edge updates description but must NOT
         relabel its creator — the clobber the proxy-stamp approach introduced."""
-        from servers.daemon_dispatch import _handle_connect
+        from servers.daemon_dispatch import dispatch_command
         a = _make_node(self.brain)
         b = _make_node(self.brain)
         # Born from the encoder
-        _handle_connect(self.brain, {
+        dispatch_command(self.brain, 'connect', {
             'source_id': a, 'target_id': b, 'relation': 'extends',
             'description': 'orig', 'reason': 'init',
             'encoding_source': 'encoder:sonnet',
         }, [])
         # Anchor re-connects with no source — must preserve 'encoder:sonnet'
-        _handle_connect(self.brain, {
+        dispatch_command(self.brain, 'connect', {
             'source_id': a, 'target_id': b, 'relation': 'extends',
             'description': 'updated', 'reason': 'reconnect',
         }, [])

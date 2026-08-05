@@ -1055,7 +1055,11 @@ class GraphDAL:
           - Archived row exists → REVIVE: archived=0, fresh created_at, all fields
                                   reset to passed values + defaults (semantic
                                   fresh row; PK forces row reuse, trace events
-                                  capture the lifecycle)
+                                  capture the lifecycle). Deltas carry an extra
+                                  `archived: 1→0` row naming the revival; the
+                                  field deltas keep old=None — an empty `old` is
+                                  the documented "just created" signal, and a
+                                  revive IS a semantic fresh row.
 
         Auto-strengthen behavior dropped (Stage 1B Option α). Hebbian co-access
         weight bumps are applied off the recall hot path by
@@ -1124,6 +1128,16 @@ class GraphDAL:
             'warnings': [],
         }
 
+        # Birth-deltas for the INSERT and revive branches — one list, so the
+        # two "semantic fresh row" branches cannot drift apart. old=None on
+        # every field is the documented "just created" signal.
+        def _birth_deltas():
+            return [
+                {'field': 'description', 'old': None, 'new': desc_value},
+                {'field': 'weight', 'old': None, 'new': weight_value},
+                {'field': 'encoding_source', 'old': None, 'new': es_value},
+            ]
+
         if existing is None:
             # Branch 1: No row → INSERT
             self.conn.execute(
@@ -1132,12 +1146,7 @@ class GraphDAL:
                 'VALUES (?, ?, ?, ?, ?, ?)',
                 (edge_id, relation, desc_value, weight_value, es_value, ts))
             result['created'] = True
-            # Treat all initial fields as create-deltas (old=None)
-            result['deltas'] = [
-                {'field': 'description', 'old': None, 'new': desc_value},
-                {'field': 'weight', 'old': None, 'new': weight_value},
-                {'field': 'encoding_source', 'old': None, 'new': es_value},
-            ]
+            result['deltas'] = _birth_deltas()
 
         elif existing[3] == 0:
             # Branch 2: Active row → field-preserving UPDATE
@@ -1184,11 +1193,10 @@ class GraphDAL:
                 (desc_value, weight_value, es_value, ts, edge_id, relation))
             result['created'] = True
             result['revived_from_archive'] = True
-            result['deltas'] = [
-                {'field': 'description', 'old': None, 'new': desc_value},
-                {'field': 'weight', 'old': None, 'new': weight_value},
-                {'field': 'encoding_source', 'old': None, 'new': es_value},
-            ]
+            # The archived flip is the one delta that distinguishes a revive
+            # from a plain create in the trace row — nothing emitted it before.
+            result['deltas'] = ([{'field': 'archived', 'old': 1, 'new': 0}]
+                                + _birth_deltas())
 
         # Update aggregate weight + last_strengthened on physical edge
         self._update_aggregate_weight(edge_id)
@@ -1210,25 +1218,28 @@ class GraphDAL:
                     'UPDATE edge_relations SET embedding = NULL, embedding_model = NULL '
                     'WHERE edge_id = ? AND relation = ?', (edge_id, relation))
                 commit_unless_batched(self.conn)
-            try:
-                from . import embed_queue
-                embed_queue.enqueue_edge(edge_id)
-            except Exception as _eq_err:
-                # No-silent-errors: was bare `except: pass` pre-migration.
-                # The enqueue is a set.add — failure here is exotic (lock
-                # contention, import collapse). Log so a real producer
-                # outage is visible. Best-effort; we do not have a brain
-                # reference here, so route via _log_error on the only
-                # plausibly-reachable receiver (the connection's brain),
-                # falling back to stderr.
-                try:
-                    import sys as _sys
-                    print('[GraphDAL.add_relation] enqueue_edge failed: %s'
-                          % _eq_err, file=_sys.stderr)
-                except Exception:
-                    pass
+            self._enqueue_edge_embed(edge_id, 'add_relation')
 
         return result
+
+    @staticmethod
+    def _enqueue_edge_embed(edge_id, origin):
+        """Enqueue an edge for async re-embedding, loudly on failure.
+
+        The enqueue is a set.add — failure is exotic (lock contention, import
+        collapse). No brain reference at DAL level, so a stderr line is the
+        loudest available channel; was bare `except: pass` pre-migration.
+        """
+        try:
+            from . import embed_queue
+            embed_queue.enqueue_edge(edge_id)
+        except Exception as _eq_err:
+            try:
+                import sys as _sys
+                print('[GraphDAL.%s] enqueue_edge failed: %s'
+                      % (origin, _eq_err), file=_sys.stderr)
+            except Exception:
+                pass
 
     def get_relations(self, edge_id, include_archived: bool = False):
         """Get active relations for an edge by edge_id.
@@ -1259,25 +1270,37 @@ class GraphDAL:
         Flips archived=1 on the matching row. Previously hard-DELETEd; the
         change preserves edge history for recovery. The edges aggregate row
         stays regardless — reads filter via edge_relations joins.
+
+        Returns OBSERVED truth, from the UPDATE's rowcount — never a fabricated
+        flip: {'edge_id', 'relation', 'flipped', 'deltas'}. flipped=False (empty
+        deltas) means the row was already archived or never existed; a caller
+        emitting traces from `deltas` therefore cannot record an archive that
+        didn't happen. edge_id is None when no physical edge exists at all.
         """
         edge_id = self.get_edge_id(source_id, target_id)
+        result = {'edge_id': edge_id, 'relation': relation,
+                  'flipped': False, 'deltas': []}
         if not edge_id:
-            return
+            return result
 
         ts = iso_now()
         # NULL the embedding too — same pattern as delete_node_edges and
         # decay_edges. Symmetric with node archive (which DELETEs from
         # node_enrichments). Revive via add_relation Branch 3 re-embeds.
-        self.conn.execute(
+        cur = self.conn.execute(
             'UPDATE edge_relations '
             'SET archived = 1, archived_at = ?, archived_by = ?, '
             '    embedding = NULL, embedding_model = NULL '
             'WHERE edge_id = ? AND relation = ? AND archived = 0',
             (ts, archived_by, edge_id, relation))
+        if cur.rowcount > 0:
+            result['flipped'] = True
+            result['deltas'] = [{'field': 'archived', 'old': 0, 'new': 1}]
 
         # Recompute aggregate weight from remaining active relations
         self._update_aggregate_weight(edge_id)
         commit_unless_batched(self.conn)
+        return result
 
     def rename_relation(self, edge_id: str, old_relation: str,
                         new_relation: str, encoding_source: str) -> None:
@@ -1297,13 +1320,7 @@ class GraphDAL:
             "WHERE edge_id = ? AND relation = ?",
             (new_relation, encoding_source, edge_id, old_relation))
         commit_unless_batched(self.conn)
-        try:
-            from . import embed_queue
-            embed_queue.enqueue_edge(edge_id)
-        except Exception as _eq_err:
-            import sys as _sys
-            print('[GraphDAL.rename_relation] enqueue_edge failed: %s' % _eq_err,
-                  file=_sys.stderr)
+        self._enqueue_edge_embed(edge_id, 'rename_relation')
 
     def _update_aggregate_weight(self, edge_id):
         """Set edges.weight to max weight across ACTIVE relation rows.

@@ -215,6 +215,55 @@ class BrainConnectionsMixin:
             return {'ok': False, 'error': 'edge has no active relation %r (has: %s)' % (
                 relation, sorted(active))}
 
+        # rename_relation and add_relation each self-commit standalone — a
+        # rename+update revise would get TWO durability points, and a failure
+        # between them persists half the revise. Own the envelope: flip
+        # in_batch for the duration (save/restore — we may already be inside
+        # a brain_batch that owns it), commit once at the end if we own it.
+        _owned_batch = not self.conn.in_batch
+        if _owned_batch:
+            self.conn.in_batch = True
+
+        try:
+            deltas, final_relation, err = self._revise_edge_ops(
+                gdal, edge_id, active, source_id, target_id, relation,
+                new_relation, description, weight, encoding_source)
+        except Exception:
+            # A raise between the rename and the field-update must not leave
+            # uncommitted writes on the connection — the next batch's
+            # entry-flush would silently commit half a revise.
+            if _owned_batch:
+                self.conn.in_batch = False
+                self.conn.rollback()
+            raise
+        if _owned_batch:
+            self.conn.in_batch = False
+            if not err:
+                # revise_edge owns the rename+update envelope — one durability
+                # point for what was two independent commits pre-step-5.
+                self.conn.commit()  # commit-ok: envelope owner
+            # No rollback on the err path: the only error return is the rename
+            # collision check, which runs SELECTs only — nothing of ours to
+            # roll back, and a rollback here would silently destroy a PRIOR
+            # leaked transaction's writes (the class brain_batch's entry-flush
+            # commits loudly instead). Leaked txns stay open, as pre-step-5.
+        if err:
+            return err
+
+        # Embedding is handled async: rename_relation and add_relation both NULL
+        # the stored embedding + enqueue_edge, and the embed_queue worker
+        # re-embeds via backfill_edge_embeddings. revise_edge does no embed work.
+        # source_id/target_id echoed so the trace manifest can carry the
+        # directional pair without a second lookup (edge_id is one-way).
+        return {'ok': True, 'edge_id': edge_id, 'relation': final_relation,
+                'source_id': source_id, 'target_id': target_id,
+                'deltas': deltas, 'warnings': []}
+
+    def _revise_edge_ops(self, gdal, edge_id, active, source_id, target_id,
+                         relation, new_relation, description, weight,
+                         encoding_source):
+        """The rename + field-update ops of revise_edge, envelope-agnostic.
+        Returns (deltas, final_relation, error_dict_or_None)."""
         deltas = []
         final_relation = relation
         if new_relation and new_relation != relation:
@@ -224,9 +273,10 @@ class BrainConnectionsMixin:
             all_relations = {r['relation']
                              for r in gdal.get_relations(edge_id, include_archived=True)}
             if new_relation in all_relations:
-                return {'ok': False, 'error': 'edge already has relation %r (active or '
-                        'archived) — rename would collide on the (edge_id, relation) '
-                        'primary key' % new_relation}
+                return deltas, final_relation, {
+                    'ok': False, 'error': 'edge already has relation %r (active or '
+                    'archived) — rename would collide on the (edge_id, relation) '
+                    'primary key' % new_relation}
             # rename_relation ALWAYS writes encoding_source. Preserve the row's
             # existing provenance when the caller didn't pass one — defaulting to
             # 'anchor' would silently clobber a field the caller never asked to
@@ -248,11 +298,7 @@ class BrainConnectionsMixin:
             res = gdal.add_relation(source_id, target_id, final_relation, **kwargs)
             deltas.extend(res.get('deltas') or [])
 
-        # Embedding is handled async: rename_relation and add_relation both NULL
-        # the stored embedding + enqueue_edge, and the embed_queue worker
-        # re-embeds via backfill_edge_embeddings. revise_edge does no embed work.
-        return {'ok': True, 'edge_id': edge_id, 'relation': final_relation,
-                'deltas': deltas}
+        return deltas, final_relation, None
 
     # _random_walk removed 2026-05-30 (DAL cleanup Phase 0) — dead (0 callers);
     # the random-walk neighbor path is retired (GraphDAL.get_random_walk_neighbors
