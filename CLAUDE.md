@@ -355,9 +355,16 @@ Repo PROVENANCE — where a node was learned, never what it's about. Stored in
 schema v30 (`_migrate_v30_project_to_kv` moves values → kv, then DROP COLUMN).
 
 **Deterministic, never agent-authored.** `SessionContext.project` is derived
-from cwd at boot in the same git call as branch+worktree (main-repo dir name;
-a worktree session resolves to the same project as the main tree; `''` for
-non-repo sessions). Two chokepoints enforce it — `stamp_project_provenance`
+from cwd at boot by the host-adapter layer (`servers/session_env.py` —
+porting the brain to another host means reimplementing that module; Brain
+only RECEIVES env via `set_env`). Resolution order: `.brain-project` marker
+file (walked cwd→$HOME/root, explicit intent, beats git — rename-stability;
+never auto-written) → main-repo dir name from the same single git call as
+branch+worktree (a worktree session resolves to the same project as the main
+tree) → cwd basename for non-repo sessions (junk anchors like `$HOME`,
+`/tmp`, `Downloads` → `''`). "Not a git repository" is definitive (falls
+through to basename); transient git failure keeps the session's known value.
+Two chokepoints enforce it — `stamp_project_provenance`
 (`scales/dispatch.py`): the MCP write handlers force-stamp the session's
 project on node-creating payloads and strip it everywhere else (a revise
 never moves provenance); the encoder attribution does the same for the Scribe,

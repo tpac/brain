@@ -160,8 +160,7 @@ class TestSessionContextPersistence:
         # '.git/worktrees/' + last-occurrence split, so neither a main tree nor a
         # linked tree under such a path mis-resolves. (A bare '/worktrees/' marker
         # mis-parsed both — the bug this test pins.)
-        from servers.brain import Brain
-        f = Brain._worktree_from_gitdir
+        from servers.session_env import worktree_from_gitdir as f
         assert f('.git') == ''                                             # main, relative
         assert f('/Users/t/brain/.git') == ''                             # main, absolute (subdir)
         assert f('/Users/t/brain/.git/worktrees/emb-bench') == 'emb-bench'  # linked
@@ -174,8 +173,7 @@ class TestSessionContextPersistence:
         # across checkouts. Relative output ('.git' from the repo root) resolves
         # against cwd; submodule git-dirs resolve to the superproject; unknown
         # shapes → '' (never a crash, never a wrong slug).
-        from servers.brain import Brain
-        f = Brain._project_from_common_dir
+        from servers.session_env import project_from_common_dir as f
         assert f('/Users/t/brain/.git', '/anywhere') == 'brain'           # absolute
         assert f('.git', '/Users/t/brain') == 'brain'                     # relative → cwd
         assert f('/Users/t/brain/.git/modules/sub', '/x') == 'brain'      # submodule
@@ -218,6 +216,60 @@ class TestSessionContextPersistence:
             env = self.brain.session_env_for('wt-sess')
             assert env['worktree'] == 'wt-emb-bench'
             assert env['project'] == 'repo'
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_project_resolution_marker_and_basename(self):
+        # The host-adapter resolution chain (session_env): marker file beats
+        # git beats cwd basename; junk anchors resolve to '' (unscoped);
+        # malformed markers are skipped, never fatal.
+        import shutil, subprocess, tempfile, os
+        from servers.session_env import detect_session_env, \
+            project_from_cwd_basename
+        if not shutil.which('git'):
+            pytest.skip('git not available')
+        root = tempfile.mkdtemp()
+        try:
+            # Non-repo folder → basename fallback (the Slack-session fix:
+            # a real working folder must not stamp project='').
+            plain = os.path.join(root, 'slack-watch')
+            os.makedirs(plain)
+            assert detect_session_env(plain) == ('unknown', '', 'slack-watch')
+
+            # Marker beats basename; marker in a PARENT found by the walk.
+            with open(os.path.join(plain, '.brain-project'), 'w') as f:
+                f.write('slack\n')
+            assert detect_session_env(plain)[2] == 'slack'
+            child = os.path.join(plain, 'sub', 'dir')
+            os.makedirs(child)
+            assert detect_session_env(child)[2] == 'slack'
+
+            # Marker beats git — rename-stability for repos.
+            repo = os.path.join(root, 'renamed-checkout')
+            os.makedirs(repo)
+            subprocess.run(['git', '-C', repo, 'init', '-q'], check=True)
+            subprocess.run(['git', '-C', repo, '-c', 'user.email=t@t',
+                            '-c', 'user.name=t', 'commit', '--allow-empty',
+                            '-m', 'init', '-q'], check=True)
+            assert detect_session_env(repo)[2] == 'renamed-checkout'
+            with open(os.path.join(repo, '.brain-project'), 'w') as f:
+                f.write('brain\n')
+            assert detect_session_env(repo)[2] == 'brain'
+
+            # Malformed marker → skipped, falls through to basename.
+            bad = os.path.join(root, 'bad-marker')
+            os.makedirs(bad)
+            with open(os.path.join(bad, '.brain-project'), 'w') as f:
+                f.write('../evil path\n')
+            assert detect_session_env(bad)[2] == 'bad-marker'
+
+            # Junk anchors → unscoped.
+            downloads = os.path.join(root, 'Downloads')
+            os.makedirs(downloads)
+            assert detect_session_env(downloads)[2] == ''
+            assert project_from_cwd_basename(os.path.expanduser('~')) == ''
+            assert project_from_cwd_basename('/tmp') == ''
+            assert project_from_cwd_basename('/') == ''
         finally:
             shutil.rmtree(root, ignore_errors=True)
 

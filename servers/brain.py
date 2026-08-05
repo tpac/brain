@@ -577,95 +577,15 @@ class Brain(
             return ''
         return self.get_config('session_context_' + session_id, '') or ''
 
-    def _run_git(self, cwd: str, *args: str):
-        """Run `git -C cwd <args>`; return stripped stdout, or None on any failure
-        (no cwd, non-zero exit, timeout, exception). Single source for the daemon's
-        env-NEUTRAL git shelling — branch + worktree detection both route through
-        it, so timeout / error-logging / hardening live in one place."""
-        if not cwd:
-            return None
-        try:
-            import subprocess
-            r = subprocess.run(
-                ["git", "-C", cwd, *args],
-                capture_output=True, text=True, timeout=5)
-            if r.returncode == 0:
-                return r.stdout.strip()
-        except Exception as e:
-            try:
-                self._log_error('git_run', e, 'git ' + ' '.join(args))
-            except Exception:
-                pass
-        return None
-
-    @staticmethod
-    def _worktree_from_gitdir(gitdir: str) -> str:
-        """Linked-worktree name from a git-dir string, or '' for the main tree.
-
-        A linked worktree's git-dir ends '<repo>/.git/worktrees/<name>'; the main
-        tree's is plain '.git' (or an absolute '<repo>/.git' from a subdir).
-        Anchored on '.git/worktrees/' (NOT a bare '/worktrees/') and split on the
-        LAST occurrence, so a repo whose own path contains a 'worktrees' segment
-        can't false-match — neither a main tree at '/x/worktrees/repo/.git' nor a
-        linked tree under it."""
-        marker = ".git/worktrees/"
-        if marker not in gitdir:
-            return ''
-        return gitdir.split(marker)[-1].split("/", 1)[0].strip()
-
-    def detect_git_branch(self, cwd: str) -> str:
-        """Current git branch for a path. Env-NEUTRAL — fed `cwd`, runs git on it.
-        'unknown' on any failure. Used standalone by the WorktreeCreate hook; boot
-        uses detect_git_env (one call covers branch + worktree)."""
-        return self._run_git(cwd, "rev-parse", "--abbrev-ref", "HEAD") or 'unknown'
-
-    @staticmethod
-    def _project_from_common_dir(common: str, cwd: str) -> str:
-        """Repo identity from `git rev-parse --git-common-dir`: the main repo's
-        directory name, identical from the main tree and every linked worktree
-        (both report the same common dir, e.g. '/Users/x/brain/.git' → 'brain').
-        Relative output ('.git' from the repo root) is resolved against cwd.
-        Split on the LAST '/.git' so submodule git-dirs ('<repo>/.git/modules/…')
-        still resolve to the superproject. '' when the shape is unrecognized."""
-        if not common:
-            return ''
-        if not os.path.isabs(common):
-            common = os.path.abspath(os.path.join(cwd or '.', common))
-        marker = '/.git'
-        if marker not in common:
-            return ''
-        repo_root = common.rsplit(marker, 1)[0]
-        return os.path.basename(repo_root)
-
     def detect_git_env(self, cwd: str):
-        """Branch + worktree + project from ONE git call — the boot path's
-        combined probe (one fork+exec per SessionStart). Returns
-        (branch, worktree, project):
-
-          - git failed / not a repo → ('unknown', None, None). None is the
-            'detection failed — keep what we have' signal: set_env leaves the
-            field unchanged, so a transient git hiccup on resume can't wipe a
-            known worktree/project. (branch keeps its long-standing 'unknown'.)
-          - main working tree        → (branch, '', repo_name)
-          - linked worktree          → (branch, name, repo_name)
-
-        project is the deterministic session identity the write chokepoints
-        stamp onto nodes/traces (provenance — where it was learned). It is the
-        main repo's directory name, so a worktree session resolves to the same
-        project as the main tree.
-
-        `git rev-parse --abbrev-ref HEAD --git-dir --git-common-dir` prints
-        branch / git-dir / common-dir on lines 1-3."""
-        out = self._run_git(cwd, "rev-parse", "--abbrev-ref", "HEAD",
-                            "--git-dir", "--git-common-dir")
-        if out is None:
-            return ('unknown', None, None)
-        lines = out.splitlines()
-        branch = (lines[0].strip() if lines else '') or 'unknown'
-        gitdir = lines[1].strip() if len(lines) > 1 else ''
-        common = lines[2].strip() if len(lines) > 2 else ''
-        return (branch, self._worktree_from_gitdir(gitdir),
-                self._project_from_common_dir(common, cwd))
+        """Branch + worktree + project for a session cwd — thin delegate to the
+        host-adapter layer (session_env.detect_session_env). The brain RECEIVES
+        session identity; deriving it from the host (git, marker files, cwd)
+        lives in servers/session_env.py so a different host swaps that module,
+        not Brain. Returns (branch, worktree, project); None fields mean
+        'detection failed — keep what we have' (set_env's three-state)."""
+        from .session_env import detect_session_env
+        return detect_session_env(cwd, log=self._log_error)
 
     def session_env_for(self, session_id: str) -> dict:
         """Per-session env (cwd, branch, worktree, project) for a stream — fed in
