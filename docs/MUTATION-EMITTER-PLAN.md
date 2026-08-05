@@ -259,8 +259,12 @@ step's own new-type coverage. Tier: targeted test files per step; full suite at 
 > - **`co_anchored` → `noise` (Tom, 2026-08-04)**: the `brain.revise` /
 >   `co_anchored_made` bullet below is SUPERSEDED — the refresh path stays deliberately
 >   dark under the aspect coverage rule (see decision record §5). No pop-trap, no
->   `brain.revise` return change. `aspects_v1.json` edited in this step;
->   `reconcile_working_copy` case 3 heals it into live brains on restart.
+>   `brain.revise` return change. `aspects_v1.json` (seed) edited in this step.
+>   **Deploy finding:** heal REFUSED the addition on the live brain — the classifier had
+>   already grown `co_anchored` into `temporal_sequence` in the WORKING copy, and noise
+>   is exclusive. Required the supervised member-move (working-copy edit: out of
+>   temporal_sequence, into noise + restart). Lesson: an aspect-membership check against
+>   the SEED says nothing about classifier-grown working copies.
 > - **The brain_batch revise branch converted NOW, not at step 7**: it splats `**r` into
 >   agent-visible `results[]`, so leaving `mutations` on the sub-result was the 6M-char
 >   class — instead the batch accumulates sub-manifests (`_accumulate_mutations`, the same
