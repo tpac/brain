@@ -148,11 +148,11 @@ class SessionContext:
     def get_frame(self, brain) -> str:
         """Build and return Anchor's structured awareness Frame for this session.
 
-        Frame Constructor — markdown text with three sections (What I've learned
-        / Current focus / Recent moves), composed from existing brain queries
-        plus this session's encoder state. The wisdom section is relevance-
-        ranked mid-session and seeded-influence-sampled at boot (stable within a
-        session). No LLM call.
+        Frame Constructor — markdown text with three sections (Session /
+        Current focus / Recent moves), composed from per-session state: the
+        deterministic situational header (project, counterpart, clock,
+        worktree) plus this session's encoder residue. No LLM call, no
+        queried nodes.
 
         Brain is passed as a dependency rather than stored on SessionContext —
         SessionContext is a per-request data carrier, brain is the singleton.

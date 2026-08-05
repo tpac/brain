@@ -26,7 +26,7 @@ REQUIRED_ASPECTS: tuple = (
     'episodic_anchor',      # moment / anchor_quote / user_quote / quote types
     'active_thread',        # open / tension / hypothesis / aspiration types
     'lesson_insight',       # lesson / insight / validation / reflection types
-    'wisdom',               # generative subset (insight/lesson/principle/vision/reflection/meta_learning/philosophy) — Frame's "What I've learned"
+    'wisdom',               # generative subset (insight/lesson/principle/vision/reflection/meta_learning/philosophy)
 
     # Edge-facing (used by S2 community / consolidation / healer)
     'generic_relation',         # related, related_to (skip set in community/consolidation)

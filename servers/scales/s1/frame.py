@@ -1,147 +1,65 @@
 """Frame Constructor — Anchor's structured awareness object.
 
-Produces a markdown Frame, deterministically composed from the brain's
-existing API (no LLM call, no new SQL). Three sections:
+Produces a markdown Frame, deterministically composed from per-session state
+(no LLM call, no queried nodes, no new SQL). Sections:
 
-    What I've learned — the `wisdom` aspect (insight / lesson / principle /
-                        vision / reflection / meta_learning / philosophy): the
-                        generative understanding that shapes how Anchor thinks.
-                        Focus-adaptive — relevance-ranked against the session
-                        arc when present, influence-sampled at boot.
-    Current focus     — the encoder's rolling per-session arc.
-    Recent moves      — the encoder's recent per-session journal.
+    Session       — deterministic situational header: project, counterpart,
+                    clock, worktree. Each line exists to prevent a named
+                    failure (see _render_session_header).
+    Current focus — the encoder's rolling per-session arc.
+    Recent moves  — the encoder's recent per-session journal.
 
 Same Frame renders at boot (SessionStart hook) and during conversation
 (hook_recall → run_surface).
 
-Operator and Partnership are deliberately absent: they were recency-by-type
-pulls that, for a mature brain whose work is software, filled with engineering
-nodes (a dev changelog wearing partnership labels) and polluted Haiku's
-per-turn prior. Seed-brain operator/identity scaffolding lives in the
-conditional Zero-Memory boot block (docs/DISTRIBUTION-READINESS.md §7); the
-rest is recoverable via recall() on demand.
-
-Aspect routing:
-    brain.aspects.wisdom → What I've learned
+Queried-node sections are deliberately absent. Operator/Partnership were
+recency-by-type pulls that filled with engineering nodes and polluted Haiku's
+per-turn prior; the wisdom section ("What I've learned") was removed
+2026-07-16/2026-08-05 — un-measured selection ("organized priming" is the
+recorded return-intent, behind the identity-prior redesign). Seed-brain
+operator/identity scaffolding lives in the conditional Zero-Memory boot block
+(docs/DISTRIBUTION-READINESS.md §7); everything else is recoverable via
+recall() on demand.
 """
 
-import random
-from typing import List
+import datetime as _dt
+
+from servers.clock import conversation_now
+from servers.daemon_config import get_operator_name
 
 
-# ── Caps ──
-WISDOM_RENDER = 5      # wisdom nodes surfaced
-WISDOM_POOL = 200      # wide skinny candidate pull, degree-ranked in Python at boot
-WISDOM_HUB_CAP = 30    # structural degree past which influence is dampened, so
-                       # over-connected hubs don't crowd out genuinely deep nodes
+def _render_session_header(brain, session_id: str, at=None) -> str:
+    """Session — the deterministic situational anchor.
 
-
-def _influence_sample(brain, pool: List[dict], k: int, seed: str = '') -> List[dict]:
-    """Rank wisdom candidates by STRUCTURAL graph degree, dampen runaway hubs,
-    then sample k from the top tier — seeded per session (varied across
-    sessions, stable within one, so the list doesn't reshuffle each arc-less
-    turn).
-
-    Boot has no session arc to relevance-rank against, so we surface a *varied*
-    set of high-influence wisdom rather than a fixed top-N. Degree comes from
-    the brain's structural-degree cache (excludes Hebbian co_accessed /
-    emergent_bridge edges — topology, not churn — and is already built at
-    warm_up). Hub-dampening keeps over-connected nodes from crowding out
-    genuinely deep ones. A failed cache build logs loud (in _ensure_*) and
-    degrades to an unranked sample — never silent.
+    Every line names the failure it prevents:
+      Project     — cross-project contamination: without a current-project
+                    anchor Haiku can't discount foreign-project candidates
+                    (the People Inc pick, s1r-42ff289f-22). '(unscoped)' is
+                    itself signal: no project pressure applies.
+      Counterpart — speaker/attribution bleed once multiple counterparts
+                    exist; today the install default (the speaker arc's
+                    accessor replaces this lookup when it lands).
+      Now         — temporal misjudgment: candidates render relative times,
+                    so consumers half-know 'now'; the explicit clock makes
+                    'yesterday'/'the Jul 22 deadline' resolvable. Routed
+                    through conversation_now — eval replays inject historical
+                    time; bare wall-clock would corrupt them.
+      Worktree    — parallel-stream confusion: which checkout this stream
+                    is acting on (only rendered when in one).
     """
-    if len(pool) <= k:
-        return pool
-
-    brain._ensure_structural_degree_cache()
-    degree = getattr(brain, '_structural_degree_cache', {}) or {}
-
-    def _influence(n: dict) -> float:
-        d = degree.get(n.get('id'), 0)
-        if d <= WISDOM_HUB_CAP:
-            return float(d)
-        return WISDOM_HUB_CAP * WISDOM_HUB_CAP / d  # dampen past the cap
-
-    top = sorted(pool, key=_influence, reverse=True)[:max(k * 2, k)]
-    if len(top) <= k:
-        return top
-    rng = random.Random(seed) if seed else random
-    return rng.sample(top, k)
-
-
-def _snippet(node: dict, limit: int = 200) -> str:
-    """Short content for the wisdom render — prefer content_summary, whitespace-
-    collapsed to one line and trimmed at a word boundary (no mid-word cuts)."""
-    text = ' '.join((node.get('content_summary') or node.get('content') or '').split())
-    if len(text) <= limit:
-        return text
-    return text[:limit].rsplit(' ', 1)[0].rstrip() + '…'
-
-
-def _render_wisdom(brain, arc_text: str = '', session_id: str = '') -> str:
-    """What I've learned — the inspiring, generative wisdom layer.
-
-    Pulls the `wisdom` aspect (insight / lesson / principle / vision /
-    reflection / meta_learning / philosophy) — explicitly NOT operational rules
-    or tactical record-keeping.
-
-    Focus present (mid-session): relevance-rank the wisdom nodes against the
-    session's current focus, so the surfaced wisdom tracks the topic and
-    refreshes every encode (the encoder updates current_focus; the Frame reads
-    it at the next turn).
-
-    No focus (boot/fresh): influence-sample (see _influence_sample) so waking
-    surfaces a varied set of high-influence wisdom rather than a fixed list.
-    """
-    # by_name (not attribute access) so a missing aspect degrades gracefully —
-    # surface builds the Frame every turn and isn't wrapped, so a raise here
-    # would crash recall, not just boot.
-    wis = brain.aspects.by_name('wisdom')
-    if wis is None:
-        # Loud: a REQUIRED aspect is missing — surface as an error, not a quiet
-        # degrade. _log_error self-protects (never re-raises), so call unguarded.
-        brain._log_error(
-            'frame_wisdom',
-            Exception('wisdom aspect missing from registry — Frame rendered without it'),
-            'required aspect absent')
-        return ""
-    wisdom_types = list(wis.node_types)
-    if not wisdom_types:
-        return ""
-
-    # Both branches rank cheaply (skinny / embedding), then enrich ONLY the
-    # <=WISDOM_RENDER winners for their content — the render shows a snippet,
-    # but we never correction-enrich the whole candidate pool.
-    if arc_text:
-        # Focus present → relevance-rank; rank-then-enrich (brain_recall) means
-        # rich=True here enriches only the <=5 winners, not the pool.
-        res = brain.filter_nodes(
-            field='type', include=wisdom_types,
-            sort_by='last_accessed', sort_order='desc',
-            limit=WISDOM_RENDER, rich=True, relevance_query=arc_text)
-        nodes = res.get('nodes', []) if isinstance(res, dict) else []
-    else:
-        # No focus (boot) → degree-rank a wide skinny pool, seeded sample, then
-        # enrich only the sampled winners for their content.
-        res = brain.filter_nodes(
-            field='type', include=wisdom_types,
-            sort_by='created_at', sort_order='desc',
-            limit=WISDOM_POOL, rich=False)
-        pool = res.get('nodes', []) if isinstance(res, dict) else []
-        sampled = _influence_sample(brain, pool, WISDOM_RENDER, seed=session_id)
-        rich_map = brain.get_node([n['id'] for n in sampled]) if sampled else {}
-        nodes = [rich_map[n['id']] for n in sampled if n.get('id') in rich_map]
-
-    if not nodes:
-        return "## What I've learned\n(nothing yet)\n"
-    lines = ["## What I've learned"]
-    for n in nodes:
-        snip = _snippet(n)
-        if snip:
-            lines.append("- **%s** — %s" % (n.get('title', ''), snip))
-        else:
-            lines.append("- **%s**" % n.get('title', ''))
-    return "\n".join(lines) + "\n"
+    env = brain.session_env_for(session_id)
+    now = at or conversation_now(brain=brain)
+    lines = ['## Session']
+    lines.append('- Project: %s' % (env.get('project') or '(unscoped)'))
+    counterpart = get_operator_name()
+    if counterpart:
+        lines.append('- Counterpart: %s' % counterpart)
+    lines.append('- Now: %s (%s)' % (
+        now.astimezone(_dt.timezone.utc).strftime('%Y-%m-%d %H:%M UTC'),
+        now.astimezone(_dt.timezone.utc).strftime('%A')))
+    if env.get('worktree'):
+        lines.append('- Worktree: %s' % env['worktree'])
+    return '\n'.join(lines) + '\n'
 
 
 def _render_current_focus(brain, session_id: str) -> str:
@@ -166,25 +84,20 @@ def _render_recent_moves(brain, session_id: str) -> str:
     return "## Recent moves\n%s\n" % journal
 
 
-def build_frame(brain, session_id: str) -> str:
-    """Construct the Frame as markdown text — three sections, no LLM call.
-
-    Type-routing for the wisdom section reads `brain.aspects.wisdom` (the
-    AspectRegistry — single source of truth for which node types are the
-    generative-wisdom subset).
+def build_frame(brain, session_id: str, at=None) -> str:
+    """Construct the Frame as markdown text — deterministic, no LLM call,
+    no queried nodes (see module docstring for what was removed and why).
 
     Args:
         brain: Brain instance
-        session_id: current session ID (for focus + recent_moves)
+        session_id: current session ID (for header + focus + recent_moves)
+        at: conversation-time datetime for the header clock; defaults to
+            conversation_now(brain=brain). Replays pass their injected time.
     Returns:
         Markdown string.
     """
-    # This session's compressed arc — the relevance pivot for the wisdom
-    # section. Empty (fresh session) → wisdom falls back to influence-sampling.
-    arc_text = brain.session_context_for(session_id)
-
     sections = [
-        _render_wisdom(brain, arc_text=arc_text, session_id=session_id),
+        _render_session_header(brain, session_id, at=at),
         _render_current_focus(brain, session_id),
         _render_recent_moves(brain, session_id),
     ]

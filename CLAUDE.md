@@ -199,14 +199,14 @@ Sonnet call sites (S2 reclassify, S2 base, S1 Scribe encoder) use tool-use shape
 
 ## Frame — the structured prior
 
-Frame is the 3-section markdown object Anchor wakes up with at boot AND surfaces against per turn. Built deterministically via `brain.filter_nodes()` — no LLM call, no new SQL.
+Frame is the 3-section markdown object Anchor wakes up with at boot AND surfaces against per turn. Deterministic session-state only — no LLM call, no queried nodes, no new SQL.
 
 Sections:
-- **What I've learned** — the `wisdom` aspect (insight / lesson / principle / vision / reflection / meta_learning / philosophy): the generative understanding that shapes how Anchor thinks. **Focus-adaptive** — when a session arc (current focus) exists it is relevance-ranked against it (the wisdom tracks the topic, refreshing every encode); at boot (no arc) it is **influence-sampled** (`_influence_sample`: rank by connection-degree, hub-dampened, random draw → varied wisdom at waking, not a fixed top-N).
+- **Session** — situational header: project (`(unscoped)` when none), counterpart, UTC clock via `conversation_now()` (replay-safe), worktree when in one. Every line exists to prevent a named failure (docstring on `_render_session_header`).
 - **Current focus** — encoder's per-session arc blob.
 - **Recent moves** — encoder's recent journal entries.
 
-Same Frame at boot and at recall-time — Anchor's prior is symmetric across the lifecycle. Type routing reads from `brain.aspects.wisdom.node_types`. (Seed-brain operator/identity scaffolding lives in the conditional Zero-Memory boot block — `docs/DISTRIBUTION-READINESS.md` §7 — not the Frame.)
+Same Frame at boot and at recall-time — Anchor's prior is symmetric across the lifecycle. (Seed-brain operator/identity scaffolding lives in the conditional Zero-Memory boot block — `docs/DISTRIBUTION-READINESS.md` §7 — not the Frame.)
 
 Files: `servers/scales/s1/frame.py`
 Design: `docs/RECALL-OVERVIEW.md` (historical detail: `docs/archive/FRAME-DESIGN.md`)

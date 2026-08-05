@@ -295,6 +295,26 @@ class TestSeedLoadsViaRegistry(unittest.TestCase):
                 self.assertGreater(len(aspect.metadata['display_label']), 0)
 
 
+class TestWisdomCuration(unittest.TestCase):
+    """The wisdom aspect stays curated: generative types in, operational and
+    tactical record-keeping out. (Moved from test_frame.py 2026-08-05 when
+    the Frame stopped consuming the aspect — the curation contract outlives
+    that consumer: encoder routing and scope policy still read it.)"""
+
+    def setUp(self):
+        self.aspects = AspectRegistry.from_dict(brain=None, data=_load_seed())
+
+    def test_wisdom_includes_generative_types(self):
+        members = self.aspects.wisdom.node_types
+        for t in ('insight', 'lesson', 'principle', 'vision'):
+            self.assertIn(t, members)
+
+    def test_wisdom_excludes_operational_and_tactical(self):
+        members = self.aspects.wisdom.node_types
+        for t in ('rule', 'operator', 'decision', 'fact', 'bug', 'mechanism'):
+            self.assertNotIn(t, members)
+
+
 class TestMultiMembershipShape(unittest.TestCase):
     """Multi-membership is allowed (a string can appear in 2+ aspects).
     Reverse lookup remains deterministic — the FIRST aspect to list a

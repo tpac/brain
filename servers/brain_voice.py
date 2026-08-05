@@ -316,8 +316,8 @@ class BrainVoice:
           1. The identity stance (SKILL.md), FIRST and OUTSIDE [BRAIN] — the
              always-on prior, read via _load_stance().
           2. The [BRAIN] envelope: header (memory/locked counts) + MY_STREAM_ID,
-             the Frame (ctx.get_frame(brain) — What I've learned / Current focus
-             / Recent moves), and the embedder status line.
+             the Frame (ctx.get_frame(brain) — Session / Current focus /
+             Recent moves), and the embedder status line.
 
         The operator channel (for_operator) carries the stats summary.
 
