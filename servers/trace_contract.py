@@ -1260,10 +1260,10 @@ def build_edge_revise_metadata(*, edge_id, relation, reason, encoding_source='',
     reconstructable from the trace alone (edge_id is a one-way hash of the
     pair — not invertible without the live edges table).
 
-    Used by daemon_dispatch handlers for `connect`, `connect_batch`,
-    `revise_edge`, `disconnect`, the `connect_to` and `co_anchored` paths
-    (via _emit_edge_traces), and polymorphic `archive` (when archive targets
-    an edge_relation).
+    Sole producer: the mutation emitter, fed by the `mutations.edges[]`
+    manifest rows the edge handlers return (connect, connect_batch,
+    revise_edge, disconnect, and remember's connect_to path). co_anchored
+    edges are noise-aspect and never traced (ruled 2026-08-04).
     """
     return {
         'edge_id':         edge_id,
@@ -1421,12 +1421,11 @@ METADATA_REQUIRED_BY_REF_TYPE = {
     # The two mutation ref_types that predate the emitter. Their shapes were
     # DECLARED but never enforced — validation was dead for exactly the two
     # highest-volume mutation events in the system. Enforced as of 2026-08-04,
-    # after verifying it cannot fire on existing traffic: all producers
-    # (the mutation emitter for node_revised as of step 4 and the dispatch
-    # edge paths as of step 5; dispatch_write's _emit_edge_traces for
-    # connect_to/co_anchored until steps 6-7 migrate it) build metadata via
-    # the builders below, no hand-built dicts anywhere, and each builder's
-    # minimal-args output satisfies its shape.
+    # after verifying it cannot fire on existing traffic: the mutation
+    # emitter is the sole producer for both (node paths at step 4, edge
+    # paths at steps 5-6 — connect_to rides the manifest; co_anchored is
+    # noise-aspect and never traced), building metadata via the builders
+    # below, and each builder's minimal-args output satisfies its shape.
     # Validation runs at WRITE time only, so historic rows are unaffected.
     'node_revised':          REVISE_METADATA_SHAPE,
     'edge_relation_revised': EDGE_REVISE_METADATA_SHAPE,

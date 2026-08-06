@@ -456,11 +456,11 @@ class TestBrainBatchAffectedAndEdgeTraces(BrainTestBase):
                          "connect_to edge must emit exactly one directional "
                          "edge_relation_revised trace (was the silent path)")
 
-    def test_co_anchored_edge_emits_directional_trace(self):
-        """co_anchored (shared episodic anchor, source_refs overlap) is a
-        first-class typed edge — it must leave a directional edge trace too,
-        not just connect_to. Two nodes sharing a source_ref → the second
-        co_anchors to the first."""
+    def test_co_anchored_edge_emits_no_trace_and_stays_out_of_payload(self):
+        """co_anchored is in the NOISE aspect (ruled 2026-08-04, emitter step
+        6): the graph edge is still written, but it emits NO trace — same
+        coverage rule that excludes emergent_bridge — and co_anchored_made
+        never reaches the agent-facing payload."""
         ref = 'aaaaaaaa'  # 8-char hex source-ref id
         a = _dispatch(self.brain, 'remember', {
             'type': 'fact', 'title': 'Anchor A', 'content': 'first',
@@ -470,29 +470,38 @@ class TestBrainBatchAffectedAndEdgeTraces(BrainTestBase):
             'source_refs': [ref]})
         a_id = a['result']['id']
         b_id = b['result']['id']
-        # co_anchored fired on B's write, linking B → A.
+        # The graph edge exists (co_anchored still fires at dispatch)...
+        row = self.brain.conn.execute(
+            "SELECT 1 FROM edge_relations er JOIN edges e USING (edge_id) "
+            "WHERE er.relation='co_anchored' AND er.archived=0 "
+            "AND ((e.source_id=? AND e.target_id=?) "
+            "  OR (e.source_id=? AND e.target_id=?))",
+            (b_id, a_id, a_id, b_id)).fetchone()
+        self.assertTrue(row, "co_anchored graph edge must still be written")
+        # ...but no trace row records it.
         match = [m for m in _edge_traces(self.brain)
-                 if m.get('source_id') == b_id
-                 and m.get('target_id') == a_id
-                 and m.get('relation') == 'co_anchored']
-        self.assertEqual(len(match), 1,
-                         "co_anchored edge must emit a directional edge_relation_revised trace")
+                 if m.get('relation') == 'co_anchored']
+        self.assertEqual(match, [],
+                         "co_anchored is noise-aspect: no edge trace")
         # And it must NOT leak co_anchored_made into the agent-facing payload.
         self.assertNotIn('co_anchored_made', b['result'])
 
     def test_batch_subop_traces_join_chain_and_chain_id_not_leaked(self):
         """A brain_batch sub-op's edge traces join the batch's chain_id (not a
         date-fallback chain), AND chain_id — a control field — must not leak
-        onto the created node's metadata."""
-        ref = 'bbbbbbbb'
-        self.brain.remember(type='fact', title='Chain anchor', content='pre',
-                            source_refs=[ref])  # so the batch node co_anchors to it
+        onto the created node's metadata. Probes chain routing via a
+        connect_to edge (co_anchored is noise-aspect and emits nothing as of
+        step 6)."""
+        self.brain.remember(type='fact', title='Chain target', content='pre')
         chain = 's1e-testchain-7'
         r = _dispatch(self.brain, 'brain_batch', {
             'chain_id': chain,
             'operations': [
                 {'op': 'remember', 'type': 'fact', 'title': 'Chain B',
-                 'content': 'b', 'source_refs': [ref]},
+                 'content': 'b',
+                 'connect_to': [{'title': 'Chain target',
+                                 'relation': 'grounds',
+                                 'why': 'chain routing probe edge'}]},
             ]})
         self.assertTrue(r['ok'], r)
         nid = r['result']['results'][0]['result']['id']
@@ -500,12 +509,12 @@ class TestBrainBatchAffectedAndEdgeTraces(BrainTestBase):
         kv = self.brain._meta_kv.get_all_bulk([nid]).get(nid, {})
         self.assertNotIn('chain_id', kv,
                          "chain_id is a control field — must not land on the node")
-        # (b) the co_anchored edge trace joined the batch chain (not date-fallback).
+        # (b) the connect_to edge trace joined the batch chain (not date-fallback).
         rows = self.brain.logs_conn.execute(
             "SELECT chain_id FROM trace_events "
             "WHERE ref_type='edge_relation_revised' AND metadata LIKE ?",
             ('%' + nid + '%',)).fetchall()
-        self.assertTrue(rows, "expected an edge trace for the co_anchored edge")
+        self.assertTrue(rows, "expected an edge trace for the connect_to edge")
         self.assertTrue(all(row[0] == chain for row in rows),
                         "batch sub-op edge traces must join the batch chain_id, got %s"
                         % [row[0] for row in rows])

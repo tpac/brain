@@ -1072,9 +1072,10 @@ class BrainRememberMixin:
         # input is a no-op. Failures are logged but don't fail the write —
         # invalid refs degrade gracefully at recall (S2Healer cleans
         # dangling refs in a future pass).
-        # Edges co_anchored creates are surfaced (like connect_to) so the
-        # dispatch handler emits a directional edge_relation_revised trace —
-        # co_anchored is a first-class typed edge, not a soft/derived one.
+        # Edges co_anchored creates are surfaced so the dispatch handler can
+        # pop them off the agent-facing payload. They are NOT traced —
+        # co_anchored is noise-aspect (ruled 2026-08-04), same coverage rule
+        # as emergent_bridge. The graph edge itself is still first-class.
         co_anchored_made = []
         if source_refs:
             try:
@@ -1226,7 +1227,8 @@ class BrainRememberMixin:
         if connect_to_result is not None:
             result['connect_to_result'] = connect_to_result
         # co_anchored edges this remember() materialized (src-tagged, with
-        # edge_id+deltas) — the dispatch handler emits their edge traces.
+        # edge_id+deltas) — the dispatch handler pops these off the payload;
+        # noise-aspect, never traced.
         if co_anchored_made:
             result['co_anchored_made'] = co_anchored_made
         return result

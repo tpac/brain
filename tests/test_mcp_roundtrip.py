@@ -613,6 +613,37 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertTrue(all(e["session_id"] == sess for e in events),
                         "attribution handler did not stamp the caller session")
 
+    def test_remember_emits_attributed_node_created_and_edge_traces(self):
+        """Step 6 pins. (a) remember through dispatch emits a node_created
+        trace — the row that closes the partial-run catalog gap; zero of
+        these existed before the emitter went live. (b) remember-path
+        connect_to edge traces carry the caller session — the pop-then-read
+        bug (id:89262c96: _pop_session_ctx mutates args, the legacy emit read
+        them after) shipped session_id='' on EVERY such trace; the chokepoint
+        captures identity pre-handler, killing the bug structurally."""
+        from servers.dispatch_common import CALLER_SESSION_KEY
+        sess = "remember-attrib-3c9d"
+        tgt = self._dispatch("remember", {
+            "type": "concept", "title": "Created-trace target",
+            "content": "target for the attribution edge."})["id"]
+        src = self._dispatch("remember", {
+            "type": "concept", "title": "Created-trace source",
+            "content": "source node whose traces must be attributed.",
+            CALLER_SESSION_KEY: sess,
+            "connect_to": [{"title": tgt, "relation": "grounds",
+                            "why": "attribution probe edge for step 6"}],
+        })["id"]
+        created = self._dispatch("query_traces", {
+            "session_id": sess, "ref_type": "node_created"})["events"]
+        self.assertTrue(created,
+                        "remember emitted no caller-attributed node_created")
+        self.assertTrue(any(e["ref_id"] == src for e in created))
+        edges = self._dispatch("query_traces", {
+            "session_id": sess, "ref_type": "edge_relation_revised"})["events"]
+        self.assertTrue(edges,
+                        "remember's connect_to edge trace lost the caller "
+                        "session — the pop-then-read class is back")
+
     def test_brain_batch_sub_ops_attributed_to_caller(self):
         """EVERY brain_batch sub-op (revise, connect — not just remember) must
         attribute its trace to the caller carried under the ambient

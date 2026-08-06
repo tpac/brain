@@ -347,7 +347,27 @@ step's own new-type coverage. Tier: targeted test files per step; full suite at 
   `_handle_connect_batch` (`:1230`). Preserve the `'anchor'` edge default (`:1100`).
 - Pins: `tests/test_edge_mutation_unified.py:81`, `tests/test_edge_relations.py`.
 
-### Step 6 — `remember` + `remember_batch` → `nodes.created` + `edges[]`
+### Step 6 — `remember` + `remember_batch` → `nodes.created` + `edges[]` — ✅ DONE
+
+> **Deviations from this plan, as built:**
+> - **The last legacy emit family died HERE, not step 7**: converting remember's
+>   connect_to path AND brain_batch's deferred connect_to pass left `_emit_edge_traces`
+>   and `_infer_scale_and_chain` callerless — deleted same-commit, with the dead
+>   `brain_today` import. `dispatch_write.py` no longer touches `brain._trace_dal` and
+>   left `TestOneWriterPin.ALLOWLIST`. Step 7's remaining scope: archive/absorb manifest
+>   accumulation + the orphan/absorb-unwind tests only.
+> - **co_anchored: popped everywhere, traced nowhere** (noise ruling, step 4) — the
+>   graph edge is still written; the two tests pinning the old tracing behavior now pin
+>   the no-trace contract plus edge-still-written.
+> - **`nodes.created` rows route per-spec `encoding_source`** in remember_batch (each
+>   node's own creator decides its scale/chain); edge rows keep the top-level source,
+>   bit-compatible with legacy's per-list resolution.
+> - **"Un-skip the step-1 regression pin": no such skipped pin exists in the tree.**
+>   The new `test_remember_emits_attributed_node_created_and_edge_traces` pins what it
+>   described (session attribution through the chokepoint, impossible pre-step-6).
+> - **Review hardening**: `_accumulate_mutations` is slot-agnostic (a step-7/8 archive
+>   slot accumulates instead of silently dropping); stale co_anchored-tracing comments
+>   corrected in brain_remember.py + trace_contract.py.
 
 - `servers/dispatch_write.py` — `_handle_remember` (`:440`, `:447`),
   `_handle_remember_batch` (`:527`, `:535`).
