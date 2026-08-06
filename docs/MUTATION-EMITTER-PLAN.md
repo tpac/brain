@@ -4,7 +4,7 @@
 the *work order* only — and the only doc in this set that carries line numbers, so
 staleness is contained here.
 
-> ## STATUS — steps 1-3 SHIPPED, MERGED, LIVE (2026-08-04)
+> ## STATUS — steps 1-6 SHIPPED, MERGED, LIVE (2026-08-06)
 >
 > | step | state | commit |
 > |---|---|---|
@@ -14,23 +14,24 @@ staleness is contained here.
 > | 3b-3d — emitter + registration | **DONE, live, DORMANT** | `c93b86d` |
 > | 3e — enforce the revise pair | **DONE, live** | `e51727b` |
 > | step-3 review fixes | **DONE** | `aa98604`, `50288fc` |
-> | 4 — chokepoint hook + revise/revise_batch (+ batch revise accumulation) | **DONE, live** | see step 4 deviations |
-> | **5-12** | **OPEN — start at step 5** | |
+> | 4 — chokepoint hook + revise/revise_batch (+ batch revise accumulation) | **DONE, live** | `b5399b0` (+ `d2a2d9e` deploy finding) |
+> | 5 — edge paths + DAL cleanups (`_emit_edge_revise_trace` deleted) | **DONE, live** | `7e74561` |
+> | 6 — remember paths (`_emit_edge_traces` + `_infer_scale_and_chain` deleted) | **DONE, live** | `8ebec33` |
+> | **7-12** | **OPEN — start at step 7** (pair 7 with 8: 7's orphan tests want 8's rows) | |
 >
-> **The emitter is LIVE for the revise path as of step 4** — `dispatch_command` pops each
-> handler's `mutations` manifest and emits post-return; `node_revised` rows now come from
-> the emitter (single, batch, and brain_batch revise ops). All other mutation kinds still
-> ride their legacy inline `_emit_*` sites until steps 5-8 convert them.
+> **The emitter is LIVE for every write path except archive** — node_revised,
+> edge_relation_revised, and node_created all flow from the chokepoint;
+> production-verified under organic Scribe traffic (2026-08-06, both s0 and s1 scales,
+> session-attributed). `dispatch_write.py` holds ZERO trace writes. The single legacy
+> emitter left in the codebase is `archive_node`'s inline trace (`brain_remember.py`,
+> dies at step 8). `node_archived`/`node_deleted` have never fired.
 >
-> **Citation stamp.** Citations were resolved against `bb7ed5a` on 2026-08-03, then
-> **re-resolved on 2026-08-04 after steps 1-3 moved lines in the very files this plan cites.**
-> Steps 1-3 edited `trace_contract.py` (the dict move + new ref_types shifted everything
-> below line 61), `dal_logs.py` (append_batch grew ~30 lines), `s2/base.py` (a 34-line helper
-> moved out), `daemon_dispatch.py`, `dispatch_common.py` and `tests/isolated_brain.py`.
-> Citations for steps 4-12 have been refreshed. **`dispatch_write.py` and `dal_graph.py` were
-> NOT touched by steps 1-3**, so the bulk of steps 4-9's citations are still first-resolution
-> accurate — but re-grep before executing, per the discipline that caught three stale claims
-> in the original spec.
+> **Citation stamp — steps 7-9's line numbers are STALE.** They were resolved 2026-08-04;
+> since then steps 4-6 and the scope-provenance conversion (`4862d5a`) heavily rewrote
+> `dispatch_write.py` (helpers deleted, handlers converted, functions renamed —
+> `_stamp_session_project` is now `_stamp_session_scope`) and step 5 rewrote the
+> `dal_graph.py` regions steps 8-9 cite. **Re-grep every symbol before executing steps
+> 7-9; trust names, not numbers.**
 
 **Every step must be production-correct alone, not merely green.** Merging auto-deploys
 asynchronously: the daemon is launchd-pinned to the source checkout, and the next
