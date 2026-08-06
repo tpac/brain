@@ -371,6 +371,10 @@ def hook_recall(brain, args, graph_changes):
         node_ids = [r.get("id", "") for r in capped if r.get("id")]
         rich_nodes = brain.get_node(node_ids)
 
+        # Scope veil for edge-attachment scrubbing below — cache hit (the
+        # recall above already built this session's veil, or raised).
+        _hook_veil = brain.scope_veil(session_id)
+
         # Edge selection: query-aware scoring (strategy D)
         # Get query embedding + prior turn embeddings for multi-turn blend
         import numpy as np
@@ -404,6 +408,12 @@ def hook_recall(brain, args, graph_changes):
                     "confidence": r.get("confidence", 0), "locked": r.get("locked", False),
                     "created_at": r.get("created_at"), "revised_at": r.get("revised_at"),
                 }
+            # Scope veil on edge attachments: candidates were gated by
+            # recall, but their connections/_corrections still carry walled
+            # neighbor titles (and the corrector's full text) into the
+            # Haiku menu — scrub before edge selection.
+            from .scopes import scrub_node
+            scrub_node(node_data, _hook_veil)
             # Query-aware edge selection (S1 intelligence)
             # Render gets the selected subset via edge_limit in config.
             if _query_vec is not None and node_data.get('connections'):

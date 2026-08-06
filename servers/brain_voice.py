@@ -334,7 +334,8 @@ class BrainVoice:
             out.append("")
 
         # ── Gather data ──
-        ctx = brain.context_boot(user=user, project=project, task="session start")
+        ctx = brain.context_boot(user=user, project=project,
+                                 task="session start", session_id=session_id)
         # render does NOT reset the session — rendering is read-only. The session
         # is reset once by the caller (boot_brain's reset_session(cwd), or
         # _boot_via_direct's explicit reset); resetting here too made boot a
@@ -386,7 +387,7 @@ class BrainVoice:
         # on an injection read.
         try:
             from servers.scales.s1.frame import render_standing_items
-            standing = render_standing_items(brain)
+            standing = render_standing_items(brain, session_id=session_id)
         except Exception as e:
             brain._log_error('boot_standing_items_failed', e,
                              'render_boot_v2: standing-items build raised — boot continues without it')

@@ -80,6 +80,40 @@ class MetadataDAL:
             'SELECT COUNT(*), COALESCE(MAX(rowid), 0) '
             'FROM node_metadata_kv').fetchone())
 
+    def node_ids_with_value_in(self, key: str, values: List[str]) -> List[str]:
+        """Node ids whose kv[key] case-insensitively matches any of `values`
+        (callers pass lowercase). One indexed scan — the scope veil's outward
+        query ("every node stamped with an isolated value")."""
+        if not values:
+            return []
+        placeholders = ','.join('?' * len(values))
+        rows = self.conn.execute(
+            'SELECT DISTINCT node_id FROM node_metadata_kv '
+            'WHERE key = ? AND lower(value) IN (%s)' % placeholders,
+            [key] + list(values)).fetchall()
+        return [r[0] for r in rows]
+
+    def distinct_values_for_key(self, key: str) -> List[str]:
+        """All distinct values stored under kv[key] (as stored, caller
+        normalizes). Small result set for provenance keys (one value per
+        project/counterpart) — lets the scope veil resolve per-VALUE policy
+        (overrides) in Python instead of encoding policy into SQL."""
+        rows = self.conn.execute(
+            'SELECT DISTINCT value FROM node_metadata_kv WHERE key = ?',
+            (key,)).fetchall()
+        return [r[0] for r in rows if r[0]]
+
+    def change_probe(self) -> int:
+        """MAX(rowid) — the cheap staleness witness for kv-derived caches
+        checked on HOT paths (scope veil: once per gate touch). O(1) via
+        SQLite's max-rowid optimization, unlike change_key()'s COUNT(*)
+        full scan. Misses deletions — acceptable for provenance keys, which
+        are effectively append-only (revise cannot move them; only
+        migration deletes, which also restarts the daemon)."""
+        row = self.conn.execute(
+            'SELECT COALESCE(MAX(rowid), 0) FROM node_metadata_kv').fetchone()
+        return row[0]
+
     def get(self, node_id: str) -> Dict[str, str]:
         """Get all metadata for a node as a dict. Returns {} if none.
 

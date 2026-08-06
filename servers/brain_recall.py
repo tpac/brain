@@ -439,7 +439,8 @@ class BrainRecallMixin:
                      rich: bool = True,
                      relevance_query: str = None,
                      relevance_pool_multiplier: int = 3,
-                     relevance_vector_type: str = '_primary'):
+                     relevance_vector_type: str = '_primary',
+                     session_id: str = ''):
         """Structured query: filter nodes by any structural field.
 
         rich=True (default): full content, metadata, corrections, connections
@@ -464,9 +465,24 @@ class BrainRecallMixin:
         node_dal = self._nodes
         # Widen the pool when relevance ranking is requested
         dal_limit = limit * relevance_pool_multiplier if relevance_query else limit
+        # Scope veil: filter_nodes is an ambient ENUMERATION surface (a
+        # structural sweep, not a reach for a known id) — rich=True would
+        # otherwise hand out the walled corpus's full content in one call,
+        # and skinny results feed boot's standing items. Over-fetch so
+        # walled drops backfill. Sessionless callers ('' — never the
+        # ambient last-seen session, whose borrowed INWARD veil would be
+        # the complement of a wall) get the default-deny outward veil.
+        # The veil cut does NOT slice on the relevance path — the widened
+        # pool belongs to _rerank_by_relevance, which owns the trim.
+        _veil = self.scope_veil(session_id or '')
+        if _veil:
+            dal_limit = dal_limit * 2
         result = node_dal.filter_nodes(
             field=field, include=include, exclude=exclude,
             lt=lt, gt=gt, limit=dal_limit, sort_by=sort_by, sort_order=sort_order)
+        if _veil and result.get('nodes'):
+            kept = [n for n in result['nodes'] if n.get('id') not in _veil]
+            result['nodes'] = kept if relevance_query else kept[:limit]
         if 'error' in result or not result.get('nodes'):
             return result
 
@@ -845,9 +861,17 @@ class BrainRecallMixin:
                 self._log_error("recall", _e, "fetching seed node details from database")
 
         if not all_seeds:
-            # Return recent nodes if no seeds found
+            # Return recent nodes if no seeds found — behind the scope veil
+            # (an isolated project's nodes are recent too). Over-fetch when
+            # a veil is active so the "give them SOMETHING" floor survives
+            # the drops, then re-cut to limit.
+            _veil = self.scope_veil(session_id or '')
+            _fetch = limit * 2 if _veil else limit
+            _recent = [n for n in
+                       _apply_filter(self._get_recent(_fetch), filter, self.conn)
+                       if n.get('id') not in _veil][:limit]
             return {
-                'results': _apply_filter(self._get_recent(limit), filter, self.conn),
+                'results': _recent,
             }
 
         # Step 1b: Compute direct keyword match strength per seed
@@ -959,6 +983,14 @@ class BrainRecallMixin:
 
         # Step 5: Sort by effective activation
         filtered.sort(key=lambda n: -n.get('effective_activation', 0))
+
+        # Step 5.5: Scope veil — BEFORE pagination, so walled drops backfill
+        # from lower-ranked eligible nodes instead of under-filling the page
+        # (and offset pagination stays monotonic). Before access marks: a
+        # gated node was never surfaced, so it must not strengthen.
+        _veil = self.scope_veil(session_id or '')
+        if _veil:
+            filtered = [n for n in filtered if n.get('id') not in _veil]
 
         # Step 6: Pagination
         page = filtered[offset:offset + limit]
@@ -1918,6 +1950,20 @@ class BrainRecallMixin:
 
         # Sort by blended score descending
         scored_results.sort(key=lambda x: -x['blended_score'])
+
+        # Scope veil — BEFORE the [:limit] cut, so eligible lower-ranked
+        # candidates backfill the slots walled nodes vacate (gating after
+        # truncation starves isolated sessions — the seen_dedup_headroom
+        # class, a98143f finding 1). One set-membership check per candidate;
+        # empty frozenset (no isolation configured) costs nothing.
+        _veil = self.scope_veil(session_id or '')
+        _iso_dropped = []
+        if _veil:
+            _kept = [r for r in scored_results if r['node_id'] not in _veil]
+            _iso_dropped = [r['node_id'] for r in scored_results
+                            if r['node_id'] in _veil]
+            scored_results = _kept
+
         if trace_chain_scores:
             # Reserved tail (§4): rescue trace-chain nodes that did NOT make the main top. Additive —
             # never reorders the main top. A buried node (scored low here, below the cut) is PROMOTED
@@ -1930,7 +1976,7 @@ class BrainRecallMixin:
             _have = {r['node_id'] for r in _main_top}
             _rescues = []
             for _nid, _comb in sorted(trace_chain_scores.items(), key=lambda x: -x[1]):
-                if _nid in _have:
+                if _nid in _have or _nid in _veil:
                     continue
                 _rescues.append({'node_id': _nid, 'blended_score': _comb, '_source': 'trace_chain',
                                  'embedding_similarity': None, 'keyword_score': None,
@@ -2077,10 +2123,14 @@ class BrainRecallMixin:
         # STEP 7.5a: Apply dict filter on final results
         final_results = _apply_filter(final_results, filter, self.conn)
 
+        # (Scope veil already applied pre-[:limit] — candidates were gated
+        # before truncation, and _iso_dropped carries the walled ids.)
+
         # STEP 7.5: Enrich top 3 results with metadata + neighbors
         # All results keep full content (no truncation). Top 3 also get
-        # metadata and neighbor context for richer understanding.
-        self._enrich_results(final_results[:3])
+        # metadata and neighbor context for richer understanding. The veil
+        # threads in so neighbor attachments can't re-admit walled titles.
+        self._enrich_results(final_results[:3], veil=_veil)
 
         # STEP 8: Mark accessed (for Hebbian learning + fatigue)
         # Per-session: _recall_ctx (loaded at top of this function) is passed
@@ -2150,6 +2200,12 @@ class BrainRecallMixin:
             },
         }
 
+        # Scope-veil observability — present only when the wall dropped
+        # something, so the legacy result shape is unchanged for unscoped
+        # brains.
+        if _iso_dropped:
+            result['_scope_isolated_dropped'] = len(_iso_dropped)
+
         # laf_v1 telemetry: per-candidate field z-scores for the top nodes —
         # rides the result into the S1R trace so the P2 dataset walker accretes
         # (query, per-field scores, outcome) rows in production for free.
@@ -2185,14 +2241,20 @@ class BrainRecallMixin:
             self._log_error('zscore_load', e, 'loading z-score stats from metadata')
             self._zscore_stats = {}
 
-    def _enrich_results(self, results: List[Dict[str, Any]], neighbor_limit: int = 3) -> None:
+    def _enrich_results(self, results: List[Dict[str, Any]], neighbor_limit: int = 3,
+                        veil=None) -> None:
         """Enrich recall results with metadata and neighbor context.
 
         This is the ONE place that makes a node result 'complete'.
         Called by both recall (text search) and recall_node (ID lookup).
         The caller decides WHICH results to enrich — this method enriches all it receives.
         Mutates results in place.
+
+        `veil`: the session's scope veil — walled neighbors are dropped from
+        the attachment, because a neighbor line carries id+title (the leak
+        payload) and the id would feed the out-of-candidate admission path.
         """
+        veil = veil or frozenset()
         graph_dal = self._graph
         for node in results:
             nid = node.get('id')
@@ -2221,6 +2283,7 @@ class BrainRecallMixin:
                          'relation': nb['relation'], 'weight': nb['weight']}
                         for nb in all_neighbors
                         if nb.get('relation') in INTENTIONAL_EDGE_TYPES
+                        and nb.get('id') not in veil
                     ][:neighbor_limit]
                 except Exception as e:
                     self._log_error('recall_node_neighbors', e, 'fetching neighbor context')
@@ -2229,11 +2292,16 @@ class BrainRecallMixin:
     # _traverse_graph removed 2026-04-14 — dead code, 0 callers.
     # S1R uses _graph_expand() in surface.py instead.
 
-    def recall_node(self, node_id: str, neighbor_limit: int = 3) -> Dict[str, Any]:
+    def recall_node(self, node_id: str, neighbor_limit: int = 3,
+                    session_id: str = '') -> Dict[str, Any]:
         """Recall a specific node by ID with full enrichment.
 
         Returns same shape as recall() so callers get a
         consistent interface regardless of how the node was found.
+
+        By-id reach is the veil's sanctioned open door — the NODE returns
+        regardless of scope. Its NEIGHBORS were never reached for, so the
+        veil still scrubs the attachments (id+title is the leak payload).
         """
         from .dal import NodeDAL
         node_dal = self._nodes
@@ -2248,7 +2316,8 @@ class BrainRecallMixin:
         node['_source'] = 'direct_lookup'
 
         results = [node]
-        self._enrich_results(results, neighbor_limit=neighbor_limit)
+        self._enrich_results(results, neighbor_limit=neighbor_limit,
+                             veil=self.scope_veil(session_id or ''))
 
         return {
             'results': results,

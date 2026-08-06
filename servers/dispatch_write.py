@@ -25,22 +25,23 @@ def _stamp_session_scope(brain, cmd, args, ctx=None):
     stamp_scope_provenance: node-creating payloads get the values
     force-stamped, agent-supplied values elsewhere are dropped. Sessionless
     callers (the in-process encoder dispatch — already stamped at its own
-    chokepoint — and direct handler calls) pass through untouched.
+    chokepoint — and direct handler calls) pass through untouched (None
+    policy = no session authority).
 
     Returns warning strings for the handler to surface in its result.
     """
+    sid = ctx.session_id if ctx is not None else caller_session(args)
     if cmd in ('revise', 'revise_batch'):
-        # revise policy strips regardless of the project VALUE — only the
-        # session's existence matters, so skip the SessionContext load
-        project = '' if caller_session(args) else None
-    elif ctx is not None:
-        project = ctx.project
+        # revise policy strips regardless of the VALUES — only the
+        # session's existence matters, so skip the value resolution
+        from .scales.dispatch import SCOPE_PROVENANCE_FIELDS
+        scope = {f: '' for f in SCOPE_PROVENANCE_FIELDS} if sid else None
     else:
         scope = brain.scope_policy_for(sid)
     warnings = stamp_scope_provenance(cmd, args, scope)
     for w in warnings:
-        # agent drift, not a failure (the field is system_stamped and no
-        # longer in the MCP schemas, but agents may still emit it from
+        # agent drift, not a failure (the fields are system_stamped and not
+        # in the MCP schemas, but agents may still emit them from
         # habit/training) — warning severity keeps the error feed real
         brain._log_warning('scope_provenance_stamp', w, 'cmd=%s' % cmd)
     return warnings

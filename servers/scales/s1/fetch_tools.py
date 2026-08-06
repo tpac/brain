@@ -908,6 +908,33 @@ def execute_tool(brain, tool_name: str, tool_input: Dict[str, Any],
             results = [r for r in results
                        if not (isinstance(r, dict) and r.get('id') in _dead)]
 
+    # Scope veil — same wall brain.recall applies, here because tool
+    # functions reach brain primitives that may bypass recall
+    # (recall_by_time's trace lane, etc.). One set-membership pass; a veil
+    # failure FAILS CLOSED (empty results + loud error) — a degraded tool
+    # beats a leaked wall (default-deny is the contract).
+    if results and brain is not None:
+        try:
+            _veil = brain.scope_veil(session_id)
+            if _veil:
+                from servers.scopes import scrub_node
+                results = [r for r in results
+                           if isinstance(r, dict) and r.get('id') not in _veil]
+                # Survivors were get_node-enriched above — scrub their edge
+                # attachments (connections carry walled titles to Haiku's
+                # menu; _corrections carry the walled corrector's FULL text).
+                for r in results:
+                    scrub_node(r, _veil)
+        except Exception as e:
+            try:
+                brain._log_error(
+                    'fetch_tool_scope_gate', e,
+                    'veil unavailable for tool=%s — failing CLOSED '
+                    '(results withheld)' % tool_name)
+            except Exception:
+                pass
+            results = []
+
     out = {'results': results or [],
            'latency_ms': int((time.time() - t0) * 1000)}
     if dropped_args:

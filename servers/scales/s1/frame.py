@@ -126,12 +126,14 @@ BOOT_INJECT_TYPES_DEFAULT = 'journals-escalation'
 BOOT_INJECT_CAP = 10
 
 
-def render_standing_items(brain) -> str:
+def render_standing_items(brain, session_id: str = '') -> str:
     """Every live node of the configured types, newest first, capped.
 
     Empty string when nothing qualifies — a clean boot adds nothing. The
     lifecycle exit is on the node: handle it, then archive (or revise) it and
-    it leaves the next boot.
+    it leaves the next boot. session_id threads the booting session's scope
+    veil through filter_nodes — a walled escalation must not print into
+    every other session's boot.
     """
     import os
     raw = os.environ.get('BRAIN_BOOT_INJECT_TYPES', BOOT_INJECT_TYPES_DEFAULT)
@@ -139,7 +141,8 @@ def render_standing_items(brain) -> str:
     if not types:
         return ''
     result = brain.filter_nodes(field='type', include=types,
-                                limit=BOOT_INJECT_CAP + 1, rich=False)
+                                limit=BOOT_INJECT_CAP + 1, rich=False,
+                                session_id=session_id)
     if (result or {}).get('error'):
         # Loud by default — an error dict is not "nothing standing".
         brain._log_error('boot_standing_items_filter',

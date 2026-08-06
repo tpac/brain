@@ -7,7 +7,7 @@ filter, graph expansion, boot context.
 from .dispatch_common import _resolve_id, caller_session
 
 
-def _enrich_recall_results(brain, result, graph_changes):
+def _enrich_recall_results(brain, result, graph_changes, session_id=''):
     """Enrich recall results via brain.get_node() — the shared data atom.
 
     Anchor's MCP recall gets full enrichment per node:
@@ -17,7 +17,16 @@ def _enrich_recall_results(brain, result, graph_changes):
     if not results:
         return
 
-    # Enrich each result with brain.get_node() data
+    # Scope veil on edge attachments: a connection line carries the
+    # neighbor's id + title — the leak payload — so walled neighbors drop
+    # from what recall's MCP envelope hands back. session_id: the caller's
+    # ambient session (same value the recall itself was gated with).
+    veil = brain.scope_veil(session_id or brain.session_id)
+
+    # Enrich each result with brain.get_node() data. scrub_node drops
+    # walled entries from connections (id+title) AND _corrections (which
+    # carry the walled corrector's FULL content and raw quotes).
+    from .scopes import scrub_node
     for r in results[:8]:
         rich = brain.get_node(r.get("id", ""))
         if rich:
@@ -25,6 +34,7 @@ def _enrich_recall_results(brain, result, graph_changes):
             r["_corrections"] = rich.get("_corrections", [])
             r["connections"] = rich.get("connections", [])
             r["situation"] = rich.get("situation", "")
+            scrub_node(r, veil)
 
 
 def _handle_recall(brain, args, graph_changes):
@@ -33,7 +43,8 @@ def _handle_recall(brain, args, graph_changes):
     if node_id:
         node_id = _resolve_id(brain, node_id)
         result = brain.recall_node(
-            node_id, neighbor_limit=args.get("neighbor_limit", 3))
+            node_id, neighbor_limit=args.get("neighbor_limit", 3),
+            session_id=caller_session(args))
         return {"ok": True, "result": result}
 
     sid = caller_session(args)  # identity: drives this session's fatigue/activity
@@ -50,7 +61,7 @@ def _handle_recall(brain, args, graph_changes):
         return {"ok": False, "error": "recall failed: %s" % e}
 
     # Enrich with corrections, graph expansion, metadata — same context as hook path
-    _enrich_recall_results(brain, result, graph_changes)
+    _enrich_recall_results(brain, result, graph_changes, session_id=sid)
 
     return {"ok": True, "result": result}
 
@@ -107,7 +118,8 @@ def _handle_find_node_by_title(brain, args, graph_changes):
     result = brain.find_node_by_title(
         title_query=args.get("title_query", ""),
         threshold=args.get("threshold", 0.75),
-        top_k=args.get("top_k", 1))
+        top_k=args.get("top_k", 1),
+        session_id=caller_session(args))
     return {"ok": True, "result": result}
 
 
@@ -122,7 +134,8 @@ def _handle_filter_nodes(brain, args, graph_changes):
         limit=args.get("limit", 50),
         sort_by=args.get("sort_by", "created_at"),
         sort_order=args.get("sort_order", "desc"),
-        rich=args.get("rich", True))
+        rich=args.get("rich", True),
+        session_id=caller_session(args))
     if "error" in result:
         return {"ok": False, "error": result["error"]}
     return {"ok": True, "result": result}
@@ -147,7 +160,12 @@ def _handle_graph_expand(brain, args, graph_changes):
 
     node_dal = brain._nodes
     graph_dal = brain._graph
-    seen = set(node_ids)
+    # Scope veil: this door returns 300-char content previews across edges
+    # — exactly how content crosses a wall. Seeding `seen` with the veil
+    # excludes walled nodes from every hop (no production caller today;
+    # gated so the next caller inherits the wall).
+    _veil = brain.scope_veil(caller_session(args))
+    seen = set(node_ids) | set(_veil)
     neighbors = []
     # Same noise-derived exclusion every traversal uses (was a drifted
     # 1-member literal that leaked co_accessed edges into graph_expand).

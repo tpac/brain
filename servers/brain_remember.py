@@ -2448,7 +2448,8 @@ class BrainRememberMixin:
             return {'error': str(e)}
 
     def find_node_by_title(self, title_query: str, threshold: float = 0.75,
-                           top_k: int = 1) -> Optional[Dict[str, Any]]:
+                           top_k: int = 1,
+                           session_id: str = '') -> Optional[Dict[str, Any]]:
         """Find a node by fuzzy title matching using embedding similarity.
 
         Embeds the query, scans all node embeddings, returns the best match(es)
@@ -2524,6 +2525,14 @@ class BrainRememberMixin:
                             "similarity": round(sim, 3),
                             "content_snippet": snippet or "",
                         }
+
+        # Scope veil: fuzzy title search is ambient DISCOVERY (a probe
+        # phrase enumerates the corpus with content snippets), not the
+        # sanctioned reach-for-a-known-id — walled nodes never match.
+        # Sessionless callers get the outward-only veil.
+        _veil = self.scope_veil(session_id or '')
+        if _veil:
+            scored = {nid: v for nid, v in scored.items() if nid not in _veil}
 
         results = sorted(scored.values(), key=lambda x: x["similarity"], reverse=True)
 

@@ -587,6 +587,70 @@ class Brain(
         from .session_env import detect_session_env
         return detect_session_env(cwd, log=self._log_error)
 
+    @property
+    def scopes(self):
+        """Scope policy (servers/scopes.py) — the operator's separation
+        contract per scope dimension. Fresh parse of the 'scopes'
+        interaction config; enforcement callers use scope_veil (cached),
+        this property is for introspection/config paths."""
+        from .scopes import load_scope_policy
+        return load_scope_policy(self)
+
+    def scope_veil(self, session_id: str) -> frozenset:
+        """The hidden-set for this session — node ids an active isolation
+        config walls off (servers/scopes.py docstring for semantics). THE
+        enforcement object: consumers do one set-membership check, never
+        per-candidate policy evaluation.
+
+        Self-invalidating cache, no TTL: keyed on (active 'scopes' config
+        version, MetadataDAL.change_probe(), the session's scope signature)
+        — a config flip or a newly stamped node invalidates on the next
+        read. change_probe is MAX(rowid) (O(1)), NOT change_key's COUNT(*)
+        full scan — this probe runs on every gate touch of the recall hot
+        path. Sessions with the same scope share an entry. Rebuild failure
+        keeps the last good veil and logs CRITICAL (never silently
+        un-walls); a first-build failure raises — a loud dead recall beats
+        a silent leak.
+
+        Sessionless callers ('' / unknown session) get the OUTWARD-ONLY
+        veil (empty scope signature): every isolated value is hidden, no
+        inward wall. Never substitute another session's veil (the ambient
+        last-seen session is last-writer-wins across parallel streams — a
+        borrowed INWARD veil is the complement of a wall, i.e. a leak)."""
+        from .scopes import load_scope_policy, build_veil
+        scope = self.session_scope(session_id) or {}
+        sig = tuple(sorted(
+            (k, (v or '').strip().lower()) for k, v in scope.items()))
+        try:
+            row = self._interaction_dal.get_active('scopes') or {}
+            version = row.get('version', 0)
+            change = self._meta_kv.change_probe()
+        except Exception as e:
+            self._log_error('scope_veil_probe', e,
+                            'staleness probe failed — treating as changed')
+            version, change = -1, None
+        cache = getattr(self, '_scope_veils', None)
+        if cache is None:
+            cache = self._scope_veils = {}
+        hit = cache.get(sig)
+        if hit is not None and change is not None \
+                and hit[0] == version and hit[1] == change:
+            return hit[2]
+        try:
+            policy = load_scope_policy(self)
+            veil = (build_veil(self, policy, scope)
+                    if policy.has_isolation else frozenset())
+        except Exception as e:
+            if hit is not None:
+                self._log_error(
+                    'scope_veil_rebuild', e,
+                    'CRITICAL: veil rebuild failed — serving last good '
+                    'veil (%d ids); isolation may be stale' % len(hit[2]))
+                return hit[2]
+            raise
+        cache[sig] = (version, change, veil)
+        return veil
+
     def counterpart_for(self, session_id: str) -> str:
         """Who this session is with — the ONE site that answers it, so the
         speaker arc's F4 (counterpart on SessionContext) is a one-line change
@@ -736,7 +800,22 @@ class Brain(
         otherwise nothing would be readable). Flip the runtime pointer with
         set_interaction_active. Completes the interaction-registry door:
         callers never touch _interaction_dal directly.
+
+        The 'scopes' config is validated AT THIS DOOR (validate_scopes_config)
+        and refused on violations — a typo'd mode silently meaning "less
+        isolation than configured" is the one failure a separation contract
+        must not defer to read-time logging.
         """
+        if name == 'scopes':
+            from .scopes import validate_scopes_config
+            try:
+                config = json.loads(parameters) if parameters else {}
+            except (json.JSONDecodeError, TypeError) as e:
+                raise ValueError('scopes config is not valid JSON: %s' % e)
+            violations = validate_scopes_config(config)
+            if violations:
+                raise ValueError(
+                    'scopes config refused: %s' % '; '.join(violations))
         return self._interaction_dal.register(
             name=name, template=template, parameters=parameters,
             created_by=created_by)

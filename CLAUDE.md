@@ -377,6 +377,49 @@ derives from `BATCH_OP_SPECS`' `creates_node` flag. The fields are
 `system_stamped` in the contract — excluded from the agent-facing MCP
 schemas. The CLI's `--project` is the operator escape hatch.
 
+**Scope policy + veil (the operator's separation contract):** v1 is
+AWARENESS/FUNCTIONALITY-oriented separation, not a privacy boundary
+(operator ruling 2026-08-06): the veil governs node surfacing; the trace
+layer (S1 traces mirror rendered injects; query_traces/recall_episodes are
+cross-session), the self-channel (self_peek shows a stream's arc), and
+S2-minted synthesis nodes (graph-scope units read everything and write
+unstamped) are documented open seams — each needs its own design pass
+(trace scoping, peek scoping, provenance inheritance) if a wall ever needs
+to be privacy-grade.
+`servers/scopes.py`, config in the `scopes` interaction (config-only,
+versioned — edit via `register_interaction` + `set_interaction_active`;
+`validate_scopes_config` is the write-door validator). Per-dimension modes
+`open | scoped | isolated` + per-value overrides (`project: {mode: scoped,
+overrides: {client-x: isolated}}`); default `scoped` everywhere
+(behavior-neutral: the LAF lane is unfitted and isolation is opt-in). v1
+enforces `isolated` only — a hard wall, both directions, NO exemptions.
+
+Enforcement is THE VEIL — `brain.scope_veil(session_id)`, one precomputed
+hidden-set (two indexed KV queries per isolated dimension: outward =
+isolated values ≠ the session's own, hidden everywhere incl. sessionless
+reads; inward = foreign-stamped nodes when the session itself is isolated;
+unscoped nodes stay neutral). Consumers do ONE set-membership check — never
+per-candidate policy evaluation, no per-call KV I/O, so no fail-open path
+at check time. Cache self-invalidates on (config version,
+`MetadataDAL.change_key()`, session scope signature) — no TTL; rebuild
+failure serves the last good veil + CRITICAL log; first-build failure
+raises (a loud dead recall beats a silent leak). fetch_tools fails CLOSED
+(results withheld) if the veil is unavailable.
+
+Veil funnels: recall pre-`[:limit]` (drops backfill; before Hebbian marks),
+keyword pre-pagination + over-fetched recent floor, `_enrich_results`
+neighbor attachments + MCP `connections` (a neighbor line carries id+title
+— the leak payload), the surface SELECTION + spread-activation expansion
+output (walled ids can't seed or render — the `_drop_archived_selected`
+stance: code beats prompt compliance), `context_boot`'s lanes,
+`filter_nodes` (ambient enumeration), and `fetch_tools.execute_tool`.
+Explicit `get_node(id)`/`recall_node` stay open — isolation governs what
+rises unbidden, not a deliberate reach for a known id. Dimensions whose
+session resolver is still the install constant (`counterpart`, until
+speaker-arc F4) REFUSE `isolated` — loud, degrades to scoped
+(`SESSION_RESOLVABLE` in scopes.py). Invalid config degrades loudly to
+`scoped`, never to `isolated`.
+
 **Read side — differential exposure:** `brain.session_scope(session_id)`
 builds the session's declared side once at each pipeline boundary (surface
 menu, inject, encoder catalog); it travels as ONE `scope` dict — never

@@ -347,6 +347,12 @@ def seed_interactions(brain):
                                    parameters=json.dumps(TRACE_RECORDING_DEBUG),
                                    created_by='anchor')
     _register('voice_surface', '', VOICE_CONFIG_V1, 'anchor')
+    # Scope policy (servers/scopes.py) — config-only. Per-dimension modes
+    # (open/scoped/isolated) + per-value overrides; 'scoped' everywhere is
+    # the behavior-neutral default (the LAF lane is unfitted, isolation is
+    # opt-in). Edit via register_interaction + set_interaction_active.
+    from .scopes import SCOPES_CONFIG_V1
+    _register('scopes', '', SCOPES_CONFIG_V1, 'anchor')
     _register('boot', '', BOOT_CONFIG_V1, 'anchor')
     _register('pre_edit', '', PRE_EDIT_CONFIG_V1, 'anchor')
     _register('signal_assembler', '', SIGNAL_CONFIG_V1, 'anchor')

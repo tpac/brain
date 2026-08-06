@@ -109,8 +109,13 @@ class BrainAssemblyMixin:
                     LIMIT 20
                 ''', top_ids + top_ids + top_ids).fetchall()
 
+                # Scope veil (outward-only — suggest has no session):
+                # the locked-neighbor pull bypasses recall's gate.
+                _veil = self.scope_veil('')
                 for row in neighbor_rows:
                     nid = row[0]
+                    if nid in _veil:
+                        continue
                     if nid not in seen:
                         seen.add(nid)
                         all_results.append({
@@ -224,12 +229,18 @@ class BrainAssemblyMixin:
         return 'related via graph connections'
 
     def context_boot(self, user: str = '', project: str = '', task: Optional[str] = None,
-                     hints: Optional[str] = None) -> Dict[str, Any]:
+                     hints: Optional[str] = None,
+                     session_id: str = '') -> Dict[str, Any]:
         """
         3-tier progressive loading for context boot.
         Full content for top locked nodes, title-only index for rest,
         recent nodes, task-recalled nodes.
         Returns dict with brain_version, locked, recalled, recent, reset_count, last_session_note.
+
+        session_id: the booting session — its scope veil gates every lane
+        below (boot is the most ambient surface there is; an isolated
+        project's locked rules and recent titles must not print in every
+        other session's boot block).
         """
         boot_limits = self._get_tunable('boot_limits', {
             'locked': CONTEXT_BOOT_LOCKED_LIMIT,
@@ -258,9 +269,20 @@ class BrainAssemblyMixin:
             'pending_critical': self.get_pending_critical() if hasattr(self, 'get_pending_critical') else []
         }
 
-        seen = set()
+        # Scope veil — every lane below checks membership (walled ids also
+        # land in `seen` so they can't re-enter via a later lane). With a
+        # live veil the lane SQL over-fetches 2× (fetch limits below) so
+        # walled drops backfill: inside a wall most identity scaffolding
+        # carries a foreign stamp, and un-backfilled LIMITs would gut the
+        # boot block exactly there. Lane sizes stay capped at max_* by the
+        # trim before return.
+        _veil = self.scope_veil(session_id or '')
+        _fetch_mult = 2 if _veil else 1
+        seen = set(_veil)
 
         for r in critical_nodes:
+            if r[0] in _veil:
+                continue
             seen.add(r[0])
             results['locked'].insert(0, {
                 'id': r[0], 'type': r[1], 'title': r[2],
@@ -279,7 +301,7 @@ class BrainAssemblyMixin:
               CASE type WHEN 'rule' THEN 0 WHEN 'decision' THEN 1 ELSE 2 END,
               access_count DESC, last_accessed DESC
             LIMIT ?
-        ''', (max_locked,)).fetchall()
+        ''', (max_locked * _fetch_mult,)).fetchall()
 
         for r in locked:
             if r[0] in seen:
@@ -312,7 +334,7 @@ class BrainAssemblyMixin:
             SELECT id, type, title, content, activation, last_accessed FROM nodes
             WHERE archived = 0 AND locked = 0
             ORDER BY last_accessed DESC LIMIT ?
-        ''', (max_recent,)).fetchall()
+        ''', (max_recent * _fetch_mult,)).fetchall()
 
         for r in recent:
             if r[0] not in seen:
@@ -327,7 +349,9 @@ class BrainAssemblyMixin:
         # EXCLUDED every project-tagged node from boot recall. The param was
         # removed 2026-07-03; project is kv provenance scored by the LAF lane.)
         if query:
-            recall_result = self.recall(query=query, limit=max_recall, source='internal')
+            recall_result = self.recall(query=query, limit=max_recall,
+                                        source='internal',
+                                        session_id=session_id or None)
             recalled = recall_result.get('results', recall_result) if isinstance(recall_result, dict) else recall_result
             for r in recalled:
                 if r['id'] not in seen:
@@ -336,6 +360,15 @@ class BrainAssemblyMixin:
                         'id': r['id'], 'type': r.get('type'),
                         'title': r.get('title'), 'content': r.get('content')
                     })
+
+        # Lane caps: the 2× veil over-fetch backfills walled drops but must
+        # not grow the boot block — trim to the configured sizes (critical
+        # entries ride on top of the locked cap by design).
+        if _veil:
+            _n_critical = sum(1 for n in results['locked'] if n.get('_critical'))
+            results['locked'] = results['locked'][:max_locked + _n_critical]
+            results['recent'] = results['recent'][:max_recent]
+            results['recalled'] = results['recalled'][:max_recall]
 
         # Get total locked count
         total_locked = self._nodes.count_locked()

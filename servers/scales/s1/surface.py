@@ -1197,6 +1197,35 @@ def run_surface(brain, ctx, candidates_data, user_message,
     # liveness structurally — code beats prompt compliance.
     _drop_archived_selected(brain, selected_mode, selected_short_ids)
 
+    # Scope veil on the SELECTION — same structural stance as the archived
+    # gate above (code beats prompt compliance): Haiku can emit an id it saw
+    # only as a leaked reference (the out-of-candidate admission path), and
+    # a walled id must not become a spread seed or render. Veil failure
+    # fails CLOSED for the surfacing (selection purged, turn survives) —
+    # scope_veil deliberately raises on a first-build failure, and an
+    # unguarded raise here would take the whole turn's traces and Hebbian
+    # file with it.
+    try:
+        _veil = brain.scope_veil(session_id)
+    except Exception as _veil_err:
+        brain._log_error(
+            'surface_scope_veil', _veil_err,
+            'CRITICAL: veil unavailable — failing CLOSED (selection purged)')
+        _veil = None
+    if _veil is None:
+        selected_mode.clear()
+        selected_short_ids.clear()
+        _veil = frozenset()
+    if _veil:
+        for _wid in [i for i in selected_mode if i in _veil]:
+            del selected_mode[_wid]
+            selected_short_ids.discard(_wid[:8])
+            brain._log_error(
+                'surface_selected_walled',
+                RuntimeError('walled node %s reached selection — dropped '
+                             '(isolation veil)' % _wid[:8]),
+                'session=%s' % session_id)
+
     # Surfaced-ids file (Hebbian + Stop hook input) — written once,
     # after the gate, so only the filtered selection lands on disk.
     _write_surface_selected_file(brain, session_id, ctx.stop_counter,
@@ -1206,9 +1235,24 @@ def run_surface(brain, ctx, candidates_data, user_message,
 
     # Graph expansion via spreading activation. The kernel replaces what
     # select_edges + per-seed top-3 neighbors + mutual-traversal used to do.
+    # The veil gates the EXPANSION OUTPUT: spread walks edges freely, but a
+    # walled node's activation/fields/rich payload never reach the render —
+    # graph edges are exactly how content crosses an isolation wall.
     expansion = _graph_expand(
         brain, list(selected_mode.keys()),
         query_vec=query_vec, prior_vecs=prior_vecs)
+    if _veil:
+        from servers.scopes import scrub_node
+        for _k in ('node_activation', 'field_activation', 'rich_nodes'):
+            _d = expansion.get(_k)
+            if isinstance(_d, dict):
+                expansion[_k] = {i: v for i, v in _d.items()
+                                 if i not in _veil}
+        # Surviving rich nodes still carry edge lists — a walled neighbor's
+        # title + edge description (a paraphrase of the walled claim) must
+        # not render in the inject.
+        for _n in (expansion.get('rich_nodes') or {}).values():
+            scrub_node(_n, _veil)
     _mark('surface_spread')
 
     # Activation-driven render — fields appear by their own per-field activation

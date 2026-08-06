@@ -129,6 +129,10 @@ class BrainCorrectionsMixin:
                 for rel in c.get('relations', []) or []:
                     bucket.append({
                         'id': neighbor_id[:8],
+                        # Full id alongside the display short-form: the
+                        # scope veil (scopes.scrub_node) matches full ids —
+                        # a short-only entry would be silently unfilterable.
+                        'node_id': neighbor_id,
                         'title': title,
                         'type': ntype,
                         'direction': direction,

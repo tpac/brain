@@ -250,8 +250,18 @@ class IntegrationUnit:
         # S2 units strip ('' — graph-scope work never invents provenance).
         # Computed once per dispatch build.
         scope_policy = self.scope_policy()
+        # Session identity for READS: a session-scoped unit's recalls must
+        # be veiled as ITS session (an isolated session's Scribe needs the
+        # inward veil to see its own walled nodes; without this the ''
+        # fallback gives the outward-only veil and the encoder goes blind
+        # to the very project it's encoding). S2 units have no session —
+        # their recall-based reads get the sessionless outward veil.
+        unit_session = getattr(self, 'session_id', '') or ''
 
         def dispatch(cmd, cmd_args):
+            if unit_session and isinstance(cmd_args, dict):
+                from ...dispatch_common import CALLER_SESSION_KEY
+                cmd_args.setdefault(CALLER_SESSION_KEY, unit_session)
             _scope_warnings = apply_encoder_attribution(
                 cmd, cmd_args,
                 encoding_source=encoding_source, run_chain_id=run_chain_id,
