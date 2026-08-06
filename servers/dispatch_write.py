@@ -176,6 +176,29 @@ def _edge_row(result, relation, reason, encoding_source, source_id, target_id):
     }
 
 
+def _archived_row(arch, archived_by, edge_relations):
+    """Shape one nodes.archived manifest row from an archive_node result.
+    Keys are exactly build_node_archived_metadata's kwargs. Shared by
+    _op_archive and _op_absorb (the absorbed node's row) so the shape can't
+    drift between the two paths that archive.
+
+    encoding_source = archived_by deliberately: it's the actor the graph
+    carries (_sys_archived_by, the edge stamps), it's what routes the row's
+    scale, and it keeps all of one absorb's rows on one scale instead of
+    splitting the archived row from its siblings. The command runner is
+    recoverable from session_id + chain."""
+    return {
+        'node_id': arch.get('node_id') or '',
+        'type': arch.get('type') or '',
+        'title': arch.get('title') or '',
+        'archived_by': archived_by,
+        'encoding_source': archived_by,
+        'reason': arch.get('reason') or '',
+        'edge_relations': edge_relations,
+        'vectors_deleted': arch.get('vectors_deleted', 0),
+    }
+
+
 def _connect_to_rows(connect_to_result, encoding_source, reason='connect_to'):
     """edges[] manifest rows from _apply_connect_to's made-list ({src_id,
     target_id, relation, edge_id, deltas} entries). The emitter's _changed
@@ -552,23 +575,16 @@ def _op_archive(brain, op_spec, top_encoding_source, graph_changes):
     archived_by = _resolve_archived_by(op_spec, top_encoding_source)
     r = brain.archive_node(
         node_id, archived_by=archived_by, reason=op_spec.get('reason', ''))
+    # Collections popped UNCONDITIONALLY — they exist for the manifest, and
+    # **r splices everything left into the agent-visible results[]. The
+    # scalar edges_deleted / vectors_deleted counts stay visible as before.
+    edge_relations = r.pop('edge_relations', [])
+    r.pop('absorbed_into_edge', None)  # never set here (no survivor_id path)
     if r.get('ok'):
         graph_changes.append("ARCHIVE: %s" % node_id[:8])
         r["affected"] = _affected(archived=[node_id])
-        # Manifest row (node_archived), builder-shaped. edge_relations stays
-        # empty until archive_node returns the flipped (edge_id, relation)
-        # pairs (step 8) — an empty list is truthful, the raw edge count is
-        # not (it includes exempt absorbed_into redirects).
-        r["mutations"] = {"nodes": {"archived": [{
-            'node_id': r.get('node_id') or node_id,
-            'type': r.get('type') or '',
-            'title': r.get('title') or '',
-            'archived_by': archived_by,
-            'encoding_source': (op_spec.get('encoding_source')
-                                or top_encoding_source or ''),
-            'reason': op_spec.get('reason', ''),
-            'vectors_deleted': r.get('vectors_deleted', 0),
-        }]}}
+        r["mutations"] = {"nodes": {"archived": [
+            _archived_row(r, archived_by, edge_relations)]}}
     return r
 
 
@@ -599,6 +615,7 @@ def _op_absorb(brain, op_spec, top_encoding_source, graph_changes):
     # must neither emit nor splice into the agent-visible results[].
     deltas = r.pop('deltas', [])
     migrated_edges = r.pop('migrated_edges', [])
+    absorbed_archive = r.pop('absorbed_archive', None)
     if r.get('ok'):
         graph_changes.append("ABSORB: %s <- %s" % (
             survivor_id[:8], absorbed_id[:8]))
@@ -610,22 +627,36 @@ def _op_absorb(brain, op_spec, top_encoding_source, graph_changes):
         row_source = archived_by
         reason = (op_spec.get('reason', '')
                   or 'absorb %s into %s' % (absorbed_id[:8], survivor_id[:8]))
-        # Survivor node_revised row + one edge row per migrated relation.
-        # The absorbed node's archived row lands at step 8, when archive_node
-        # returns its cascade results — until then its inline trace covers it.
+        # Survivor node_revised row + one edge row per migrated relation +
+        # the absorbed node's archived row and its absorbed_into redirect
+        # edge (both from archive_node's cascade results, via the report).
         # A merge with no field overrides has empty deltas; the emitter's
         # _changed gate keeps that row silent, matching the revise handlers.
+        edge_rows = [_edge_row(e, e.get('relation', ''), reason, row_source,
+                               e.get('source_id'), e.get('target_id'))
+                     for e in migrated_edges]
+        archived_rows = []
+        if absorbed_archive:
+            archived_rows.append(_archived_row(
+                absorbed_archive, archived_by,
+                absorbed_archive.get('edge_relations', [])))
+            redirect = absorbed_archive.get('absorbed_into_edge')
+            if redirect:
+                edge_rows.append(_edge_row(
+                    redirect, 'absorbed_into', reason, row_source,
+                    redirect.get('source_id'), redirect.get('target_id')))
         r["mutations"] = {
-            "nodes": {"revised": [{
-                'node_id': survivor_id,
-                'reason': reason,
-                'encoding_source': row_source,
-                'deltas': deltas,
-                'warnings': list(r.get('revise_warnings', [])),
-            }]},
-            "edges": [_edge_row(e, e.get('relation', ''), reason, row_source,
-                                e.get('source_id'), e.get('target_id'))
-                      for e in migrated_edges],
+            "nodes": {
+                "revised": [{
+                    'node_id': survivor_id,
+                    'reason': reason,
+                    'encoding_source': row_source,
+                    'deltas': deltas,
+                    'warnings': list(r.get('revise_warnings', [])),
+                }],
+                "archived": archived_rows,
+            },
+            "edges": edge_rows,
         }
     return r
 

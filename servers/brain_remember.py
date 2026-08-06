@@ -218,7 +218,7 @@ class BrainRememberMixin:
         self._maybe_commit()            # Fts5DAL.delete doesn't self-commit
         return vectors_deleted
 
-    def delete_node_cascade(self, node_id: str) -> None:
+    def delete_node_cascade(self, node_id: str) -> Dict[str, Any]:
         """Hard-delete a node and EVERY child-table row, routed through the
         owning DALs — the one place that knows all child tables. Replaces the
         hand-rolled NodeDAL.purge, which deleted only node_enrichments /
@@ -226,13 +226,17 @@ class BrainRememberMixin:
         node_source_refs (orphan rows on every purge). Irreversible — use
         archive_node() for soft delete.
 
+        Returns {node_id, tables_hit} — the caller's node_deleted trace row
+        carries tables_hit, so the only surviving record of the node says
+        what the cascade erased.
+
         Atomic: the deletes run inside one connection-level batch envelope so a
         mid-cascade failure leaves the node intact rather than half-deleted
         (matching purge's old single-commit behaviour, now complete). Composes
         safely if called inside an outer batch — it defers the commit to the
         owner via the saved in_batch state."""
         if not node_id:
-            return
+            return {'node_id': node_id, 'tables_hit': []}
         prior = self.conn.in_batch
         self.conn.in_batch = True
         try:
@@ -250,6 +254,17 @@ class BrainRememberMixin:
             raise
         finally:
             self.conn.in_batch = prior
+        # nodes_fts is conditional — _deindex_node probes for the virtual
+        # table and skips the delete when absent (minimal/test DBs). The
+        # trace must not claim a statement that never ran.
+        has_fts = self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='nodes_fts'"
+        ).fetchone() is not None
+        return {'node_id': node_id, 'tables_hit': [
+            'node_enrichments', 'node_vectors']
+            + (['nodes_fts'] if has_fts else [])
+            + ['node_metadata_kv', 'edges', 'edge_relations',
+               'node_source_refs', 'nodes']}
 
     def archive_exempt_relations(self) -> tuple:
         """Relations exempt from dangling-edge archival — the survivor-redirect
@@ -381,8 +396,10 @@ class BrainRememberMixin:
             # DAL — single source, no inline SQL. The survivor-redirect
             # relations (survivor_lineage aspect: absorbed_into) are EXEMPT —
             # they must outlive the node so the resolve_live chain A→B→C
-            # survives B's own archival.
-            edges_deleted = self._graph.delete_node_edges(
+            # survives B's own archival. edge_relations holds the flipped
+            # [edge_id, relation] pairs (observed truth, exemptions excluded)
+            # for the caller's node_archived trace row.
+            edge_relations = self._graph.delete_node_edges(
                 full_id, archived_by=archived_by,
                 exempt_relations=self.archive_exempt_relations())
 
@@ -395,12 +412,20 @@ class BrainRememberMixin:
             # AFTER the soft-archive above (which exempts it) so it lands and
             # stays archived=0. `_sys_archived_survivor_id` is still written
             # (step 2 audit) as the backfill source + resolve_live's read path.
+            absorbed_into_edge = None
             if survivor_id and survivor_id != full_id:
                 try:
-                    self._graph.add_relation(
+                    _res = self._graph.add_relation(
                         full_id, survivor_id, 'absorbed_into',
                         description=reason or 'absorbed into %s' % survivor_id[:8],
                         encoding_source=archived_by)
+                    absorbed_into_edge = {
+                        'source_id': full_id, 'target_id': str(survivor_id),
+                        'relation': 'absorbed_into',
+                        'edge_id': _res.get('edge_id') or '',
+                        'deltas': _res.get('deltas') or [],
+                        'warnings': list(_res.get('warnings') or []),
+                    }
                 except Exception as _e:
                     self._log_error('archive_absorbed_into_edge', _e,
                                     'absorbed_into %s -> %s' % (
@@ -425,27 +450,12 @@ class BrainRememberMixin:
         finally:
             self.conn.in_batch = prior
 
-        # 7. Trace event — S3 + dashboards see who archived what.
-        # Tracing must never block the archive itself, but a failure
-        # here is real audit data loss — log it so we know.
-        try:
-            self._trace_dal.append(
-                chain_id='archive-%s' % full_id[:8],
-                scale='s0', event_type='delta', ref_type='tool_result',
-                summary='archived %s by %s' % (full_id[:8], archived_by),
-                metadata={
-                    'node_id': full_id,
-                    'title': (title or '')[:80],
-                    'type': node_type,
-                    'archived_by': archived_by,
-                    'reason': reason,
-                    'edges_deleted': edges_deleted,
-                    'vectors_deleted': vectors_deleted,
-                })
-        except Exception as _e:
-            self._log_error('archive_trace', _e,
-                            'trace write for archived %s' % full_id[:8])
-
+        # No inline trace: the caller shapes this return into a node_archived
+        # manifest row and the dispatch chokepoint emits it post-commit
+        # (servers/mutation_emitter.py — THE one mutation-trace writer). The
+        # legacy inline emit died here at plan step 8: it wrote mid-envelope
+        # to a different DB, so it could orphan a trace for an archive that
+        # then rolled back.
         return {
             'ok': True,
             'node_id': full_id,
@@ -453,7 +463,9 @@ class BrainRememberMixin:
             'type': node_type,
             'archived_by': archived_by,
             'reason': reason,
-            'edges_deleted': edges_deleted,
+            'edges_deleted': len(edge_relations),
+            'edge_relations': edge_relations,
+            'absorbed_into_edge': absorbed_into_edge,
             'vectors_deleted': vectors_deleted,
         }
 
@@ -653,6 +665,10 @@ class BrainRememberMixin:
                 report['absorbed_archived'] = arch.get('ok', False)
                 if arch.get('ok'):
                     success = True
+                    # The absorbed node's archive details — the dispatch
+                    # caller shapes them into the node_archived manifest row
+                    # + the absorbed_into edge row.
+                    report['absorbed_archive'] = arch
                 else:
                     report['ok'] = False
                     report['archive_error'] = arch.get('error')

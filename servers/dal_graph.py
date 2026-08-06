@@ -876,7 +876,7 @@ class GraphDAL:
 
     def delete_node_edges(self, node_id: str,
                           archived_by: str = 'delete_node_edges',
-                          exempt_relations=()) -> int:
+                          exempt_relations=()) -> list:
         """Soft-archive all edge_relations touching a node (v25).
 
         Single source for "archive a node's edges" — archive_node routes here
@@ -887,8 +887,17 @@ class GraphDAL:
 
         Was a hard DELETE prior to v25 — the asymmetry with node archive
         destroyed edge provenance forever. Now sets archived=1 on the
-        relations and leaves the edges aggregate row intact. Returns count
-        of relations archived.
+        relations and leaves the edges aggregate row intact.
+
+        Returns the [edge_id, relation] pairs the UPDATE actually flipped —
+        observed truth for the caller's trace metadata. NOT the full edge
+        list: already-archived rows and `exempt_relations` misses are
+        excluded, so the return can never claim the deliberately-exempted
+        absorbed_into redirect was archived. Count = len(return).
+        (The pre-UPDATE SELECT shares the UPDATE's predicate and, on the
+        archive_node path, its write transaction. A hypothetical standalone
+        call with no prior DML would SELECT in autocommit — a concurrent
+        writer could then slip a row between the two statements.)
 
         Args:
             archived_by: encoding_source-style tag (e.g. 's2:consolidation').
@@ -904,7 +913,7 @@ class GraphDAL:
             (node_id, node_id)
         ).fetchall()]
 
-        archived_count = 0
+        flipped = []
         if edge_ids:
             ts = iso_now()
             exempt_clause, exempt = _relation_not_in_clause(exempt_relations)
@@ -919,17 +928,24 @@ class GraphDAL:
             for i in range(0, len(edge_ids), 500):
                 chunk = edge_ids[i:i + 500]
                 ph = ','.join('?' * len(chunk))
-                cur = self.conn.execute(
+                # SELECT with the UPDATE's exact predicate, same transaction —
+                # the flipped set is deterministic, so this IS what the UPDATE
+                # hits, not a racy approximation.
+                flipped.extend([r[0], r[1]] for r in self.conn.execute(
+                    'SELECT edge_id, relation FROM edge_relations '
+                    'WHERE edge_id IN (%s) AND archived = 0 %s' % (
+                        ph, exempt_clause),
+                    chunk + exempt).fetchall())
+                self.conn.execute(
                     'UPDATE edge_relations '
                     'SET archived = 1, archived_at = ?, archived_by = ?, '
                     '    embedding = NULL, embedding_model = NULL '
                     'WHERE edge_id IN (%s) AND archived = 0 %s' % (
                         ph, exempt_clause),
                     [ts, archived_by] + chunk + exempt)
-                archived_count += cur.rowcount
 
         commit_unless_batched(self.conn)
-        return archived_count
+        return flipped
 
     def hard_delete_node_edges(self, node_id: str) -> int:
         """HARD-delete every edge touching a node — both the `edge_relations`

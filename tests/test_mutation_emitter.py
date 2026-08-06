@@ -338,6 +338,43 @@ class TestEmitBehaviour(BrainTestBase):
         self.assertEqual(rows[0]['ref_id'], 'hp000001')
 
 
+class TestIntegrityArchiveTraces(BrainTestBase):
+    """health_check(auto_fix=True) archives stale context nodes at every
+    session boot WITHOUT crossing the dispatch chokepoint. When archive_node's
+    inline trace died (step 8), this path had to gain a direct emit or every
+    boot's hook:integrity archives would be permanently invisible
+    (review 2026-08-06)."""
+    needs_embedder = False
+
+    def test_auto_fix_archives_emit_node_archived_rows(self):
+        from servers.clock import brain_today
+        ids = []
+        for i in range(11):
+            r = self.brain.remember(type='context',
+                                    title='stale-ctx-%d' % i,
+                                    content='stale context body %d' % i,
+                                    encoding_source='anchor')
+            ids.append(r['id'])
+        ph = ','.join('?' * len(ids))
+        self.brain.conn.execute(
+            "UPDATE nodes SET created_at = '2026-01-01T00:00:00+00:00' "
+            "WHERE id IN (%s)" % ph, ids)
+        self.brain.conn.commit()
+
+        self.brain.health_check(session_id='hc-probe', auto_fix=True)
+
+        chain = 'maint-%s-mutation' % brain_today(self.brain).strftime('%Y%m%d')
+        rows = [t for t in self.brain._trace_dal.get_chain(chain)
+                if t['ref_type'] == 'node_archived'
+                and t['ref_id'] in set(ids)]
+        self.assertEqual(len(rows), len(ids),
+                         "every hook:integrity archive must leave a row")
+        for t in rows:
+            self.assertEqual(t['scale'], 's0')
+            self.assertEqual(t['metadata']['archived_by'], 'hook:integrity')
+            self.assertTrue(t['metadata']['title'].startswith('stale-ctx-'))
+
+
 class TestOneWriterPin(unittest.TestCase):
     """The emitter must become the ONLY mutation-trace writer.
 
@@ -348,8 +385,7 @@ class TestOneWriterPin(unittest.TestCase):
     fails immediately.
     """
     ALLOWLIST = {
-        'servers/brain_remember.py',   # archive_node inline trace — step 8
-        'servers/mutation_emitter.py',  # the sanctioned writer
+        'servers/mutation_emitter.py',  # the sanctioned writer — and nothing else
     }
 
     def test_no_new_hand_rolled_mutation_emitters(self):

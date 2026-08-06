@@ -428,12 +428,9 @@ class TestBatchArchiveAbsorbManifests(BrainTestBase):
                                 encoding_source='anchor', **kw)
         return r['id']
 
-    def _emitter_trace_ids(self):
-        from servers.trace_contract import EMITTER_REF_TYPES
-        ph = ','.join('?' * len(EMITTER_REF_TYPES))
+    def _all_trace_ids(self):
         return {r[0] for r in self.brain.logs_conn.execute(
-            "SELECT id FROM trace_events WHERE ref_type IN (%s)" % ph,
-            EMITTER_REF_TYPES).fetchall()}
+            "SELECT id FROM trace_events").fetchall()}
 
     def _dispatch_batch(self, operations, **extra):
         args = {"operations": operations}
@@ -442,6 +439,8 @@ class TestBatchArchiveAbsorbManifests(BrainTestBase):
 
     def test_archive_op_emits_node_archived_on_the_callers_chain(self):
         nid = self._node('arch-manifest-A')
+        other = self._node('arch-manifest-other')
+        self.brain._graph.add_relation(nid, other, 'depends_on')
         r = self._dispatch_batch(
             [{"op": "archive", "node_id": nid, "reason": "step7 probe"}],
             chain_id='test-step7-archive', session_id='sess-step7')
@@ -458,17 +457,21 @@ class TestBatchArchiveAbsorbManifests(BrainTestBase):
         self.assertIn('arch-manifest-A', meta['title'])
         # 'unknown' mirrors what archive_node stored in _sys_archived_by —
         # _resolve_archived_by's fallback for an unstamped batch op. The trace
-        # records the graph's truth, not a prettier guess. (The dispatch-level
-        # encoding_source separately resolves to 'anchor'.)
+        # records the graph's truth, not a prettier guess; encoding_source
+        # follows the same actor so one op's rows never split across scales.
         self.assertEqual(meta['archived_by'], 'unknown')
-        self.assertEqual(meta['encoding_source'], 'anchor')
+        self.assertEqual(meta['encoding_source'], 'unknown')
         self.assertEqual(meta['reason'], 'step7 probe')
-        # Until step 8 archive_node doesn't report the flipped pairs — an
-        # empty list is truthful; a raw edge count would not be.
-        self.assertEqual(meta['edge_relations'], [])
-        # The manifest must NOT ride into the agent-visible per-op result.
+        # The flipped (edge_id, relation) pairs — observed truth from the
+        # UPDATE, not the raw edge list.
+        self.assertEqual([p[1] for p in meta['edge_relations']],
+                         ['depends_on'])
+        # The manifest and its collections must NOT ride into the
+        # agent-visible per-op result; the scalar counts stay.
         sub = r['result']['results'][0]
-        self.assertNotIn('mutations', sub, sub)
+        for leaked in ('mutations', 'edge_relations', 'absorbed_into_edge'):
+            self.assertNotIn(leaked, sub, sub)
+        self.assertEqual(sub['edges_deleted'], 1)
 
     def test_absorb_op_emits_survivor_revise_and_migrated_edges(self):
         survivor = self._node('abs-manifest-survivor')
@@ -492,12 +495,19 @@ class TestBatchArchiveAbsorbManifests(BrainTestBase):
         self.assertTrue(any(d.get('field') == 'content'
                             for d in revised[0]['metadata']['deltas']),
                         revised[0]['metadata'])
-        # Migrated edge: absorbed->neighbor re-pointed to survivor->neighbor.
+        # Two edge rows: the migrated depends_on (absorbed->neighbor
+        # re-pointed to survivor->neighbor) + the absorbed_into redirect
+        # minted by the internal archive.
         edges = by_type.get('edge_relation_revised', [])
-        self.assertEqual(len(edges), 1, rows)
-        em = edges[0]['metadata']
-        self.assertEqual((em['source_id'], em['target_id'], em['relation']),
-                         (survivor, neighbor, 'depends_on'))
+        by_rel = {t['metadata']['relation']: t['metadata'] for t in edges}
+        self.assertEqual(sorted(by_rel), ['absorbed_into', 'depends_on'], rows)
+        em = by_rel['depends_on']
+        self.assertEqual((em['source_id'], em['target_id']),
+                         (survivor, neighbor))
+        self.assertEqual(
+            (by_rel['absorbed_into']['source_id'],
+             by_rel['absorbed_into']['target_id']),
+            (absorbed, survivor))
         # The row mirrors what absorb stamped on the migrated edge —
         # _resolve_archived_by's fallback for a bare op is 'unknown', and the
         # graph row carries exactly that.
@@ -506,9 +516,18 @@ class TestBatchArchiveAbsorbManifests(BrainTestBase):
             "ON er.edge_id = e.edge_id WHERE e.source_id=? AND e.target_id=? "
             "AND er.relation='depends_on'", (survivor, neighbor)).fetchone()[0]
         self.assertEqual(em['encoding_source'], graph_es)
+        # The absorbed node's archive rides the same chain, with the flipped
+        # pair for its OLD (pre-migration) edge — the redirect edge is exempt
+        # and must not be claimed.
+        archived = by_type.get('node_archived', [])
+        self.assertEqual(len(archived), 1, rows)
+        am = archived[0]['metadata']
+        self.assertEqual(am['node_id'], absorbed)
+        self.assertEqual([p[1] for p in am['edge_relations']], ['depends_on'])
         # Nothing internal rides into the agent-visible per-op result.
         sub = r['result']['results'][0]
-        for leaked in ('mutations', 'deltas', 'migrated_edges'):
+        for leaked in ('mutations', 'deltas', 'migrated_edges',
+                       'absorbed_archive'):
             self.assertNotIn(leaked, sub, sub)
 
     def test_absorb_rows_follow_op_level_archived_by(self):
@@ -534,21 +553,19 @@ class TestBatchArchiveAbsorbManifests(BrainTestBase):
             self.assertEqual(t['scale'], 's2',
                              "row scale must follow the stamped actor")
 
-    def test_rolled_back_batch_emits_zero_emitter_traces(self):
+    def test_rolled_back_batch_emits_zero_traces_of_any_kind(self):
         """THE ORPHAN TEST. A batch that rolls back after every kind of
         mutation ran (create, revise, archive, absorb, migrated edges) must
-        leave zero emitter trace rows — the chokepoint never sees a manifest
-        because the handler re-raises past it.
-
-        Scoped to EMITTER_REF_TYPES at step 7: archive_node's legacy inline
-        trace (s0 tool_result) still escapes a rollback — that is the flaw
-        step 8 deletes, when this widens to zero rows of ANY kind."""
+        leave zero trace rows OF ANY KIND — the chokepoint never sees a
+        manifest because the handler re-raises past it, and no inline
+        emitter exists anywhere below (the last one, archive_node's, died
+        at step 8). Impossible to satisfy for 10 of the 12 legacy sites."""
         target = self._node('orphan-archive-target')
         survivor = self._node('orphan-survivor')
         absorbed = self._node('orphan-absorbed')
         neighbor = self._node('orphan-neighbor')
         self.brain._graph.add_relation(absorbed, neighbor, 'depends_on')
-        before = self._emitter_trace_ids()
+        before = self._all_trace_ids()
 
         with patch.object(self.brain, '_apply_connect_to',
                           side_effect=RuntimeError('forced rollback')):
@@ -564,8 +581,8 @@ class TestBatchArchiveAbsorbManifests(BrainTestBase):
                      "reason": "rolls back"},
                 ], chain_id='test-step7-orphan')
 
-        self.assertEqual(self._emitter_trace_ids() - before, set(),
-                         "a rolled-back batch left emitter traces — orphaned "
+        self.assertEqual(self._all_trace_ids() - before, set(),
+                         "a rolled-back batch left trace rows — orphaned "
                          "rows lie about the graph")
         # And the graph writes really did roll back.
         self.assertEqual(self.brain.conn.execute(

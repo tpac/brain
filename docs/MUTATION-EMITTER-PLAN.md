@@ -4,7 +4,7 @@
 the *work order* only — and the only doc in this set that carries line numbers, so
 staleness is contained here.
 
-> ## STATUS — steps 1-6 SHIPPED, MERGED, LIVE (2026-08-06)
+> ## STATUS — steps 1-8 SHIPPED, MERGED, LIVE (2026-08-06)
 >
 > | step | state | commit |
 > |---|---|---|
@@ -17,21 +17,20 @@ staleness is contained here.
 > | 4 — chokepoint hook + revise/revise_batch (+ batch revise accumulation) | **DONE, live** | `b5399b0` (+ `d2a2d9e` deploy finding) |
 > | 5 — edge paths + DAL cleanups (`_emit_edge_revise_trace` deleted) | **DONE, live** | `7e74561` |
 > | 6 — remember paths (`_emit_edge_traces` + `_infer_scale_and_chain` deleted) | **DONE, live** | `8ebec33` |
-> | **7-12** | **OPEN — start at step 7** (pair 7 with 8: 7's orphan tests want 8's rows) | |
+> | 7 — batch archive/absorb manifests + orphan property | **DONE, live** | `11d2d8d` |
+> | 8 — archive cascade returns; inline trace DELETED; junk purge + hook:integrity rows | **DONE, live** | (this commit) |
+> | **9-12** | **OPEN — step 9 needs `cp brain.db` backup + re-measuring the ~0 rows/pass assumption (taken 2026-08-04)** | |
 >
-> **The emitter is LIVE for every write path except archive** — node_revised,
-> edge_relation_revised, and node_created all flow from the chokepoint;
-> production-verified under organic Scribe traffic (2026-08-06, both s0 and s1 scales,
-> session-attributed). `dispatch_write.py` holds ZERO trace writes. The single legacy
-> emitter left in the codebase is `archive_node`'s inline trace (`brain_remember.py`,
-> dies at step 8). `node_archived`/`node_deleted` have never fired.
+> **The emitter is the ONLY trace writer for mutations — zero legacy emitters remain.**
+> Every mutation kind (node created/revised/archived/deleted, edge relations) flows
+> from the chokepoint or, for the two non-dispatch paths (idle-maintenance junk purge,
+> `health_check` hook:integrity archives), from a direct `emit_mutation_traces` call.
+> The ORPHAN PROPERTY is pinned: a rolled-back brain_batch leaves zero trace rows of
+> ANY kind. `TestOneWriterPin.ALLOWLIST` holds only `mutation_emitter.py`.
 >
-> **Citation stamp — steps 7-9's line numbers are STALE.** They were resolved 2026-08-04;
-> since then steps 4-6 and the scope-provenance conversion (`4862d5a`) heavily rewrote
-> `dispatch_write.py` (helpers deleted, handlers converted, functions renamed —
-> `_stamp_session_project` is now `_stamp_session_scope`) and step 5 rewrote the
-> `dal_graph.py` regions steps 8-9 cite. **Re-grep every symbol before executing steps
-> 7-9; trust names, not numbers.**
+> **Citation stamp — step 9's line numbers are STALE.** Resolved 2026-08-04; steps 4-8
+> have since rewritten `dispatch_write.py` and `dal_graph.py` (`delete_node_edges` now
+> returns flipped pairs, not a count). **Re-grep every symbol; trust names, not numbers.**
 
 **Every step must be production-correct alone, not merely green.** Merging auto-deploys
 asynchronously: the daemon is launchd-pinned to the source checkout, and the next
@@ -386,7 +385,25 @@ step's own new-type coverage. Tier: targeted test files per step; full suite at 
   `bridge_max_per_remember=2` is a ceiling, not the rate.
 - Pins: `tests/test_mcp_roundtrip.py:614-644` (the d857e84d attribution pin).
 
-### Step 7 — `brain_batch` + batch ops → merged manifest; all `_emit_*` deleted
+### Step 7 — `brain_batch` + batch ops → merged manifest; all `_emit_*` deleted — ✅ DONE (`11d2d8d`)
+
+> **Deviations from this plan, as built:**
+> - **Absorb rows are attributed with `archived_by`** (the resolved actor), not the
+>   op/batch `encoding_source` chain — review finding: absorb stamps its graph writes
+>   with `archived_by` (which folds in op-level `archived_by`), so a row carrying the
+>   command runner instead could contradict the graph and mis-route scale (an
+>   `archived_by='s2:cleanup'` op's rows landing on s0). Pinned by
+>   `test_absorb_rows_follow_op_level_archived_by`.
+> - **The `_emit_*` helpers were already gone** — steps 5-6 deleted them ahead of
+>   schedule; this step's scope was manifest accumulation + the orphan tests only.
+> - **The orphan test was scoped to `EMITTER_REF_TYPES` at this step** — archive_node's
+>   inline trace (a `tool_result` on a different connection) still escaped a rollback.
+>   Step 8 widened it to zero rows of ANY kind, exactly the pairing the plan predicted.
+> - The absorbed node's `nodes.archived` row landed at step 8 (when archive_node
+>   started returning its cascade results); its inline trace kept coverage meanwhile.
+> - **Flagged, not changed**: `_resolve_archived_by` falls back to `'unknown'` for an
+>   unstamped batch op while the connect handler's rule is "unstamped IS anchor" —
+>   pre-existing inconsistency; trace rows mirror the stored `'unknown'` truthfully.
 
 - `servers/dispatch_write.py` — `_handle_brain_batch` accumulates sub-manifests the way it
   pops `affected` today (`:919`/`:941`/`:953` inheritance sites); the deferred connect_to
@@ -409,7 +426,30 @@ step) — this step needs no new one.
 
 ---
 
-## Step 8 — Archive and hard-delete coverage
+## Step 8 — Archive and hard-delete coverage — ✅ DONE
+
+> **Deviations from this plan, as built:**
+> - **`delete_node_edges` returns the flipped `[edge_id, relation]` pairs directly**
+>   (list, not count) — count derives as `len()`; `archive_node` keeps the scalar
+>   `edges_deleted` agent-visible alongside, and the collections (`edge_relations`,
+>   `absorbed_into_edge`) are popped into the manifest by the dispatch ops. Landed
+>   here rather than step 9 (the plan's "via step 9's change" cross-reference).
+> - **`_archived_row` sets `encoding_source = archived_by`** — actor attribution keeps
+>   all of one absorb's rows on one scale (same review finding as step 7's edge rows).
+> - **Junk purge emits PER NODE, immediately after each cascade's commit** — review
+>   finding: each cascade is individually durable, so a single post-loop emit would let
+>   a mid-loop failure erase earlier nodes with zero record (and a hard delete's trace
+>   is its only surviving record). Hooks bypass the dispatch chokepoint, so the purge
+>   calls `emit_mutation_traces` directly.
+> - **`health_check(auto_fix=True)` gained the same direct emit** (`brain_assembly.py`)
+>   — NOT in any plan step: it archives stale context nodes at every session boot,
+>   never crosses dispatch, and isn't in step 10's routing list, so deleting the inline
+>   trace would have made `hook:integrity` archives permanently invisible. Rows land on
+>   the `maint-{YYYYMMDD}-mutation` chain at s0. Step 10's scope is unchanged
+>   (community/consolidation routing still pending — those keep coarse `heal_archive`
+>   O-traces in the interim).
+> - `tables_hit` gates `nodes_fts` on the virtual table actually existing (test DBs
+>   lack it; the trace must not claim a statement that never ran).
 
 - `servers/brain_remember.py` — `archive_node` returns its archived
   `(edge_id, relation)` pairs (via step 9's `delete_node_edges` change), the

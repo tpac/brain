@@ -827,10 +827,39 @@ def hook_idle_maintenance(brain, args, graph_changes):
             AND confidence < 0.5
         """).fetchall()
 
+        reasons = {nid: 'auto-detected junk vocabulary'
+                   for nid, _t in junk_vocab}
+        reasons.update({nid: 'single-word vocabulary without definition'
+                        for nid, _t in single_word_junk if nid not in reasons})
         all_junk = {nid: title for nid, title in junk_vocab + single_word_junk}
         if all_junk:
-            for nid in all_junk:
-                brain.delete_node_cascade(nid)
+            # One node_deleted manifest row PER node, title included — a hard
+            # delete's trace is the only surviving record of it (ruled
+            # 2026-08-04, plan step 8). The hook path never reaches the
+            # dispatch chokepoint, so this calls the emitter directly.
+            # Emitted per node, IMMEDIATELY after that node's cascade commits:
+            # each cascade is individually durable, so batching the emit
+            # behind the loop would let a mid-loop failure erase earlier
+            # nodes with zero record (review 2026-08-06). Explicit maint
+            # chain at s2 (encoding_source prefix routes the scale).
+            from servers.mutation_emitter import emit_mutation_traces
+            from servers.clock import brain_today
+            maint_chain = ('maint-%s-mutation'
+                           % brain_today(brain).strftime('%Y%m%d'))
+            for nid, title in all_junk.items():
+                cascade = brain.delete_node_cascade(nid)
+                emit_mutation_traces(
+                    brain, 'hook_idle_maintenance',
+                    {'nodes': {'deleted': [{
+                        'node_id': nid,
+                        'type': 'vocabulary',
+                        'title': title or '',
+                        'deleted_by': 's2:idle_maintenance',
+                        'encoding_source': 's2:idle_maintenance',
+                        'reason': reasons.get(nid, ''),
+                        'tables_hit': cascade.get('tables_hit', []),
+                    }]}},
+                    chain_id=maint_chain)
             output.append("VOCAB CLEANUP: pruned %d junk nodes" % len(all_junk))
             graph_changes.append("VOCAB_CLEANUP: %d pruned" % len(all_junk))
     except Exception as e:

@@ -477,9 +477,35 @@ class BrainAssemblyMixin:
                     WHERE type = 'context' AND locked = 0 AND archived = 0
                     AND created_at < ?
                 ''', (iso_cutoff(days=14),)).fetchall()]
+                # Per-archive node_archived rows via the ONE trace writer.
+                # This path runs at every session boot and never crosses the
+                # dispatch chokepoint, so without a direct emit these archives
+                # became invisible when archive_node's inline trace died
+                # (plan step 8, review 2026-08-06). Emitted per node, after
+                # that node's archive commits — same rationale as the junk
+                # purge in daemon_hooks.
+                from servers.mutation_emitter import emit_mutation_traces
+                from servers.clock import brain_today
+                maint_chain = ('maint-%s-mutation'
+                               % brain_today(self).strftime('%Y%m%d'))
                 for sid in stale_ids:
-                    self.archive_node(sid, archived_by='hook:integrity',
-                                      reason='context node older than 14 days')
+                    arch = self.archive_node(
+                        sid, archived_by='hook:integrity',
+                        reason='context node older than 14 days')
+                    if arch.get('ok'):
+                        emit_mutation_traces(
+                            self, 'health_check',
+                            {'nodes': {'archived': [{
+                                'node_id': arch.get('node_id') or sid,
+                                'type': arch.get('type') or '',
+                                'title': arch.get('title') or '',
+                                'archived_by': 'hook:integrity',
+                                'encoding_source': 'hook:integrity',
+                                'reason': arch.get('reason') or '',
+                                'edge_relations': arch.get('edge_relations', []),
+                                'vectors_deleted': arch.get('vectors_deleted', 0),
+                            }]}},
+                            chain_id=maint_chain)
                 actions.append('Auto-archived %d context nodes older than 14 days' % len(stale_ids))
 
         # 5-7: miss_log auto-enrich, staged_learnings auto-promote, stale staged check
