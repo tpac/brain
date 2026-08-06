@@ -412,5 +412,206 @@ class TestBrainBatchTransaction(BrainTestBase):
         self.assertEqual(commits, 1, "revise op must COMMIT once; got %d" % commits)
 
 
+class TestBatchArchiveAbsorbManifests(BrainTestBase):
+    """Step 7 — the archive/absorb batch ops feed the mutation emitter, and
+    the ORPHAN PROPERTY becomes provable: a batch that rolls back leaves zero
+    emitter traces, because every mutation kind now flows through the manifest
+    the chokepoint emits post-commit.
+
+    Traces are asserted by id-set diff over trace_events, never by count
+    (debug-log pruning makes global counts flaky — memory 2026-06-25)."""
+    needs_embedder = False
+
+    def _node(self, title, **kw):
+        r = self.brain.remember(type='fact', title=title,
+                                content='content of %s' % title,
+                                encoding_source='anchor', **kw)
+        return r['id']
+
+    def _emitter_trace_ids(self):
+        from servers.trace_contract import EMITTER_REF_TYPES
+        ph = ','.join('?' * len(EMITTER_REF_TYPES))
+        return {r[0] for r in self.brain.logs_conn.execute(
+            "SELECT id FROM trace_events WHERE ref_type IN (%s)" % ph,
+            EMITTER_REF_TYPES).fetchall()}
+
+    def _dispatch_batch(self, operations, **extra):
+        args = {"operations": operations}
+        args.update(extra)
+        return dispatch_command(self.brain, 'brain_batch', args, [])
+
+    def test_archive_op_emits_node_archived_on_the_callers_chain(self):
+        nid = self._node('arch-manifest-A')
+        r = self._dispatch_batch(
+            [{"op": "archive", "node_id": nid, "reason": "step7 probe"}],
+            chain_id='test-step7-archive', session_id='sess-step7')
+        self.assertTrue(r['ok'], r)
+        rows = self.brain._trace_dal.get_chain('test-step7-archive')
+        archived = [t for t in rows if t['ref_type'] == 'node_archived']
+        self.assertEqual(len(archived), 1, rows)
+        t = archived[0]
+        self.assertEqual(t['ref_id'], nid)
+        self.assertEqual(t['session_id'], 'sess-step7')
+        meta = t['metadata']
+        self.assertEqual(meta['node_id'], nid)
+        self.assertEqual(meta['type'], 'fact')
+        self.assertIn('arch-manifest-A', meta['title'])
+        # 'unknown' mirrors what archive_node stored in _sys_archived_by —
+        # _resolve_archived_by's fallback for an unstamped batch op. The trace
+        # records the graph's truth, not a prettier guess. (The dispatch-level
+        # encoding_source separately resolves to 'anchor'.)
+        self.assertEqual(meta['archived_by'], 'unknown')
+        self.assertEqual(meta['encoding_source'], 'anchor')
+        self.assertEqual(meta['reason'], 'step7 probe')
+        # Until step 8 archive_node doesn't report the flipped pairs — an
+        # empty list is truthful; a raw edge count would not be.
+        self.assertEqual(meta['edge_relations'], [])
+        # The manifest must NOT ride into the agent-visible per-op result.
+        sub = r['result']['results'][0]
+        self.assertNotIn('mutations', sub, sub)
+
+    def test_absorb_op_emits_survivor_revise_and_migrated_edges(self):
+        survivor = self._node('abs-manifest-survivor')
+        absorbed = self._node('abs-manifest-absorbed')
+        neighbor = self._node('abs-manifest-neighbor')
+        self.brain._graph.add_relation(absorbed, neighbor, 'depends_on',
+                                       description='external — migrates')
+        r = self._dispatch_batch(
+            [{"op": "absorb", "survivor_id": survivor, "absorbed_id": absorbed,
+              "content": 'merged synthesis body', "reason": "step7 merge"}],
+            chain_id='test-step7-absorb', session_id='sess-step7')
+        self.assertTrue(r['ok'], r)
+        rows = self.brain._trace_dal.get_chain('test-step7-absorb')
+        by_type = {}
+        for t in rows:
+            by_type.setdefault(t['ref_type'], []).append(t)
+        # Survivor revise: the content override produced a real delta.
+        revised = by_type.get('node_revised', [])
+        self.assertEqual(len(revised), 1, rows)
+        self.assertEqual(revised[0]['ref_id'], survivor)
+        self.assertTrue(any(d.get('field') == 'content'
+                            for d in revised[0]['metadata']['deltas']),
+                        revised[0]['metadata'])
+        # Migrated edge: absorbed->neighbor re-pointed to survivor->neighbor.
+        edges = by_type.get('edge_relation_revised', [])
+        self.assertEqual(len(edges), 1, rows)
+        em = edges[0]['metadata']
+        self.assertEqual((em['source_id'], em['target_id'], em['relation']),
+                         (survivor, neighbor, 'depends_on'))
+        # The row mirrors what absorb stamped on the migrated edge —
+        # _resolve_archived_by's fallback for a bare op is 'unknown', and the
+        # graph row carries exactly that.
+        graph_es = self.brain.conn.execute(
+            "SELECT er.encoding_source FROM edges e JOIN edge_relations er "
+            "ON er.edge_id = e.edge_id WHERE e.source_id=? AND e.target_id=? "
+            "AND er.relation='depends_on'", (survivor, neighbor)).fetchone()[0]
+        self.assertEqual(em['encoding_source'], graph_es)
+        # Nothing internal rides into the agent-visible per-op result.
+        sub = r['result']['results'][0]
+        for leaked in ('mutations', 'deltas', 'migrated_edges'):
+            self.assertNotIn(leaked, sub, sub)
+
+    def test_absorb_rows_follow_op_level_archived_by(self):
+        """Review 2026-08-06: an op carrying only archived_by (no
+        encoding_source anywhere) stamps the graph with it via
+        _resolve_archived_by — the trace rows must carry the SAME value, or
+        the trace contradicts the graph and scale routing follows the command
+        runner instead of the stamped actor (s2:* rows landing on s0)."""
+        survivor = self._node('attr-survivor')
+        absorbed = self._node('attr-absorbed')
+        neighbor = self._node('attr-neighbor')
+        self.brain._graph.add_relation(absorbed, neighbor, 'depends_on')
+        r = self._dispatch_batch(
+            [{"op": "absorb", "survivor_id": survivor, "absorbed_id": absorbed,
+              "content": 'merged body', "reason": "attr probe",
+              "archived_by": "s2:cleanup"}],
+            chain_id='test-step7-attr')
+        self.assertTrue(r['ok'], r)
+        rows = self.brain._trace_dal.get_chain('test-step7-attr')
+        self.assertTrue(rows, "no rows on the explicit chain")
+        for t in rows:
+            self.assertEqual(t['metadata']['encoding_source'], 's2:cleanup', t)
+            self.assertEqual(t['scale'], 's2',
+                             "row scale must follow the stamped actor")
+
+    def test_rolled_back_batch_emits_zero_emitter_traces(self):
+        """THE ORPHAN TEST. A batch that rolls back after every kind of
+        mutation ran (create, revise, archive, absorb, migrated edges) must
+        leave zero emitter trace rows — the chokepoint never sees a manifest
+        because the handler re-raises past it.
+
+        Scoped to EMITTER_REF_TYPES at step 7: archive_node's legacy inline
+        trace (s0 tool_result) still escapes a rollback — that is the flaw
+        step 8 deletes, when this widens to zero rows of ANY kind."""
+        target = self._node('orphan-archive-target')
+        survivor = self._node('orphan-survivor')
+        absorbed = self._node('orphan-absorbed')
+        neighbor = self._node('orphan-neighbor')
+        self.brain._graph.add_relation(absorbed, neighbor, 'depends_on')
+        before = self._emitter_trace_ids()
+
+        with patch.object(self.brain, '_apply_connect_to',
+                          side_effect=RuntimeError('forced rollback')):
+            with self.assertRaises(RuntimeError):
+                self._dispatch_batch([
+                    {"op": "remember", "type": "rule",
+                     "title": "orphan-created", "content": "rolls back",
+                     "connect_to": [{"title": "orphan-neighbor",
+                                     "relation": "tests"}]},
+                    {"op": "archive", "node_id": target, "reason": "rolls back"},
+                    {"op": "absorb", "survivor_id": survivor,
+                     "absorbed_id": absorbed, "content": "rolls back",
+                     "reason": "rolls back"},
+                ], chain_id='test-step7-orphan')
+
+        self.assertEqual(self._emitter_trace_ids() - before, set(),
+                         "a rolled-back batch left emitter traces — orphaned "
+                         "rows lie about the graph")
+        # And the graph writes really did roll back.
+        self.assertEqual(self.brain.conn.execute(
+            "SELECT archived FROM nodes WHERE id = ?", (target,)).fetchone()[0], 0)
+        self.assertEqual(self.brain.conn.execute(
+            "SELECT archived FROM nodes WHERE id = ?", (absorbed,)).fetchone()[0], 0)
+
+    def test_absorb_unwind_emits_zero_traces_for_the_merge(self):
+        """An absorb whose archive leg fails unwinds its savepoint — the rest
+        of the batch commits and traces, but the unwound merge must contribute
+        nothing: no survivor revise row, no migrated-edge rows."""
+        survivor = self._node('unwind-survivor')
+        absorbed = self._node('unwind-absorbed')
+        neighbor = self._node('unwind-neighbor')
+        self.brain._graph.add_relation(absorbed, neighbor, 'depends_on')
+
+        with patch.object(self.brain, 'archive_node',
+                          return_value={'ok': False, 'error': 'forced refusal'}):
+            r = self._dispatch_batch([
+                {"op": "absorb", "survivor_id": survivor,
+                 "absorbed_id": absorbed, "content": "must not persist",
+                 "reason": "unwind probe"},
+                {"op": "remember", "type": "rule",
+                 "title": "unwind-witness", "content": "this op commits"},
+            ], chain_id='test-step7-unwind')
+
+        self.assertTrue(r['ok'], r)
+        subs = r['result']['results']
+        self.assertFalse(subs[0].get('ok'), subs[0])
+        self.assertTrue(subs[1].get('ok'), subs[1])
+
+        rows = self.brain._trace_dal.get_chain('test-step7-unwind')
+        kinds = sorted(t['ref_type'] for t in rows)
+        self.assertEqual(kinds, ['node_created'],
+                         "only the witness remember may trace; the unwound "
+                         "merge contributed: %s" % kinds)
+        # The unwound merge's internals must not leak into the agent result.
+        for leaked in ('mutations', 'deltas', 'migrated_edges'):
+            self.assertNotIn(leaked, subs[0], subs[0])
+        # And the merge really unwound.
+        c = self.brain.conn.execute(
+            "SELECT content FROM nodes WHERE id = ?", (survivor,)).fetchone()[0]
+        self.assertNotEqual(c, 'must not persist')
+        self.assertEqual(self.brain.conn.execute(
+            "SELECT archived FROM nodes WHERE id = ?", (absorbed,)).fetchone()[0], 0)
+
+
 if __name__ == '__main__':
     unittest.main()

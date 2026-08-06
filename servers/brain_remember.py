@@ -558,7 +558,10 @@ class BrainRememberMixin:
             prune = set(prune_edges or [])
             conns = self._graph.get_connections_bulk(
                 [absorbed_id]).get(absorbed_id, [])
-            migrated = 0
+            # Each migration's add_relation result (edge_id + deltas) is kept —
+            # the dispatch caller shapes them into the mutation manifest so the
+            # emitter can trace the re-pointed edges. Discarded before step 7.
+            migrated_edges = []
             for c in conns:
                 neighbor = c['id']
                 if neighbor == survivor_id:
@@ -576,9 +579,16 @@ class BrainRememberMixin:
                         kw['description'] = rel['description']
                     if rel.get('weight') is not None:
                         kw['weight'] = rel['weight']
-                    self._graph.add_relation(src, tgt, relation, **kw)
-                    migrated += 1
-            report['edges_migrated'] = migrated
+                    res = self._graph.add_relation(src, tgt, relation, **kw)
+                    migrated_edges.append({
+                        'source_id': src, 'target_id': tgt,
+                        'relation': relation,
+                        'edge_id': res.get('edge_id') or '',
+                        'deltas': res.get('deltas') or [],
+                        'warnings': list(res.get('warnings') or []),
+                    })
+            report['edges_migrated'] = len(migrated_edges)
+            report['migrated_edges'] = migrated_edges
 
             # 3. access_count — additive (usage history)
             if a_access:
@@ -622,6 +632,10 @@ class BrainRememberMixin:
                 report['voice_merged'] = sorted(voice.keys())
                 report['fields_filled'] = sorted(fill.keys())
                 report['fields_revised'] = sorted(field_updates.keys())
+                # Survivor-revise deltas ride the report so the dispatch caller
+                # can manifest a node_revised row for the merge (emitter input);
+                # discarded before step 7.
+                report['deltas'] = rev.get('deltas', [])
                 if rev.get('warnings'):
                     report['revise_warnings'] = rev['warnings']
                 if rev.get('error'):

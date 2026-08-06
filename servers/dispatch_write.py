@@ -555,6 +555,20 @@ def _op_archive(brain, op_spec, top_encoding_source, graph_changes):
     if r.get('ok'):
         graph_changes.append("ARCHIVE: %s" % node_id[:8])
         r["affected"] = _affected(archived=[node_id])
+        # Manifest row (node_archived), builder-shaped. edge_relations stays
+        # empty until archive_node returns the flipped (edge_id, relation)
+        # pairs (step 8) — an empty list is truthful, the raw edge count is
+        # not (it includes exempt absorbed_into redirects).
+        r["mutations"] = {"nodes": {"archived": [{
+            'node_id': r.get('node_id') or node_id,
+            'type': r.get('type') or '',
+            'title': r.get('title') or '',
+            'archived_by': archived_by,
+            'encoding_source': (op_spec.get('encoding_source')
+                                or top_encoding_source or ''),
+            'reason': op_spec.get('reason', ''),
+            'vectors_deleted': r.get('vectors_deleted', 0),
+        }]}}
     return r
 
 
@@ -580,10 +594,39 @@ def _op_absorb(brain, op_spec, top_encoding_source, graph_changes):
         archived_by=archived_by, reason=op_spec.get('reason', ''),
         prune_edges=op_spec.get('prune_edges'),
         drop_fields=op_spec.get('drop_fields'))
+    # Popped UNCONDITIONALLY: on success they become the manifest; on a
+    # savepoint-unwound merge the writes they describe rolled back, so they
+    # must neither emit nor splice into the agent-visible results[].
+    deltas = r.pop('deltas', [])
+    migrated_edges = r.pop('migrated_edges', [])
     if r.get('ok'):
         graph_changes.append("ABSORB: %s <- %s" % (
             survivor_id[:8], absorbed_id[:8]))
         r["affected"] = _affected(revised=[survivor_id], archived=[absorbed_id])
+        # archived_by is what absorb actually stamped on the migrated edges
+        # (brain_remember kw={'encoding_source': archived_by}) and it already
+        # folds in op-level archived_by — a row carrying anything else could
+        # contradict the graph and mis-route scale (review 2026-08-06).
+        row_source = archived_by
+        reason = (op_spec.get('reason', '')
+                  or 'absorb %s into %s' % (absorbed_id[:8], survivor_id[:8]))
+        # Survivor node_revised row + one edge row per migrated relation.
+        # The absorbed node's archived row lands at step 8, when archive_node
+        # returns its cascade results — until then its inline trace covers it.
+        # A merge with no field overrides has empty deltas; the emitter's
+        # _changed gate keeps that row silent, matching the revise handlers.
+        r["mutations"] = {
+            "nodes": {"revised": [{
+                'node_id': survivor_id,
+                'reason': reason,
+                'encoding_source': row_source,
+                'deltas': deltas,
+                'warnings': list(r.get('revise_warnings', [])),
+            }]},
+            "edges": [_edge_row(e, e.get('relation', ''), reason, row_source,
+                                e.get('source_id'), e.get('target_id'))
+                      for e in migrated_edges],
+        }
     return r
 
 
@@ -847,12 +890,14 @@ def _handle_brain_batch(brain, args, graph_changes):
                     # node_id presence guaranteed by the BATCH_OP_SPECS pre-check.
                     r = _op_archive(brain, op_spec, top_encoding_source, graph_changes)
                     _accumulate(r.pop("affected", None))
+                    _accumulate_mutations(r.pop("mutations", None))
                     results.append({"op": "archive", "index": i, **r})
 
                 elif op == "absorb":
                     # id presence guaranteed by the BATCH_OP_SPECS pre-check.
                     r = _op_absorb(brain, op_spec, top_encoding_source, graph_changes)
                     _accumulate(r.pop("affected", None))
+                    _accumulate_mutations(r.pop("mutations", None))
                     results.append({"op": "absorb", "index": i, **r})
 
                 elif op == "disconnect":
