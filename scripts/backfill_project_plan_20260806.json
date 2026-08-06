@@ -1,0 +1,20 @@
+{
+  "_comment": "Package F operator classification (Tom, 2026-08-06). session_default: Tom's ruling — 122 cwd-less sessions hand-reviewed, all brain-plugin work except the overrides below. orphan_default: Tom's ruling for the 930 creation-unlinked nodes (title/content scan showed ~99% brain-era content). node_overrides: hand-reviewed EX.CO synthesis orphans that must not inherit the blanket.",
+  "session_default": "brain",
+  "orphan_default": "brain",
+  "session_overrides": {
+    "1c7be23c-66ab-4af8-aa6d-0b6b064babaf": "ex.co",
+    "11a2f407-11e7-420b-b62b-f5d2e3ef6f3d": "ex.co",
+    "cfb74766-0eb8-417a-a950-78c922f9b090": "ex.co",
+    "f657ef62-4115-4b0b-9314-0ed120b3c60d": "ex.co",
+    "a2f5afab-1a0a-4884-861c-d0ac9f629b0c": "brain"
+  },
+  "node_overrides": {
+    "135f8a1a": "ex.co",
+    "7be60040": "ex.co",
+    "c150cf9a": "ex.co",
+    "48498a20": "ex.co",
+    "285c8ab1": "ex.co",
+    "d1510a9b": "ex.co"
+  }
+}
