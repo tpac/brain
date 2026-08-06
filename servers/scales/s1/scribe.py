@@ -64,11 +64,12 @@ class S1Scribe(IntegrationUnit):
                 self.session_id, stop_counter=self.counter).s1e_chain()
         return self._chain_id
 
-    def project_policy(self):
+    def scope_policy(self):
         """Session-scoped: the Scribe's writes carry the session's derived
-        project (provenance — the repo the conversation worked in). '' for a
-        non-repo session, which strips any LLM-supplied value instead."""
-        return self.brain.session_env_for(self.session_id).get('project', '')
+        scope provenance (brain.scope_policy_for — the single builder,
+        dimension-generic). '' per field when the session has none, which
+        strips any LLM-supplied value instead."""
+        return self.brain.scope_policy_for(self.session_id)
 
     def run(self):
         """Encode this window: bind the daemon's brain + the in-process encoder

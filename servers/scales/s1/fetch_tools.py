@@ -915,7 +915,8 @@ def execute_tool(brain, tool_name: str, tool_input: Dict[str, Any],
     return out
 
 
-def format_tool_result_for_haiku(result: Dict[str, Any], layout: str = 'legacy') -> str:
+def format_tool_result_for_haiku(result: Dict[str, Any], layout: str = 'legacy',
+                                 scope=None) -> str:
     """Format a tool's output using the SAME renderer as the initial 25
     cosine candidates — `format_candidate_for_surface`. Tool results have
     already been fully enriched by `execute_tool()` (batched brain.get_node
@@ -938,7 +939,8 @@ def format_tool_result_for_haiku(result: Dict[str, Any], layout: str = 'legacy')
         if not isinstance(r, dict):
             continue
         lines.append('')
-        lines.append(format_candidate_for_surface(r, i, layout=layout))
+        lines.append(format_candidate_for_surface(
+            r, i, layout=layout, scope=scope))
 
     if len(results) > 25:
         lines.append('')

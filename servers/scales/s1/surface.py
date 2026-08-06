@@ -83,7 +83,8 @@ def seen_node_ids(recent_messages):
 
 
 def _call_surface(brain, candidates_data, user_message,
-                  recent_messages, session_id, result, frame=''):
+                  recent_messages, session_id, result, frame='',
+                  scope=None):
     """Call Haiku to surface relevant nodes from candidates.
 
     Returns: (surfaced_dict, surface_prompt, max_tokens, interaction_id, telemetry)
@@ -158,7 +159,8 @@ def _call_surface(brain, candidates_data, user_message,
         retrieval_stats=retrieval_stats,
         frame=frame,
         layout=layout,
-        shuffle_seed=shuffle_seed)
+        shuffle_seed=shuffle_seed,
+        scope=scope)
 
     surface_prompt = (surface_instructions + "\n\n---\n\n" + user_content) \
         if surface_instructions else user_content
@@ -175,7 +177,7 @@ def _call_surface(brain, candidates_data, user_message,
         brain, candidates_data=candidates_data, user_message=user_message,
         recent_messages=recent_messages, recently_surfaced=recently_surfaced,
         retrieval_stats=retrieval_stats, frame=frame, layout=layout,
-        shuffle_seed=shuffle_seed,
+        shuffle_seed=shuffle_seed, scope=scope,
         surface_instructions=surface_instructions,
         interaction_version=surface_interaction.get('version'),
         interaction_id=interaction_id, user_content=user_content,
@@ -195,7 +197,7 @@ def _call_surface(brain, candidates_data, user_message,
         raw, tool_trace, telemetry = _call_surface_agentic(
             client, brain, candidates_data, surface_instructions,
             user_content, max_tokens, session_id, SURFACE_MODEL,
-            layout=layout, capture=capture)
+            layout=layout, capture=capture, scope=scope)
         # Attach tool trace to brain for the caller to write into K trace.
         # Stashed on the brain instance per-session-id so parallel sessions
         # don't clobber each other.
@@ -255,7 +257,8 @@ def _call_surface(brain, candidates_data, user_message,
 
 def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                            user_content, max_tokens, session_id, model,
-                           max_rounds=2, layout='legacy', capture=None):
+                           max_rounds=2, layout='legacy', capture=None,
+                           scope=None):
     """Agentic surface call: Haiku may use fetch tools to extend the candidate
     pool before final JSON selection.
 
@@ -517,7 +520,8 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tool_use_id,
-                    "content": format_tool_result_for_haiku(exec_result, layout=layout),
+                    "content": format_tool_result_for_haiku(
+                        exec_result, layout=layout, scope=scope),
                 })
         if not tool_results:
             # stop_reason said tool_use but no tool_use block arrived (the
@@ -1031,10 +1035,17 @@ def run_surface(brain, ctx, candidates_data, user_message,
         if pt is not None:
             pt.mark(label)
 
+    # Differential scope exposure: the session's declared side of every
+    # scope dimension, computed ONCE here (run_surface is the pipeline's
+    # session boundary) and threaded as plain data everywhere below — never
+    # re-derived at depth (a deep brain lookup is a hidden dependency test
+    # doubles can't see). None when nothing is declared.
+    scope = brain.session_scope(session_id)
+
     # Call Haiku selector (unchanged — picks ≤5 from 25 candidates)
     surfaced, surface_prompt, max_tokens, interaction_id, telemetry = _call_surface(
         brain, candidates_data, user_message, recent_messages,
-        session_id, result, frame=frame)
+        session_id, result, frame=frame, scope=scope)
     _mark('surface_haiku')
 
     selected = surfaced.get("selected", [])
@@ -1210,6 +1221,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
         selected_mode=selected_mode,
         query_vec=query_vec,
         brain=brain,
+        scope=scope,
     )
     _mark('surface_render')
 

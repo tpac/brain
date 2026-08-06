@@ -7,7 +7,7 @@ derived from cwd at boot). Two chokepoints enforce it:
   - encoder attribution (scales/s2/base.apply_encoder_attribution): the Scribe
     stamps its session's project; S2 units strip agent-supplied values
     (graph-scope work never invents provenance).
-  - MCP write handlers (dispatch_write._stamp_session_project): the ambient
+  - MCP write handlers (dispatch_write._stamp_session_scope): the ambient
     session's project is force-stamped on node-creating payloads; agent
     values on revise are dropped (a revise never moves provenance).
 
@@ -16,28 +16,28 @@ These tests pin the policy semantics and the two wirings.
 import pytest
 
 from tests.brain_test_base import BrainTestBase
-from servers.scales.dispatch import stamp_project_provenance
+from servers.scales.dispatch import stamp_scope_provenance
 
 
 class TestStampPolicy:
-    """Pure-function semantics of stamp_project_provenance."""
+    """Pure-function semantics of stamp_scope_provenance (project field)."""
 
     def test_force_on_remember(self):
         args = {'title': 't', 'project': 'agent-invented'}
-        warnings = stamp_project_provenance('remember', args, 'brain')
+        warnings = stamp_scope_provenance('remember', args, {'project': 'brain'})
         assert args['project'] == 'brain'
         assert len(warnings) == 1          # override is surfaced, not silent
 
     def test_force_without_supplied_is_quiet(self):
         args = {'title': 't'}
-        warnings = stamp_project_provenance('remember', args, 'brain')
+        warnings = stamp_scope_provenance('remember', args, {'project': 'brain'})
         assert args['project'] == 'brain'
         assert warnings == []
 
     def test_strip_when_session_has_no_project(self):
         # '' is authoritative: non-repo session / S2 unit — agent value drops.
         args = {'title': 't', 'project': 'agent-invented'}
-        warnings = stamp_project_provenance('remember', args, '')
+        warnings = stamp_scope_provenance('remember', args, {'project': ''})
         assert 'project' not in args
         assert len(warnings) == 1
 
@@ -45,13 +45,13 @@ class TestStampPolicy:
         # No session authority — an upstream chokepoint may already have
         # stamped (encoder path). Args pass through untouched.
         args = {'title': 't', 'project': 'encoder-stamped'}
-        assert stamp_project_provenance('remember', args, None) == []
+        assert stamp_scope_provenance('remember', args, None) == []
         assert args['project'] == 'encoder-stamped'
 
     def test_revise_strips_even_with_project(self):
         # Revise never moves provenance — strip regardless of session project.
         args = {'node_id': 'n', 'reason': 'r', 'project': 'anything'}
-        warnings = stamp_project_provenance('revise', args, 'brain')
+        warnings = stamp_scope_provenance('revise', args, {'project': 'brain'})
         assert 'project' not in args
         assert len(warnings) == 1
 
@@ -61,16 +61,16 @@ class TestStampPolicy:
         # accepts '' and the column write WIPED birth provenance. Strip must
         # be presence-based on every path.
         args = {'node_id': 'n', 'reason': 'r', 'project': ''}
-        stamp_project_provenance('revise', args, 'brain')
+        stamp_scope_provenance('revise', args, {'project': 'brain'})
         assert 'project' not in args
         # remember with no session project: explicit '' must also be popped
         args = {'title': 't', 'project': ''}
-        stamp_project_provenance('remember', args, '')
+        stamp_scope_provenance('remember', args, {'project': ''})
         assert 'project' not in args
 
     def test_remember_batch_stamps_each_node(self):
         args = {'nodes': [{'title': 'a'}, {'title': 'b', 'project': 'x'}]}
-        stamp_project_provenance('remember_batch', args, 'brain')
+        stamp_scope_provenance('remember_batch', args, {'project': 'brain'})
         assert [n['project'] for n in args['nodes']] == ['brain', 'brain']
 
     def test_brain_batch_force_on_remember_strip_elsewhere(self):
@@ -80,11 +80,27 @@ class TestStampPolicy:
             {'op': 'absorb', 'survivor_id': 's', 'absorbed_id': 'a',
              'project': 'bad'},
         ]}
-        stamp_project_provenance('brain_batch', args, 'brain')
+        stamp_scope_provenance('brain_batch', args, {'project': 'brain'})
         ops = args['operations']
         assert ops[0]['project'] == 'brain'
         assert 'project' not in ops[1]
         assert 'project' not in ops[2]
+
+    def test_counterpart_stamps_through_same_machinery(self):
+        # The stamp is field-generic over SCOPE_PROVENANCE_FIELDS — the
+        # counterpart dimension force/strips exactly like project, with no
+        # dimension-specific code path.
+        args = {'title': 't', 'counterpart': 'agent-invented'}
+        warnings = stamp_scope_provenance(
+            'remember', args, {'project': 'brain', 'counterpart': 'Tom'})
+        assert args['counterpart'] == 'Tom'
+        assert args['project'] == 'brain'
+        assert len(warnings) == 1
+
+    def test_counterpart_strips_on_revise(self):
+        args = {'node_id': 'n', 'reason': 'r', 'counterpart': 'anything'}
+        stamp_scope_provenance('revise', args, {'counterpart': 'Tom'})
+        assert 'counterpart' not in args
 
     def test_batch_branch_derives_from_op_contract(self):
         # force-vs-strip comes from BATCH_OP_SPECS' creates_node flag, not a
@@ -104,7 +120,7 @@ class TestUnitPolicies(BrainTestBase):
     def test_s2_unit_default_policy_strips(self):
         from servers.scales.s2.base import IntegrationUnit
         unit = IntegrationUnit.__new__(IntegrationUnit)  # policy is state-free
-        assert unit.project_policy() == ''
+        assert unit.scope_policy() == {'project': '', 'counterpart': ''}
 
     def test_scribe_policy_reads_session_project(self):
         from servers.scales.s1.scribe import S1Scribe
@@ -112,14 +128,14 @@ class TestUnitPolicies(BrainTestBase):
         ctx = self.brain.get_or_create_session(sid)
         ctx.set_env(cwd='/tmp/x', project='brain')
         scribe = S1Scribe(self.brain, sid, counter=1)
-        assert scribe.project_policy() == 'brain'
+        assert scribe.scope_policy()['project'] == 'brain'
 
     def test_encoder_attribution_carries_project(self):
         from servers.scales.s2.base import apply_encoder_attribution
         args = {'nodes': [{'type': 'lesson', 'title': 't', 'content': 'c'}]}
         warnings = apply_encoder_attribution(
             'remember_batch', args, encoding_source='encoder:sonnet',
-            run_chain_id='s1e-x-1', project='brain')
+            run_chain_id='s1e-x-1', scope={'project': 'brain'})
         assert warnings == []
         assert args['nodes'][0]['project'] == 'brain'
         assert args['encoding_source'] == 'encoder:sonnet'

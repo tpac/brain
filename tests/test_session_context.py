@@ -256,17 +256,30 @@ class TestSessionContextPersistence:
                 f.write('brain\n')
             assert detect_session_env(repo)[2] == 'brain'
 
-            # Malformed marker → skipped, falls through to basename.
+            # Malformed marker → STOPS the marker search (nearest explicit
+            # intent must not lose to a farther ancestor), falls through to
+            # git/basename.
             bad = os.path.join(root, 'bad-marker')
             os.makedirs(bad)
             with open(os.path.join(bad, '.brain-project'), 'w') as f:
                 f.write('../evil path\n')
             assert detect_session_env(bad)[2] == 'bad-marker'
+            # Ancestor-shadow: an invalid nearer marker must NOT be beaten
+            # by a valid ancestor marker ('slack' at plain/) — the child
+            # resolves by basename instead.
+            bad_child = os.path.join(plain, 'bad-child')
+            os.makedirs(bad_child)
+            with open(os.path.join(bad_child, '.brain-project'), 'w') as f:
+                f.write('two words\n')
+            assert detect_session_env(bad_child)[2] == 'bad-child'
 
-            # Junk anchors → unscoped.
+            # Junk anchors → None (KEEP what the session has — a re-boot
+            # whose cwd lands on $HOME/tmp/Downloads says nothing about
+            # intent and must not wipe known provenance). Named non-repo
+            # folders assert their identity; anchors don't.
             downloads = os.path.join(root, 'Downloads')
             os.makedirs(downloads)
-            assert detect_session_env(downloads)[2] == ''
+            assert detect_session_env(downloads)[2] is None
             assert project_from_cwd_basename(os.path.expanduser('~')) == ''
             assert project_from_cwd_basename('/tmp') == ''
             assert project_from_cwd_basename('/') == ''

@@ -33,7 +33,7 @@ from datetime import datetime, timezone, timedelta
 # envelope parsing) live behind the runner seam — see scales/runner.py.
 from ..runner import (read_usage, sum_usage,  # noqa: F401 — re-export for callers
                       make_client, run_llm_once, extract_json)
-from ..dispatch import ATTRIBUTED_WRITE_COMMANDS, stamp_project_provenance
+from ..dispatch import ATTRIBUTED_WRITE_COMMANDS, stamp_scope_provenance
 
 
 # Writes whose handlers emit chain-bearing traces (node_revised /
@@ -46,27 +46,28 @@ CHAIN_AWARE_WRITES = ATTRIBUTED_WRITE_COMMANDS | {'revise_edge'}
 
 
 def apply_encoder_attribution(cmd, cmd_args, *, encoding_source, run_chain_id,
-                              project=None):
+                              scope=None):
     """Stamp scale-agent attribution onto an outgoing write's args — the single
     chokepoint these facts flow through:
 
     - ``encoding_source`` on attributed writes (who minted the node/edge),
     - ``run_chain_id`` on chain-bearing writes (which run's chain its trace
       joins),
-    - ``project`` provenance policy (stamp_project_provenance semantics):
-      the Scribe passes its session's project ('' for a non-repo session) so
+    - ``scope`` provenance policy (stamp_scope_provenance semantics —
+      {field: policy} over SCOPE_PROVENANCE_FIELDS): the Scribe passes its
+      session's values ('' per field when the session has none) so
       node-creating ops carry deterministic provenance; S2 units pass ''
       (graph-scope work never invents provenance); None leaves args untouched.
 
     ``setdefault`` for the first two, so an explicitly-supplied value wins.
-    ``project`` is the opposite — force/strip — because it is session-derived,
-    never agent-authored. Mutates ``cmd_args`` in place; a no-op on non-dict
-    args and on reads (get_nodes / recall_batch are in neither set — they
-    carry no attribution, and a chain_id on a read is meaningless). The
-    in-process encoder dispatch is the one factory S1 Scribe and the S2 units
-    share, so the attribution rules live here, once.
+    ``scope`` fields are the opposite — force/strip — because they are
+    session-derived, never agent-authored. Mutates ``cmd_args`` in place; a
+    no-op on non-dict args and on reads (get_nodes / recall_batch are in
+    neither set — they carry no attribution, and a chain_id on a read is
+    meaningless). The in-process encoder dispatch is the one factory S1
+    Scribe and the S2 units share, so the attribution rules live here, once.
 
-    Returns: warning strings from the project stamp (dropped/overridden
+    Returns: warning strings from the scope stamp (dropped/overridden
     agent-supplied values) for the caller to log.
     """
     if not isinstance(cmd_args, dict):
@@ -75,7 +76,7 @@ def apply_encoder_attribution(cmd, cmd_args, *, encoding_source, run_chain_id,
         cmd_args.setdefault('encoding_source', encoding_source)
     if run_chain_id and cmd in CHAIN_AWARE_WRITES:
         cmd_args.setdefault('chain_id', run_chain_id)
-    return stamp_project_provenance(cmd, cmd_args, project)
+    return stamp_scope_provenance(cmd, cmd_args, scope)
 
 
 class IntegrationUnit:
@@ -137,13 +138,15 @@ class IntegrationUnit:
                 self.NAME)
         return self._chain_id
 
-    def project_policy(self):
-        """Project-provenance policy for this unit's writes (see
-        stamp_project_provenance). S2 units work at graph scope — they never
-        invent provenance, so the default is '' (authoritative strip: any
-        agent-supplied project is dropped). Session-scoped units (S1 Scribe)
-        override with their session's derived project."""
-        return ''
+    def scope_policy(self):
+        """Scope-provenance policy for this unit's writes (see
+        stamp_scope_provenance — {field: policy}). S2 units work at graph
+        scope — they never invent provenance, so the default is '' per field
+        (authoritative strip: any agent-supplied value is dropped).
+        Session-scoped units (S1 Scribe) override with their session's
+        derived values."""
+        from ..dispatch import SCOPE_PROVENANCE_FIELDS
+        return {f: '' for f in SCOPE_PROVENANCE_FIELDS}
 
     def trace(self, event_type, ref_type, summary, ref_id='', metadata=None):
         """Write a trace event for this unit's current run.
@@ -243,20 +246,20 @@ class IntegrationUnit:
         # run instead of the date-fallback chain. Computed once; chain_id() is
         # cached on the unit.
         run_chain_id = self.chain_id()
-        # Project provenance policy — the Scribe stamps its session's project,
+        # Scope provenance policy — the Scribe stamps its session's values,
         # S2 units strip ('' — graph-scope work never invents provenance).
         # Computed once per dispatch build.
-        project_policy = self.project_policy()
+        scope_policy = self.scope_policy()
 
         def dispatch(cmd, cmd_args):
-            _proj_warnings = apply_encoder_attribution(
+            _scope_warnings = apply_encoder_attribution(
                 cmd, cmd_args,
                 encoding_source=encoding_source, run_chain_id=run_chain_id,
-                project=project_policy)
-            for _w in _proj_warnings:
+                scope=scope_policy)
+            for _w in _scope_warnings:
                 # encoder drift, not a failure — warning severity so the
                 # error feed stays real errors only
-                brain._log_warning('project_provenance_stamp', _w,
+                brain._log_warning('scope_provenance_stamp', _w,
                                    'unit=%s' % unit_name)
 
             if cmd == 'brain_batch' and isinstance(cmd_args, dict):

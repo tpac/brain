@@ -97,57 +97,74 @@ NON_ATTRIBUTED_WRITES = {'enrich', 'trace_append', 'set_config'}
 ATTRIBUTED_WRITE_COMMANDS = WRITE_COMMANDS - NON_ATTRIBUTED_WRITES
 
 
-def stamp_project_provenance(cmd, cmd_args, project):
-    """Enforce deterministic project provenance on an outgoing write's args.
+# The scope-provenance dimension set has ONE source: contract.py derives it
+# from PROMOTED_FIELDS' system_stamped flags. Re-exported here because the
+# stamp machinery below and the S2 unit policies consume it at this layer.
+from ..contract import SCOPE_PROVENANCE_FIELDS
 
-    `project` on a node is PROVENANCE — the repo the session was working in
-    when the node was learned (SessionContext.project, derived from cwd).
-    It is never agent-authored: node-creating payloads get the session's
+
+def stamp_scope_provenance(cmd, cmd_args, scope):
+    """Enforce deterministic scope provenance on an outgoing write's args.
+
+    Scope fields on a node are PROVENANCE — the session context in which the
+    node was learned: `project` (the repo, from SessionContext.project) and
+    `counterpart` (who the session was with; today the install default).
+    They are never agent-authored: node-creating payloads get the session's
     value force-stamped; agent-supplied values on any other write are
     dropped. Mutates cmd_args in place; returns a list of warning strings
     for values that were overridden or dropped (callers surface them).
 
-    project policy value:
-      - None  → no-op. The caller has no session authority (bare handler
-        call without an ambient session); an upstream chokepoint may already
-        have stamped, so args pass through untouched.
-      - ''    → authoritative "no project here": strip agent-supplied values
+    `scope` is {field: policy} over SCOPE_PROVENANCE_FIELDS; per-field
+    policy value (None scope entirely → no-op):
+      - None  → no-op for that field. The caller has no session authority
+        (bare handler call without an ambient session); an upstream
+        chokepoint may already have stamped, so args pass through untouched.
+      - ''    → authoritative "none here": strip agent-supplied values
         (non-repo session, or an S2 unit — graph-scope work never invents
         provenance).
       - 'x'   → force-stamp onto node-creating payloads, strip elsewhere.
     """
-    if project is None or not isinstance(cmd_args, dict):
+    if not scope or not isinstance(cmd_args, dict):
+        return []
+    fields = [(f, scope[f]) for f in SCOPE_PROVENANCE_FIELDS
+              if scope.get(f) is not None]
+    if not fields:
         return []
     warnings = []
 
     def _force(node_dict, where):
-        supplied = node_dict.get('project')
-        if project:
-            if supplied and supplied != project:
-                warnings.append(
-                    "%s: project is session-derived provenance — supplied "
-                    "%r replaced with %r" % (where, supplied, project))
-            node_dict['project'] = project
-        elif 'project' in node_dict:
-            # presence-based, not truthiness: an explicit '' is also
-            # agent-authored and must not reach the node
-            supplied = node_dict.pop('project')
-            if supplied:
-                warnings.append(
-                    "%s: project is session-derived provenance and this "
-                    "session has none — supplied %r dropped" % (where, supplied))
+        for field, value in fields:
+            supplied = node_dict.get(field)
+            if value:
+                if supplied and supplied != value:
+                    warnings.append(
+                        "%s: %s is session-derived provenance — supplied "
+                        "%r replaced with %r" % (where, field, supplied, value))
+                node_dict[field] = value
+            elif field in node_dict:
+                # presence-based, not truthiness: an explicit '' is also
+                # agent-authored and must not reach the node
+                supplied = node_dict.pop(field)
+                if supplied:
+                    warnings.append(
+                        "%s: %s is session-derived provenance and this "
+                        "session has none — supplied %r dropped"
+                        % (where, field, supplied))
 
     def _strip(d, where):
         # presence-based: `project: ''` through a revise would WIPE birth
         # provenance (validate_field accepts '', revise writes the column) —
         # pop the key whenever it appears, warn when it carried a value
-        if isinstance(d, dict) and 'project' in d:
-            supplied = d.pop('project')
-            if supplied:
-                warnings.append(
-                    "%s: project is session-derived provenance — "
-                    "agent-supplied %r dropped (set at node creation, moved "
-                    "only by migration)" % (where, supplied))
+        if not isinstance(d, dict):
+            return
+        for field, _ in fields:
+            if field in d:
+                supplied = d.pop(field)
+                if supplied:
+                    warnings.append(
+                        "%s: %s is session-derived provenance — "
+                        "agent-supplied %r dropped (set at node creation, "
+                        "moved only by migration)" % (where, field, supplied))
 
     if cmd == 'remember':
         _force(cmd_args, 'remember')

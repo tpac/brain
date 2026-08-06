@@ -77,6 +77,36 @@ class TestDecodeTransitions(BrainTestBase):
         self.assertIn('effective_activation', node,
                       'Missing effective_activation — surface needs this as candidate score')
 
+    def test_differential_project_threads_to_candidate_menu(self):
+        """build_surface_prompt(scope=) → candidate render: a
+        foreign-project candidate carries the ⚠ mark in the Haiku menu, a
+        same-project candidate carries no project line. This pins the
+        THREADING (the feature existing but nobody passing the parameter is
+        the failure class), not just the render."""
+        from servers.scales.s1.surface_contract import build_surface_prompt
+
+        foreign = self.brain.remember(
+            type='fact', title='People Inc deadline passed',
+            content='External legal deadline expired.', project='exco')
+        home = self.brain.remember(
+            type='fact', title='Daemon restart shipped',
+            content='Deploy verified.', project='brain')
+        candidates = [self.brain.get_node(foreign['id']),
+                      self.brain.get_node(home['id'])]
+        for c in candidates:
+            c['score'] = 0.8
+
+        text, _ = build_surface_prompt(
+            candidates, 'status of the initiative',
+            scope={'project': 'brain'})
+        self.assertIn('⚠ From another project: exco', text)
+        self.assertNotIn('Project: brain', text)
+
+        # Undeclared (unscoped session) → no marks, legacy render.
+        text_unscoped, _ = build_surface_prompt(
+            candidates, 'status of the initiative')
+        self.assertNotIn('From another project', text_unscoped)
+
     def test_correction_enrich_finds_correction_chains(self):
         """brain.correction_enrich: node B corrects node A must be discoverable.
 
@@ -573,7 +603,7 @@ class TestSelectionLivenessGate(BrainTestBase):
         # the run-cost telemetry the K trace now carries; this wiring test
         # doesn't assert on it).
         def _fake_call_surface(brain, cands, user_message, recent_messages,
-                               sid, result, frame=''):
+                               sid, result, frame='', scope=None):
             return ({'selected': [
                 {'id': live['id'][:8], 'why': 'relevant'},
                 {'id': dead['id'][:8], 'why': 'stale'},
@@ -624,7 +654,7 @@ class TestSelectionLivenessGate(BrainTestBase):
         # read_usage→telemetry mapping inside _call_surface is covered by the
         # builder/guard unit tests; this asserts the threading into the K trace.
         def _fake_call_surface(brain, cands, user_message, recent_messages,
-                               sid, result, frame=''):
+                               sid, result, frame='', scope=None):
             return ({'selected': [{'id': node['id'][:8], 'why': 'relevant'}]},
                     'prompt', 100, None,
                     {'input_tokens': 1234, 'output_tokens': 56,
@@ -677,7 +707,7 @@ class TestSelectedIdRecovery(BrainTestBase):
         ctx = self.brain.get_or_create_session(session_id)
 
         def _fake_call_surface(brain, cands, user_message, recent_messages,
-                               sid, result, frame=''):
+                               sid, result, frame='', scope=None):
             return ({'selected': selection}, 'prompt', 100, None,
                     {'input_tokens': 50, 'output_tokens': 10,
                      'cache_read_tokens': 0, 'cache_creation_tokens': 0,
@@ -888,7 +918,7 @@ class TestShuffleTraceRecord(BrainTestBase):
         # Fake _call_surface that stashes the presentation record the way
         # the real one does (the stash, not the call, is under test here).
         def _fake_call_surface(brain, cands, user_message, recent_messages,
-                               sid, result, frame=''):
+                               sid, result, frame='', scope=None):
             brain._surface_presented = {
                 sid: {'shuffle_seed': 12345,
                       'presented_order': [node['id'][:8]]}}

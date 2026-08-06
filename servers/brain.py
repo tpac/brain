@@ -587,6 +587,51 @@ class Brain(
         from .session_env import detect_session_env
         return detect_session_env(cwd, log=self._log_error)
 
+    def counterpart_for(self, session_id: str) -> str:
+        """Who this session is with — the ONE site that answers it, so the
+        speaker arc's F4 (counterpart on SessionContext) is a one-line change
+        here instead of a sweep. Today: the install default (a constant);
+        '' when unset. `session_id` is accepted-but-unused by design — the
+        forward-compatibility seam, same shape as speaker_for."""
+        from .daemon_config import get_operator_name
+        return get_operator_name() or ''
+
+    def _scope_value(self, dim: str, session_id: str) -> str:
+        """Session-side value of one scope dimension ('' when none). The one
+        dimension→resolver mapping both scope forms below share."""
+        if dim == 'project':
+            return (self.session_env_for(session_id) or {}).get('project', '')
+        if dim == 'counterpart':
+            return self.counterpart_for(session_id)
+        return ''
+
+    def session_scope(self, session_id: str):
+        """RENDER form — the session's declared side of every scope
+        dimension, threaded as plain data (never re-derived at depth) for
+        differential exposure (contract.scope_marks). Only truthy dimensions
+        are declared: an unscoped session applies no project pressure,
+        matching the lane's unknown-is-neutral semantics. Returns None when
+        nothing is declared (legacy render everywhere)."""
+        from .contract import SCOPE_PROVENANCE_FIELDS
+        scope = {}
+        for dim in SCOPE_PROVENANCE_FIELDS:
+            value = self._scope_value(dim, session_id)
+            if value:
+                scope[dim] = value
+        return scope or None
+
+    def scope_policy_for(self, session_id: str):
+        """POLICY form — the same dimensions for stamp_scope_provenance,
+        keeping '' (authoritative strip: this session has none, drop
+        agent-supplied values). The falsy convention differs from
+        session_scope on purpose and lives only here + there. None when the
+        caller has no session (no authority — pass through)."""
+        if not session_id:
+            return None
+        from .contract import SCOPE_PROVENANCE_FIELDS
+        return {dim: self._scope_value(dim, session_id)
+                for dim in SCOPE_PROVENANCE_FIELDS}
+
     def session_env_for(self, session_id: str) -> dict:
         """Per-session env (cwd, branch, worktree, project) for a stream — fed in
         at boot from the Claude side, surfaced in peek so streams identify where

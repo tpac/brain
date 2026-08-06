@@ -202,7 +202,7 @@ Sonnet call sites (S2 reclassify, S2 base, S1 Scribe encoder) use tool-use shape
 Frame is the 3-section markdown object Anchor wakes up with at boot AND surfaces against per turn. Deterministic session-state only — no LLM call, no queried nodes, no new SQL.
 
 Sections:
-- **Session** — situational header: project (`(unscoped)` when none), counterpart, UTC clock via `conversation_now()` (replay-safe), worktree when in one. Every line exists to prevent a named failure (docstring on `_render_session_header`).
+- **Session** — situational header: project (`(unscoped)` when none), counterpart (both rendered FROM `brain.session_scope` — the same dict the candidate mismatch marks compare against, so declaration and marks can't drift), UTC clock, worktree when in one. Every line exists to prevent a named failure (docstring on `_render_session_header`). Clock: production is wall-clock; a replay MUST pass its injected time via `get_frame(brain, at=...)` — nothing detects it automatically.
 - **Current focus** — encoder's per-session arc blob.
 - **Recent moves** — encoder's recent journal entries.
 
@@ -348,11 +348,14 @@ Who created a node. Format: `category:process`. Edges carry the same tag so ever
 - `hook:compaction` / `hook:integrity` — hook lifecycle markers
 - `migration:*` — one-off recovery/migration scripts
 
-### project Convention
+### Scope provenance (project, counterpart)
 
-Repo PROVENANCE — where a node was learned, never what it's about. Stored in
-`node_metadata_kv['project']`; the legacy `nodes.project` column was dropped in
-schema v30 (`_migrate_v30_project_to_kv` moves values → kv, then DROP COLUMN).
+Session-context PROVENANCE — where/with whom a node was learned, never what
+it's about. Dimensions in `SCOPE_PROVENANCE_FIELDS` (`scales/dispatch.py`):
+`project` (the repo) and `counterpart` (who the session was with; the
+install default until the speaker arc's per-session counterpart lands).
+Stored in `node_metadata_kv`; the legacy `nodes.project` column was dropped
+in schema v30 (`_migrate_v30_project_to_kv` moves values → kv, DROP COLUMN).
 
 **Deterministic, never agent-authored.** `SessionContext.project` is derived
 from cwd at boot by the host-adapter layer (`servers/session_env.py` —
@@ -364,20 +367,29 @@ branch+worktree (a worktree session resolves to the same project as the main
 tree) → cwd basename for non-repo sessions (junk anchors like `$HOME`,
 `/tmp`, `Downloads` → `''`). "Not a git repository" is definitive (falls
 through to basename); transient git failure keeps the session's known value.
-Two chokepoints enforce it — `stamp_project_provenance`
-(`scales/dispatch.py`): the MCP write handlers force-stamp the session's
-project on node-creating payloads and strip it everywhere else (a revise
-never moves provenance); the encoder attribution does the same for the Scribe,
-while S2 units always strip (graph-scope work never invents provenance).
-brain_batch force-vs-strip derives from `BATCH_OP_SPECS`' `creates_node` flag.
-The field is `system_stamped` in the contract — excluded from the agent-facing
-MCP schemas. The CLI's `--project` is the operator escape hatch.
+Two chokepoints enforce all dimensions — `stamp_scope_provenance`
+(`scales/dispatch.py`, field-generic): the MCP write handlers force-stamp
+the session's values on node-creating payloads and strip them everywhere
+else (a revise never moves provenance); the encoder attribution does the
+same for the Scribe (`scope_policy()`), while S2 units always strip
+(graph-scope work never invents provenance). brain_batch force-vs-strip
+derives from `BATCH_OP_SPECS`' `creates_node` flag. The fields are
+`system_stamped` in the contract — excluded from the agent-facing MCP
+schemas. The CLI's `--project` is the operator escape hatch.
 
-**Read side:** the LAF `proj` lane scores session-project match per query
-(gain_proj=0 until cross-project cues exist to tune it — the lane's real job
-is INHIBITION when the operator works outside the dominant project); dict
-filter `{"project": {...}}` hard-scopes via the KV lookup; `get_node`
-promotes it onto the payload like `situation`.
+**Read side — differential exposure:** `brain.session_scope(session_id)`
+builds the session's declared side once at each pipeline boundary (surface
+menu, inject, encoder catalog); it travels as ONE `scope` dict — never
+re-derived at depth — into `render_rich_node(cfg['scope'])`, where
+`contract.scope_marks` renders a dimension ONLY on mismatch (`⚠ From
+another project: X`); same-value lines are suppressed, undeclared callers
+keep the legacy generic KV render. Adding a dimension = one
+`SCOPE_PROVENANCE_FIELDS` entry + one `SCOPE_MARK_LABELS` entry + a
+PROMOTED_FIELDS entry — zero re-threading. The LAF `proj` lane scores
+session-project match per query (gain_proj=0 until cross-project cues exist
+to tune it — the lane's real job is INHIBITION when the operator works
+outside the dominant project); dict filter `{"project": {...}}` hard-scopes
+via the KV lookup; `get_node` promotes it onto the payload like `situation`.
 
 ## Development Rules
 

@@ -305,7 +305,8 @@ def enrich_candidate_metadata(brain, node_id, node_data, config):
 # FORMATTERS
 # ═══════════════════════════════════════════════════════════════
 
-def format_candidate_for_surface(c, index, layout='legacy'):
+def format_candidate_for_surface(c, index, layout='legacy',
+                                 scope=None):
     """Format a single candidate for the surface prompt.
 
     Thin wrapper around render_rich_node(HAIKU_FORMAT) — adds recall-specific
@@ -333,6 +334,11 @@ def format_candidate_for_surface(c, index, layout='legacy'):
     fmt = HAIKU_FORMAT \
         if _os_hr.environ.get('BRAIN_HAIKU_RENDER', 'lean').strip().lower() == 'full' \
         else HAIKU_FORMAT_LEAN
+    if scope is not None:
+        # Differential project exposure (never mutate the shared constant):
+        # foreign-project candidates render a mismatch mark, same-project
+        # render nothing — see render_rich_node.
+        fmt = dict(fmt, scope=scope)
 
     discovery = c.get("discovery", "")
 
@@ -416,7 +422,8 @@ def _group_turns(msgs):
 
 
 def _build_user_content_xml(candidates, user_message, recent_messages,
-                            retrieval_stats, frame, cfg):
+                            retrieval_stats, frame, cfg,
+                            scope=None):
     """v13 XML user content — one grammar, oldest first, current message last.
 
     Sections: <partnership_context> (Frame), <conversation> (turns with
@@ -463,7 +470,8 @@ def _build_user_content_xml(candidates, user_message, recent_messages,
     cand_lines = ['<candidates n="%d">' % len(candidates)]
     for c in candidates:
         cand_lines.append('')
-        cand_lines.append(format_candidate_for_surface(c, 0, layout='xml_v13'))
+        cand_lines.append(format_candidate_for_surface(
+            c, 0, layout='xml_v13', scope=scope))
     cand_lines.append('</candidates>')
     parts.append('\n'.join(cand_lines))
 
@@ -519,7 +527,8 @@ def prepare_presented_candidates(candidates, shuffle_seed=None, cfg=None):
 def build_surface_prompt(candidates, user_message,
                        recent_messages=None, recently_recalled=None,
                        retrieval_stats=None, frame="",
-                       layout='legacy', shuffle_seed=None):
+                       layout='legacy', shuffle_seed=None,
+                       scope=None):
     """Build the S1 recall surface USER message — per-turn delta only.
 
     v11 (2026-05-03, Frame Phase 2.5 / surface prompt v2): instructions
@@ -561,7 +570,7 @@ def build_surface_prompt(candidates, user_message,
     if layout == 'xml_v13':
         return _build_user_content_xml(
             candidates, user_message, recent_messages, retrieval_stats,
-            frame, cfg)
+            frame, cfg, scope=scope)
 
     # Format conversation context (both roles, asymmetric truncation).
     # PREVIOUS turns only — the caller excludes the current chain upstream
@@ -634,7 +643,8 @@ def build_surface_prompt(candidates, user_message,
     # Format candidates
     candidates_text = ""
     for i, c in enumerate(candidates, 1):
-        candidates_text += format_candidate_for_surface(c, i) + "\n\n"
+        candidates_text += format_candidate_for_surface(
+            c, i, scope=scope) + "\n\n"
 
     # User content — per-turn delta only. Instructions live in the cached
     # system block (the registered `surface` interaction template), assembled
@@ -727,13 +737,18 @@ SURFACE_MODES = ('arc', 'fact', 'background')
 SURFACE_MODE_DEFAULT = 'arc'
 
 
-def resolve_surface_format(fmt, budget):
+def resolve_surface_format(fmt, budget, scope=None):
     """Resolve a SURFACE_*_FORMAT contract into a concrete render_rich_node cfg.
 
     Translates proportional fields (content_proportion, metadata_proportion)
     into absolute char limits using the per-node budget. Honours min_*
     floors so micro-budgets don't produce empty renders. Returns a cfg
     dict ready to pass to `render_rich_node(node, cfg)`.
+
+    `scope`: the session's declared scope dimensions — injected here (the
+    cfg is already a fresh dict) so callers never hand-clone a shared format
+    constant; a forgotten clone would leak one session's scope into every
+    other session's renders.
     """
     cfg = {k: v for k, v in fmt.items()
            if k not in ('content_proportion', 'metadata_proportion',
@@ -747,6 +762,8 @@ def resolve_surface_format(fmt, budget):
         cfg['metadata_limit'] = max(
             fmt.get('min_metadata_chars', 30),
             int(budget * fmt['metadata_proportion']))
+    if scope:
+        cfg['scope'] = scope
     return cfg
 
 
@@ -1937,7 +1954,7 @@ def _event_time_line(node):
 
 def _render_node_activation(node, budget, activation,
                              query_vec=None, brain=None, mode='arc',
-                             seen_root_ids=None):
+                             seen_root_ids=None, scope=None):
     """Render a single activated node within a char budget.
 
     Mode controls layout depth; the encoder's attached fields are trusted
@@ -1980,12 +1997,17 @@ def _render_node_activation(node, budget, activation,
         body_lines = ['[%s] %s' % (node.get('type', '?'), title)]
         if event_line:
             body_lines.append(event_line)
+        # Differential scope marks even at minimal depth — a foreign node
+        # is foreign regardless of render budget (mark, don't hide).
+        if scope:
+            from servers.contract import scope_marks
+            body_lines.extend(scope_marks(node, scope, meta=kv))
         if situation:
             body_lines.append('  ' + situation)
         return '\n'.join(body_lines)
 
     if mode == 'fact':
-        cfg = resolve_surface_format(SURFACE_FACT_FORMAT, budget)
+        cfg = resolve_surface_format(SURFACE_FACT_FORMAT, budget, scope=scope)
         return _inject_event_line(render_rich_node(node, cfg))
 
     # 'arc' (default) — full encoder-attached fields render; edges
@@ -2009,14 +2031,15 @@ def _render_node_activation(node, budget, activation,
             brain_conn=brain.conn if brain is not None else None,
             brain=brain)
 
-    cfg = resolve_surface_format(SURFACE_ARC_FORMAT, budget)
+    cfg = resolve_surface_format(SURFACE_ARC_FORMAT, budget, scope=scope)
     return _inject_event_line(render_rich_node(arc_node, cfg))
 
 
 def format_surface_output_activation(node_activation, field_activation,
                                       rich_nodes, selected_mode=None,
                                       query_vec=None, brain=None,
-                                      total_budget=7000):
+                                      total_budget=7000,
+                                      scope=None):
     """Render activated nodes as additionalContext.
 
     Args:
@@ -2093,7 +2116,7 @@ def format_surface_output_activation(node_activation, field_activation,
         rendered = _render_node_activation(
             node, effective_budget, activation,
             query_vec=query_vec, brain=brain, mode=mode,
-            seen_root_ids=seen_root_ids)
+            seen_root_ids=seen_root_ids, scope=scope)
 
         lines.append(rendered)
         lines.append('')  # blank line between nodes

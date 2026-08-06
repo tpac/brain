@@ -182,19 +182,21 @@ class TestByteTruthFidelity:
         monkeypatch.delenv('BRAIN_SURFACE_CAPTURE', raising=False)
 
         # Production-side render, every field non-default — including the
-        # presentation-shuffle seed (§20.12 A2), which production always
-        # passes and the capture must round-trip for byte fidelity.
+        # presentation-shuffle seed (§20.12 A2) and the session scope
+        # (differential exposure), which production always passes and the
+        # capture must round-trip for byte fidelity.
         seed = 0x5eed
+        scope = {'project': 'brain', 'counterpart': 'Tom'}
         user_content, max_tokens = build_surface_prompt(
             CANDS, INPUT_KW['user_message'],
             recent_messages=INPUT_KW['recent_messages'],
             recently_recalled=INPUT_KW['recently_surfaced'],
             retrieval_stats=INPUT_KW['retrieval_stats'],
             frame=INPUT_KW['frame'],
-            layout=layout, shuffle_seed=seed)
+            layout=layout, shuffle_seed=seed, scope=scope)
 
         cap = _begin(FakeBrain(), user_content=user_content, layout=layout,
-                     shuffle_seed=seed)
+                     shuffle_seed=seed, scope=scope)
 
         # Replay-side re-render, from the capture alone.
         i = cap['inputs']
@@ -205,7 +207,8 @@ class TestByteTruthFidelity:
             retrieval_stats=i['retrieval_stats'],
             frame=i['frame'],
             layout=cap['stamps']['layout'],
-            shuffle_seed=i['shuffle_seed'])
+            shuffle_seed=i['shuffle_seed'],
+            scope=i['scope'])
 
         assert rerendered == cap['rendered']['user_content']
 

@@ -320,10 +320,6 @@ class BrainVoice:
              Recent moves), and the embedder status line.
 
         The operator channel (for_operator) carries the stats summary.
-
-        Note: the Frame's wisdom section is deterministic mid-session (relevance
-        ranked against the arc) but uses a seeded influence-sample at boot, so
-        boot output is stable within a session, not byte-identical across them.
         """
         brain = self.brain
         out = []

@@ -25,7 +25,6 @@ recall() on demand.
 import datetime as _dt
 
 from servers.clock import conversation_now
-from servers.daemon_config import get_operator_name
 
 
 def _render_session_header(brain, session_id: str, at=None) -> str:
@@ -37,28 +36,36 @@ def _render_session_header(brain, session_id: str, at=None) -> str:
                     (the People Inc pick, s1r-42ff289f-22). '(unscoped)' is
                     itself signal: no project pressure applies.
       Counterpart — speaker/attribution bleed once multiple counterparts
-                    exist; today the install default (the speaker arc's
-                    accessor replaces this lookup when it lands).
+                    exist (brain.counterpart_for — install default today).
       Now         — temporal misjudgment: candidates render relative times,
                     so consumers half-know 'now'; the explicit clock makes
-                    'yesterday'/'the Jul 22 deadline' resolvable. Routed
-                    through conversation_now — eval replays inject historical
-                    time; bare wall-clock would corrupt them.
+                    'yesterday'/'the Jul 22 deadline' resolvable. Production
+                    is wall-clock; REPLAYS MUST PASS `at` (get_frame/
+                    build_frame thread it) — conversation_now(brain=) alone
+                    cannot see a replay's injected date.
       Worktree    — parallel-stream confusion: which checkout this stream
                     is acting on (only rendered when in one).
+
+    Declaration and marks cannot drift: the Project/Counterpart lines render
+    FROM brain.session_scope — the same dict the candidate mismatch marks
+    (contract.scope_marks) compare against.
     """
-    env = brain.session_env_for(session_id)
+    scope = brain.session_scope(session_id) or {}
     now = at or conversation_now(brain=brain)
+    if now.tzinfo is None:
+        # A naive `at` is taken as UTC — astimezone() on a naive datetime
+        # would reinterpret it as machine-local (wrong day on non-UTC boxes).
+        now = now.replace(tzinfo=_dt.timezone.utc)
     lines = ['## Session']
-    lines.append('- Project: %s' % (env.get('project') or '(unscoped)'))
-    counterpart = get_operator_name()
-    if counterpart:
-        lines.append('- Counterpart: %s' % counterpart)
+    lines.append('- Project: %s' % (scope.get('project') or '(unscoped)'))
+    if scope.get('counterpart'):
+        lines.append('- Counterpart: %s' % scope['counterpart'])
     lines.append('- Now: %s (%s)' % (
         now.astimezone(_dt.timezone.utc).strftime('%Y-%m-%d %H:%M UTC'),
         now.astimezone(_dt.timezone.utc).strftime('%A')))
-    if env.get('worktree'):
-        lines.append('- Worktree: %s' % env['worktree'])
+    worktree = (brain.session_env_for(session_id) or {}).get('worktree')
+    if worktree:
+        lines.append('- Worktree: %s' % worktree)
     return '\n'.join(lines) + '\n'
 
 

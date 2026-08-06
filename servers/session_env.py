@@ -17,8 +17,10 @@ Project resolution order (first hit wins):
      renamed/moved folder keeps its identity. Never auto-written.
   2. git main-repo directory name — identical from the main tree and every
      linked worktree (same `--git-common-dir`).
-  3. cwd basename — non-repo sessions; denylisted anchors ($HOME, /,
-     /tmp, Downloads/Desktop/Documents) resolve to '' (unscoped).
+  3. cwd basename — non-repo sessions: a named working folder asserts its
+     identity. Denylisted anchors ($HOME, /, /tmp, Downloads/Desktop/
+     Documents) say nothing about intent → None (keep the session's known
+     value; a fresh session simply stays unscoped).
 
 Failure semantics: "not a git repository" is a DEFINITIVE probe result and
 falls through to the basename; any other git failure (missing dir, timeout)
@@ -47,9 +49,14 @@ def _git(cwd, *args, log=None):
         return (None, '', '')
     try:
         import subprocess
+        # LC_ALL=C pins git's message wording/locale — detect_session_env
+        # classifies "not a git repository" from stderr text, and a
+        # French/German daemon must not silently turn every non-repo
+        # session into a keep-what-we-have no-op.
+        env = dict(os.environ, LC_ALL='C')
         r = subprocess.run(
             ["git", "-C", cwd, *args],
-            capture_output=True, text=True, timeout=5)
+            capture_output=True, text=True, timeout=5, env=env)
         return (r.returncode, r.stdout.strip(), r.stderr.strip())
     except Exception as e:
         if log:
@@ -109,15 +116,20 @@ def find_project_marker(cwd: str, log=None) -> str:
         try:
             if os.path.isfile(path):
                 with open(path, 'r', encoding='utf-8', errors='replace') as f:
-                    line = f.read(256).splitlines()[0].strip() if os.path.getsize(path) else ''
+                    line = f.readline(256).strip()
                 if _MARKER_RE.match(line):
                     return line
+                # A malformed marker STOPS the search: the nearest marker
+                # file is the operator's explicit intent — valid or not, it
+                # must not lose to a farther ancestor's marker. Invalid →
+                # logged, and resolution falls through to git/basename.
                 if log:
                     try:
                         log('project_marker_invalid',
                             ValueError(line[:80]), path)
                     except Exception:
                         pass
+                return ''
         except Exception as e:
             if log:
                 try:
@@ -155,7 +167,8 @@ def detect_session_env(cwd: str, log=None):
 
       - transient git failure → ('unknown', None, marker-or-None). None is
         the 'keep what we have' signal for set_env.
-      - not a git repository  → ('unknown', '', marker-or-basename-or-'')
+      - not a git repository  → ('unknown', '', marker-or-basename-or-None:
+        a junk-anchor cwd keeps the known project, a named folder asserts)
       - main working tree     → (branch, '', marker-or-repo_name)
       - linked worktree       → (branch, name, marker-or-repo_name)
 
@@ -171,9 +184,15 @@ def detect_session_env(cwd: str, log=None):
         common = lines[2].strip() if len(lines) > 2 else ''
         return (branch, worktree_from_gitdir(gitdir),
                 marker or project_from_common_dir(common, cwd))
-    if rc is not None and 'not a git repository' in err:
-        # Definitive: this cwd is simply not a repo.
-        return ('unknown', '', marker or project_from_cwd_basename(cwd))
+    if rc is not None and 'not a git repository' in err.lower():
+        # Definitive: this cwd is simply not a repo — worktree clears.
+        # Project: a real named folder asserts its identity (basename); a
+        # junk anchor ($HOME, /tmp, Downloads) says NOTHING about intent, so
+        # it keeps the session's known value (None) rather than wiping it —
+        # a re-boot whose cwd lands on an anchor must not strip provenance
+        # from the rest of the session's writes.
+        basename = project_from_cwd_basename(cwd)
+        return ('unknown', '', marker or basename or None)
     # Transient (missing dir, timeout, git absent): keep what we have —
     # except a marker, which is explicit and safe to assert regardless.
     return ('unknown', None, marker or None)

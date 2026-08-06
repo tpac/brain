@@ -86,7 +86,7 @@ def begin(brain, *, candidates_data, user_message, recent_messages,
           recently_surfaced, retrieval_stats, frame, layout,
           surface_instructions, interaction_version, interaction_id,
           user_content, max_tokens, variant, model, session_id,
-          shuffle_seed=None):
+          shuffle_seed=None, scope=None):
     """Snapshot everything known at the Haiku call boundary.
 
     Called from _call_surface BEFORE the agentic loop runs — candidates_data
@@ -126,6 +126,11 @@ def begin(brain, *, candidates_data, user_message, recent_messages,
                 # pass this back to build_surface_prompt or the candidate
                 # order won't byte-match. None on pre-shuffle captures.
                 'shuffle_seed': shuffle_seed,
+                # Session scope (differential exposure): re-rendering must
+                # pass this back or foreign-project marks / suppressed KV
+                # lines won't byte-match production. None on unscoped
+                # sessions and pre-scope captures.
+                'scope': scope,
             },
             'rendered': {
                 'system': surface_instructions,

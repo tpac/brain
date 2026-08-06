@@ -47,7 +47,12 @@ class TestAspectsPathIsolation(unittest.TestCase):
                 os.path.abspath(aspects_json_path()),
                 os.path.abspath(live_path),
                 "aspects_json_path() still points at the live file inside IsolatedBrain")
-            # Exercise the registry load + seed/heal path.
+            # Exercise the registry load + seed/heal path. (Was
+            # build_frame() until 2026-08-05 — the lean Frame no longer
+            # touches brain.aspects, so the repro trigger moved to an
+            # explicit registry access + a Frame build for the original
+            # import-time-freeze shape.)
+            self.assertIsNotNone(env.brain.aspects.by_name('wisdom'))
             build_frame(env.brain, session_id='isolation-test')
 
         with open(live_path, 'rb') as f:

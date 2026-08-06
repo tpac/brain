@@ -10,17 +10,18 @@ import sys
 
 from .clock import brain_today
 from .dispatch_common import _resolve_id, _pop_session_ctx, caller_session, CALLER_SESSION_KEY
-from .scales.dispatch import stamp_project_provenance
+from .scales.dispatch import stamp_scope_provenance
 
 
 _HEX_TRACE_ID_RE = re.compile(r'^[0-9a-f]{8}$')
 
 
-def _stamp_session_project(brain, cmd, args, ctx=None):
-    """Deterministic project provenance at the MCP write boundary.
+def _stamp_session_scope(brain, cmd, args, ctx=None):
+    """Deterministic scope provenance at the MCP write boundary.
 
-    Resolves the calling session's derived project (SessionContext.project)
-    and applies stamp_project_provenance: node-creating payloads get it
+    Resolves the calling session's scope policy (brain.scope_policy_for —
+    the single builder, dimension-generic) and applies
+    stamp_scope_provenance: node-creating payloads get the values
     force-stamped, agent-supplied values elsewhere are dropped. Sessionless
     callers (the in-process encoder dispatch — already stamped at its own
     chokepoint — and direct handler calls) pass through untouched.
@@ -34,15 +35,13 @@ def _stamp_session_project(brain, cmd, args, ctx=None):
     elif ctx is not None:
         project = ctx.project
     else:
-        sid = caller_session(args)
-        project = (brain.session_env_for(sid).get('project', '')
-                   if sid else None)
-    warnings = stamp_project_provenance(cmd, args, project)
+        scope = brain.scope_policy_for(sid)
+    warnings = stamp_scope_provenance(cmd, args, scope)
     for w in warnings:
         # agent drift, not a failure (the field is system_stamped and no
         # longer in the MCP schemas, but agents may still emit it from
         # habit/training) — warning severity keeps the error feed real
-        brain._log_warning('project_provenance_stamp', w, 'cmd=%s' % cmd)
+        brain._log_warning('scope_provenance_stamp', w, 'cmd=%s' % cmd)
     return warnings
 
 
@@ -289,7 +288,7 @@ def _handle_remember(brain, args, graph_changes):
     chain_id = args.pop('chain_id', '') if isinstance(args, dict) else ''
 
     # Deterministic project provenance — session-derived, never agent-authored.
-    project_warnings = _stamp_session_project(brain, 'remember', args, ctx=ctx)
+    scope_warnings = _stamp_session_scope(brain, 'remember', args, ctx=ctx)
 
     # v29 / Phase B Step 4 — validate source_refs shape at the write boundary.
     refs = args.get('source_refs')
@@ -323,8 +322,8 @@ def _handle_remember(brain, args, graph_changes):
     result = brain.remember(**remember_args, ctx=ctx)
     if reason_warning and isinstance(result, dict):
         result.setdefault('warnings', []).append(reason_warning)
-    if project_warnings and isinstance(result, dict):
-        result.setdefault('warnings', []).extend(project_warnings)
+    if scope_warnings and isinstance(result, dict):
+        result.setdefault('warnings', []).extend(scope_warnings)
     # ctx is cached on Brain; remember's record_remember mutation persists
     # via the autosave loop (no per-call save).
     full_id = result.get("id", "") if isinstance(result, dict) else ""
@@ -366,7 +365,7 @@ def _handle_remember_batch(brain, args, graph_changes):
         return {"ok": False, "error": "nodes array is required"}
 
     # Deterministic project provenance — session-derived, never agent-authored.
-    project_warnings = _stamp_session_project(
+    scope_warnings = _stamp_session_scope(
         brain, 'remember_batch', args, ctx=ctx)
 
     # Inherit top-level encoding_source into each node (dispatch wrapper injects this)
@@ -416,8 +415,8 @@ def _handle_remember_batch(brain, args, graph_changes):
     # ctx mutations persist via autosave (no per-call save).
     if reason_warnings and isinstance(result, dict):
         result.setdefault('warnings', []).extend(reason_warnings)
-    if project_warnings and isinstance(result, dict):
-        result.setdefault('warnings', []).extend(project_warnings)
+    if scope_warnings and isinstance(result, dict):
+        result.setdefault('warnings', []).extend(scope_warnings)
     graph_changes.append("REMEMBER_BATCH: %d nodes" % result.get("nodes_created", 0))
     enc_src = args.get('encoding_source', '')
     chain = args.get('chain_id', '')
@@ -454,7 +453,7 @@ def _handle_revise(brain, args, graph_changes):
         return {"ok": False, "error": _missing_reason_error(args)}
 
     # Project is birth provenance — a revise never moves it (migration does).
-    project_warnings = _stamp_session_project(brain, 'revise', args)
+    scope_warnings = _stamp_session_scope(brain, 'revise', args)
 
     # Reserve known dispatch keys so they don't get treated as field updates.
     # CALLER_SESSION_KEY is the ambient identity the proxy stamps — reserve it
@@ -498,7 +497,7 @@ def _handle_revise(brain, args, graph_changes):
         result.get("type", "?"), result.get("title", "")[:50]))
     # Manifest row for the emitter (node_revised replaces the legacy
     # _sys_revision_history substrate). Row warnings are the revise's OWN
-    # (attempted-but-rejected ops), captured before project_warnings are
+    # (attempted-but-rejected ops), captured before scope_warnings are
     # appended to the result — dispatch bookkeeping is not audit history and
     # must not flip the emit gate. A no-change revise (empty deltas+warnings)
     # stays in `affected` but the emitter stays silent.
@@ -509,8 +508,8 @@ def _handle_revise(brain, args, graph_changes):
         "deltas": result.get('deltas', []),
         "warnings": list(result.get('warnings', [])),
     }
-    if project_warnings and isinstance(result, dict):
-        result.setdefault('warnings', []).extend(project_warnings)
+    if scope_warnings and isinstance(result, dict):
+        result.setdefault('warnings', []).extend(scope_warnings)
     return {"ok": True, "result": result,
             "affected": _affected(revised=[node_id]),
             "mutations": {"nodes": {"revised": [row]}}}
@@ -525,7 +524,7 @@ def _handle_revise_batch(brain, args, graph_changes):
         return {"ok": False, "error": "revisions array is required"}
 
     # Project is birth provenance — a revise never moves it (migration does).
-    project_warnings = _stamp_session_project(brain, 'revise_batch', args)
+    scope_warnings = _stamp_session_scope(brain, 'revise_batch', args)
 
     # Inherit encoding_source from dispatch wrapper
     top_encoding_source = args.get("encoding_source")
@@ -582,8 +581,8 @@ def _handle_revise_batch(brain, args, graph_changes):
                 "warnings": list(row.get('warnings', [])),
             })
 
-    if project_warnings and isinstance(result, dict):
-        result.setdefault('warnings', []).extend(project_warnings)
+    if scope_warnings and isinstance(result, dict):
+        result.setdefault('warnings', []).extend(scope_warnings)
     return {"ok": True, "result": result,
             "affected": _affected(revised=revised_ids),
             "mutations": {"nodes": {"revised": manifest_rows}}}
@@ -684,7 +683,7 @@ def _handle_brain_batch(brain, args, graph_changes):
     # that don't delegate (absorb — whose field overrides flow into revise()
     # via brain.absorb(updates=...)) are only guarded here; without this an
     # agent-supplied `project` on an absorb op silently moves birth provenance.
-    project_warnings = _stamp_session_project(brain, 'brain_batch', args)
+    scope_warnings = _stamp_session_scope(brain, 'brain_batch', args)
 
     # Valid nested op names live in contract.VALID_BATCH_OPS (single source of
     # truth — see that constant). The dispatcher matches them via the if/elif
@@ -1008,8 +1007,8 @@ def _handle_brain_batch(brain, args, graph_changes):
         "connect_to_failed": connect_to_failed,
         "results": results,
     }
-    if project_warnings:
-        _batch_result["warnings"] = project_warnings
+    if scope_warnings:
+        _batch_result["warnings"] = scope_warnings
     return {"ok": True, "result": _batch_result,
             "affected": _affected(created=agg['created'], revised=agg['revised'],
                                   archived=agg['archived']),

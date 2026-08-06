@@ -81,6 +81,74 @@ class TestSessionHeader(BrainTestBase):
         self.assertIn('- Now: 2026-01-02 03:04 UTC (Friday)', frame)
 
 
+class TestSessionContextPerSession(BrainTestBase):
+    """session_context must be per-session — no parallel-session leak.
+    (Restored 2026-08-05: collaterally dropped in the lean-Frame rewrite —
+    these guard the historical session-A-arc-bleeds-into-session-B bug and
+    were never about the wisdom section.)"""
+    needs_embedder = False
+
+    def test_session_context_for_returns_per_session(self):
+        # Two distinct sessions write different contexts via direct config
+        self.brain.set_config('session_context_session_a', 'arc for session A')
+        self.brain.set_config('session_context_session_b', 'arc for session B')
+
+        self.assertEqual(
+            self.brain.session_context_for('session_a'),
+            'arc for session A')
+        self.assertEqual(
+            self.brain.session_context_for('session_b'),
+            'arc for session B')
+
+    def test_session_context_for_unknown_returns_empty(self):
+        self.assertEqual(
+            self.brain.session_context_for('never_written'), '')
+
+    def test_session_context_for_no_session_id_returns_empty(self):
+        # Defensive: don't read a global key when session_id is missing
+        self.assertEqual(self.brain.session_context_for(''), '')
+
+    def test_global_session_context_property_removed(self):
+        # The leaky global property must not exist — replaced by session_context_for
+        self.assertFalse(hasattr(self.brain, 'session_context'),
+                        "brain.session_context property should be removed (leaked across parallel sessions)")
+
+
+class TestSurfacePromptAcceptsFrame(BrainTestBase):
+    """build_surface_prompt accepts frame and renders it as 'Partnership
+    context:'. (Restored 2026-08-05 — test_pipeline_contract.py:236 deleted
+    its own copy as redundant, pointing here by name; dropping frame= from
+    the prompt builder must not pass a green suite.)"""
+    needs_embedder = False
+
+    def test_frame_renders_as_partnership_context(self):
+        from servers.scales.s1.surface_contract import build_surface_prompt
+
+        candidates = [{'id': 'abcd1234', 'title': 'Test',
+                       'type': 'fact', 'content': 'x',
+                       'confidence': 0.5, 'score': 0.8}]
+        prompt, _ = build_surface_prompt(
+            candidates, "test query",
+            frame="THE FRAME PRIOR CONTENT")
+        self.assertIn('THE FRAME PRIOR CONTENT', prompt)
+        self.assertIn('Partnership context', prompt)
+
+    def test_empty_frame_renders_explicit_degraded_marker(self):
+        from servers.scales.s1.surface_contract import build_surface_prompt
+
+        candidates = [{'id': 'abcd1234', 'title': 'Test',
+                       'type': 'fact', 'content': 'x',
+                       'confidence': 0.5, 'score': 0.8}]
+        prompt, _ = build_surface_prompt(
+            candidates, "test query",
+            frame="")
+        # Explicit degraded marker — no silent fallback to old layout
+        self.assertIn('no partnership context', prompt.lower())
+        # Make sure no Phase 1 layout artifacts appear
+        self.assertNotIn('Session arc', prompt)
+        self.assertNotIn("Encoder's recent journal", prompt)
+
+
 class TestSessionContextGetFrame(BrainTestBase):
     """ctx.get_frame(brain) is the public session-scoped entry point."""
     needs_embedder = False

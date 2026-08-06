@@ -193,6 +193,57 @@ class TestFormatNode(BrainTestBase):
         edge_lines2 = [l for l in out2.split('\n') if l.startswith('    [')]
         self.assertEqual(len(edge_lines2), 2)
 
+    def test_differential_project_mark_on_mismatch(self):
+        """cfg['scope']: foreign project renders the ⚠ mark, the generic
+        'Project:' KV line is suppressed."""
+        nid = self._make_node(title='Foreign fact', project='exco')
+        out = self._render(nid, {'scope': {'project': 'brain'}})
+        self.assertIn('⚠ From another project: exco', out)
+        self.assertNotIn('Project: exco', out)
+
+    def test_differential_project_silent_on_match(self):
+        """Same-project node renders NO project line at all in differential
+        mode — a same-project line on a one-project corpus is noise."""
+        nid = self._make_node(title='Home fact', project='brain')
+        out = self._render(nid, {'scope': {'project': 'brain'}})
+        self.assertNotIn('From another project', out)
+        self.assertNotIn('Project:', out)
+
+    def test_differential_project_neutral_on_unscoped_node(self):
+        """A node with no project provenance is never marked foreign —
+        unknown is neutral, matching the scope lane semantics."""
+        nid = self._make_node(title='Unscoped fact')
+        out = self._render(nid, {'scope': {'project': 'brain'}})
+        self.assertNotIn('From another project', out)
+
+    def test_differential_counterpart_mark_on_mismatch(self):
+        """The counterpart dimension marks through the SAME central
+        scope_marks path — adding a dimension re-threads nothing."""
+        nid = self._make_node(title='Other-speaker fact', counterpart='Dana')
+        out = self._render(nid, {'scope': {'project': 'brain',
+                                           'counterpart': 'Tom'}})
+        self.assertIn('⚠ Learned with another counterpart: Dana', out)
+        self.assertNotIn('Counterpart: Dana', out)
+
+    def test_differential_counterpart_silent_on_match(self):
+        nid = self._make_node(title='Same-speaker fact', counterpart='Tom')
+        out = self._render(nid, {'scope': {'counterpart': 'Tom'}})
+        self.assertNotIn('another counterpart', out)
+        self.assertNotIn('Counterpart:', out)
+
+    def test_legacy_render_keeps_generic_project_line(self):
+        """Callers that don't declare a scope keep the pre-existing generic
+        KV render — no information loss for unwired consumers."""
+        nid = self._make_node(title='Legacy view', project='exco',
+                              counterpart='Tom')
+        out = self._render(nid)
+        self.assertIn('Project: exco', out)
+        self.assertNotIn('From another project', out)
+        # counterpart is differential-ONLY: its value is the install default
+        # (identical on every node), so the generic KV line is pure noise
+        # and stays suppressed even for undeclared callers.
+        self.assertNotIn('Counterpart:', out)
+
     def test_edge_filter_excludes_co_accessed(self):
         """Default edge_filter excludes co_accessed and emergent_bridge."""
         nid = self._make_node(title='Main')

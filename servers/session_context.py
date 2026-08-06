@@ -145,7 +145,7 @@ class SessionContext:
 
     # ── Frame ──
 
-    def get_frame(self, brain) -> str:
+    def get_frame(self, brain, at=None) -> str:
         """Build and return Anchor's structured awareness Frame for this session.
 
         Frame Constructor — markdown text with three sections (Session /
@@ -154,6 +154,11 @@ class SessionContext:
         worktree) plus this session's encoder residue. No LLM call, no
         queried nodes.
 
+        `at`: conversation-time for the header clock. Production omits it
+        (wall-clock is the conversation's now); REPLAYS MUST PASS their
+        injected time or the header renders today's date into a historical
+        conversation and corrupts temporal judgments.
+
         Brain is passed as a dependency rather than stored on SessionContext —
         SessionContext is a per-request data carrier, brain is the singleton.
         Rebuilt fresh on every call (no caching).
@@ -161,7 +166,7 @@ class SessionContext:
         See servers/scales/s1/frame.py.
         """
         from servers.scales.s1.frame import build_frame
-        return build_frame(brain, self.session_id)
+        return build_frame(brain, self.session_id, at=at)
 
     # ── Persistence ──
 

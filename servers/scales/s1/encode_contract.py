@@ -210,7 +210,8 @@ def _filter_noise_relations(nodes_map, brain):
         node['connections'] = kept
 
 
-def build_node_catalog(judge_outputs, brain, extra_ids=None):
+def build_node_catalog(judge_outputs, brain, extra_ids=None,
+                       scope=None):
     """Build the deduplicated rich-node catalog the encoder dereferences by id.
 
     Uses system render_rich_node() with S1 config (full rich, corrections heavy).
@@ -286,11 +287,15 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None):
     rich_map = brain.get_node(list(catalog_ids)) if catalog_ids else {}
     if lived_arm:
         _filter_noise_relations(rich_map, brain)
+    # Loop-invariant: one scoped cfg for the whole catalog (can be hundreds
+    # of nodes), never a per-node clone.
+    catalog_cfg = (dict(S1_NODE_CONFIG, scope=scope)
+                   if scope else S1_NODE_CONFIG)
     for nid in catalog_ids:
         node = rich_map.get(nid)
         if not node:
             continue
-        formatted = render_rich_node(node, S1_NODE_CONFIG)
+        formatted = render_rich_node(node, catalog_cfg)
         if not formatted:
             continue
         tag = tag_for.get(nid)

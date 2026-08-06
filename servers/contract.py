@@ -104,10 +104,10 @@ BATCH_OP_SPECS = {
     "remember": {
         "required": ["type", "title", "content"],
         # creates_node: this op mints a node, so provenance stamping
-        # (stamp_project_provenance) FORCE-stamps the session project onto
-        # its payload; ops without the flag get agent-supplied project
-        # STRIPPED. Derived, not enumerated — a future node-creating op
-        # added here inherits the stamp automatically.
+        # (stamp_scope_provenance) FORCE-stamps the session's scope fields
+        # (project, counterpart) onto its payload; ops without the flag get
+        # agent-supplied values STRIPPED. Derived, not enumerated — a future
+        # node-creating op added here inherits the stamp automatically.
         "creates_node": True,
         "description": ("Create a node. Accepts all remember() fields "
                         "(situation, reasoning, quotes, ...)."),
@@ -237,6 +237,22 @@ PROMOTED_FIELDS = {
             "boundary from SessionContext.project; agent-supplied values are "
             "overridden or dropped, and a revise never moves it (only "
             "migration does). Read by the LAF proj lane and dict filters."),
+    },
+    "counterpart": {
+        "store": "metadata_kv",
+        "type": "str",
+        # system_stamped: same contract as project — scope provenance,
+        # stamped at the write boundary (stamp_scope_provenance), never
+        # agent-authored. Today the value is the install-default operator
+        # (constant); it becomes per-session when the speaker arc's F4
+        # (counterpart on SessionContext) lands.
+        "system_stamped": True,
+        "description": (
+            "Counterpart provenance — WHO the session was with when this was "
+            "learned. System-stamped at the write boundary; agent-supplied "
+            "values are overridden or dropped. Read by scope_marks for "
+            "differential exposure; a future speaker lane reads it the way "
+            "the proj lane reads project."),
     },
     "situation": {
         "store": "metadata_kv",
@@ -559,6 +575,57 @@ def render_corrections(corrections, mode='lean',
     return lines
 
 
+# ── Scope dimensions — differential exposure ──
+# The dimension SET has one source: PROMOTED_FIELDS entries flagged
+# `system_stamped` (the registry the MCP schema exclusion already consumes).
+# The write boundary (scales/dispatch.stamp_scope_provenance) and the render
+# marks below both derive from it — adding a dimension is the PROMOTED_FIELDS
+# entry plus its label here; the module-load assert refuses a half-landed one.
+SCOPE_PROVENANCE_FIELDS = tuple(
+    k for k, v in PROMOTED_FIELDS.items() if v.get('system_stamped'))
+
+# The session's declared side travels as ONE `scope` dict ({dimension:
+# current value}, built by brain.session_scope) so adding a dimension never
+# re-threads render signatures. Only truthy-declared dimensions participate
+# (an unscoped session applies no pressure — unknown is neutral, matching
+# the scope lane semantics).
+SCOPE_MARK_LABELS = {
+    'project': 'From another project',
+    'counterpart': 'Learned with another counterpart',
+}
+assert set(SCOPE_MARK_LABELS) == set(SCOPE_PROVENANCE_FIELDS), (
+    'scope dimension registries diverged: PROMOTED_FIELDS system_stamped=%r '
+    'vs SCOPE_MARK_LABELS=%r — a dimension stamped but never marked (or '
+    'marked but never stamped) fails silently everywhere else, so refuse to '
+    'import' % (SCOPE_PROVENANCE_FIELDS, tuple(SCOPE_MARK_LABELS)))
+
+
+def scope_marks(node, scope, meta=None):
+    """Mismatch marks for every declared scope dimension — the single place
+    differential-exposure logic lives. A node value that is absent stays
+    unmarked (never punish missing provenance); a match renders nothing
+    (same-value lines are noise); only foreign values mark. Mark, don't
+    hide — ranking pressure is the scope lane's job, not the render's.
+
+    Node value resolution: promoted top-level → caller-supplied meta →
+    '_metadata' (the canonical get_node attachment; callers that build meta
+    from other keys, e.g. background mode's metadata_kv, still resolve
+    non-promoted dimensions). Comparison is case-insensitive: the producers
+    aren't case-coordinated (a marker file may say 'Brain' where git says
+    'brain') and a case slip must not mark the whole corpus foreign."""
+    meta = meta if meta is not None else {}
+    node_meta = node.get('_metadata') or {}
+    lines = []
+    for dim, label in SCOPE_MARK_LABELS.items():
+        current = (scope or {}).get(dim)
+        if not current:
+            continue
+        value = node.get(dim) or meta.get(dim) or node_meta.get(dim) or ''
+        if value and value.strip().lower() != current.strip().lower():
+            lines.append('  ⚠ %s: %s' % (label, value))
+    return lines
+
+
 def render_rich_node(node, config=None):
     """Render a get_rich_node() dict as a formatted string.
 
@@ -623,6 +690,16 @@ def render_rich_node(node, config=None):
     # Metadata KV
     meta = node.get('_metadata', {})
     meta_limit = cfg.get('metadata_limit', 300)
+
+    # Differential scope exposure: when the caller declares its session
+    # scope (cfg['scope']), each scope dimension renders ONLY on mismatch —
+    # a same-value line on a mostly-uniform corpus is noise consumers learn
+    # to skip; a line that only appears when foreign is signal (mark, don't
+    # hide — ranking pressure is the scope lane's job). Callers that don't
+    # declare keep the legacy generic KV render below.
+    scope = cfg.get('scope') or None
+    if scope:
+        lines.extend(scope_marks(node, scope, meta=meta))
     skip_keys = set((
         'metadata_created_at',
         # keywords is a DEAD field — dropped from write surfaces in schema v28
@@ -635,6 +712,14 @@ def render_rich_node(node, config=None):
         # avoid double-display. kv is canonical; promotion to top-level
         # keeps code callers ergonomic.
         'situation',
+        # counterpart is differential-only: today its value is the install
+        # default — identical on every node — so a generic 'Counterpart: X'
+        # line is one row of pure noise per node on every undeclared render
+        # (S2 encoder prompts, MCP get_node, 25-candidate menus). The
+        # scope_marks path above renders it on mismatch; nothing else should.
+        # (project stays generically visible for undeclared callers — its
+        # values genuinely vary, so the line carries information.)
+        'counterpart',
         # S2 community structural metrics — useful for S2CD/S3, not for Anchor
         'community_internal_edges', 'community_external_edges',
         'community_internal_fraction', 'community_is_corridor',
@@ -644,6 +729,10 @@ def render_rich_node(node, config=None):
     ))
     # Caller-supplied extra skips (e.g. surface drops 'question')
     skip_keys.update(cfg.get('extra_skip_keys', ()))
+    # Differential mode owns the scope-dimension renders (mismatch marks
+    # above) — suppress the generic KV lines for declared dimensions.
+    if scope:
+        skip_keys.update(k for k in SCOPE_MARK_LABELS if scope.get(k))
     # Voice fields bypass meta_limit — operator and Anchor verbatim
     # quotes are high-signal-per-char and naturally short. Truncating
     # them at 150 chars loses the actual words. Cap defensively at 600.

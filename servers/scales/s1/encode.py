@@ -536,7 +536,8 @@ def _build_catalog(brain, messages, session_id, lived):
 
     try:
         node_catalog, cataloged_ids = build_node_catalog(
-            judge_outputs, brain, extra_ids=extra_ids)
+            judge_outputs, brain, extra_ids=extra_ids,
+            scope=brain.session_scope(session_id))
     except Exception as e:
         print('[s1e] ERROR building node catalog: %s' % e, flush=True)
         node_catalog, cataloged_ids = '', set()
