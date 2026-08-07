@@ -26,6 +26,20 @@ class HealerEncoder(IntegrationUnit):
     def __init__(self, brain, dispatch_fn=None, config=None):
         super().__init__(brain, dispatch_fn)
         self.config = config or HEALER
+        self._dispatch_fn = None
+
+    def _make_dispatch(self):
+        """Healer dispatch — inherits base `_make_encoder_dispatch` (no
+        archive guard: the healer never archives; its writes are field-fill
+        revises). Built HERE, on the encoder instance, never handed down
+        from the orchestrator: the closure stamps `run_chain_id` from
+        `chain_id()`, which caches per instance at seconds resolution — a
+        handed-down closure would put node_revised rows and this instance's
+        `healer_generated` delta on two different chains, one pass rendering
+        as two phantom runs (plan step 10)."""
+        if self._dispatch_fn is None:
+            self._dispatch_fn = self._make_encoder_dispatch()
+        return self._dispatch_fn
 
     def run(self, proposals):
         """Generate missing fields for proposed nodes.
@@ -294,8 +308,10 @@ class HealerEncoder(IntegrationUnit):
         """Store healed fields via brain's standard write path (revise).
 
         Always uses revise() — handles metadata, situation embedding,
-        group vectors, FTS5, everything in one call. Goes through dispatch
-        (TCP to daemon) when available, direct brain.revise() when inline.
+        group vectors, FTS5, everything in one call. Always through the
+        encoder dispatch (built on THIS instance, see _make_dispatch), so
+        every field-fill emits an attributed node_revised trace on the same
+        chain as the healer_generated delta.
 
         When `proposal` is provided, only fields flagged in the proposal's
         needs_* set get written — Haiku-returned fields for slots that
@@ -338,10 +354,19 @@ class HealerEncoder(IntegrationUnit):
                 **fields_to_write,
             }
 
-            if self.dispatch:
-                self.dispatch('revise', revise_args)
-            else:
-                self.brain.revise(**revise_args)
+            # Always through dispatch — the direct brain.revise() fallback
+            # was the last healer write bypassing the chokepoint: no
+            # node_revised trace, no run-chain attribution (plan step 10).
+            r = self._make_dispatch()('revise', revise_args)
+
+            # _handle_revise returns ok=False rather than raising — without
+            # this check a rejected revise reported fields_written=N.
+            if not (r or {}).get('ok'):
+                self.brain._log_error(
+                    self.NAME,
+                    Exception((r or {}).get('error', 'revise returned no result')),
+                    'revise rejected for %s' % node_id[:8])
+                return 0, None
 
             return len(fields_to_write), full_id
 

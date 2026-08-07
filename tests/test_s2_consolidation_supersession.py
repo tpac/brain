@@ -53,12 +53,23 @@ class TestHealSupersededHandoffs(SupersessionBase):
         new = self._node('opener 07-23')
         self.brain.connect(new, old, relation='supersedes')
 
-        healed = self._decoder()._heal_graph()
+        dec = self._decoder()
+        healed = dec._heal_graph()
 
         self.assertEqual(self._archived(old), 1)
         self.assertEqual(self._archived(new), 0)
         self.assertTrue(any(h['id'] == old and 'superseded' in h['reason']
                             for h in healed))
+        # Step 10: the heal routes through dispatch — survivor lineage must
+        # survive the routing (the batch archive op carries survivor_id) and
+        # the archive must trace on the decoder's run chain.
+        ptr = self.brain._meta_kv.get_all_bulk([old])[old].get(
+            '_sys_archived_survivor_id')
+        self.assertEqual(ptr, new, 'lineage lost in dispatch routing')
+        rows = [t for t in self.brain._trace_dal.get_chain(dec.chain_id())
+                if t['ref_type'] == 'node_archived' and t['ref_id'] == old]
+        self.assertEqual(len(rows), 1,
+                         'superseded-handoff heal must emit node_archived')
 
     def test_chain_archives_every_predecessor(self):
         # a ← b ← c (c newest): both a and b retire, head stays.

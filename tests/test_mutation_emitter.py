@@ -422,6 +422,90 @@ class TestHealerSweepTraces(BrainTestBase):
                          [{'field': 'archived', 'old': 0, 'new': 1}])
 
 
+class TestS2ArchiveRouting(BrainTestBase):
+    """Step 10 — the S2 heal/dead-sweep archives route through dispatch, so
+    they emit attributed node_archived rows on their unit's run chain. The
+    routing must use an UNGUARDED dispatch: heal targets are out-of-cluster
+    by definition, and the consolidation encoder's archive_guard drops
+    out-of-scope archives while reporting success."""
+    needs_embedder = False
+
+    def _community(self, title):
+        return self.brain.remember(type='community', title=title,
+                                   content='community body',
+                                   encoding_source='anchor')['id']
+
+    def test_orphan_community_heal_still_archives_and_traces(self):
+        from servers.scales.s2.consolidation_decoder import ConsolidationDecoder
+        cid = self._community('orphan-community-x')
+        dec = ConsolidationDecoder(self.brain)
+        healed = dec._heal_graph()
+
+        self.assertEqual(self.brain.conn.execute(
+            'SELECT archived FROM nodes WHERE id = ?', (cid,)).fetchone()[0], 1)
+        self.assertTrue(any(h['id'] == cid for h in healed), healed)
+        rows = [t for t in self.brain._trace_dal.get_chain(dec.chain_id())
+                if t['ref_type'] == 'node_archived' and t['ref_id'] == cid]
+        self.assertEqual(len(rows), 1,
+                         'orphan heal must emit node_archived on the run chain')
+        self.assertEqual(rows[0]['metadata']['archived_by'], 's2:consolidation')
+        self.assertEqual(rows[0]['scale'], 's2')
+
+    def test_dead_community_sweep_archives_and_traces(self):
+        from servers.scales.s2.community import CommunityDetection
+        cid = self._community('dead-community-x')
+        unit = CommunityDetection(self.brain)
+        archived_ids = unit._auto_archive_dead(
+            [{'id': cid, 'title': 'dead-community-x', 'int_frac': 0.01}])
+
+        self.assertIn(cid, archived_ids)
+        self.assertEqual(self.brain.conn.execute(
+            'SELECT archived FROM nodes WHERE id = ?', (cid,)).fetchone()[0], 1)
+        rows = [t for t in self.brain._trace_dal.get_chain(unit.chain_id())
+                if t['ref_type'] == 'node_archived' and t['ref_id'] == cid]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['metadata']['archived_by'],
+                         's2:community_detection')
+
+    def test_healer_field_fill_traces_on_the_encoder_chain(self):
+        """One healer pass = one chain: the node_revised rows land on the
+        SAME chain as the healer_generated delta (the closure is built on
+        the encoder instance — a handed-down closure split them across two
+        chains, the phantom-run-card class)."""
+        from servers.scales.s2.healer_encoder import HealerEncoder
+        nid = self.brain.remember(type='fact', title='heal-target',
+                                  content='body without question',
+                                  encoding_source='anchor')['id']
+        enc = HealerEncoder(self.brain)
+        n, full_id = enc._store_fields(
+            nid, {'question': 'what question does this node answer here?'},
+            proposal={'node_id': nid, 'needs_question': True})
+
+        self.assertEqual(n, 1)
+        self.assertEqual(full_id, nid)
+        rows = [t for t in self.brain._trace_dal.get_chain(enc.chain_id())
+                if t['ref_type'] == 'node_revised' and t['ref_id'] == nid]
+        self.assertEqual(len(rows), 1,
+                         'field-fill must emit node_revised on the encoder chain')
+        self.assertEqual(rows[0]['metadata']['encoding_source'], 's2:healer')
+
+    def test_healer_rejected_revise_reports_zero(self):
+        """_handle_revise returns ok=False rather than raising — a rejected
+        revise must report 0 fields written, not len(fields)."""
+        from unittest.mock import patch
+        from servers.scales.s2.healer_encoder import HealerEncoder
+        nid = self.brain.remember(type='fact', title='reject-target',
+                                  content='body', encoding_source='anchor')['id']
+        enc = HealerEncoder(self.brain)
+        with patch.object(enc, '_make_dispatch',
+                          return_value=lambda cmd, args: {'ok': False,
+                                                          'error': 'forced'}):
+            n, full_id = enc._store_fields(
+                nid, {'question': 'a question long enough to pass length'},
+                proposal={'node_id': nid, 'needs_question': True})
+        self.assertEqual((n, full_id), (0, None))
+
+
 class TestOneWriterPin(unittest.TestCase):
     """The emitter must become the ONLY mutation-trace writer.
 

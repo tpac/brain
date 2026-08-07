@@ -193,6 +193,37 @@ class CommunityEncoder(IntegrationUnit):
             ptype = p.get('type', 'unknown')
             outcomes[ptype] = outcomes.get(ptype, 0) + 1
 
+        # Membership restorer runs BEFORE the delta write (moved 2026-08-07,
+        # plan step 10) so its backfill lands in THIS run's delta: the
+        # restorer is direct-DAL — the mutation emitter can't see it — so the
+        # community unit's own delta is where the S2 story records it
+        # (count + edge ids, ruled 2026-08-04). See the block comment below.
+        recon = {'communities_healed': 0, 'edges_backfilled': 0,
+                 'details': [], 'edge_ids': []}
+        reconciled_ids = []
+        try:
+            with self.brain.write_lock:
+                recon = self.brain._graph.reconcile_community_membership()
+            reconciled_ids = [cid for cid, _ in recon.get('details', [])]
+            if recon['edges_backfilled']:
+                # Auto-heal event → _log_warning (not _log_error): it's a
+                # repaired inconsistency, not a failure, and warning-level
+                # keeps the error-triage view clean. Still loud/surfaced.
+                self.brain._log_warning(
+                    'community_membership_backfilled',
+                    'community declared members but held 0 edges — back-filled',
+                    'back-filled %d member edge(s) across %d orphaned '
+                    'community(ies): %s' % (
+                        recon['edges_backfilled'], recon['communities_healed'],
+                        ', '.join('%s+%d' % (c[:8], n)
+                                  for c, n in recon['details'][:10])))
+                print('[s2ce] membership reconcile: +%d edge(s) across %d '
+                      'community(ies)' % (recon['edges_backfilled'],
+                                          recon['communities_healed']), flush=True)
+        except Exception as e:
+            self.brain._log_error('community_membership_reconcile', e,
+                                  'membership restorer failed')
+
         self.trace('delta', 'community_enriched',
                    'COMPLETE: %d actions (%d writes) in %d rounds, %d stamped, '
                    '%dms, %d→%d tok' % (
@@ -218,38 +249,17 @@ class CommunityEncoder(IntegrationUnit):
                        output_tokens=result.get('output_tokens', 0),
                        cache_read_tokens=result.get('cache_read_tokens', 0),
                        cache_creation_tokens=result.get('cache_creation_tokens', 0),
+                       membership_reconciled={
+                           'communities_healed': recon.get('communities_healed', 0),
+                           'edges_backfilled': recon.get('edges_backfilled', 0),
+                           'edge_ids': recon.get('edge_ids', []),
+                       },
                    ))
 
-        # Membership restorer: a community can silently end up declaring N
-        # members in `community_members` metadata while holding ZERO edges —
-        # Haiku sometimes creates the node but omits the edge field (or used
-        # the retired `connections=`, dropped by the guard). No other check
-        # catches it (the declared list is the only diffable intent), so
-        # back-fill the gap from the declaration and surface it loudly. Runs
-        # every cycle; self-quiets once edges exist (idempotent).
-        reconciled_ids = []
-        try:
-            with self.brain.write_lock:
-                recon = self.brain._graph.reconcile_community_membership()
-            reconciled_ids = [cid for cid, _ in recon.get('details', [])]
-            if recon['edges_backfilled']:
-                # Auto-heal event → _log_warning (not _log_error): it's a
-                # repaired inconsistency, not a failure, and warning-level
-                # keeps the error-triage view clean. Still loud/surfaced.
-                self.brain._log_warning(
-                    'community_membership_backfilled',
-                    'community declared members but held 0 edges — back-filled',
-                    'back-filled %d member edge(s) across %d orphaned '
-                    'community(ies): %s' % (
-                        recon['edges_backfilled'], recon['communities_healed'],
-                        ', '.join('%s+%d' % (c[:8], n)
-                                  for c, n in recon['details'][:10])))
-                print('[s2ce] membership reconcile: +%d edge(s) across %d '
-                      'community(ies)' % (recon['edges_backfilled'],
-                                          recon['communities_healed']), flush=True)
-        except Exception as e:
-            self.brain._log_error('community_membership_reconcile', e,
-                                  'membership restorer failed')
+        # (Membership restorer: see the block above the delta write — a
+        # community declaring N members with ZERO edges gets its edges
+        # back-filled from the declaration. Direct-DAL, recorded in the
+        # delta's membership_reconciled; idempotent, self-quiets.)
 
         # Second, ALGORITHMIC Δ: derive + stamp the structural fields from the
         # now-final edge state (post-agent, post-reconcile). These are pure

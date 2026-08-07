@@ -574,17 +574,28 @@ def _op_archive(brain, op_spec, top_encoding_source, graph_changes):
     node_id = op_spec.get("node_id")
     archived_by = _resolve_archived_by(op_spec, top_encoding_source)
     r = brain.archive_node(
-        node_id, archived_by=archived_by, reason=op_spec.get('reason', ''))
+        node_id, archived_by=archived_by, reason=op_spec.get('reason', ''),
+        survivor_id=op_spec.get('survivor_id') or None)
     # Collections popped UNCONDITIONALLY — they exist for the manifest, and
     # **r splices everything left into the agent-visible results[]. The
     # scalar edges_deleted / vectors_deleted counts stay visible as before.
     edge_relations = r.pop('edge_relations', [])
-    r.pop('absorbed_into_edge', None)  # never set here (no survivor_id path)
+    redirect = r.pop('absorbed_into_edge', None)
     if r.get('ok'):
         graph_changes.append("ARCHIVE: %s" % node_id[:8])
         r["affected"] = _affected(archived=[node_id])
-        r["mutations"] = {"nodes": {"archived": [
+        mutations = {"nodes": {"archived": [
             _archived_row(r, archived_by, edge_relations)]}}
+        if redirect:
+            # Supersession lineage: the absorbed_into redirect minted by
+            # archive_node when survivor_id is passed — same edge-row shape
+            # _op_absorb emits for its internal archive.
+            mutations["edges"] = [_edge_row(
+                redirect, 'absorbed_into',
+                op_spec.get('reason', '') or 'archive supersession redirect',
+                archived_by, redirect.get('source_id'),
+                redirect.get('target_id'))]
+        r["mutations"] = mutations
     return r
 
 

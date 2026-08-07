@@ -615,6 +615,7 @@ class GraphDAL:
         # 4. Back-fill the gap on orphaned communities only.
         healed = edges = 0
         details = []
+        edge_ids = []
         for cid, members in orphans.items():
             # Skip self: community_members occasionally echoes the community's
             # own id, and add_relation has no self-edge guard (the LLM path
@@ -627,14 +628,19 @@ class GraphDAL:
                 desc = ((label or 'community member')
                         + ' — member edge restored by membership '
                           'reconciliation')[:200]
-                self.add_relation(cid, mid, 'community_member',
-                                  description=desc, weight=0.6,
-                                  encoding_source=encoding_source)
+                res = self.add_relation(cid, mid, 'community_member',
+                                        description=desc, weight=0.6,
+                                        encoding_source=encoding_source)
                 edges += 1
+                if res.get('edge_id'):
+                    edge_ids.append(res['edge_id'])
             healed += 1
             details.append((cid, len(live_missing)))
+        # edge_ids ride to the community unit's delta — this is direct-DAL
+        # (the mutation emitter can't see it), so the S2 story records the
+        # backfill itself (ruled 2026-08-04, plan step 10).
         return {'communities_healed': healed, 'edges_backfilled': edges,
-                'details': details}
+                'details': details, 'edge_ids': edge_ids}
 
     def has_edge_between(self, source_ids, target_ids,
                          relations=None,

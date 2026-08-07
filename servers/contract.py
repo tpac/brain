@@ -163,6 +163,12 @@ BATCH_OP_SPECS = {
         "properties": {
             "node_id": {"type": "string", "description": "Node to soft-archive"},
             "reason": {"type": "string", "description": "Why (audit note)"},
+            "survivor_id": {"type": "string", "description":
+                            "ONLY when a live node REPLACES this one "
+                            "(supersession): its id. Records the redirect "
+                            "lineage (absorbed_into edge) recall walks to "
+                            "the successor. Omit for plain retirement; for "
+                            "merging content use absorb instead."},
         },
     },
     "absorb": {

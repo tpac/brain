@@ -162,10 +162,23 @@ class ConsolidationDecoder(IntegrationUnit):
             )
         """).fetchall()
 
+        # Through dispatch, not brain.archive_node directly — the direct call
+        # left no trace (plan step 10). UNGUARDED dispatch built on this
+        # DECODER instance: heal targets are out-of-cluster by definition,
+        # and the ENCODER's archive_guard closure drops out-of-scope archives
+        # while reporting success — reusing it would silently stop the heal.
+        heal_dispatch = self._make_encoder_dispatch()
+
+        def _archive_via_dispatch(node_id, reason, **extra_op):
+            ops = [{'op': 'archive', 'node_id': node_id,
+                    'reason': reason, **extra_op}]
+            batch = heal_dispatch('brain_batch', {'operations': ops}) or {}
+            results = (batch.get('result') or {}).get('results', [])
+            return results[0] if results else {'ok': False,
+                                               'error': 'no batch result'}
+
         for nid, title in orphan_communities:
-            r = self.brain.archive_node(
-                nid, archived_by='s2:consolidation',
-                reason='community with 0 members')
+            r = _archive_via_dispatch(nid, 'community with 0 members')
             if r.get('ok'):
                 archived.append({'id': nid, 'title': title or '',
                                  'reason': 'community with 0 members'})
@@ -231,9 +244,8 @@ class ConsolidationDecoder(IntegrationUnit):
             if older['locked'] or older['critical']:
                 continue  # quiet skip; don't bounce off archive_node's guard
             reason = 'handoff superseded by %s' % newer['id'][:8]
-            r = self.brain.archive_node(
-                older['id'], archived_by='s2:consolidation',
-                reason=reason, survivor_id=newer['id'])
+            r = _archive_via_dispatch(older['id'], reason,
+                                      survivor_id=newer['id'])
             if r.get('ok'):
                 archived.append({'id': older['id'], 'title': older['title'] or '',
                                  'reason': reason})

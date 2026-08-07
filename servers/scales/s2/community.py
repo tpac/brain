@@ -251,14 +251,25 @@ class CommunityDetection(CommunityDecoder):
         Returns the set of archived community ids.
         """
         archived = []
-        for d in dead_list or []:
-            r = self.brain.archive_node(
-                d['id'], archived_by=self.ENCODING_SOURCE,
-                reason='dead — internal cohesion %.2f below floor' % d['int_frac'])
-            if r.get('ok'):
-                archived.append(d)
-                print('[s2cd] auto-archived dead community "%s" (%s, int_frac %.2f)'
-                      % (d['title'][:50], d['id'][:8], d['int_frac']), flush=True)
+        if dead_list:
+            # Through dispatch, not brain.archive_node directly — the direct
+            # call left no trace (plan step 10). UNGUARDED encoder dispatch:
+            # dead communities are by definition outside any cluster set an
+            # archive_guard would allow, and the guard drops out-of-scope
+            # archives while reporting success. The batch stamps
+            # encoding_source + this run's chain via apply_encoder_attribution.
+            dispatch = self._make_encoder_dispatch()
+            ops = [{'op': 'archive', 'node_id': d['id'],
+                    'reason': 'dead — internal cohesion %.2f below floor'
+                              % d['int_frac']}
+                   for d in dead_list]
+            batch = dispatch('brain_batch', {'operations': ops}) or {}
+            results = (batch.get('result') or {}).get('results', [])
+            for d, r in zip(dead_list, results):
+                if r.get('ok'):
+                    archived.append(d)
+                    print('[s2cd] auto-archived dead community "%s" (%s, int_frac %.2f)'
+                          % (d['title'][:50], d['id'][:8], d['int_frac']), flush=True)
         if archived:
             self.trace('O', 'heal_archive',
                        'Auto-archived %d dead communities (int_frac < floor): %s' % (

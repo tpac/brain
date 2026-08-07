@@ -530,6 +530,45 @@ class TestBatchArchiveAbsorbManifests(BrainTestBase):
                        'absorbed_archive'):
             self.assertNotIn(leaked, sub, sub)
 
+    def test_archive_op_with_survivor_records_lineage_and_traces_it(self):
+        """Step 10 — the archive op carries optional survivor_id
+        (supersession without a merge). The redirect must land in the graph
+        (absorbed_into edge, live + exempt; _sys_archived_survivor_id) AND
+        in the manifest (edge row on the caller's chain), with nothing
+        leaking into the agent-visible result."""
+        old = self._node('lineage-old')
+        new = self._node('lineage-new')
+        r = self._dispatch_batch(
+            [{"op": "archive", "node_id": old, "reason": "superseded probe",
+              "survivor_id": new}],
+            chain_id='test-step10-lineage', session_id='sess-step10')
+        self.assertTrue(r['ok'], r)
+        sub = r['result']['results'][0]
+        self.assertTrue(sub['ok'], sub)
+        for leaked in ('mutations', 'edge_relations', 'absorbed_into_edge'):
+            self.assertNotIn(leaked, sub, sub)
+
+        # Graph truth: redirect edge live, pointer stored.
+        row = self.brain.conn.execute(
+            "SELECT er.archived FROM edges e JOIN edge_relations er "
+            "ON er.edge_id = e.edge_id WHERE e.source_id=? AND e.target_id=? "
+            "AND er.relation='absorbed_into'", (old, new)).fetchone()
+        self.assertIsNotNone(row, 'absorbed_into redirect missing')
+        self.assertEqual(row[0], 0, 'redirect must survive the edge sweep')
+        ptr = self.brain._meta_kv.get_all_bulk([old])[old].get(
+            '_sys_archived_survivor_id')
+        self.assertEqual(ptr, new)
+
+        # Trace truth: node_archived + the redirect edge row, same chain.
+        rows = self.brain._trace_dal.get_chain('test-step10-lineage')
+        kinds = {t['ref_type'] for t in rows}
+        self.assertIn('node_archived', kinds, rows)
+        edge_rows = [t for t in rows if t['ref_type'] == 'edge_relation_revised']
+        self.assertEqual(len(edge_rows), 1, rows)
+        em = edge_rows[0]['metadata']
+        self.assertEqual((em['source_id'], em['target_id'], em['relation']),
+                         (old, new, 'absorbed_into'))
+
     def test_absorb_rows_follow_op_level_archived_by(self):
         """Review 2026-08-06: an op carrying only archived_by (no
         encoding_source anywhere) stamps the graph with it via
