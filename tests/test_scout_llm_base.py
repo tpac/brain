@@ -129,11 +129,13 @@ class TestHappyPath(BrainTestBase):
         out = scout_base.run_llm_scout(
             'quote', self.brain, _shared_prefix(),
             anthropic_client=client)
+        # Stub shape = runner.read_usage's USAGE_FIELDS short names (single
+        # source for SDK field names — 2026-08-07 review, finding 8)
         usage = out[scout_base.SCOUT_TOKEN_USAGE_KEY]
         self.assertEqual(usage['input_tokens'], 500)
         self.assertEqual(usage['output_tokens'], 20)
-        self.assertEqual(usage['cache_read_input_tokens'], 300)
-        self.assertEqual(usage['cache_creation_input_tokens'], 100)
+        self.assertEqual(usage['cache_read_tokens'], 300)
+        self.assertEqual(usage['cache_creation_tokens'], 100)
         self.assertGreaterEqual(out[scout_base.SCOUT_LATENCY_KEY], 0)
 
 

@@ -5,7 +5,9 @@ One rule, no judgment: reading or writing traces through the API? It's a
 vocabulary (ref types, turn classification, journal parse/render) stays in
 trace_contract.py. Sanctioned direct-DAL exceptions: the recall scoring
 engines' vector-substrate pulls (`event_vector_rows` — brain_recall's
-trace-chain lane, recall_laf's episodic matrix) and the read-only dashboard.
+trace-chain lane, recall_laf's episodic matrix), embed_queue's vector
+substrate maintenance (`find_unembedded`/`store_embeddings`), and the
+read-only dashboard.
 
 Sections:
 - Generic door   — query_traces, get_trace, get_traces, count_traces
@@ -32,6 +34,7 @@ from typing import Any, Dict, List
 
 from . import embedder
 from .clock import iso_cutoff
+from .contract import flag_truncation as _flag_truncation, truncation_payload
 from .brain_constants import (
     EPISODE_DEFAULT_LIMIT, EPISODE_DEFAULT_WINDOW_DAYS,
     EPISODE_SEMANTIC_CANDIDATE_CAP)
@@ -131,19 +134,32 @@ class BrainTracesMixin:
         """
         if chain_id:
             return {'chain': self._trace_dal.get_chain(chain_id)}
+        # Every bounded branch fetches limit+1: an extra row is PROOF the
+        # window has more data than the limit returned. Silent saturation is
+        # the dangerous case — a limit-clipped result covers a fraction of the
+        # requested window while looking complete (a 168h cost tally that
+        # actually spanned 2 days, 2026-08-06). Loud-by-default: the caller
+        # gets a 'truncated' payload, never a plausible-looking partial.
         if ref_type:
-            return {'events': self._trace_dal.get_by_ref_type(
-                ref_type=ref_type, scale=scale, hours=hours, limit=limit,
-                session_id=session_id, ref_id=ref_id, chain_suffix=chain_suffix)}
+            rows = self._trace_dal.get_by_ref_type(
+                ref_type=ref_type, scale=scale, hours=hours, limit=limit + 1,
+                session_id=session_id, ref_id=ref_id, chain_suffix=chain_suffix)
+            return _flag_truncation({'events': rows[:limit]}, rows, limit,
+                                    key='events')
         if grouped and session_id:
-            return {'chains': self._trace_dal.get_chains(
-                session_id=session_id, scale=scale, hours=hours, limit=limit)}
+            chains = self._trace_dal.get_chains(
+                session_id=session_id, scale=scale, hours=hours,
+                limit=limit + 1)
+            return _flag_truncation({'chains': chains[:limit]}, chains, limit,
+                                    key='chains')
         # Single or multi session pulls — both authoritative, both ignore hours.
         # get_recent raises ValueError if both are set; we don't second-guess.
-        return {'events': self._trace_dal.get_recent(
+        rows = self._trace_dal.get_recent(
             scale=scale, hours=hours, event_type=event_type,
-            session_id=session_id, session_ids=session_ids, limit=limit,
-            chain_suffix=chain_suffix, exclude_ref_types=exclude_ref_types)}
+            session_id=session_id, session_ids=session_ids, limit=limit + 1,
+            chain_suffix=chain_suffix, exclude_ref_types=exclude_ref_types)
+        return _flag_truncation({'events': rows[:limit]}, rows, limit,
+                                key='events')
 
     def count_traces(self, field: str, scale: str = '', hours: int = 24):
         """Count trace events grouped by a field."""
@@ -480,12 +496,25 @@ class BrainTracesMixin:
         otherwise by created_at (sort_order 'desc' default = latest first).
 
         Returns {'episodes': [<full trace records>], 'ranked_by':
-                 'relevance'|'time', 'truncated': bool} — truncated is True when
-                 more matched than were returned/ranked (hit limit, or the
-                 semantic candidate cap), so the caller knows it didn't see all.
+                 'relevance'|'time', 'truncated': ...} — two shapes by path,
+                 matching the truncation contract (contract.py): the TIME path
+                 (window-coverage claim) returns False, or the full payload
+                 dict {limit, coverage_start, coverage_end, note} when the +1
+                 probe proves the window held more; the SEMANTIC path (ranked
+                 top-k — truncation is its contract) keeps a bare bool: True
+                 when more matched than were ranked (hit limit or the
+                 candidate cap). Truthiness works for both; only the dict
+                 form carries coverage details (and triggers the MCP banner).
         """
         from .trace_contract import CONVERSATIONAL_REF_TYPES
+        from .brain_constants import EPISODE_MAX_LIMIT
+        # Clamp the REQUESTED limit at the door so the +1 probe survives the
+        # DAL cap: filter_events allows EPISODE_MAX_LIMIT+1 rows of headroom
+        # for exactly this probe. Without the door clamp, limit=500 fetched
+        # 501→clamped-to-500 and the probe was structurally dead at the one
+        # limit S2 uses (2026-08-07 review, finding 1).
         limit = EPISODE_DEFAULT_LIMIT if limit is None else int(limit)
+        limit = min(max(limit, 1), EPISODE_MAX_LIMIT)
         younger_iso = _resolve_time_bound(younger_than)
         older_iso = _resolve_time_bound(older_than)
         if (not younger_iso and not older_iso
@@ -548,12 +577,18 @@ class BrainTracesMixin:
             # qvec unavailable / nothing embedded / degraded → time path.
 
         # Time path: indexed WHERE + ORDER BY created_at + LIMIT early-exits, so
-        # only `limit` rows are fetched and decoded.
+        # only limit+1 rows are fetched and decoded. This path claims WINDOW
+        # coverage (time-ordered scan), so saturation gets the full unified
+        # payload — exact via the +1 probe (the old `len >= limit` heuristic
+        # false-flagged exact fits). The semantic path above keeps its bare
+        # bool: ranked top-k, where truncation is the contract, not a lie.
         order = sort_order if sort_order in ('asc', 'desc') else 'desc'
-        episodes = self._trace_dal.filter_events(
-            sort_order=order, limit=limit, **common)
-        return {'episodes': episodes, 'truncated': len(episodes) >= limit,
-                'ranked_by': 'time'}
+        fetched = self._trace_dal.filter_events(
+            sort_order=order, limit=limit + 1, **common)
+        return _flag_truncation(
+            {'episodes': fetched[:limit], 'truncated': False,
+             'ranked_by': 'time'},
+            fetched, limit, key='episodes')
 
     # ── Conversation ──
 
@@ -616,14 +651,82 @@ class BrainTracesMixin:
             hours=None, limit=1)
         since = ''
         if last:
+            # The run's start = the LAST encoding_prompt in its chain (a
+            # failed attempt retried at the same stop shares the chain and
+            # writes an earlier prompt; ASC + [-1] anchors on the successful
+            # attempt's own start). ref_type-bounded chain pull: 1-2 rows
+            # decoded on the scribe poll, vs the old newest-50 scan whose
+            # Python chain match silently fell back to the run's END time
+            # past 50 retries (2026-08-07 review, findings 5+7).
             chain = last[0].get('chain_id') or ''
-            prompts = self._trace_dal.get_by_ref_type(
-                'encoding_prompt', scale='s1', session_id=session_id,
-                hours=None, limit=50)
-            since = next((p['created_at'] for p in prompts
-                          if p.get('chain_id') == chain),
-                         last[0]['created_at'])
+            prompts = (self._trace_dal.get_chain(
+                chain, ref_type='encoding_prompt') if chain else [])
+            since = (prompts[-1]['created_at'] if prompts
+                     else last[0]['created_at'])
         return self._trace_dal.conversational_turns_since(session_id, since)
+
+    # ── Presence (self-channel liveness reads over S0 traces) ──
+
+    def present_streams(self, exclude_session: str = '',
+                        window_min: float = 30, limit: int = 5,
+                        sort_by: str = 'recency') -> list:
+        """Streams of thought awake RIGHT NOW — the self-channel presence roster.
+
+        Distinct from `live_sessions()`: that one is "recent meaningful work"
+        (≥min_messages, survives week-long gaps, for the Frame's cross-session
+        slots). `present_streams` is WALL-CLOCK "who is awake this moment" —
+        sessions whose session_state row updated within the last `window_min`
+        minutes, newest first, excluding the caller.
+
+        Wall-clock is correct here: presence is real-time, not conversation-time,
+        so it's exempt from the conversation_now() rule like other bookkeeping
+        reads. See docs/BOOT-REIGNITION.md (presence at scale).
+
+        Liveness is sourced from real-turn S0 traces (TraceDAL), NOT
+        session_state.updated_at — the latter is bumped by the autosave loop for
+        every cached session, so it falsely marks idle/stale sids "live" (and a
+        window relaunched under a new sid would linger forever). Traces only
+        record actual turns, so the signal is honest.
+
+        Returns [{'session_id': str, 'updated_at': iso, 'focus': str}], newest
+        first. `updated_at` is the last real-turn time; `focus` is that
+        session's latest conversational turn — user_message OR assistant_message
+        per trace_contract.CONVERSATIONAL_REF_TYPES, excluding the wake-envelope
+        marker (raw — render layer trims it).
+        """
+        from .clock import iso_cutoff
+        try:
+            rows = self._trace_dal.active_sessions_by_turn(
+                iso_cutoff(minutes=window_min),
+                exclude_session=exclude_session, limit=limit, sort_by=sort_by)
+            return [{'session_id': r['session_id'], 'updated_at': r['last_turn'],
+                     'focus': r['focus'], 'turn_count': r.get('turn_count', 0)}
+                    for r in rows]
+        except Exception as e:
+            try:
+                self._log_error('present_streams_query', e,
+                                'window_min=%s limit=%d' % (window_min, limit))
+            except Exception:
+                pass
+            return []
+
+    def session_activity(self, session_id: str, msg_limit: int = 2) -> dict:
+        """Per-session activity snapshot for self_peek — first/last turn and the
+        last conversational messages, from real S0 traces (TraceDAL). Mirrors
+        present_streams (wall-clock, presence-adjacent, read-only). Returns {} on
+        error so a peek degrades gracefully rather than raising."""
+        if not session_id:
+            return {}
+        try:
+            return self._trace_dal.session_activity(
+                session_id, msg_limit=msg_limit)
+        except Exception as e:
+            try:
+                self._log_error('session_activity_query', e,
+                                'session=%s' % (session_id or '')[:8])
+            except Exception:
+                pass
+            return {}
 
     def get_conversation_around(self, node_id: str = None,
                                 session_id: str = None,

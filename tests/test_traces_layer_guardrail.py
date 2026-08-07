@@ -11,8 +11,6 @@ TraceDAL.append/append_batch — the validated write chokepoint — so writer
 sites are allowed everywhere. Reads are what consolidate.
 
 Sanctioned read exceptions (each named, each with a why):
-- brain.py: active_sessions_by_turn / session_activity — the presence door
-  (self_channel) lives on Brain itself, cleared by the 2026-07-11 audit.
 - brain_recall.py + recall_laf.py: event_vector_rows — the recall engines'
   vector-substrate pulls (scoring internals, not event reads).
 - embed_queue.py: find_unembedded — the embedding-reconciliation worker's
@@ -43,8 +41,8 @@ WRITE_OK = {'append', 'append_batch', 'store_embeddings', 'set_identity'}
 
 # (servers-relative path, method) → why. Exact allowlist; anything else fails.
 READ_EXCEPTIONS = {
-    ('brain.py', 'active_sessions_by_turn'): 'presence door (self_channel)',
-    ('brain.py', 'session_activity'): 'presence door (self_channel)',
+    # (present_streams/session_activity moved INTO brain_traces.py 2026-08-07
+    # — the presence-door exception for brain.py is retired, not relocated.)
     ('brain_recall.py', 'event_vector_rows'): 'trace-chain lane vector substrate',
     ('recall_laf.py', 'event_vector_rows'): 'LAF episodic matrix vector substrate',
     ('embed_queue.py', 'find_unembedded'): 'embedding reconciliation scan',

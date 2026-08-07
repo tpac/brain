@@ -224,19 +224,16 @@ def run_llm_scout(
     elapsed_ms = int((time.time() - t0) * 1000)
     stub[SCOUT_LATENCY_KEY] = elapsed_ms
 
-    # 6. Extract text + token usage
+    # 6. Extract text + token usage. read_usage is the single source for
+    # the SDK usage-field names — the stub carries USAGE_FIELDS short names
+    # (input_tokens/output_tokens/cache_read_tokens/cache_creation_tokens),
+    # so the muster trace emitter copies keys with no mapping anywhere
+    # (2026-08-07 review, finding 8: this mapping existed in three copies).
     raw_text = ''.join(b.text for b in response.content
                        if hasattr(b, 'text'))
-    usage = getattr(response, 'usage', None)
-    if usage:
-        stub[SCOUT_TOKEN_USAGE_KEY] = {
-            'input_tokens': getattr(usage, 'input_tokens', 0),
-            'output_tokens': getattr(usage, 'output_tokens', 0),
-            'cache_creation_input_tokens': getattr(
-                usage, 'cache_creation_input_tokens', 0),
-            'cache_read_input_tokens': getattr(
-                usage, 'cache_read_input_tokens', 0),
-        }
+    if getattr(response, 'usage', None):
+        from servers.scales.runner import read_usage
+        stub[SCOUT_TOKEN_USAGE_KEY] = read_usage(response)
 
     # 7. Parse JSON
     parsed = _extract_json(raw_text)
@@ -281,7 +278,7 @@ def run_llm_scout(
     n_cands = len(normalized.get('candidates') or [])
     _log(f'ok — {n_cands} candidates in {elapsed_ms}ms, '
          f'input={stub[SCOUT_TOKEN_USAGE_KEY].get("input_tokens", 0)} '
-         f'cache_read={stub[SCOUT_TOKEN_USAGE_KEY].get("cache_read_input_tokens", 0)}')
+         f'cache_read={stub[SCOUT_TOKEN_USAGE_KEY].get("cache_read_tokens", 0)}')
     return normalized
 
 

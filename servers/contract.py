@@ -575,6 +575,72 @@ def render_corrections(corrections, mode='lean',
     return lines
 
 
+# ── Bounded-read truncation contract ──
+#
+# A windowed read (hours / older_than / gt / lt bounds) that hits its row
+# limit covers only the most recent slice of the requested window while
+# LOOKING complete — a 168h aggregate that silently spanned 2 days
+# (2026-08-06 cost tally). Every windowed read door attaches this payload
+# when saturated; ranked top-k doors (recall, semantic recall_episodes,
+# relevance-mode filter_nodes) are exempt — there, truncation IS the
+# contract. The MCP render layer prepends a ⚠ banner for any result dict
+# carrying 'truncated' (single chokepoint in brain_mcp._format_result's
+# caller). tests/test_truncation_contract.py pins flag-or-exempt for every
+# read tool.
+
+def truncation_payload(limit, rows, reason=''):
+    """Build the standard 'truncated' payload for a saturated bounded read.
+
+    rows: the rows actually RETURNED (post-trim). The payload reports the
+    COVERED [coverage_start .. coverage_end] created_at range (dug out of
+    nested 'events' lists for grouped chains) and never claims which SIDE
+    was dropped — a DESC read drops older rows, an ASC read drops newer
+    ones, and a directional claim was factually inverted for one of them
+    (2026-08-07 review, finding 6). reason overrides the default cause.
+    """
+    times = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if row.get('created_at'):
+            times.append(row['created_at'])
+        for ev in (row.get('events') or []):
+            if isinstance(ev, dict) and ev.get('created_at'):
+                times.append(ev['created_at'])
+    coverage_start = min(times) if times else ''
+    coverage_end = max(times) if times else ''
+    cause = reason or ('hit limit=%d before exhausting the requested window'
+                       % limit)
+    covered = (('%s .. %s' % (coverage_start, coverage_end))
+               if times else 'an unknown slice')
+    return {
+        'limit': limit,
+        'coverage_start': coverage_start,
+        'coverage_end': coverage_end,
+        'note': ('%s — the result covers only %s; matching rows outside '
+                 'that slice were dropped. Raise limit or narrow filters '
+                 'before trusting any aggregate over this result.'
+                 % (cause, covered)),
+    }
+
+
+def flag_truncation(result, fetched, limit, key):
+    """+1-probe convenience: `fetched` was pulled with limit+1; an extra row
+    is PROOF the window holds more than the (pre-trimmed) result carries.
+    `key` names the rows entry in `result` — explicit, never inferred from
+    dict order. Attaches 'truncated' and returns `result`."""
+    if len(fetched) > limit:
+        result['truncated'] = truncation_payload(limit, result[key])
+    return result
+
+
+def truncation_banner(payload):
+    """The one render form for a truncation payload — every surface that
+    shows a saturated result to a reasoning consumer prepends this."""
+    return '⚠ TRUNCATED — %s' % (
+        (payload or {}).get('note') or 'result hit the row limit')
+
+
 # ── Scope dimensions — differential exposure ──
 # The dimension SET has one source: PROMOTED_FIELDS entries flagged
 # `system_stamped` (the registry the MCP schema exclusion already consumes).

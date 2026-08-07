@@ -462,8 +462,14 @@ class BrainRecallMixin:
         mechanics. Cost: 1 embed call (~50ms) + N cosine ops (cheap matrix
         math). When relevance_query is empty/None, behavior is unchanged.
         """
+        from .contract import truncation_payload
         node_dal = self._nodes
-        # Widen the pool when relevance ranking is requested
+        # Widen the pool when relevance ranking is requested. The structural
+        # path's truncation detection rides the DAL's exact total_count (an
+        # unclamped COUNT(*) on the same WHERE) — no +1 probe: a probe row is
+        # eaten by the veil cut and capped by the DAL clamp, both of which
+        # silently un-flag saturated results (2026-08-07 review, finding 3).
+        # The relevance path is ranked top-k — truncation is its contract.
         dal_limit = limit * relevance_pool_multiplier if relevance_query else limit
         # Scope veil: filter_nodes is an ambient ENUMERATION surface (a
         # structural sweep, not a reach for a known id) — rich=True would
@@ -482,9 +488,24 @@ class BrainRecallMixin:
             lt=lt, gt=gt, limit=dal_limit, sort_by=sort_by, sort_order=sort_order)
         if _veil and result.get('nodes'):
             kept = [n for n in result['nodes'] if n.get('id') not in _veil]
-            result['nodes'] = kept if relevance_query else kept[:limit]
+            # The relevance path's trim belongs to _rerank_by_relevance; the
+            # structural trim happens in the truncation block below.
+            result['nodes'] = kept
         if 'error' in result or not result.get('nodes'):
             return result
+
+        # Truncation contract (contract.py): trim the structural pool to
+        # `limit`; saturation detection is the DAL's exact, unclamped
+        # total_count — veil-independent and alive at every limit. When a
+        # veil hides rows, total_count still counts them, so a veiled page
+        # can over-flag (report truncated when the hidden remainder is all
+        # walled) — conservative in the right direction: isolation governs
+        # what rises, not what the count admits exists.
+        if not relevance_query:
+            result['nodes'] = result['nodes'][:limit]
+            if result.get('total_count', 0) > limit:
+                result['truncated'] = truncation_payload(
+                    limit, result['nodes'])
 
         # Relevance ranking happens BEFORE enrichment. _rerank_by_relevance
         # scores by embedding (looked up by id) + structural order — it needs
@@ -497,8 +518,7 @@ class BrainRecallMixin:
             nodes = _rerank_by_relevance(
                 self.conn, nodes, relevance_query, limit,
                 vector_type=relevance_vector_type)
-        # No relevance: the DAL already applied LIMIT == `limit`, so nodes is
-        # already <= limit — no slice needed.
+        # No relevance: the truncation block above already trimmed to `limit`.
 
         if not rich:
             result['nodes'] = nodes
@@ -513,10 +533,31 @@ class BrainRecallMixin:
     def query_logs(self, source: str = 'all', hours: int = 24,
                    level: str = 'all', hook_name: str = '',
                    limit: int = 50):
-        """Query brain logs: errors, debug events, and signals."""
-        return self._logs_dal.query_logs(
+        """Query brain logs: errors, debug events, and signals.
+
+        Windowed read → truncation contract (contract.py): the DAL already
+        counts each source's TRUE window total alongside the limited fetch,
+        so saturation detection is exact with no extra query — flagged
+        loudly instead of buried in `counts` for the caller to notice.
+        """
+        result = self._logs_dal.query_logs(
             source=source, hours=hours, level=level,
             hook_name=hook_name, limit=limit)
+        from .contract import truncation_payload
+        from .dal_logs import LOG_QUERY_MAX_LIMIT
+        # Report the EFFECTIVE limit — the DAL clamps at LOG_QUERY_MAX_LIMIT,
+        # and a note advising "raise limit" past the cap prescribes an
+        # impossible remedy (2026-08-07 review, finding 10).
+        effective = min(max(limit, 1), LOG_QUERY_MAX_LIMIT)
+        entries = result.get('entries', [])
+        total = sum(result.get('counts', {}).values())
+        if total > len(entries):
+            result['truncated'] = truncation_payload(
+                effective, entries,
+                reason='%d of %d matching rows returned (effective limit=%d,'
+                       ' hard cap %d)' % (len(entries), total, effective,
+                                          LOG_QUERY_MAX_LIMIT))
+        return result
 
     def list_interactions(self):
         """List all registered interactions with latest versions."""

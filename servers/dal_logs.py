@@ -43,6 +43,13 @@ def _new_trace_id(conn) -> str:
     raise RuntimeError("_new_trace_id: 5 consecutive collisions — investigate")
 
 
+# Hard cap on a single query_logs pull — shared with the truncation payload
+# in brain_recall.query_logs so the flagged 'limit' is the EFFECTIVE one (a
+# note advising "raise limit" past this cap prescribed an impossible fix —
+# 2026-08-07 review, finding 10).
+LOG_QUERY_MAX_LIMIT = 200
+
+
 class LogsDAL:
     """Access layer for brain_logs.db tables: debug_log, access_log, recall_log,
     miss_log, dream_log, staged_learnings."""
@@ -273,7 +280,7 @@ class LogsDAL:
 
         Returns: dict with 'entries' list and 'counts' summary.
         """
-        limit = min(max(limit, 1), 200)
+        limit = min(max(limit, 1), LOG_QUERY_MAX_LIMIT)
         cutoff = iso_cutoff(hours=hours)
         entries = []
         counts = {}
@@ -753,13 +760,19 @@ class TraceDAL:
             list(trace_ids)).fetchall()
         return [self._row_to_event(r) for r in rows]
 
-    def get_chain(self, chain_id: str) -> List[Dict[str, Any]]:
+    def get_chain(self, chain_id: str,
+                  ref_type: str = '') -> List[Dict[str, Any]]:
         """Get all events in a trace chain, ordered by time. Each event is the
-        full canonical row (incl. its own chain_id — = the queried id)."""
+        full canonical row (incl. its own chain_id — = the queried id).
+        Optional ref_type narrows to one event kind — the bounded form for
+        point lookups (e.g. a run's encoding_prompt), avoiding the full-chain
+        metadata decode."""
+        extra = ' AND ref_type = ?' if ref_type else ''
+        params = (chain_id, ref_type) if ref_type else (chain_id,)
         rows = self.conn.execute(
-            'SELECT %s FROM trace_events WHERE chain_id = ? '
-            'ORDER BY created_at ASC' % self._CANON_COLS,
-            (chain_id,)).fetchall()
+            'SELECT %s FROM trace_events WHERE chain_id = ?%s '
+            'ORDER BY created_at ASC' % (self._CANON_COLS, extra),
+            params).fetchall()
         return [self._row_to_event(r) for r in rows]
 
     def get_recent(self, scale: str = '', hours: Optional[int] = 24,
@@ -915,7 +928,11 @@ class TraceDAL:
         lives in BrainTracesMixin.recall_episodes (brain_traces.py).
         """
         from .brain_constants import EPISODE_MAX_LIMIT
-        limit = min(max(int(limit), 1), EPISODE_MAX_LIMIT)
+        # +1 headroom over the semantic cap: recall_episodes clamps requested
+        # limits to EPISODE_MAX_LIMIT and probes with limit+1 — admitting
+        # MAX+1 here is what keeps that probe alive at the cap
+        # (2026-08-07 review, finding 1).
+        limit = min(max(int(limit), 1), EPISODE_MAX_LIMIT + 1)
         where, params = self._event_where(
             contains, scale, event_type, ref_types, session_id, session_ids,
             younger_than, older_than)

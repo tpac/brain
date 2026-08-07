@@ -34,6 +34,7 @@ import time as _time
 from typing import Any, Dict, List, Optional, Tuple
 
 from . import contract as sc
+from .base import SCOUT_TOKEN_USAGE_KEY
 from .runners import SCOUT_RUNNERS
 
 
@@ -418,12 +419,21 @@ def _emit_traces(ctx: Dict[str, Any],
         # re-running scouts. Diagnosed regression 2026-05-13: lack of
         # source_role made the gpt4_85da3956 root-cause investigation take
         # an hour instead of seconds.
+        # Cost telemetry — the LLM scouts capture per-call usage into the
+        # '_usage' stub via runner.read_usage (base.run_llm_scout step 6),
+        # so it already carries the short USAGE_FIELDS names the encoder
+        # deltas and Surface K trace use — copied verbatim, no mapping. One
+        # trace query tallies every agent's API spend. Only present when the
+        # scout actually made an LLM call (algo scouts, disabled stubs, and
+        # pre-call failures carry no usage).
+        usage_fields = dict(out.get(SCOUT_TOKEN_USAGE_KEY) or {})
         events.append({
             'chain_id': chain, 'scale': 's1', 'event_type': 'K',
             'ref_type': 'scout_findings',
             'summary': f'{name}: {len(cands)} candidates',
             'metadata': {
                 'scout': name,
+                **usage_fields,
                 'category_statement': out.get('category_statement', ''),
                 'candidate_handles': [c.get('handle') for c in cands][:20],
                 'candidates_detail': [

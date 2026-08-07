@@ -124,14 +124,23 @@ class HealerDecoder(IntegrationUnit):
         def _run(sql, limit):
             if limit <= 0:
                 return
+            # Already-taken ids are excluded in SQL, before the LIMIT. The
+            # tiers are supersets (tier 2's two-missing predicates re-match
+            # every tier-1 node), so the old post-LIMIT Python dedup let
+            # already-seen rows consume the fetch budget — runs configured
+            # for max_nodes healed far fewer (fetch-then-filter clip class,
+            # 2026-08-07 sweep).
+            exclude, params = '', []
+            if seen:
+                exclude = ' AND n.id NOT IN (%s)' % ','.join('?' * len(seen))
+                params = list(seen)
             rows = self.brain.conn.execute(
-                sql + ' LIMIT ?', (limit,)).fetchall()
-            for (nid,) in rows:
-                if nid not in seen:
-                    targets.append(nid)
-                    seen.add(nid)
-                    if len(targets) >= max_nodes:
-                        return
+                sql + exclude + ' ORDER BY n.access_count DESC LIMIT ?',
+                params + [limit]).fetchall()
+            # SQL owns dedup + budget (NOT IN + LIMIT=remaining), so this
+            # can't overflow max_nodes — plain accumulation.
+            targets.extend(nid for (nid,) in rows)
+            seen.update(nid for (nid,) in rows)
 
         # Shared subqueries
         missing_q = ("n.id NOT IN (SELECT node_id FROM node_metadata_kv "
@@ -140,8 +149,7 @@ class HealerDecoder(IntegrationUnit):
                      "WHERE key='situation' AND length(value) > 5)")
         missing_r = ("n.id NOT IN (SELECT node_id FROM node_metadata_kv "
                      "WHERE key='reasoning' AND length(value) > 5)")
-        base = ("SELECT n.id FROM nodes n WHERE n.archived=0 AND %s "
-                "ORDER BY n.access_count DESC")
+        base = "SELECT n.id FROM nodes n WHERE n.archived=0 AND %s"
 
         # Tier 1: missing all three
         _run(base % ' AND '.join([missing_q, missing_s, missing_r]), max_nodes)

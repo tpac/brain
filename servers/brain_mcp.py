@@ -960,6 +960,8 @@ def _format_result(tool_name, result, get_nodes_config=None, rich=False):
     # never raw json.dumps. brain.query_traces/get_trace/get_traces return full
     # rows at the data layer; bounded here, rich=true for the full row.
     if tool_name in ("get_trace", "get_traces", "query_traces") and result:
+        # Truncation banner: handled generically at the _format_result call
+        # site (one chokepoint for every bounded read door), not here.
         if tool_name == "get_trace":
             rows = [result] if isinstance(result, dict) else []
         elif tool_name == "get_traces":
@@ -1105,6 +1107,15 @@ def handle_tools_call(request_id, params):
             # its render is always bounded, so passing it here is harmless.
             result_text = _format_result(
                 tool_name, resp["result"], rich=bool(arguments.get("rich", False)))
+            # Truncation contract (contract.py) — ONE render chokepoint for
+            # every bounded read door: any result dict carrying a 'truncated'
+            # payload gets the banner, whatever the tool. A partial result
+            # must never read as a complete one.
+            _res = resp["result"]
+            if isinstance(_res, dict) and isinstance(_res.get("truncated"), dict):
+                from servers.contract import truncation_banner
+                result_text = "%s\n\n%s" % (
+                    truncation_banner(_res["truncated"]), result_text)
             return make_response(request_id, {
                 "content": [{"type": "text", "text": result_text}]
             })

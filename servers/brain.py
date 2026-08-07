@@ -907,66 +907,6 @@ class Brain(
                         pass
         return n
 
-    def present_streams(self, exclude_session: str = '',
-                        window_min: float = 30, limit: int = 5,
-                        sort_by: str = 'recency') -> list:
-        """Streams of thought awake RIGHT NOW — the self-channel presence roster.
-
-        Distinct from `live_sessions()`: that one is "recent meaningful work"
-        (≥min_messages, survives week-long gaps, for the Frame's cross-session
-        slots). `present_streams` is WALL-CLOCK "who is awake this moment" —
-        sessions whose session_state row updated within the last `window_min`
-        minutes, newest first, excluding the caller.
-
-        Wall-clock is correct here: presence is real-time, not conversation-time,
-        so it's exempt from the conversation_now() rule like other bookkeeping
-        reads. See docs/BOOT-REIGNITION.md (presence at scale).
-
-        Liveness is sourced from real-turn S0 traces (TraceDAL), NOT
-        session_state.updated_at — the latter is bumped by the autosave loop for
-        every cached session, so it falsely marks idle/stale sids "live" (and a
-        window relaunched under a new sid would linger forever). Traces only
-        record actual turns, so the signal is honest.
-
-        Returns [{'session_id': str, 'updated_at': iso, 'focus': str}], newest
-        first. `updated_at` is the last real-turn time; `focus` is that
-        session's latest conversational turn — user_message OR assistant_message
-        per trace_contract.CONVERSATIONAL_REF_TYPES, excluding the wake-envelope
-        marker (raw — render layer trims it).
-        """
-        from .clock import iso_cutoff
-        try:
-            rows = self._trace_dal.active_sessions_by_turn(
-                iso_cutoff(minutes=window_min),
-                exclude_session=exclude_session, limit=limit, sort_by=sort_by)
-            return [{'session_id': r['session_id'], 'updated_at': r['last_turn'],
-                     'focus': r['focus'], 'turn_count': r.get('turn_count', 0)}
-                    for r in rows]
-        except Exception as e:
-            try:
-                self._log_error('present_streams_query', e,
-                                'window_min=%s limit=%d' % (window_min, limit))
-            except Exception:
-                pass
-            return []
-
-    def session_activity(self, session_id: str, msg_limit: int = 2) -> dict:
-        """Per-session activity snapshot for self_peek — first/last turn and the
-        last conversational messages, from real S0 traces (TraceDAL). Mirrors
-        present_streams (wall-clock, presence-adjacent, read-only). Returns {} on
-        error so a peek degrades gracefully rather than raising."""
-        if not session_id:
-            return {}
-        try:
-            return self._trace_dal.session_activity(session_id, msg_limit=msg_limit)
-        except Exception as e:
-            try:
-                self._log_error('session_activity_query', e,
-                                'session=%s' % (session_id or '')[:8])
-            except Exception:
-                pass
-            return {}
-
     def scribe_due(self, now: Optional[float] = None,
                    skip_sessions=None) -> Optional[Dict[str, Any]]:
         """Decide whether any active session's S1 Scribe is due to encode — the

@@ -305,6 +305,55 @@ class TestTraceEmission(BrainTestBase):
         self.assertEqual(len(inputs), 3)
         self.assertEqual(len(findings), 3)
 
+    def test_scout_findings_carry_token_usage(self):
+        """An LLM scout's per-call usage ('_usage' stub, API field names)
+        rides into the K scout_findings metadata under the short USAGE_FIELDS
+        names — the cost-tally contract. Scouts without usage (algo scouts,
+        stubs) emit no token fields at all, so an all-agents tally never
+        counts zero-rows from scouts that made no API call."""
+        # Stub carries USAGE_FIELDS short names — produced by
+        # runner.read_usage at capture (scouts/base step 6); muster copies
+        # keys verbatim, no mapping anywhere.
+        with_usage = _ok_envelope('facts')
+        with_usage[m.SCOUT_TOKEN_USAGE_KEY] = {
+            'input_tokens': 1200,
+            'output_tokens': 340,
+            'cache_creation_tokens': 800,
+            'cache_read_tokens': 5600,
+        }
+        no_usage = _ok_envelope('temporal')       # algo scout — no LLM call
+        no_usage.pop(m.SCOUT_TOKEN_USAGE_KEY, None)
+        fake = _make_fake_runners({
+            'quote': _ok_envelope('quote'),        # default stub usage (100/20)
+            'temporal': no_usage,
+            'facts': with_usage,
+        })
+        with patch.object(m, 'SCOUT_RUNNERS', fake):
+            m.run_muster(_basic_ctx(self.brain))
+
+        rows = self.brain.logs_conn.execute(
+            "SELECT metadata FROM trace_events "
+            "WHERE scale = 's1' AND ref_type = 'scout_findings'"
+        ).fetchall()
+        metas = [json.loads(r[0]) for r in rows]
+        by_scout = {meta['scout']: meta for meta in metas}
+
+        facts = by_scout['facts']
+        self.assertEqual(facts['input_tokens'], 1200)
+        self.assertEqual(facts['output_tokens'], 340)
+        self.assertEqual(facts['cache_creation_tokens'], 800)
+        self.assertEqual(facts['cache_read_tokens'], 5600)
+
+        # Partial stubs spread verbatim — absent fields stay absent (the
+        # tally's .get(field, 0) treats them as 0)
+        quote = by_scout['quote']
+        self.assertEqual(quote['input_tokens'], 100)
+        self.assertEqual(quote.get('cache_read_tokens', 0), 0)
+
+        # No usage stub → no token fields at all (tally never counts it)
+        self.assertNotIn('input_tokens', by_scout['temporal'])
+        self.assertNotIn('output_tokens', by_scout['temporal'])
+
 
 if __name__ == '__main__':
     unittest.main()

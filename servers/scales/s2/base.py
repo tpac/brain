@@ -377,37 +377,56 @@ class IntegrationUnit:
         return False
 
     def _read_traces_since(self, scale, since_ts='', hours=168, ref_types=None):
-        """Read trace events from a scale since a timestamp.
+        """Read trace events from a scale since a timestamp / within a window.
 
         Generic trace reader — each unit interprets the results
         according to what it needs.
 
         Args:
             scale: Scale to read ('s1', 's2', etc.)
-            since_ts: ISO timestamp. If empty, reads all available (cold start).
-            hours: Lookback window. Ignored if since_ts is empty (uses max).
-            ref_types: Optional list of ref_types to filter. If None, reads all.
+            since_ts: ISO timestamp. Set → coverage read: everything after
+                the cutoff, oldest-first, `hours` ignored. Empty → windowed
+                recency read: newest-first within `hours`.
+            hours: Lookback window for the empty-since_ts read (used ONLY
+                then; the old "empty means ~1 year" behavior is gone — the
+                config lookbacks now actually bind).
+            ref_types: Optional list of ref_types. NOTE: a multi-entry list
+                shares ONE 500-row budget across types (a chatty type can
+                starve a sparse one); current callers pass single-type
+                lists. None → all ref_types at non-s0 scales (s0 inherits
+                the conversational default from recall_episodes).
 
         Returns:
-            List of trace event dicts, filtered to after since_ts.
+            List of trace event dicts. Saturation (backlog > 500) is logged
+            loudly to brain errors as s2_<unit>_traces_truncated.
         """
-        if not since_ts:
-            hours = 8760  # ~1 year for cold start
-
-        results = []
-        if ref_types:
-            for rt in ref_types:
-                results.extend(self.brain.query_traces(
-                    ref_type=rt, scale=scale, hours=hours,
-                    limit=500)['events'])
-        else:
-            results = self.brain.query_traces(
-                scale=scale, hours=hours, limit=500)['events']
-
-        if since_ts:
-            results = [t for t in results if t.get('created_at', '') > since_ts]
-
-        return results
+        # Through the traces door (recall_episodes): the since-bound runs in
+        # SQL (`younger_than`), never as a Python post-filter over a
+        # limit-clipped pull — the pre-2026-08-07 shape fetched newest-500
+        # then filtered `> since_ts` in Python, silently dropping the OLDEST
+        # slice of any backlog beyond 500 (guaranteed on the old 8760h
+        # cold-start scan). Two claims, two orderings:
+        #   since_ts set   → coverage: everything after the cutoff, ASC, so
+        #                    a saturated pull drains contiguously forward
+        #                    instead of leaving a permanent hole.
+        #   since_ts empty → recency seed: newest-first within `hours` (the
+        #                    old "~1 year" cold start was still newest-500 —
+        #                    a fiction; the window is now honest).
+        # Saturation is loud either way (truncation contract, contract.py).
+        res = self.brain.recall_episodes(
+            scale=scale, ref_type=ref_types,
+            younger_than=since_ts or '%dh' % hours,
+            sort_order='asc' if since_ts else 'desc', limit=500)
+        trunc = res.get('truncated')
+        if isinstance(trunc, dict):
+            self.brain._log_error(
+                's2_%s_traces_truncated' % self.NAME,
+                RuntimeError(trunc.get('note', 'saturated')),
+                'reading %s %s: window not fully covered this cycle'
+                % (ref_types or scale,
+                   'since %s' % since_ts if since_ts
+                   else 'last %dh' % hours))
+        return res.get('episodes', [])
 
     def _get_interaction_config(self, name):
         """Get config dict from interactions table.
