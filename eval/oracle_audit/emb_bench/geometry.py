@@ -231,15 +231,30 @@ def run(key):
         "episodic": [e["text"] for e in episodic],
     }
 
+    # Substrate vector cache — keyed by (model, substrate, pack content hash).
+    # Metric tweaks in this file re-run in seconds instead of re-embedding.
+    pack_meta = json.load(open(os.path.join(DATA, "pack_meta.json")))
+    pack_tag = pack_meta["sha256_16"]["nodes.json"][:8]
+
+    def embed_cached(name, texts, prefix):
+        cache = os.path.join(OUTDIR, f"vecs_{key}_{name}_{pack_tag}.npz")
+        if os.path.exists(cache):
+            v = np.load(cache)["v"]
+            if len(v) == len(texts):
+                embed_s[name] = 0.0
+                print(f"  {name}: {len(texts)} from cache", flush=True)
+                return v
+        t = time.time()
+        v = model.embed(texts, prefix)
+        embed_s[name] = round(time.time() - t, 1)
+        np.savez_compressed(cache, v=v)
+        print(f"  embedded {name}: {len(texts)} in {embed_s[name]}s", flush=True)
+        return v
+
     embed_s, vecs = {}, {}
     for name, texts in substrates_doc.items():
-        t = time.time()
-        vecs[name] = model.embed(texts, doc_prefix)
-        embed_s[name] = round(time.time() - t, 1)
-        print(f"  embedded {name}: {len(texts)} in {embed_s[name]}s", flush=True)
-    t = time.time()
-    qvecs = model.embed([c["query"] for c in door1], query_prefix)
-    embed_s["door1_queries"] = round(time.time() - t, 1)
+        vecs[name] = embed_cached(name, texts, doc_prefix)
+    qvecs = embed_cached("door1_queries", [c["query"] for c in door1], query_prefix)
 
     lat = []
     for c in door1[:15]:

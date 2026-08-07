@@ -94,3 +94,5 @@ logs/
 # Stale data copies
 data/*.db
 data/*.db-*
+eval/oracle_audit/emb_bench/results/vecs_*.npz
+eval/oracle_audit/emb_bench/results/geometry_*_rank.npz
