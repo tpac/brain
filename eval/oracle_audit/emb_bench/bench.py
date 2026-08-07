@@ -78,7 +78,39 @@ MODELS = {
     "gte_large":   ("thenlper/gte-large",      "", "",    "fastembed"),  # gte needs no prefix
     "arctic_l":    ("snowflake/snowflake-arctic-embed-l", "", BGE_Q, "fastembed"),
     "mxbai_large": ("mixedbread-ai/mxbai-embed-large-v1", "", BGE_Q, "fastembed"),
+    # 2026 candidate (MTEB v2 Eng retrieval 57.0 vs nomic 48.0) — no prefixes
+    "gte_modernbert": ("Alibaba-NLP/gte-modernbert-base", "", "", "fastembed"),
 }
+
+# Models absent from fastembed's built-in registry — registered on demand via
+# add_custom_model. int8 ONNX to keep the fight fair against nomic-Q (both
+# quantized); fp32 is "onnx/model.onnx" if a quantization ablation is wanted.
+CUSTOM_MODELS = {
+    "gte_modernbert": dict(
+        hf="Alibaba-NLP/gte-modernbert-base", dim=768,
+        pooling="CLS", model_file="onnx/model_int8.onnx",
+    ),
+}
+
+
+def register_custom(key):
+    """Idempotently register a CUSTOM_MODELS entry with fastembed. No-op for
+    built-in models. Importable by sibling workers (geometry.py)."""
+    spec = CUSTOM_MODELS.get(key)
+    if not spec:
+        return
+    from fastembed import TextEmbedding
+    from fastembed.common.model_description import ModelSource, PoolingType
+    if any(m["model"] == spec["hf"] for m in TextEmbedding.list_supported_models()):
+        return
+    TextEmbedding.add_custom_model(
+        model=spec["hf"],
+        pooling=PoolingType[spec["pooling"]],
+        normalization=True,
+        sources=ModelSource(hf=spec["hf"]),
+        dim=spec["dim"],
+        model_file=spec["model_file"],
+    )
 
 
 # ── scoring (mirror of eval/oracle_audit/endo_baseline_recall.py score_one;
@@ -116,10 +148,35 @@ def _normalize(mat):
     return mat / norms
 
 
+def _clamp_tokenizer_config(hf_name):
+    """Some models (ModernBERT family) ship model_max_length as HF's
+    VERY_LARGE_INTEGER sentinel; fastembed passes it to enable_truncation and
+    Rust overflows. Clamp the cached tokenizer_config to the model's real
+    max_position_embeddings. Returns True if anything was patched."""
+    import glob, tempfile
+    cache = os.environ.get("FASTEMBED_CACHE_PATH") or os.path.join(
+        tempfile.gettempdir(), "fastembed_cache")
+    slug = "models--" + hf_name.replace("/", "--")
+    patched = False
+    for tc_path in glob.glob(os.path.join(cache, slug, "snapshots", "*", "tokenizer_config.json")):
+        tc = json.load(open(tc_path))
+        mml = tc.get("model_max_length")
+        if not isinstance(mml, int) or mml <= 1 << 30:
+            continue
+        cfg_path = os.path.join(os.path.dirname(tc_path), "config.json")
+        real = 8192
+        if os.path.exists(cfg_path):
+            real = json.load(open(cfg_path)).get("max_position_embeddings", real)
+        tc["model_max_length"] = real
+        json.dump(tc, open(tc_path, "w"), indent=1)
+        patched = True
+    return patched
+
+
 class FastEmbedBackend:
     def __init__(self, hf_name):
         from fastembed import TextEmbedding
-        self.m = TextEmbedding(
+        kwargs = dict(
             model_name=hf_name,
             threads=int(os.environ.get("BENCH_THREADS", "2")),  # bound ORT CPU — polite to daemon + other streams
             enable_cpu_mem_arena=False,
@@ -127,6 +184,12 @@ class FastEmbedBackend:
             **{"session.intra_op.allow_spinning": "0",
                "session.inter_op.allow_spinning": "0"},
         )
+        try:
+            self.m = TextEmbedding(**kwargs)
+        except OverflowError:
+            if not _clamp_tokenizer_config(hf_name):
+                raise
+            self.m = TextEmbedding(**kwargs)
 
     def embed(self, texts, prefix):
         # Length-aware budget batching. Attention memory is O(batch * max_seq^2),
@@ -166,6 +229,7 @@ class STBackend:
 
 
 def run(key):
+    register_custom(key)
     hf_name, doc_prefix, query_prefix, backend = MODELS[key]
     nodes = json.load(open(os.path.join(DATA, "nodes.json")))
     cues = json.load(open(os.path.join(DATA, "cues.json")))
