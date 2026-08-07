@@ -363,7 +363,9 @@ class TestIntegrityArchiveTraces(BrainTestBase):
 
         self.brain.health_check(session_id='hc-probe', auto_fix=True)
 
-        chain = 'maint-%s-mutation' % brain_today(self.brain).strftime('%Y%m%d')
+        # -integrity, not -mutation: the junk purge's maint chain lives at
+        # s2, and one chain_id must never span two scales.
+        chain = 'maint-%s-integrity' % brain_today(self.brain).strftime('%Y%m%d')
         rows = [t for t in self.brain._trace_dal.get_chain(chain)
                 if t['ref_type'] == 'node_archived'
                 and t['ref_id'] in set(ids)]

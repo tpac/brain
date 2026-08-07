@@ -486,7 +486,13 @@ class BrainAssemblyMixin:
                 # purge in daemon_hooks.
                 from servers.mutation_emitter import emit_mutation_traces
                 from servers.clock import brain_today
-                maint_chain = ('maint-%s-mutation'
+                # Chain deliberately DISTINCT from the junk purge's
+                # maint-{date}-mutation (s2): these rows land at s0
+                # (hook: prefix), and reusing the same literal string would
+                # make one chain_id span two scales — get_chains stamps a
+                # chain's scale from the first event seen, so every
+                # prefix-based reader assumes scale-homogeneity per chain.
+                maint_chain = ('maint-%s-integrity'
                                % brain_today(self).strftime('%Y%m%d'))
                 for sid in stale_ids:
                     arch = self.archive_node(

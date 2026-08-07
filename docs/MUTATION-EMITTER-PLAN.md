@@ -445,7 +445,9 @@ step) — this step needs no new one.
 >   — NOT in any plan step: it archives stale context nodes at every session boot,
 >   never crosses dispatch, and isn't in step 10's routing list, so deleting the inline
 >   trace would have made `hook:integrity` archives permanently invisible. Rows land on
->   the `maint-{YYYYMMDD}-mutation` chain at s0. Step 10's scope is unchanged
+>   `maint-{YYYYMMDD}-integrity` at s0 — deliberately NOT the junk purge's
+>   `maint-{YYYYMMDD}-mutation` (s2): one chain_id must never span two scales
+>   (get_chains stamps chain scale from the first event). Step 10's scope is unchanged
 >   (community/consolidation routing still pending — those keep coarse `heal_archive`
 >   O-traces in the interim).
 > - `tables_hit` gates `nodes_fts` on the virtual table actually existing (test DBs
