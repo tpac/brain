@@ -225,10 +225,7 @@ update in step 5's grep.
 
 ## Follow-ons unlocked (not in scope)
 
-- Audit finding #4: `daemon_hooks.py` reaches `get_session_turns` directly and
-  re-implements the wake-envelope drop because `get_conversation` doesn't expose
-  `with_surfaced` / `exclude_trace_id`. Once `brain_traces.py` owns the function,
-  widening it is a natural single-file change; `daemon_hooks` then routes through the
-  layer.
 - `eval/` and `scripts/` direct-DAL usages can migrate opportunistically to the same
-  door.
+  door. (Audit finding #4 — daemon_hooks' direct `get_session_turns` read — was
+  retired 2026-08-07 by widening `get_conversation` with
+  `with_surfaced` / `exclude_trace_id` / `older_than`.)

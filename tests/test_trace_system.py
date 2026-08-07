@@ -818,3 +818,62 @@ class TestGetSessionTurns:
         contents = [t['content'] for t in turns]
         assert contents == ['first question', 'first answer',
                             'interrupted prompt']
+
+    def test_older_than_positions_window_in_sql(self):
+        """older_than is a strict `created_at <` bound applied in SQL, so the
+        newest-first LIMIT window sits AT the bound (the LAF replay as-of
+        cut). A Python post-filter after the LIMIT kept only the newest rows
+        and then discarded them — a deep-history bound returned zero turns.
+        """
+        import time
+        sid = 'sess-older-than'
+        for i in range(6):
+            self._write_turn(sid, str(i), 'q%d' % i, 'a%d' % i)
+            time.sleep(0.01)
+        everything = self.dal.get_session_turns(sid, limit=50)
+        assert len(everything) == 12
+        bound = everything[6]['timestamp']          # turn 3's user row
+        turns = self.dal.get_session_turns(sid, limit=2, older_than=bound)
+        expected = [t['content'] for t in everything
+                    if t['timestamp'] < bound][-2:]
+        assert [t['content'] for t in turns] == expected
+        assert all(t['timestamp'] < bound for t in turns)
+        # limit smaller than the post-bound tail — the regression shape: with
+        # a post-filter this returned [] because the newest 2 rows sat after
+        # the bound
+        assert turns, 'older_than window came back empty'
+
+    def test_get_conversation_widened_door(self):
+        """brain.get_conversation exposes with_surfaced / exclude_trace_id /
+        older_than (the widening that retired daemon_hooks' direct
+        get_session_turns read). Default shape stays byte-identical: no
+        surfaced key unless asked."""
+        import time
+        sid = 'sess-gc-door'
+        recall_chain = 's1r-%s-1' % sid[:8]
+        self._write_turn(sid, '1', 'first q', 'first a',
+                         recall_chain=recall_chain)
+        self.dal.append(chain_id=recall_chain, scale='s1', event_type='K',
+                        ref_type='surface_selected', summary='1 surfaced',
+                        metadata={'selected': ['abcd1234|Some title']},
+                        session_id=sid)
+        time.sleep(0.01)
+        self._write_turn(sid, '2', 'second q', 'second a')
+
+        turns = self.brain.get_conversation(sid, with_surfaced=True,
+                                            with_judge_output=False)
+        first_q = next(t for t in turns if t['content'] == 'first q')
+        assert first_q['surfaced'] == [{'id': 'abcd1234',
+                                        'title': 'Some title'}]
+        assert all('surfaced' not in t
+                   for t in self.brain.get_conversation(sid))
+
+        dropped = self.brain.get_conversation(
+            sid, exclude_trace_id=turns[-1]['trace_id'])
+        assert [t['content'] for t in dropped] == [
+            'first q', 'first a', 'second q']
+
+        bound = turns[2]['timestamp']               # second q's row
+        older = self.brain.get_conversation(sid, older_than=bound)
+        assert [t['content'] for t in older] == [
+            t['content'] for t in turns if t['timestamp'] < bound]

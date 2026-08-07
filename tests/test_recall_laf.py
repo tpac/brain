@@ -487,6 +487,63 @@ class TestAsOfTimeTravel(BrainTestBase):
         self.assertEqual(float(pick_asof[row]), 0.0)
         self.assertEqual(float(enc_asof.sum()), 0.0)
 
+    def test_asof_roles_deep_history_window(self):
+        # Regression (2026-08-07 fetch-then-filter sweep): the stream pull is
+        # newest-first LIMIT pull_limit; the old Python `<= as_of` post-filter
+        # ran AFTER the limit had already kept the wrong (newest) end — a
+        # session with more post-as_of rows than pull_limit gave empty role
+        # sets silently. The bound now rides the SQL, positioning the window
+        # AT as_of.
+        import json
+        from servers.recall_laf import roles_for_moments
+        node = self._mk_node('Deep history role target', 'Body.', self.EARLY)
+        # the moment's surface pick, before as_of
+        self._mk_trace('s1r-deadbeef-5', self.EARLY, None, scale='s1',
+                       ref_type='surface_selected',
+                       ref_id=json.dumps([node[:8]]))
+        # a tail of NEWER surface rows, more than pull_limit of them — the
+        # old pull saw only these
+        for k in range(6):
+            self._mk_trace('s1r-deadbeef-%d' % (50 + k), self.LATE, None,
+                           scale='s1', ref_type='surface_selected',
+                           ref_id=json.dumps(['ffffffff']))
+        calls = []
+        orig = self.brain._log_error
+        self.brain._log_error = lambda *a, **kw: calls.append(a[0])
+        try:
+            recs = roles_for_moments(
+                self.brain, {('sess-asof', 'deadbeef', 5): 0.9},
+                window_turns=1, pull_limit=4, as_of=self.MID)
+        finally:
+            self.brain._log_error = orig
+        self.assertEqual(len(recs), 1)
+        self.assertIn(node[:8], recs[0]['picked'])
+        # one row before as_of < pull_limit → no truncation false-positive
+        self.assertNotIn('laf_roles_pull_truncated', calls)
+
+    def test_asof_roles_pull_truncation_is_loud(self):
+        # A window that is still full AT as_of is a clipped coverage read —
+        # under replay that means wrong numbers, so it must flag loudly
+        # (limit+1 probe → laf_roles_pull_truncated), never pass as complete.
+        import json
+        from servers.recall_laf import roles_for_moments
+        for k in range(4):
+            self._mk_trace('s1r-deadbeef-%d' % k,
+                           '2026-01-01T00:00:0%d.000000+00:00' % k, None,
+                           scale='s1', ref_type='surface_selected',
+                           ref_id=json.dumps(['aaaaaaa%d' % k]))
+        calls = []
+        orig = self.brain._log_error
+        self.brain._log_error = lambda *a, **kw: calls.append(a[0])
+        try:
+            recs = roles_for_moments(
+                self.brain, {('sess-asof', 'deadbeef', 2): 0.5},
+                window_turns=1, pull_limit=2, as_of=self.MID)
+        finally:
+            self.brain._log_error = orig
+        self.assertEqual(len(recs), 1)
+        self.assertIn('laf_roles_pull_truncated', calls)
+
 
 @unittest.skipUnless(
     os.path.exists(os.path.join(os.path.expanduser('~'),
@@ -716,6 +773,26 @@ class TestMomentStack(BrainTestBase):
         self.assertEqual(ledger2['live_edge_dropped'], 0)
         self.assertEqual({(s, j) for s, j, _v, _t in stack2},
                          {('a', 1), ('o', 2), ('a', 2)})
+
+    def test_asof_deep_history_positions_window_at_asof(self):
+        # Regression (2026-08-07 fetch-then-filter sweep): get_conversation
+        # pulls newest-first LIMIT 4K+8; the old Python `< as_of` post-filter
+        # emptied any replay whose as_of sat further back than the window —
+        # ledger reported rows: N, turns: 0 instead of the turns that plainly
+        # existed. The bound now rides the SQL (older_than), so the window is
+        # "the last turns AT as_of".
+        for i in range(10):
+            self._mk_turn(i, 'question %d about topic' % i, 'answer %d' % i)
+        eng = self._engine()
+        # K=1 → 12-row window; 14 rows exist after T[6] — the old pull
+        # contained not a single pre-as_of row
+        stack, ledger = eng._moment_stack(self.brain, self.SESS, 1,
+                                          as_of=self.T[6])
+        self.assertEqual(ledger['rows'], 6)
+        self.assertEqual(ledger['turns'], 1)
+        texts = {(s, j): t for s, j, _v, t in stack}
+        self.assertEqual(texts[('o', 1)], 'question 2 about topic')
+        self.assertEqual(texts[('a', 1)], 'answer 2')
 
     def test_moment_table_shifts_scores_toward_history(self):
         import servers.embedder as embedder

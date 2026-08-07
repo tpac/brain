@@ -326,7 +326,7 @@ def hook_recall(brain, args, graph_changes):
         try:
             # Over-fetch so filtered wake envelopes don't cost window slots,
             # then trim back to the configured window after filtering.
-            turns = brain._trace_dal.get_session_turns(
+            turns = brain.get_conversation(
                 session_id, limit=_SURFACE['recent_messages'] + 4,
                 with_judge_output=False, with_surfaced=True,
                 exclude_trace_id=_user_msg_trace_id)
