@@ -20,7 +20,7 @@ staleness is contained here.
 > | 7 — batch archive/absorb manifests + orphan property | **DONE, live** | `11d2d8d` |
 > | 8 — archive cascade returns; inline trace DELETED; junk purge + hook:integrity rows | **DONE, live** | `b846106` (+ `782b8db` chain-collision fix) |
 > | 9 — `bulk_archive_relations` primitive; dangling sweep commits + sweep trace rows | **DONE, live** | `a0a8562` |
-> | 10 — S2 archive bypassers routed; healer dispatch hygiene; archive op survivor_id | **DONE** | (this commit) |
+> | 10 — S2 archive bypassers routed; healer dispatch hygiene; archive op survivor_id | **DONE** | `29f3c1f` (bulk — swept into a sibling's docs commit by an index-wide `git commit`, second occurrence of that incident class) + `c3b9c65` (review fixes) |
 > | **11-12** | **OPEN — step 11 (dead code) small; step 12 parked by design. Dashboard display fixes still deferred.** | |
 >
 > **The emitter is the ONLY trace writer for mutations — zero legacy emitters remain.**
