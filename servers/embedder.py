@@ -19,8 +19,11 @@ Callers must pick document vs query explicitly — the model needs it to produce
 vectors in matched geometry. Mixing them silently collapses recall quality.
 """
 
+import hashlib
 import os
+import shutil
 import sys
+import tempfile
 import time
 import struct
 from typing import Optional, List, Dict, Any
@@ -110,6 +113,103 @@ stats = {
 }
 
 
+# ─── Artifact pinning ────────────────────────────────────────────
+# The model is a DEPENDENCY OF THE STORED VECTORS: ~8.4k node embeddings (plus
+# edge/trace substrates) are only comparable to fresh query embeddings if the
+# artifact that produced them is byte-identical to the one serving queries.
+# fastembed follows the HF repo's `main` ref with no pin — a silently
+# refreshed artifact splits the vector space in two (operator ruling
+# 2026-08-07). load_model therefore verifies the LOADED snapshot against the
+# configured pins and refuses to serve on mismatch: a loudly dead embedder
+# beats a silently split space.
+
+_HEX = set('0123456789abcdef')
+
+
+def _looks_hex(s: str, n: int) -> bool:
+    return len(s) == n and all(c in _HEX for c in s.lower())
+
+
+def _verify_artifact_pin(model_obj, config) -> tuple:
+    """Verify the loaded snapshot against pinned_revision / pinned_onnx_sha256.
+
+    Returns (revision, onnx_sha256) — recorded in stats either way.
+    Raises RuntimeError on mismatch. No-op (returns what it can) when no pin
+    is configured.
+    """
+    pinned_rev = config.get('pinned_revision')
+    pinned_sha = config.get('pinned_onnx_sha256')
+
+    inner = getattr(model_obj, 'model', None)
+    model_dir = getattr(inner, '_model_dir', None)
+    if model_dir is None:
+        if pinned_rev or pinned_sha:
+            raise RuntimeError(
+                'embedder pin check: cannot locate loaded model dir '
+                '(fastembed internals changed?) — refusing to serve unverified artifact')
+        return None, None
+    model_dir = str(model_dir)
+
+    # HF hub cache layout: .../models--org--repo/snapshots/<revision>/...
+    revision = os.path.basename(model_dir.rstrip('/'))
+    if not _looks_hex(revision, 40):
+        revision = None
+
+    onnx_sha = None
+    for root, _dirs, files in os.walk(model_dir):
+        for f in sorted(files):
+            if not f.endswith('.onnx'):
+                continue
+            target = os.path.realpath(os.path.join(root, f))
+            base = os.path.basename(target)
+            if _looks_hex(base, 64):        # hub blob filename IS the sha256
+                onnx_sha = base
+            else:                           # non-hub layout — hash the bytes
+                h = hashlib.sha256()
+                with open(target, 'rb') as fh:
+                    for chunk in iter(lambda: fh.read(1 << 20), b''):
+                        h.update(chunk)
+                onnx_sha = h.hexdigest()
+            break
+        if onnx_sha:
+            break
+
+    problems = []
+    if pinned_rev and revision != pinned_rev:
+        problems.append(f'revision {revision!r} != pinned {pinned_rev!r}')
+    if pinned_sha and onnx_sha != pinned_sha:
+        problems.append(f'onnx sha256 {onnx_sha!r} != pinned {pinned_sha!r}')
+    if problems:
+        raise RuntimeError(
+            'EMBEDDER ARTIFACT PIN MISMATCH — %s. The upstream model changed '
+            'or the cache was tampered with. Serving it would embed new '
+            'writes in a different space than the stored vectors. Either '
+            'restore the pinned artifact or DELIBERATELY update the pins '
+            '(set_embedder_config) and re-embed the corpus.' % '; '.join(problems))
+    return revision, onnx_sha
+
+
+def _seed_cache_from_tmp(model_name: str, cache_dir: str) -> None:
+    """One-time migration helper: if the durable cache doesn't hold this model
+    yet but fastembed's default $TMPDIR cache does, copy the tree over instead
+    of re-downloading 137MB (and instead of failing on an offline boot).
+    Best-effort — any failure falls through to fastembed's own download."""
+    try:
+        candidates = {model_name, model_name[:-2] if model_name.lower().endswith('-q') else model_name}
+        tmp_cache = os.path.join(tempfile.gettempdir(), 'fastembed_cache')
+        for cand in candidates:
+            slug = 'models--' + cand.replace('/', '--')
+            src = os.path.join(tmp_cache, slug)
+            dst = os.path.join(cache_dir, slug)
+            if os.path.isdir(src) and not os.path.isdir(dst):
+                os.makedirs(cache_dir, exist_ok=True)
+                shutil.copytree(src, dst, symlinks=True)
+                print(f'[embedder] seeded durable cache from {src}', file=sys.stderr)
+    except Exception as e:
+        print(f'[embedder] cache seed skipped ({e}) — fastembed will download',
+              file=sys.stderr)
+
+
 # ─── Prefix table ────────────────────────────────────────────────
 # Models that require task-prefixed inputs. Keys are lowercased — lookup
 # normalizes the configured model_name before checking. If your model isn't
@@ -155,6 +255,7 @@ def load_model(config: Optional[Dict[str, Any]] = None) -> None:
 
         kwargs: Dict[str, Any] = {}
         if cache_dir:
+            _seed_cache_from_tmp(model_name, cache_dir)
             kwargs['cache_dir'] = cache_dir
 
         # ORT session knobs. fastembed picks these up via
@@ -182,11 +283,18 @@ def load_model(config: Optional[Dict[str, Any]] = None) -> None:
 
         _model = TextEmbedding(model_name=model_name, **kwargs, **session_kwargs)
 
+        # Artifact pin — raises on mismatch, failing the load LOUDLY. A dead
+        # embedder is recoverable; a split vector space is silent corruption.
+        revision, onnx_sha = _verify_artifact_pin(_model, config)
+        stats['model_revision'] = revision
+        stats['onnx_sha256'] = onnx_sha
+
         stats['load_time_ms'] = round((time.time() - t0) * 1000)
         stats['model_loaded'] = True
         stats['load_error'] = None
         print(
             f"[embedder] {model_name} ({dim}d) loaded in {stats['load_time_ms']}ms"
+            + (f" [rev {revision[:8]}]" if revision else "")
             + (f" [prefixes: doc={_doc_prefix!r} query={_query_prefix!r}]" if _doc_prefix or _query_prefix else ""),
             file=sys.stderr,
         )
@@ -198,6 +306,7 @@ def load_model(config: Optional[Dict[str, Any]] = None) -> None:
         print(f"[embedder] CRITICAL: fastembed not installed — recall broken ({e})", file=sys.stderr)
 
     except Exception as e:
+        _model = None    # never serve a model that failed load OR pin verify
         stats['model_loaded'] = False
         stats['load_error'] = str(e)
         stats['errors'] += 1

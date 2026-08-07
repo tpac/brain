@@ -1589,10 +1589,20 @@ class Brain(
     # Default embedder config — used when brain_meta has no overrides.
     # Must match plugin.json. Switch via set_embedder_config() (takes effect
     # on next boot) or by editing plugin.json + clearing brain_meta overrides.
+    #
+    # pinned_revision / pinned_onnx_sha256 freeze the exact HF artifact
+    # (2026-08-07, rev e9b6763 — the same bytes as the Apr 17 adoption).
+    # embedder.load_model verifies the LOADED snapshot against both and
+    # refuses to serve a different artifact — a silently refreshed model
+    # would split the vector space in two (operator ruling 2026-08-07:
+    # "Can we not auto update embedders?"). Changing the model or accepting
+    # an upstream refresh = update these pins deliberately, then re-embed.
     _EMBEDDER_DEFAULTS = {
         'model_name': 'nomic-ai/nomic-embed-text-v1.5-Q',
         'dim': 768,
-        'cache_dir': None,
+        'cache_dir': None,   # None → durable default next to brain.db (below)
+        'pinned_revision': 'e9b6763023c676ca8431644204f50c2b100d9aab',
+        'pinned_onnx_sha256': 'b4342336debaea79de872370664b0aaeb67dea4605513d00ee236ea871a81f27',
     }
 
     def _get_embedder_config(self) -> Dict[str, Any]:
@@ -1612,6 +1622,14 @@ class Brain(
             if val == 'None' or val == 'null':
                 val = None
             config[key] = val
+        if not config.get('cache_dir') and self.db_path:
+            # Durable default next to brain.db. fastembed's own default lives
+            # in $TMPDIR, which macOS purges after ~3 days unused — every purge
+            # re-downloaded the model from HF at whatever revision `main`
+            # pointed to that day (observed 2026-08-07: cache dated Aug 3,
+            # 137MB onnx re-pulled at boot).
+            config['cache_dir'] = os.path.join(
+                os.path.dirname(os.path.abspath(self.db_path)), 'fastembed_cache')
         return config
 
     def set_embedder_config(self, **kwargs) -> Dict[str, Any]:
