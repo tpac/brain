@@ -253,8 +253,8 @@ def emit_mutation_traces(brain, cmd, manifest, *, session_id='', chain_id='',
         # structural: handlers CAN return with brain.conn mid-transaction. The
         # proof is in-tree — brain_batch has an entry-flush guard and a
         # `brain_batch_stale_txn` error row precisely because upstream writes
-        # leak open deferred transactions (MetadataKVDAL.set_many doesn't commit;
-        # GraphDAL.archive_dangling_edges has no commit at all). Emitting now
+        # leak open deferred transactions (MetadataKVDAL.set_many doesn't
+        # commit; archive_dangling_edges had none until step 9). Emitting now
         # would publish a durable trace for a graph write that can still roll
         # back — the one thing this design refuses to do. So we check, and skip:
         # a missing trace is recoverable, an orphaned one is a lie.
@@ -299,7 +299,42 @@ def emit_mutation_traces(brain, cmd, manifest, *, session_id='', chain_id='',
                   % (cmd, e), file=sys.stderr, flush=True)
 
 
+def edge_flip_rows(conn, flipped, encoding_source, reason):
+    """Shape bulk_archive_relations' [edge_id, relation] flips into edges[]
+    manifest rows — for the sanctioned direct-emit callers (the idle decay
+    prune, the Healer's dangling sweep) that never cross the dispatch
+    chokepoint. One query enriches the rows with their directional endpoints
+    so the edge is reconstructable from the trace alone; the archived 0→1
+    delta is the observed flip the primitive guarantees."""
+    if not flipped:
+        return []
+    ids = sorted({f[0] for f in flipped})
+    endpoints = {}
+    # Chunked like delete_node_edges — one placeholder per edge_id, and
+    # SQLite caps host parameters (32766 on the bundled build); the bulk
+    # historic-leak sweep this serves is exactly the case that could
+    # exceed it.
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        endpoints.update({r[0]: (r[1], r[2]) for r in conn.execute(
+            'SELECT edge_id, source_id, target_id FROM edges '
+            'WHERE edge_id IN (%s)' % ','.join('?' * len(chunk)),
+            chunk).fetchall()})
+    rows = []
+    for eid, rel in flipped:
+        src, tgt = endpoints.get(eid, ('', ''))
+        rows.append({
+            'edge_id': eid, 'relation': rel, 'reason': reason,
+            'encoding_source': encoding_source,
+            'source_id': src, 'target_id': tgt,
+            'deltas': [{'field': 'archived', 'old': 0, 'new': 1}],
+            'warnings': [],
+        })
+    return rows
+
+
 # EMITTER_REF_TYPES is deliberately NOT re-exported: trace_contract is its single
 # source and consumers (the S2 idle gate, the dashboard mirror) import it there. A
 # second import path for one constant only invites "which one do I import?".
-__all__ = ['emit_mutation_traces', 'build_events', 'MANIFEST_TRACE_MAP']
+__all__ = ['emit_mutation_traces', 'build_events', 'MANIFEST_TRACE_MAP',
+           'edge_flip_rows']

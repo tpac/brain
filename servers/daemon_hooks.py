@@ -872,6 +872,32 @@ def hook_idle_maintenance(brain, args, graph_changes):
     # 3d. Edge decay — apply half-life decay to auto-generated edges
     try:
         decay_result = brain._graph.decay_edges()
+        # Per-edge trace rows for the pruned relations (per-edge ruled
+        # 2026-08-03, no rollup). encoding_source mirrors the graph's
+        # archived_by ('decay_pruned' → scale s0); the chain is its own —
+        # never the s2 maint chain, one chain_id must never span two scales.
+        pruned_edges = decay_result.get('pruned_edges') or []
+        if pruned_edges:
+            # Own try: decay_edges committed already — a row-shaping failure
+            # degrades to missing traces, and must not divert the section
+            # into its EDGE DECAY ERROR arm while the writes are durable
+            # (review 2026-08-06).
+            try:
+                from servers.mutation_emitter import (edge_flip_rows,
+                                                      emit_mutation_traces)
+                from servers.clock import brain_today
+                emit_mutation_traces(
+                    brain, 'hook_idle_maintenance',
+                    {'edges': edge_flip_rows(
+                        brain.conn, pruned_edges, 'decay_pruned',
+                        'edge weight decayed below prune threshold')},
+                    chain_id='maint-%s-decay'
+                             % brain_today(brain).strftime('%Y%m%d'))
+            except Exception as emit_err:
+                brain._log_error(
+                    'decay_prune_trace_emit', emit_err,
+                    'decay committed %d prunes; trace rows lost'
+                    % len(pruned_edges))
         decayed = decay_result.get('decayed', 0)
         pruned = decay_result.get('pruned', 0)
         if decayed or pruned:

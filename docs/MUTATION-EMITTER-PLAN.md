@@ -18,8 +18,9 @@ staleness is contained here.
 > | 5 — edge paths + DAL cleanups (`_emit_edge_revise_trace` deleted) | **DONE, live** | `7e74561` |
 > | 6 — remember paths (`_emit_edge_traces` + `_infer_scale_and_chain` deleted) | **DONE, live** | `8ebec33` |
 > | 7 — batch archive/absorb manifests + orphan property | **DONE, live** | `11d2d8d` |
-> | 8 — archive cascade returns; inline trace DELETED; junk purge + hook:integrity rows | **DONE, live** | (this commit) |
-> | **9-12** | **OPEN — step 9 needs `cp brain.db` backup + re-measuring the ~0 rows/pass assumption (taken 2026-08-04)** | |
+> | 8 — archive cascade returns; inline trace DELETED; junk purge + hook:integrity rows | **DONE, live** | `b846106` (+ `782b8db` chain-collision fix) |
+> | 9 — `bulk_archive_relations` primitive; dangling sweep commits + sweep trace rows | **DONE** | (this commit) |
+> | **10-12** | **OPEN — step 10 next (route community/consolidation archives; health_check already covered, do NOT reroute)** | |
 >
 > **The emitter is the ONLY trace writer for mutations — zero legacy emitters remain.**
 > Every mutation kind (node created/revised/archived/deleted, edge relations) flows
@@ -482,7 +483,32 @@ step) — this step needs no new one.
 
 ---
 
-## Step 9 — Bulk sweep rollups + the shared flip primitive
+## Step 9 — Bulk sweep rollups + the shared flip primitive — ✅ DONE
+
+> **Deviations from this plan, as built (2026-08-06):**
+> - **Preconditions honored**: `brain.db` backed up (`bak-20260807T022350Z` + WAL/SHM);
+>   the ~0 rows/pass assumption re-measured live and CONFIRMED — zero relations below
+>   the 0.1 prune threshold, zero `exemplifies` in the crossable band, and all 467
+>   dangling candidates are exempt `absorbed_into` redirects (the Healer sweep is at
+>   its fixed point). Pure correctness fix, as scoped.
+> - **The primitive is `bulk_archive_relations`** (ruled name, node 482ef98e) and
+>   `delete_node_edges` routes through it too — four callers, not the plan's three;
+>   step 8 had built the SELECT-then-UPDATE inline, this step deduplicates it.
+> - **decay-prune rows land at s0 on `maint-{date}-decay`**, not "at s2" as the plan
+>   text said: the row's encoding_source mirrors the graph's `archived_by`
+>   ('decay_pruned', unprefixed → s0, policy preserved exactly), and the s2 maint
+>   chain string must not be reused across scales (one chain_id = one scale). Healer
+>   sweep rows do land at s2 on `maint-{date}-mutation` (shared with the junk purge —
+>   same scale, coherent).
+> - **The Healer's sweep now runs under `brain.write_lock`** — it's a foreground
+>   brain.conn write that now commits, and the emit contract requires the lock.
+> - **Emit isolation (review)**: both sweep emits sit in their own inner try — the
+>   sweep is committed by emit time, so a row-shaping failure degrades to missing
+>   traces (logged as `healer_sweep_trace_emit` / `decay_prune_trace_emit`), never
+>   clobbers the sweep's reported count or misattributes the error.
+>   `edge_flip_rows` chunks its endpoint query at 500 (SQLite host-param cap).
+> - Healer `actions` arithmetic unchanged — `edges_archived` is now sourced from the
+>   dict return, so the plan's predicted `int + dict` TypeError never shipped.
 
 - `servers/dal_graph.py` — one shared flip primitive with **explicit per-caller policy
   flags** (`null_embeddings`, `recompute_weight`, `exempt_relations`) and one return shape.

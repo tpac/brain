@@ -238,7 +238,7 @@ class TestEmitBehaviour(BrainTestBase):
     def test_open_transaction_skips_and_is_loud(self):
         """The timing gate. Post-commit is CONDITIONAL — handlers can return with
         brain.conn mid-transaction (MetadataKVDAL.set_many doesn't commit;
-        archive_dangling_edges has no commit at all). Emitting then would orphan
+        archive_dangling_edges had none until step 9). Emitting then would orphan
         the trace if the write rolled back, so we skip and shout. This is the
         emitter's most valuable behaviour: it detects the leak class."""
         before = self._errors('mutation_trace_txn_open')
@@ -375,6 +375,51 @@ class TestIntegrityArchiveTraces(BrainTestBase):
             self.assertEqual(t['scale'], 's0')
             self.assertEqual(t['metadata']['archived_by'], 'hook:integrity')
             self.assertTrue(t['metadata']['title'].startswith('stale-ctx-'))
+
+
+class TestHealerSweepTraces(BrainTestBase):
+    """Step 9 — the Healer's dangling sweep commits its own flip and emits
+    one edge_relation_revised row per scrubbed relation at s2, on the maint
+    chain, under the write lock. The decoder is patched out so the test
+    exercises only the sweep (no LLM)."""
+    needs_embedder = False
+
+    def test_dangling_sweep_emits_per_edge_rows(self):
+        from unittest.mock import patch
+        from servers.scales.s2.healer import Healer
+        from servers.scales.s2.healer_decoder import HealerDecoder
+        from servers.clock import brain_today
+        a = self.brain.remember(type='test', title='sweep-src', content='c',
+                                auto_connect=False,
+                                encoding_source='anchor')['id']
+        b = self.brain.remember(type='test', title='sweep-tgt', content='c',
+                                auto_connect=False,
+                                encoding_source='anchor')['id']
+        res = self.brain._graph.add_relation(a, b, 'relates_to',
+                                             encoding_source='anchor')
+        edge_id = res['edge_id']
+        # The leak the restorer exists for: archived node, live edges.
+        self.brain.conn.execute(
+            'UPDATE nodes SET archived = 1 WHERE id = ?', (b,))
+        self.brain.conn.commit()
+
+        with patch.object(HealerDecoder, 'run',
+                          return_value={'skipped': 'test'}):
+            result = Healer(self.brain).run()
+
+        self.assertGreaterEqual(result['edges_archived'], 1, result)
+        chain = 'maint-%s-mutation' % brain_today(self.brain).strftime('%Y%m%d')
+        rows = [t for t in self.brain._trace_dal.get_chain(chain)
+                if t['ref_id'] == '%s:relates_to' % edge_id]
+        self.assertEqual(len(rows), 1, 'one row per scrubbed relation')
+        t = rows[0]
+        self.assertEqual(t['ref_type'], 'edge_relation_revised')
+        self.assertEqual(t['scale'], 's2')
+        meta = t['metadata']
+        self.assertEqual(meta['encoding_source'], 's2:healer')
+        self.assertEqual((meta['source_id'], meta['target_id']), (a, b))
+        self.assertEqual(meta['deltas'],
+                         [{'field': 'archived', 'old': 0, 'new': 1}])
 
 
 class TestOneWriterPin(unittest.TestCase):

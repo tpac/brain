@@ -28,9 +28,39 @@ class Healer(HealerDecoder):
             # resolve_live chain. archive_exempt_relations() is the single
             # source and logs loudly if the aspect is missing/empty (which would
             # silently disable the exemption and reap redirect edges).
-            edges_archived = self.brain._graph.archive_dangling_edges(
-                archived_by='s2:healer',
-                exempt_relations=self.brain.archive_exempt_relations())
+            # Under write_lock: the sweep is a foreground brain.conn write and
+            # now COMMITS its own flip (2026-08-06); the emit below is a logs
+            # write the emitter contract requires inside the caller's lock.
+            from servers.mutation_emitter import (edge_flip_rows,
+                                                  emit_mutation_traces)
+            from servers.clock import brain_today
+            with self.brain.write_lock:
+                sweep = self.brain._graph.archive_dangling_edges(
+                    archived_by='s2:healer',
+                    exempt_relations=self.brain.archive_exempt_relations())
+                edges_archived = sweep['archived']
+                if sweep['edge_relations']:
+                    # One trace row per scrubbed relation (per-edge rows
+                    # ruled 2026-08-03, no rollup shape), post-commit, on the
+                    # explicit s2 maintenance chain. Own try: the sweep is
+                    # COMMITTED by here — a row-shaping failure must degrade
+                    # to missing traces (design-sanctioned), never clobber
+                    # edges_archived or misattribute the error to the sweep
+                    # (review 2026-08-06).
+                    try:
+                        emit_mutation_traces(
+                            self.brain, 'healer_dangling_sweep',
+                            {'edges': edge_flip_rows(
+                                self.brain.conn, sweep['edge_relations'],
+                                's2:healer',
+                                'dangling edge — endpoint archived')},
+                            chain_id='maint-%s-mutation'
+                                     % brain_today(self.brain).strftime('%Y%m%d'))
+                    except Exception as emit_err:
+                        self.brain._log_error(
+                            'healer_sweep_trace_emit', emit_err,
+                            'sweep committed %d flips; trace rows lost'
+                            % edges_archived)
         except Exception as e:
             edges_archived = 0
             # Capture the error for the result dict so the caller can

@@ -435,14 +435,81 @@ class GraphDAL:
 
         return {owner: list(nbrs.values()) for owner, nbrs in grouped.items()}
 
+    def bulk_archive_relations(self, where_sql, params, archived_by, *,
+                               null_embeddings, recompute_weight,
+                               exempt_relations=()):
+        """THE one soft-archive flip for edge_relations rows.
+
+        Every archiving writer routes here (remove_relation,
+        delete_node_edges, archive_dangling_edges, decay_edges' prune arm) —
+        one UPDATE shape, one observed-truth return, so the flip semantics
+        can't drift between callers (ruled 2026-08-03, node 482ef98e).
+
+        SELECT with the UPDATE's exact predicate first, then UPDATE — same
+        connection, same transaction, under brain.write_lock — so the
+        returned [edge_id, relation] pairs ARE what the UPDATE flipped,
+        never an approximation. Already-archived rows and exempt relations
+        never appear in the return.
+
+        Policy is EXPLICIT per caller, never defaulted:
+          null_embeddings: drop the stored embedding with the flip (archived
+              edges are never read; revive re-embeds async). The dangling
+              sweep keeps False — its historical behavior, preserved exactly.
+          recompute_weight: refresh the edges aggregate row per flipped
+              edge. Single-edge and prune callers True/at-caller; bulk node
+              sweeps False (aggregate rows of an archived node are unread).
+          exempt_relations: relations that must survive the sweep
+              (survivor_lineage: absorbed_into).
+
+        archived_at is ISO-T via clock.iso_now() — the one write-side format.
+        Does NOT commit: callers own commit_unless_batched (decay calls this
+        per-relation inside one pass; a commit here would split its batch).
+        """
+        exempt_clause, exempt = _relation_not_in_clause(exempt_relations)
+        base = 'archived = 0 AND (%s) %s' % (where_sql, exempt_clause)
+        bind = list(params) + exempt
+        flipped = [[r[0], r[1]] for r in self.conn.execute(
+            'SELECT edge_id, relation FROM edge_relations WHERE ' + base,
+            bind).fetchall()]
+        if not flipped:
+            return flipped
+        embed_cols = (', embedding = NULL, embedding_model = NULL'
+                      if null_embeddings else '')
+        self.conn.execute(
+            'UPDATE edge_relations '
+            'SET archived = 1, archived_at = ?, archived_by = ?%s '
+            'WHERE %s' % (embed_cols, base),
+            [iso_now(), archived_by] + bind)
+        if recompute_weight:
+            for eid in {f[0] for f in flipped}:
+                self._update_aggregate_weight(eid)
+        return flipped
+
+    # The dangling selection: every ACTIVE relation on an edge whose source
+    # or target node is archived. Edge-level on purpose — an archived
+    # endpoint makes every relation on that edge dangling.
+    _DANGLING_WHERE = """edge_id IN (
+                 SELECT er.edge_id FROM edge_relations er
+                 JOIN edges e ON e.edge_id = er.edge_id
+                 JOIN nodes n_src ON n_src.id = e.source_id
+                 JOIN nodes n_tgt ON n_tgt.id = e.target_id
+                 WHERE er.archived = 0
+                   AND (n_src.archived = 1 OR n_tgt.archived = 1)
+               )"""
+
     def archive_dangling_edges(self, archived_by: str,
-                               exempt_relations=()) -> int:
+                               exempt_relations=()) -> Dict[str, Any]:
         """Archive active edge_relations rows whose source or target node is archived.
 
         Invariant restorer: the brain's rule is `Archive edges alongside nodes —
         no dangling edges after committing`. Historical leak paths
         (pre-April-2026 archive_node deletion bug, mid-migration races) can
         leave active edges pointing at archived nodes; this method scrubs them.
+
+        Commits its own flip (commit_unless_batched) — it had NO commit until
+        2026-08-06, so its writes rode open until some later writer committed,
+        and any trace emitted after it was orphanable by construction (the
+        emitter's in_transaction gate kept firing on Healer cycles).
 
         Args:
             archived_by: encoding_source-style tag for the archive action
@@ -455,32 +522,16 @@ class GraphDAL:
                 taxonomy, not this method, owns the list. DAL stays
                 aspect-agnostic — it just takes the strings.
 
-        Returns count of edge_relations rows newly archived.
+        Returns {'archived': int, 'edge_relations': [[edge_id, relation], ...]}
+        — the pairs the UPDATE actually flipped, for the caller's trace rows.
+        (Was a bare rowcount int until 2026-08-06.)
         """
-        # archived_at is ISO-T via clock.iso_now() — the same format
-        # brain_remember.archive_node and every other edge_relations
-        # writer uses. (Unified 2026-06-12: this method was the lone
-        # unix-ms writer into the TEXT column, which broke lexicographic
-        # time reads and rendered as 1970 epoch dates.)
-        ts = iso_now()
-        exempt_clause, exempt = _relation_not_in_clause(exempt_relations)
-        cur = self.conn.execute("""
-            UPDATE edge_relations
-               SET archived = 1,
-                   archived_at = ?,
-                   archived_by = ?
-             WHERE archived = 0
-               %s
-               AND edge_id IN (
-                 SELECT er.edge_id FROM edge_relations er
-                 JOIN edges e ON e.edge_id = er.edge_id
-                 JOIN nodes n_src ON n_src.id = e.source_id
-                 JOIN nodes n_tgt ON n_tgt.id = e.target_id
-                 WHERE er.archived = 0
-                   AND (n_src.archived = 1 OR n_tgt.archived = 1)
-               )
-        """ % exempt_clause, [ts, archived_by] + exempt)
-        return cur.rowcount
+        flipped = self.bulk_archive_relations(
+            self._DANGLING_WHERE, [], archived_by,
+            null_embeddings=False, recompute_weight=False,
+            exempt_relations=exempt_relations)
+        commit_unless_batched(self.conn)
+        return {'archived': len(flipped), 'edge_relations': flipped}
 
     def reconcile_community_membership(self,
                                        encoding_source='s2:community_repair'):
@@ -913,36 +964,18 @@ class GraphDAL:
             (node_id, node_id)
         ).fetchall()]
 
+        # NULL the stored embedding on archive — same pattern node archive
+        # uses (DELETE FROM node_enrichments). Archived edges are never read
+        # by spread/select_edges (every read filters archived=0), so the blob
+        # is dead weight; a later revive via add_relation Branch 3 re-embeds
+        # async. Symmetric with nodes.
         flipped = []
-        if edge_ids:
-            ts = iso_now()
-            exempt_clause, exempt = _relation_not_in_clause(exempt_relations)
-            # NULL the stored embedding on archive — same pattern node
-            # archive uses (DELETE FROM node_enrichments). Archived edges
-            # are never read by spread/select_edges (every read filters
-            # archived=0), so the blob is dead weight in the table. If
-            # the relation is later revived via add_relation Branch 3,
-            # created=True fires enqueue_edge and the embed_queue worker
-            # re-embeds async. Symmetric with nodes; storage isn't burned
-            # on history that no one queries.
-            for i in range(0, len(edge_ids), 500):
-                chunk = edge_ids[i:i + 500]
-                ph = ','.join('?' * len(chunk))
-                # SELECT with the UPDATE's exact predicate, same transaction —
-                # the flipped set is deterministic, so this IS what the UPDATE
-                # hits, not a racy approximation.
-                flipped.extend([r[0], r[1]] for r in self.conn.execute(
-                    'SELECT edge_id, relation FROM edge_relations '
-                    'WHERE edge_id IN (%s) AND archived = 0 %s' % (
-                        ph, exempt_clause),
-                    chunk + exempt).fetchall())
-                self.conn.execute(
-                    'UPDATE edge_relations '
-                    'SET archived = 1, archived_at = ?, archived_by = ?, '
-                    '    embedding = NULL, embedding_model = NULL '
-                    'WHERE edge_id IN (%s) AND archived = 0 %s' % (
-                        ph, exempt_clause),
-                    [ts, archived_by] + chunk + exempt)
+        for i in range(0, len(edge_ids), 500):
+            chunk = edge_ids[i:i + 500]
+            flipped.extend(self.bulk_archive_relations(
+                'edge_id IN (%s)' % ','.join('?' * len(chunk)), chunk,
+                archived_by, null_embeddings=True, recompute_weight=False,
+                exempt_relations=exempt_relations))
 
         commit_unless_batched(self.conn)
         return flipped
@@ -979,13 +1012,17 @@ class GraphDAL:
 
         Formula: new_weight = weight * 0.5^(hours_since_created / half_life)
 
-        Returns: {decayed: int, pruned: int, by_type: {relation: {decayed, pruned}}}
+        Returns: {decayed: int, pruned: int,
+                  by_type: {relation: {decayed, pruned}},
+                  pruned_edges: [[edge_id, relation], ...]}  # observed flips,
+                  # for the caller's per-edge trace rows
         """
         from .brain_constants import EDGE_TYPES, EDGE_PRUNE_THRESHOLD
 
         total_decayed = 0
         total_pruned = 0
         by_type = {}
+        pruned_edges = []
 
         for relation, config in EDGE_TYPES.items():
             if not config.get('decays'):
@@ -1005,37 +1042,28 @@ class GraphDAL:
             """, (half_life, relation))
             decayed = self.conn.execute('SELECT changes()').fetchone()[0]
 
-            # Collect edge_ids that will be pruned (active only)
-            pruned_edge_ids = [r[0] for r in self.conn.execute(
-                "SELECT edge_id FROM edge_relations "
-                "WHERE relation = ? AND weight < ? AND archived = 0",
-                (relation, EDGE_PRUNE_THRESHOLD)
-            ).fetchall()]
-
-            # Soft-archive relations below threshold (v25 — was DELETE).
-            # NULL the embedding too — see delete_node_edges for rationale
-            # (archived edges are unread; revive re-embeds via add_relation).
-            prune_ts = iso_now()
-            self.conn.execute(
-                "UPDATE edge_relations "
-                "SET archived = 1, archived_at = ?, archived_by = ?, "
-                "    embedding = NULL, embedding_model = NULL "
-                "WHERE relation = ? AND weight < ? AND archived = 0",
-                (prune_ts, 'decay_pruned', relation, EDGE_PRUNE_THRESHOLD))
-            pruned = self.conn.execute('SELECT changes()').fetchone()[0]
+            # Soft-archive relations below threshold (v25 — was DELETE) via
+            # the shared flip primitive: embedding NULLed with the flip,
+            # aggregate weight recomputed per flipped edge, and the flipped
+            # [edge_id, relation] pairs kept — the caller emits one trace
+            # row per pruned relation (per-edge rows ruled 2026-08-03, no
+            # rollup shape). The weight-decay UPDATE above stays outside the
+            # primitive by design — it flips nothing.
+            flipped = self.bulk_archive_relations(
+                'relation = ? AND weight < ?',
+                [relation, EDGE_PRUNE_THRESHOLD], 'decay_pruned',
+                null_embeddings=True, recompute_weight=True)
+            pruned = len(flipped)
+            pruned_edges.extend(flipped)
 
             if decayed or pruned:
                 by_type[relation] = {'decayed': decayed, 'pruned': pruned}
                 total_decayed += decayed
                 total_pruned += pruned
 
-            # Recompute aggregate weight from remaining active relations.
-            # Edges aggregate row stays regardless — reads join on archived=0.
-            for eid in set(pruned_edge_ids):
-                self._update_aggregate_weight(eid)
-
         commit_unless_batched(self.conn)
-        return {'decayed': total_decayed, 'pruned': total_pruned, 'by_type': by_type}
+        return {'decayed': total_decayed, 'pruned': total_pruned,
+                'by_type': by_type, 'pruned_edges': pruned_edges}
 
     # --- edge_relations (multi-relation semantic layer via edge_id) ---
 
@@ -1287,7 +1315,8 @@ class GraphDAL:
         change preserves edge history for recovery. The edges aggregate row
         stays regardless — reads filter via edge_relations joins.
 
-        Returns OBSERVED truth, from the UPDATE's rowcount — never a fabricated
+        Returns OBSERVED truth, from the flip primitive's same-predicate
+        SELECT — never a fabricated
         flip: {'edge_id', 'relation', 'flipped', 'deltas'}. flipped=False (empty
         deltas) means the row was already archived or never existed; a caller
         emitting traces from `deltas` therefore cannot record an archive that
@@ -1299,17 +1328,14 @@ class GraphDAL:
         if not edge_id:
             return result
 
-        ts = iso_now()
-        # NULL the embedding too — same pattern as delete_node_edges and
-        # decay_edges. Symmetric with node archive (which DELETEs from
-        # node_enrichments). Revive via add_relation Branch 3 re-embeds.
-        cur = self.conn.execute(
-            'UPDATE edge_relations '
-            'SET archived = 1, archived_at = ?, archived_by = ?, '
-            '    embedding = NULL, embedding_model = NULL '
-            'WHERE edge_id = ? AND relation = ? AND archived = 0',
-            (ts, archived_by, edge_id, relation))
-        if cur.rowcount > 0:
+        # Shared flip primitive; embedding NULLed with the flip (revive via
+        # add_relation Branch 3 re-embeds). recompute_weight=False because
+        # this caller recomputes UNCONDITIONALLY below — its historical
+        # behavior refreshes the aggregate even on a no-op flip.
+        flipped = self.bulk_archive_relations(
+            'edge_id = ? AND relation = ?', [edge_id, relation], archived_by,
+            null_embeddings=True, recompute_weight=False)
+        if flipped:
             result['flipped'] = True
             result['deltas'] = [{'field': 'archived', 'old': 0, 'new': 1}]
 

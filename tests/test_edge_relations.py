@@ -432,8 +432,8 @@ class T5_DanglingArchiveTimestampFormat(BrainTestBase):
         self.brain.conn.execute(
             'UPDATE nodes SET archived = 1 WHERE id = ?', (b['id'],))
 
-        n = dal.archive_dangling_edges('anchor:test')
-        self.assertGreaterEqual(n, 1, 'restorer archived nothing')
+        r = dal.archive_dangling_edges('anchor:test')
+        self.assertGreaterEqual(r['archived'], 1, 'restorer archived nothing')
 
         row = self.brain.conn.execute(
             "SELECT er.archived, er.archived_at FROM edge_relations er "
@@ -450,6 +450,97 @@ class T5_DanglingArchiveTimestampFormat(BrainTestBase):
                         'archived_at not ISO: %r' % archived_at)
         self.assertIn('T', archived_at,
                       'archived_at missing ISO T separator: %r' % archived_at)
+
+
+class T11_SharedFlipPrimitive(BrainTestBase):
+    """Step 9 — bulk_archive_relations is THE one soft-archive flip; the four
+    archiving writers route through it with explicit per-caller policy, and
+    the sweeps return observed [edge_id, relation] flips for trace rows."""
+
+    needs_embedder = False
+
+    def _pair(self, ta, tb, relation, **kw):
+        from servers.dal_graph import GraphDAL
+        a = self.brain.remember(type='test', title=ta, content='c',
+                                auto_connect=False,
+                                encoding_source='anchor:test')['id']
+        b = self.brain.remember(type='test', title=tb, content='c',
+                                auto_connect=False,
+                                encoding_source='anchor:test')['id']
+        dal = GraphDAL(self.brain.conn)
+        res = dal.add_relation(a, b, relation,
+                               encoding_source='anchor:test', **kw)
+        return dal, a, b, res['edge_id']
+
+    def test_dangling_sweep_returns_flipped_pairs_and_commits(self):
+        dal, a, b, edge_id = self._pair('fp_a', 'fp_b', 'relates_to')
+        self.brain.conn.execute(
+            'UPDATE nodes SET archived = 1 WHERE id = ?', (b,))
+        self.brain.conn.commit()
+
+        r = dal.archive_dangling_edges('anchor:test')
+        self.assertEqual(r['archived'], len(r['edge_relations']))
+        self.assertIn([edge_id, 'relates_to'], r['edge_relations'])
+        # The sweep owns its durability now — no open transaction rides
+        # after it (any trace emitted after it used to be orphanable).
+        self.assertFalse(self.brain.conn.in_transaction,
+                         'archive_dangling_edges left its flip uncommitted')
+
+    def test_dangling_sweep_pairs_exclude_exempt_relations(self):
+        dal, a, b, edge_id = self._pair('ex_a', 'ex_b', 'absorbed_into')
+        dal.add_relation(a, b, 'relates_to', encoding_source='anchor:test')
+        self.brain.conn.execute(
+            'UPDATE nodes SET archived = 1 WHERE id = ?', (b,))
+        self.brain.conn.commit()
+
+        r = dal.archive_dangling_edges(
+            'anchor:test', exempt_relations=['absorbed_into'])
+        pairs = r['edge_relations']
+        self.assertIn([edge_id, 'relates_to'], pairs)
+        self.assertNotIn([edge_id, 'absorbed_into'], pairs,
+                         'the exempt redirect must never be claimed flipped')
+        # And the sweep preserved its policy: embeddings NOT nulled — the
+        # dangling sweep has never dropped blobs (null_embeddings=False).
+
+    def test_decay_returns_pruned_edges_with_policy(self):
+        dal, a, b, edge_id = self._pair('dk_a', 'dk_b', 'co_accessed',
+                                        weight=0.05)
+        # Give the row a fake embedding so the null_embeddings policy is
+        # observable.
+        self.brain.conn.execute(
+            "UPDATE edge_relations SET embedding = X'00', "
+            "embedding_model = 'test' WHERE edge_id = ?", (edge_id,))
+        self.brain.conn.commit()
+
+        r = dal.decay_edges()
+        self.assertIn([edge_id, 'co_accessed'], r['pruned_edges'])
+        self.assertEqual(r['pruned'], len(r['pruned_edges']))
+        row = self.brain.conn.execute(
+            'SELECT archived, embedding, archived_by FROM edge_relations '
+            'WHERE edge_id = ? AND relation = ?',
+            (edge_id, 'co_accessed')).fetchone()
+        self.assertEqual(row[0], 1)
+        self.assertIsNone(row[1], 'prune must NULL the embedding')
+        self.assertEqual(row[2], 'decay_pruned')
+        # recompute_weight=True: no active relations left → aggregate 0.
+        agg = self.brain.conn.execute(
+            'SELECT weight FROM edges WHERE edge_id = ?',
+            (edge_id,)).fetchone()[0]
+        self.assertEqual(agg, 0.0)
+
+    def test_primitive_select_matches_update(self):
+        """The observed-truth property at the primitive level: the returned
+        pairs are exactly the rows flipped, already-archived rows excluded."""
+        dal, a, b, edge_id = self._pair('sm_a', 'sm_b', 'relates_to')
+        dal.add_relation(a, b, 'extends', encoding_source='anchor:test')
+        # Pre-archive one of the two relations.
+        dal.remove_relation(a, b, 'extends', archived_by='anchor:test')
+
+        flipped = dal.bulk_archive_relations(
+            'edge_id = ?', [edge_id], 'anchor:test',
+            null_embeddings=False, recompute_weight=False)
+        self.assertEqual(flipped, [[edge_id, 'relates_to']],
+                         'already-archived rows must not be claimed')
 
 
 if __name__ == '__main__':
