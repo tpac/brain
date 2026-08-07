@@ -287,10 +287,15 @@ def roles_for_moments(brain, moments, window_turns, pull_limit, as_of=None):
     union roles across the ±window stops, picked-wins-over-dropped within a moment.
 
     as_of (§20.11 #5, the shared episodic-door chokepoint): ISO timestamp —
-    stream rows created after it are dropped BEFORE the join, so surface picks
-    / encode deltas / candidate pools from the future contribute no roles.
-    None = live, no filtering (the identical path). Rows missing created_at
-    stay visible (the always-visible convention; live rows all carry one).
+    the pull window is positioned AT it (SQL `created_at <` via gather's
+    older_than, strict; the walker's `<=` can't diverge — as_of anchors to an
+    s0 row, these streams are s1, and stamps are microsecond). Pushed into
+    SQL, never Python-filtered after the fetch: the pull is newest-first
+    LIMIT pull_limit, so a post-filter kept only rows NEWER than as_of and a
+    deep-history replay got empty role sets — no ground truth, no error.
+    None = live, no bound (the identical path). A pull that still fills the
+    window at as_of is flagged loud (limit+1 probe → laf_roles_pull_truncated)
+    — under replay a clipped coverage read means wrong numbers, not slower ones.
 
     moments: {(session_id, short, stop): score}
     Returns [{'score', 'picked', 'encoded', 'dropped'}] — sets of node ids.
@@ -301,11 +306,23 @@ def roles_for_moments(brain, moments, window_turns, pull_limit, as_of=None):
         by_sess[sess].append((short, stop, s))
     records = []
     for sess, moms in by_sess.items():
-        st = gather(brain, sess, streams=('surface', 'encode', 'recall'),
-                    limit=pull_limit)
-        if as_of is not None:
-            st = {k: [r for r in v if (r.get('created_at') or '') <= as_of]
-                  for k, v in st.items()}
+        if as_of is None:
+            st = gather(brain, sess, streams=('surface', 'encode', 'recall'),
+                        limit=pull_limit)
+        else:
+            # limit+1 probe (the truncation contract): the extra row is proof
+            # the session holds more stream rows before as_of than the window
+            # carries — moments at early stops would join against nothing.
+            st = gather(brain, sess, streams=('surface', 'encode', 'recall'),
+                        limit=pull_limit + 1, older_than=as_of)
+            clipped = [k for k, v in st.items() if len(v) > pull_limit]
+            if clipped:
+                st = {k: v[:pull_limit] for k, v in st.items()}
+                brain._log_error(
+                    'laf_roles_pull_truncated', None,
+                    'session=%s streams=%s hold >%d rows before as_of=%s — '
+                    'role join is measuring a clipped window'
+                    % (sess[:8], ','.join(clipped), pull_limit, as_of))
         targets = [{'id': '%d@%d' % (mi, ws), 'chain_id': 's0-%s-%d' % (short, ws)}
                    for mi, (short, stop, _s) in enumerate(moms)
                    for ws in range(max(stop - w, 0), stop + w + 1)]
@@ -785,15 +802,17 @@ class LafV1Engine:
         already in the conversation; without this rule it would enter as j=1
         and double-count the j0 query. A trailing answer-less user turn is
         exactly that in-flight prompt → dropped (ledger 'live_edge_dropped');
-        under replay the as_of strict < cut removes the cue row before this
-        rule even sees it.
+        under replay the as_of strict < cut (get_conversation's older_than —
+        in SQL, so the window is the last turns AT as_of, not the last turns
+        NOW minus the future) removes the cue row before this rule sees it.
 
         Returns ([(side, j, unit_vec_or_None, text)], ledger)."""
         ledger = {'rows': 0, 'turns': 0, 'machine_dropped': 0,
                   'missing_vec': 0, 'live_edge_dropped': 0}
         try:
             rows = brain.get_conversation(session_id, limit=4 * K + 8,
-                                          with_judge_output=False)
+                                          with_judge_output=False,
+                                          older_than=as_of)
         except Exception as e:
             # Degrading to bare-query recall beats killing the whole field
             # (scores() failure → champion fallback, strictly worse) — but
@@ -804,8 +823,6 @@ class LafV1Engine:
             ledger['error'] = str(e)
             return [], ledger
         ledger['rows'] = len(rows)
-        if as_of is not None:
-            rows = [r for r in rows if (r.get('timestamp') or '') < as_of]
         turns = []                       # [[op_row_or_None, anchor_row_or_None]]
         for r in rows:
             role = r.get('role')

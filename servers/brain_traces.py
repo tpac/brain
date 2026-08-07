@@ -112,7 +112,8 @@ class BrainTracesMixin:
                      session_id: str = '', session_ids=None,
                      ref_type: str = '', ref_id: str = '', chain_suffix: str = '',
                      exclude_ref_types=None,
-                     grouped: bool = False, limit: int = 100):
+                     grouped: bool = False, limit: int = 100,
+                     older_than: str = ''):
         """Query trace events — the fractal learning loop data.
 
         Modes:
@@ -128,13 +129,20 @@ class BrainTracesMixin:
         - default: return flat recent events (hours-bound; + optional chain_suffix
           to scope to one S2 unit, exclude_ref_types to drop residue like
           journal_note, hours=None to disable the window)
+
+        older_than (ISO, strict `created_at <`) positions the newest-first
+        LIMIT window at a historical instant — the replay as-of bound,
+        pushed into SQL so the limit clips the right end of the ordering.
+        Applies to the flat modes (ref_type / default); chain_id and grouped
+        pulls are whole-chain reads and don't take it.
         """
         if chain_id:
             return {'chain': self._trace_dal.get_chain(chain_id)}
         if ref_type:
             return {'events': self._trace_dal.get_by_ref_type(
                 ref_type=ref_type, scale=scale, hours=hours, limit=limit,
-                session_id=session_id, ref_id=ref_id, chain_suffix=chain_suffix)}
+                session_id=session_id, ref_id=ref_id, chain_suffix=chain_suffix,
+                older_than=older_than)}
         if grouped and session_id:
             return {'chains': self._trace_dal.get_chains(
                 session_id=session_id, scale=scale, hours=hours, limit=limit)}
@@ -143,7 +151,8 @@ class BrainTracesMixin:
         return {'events': self._trace_dal.get_recent(
             scale=scale, hours=hours, event_type=event_type,
             session_id=session_id, session_ids=session_ids, limit=limit,
-            chain_suffix=chain_suffix, exclude_ref_types=exclude_ref_types)}
+            chain_suffix=chain_suffix, exclude_ref_types=exclude_ref_types,
+            older_than=older_than)}
 
     def count_traces(self, field: str, scale: str = '', hours: int = 24):
         """Count trace events grouped by a field."""
@@ -558,14 +567,16 @@ class BrainTracesMixin:
     # ── Conversation ──
 
     def get_conversation(self, session_id: str, limit: int = 20,
-                         with_judge_output: bool = True) -> List[Dict]:
+                         with_judge_output: bool = True,
+                         with_surfaced: bool = False,
+                         exclude_trace_id: str = None,
+                         older_than: str = None) -> List[Dict]:
         """Get recent conversation turns for a session.
 
-        The simple path — S1E and scribe_due: anything that knows its
-        session_id and wants the last N turns. No timestamp resolution, no
-        JSONL fallback. (daemon_hooks' surface window still reads
-        get_session_turns directly — it needs with_surfaced/exclude_trace_id
-        this door doesn't expose yet; widening it retires that bypass.)
+        The simple path — S1E, scribe_due, the surface window, the LAF
+        moment stack: anything that knows its session_id and wants the last
+        N turns. No timestamp resolution, no JSONL fallback (historic
+        center-on-a-moment lookups are get_conversation_around's job).
 
         Returns: [{role, content, timestamp, trace_id, judge_output}]
             trace_id: 8-char hex id from trace_events (v29) — used by S1 encoder
@@ -574,17 +585,38 @@ class BrainTracesMixin:
                       Filling it costs an extra query over the window's recall
                       chains — callers that only read role/content (the
                       scribe_due poll) pass with_judge_output=False.
+            with_surfaced=True adds `surfaced` per user turn — the memories
+                      the surface selected ([{id, title}]); the v13 XML
+                      surface layout's <shown> source.
+            exclude_trace_id drops one row in SQL — mid-turn readers that
+                      want PREVIOUS turns only pass the current prompt's
+                      trace id (see get_session_turns for the interrupt
+                      subtlety).
+            older_than: ISO strict `created_at <` bound, applied in SQL —
+                      the replay as-of cut: "the last N turns as of that
+                      instant", not "the last N turns now, minus the future".
         """
         try:
             turns = self._trace_dal.get_session_turns(
-                session_id, limit=limit, with_judge_output=with_judge_output)
-            return [{'role': t['role'],
-                     'trace_id': t.get('trace_id'),
-                     'content': t.get('content', ''),
-                     'timestamp': t.get('timestamp', ''),
-                     'judge_output': t.get('judge_output', '')}
-                    for t in turns]
-        except Exception:
+                session_id, limit=limit, with_judge_output=with_judge_output,
+                with_surfaced=with_surfaced, exclude_trace_id=exclude_trace_id,
+                older_than=older_than)
+            out = []
+            for t in turns:
+                row = {'role': t['role'],
+                       'trace_id': t.get('trace_id'),
+                       'content': t.get('content', ''),
+                       'timestamp': t.get('timestamp', ''),
+                       'judge_output': t.get('judge_output', '')}
+                if with_surfaced:
+                    row['surfaced'] = t.get('surfaced', [])
+                out.append(row)
+            return out
+        except Exception as e:
+            # Empty-list degrade keeps every consumer alive (Scribe cadence,
+            # surface window, moment stack) — but never silently.
+            self._log_error('get_conversation', e,
+                            'session=%s' % (session_id or '')[:8])
             return []
 
     def turns_since_last_encode(self, session_id: str) -> int:

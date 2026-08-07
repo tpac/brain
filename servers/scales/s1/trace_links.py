@@ -345,7 +345,8 @@ GATHER_STREAMS = {
 }
 
 
-def gather(brain, session_id, streams=('surface', 'encode', 'touched'), limit=500):
+def gather(brain, session_id, streams=('surface', 'encode', 'touched'),
+           limit=500, older_than=None):
     """Live adapter: fetch named trace streams for a session. Thin.
 
     Composes the public `query_traces` door (no bespoke DAL, per the §10.2
@@ -365,11 +366,17 @@ def gather(brain, session_id, streams=('surface', 'encode', 'touched'), limit=50
     most-recent traces — what the recent-turn window needs). Distinct from the
     timeline's LIVED_SEQUENCE_PULL; a reusable adapter default, not a per-piece
     constant. A consumer with a different need passes its own.
+
+    `older_than` (ISO, strict `created_at <`) is the replay as-of bound —
+    pushed through query_traces into SQL so the DESC LIMIT window sits at
+    that instant. A Python post-filter here would clip exactly the rows a
+    deep-history replay needs (the fetch-then-filter class).
     """
     out = {}
     for name in streams:
         ref_type, scale = GATHER_STREAMS[name]   # unknown name = caller bug, loud
         out[name] = brain.query_traces(
             ref_type=ref_type, scale=scale,
-            session_id=session_id, hours=None, limit=limit).get('events', [])
+            session_id=session_id, hours=None, limit=limit,
+            older_than=older_than or '').get('events', [])
     return out

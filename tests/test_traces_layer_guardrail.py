@@ -17,9 +17,9 @@ Sanctioned read exceptions (each named, each with a why):
   vector-substrate pulls (scoring internals, not event reads).
 - embed_queue.py: find_unembedded — the embedding-reconciliation worker's
   substrate maintenance scan.
-- daemon_hooks.py: get_session_turns — KNOWN DEBT (audit finding #4): needs
-  with_surfaced/exclude_trace_id, which brain.get_conversation doesn't expose
-  yet. Widening get_conversation retires this entry — do not add siblings.
+(daemon_hooks.py get_session_turns was the audit-#4 KNOWN DEBT entry —
+retired 2026-08-07 by widening brain.get_conversation with
+with_surfaced/exclude_trace_id/older_than. Do not add siblings.)
 
 Detection is deliberately simple: `_trace_dal.<method>` tokens. Unknown method
 names fail CLOSED (treated as reads) so a new TraceDAL method can't slip past
@@ -48,8 +48,6 @@ READ_EXCEPTIONS = {
     ('brain_recall.py', 'event_vector_rows'): 'trace-chain lane vector substrate',
     ('recall_laf.py', 'event_vector_rows'): 'LAF episodic matrix vector substrate',
     ('embed_queue.py', 'find_unembedded'): 'embedding reconciliation scan',
-    ('daemon_hooks.py', 'get_session_turns'):
-        'KNOWN DEBT: audit finding #4 — retire by widening brain.get_conversation',
 }
 
 

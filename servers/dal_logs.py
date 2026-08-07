@@ -766,7 +766,8 @@ class TraceDAL:
                    event_type: str = '', session_id: str = '',
                    session_ids: Optional[List[str]] = None,
                    limit: int = 100, chain_suffix: str = '',
-                   exclude_ref_types: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+                   exclude_ref_types: Optional[List[str]] = None,
+                   older_than: str = '') -> List[Dict[str, Any]]:
         """Get recent trace events, optionally filtered by scale/type/session.
 
         Session filtering — three modes:
@@ -798,7 +799,8 @@ class TraceDAL:
             scale=scale, event_type=event_type,
             session_id=session_id, session_ids=session_ids,
             hours=None if (session_id or session_ids) else hours,
-            chain_suffix=chain_suffix, exclude_ref_types=exclude_ref_types)
+            chain_suffix=chain_suffix, exclude_ref_types=exclude_ref_types,
+            older_than=older_than)
         rows = self.conn.execute(
             'SELECT %s FROM trace_events te '
             'WHERE %s ORDER BY te.created_at DESC LIMIT ?'
@@ -1038,12 +1040,17 @@ class TraceDAL:
     def get_by_ref_type(self, ref_type: str, scale: str = '',
                         hours: Optional[int] = 24, limit: int = 100,
                         session_id: str = '', ref_id: str = '',
-                        chain_suffix: str = '') -> List[Dict[str, Any]]:
+                        chain_suffix: str = '',
+                        older_than: str = '') -> List[Dict[str, Any]]:
         """Get events filtered by ref_type.
 
         Use: "all corrections", "all recall_hits", "all encoding_runs".
         Pass hours=None to disable the time-window filter (caller controls
         recency purely via `limit` + `ORDER BY created_at DESC`).
+        Pass older_than (ISO, strict `created_at <`) to position the
+        newest-first LIMIT window at a historical instant — replay as-of
+        cuts belong in SQL, not a Python post-filter that the LIMIT already
+        clipped.
         Pass session_id to scope results to a single session — required for
         per-session reads (e.g. surface's recently-surfaced dedup list).
         Pass ref_id to scope to a single subject (e.g. journal notes about one
@@ -1063,7 +1070,8 @@ class TraceDAL:
         # door's contract is "exactly these predicates", no authority rule.
         where, params = self._event_where(
             scale=scale, session_id=session_id, ref_type=ref_type,
-            ref_id=ref_id, hours=hours, chain_suffix=chain_suffix)
+            ref_id=ref_id, hours=hours, chain_suffix=chain_suffix,
+            older_than=older_than)
         rows = self.conn.execute(
             'SELECT %s FROM trace_events te '
             'WHERE %s ORDER BY te.created_at DESC LIMIT ?'
@@ -1251,7 +1259,8 @@ class TraceDAL:
                           before: int = None, after: int = None,
                           with_judge_output: bool = True,
                           exclude_trace_id: str = None,
-                          with_surfaced: bool = False) -> List[Dict[str, Any]]:
+                          with_surfaced: bool = False,
+                          older_than: str = None) -> List[Dict[str, Any]]:
         """Get chronological turns for a session from S0 + S1 traces.
 
         Returns: [{role, trace_id, content, timestamp, judge_output}]
@@ -1292,6 +1301,12 @@ class TraceDAL:
                 the current chain also holds the previous real prompt,
                 which must stay in the window. Readers that want the
                 conversation as-is (Scribe, historic lookups) omit it.
+            older_than: ISO timestamp, strict `created_at <` bound applied
+                in SQL — positions the newest-first LIMIT window at a
+                historical instant (the LAF replay as-of cut) instead of
+                clipping at wall-now and post-filtering the wrong rows.
+                Strict on purpose: a replay's cue row sits exactly AT as_of
+                and must not enter its own window.
         """
         # v29: select `id` (8-char hex trace_event.id) so callers can render
         # [trace:<hex>] markers — the encoder copies these into source_refs.
@@ -1310,6 +1325,12 @@ class TraceDAL:
             # `limit` full rows of previous turns.
             base_sql += "AND id != ? "
             params = (*params, exclude_trace_id)
+        if older_than:
+            # Also in SQL: a post-filter after the DESC LIMIT keeps only the
+            # newest rows and then discards them — a deep-history bound
+            # returned zero turns while the session plainly had them.
+            base_sql += "AND created_at < ? "
+            params = (*params, older_than)
         if around_timestamp:
             # Historic window — needs the whole session to locate the center.
             rows = self.conn.execute(
