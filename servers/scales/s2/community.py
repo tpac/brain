@@ -258,6 +258,16 @@ class CommunityDetection(CommunityDecoder):
             # archive_guard would allow, and the guard drops out-of-scope
             # archives while reporting success. The batch stamps
             # encoding_source + this run's chain via apply_encoder_attribution.
+            # locked/critical pre-filtered (same pattern as the supersession
+            # heal): a guarded target would otherwise log archive_guarded
+            # PLUS batch_op_failed every cycle, forever (review 2026-08-07).
+            ph = ','.join('?' * len(dead_list))
+            guarded = {r[0] for r in self.brain.conn.execute(
+                'SELECT id FROM nodes WHERE id IN (%s) '
+                'AND (locked = 1 OR critical = 1)' % ph,
+                [d['id'] for d in dead_list]).fetchall()}
+            dead_list = [d for d in dead_list if d['id'] not in guarded]
+        if dead_list:
             dispatch = self._make_encoder_dispatch()
             ops = [{'op': 'archive', 'node_id': d['id'],
                     'reason': 'dead — internal cohesion %.2f below floor'

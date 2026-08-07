@@ -579,7 +579,7 @@ class GraphDAL:
                 declared[cid] = members
         if not declared:
             return {'communities_healed': 0, 'edges_backfilled': 0,
-                    'details': []}
+                    'details': [], 'edge_ids': []}
 
         # 2. Communities that ALREADY have >=1 active community_member edge,
         #    in EITHER direction — skip them (partial gap == drift, not
@@ -599,7 +599,7 @@ class GraphDAL:
         orphans = {cid: ms for cid, ms in declared.items() if cid not in edged}
         if not orphans:
             return {'communities_healed': 0, 'edges_backfilled': 0,
-                    'details': []}
+                    'details': [], 'edge_ids': []}
 
         # 3. Which declared members are LIVE (skip archived/missing targets —
         #    a declared member that was archived is drift, not an omission).

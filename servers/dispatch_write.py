@@ -573,9 +573,29 @@ def _op_archive(brain, op_spec, top_encoding_source, graph_changes):
     a `_op_*` helper rather than a `_handle_*` handler."""
     node_id = op_spec.get("node_id")
     archived_by = _resolve_archived_by(op_spec, top_encoding_source)
+    # survivor_id is validated HERE, before archive_node writes anything —
+    # archive_node stores the _sys_archived_survivor_id pointer before any
+    # existence check (trusted-caller contract), so a garbage survivor from
+    # the agent-facing schema would otherwise yield ok=True with a dead
+    # lineage pointer: resolve_live drops the node as a permanent orphan
+    # (review 2026-08-07). Mirrors absorb's up-front survivor validation
+    # and _op_disconnect's short-id resolution.
+    survivor_id = op_spec.get('survivor_id') or None
+    if survivor_id:
+        survivor_id = _resolve_id(brain, survivor_id)
+        if survivor_id == _resolve_id(brain, node_id):
+            return {"ok": False, "node_id": node_id,
+                    "error": "survivor_id must be a different node"}
+        alive = brain.conn.execute(
+            'SELECT 1 FROM nodes WHERE id = ? AND archived = 0',
+            (survivor_id,)).fetchone()
+        if not alive:
+            return {"ok": False, "node_id": node_id,
+                    "error": "survivor not found or archived: %s"
+                             % str(op_spec.get('survivor_id'))[:24]}
     r = brain.archive_node(
         node_id, archived_by=archived_by, reason=op_spec.get('reason', ''),
-        survivor_id=op_spec.get('survivor_id') or None)
+        survivor_id=survivor_id)
     # Collections popped UNCONDITIONALLY — they exist for the manifest, and
     # **r splices everything left into the agent-visible results[]. The
     # scalar edges_deleted / vectors_deleted counts stay visible as before.

@@ -569,6 +569,36 @@ class TestBatchArchiveAbsorbManifests(BrainTestBase):
         self.assertEqual((em['source_id'], em['target_id'], em['relation']),
                          (old, new, 'absorbed_into'))
 
+    def test_archive_op_rejects_bogus_or_self_survivor(self):
+        """Review 2026-08-07: archive_node stores the lineage pointer BEFORE
+        any existence check (trusted-caller contract), so the op boundary
+        must validate — a garbage survivor_id returning ok=True would leave
+        a dead pointer that resolve_live drops as a permanent orphan."""
+        target = self._node('bogus-survivor-target')
+        r = self._dispatch_batch(
+            [{"op": "archive", "node_id": target, "reason": "probe",
+              "survivor_id": "ffffffffdeadbeef"}])
+        sub = r['result']['results'][0]
+        self.assertFalse(sub['ok'], sub)
+        self.assertIn('survivor', sub['error'])
+        # Nothing was written: node live, no pointer.
+        self.assertEqual(self.brain.conn.execute(
+            "SELECT archived FROM nodes WHERE id = ?",
+            (target,)).fetchone()[0], 0)
+        self.assertNotIn('_sys_archived_survivor_id',
+                         self.brain._meta_kv.get_all_bulk([target])
+                         .get(target, {}))
+
+        r = self._dispatch_batch(
+            [{"op": "archive", "node_id": target, "reason": "probe",
+              "survivor_id": target}])
+        sub = r['result']['results'][0]
+        self.assertFalse(sub['ok'], sub)
+        self.assertIn('different node', sub['error'])
+        self.assertEqual(self.brain.conn.execute(
+            "SELECT archived FROM nodes WHERE id = ?",
+            (target,)).fetchone()[0], 0)
+
     def test_absorb_rows_follow_op_level_archived_by(self):
         """Review 2026-08-06: an op carrying only archived_by (no
         encoding_source anywhere) stamps the graph with it via

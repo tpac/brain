@@ -19,8 +19,9 @@ staleness is contained here.
 > | 6 — remember paths (`_emit_edge_traces` + `_infer_scale_and_chain` deleted) | **DONE, live** | `8ebec33` |
 > | 7 — batch archive/absorb manifests + orphan property | **DONE, live** | `11d2d8d` |
 > | 8 — archive cascade returns; inline trace DELETED; junk purge + hook:integrity rows | **DONE, live** | `b846106` (+ `782b8db` chain-collision fix) |
-> | 9 — `bulk_archive_relations` primitive; dangling sweep commits + sweep trace rows | **DONE** | (this commit) |
-> | **10-12** | **OPEN — step 10 next (route community/consolidation archives; health_check already covered, do NOT reroute)** | |
+> | 9 — `bulk_archive_relations` primitive; dangling sweep commits + sweep trace rows | **DONE, live** | `a0a8562` |
+> | 10 — S2 archive bypassers routed; healer dispatch hygiene; archive op survivor_id | **DONE** | (this commit) |
+> | **11-12** | **OPEN — step 11 (dead code) small; step 12 parked by design. Dashboard display fixes still deferred.** | |
 >
 > **The emitter is the ONLY trace writer for mutations — zero legacy emitters remain.**
 > Every mutation kind (node created/revised/archived/deleted, edge relations) flows
@@ -540,7 +541,31 @@ step) — this step needs no new one.
 
 ---
 
-## Step 10 — Route the bypassers (moved from "step 0")
+## Step 10 — Route the bypassers (moved from "step 0") — ✅ DONE
+
+> **Deviations from this plan, as built (2026-08-07):**
+> - **The archive op gained optional `survivor_id`** — NOT in the plan: the
+>   superseded-handoff heal passes survivor lineage, and routing it through a
+>   batch archive op without the field would have silently dropped the
+>   `absorbed_into` redirect. Contract change ran both gates before merge:
+>   `mcp_batch_probe` 40/40 across 8 dimensions, `mcp_schema_gate` PASSED.
+>   `_op_archive` validates the survivor AT THE OP BOUNDARY (resolve short id,
+>   exists + unarchived + not-self) because archive_node stores the pointer
+>   before any existence check — a garbage agent-supplied survivor would have
+>   returned ok=True with a dead pointer (review 2026-08-07). The redirect
+>   edge row joins the manifest, same shape as absorb's.
+> - **health_check NOT rerouted** (scope carve-out from step 8 — it has a
+>   direct emit that must stay; brain node 38495efb).
+> - **Healer**: `_make_dispatch` built on the ENCODER instance (one chain per
+>   pass); `_store_fields` checks the dispatch result (rejected revise → 0,
+>   was reporting N); the direct `brain.revise` fallback is deleted.
+> - **Locked/critical pre-filtered in both heal sweeps** (review): a guarded
+>   target would otherwise log `archive_guarded` + `batch_op_failed` every
+>   cycle, forever.
+> - **reconcile runs BEFORE the community delta write** so its backfill
+>   (count + edge ids, `membership_reconciled`) rides THIS run's delta.
+> - The step-3 dashboard-mirror precondition was already satisfied
+>   (`s2_runs.py` filters `_NON_RUN_REF_TYPES`).
 
 **Why this is now late, not first.** The original plan opened with Healer routing. Routing
 buys **only the trace** — project provenance **cannot** be stamped on a revise by design

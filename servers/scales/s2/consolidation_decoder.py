@@ -153,6 +153,7 @@ class ConsolidationDecoder(IntegrationUnit):
         orphan_communities = self.brain.conn.execute("""
             SELECT n.id, n.title FROM nodes n
             WHERE n.type = 'community' AND n.archived = 0
+            AND n.locked = 0 AND n.critical = 0
             AND NOT EXISTS (
                 SELECT 1 FROM edges e
                 JOIN edge_relations er ON er.edge_id = e.edge_id

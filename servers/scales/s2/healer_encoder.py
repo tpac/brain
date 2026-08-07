@@ -31,12 +31,14 @@ class HealerEncoder(IntegrationUnit):
     def _make_dispatch(self):
         """Healer dispatch — inherits base `_make_encoder_dispatch` (no
         archive guard: the healer never archives; its writes are field-fill
-        revises). Built HERE, on the encoder instance, never handed down
-        from the orchestrator: the closure stamps `run_chain_id` from
-        `chain_id()`, which caches per instance at seconds resolution — a
-        handed-down closure would put node_revised rows and this instance's
-        `healer_generated` delta on two different chains, one pass rendering
-        as two phantom runs (plan step 10)."""
+        revises). Built HERE, on the encoder instance: the closure stamps
+        `run_chain_id` from `chain_id()`, which caches per instance at
+        seconds resolution — a closure built on the ORCHESTRATOR would put
+        node_revised rows and this instance's `healer_generated` delta on
+        two different chains, one pass rendering as two phantom runs
+        (plan step 10). Caveat: a dispatch_fn injected at construction
+        (tests, evals) is honored verbatim by the base and bypasses this
+        attribution — production constructs with None."""
         if self._dispatch_fn is None:
             self._dispatch_fn = self._make_encoder_dispatch()
         return self._dispatch_fn
