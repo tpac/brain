@@ -250,20 +250,6 @@ class MetadataDAL:
             (key,)).fetchall()
         return {r[0]: r[1] for r in rows}
 
-    def get_paired_keys(self, key1: str, key2: str) -> Dict[str, tuple]:
-        """Get paired values for two keys per node. Returns {node_id: (val1, val2)}.
-
-        Used for loading z-score stats (mean + std as a pair).
-        Nodes must have BOTH keys to be included.
-        """
-        rows = self.conn.execute(
-            'SELECT a.node_id, a.value, b.value '
-            'FROM node_metadata_kv a '
-            'JOIN node_metadata_kv b ON a.node_id = b.node_id AND b.key = ? '
-            'WHERE a.key = ?',
-            (key2, key1)).fetchall()
-        return {r[0]: (r[1], r[2]) for r in rows}
-
     def bulk_set_key(self, key: str, node_values: Dict[str, Any]) -> int:
         """Set the same key on many nodes at once. Returns count written.
 

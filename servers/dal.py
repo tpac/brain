@@ -500,13 +500,6 @@ class TfIdfDAL:
         ).fetchone()
         return row[0] if row else 0
 
-    def get_node_terms(self, node_id: str) -> Dict[str, float]:
-        """Get TF vector for a node. Returns {term: tf_value}."""
-        rows = self.conn.execute(
-            'SELECT term, tf FROM node_vectors WHERE node_id = ?', (node_id,)
-        ).fetchall()
-        return {r[0]: r[1] for r in rows}
-
     def get_tf_vectors_for(self, terms: List[str],
                            node_ids: List[str]) -> List[tuple]:
         """TF values for `terms` restricted to `node_ids`. Returns raw
@@ -638,13 +631,8 @@ class Fts5DAL:
                   % (safe_query, e), file=_sys.stderr)
             return []
 
-    def upsert(self, node_id: str, title: str, content: str, _legacy_keywords: str = ''):
-        """Insert or update a node in the FTS5 index.
-
-        The 4th positional arg is kept for back-compat with callers that
-        still pass an (ignored) keywords string. After all callers update,
-        the parameter can be dropped.
-        """
+    def upsert(self, node_id: str, title: str, content: str):
+        """Insert or update a node in the FTS5 index."""
         self.delete(node_id)
         self.conn.execute(
             "INSERT INTO nodes_fts (node_id, title, content) VALUES (?, ?, ?)",

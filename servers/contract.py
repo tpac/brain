@@ -331,16 +331,6 @@ def get_remember_fields():
     return get_writable_fields()
 
 
-def get_embeddable_fields():
-    """Fields that have their own embedding vector."""
-    return {k: v for k, v in ALL_FIELDS.items() if v.get("embeds")}
-
-
-def get_fields_for_store(store_name):
-    """Fields stored in a specific table."""
-    return {k: v for k, v in ALL_FIELDS.items() if v.get("store") == store_name}
-
-
 def validate_field(name, value):
     """Validate a field value against the contract. Returns (ok, error_msg)."""
     if name not in ALL_FIELDS:
@@ -464,6 +454,18 @@ SKINNY_NODE_FIELDS = ('id', 'title', 'type', 'confidence', 'created_at')
 NEAR_TITLE_MAX_OPS = 2
 NEAR_TITLE_MIN_TOKENS = 5
 NEAR_TITLE_MARGIN = 2
+
+# Candidate-pool ceiling for the FTS5 title probe (_title_candidate_rows).
+# The pigeonhole recall guarantee only holds while the pool fits — at the
+# limit the write path REFUSES (never guesses), so this bound is what
+# decides how often a legitimate connect_to is dropped as "saturated".
+# It must clear the OR of MAX_OPS+MARGIN probe tokens on the real corpus:
+# at 8.4k live nodes a single common probe (`encoder*` 851, `recall*` 649)
+# already blew the old 500, so every edge whose longest tokens included a
+# hot word was silently refused. Measured worst real 4-probe pool ≈ 950.
+# Cost is one indexed IN-hydrate plus a length-rejected Levenshtein per row,
+# and it stays far under SQLite's 32766 bound variables.
+TITLE_CANDIDATE_POOL_LIMIT = 4000
 
 # Survivor-pointer walk budget for NodeDAL.resolve_live — how many
 # archived→survivor redirects an id may take before it's declared orphaned.
@@ -819,10 +821,6 @@ def render_rich_node(node, config=None):
                 continue
             limit = _VOICE_LIMIT if key in _VOICE_KEYS else meta_limit
             lines.append('  %s: %s' % (key.replace('_', ' ').title(), _truncate(str(val), limit)))
-
-    # Keywords column dropped in schema v28 — render block removed.
-    # The `show_keywords` config flag is now an inert no-op; callers can
-    # be cleaned up incrementally.
 
     # Personal context
     if node.get('personal') and node.get('personal_context'):

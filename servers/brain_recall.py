@@ -157,7 +157,7 @@ def _expand_query_via_haiku(query: str) -> List[str]:
 # `project` removed 2026-07-03: provenance lives in node_metadata_kv, so
 # filter {'project': ...} routes to the KV lookup like other promoted fields.
 _NODE_COLUMNS = frozenset({
-    'id', 'type', 'title', 'content', 'keywords', 'activation', 'stability',
+    'id', 'type', 'title', 'content', 'activation', 'stability',
     'access_count', 'locked', 'archived', 'critical', 'recency_score',
     'emotion', 'emotion_label', 'emotion_source', 'confidence',
     'personal', 'personal_context', 'evolution_status', 'resolved_at',
@@ -563,51 +563,6 @@ class BrainRecallMixin:
         """List all registered interactions with latest versions."""
         return self._interaction_dal.list_all()
 
-    def semantic_recall(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
-        """
-        Pure embedding-based search (brute-force cosine scan).
-        Embed query, compute cosine similarity against all stored embeddings.
-
-        Args:
-            query: Query text
-            limit: Max results
-
-        Returns:
-            List of {'id': str, 'similarity': float} dicts, sorted by similarity
-        """
-        if not embedder.is_ready():
-            return []
-
-        t0 = time.time()
-        query_vec = embedder.embed_query(query)
-        if not query_vec:
-            return []
-
-        # Load all primary embeddings (excluding archived nodes). Filter by
-        # active model in SQL so recall doesn't score against stale-model rows.
-        _vdal = self._vec_dal
-        _active_model = embedder.stats.get('model_name') or ''
-        emb_rows = [{'node_id': r['node_id'], 'embedding': r['embedding']}
-                    for r in _vdal.get_all_vectors(
-                        vector_types=['_primary'],
-                        model=_active_model or None)]
-
-        if not emb_rows:
-            return []
-
-        # Score every node
-        scored = []
-        for row in emb_rows:
-            node_id, blob = row['node_id'], row['embedding']
-            if not blob:
-                continue
-            similarity = embedder.cosine_similarity(query_vec, blob)
-            scored.append({'id': node_id, 'similarity': similarity})
-
-        # Sort and take top-k
-        scored.sort(key=lambda x: x['similarity'], reverse=True)
-        return scored[:limit]
-
     def backfill_embeddings(self, batch_size: int = 20) -> int:
         """Legacy wrapper — calls backfill_vectors()."""
         result = self.backfill_vectors(batch_size)
@@ -922,12 +877,11 @@ class BrainRecallMixin:
 
         direct_match_scores = {}
         for seed_id, seed in all_seeds.items():
-            kw = (seed.get('keywords') or '').lower()
             title = (seed.get('title') or '').lower()
             content = (seed.get('content') or '').lower()
             match_count = 0
             for term in query_terms:
-                if term in kw or term in title or term in content:
+                if term in title or term in content:
                     match_count += 1
             direct_match_scores[seed_id] = (match_count / len(query_terms)) if query_terms else 0
 
@@ -945,12 +899,11 @@ class BrainRecallMixin:
 
             direct_match = direct_match_scores.get(node['id'], 0)
             if direct_match == 0 and query_terms:
-                nkw = (node.get('keywords') or '').lower()
                 ntitle = (node.get('title') or '').lower()
                 ncontent = (node.get('content') or '').lower()
                 mc = 0
                 for term in query_terms:
-                    if term in nkw or term in ntitle or term in ncontent:
+                    if term in ntitle or term in ncontent:
                         mc += 1
                 direct_match = mc / len(query_terms)
 
@@ -2266,21 +2219,6 @@ class BrainRecallMixin:
         result['_query_embedding'] = query_vec
 
         return result
-
-    def _load_zscore_stats(self) -> None:
-        """Load precomputed z-score stats (mean, std) from node_metadata_kv.
-
-        Called once per session on first recall. Stats computed by
-        scripts/compute_zscore_stats.py and stored via MetadataDAL.
-        """
-        from .dal_metadata import MetadataDAL
-        try:
-            mdal = self._meta_kv
-            self._zscore_stats = mdal.get_paired_keys(
-                ZSCORE_STATS_KEY_MEAN, ZSCORE_STATS_KEY_STD)
-        except Exception as e:
-            self._log_error('zscore_load', e, 'loading z-score stats from metadata')
-            self._zscore_stats = {}
 
     def _enrich_results(self, results: List[Dict[str, Any]], neighbor_limit: int = 3,
                         veil=None) -> None:

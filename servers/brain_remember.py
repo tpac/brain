@@ -1071,7 +1071,7 @@ class BrainRememberMixin:
         # pass empty string. Once v28 lands, Fts5DAL.upsert signature drops it.
         try:
             from .dal import Fts5DAL
-            self._fts.upsert(node_id, title, content or '', '')
+            self._fts.upsert(node_id, title, content or '')
             self._maybe_commit()
         except Exception as e:
             self._log_error('fts5_sync_remember', e, 'syncing FTS5 for node %s' % node_id[:12])
@@ -1476,7 +1476,7 @@ class BrainRememberMixin:
         # removal in schema v28; empty string until then)
         try:
             from .dal import Fts5DAL
-            self._fts.upsert(node_id, title, new_content, '')
+            self._fts.upsert(node_id, title, new_content)
             self._maybe_commit()
         except Exception as e:
             self._log_error("fts5_sync_revise", e, "syncing FTS5 for %s" % node_id[:8])
@@ -1859,7 +1859,7 @@ class BrainRememberMixin:
 
         return target_id, relation_pairs, None
 
-    def _title_candidate_rows(self, tokens, limit=500):
+    def _title_candidate_rows(self, tokens, limit=None):
         """The ONE lexical candidate door for title→node matching: probe the
         FTS5 index TITLE-SCOPED (`title:"tok"*` per probe, OR'd, prefix-
         tolerant) and hydrate (id, title) for the live matches. Shared by
@@ -1878,7 +1878,15 @@ class BrainRememberMixin:
         saturated=True means the FTS pool hit `limit` and recall can no
         longer be assumed — the write path must refuse rather than match.
         Empty rows when FTS has nothing (or is unavailable — Fts5DAL.search
-        already logs that loud)."""
+        already logs that loud).
+
+        limit=None (the default) uses contract.TITLE_CANDIDATE_POOL_LIMIT —
+        the bound that decides how often a legitimate connect_to is refused
+        as saturated. Callers pass an explicit limit only to test the
+        saturation branch."""
+        from .contract import TITLE_CANDIDATE_POOL_LIMIT
+        if limit is None:
+            limit = TITLE_CANDIDATE_POOL_LIMIT
         ids = self._fts.search(' '.join(tokens), limit=limit, prefix=True,
                                column='title', min_token_len=1)
         if not ids:
@@ -2091,7 +2099,7 @@ class BrainRememberMixin:
 
         Args:
             nodes: List of dicts, each with the same fields remember() accepts
-                   (type, title, content, keywords, situation, reasoning, etc.)
+                   (type, title, content, situation, reasoning, etc.)
             connect_to: List of catalog targets (node id or exact/near title —
                         deterministic ladder, no vectors) to connect all new
                         nodes to
@@ -2307,86 +2315,6 @@ class BrainRememberMixin:
 
         return created
 
-    def set_personal(self, node_id: str, personal: str,
-                     personal_context: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Mark a node as personal information.
-
-        Args:
-            node_id: Node to mark
-            personal: 'fixed' (permanent fact, auto-locks), 'fluid' (evolving truth,
-                      10x slower decay), 'contextual' (depends on conditions), or
-                      None to remove personal flag
-            personal_context: For contextual nodes — when/where this applies
-                              (e.g. "during technical sprints", "at work")
-
-        Returns:
-            Dict with node_id, personal, locked status
-        """
-        if personal and personal not in ('fixed', 'fluid', 'contextual'):
-            return {'error': f'Invalid personal flag: {personal}. Use fixed/fluid/contextual/None.'}
-
-        ts = self.now()
-
-        # Fixed personal nodes are always locked
-        if personal == 'fixed':
-            self.conn.execute(
-                'UPDATE nodes SET personal = ?, personal_context = ?, locked = 1, updated_at = ? WHERE id = ?',
-                (personal, personal_context, ts, node_id)
-            )
-        else:
-            self.conn.execute(
-                'UPDATE nodes SET personal = ?, personal_context = ?, updated_at = ? WHERE id = ?',
-                (personal, personal_context, ts, node_id)
-            )
-        self._maybe_commit()
-
-        # Fetch updated node
-        cursor = self.conn.execute(
-            'SELECT title, locked, personal, personal_context FROM nodes WHERE id = ?',
-            (node_id,)
-        )
-        row = cursor.fetchone()
-        if not row:
-            return {'error': f'Node {node_id} not found'}
-
-        return {
-            'node_id': node_id,
-            'title': row[0],
-            'locked': row[1] == 1,
-            'personal': row[2],
-            'personal_context': row[3],
-        }
-
-    def get_personal_nodes(self, personal_type: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        List all personal nodes, optionally filtered by type.
-
-        Args:
-            personal_type: 'fixed', 'fluid', 'contextual', or None for all personal nodes
-
-        Returns:
-            List of personal node dicts
-        """
-        if personal_type:
-            cursor = self.conn.execute(
-                'SELECT id, type, title, content, personal, personal_context, locked FROM nodes WHERE personal = ? AND archived = 0 ORDER BY updated_at DESC',
-                (personal_type,)
-            )
-        else:
-            cursor = self.conn.execute(
-                'SELECT id, type, title, content, personal, personal_context, locked FROM nodes WHERE personal IS NOT NULL AND archived = 0 ORDER BY updated_at DESC'
-            )
-
-        results = []
-        for row in cursor.fetchall():
-            results.append({
-                'id': row[0], 'type': row[1], 'title': row[2],
-                'content': row[3], 'personal': row[4],
-                'personal_context': row[5], 'locked': row[6] == 1,
-            })
-        return results
-
     # ═══════════════════════════════════════════════════════════════
     # v6: Multi-vector enrichment (Embedding Migration to LLM)
     # The brain builds a structured prompt with neighbors.
@@ -2413,10 +2341,8 @@ class BrainRememberMixin:
 
             neighbor_lines = []
             for nb in neighbors:
-                kw = nb.get('keywords', '') or ''
-                kw_short = ', '.join(kw.split()[:5]) if kw else 'none'
                 neighbor_lines.append(
-                    f"- {nb['title'][:80]} ({nb['type']}, keywords: {kw_short})"
+                    f"- {nb['title'][:80]} ({nb['type']})"
                 )
 
             content_preview = (content or '')[:200]
