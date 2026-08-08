@@ -703,7 +703,6 @@ SURFACE_ARC_FORMAT = {
     'time_format':         'relative',
     'show_confidence':     False,
     'show_encoding_source': False,
-    'show_keywords':       False,           # recall scaffold, not reader signal
     'extra_skip_keys':     ('question',),   # recall scaffold
     'correction_render':   'balanced',
 }
@@ -720,7 +719,6 @@ SURFACE_FACT_FORMAT = {
     'time_format':         'relative',
     'show_confidence':     False,
     'show_encoding_source': False,
-    'show_keywords':       False,
     'extra_skip_keys':     ('question',),
     'correction_render':   'balanced',
 }
@@ -782,11 +780,6 @@ HAIKU_FORMAT = {
     # for picks to factor in superseded knowledge without bloating the
     # 25-candidate prompt.
     'correction_render': 'balanced',
-    # No keywords for the surface picker — keywords are an encoder/recall
-    # signal (they're vectorized as part of the search surface), not a
-    # selection signal. Haiku already sees title + content + edges; the
-    # keyword line would just add noise to the 25-candidate prompt.
-    'show_keywords': False,
 }
 
 # Selection-grade lean render (Area 2, 2026-06-12). The selector's job is
@@ -804,9 +797,9 @@ HAIKU_FORMAT = {
 #   • edges → oneline (direction + relation + title; descriptions are
 #     injection payload). Edge CHOICE stays query-aware via select_edges.
 #   • corrections → lean flag (the "superseded" signal, not the payload)
-#   • dropped: reasoning, question, quotes, keywords — encoder/recall
+#   • dropped: reasoning, question, quotes — encoder/recall
 #     scaffolding and voice; zero hypothesized selection value (the
-#     inject path already drops question/keywords for the same reason).
+#     inject path already drops question for the same reason).
 # DEFAULT since 2026-06-12 (ablation-cleared: gold-neutral, −41% tokens,
 # divergence at the same-prompt noise floor — ab_render_ablation.py).
 # BRAIN_HAIKU_RENDER=full reverts to the heavy render.
@@ -819,9 +812,8 @@ HAIKU_FORMAT_LEAN = {
     'time_format': 'relative',
     'correction_render': 'lean',
     'edge_style': 'oneline',
-    'show_keywords': False,
     'extra_skip_keys': ('question', 'reasoning', 'user_raw_quote',
-                        'anchor_raw_quote', 'keywords'),
+                        'anchor_raw_quote'),
 }
 
 

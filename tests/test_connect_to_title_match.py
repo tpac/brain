@@ -183,7 +183,7 @@ class TestConnectToCatalogTitleMatch(BrainTestBase):
         self._mk(target_title)
         real_door = self.brain._title_candidate_rows
         self.brain._title_candidate_rows = (
-            lambda tokens, limit=500: (real_door(tokens, limit)[0], True))
+            lambda tokens, limit=None: (real_door(tokens, limit)[0], True))
         try:
             r = self._connect(target_title)
         finally:

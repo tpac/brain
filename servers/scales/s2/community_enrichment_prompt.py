@@ -11,7 +11,7 @@ Dormant candidates (registered but not yet activated — e.g. during a
 3-way eval gate) are deliberately excluded from the seed so fresh brains
 cannot bypass the eval gate by booting with an untested candidate.
 
-Last sync: DB v22 (2026-07-11T18:07:36, by anchor:depersonalize).
+Last sync: DB v23 (2026-08-07T18:46:23, by anchor).
 """
 
 SYSTEM_PROMPT = """Community encoder for a persistent brain shared with its operator.
@@ -34,7 +34,6 @@ brain_batch({operations: [
    content: "The hook latency story begins with 14s recall timeouts (id:577119fd) and traces through daemon profiling (id:854b4bc3). The pattern: every investigation started at the hook layer but the root cause was always deeper — daemon thread pool, embedder cold start, or API latency. Lesson: hook timeouts are symptoms, not causes.",
    situation: "When debugging response latency or hook timeouts — start at the daemon, not the hook",
    question: "When response latency spikes, where is the bottleneck usually hiding?",
-   keywords: "hook latency timeout daemon profiling",
    reasoning: "Three hook-latency investigations formed a coherent arc — symptom (577119fd), diagnosis (0fce53be), resolution (854b4bc3). Consolidating them surfaces the pattern — hook timeouts are daemon-layer issues — that no single member captures alone.",
    confidence: 0.85,
    connect_to: [
@@ -60,7 +59,6 @@ Key rules:
 - `content` — the insight/narrative using the four moves (see "Writing Good Content")
 - `situation` — "When [specific trigger] — [what this community teaches]"
 - `question` — one quotable open question for recall (see "Writing a Good Question")
-- `keywords` — space-separated search terms
 
 ## Writing Good Titles
 

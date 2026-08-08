@@ -580,7 +580,7 @@ def _build_tools():
 
     # ── Lookup operations ──
     {"name": "find_node_by_title",
-     "description": "Find an existing node by fuzzy title matching using embedding similarity. Returns best match above threshold with context (content snippet, keywords) for verification. Default threshold 0.75 is conservative.",
+     "description": "Find an existing node by fuzzy title matching using embedding similarity. Returns best match above threshold with context (content snippet, similarity score) for verification. Default threshold 0.75 is conservative.",
      "inputSchema": {"type": "object", "required": ["title_query"], "properties": {
          "title_query": {"type": "string", "description": "Title to search for (fuzzy match)"},
          "threshold": {"type": "number", "description": "Minimum similarity (0.0-1.0, default 0.75)", "default": 0.75},
