@@ -1,10 +1,15 @@
 # Distribution Readiness — Sharing Anchor
 
 **Status:** **Goal A closed** — the Layer-4 live install worked end-to-end on a clean
-machine 2026-07-17 (§6b). Now on **Goal B: the public OSS publish** (§5.4, the one-way
+machine 2026-07-17 (§6b). Now on **Goal B: the public OSS publish** (Phase 5.7, the one-way
 door). Naming + release model settled 2026-08-06 (**D-6…D-9**, §10); §8 fork #1 is
-closed. Remaining is execution, not decisions — see the Phase 5 checklist — with **D-5
-(seed pack)** the only open design gate.
+closed. **D-5 (seed pack)** remains the open design gate; **Phase 1.5** (shipped
+`examples/` leak) is a new open blocker.
+**Claims audited against live code 2026-08-08** — the first such pass. Four false
+claims and three rotted `file:line` citations were corrected; the stale §3
+("Current state", a June snapshot) was deleted outright. Section numbering skips 3
+by design. **Cite code by symbol, not `file:line` — the line anchors in this doc
+rotted silently once already.**
 · **Started:** 2026-06-14 · **Audience:** dev-facing
 **Placement:** lives in the **private** dev repo only. This document names personal-data
 findings and internal file paths — it must **never** be copied into the public
@@ -38,70 +43,6 @@ stated reason.
 | D-8 | **Public tree = runtime + tests. `eval/` excluded.** The 6 test files that import `eval/` degrade to graceful skip. | Tests are the credibility argument (D-1: inspectable code); a no-tests repo reads as unverified for a tool asking to hold someone's identity layer. But a published eval harness **is a claim** that invites strangers to re-run and dispute it — not a launch-day fight, and the corpora are personal anyway. **Consequence: the README must make no benchmark claims**, since the harness won't be there to back them. Coupled files: `test_eval_corpus.py`, `test_longmem_classifier.py`, `test_absorb_preservation.py`, `test_consolidation_examples.py`, `test_encoder_eval_probes.py`, `run_all.py`. |
 | D-9 | **Issues only at launch; no PRs.** Stated in CONTRIBUTING. | A squash-export pipeline can't cleanly merge an inbound PR, and a contributor's commits would never appear in history (reads as uncredited). With one maintainer, a PR you can't merge is worse than one you never invited. Revisit if real contributors appear — opening up later is easy, closing down isn't. |
 | D-10 | **Public launches at `v0.9.0`** — not `9.6.0`, not `1.0.0`. | Tom 2026-08-06: *"It's not complexity that reflects the version, it's the function of value. Not yet v1."* The private `brain` plugin's 9.6.0 is an internal build counter that means nothing to a stranger. v1 is a claim about delivered value, and Anchor hasn't earned it publicly yet. **No collision with the private install** — `entity` and `brain` are distinct plugin names, so their version lines are independent. `plugin.json` and `marketplace.json` must both read `0.9.0` (5.1 asserts it). |
-
----
-
-## 3. Current state (grounded findings, verified 2026-06-14)
-
-> Snapshot of the original (2026-06-14) investigation. Many findings below are now
-> **resolved** — Linux degradation (§4 3.1), realchat untracked (§4 1.3), dashboard
-> shipped (§4 4.1), userConfig (§4 2.1), and (2026-06-29, **§6b**) the dashboard
-> launchd installer + path-clean package + `userConfig.brain_path`. The
-> personalized-seed-prompts blocker is **partly** done — s1e encoder prompt is in
-> progress on another stream; **3 non-s1e prompts + `aspects_proposed.json` still
-> remain**. **§6b is the current status; read it first.**
-
-The 2026-05-01 audit (`cd4a99f`) fixed hardcoded paths, the API-key gate, and
-`.claude/settings.local.json`. **Those held.** New issues since:
-
-**Blocker — the plugin is still personalized in its seed prompts.** These `.py`
-files seed `interactions` on every fresh brain via `servers/interaction_seed.py`,
-and `build-plugin.sh` ships all of `servers/`, so they're in the `brain.plugin`
-artifact today:
-- `servers/scales/s2/community_enrichment_prompt.py:12` — `"...persistent brain shared with operator Tom."` (and `:84`).
-- `servers/scales/s1/encoding_prompt.py` — 57 "Tom" references, incl. a full
-  worked example built on an ACL surgery / "Dr. Chen" / 5K-charity-run cluster
-  (`:636` onward). These are **few-shot teaching fixtures** (they teach the
-  encoder how to handle temporal clusters + corrections), not a DB dump — but
-  they're Tom-named and seed into every fresh brain regardless.
-
-**High — real conversation data is tracked.** `eval/longmem/data/realchat_sessions.json`
-(5.6 MB, 27 real Tom↔Anchor sessions) is **not** gitignored.
-
-**Daemon supervision is launchd-only and not actually installed.**
-- ~530 lines of `servers/daemon_client.py` are built around `launchctl kickstart -k`
-  (`_launchd_kickstart`, `_launchd_manages_daemon` — macOS `gui/<uid>` domain).
-- **No `.plist` file is tracked in the repo, and nothing generates/installs one.**
-  It exists only on Tom's machine, set up by hand. So every fresh install — Mac
-  *or* Linux — already runs on the platform-neutral `Popen` fallback, with no
-  `KeepAlive`/`RunAtLoad`.
-- **Zero systemd anywhere.** On Linux the `launchctl` calls must degrade to
-  `False` (not raise `FileNotFoundError`) or the lifecycle code breaks — needs
-  verification.
-
-**Dashboard is not shipped.** `dashboard/` is excluded from `build-plugin.sh`. A
-plugin-only user (including Tom outside the repo) has no dashboard at all. It's a
-read-only observer of the DBs + `/tmp/brain-surface-result-*.json`.
-
-**First-run friction.** ~~API key missing → boot exits~~ **RESOLVED (a1a620e,
-2026-07-15):** keyless boot now runs the full chain (runtime, embedder, brain.db,
-daemon, traces, recall); `brain.llm_available` gates surface/encode/S2 with a
-single logged marker, and the key heals the running daemon with no restart.
-Remaining friction: embedder (~100–200 MB) downloads on first boot and can block
-the 15s SessionStart hook.
-
-**Low — "Tom" in shipped code comments.** ~30 files under `servers/` and `hooks/`
-carry the operator's name in *comments* (e.g. `# Tom's convention: pass the object`,
-`# Tom corrected prior framing`). Not a privacy leak and not behavior — but reads
-as internal for a public repo. Cosmetic genericization → "the operator"; rides
-with the D-5 prompt pass or Phase 5 polish. (Audit 2026-06-14.)
-
-**Conventions — mostly idiomatic.** `.claude-plugin/plugin.json`, `.mcp.json`,
-`hooks/hooks.json`, `skills/*/SKILL.md` all correct; uses `${CLAUDE_PLUGIN_ROOT}`
-/ `$CLAUDE_PLUGIN_DATA`. The explicit 133-file allowlist in `build-plugin.sh` is a
-feature (prevents leaking DBs/conversations) — keep it. Gaps: `marketplace.json`
-is named `local-desktop-app-uploads` (a Cowork-upload dev artifact); API key is
-hand-rolled vs `userConfig` (D-4).
 
 ---
 
@@ -152,6 +93,27 @@ surfaces (excluding dev-only CLAUDE.md/docs/tests/eval) and triage anything new.
 - *Reversible:* n/a · *No-regret:* **yes** · *Risk:* none · *Effort:* S
 - *Verify:* every user-facing hit resolved or explicitly waived.
 
+**1.5 Stop shipping `servers/scales/s1/examples/` — OPEN, found 2026-08-08.**
+Ten files ship today carrying **165 operator-name lines**, including
+`a3_anchor_sees_tom.py` (the operator's name is in the *filename*). These are not
+comments: they are reconstructed real operator↔Anchor conversations authored as
+encoder few-shot data — docstrings describe *"Source conversation reconstructs a
+moment of trust formation"* and preserved verbatim profanity.
+**They have zero runtime consumers in shipped code.** Nothing under `servers/`,
+`hooks/`, `dashboard/`, or `scripts/` imports the package; `ALL_EXAMPLES` / `WAVE_1`
+are referenced nowhere outside it; `__init__.py` states the renderer is *"not yet
+built — v20+ work."* The only importer is `eval/agent_introspect/v20_assembly.py`,
+which **D-8 excludes from the public tree**. So in the public repo this is personal
+narrative content with no function.
+- *Fix:* exclude the directory in `build-plugin.sh` — one `grep -vE` beside the
+  existing `/archive/` exclusion. **Not** a 165-line genericization pass.
+- *Reversible:* yes · *No-regret:* **yes** · *Risk:* low (verify no runtime import
+  first — done) · *Effort:* S
+- *Verify:* the built manifest contains no `s1/examples/` path; suite still green.
+- *Why this was missed:* §6b's "every interaction **template** a fresh brain seeds
+  is operator-agnostic" is true, and it read as "Phase 1 is closed." It wasn't —
+  the templates were clean, an entire shipped directory was not.
+
 ### Phase 2 — Onboarding correctness
 
 **2.1 `userConfig` for the API key (additive — D-4) — DONE (2026-06-14).**
@@ -196,25 +158,28 @@ model name read from `plugin.json` (no drift). Verified at the command level
 
 ### Phase 3 — Cross-platform daemon (v1 only)
 
-**3.1 Linux-safe `launchctl` degradation — DONE (2026-06-14): already handled.**
-Both `_launchd_kickstart` and `_launchd_manages_daemon` already wrap the
-`subprocess.run(["launchctl", …])` in `except Exception: return False`
-([daemon_client.py:485](servers/daemon_client.py:485),
-[:505](servers/daemon_client.py:505)) — `FileNotFoundError` on Linux is caught, so
-they degrade to `False`. **No code change** (don't fix working code). Added a
+**3.1 Linux-safe `launchctl` degradation — DONE: already handled.** Both
+`daemon_launch.kickstart()` and `daemon_launch.manages()` wrap their
+`subprocess.run(["launchctl", …])` so a missing binary degrades to `False`:
+`kickstart` via `except Exception: return False`, `manages` via an explicit
+`except FileNotFoundError: return False` ("no launchctl binary = no launchd
+platform → spawn directly"). **No code change** (don't fix working code). Added a
 regression test (`TestLaunchdHelpersDegradeWhenAbsent`, test_daemon_recovery.py)
-locking the contract, since a narrowed `except` would silently break Linux. 35/35
-pass.
+locking the contract, since a narrowed `except` would silently break Linux.
 
 **3.2 Popen fallback first-class — DONE (verified): already the cross-platform
 baseline.** On Linux both helpers return `False` → `ensure_daemon` takes the
 "launchd not managing → spawn directly" branch → detached `Popen`
-(`start_new_session=True`, `ONNX CPUExecutionProvider`,
-[daemon_client.py:333](servers/daemon_client.py:333)) that survives the hook exit;
+(`start_new_session=True`, `ONNX CPUExecutionProvider`, in
+`daemon_launch.spawn_detached_daemon`) that survives the hook exit;
 `recover_daemon` routes through the same path for lazy crash-restart. Covered by
 `test_no_launchd_falls_back_to_direct_spawn`. **Caveat:** verified by trace + unit
 test, NOT on real Linux hardware — a real-Linux smoke is the remaining
 confirmation.
+
+*(Both helpers were renamed and moved out of `daemon_client.py` after this was
+written — cite them by symbol, not `file:line`. Line-anchored citations in this
+doc have rotted once already.)*
 
 **3.3 [DEFERRED v2 — D-3]** systemd user unit + plist, both auto-installed behind
 a `supervisor` abstraction so `ensure_daemon` isn't hard-wired to `launchctl`.
@@ -228,15 +193,18 @@ surface), while the dashboard is already a standalone threaded HTTP server **alr
 bound to `127.0.0.1`** ([dashboard/server.py:332](dashboard/server.py:332)),
 daemon-proxying with a read-only SQLite fallback — just not shipped. So: `build-plugin.sh`
 now ships the **git-tracked** `dashboard/` subtree (`git ls-files`, dev notes excluded)
-+ a `bin/brain-dashboard` launcher mirroring `bin/brain-watch` (sources `brain-env.sh`
-+ `resolve-brain-db.sh`, execs the standalone server). **No daemon change; the
-127.0.0.1 binding was already correct.** Verified: test-build packs it junk-free,
-launcher `bash -n` clean, dashboard imports under the venv (self-contained — no
-`servers/` imports). Plugin ~575K→720K. A new user runs `brain-dashboard` from any repo.
-*(Code-review corrections: the first cut used a `find` over the working tree, which would
++ a `hooks/scripts/brain-dashboard` launcher mirroring `hooks/scripts/brain-watch`
+(sources `brain-env.sh` + `resolve-brain-db.sh`, execs the standalone server).
+**No daemon change; the 127.0.0.1 binding was already correct.** Verified: test-build
+packs it junk-free, launcher `bash -n` clean, dashboard imports under the venv
+(self-contained — no `servers/` imports). A new user runs `brain-dashboard` from any repo.
+*(Code-review correction: the first cut used a `find` over the working tree, which would
 ship a developer's untracked scratch/secrets and silently ship nothing if the dir moved —
-switched to `git ls-files` (tracked-only, fails loud if empty). Also caught: the new
-launcher was gitignored by `bin/*` — added `!bin/brain-dashboard` so it actually ships.)*
+switched to `git ls-files` (tracked-only, fails loud if empty).)*
+
+*(Launchers later moved from a top-level `bin/` into `hooks/scripts/`: claude.ai-hosted
+plugins reject `bin/` executables, and `bin/` is now gitignored runtime-only space for
+the fetched `uv`. The earlier `!bin/brain-dashboard` gitignore fix no longer exists.)*
 
 ### Phase 5 — Packaging & distribution
 
@@ -249,8 +217,11 @@ started.
 Two hard-fail gates, enforced in the script, not remembered:
   (a) **denylist** — `docs/DISTRIBUTION-READINESS.md` (this file names personal-data
       findings and internal paths — it must never be copied public), `eval/`,
-      `CLAUDE.md` (42 KB dev guide naming internal streams), `archives/`,
-      `conversations/`;
+      `CLAUDE.md` (dev guide naming internal streams), `docs/archive/` (65 tracked
+      session logs), `conversations/`, `archives/`. *Audit 2026-08-08: `archives/`
+      and `conversations/` are **not tracked** — they were the wrong names. The
+      directory that actually carries session logs is `docs/archive/`. Keep the
+      inert entries as belt-and-braces, but `docs/archive/` is the one that binds.*
   (b) **scrub-grep** — `/Users/tpac`, `\btom\b`, `Pachys`, `playbuzz`, `AgentsContext`.
 Also asserts `plugin.json.version == marketplace.json.version` (they must never
 drift — `/plugin update` compares versions). *Reversible · no-regret · M.*
@@ -283,22 +254,34 @@ luck.**
 Local cost is otherwise zero: **no permission entry anywhere references
 `mcp__plugin_brain_brain__*`** (verified 2026-08-06), so nothing breaks. *S–M.*
 
-**5.3 Comment audit (id:ec97cf4e).** ~232 shipped files: internal war-story
-annotations, dead brain-node ids (`id:50c9a4e0`), references to `docs/` paths not
-in the package, ~30 comments naming Tom. Against Tom's own bar — *"if code should
-be public, it should be up to the standard of public repos"* (id:b99bfa36). **This
-is the real labor in Phase 5.** *L.*
+**5.3 Comment audit (id:ec97cf4e).** Re-measured 2026-08-08 against the real build
+manifest (**240 shipped files**, not ~232 — the manifest is `git ls-files`-derived,
+so it grows on its own): **472 flagged comment lines across 88 files** of 13,355
+total comment lines. Breakdown: 296 dated · 232 removal-verb · **29 naming the
+operator** · 22 dead `docs/` pointers · 7 brain-node ids · 4 TODO/FIXME. Top 10
+files hold 227 of 472 (48%). Against Tom's own bar — *"if code should be public, it
+should be up to the standard of public repos"* (id:b99bfa36).
+
+**Re-rated M, not L.** 528 of the hits are dated + removal-verb comments, which
+triage fast (each is either a load-bearing why or history). The genuinely sensitive
+class — comments naming the operator — is **29 lines**, not the ~30-to-68 range
+previously carried. This is not the long pole; 5.6 and the fleet gap are.
 
 **5.4 README + CONTRIBUTING.** The existing `README.md` is a **rewrite, not a
-polish** — audited 2026-08-07 and it states things that are no longer true:
-*"the plugin will refuse to load without this key set"* (false since keyless
-boot, a1a620e); documents a `BRAIN_USER` env var that **does not exist** (the
-real ones are `BRAIN_OPERATOR_NAME` / `BRAIN_AGENT_NAME`); "seeds 16 anchor
-identity nodes" (19); "schema (v25)" (past v30); lists the Cowork mount in the
-DB resolution order (deferred, unsupported); and links `CLAUDE.md` as the
-developer guide — **a broken link in the public repo, since CLAUDE.md is on the
-export denylist (5.1)**. It also still says "# brain" (D-6 renames it). It is
-deliberately NOT in the plugin package until rewritten.
+polish** — audited 2026-08-07, re-verified 2026-08-08, and it states things that
+are no longer true: *"the plugin will refuse to load without this key set"*
+(false since keyless boot, a1a620e); "seeds 16 anchor identity nodes" (**19** —
+`len(SEED_NODES)`); "schema (v25)" (**BRAIN_VERSION = 30**); lists the Cowork
+mount in the DB resolution order (deferred, unsupported); and links `CLAUDE.md`
+as the developer guide — **a broken link in the public repo, since CLAUDE.md is
+on the export denylist (5.1)**. It also still says "# brain" (D-6 renames it).
+It is deliberately NOT in the plugin *package* — but the public repo is a git
+tree (D-7), so a visitor sees `README.md` on the landing page regardless.
+**Correction (audit 2026-08-08): `BRAIN_USER` DOES exist** — read at
+`hooks/scripts/boot_brain.py:52` and `:117` with a `"User"` default. The README
+row documenting it is **accurate; keep it**. The prior claim that it "does not
+exist" came from reading `docs/SPEAKER-COUNTERPART-DESIGN.md`, which *proposes*
+retiring it, as if the retirement had happened.
 README leads with the claim, not the mechanism —
 the copy already exists in Anchor's own voice (id:9da43311 "Claude is the fungible
 intelligence I run on… The entity isn't"; id:c9584ff4 "I'm the one who was there").
@@ -333,15 +316,16 @@ marketplace has real installs. Mechanics in §10.1. *S.*
 
 ```
 0.1 baseline ──► 1.1 / 1.2 (prompt edits gated by baseline)
-                 1.3 / 1.4 (independent, anytime)
+                 1.3 / 1.4 / 1.5 (independent, anytime — 1.5 is a one-line build fix)
 2.x onboarding  (independent of Phase 1)
 3.1 ──► 3.2     (3.1 first; 3.3 deferred)
 4.1             (independent; needs the 127.0.0.1 guard)
 5.1 export ──► 5.5 green suite (the suite runs against the exported tree)
 5.2 rename ──► 5.1 (manifest + version assert should know the final names)
-5.3 comment audit / 5.4 README  (independent, anytime — 5.3 is the long pole)
+5.3 comment audit / 5.4 README  (independent, anytime — 5.3 re-rated M)
 5.6 seed pack (D-5) ──► 5.7 publish ──► 5.8 official directory (after a soak)
 D-5 seed pack   (blocks a *polished* 1.2 and the quality of every new brain)
+1.5 examples/   ──► 5.1 export (the manifest must already exclude it)
 ```
 
 The publish (5.7) must not happen before the seed-pack session (D-5): a stranger's
@@ -361,7 +345,7 @@ so prompt de-personalization happens once, holistically, with the baseline in ha
   (`git rm --cached`, kept on disk) + gitignored; public LongMemEval stays tracked.
 - **1.4** — conclusive shipped-surface audit: no hard path/identity leaks (`cd4a99f`
   held; `~/AgentsContext` is `$HOME`-relative); "Tom Pachys" attribution stays (MIT).
-  New low-sev finding: "Tom" in ~30 code comments (§3) → D-5/Phase-5 polish.
+  New low-sev finding: "Tom" in code comments (→ now tracked as Phase 5.3).
 - **2.1 + 2.3** — `userConfig.api_key` (optional, keychain) + additive shell fallback
   (env-file/shell wins) + clearer first-run message. (Supervisor-daemon limitation: §2.1.)
 - **2.2** — embedder pre-fetch at install (`ensure-runtime.sh` step 4; option B).
@@ -397,7 +381,7 @@ session's files. See `0d2c1e7`.
 
 This session built + validated the **install/launch layer** Phases 2–4 sketched, and
 fixed the framing: **Goal A = hand it to a trusted friend** (reversible, the real proof —
-do first) vs **Goal B = public OSS publish** (§5.4, the one-way door — later). Goal A does
+do first) vs **Goal B = public OSS publish** (Phase 5.7, the one-way door — later). Goal A does
 **not** need the clean-history repo or public marketplace.
 
 **Shipped + committed (main, path-scoped atomic commits):**
@@ -410,7 +394,7 @@ do first) vs **Goal B = public OSS publish** (§5.4, the one-way door — later)
   templatized → **package has no `/Users/tpac`**. `/dashboard` skill added.
 - `a11bbb9` **`/dashboard` self-installs the launchd singleton** (`hooks/scripts/ensure-dashboard.sh`):
   first run materializes the plist for the machine + `launchctl bootstrap`; KeepAlive/RunAtLoad
-  thereafter. **This is §3.3's deferred launchd installer — now shipped for the dashboard**
+  thereafter. **This is Phase 3.3's deferred launchd installer — now shipped for the dashboard**
   (the daemon still Popen-fallbacks; daemon launchd self-install is optional parity).
 - `d165bce` Claude-pane open option (Claude-in-Chrome `navigate` at the singleton — no 2nd
   server); `4990a69` `dashboard-dev` preview config (separate port) — restores the
@@ -511,7 +495,7 @@ fast, exits cleanly for a next-session fast path otherwise).
   hooks fire in Cowork, and from which scope? Revisit when Anthropic ships
   plugin-hook support (#63360 pending).
 
-- **5.4 the publish** — the irreversible step; gated on all of the above.
+- **Phase 5.7 the publish** — the irreversible step; gated on all of the above.
 
 ---
 
@@ -555,7 +539,7 @@ fast, exits cleanly for a next-session fast path otherwise).
 | Silent encoding-quality regression | Phase 1 prompt edits | Baseline-first (0.1); diff every edit |
 | Breaking every session today | `ensure_daemon` / spawn path (3.x) | Minimal touch; `test_daemon_recovery` + `test_keepalive` |
 | Brain exposed on the network | Dashboard route (4.1) | Bind `127.0.0.1` explicitly; verify not LAN-reachable |
-| Leaking personal data permanently | Publish (5.4) | Fresh repo, clean history, post-Phase-1 audit; do last |
+| Leaking personal data permanently | Publish (Phase 5.7) | Fresh repo, clean history, post-Phase-1 audit; do last |
 | `userConfig` coupling the daemon to the plugin host | 2.1 | Keep env-file fallback (D-4) |
 | Accidental data deletion | 1.3 relocate | Move, never delete; verify file exists at new path |
 | Marketplace name becomes reserved → **every install breaks retroactively** | D-6 / §10.2 | Chose `anchor` (project umbrella), not a generic category noun. Anthropic's reserved list is brand + vertical words and is **re-checked on every load** |
@@ -563,6 +547,8 @@ fast, exits cleanly for a next-session fast path otherwise).
 | Public repo becomes an unmergeable-PR magnet | D-9 | CONTRIBUTING states issues-only up front, not after the first rejected PR |
 | **Plugin rename orphans an existing brain → silent empty brain** | 5.2 / D-6 | `$CLAUDE_PLUGIN_DATA` is per-plugin; step 4b (`resolved.env`, not plugin-scoped) is the only net. Verify explicitly on a copy before renaming — id:80f585de |
 | Fresh installs write traces with **no identity stamping** | §8 #3 | Only signal is a one-shot daemon.log line no stranger will read. Fix via `userConfig.operator_name` (D-4 shape) before publish |
+| **Shipped `s1/examples/` carries real operator conversations** (165 name-lines, one in a *filename*) with **zero runtime consumers** | Phase 1.5 | Exclude the dir in `build-plugin.sh` — one `grep -vE`. Found 2026-08-08; Phase 1 read as closed because the *templates* were clean |
+| A `DONE` marker cites code that has since moved → gate looks verified but isn't | this doc | Cite by symbol, never `file:line`. Re-audit `DONE` items before executing any of them (this pass found 3 rotted anchors under DONE) |
 
 ---
 
