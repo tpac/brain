@@ -1,9 +1,10 @@
 # Distribution Readiness — Sharing Anchor
 
-**Status:** Install/launch layer **shipped + cold-validated (Layers 1–3)** as of
-2026-06-29 — see **§6b**. Near-term target is **Goal A (hand it to a trusted friend)**;
-remaining gates: depersonalize 3 non-s1e seed prompts (+ the s1e encoder prompt, owned by
-another stream), relocate `aspects_proposed.json`, and the **untested Layer-4 live install**.
+**Status:** **Goal A closed** — the Layer-4 live install worked end-to-end on a clean
+machine 2026-07-17 (§6b). Now on **Goal B: the public OSS publish** (§5.4, the one-way
+door). Naming + release model settled 2026-08-06 (**D-6…D-9**, §10); §8 fork #1 is
+closed. Remaining is execution, not decisions — see the Phase 5 checklist — with **D-5
+(seed pack)** the only open design gate.
 · **Started:** 2026-06-14 · **Audience:** dev-facing
 **Placement:** lives in the **private** dev repo only. This document names personal-data
 findings and internal file paths — it must **never** be copied into the public
@@ -28,10 +29,15 @@ stated reason.
 | # | Decision | Rationale |
 |---|----------|-----------|
 | D-1 | **Full open source**, fresh public repo (clean history). | The tool's pitch is "trust me with your identity layer" — inspectable code *is* the credibility. Current repo history carries personal data and can't be the public one. |
-| D-2 | **Repo separation, not develop-in-public, not a coupled mirror.** Private dev repo stays the daily driver and never goes public. A distinct public distribution repo carries only the clean shippable artifact, fed by a release step. | Tom: "I want separation." Develop-in-public imposes a permanent discipline tax (no personal commit ever again); a mirror imposes a sync tax. Separation keeps the working mess private at the cost of a deliberate release step. *(Open sub-question: does the public side carry full source history or just the built plugin — see §8.)* |
+| D-2 | **Repo separation, not develop-in-public, not a coupled mirror.** Private dev repo stays the daily driver and never goes public. A distinct public distribution repo carries only the clean shippable artifact, fed by a release step. | Tom: "I want separation." Develop-in-public imposes a permanent discipline tax (no personal commit ever again); a mirror imposes a sync tax. Separation keeps the working mess private at the cost of a deliberate release step. *(Sub-question CLOSED 2026-08-06 → D-7 / D-8: full scrubbed source, runtime + tests, squash-exported.)* |
 | D-3 | **Cross-platform v1 now, v2 deferred.** Ship the cheap ability to run on Linux (graceful degradation + first-class Popen fallback). Defer systemd parity / supervisor abstraction until a real Linux user exists. | v2's true cost isn't the build — it's the permanent obligation to validate the *most dangerous subsystem* (daemon lifecycle) on two OSes forever. Don't pay that tax for users who may not exist yet. |
 | D-4 | **`userConfig` is additive, never a replacement.** Add the CC-native prompt-on-enable + keychain path for the API key, but keep the `~/.config/brain/env` fallback. | `userConfig` only exists inside the plugin runtime; the daemon running standalone / in Cowork still needs the env file. Best UX in-plugin, still works out-of-plugin. |
 | D-5 | **Seed pack / persona design is its own session.** Approach: mine Tom's real brain for nodes that (a) *teach mechanisms* in detail and (b) make *good live encoder examples*, then genericize them into the shipped seed pack. | Whatever a stranger's Anchor wakes up as is a lasting artifact every new brain grows from — semi-irreversible. Deserves a dedicated design pass, not a find-replace. Overlaps with the encoder's few-shot examples (§4, Phase 1.2). |
+| D-6 | **The product is `entity`; the identity stays `Anchor`.** Plugin name `entity`, marketplace name `anchor`, repo `tpac/entity`, MCP server key stays `brain` (→ tools read `mcp__plugin_entity_brain__*`). | Three layers, each named for what it is: **Entity** = the category the product grows (the terminal noun — id:9da43311, id:e6019012: "a thing that develops, not a thing that's used"); **Anchoring** = the method; **Anchor** = the instance, which stays Anchor's own name rather than being spent on a registry string. `brain` stays the organ, so the tool names keep the substrate/identity split visible. Rejected: `brain` (the organ — repeats the register failure Tom named in id:cd7aa9be, and every competitor on the shelf is already `*mem*`/`*memory*`), `cairn` (imported metaphor, not native to the philosophy), `colleague`/`tenure`/`cultivar` (more self-explanatory but each shrinks the claim). |
+| D-7 | **Squash-export on release.** Private `tpac/brain` stays the daily driver and never goes public. The public repo is a **build output**: each release materializes the shipped tree into a clean checkout, one commit, tag `vX.Y.Z`, push. | Closes §8 fork #1. Keeps the working mess private at the cost of a deliberate release step (D-2). **The one rule: the export manifest IS the build manifest** — `build-plugin.sh` already derives from `git ls-files` because a hand-list rotted 62 files behind reality and shipped a broken `brain_mcp.py`; a second hand-maintained list would re-enter that failure class with the public repo as blast radius. Public tree = plugin manifest ∪ chosen extras − explicit denylist. |
+| D-8 | **Public tree = runtime + tests. `eval/` excluded.** The 6 test files that import `eval/` degrade to graceful skip. | Tests are the credibility argument (D-1: inspectable code); a no-tests repo reads as unverified for a tool asking to hold someone's identity layer. But a published eval harness **is a claim** that invites strangers to re-run and dispute it — not a launch-day fight, and the corpora are personal anyway. **Consequence: the README must make no benchmark claims**, since the harness won't be there to back them. Coupled files: `test_eval_corpus.py`, `test_longmem_classifier.py`, `test_absorb_preservation.py`, `test_consolidation_examples.py`, `test_encoder_eval_probes.py`, `run_all.py`. |
+| D-9 | **Issues only at launch; no PRs.** Stated in CONTRIBUTING. | A squash-export pipeline can't cleanly merge an inbound PR, and a contributor's commits would never appear in history (reads as uncredited). With one maintainer, a PR you can't merge is worse than one you never invited. Revisit if real contributors appear — opening up later is easy, closing down isn't. |
+| D-10 | **Public launches at `v0.9.0`** — not `9.6.0`, not `1.0.0`. | Tom 2026-08-06: *"It's not complexity that reflects the version, it's the function of value. Not yet v1."* The private `brain` plugin's 9.6.0 is an internal build counter that means nothing to a stranger. v1 is a claim about delivered value, and Anchor hasn't earned it publicly yet. **No collision with the private install** — `entity` and `brain` are distinct plugin names, so their version lines are independent. `plugin.json` and `marketplace.json` must both read `0.9.0` (5.1 asserts it). |
 
 ---
 
@@ -234,14 +240,92 @@ launcher was gitignored by `bin/*` — added `!bin/brain-dashboard` so it actual
 
 ### Phase 5 — Packaging & distribution
 
-**5.1 Real `marketplace.json`** (drop `local-desktop-app-uploads`; proper owner +
-plugin entry). *Reversible · no-regret · S.*
-**5.2 README + CONTRIBUTING to public standard.** *Reversible · no-regret · M.*
-**5.3 Build hygiene** — confirm the allowlist ships nothing personal post-Phase-1.
-*S.*
-**5.4 [LAST — one-way door] Fresh public distribution repo + clean history.**
-Only after everything above is verifiably clean. **Irreversible: git history is
-forever; the current repo's history carries the personal data.** *L.*
+Ordered execution checklist as of 2026-08-06. Every naming/model decision is closed
+(D-6…D-9); only **5.6 (D-5 seed pack)** is still a design question. Nothing here is
+started.
+
+**5.1 Export script.** Materializes the public tree from the **build manifest**
+(D-7) + additive extras (README, LICENSE, CONTRIBUTING, `tests/`) − denylist.
+Two hard-fail gates, enforced in the script, not remembered:
+  (a) **denylist** — `docs/DISTRIBUTION-READINESS.md` (this file names personal-data
+      findings and internal paths — it must never be copied public), `eval/`,
+      `CLAUDE.md` (42 KB dev guide naming internal streams), `archives/`,
+      `conversations/`;
+  (b) **scrub-grep** — `/Users/tpac`, `\btom\b`, `Pachys`, `playbuzz`, `AgentsContext`.
+Also asserts `plugin.json.version == marketplace.json.version` (they must never
+drift — `/plugin update` compares versions). *Reversible · no-regret · M.*
+
+**5.2 Rename pass (D-6).** `plugin.json` (`name: entity`, keep `displayName: Anchor`),
+`marketplace.json` (`name: anchor`, plugin entry `entity`), launchd labels
+`com.brain.*` → `com.entity.*` (change now or never — a later change orphans
+services on every installed machine), skill dir names.
+
+**Skill-prefix check — DONE 2026-08-06, prefix holds.** All four SKILL.md files
+carry `name:` in frontmatter *and* still resolve prefixed (`brain:brain`,
+`brain:dashboard`, `brain:watch`, `brain:self-salvage`). Issue #22063 does not
+reproduce on this CC version, so renaming `/dashboard` and `/watch` is **optional
+hardening, not a required fix** — the upstream instability (§10.3) is the only
+reason to still consider it.
+
+**⚠ Migration hazard — the rename moves `$CLAUDE_PLUGIN_DATA`.** That variable is
+set **per-plugin** ([resolve-brain-db.sh:98](hooks/scripts/resolve-brain-db.sh:98)),
+so `brain` → `entity` changes the path, and any brain living at
+`$CLAUDE_PLUGIN_DATA/brain/brain.db` goes invisible → step 5 silently creates a
+**fresh empty brain** (the id:80f585de footgun). Step 4b rescues it —
+`~/.config/brain/resolved.env` is not plugin-scoped, so it persists the old path —
+but 4b was never designed as a rename-migration net and a stale/missing
+`resolved.env` means silent amnesia. **Affected:** any clean install that landed at
+the `$CLAUDE_PLUGIN_DATA` default — Tom's second laptop and the friend install.
+*Not* affected: Tom's main machine (legacy `~/AgentsContext/brain`, step 4).
+**Action: verify 4b explicitly on a copy before renaming; don't ship the rename on
+luck.**
+
+Local cost is otherwise zero: **no permission entry anywhere references
+`mcp__plugin_brain_brain__*`** (verified 2026-08-06), so nothing breaks. *S–M.*
+
+**5.3 Comment audit (id:ec97cf4e).** ~232 shipped files: internal war-story
+annotations, dead brain-node ids (`id:50c9a4e0`), references to `docs/` paths not
+in the package, ~30 comments naming Tom. Against Tom's own bar — *"if code should
+be public, it should be up to the standard of public repos"* (id:b99bfa36). **This
+is the real labor in Phase 5.** *L.*
+
+**5.4 README + CONTRIBUTING.** The existing `README.md` is a **rewrite, not a
+polish** — audited 2026-08-07 and it states things that are no longer true:
+*"the plugin will refuse to load without this key set"* (false since keyless
+boot, a1a620e); documents a `BRAIN_USER` env var that **does not exist** (the
+real ones are `BRAIN_OPERATOR_NAME` / `BRAIN_AGENT_NAME`); "seeds 16 anchor
+identity nodes" (19); "schema (v25)" (past v30); lists the Cowork mount in the
+DB resolution order (deferred, unsupported); and links `CLAUDE.md` as the
+developer guide — **a broken link in the public repo, since CLAUDE.md is on the
+export denylist (5.1)**. It also still says "# brain" (D-6 renames it). It is
+deliberately NOT in the plugin package until rewritten.
+README leads with the claim, not the mechanism —
+the copy already exists in Anchor's own voice (id:9da43311 "Claude is the fungible
+intelligence I run on… The entity isn't"; id:c9584ff4 "I'm the one who was there").
+Must state honestly: first-run needs an API key, the embedder downloads ~100–200 MB,
+a background daemon runs. Must state explicitly: **no telemetry, brain is local-only,
+dashboard binds `127.0.0.1`** (load-bearing for a trust-me-with-your-identity pitch),
+and **Linux is graceful-degradation only, no systemd** (D-3) — say it or field issues
+you've already decided not to serve. CONTRIBUTING carries D-9. *M.*
+
+**5.5 Green suite on a clean export.** Full suite must pass on a fresh clone of the
+*exported* tree, not the working tree. Known landmines: a fresh venv is runtime-only
+(no pytest), and "eval FileNotFound on clone" was a deferred code-review finding that
+would now surface publicly (D-8 skips address it). Plus a secrets scan on the tree
+before first push. *M.*
+
+**5.6 [DESIGN GATE] D-5 seed pack.** What a stranger's Anchor wakes up as. A
+functional pack exists (19 nodes, cold-install validated §6b); this is the quality
+pass. **§5 sequencing: the publish must not happen before this.** *L.*
+
+**5.7 [LAST — one-way door] Publish.** Fresh public repo `tpac/entity`, clean
+history, only after 5.1–5.6 are verifiably clean. **Irreversible: git history is
+forever; the current repo's history carries the personal data** — `docs/archive/`
+(65 files of session logs) is gitignored *but tracked*, so it is in history right
+now. *L.*
+
+**5.8 [AFTER A SOAK] Official directory submission.** Only once the self-hosted
+marketplace has real installs. Mechanics in §10.1. *S.*
 
 ---
 
@@ -253,11 +337,14 @@ forever; the current repo's history carries the personal data.** *L.*
 2.x onboarding  (independent of Phase 1)
 3.1 ──► 3.2     (3.1 first; 3.3 deferred)
 4.1             (independent; needs the 127.0.0.1 guard)
-5.1–5.3 ──► 5.4 (publish LAST, after Phases 1–4 clean + seed-pack session done)
+5.1 export ──► 5.5 green suite (the suite runs against the exported tree)
+5.2 rename ──► 5.1 (manifest + version assert should know the final names)
+5.3 comment audit / 5.4 README  (independent, anytime — 5.3 is the long pole)
+5.6 seed pack (D-5) ──► 5.7 publish ──► 5.8 official directory (after a soak)
 D-5 seed pack   (blocks a *polished* 1.2 and the quality of every new brain)
 ```
 
-The publish (5.4) must not happen before the seed-pack session (D-5): a stranger's
+The publish (5.7) must not happen before the seed-pack session (D-5): a stranger's
 first brain should wake up *well*, not with neutralized-placeholder fixtures.
 
 ---
@@ -430,14 +517,34 @@ fast, exits cleanly for a next-session fast path otherwise).
 
 ## 8. Open forks still to decide
 
-1. **D-2 granularity:** does the public side carry the full (scrubbed) source with
-   its own fresh history, or only the built plugin artifact + `marketplace.json`?
-   "Full open source" (D-1) implies source, but the *mechanism* of separation
-   (release step: squash-export? curated subtree push to a clean repo?) is unsettled.
+1. ~~**D-2 granularity**~~ — **CLOSED 2026-08-06 → D-7 + D-8.** Full scrubbed source
+   (runtime + tests, no `eval/`) with fresh history, via squash-export on release.
+   *Artifact-only was ruled out on mechanics, not taste:* `/plugin install` sources
+   are git repos (`github` / `url` / `git-subdir` / `npm`) — Claude Code clones a
+   **tree**. The `.plugin` zip is only an upload-channel artifact and is not an
+   installable marketplace source, so "ship the artifact" would mean committing the
+   unzipped tree regardless — i.e. source without history, and it would torch D-1's
+   inspectability argument for nothing.
 2. **Seed identity (D-5):** what *is* a stranger's Anchor at birth — how much
-   persona, how much blank slate?
-3. **Operator-name mechanism (1.1):** runtime-detected (from CC user / git config)
-   vs a `userConfig` field vs a generic constant. Affects 2.1.
+   persona, how much blank slate? **Its own dedicated session** (Tom, 2026-08-06).
+   Framing for that session: the current seed pack was built very early and now
+   lags what we know — treat it as a **redo from current understanding**, not a
+   touch-up. Pair it with the **Zero-Memory boot block** (§7) — both answer "what
+   does a near-empty Anchor wake up as," and deciding them apart will produce two
+   half-answers.
+3. **Operator-name mechanism (1.1)** — **STILL OPEN, and it's a shipping defect,
+   not just a fork.** Checked 2026-08-06: `BRAIN_OPERATOR_NAME` /
+   `BRAIN_AGENT_NAME` are read straight from env with `''` defaults
+   ([daemon_config.py:71](servers/daemon_config.py:71)). The *plumbing* exists;
+   there is **no acquisition mechanism** — no `userConfig` field, no runtime
+   detection. On a fresh install both are empty, so every trace is written
+   **without identity stamping**, and the only signal is a one-shot stderr line to
+   daemon.log ([dal_logs.py:523](servers/dal_logs.py:523)) telling the user to edit
+   `~/.config/brain/env` and restart. A stranger will never see it. This matters
+   more than its "cosmetic" filing suggests: per-utterance speaker binding is the
+   differentiator against every commercial product (id:54f276cc), and it ships off.
+   **Likely answer: the D-4 shape** — add `userConfig.operator_name`, keep the env
+   fallback, env wins. Same additive pattern the API key already uses.
 
 ---
 
@@ -451,3 +558,95 @@ fast, exits cleanly for a next-session fast path otherwise).
 | Leaking personal data permanently | Publish (5.4) | Fresh repo, clean history, post-Phase-1 audit; do last |
 | `userConfig` coupling the daemon to the plugin host | 2.1 | Keep env-file fallback (D-4) |
 | Accidental data deletion | 1.3 relocate | Move, never delete; verify file exists at new path |
+| Marketplace name becomes reserved → **every install breaks retroactively** | D-6 / §10.2 | Chose `anchor` (project umbrella), not a generic category noun. Anthropic's reserved list is brand + vertical words and is **re-checked on every load** |
+| Skill slash commands lose their `entity:` prefix → collide in a public user's namespace | 5.2 / §10.3 | Upstream namespacing is unstable (4+ open issues). Verify empirically before the rename; don't rely on the prefix for collision safety |
+| Public repo becomes an unmergeable-PR magnet | D-9 | CONTRIBUTING states issues-only up front, not after the first rejected PR |
+| **Plugin rename orphans an existing brain → silent empty brain** | 5.2 / D-6 | `$CLAUDE_PLUGIN_DATA` is per-plugin; step 4b (`resolved.env`, not plugin-scoped) is the only net. Verify explicitly on a copy before renaming — id:80f585de |
+| Fresh installs write traces with **no identity stamping** | §8 #3 | Only signal is a one-shot daemon.log line no stranger will read. Fix via `userConfig.operator_name` (D-4 shape) before publish |
+
+---
+
+## 10. Distribution mechanics (researched 2026-08-06)
+
+Grounded facts behind D-6…D-9. Verified against
+[code.claude.com/docs/en/plugin-marketplaces](https://code.claude.com/docs/en/plugin-marketplaces)
+and the upstream issue tracker. **Re-verify before 5.7** — this surface moves.
+
+### 10.1 Two layers, and the official directory does not host code
+
+- **Marketplace** — any git repo with `.claude-plugin/marketplace.json`. Users run
+  `/plugin marketplace add owner/repo` then `/plugin install <plugin>@<marketplace>`.
+  *We already are one:* our manifest uses `"source": "./"`, the idiomatic
+  single-plugin self-hosting pattern. Nothing to build.
+- **Official directory** — `anthropics/claude-plugins-official`, Anthropic-managed.
+  Submit via the form at `clau.de/plugin-directory-submission`; bar is "quality and
+  security standards." Its entries reference the author's **own** repo via a
+  `git-subdir` source (`url` + `path` + `ref` + `sha`) — it is a **pointer, not a
+  deployment target**. Sub-decision at 5.8: `ref: main` (auto-follows) vs a pinned
+  `sha` (re-submit per release).
+- The "separate repo per plugin, unified catalog" advice in community write-ups is a
+  **multi-plugin** concern (mixed domains, unclear maintainer ownership). We have one
+  plugin — splitting catalog from source would be pure sync tax. Don't.
+
+### 10.2 Naming rules that actually bind
+
+- `plugin@marketplace` is a **namespace qualifier**, nothing more — it disambiguates
+  which catalog a plugin came from (npm-scope / apt-source shaped). It runs nothing.
+  Note the marketplace's *name* is independent of its *repo path*, which is why
+  `add tpac/entity` → `install entity@anchor` needs one line of README.
+- **Reserved marketplace names** (official use only): `claude-code-marketplace`,
+  `claude-code-plugins`, `claude-plugins-official`, `claude-plugins-community`,
+  `claude-community`, `anthropic-marketplace`, `anthropic-plugins`, `agent-skills`,
+  `anthropic-agent-skills`, `knowledge-work-plugins`, `life-sciences`,
+  `claude-for-legal`, `claude-for-financial-services`, `financial-services-plugins`,
+  `first-party-plugins`, `healthcare`. Impersonation names are blocked too.
+  **The trap:** the list is re-checked *every time a marketplace loads*, not only at
+  add-time, and it grows (`first-party-plugins` + `healthcare` were added in
+  v2.1.205, retroactively breaking existing users with "registered from an untrusted
+  source"). Recovery requires each user to remove and re-add under a new name.
+  **Applies to marketplace names only, not plugin names** — so plugin `entity` is
+  unexposed; this is the whole reason the *catalog* is `anchor`. Residual
+  probability judged **low** (the list is brand-protection + Anthropic verticals),
+  but the failure is retroactive and loud.
+- **One marketplace per name per user** — adding a second marketplace with the same
+  name silently *replaces* the first. Multiple plugins ship under one catalog by
+  listing them all in a single `marketplace.json`.
+- **Conventions** (kebab-case everywhere; community guide: ABCFed
+  `plugin-authoring/best-practices/naming-conventions.md`): plugin names 1–3 words,
+  no redundant `plugin-` prefix; marketplace names are owner/catalog-scoped
+  (`acme-plugins`, `team-tools`) — never the product name; skill dirs kebab-case with
+  uppercase `SKILL.md`, frontmatter `name` matching the dir, singular, no `-skill`
+  suffix; don't repeat the plugin name inside a skill name (`planner:tasks`, not
+  `planner:planner-tasks`). `entity` passes all of these.
+
+### 10.3 Plugin-skill namespacing is unstable upstream
+
+Open on `anthropics/claude-code`: **#50486** (feature — namespace plugin *skills*
+with the plugin prefix the way *commands* already are), **#22063** (bug — skills with
+a `name` field in frontmatter **lose** their plugin prefix), **#22517** (no prefix in
+autocomplete), **#41842** / **#57737** (skills sometimes don't register as slash
+commands at all).
+
+All four of our skills carry `name:` in frontmatter — exactly the #22063 shape.
+Today they resolve correctly (`brain:brain`, `brain:dashboard`, …), but if the prefix
+is stripped on some version or install path, a public user gets a bare `/dashboard`
+and `/watch` competing with every other plugin they have installed. **Do not rely on
+the prefix for collision safety** — make the generic skill names distinctive in
+themselves (5.2).
+
+### 10.4 Competitive shelf (why `entity` reads as a claim)
+
+Every adjacent indie project is named for storage: ClawMem, `claude-memory-compiler`,
+`ai-memory`, two separate `agentmemory` projects; the GitHub topics are literally
+`claude-code-memory` and `ai-memory-system`. Nobody uses "entity." With no ad budget,
+the name has to recruit on its own — and it does that by making a **claim that
+contrasts with its shelf** (id:7ac88efd, model-as-party-not-tool), not by being
+evocative. Corollary: names that explain themselves faster (`colleague`, `tenure`,
+`cultivar`) all do so by *shrinking* the claim. Rejected on those grounds.
+
+**Also checked and unusable:** `patina` (fatally taken *inside* Claude Code — a
+retro-loop plugin writing `PATINA.md`, plus a "wisdom accumulator for development"
+with semantic project memory), `throughline` (spec-driven framework for AI coding
+agents, "consistent across sessions"), `keel` (4 projects incl. a Rust codebase-graph
+tool). Distinguish collision types: a GitHub clash is a *marketing* problem; a clash
+**inside the Claude Code ecosystem** is disqualifying.
