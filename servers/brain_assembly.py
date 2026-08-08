@@ -797,8 +797,6 @@ class BrainAssemblyMixin:
     # AspectRegistry.
 
 
-
-
     # ── Formatted boot context ──────────────
 
     def format_boot_context(self, user: str = 'User', project: str = 'default',
@@ -862,100 +860,5 @@ class BrainAssemblyMixin:
     # ═══════════════════════════════════════════════════════════════
     # v8: Consolidation detection — find overlapping nodes
     # ═══════════════════════════════════════════════════════════════
-
-    def detect_consolidation_candidates(self, similarity_threshold: float = 0.85,
-                                         min_age_hours: int = 24,
-                                         max_pairs: int = 10) -> int:
-        """Scan for duplicate/overlapping nodes. Queue for LLM consolidation.
-
-        Called by idle_maintenance. Returns count of new pairs found.
-
-        Scoping rules:
-        - Only compare nodes of the same type (reduces O(n²))
-        - Skip pairs where both nodes were created within min_age_hours
-        - Skip archived nodes
-        - Skip pairs already in pending_consolidation
-        """
-        from . import embedder
-        from datetime import datetime, timezone, timedelta
-
-        if not embedder.is_ready():
-            self._log_error("consolidation_detect", Exception("Embedder not ready"),
-                            "Cannot detect consolidation without embedder")
-            return 0
-
-        # Get all primary embeddings for the active model — stale-model rows
-        # would pollute the consolidation cluster scores.
-        vdal = self._vec_dal
-        _active_model = embedder.stats.get('model_name') or None
-        all_embeddings = [{'node_id': r['node_id'], 'embedding': r['embedding']}
-                          for r in vdal.get_all_vectors(
-                              vector_types=['_primary'],
-                              model=_active_model)]
-        if not all_embeddings:
-            return 0
-
-        # Build node_id → embedding map
-        emb_map = {}
-        for item in all_embeddings:
-            emb_map[item['node_id']] = item['embedding']
-
-        # Get node types and creation dates
-        rows = self.conn.execute(
-            'SELECT id, type, created_at FROM nodes WHERE archived = 0'
-        ).fetchall()
-
-        # Group by type
-        type_groups = {}
-        node_dates = {}
-        for nid, ntype, created_at in rows:
-            if nid not in emb_map:
-                continue  # no embedding, skip
-            type_groups.setdefault(ntype, []).append(nid)
-            node_dates[nid] = created_at
-
-        # Compare within each type group
-        logs_dal = self._logs_dal
-        new_pairs = 0
-        cutoff_hours = min_age_hours
-
-        for ntype, node_ids in type_groups.items():
-            if len(node_ids) < 2:
-                continue
-
-            for i in range(len(node_ids)):
-                if new_pairs >= max_pairs:
-                    break
-                for j in range(i + 1, len(node_ids)):
-                    if new_pairs >= max_pairs:
-                        break
-
-                    nid_a, nid_b = node_ids[i], node_ids[j]
-
-                    # Skip if created too close together (same session)
-                    date_a = node_dates.get(nid_a, '')
-                    date_b = node_dates.get(nid_b, '')
-                    if date_a and date_b:
-                        try:
-                            dt_a = datetime.fromisoformat(date_a.replace('Z', '+00:00'))
-                            dt_b = datetime.fromisoformat(date_b.replace('Z', '+00:00'))
-                            if abs((dt_a - dt_b).total_seconds()) < cutoff_hours * 3600:
-                                continue
-                        except (ValueError, TypeError) as e:
-                            self._log_error('consolidation_date_parse', e, 'nodes %s/%s' % (nid_a[:8], nid_b[:8]))
-
-                    # Compute similarity
-                    emb_a = emb_map[nid_a]
-                    emb_b = emb_map[nid_b]
-                    sim = embedder.cosine_similarity(emb_a, emb_b)
-
-                    if sim >= similarity_threshold:
-                        # Order by creation date (older = a, newer = b)
-                        if date_a > date_b:
-                            nid_a, nid_b = nid_b, nid_a
-                        if logs_dal.queue_consolidation(nid_a, nid_b, sim):
-                            new_pairs += 1
-
-        return new_pairs
 
     # _get_or_create_precision REMOVED 2026-04-05 — brain_precision.py deleted

@@ -17,7 +17,6 @@ from servers.pipeline_contract import (
     EMBEDDING_SCORING_METHOD,
     EMBEDDING_SKIP_FIELDS,
     get_group_weight,
-    get_group_fields,
     format_candidate_for_surface,
     build_surface_prompt,
     SURFACE,
@@ -102,12 +101,6 @@ class TestEmbeddingGroups(unittest.TestCase):
         """Unknown types get other_meta weight."""
         self.assertEqual(get_group_weight('nonexistent'),
                          EMBEDDING_GROUPS['other_meta']['weight'])
-
-    def test_get_group_fields(self):
-        fields = get_group_fields('high_meta')
-        self.assertIn('situation', fields)
-        self.assertIn('user_raw_quote', fields)
-        self.assertNotIn('_emergent', fields)
 
     def test_skip_fields(self):
         self.assertIn('metadata_created_at', EMBEDDING_SKIP_FIELDS)

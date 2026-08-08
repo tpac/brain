@@ -538,18 +538,10 @@ class Brain(
     # ─── TF-IDF Methods ───
 
 
-
-
-
-
-
     # ─── Connection/Edge Management ───
 
 
-
     # ─── Embedding Integration ───
-
-
 
 
     # ─── Session Activity Tracking ───
@@ -864,7 +856,7 @@ class Brain(
             cached = self._session_contexts.get(session_id)  # re-check under lock
             if cached is not None:
                 return cached
-            default_data = _json.dumps({'stop_counter': 0, 'fatigue': {}, 'edge_fatigue': {}})
+            default_data = _json.dumps({'stop_counter': 0, 'fatigue': {}})
             self._session_state.ensure_default(session_id, '_session_context', default_data)
             # Row is guaranteed to exist now — load reads our default or a
             # racing thread's already-modified state.
@@ -1220,13 +1212,6 @@ class Brain(
                 'segment_count': current_seg + 1,
             }
 
-    def get_segment_node_ids(self, session_id: str):
-        """Get node IDs created/accessed in the current segment for a session."""
-        if not session_id:
-            return []
-        ctx = self.get_or_create_session(session_id)
-        return list(ctx.segment_node_ids)
-
     def add_to_segment(self, node_id, session_id: str):
         """Add a node ID to the current segment's tracking list (in-memory)."""
         if not session_id or not node_id:
@@ -1273,11 +1258,7 @@ class Brain(
     # ─── REMEMBER: Store a new node with TF-IDF + embeddings ───
 
 
-
-
     # ─── v5 PHASE 2: Rich encoding API ───
-
-
 
 
     # ═══════════════════════════════════════════════════════════════
@@ -1287,36 +1268,16 @@ class Brain(
     # ─── Engineering Memory: 7 kinds of understanding ───
 
 
-
-
-
-
-
-
-
-
-
     # ─── Cognitive Layer: Claude's own thoughts ───
-
-
 
 
     # ─── Project Maps: file inventory + change detection ───
 
 
-
-
-
-
-
     # ─── Phase 3: Self-Correction Traces + Positive Signals ───
 
 
-
-
     # ─── Phase 4: Session Synthesis Engine ───
-
-
 
 
     # ─── RECALL: v5 with TF-IDF + intent detection + temporal filtering + decay ───
@@ -1331,107 +1292,22 @@ class Brain(
     # ─── Helper methods for remember/recall ───
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     # ─── v4: EVOLUTION TYPES ───
     # Tensions, hypotheses, patterns, catalysts, aspirations.
     # Forward-facing nodes that describe what is BECOMING, not what IS.
-
-
-
-
-
-
 
 
     # ─── v4: CODE COGNITION HELPERS ───
     # Semantic code understanding — not storing code, but understanding what it means.
 
 
-
-
-
-
-
-
     # ─── v4: SELF-REFLECTION TYPES ───
     # Brain looking inward — performance, failure modes, capabilities, interaction, meta-learning.
-
-
-
-
 
 
     # ─── v4: PATTERN-INFORMED PRUNING ───
     # Confirmed patterns can adjust how the brain prunes. "Personal info is rare but
     # always significant" → protect low-frequency personal nodes.
-
-    def get_pruning_adjustments(self) -> Dict[str, float]:
-        """
-        Read confirmed patterns and derive pruning adjustments.
-        Returns dict of node_type → decay_multiplier.
-        A multiplier > 1 means slower decay (more protection).
-        """
-        adjustments = {}
-        try:
-            # Find confirmed patterns that mention pruning or decay
-            cursor = self.conn.execute(
-                """SELECT content FROM nodes
-                   WHERE type = 'pattern' AND evolution_status IN ('active', 'confirmed')
-                     AND archived = 0
-                     AND (content LIKE '%decay%' OR content LIKE '%prune%' OR content LIKE '%protect%'
-                          OR content LIKE '%personal%' OR content LIKE '%important%')"""
-            )
-            for (content,) in cursor.fetchall():
-                content_lower = content.lower() if content else ''
-                # Simple heuristic: if pattern mentions protecting personal info
-                if 'personal' in content_lower and ('protect' in content_lower or 'important' in content_lower):
-                    adjustments['context'] = max(adjustments.get('context', 1), 3.0)
-                    adjustments['concept'] = max(adjustments.get('concept', 1), 2.0)
-                # If pattern mentions code being important
-                if 'code' in content_lower and ('protect' in content_lower or 'important' in content_lower):
-                    adjustments['code_concept'] = max(adjustments.get('code_concept', 1), 2.0)
-                    adjustments['fn_reasoning'] = max(adjustments.get('fn_reasoning', 1), 2.0)
-        except Exception:
-            pass
-
-        # Store adjustments for the decay function to read
-        try:
-            self.set_config('pruning_adjustments', json.dumps(adjustments))
-        except Exception:
-            pass
-
-        return adjustments
 
     # ─── v4: COMMUNICATION FAILURE LOG ───
     # Track when Brain→Host signals are ignored. Learn how to talk to the host.
@@ -1466,23 +1342,7 @@ class Brain(
         except Exception:
             pass
 
-    def get_communication_stats(self) -> Dict[str, Any]:
-        """Get communication compliance rates by signal level."""
-        stats = {}
-        for level in ('high_priority', 'medium_priority', 'low_priority'):
-            followed = int(self.get_config(f'comm_{level}_followed', 0) or 0)
-            ignored = int(self.get_config(f'comm_{level}_ignored', 0) or 0)
-            total = followed + ignored
-            stats[level] = {
-                'followed': followed,
-                'ignored': ignored,
-                'total': total,
-                'compliance_rate': followed / total if total > 0 else None,
-            }
-        return stats
-
     # ─── v4: FEEDBACK API (confirm/dismiss/refine conscious items) ───
-
 
 
     # get_surfaceable_dreams removed 2026-04-13 — dream system removed.
@@ -1575,13 +1435,10 @@ class Brain(
     # ─── v4: PROACTIVE BRAIN (Phase 3) ───
 
 
-
-
     # ─── v4: AUTO SELF-REFLECTION (Phase 4) ───
 
 
     # ─── v4: PERSONAL FLAG ───
-
 
 
     # ─── EMBEDDER CONFIG: Model-agnostic configuration ───
@@ -1686,22 +1543,6 @@ class Brain(
 
     def _maintenance_set_last_run_ts(self, ts: float) -> None:
         self.set_config('s2_last_run_ts', str(ts))
-
-    def backfill_community_structural(self) -> int:
-        """One-shot maintenance: re-derive + stamp the structural fields
-        (size / internal_fraction / is_corridor / dominant_type) for EVERY live
-        community from its member edges.
-
-        The per-encode algorithmic Δ only stamps communities a run actually
-        touches, so this corrects the existing backlog (or re-derives in bulk
-        after any mass edge change). Idempotent — re-running just re-derives the
-        same values. Returns the count stamped. See
-        docs/COMMUNITY-METADATA-DENORMALIZATION.md.
-        """
-        from .scales.s2.community_encoder import CommunityEncoder
-        from .scales.s2.community_contract import COMMUNITY_DETECTION
-        return CommunityEncoder(
-            self, None, COMMUNITY_DETECTION).backfill_all_communities()
 
     @property
     def s2_running(self) -> bool:
@@ -2029,13 +1870,6 @@ class Brain(
             return stored
         return default
 
-    def _set_tunable(self, key: str, value: Any, reason: str = '') -> None:
-        """Write a tunable parameter to brain_meta and log the change to tuning_log."""
-        old = self._get_tunable(key)
-        ts = self.now()
-        # Store as JSON if dict/list, else as string
-        store_val = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
-        self.set_config(f'tunable_{key}', store_val)
         # tuning_log writes REMOVED 2026-04-05 — table dropped
 
     def get_config(self, key: str, default_val: Any = None) -> Any:
@@ -2077,12 +1911,9 @@ class Brain(
     # Combines suggest + procedures + encoding health into one call
 
 
-
     # ═══════════════════════════════════════════════════════════════
     # ABSORB — Merge knowledge from another brain
     # ═══════════════════════════════════════════════════════════════
-
-
 
 
     def warm_up(self) -> Dict[str, Any]:

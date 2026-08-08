@@ -331,10 +331,6 @@ def get_config() -> Dict[str, Any]:
     return dict(_config)
 
 
-def get_dim() -> Optional[int]:
-    return stats.get('embedding_dim')
-
-
 # ─── Core inference ──────────────────────────────────────────────
 #
 # Variable-shape inputs are safe here because we set
@@ -493,31 +489,3 @@ def get_stats() -> dict:
     return out
 
 
-def setup_sqlite_vec(conn) -> bool:
-    """Try to load sqlite-vec extension for KNN search. Brute-force cosine if absent."""
-    try:
-        conn.enable_load_extension(True)
-        for ext_path in [
-            'vec0',
-            '/usr/lib/sqlite3/vec0',
-            '/usr/local/lib/sqlite3/vec0',
-            os.path.expanduser('~/.local/lib/sqlite3/vec0'),
-        ]:
-            try:
-                conn.load_extension(ext_path)
-                print("[embedder] sqlite-vec loaded", file=sys.stderr)
-                return True
-            except Exception:
-                continue
-        try:
-            import sqlite_vec
-            sqlite_vec.load(conn)
-            print("[embedder] sqlite-vec loaded via python package", file=sys.stderr)
-            return True
-        except Exception:
-            pass
-        print("[embedder] sqlite-vec not available — using brute-force cosine", file=sys.stderr)
-        return False
-    except Exception as e:
-        print(f"[embedder] sqlite-vec setup error: {e}", file=sys.stderr)
-        return False

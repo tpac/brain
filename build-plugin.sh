@@ -10,6 +10,11 @@ OUT="${1:-brain.plugin}"
 
 # Explicit file manifest — if it's not listed, it doesn't ship
 FILES=(
+  # MIT requires the notice travel with the copies. plugin.json DECLARES
+  # "license": "MIT"; without the text in the package, a zip-channel install
+  # gets the claim and not the license. (Repo-clone installs pick up the
+  # root LICENSE for free — this closes the upload path.)
+  LICENSE
   .claude-plugin/plugin.json
   # marketplace.json makes the unzipped package a self-contained marketplace:
   # `claude plugin marketplace add <unzip-dir>` works with no repo access
@@ -27,7 +32,6 @@ FILES=(
   # (daemon launcher — dead on clean installs) and watch/SKILL.md before it.
   # Data + the one runtime seed script stay explicit (scripts/ is a dev dir —
   # only seed_brain.py belongs in the package, the other 23 are dev/migration).
-  data/common_words_10k.txt
   scripts/seed_brain.py
 )
 
@@ -48,7 +52,10 @@ while IFS= read -r _f; do FILES+=("$_f"); done <<< "$_dash_files"
 # servers/ — ship the git-TRACKED tree in full (same tracked-only safety as
 # dashboard above). Replaces the hand-maintained allowlist that rotted 62 files
 # behind reality. Dev architecture notes (*.md) are excluded — runtime code only.
-_srv_files="$(git ls-files servers | grep -vE '\.md$' || true)"
+# `/archive/` is excluded: retired units kept in-repo for reference (e.g.
+# scales/s2/archive/reclassify.py) have no runtime caller and read as internal
+# clutter to an outside installer. In-repo, not in-package.
+_srv_files="$(git ls-files servers | grep -vE '\.md$|/archive/' || true)"
 if [ -z "$_srv_files" ]; then
   echo "MISSING: servers/ — no tracked files found (dir renamed/removed?)"
   exit 1

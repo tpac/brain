@@ -124,12 +124,11 @@ class GetOrCreateSessionRaceTests(BrainTestBase):
             "expected exactly 1 session_state row, got %d — INSERT OR IGNORE failed to atomicize creation" % rows[0])
 
     def test_default_state_has_zero_stop_counter(self):
-        """Brand-new session has stop_counter=0 and empty fatigue dicts."""
+        """Brand-new session has stop_counter=0 and an empty fatigue dict."""
         session_id = 'default-test-' + os.urandom(4).hex()
         ctx = self.brain.get_or_create_session(session_id)
         self.assertEqual(ctx.stop_counter, 0)
         self.assertEqual(ctx.fatigue, {})
-        self.assertEqual(ctx.edge_fatigue, {})
 
     def test_existing_session_state_preserved(self):
         """If a session_state row already exists with non-default values,

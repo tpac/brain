@@ -58,7 +58,6 @@ class SessionContext:
         # Stop hook's Scribe gate only fires on conversational turns.
         self.last_turn_conversational: bool = True
         self.fatigue: Dict[str, int] = {}  # {node_id: access_count} — resets between sessions
-        self.edge_fatigue: Dict[str, int] = {}  # {target_node_id: surface_count} — edge rotation
         # Per-turn "Anchor touched" accumulator — the S0 mirror of the encoder's
         # ops-delta. Anchor's own MCP tools append node ids here as they fire
         # (writes via dispatch `affected`, deliberate reads via get_node(s));
@@ -175,14 +174,6 @@ class SessionContext:
         self.fatigue[node_id] = self.fatigue.get(node_id, 0) + 1
         return self.fatigue[node_id]
 
-    def increment_edge_fatigue(self, target_id: str) -> int:
-        """Increment edge fatigue for a target node. Returns new count."""
-        self.edge_fatigue[target_id] = self.edge_fatigue.get(target_id, 0) + 1
-        return self.edge_fatigue[target_id]
-
-    def get_edge_fatigue(self, target_id: str) -> int:
-        """Get current edge fatigue count for a target node."""
-        return self.edge_fatigue.get(target_id, 0)
 
     def bump_node_activity(self, node_id: str, ts: str) -> Dict[str, object]:
         """Mark a node as accessed by this session at time `ts`.
@@ -257,7 +248,6 @@ class SessionContext:
             'stop_counter': self.stop_counter,
             'last_recall_stop': self.last_recall_stop,
             'fatigue': self.fatigue,
-            'edge_fatigue': self.edge_fatigue,
             'remember_count': self.remember_count,
             'message_count': self.message_count,
             'edit_check_count': self.edit_check_count,
@@ -292,7 +282,6 @@ class SessionContext:
             )
             ctx.last_recall_stop = int(data.get('last_recall_stop', -1))
             ctx.fatigue = {k: int(v) for k, v in data.get('fatigue', {}).items()}
-            ctx.edge_fatigue = {k: int(v) for k, v in data.get('edge_fatigue', {}).items()}
             ctx.remember_count = int(data.get('remember_count', 0))
             ctx.message_count = int(data.get('message_count', 0))
             ctx.edit_check_count = int(data.get('edit_check_count', 0))

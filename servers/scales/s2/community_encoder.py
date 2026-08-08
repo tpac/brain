@@ -372,6 +372,11 @@ class CommunityEncoder(IntegrationUnit):
         on; this corrects the existing backlog of Haiku-authored values in one
         pass. Chunked so each brain_batch transaction stays modest. Idempotent —
         re-running just re-derives the same values. Returns the count stamped.
+
+        OFFLINE MAINTENANCE ENTRY POINT — invoked by hand under the maintenance
+        lock, so it has no production caller by design (the `brain.backfill_
+        community_structural()` one-shot wrapper was retired 2026-08-07 once its
+        fill completed). Reads as TEST_ONLY to a dead-code scan; it is not dead.
         """
         live_ids = [r[0] for r in self.brain.conn.execute(
             "SELECT id FROM nodes WHERE type = 'community' "

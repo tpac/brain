@@ -123,7 +123,9 @@ class TestPersistenceRoundTrip(unittest.TestCase):
             'fatigue': {'nA': 1},
             'edge_fatigue': {},
             'remember_count': 0, 'message_count': 0, 'edit_check_count': 0,
-            # conversational_count + last_encode_at_message are PRE-MIGRATION keys
+            # edge_fatigue, conversational_count + last_encode_at_message are
+            # PRE-MIGRATION keys (edge_fatigue retired 2026-08-07 — never read,
+            # never incremented; old rows still carry it)
             # (removed when the Scribe cadence moved to trace-pull). load() must
             # tolerate old rows that still carry them — they're silently ignored.
             'conversational_count': 7, 'last_encode_at_message': 0, 'boot_time': '',
