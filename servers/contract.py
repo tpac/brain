@@ -201,9 +201,6 @@ STRUCTURAL_FIELDS = {
     "type":       {"store": "nodes", "type": "str", "required": True},
     "title":      {"store": "nodes", "type": "str", "required": True},
     "content":    {"store": "nodes", "type": "str", "replace_on_revise": True, "history": "revision_history in metadata_kv (last 5)"},
-    # keywords column dropped in schema v28 — auto-extractor produced
-    # near-duplicate noise; FTS5 indexes title+content directly via
-    # porter stemming.
     "confidence": {"store": "nodes", "type": "float", "range": (0.0, 1.0), "default": 1.0},
     "locked":     {"store": "nodes", "type": "bool", "default": False},
     "archived":   {"store": "nodes", "type": "bool", "default": False},
@@ -776,11 +773,10 @@ def render_rich_node(node, config=None):
         lines.extend(scope_marks(node, scope, meta=meta))
     skip_keys = set((
         'metadata_created_at',
-        # keywords is a DEAD field — dropped from write surfaces in schema v28
-        # (the dedicated render block below was removed then). But pre-v28 nodes
-        # still carry it as metadata KV, and the generic KV loop would otherwise
-        # resurface it as "Keywords: ..." — re-displaying a field we retired.
-        # Skip it so the v28 "keywords off the rendered surface" decision holds.
+        # Nothing writes `keywords` any more, but ~648 nodes still carry the
+        # KV row, and the generic loop below renders every stored key. Without
+        # this skip they would each show a stray "Keywords: ..." line. Remove
+        # it only together with a purge of those rows, never before.
         'keywords',
         # situation is rendered at top-level (line above) — skip here to
         # avoid double-display. kv is canonical; promotion to top-level

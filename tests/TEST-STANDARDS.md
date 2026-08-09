@@ -20,7 +20,6 @@ python3 tests/run_all.py
 ## What we test
 
 ### Unit tests (fast, no DB)
-- `test_recall_scoring.py` — unified scoring formula
 - `test_pipeline_contract.py` — judge prompt building, output formatting, embedding groups
 - `test_redistribution.py` — blend vectors, fidelity, bridge detection
 

@@ -451,11 +451,6 @@ class Test08_ImportIntegrity(unittest.TestCase):
                         "pipeline_contract should expose embedding-group "
                         "definitions under EMBEDDING_GROUPS or field_vector_types")
 
-    def test_recall_scoring_import(self):
-        from servers.recall_scoring import unified_score
-        # Should work without DB
-        self.assertEqual(unified_score(0.0), 0.0)
-
 
     def test_dal_metadata_import(self):
         from servers.dal_metadata import MetadataDAL

@@ -599,10 +599,6 @@ class Fts5DAL:
         include_archived=True to SEE an archived hit and resolve_live it to its
         living survivor rather than drop it.
 
-        Note: prior to schema v28 there was a 4th column `keywords` carrying
-        an auto-extracted tokenizer dump. The column was dropped because the
-        extractor produced near-duplicate noise. Porter stemming on
-        title+content provides the same lexical signal without the noise.
         """
         safe_query = self._sanitize_query(query, prefix=prefix, column=column,
                                           min_token_len=min_token_len)
