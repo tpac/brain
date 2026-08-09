@@ -702,9 +702,12 @@ exist (the missing foundation the §17 caveats kept hitting).
   per-node, offline-backfilled] 0.55, **question 0.90**); FTS5 lexical; idf2 title boost (**additive**); session fatigue (mult `×(1−r)`,
   `r=count/(count+K)`, `K=10/(1+deg/10)`); **critical (mult `×3.0` — 100%-FP slot-squatter, `00f3b008`)**;
   situation (**additive** `+0.2·sim` when sim≥0.30); context-mismatch (mult `×0.7`); project (pre-filter).
-- **COLLECTED-BUT-DORMANT:** recency(created_at), last_accessed, access_count, confidence —
-  `recall_scoring.py:unified_score()` is built but **deferred because the multiplicative stack regressed
-  R@8 by −10pts** (the receipt that justifies log-additive + a control-gate).
+- **ABSENT — and no longer collected:** recency(created_at), last_accessed, access_count,
+  confidence. `recall_scoring.py:unified_score()` was built 2026-04-02, never wired in, and
+  **removed 2026-08-08** along with its constants and its per-row collection in the embedding scan.
+  Its "−10pts R@8" receipt was retracted as a clock-mismatch artifact (see
+  `RECALL-HYBRID-FUSION-DESIGN.md` § Correction) — so reviving rich-signal scoring means building it
+  fresh against the unified clock, not un-deferring this.
 - **ABSENT from scoring:** spread activation / traversal (removed 2026-04-14, moved post-surface,
   `pre_response_recall.py`); communities; source_refs/episodic (trace-lane flag-OFF); **correction edges
   (metadata-only — walked for enrichment via `correction_enrich`, never scored)**; co-access Hebbian (disabled).

@@ -1423,11 +1423,6 @@ class BrainRecallMixin:
             _recall_fatigue: Dict[str, int] = {}
             if _recall_ctx is not None:
                 _recall_fatigue = _recall_ctx.fatigue
-            # Per-node data collected here for unified_score() in STEP 6.
-            # created_at/emotion/access_count feed the modulator formula.
-            node_created_at = {}    # node_id → ISO timestamp (for freshness)
-            node_emotion = {}       # node_id → float (for emotional amplification)
-            node_access_count = {}  # node_id → int (for hub penalty)
 
             for row in emb_rows:
                 node_id = row['node_id']
@@ -1437,9 +1432,6 @@ class BrainRecallMixin:
                 node_critical[node_id] = row['critical']
                 node_titles[node_id] = row['title']
                 node_types[node_id] = row['type']
-                node_created_at[node_id] = row.get('created_at')
-                node_emotion[node_id] = row.get('emotion', 0)
-                node_access_count[node_id] = row.get('access_count', 0)
                 if blob:
                     if _laf_scores is not None:
                         # laf_v1: the field score IS the similarity — cosine and
@@ -1912,20 +1904,6 @@ class BrainRecallMixin:
             sit_score = situation_scores.get(nid, 0)
             if sit_score > 0:
                 blended += SITUATION_WEIGHT * sit_score
-
-            # v10: unified_score integration DEFERRED.
-            # Testing showed that applying modulator formula to the embedding path
-            # regresses R@8 by -10pts because the modulators dampen scores that were
-            # previously passing the relevance floor. The z-weighted top2-avg embedding
-            # groups (STEP 3.5) already provide the R@25 improvement.
-            #
-            # Next step: investigate why the frequency penalty and hub dampening
-            # cause regressions — likely need per-query-type adaptive weights
-            # rather than one fixed formula.
-            #
-            # The recall_scoring.py module is ready but not wired in yet.
-            # Data collection (node_created_at, node_emotion, node_access_count)
-            # is in place for when we're ready to integrate.
 
             # Minimum threshold — don't return noise
             # v9: Raised from 0.05 to NOISE_FLOOR_THRESHOLD (0.15)

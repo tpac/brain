@@ -2,7 +2,7 @@
 brain — Daemon Client
 
 Client-side functions for communicating with the brain daemon.
-Used by hook scripts, brain_mcp.py, and brain_cli.py.
+Used by hook scripts and brain_mcp.py.
 
 Singleton guarantee: ensure_daemon() uses fcntl.flock on a lock file.
 First caller acquires lock, starts daemon, releases lock.

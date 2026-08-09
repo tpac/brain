@@ -528,22 +528,6 @@ class Brain(
         """Generate 8-char hex node ID. ~4.3B combinations, collision-free at brain scale."""
         return uuid.uuid4().hex[:8]
 
-    # ─── Helper: Recency Scoring ───
-
-    # _recency_score, _frequency_score, _combined_score REMOVED 2026-04-02.
-    # Replaced by recall_scoring.unified_score() — a pure module with one formula
-    # for both embedding and keyword paths. See recall_scoring.py for the
-    # research-grounded formula (pattern completion + bounded modulators).
-
-    # ─── TF-IDF Methods ───
-
-
-    # ─── Connection/Edge Management ───
-
-
-    # ─── Embedding Integration ───
-
-
     # ─── Session Activity Tracking ───
     # Counters live on SessionContext, persisted via session_state.
     # See record_remember / record_message / record_edit_check /

@@ -104,54 +104,6 @@ LEARNING_RATE = 0.2
 MAX_WEIGHT = 1.0
 PRUNE_THRESHOLD = 0.05
 
-# ═══════════════════════════════════════════════════════════════
-# UNIFIED SCORING — recall_scoring.py
-# ═══════════════════════════════════════════════════════════════
-# Semantic similarity is the gatekeeper (multiplicative).
-# Other signals MODULATE within bounded ranges.
-# Zero semantic = zero final, regardless of other signals.
-#
-# Biology mapping:
-#   semantic_score → pattern completion (hippocampal CA3)
-#   freshness      → hippocampal fresh trace (created_at, NOT last_accessed)
-#   emotion        → amygdala modulation (GANE: winner-take-more)
-#   frequency      → cue overload penalty (high-access = low diagnostic)
-#   confidence     → consolidation strength
-#
-# Formula: final = base * (1.0 + recency + emotion + frequency + confidence)
-# Max modulator: 1.545x. Min modulator: 0.81x. Bounded.
-#
-# Tested 2026-04-02: fixes R@8 gap where embedding improvements (+20pts
-# in simulation) showed +0pts in production due to additive scoring.
-
-# Freshness from creation time — when the knowledge was born.
-# NOT last_accessed (self-fulfilling: mark_accessed refreshes every recall cycle).
-FRESHNESS_BANDS = [
-    {'max_hours': 1,              'boost': 0.30},  # just created
-    {'max_hours': 6,              'boost': 0.25},  # same session
-    {'max_hours': 24,             'boost': 0.20},  # today
-    {'max_hours': 72,             'boost': 0.12},  # this week
-    {'max_hours': 168,            'boost': 0.06},  # recent
-    {'max_hours': 720,            'boost': 0.02},  # this month
-    {'max_hours': float('inf'),   'boost': 0.0},   # established knowledge
-]
-
-# Emotion amplification — multiplicative on semantic base.
-# abs(emotion) * this = boost. Max 0.2 boost at emotion=1.0.
-EMOTION_AMPLIFICATION = 0.20
-
-# Frequency PENALTY — high access_count = hub = low diagnostic value.
-# Kicks in above threshold. Capped at max.
-FREQUENCY_PENALTY_THRESHOLD = 20   # Below this: no penalty
-FREQUENCY_PENALTY_SCALE = 0.03     # log(ac/threshold) * this
-FREQUENCY_PENALTY_MAX = 0.10       # Cap: never more than 10% penalty
-
-# Confidence modulator — validated knowledge gets mild boost.
-# Maps [0.1, 1.0] confidence to [-0.09, +0.045] boost.
-CONFIDENCE_NEUTRAL = 0.70          # No effect at default confidence
-CONFIDENCE_SCALE = 0.15            # (confidence - neutral) * this
-
-
 # Page sizes
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100

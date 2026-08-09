@@ -160,7 +160,6 @@ class BrainAssemblyMixin:
                 boost *= edge_neighbor_penalty
 
             # File relevance — match against title + content snippet
-            # (keywords column dropped in schema v28)
             file_relevance = 0
             if file_terms:
                 node_text = f"{r.get('title', '')} {(r.get('content') or '')[:300]}".lower()
@@ -602,7 +601,6 @@ class BrainAssemblyMixin:
         # 4. Context files (nodes of type 'file' matching the edited filename)
         context_files = []
         try:
-            # Match against title only (keywords column dropped in v28).
             # File-type nodes encode their topic in the title; content
             # snippet carries the body.
             cursor = self.conn.execute(
@@ -730,10 +728,9 @@ class BrainAssemblyMixin:
         matched = []
 
         try:
-            # Procedure-trigger matching: keywords column dropped in v28
-            # along with the broken auto-extractor. Trigger types
+            # Procedure-trigger matching: trigger types
             # ("session_start", "pre_edit", "pre_compact") and file_name
-            # filters now match against title + content only. Procedure
+            # filters match against title + content only. Procedure
             # nodes that need explicit tagging should include the trigger
             # in their content body (e.g. "Run on session_start").
             cursor = self.conn.execute(

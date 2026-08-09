@@ -706,9 +706,6 @@ class ConsolidationDecoder(IntegrationUnit):
     def _load_node_data(self, node_ids):
         """Batch-load title, type, content, confidence, encoding_source, timestamps.
 
-        Note: `keywords` column dropped in schema v28 (2026-05-24). FTS5
-        porter stemming on title+content provides the lexical signal that
-        the keywords field previously carried.
         """
         data = {}
         placeholders = ','.join('?' * len(node_ids))

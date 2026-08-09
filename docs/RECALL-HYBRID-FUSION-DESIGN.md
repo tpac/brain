@@ -54,7 +54,8 @@ The deferred `unified_score` modulator's **"R@8 regressed −10pts"** (`brain_re
 brain had no internal unified clock then; the eval replayed a *past* corpus under *different* clock
 logic, so the recency signal was computed wrong. We now have the unified conversation-clock
 (`clock.iso_now` / `conversation_now`). The regression is *not* evidence that rich-signal scoring
-hurts recall. (Update the stale code comment at `:1712` when the RRF change lands.)
+hurts recall. (The `:1712` comment and `recall_scoring.py` itself were removed 2026-08-08 —
+the retraction stands on its own; a future rich-signal attempt starts from scratch.)
 
 ## First concrete step — RRF stage-1 A/B (eval-gated, isolated)
 
