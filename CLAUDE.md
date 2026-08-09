@@ -110,6 +110,20 @@ Commit the `.py` change together with whatever prompted the registration. Never 
 
 `tests/test_prompt_sync.py` holds the contract: each seed file must export `SYSTEM_PROMPT`, fresh brains must seed every prompt in `SEED_PROMPTS`, sync must mirror the active version (not the latest registered), and seed must never overwrite an externally-registered version.
 
+### Schema / data migrations: one runner, three streams
+
+There is a fleet, so no change can be applied by hand on one machine. Every versioned change self-applies at open through `run_versioned_migrations` (`servers/schema.py`) — forward-only, idempotent by version guard, and a failing step skips the stamp so it retries instead of marking a half-applied DB current.
+
+| Stream | Counter | Constant |
+|---|---|---|
+| `brain.db` structure | `brain_meta.brain_schema_version` | `BRAIN_VERSION` + `MAIN_MIGRATIONS` |
+| `brain_logs.db` structure | `logs_meta.logs_schema_version` | `LOGS_VERSION` + `LOGS_MIGRATIONS` |
+| shipped prompt content | `logs_meta.seed_prompts_version` | `SEED_PROMPTS_VERSION` |
+
+Separate counters on purpose: structure changes rarely, prompt content often. To ship a change, add `(N, _migrate_vN)` to the right list and bump its constant — never an unversioned `ALTER` and never a hand-run script. A step that rewrites data must be sub-second (a slow boot migration reads as a closed port to the daemon watchdog, which then SIGKILLs it).
+
+`MIN_SUPPORTED_VERSION` is the floor: a DB below it is **refused loudly**, because the historical migration ladder was deleted as unreachable and an empty list would otherwise stamp an old DB as current while unmigrated.
+
 ### Python runtime — use `./dev`
 
 The brain bundles its own Python at `venv/bin/python` (3.11.11). That's the interpreter the daemon runs, the hooks resolve, and the one **not** blocked by macOS SIP — debuggers (`py-spy`, `lldb`) can only attach to this one.
