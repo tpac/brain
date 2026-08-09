@@ -314,10 +314,15 @@ class Brain(
         # Post-schema initialization (TF-IDF rebuild if needed)
         self._post_schema_init()
 
-        # Seed interactions if empty (first boot or cleared)
+        # Seed interactions if empty (first boot or cleared), then advance
+        # any install still running the shipped default forward. Seeding
+        # creates; reconcile updates — without the second, an install froze
+        # at first boot and no prompt improvement ever reached it.
         try:
-            from .interaction_seed import seed_interactions
+            from .interaction_seed import (seed_interactions,
+                                           reconcile_seeded_prompts)
             seed_interactions(self)
+            reconcile_seeded_prompts(self)
         except Exception as _e:
             print('[brain] WARNING: interaction seed failed: %s' % _e, flush=True)
 

@@ -222,8 +222,31 @@ the fetched `uv`. The earlier `!bin/brain-dashboard` gitignore fix no longer exi
 ### Phase 5 — Packaging & distribution
 
 Ordered execution checklist as of 2026-08-06. Every naming/model decision is closed
-(D-6…D-9); only **5.6 (D-5 seed pack)** is still a design question. Nothing here is
-started.
+(D-6…D-9); only **5.6 (D-5 seed pack)** is still a design question.
+
+**5.0 Plugin updates reach existing installs — CLOSED 2026-08-08.** Found during the
+claims audit and absent from this doc entirely, though it gated everything else:
+seeding is create-only (`_register` no-ops once a name exists), so an install froze
+at first boot and **no prompt improvement ever reached anyone who had already
+installed**. Measured: the 8 shipped prompt files took 31 commits in 90 days,
+reaching only fresh brains. Proven on the author's own machine — its `boot` config
+still carried `tom_quotes_limit` four months after the `.py` renamed that key.
+
+Publishing with this open would have meant every install frozen at whatever quality
+shipped that day, with the fix getting harder per install. Fixed as a versioned
+migration, not a deploy script — *code owns the defaults; each install migrates
+itself forward at open*, the same contract `BRAIN_VERSION` already has:
+- `logs_meta` + a shared `run_versioned_migrations` runner (`schema.py`) — brain.db,
+  brain_logs.db structure, and shipped-prompt content are now three version streams
+  through **one** mechanism. This also unblocks the parked speaker/counterpart
+  vocabulary migration, which was waiting on exactly these rails.
+- `SEED_PROMPTS_VERSION` (`interaction_seed.py`); bumping it is the deployment
+  decision, explicit in a reviewable diff.
+- Advances an install **only** while it still runs the shipped default: `active ==
+  the version we put there` **and** `max == active`. A registered-but-inactive
+  version means a human decided — `trace_recording` sits at active=1 with a dormant
+  v2 exactly like this, and without the second guard reconcile would have published
+  over it. Verified a no-op against a copy of the live brain.
 
 **5.1 Export script.** Materializes the public tree from the **build manifest**
 (D-7) + additive extras (README, LICENSE, CONTRIBUTING, `tests/`) − denylist.

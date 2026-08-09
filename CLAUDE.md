@@ -99,7 +99,10 @@ register_interaction(name, template)         # registers as v(N+1), DORMANT
 set_interaction_active(name, version=N+1)    # flips the runtime pointer
 ./dev sync-prompts                           # mirrors ACTIVE → .py files
 ./dev sync-prompts --check                   # CI-style non-zero-exit drift check
+# then bump SEED_PROMPTS_VERSION (servers/interaction_seed.py) — see below
 ```
+
+**Bump `SEED_PROMPTS_VERSION` or the change reaches nobody who already installed.** Syncing updates the `.py`; it does **not** update existing brains. Seeding is create-only (`_register` no-ops once a name exists), so without a bump an install stays on the prompts of its install date forever. `reconcile_seeded_prompts` advances an install **only** while it still runs the shipped default — `active_version` equals the version we put there **and** `max_version == active_version`. Any registered-but-inactive version means a human made a deployment decision, and that prompt is hands-off permanently. Bumping is the deployment decision, deliberately explicit in a reviewable diff.
 
 **Discipline** for an eval-gated prompt change: register DORMANT, run the eval, then activate + sync. Do **not** sync between register and activate — `sync-prompts` deliberately mirrors only the active version, so dormant candidates cannot leak into the seed file and be picked up by fresh-brain installs that skipped the eval.
 

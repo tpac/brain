@@ -43,6 +43,12 @@ from datetime import datetime, timezone
 BRAIN_VERSION = 30  # v30: drop nodes.project column — project is now system-stamped kv provenance (node_metadata_kv['project']), not a nodes column. _migrate_v30_project_to_kv moves values (slug map: everything→brain except the EX.CO trio→ex.co) then DROP COLUMN. See v29 note below for prior version.
 BRAIN_VERSION_KEY = 'brain_schema_version'
 
+# brain_logs.db structural version. v1 is the baseline stamp: the table
+# shapes that existed when versioning was introduced. Structural changes
+# from here get a numbered step in LOGS_MIGRATIONS and bump this.
+LOGS_VERSION = 1
+LOGS_VERSION_KEY = 'logs_schema_version'
+
 # ─── Allowed node types ───
 NODE_TYPES = [
     'person', 'project', 'decision', 'rule', 'concept',
@@ -246,6 +252,9 @@ TABLES = {
         )""",
         'columns': {'key': None, 'value': 'NULL', 'updated_at': 'NULL'}
     },
+    # logs_meta lives in LOG_TABLES (brain_logs.db) — see below. brain_meta
+    # is brain.db's counterpart; the two are deliberately separate so each
+    # DB carries its own version and can be migrated independently.
 
     # version_history — REMOVED v21 (dead table)
     # summaries — REMOVED v21 (dead table)
@@ -510,6 +519,81 @@ INDEXES = [
 def _now():
     """UTC ISO timestamp."""
     return datetime.now(timezone.utc).isoformat()
+
+
+# ═══════════════════════════════════════════════════════════════
+# Versioned migration runner — the ONE mechanism for "code changed,
+# migrate this install's data forward".
+#
+# There is a fleet now (installs other than the author's), so a change
+# cannot be applied by hand on one machine. Every versioned stream below
+# self-applies at open, exactly once, in order.
+#
+# Three streams use this, each with its own counter so they move
+# independently — structure changes rarely, prompt content often, and
+# conflating them would make every prompt edit look like a schema change:
+#
+#   brain.db      brain_meta.brain_schema_version   BRAIN_VERSION
+#   brain_logs.db logs_meta.logs_schema_version     LOGS_VERSION
+#   brain_logs.db logs_meta.seed_prompts_version    SEED_PROMPTS_VERSION
+#
+# Forward-only and idempotent by version guard: a step runs iff the DB's
+# stored version is below it. Re-opening a current DB does no writes.
+# ═══════════════════════════════════════════════════════════════
+
+def read_schema_version(conn, meta_table: str, version_key: str) -> int:
+    """Stored version for a stream, or 0 when never stamped.
+
+    0 covers both a fresh DB and a pre-versioning install — which is
+    exactly right: both need every step.
+    """
+    try:
+        cur = conn.execute(
+            "SELECT value FROM %s WHERE key = ?" % meta_table, (version_key,))
+        row = cur.fetchone()
+        return int(row[0]) if row else 0
+    except Exception:
+        return 0
+
+
+def stamp_schema_version(conn, meta_table: str, version_key: str,
+                         version: int) -> None:
+    """Record a stream as migrated up to `version`."""
+    conn.execute(
+        "INSERT OR REPLACE INTO %s (key, value, updated_at) "
+        "VALUES (?, ?, ?)" % meta_table,
+        (version_key, str(version), _now()))
+
+
+def run_versioned_migrations(conn, meta_table: str, version_key: str,
+                             target_version: int, steps, label: str = '') -> int:
+    """Run every step the stored version hasn't seen, then stamp.
+
+    `steps` is an ordered [(version, callable(conn))]. A step runs iff
+    stored_version < its version. Steps must be idempotent anyway — a
+    crash between the last step and the stamp replays them.
+
+    Returns the version found on entry (0 = fresh/pre-versioning), so the
+    caller can log or branch on "did this install just migrate".
+
+    A failing step is NOT swallowed: the stamp is skipped so the migration
+    retries on the next open rather than marking the DB current on top of
+    a half-applied change.
+    """
+    current = read_schema_version(conn, meta_table, version_key)
+    if current >= target_version:
+        return current
+    for step_version, step_fn in steps:
+        if current < step_version:
+            step_fn(conn)
+            if label:
+                print('[brain] %s: applied step v%d' % (label, step_version),
+                      flush=True)
+    stamp_schema_version(conn, meta_table, version_key, target_version)
+    if label and current > 0:
+        print('[brain] %s: v%d -> v%d' % (label, current, target_version),
+              flush=True)
+    return current
 
 
 def _backup_before_migration(db_path, from_version, to_version):
@@ -1178,12 +1262,9 @@ def ensure_schema(conn, db_path=None):
     # 1. Create brain_meta first
     conn.execute(TABLES['brain_meta']['create'])
 
-    # 2. Check current schema version
-    cur = conn.execute(
-        f"SELECT value FROM brain_meta WHERE key = ?", (BRAIN_VERSION_KEY,)
-    )
-    row = cur.fetchone()
-    current_version = int(row[0]) if row else 0
+    # 2. Check current schema version (shared reader — same primitive the
+    #    logs and prompt streams use, so all three read versions one way)
+    current_version = read_schema_version(conn, 'brain_meta', BRAIN_VERSION_KEY)
 
     # 2b. Backup before migration if version is changing
     backup_path = None
@@ -1263,12 +1344,10 @@ def ensure_schema(conn, db_path=None):
     except Exception as e:
         print(f"[brain] FTS5 setup warning: {e}")
 
-    # 7. Update version
+    # 7. Update version (shared stamper — see run_versioned_migrations)
     if current_version < BRAIN_VERSION:
-        conn.execute(
-            "INSERT OR REPLACE INTO brain_meta (key, value, updated_at) VALUES (?, ?, ?)",
-            (BRAIN_VERSION_KEY, str(BRAIN_VERSION), _now())
-        )
+        stamp_schema_version(conn, 'brain_meta', BRAIN_VERSION_KEY,
+                             BRAIN_VERSION)
 
         try:
             conn.execute(
@@ -1297,6 +1376,17 @@ def ensure_schema(conn, db_path=None):
 # These are operational/telemetry tables that grow unbounded and
 # don't need referential integrity with the knowledge graph.
 LOG_TABLES = {
+    # logs_meta — brain_logs.db's version counter, mirroring brain_meta in
+    # brain.db. Created FIRST (dict order is insertion order) so the
+    # migration runner can read a version before any other table is touched.
+    'logs_meta': {
+        'create': """CREATE TABLE IF NOT EXISTS logs_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at TEXT
+        )""",
+        'columns': {'key': None, 'value': 'NULL', 'updated_at': 'NULL'}
+    },
     # access_log — REMOVED v21 (dead table)
     'debug_log': {
         'create': """CREATE TABLE IF NOT EXISTS debug_log (
@@ -1524,12 +1614,27 @@ LOG_INDEXES = [
 ]
 
 
+# Numbered structural migrations for brain_logs.db. Empty at v1 — the
+# baseline is "whatever shape this DB already had", since the operations
+# below are self-detecting and idempotent and have run unversioned for a
+# long time. Rewriting proven code to be version-gated would risk the
+# working path for no gain; new structural changes ride these rails.
+LOGS_MIGRATIONS = []
+
+
 def ensure_logs_schema(conn):
     """Create all log tables in the logs database (brain_logs.db).
 
-    Also handles column migrations for existing tables via ALTER TABLE.
+    Also handles column migrations for existing tables via ALTER TABLE,
+    and runs the versioned structural migrations (LOGS_MIGRATIONS) that
+    every install applies itself at open.
     """
     conn.execute('PRAGMA journal_mode=WAL')
+
+    # logs_meta must exist before the runner can read a version. Cheap and
+    # idempotent, so it runs ahead of the main table loop rather than
+    # depending on dict ordering staying stable.
+    conn.execute(LOG_TABLES['logs_meta']['create'])
 
     # v29: trace_events.id and trace_embeddings.trace_id must migrate from
     # INTEGER to TEXT BEFORE the CREATE TABLE IF NOT EXISTS runs — otherwise
@@ -1543,9 +1648,11 @@ def ensure_logs_schema(conn):
 
     _add_column_if_missing(conn, 'trace_events', 'interaction_id', 'INTEGER')
 
-    # Per-message self-channel TTL: add expires_at to the one existing courier
-    # (the brain was never released — no fleet of DBs to migrate). send() stamps
-    # it on every new message; any legacy NULL row is swept by reap as dead.
+    # Per-message self-channel TTL: add expires_at to the courier. send()
+    # stamps it on every new message; any legacy NULL row is swept by reap
+    # as dead. (This predates versioning and is idempotent, so it stays
+    # unconditional — but note there IS a fleet now, so anything new goes
+    # through LOGS_MIGRATIONS instead of an unversioned ALTER.)
     _add_column_if_missing(conn, 'self_inflight', 'expires_at', 'TEXT')
 
     # Initial population for interaction_active — one-time migration.
@@ -1569,6 +1676,12 @@ def ensure_logs_schema(conn):
             conn.execute(idx)
         except Exception:
             pass
+
+    # Versioned structural migrations + baseline stamp. Runs after the
+    # tables exist so a step can assume current shapes.
+    run_versioned_migrations(conn, 'logs_meta', LOGS_VERSION_KEY,
+                             LOGS_VERSION, LOGS_MIGRATIONS,
+                             label='logs schema')
     conn.commit()
 
 
