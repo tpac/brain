@@ -116,7 +116,7 @@ def _is_worktree_checkout(repo_root: str) -> bool:
 
 # Absolute repo root of THIS checkout (servers/'s parent). Canonical home: the
 # daemon ping reports it as `source_dir`; _code_changed compares against it.
-# Bootstrap sites (brain_mcp, brain_cli, daemon_server.start) recompute it locally
+# Bootstrap sites (brain_mcp, daemon_server.start) recompute it locally
 # because they set sys.path BEFORE they can import this module.
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

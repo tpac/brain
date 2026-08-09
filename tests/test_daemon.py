@@ -7,7 +7,6 @@ Tests for the split daemon modules, including:
   - Concurrency: parallel reads don't block, writes serialize
   - Degradation: recall fallback flagging
   - Worktree: hooks.json has required hooks
-  - CLI: brain_cli.py commands work
   - Schema: encoding_version column exists and is set
 """
 
@@ -394,51 +393,6 @@ class TestDaemonModuleStructure(unittest.TestCase):
             with mock.patch.object(dc, "_IS_WORKTREE", False):
                 self.assertTrue(dc._code_changed({"result": {"code_fingerprint": "FP_B"}}),
                                 "old daemon + primary checkout + mismatch IS code-changed")
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# TEST 6: CLI
-# ══════════════════════════════════════════════════════════════════════════
-
-class TestBrainCLI(unittest.TestCase):
-    """Test brain_cli.py commands produce valid output."""
-
-    def _run_cli(self, *args):
-        """Run brain_cli.py with args, return (returncode, stdout, stderr)."""
-        import subprocess
-        cli_path = os.path.join(PROJECT_ROOT, 'servers', 'brain_cli.py')
-        result = subprocess.run(
-            [sys.executable, cli_path] + list(args),
-            capture_output=True, text=True, timeout=15,
-            env={**os.environ, 'PYTHONPATH': PROJECT_ROOT},
-        )
-        return result.returncode, result.stdout, result.stderr
-
-    def test_ping_outputs_json(self):
-        """brain ping should return valid JSON."""
-        rc, stdout, _ = self._run_cli('ping')
-        self.assertEqual(rc, 0)
-        data = json.loads(stdout)
-        self.assertIn('ok', data)
-
-    def test_status_outputs_json(self):
-        """brain status should return valid JSON."""
-        rc, stdout, _ = self._run_cli('status')
-        self.assertEqual(rc, 0)
-        data = json.loads(stdout)
-        self.assertIn('ok', data)
-
-    def test_no_args_shows_help(self):
-        """brain with no args should show help and exit non-zero."""
-        rc, stdout, stderr = self._run_cli()
-        self.assertNotEqual(rc, 0)
-
-    def test_recall_outputs_json(self):
-        """brain recall should return valid JSON (even if daemon is down)."""
-        rc, stdout, _ = self._run_cli('recall', 'test query')
-        # May fail if daemon not running, but output should still be JSON
-        data = json.loads(stdout)
-        self.assertIn('ok', data)
 
 
 # ══════════════════════════════════════════════════════════════════════════
