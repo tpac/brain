@@ -4,7 +4,7 @@
 machine 2026-07-17 (§6b). Now on **Goal B: the public OSS publish** (Phase 5.7, the one-way
 door). Naming + release model settled 2026-08-06 (**D-6…D-9**, §10); §8 fork #1 is
 closed. **D-5 (seed pack)** remains the open design gate; **Phase 1.5** (shipped
-`examples/` leak) is a new open blocker.
+`examples/` leak) was found and closed by deletion.
 **Claims audited against live code 2026-08-08** — the first such pass. Four false
 claims and three rotted `file:line` citations were corrected; the stale §3
 ("Current state", a June snapshot) was deleted outright. Section numbering skips 3
@@ -93,26 +93,39 @@ surfaces (excluding dev-only CLAUDE.md/docs/tests/eval) and triage anything new.
 - *Reversible:* n/a · *No-regret:* **yes** · *Risk:* none · *Effort:* S
 - *Verify:* every user-facing hit resolved or explicitly waived.
 
-**1.5 Stop shipping `servers/scales/s1/examples/` — OPEN, found 2026-08-08.**
-Ten files ship today carrying **165 operator-name lines**, including
-`a3_anchor_sees_tom.py` (the operator's name is in the *filename*). These are not
-comments: they are reconstructed real operator↔Anchor conversations authored as
-encoder few-shot data — docstrings describe *"Source conversation reconstructs a
-moment of trust formation"* and preserved verbatim profanity.
-**They have zero runtime consumers in shipped code.** Nothing under `servers/`,
-`hooks/`, `dashboard/`, or `scripts/` imports the package; `ALL_EXAMPLES` / `WAVE_1`
-are referenced nowhere outside it; `__init__.py` states the renderer is *"not yet
-built — v20+ work."* The only importer is `eval/agent_introspect/v20_assembly.py`,
-which **D-8 excludes from the public tree**. So in the public repo this is personal
-narrative content with no function.
-- *Fix:* exclude the directory in `build-plugin.sh` — one `grep -vE` beside the
-  existing `/archive/` exclusion. **Not** a 165-line genericization pass.
-- *Reversible:* yes · *No-regret:* **yes** · *Risk:* low (verify no runtime import
-  first — done) · *Effort:* S
-- *Verify:* the built manifest contains no `s1/examples/` path; suite still green.
-- *Why this was missed:* §6b's "every interaction **template** a fresh brain seeds
-  is operator-agnostic" is true, and it read as "Phase 1 is closed." It wasn't —
-  the templates were clean, an entire shipped directory was not.
+**1.5 `servers/scales/s1/examples/` — DELETED 2026-08-08.** Found during the claims
+audit. Ten files (2,589 lines) shipped to every install carrying **165
+operator-name lines**, including `a3_anchor_sees_tom.py` — the operator's name in a
+*filename*. Not comments: reconstructed real operator↔Anchor conversations authored
+as encoder few-shot data, one docstring noting preserved verbatim profanity.
+
+**What they actually were:** the *authoring source* for the §7.6 block that is now
+baked into `encoding_prompt.py`. Pipeline was dicts → `render_compressed` →
+`eval/agent_introspect/v20_assembly.py` → pasted into the prompt. All stages frozen
+2026-05-24/25 and never touched again.
+
+**The decisive finding — source had diverged from the live prompt.** The
+depersonalization pass ran on the *prompt*, not the source: live §7.6 reads "Sam"
+(×17, they/them) while the source still read "Tom" (×165). Regenerating §7.6 from
+these files would have silently **undone the depersonalization and re-shipped the
+operator's name**. They were not merely unused — they were stale in a dangerous
+direction.
+
+**Resolution: deleted outright** (operator call, over exclude-from-build or
+relocate-to-`eval/`). Recoverable from git if the D-5 seed-pack session ever wants
+the `counterfactual_bad` / `voice_annotations` / `choice_points` authoring data.
+`eval/agent_introspect/v20_assembly.py` deleted with them — a one-shot v20 assembly
+script that cannot run without its input and that nothing imports.
+- *Result:* shipped manifest **240 → 230 files**; operator-name lines across shipped
+  files **165 → 52**. No `build-plugin.sh` exclusion needed. Entry-point and
+  `eval.agent_introspect` imports verified; full suite run.
+- *Note:* the live prompt still carries the operator's verbatim
+  `"fuck. yeah. how did you see that."` attributed to "Sam" — retained
+  deliberately (nothing identifying, and it is the load-bearing evidence that the
+  seeing landed).
+- *Why this was missed for so long:* §6b's "every interaction **template** a fresh
+  brain seeds is operator-agnostic" is true, and it read as "Phase 1 is closed." It
+  wasn't — the templates were clean, an entire shipped directory was not.
 
 ### Phase 2 — Onboarding correctness
 
@@ -547,7 +560,7 @@ fast, exits cleanly for a next-session fast path otherwise).
 | Public repo becomes an unmergeable-PR magnet | D-9 | CONTRIBUTING states issues-only up front, not after the first rejected PR |
 | **Plugin rename orphans an existing brain → silent empty brain** | 5.2 / D-6 | `$CLAUDE_PLUGIN_DATA` is per-plugin; step 4b (`resolved.env`, not plugin-scoped) is the only net. Verify explicitly on a copy before renaming — id:80f585de |
 | Fresh installs write traces with **no identity stamping** | §8 #3 | Only signal is a one-shot daemon.log line no stranger will read. Fix via `userConfig.operator_name` (D-4 shape) before publish |
-| **Shipped `s1/examples/` carries real operator conversations** (165 name-lines, one in a *filename*) with **zero runtime consumers** | Phase 1.5 | Exclude the dir in `build-plugin.sh` — one `grep -vE`. Found 2026-08-08; Phase 1 read as closed because the *templates* were clean |
+| ~~Shipped `s1/examples/` carried real operator conversations~~ **CLOSED 2026-08-08 by deletion** | Phase 1.5 | Source had diverged from the live prompt ("Tom" ×165 vs "Sam" ×17) — regenerating §7.6 from it would have re-shipped the operator's name. 240→230 shipped files; 165→52 operator-name lines |
 | A `DONE` marker cites code that has since moved → gate looks verified but isn't | this doc | Cite by symbol, never `file:line`. Re-audit `DONE` items before executing any of them (this pass found 3 rotted anchors under DONE) |
 
 ---
