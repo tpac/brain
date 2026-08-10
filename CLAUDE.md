@@ -102,7 +102,7 @@ set_interaction_active(name, version=N+1)    # flips the runtime pointer
 # then bump SEED_PROMPTS_VERSION (servers/interaction_seed.py) — see below
 ```
 
-**Bump `SEED_PROMPTS_VERSION` or the change reaches nobody who already installed.** Syncing updates the `.py`; it does **not** update existing brains. Seeding is create-only (`_register` no-ops once a name exists), so without a bump an install stays on the prompts of its install date forever. `reconcile_seeded_prompts` advances an install **only** while it still runs the shipped default — `active_version` equals the version we put there **and** `max_version == active_version`. Any registered-but-inactive version means a human made a deployment decision, and that prompt is hands-off permanently. Bumping is the deployment decision, deliberately explicit in a reviewable diff.
+**Bump `SEED_PROMPTS_VERSION` or the change reaches nobody who already installed** — sync updates the `.py`, not existing brains. `reconcile_seeded_prompts` advances an install only while it still runs the shipped default (`active` == the version we seeded **and** `max == active`); any human-registered version makes that prompt hands-off permanently.
 
 **Discipline** for an eval-gated prompt change: register DORMANT, run the eval, then activate + sync. Do **not** sync between register and activate — `sync-prompts` deliberately mirrors only the active version, so dormant candidates cannot leak into the seed file and be picked up by fresh-brain installs that skipped the eval.
 
@@ -110,19 +110,9 @@ Commit the `.py` change together with whatever prompted the registration. Never 
 
 `tests/test_prompt_sync.py` holds the contract: each seed file must export `SYSTEM_PROMPT`, fresh brains must seed every prompt in `SEED_PROMPTS`, sync must mirror the active version (not the latest registered), and seed must never overwrite an externally-registered version.
 
-### Schema / data migrations: one runner, three streams
+### Migrations: one runner, three streams
 
-There is a fleet, so no change can be applied by hand on one machine. Every versioned change self-applies at open through `run_versioned_migrations` (`servers/schema.py`) — forward-only, idempotent by version guard, and a failing step skips the stamp so it retries instead of marking a half-applied DB current.
-
-| Stream | Counter | Constant |
-|---|---|---|
-| `brain.db` structure | `brain_meta.brain_schema_version` | `BRAIN_VERSION` + `MAIN_MIGRATIONS` |
-| `brain_logs.db` structure | `logs_meta.logs_schema_version` | `LOGS_VERSION` + `LOGS_MIGRATIONS` |
-| shipped prompt content | `logs_meta.seed_prompts_version` | `SEED_PROMPTS_VERSION` |
-
-Separate counters on purpose: structure changes rarely, prompt content often. To ship a change, add `(N, _migrate_vN)` to the right list and bump its constant — never an unversioned `ALTER` and never a hand-run script. A step that rewrites data must be sub-second (a slow boot migration reads as a closed port to the daemon watchdog, which then SIGKILLs it).
-
-`MIN_SUPPORTED_VERSION` is the floor: a DB below it is **refused loudly**, because the historical migration ladder was deleted as unreachable and an empty list would otherwise stamp an old DB as current while unmigrated.
+There is a fleet — no change can be applied by hand. `run_versioned_migrations` (`servers/schema.py`) applies every versioned change at open: forward-only, idempotent, and a failed step skips the stamp so it retries. Streams: `BRAIN_VERSION`/`MAIN_MIGRATIONS` (brain.db), `LOGS_VERSION`/`LOGS_MIGRATIONS` (brain_logs.db), `SEED_PROMPTS_VERSION` (prompt content) — separate counters because structure changes rarely and prompts often. Ship a change as `(N, _migrate_vN)` + a constant bump; never an unversioned `ALTER` or a hand-run script. Steps must be sub-second — a slow boot reads as a closed port and the watchdog SIGKILLs it. `MIN_SUPPORTED_VERSION` refuses older DBs loudly rather than stamping them current.
 
 ### Python runtime — use `./dev`
 
