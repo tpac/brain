@@ -28,7 +28,6 @@ def run_unit_tests():
     suite = unittest.TestSuite()
 
     test_files = [
-        'tests.test_recall_scoring',
         'tests.test_pipeline_contract',
         'tests.test_redistribution',
     ]

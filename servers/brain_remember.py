@@ -1066,9 +1066,6 @@ class BrainRememberMixin:
         except Exception as e:
             self._log_error('tfidf_vector_store', e, 'storing TF-IDF vector for node %s' % node_id[:12])
 
-        # v9: Sync FTS5 full-text search index. Keywords column is scheduled
-        # for removal in schema v28; for now FTS5 still has the column so we
-        # pass empty string. Once v28 lands, Fts5DAL.upsert signature drops it.
         try:
             from .dal import Fts5DAL
             self._fts.upsert(node_id, title, content or '')
@@ -1465,15 +1462,12 @@ class BrainRememberMixin:
         except Exception as e:
             self._log_error('embed_enqueue_revise', e, 'enqueue %s' % node_id[:12])
 
-        # Re-index TF-IDF from title + new_content (keywords column dropped
-        # 2026-05-24 along with the broken auto-extractor)
+        # Re-index TF-IDF from title + new_content.
         try:
             self._store_tfidf_vector(node_id, title, new_content)
         except Exception as e:
             self._log_error("revise_tfidf", e, "Failed to re-index TF-IDF for %s" % node_id[:8])
 
-        # v9: Re-sync FTS5 full-text search index (keywords scheduled for
-        # removal in schema v28; empty string until then)
         try:
             from .dal import Fts5DAL
             self._fts.upsert(node_id, title, new_content)
@@ -2421,9 +2415,6 @@ class BrainRememberMixin:
         Returns: {id, title, type, similarity, content_snippet} or None.
                  If top_k > 1, returns list of matches.
 
-        Note: prior to schema v28 this also returned a `keywords` field
-        carrying the auto-extracted tokenizer dump. That column was
-        dropped; verification now relies on content_snippet + title alone.
         """
         scored = {}  # id → result dict, dedup by node
 

@@ -197,7 +197,7 @@ class BrainTracesMixin:
         from .trace_contract import (JOURNAL_CONTINUITY_RUNS,
                                       JOURNAL_CONTINUITY_RUNS_DEFAULT,
                                       JOURNAL_RESOLVE_TAGS, JOURNAL_OPEN_TAGS,
-                                      JOURNAL_OPEN_PIN_CAP)
+                                      JOURNAL_OPEN_PIN_CAP, resolve_target)
         events = self.query_traces(
             ref_type='journal_note', scale=scale, ref_id=subject,
             session_id=session_id, chain_suffix=unit, hours=None, limit=limit,
@@ -214,6 +214,13 @@ class BrainTracesMixin:
             def _subj(e):
                 return (e.get('ref_id') or '').strip().casefold()
 
+            def _note(e):
+                return (e.get('metadata') or {}).get('note') or ''
+
+            # Every subject actually written in this fetch — the guard that
+            # keeps resolve_target from inventing a retire target.
+            known_subjects = {_subj(e) for e in events if _subj(e)}
+
             # Pass 1 — resolve-filtering, newest→oldest across ALL fetched
             # events: a `resolved`/`retire` note retires every strictly-older
             # note with the same (normalized) subject. Read-time only; the
@@ -225,7 +232,10 @@ class BrainTracesMixin:
                 if s and s in resolved_seen:
                     continue
                 if s and _tag(e) in JOURNAL_RESOLVE_TAGS:
-                    resolved_seen.add(s)
+                    # The slot the encoder filled may be the referenced note's
+                    # TAG rather than its subject; recover the real target.
+                    resolved_seen.add(
+                        resolve_target(s, _note(e), known_subjects))
                 alive.append(e)
 
             # Pass 2 — the K-run window over surviving notes.

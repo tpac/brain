@@ -22,9 +22,7 @@ HEALER = {
 
     # Field types to generate. Mirror of what the decoder flags (needs_question/
     # needs_situation/needs_reasoning) and the encoder writes (_store_fields) —
-    # keep in sync. (Was stale ['question','anchor','bridge','keywords'] — listed
-    # Q/A/B/K enrichment vectors the healer never actually writes, and the
-    # `keywords` slot referenced the column dropped in schema v28.)
+    # keep in sync.
     'fields_required': ['question', 'situation', 'reasoning'],
 
     # What triggers staleness (node needs re-healing)

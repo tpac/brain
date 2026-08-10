@@ -381,7 +381,7 @@ DIMENSIONS = {
 
     'D17_terminology_in_text': {
         'group': 'emergent_expression',
-        'intent': 'Inside-language used precisely in title/content (keywords column dropped v28; FTS5 porter stemming indexes title+content)',
+        'intent': 'Inside-language used precisely in title/content (FTS5 porter stemming indexes title+content)',
         'satisfies': [
             'terms used with codebase/SKILL.md meanings',
             'capitalized appropriately',
@@ -857,12 +857,6 @@ CROSS_DIM_RULES = [
     },
 
     {
-        'name': 'CR9_keywords_dropped_v28',
-        'rule': 'Terminology lives in title/content (FTS5 porter stemming covers morphological variants). Evaluator does NOT score keywords field — column dropped schema v28.',
-        'applies': ['D17'],
-    },
-
-    {
         'name': 'CR10_recall_time_ref_gating',
         'rule': 'Refs persist forever on node (decision 25, S0 retention guarantee). Recall decides expansion by age/query/format. Encoder writes faithfully; recall gates.',
         'applies': ['D25', 'D26'],
@@ -1296,7 +1290,7 @@ For each dimension D1..D36, classify the encoder output:
 - `violated`: clear violation of the dim's stated criteria
 - `n/a`: dimension structurally doesn't apply to this example shape
 
-For each cross-dim rule CR1..CR11, identify:
+For each cross-dim rule listed above, identify:
 - Did the tension this rule names actually surface in this example?
 - If yes, was the rule's resolution applied correctly?
 
@@ -1319,7 +1313,7 @@ For each cross-dim rule CR1..CR11, identify:
       "resolution_correct": true | false | "n/a",
       "note": "<observation about how the tension was navigated>"
     },
-    ...12 entries
+    ...one entry per cross-dim rule
   ],
   "verdict": {
     "is_canonical": true | false,

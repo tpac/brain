@@ -669,10 +669,16 @@ JOURNAL_NOTE_DELIMITER = '·'
 # Read-time only — traces stay append-only. `resolved`/`retire` drops older
 # same-subject notes from the continuity prefix; `open` pins the newest note
 # per subject beyond the K-run window until resolved. Matching is normalized
-# (casefold+strip) EXACT subject equality — the corpus showed paraphrase
-# references never match, so the instruction teaches exact-copy.
+# (casefold+strip) subject equality — the corpus showed paraphrase references
+# never match. Encoders reference a prior note by echoing its rendered head,
+# so the slot they fill is recovered at read time by `resolve_target` rather
+# than demanded of the prompt (an instruction costs encoder attention; a
+# tolerant reader costs nothing).
 JOURNAL_RESOLVE_TAGS = ('resolved', 'retire')
 JOURNAL_OPEN_TAGS = ('open', 'still-open')   # still-open: pre-existing wild alias
+# Verbs whose payload is (tag, subject) — the trailing `why` is optional, so a
+# two-field line is a complete lifecycle note rather than a malformed one.
+JOURNAL_LIFECYCLE_TAGS = JOURNAL_RESOLVE_TAGS + JOURNAL_OPEN_TAGS
 JOURNAL_OPEN_PIN_CAP = 10        # max pinned subjects carried beyond the window
 JOURNAL_OPEN_NUDGE_RUNS = 5      # open ×N at/past this → render the promote nudge
 # The escalation type is boot-visible: render_standing_items (frame.py) injects
@@ -857,13 +863,38 @@ def parse_journal_notes(text):
         parts = [p.strip() for p in line.split(JOURNAL_NOTE_DELIMITER, 2)]
         if len(parts) == 3:
             tag, subject, note = parts
+        elif parts[0].casefold() in JOURNAL_LIFECYCLE_TAGS:
+            # `resolved · subject` — a lifecycle verb carries its payload in
+            # (tag, subject) and the trailing `why` is optional. Without this
+            # branch the two-field default below reads the VERB as the subject,
+            # so the lifecycle action is lost and the line looks well-formed.
+            tag, subject, note = parts[0], parts[1], ''
         else:  # delimiter present + maxsplit=2 → exactly 2 parts here
             tag, subject, note = '', parts[0], parts[1]
-        if not subject or not note:
+        if not subject or (not note
+                           and tag.casefold() not in JOURNAL_LIFECYCLE_TAGS):
             malformed.append(raw)
             continue
         notes.append({'tag': tag, 'subject': subject, 'note': note})
     return notes, malformed
+
+
+def resolve_target(subject, note, known_subjects):
+    """The subject a `resolved`/`retire` note actually retires.
+
+    Encoders reference a prior note by echoing its rendered `tag · subject ·
+    note` head, which lands the old TAG in the subject slot and the real
+    subject at the head of `note` (maxsplit=2 keeps it intact there). Recover
+    it when that leading segment names a subject that exists — `known_subjects`
+    is the guard, so a target is never invented.
+
+    Falls back to the subject slot, so well-formed resolves are untouched.
+    Recovering also REPLACES the tag-shaped subject rather than adding to it:
+    otherwise a word like `friction` enters the retire set and silently drops
+    an unrelated note that happens to use it as a subject.
+    """
+    lead = (note or '').split(JOURNAL_NOTE_DELIMITER, 1)[0].strip().casefold()
+    return lead if lead and lead in known_subjects else subject
 
 
 JOURNAL_REVIEW_MARKER = '## Review'   # the section heading the encoder emits; the
