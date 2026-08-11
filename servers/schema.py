@@ -1,18 +1,7 @@
 """
-brain — Canonical Database Schema (v21)
+brain — Canonical Database Schema
 
 SINGLE SOURCE OF TRUTH for every table, column, index, and constraint.
-
-v21 changes (dead table cleanup):
-  - Removed 7 dead tables from brain.db: version_history, summaries, projects,
-    reasoning_chains, reasoning_steps, prune_archive, project_maps
-  - Added 2 production tables: embedding_fidelity, node_communities
-  - Removed 14 dead tables from brain_logs.db: access_log, recall_log, miss_log,
-    tuning_log, eval_snapshots, suggest_log, curiosity_log, health_log,
-    staged_learnings, message_stream, recall_gaps, pending_consolidation,
-    brain_telemetry, conflict_log
-  - Added hook_errors table to brain_logs.db
-  - Cleaned up stale migration code in ensure_logs_schema()
 
 HOW MIGRATION WORKS:
   1. On startup, Brain calls ensure_schema(conn)
@@ -21,13 +10,20 @@ HOW MIGRATION WORKS:
      and ALTERs in any missing columns
   4. Creates all indexes from INDEXES
 
-HOW TO ADD A NEW COLUMN:
+HOW TO ADD A NEW COLUMN (brain.db only):
   Add it to the relevant table in TABLES below. That's it.
   ensure_schema will ALTER TABLE ADD it on next startup.
 
-HOW TO ADD A NEW NODE TYPE:
-  Edit NODE_TYPES below. ensure_schema will rebuild the nodes table
-  with the updated CHECK constraint (SQLite can't ALTER CHECK).
+  This does NOT hold for LOG_TABLES. ensure_logs_schema runs
+  CREATE TABLE IF NOT EXISTS and no column diff, so a column added to a
+  LOG_TABLES entry silently never appears on an existing brain_logs.db.
+  Add it with an explicit _add_column_if_missing call.
+
+NODE TYPES:
+  NODE_TYPES below is documentation and preferred-type guidance only.
+  There is no CHECK constraint to update — NODE_TYPE_CHECK has been empty
+  since v8.3 so agents can use any type string. Editing NODE_TYPES changes
+  no table and requires no migration.
 
 WHAT NOT TO DO:
   Do NOT add migration code in brain.py.
@@ -1270,17 +1266,11 @@ def ensure_schema(conn, db_path=None):
             (BRAIN_VERSION_KEY, str(BRAIN_VERSION), _now())
         )
 
-        try:
-            conn.execute(
-                "INSERT INTO version_history (version, migration_ts, description, backup_path) VALUES (?, ?, ?, ?)",
-                (BRAIN_VERSION, _now(),
-                 f'Schema ensured: v{current_version} -> v{BRAIN_VERSION} (serverless Python)',
-                 backup_path)
-            )
-        except Exception:
-            pass
-
-        print(f"[brain] Schema ensured: v{current_version} -> v{BRAIN_VERSION}")
+        # Name the backup here: the retry path in _backup_before_migration
+        # returns an existing file without printing, so this is the only line
+        # that reports it on a re-run.
+        print(f"[brain] Schema ensured: v{current_version} -> v{BRAIN_VERSION}"
+              + (f" (backup: {backup_path})" if backup_path else ""))
 
     # 8. One-time data backfills
     if current_version > 0 and current_version < BRAIN_VERSION:
