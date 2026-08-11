@@ -165,6 +165,63 @@ def brain_tmp_dir() -> str:
     return os.environ.get('BRAIN_TMP_DIR', '/tmp')
 
 
+def _read_env_file_key(path: str, key: str):
+    """Read one KEY=value from a config file that shell consumers SOURCE —
+    so tolerate the shell grammar the same file is written in: optional
+    `export `, single/double quotes, inline comments on unquoted values,
+    $VAR expansion. resolved.env writes values single-quoted. Returns None
+    if absent/unreadable — the two readers of one file must not disagree
+    on its grammar (that's the split-brain class D-13 kills)."""
+    try:
+        with open(path, errors='replace') as f:
+            for raw in f:
+                line = raw.strip()
+                if line.startswith('export '):
+                    line = line[len('export '):].lstrip()
+                if not line.startswith(key + '='):
+                    continue
+                v = line.split('=', 1)[1].strip()
+                if v[:1] in ('"', "'"):
+                    end = v.find(v[0], 1)
+                    v = v[1:end] if end > 0 else v[1:]
+                else:
+                    v = v.split(' #', 1)[0].rstrip()
+                if v:
+                    return os.path.expanduser(os.path.expandvars(v))
+    except OSError:
+        pass
+    return None
+
+
+def resolve_db_dir() -> str:
+    """Where the brain's data lives — the Python half of the resolution
+    contract (D-13: one configurable location, every runtime resolves
+    through the same chain).
+
+    Order: BRAIN_DB_DIR env (hook-exported or shell; trusted — the hook
+    wrappers validate it) → the user config file (~/.config/brain/env — the
+    one knob users edit; adopted only if the dir exists) → resolved.env
+    (the record resolve-brain-db.sh persists after running its full ladder;
+    adopted only if brain.db is actually there, mirroring the shell's 4b
+    guard so a stale record can't birth a shadow brain) → the legacy dir.
+    Python never re-runs the shell ladder's inference; it reads the knob
+    and the persisted record.
+    """
+    d = os.environ.get('BRAIN_DB_DIR')
+    if d:
+        return d
+    xdg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(
+        os.path.expanduser('~'), '.config')
+    cfg = _read_env_file_key(os.path.join(xdg, 'brain', 'env'), 'BRAIN_DB_DIR')
+    if cfg and os.path.isdir(cfg):
+        return cfg
+    rec = _read_env_file_key(
+        os.path.join(xdg, 'brain', 'resolved.env'), 'BRAIN_DB_DIR')
+    if rec and os.path.isfile(os.path.join(rec, 'brain.db')):
+        return rec
+    return os.path.join(os.path.expanduser('~'), 'AgentsContext', 'brain')
+
+
 def get_daemon_addr():
     """Get (host, port) for TCP daemon connection."""
     return (DAEMON_HOST, DAEMON_PORT)

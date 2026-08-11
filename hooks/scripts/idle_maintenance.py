@@ -7,13 +7,20 @@ import sys, os, json, time
 sys.path.insert(0, os.path.dirname(__file__))
 from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, run_hook
 
-# Observable: log every invocation so we can verify the notification fires
-_IDLE_LOG = os.path.expanduser("~/AgentsContext/brain/idle_fires.log")
+# Observable: log every invocation so we can verify the notification fires.
+# Lives in the resolved brain dir — the wrapper (idle-maintenance.sh) sources
+# resolve-brain-db.sh and exits before us unless BRAIN_DB_DIR is set.
+def _idle_log_path():
+    db_dir = os.environ.get("BRAIN_DB_DIR")
+    return os.path.join(db_dir, "idle_fires.log") if db_dir else None
 
 def _log_fire(msg):
     """Append to idle fire log — proves the notification reached us."""
+    path = _idle_log_path()
+    if not path:
+        return
     try:
-        with open(_IDLE_LOG, "a") as f:
+        with open(path, "a") as f:
             f.write("%s %s\n" % (time.strftime("%Y-%m-%dT%H:%M:%S"), msg))
     except Exception:
         pass

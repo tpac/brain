@@ -21,7 +21,7 @@ from typing import Any, Dict, Optional
 from .daemon_config import (
     _code_fingerprint, _CODE_FINGERPRINT, _IS_WORKTREE, REPO_ROOT,
     get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
-    get_recovery_state_path, is_maintenance_mode,
+    get_recovery_state_path, is_maintenance_mode, resolve_db_dir,
     LAUNCHD_THROTTLE_INTERVAL_S,
 )
 from .daemon_launch import (
@@ -395,9 +395,7 @@ def _relaunch_daemon(db_path: Optional[str]):
     # No launchd (or kickstart failed) and we ARE the source — own the kill + respawn.
     kill_daemon()
     if not db_path:
-        db_dir = os.environ.get("BRAIN_DB_DIR",
-                                os.path.join(os.path.expanduser("~"), "AgentsContext", "brain"))
-        db_path = os.path.join(db_dir, "brain.db")
+        db_path = os.path.join(resolve_db_dir(), "brain.db")
     ensure_daemon(db_path)
 
 

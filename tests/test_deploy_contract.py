@@ -193,6 +193,20 @@ class TestHostNeutrality:
             f'{leaks} — D-11 forbids the service layer deriving anything '
             f'else from plugin.json')
 
+    def test_no_host_install_layout_in_neutral_layers(self):
+        # The host-neutral layers must not know where any host installs
+        # plugins. skills/ and hooks/ ARE the CC adapter — exempt by scope.
+        # (Caught live: daemon_launch.py hardcoded a marketplace install path
+        # as an interpreter candidate; the manifest-ref check above was blind
+        # to it because install paths never mention plugin.json.)
+        pattern = re.compile(r'\.claude/plugins|plugins/marketplaces')
+        leaks = [
+            rel for rel in SCOPE
+            if rel.startswith(('servers/', 'dashboard/')) and pattern.search(_read(rel))
+        ]
+        assert not leaks, (
+            f'host install-layout paths in host-neutral layers: {leaks}')
+
 
 class TestNameDerivation:
     """D-12: instance names derive from config; no shipped `Anchor` literal.

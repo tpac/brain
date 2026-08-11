@@ -24,11 +24,50 @@ from contextlib import contextmanager
 from .log import warn
 
 
+def _read_env_file_key(path: str, key: str):
+    """Shell-grammar-tolerant KEY=value read (export prefix, quotes, inline
+    comments, $VAR) — mirror of servers.daemon_config._read_env_file_key;
+    kept in sync by tests/test_db_resolution.py."""
+    try:
+        with open(path, errors="replace") as f:
+            for raw in f:
+                line = raw.strip()
+                if line.startswith("export "):
+                    line = line[len("export "):].lstrip()
+                if not line.startswith(key + "="):
+                    continue
+                v = line.split("=", 1)[1].strip()
+                if v[:1] in ('"', "'"):
+                    end = v.find(v[0], 1)
+                    v = v[1:end] if end > 0 else v[1:]
+                else:
+                    v = v.split(" #", 1)[0].rstrip()
+                if v:
+                    return os.path.expanduser(os.path.expandvars(v))
+    except OSError:
+        pass
+    return None
+
+
 def _brain_dir() -> str:
-    return os.environ.get(
-        "BRAIN_DB_DIR",
-        os.path.join(os.path.expanduser("~"), "AgentsContext", "brain"),
-    )
+    """Resolve the brain data dir — the dashboard's sanctioned mirror of
+    daemon_config.resolve_db_dir (the disconnection contract forbids importing
+    servers.*; both read the same D-13 chain): BRAIN_DB_DIR env → the user
+    config file (~/.config/brain/env, if the dir exists) → resolved.env (the
+    shell resolver's record, only if brain.db is actually there) → legacy."""
+    d = os.environ.get("BRAIN_DB_DIR")
+    if d:
+        return d
+    xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(
+        os.path.expanduser("~"), ".config")
+    cfg = _read_env_file_key(os.path.join(xdg, "brain", "env"), "BRAIN_DB_DIR")
+    if cfg and os.path.isdir(cfg):
+        return cfg
+    rec = _read_env_file_key(
+        os.path.join(xdg, "brain", "resolved.env"), "BRAIN_DB_DIR")
+    if rec and os.path.isfile(os.path.join(rec, "brain.db")):
+        return rec
+    return os.path.join(os.path.expanduser("~"), "AgentsContext", "brain")
 
 
 def brain_db_path() -> str:
