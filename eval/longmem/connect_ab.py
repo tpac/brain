@@ -12,7 +12,9 @@ Per connect_to entry, the target's `title` slot is classified:
   placeholder     literal `<...>` leaked from the prompt examples
   sibling_title   matches another node created in the same call (Pass 1 path)
   catalog_title   matches a catalog title (old Pass 3 path — what D retires)
-  unresolved      matches nothing visible (would drop silently pre-D)
+  title_from_input  exact title visible elsewhere in the input (edge lines,
+                  scout notes) — real node, resolves via Pass 3 in production
+  unresolved      matches nothing visible — hub synthesis / confabulation
 
 Reads are stubbed identically across arms (no brain to serve them); the run
 stops at the first round containing a write tool, which is the scored round.
@@ -121,6 +123,7 @@ def run_item(client, path, system_prompt, effort, tools):
     if effort:
         kwargs['output_config'] = {'effort': effort}
 
+    input_text = cap['user_content']
     rows, usage = [], {'input': 0, 'output': 0, 'cache_read': 0, 'cache_write': 0}
     for rnd in range(1, MAX_ROUNDS + 1):
         resp = client.messages.create(**kwargs)
@@ -146,11 +149,18 @@ def run_item(client, path, system_prompt, effort, tools):
                         # sibling (Pass 1 scope is one call), not in the
                         # rendered catalog — production limps through FTS.
                         cls = 'sibling_cross_call'
+                    elif (cls == 'unresolved'
+                            and str(e.get('title') or '').strip() in input_text):
+                        # Exact title visible in a non-catalog input surface
+                        # (edge line, scout note) — a real node; resolves via
+                        # Pass 3 in production. Not confabulation.
+                        cls = 'title_from_input'
                     rows.append({
                         'node': node_title, 'target': e.get('title'),
                         'relation': e.get('relation'), 'class': cls})
             return {'rows': rows, 'rounds': rnd, 'usage': usage,
-                    'write_calls': len(writes), 'status': 'ok'}
+                    'write_calls': len(writes), 'status': 'ok',
+                    'created_titles': sorted(round_created)}
         if not calls or resp.stop_reason != 'tool_use':
             return {'rows': [], 'rounds': rnd, 'usage': usage,
                     'write_calls': 0, 'status': 'no_write'}
