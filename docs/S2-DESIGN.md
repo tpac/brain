@@ -407,7 +407,7 @@ Each unit maintains its own cursor — last run timestamp or last processed node
 - **Consolidation** (`consolidation_decoder.run`) — one cold-start covers the backlog, then incremental (`changed @ all.T`, no-miss by construction); skip when nothing changed; a similarity-threshold change forces a fresh cold-start. The cutoff is stamped by the orchestrator only after the encoder completes, so a mid-run encoder failure retries rather than skipping past. Keys `s2_consolidation_last_run_ts` / `s2_consolidation_last_threshold`.
 - **AspectIntegration** (empty-batch early-out) and **Healer** (`_has_new_traces` + `gaps==0`) were already correctly gated.
 
-Full write-up: `docs/S2-GATING-AND-TEST-CLEANUP-HANDOFF.md`.
+Full write-up: `docs/archive/session-handoffs/S2-GATING-AND-TEST-CLEANUP-HANDOFF.md`.
 
 ### Shared Infrastructure
 

@@ -6,7 +6,7 @@ AND the consolidation encoder now use it: `s2_consolidation_enrichment` **v7 act
 `suppression_relations` += {`corrects`, `supersedes`}, merged to main (`1277a57`).
 K=3 ground-truth corpus: correct 10→15, under-merge 8→3, over-merge 1, lossless 86%.
 Full result + the matched-pair finding (prompt + decoder must ship together):
-`docs/S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md` §0.
+`docs/archive/session-handoffs/S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md` §0.
 **Deferred:** the live real-pair merge (`96d2fdf8`/`426ae3cd`, needs operator unlock),
 Track 1b (locked-refusal log→warning + alert), edge-direction fidelity (Known issue #2).
 Lever A goes live in the running daemon on next **restart**.
