@@ -7,7 +7,7 @@ complicated, not because it's unsafe. Fewer dependencies, concentrated, not spre
 places and different paths."*
 
 **Boundary traced.** `servers/daemon_server.py` (1296L), `servers/daemon_client.py` (650L),
-`servers/daemon_config.py` (190L), `hooks/scripts/{start-daemon.sh,restart-daemon.sh,boot-brain.sh}`,
+`servers/daemon_config.py` (190L), `hooks/scripts/{brain-daemon,rebrain-daemon,boot-brain.sh}`,
 the launchd plist, and the discovery-address callers across `brain_mcp.py`, `hook_common.py`,
 `brain_cli.py`. Reviewed across five angles (placement, unification, cohesion, coupling, altitude).
 
@@ -348,7 +348,7 @@ lock-holder cannot reach the `_run` duplicate pre-check.
 ## Step 7 — Give the launchd plist a repo home (templatized) + installer
 
 **Problem.** The single most load-bearing lifecycle artifact — the plist encoding `KeepAlive`,
-`RunAtLoad`, `ThrottleInterval`, the `start-daemon.sh` entrypoint, the CPU env — exists ONLY as a
+`RunAtLoad`, `ThrottleInterval`, the `brain-daemon` entrypoint, the CPU env — exists ONLY as a
 hand-installed `~/Library/LaunchAgents/com.brain.daemon.plist` with a hardcoded `/Users/tpac` path
 and **no in-repo template or installer**. Daemon-side comments reference it as if it were a repo
 file. A fresh install has no way to provision the LaunchAgent. The dashboard already solved exactly

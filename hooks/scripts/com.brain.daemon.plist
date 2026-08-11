@@ -17,7 +17,7 @@
 	     routes through `launchctl kickstart -k` — no process ever Popens a rival
 	     alongside it. This file is where that policy is ENCODED.
 
-	     Launches hooks/scripts/start-daemon.sh — the single daemon entrypoint
+	     Launches hooks/scripts/brain-daemon — the single daemon entrypoint
 	     (no hardcoded Python path); it sources brain-env.sh and execs the venv
 	     Python so the interpreter + boot sequence follow the repo, not this XML.
 
@@ -29,7 +29,7 @@
 	     from the Python constants again (the drift Step 1 named). -->
 	<key>ProgramArguments</key>
 	<array>
-		<string>__PLUGIN_DIR__/hooks/scripts/start-daemon.sh</string>
+		<string>__PLUGIN_DIR__/hooks/scripts/brain-daemon</string>
 	</array>
 
 	<key>EnvironmentVariables</key>

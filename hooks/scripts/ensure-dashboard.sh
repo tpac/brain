@@ -41,11 +41,14 @@ if [ "$(uname -s)" = "Darwin" ] && [ -f "$TEMPLATE" ] && [ -n "${BRAIN_DB_DIR:-}
   # rationale there): keep the installed tree while its launcher exists, and
   # let only the durable adoption channels re-point BRAIN_DB_DIR; an
   # ephemeral shell override must not hijack the singleton dashboard.
+  # Launcher-name-agnostic extraction + template-launcher validity — mirror
+  # of install-daemon-service.sh (rename-safe: see the rationale there).
+  LAUNCHER="brain-dashboard"
   RENDER_PLUGIN_DIR="$PLUGIN_DIR"
   RENDER_DB_DIR="$BRAIN_DB_DIR"
   if [ -f "$TARGET" ]; then
-    _installed_plugin_dir="$(sed -n 's|.*<string>\(.*\)/hooks/scripts/brain-dashboard</string>.*|\1|p' "$TARGET" | head -1)"
-    if [ -n "$_installed_plugin_dir" ] && [ -x "$_installed_plugin_dir/hooks/scripts/brain-dashboard" ]; then
+    _installed_plugin_dir="$(sed -n 's|.*<string>\(.*\)/hooks/scripts/[^<]*</string>.*|\1|p' "$TARGET" | head -1)"
+    if [ -n "$_installed_plugin_dir" ] && [ -x "$_installed_plugin_dir/hooks/scripts/$LAUNCHER" ]; then
       RENDER_PLUGIN_DIR="$_installed_plugin_dir"
     fi
     _installed_db_dir="$(sed -n '/<key>BRAIN_DB_DIR<\/key>/{n;s|.*<string>\(.*\)</string>.*|\1|p;}' "$TARGET" | head -1)"

@@ -1017,7 +1017,7 @@ class BrainDaemon:
 
         # Clear bytecode cache so the respawned daemon loads fresh code (the
         # point of a restart). Both the KeepAlive respawn and the no-launchd
-        # Popen re-run start-daemon.sh, which imports servers.* from __pycache__.
+        # Popen re-run brain-daemon, which imports servers.* from __pycache__.
         import shutil
         servers_dir = os.path.dirname(os.path.abspath(__file__))
         project_dir = os.path.dirname(servers_dir)

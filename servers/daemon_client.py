@@ -185,7 +185,7 @@ def _db_dir_changed(resp: dict, db_path: str) -> bool:
     a daemon that doesn't report db_dir (pre-step-4 code) never restarts on
     this signal; the code-fingerprint check already covers that daemon.
 
-    Convergence: kickstart relaunches via start-daemon.sh, which re-runs the
+    Convergence: kickstart relaunches via brain-daemon, which re-runs the
     resolution ladder (step 4a), against a plist install-daemon-service.sh
     re-materialized at boot (step 4c) — so the restarted daemon lands on the
     same dir this session resolved."""

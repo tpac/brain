@@ -912,8 +912,8 @@ class TestDaemonPlistTemplateContract(unittest.TestCase):
         self.assertIn("__PLUGIN_DIR__", raw)
         self.assertIn("__BRAIN_DB_DIR__", raw)
         self.assertEqual(plist["ProgramArguments"],
-                         ["__PLUGIN_DIR__/hooks/scripts/start-daemon.sh"],
-                         "entrypoint must be start-daemon.sh under the plugin-dir token")
+                         ["__PLUGIN_DIR__/hooks/scripts/brain-daemon"],
+                         "entrypoint must be brain-daemon under the plugin-dir token")
         self.assertTrue(plist["KeepAlive"])
         self.assertTrue(plist["RunAtLoad"])
 
@@ -978,7 +978,7 @@ class TestDbDirDivergence(unittest.TestCase):
     def test_db_dir_mismatch_kickstarts_once(self):
         # Healthy, current code, but writing ANOTHER brain → exactly one
         # launchd kickstart (never a spawn); post-kickstart the daemon reports
-        # the session's dir (plist re-materialized at boot + start-daemon.sh
+        # the session's dir (plist re-materialized at boot + brain-daemon
         # re-ran the ladder) → ready.
         stale = self._resp("/somewhere/else")
         fresh = self._resp(self._dir)
@@ -1183,7 +1183,7 @@ class TestInstallerPlistDrift(unittest.TestCase):
         tree = os.path.join(self._home, "other-tree")
         scripts = os.path.join(tree, "hooks", "scripts")
         os.makedirs(scripts)
-        for name in ("start-daemon.sh", "brain-dashboard"):
+        for name in ("brain-daemon", "brain-dashboard"):
             p = os.path.join(scripts, name)
             with open(p, "w") as f:
                 f.write("#!/bin/bash\n")
@@ -1206,11 +1206,36 @@ class TestInstallerPlistDrift(unittest.TestCase):
         r = self._run(self.DAEMON_SCRIPT)
         self.assertEqual(r.returncode, 0, r.stderr)
         content = open(target).read()
-        self.assertIn(owner + "/hooks/scripts/start-daemon.sh", content,
+        self.assertIn(owner + "/hooks/scripts/brain-daemon", content,
                       "installed tree must survive re-materialization")
         repo = os.path.realpath(os.path.join(os.path.dirname(self.DAEMON_SCRIPT), "..", ".."))
-        self.assertNotIn(repo + "/hooks/scripts/start-daemon.sh", content,
+        self.assertNotIn(repo + "/hooks/scripts/brain-daemon", content,
                          "the caller's tree must not capture the service")
+
+    def test_daemon_legacy_launcher_name_still_preserves_tree(self):
+        # An installed plist from BEFORE the start-daemon.sh → brain-daemon
+        # rename: extraction is launcher-name-agnostic, validity checks the
+        # launcher the CURRENT template ships — so the old tree is preserved
+        # and the re-materialized plist execs the new launcher in it.
+        self._fake_launchctl(print_rc=0)
+        owner = self._fake_owner_tree()  # has brain-daemon, not start-daemon.sh
+        target = os.path.join(self._agents, "com.brain.daemon.plist")
+        template = os.path.join(os.path.dirname(self.DAEMON_SCRIPT),
+                                "com.brain.daemon.plist")
+        legacy = open(template).read() \
+            .replace("__PLUGIN_DIR__/hooks/scripts/brain-daemon",
+                     "__PLUGIN_DIR__/hooks/scripts/start-daemon.sh") \
+            .replace("__PLUGIN_DIR__", owner) \
+            .replace("__BRAIN_DB_DIR__", self._dbdir)
+        with open(target, "w") as f:
+            f.write(legacy)
+        r = self._run(self.DAEMON_SCRIPT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        content = open(target).read()
+        self.assertIn(owner + "/hooks/scripts/brain-daemon", content,
+                      "old tree preserved, new launcher name materialized")
+        self.assertNotIn("start-daemon.sh", content)
+        self.assertIn("bootout", self._verbs())
 
     def test_daemon_foreign_owned_current_plist_is_no_drift(self):
         # Same template shape, different (valid) owner tree → NOT drift.
@@ -1353,7 +1378,7 @@ class TestResolverEnvHintDemotion(unittest.TestCase):
         self._resolve({"BRAIN_DB_DIR": d, "BRAIN_RESOLVE_NO_PERSIST": "1"})
         self.assertFalse(
             os.path.exists(os.path.join(self._xdg, "brain", "resolved.env")),
-            "a NO_PERSIST consumer (start-daemon.sh) must not write the record")
+            "a NO_PERSIST consumer (brain-daemon) must not write the record")
 
 
 class TestDaemonPortEnvFirst(unittest.TestCase):
