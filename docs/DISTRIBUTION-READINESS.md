@@ -4,7 +4,10 @@
 machine 2026-07-17 (§6b). Now on **Goal B: the public OSS publish** (Phase 5.7, the one-way
 door). Naming + release model settled 2026-08-06 (**D-6…D-9**, §10); §8 fork #1 is
 closed. **D-5 (seed pack)** remains the open design gate; **Phase 1.5** (shipped
-`examples/` leak) was found and closed by deletion.
+`examples/` leak) was found and closed by deletion. **2026-08-09:** D-11 (two
+identities — the service layer never renames) and D-12 (every instance name derives
+from config) added; 5.0 fleet gap closed in code; 5.0a/5.0b/5.0c are the new
+prerequisites in front of the rename.
 **Claims audited against live code 2026-08-08** — the first such pass. Four false
 claims and three rotted `file:line` citations were corrected; the stale §3
 ("Current state", a June snapshot) was deleted outright. Section numbering skips 3
@@ -38,11 +41,13 @@ stated reason.
 | D-3 | **Cross-platform v1 now, v2 deferred.** Ship the cheap ability to run on Linux (graceful degradation + first-class Popen fallback). Defer systemd parity / supervisor abstraction until a real Linux user exists. | v2's true cost isn't the build — it's the permanent obligation to validate the *most dangerous subsystem* (daemon lifecycle) on two OSes forever. Don't pay that tax for users who may not exist yet. |
 | D-4 | **`userConfig` is additive, never a replacement.** Add the CC-native prompt-on-enable + keychain path for the API key, but keep the `~/.config/brain/env` fallback. | `userConfig` only exists inside the plugin runtime; the daemon running standalone / in Cowork still needs the env file. Best UX in-plugin, still works out-of-plugin. |
 | D-5 | **Seed pack / persona design is its own session.** Approach: mine Tom's real brain for nodes that (a) *teach mechanisms* in detail and (b) make *good live encoder examples*, then genericize them into the shipped seed pack. | Whatever a stranger's Anchor wakes up as is a lasting artifact every new brain grows from — semi-irreversible. Deserves a dedicated design pass, not a find-replace. Overlaps with the encoder's few-shot examples (§4, Phase 1.2). |
-| D-6 | **The product is `entity`; the identity stays `Anchor`.** Plugin name `entity`, marketplace name `anchor`, repo `tpac/entity`, MCP server key stays `brain` (→ tools read `mcp__plugin_entity_brain__*`). | Three layers, each named for what it is: **Entity** = the category the product grows (the terminal noun — id:9da43311, id:e6019012: "a thing that develops, not a thing that's used"); **Anchoring** = the method; **Anchor** = the instance, which stays Anchor's own name rather than being spent on a registry string. `brain` stays the organ, so the tool names keep the substrate/identity split visible. Rejected: `brain` (the organ — repeats the register failure Tom named in id:cd7aa9be, and every competitor on the shelf is already `*mem*`/`*memory*`), `cairn` (imported metaphor, not native to the philosophy), `colleague`/`tenure`/`cultivar` (more self-explanatory but each shrinks the claim). |
+| D-6 | **The product is `entity`; the identity stays `Anchor`.** Plugin name `entity`, marketplace name `anchor`, repo `tpac/entity`, MCP server key stays `brain` (→ tools read `mcp__plugin_entity_brain__*`). | Three layers, each named for what it is: **Entity** = the category the product grows (the terminal noun — id:9da43311, id:e6019012: "a thing that develops, not a thing that's used"); **Anchoring** = the method; **Anchor** = the instance. `brain` stays the organ, so the tool names keep the substrate/identity split visible. *Rationale corrected 2026-08-09: an earlier draft said Anchor "stays Anchor's own name rather than being spent on a registry string" while naming the marketplace `anchor` — self-contradictory, since a marketplace name is exactly a registry string. Resolved by Tom: `anchor` in the catalog is the **act**, not the instance — you install an entity by anchoring it, so `entity@anchor` reads as the philosophy rather than spending the name. The instance name lives in config (D-12), never in a manifest.* Rejected: `brain` (the organ — repeats the register failure Tom named in id:cd7aa9be, and every competitor on the shelf is already `*mem*`/`*memory*`), `cairn` (imported metaphor, not native to the philosophy), `colleague`/`tenure`/`cultivar` (more self-explanatory but each shrinks the claim). |
 | D-7 | **Squash-export on release.** Private `tpac/brain` stays the daily driver and never goes public. The public repo is a **build output**: each release materializes the shipped tree into a clean checkout, one commit, tag `vX.Y.Z`, push. | Closes §8 fork #1. Keeps the working mess private at the cost of a deliberate release step (D-2). **The one rule: the export manifest IS the build manifest** — `build-plugin.sh` already derives from `git ls-files` because a hand-list rotted 62 files behind reality and shipped a broken `brain_mcp.py`; a second hand-maintained list would re-enter that failure class with the public repo as blast radius. Public tree = plugin manifest ∪ chosen extras − explicit denylist. |
 | D-8 | **Public tree = runtime + tests. `eval/` excluded.** The 6 test files that import `eval/` degrade to graceful skip. | Tests are the credibility argument (D-1: inspectable code); a no-tests repo reads as unverified for a tool asking to hold someone's identity layer. But a published eval harness **is a claim** that invites strangers to re-run and dispute it — not a launch-day fight, and the corpora are personal anyway. **Consequence: the README must make no benchmark claims**, since the harness won't be there to back them. Coupled files: `test_eval_corpus.py`, `test_longmem_classifier.py`, `test_absorb_preservation.py`, `test_consolidation_examples.py`, `test_encoder_eval_probes.py`, `run_all.py`. |
 | D-9 | **Issues only at launch; no PRs.** Stated in CONTRIBUTING. | A squash-export pipeline can't cleanly merge an inbound PR, and a contributor's commits would never appear in history (reads as uncredited). With one maintainer, a PR you can't merge is worse than one you never invited. Revisit if real contributors appear — opening up later is easy, closing down isn't. |
 | D-10 | **Public launches at `v0.9.0`** — not `9.6.0`, not `1.0.0`. | Tom 2026-08-06: *"It's not complexity that reflects the version, it's the function of value. Not yet v1."* The private `brain` plugin's 9.6.0 is an internal build counter that means nothing to a stranger. v1 is a claim about delivered value, and Anchor hasn't earned it publicly yet. **No collision with the private install** — `entity` and `brain` are distinct plugin names, so their version lines are independent. `plugin.json` and `marketplace.json` must both read `0.9.0` (5.1 asserts it). |
+| D-11 | **Two identities: the host-neutral layer never renames.** `brain` stays the name of the *service* — launchd labels, `~/.config/brain/`, `BRAIN_*` env vars, both DBs, the MCP server key. Only the **Claude Code adapter** (plugin name, marketplace, permission strings, skill prefix) becomes `entity`. | A plugin has one name because a plugin is one thing; we ship a **local service with a CC adapter on top** — daemon, two DBs, embedder, dashboard — so the names sit in three namespaces with different owners (CC registry / launchd / XDG) and, decisively, **different change frequencies**. A marketplace name changes for positioning reasons; a service name and data dir should never change. Coupling them makes a *marketing* decision trigger a *data migration* — which is exactly the `$CLAUDE_PLUGIN_DATA` amnesia hazard. Forced by the second-host goal (ChatGPT takes remote MCP only — no manifest, no hooks, no skills — so nothing in `plugin.json` ports). **Consequences:** the "launchd labels — change now or never" hazard is **gone** (we don't rename the service), and 5.2 shrinks from 28 files to ~7. |
+| D-12 | **Every instance name derives from config, never a literal.** `BRAIN_AGENT_NAME` is the single source for what an entity is called; `BRAIN_OPERATOR_NAME` for its counterpart. No shipped file hardcodes `Anchor`. | Identity is *accumulated, not issued* (id:e6019012) — shipping a pre-named identity contradicts the product's own thesis on install day and turns an entity into a persona. Today **182 lines across 43 files** hardcode `Anchor`, worst `seed_pack.py` (45) which seeds a stranger's brain with nodes asserting "I'm Anchor" before it holds a single memory. The config slots already exist and are wired to exactly one consumer (trace stamping) — nothing renders them. **This merges §8 #3 into one workstream:** "traces have no speaker" and "the name is hardcoded" are the same defect — slots that ship empty and unread. **Backward compatibility is a non-issue:** Tom's instance genuinely *is* Anchor, so his 8.5k nodes stay correct; only the shipped default changes. |
 
 ---
 
@@ -248,6 +253,49 @@ itself forward at open*, the same contract `BRAIN_VERSION` already has:
   v2 exactly like this, and without the second guard reconcile would have published
   over it. Verified a no-op against a copy of the live brain.
 
+**5.0a Rename safety net — OPEN, gates 5.2.** The rename moves
+`$CLAUDE_PLUGIN_DATA` (per-plugin), so a brain at the default path goes invisible.
+**Tested on a sandbox 2026-08-08, all four cases:** with `resolved.env` present,
+step 4b rescues it and creates nothing; with it **missing** or **stale** (pointing
+at a deleted dir — the uninstall shape), step 5 creates a **fresh empty brain,
+silently**. Two things the earlier write-up missed: after a successful rescue the
+brain still physically lives under the **old** plugin's data dir and `resolved.env`
+is rewritten to pin it there — so uninstalling the obsolete `brain` plugin later
+deletes the brain; and whether Claude Code wipes `$CLAUDE_PLUGIN_DATA` on uninstall
+is **undetermined from this repo** — if it does, the destructive path is the
+*common* one, not an edge case.
+**Design (Tom's constraint: no deletion risk, no move without the user guiding it):**
+never auto-move data. Detect a candidate brain, refuse to silently create, and
+surface the choice through `additionalContext` + the boot notice, naming the path.
+Adoption uses the mechanism that already exists — `userConfig.brain_path`. *M.*
+
+**5.0b Deploy-contract gate — OPEN, gates 5.2.** Executable answer to "how do I know
+every place a deploy touches." A hand-list already failed twice (the 62-file build
+manifest; the 5.2 permission entry above). **Shape-scan, never an enumeration** —
+the same reason `build-plugin.sh` derives from `git ls-files`:
+  1. `plugin.json.version == marketplace.json` version — drift is silent and breaks
+     `/plugin update`; it happens every release, forever
+  2. adapter-name containment — for name `N` from `plugin.json`, every occurrence of
+     `mcp__plugin_N_`, `com.N.`, `<owner>/N` must sit in a small allowlist; a new
+     file hardcoding it fails automatically because the test reads the *tree*
+  3. host-neutrality (D-11) — `servers/` may read `plugin.json` only for the embedder
+     block; the day a service name derives from the CC manifest, this fails
+  4. name derivation (D-12) — capital `Anchor` appears only in the config allowlist
+*Assertion 2 stays noisy until the rename (today `N` = `brain`, an ordinary word);
+it goes quiet when `N` becomes `entity`.* *S.*
+
+**5.0c Name / identity consolidation (D-12) — OPEN. Absorbs §8 #3.** 182 `Anchor`
+literals across 43 shipped files resolve to `BRAIN_AGENT_NAME`; `BRAIN_OPERATOR_NAME`
+gains an acquisition path (`userConfig`, D-4 shape). Three unequal classes:
+  1. **mechanical (~90)** — boot message, dashboard UI, comments → read from config
+  2. **prompts (~45)** — `encoding_prompt`, `quality_contract`, `surface_contract`
+     are DB-authoritative: register → activate → sync → bump `SEED_PROMPTS_VERSION`.
+     The 5.0 mechanism is what makes this reach existing installs at all
+  3. **seed pack (45)** — **this is D-5.** A fresh brain is seeded with nodes
+     asserting "I'm Anchor" before it holds a memory; that is precisely the
+     seed-pack session's question, not this one's
+*M–L; classes 1–2 here, class 3 routes to D-5.*
+
 **5.1 Export script.** Materializes the public tree from the **build manifest**
 (D-7) + additive extras (README, LICENSE, CONTRIBUTING, `tests/`) − denylist.
 Two hard-fail gates, enforced in the script, not remembered:
@@ -262,10 +310,20 @@ Two hard-fail gates, enforced in the script, not remembered:
 Also asserts `plugin.json.version == marketplace.json.version` (they must never
 drift — `/plugin update` compares versions). *Reversible · no-regret · M.*
 
-**5.2 Rename pass (D-6).** `plugin.json` (`name: entity`, keep `displayName: Anchor`),
-`marketplace.json` (`name: anchor`, plugin entry `entity`), launchd labels
-`com.brain.*` → `com.entity.*` (change now or never — a later change orphans
-services on every installed machine), skill dir names.
+**5.2 Rename pass (D-6, scoped by D-11).** The **CC adapter only** — the service
+layer keeps the name `brain`:
+  1. `plugin.json` — `name: entity`, `version: 0.9.0`, `homepage` + `repository`
+     → `tpac/entity`, and `displayName` (**open**, see below)
+  2. `marketplace.json` — `name: anchor`, plugin entry `entity`, `version: 0.9.0`
+  3. `.claude/settings.json` — the permission string (see the correction below)
+Skill prefixes follow automatically (`brain:brain` → `entity:brain`); no dir
+renames required. **`com.brain.*` launchd labels do NOT change** — D-11. The old
+"change now or never, a later change orphans services" hazard is void.
+
+**OPEN — `displayName`.** Currently `Anchor`. Under D-12 a shipped manifest cannot
+carry a per-install name, so it should read **`Entity`** with the instance name
+resolved from config at runtime. Not yet ruled; it is the most visible string in
+the product.
 
 **Skill-prefix check — DONE 2026-08-06, prefix holds.** All four SKILL.md files
 carry `name:` in frontmatter *and* still resolve prefixed (`brain:brain`,
@@ -287,8 +345,18 @@ the `$CLAUDE_PLUGIN_DATA` default — Tom's second laptop and the friend install
 **Action: verify 4b explicitly on a copy before renaming; don't ship the rename on
 luck.**
 
-Local cost is otherwise zero: **no permission entry anywhere references
-`mcp__plugin_brain_brain__*`** (verified 2026-08-06), so nothing breaks. *S–M.*
+**CORRECTION 2026-08-09 — "local cost is zero" was false.** The prior claim, *"no
+permission entry anywhere references `mcp__plugin_brain_brain__*`,"* is wrong:
+tracked `.claude/settings.json` carries
+`permissions.allow: ["mcp__plugin_brain_brain"]` — the **server-wide** form, no
+trailing `__<tool>`. After the rename it stops matching and every brain MCP call
+in this repo's sessions starts prompting. Scope is the dev repo only (the file is
+not in the plugin package); end users are unaffected.
+
+*How it survived an audit:* the claim was "verified" by grepping the doc's own
+string, `mcp__plugin_brain_brain__`, which cannot match the entry. **Verifying a
+checklist in the checklist's own words reproduces its blind spot** — the argument
+for gating by shape-scan rather than by list (5.0b). *S.*
 
 **5.3 Comment audit (id:ec97cf4e).** Re-measured 2026-08-08 against the real build
 manifest (**240 shipped files**, not ~232 — the manifest is `git ls-files`-derived,
@@ -356,11 +424,12 @@ marketplace has real installs. Mechanics in §10.1. *S.*
 2.x onboarding  (independent of Phase 1)
 3.1 ──► 3.2     (3.1 first; 3.3 deferred)
 4.1             (independent; needs the 127.0.0.1 guard)
-5.1 export ──► 5.5 green suite (the suite runs against the exported tree)
-5.2 rename ──► 5.1 (manifest + version assert should know the final names)
+5.0a safety net ─┐
+5.0b gate ───────┼─► 5.2 rename ──► 5.1 export ──► 5.5 green suite
+5.0c names ──────┘   (the gate protects the rename; the safety net precedes it)
 5.3 comment audit / 5.4 README  (independent, anytime — 5.3 re-rated M)
 5.6 seed pack (D-5) ──► 5.7 publish ──► 5.8 official directory (after a soak)
-D-5 seed pack   (blocks a *polished* 1.2 and the quality of every new brain)
+D-5 seed pack   (blocks a *polished* 1.2, 5.0c class 3, and every new brain)
 1.5 examples/   ──► 5.1 export (the manifest must already exclude it)
 ```
 
@@ -552,19 +621,18 @@ fast, exits cleanly for a next-session fast path otherwise).
    touch-up. Pair it with the **Zero-Memory boot block** (§7) — both answer "what
    does a near-empty Anchor wake up as," and deciding them apart will produce two
    half-answers.
-3. **Operator-name mechanism (1.1)** — **STILL OPEN, and it's a shipping defect,
-   not just a fork.** Checked 2026-08-06: `BRAIN_OPERATOR_NAME` /
-   `BRAIN_AGENT_NAME` are read straight from env with `''` defaults
-   ([daemon_config.py:71](servers/daemon_config.py:71)). The *plumbing* exists;
-   there is **no acquisition mechanism** — no `userConfig` field, no runtime
-   detection. On a fresh install both are empty, so every trace is written
-   **without identity stamping**, and the only signal is a one-shot stderr line to
-   daemon.log ([dal_logs.py:523](servers/dal_logs.py:523)) telling the user to edit
-   `~/.config/brain/env` and restart. A stranger will never see it. This matters
-   more than its "cosmetic" filing suggests: per-utterance speaker binding is the
-   differentiator against every commercial product (id:54f276cc), and it ships off.
-   **Likely answer: the D-4 shape** — add `userConfig.operator_name`, keep the env
-   fallback, env wins. Same additive pattern the API key already uses.
+3. ~~**Operator-name mechanism (1.1)**~~ — **no longer a separate fork; ABSORBED
+   into 5.0c by D-12 (2026-08-09).** Confirmed still true: `get_operator_name()` /
+   `get_agent_name()` read env with `''` defaults, there is **no acquisition
+   mechanism** (`userConfig` declares only `api_key` and `brain_path`), so a fresh
+   install writes every trace **without identity stamping**, and the only signal is
+   a one-shot stderr line to daemon.log no stranger will read. Per-utterance
+   speaker binding is the differentiator against every commercial product
+   (id:54f276cc), and it ships off.
+   **Why it merged:** "traces have no speaker" and "the name is hardcoded in 182
+   places" are the same defect — config slots that ship empty *and* unread. One
+   mechanism fixes both: fill the slots (`userConfig`, D-4 shape — env wins), then
+   read from them everywhere. Tracked at 5.0c; still a publish blocker.
 
 ---
 
@@ -581,8 +649,10 @@ fast, exits cleanly for a next-session fast path otherwise).
 | Marketplace name becomes reserved → **every install breaks retroactively** | D-6 / §10.2 | Chose `anchor` (project umbrella), not a generic category noun. Anthropic's reserved list is brand + vertical words and is **re-checked on every load** |
 | Skill slash commands lose their `entity:` prefix → collide in a public user's namespace | 5.2 / §10.3 | Upstream namespacing is unstable (4+ open issues). Verify empirically before the rename; don't rely on the prefix for collision safety |
 | Public repo becomes an unmergeable-PR magnet | D-9 | CONTRIBUTING states issues-only up front, not after the first rejected PR |
-| **Plugin rename orphans an existing brain → silent empty brain** | 5.2 / D-6 | `$CLAUDE_PLUGIN_DATA` is per-plugin; step 4b (`resolved.env`, not plugin-scoped) is the only net. Verify explicitly on a copy before renaming — id:80f585de |
-| Fresh installs write traces with **no identity stamping** | §8 #3 | Only signal is a one-shot daemon.log line no stranger will read. Fix via `userConfig.operator_name` (D-4 shape) before publish |
+| **Plugin rename orphans an existing brain → silent empty brain** | 5.0a / 5.2 | **Sandbox-tested 2026-08-08:** 4b rescues only when `resolved.env` is present and current; missing or stale → silent fresh brain. Rescue also leaves the data under the *old* plugin's dir, so a later uninstall of `brain` deletes it. Fix = detect + refuse to silently create + guided adoption via `brain_path`; never auto-move (5.0a) |
+| Fresh installs write traces with **no identity stamping** | 5.0c (was §8 #3) | Same defect as the 182 hardcoded names: slots that ship empty and unread. Fill via `userConfig` (D-4 shape, env wins) and read from config everywhere. Publish blocker |
+| A shipped manifest carries one install's instance name | D-12 / 5.0c | `displayName: Anchor` and 182 literals pre-name every stranger's entity, contradicting "identity is accumulated, not issued". Derive from `BRAIN_AGENT_NAME` |
+| A rename touches a place no list knows about | 5.0b | Two hand-lists already failed (62-file manifest; the `.claude/settings.json` permission entry). Gate by **shape-scan over the tree**, never by enumeration |
 | ~~Shipped `s1/examples/` carried real operator conversations~~ **CLOSED 2026-08-08 by deletion** | Phase 1.5 | Source had diverged from the live prompt ("Tom" ×165 vs "Sam" ×17) — regenerating §7.6 from it would have re-shipped the operator's name. 240→230 shipped files; 165→52 operator-name lines |
 | A `DONE` marker cites code that has since moved → gate looks verified but isn't | this doc | Cite by symbol, never `file:line`. Re-audit `DONE` items before executing any of them (this pass found 3 rotted anchors under DONE) |
 
