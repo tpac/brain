@@ -310,7 +310,7 @@ never auto-move data. Detect a candidate brain, refuse to silently create, and
 surface the choice through `additionalContext` + the boot notice, naming the path.
 Adoption uses the mechanism that already exists — `userConfig.brain_path`. *M.*
 **Acceptance criterion shipped 2026-08-11 (arch-plan step 4):** the daemon can no
-longer diverge from an adopted path — `start-daemon.sh` re-runs the resolution
+longer diverge from an adopted path — `brain-daemon` re-runs the resolution
 ladder on every launch (the plist-baked `BRAIN_DB_DIR` is a fast-path hint, not a
 verdict), the daemon ping reports its `db_dir` and `ensure_daemon` kickstarts on
 mismatch, and the installers re-materialize + re-bootstrap the plist when it

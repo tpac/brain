@@ -29,7 +29,7 @@ BRAIN_SERVER_DIR="$PLUGIN_ROOT/servers"
 # persist what they resolve; everyone else reads it (step 4b below).
 # Generated file — user config stays untouched in ../brain/env.
 # BRAIN_RESOLVE_NO_PERSIST: consumers of the resolution that are not an
-# authority on it (start-daemon.sh — launchd hands it a baked snapshot) set
+# authority on it (brain-daemon — launchd hands it a baked snapshot) set
 # this so a relaunch can't clobber a fresher hook-persisted record with
 # stale baked state.
 _brain_persist_state() {

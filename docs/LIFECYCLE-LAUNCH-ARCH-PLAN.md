@@ -14,7 +14,7 @@ recommendations, each written to be executed cold in a separate session.
 **Boundary traced (Prong A — code):** `ensure_daemon` / `recover_daemon` / `_relaunch_daemon` /
 `_launchd_kickstart` / `is_launchd_manages_daemon` in `servers/daemon_client.py`; `BrainDaemon.start`
 / `_run` / `_shutdown` + the internal supervisor in `servers/daemon_server.py`; the `_health_monitor`
-watchdog in `servers/brain_mcp.py`; the two launchers `hooks/scripts/start-daemon.sh` +
+watchdog in `servers/brain_mcp.py`; the two launchers `hooks/scripts/brain-daemon` +
 `start-dashboard.sh`; `hooks/scripts/brain-env.sh` + `ensure-runtime.sh`; the two launchd plists; and
 the deploy path (`build-plugin.sh`, `redeploy.sh`). Full spawner inventory + call graph mapped by an
 Explore agent.
@@ -54,7 +54,7 @@ dashboard separation, and install/parity, plus 5 targeted code-verification grep
    `/Users/tpac/AgentsContext/brain` — confirmed at lines 21/27/39/42/45) and **ships** via
    `git ls-files hooks/`. So a clean end-user install would receive a plist pointing at *my* machine —
    actively wrong, not merely absent. This is the parity-violation class that
-   `start-daemon.sh`-missing-from-manifest was (resolved 2026-06-15, id:722a4832); the plist contents
+   `brain-daemon`-missing-from-manifest was (resolved 2026-06-15, id:722a4832); the plist contents
    are the unfixed remainder.
 
 **Target state.** Both plists exist in-repo as **templates with placeholders**, never literal paths:
@@ -151,18 +151,18 @@ maintenance lock is live — check the lock before any bootout/bootstrap); id:76
 
 ## Step 3 (optional, low value) — De-duplicate the launcher preamble
 
-**Problem.** `start-daemon.sh` and `start-dashboard.sh` share ~17 lines of identical preamble
+**Problem.** `brain-daemon` and `start-dashboard.sh` share ~17 lines of identical preamble
 (`set -e`, `SCRIPT_DIR=...`, `source brain-env.sh`, the `BRAIN_PYTHON` executable check + FATAL
 message). This duplication was introduced 2026-06-28 when `start-dashboard.sh` was written by mirroring
-`start-daemon.sh`.
+`brain-daemon`.
 
 **Target state.** One of: (a) a sourced `hooks/scripts/_launcher-preamble.sh` both scripts source after
 `brain-env.sh`; or (b) a single parametrized `start-service.sh <daemon|dashboard>`. (a) is the smaller,
 clearer change — the two `exec` tails genuinely differ (daemon runs an inline `python -c
 BrainDaemon(...).start()` + a `BRAIN_DB_DIR` check; dashboard execs the standalone script).
 
-**Files & call sites.** `hooks/scripts/start-daemon.sh`, `start-dashboard.sh`, + new preamble file. If
-the script *names/paths* change (option b), the two plists' `ProgramArguments` and `restart-daemon.sh`
+**Files & call sites.** `hooks/scripts/brain-daemon`, `start-dashboard.sh`, + new preamble file. If
+the script *names/paths* change (option b), the two plists' `ProgramArguments` and `rebrain-daemon`
 must update too — which is why **option (a) is preferred** (no plist churn).
 
 **Verification.** `tests/test_daemon.py` + `tests/test_daemon_hooks.py` still green; manual daemon +

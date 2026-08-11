@@ -33,15 +33,15 @@ source "$SCRIPT_DIR/resolve-brain-db.sh" || true
 # Fail fast with a specific error if the venv Python is missing. Without
 # this, launchd would respawn every 10s in a confusing loop.
 if [ ! -x "$BRAIN_PYTHON" ]; then
-    echo "[start-daemon] FATAL: venv python not executable at $BRAIN_PYTHON" >&2
-    echo "[start-daemon] Run: $SCRIPT_DIR/ensure-runtime.sh" >&2
+    echo "[brain-daemon] FATAL: venv python not executable at $BRAIN_PYTHON" >&2
+    echo "[brain-daemon] Run: $SCRIPT_DIR/ensure-runtime.sh" >&2
     exit 1
 fi
 
 # The ladder found nothing (no baked env, no existing brain, no persisted
 # record). No /tmp fallback — silent data loss is worse.
 if [ -z "$BRAIN_DB_DIR" ]; then
-    echo "[start-daemon] FATAL: BRAIN_DB_DIR unresolved" >&2
+    echo "[brain-daemon] FATAL: BRAIN_DB_DIR unresolved" >&2
     exit 1
 fi
 

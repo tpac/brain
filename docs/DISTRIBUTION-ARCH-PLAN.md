@@ -127,7 +127,7 @@ Python reads the *persisted contract*, it doesn't re-run the ladder.
 ## Step 4 — SHIPPED 2026-08-11: Close the daemon's frozen-DB-path hole (5.0a acceptance criterion)
 
 *Landed with step 2 (env-first `DAEMON_PORT`, with a user-env-file fallback for bare-env
-Python like the MCP server) in the same commit family: `start-daemon.sh` sources the
+Python like the MCP server) in the same commit family: `brain-daemon` sources the
 resolver (baked env = fast-path hint; a brain-less env dir is demoted to
 hint-of-last-resort so a stale baked path can't birth a shadow brain; the daemon's
 resolution never rewrites `resolved.env`), ping reports `db_dir`, `ensure_daemon`
@@ -140,7 +140,7 @@ failed re-bootstrap can't bless divergence. Locked by `tests/test_daemon_recover
 TestDaemonPortEnvFirst). The original analysis follows.*
 
 **Problem.** The materialized launchd plists bake `__BRAIN_DB_DIR__` once (installers
-no-op forever after `launchctl print` succeeds); `start-daemon.sh` requires the baked env
+no-op forever after `launchctl print` succeeds); `brain-daemon` requires the baked env
 and never runs the ladder; `ensure_daemon` checks `source_dir` + code fingerprint but
 **never db-path divergence**. Consequence for 5.0a as specced: after a rename the user
 adopts via `userConfig.brain_path`, hooks resolve the new path — and the daemon +
@@ -148,12 +148,12 @@ dashboard keep writing the old brain forever (the old brain.db still exists per
 never-auto-move, so the baked path stays "valid"). Two silently diverging half-brains —
 the exact amnesia class 5.0a exists to close. Related: the installed plist is a frozen
 snapshot generally (a future `ThrottleInterval` change never reaches installed machines).
-**Target state.** (a) `start-daemon.sh` sources `resolve-brain-db.sh` (baked env becomes a
+**Target state.** (a) `brain-daemon` sources `resolve-brain-db.sh` (baked env becomes a
 hint the ladder's fast-path confirms, not a verdict). (b) Daemon ping response includes its
 `db_dir`; `ensure_daemon` treats mismatch vs the session's resolved dir like stale code —
 kickstart. (c) Installers re-materialize the plist template to a temp file, diff against
 the installed copy, re-bootstrap on drift.
-**Files & call sites.** `hooks/scripts/start-daemon.sh`, `install-daemon-service.sh`,
+**Files & call sites.** `hooks/scripts/brain-daemon`, `install-daemon-service.sh`,
 `ensure-dashboard.sh`, `servers/daemon_server.py` (ping payload),
 `servers/daemon_client.py:ensure_daemon`.
 **Verification.** `tests/test_daemon_recovery.py` (extend: db-path mismatch triggers
@@ -201,9 +201,9 @@ ordering, but only the key block is needed, not all of brain-env; a casing fix l
 one copy re-creates the 2026-07-15 keyless-daemon failure. (b) plist-install ritual
 (sed template → bootstrap → verify) copied between `install-daemon-service.sh` and
 `ensure-dashboard.sh`, already drifted: only the daemon side re-verifies. (c) daemon boot
-incantation written twice (`daemon_launch.daemon_argv` vs `start-daemon.sh`'s inline
+incantation written twice (`daemon_launch.daemon_argv` vs `brain-daemon`'s inline
 heredoc — they already differ on env pinning, and the heredoc interpolates `$DB_PATH` into
-Python unquoted). (d) `restart-daemon.sh` + `hook_common.daemon_call_raw` hand-roll the
+Python unquoted). (d) `rebrain-daemon` + `hook_common.daemon_call_raw` hand-roll the
 TCP wire protocol that `daemon_client.send_command` owns (hook_common already imports
 daemon_client — the decoupling excuse doesn't apply).
 **Target state.** (a) `hooks/scripts/api-key-env.sh`, sourced by both — the
@@ -211,9 +211,9 @@ daemon_client — the decoupling excuse doesn't apply).
 sourceable `launchd-install.sh` helper: template-materialize + bootstrap + verify, label
 as argument; callers keep their policy (install-only vs ensure-up). (c) `servers/
 daemon_server.py` gains `__main__`; `daemon_argv()` returns `[python, '-m',
-'servers.daemon_server', db_path]`; `start-daemon.sh` becomes `exec "$BRAIN_PYTHON" -m
+'servers.daemon_server', db_path]`; `brain-daemon` becomes `exec "$BRAIN_PYTHON" -m
 servers.daemon_server "$DB_PATH"`. (d) `hook_common.daemon_call_raw` wraps
-`send_command` (keeps its stderr logging); `restart-daemon.sh` calls a
+`send_command` (keeps its stderr logging); `rebrain-daemon` calls a
 `python3 -c "from servers.daemon_client import send_command; …"` one-liner (the
 boot-brain.sh pattern).
 **Files & call sites.** As named; plus `dashboard/daemon_client.py` adopts newline framing

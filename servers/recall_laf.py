@@ -1,7 +1,7 @@
 """LAF v1 recall variant — the flag-gated challenger scorer (§19 P1).
 
 Activated by BRAIN_RECALL_VARIANT=laf_v1 (exported from hooks/scripts/brain-env.sh,
-sourced by start-daemon.sh). Flag off → this module is never imported and the champion
+sourced by brain-daemon). Flag off → this module is never imported and the champion
 path in brain_recall._recall_impl runs unchanged. Rollback = unset the flag + restart.
 
 The composition (measured on the 24-cue lens-independent gold, eval/laf/composition_probe.py

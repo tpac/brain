@@ -55,7 +55,7 @@ fi
 
 # 3.5. Smoke-test the DEPLOYED package: import BOTH entrypoints — the MCP server
 #       (servers.brain_mcp, per-session, talks to the daemon over TCP) AND the
-#       daemon itself (servers.daemon_server, what start-daemon.sh launches) —
+#       daemon itself (servers.daemon_server, what brain-daemon launches) —
 #       using the plugin's own venv from the plugin dir. Catches a packaged
 #       module that imports something which didn't ship, at DEPLOY time, before
 #       the daemon restart — loud here beats a silent "Failed to connect" / dead
@@ -73,7 +73,7 @@ fi
 
 # 4. Restart the daemon so daemon-side Python goes live now.
 echo "restarting daemon..."
-bash "$PLUGIN/hooks/scripts/restart-daemon.sh" || echo "  (daemon not running — it will boot fresh on next call)"
+bash "$PLUGIN/hooks/scripts/rebrain-daemon" || echo "  (daemon not running — it will boot fresh on next call)"
 
 cat <<'EOF'
 

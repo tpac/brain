@@ -28,7 +28,7 @@ FILES=(
   # packaged → the per-session MCP server crashed on import. git ls-files ends
   # that class of bug: tracked-only (no scratch leaks), new modules auto-ship.
   # hooks/ skills/ bin/ ship in FULL via `git ls-files` below — do NOT hand-list.
-  # Same rot class as servers/: the hand-list silently dropped start-daemon.sh
+  # Same rot class as servers/: the hand-list silently dropped brain-daemon
   # (daemon launcher — dead on clean installs) and watch/SKILL.md before it.
   # Data + the one runtime seed script stay explicit (scripts/ is a dev dir —
   # only seed_brain.py belongs in the package, the other 23 are dev/migration).
@@ -63,7 +63,7 @@ fi
 while IFS= read -r _f; do FILES+=("$_f"); done <<< "$_srv_files"
 
 # hooks/ skills/ — git-TRACKED runtime code, shipped in full (same pattern
-# as dashboard/servers above). This closes the start-daemon.sh / watch-SKILL.md
+# as dashboard/servers above). This closes the brain-daemon / watch-SKILL.md
 # class of omission. NO top-level bin/ in the package: claude.ai-hosted plugins
 # reject bin/ executables (PATH-injected but invisible on the admin approval
 # surface) — launchers live in hooks/scripts/; bin/ holds only the

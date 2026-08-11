@@ -61,11 +61,18 @@ source "$SCRIPT_DIR/resolve-brain-db.sh" >/dev/null 2>&1 || true
 #    knob or userConfig brain_path) may re-point an installed service's brain.
 #    An ephemeral shell BRAIN_DB_DIR (eval runs, isolated copies) must never
 #    hijack the shared daemon onto a temp brain.
+# LAUNCHER: what the CURRENT template's ProgramArguments points at. The
+# extraction below is launcher-name-agnostic (anchored on /hooks/scripts/ —
+# only ProgramArguments carries that path shape) so an installed plist from
+# BEFORE a launcher rename still yields its tree; validity is then checked
+# against the launcher the template ships, because that's what the
+# re-materialized plist will exec.
+LAUNCHER="brain-daemon"
 RENDER_PLUGIN_DIR="$PLUGIN_DIR"
 RENDER_DB_DIR="$BRAIN_DB_DIR"
 if [ -f "$TARGET" ]; then
-  _installed_plugin_dir="$(sed -n 's|.*<string>\(.*\)/hooks/scripts/start-daemon.sh</string>.*|\1|p' "$TARGET" | head -1)"
-  if [ -n "$_installed_plugin_dir" ] && [ -x "$_installed_plugin_dir/hooks/scripts/start-daemon.sh" ]; then
+  _installed_plugin_dir="$(sed -n 's|.*<string>\(.*\)/hooks/scripts/[^<]*</string>.*|\1|p' "$TARGET" | head -1)"
+  if [ -n "$_installed_plugin_dir" ] && [ -x "$_installed_plugin_dir/hooks/scripts/$LAUNCHER" ]; then
     RENDER_PLUGIN_DIR="$_installed_plugin_dir"
   fi
   _installed_db_dir="$(sed -n '/<key>BRAIN_DB_DIR<\/key>/{n;s|.*<string>\(.*\)</string>.*|\1|p;}' "$TARGET" | head -1)"
