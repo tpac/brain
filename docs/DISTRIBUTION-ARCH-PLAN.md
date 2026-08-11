@@ -23,7 +23,12 @@ surface, so they pay best before 5.1.
 
 ---
 
-## Step 0 — DECISION (operator): default new brains outside the adapter namespace
+## Step 0 — DECIDED 2026-08-11 → D-13: brains live outside every host's namespace
+
+*Ruled by Tom: new-brain default moves out of `$CLAUDE_PLUGIN_DATA` entirely (portability
+to other AI hosts), and resolution collapses to a single configurable location for
+everything. Recorded as D-13 in DISTRIBUTION-READINESS.md §2. Steps 3 and 4 are the
+enforcement of this decision; the original analysis follows.*
 
 **Problem.** New brains are created at `$CLAUDE_PLUGIN_DATA/brain` (`resolve-brain-db.sh`
 step 5). `$CLAUDE_PLUGIN_DATA` is keyed to the *plugin name* — the thing D-11 says changes
