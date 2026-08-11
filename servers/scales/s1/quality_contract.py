@@ -38,7 +38,7 @@ persist forever; recall decides expansion). Structural follow-ups list
 gaps outside encoder scope (Phase B+ work).
 """
 
-CONTRACT_VERSION = 3  # v3: D33 retired sentinel range, adopted placeholder syntax after trace_id migrated to 8-char hex (schema v29). Unified placeholder discipline across connect_to / source_refs / node_id.
+CONTRACT_VERSION = 4  # v4: catalog connect_to targets are ids (s1e v31, Option D) — placeholders become <id-of-...>-flavored, and a grounded catalog excerpt may carry literal hex ids. v3: D33 retired sentinel range, adopted placeholder syntax after trace_id migrated to 8-char hex (schema v29).
 
 import re
 
@@ -1057,15 +1057,16 @@ EXAMPLE_AUTHORING_CONVENTIONS = {
     'placeholder_syntax': {
         'rule': (
             "Example `connect_to` targets MUST use bracketed placeholder "
-            "syntax — `<descriptive-name-of-what-should-be-here>` — never "
-            "a literal-looking title string. Same rule applies to any "
-            "field in an example where the value should be resolved "
-            "against the live catalog or computed at encode time."
+            "syntax — `<id-of-descriptive-name>` — never a literal-looking "
+            "title string. Same rule applies to any field in an example "
+            "where the value should be resolved against the live catalog "
+            "or computed at encode time. One exception: the grounded "
+            "excerpt form below."
         ),
         'good': [
-            '{title: "<related-architecture-decision-from-catalog>", relation: "grounds", why: "..."}',
-            '{title: "<the-existing-framing-this-quote-anchors>", relation: "grounds", why: "..."}',
-            '{title: "<the-prior-belief-being-corrected>", relation: "corrects", why: "..."}',
+            '{title: "<id-of-related-architecture-decision>", relation: "grounds", why: "..."}',
+            '{title: "<id-of-the-existing-framing-this-quote-anchors>", relation: "grounds", why: "..."}',
+            '{title: "<id-of-the-prior-belief-being-corrected>", relation: "corrects", why: "..."}',
         ],
         'bad': [
             '{title: "Daemon TCP migration", relation: "grounds", why: "..."}',
@@ -1079,6 +1080,24 @@ EXAMPLE_AUTHORING_CONVENTIONS = {
             "visually marked as illustrative — Sonnet's training "
             "recognizes <placeholder> patterns as 'fill this in,' not "
             "'copy verbatim.'"
+        ),
+    },
+    'grounded_catalog_excerpt': {
+        'rule': (
+            "An example MAY use a literal hex id in `connect_to[].title` "
+            "when the example carries its own catalog excerpt and the id "
+            "is copied from one of those headers. The excerpt makes the "
+            "copy relationship part of the demonstrated behavior — the "
+            "model learns copy-from-catalog, not invent-a-plausible-value. "
+            "An ungrounded literal hex (no excerpt line carrying it) is a "
+            "violation, same class as a literal title."
+        ),
+        'rationale': (
+            "s1e v31 (Option D): catalog targets are ids, and the s2 "
+            "encoders prove bare-hex examples are safe exactly when the "
+            "id's source is visible in the encoder's input. A copied "
+            "dummy id also fails LOUDLY at Pass 0 prefix lookup, unlike "
+            "a copied title, which dies silently in fuzzy matching."
         ),
     },
     'example_block_wrappers': {
