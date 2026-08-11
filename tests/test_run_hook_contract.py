@@ -20,7 +20,7 @@ _HOOKS_DIR = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts")
 # (hook_common defines run_hook) and standalone utilities. The run_hook
 # contract does not apply to these.
 _NON_EVENT = {
-    "hook_common.py", "agent-bridge.py", "extract-session-log.py",
+    "hook_common.py",
     # Monitor-launched long-running poller for /watch-live — an infinite
     # peek loop, not a Claude Code event hook. It has its own resilience
     # model (transient errors → stderr, loop continues); run_hook is a

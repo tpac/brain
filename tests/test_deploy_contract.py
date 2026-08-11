@@ -229,3 +229,51 @@ class TestNameDerivation:
         assert not leaks, (
             f'`Anchor` literal outside the config allowlist in {len(leaks)} files: '
             f'{sorted(leaks)[:10]}{" …" if len(leaks) > 10 else ""}')
+
+
+class TestShippedScriptsReachable:
+    """Every shipped `hooks/scripts/*` file must be REACHABLE from the wiring
+    that actually runs things: hooks.json, the plist templates, skills, servers,
+    the root build/deploy scripts — or the named allowlist for files wired
+    outside the tree entirely. Five dead scripts (a retired encoding path, two
+    client libs, two utilities) shipped for months because nothing asserted
+    this; this pins the class, not the instances.
+
+    Reachability, not flat reference-counting: a pair of dead scripts that
+    reference each other (encoding-hook.sh ⇄ encoding_hook.py) must not
+    vouch for itself. Seeds = every in-scope file OUTSIDE hooks/scripts/;
+    a script joins the live set only when its basename or stem appears in a
+    seed or an already-live script. Matching includes the stem (name minus
+    extension) because references are often constructed — Python imports drop
+    `.py`, the installers build plist paths from a `$LABEL` variable.
+    """
+
+    # Wired via the user's own settings/keybindings, invisible to any tracked
+    # file: the statusline command and the /watch live listener launcher.
+    ALLOW = frozenset({'brain-statusline.sh', 'brain-watch'})
+
+    def test_every_shipped_script_reachable(self):
+        scripts = [p for p in TRACKED if p.startswith('hooks/scripts/')]
+        seeds = [p for p in SCOPE if not p.startswith(('hooks/scripts/', 'tests/'))]
+        seed_text = '\n'.join(_read(p) for p in seeds)
+
+        def names(rel):
+            base = os.path.basename(rel)
+            stem = os.path.splitext(base)[0]
+            return {base, stem}
+
+        live = {p for p in scripts if os.path.basename(p) in self.ALLOW}
+        live |= {p for p in scripts if any(n in seed_text for n in names(p))}
+        # Fixpoint: scripts referenced by live scripts become live.
+        while True:
+            live_text = '\n'.join(_read(p) for p in live)
+            grown = live | {p for p in scripts
+                            if any(n in live_text for n in names(p))}
+            if grown == live:
+                break
+            live = grown
+
+        orphans = sorted(set(scripts) - live)
+        assert not orphans, (
+            'shipped hooks/scripts files with no wiring path (dead on every '
+            f'install — delete them or name their external wiring in ALLOW): {orphans}')
