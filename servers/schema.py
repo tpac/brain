@@ -1,18 +1,7 @@
 """
-brain — Canonical Database Schema (v21)
+brain — Canonical Database Schema
 
 SINGLE SOURCE OF TRUTH for every table, column, index, and constraint.
-
-v21 changes (dead table cleanup):
-  - Removed 7 dead tables from brain.db: version_history, summaries, projects,
-    reasoning_chains, reasoning_steps, prune_archive, project_maps
-  - Added 2 production tables: embedding_fidelity, node_communities
-  - Removed 14 dead tables from brain_logs.db: access_log, recall_log, miss_log,
-    tuning_log, eval_snapshots, suggest_log, curiosity_log, health_log,
-    staged_learnings, message_stream, recall_gaps, pending_consolidation,
-    brain_telemetry, conflict_log
-  - Added hook_errors table to brain_logs.db
-  - Cleaned up stale migration code in ensure_logs_schema()
 
 HOW MIGRATION WORKS:
   1. On startup, Brain calls ensure_schema(conn)
@@ -21,13 +10,20 @@ HOW MIGRATION WORKS:
      and ALTERs in any missing columns
   4. Creates all indexes from INDEXES
 
-HOW TO ADD A NEW COLUMN:
+HOW TO ADD A NEW COLUMN (brain.db only):
   Add it to the relevant table in TABLES below. That's it.
   ensure_schema will ALTER TABLE ADD it on next startup.
 
-HOW TO ADD A NEW NODE TYPE:
-  Edit NODE_TYPES below. ensure_schema will rebuild the nodes table
-  with the updated CHECK constraint (SQLite can't ALTER CHECK).
+  This does NOT hold for LOG_TABLES. ensure_logs_schema runs
+  CREATE TABLE IF NOT EXISTS and no column diff, so a column added to a
+  LOG_TABLES entry silently never appears on an existing brain_logs.db.
+  Add it with an explicit _add_column_if_missing call.
+
+NODE TYPES:
+  NODE_TYPES below is documentation and preferred-type guidance only.
+  There is no CHECK constraint to update — NODE_TYPE_CHECK has been empty
+  since v8.3 so agents can use any type string. Editing NODE_TYPES changes
+  no table and requires no migration.
 
 WHAT NOT TO DO:
   Do NOT add migration code in brain.py.
@@ -40,29 +36,8 @@ import shutil
 import sqlite3
 from datetime import datetime, timezone
 
-BRAIN_VERSION = 30  # v30: nodes.project dropped — project is system-stamped kv provenance (node_metadata_kv['project']), not a column.
+BRAIN_VERSION = 30  # v30: drop nodes.project column — project is now system-stamped kv provenance (node_metadata_kv['project']), not a nodes column. _migrate_v30_project_to_kv moves values (slug map: everything→brain except the EX.CO trio→ex.co) then DROP COLUMN. See v29 note below for prior version.
 BRAIN_VERSION_KEY = 'brain_schema_version'
-
-# Oldest brain.db this code can open. v30 shipped 2026-07-03 and every
-# install in existence was created at or after it (fresh DBs are built
-# directly at BRAIN_VERSION, never migrated up), so the v1..v29 upgrade
-# path was unreachable code and is gone.
-#
-# The floor is what keeps that deletion honest: without it, a v29 DB would
-# run an empty migration list and get STAMPED v30 while unmigrated —
-# silently mislabelled instead of loudly refused.
-MIN_SUPPORTED_VERSION = 30
-
-# Numbered data migrations for brain.db. Empty at v30 — the historical
-# ladder was deleted as unreachable. A v31 change adds (31, _migrate_v31)
-# here and bumps BRAIN_VERSION; the runner does the rest.
-MAIN_MIGRATIONS = []
-
-# brain_logs.db structural version. v1 is the baseline stamp: the table
-# shapes that existed when versioning was introduced. Structural changes
-# from here get a numbered step in LOGS_MIGRATIONS and bump this.
-LOGS_VERSION = 1
-LOGS_VERSION_KEY = 'logs_schema_version'
 
 # ─── Allowed node types ───
 NODE_TYPES = [
@@ -267,9 +242,6 @@ TABLES = {
         )""",
         'columns': {'key': None, 'value': 'NULL', 'updated_at': 'NULL'}
     },
-    # logs_meta lives in LOG_TABLES (brain_logs.db) — see below. brain_meta
-    # is brain.db's counterpart; the two are deliberately separate so each
-    # DB carries its own version and can be migrated independently.
 
     # version_history — REMOVED v21 (dead table)
     # summaries — REMOVED v21 (dead table)
@@ -536,81 +508,6 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
-# ═══════════════════════════════════════════════════════════════
-# Versioned migration runner — the ONE mechanism for "code changed,
-# migrate this install's data forward".
-#
-# There is a fleet now (installs other than the author's), so a change
-# cannot be applied by hand on one machine. Every versioned stream below
-# self-applies at open, exactly once, in order.
-#
-# Three streams use this, each with its own counter so they move
-# independently — structure changes rarely, prompt content often, and
-# conflating them would make every prompt edit look like a schema change:
-#
-#   brain.db      brain_meta.brain_schema_version   BRAIN_VERSION
-#   brain_logs.db logs_meta.logs_schema_version     LOGS_VERSION
-#   brain_logs.db logs_meta.seed_prompts_version    SEED_PROMPTS_VERSION
-#
-# Forward-only and idempotent by version guard: a step runs iff the DB's
-# stored version is below it. Re-opening a current DB does no writes.
-# ═══════════════════════════════════════════════════════════════
-
-def read_schema_version(conn, meta_table: str, version_key: str) -> int:
-    """Stored version for a stream, or 0 when never stamped.
-
-    0 covers both a fresh DB and a pre-versioning install — which is
-    exactly right: both need every step.
-    """
-    try:
-        cur = conn.execute(
-            "SELECT value FROM %s WHERE key = ?" % meta_table, (version_key,))
-        row = cur.fetchone()
-        return int(row[0]) if row else 0
-    except Exception:
-        return 0
-
-
-def stamp_schema_version(conn, meta_table: str, version_key: str,
-                         version: int) -> None:
-    """Record a stream as migrated up to `version`."""
-    conn.execute(
-        "INSERT OR REPLACE INTO %s (key, value, updated_at) "
-        "VALUES (?, ?, ?)" % meta_table,
-        (version_key, str(version), _now()))
-
-
-def run_versioned_migrations(conn, meta_table: str, version_key: str,
-                             target_version: int, steps, label: str = '') -> int:
-    """Run every step the stored version hasn't seen, then stamp.
-
-    `steps` is an ordered [(version, callable(conn))]. A step runs iff
-    stored_version < its version. Steps must be idempotent anyway — a
-    crash between the last step and the stamp replays them.
-
-    Returns the version found on entry (0 = fresh/pre-versioning), so the
-    caller can log or branch on "did this install just migrate".
-
-    A failing step is NOT swallowed: the stamp is skipped so the migration
-    retries on the next open rather than marking the DB current on top of
-    a half-applied change.
-    """
-    current = read_schema_version(conn, meta_table, version_key)
-    if current >= target_version:
-        return current
-    for step_version, step_fn in steps:
-        if current < step_version:
-            step_fn(conn)
-            if label:
-                print('[brain] %s: applied step v%d' % (label, step_version),
-                      flush=True)
-    stamp_schema_version(conn, meta_table, version_key, target_version)
-    if label and current > 0:
-        print('[brain] %s: v%d -> v%d' % (label, current, target_version),
-              flush=True)
-    return current
-
-
 def _backup_before_migration(db_path, from_version, to_version):
     """Create a backup before schema migration. Returns backup path or None."""
     if not db_path or from_version == 0 or from_version >= to_version:
@@ -627,6 +524,644 @@ def _backup_before_migration(db_path, from_version, to_version):
         return None
 
 
+def _rebuild_nodes(conn, spec):
+    """Rebuild nodes table when CHECK constraint changes (new node types)."""
+    conn.execute('PRAGMA foreign_keys=OFF')
+
+    # Get current columns
+    cur = conn.execute('PRAGMA table_info(nodes)')
+    current_cols = [row[1] for row in cur.fetchall()]
+
+    canonical_cols = list(spec['columns'].keys())
+    shared_cols = [c for c in current_cols if c in canonical_cols]
+
+    # Build insert columns — use defaults for missing ones
+    insert_parts = []
+    for c in canonical_cols:
+        if c in shared_cols:
+            insert_parts.append(c)
+        else:
+            default = spec['columns'][c]
+            insert_parts.append(f"{default} AS {c}" if default is not None else f"NULL AS {c}")
+
+    try:
+        conn.execute(spec['create'].replace('nodes', 'nodes_canonical'))
+        conn.execute(f"""INSERT OR IGNORE INTO nodes_canonical ({','.join(canonical_cols)})
+                        SELECT {','.join(insert_parts)} FROM nodes""")
+        conn.execute('DROP TABLE nodes')
+        conn.execute('ALTER TABLE nodes_canonical RENAME TO nodes')
+    except Exception as e:
+        print(f"[brain] nodes rebuild note: {e}")
+        try:
+            conn.execute('DROP TABLE IF EXISTS nodes_canonical')
+        except Exception:
+            pass
+
+    conn.execute('PRAGMA foreign_keys=ON')
+
+
+def _backfill_data(conn, from_version):
+    """One-time data backfills for existing brains."""
+    if from_version < 8:
+        try:
+            conn.execute('UPDATE nodes SET confidence = 1.0 WHERE locked = 1 AND confidence IS NULL')
+            conn.execute('UPDATE nodes SET confidence = 0.5 WHERE locked = 0 AND confidence IS NULL')
+        except Exception:
+            pass
+
+    if from_version < 6:
+        try:
+            conn.execute("UPDATE edges SET edge_type = 'corrected_by' WHERE relation = 'corrected_by'")
+            conn.execute("UPDATE edges SET edge_type = 'part_of' WHERE relation = 'part_of'")
+            conn.execute("UPDATE edges SET edge_type = 'exemplifies' WHERE relation = 'example_of'")
+            conn.execute("UPDATE edges SET edge_type = 'related' WHERE edge_type IS NULL")
+        except Exception:
+            pass
+
+    if from_version < 15:
+        # v15: Generate content_summary for existing nodes that have content
+        try:
+            cur = conn.execute(
+                "SELECT id, title, content FROM nodes WHERE content IS NOT NULL AND content != '' AND content_summary IS NULL"
+            )
+            for row in cur.fetchall():
+                node_id, title, content = row
+                # First sentence or first 200 chars
+                summary = content
+                period_idx = content.find('. ')
+                if 0 < period_idx < 200:
+                    summary = content[:period_idx + 1]
+                elif len(content) > 200:
+                    summary = content[:197] + '...'
+                conn.execute(
+                    "UPDATE nodes SET content_summary = ? WHERE id = ?",
+                    (summary, node_id)
+                )
+            print(f"[brain] v15 backfill: generated content_summary for existing nodes")
+        except Exception as e:
+            print(f"[brain] v15 backfill note: {e}")
+
+    if from_version < 22:
+        # v22: Rebuild edges + edge_relations with edge_id, single-direction,
+        # clean columns (no deprecated relation/edge_type/description/stability).
+        _migrate_edges_v22(conn)
+
+    # v23 / v24 migrations removed — this codebase never left tpac's laptop,
+    # so no external database ever needed the v23→v24 upgrade path. New DBs
+    # are created directly at BRAIN_VERSION. Historical note: v23 consolidated
+    # node_embeddings into node_enrichments; v24 promoted situation text
+    # from node_enrichments.text to node_metadata_kv. Both are the current
+    # state of any fresh brain.
+
+    if from_version < 25:
+        # v25: edge_relations soft-archive — matches the node soft-archive
+        # pattern. Prevents the asymmetry where archive_node destroyed edge
+        # history forever. Three columns added to edge_relations: archived,
+        # archived_at, archived_by. archive_node and GraphDAL.remove_relation
+        # flip archived=1 instead of DELETEing.
+        _migrate_edge_soft_archive_v25(conn)
+
+    if from_version < 26:
+        # v26: edge_relations stored embedding — closes the asymmetry
+        # where nodes had stored embeddings (one-time write at create,
+        # free reads forever) but edges did not (recomputed via fastembed
+        # on every spread call, dominating surface_spread phase at ~24s
+        # cold). The embedding column holds the vector for
+        # `_compose_enriched_edge_text` output, computed at add_relation
+        # time. Backfill of existing rows is done by
+        # scripts/backfill_edge_embeddings.py (one-shot, idempotent).
+        _migrate_edge_embedding_v26(conn)
+
+    if from_version < 28:
+        # v28: drop nodes.keywords column + rebuild nodes_fts without
+        # the keywords column. The auto-extractor produced near-duplicate
+        # tokenizer dumps (idiotic./idiotic, r1r10/r1-r10, skill.md/skillmd)
+        # that actively hurt FTS5 precision and TF-IDF scoring. Porter
+        # stemming on title+content provides the same lexical signal
+        # without the noise. See servers/brain_remember.py — the
+        # _extract_keywords and enrich_keywords functions were removed
+        # in the same change. Note: skipping from_version < 27 because
+        # v27 was schema-additive (new tables only) and doesn't gate
+        # anything in this migration.
+        _migrate_v28_drop_keywords(conn)
+
+    if from_version < 29:
+        # v29: trace_events.id INTEGER → TEXT (8-char hex), trickling through
+        # trace_embeddings.trace_id and node_source_refs.trace_id. Brain-wide
+        # ID consistency — every entity (node, edge, trace) now shares the
+        # 8-char hex shape. Removes the example-authoring sentinel-range hack.
+        # node_source_refs in brain.db is the only v29-affected table here;
+        # the logs DB migration runs from ensure_logs_schema.
+        _migrate_v29_trace_id_main(conn)
+
+    if from_version < 30:
+        # v30: drop nodes.project. Project became system-stamped kv
+        # provenance (node_metadata_kv['project']) on 2026-07-03 — read by the
+        # LAF proj lane + dict filters, never an agent-authored column. Moves
+        # legacy values to kv (slug map) then DROP COLUMN, mirroring v28.
+        _migrate_v30_project_to_kv(conn)
+
+
+def _trace_id_column_is_integer(conn, table: str, column: str) -> bool:
+    """Returns True only if the table exists AND the column type is INTEGER
+    (i.e., legacy pre-v29 state needing migration). Returns False on fresh
+    brains (table missing) and on already-migrated brains (column TEXT).
+    Self-detecting idempotency for the v29 trace_id migration."""
+    try:
+        cur = conn.execute(f"PRAGMA table_info({table})")
+        for row in cur.fetchall():
+            if row[1] == column:
+                return (row[2] or '').upper() == 'INTEGER'
+    except Exception:
+        pass
+    return False
+
+
+def _migrate_v29_trace_id_main(conn):
+    """v29 (brain.db side): node_source_refs.trace_id INTEGER → TEXT.
+
+    The table is empty in production (Phase B WRITE path hasn't shipped),
+    so this is a simple recreate. If somehow rows exist, they're migrated
+    via deterministic hex: printf('%08x', old_int).
+    """
+    if not _trace_id_column_is_integer(conn, 'node_source_refs', 'trace_id'):
+        # Either fresh brain (no table yet — CREATE TABLE will use TEXT) or
+        # already migrated. Skip in both cases.
+        return
+
+    # Python's sqlite3 module wraps DML in implicit transactions; DDL after
+    # an INSERT in the same conn can be swallowed (no commit between them).
+    # We force autocommit for the duration of the rebuild so each statement
+    # is durable as it runs, then restore the prior isolation_level.
+    prior_isolation = conn.isolation_level
+    try:
+        n_rows = conn.execute("SELECT COUNT(*) FROM node_source_refs").fetchone()[0]
+        print(f"[brain] v29: migrating node_source_refs.trace_id INTEGER → TEXT ({n_rows} rows)")
+        conn.commit()  # close any pending tx before switching mode
+        conn.isolation_level = None  # autocommit
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.execute("""
+            CREATE TABLE node_source_refs_v29 (
+                node_id    TEXT  NOT NULL,
+                trace_id   TEXT  NOT NULL,
+                position   INTEGER  NOT NULL DEFAULT 1,
+                created_at TEXT,
+                PRIMARY KEY (node_id, trace_id),
+                FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("""
+            INSERT INTO node_source_refs_v29 (node_id, trace_id, position, created_at)
+            SELECT node_id, printf('%08x', trace_id), position, created_at
+            FROM node_source_refs
+        """)
+        n_after = conn.execute("SELECT COUNT(*) FROM node_source_refs_v29").fetchone()[0]
+        if n_after != n_rows:
+            raise RuntimeError(f"v29: node_source_refs row count drift {n_rows} → {n_after}")
+        conn.execute("DROP TABLE node_source_refs")
+        conn.execute("ALTER TABLE node_source_refs_v29 RENAME TO node_source_refs")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_nsr_trace ON node_source_refs(trace_id)")
+        conn.execute("PRAGMA foreign_keys=ON")
+        print(f"[brain] v29: node_source_refs migrated cleanly ({n_after} rows)")
+    except Exception as e:
+        print(f"[brain] v29: node_source_refs migration FAILED: {e}")
+        try:
+            conn.execute("DROP TABLE IF EXISTS node_source_refs_v29")
+            conn.execute("PRAGMA foreign_keys=ON")
+        except Exception:
+            pass
+        raise
+    finally:
+        conn.isolation_level = prior_isolation
+
+
+def _migrate_v29_trace_id_logs(conn):
+    """v29 (brain_logs.db side): trace_events.id INTEGER → TEXT and
+    trace_embeddings.trace_id INTEGER → TEXT.
+
+    Production data: ~60K trace_events rows, ~13K trace_embeddings rows.
+    Deterministic hex via printf('%08x', old_int) — preserves lexicographic
+    ordering and lets any external integer reference (from logs, debug
+    output) be resolved by formatting.
+
+    Self-detecting via PRAGMA table_info — runs only if column is still
+    INTEGER. Called from ensure_logs_schema (logs DB has no brain_meta
+    version anchor, so column-type probe is the idempotency signal).
+    """
+    needs_trace_events = _trace_id_column_is_integer(conn, 'trace_events', 'id')
+    needs_trace_embeddings = _trace_id_column_is_integer(conn, 'trace_embeddings', 'trace_id')
+
+    if not needs_trace_events and not needs_trace_embeddings:
+        return  # fresh brain (table missing — CREATE will use TEXT) or already migrated
+
+    print(f"[brain] v29: logs DB migration starting "
+          f"(trace_events={needs_trace_events}, trace_embeddings={needs_trace_embeddings})")
+
+    # Force autocommit so each DDL statement is durable as it runs (Python's
+    # sqlite3 swallows DDL after DML in implicit transaction mode).
+    prior_isolation = conn.isolation_level
+    conn.commit()
+    conn.isolation_level = None
+
+    if needs_trace_events:
+        try:
+            n_rows = conn.execute("SELECT COUNT(*) FROM trace_events").fetchone()[0]
+            print(f"[brain] v29: migrating trace_events.id INTEGER → TEXT ({n_rows} rows)")
+            conn.execute("""
+                CREATE TABLE trace_events_v29 (
+                    id TEXT PRIMARY KEY,
+                    chain_id TEXT NOT NULL,
+                    scale TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    ref_type TEXT,
+                    ref_id TEXT,
+                    summary TEXT,
+                    metadata TEXT,
+                    session_id TEXT,
+                    interaction_id INTEGER,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                INSERT INTO trace_events_v29
+                    (id, chain_id, scale, event_type, ref_type, ref_id,
+                     summary, metadata, session_id, interaction_id, created_at)
+                SELECT printf('%08x', id), chain_id, scale, event_type,
+                       ref_type, ref_id, summary, metadata, session_id,
+                       interaction_id, created_at
+                FROM trace_events
+            """)
+            n_after = conn.execute("SELECT COUNT(*) FROM trace_events_v29").fetchone()[0]
+            if n_after != n_rows:
+                raise RuntimeError(f"v29: trace_events row count drift {n_rows} → {n_after}")
+            conn.execute("DROP TABLE trace_events")
+            conn.execute("ALTER TABLE trace_events_v29 RENAME TO trace_events")
+            # Recreate indexes (will be applied again by ensure_logs_schema
+            # post-migration, but recreate here for safety during rollback).
+            for idx in [
+                "CREATE INDEX IF NOT EXISTS idx_trace_chain ON trace_events(chain_id)",
+                "CREATE INDEX IF NOT EXISTS idx_trace_scale ON trace_events(scale)",
+                "CREATE INDEX IF NOT EXISTS idx_trace_created ON trace_events(created_at)",
+                "CREATE INDEX IF NOT EXISTS idx_trace_session ON trace_events(session_id)",
+                "CREATE INDEX IF NOT EXISTS idx_trace_scope_created ON trace_events(scale, ref_type, created_at)",
+            ]:
+                conn.execute(idx)
+            print(f"[brain] v29: trace_events migrated cleanly ({n_after} rows)")
+        except Exception as e:
+            print(f"[brain] v29: trace_events migration FAILED: {e}")
+            try:
+                conn.execute("DROP TABLE IF EXISTS trace_events_v29")
+            except Exception:
+                pass
+            raise
+
+    if needs_trace_embeddings:
+        try:
+            n_rows = conn.execute("SELECT COUNT(*) FROM trace_embeddings").fetchone()[0]
+            print(f"[brain] v29: migrating trace_embeddings.trace_id INTEGER → TEXT ({n_rows} rows)")
+            conn.execute("""
+                CREATE TABLE trace_embeddings_v29 (
+                    trace_id    TEXT    PRIMARY KEY,
+                    vector      BLOB    NOT NULL,
+                    text        TEXT,
+                    model       TEXT,
+                    created_at  TEXT
+                )
+            """)
+            conn.execute("""
+                INSERT INTO trace_embeddings_v29 (trace_id, vector, text, model, created_at)
+                SELECT printf('%08x', trace_id), vector, text, model, created_at
+                FROM trace_embeddings
+            """)
+            n_after = conn.execute("SELECT COUNT(*) FROM trace_embeddings_v29").fetchone()[0]
+            if n_after != n_rows:
+                raise RuntimeError(f"v29: trace_embeddings row count drift {n_rows} → {n_after}")
+            conn.execute("DROP TABLE trace_embeddings")
+            conn.execute("ALTER TABLE trace_embeddings_v29 RENAME TO trace_embeddings")
+            print(f"[brain] v29: trace_embeddings migrated cleanly ({n_after} rows)")
+        except Exception as e:
+            print(f"[brain] v29: trace_embeddings migration FAILED: {e}")
+            try:
+                conn.execute("DROP TABLE IF EXISTS trace_embeddings_v29")
+            except Exception:
+                pass
+            conn.isolation_level = prior_isolation
+            raise
+
+    conn.isolation_level = prior_isolation
+
+
+def _migrate_v30_project_to_kv(conn):
+    """v30: move nodes.project → node_metadata_kv['project'], then drop the
+    column. Project became system-stamped kv provenance (2026-07-03); the
+    nodes.project column is legacy. Mirrors _migrate_v28_drop_keywords —
+    index before column. Idempotent: re-run finds the column already gone.
+
+    Slug map (operator-approved 2026-07-03): every legacy value → 'brain'
+    except the EX.CO trio → 'ex.co'. The old column carried topical costume
+    names ('S1Scribe', 'aspects_refactor', 'dashboard', ...) that were all
+    brain-repo work; the 24-cue inventory was reviewed before approval.
+    """
+    # Column already gone (fresh v30 brain, or a re-run) → nothing to do.
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(nodes)").fetchall()}
+    if 'project' not in cols:
+        print("[brain] v30: nodes.project already absent — skipped")
+        return
+
+    # 1. Move values → kv. INSERT OR REPLACE on PK (node_id, key) is idempotent.
+    #    Total mapping (no unmapped value possible): exco trio → ex.co, else brain.
+    exco = {'EX.CO CTV kit', 'ex.co', 'CTVOnboarding'}
+    rows = conn.execute(
+        "SELECT id, project FROM nodes "
+        "WHERE project IS NOT NULL AND project != ''").fetchall()
+    for nid, legacy in rows:
+        slug = 'ex.co' if legacy in exco else 'brain'
+        conn.execute(
+            "INSERT OR REPLACE INTO node_metadata_kv (node_id, key, value) "
+            "VALUES (?, 'project', ?)", (nid, slug))
+    print(f"[brain] v30: moved {len(rows)} nodes.project values → kv")
+
+    # 2. Drop the index before the column (SQLite refuses to drop an
+    #    indexed column). No-op if already gone.
+    try:
+        conn.execute("DROP INDEX IF EXISTS idx_nodes_project")
+    except Exception as e:
+        print(f"[brain] v30: drop idx_nodes_project warning: {e}")
+
+    # 3. Drop the column (SQLite 3.35+). Fail loud — a silent half-migration
+    #    (values moved but column kept) is the worst case.
+    try:
+        conn.execute("ALTER TABLE nodes DROP COLUMN project")
+        print("[brain] v30: nodes.project column dropped")
+    except Exception as e:
+        print(f"[brain] v30: DROP COLUMN project failed: {e}")
+        raise
+
+
+def _migrate_v28_drop_keywords(conn):
+    """v28: drop nodes.keywords + rebuild nodes_fts without it.
+
+    Order matters: drop the index BEFORE dropping the column (SQLite
+    refuses to drop a column that's referenced by an index). Rebuild
+    nodes_fts as a separate step because CREATE VIRTUAL TABLE IF NOT
+    EXISTS doesn't reshape the existing virtual table.
+    """
+    # 1. Drop the legacy keywords index (no-op if already gone).
+    try:
+        conn.execute("DROP INDEX IF EXISTS idx_nodes_keywords")
+    except Exception as e:
+        print(f"[brain] v28: drop idx_nodes_keywords warning: {e}")
+
+    # 2. Rebuild nodes_fts: virtual tables can't be ALTERed, so drop +
+    #    recreate + repopulate. The cascade drops the auto-managed
+    #    nodes_fts_data / _idx / _content / _docsize / _config tables.
+    try:
+        conn.execute("DROP TABLE IF EXISTS nodes_fts")
+        conn.execute("""CREATE VIRTUAL TABLE nodes_fts USING fts5(
+            node_id UNINDEXED,
+            title,
+            content,
+            tokenize='porter unicode61'
+        )""")
+        conn.execute("""
+            INSERT INTO nodes_fts (node_id, title, content)
+            SELECT id, title, COALESCE(content, '')
+            FROM nodes WHERE archived = 0
+        """)
+        repop_count = conn.execute("SELECT COUNT(*) FROM nodes_fts").fetchone()[0]
+        print(f"[brain] v28: nodes_fts rebuilt without keywords column "
+              f"({repop_count} rows)")
+    except Exception as e:
+        print(f"[brain] v28: nodes_fts rebuild error: {e}")
+        raise  # FTS5 broken means recall lexical channel broken — fail loud
+
+    # 3. Drop the keywords column from nodes. SQLite 3.35+ supports
+    #    ALTER TABLE ... DROP COLUMN. The column may already be gone
+    #    on fresh brains created at v28; treat that as success.
+    try:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(nodes)").fetchall()}
+        if 'keywords' in cols:
+            conn.execute("ALTER TABLE nodes DROP COLUMN keywords")
+            print("[brain] v28: nodes.keywords column dropped")
+        else:
+            print("[brain] v28: nodes.keywords already absent — skipped")
+    except Exception as e:
+        # If anything still references the column (views, triggers), this
+        # fails. Surface and re-raise — silent half-migration is the worst case.
+        print(f"[brain] v28: DROP COLUMN keywords failed: {e}")
+        raise
+
+
+def _migrate_edge_embedding_v26(conn):
+    """v26: add embedding + embedding_model columns to edge_relations.
+
+    Existing rows get NULL for both. Backfill is offline via
+    scripts/backfill_edge_embeddings.py — kept out of the migration
+    path because embedding 21K rows takes minutes of fastembed work
+    and shouldn't block daemon boot. Spread reads tolerate NULL by
+    falling through to the on-demand embed path (same as before).
+    """
+    existing = {row[1] for row in conn.execute(
+        "PRAGMA table_info(edge_relations)").fetchall()}
+    if 'embedding' not in existing:
+        conn.execute("ALTER TABLE edge_relations ADD COLUMN embedding BLOB")
+    if 'embedding_model' not in existing:
+        conn.execute(
+            "ALTER TABLE edge_relations ADD COLUMN embedding_model TEXT")
+    conn.commit()
+    import sys
+    print("[schema] v26 migration: edge_relations.embedding column added "
+          "(NULL until backfill — run scripts/backfill_edge_embeddings.py)",
+          file=sys.stderr, flush=True)
+
+
+def _migrate_edge_soft_archive_v25(conn):
+    """v25: add soft-archive columns to edge_relations.
+
+    Existing rows default to archived=0 (active). All future archive_node
+    and remove_relation calls set archived=1 instead of deleting. The
+    edges aggregate table is untouched — all reads filter via edge_relations
+    joins, so archived edges simply stop joining in.
+    """
+    existing = {row[1] for row in conn.execute(
+        "PRAGMA table_info(edge_relations)").fetchall()}
+    if 'archived' not in existing:
+        conn.execute("ALTER TABLE edge_relations ADD COLUMN archived INTEGER DEFAULT 0")
+    if 'archived_at' not in existing:
+        conn.execute("ALTER TABLE edge_relations ADD COLUMN archived_at TEXT")
+    if 'archived_by' not in existing:
+        conn.execute("ALTER TABLE edge_relations ADD COLUMN archived_by TEXT")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_edge_relations_active "
+        "ON edge_relations(edge_id, archived)")
+    conn.commit()
+    import sys
+    print("[schema] v25 migration: edge_relations now supports soft-archive",
+          file=sys.stderr)
+
+
+def _migrate_edges_v22(conn):
+    """Rebuild edges + edge_relations for v22: edge_id, single-direction, clean columns.
+
+    Handles upgrading from:
+    - v20: old edges (bidirectional, deprecated columns), no edge_relations
+    - v21: old edges + old edge_relations (source_id/target_id PK)
+
+    The migration:
+    1. Reads all edges, deduplicates mirrors (keeps one direction per pair)
+    2. Assigns edge_id to each unique pair
+    3. Migrates relation data to edge_relations with edge_id reference
+    4. Rebuilds both tables with clean schemas
+    """
+    import hashlib
+
+    def _edge_id(src, tgt):
+        """Deterministic edge ID from source+target."""
+        h = hashlib.md5((src + ':' + tgt).encode()).hexdigest()[:8]
+        return 'edg_' + h
+
+    try:
+        # Check if already migrated (edges table has edge_id as PK, not just as column)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(edges)").fetchall()}
+        if 'edge_id' in cols:
+            # Check if edge_id is populated (v22 complete) or NULL (v21 partial)
+            sample = conn.execute("SELECT edge_id FROM edges LIMIT 1").fetchone()
+            if sample and sample[0] is not None:
+                print("[brain] v22 migration: edges already migrated, skipping")
+                return
+            # edge_id column exists but values are NULL — need full migration
+
+        # Check if old edge_relations exists (v21) or not (v20)
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        has_old_edge_relations = 'edge_relations' in tables
+
+        # --- Step 1: Read all old edges, deduplicate mirrors ---
+        old_edges = conn.execute("""
+            SELECT source_id, target_id, weight, co_access_count,
+                   last_strengthened, created_at,
+                   relation, description, decay_rate
+            FROM edges
+            WHERE source_id < target_id
+        """).fetchall()
+
+        # Also get node created_at for direction detection
+        node_dates = {}
+        for row in conn.execute("SELECT id, created_at FROM nodes").fetchall():
+            node_dates[row[0]] = row[1] or ''
+
+        print(f"[brain] v22 migration: {len(old_edges)} unique edge pairs to migrate")
+
+        # --- Step 2: Build new edge rows with direction ---
+        new_edges = []  # (edge_id, source, target, weight, co_access, last_str, created)
+        edge_id_map = {}  # (canonical_src, canonical_tgt) -> edge_id
+
+        for src, tgt, weight, co_access, last_str, created, rel, desc, decay in old_edges:
+            # Direction: newer node is source (encoder's intent)
+            src_date = node_dates.get(src, '')
+            tgt_date = node_dates.get(tgt, '')
+
+            if src_date > tgt_date:
+                final_src, final_tgt = src, tgt
+            elif tgt_date > src_date:
+                final_src, final_tgt = tgt, src
+            else:
+                # Same date or missing — lexicographic
+                final_src, final_tgt = (src, tgt) if src < tgt else (tgt, src)
+
+            eid = _edge_id(final_src, final_tgt)
+            edge_id_map[(src, tgt)] = (eid, final_src, final_tgt)
+            # Also map the reverse for lookups
+            edge_id_map[(tgt, src)] = (eid, final_src, final_tgt)
+
+            new_edges.append((eid, final_src, final_tgt, weight,
+                              co_access or 0, last_str, created))
+
+        # --- Step 3: Build new edge_relations rows ---
+        new_relations = []  # (edge_id, relation, description, weight, encoding_source, decay_rate, created)
+
+        if has_old_edge_relations:
+            # v21→v22: read from old edge_relations (already has multi-relation data)
+            old_rels = conn.execute("""
+                SELECT source_id, target_id, relation, description, weight, decay_rate, created_at
+                FROM edge_relations
+                WHERE source_id < target_id
+            """).fetchall()
+
+            for src, tgt, rel, desc, w, decay, created in old_rels:
+                mapping = edge_id_map.get((src, tgt))
+                if mapping:
+                    eid = mapping[0]
+                    new_relations.append((eid, rel or 'related', desc or '',
+                                          w, 'migration:v22', decay, created))
+
+            print(f"[brain] v22 migration: {len(old_rels)} edge_relations from v21")
+        else:
+            # v20→v22: no edge_relations, read from old edges columns
+            for src, tgt, weight, co_access, last_str, created, rel, desc, decay in old_edges:
+                mapping = edge_id_map.get((src, tgt))
+                if mapping:
+                    eid = mapping[0]
+                    new_relations.append((eid, rel or 'related', desc or '',
+                                          weight, 'migration:v22', decay, created))
+
+            print(f"[brain] v22 migration: {len(new_relations)} relations from old edges")
+
+        # --- Step 4: Create new tables ---
+        conn.execute("DROP TABLE IF EXISTS edges_v22")
+        conn.execute("""CREATE TABLE edges_v22 (
+            edge_id TEXT PRIMARY KEY,
+            source_id TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            weight REAL DEFAULT 0.5,
+            co_access_count INTEGER DEFAULT 0,
+            last_strengthened TEXT,
+            created_at TEXT,
+            UNIQUE(source_id, target_id)
+        )""")
+
+        conn.execute("DROP TABLE IF EXISTS edge_relations_v22")
+        conn.execute("""CREATE TABLE edge_relations_v22 (
+            edge_id TEXT NOT NULL,
+            relation TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            weight REAL DEFAULT 0.5,
+            encoding_source TEXT DEFAULT '',
+            decay_rate REAL DEFAULT NULL,
+            created_at TEXT,
+            PRIMARY KEY (edge_id, relation)
+        )""")
+
+        # --- Step 5: Insert data ---
+        conn.executemany(
+            "INSERT OR IGNORE INTO edges_v22 VALUES (?, ?, ?, ?, ?, ?, ?)",
+            new_edges)
+        conn.executemany(
+            "INSERT OR IGNORE INTO edge_relations_v22 VALUES (?, ?, ?, ?, ?, ?, ?)",
+            new_relations)
+
+        # --- Step 6: Swap tables ---
+        conn.execute("DROP TABLE IF EXISTS edges")
+        conn.execute("ALTER TABLE edges_v22 RENAME TO edges")
+
+        if has_old_edge_relations:
+            conn.execute("DROP TABLE IF EXISTS edge_relations")
+        conn.execute("ALTER TABLE edge_relations_v22 RENAME TO edge_relations")
+
+        conn.commit()
+
+        # Verify
+        edge_count = conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
+        rel_count = conn.execute("SELECT COUNT(*) FROM edge_relations").fetchone()[0]
+        print(f"[brain] v22 migration complete: {edge_count} edges, {rel_count} relations")
+
+    except Exception as e:
+        print(f"[brain] v22 migration ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        raise  # Don't silently continue with broken data
+
+
 def ensure_schema(conn, db_path=None):
     """
     The ONLY function that touches table structure.
@@ -639,20 +1174,12 @@ def ensure_schema(conn, db_path=None):
     # 1. Create brain_meta first
     conn.execute(TABLES['brain_meta']['create'])
 
-    # 2. Check current schema version (shared reader — same primitive the
-    #    logs and prompt streams use, so all three read versions one way)
-    current_version = read_schema_version(conn, 'brain_meta', BRAIN_VERSION_KEY)
-
-    # 2a. Refuse a DB older than the supported floor rather than silently
-    #     stamping it current. 0 = fresh DB (built at BRAIN_VERSION) — fine.
-    if 0 < current_version < MIN_SUPPORTED_VERSION:
-        raise RuntimeError(
-            'brain.db is at schema v%d; this build supports v%d and newer. '
-            'The v1-v%d upgrade path was removed as unreachable (no such DB '
-            'existed). Restore a newer backup, or check out a build from '
-            'before the removal to migrate this file forward first.'
-            % (current_version, MIN_SUPPORTED_VERSION,
-               MIN_SUPPORTED_VERSION - 1))
+    # 2. Check current schema version
+    cur = conn.execute(
+        f"SELECT value FROM brain_meta WHERE key = ?", (BRAIN_VERSION_KEY,)
+    )
+    row = cur.fetchone()
+    current_version = int(row[0]) if row else 0
 
     # 2b. Backup before migration if version is changing
     backup_path = None
@@ -663,10 +1190,25 @@ def ensure_schema(conn, db_path=None):
     cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
     existing_tables = {row[0] for row in cur.fetchall()}
 
-    # 4. For each canonical table: create or diff+alter
+    # 4. Check if nodes table needs rebuild (CHECK constraint removal)
+    nodes_need_rebuild = False
+    if 'nodes' in existing_tables:
+        cur = conn.execute("SELECT sql FROM sqlite_master WHERE name='nodes'")
+        row = cur.fetchone()
+        if row:
+            current_sql = row[0] or ''
+            # Rebuild if the old CHECK constraint is still present
+            if 'CHECK(type IN' in current_sql or "CHECK (type IN" in current_sql:
+                nodes_need_rebuild = True
+
+    # 5. For each canonical table: create or diff+alter
     for table_name, spec in TABLES.items():
         if table_name not in existing_tables:
             conn.execute(spec['create'])
+            continue
+
+        if table_name == 'nodes' and nodes_need_rebuild:
+            _rebuild_nodes(conn, spec)
             continue
 
         # Get current columns
@@ -693,9 +1235,10 @@ def ensure_schema(conn, db_path=None):
     # FTS5 tables use CREATE VIRTUAL TABLE — no ALTER TABLE support, separate from TABLES dict.
     # Porter stemming: "recommending" matches "recommend". Unicode61 for international text.
     try:
-        # 3-column FTS5 schema. CREATE VIRTUAL TABLE IF NOT EXISTS never
-        # rebuilds an existing table, so a shape change here needs a
-        # numbered migration in MAIN_MIGRATIONS that drops and recreates it.
+        # v28: 3-column FTS5 schema. Pre-v28 brains had a 4th `keywords`
+        # column; _migrate_v28_drop_keywords drops + recreates this table
+        # on upgrade. CREATE VIRTUAL TABLE IF NOT EXISTS doesn't rebuild,
+        # so existing brains rely on that migration to flip the schema.
         conn.execute("""CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
             node_id UNINDEXED,
             title,
@@ -716,27 +1259,22 @@ def ensure_schema(conn, db_path=None):
     except Exception as e:
         print(f"[brain] FTS5 setup warning: {e}")
 
-    # 7. Update version (shared stamper — see run_versioned_migrations)
+    # 7. Update version
     if current_version < BRAIN_VERSION:
-        stamp_schema_version(conn, 'brain_meta', BRAIN_VERSION_KEY,
-                             BRAIN_VERSION)
+        conn.execute(
+            "INSERT OR REPLACE INTO brain_meta (key, value, updated_at) VALUES (?, ?, ?)",
+            (BRAIN_VERSION_KEY, str(BRAIN_VERSION), _now())
+        )
 
-        try:
-            conn.execute(
-                "INSERT INTO version_history (version, migration_ts, description, backup_path) VALUES (?, ?, ?, ?)",
-                (BRAIN_VERSION, _now(),
-                 f'Schema ensured: v{current_version} -> v{BRAIN_VERSION} (serverless Python)',
-                 backup_path)
-            )
-        except Exception:
-            pass
+        # Name the backup here: the retry path in _backup_before_migration
+        # returns an existing file without printing, so this is the only line
+        # that reports it on a re-run.
+        print(f"[brain] Schema ensured: v{current_version} -> v{BRAIN_VERSION}"
+              + (f" (backup: {backup_path})" if backup_path else ""))
 
-        print(f"[brain] Schema ensured: v{current_version} -> v{BRAIN_VERSION}")
-
-    # 8. Numbered data migrations (empty at v30 — see MAIN_MIGRATIONS)
-    run_versioned_migrations(conn, 'brain_meta', BRAIN_VERSION_KEY,
-                             BRAIN_VERSION, MAIN_MIGRATIONS,
-                             label='brain schema')
+    # 8. One-time data backfills
+    if current_version > 0 and current_version < BRAIN_VERSION:
+        _backfill_data(conn, current_version)
 
     conn.commit()
 
@@ -749,17 +1287,6 @@ def ensure_schema(conn, db_path=None):
 # These are operational/telemetry tables that grow unbounded and
 # don't need referential integrity with the knowledge graph.
 LOG_TABLES = {
-    # logs_meta — brain_logs.db's version counter, mirroring brain_meta in
-    # brain.db. Created FIRST (dict order is insertion order) so the
-    # migration runner can read a version before any other table is touched.
-    'logs_meta': {
-        'create': """CREATE TABLE IF NOT EXISTS logs_meta (
-            key TEXT PRIMARY KEY,
-            value TEXT,
-            updated_at TEXT
-        )""",
-        'columns': {'key': None, 'value': 'NULL', 'updated_at': 'NULL'}
-    },
     # access_log — REMOVED v21 (dead table)
     'debug_log': {
         'create': """CREATE TABLE IF NOT EXISTS debug_log (
@@ -987,38 +1514,28 @@ LOG_INDEXES = [
 ]
 
 
-# Numbered structural migrations for brain_logs.db. Empty at v1 — the
-# baseline is "whatever shape this DB already had", since the operations
-# below are self-detecting and idempotent and have run unversioned for a
-# long time. Rewriting proven code to be version-gated would risk the
-# working path for no gain; new structural changes ride these rails.
-LOGS_MIGRATIONS = []
-
-
 def ensure_logs_schema(conn):
     """Create all log tables in the logs database (brain_logs.db).
 
-    Also handles column migrations for existing tables via ALTER TABLE,
-    and runs the versioned structural migrations (LOGS_MIGRATIONS) that
-    every install applies itself at open.
+    Also handles column migrations for existing tables via ALTER TABLE.
     """
     conn.execute('PRAGMA journal_mode=WAL')
 
-    # logs_meta must exist before the runner can read a version. Cheap and
-    # idempotent, so it runs ahead of the main table loop rather than
-    # depending on dict ordering staying stable.
-    conn.execute(LOG_TABLES['logs_meta']['create'])
+    # v29: trace_events.id and trace_embeddings.trace_id must migrate from
+    # INTEGER to TEXT BEFORE the CREATE TABLE IF NOT EXISTS runs — otherwise
+    # SQLite skips the new TEXT definition because the table already exists.
+    # The migration helper is self-detecting (column-type probe) so it's
+    # safe on fresh brains and idempotent on already-migrated ones.
+    _migrate_v29_trace_id_logs(conn)
 
     for table_name, spec in LOG_TABLES.items():
         conn.execute(spec['create'])
 
     _add_column_if_missing(conn, 'trace_events', 'interaction_id', 'INTEGER')
 
-    # Per-message self-channel TTL: add expires_at to the courier. send()
-    # stamps it on every new message; any legacy NULL row is swept by reap
-    # as dead. (This predates versioning and is idempotent, so it stays
-    # unconditional — but note there IS a fleet now, so anything new goes
-    # through LOGS_MIGRATIONS instead of an unversioned ALTER.)
+    # Per-message self-channel TTL: add expires_at to the one existing courier
+    # (the brain was never released — no fleet of DBs to migrate). send() stamps
+    # it on every new message; any legacy NULL row is swept by reap as dead.
     _add_column_if_missing(conn, 'self_inflight', 'expires_at', 'TEXT')
 
     # Initial population for interaction_active — one-time migration.
@@ -1042,12 +1559,6 @@ def ensure_logs_schema(conn):
             conn.execute(idx)
         except Exception:
             pass
-
-    # Versioned structural migrations + baseline stamp. Runs after the
-    # tables exist so a step can assume current shapes.
-    run_versioned_migrations(conn, 'logs_meta', LOGS_VERSION_KEY,
-                             LOGS_VERSION, LOGS_MIGRATIONS,
-                             label='logs schema')
     conn.commit()
 
 

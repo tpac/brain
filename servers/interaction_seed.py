@@ -1,17 +1,9 @@
-"""Seed the interactions table on a fresh brain, and keep shipped prompts
-reaching installs that never diverged from them.
+"""Seed the interactions table with v1 templates on a fresh brain.
 
-**DB is authoritative at runtime.** `seed_interactions` only writes an
-interaction the first time — once an entry exists (any version), it is a
-no-op. S3 / operator / anchor can register new versions later via
-register_interaction and those versions are what the encoders will read.
-
-**`reconcile_seeded_prompts` closes the freeze that created.** Seeding alone
-meant an install captured the prompts of its install date forever. Reconcile
-advances a prompt ONLY while the install is still running the shipped default
-(active == the version we put there, and nothing else registered); the moment
-a human registers or activates anything, that prompt is hands-off for good.
-Gated by SEED_PROMPTS_VERSION so it runs once per bump, not on every open.
+**DB is authoritative at runtime.** This module only writes an interaction
+the first time — once an entry exists (any version), the seed is a no-op.
+S3 / operator / anchor can register new versions later via register_interaction
+and those versions are what the encoders will read.
 
 The actual prompt text for the four encoder agents lives in sibling files:
     servers/scales/s1/encoding_prompt.py                 (s1e)
@@ -272,136 +264,6 @@ SIGNAL_CONFIG_V1 = {
     "encoding_gap_priority": 0.50, "encoding_gap_cooldown_seconds": 600,
     "encoding_gap_max_surfaces": 3,
 }
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# Shipped-prompt version. Bump this when a prompt change should reach
-# installs that are still running the shipped default.
-#
-# Seeding alone freezes an install at first boot: `_register` no-ops once a
-# name exists, so every later prompt improvement reached only fresh brains.
-# Proven on the author's own machine — its `boot` config still carried
-# `tom_quotes_limit` four months after the .py renamed it.
-#
-# Bumping is the deployment decision, and it is deliberately explicit: a
-# constant in a reviewable diff, not an implicit consequence of editing a
-# prompt. Same contract as BRAIN_VERSION — code owns the default, each
-# install migrates itself forward at open.
-# ═══════════════════════════════════════════════════════════════════════
-
-SEED_PROMPTS_VERSION = 1
-SEED_PROMPTS_VERSION_KEY = 'seed_prompts_version'
-
-# Per-prompt record of "the version WE put there", so a later run can tell
-# its own advance apart from a human's. Absent = pre-versioning install,
-# where the seed created v1.
-_BASELINE_KEY_PREFIX = 'seed_prompt_baseline:'
-
-
-def _shipped_prompts():
-    """name -> (template, created_by) for every prompt with shipped text.
-
-    Only the template-carrying interactions. Config-only entries are out of
-    scope: several are dead config with no reader, so advancing them buys
-    nothing and widens the blast radius for no gain.
-    """
-    from .scales.s1.encoding_prompt import SYSTEM_PROMPT as S1E
-    from .scales.s2.community_enrichment_prompt import SYSTEM_PROMPT as COMM
-    from .scales.s2.consolidation_enrichment_prompt import SYSTEM_PROMPT as CONS
-    from .scales.s2.healer_prompt import SYSTEM_PROMPT as HEAL
-    from .scales.s2.aspect_prompt import SYSTEM_PROMPT as ASP
-    from .scales.s1.scouts.prompts.quote_prompt import SYSTEM_PROMPT as SQ
-    from .scales.s1.scouts.prompts.temporal_prompt import SYSTEM_PROMPT as ST
-    from .scales.s1.scouts.prompts.facts_prompt import SYSTEM_PROMPT as SF
-    return {
-        's1e': (S1E, 'anchor'),
-        's2_community_enrichment': (COMM, 's2:community_detection'),
-        's2_consolidation_enrichment': (CONS, 's2:consolidation'),
-        's2_healer': (HEAL, 's2:healer'),
-        's2_aspects': (ASP, 's2:aspects'),
-        's1_scout_quote': (SQ, 'anchor'),
-        's1_scout_temporal': (ST, 'anchor'),
-        's1_scout_facts': (SF, 'anchor'),
-    }
-
-
-def _reconcile_pristine_prompts(brain):
-    """Advance installs still running the shipped default; never touch the rest.
-
-    An install is PRISTINE for a prompt when both hold:
-      • active_version == the version we recorded putting there (v1 when
-        there is no record — the seed's own version)
-      • max_version == active_version
-
-    The second guard is the load-bearing one. A registered-but-not-active
-    version means a human made a deployment decision — the `trace_recording`
-    interaction sits at active=1 with a dormant v2 exactly like this. Without
-    it, reconcile would publish over that choice, which is the precise
-    conflation `interaction_active` was built to prevent: a write is not a
-    deployment decision.
-
-    Safe by construction on the other side too: the shipped .py mirrors the
-    ACTIVE version (sync_prompts._fetch_active), so this can only ever install
-    a template that already passed the eval gate — never a dormant candidate.
-    """
-    from .schema import read_schema_version, stamp_schema_version
-
-    conn = brain.logs_conn
-    shipped = _shipped_prompts()
-    state = {i['name']: i for i in brain.list_interactions()}
-
-    advanced, diverged = [], []
-    for name, (template, created_by) in sorted(shipped.items()):
-        info = state.get(name)
-        if not info:
-            continue  # absent — seed_interactions owns creating it
-
-        active_v = info.get('active_version') or info.get('max_version')
-        baseline = read_schema_version(conn, 'logs_meta',
-                                       _BASELINE_KEY_PREFIX + name) or 1
-        if active_v != baseline or info.get('max_version') != active_v:
-            diverged.append('%s(active=%s,max=%s)' %
-                            (name, active_v, info.get('max_version')))
-            continue
-
-        current = brain.get_interaction(name) or {}
-        if (current.get('template') or '') == template:
-            continue  # already current — no write
-
-        new = brain.register_interaction(name, template=template,
-                                         parameters=current.get('parameters') or '',
-                                         created_by=created_by)
-        brain.set_interaction_active(name, new['version'],
-                                     set_by='seed:reconcile')
-        stamp_schema_version(conn, 'logs_meta',
-                             _BASELINE_KEY_PREFIX + name, new['version'])
-        advanced.append('%s->v%d' % (name, new['version']))
-
-    # Loud on both outcomes: a silent reconcile is indistinguishable from a
-    # broken one, and a silent skip is how the freeze went unnoticed.
-    if advanced:
-        print('[seed-reconcile] advanced shipped prompts: %s'
-              % ', '.join(advanced), flush=True)
-    if diverged:
-        print('[seed-reconcile] left alone (locally evolved): %s'
-              % ', '.join(diverged), flush=True)
-
-
-def reconcile_seeded_prompts(brain):
-    """Version-gated entry point — runs once per SEED_PROMPTS_VERSION bump."""
-    from .schema import run_versioned_migrations
-    try:
-        run_versioned_migrations(
-            brain.logs_conn, 'logs_meta', SEED_PROMPTS_VERSION_KEY,
-            SEED_PROMPTS_VERSION,
-            [(SEED_PROMPTS_VERSION, lambda _conn: _reconcile_pristine_prompts(brain))],
-            label='seed prompts')
-        brain.logs_conn.commit()
-    except Exception as e:
-        # Never block boot on prompt reconciliation — the install keeps
-        # running its current prompts, and the unstamped version means the
-        # next open retries.
-        print('[seed-reconcile] WARNING: skipped (%s)' % e, flush=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════
