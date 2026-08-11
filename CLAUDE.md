@@ -127,7 +127,7 @@ Hooks source `brain-env.sh` transitively via `resolve-brain-db.sh`; the daemon l
 ### Deploying a change
 
 The daemon runs `servers/*` from the repo, so:
-- **`servers/*`** → daemon **restart** (`restart` MCP tool / `hooks/scripts/rebrain-daemon`); live this session.
+- **`servers/*`** → daemon **restart** (`restart` MCP tool / `hooks/scripts/restart-daemon.sh`); live this session.
 - **`hooks/`, `brain_mcp.py`, `SKILL.md`, manifests** → **`./redeploy.sh`** (commit first) **+ new session**.
 
 Don't gate a deploy-restart with the maintenance lock — it makes the daemon skip startup.

@@ -7,7 +7,7 @@ complicated, not because it's unsafe. Fewer dependencies, concentrated, not spre
 places and different paths."*
 
 **Boundary traced.** `servers/daemon_server.py` (1296L), `servers/daemon_client.py` (650L),
-`servers/daemon_config.py` (190L), `hooks/scripts/{brain-daemon,rebrain-daemon,boot-brain.sh}`,
+`servers/daemon_config.py` (190L), `hooks/scripts/{brain-daemon,restart-daemon.sh,boot-brain.sh}`,
 the launchd plist, and the discovery-address callers across `brain_mcp.py`, `hook_common.py`,
 `brain_cli.py`. Reviewed across five angles (placement, unification, cohesion, coupling, altitude).
 
