@@ -45,7 +45,7 @@ THREAD_POOL_SIZE = max(4, (os.cpu_count() or 4) // 2)
 # readers, and daemon_server serializes writers — no deadlock risk. Embedder
 # (fastembed + ORT 1.24.4) is thread-safe for concurrent InferenceSession.run().
 DAEMON_HOST = ""  # Empty string = all interfaces (IPv4+IPv6), fixes macOS localhost→::1
-DAEMON_PORT = 47200 + (os.getuid() % 100)  # Per-user port to avoid collisions
+# DAEMON_PORT is defined below _read_env_file_key — it reads the user env file.
 
 # launchd's plist ThrottleInterval — launchd won't relaunch the daemon faster
 # than this after an exit. The recovery deadlines in daemon_client DERIVE from it
@@ -191,6 +191,33 @@ def _read_env_file_key(path: str, key: str):
     except OSError:
         pass
     return None
+
+
+def _resolve_daemon_port() -> int:
+    """Per-user daemon port. Env-first: brain-env.sh documents
+    BRAIN_DAEMON_PORT as the override and every shell/hook client honors it —
+    the daemon's own bind must read the same source or an override splits the
+    system (clients on one port, daemon on another, kickstart storms against a
+    healthy daemon). Falls back to the user env file for Python processes NOT
+    launched through brain-env.sh (the MCP server — CC spawns it with a bare
+    env), then to the uid formula. A malformed value warns and uses the
+    formula instead of crash-looping the daemon under KeepAlive."""
+    xdg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(
+        os.path.expanduser('~'), '.config')
+    raw = (os.environ.get("BRAIN_DAEMON_PORT")
+           or _read_env_file_key(os.path.join(xdg, 'brain', 'env'),
+                                 'BRAIN_DAEMON_PORT'))
+    if raw:
+        try:
+            return int(raw)
+        except ValueError:
+            sys.stderr.write(
+                "[daemon-config] WARN: BRAIN_DAEMON_PORT=%r is not an integer "
+                "— using the uid formula\n" % (raw,))
+    return 47200 + (os.getuid() % 100)
+
+
+DAEMON_PORT = _resolve_daemon_port()
 
 
 def resolve_db_dir() -> str:

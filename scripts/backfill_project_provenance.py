@@ -262,7 +262,7 @@ def dump_sessions(path, needs_operator, s2cwd, target):
 
 
 def daemon_alive():
-    port = 47200 + os.getuid() % 100
+    port = int(os.environ.get('BRAIN_DAEMON_PORT') or (47200 + os.getuid() % 100))  # env (brain-env.sh) is the live source; formula is the fallback
     try:
         with socket.create_connection(('127.0.0.1', port), timeout=2) as s:
             s.sendall(b'{"command": "ping"}\n')

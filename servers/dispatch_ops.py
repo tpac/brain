@@ -16,6 +16,10 @@ def _handle_ping(brain, args, graph_changes):
     result = {"status": "alive", "pid": os.getpid(),
               "code_fingerprint": _CODE_FINGERPRINT,
               "source_dir": REPO_ROOT,
+              # Which brain this daemon is actually writing — lets callers
+              # detect db-path divergence (daemon_client._db_dir_changed) the
+              # way source_dir lets them detect code staleness.
+              "db_dir": os.path.dirname(os.path.abspath(brain.db_path)),
               "threads": _t.active_count()}
     if args.get("thread_detail"):
         result["thread_list"] = [
