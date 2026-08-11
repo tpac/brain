@@ -162,7 +162,7 @@ clearer change — the two `exec` tails genuinely differ (daemon runs an inline 
 BrainDaemon(...).start()` + a `BRAIN_DB_DIR` check; dashboard execs the standalone script).
 
 **Files & call sites.** `hooks/scripts/brain-daemon`, `start-dashboard.sh`, + new preamble file. If
-the script *names/paths* change (option b), the two plists' `ProgramArguments` and `rebrain-daemon`
+the script *names/paths* change (option b), the two plists' `ProgramArguments` and `restart-daemon.sh`
 must update too — which is why **option (a) is preferred** (no plist churn).
 
 **Verification.** `tests/test_daemon.py` + `tests/test_daemon_hooks.py` still green; manual daemon +

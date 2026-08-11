@@ -356,7 +356,7 @@ filtered `-k` run.
 | 7 | Full suite + `eval/mcp_schema_gate.py` NOT required (no brain_batch schema change — verify no `BATCH_OP_SPECS` diff); commit | Full `./dev pytest tests/` |
 
 **Deployment:** all changes are `servers/*` ⇒ **daemon restart** required to take effect
-(`restart` MCP tool / `rebrain-daemon`); no `./redeploy.sh` needed (no hooks/brain_mcp/skill
+(`restart` MCP tool / `restart-daemon.sh`); no `./redeploy.sh` needed (no hooks/brain_mcp/skill
 changes). Note the running daemon still exhibits §5.2 until restarted.
 
 ## 9. Honesty — what was NOT verified

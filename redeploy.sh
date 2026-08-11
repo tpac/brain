@@ -73,7 +73,7 @@ fi
 
 # 4. Restart the daemon so daemon-side Python goes live now.
 echo "restarting daemon..."
-bash "$PLUGIN/hooks/scripts/rebrain-daemon" || echo "  (daemon not running — it will boot fresh on next call)"
+bash "$PLUGIN/hooks/scripts/restart-daemon.sh" || echo "  (daemon not running — it will boot fresh on next call)"
 
 cat <<'EOF'
 

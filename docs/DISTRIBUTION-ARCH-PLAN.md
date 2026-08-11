@@ -203,7 +203,7 @@ one copy re-creates the 2026-07-15 keyless-daemon failure. (b) plist-install rit
 `ensure-dashboard.sh`, already drifted: only the daemon side re-verifies. (c) daemon boot
 incantation written twice (`daemon_launch.daemon_argv` vs `brain-daemon`'s inline
 heredoc — they already differ on env pinning, and the heredoc interpolates `$DB_PATH` into
-Python unquoted). (d) `rebrain-daemon` + `hook_common.daemon_call_raw` hand-roll the
+Python unquoted). (d) `restart-daemon.sh` + `hook_common.daemon_call_raw` hand-roll the
 TCP wire protocol that `daemon_client.send_command` owns (hook_common already imports
 daemon_client — the decoupling excuse doesn't apply).
 **Target state.** (a) `hooks/scripts/api-key-env.sh`, sourced by both — the
@@ -213,7 +213,7 @@ as argument; callers keep their policy (install-only vs ensure-up). (c) `servers
 daemon_server.py` gains `__main__`; `daemon_argv()` returns `[python, '-m',
 'servers.daemon_server', db_path]`; `brain-daemon` becomes `exec "$BRAIN_PYTHON" -m
 servers.daemon_server "$DB_PATH"`. (d) `hook_common.daemon_call_raw` wraps
-`send_command` (keeps its stderr logging); `rebrain-daemon` calls a
+`send_command` (keeps its stderr logging); `restart-daemon.sh` calls a
 `python3 -c "from servers.daemon_client import send_command; …"` one-liner (the
 boot-brain.sh pattern).
 **Files & call sites.** As named; plus `dashboard/daemon_client.py` adopts newline framing

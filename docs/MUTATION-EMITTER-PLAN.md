@@ -649,7 +649,7 @@ Design `node:5efe5e02`, finding `node:30cf1bce`. **The original one-line claim i
 **Not required:** `eval/mcp_batch_probe.py`, `eval/mcp_schema_gate.py` — nothing touches
 `BATCH_OP_SPECS` or any tool schema text. Re-check if that changes.
 
-**Deploy.** `servers/*` only → **daemon restart** (`restart` MCP tool / `rebrain-daemon`);
+**Deploy.** `servers/*` only → **daemon restart** (`restart` MCP tool / `restart-daemon.sh`);
 no `./redeploy.sh`. Step 3 also touches `dashboard/` → **restart the dashboard**
 (`com.brain.dashboard` is a separate launchd service). Do **not** gate the deploy-restart
 with the maintenance lock — it makes the daemon skip startup. Work lands on the branch, then
