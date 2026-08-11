@@ -40,7 +40,10 @@ MODEL = 'claude-sonnet-4-6'
 MAX_ROUNDS = 3
 WRITE_TOOLS = {'remember_batch', 'revise_batch', 'brain_batch', 'connect_batch'}
 HEX_RE = re.compile(r'^[0-9a-fA-F]{8,}$')
-CATALOG_ID_RE = re.compile(r'\(id:([0-9a-f]{6,8})')
+# Any id: occurrence in the input counts as copyable — the encoder sees ids
+# in catalog headers, edge lines, and scout/journal listings alike, and all
+# of them resolve at Pass 0. A header-only pattern false-flagged real copies.
+CATALOG_ID_RE = re.compile(r'id:([0-9a-f]{6,8})\b')
 CATALOG_TITLE_RE = re.compile(r'\[\w+\] "([^"]+)" \(id:')
 
 
