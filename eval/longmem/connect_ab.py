@@ -44,9 +44,13 @@ WRITE_TOOLS = {'remember_batch', 'revise_batch', 'brain_batch', 'connect_batch'}
 HEX_RE = re.compile(r'^[0-9a-fA-F]{8,}$')
 # Any id: occurrence in the input counts as copyable — the encoder sees ids
 # in catalog headers, edge lines, and scout/journal listings alike, and all
-# of them resolve at Pass 0. A header-only pattern false-flagged real copies.
-CATALOG_ID_RE = re.compile(r'id:([0-9a-f]{6,8})\b')
+# of them resolve at Pass 0. Node ids are exactly 8 hex chars; the lookbehind
+# keeps trace_id:/session_id: renders from scoring as copyable node ids.
+CATALOG_ID_RE = re.compile(r'(?<![a-zA-Z_])id:([0-9a-f]{8})\b')
 CATALOG_TITLE_RE = re.compile(r'\[\w+\] "([^"]+)" \(id:')
+# Minimum length for the title_from_input rescue: below this, a target can
+# match ordinary prose by accident and confabulation would score as benign.
+TITLE_FROM_INPUT_MIN = 12
 
 
 def fetch_template(version):
@@ -71,32 +75,50 @@ def tool_schemas():
 
 
 def extract_connect_entries(tool_call):
-    """Yield (node_title, connect_entry) plus the set of created titles."""
+    """Return (created_titles, entries): entries are (node_title, edge_dict)
+    from remember-shaped connect_to lists AND from explicit edge ops —
+    brain_batch `connect` ops and connect_batch connections — so a round that
+    routes edges outside connect_to is still scored, not silently empty."""
     inp = tool_call['input']
-    nodes = []
+    nodes, edge_ops = [], []
     if tool_call['name'] == 'brain_batch':
-        nodes = [op for op in (inp.get('operations') or [])
-                 if isinstance(op, dict) and op.get('op') == 'remember']
+        for op in (inp.get('operations') or []):
+            if not isinstance(op, dict):
+                continue
+            if op.get('op') == 'remember':
+                nodes.append(op)
+            elif op.get('op') == 'connect':
+                edge_ops.append(op)
     elif tool_call['name'] == 'remember_batch':
         nodes = [n for n in (inp.get('nodes') or []) if isinstance(n, dict)]
+    elif tool_call['name'] == 'connect_batch':
+        edge_ops = [c for c in (inp.get('connections') or [])
+                    if isinstance(c, dict)]
     created = {str(n.get('title') or '').strip().lower() for n in nodes}
     entries = []
     for n in nodes:
         for e in (n.get('connect_to') or []):
             if isinstance(e, dict):
                 entries.append((n.get('title'), e))
+    for op in edge_ops:
+        entries.append((op.get('source_id'),
+                        {'title': op.get('target_id'),
+                         'relation': op.get('relation'),
+                         'why': op.get('description') or op.get('why')}))
     return created, entries
 
 
 def classify(target, created_titles, catalog_ids, catalog_titles):
     t = str(target or '').strip()
+    if not t:
+        return 'unresolved'
     if t.startswith('<'):
         return 'placeholder'
     if HEX_RE.fullmatch(t):
+        # Production Pass 0 is `LIKE emitted%` against full 8-char ids: an
+        # 8-char emit must match exactly; a 9+-char emit can match nothing.
         tl = t.lower()
-        return 'id_ok' if any(cid.startswith(tl[:6]) and tl.startswith(cid[:6])
-                              or cid == tl[:len(cid)] or tl == cid
-                              for cid in catalog_ids) else 'id_bad'
+        return 'id_ok' if (len(tl) == 8 and tl in catalog_ids) else 'id_bad'
     tl = t.lower()
     if tl in created_titles:
         return 'sibling_title'
@@ -123,7 +145,7 @@ def run_item(client, path, system_prompt, effort, tools):
     if effort:
         kwargs['output_config'] = {'effort': effort}
 
-    input_text = cap['user_content']
+    input_lower = cap['user_content'].lower()
     rows, usage = [], {'input': 0, 'output': 0, 'cache_read': 0, 'cache_write': 0}
     for rnd in range(1, MAX_ROUNDS + 1):
         resp = client.messages.create(**kwargs)
@@ -140,20 +162,21 @@ def run_item(client, path, system_prompt, effort, tools):
             round_created = set().union(*(p[0] for p in parsed))
             for created, entries in parsed:
                 for node_title, e in entries:
+                    tl = str(e.get('title') or '').strip().lower()
                     cls = classify(e.get('title'), created,
                                    catalog_ids, catalog_titles)
-                    if (cls == 'unresolved'
-                            and str(e.get('title') or '').strip().lower()
-                            in round_created):
+                    if cls == 'unresolved' and tl in round_created:
                         # Created by a DIFFERENT call this round: not a
                         # sibling (Pass 1 scope is one call), not in the
                         # rendered catalog — production limps through FTS.
                         cls = 'sibling_cross_call'
                     elif (cls == 'unresolved'
-                            and str(e.get('title') or '').strip() in input_text):
-                        # Exact title visible in a non-catalog input surface
-                        # (edge line, scout note) — a real node; resolves via
-                        # Pass 3 in production. Not confabulation.
+                            and len(tl) >= TITLE_FROM_INPUT_MIN
+                            and tl in input_lower):
+                        # Title visible in a non-catalog input surface (edge
+                        # line, scout note) — a real node; resolves via
+                        # Pass 3 in production. Not confabulation. The length
+                        # floor keeps short prose fragments from qualifying.
                         cls = 'title_from_input'
                     rows.append({
                         'node': node_title, 'target': e.get('title'),
@@ -188,6 +211,10 @@ def main():
     ap.add_argument('--workers', type=int, default=8)
     ap.add_argument('--only', default='',
                     help='comma-separated filename substrings to select items')
+    ap.add_argument('--append', action='store_true',
+                    help='add records to an existing label (e.g. a new arm '
+                         'over the same items); without it a non-empty label '
+                         'refuses to run rather than double-count')
     args = ap.parse_args()
 
     import threading
@@ -201,9 +228,18 @@ def main():
     if args.items:
         step = max(1, len(paths) // args.items)
         paths = paths[::step][:args.items]
+    if not paths:
+        raise SystemExit('no items matched (glob=%s only=%r)' % (
+            CAPTURE_GLOB, args.only))
     tools = tool_schemas()
     os.makedirs(OUT_DIR, exist_ok=True)
     out_path = os.path.join(OUT_DIR, '%s.jsonl' % args.label)
+    if (not args.append and os.path.exists(out_path)
+            and os.path.getsize(out_path) > 0):
+        raise SystemExit('label %r already has records at %s — the summary '
+                         'would double-count them. Pick a new --label, or '
+                         'pass --append to extend it deliberately.'
+                         % (args.label, out_path))
 
     arms = [int(a) for a in args.arms.split(',')]
     templates = {v: fetch_template(v) for v in arms}
@@ -243,20 +279,28 @@ def main():
         list(ex.map(lambda t: one(*t), rest))
     out.close()
 
-    # Summary
+    # Summary — statuses count alongside edges: an arm hit by errors or
+    # no_write rounds must show it here, not only in scrolled-away lines.
     per_arm = {v: {} for v in arms}
     edges = {v: 0 for v in arms}
+    statuses = {v: {} for v in arms}
     for line in open(out_path):
         rec = json.loads(line)
         v = rec['arm']
         if v not in per_arm:
             continue
+        s = rec['status'].split(':')[0]
+        statuses[v][s] = statuses[v].get(s, 0) + 1
         for row in rec['rows']:
             per_arm[v][row['class']] = per_arm[v].get(row['class'], 0) + 1
             edges[v] += 1
     print('\n=== summary (%s) ===' % out_path)
     for v in arms:
-        print('arm v%d: %d edges  %s' % (v, edges[v], per_arm[v]))
+        print('arm v%d: %d edges  %s  statuses=%s' % (
+            v, edges[v], per_arm[v], statuses[v]))
+        if statuses[v].get('error'):
+            print('  !! %d item(s) errored on arm v%d — edge counts are not '
+                  'comparable across arms' % (statuses[v]['error'], v))
 
 
 if __name__ == '__main__':

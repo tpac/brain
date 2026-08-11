@@ -688,16 +688,17 @@ DIMENSIONS = {
 
     'D33_placeholder_syntax': {
         'group': 'example_authoring',
-        'intent': 'Example ID-shaped fields (connect_to titles, source_refs, node_id) use bracketed placeholder syntax `<descriptive-name>` — never literal-looking values that Sonnet pattern-matches and copies into production output',
+        'intent': 'Example ID-shaped fields (connect_to titles, source_refs, node_id) use bracketed placeholder syntax `<id-of-descriptive-name>` — never UNGROUNDED literal-looking values that Sonnet pattern-matches and copies into production output. Exception (v4, grounded_catalog_excerpt): a literal hex id in connect_to[].title is compliant when the example carries its own catalog excerpt and the id is copied from one of those headers — the visible source makes the taught behavior copy-from-catalog.',
         'satisfies': [
             'every source_refs entry matches `<...>` shape',
-            'every connect_to[].title in examples uses placeholder syntax',
+            'every connect_to[].title in examples uses placeholder syntax OR is a hex id copied from a catalog excerpt line shown in the same example',
             'every node_id in revise examples uses placeholder syntax',
             'every trace_id in source_conversation uses placeholder syntax',
         ],
         'violates': [
             'literal-looking hex trace_id in source_refs (Sonnet may emit it verbatim)',
             'real-looking title in connect_to (top failure mode, pre-v22)',
+            'ungrounded hex id in connect_to (no excerpt line in the example carries it)',
             'hex node_id in revise examples (looks like a real catalog node)',
         ],
         'degrades': [
@@ -1116,7 +1117,9 @@ EXAMPLE_AUTHORING_CONVENTIONS = {
         # When authoring or rendering examples, ANY of these fields with
         # a value that wouldn't exist in a fresh brain should use <...>
         # syntax instead of a literal value.
-        'connect_to[].title',  # connect_to edge targets — top failure mode
+        'connect_to[].title',  # edge targets — top failure mode; exempt when
+                               # the id is copied from an in-example excerpt
+                               # (grounded_catalog_excerpt)
         'source_refs',          # trace_ids in examples don't match real traces
         'node_id (in revise examples)',  # node_id references must be placeholder
     ],
