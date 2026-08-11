@@ -168,8 +168,11 @@ def main():
     ap.add_argument('--arms', default='30,31')
     ap.add_argument('--items', type=int, default=0, help='0 = all')
     ap.add_argument('--label', default=time.strftime('%Y%m%d-%H%M%S'))
+    ap.add_argument('--workers', type=int, default=8)
     args = ap.parse_args()
 
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
     import anthropic
     client = anthropic.Anthropic()
     paths = sorted(glob.glob(CAPTURE_GLOB))
@@ -182,27 +185,41 @@ def main():
 
     arms = [int(a) for a in args.arms.split(',')]
     templates = {v: fetch_template(v) for v in arms}
-    print('items=%d arms=%s out=%s' % (len(paths), arms, out_path))
+    print('items=%d arms=%s workers=%d out=%s' % (
+        len(paths), arms, args.workers, out_path))
 
-    with open(out_path, 'a') as out:
-        for i, path in enumerate(paths):
-            qid = os.path.basename(path)
-            for v in arms:
-                tmpl, effort = templates[v]
-                try:
-                    r = run_item(client, path, tmpl, effort, tools)
-                except Exception as e:
-                    r = {'rows': [], 'status': 'error: %s' % e,
-                         'rounds': 0, 'usage': {}, 'write_calls': 0}
-                rec = {'item': qid, 'arm': v, **r}
-                out.write(json.dumps(rec) + '\n')
-                out.flush()
-                counts = {}
-                for row in r['rows']:
-                    counts[row['class']] = counts.get(row['class'], 0) + 1
-                print('[%d/%d] v%d %s %s edges=%d %s' % (
-                    i + 1, len(paths), v, qid[:48], r['status'],
-                    len(r['rows']), counts or ''), flush=True)
+    out = open(out_path, 'a')
+    lock = threading.Lock()
+    done = [0]
+    total = len(paths) * len(arms)
+
+    def one(path, v):
+        qid = os.path.basename(path)
+        tmpl, effort = templates[v]
+        try:
+            r = run_item(client, path, tmpl, effort, tools)
+        except Exception as e:
+            r = {'rows': [], 'status': 'error: %s' % e,
+                 'rounds': 0, 'usage': {}, 'write_calls': 0}
+        counts = {}
+        for row in r['rows']:
+            counts[row['class']] = counts.get(row['class'], 0) + 1
+        with lock:
+            out.write(json.dumps({'item': qid, 'arm': v, **r}) + '\n')
+            out.flush()
+            done[0] += 1
+            print('[%d/%d] v%d %s %s edges=%d %s' % (
+                done[0], total, v, qid[:48], r['status'],
+                len(r['rows']), counts or ''), flush=True)
+
+    # Prime each arm's system-prompt cache with one serial call, then fan
+    # out — a cold parallel first wave would pay cache_write per worker.
+    for v in arms:
+        one(paths[0], v)
+    rest = [(p, v) for p in paths[1:] for v in arms]
+    with ThreadPoolExecutor(max_workers=args.workers) as ex:
+        list(ex.map(lambda t: one(*t), rest))
+    out.close()
 
     # Summary
     per_arm = {v: {} for v in arms}
