@@ -119,3 +119,77 @@ class TestDispatchEnforcesRequired(BrainTestBase):
             self.brain, {'operations': [{'op': 'consolidate'}]}, [])
         err = r['result']['results'][0]['error']
         self.assertIn('Unknown op', err)
+
+
+class TestStringifiedOperationsUnwrap(BrainTestBase):
+    """Lossless unwrap of JSON-string-serialized operations (2026-08-10/11
+    incidents: a stringified array iterated char-by-char fanned out 27k+
+    per-op errors and a 3.3MB tool result). Recoverable strings proceed;
+    unrecoverable ones collapse to ONE whole-call error — never a
+    per-character fan-out."""
+    needs_embedder = False
+
+    def test_string_array_unwraps_and_dispatches(self):
+        """A JSON-encoded ops array behaves exactly like the array itself —
+        the op reaches per-op validation (field error, not type error)."""
+        import json
+        from servers.daemon_dispatch import _handle_brain_batch
+
+        ops = [{'op': 'revise', 'node_id': 'aaaabbbb',
+                'reasoning': 'meant as audit', 'content': 'x'}]
+        r = _handle_brain_batch(
+            self.brain, {'operations': json.dumps(ops, indent=2)}, [])
+        self.assertTrue(r['ok'])
+        self.assertEqual(len(r['result']['results']), 1)
+        # Proof the unwrap happened: the revise pre-check fired (rich
+        # reason/reasoning error), not "operation must be a dict".
+        self.assertIn('reason is required', r['result']['results'][0]['error'])
+
+    def test_unparseable_string_fails_whole_call_once(self):
+        from servers.daemon_dispatch import _handle_brain_batch
+
+        r = _handle_brain_batch(
+            self.brain, {'operations': 'not json at all ' * 2000}, [])
+        self.assertFalse(r['ok'])
+        self.assertIn('JSON array', r['error'])
+        self.assertNotIn('results', r)  # one error, zero fan-out
+
+    def test_string_parsing_to_non_list_fails_whole_call_once(self):
+        from servers.daemon_dispatch import _handle_brain_batch
+
+        r = _handle_brain_batch(
+            self.brain, {'operations': '{"op": "archive"}'}, [])
+        self.assertFalse(r['ok'])
+        self.assertIn('JSON array', r['error'])
+
+    def test_non_list_non_string_fails_whole_call_once(self):
+        from servers.daemon_dispatch import _handle_brain_batch
+
+        r = _handle_brain_batch(
+            self.brain, {'operations': {'op': 'archive'}}, [])
+        self.assertFalse(r['ok'])
+        self.assertIn('must be an array, got dict', r['error'])
+
+    def test_string_element_parsing_to_dict_unwraps(self):
+        """A string ELEMENT that parses to a dict is the intended op
+        (S2 community precedent, id:ce8d9aef)."""
+        from servers.daemon_dispatch import _handle_brain_batch
+
+        r = _handle_brain_batch(self.brain, {'operations': [
+            '{"op": "archive"}',
+        ]}, [])
+        op_result = r['result']['results'][0]
+        # Reached per-op validation as an archive op missing node_id —
+        # not the non-dict type error.
+        self.assertIn('node_id', op_result['error'])
+        self.assertNotIn('must be a dict', op_result['error'])
+
+    def test_unparseable_string_element_keeps_per_op_error(self):
+        from servers.daemon_dispatch import _handle_brain_batch
+
+        r = _handle_brain_batch(self.brain, {'operations': [
+            'garbage', {'op': 'consolidate'},
+        ]}, [])
+        results = r['result']['results']
+        self.assertIn('must be a dict, got str', results[0]['error'])
+        self.assertIn('Unknown op', results[1]['error'])  # sibling still ran

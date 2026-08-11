@@ -7,6 +7,7 @@ emits the traces (servers/mutation_emitter.py) — no handler writes a trace
 row itself.
 """
 
+import json
 import re
 import sys
 
@@ -734,6 +735,38 @@ def _handle_brain_batch(brain, args, graph_changes):
     from .contract import BATCH_OP_SPECS
 
     operations = args.get("operations", [])
+    # Lossless unwrap of the JSON-string serialization quirk: LLM callers
+    # occasionally emit the ops array JSON-encoded as a string. Iterating
+    # that string would fan out one "must be a dict" error PER CHARACTER
+    # (2× on 2026-08-10/11: 27k+ per-op errors, a 3.3MB tool result, and a
+    # wasted encoder round). The string holds the exact intended array, so
+    # recover it — loudly, so the quirk's frequency stays visible — and
+    # collapse anything unrecoverable into ONE whole-call error.
+    if isinstance(operations, str):
+        try:
+            parsed = json.loads(operations)
+        except ValueError:
+            parsed = None
+        if not isinstance(parsed, list):
+            return {"ok": False, "error":
+                    "operations must be a JSON array of op dicts; got a "
+                    "string that does not parse to one. Emit the array as a "
+                    "JSON value, not a JSON-encoded string. No ops were "
+                    "executed."}
+        try:
+            brain._log_error(
+                'brain_batch_string_ops',
+                RuntimeError('operations arrived JSON-encoded as a string '
+                             '(%d chars) — unwrapped to %d op(s)'
+                             % (len(operations), len(parsed))),
+                'lossless recovery, batch proceeded; caller emitted a '
+                'stringified array')
+        except Exception:
+            pass
+        operations = parsed
+    if not isinstance(operations, list):
+        return {"ok": False, "error": "operations must be an array, got %s"
+                % type(operations).__name__}
     if not operations:
         return {"ok": False, "error": "operations array is required"}
 
@@ -776,6 +809,7 @@ def _handle_brain_batch(brain, args, graph_changes):
     # can resolve. NEW wins on title collision (sibling beats catalog).
     sibling_map = {}  # lowercased title → new node_id
     deferred_connects = []  # [(src_node_id, connect_to_spec)]
+    unwrapped_elements = 0  # string ops recovered via json.loads (logged once)
 
     # Node-lifecycle Δ aggregated across all sub-ops — the authoritative
     # `affected` the batch returns at top level (the runner reads it for the
@@ -857,6 +891,19 @@ def _handle_brain_batch(brain, args, graph_changes):
         transaction_started = True
 
         for i, op_spec in enumerate(operations):
+            if isinstance(op_spec, str):
+                # Same serialization quirk one level down: a string ELEMENT
+                # that parses to a dict is the intended op (seen in S2
+                # community batches, id:ce8d9aef). Unrecoverable elements
+                # keep the existing per-op error — fan-out is bounded by
+                # the element count the caller actually sent.
+                try:
+                    _parsed_el = json.loads(op_spec)
+                except ValueError:
+                    _parsed_el = None
+                if isinstance(_parsed_el, dict):
+                    op_spec = _parsed_el
+                    unwrapped_elements += 1
             if not isinstance(op_spec, dict):
                 results.append({"op": "?", "index": i, "ok": False,
                                 "error": "operation must be a dict, got %s" % type(op_spec).__name__})
@@ -1012,6 +1059,20 @@ def _handle_brain_batch(brain, args, graph_changes):
             graph_changes.append("CONNECT_TO: %d edges" % connect_to_edges)
         if connect_to_failed:
             graph_changes.append("CONNECT_TO_FAILURES: %d" % len(connect_to_failed))
+
+        if unwrapped_elements:
+            # One aggregate log per batch, not one per element — same
+            # visibility contract as the top-level unwrap above.
+            try:
+                brain._log_error(
+                    'brain_batch_string_ops',
+                    RuntimeError('%d op element(s) arrived JSON-encoded as '
+                                 'strings — unwrapped losslessly'
+                                 % unwrapped_elements),
+                    'lossless recovery, batch proceeded; caller emitted '
+                    'stringified op dicts')
+            except Exception:
+                pass
 
         # One commit for the whole batch — all per-op writes land here. Edge
         # traces are emitted AFTER this (post-finally), never before: traces
