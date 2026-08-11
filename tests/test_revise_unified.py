@@ -176,6 +176,62 @@ class TestPerFieldReplace(BrainTestBase):
 # Class B — Immutable handling (skip + warn, never fail the call)
 # ═══════════════════════════════════════════════════════════════════════
 
+class TestRevisedAtClaimGate(BrainTestBase):
+    """revised_at bumps ONLY on claim changes (content/title).
+
+    The claim is what the consolidation clustering embeddings are built
+    from; metadata enrichment must not re-enter a node into the change set
+    (B1 2026-08-11: healer question stamps were resetting suppression on
+    ~24 claim-unchanged nodes/day). updated_at always bumps.
+    """
+
+    needs_embedder = False
+
+    def _stamps(self, nid):
+        return self.brain.conn.execute(
+            "SELECT revised_at, updated_at FROM nodes WHERE id = ?",
+            (nid,)).fetchone()
+
+    def test_metadata_only_revise_does_not_bump_revised_at(self):
+        nid = _make_node(self.brain, title='T', content='C')
+        before_revised, _ = self._stamps(nid)
+        time.sleep(0.01)
+        result = self.brain.revise(node_id=nid, question='what changed?',
+                                   confidence=0.8, reason='enrichment stamp')
+        self.assertNotIn('error', result)
+        after_revised, after_updated = self._stamps(nid)
+        self.assertEqual(after_revised, before_revised)
+        self.assertIsNone(result['revised_at'])
+        self.assertGreater(after_updated, before_revised or '')
+
+    def test_content_change_bumps_revised_at(self):
+        nid = _make_node(self.brain, title='T', content='C')
+        before_revised, _ = self._stamps(nid)
+        time.sleep(0.01)
+        result = self.brain.revise(node_id=nid, content='C2', reason='claim')
+        after_revised, _ = self._stamps(nid)
+        self.assertNotEqual(after_revised, before_revised)
+        self.assertEqual(result['revised_at'], after_revised)
+
+    def test_title_change_bumps_revised_at(self):
+        nid = _make_node(self.brain, title='T', content='C')
+        before_revised, _ = self._stamps(nid)
+        time.sleep(0.01)
+        self.brain.revise(node_id=nid, title='T2', reason='claim')
+        after_revised, _ = self._stamps(nid)
+        self.assertNotEqual(after_revised, before_revised)
+
+    def test_identical_content_does_not_bump_revised_at(self):
+        # Passing content equal to the stored value is not a claim change.
+        nid = _make_node(self.brain, title='T', content='C')
+        before_revised, _ = self._stamps(nid)
+        time.sleep(0.01)
+        result = self.brain.revise(node_id=nid, content='C', reason='no-op')
+        after_revised, _ = self._stamps(nid)
+        self.assertEqual(after_revised, before_revised)
+        self.assertIsNone(result['revised_at'])
+
+
 class TestImmutableHandling(BrainTestBase):
     needs_embedder = False
 

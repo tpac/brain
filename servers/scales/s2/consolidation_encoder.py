@@ -234,7 +234,9 @@ class ConsolidationEncoder(IntegrationUnit):
 
     def _format_clusters(self, clusters):
         from servers.contract import render_rich_node
-        from .consolidation_contract import CONSOLIDATION_NODE_FORMAT, CLUSTER_REQUIRED_FIELDS
+        from .consolidation_contract import (
+            CONSOLIDATION_NODE_FORMAT, CLUSTER_REQUIRED_FIELDS,
+            suppression_relations)
 
         # Validate cluster shape against contract
         for i, c in enumerate(clusters):
@@ -243,7 +245,13 @@ class ConsolidationEncoder(IntegrationUnit):
                 print('[s2-consolidation] WARNING: cluster %d missing fields: %s' % (
                     i, missing), flush=True)
 
-        lines = ['CLUSTERS:\n']
+        # The decoder's live reviewed set, rendered verbatim so the prompt's
+        # settlement guidance can reference it without hand-typing verbs —
+        # same derivation the decoder scanned with (settlement aspect).
+        lines = ['Settlement relations (the decoder\'s "reviewed" set, '
+                 'either direction): %s\n'
+                 % ', '.join(sorted(suppression_relations(self.brain))),
+                 'CLUSTERS:\n']
 
         for i, cluster in enumerate(clusters):
             pre = cluster.get('pre_class', 'needs_judgment')

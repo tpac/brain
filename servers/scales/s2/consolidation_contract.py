@@ -147,6 +147,9 @@ CONSOLIDATION = {
     'journal_max_chars': 14000,
 
     # ── Cold start / run cap ──
+    # (suppression_relations fallback above; live derivation is
+    # suppression_relations() at the bottom of this file — the ONE
+    # source both the decoder scan and the encoder payload render use.)
     # Max clusters the encoder processes per idle cycle.
     # Cold start (164 clusters) spreads across ~6 cycles.
     # Each cycle: suppression edges prevent re-processing.
@@ -154,3 +157,16 @@ CONSOLIDATION = {
     # Easy cases first — validates prompt quality before harder decisions.
     'max_clusters_per_run': 10,
 }
+
+
+def suppression_relations(brain):
+    """The decoder's suppression verb set, derived from the settlement aspect.
+
+    The ONE derivation both consumers use: the decoder's embedding-scan
+    reviewed filter and the encoder's payload 'Settlement relations' line.
+    They must never disagree — the encoder describes to Sonnet exactly the
+    set the decoder scanned with. Falls back to the config constant when
+    the registry serves an empty aspect (degraded working copy).
+    """
+    rels = set(brain.aspects.settlement.edge_relations)
+    return rels or set(CONSOLIDATION['suppression_relations'])

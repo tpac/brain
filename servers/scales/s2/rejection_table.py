@@ -117,6 +117,9 @@ def compute_fingerprint(proposal):
         # though the content the encoder would judge has changed.
         # Including updated_at makes any revise()/remember() on a member
         # invalidate the rejection automatically — no bookkeeping needed.
+        # updated_at, not revised_at, on purpose: re-proposal is gated
+        # upstream by the revised_at change set, so a metadata-only revise
+        # invalidating a fingerprint is inert — see consolidation.py.
         members = sorted(proposal.get('members', []))
         updated_at = proposal.get('member_updated_at')
 

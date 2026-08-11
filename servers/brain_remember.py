@@ -1400,9 +1400,23 @@ class BrainRememberMixin:
             new_content = writable.pop('content')
 
         # Build SQL UPDATE for all fields.
-        # Always update: content, content_summary, updated_at, revised_at.
-        set_parts = ['content = ?', 'content_summary = ?', 'updated_at = ?', 'revised_at = ?']
-        params = [new_content, self._generate_summary(title, new_content), ts, ts]
+        # Always update: content, content_summary, updated_at.
+        # revised_at bumps ONLY when the CLAIM changed — content or title,
+        # exactly the fields the consolidation clustering embeddings are
+        # built from. Metadata enrichment (question, situation, confidence,
+        # evolution_status, ...) bumps updated_at alone: it cannot mint a
+        # near-duplicate, so it must not re-enter the node into the
+        # consolidation change set (B1 2026-08-11: healer question stamps
+        # were resetting suppression on ~24 claim-unchanged nodes/day).
+        claim_changed = bool(
+            ('content' in old_values and old_values['content'] != new_content)
+            or ('title' in writable
+                and old_values.get('title') != writable['title']))
+        set_parts = ['content = ?', 'content_summary = ?', 'updated_at = ?']
+        params = [new_content, self._generate_summary(title, new_content), ts]
+        if claim_changed:
+            set_parts.append('revised_at = ?')
+            params.append(ts)
 
         for field, value in writable.items():
             if field in NODES_TABLE_FIELDS:
@@ -1593,7 +1607,8 @@ class BrainRememberMixin:
             'id': node_id,
             'type': writable.get('type', node_type),
             'title': title,
-            'revised_at': ts,
+            # None = metadata-only revise; the stored revised_at was not touched.
+            'revised_at': ts if claim_changed else None,
             'content_length': len(new_content),
             'fields_updated': fields_updated,
             'deltas': deltas,

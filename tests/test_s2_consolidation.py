@@ -156,6 +156,30 @@ class TestConsolidationSuppressionSource(BrainTestBase):
             derived, set(self.brain.aspects.settlement.edge_relations))
         self.assertIn('resolves', derived)  # the original gap
 
+    def test_encoder_payload_renders_decoder_reviewed_set(self):
+        # The payload's 'Settlement relations' line and the decoder's scan
+        # filter come from ONE derivation — the encoder must describe to
+        # Sonnet exactly the set the decoder suppressed with.
+        from servers.scales.s2.consolidation_encoder import ConsolidationEncoder
+        from servers.scales.s2.consolidation_contract import (
+            CONSOLIDATION, suppression_relations)
+        enc = ConsolidationEncoder(self.brain, config=CONSOLIDATION)
+        cluster = {
+            'nodes': [], 'size': 0, 'pre_class': 'needs_judgment',
+            'content_cosine_max': 0.9, 'title_cosine_max': 0.9,
+            'node_details': {}, 'co_recall_count': 0, 'judge_preference': {},
+            'catalog_blind': {}, 'shared_edge_count': 0,
+            'same_community': False, 'has_correction_edge': False,
+        }
+        payload = enc._format_clusters([cluster])
+        expected = ', '.join(sorted(suppression_relations(self.brain)))
+        first_line = payload.splitlines()[0]
+        self.assertIn('Settlement relations', first_line)
+        self.assertIn(expected, first_line)
+        self.assertEqual(
+            suppression_relations(self.brain),
+            self._decoder()._suppression_relations())
+
     def test_settlement_does_not_steal_primary_homes(self):
         # settlement multi-homes verbs owned by earlier aspects. The primary
         # (first-claimant) reverse lookup must be unaffected — similar_to
