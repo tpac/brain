@@ -268,12 +268,12 @@ def main():
                         help="Report out-of-sync files and exit non-zero; don't write.")
     parser.add_argument('--db', default=None,
                         help='Path to brain_logs.db (interactions table lives there). '
-                             'Defaults to $BRAIN_DB_DIR/brain_logs.db.')
+                             'Defaults to brain_logs.db in the resolved '
+                             'brain dir (daemon_config.resolve_db_dir).')
     args = parser.parse_args()
 
-    db_path = args.db or os.path.join(
-        os.environ.get('BRAIN_DB_DIR') or os.path.expanduser('~/AgentsContext/brain'),
-        'brain_logs.db')
+    from servers.daemon_config import resolve_db_dir
+    db_path = args.db or os.path.join(resolve_db_dir(), 'brain_logs.db')
     if not os.path.exists(db_path):
         print('sync_prompts: brain_logs.db not found at %s' % db_path, file=sys.stderr)
         return 2

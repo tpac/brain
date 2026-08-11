@@ -15,7 +15,7 @@ import json
 import os
 import sys
 
-from ..db import brain_db_path, ro_connect
+from ..db import _brain_dir, brain_db_path, ro_connect
 
 
 def _aspects_json_path():
@@ -24,17 +24,13 @@ def _aspects_json_path():
     Disconnection contract forbids importing from servers.*, so we replicate
     the path-resolution rules here:
       - $ASPECTS_JSON_PATH env override wins (matches the brain runtime)
-      - otherwise $BRAIN_DB_DIR/aspects_v1.json
-      - fallback to ~/AgentsContext/brain/aspects_v1.json
+      - otherwise aspects_v1.json in the resolved brain dir (db._brain_dir,
+        the D-13 resolution chain)
     """
     explicit = os.environ.get('ASPECTS_JSON_PATH')
     if explicit:
         return explicit
-    db_dir = os.environ.get(
-        'BRAIN_DB_DIR',
-        os.path.join(os.path.expanduser('~'), 'AgentsContext', 'brain'),
-    )
-    return os.path.join(db_dir, 'aspects_v1.json')
+    return os.path.join(_brain_dir(), 'aspects_v1.json')
 
 
 def _repo_seed_path():

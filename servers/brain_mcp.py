@@ -1234,12 +1234,8 @@ def _health_monitor():
             # hook-side detector or this idle ping-loop detector fires first.
             # The hook_errors SQL lives in LogsDAL (no raw SQL in the MCP layer).
             try:
-                db_dir = os.environ.get("BRAIN_DB_DIR", "")
-                if not db_dir:
-                    home = os.path.expanduser("~")
-                    candidate = os.path.join(home, "AgentsContext", "brain")
-                    if os.path.isdir(candidate):
-                        db_dir = candidate
+                from servers.daemon_config import resolve_db_dir
+                db_dir = resolve_db_dir()
                 if db_dir and os.path.isdir(db_dir):
                     from servers.dal_logs import LogsDAL
                     conn = sqlite3.connect(os.path.join(db_dir, "brain_logs.db"), timeout=3)

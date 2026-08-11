@@ -45,9 +45,9 @@ def debugger_friendly_python() -> str:
 
     Priority:
       1. $BRAIN_PYTHON env var (explicit override)
-      2. <repo>/venv/bin/python (dev checkout)
-      3. <plugin>/venv/bin/python (installed plugin)
-      4. Fall back to sys.executable with a stderr warning
+      2. <checkout>/venv/bin/python — REPO_ROOT is servers/'s parent, so this
+         resolves the bundled venv in a dev checkout AND an installed plugin
+      3. Fall back to sys.executable with a stderr warning
 
     Returning the first hit keeps future `sudo py-spy dump` / `lldb -p`
     calls actually usable when the daemon goes hot.
@@ -56,15 +56,9 @@ def debugger_friendly_python() -> str:
     if override and os.path.exists(override):
         return override
 
-    candidates = [
-        os.path.join(REPO_ROOT, 'venv', 'bin', 'python'),
-        os.path.expanduser(
-            '~/.claude/plugins/marketplaces/local-desktop-app-uploads/'
-            'brain/venv/bin/python'),
-    ]
-    for p in candidates:
-        if os.path.exists(p):
-            return p
+    local_venv = os.path.join(REPO_ROOT, 'venv', 'bin', 'python')
+    if os.path.exists(local_venv):
+        return local_venv
 
     # Fallback: warn once. The daemon still runs; debugging is just harder.
     if '/Xcode.app/' in sys.executable or sys.executable.startswith('/Applications/'):

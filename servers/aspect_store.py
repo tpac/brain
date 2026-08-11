@@ -54,24 +54,26 @@ REQUIRED_ASPECTS: tuple = (
 # takes effect — IsolatedBrain sets BRAIN_DB_DIR in __enter__, AFTER this
 # module is imported, and a module-level constant would freeze the live
 # user-dir path and leak heals into it (observed 2026-06-16). Pinned by
-# tests/test_aspects_path_isolation.py.
-_DEFAULT_DB_DIR = os.path.join(os.path.expanduser('~'), 'AgentsContext', 'brain')
-
+# tests/test_aspects_path_isolation.py. Resolution routes through
+# daemon_config.resolve_db_dir (D-13 single-location contract), which reads
+# the env var first — preserving the call-time override behavior.
 
 def aspects_json_path() -> str:
     """Path to the per-operator working aspects file (call-time resolved)."""
-    return os.environ.get(
-        'ASPECTS_JSON_PATH',
-        os.path.join(os.environ.get('BRAIN_DB_DIR', _DEFAULT_DB_DIR),
-                     'aspects_v1.json'))
+    explicit = os.environ.get('ASPECTS_JSON_PATH')
+    if explicit:
+        return explicit
+    from servers.daemon_config import resolve_db_dir
+    return os.path.join(resolve_db_dir(), 'aspects_v1.json')
 
 
 def aspects_proposed_path() -> str:
     """Path to the per-cycle audit artifact (call-time resolved)."""
-    return os.environ.get(
-        'ASPECTS_PROPOSED_PATH',
-        os.path.join(os.environ.get('BRAIN_DB_DIR', _DEFAULT_DB_DIR),
-                     'aspects_proposed.json'))
+    explicit = os.environ.get('ASPECTS_PROPOSED_PATH')
+    if explicit:
+        return explicit
+    from servers.daemon_config import resolve_db_dir
+    return os.path.join(resolve_db_dir(), 'aspects_proposed.json')
 
 
 # Repo seed — frozen baseline shipped with the plugin. Never written.
