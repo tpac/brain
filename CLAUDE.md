@@ -110,10 +110,6 @@ Commit the `.py` change together with whatever prompted the registration. Never 
 
 `tests/test_prompt_sync.py` holds the contract: each seed file must export `SYSTEM_PROMPT`, fresh brains must seed every prompt in `SEED_PROMPTS`, sync must mirror the active version (not the latest registered), and seed must never overwrite an externally-registered version.
 
-### Migrations: one runner, three streams
-
-There is a fleet — no change can be applied by hand. `run_versioned_migrations` (`servers/schema.py`) applies every versioned change at open: forward-only, idempotent, and a failed step skips the stamp so it retries. Streams: `BRAIN_VERSION`/`MAIN_MIGRATIONS` (brain.db), `LOGS_VERSION`/`LOGS_MIGRATIONS` (brain_logs.db), `SEED_PROMPTS_VERSION` (prompt content) — separate counters because structure changes rarely and prompts often. Ship a change as `(N, _migrate_vN)` + a constant bump; never an unversioned `ALTER` or a hand-run script. Steps must be sub-second — a slow boot reads as a closed port and the watchdog SIGKILLs it. `MIN_SUPPORTED_VERSION` refuses older DBs loudly rather than stamping them current.
-
 ### Python runtime — use `./dev`
 
 The brain bundles its own Python at `venv/bin/python` (3.11.11). That's the interpreter the daemon runs, the hooks resolve, and the one **not** blocked by macOS SIP — debuggers (`py-spy`, `lldb`) can only attach to this one.

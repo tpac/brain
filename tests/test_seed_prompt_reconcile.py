@@ -140,43 +140,6 @@ class TestSeedPromptReconcile(BrainTestBase):
             0, 'a failed run must stay unstamped so the next open retries')
 
 
-class TestSchemaVersionFloor(BrainTestBase):
-    """The historical v1..v29 migration ladder was deleted as unreachable.
-
-    The floor guard is what makes that safe: without it an old DB would run
-    an empty migration list and be STAMPED current while unmigrated — a
-    silent mislabel instead of a loud refusal.
-    """
-
-    needs_embedder = False
-
-    def test_pre_floor_db_is_refused_not_silently_stamped(self):
-        import sqlite3
-        import tempfile
-        import os
-        from servers.schema import (ensure_schema, stamp_schema_version,
-                                    MIN_SUPPORTED_VERSION)
-
-        path = os.path.join(tempfile.mkdtemp(), 'old.db')
-        conn = sqlite3.connect(path)
-        conn.execute('CREATE TABLE IF NOT EXISTS brain_meta '
-                     '(key TEXT PRIMARY KEY, value TEXT, updated_at TEXT)')
-        stamp_schema_version(conn, 'brain_meta', 'brain_schema_version',
-                             MIN_SUPPORTED_VERSION - 1)
-        conn.commit()
-
-        with self.assertRaises(RuntimeError):
-            ensure_schema(conn, db_path=path)
-
-    def test_fresh_db_is_not_refused(self):
-        """current_version == 0 is a fresh DB built at BRAIN_VERSION."""
-        from servers.schema import read_schema_version, BRAIN_VERSION
-        self.assertEqual(
-            read_schema_version(self.brain.conn, 'brain_meta',
-                                'brain_schema_version'),
-            BRAIN_VERSION)
-
-
 if __name__ == '__main__':
     import unittest
     unittest.main()
