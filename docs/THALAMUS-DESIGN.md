@@ -100,14 +100,27 @@ triages must own plain language.
   directed). Past expiry the receipt is *deleted*, so "delivered and ignored"
   becomes indistinguishable from "never delivered". Any re-push logic must record
   its own attempt rather than trust the courier's memory.
-- **`store_pending_message` / `drain_pending_messages` are dead** —
-  `hooks/scripts/hook_common.py:397,423`, zero callers. Deleting them is cleanup,
-  not consolidation.
-- **`brain_debug` → `debug_log` is a second dead deferred-delivery channel** — 16
-  call sites writing rows, and the drain that used to read them no longer exists.
-- **`bridge_proposals` already exists and is dead** — `schema.py:291`, with
-  `status CHECK(pending/created/expired/rejected)`, `matures_at`, `resolved_at`,
-  two indexes, **zero callers**. This queue shape was built once and never used.
+- **`store_pending_message` / `drain_pending_messages` are gone** — a
+  brain_meta-backed queue (cap 5, oldest dropped) whose readers died when hook
+  logic moved into the daemon. Removed 2026-08-11; the `pending_hook_messages`
+  key still holds two never-drained messages, which is what a queue outliving
+  its reader looks like from the outside.
+- **`brain_debug` → `debug_log` is NOT a dead channel** — it is forensic, and it
+  has a reader: the `query_logs` MCP tool (`source='debug'`) returns these rows.
+  `debug_enabled=1` in `brain_meta`, so ~15 call sites write continuously. The
+  dashboard's Logs tab filters `event_type IN ('error','warning')` and so misses
+  them — which is how a reader-less verdict is easy to reach here. Only the
+  docstring was wrong (it claimed the recall hook drained them into
+  `additionalContext`); that drain is genuinely gone, and the docstring is fixed.
+  **Do not fold this into a v2 port.**
+- **`bridge_proposals` is dead and no longer declared** — it served deferred
+  maturation (propose now, mature at `matures_at`), and its readers
+  (`_mature_bridge_proposals`, `_bridge_at_consolidation`) went with
+  `consolidate()`. Bridging is now immediate: `_bridge_at_store_time` writes
+  `emergent_bridge` edges directly. Removed from `TABLES` + `INDEXES`
+  2026-08-11, so fresh brains skip it; existing brains keep an empty table
+  until the dead-table drop ships with the migration runner (0 rows, so nothing
+  is pending in it).
 - **The return path needs a door that does not exist.** `write_journal_notes`
   takes an encoder's raw text, requires a `## Review` fence, and has no `unit`
   parameter — S2 scoping comes from `chain_id LIKE '%-{unit}'`. A single-note
@@ -158,8 +171,8 @@ triages must own plain language.
 ## What survives from v1
 
 The diagnosis (boot is a bare `filter_nodes` with zero delivery state); Stop-block
-as the only push channel; deleting the dead `store_pending_message` and
-`brain_debug` paths; retiring `journals-escalation` and the `open ×5` promotion;
+as the only push channel; retiring `journals-escalation` and the `open ×5`
+promotion;
 shipping deletions in the same commit as their port; and writing the answer back
 by *code* rather than by an LLM, which removes the resolve-verb failure tail at
 the one place it matters.

@@ -47,6 +47,35 @@
 
 ## ⚡ Top of queue — what's next
 
+### 🔴 Migration runner rebuild (attempt 2) — unowned, and three cleanups queue behind it
+
+Attempt 1 (`dfc74ee` + `5cead71`) was **reverted** (`813b7c2`, `58581ff`): three
+independent reviewers found `MAIN_MIGRATIONS` dead by construction — `ensure_schema`
+stamped `BRAIN_VERSION` at step 7, then the runner re-read that key at step 8, saw
+itself already current, and ran nothing. Latent only because the list was empty; it
+detonates on the first real migration. **Fix: the runner owns the stamp.** The logs-side
+integration was correct and is the model. Full mechanism + repro: brain `b5b72b74`.
+`MAIN_MIGRATIONS` appears in zero tests — the layer's only exercise is with an empty
+list, which is exactly what hides the bug.
+
+What's live right now is the older `_backfill_data(conn, current_version)` ladder, which
+works because it takes the pre-stamp version as an argument.
+
+**Queued behind it** (each wants a version bump, and one bump should serve all):
+
+| Item | Detail |
+|---|---|
+| Dead-table drops | 12 undeclared in `brain.db`, 15 in `brain_logs.db` — full inventory + row counts in brain `2b49ac02`. `brain_logs.db` has **no** migration mechanism at all after the revert, so its half is blocked, not merely deferred. "Undeclared" is not "drop-safe": ~12 names still return code hits that need disambiguating from a real reader first. |
+| `bridge_proposals` | Undeclared from `TABLES`/`INDEXES` 2026-08-11 (fresh brains skip it); 0 rows, empty table still present on existing brains. Joins the bulk drop. |
+| 648 stale `keywords` KV rows | Deferred 2026-08-07 with the `contract.py` skip_keys guard held in place; purge and guard-release ship together. |
+
+**Why it's not free to bump:** `_backup_before_migration` copies the whole DB — 675 MB
+today — on every DB below the new version, at boot, before the port opens. Per the fleet
+rule (brain `56890464`) a migration must be sub-second or the watchdog can `kickstart -k`
+mid-run, since a closed port reads as *dead*, not busy. And the fleet is larger than
+production installs: 606 of 657 `brain.db` files on this machine are below v30, counting
+backups, eval corpora and clones (brain `50d41c27`).
+
 ### 🔴 Generic-edge pollution: 18.1% of the live graph carries no relation signal (found 2026-08-07)
 
 ```

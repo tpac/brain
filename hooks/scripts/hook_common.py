@@ -69,11 +69,12 @@ def is_debug_mode():
 
 
 def brain_debug(msg):
-    """Log debug info to brain_logs.db for draining into Claude's context.
+    """Log hook activity to brain_logs.db for later inspection.
 
-    Messages are written to the debug_log table with event_type='hook_debug'.
-    The pre-response recall hook drains these and includes them in
-    additionalContext, making them visible to Claude on the next prompt.
+    Rows go to the debug_log table with event_type='hook_debug'. They are
+    forensic — read on demand via the `query_logs` MCP tool (source='debug'),
+    not pushed into Claude's context. The dashboard's Logs tab filters to
+    event_type IN ('error','warning'), so these rows do not appear there.
 
     Only logs when debug mode is on. Falls back to stderr if DB write fails.
     """
@@ -394,45 +395,3 @@ def daemon_call_raw(cmd, args=None, timeout=10.0):
         return {"ok": False, "error": str(e)}
 
 
-def store_pending_message(brain_or_daemon, message):
-    """Store a message for surfacing on next UserPromptSubmit.
-    Accepts either a Brain instance or 'daemon' string.
-    """
-    try:
-        if brain_or_daemon == "daemon":
-            existing = daemon_call("get_config", {"key": "pending_hook_messages", "default": "[]"})
-            pending = json.loads(existing) if isinstance(existing, str) else []
-        else:
-            existing = brain_or_daemon.get_config("pending_hook_messages", "[]")
-            pending = json.loads(existing) if existing else []
-    except Exception:
-        pending = []
-
-    pending.append(message)
-    pending = pending[-5:]  # cap at 5
-
-    try:
-        if brain_or_daemon == "daemon":
-            daemon_call("set_config", {"key": "pending_hook_messages", "value": json.dumps(pending)}, timeout=3.0)
-        else:
-            brain_or_daemon.set_config("pending_hook_messages", json.dumps(pending))
-    except Exception:
-        pass
-
-
-def drain_pending_messages(brain_or_daemon):
-    """Read and clear pending messages. Returns list of strings."""
-    try:
-        if brain_or_daemon == "daemon":
-            existing = daemon_call("get_config", {"key": "pending_hook_messages", "default": "[]"})
-            pending = json.loads(existing) if isinstance(existing, str) else []
-            if pending:
-                daemon_call("set_config", {"key": "pending_hook_messages", "value": "[]"}, timeout=3.0)
-        else:
-            existing = brain_or_daemon.get_config("pending_hook_messages", "[]")
-            pending = json.loads(existing) if existing else []
-            if pending:
-                brain_or_daemon.set_config("pending_hook_messages", "[]")
-    except Exception:
-        pending = []
-    return pending

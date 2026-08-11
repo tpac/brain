@@ -284,25 +284,11 @@ TABLES = {
     # reasoning_chains — REMOVED v21 (dead table)
     # reasoning_steps — REMOVED v21 (dead table)
 
-    'bridge_proposals': {
-        'create': """CREATE TABLE IF NOT EXISTS bridge_proposals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source_id TEXT NOT NULL,
-            target_id TEXT NOT NULL,
-            shared_context TEXT DEFAULT '',
-            dream_session_id TEXT DEFAULT '',
-            status TEXT DEFAULT 'pending' CHECK(status IN ('pending','created','expired','rejected')),
-            proposed_at TEXT NOT NULL,
-            matures_at TEXT NOT NULL,
-            resolved_at TEXT,
-            FOREIGN KEY (source_id) REFERENCES nodes(id) ON DELETE CASCADE,
-            FOREIGN KEY (target_id) REFERENCES nodes(id) ON DELETE CASCADE
-        )""",
-        'columns': {'id': None, 'source_id': None, 'target_id': None,
-                    'shared_context': "''", 'dream_session_id': "''",
-                    'status': "'pending'", 'proposed_at': None,
-                    'matures_at': None, 'resolved_at': 'NULL'}
-    },
+    # bridge_proposals — UNDECLARED 2026-08-11. Deferred-maturation bridging
+    # (propose now, mature at matures_at); its readers went with consolidate().
+    # Bridging is now immediate — _bridge_at_store_time writes emergent_bridge
+    # edges directly. Fresh brains no longer create it; existing brains keep an
+    # empty table until the dead-table drop ships with the migration runner.
 
     # prune_archive — REMOVED v21 (dead table)
 
@@ -474,9 +460,7 @@ INDEXES = [
     # node_vectors
     'CREATE INDEX IF NOT EXISTS idx_vectors_term ON node_vectors(term)',
     'CREATE INDEX IF NOT EXISTS idx_vectors_node ON node_vectors(node_id)',
-    # bridge_proposals
-    'CREATE INDEX IF NOT EXISTS idx_bridge_proposals_status ON bridge_proposals(status)',
-    'CREATE INDEX IF NOT EXISTS idx_bridge_proposals_matures ON bridge_proposals(matures_at)',
+    # bridge_proposals — UNDECLARED 2026-08-11 alongside its table
     # node_embeddings — REMOVED v23 (table deprecated, index not maintained)
     # v15: node_metadata — REMOVED 2026-05-17 (table dropped; KV table is
     # canonical, see decision 6bfe45d5). Indexes idx_metadata_correction
