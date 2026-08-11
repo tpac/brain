@@ -11,11 +11,12 @@ reader is the next run of the same encoder. Two live examples, both correct, bot
 unread for weeks:
 
 - consolidation asked, three runs running, whether the decoder's suppression-verb
-  list is meant to be operator-configurable. It is a real inconsistency:
-  `consolidation_contract.py:129` hardcodes `{similar_to, consolidated_into,
-  corrects, supersedes}` while `_has_correction_edge` reads the
-  `correction_improvement` aspect family. `resolves` is in the family and not in
-  the list, so pairs joined by `resolves` are re-proposed forever.
+  list is meant to be operator-configurable. It was a real inconsistency —
+  the contract hardcoded four verbs while `_has_correction_edge` read the
+  aspect taxonomy, so pairs joined by `resolves` re-proposed forever. Answered
+  2026-08-11: the suppression set now derives from the `settlement` aspect
+  (aspects_v1.json). The point stands: the encoder diagnosed it correctly,
+  and the ask sat unread for three runs.
 - consolidation reported, five runs running, that adding one node to a 7-node arc
   costs ~15 pairwise `similar_to` edges, and that it recurs for every new node.
 

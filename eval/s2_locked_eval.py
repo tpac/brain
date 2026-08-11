@@ -203,7 +203,7 @@ def run_variant(brain, prompt_text, label):
         edges_now = edges_between(brain, ids[0], ids[1])
 
         # existing dimensions test
-        analysis = analyze_actions(brain.conn, before, [cluster], all_before)
+        analysis = analyze_actions(brain, before, [cluster], all_before)
         dims = score_results(analysis, [cluster], result)
 
         checks, passed = case_pass(case, ids, before, after, edges_now)

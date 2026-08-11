@@ -167,7 +167,10 @@ class TestConsolidationSuppressionSource(BrainTestBase):
             set(CONSOLIDATION['suppression_relations']),
             set(seed['settlement']['edge_relations']))
 
-    def test_empty_registry_falls_back_to_contract(self):
+    def test_empty_settlement_falls_back_to_contract(self):
+        # Present-but-empty aspect → contract fallback. A MISSING aspect
+        # raises AspectContractError instead (loud by design, same as
+        # _has_correction_edge) — the coordinator contains it per-unit.
         d = self._decoder()
         # Instance attr shadows AspectRegistry.__getattr__ resolution.
         with mock.patch.object(self.brain.aspects, 'settlement',
