@@ -115,11 +115,12 @@ class Consolidation(ConsolidationDecoder):
         # Fingerprint EVERY processed cluster (2026-07-27) — suppression
         # follows the encoder's decision itself, not its edge vocabulary.
         # Previously only no-new-edge clusters were fingerprinted and edges
-        # did the rest — but the decoder's skip-list knows 4 verbs while the
-        # encoder resolves pairs in open text (`resolves` ×455, `addresses`
-        # ×240, `reframes` ×101 live edges, plus the prompt's own "link
-        # survivors with a REAL relation"), so verb-mismatched resolutions
-        # re-proposed every cycle (journal finding #4, id:2ace76f3).
+        # did the rest — but the decoder's skip-list is a closed verb set
+        # (the settlement aspect) while the encoder resolves pairs in open
+        # text (`addresses` ×240, `reframes` ×101 live edges, plus the
+        # prompt's own "link survivors with a REAL relation"), so
+        # verb-mismatched resolutions re-proposed every cycle (journal
+        # finding #4, id:2ace76f3).
         # A fingerprint invalidates when a member's updated_at changes —
         # a real write, now that access marks no longer touch it — so
         # legitimate re-review after content change is preserved.

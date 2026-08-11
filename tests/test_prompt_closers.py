@@ -71,10 +71,12 @@ def test_edge_aspects_skip_and_heading():
     assert 'Avoid `related_to`' in b
 
 
-def test_seed_declares_the_structural_trio_invisible():
+def test_seed_prompt_invisible_set_is_pinned():
     # The seed's prompt_visible facts reproduce the deleted
-    # EDGE_ASPECT_PROMPT_SKIP contract: exactly the two catch-alls + the
-    # system aspect stay out of encoder vocabulary blocks.
+    # EDGE_ASPECT_PROMPT_SKIP contract: the two catch-alls + the system
+    # aspects stay out of encoder vocabulary blocks. settlement's verbs
+    # already appear via their semantic home aspects. Keep in sync with
+    # tests/test_aspects_contract.py::test_prompt_invisible_set_is_pinned.
     import json
     import os
     seed_path = os.path.join(
@@ -83,7 +85,8 @@ def test_seed_declares_the_structural_trio_invisible():
     with open(seed_path) as f:
         seed = json.load(f)
     invisible = {n for n, spec in seed.items() if not spec['prompt_visible']}
-    assert invisible == {'generic_relation', 'noise', 'survivor_lineage'}
+    assert invisible == {
+        'generic_relation', 'noise', 'survivor_lineage', 'settlement'}
 
 
 def test_edge_aspects_empty_when_nothing_to_show():
