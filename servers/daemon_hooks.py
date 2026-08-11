@@ -527,9 +527,8 @@ def hook_recall(brain, args, graph_changes):
     # (additionalContext) is the weakest channel — it competes with recall/Frame
     # and would lose the consume-once race against higher-salience hooks. A
     # block prepended here also overflowed the inject spill cap, losing context.
-    # Delivery lives on PreToolUse (reason — interrupt before you act) and Stop
-    # (block — don't end with an unread tap), via signal.deliver_into_context.
-    # See docs/SELF-CHANNEL-DESIGN.md.
+    # Delivery lives on Stop alone (block — don't end with an unread tap), via
+    # signal.drain_and_render. See docs/SELF-CHANNEL-DESIGN.md.
     if additional_context:
         return {"json": {"additionalContext": additional_context}, "session_id": session_id}
     else:

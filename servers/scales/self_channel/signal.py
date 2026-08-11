@@ -261,12 +261,11 @@ def drain_and_render(brain, to_session):
     pending messages into one budgeted block. Returns (block, n_drained), or
     ("", 0) when empty. Consume-once is inherited from drain_inbox.
 
-    Callers wrap the block for their channel: PreToolUse prepends it to a tool's
-    `reason` (tool feedback, the instant before a mutating action); Stop returns
-    it as a `decision:block` reason (the backstop for no-tool turns). Delivery
-    deliberately does NOT ride on_prompt — that channel is passive, competes with
-    recall, and would win the consume-once race against these higher-salience
-    hooks. The caller owns tracing (it holds the chain id)."""
+    The Stop hook is the only caller: it returns the block as a
+    `decision:block` reason, so a turn cannot end on an unread tap. Delivery
+    deliberately does NOT ride on_prompt — that channel is passive, competes
+    with recall, and would lose the consume-once race. The caller owns tracing
+    (it holds the chain id)."""
     pending = drain_inbox(brain, to_session)
     if not pending:
         return "", 0
