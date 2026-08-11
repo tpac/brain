@@ -51,10 +51,13 @@ CONNECT_TO_ITEM_SCHEMA = {
         "title": {
             "type": "string",
             "description": (
-                "Target node title. Siblings (same batch, any declaration order) "
-                "resolve before catalog matches; NEW wins on title collision — to "
-                "update an existing catalog node use `revise` on its id, not a "
-                "duplicate-title remember. Unresolved titles are logged and "
+                "Target: for an EXISTING node, its 8-char hex id copied from any "
+                "visible id: surface (the expected form — resolves first, fails "
+                "loud on a bad copy); for a node created in this same batch, its "
+                "exact title (siblings resolve before catalog matches, any "
+                "declaration order). NEW wins on title collision — to update an "
+                "existing catalog node use `revise` on its id, not a "
+                "duplicate-title remember. Unresolved targets are logged and "
                 "skipped, never failing the batch."
             ),
         },

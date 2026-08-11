@@ -449,8 +449,8 @@ Apr 24 design notes at (former) `docs/S1S-QUALITY-RUBRIC-NOTES.md` (now archived
 ### SKILL.md Encoding Craft section reframe
 2026-05-15 SKILL.md surgical edits flipped 4-5 active-encoding bullets but did not touch the "## Encoding Craft" section (title + line 109 "when you encode lessons" + Encoding Richness subsection). Decision deferred — wider reframe scope. Either delete the section (encoder owns this craft) or reframe it as "Node Craft — for revising and reading nodes" with verb flips.
 
-### connect_to ID-shape pattern in encoder prompt
-2026-05-15 bug fix (commit `08156ee`) at `_resolve_connect_to_entry` recovers when the encoder passes an 8+ hex-char ID in the `title` field. Real root cause is the encoder prompt not having a clean schema for "connect to this specific known node by id" — the `connect_to` spec is title-only. A future improvement: support `connect_to: {id: "...", relation: ..., why: ...}` shape so the encoder can express ID-based connection intent directly.
+### connect_to ID-shape pattern in encoder prompt — SHIPPED 2026-08-11 (Option D, s1e v34)
+Resolved without a schema change: ids ride the existing `title` slot (the Pass 0 hex-prefix lookup from `08156ee` is the resolver), and s1e v34 makes ids the taught form for catalog targets — grounded catalog excerpt in the canonical example, `<id-of-...>` placeholders in §7.6, missing-node signal rule. Gate: `eval/longmem/connect_ab.py` 20-item A/B, catalog_title 38→4 / id_ok 0→37 / unresolved 4→1. The separate `{id: ...}` key idea is retired — two forms in one slot proved sufficient and the resolver already disambiguates by shape.
 
 ---
 

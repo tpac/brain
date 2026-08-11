@@ -158,9 +158,13 @@ def run_item(client, path, system_prompt, effort, tools):
                     rows.append({
                         'node': node_title, 'target': e.get('title'),
                         'relation': e.get('relation'), 'class': cls})
-            return {'rows': rows, 'rounds': rnd, 'usage': usage,
-                    'write_calls': len(writes), 'status': 'ok',
-                    'created_titles': sorted(round_created)}
+            rec = {'rows': rows, 'rounds': rnd, 'usage': usage,
+                   'write_calls': len(writes), 'status': 'ok',
+                   'created_titles': sorted(round_created)}
+            if os.environ.get('CONNECT_AB_DUMP'):
+                rec['raw_writes'] = [{'name': c['name'], 'input': c['input']}
+                                     for c in writes]
+            return rec
         if not calls or resp.stop_reason != 'tool_use':
             return {'rows': [], 'rounds': rnd, 'usage': usage,
                     'write_calls': 0, 'status': 'no_write'}
@@ -182,6 +186,8 @@ def main():
     ap.add_argument('--items', type=int, default=0, help='0 = all')
     ap.add_argument('--label', default=time.strftime('%Y%m%d-%H%M%S'))
     ap.add_argument('--workers', type=int, default=8)
+    ap.add_argument('--only', default='',
+                    help='comma-separated filename substrings to select items')
     args = ap.parse_args()
 
     import threading
@@ -189,6 +195,9 @@ def main():
     import anthropic
     client = anthropic.Anthropic()
     paths = sorted(glob.glob(CAPTURE_GLOB))
+    if args.only:
+        frags = [f for f in args.only.split(',') if f]
+        paths = [p for p in paths if any(f in os.path.basename(p) for f in frags)]
     if args.items:
         step = max(1, len(paths) // args.items)
         paths = paths[::step][:args.items]

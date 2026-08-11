@@ -841,14 +841,20 @@ New paragraph inside the "Anchoring nodes in the substrate" subsection:
 
 **Quality contract**: every example is scored by an LLM evaluator against the 32-dimension contract in [`servers/scales/s1/quality_contract.py`](../servers/scales/s1/quality_contract.py). Dimensions are yardsticks (universal measurement); the contract's cross-dim rules name architectural tensions and how they resolve. Authoring loop: draft example → run through evaluator → iterate until contract-clean. See the file for full dimension definitions, cross-dim rules, recall-time gating principle, and structural follow-ups outside encoder scope.
 
-**Placeholder syntax convention** (locked 2026-05-25 after v20→v21 connect_to_unresolved discovery):
+**Placeholder syntax convention** (locked 2026-05-25 after v20→v21 connect_to_unresolved discovery; extended 2026-08-11 by contract v4 / Option D):
 
-Example `connect_to` targets MUST use bracketed placeholder syntax — `<descriptive-name>` — never a literal-looking title string. The same rule applies to any field where the value should be resolved against the live catalog or computed at encode time (`source_refs`, `node_id` in revise examples, etc.).
+Example `connect_to` targets use id-flavored bracketed placeholders — `<id-of-descriptive-name>` — never a literal-looking title string. The same rule applies to any field where the value should be resolved against the live catalog or computed at encode time (`source_refs`, `node_id` in revise examples, etc.). **One exception (contract v4, `grounded_catalog_excerpt`):** an example MAY use a literal hex id when the example carries its own catalog excerpt and the id is copied from one of those headers — the visible source makes the demonstrated behavior copy-from-catalog, not invent-a-value; s1e's canonical example uses this form.
 
 ```yaml
 # GOOD — visually-unmissable placeholder
 connect_to: [
-  {title: "<related-architecture-decision-from-catalog>", relation: "grounds", why: "..."}
+  {title: "<id-of-related-architecture-decision>", relation: "grounds", why: "..."}
+]
+
+# GOOD — grounded: the id is copied from an excerpt line shown in the example
+#   [decision] "Daemon TCP migration" (id:3fa2b91c, ...)
+connect_to: [
+  {title: "3fa2b91c", relation: "grounds", why: "..."}
 ]
 
 # BAD — Sonnet pattern-matches and literal-copies the title in production
@@ -857,7 +863,7 @@ connect_to: [
 ]
 ```
 
-**Why this matters**: Sonnet pattern-matches SHAPES. When examples show real-looking titles in connect_to targets, Sonnet emits those exact titles on real encoded nodes — but those titles don't exist as catalog nodes, producing `connect_to_unresolved` errors at write boundary. A prose disclaimer above the example block is too soft against shape-pattern-match. Bracketed placeholders are visually unmistakable as illustrative, and Sonnet's training recognizes `<placeholder>` patterns as "fill this in," not "copy verbatim."
+**Why this matters**: Sonnet pattern-matches SHAPES. When examples show real-looking titles in connect_to targets, Sonnet emits those exact titles on real encoded nodes — but those titles don't exist as catalog nodes, producing `connect_to_unresolved` errors at write boundary. A prose disclaimer above the example block is too soft against shape-pattern-match. Bracketed placeholders are visually unmistakable as illustrative, and Sonnet's training recognizes `<placeholder>` patterns as "fill this in," not "copy verbatim." An ungrounded literal hex is the same violation class as a literal title — the grounded-excerpt form is safe precisely because the copy source is inside the example.
 
 **Fields that need placeholders** in examples:
 - `connect_to[].title` — edge targets (top failure mode)
