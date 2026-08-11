@@ -166,7 +166,15 @@ spec — land before or with 5.0a.
 **Respects.** Never-auto-move (detection + restart, no data movement); D-11 (labels
 untouched).
 
-## Step 5 — Dead shipped scripts: surface for deletion, then gate the class
+## Step 5 — SHIPPED 2026-08-11: Dead shipped scripts deleted, class gated
+
+*The six deleted on operator confirmation; `build-plugin.sh`'s hand-list is now empty
+(scripts/ ships nothing — live seeding is `servers/seed_pack.py`); `redeploy.sh` prune
+list drops scripts/. Gate: `test_deploy_contract.TestShippedScriptsReachable` — a
+REACHABILITY check (seeds = every in-scope file outside hooks/scripts/, fixpoint over
+script-to-script references, basename+stem matching) so a mutually-referencing dead
+pair can't vouch for itself; allowlist `brain-statusline.sh` + `brain-watch` (wired
+via user settings). The original analysis follows.*
 
 **Problem.** Zero-referrer files ship in every package: `encoding-hook.sh` +
 `encoding_hook.py` (retired pre-Scribe encoding path; looks wired, isn't in `hooks.json`),
