@@ -124,7 +124,20 @@ shell owner) only.
 **Respects.** Route-don't-reach; resolve-brain-db.sh remains the inference owner —
 Python reads the *persisted contract*, it doesn't re-run the ladder.
 
-## Step 4 — Close the daemon's frozen-DB-path hole (5.0a acceptance criterion)
+## Step 4 — SHIPPED 2026-08-11: Close the daemon's frozen-DB-path hole (5.0a acceptance criterion)
+
+*Landed with step 2 (env-first `DAEMON_PORT`, with a user-env-file fallback for bare-env
+Python like the MCP server) in the same commit family: `start-daemon.sh` sources the
+resolver (baked env = fast-path hint; a brain-less env dir is demoted to
+hint-of-last-resort so a stale baked path can't birth a shadow brain; the daemon's
+resolution never rewrites `resolved.env`), ping reports `db_dir`, `ensure_daemon`
+kickstarts on mismatch via `_db_dir_changed` (source-checkout-gated like `_code_changed`),
+and both installers render-diff-rebootstrap the plist on every run — preserving the
+installed tree's ownership and letting only the durable adoption channels (config knob /
+userConfig `brain_path`) re-point `BRAIN_DB_DIR`, with unload-verify-before-copy so a
+failed re-bootstrap can't bless divergence. Locked by `tests/test_daemon_recovery.py`
+(TestDbDirDivergence, TestInstallerPlistDrift, TestResolverEnvHintDemotion,
+TestDaemonPortEnvFirst). The original analysis follows.*
 
 **Problem.** The materialized launchd plists bake `__BRAIN_DB_DIR__` once (installers
 no-op forever after `launchctl print` succeeds); `start-daemon.sh` requires the baked env

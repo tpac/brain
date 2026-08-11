@@ -918,5 +918,493 @@ class TestDaemonPlistTemplateContract(unittest.TestCase):
         self.assertTrue(plist["RunAtLoad"])
 
 
+class TestDbDirDivergence(unittest.TestCase):
+    """Step 4b (D-13): the daemon ping reports its db_dir; ensure_daemon treats
+    a mismatch vs the session's resolved dir like stale code — kickstart. The
+    split-brain killer: after the user adopts a new brain location, a daemon
+    launched off the old plist-baked path would keep writing the old brain
+    forever (the old brain.db still exists per never-auto-move, so the baked
+    path stays 'valid')."""
+
+    def setUp(self):
+        self._dir = tempfile.mkdtemp(prefix="brain-dbdir-test-")
+        self._db = os.path.join(self._dir, "brain.db")
+        self._lock = os.path.join(self._dir, "daemon.lock")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._dir, ignore_errors=True)
+
+    def _resp(self, db_dir):
+        r = {"ok": True, "result": {}}
+        if db_dir is not None:
+            r["result"]["db_dir"] = db_dir
+        return r
+
+    # ── _db_dir_changed unit ──
+
+    def test_mismatch_detected(self):
+        with patch.object(dc, "_is_daemon_source", return_value=True):
+            self.assertTrue(dc._db_dir_changed(self._resp("/somewhere/else"), self._db))
+
+    def test_match_is_not_changed(self):
+        with patch.object(dc, "_is_daemon_source", return_value=True):
+            self.assertFalse(dc._db_dir_changed(self._resp(self._dir), self._db))
+
+    def test_missing_db_dir_never_changed(self):
+        # A pre-step-4 daemon doesn't report db_dir → conservative no-restart
+        # on this signal (the code-fingerprint check already covers it).
+        with patch.object(dc, "_is_daemon_source", return_value=True):
+            self.assertFalse(dc._db_dir_changed(self._resp(None), self._db))
+
+    def test_non_source_never_changed(self):
+        # Same policy as _code_changed: a non-source checkout can't converge a
+        # restart, so it never claims divergence.
+        with patch.object(dc, "_is_daemon_source", return_value=False):
+            self.assertFalse(dc._db_dir_changed(self._resp("/somewhere/else"), self._db))
+
+    def test_symlinked_same_dir_is_not_changed(self):
+        # realpath comparison: a symlink to the same brain is not divergence.
+        link = self._dir + "-link"
+        os.symlink(self._dir, link)
+        try:
+            with patch.object(dc, "_is_daemon_source", return_value=True):
+                self.assertFalse(dc._db_dir_changed(self._resp(link), self._db))
+        finally:
+            os.unlink(link)
+
+    # ── ensure_daemon flow ──
+
+    def test_db_dir_mismatch_kickstarts_once(self):
+        # Healthy, current code, but writing ANOTHER brain → exactly one
+        # launchd kickstart (never a spawn); post-kickstart the daemon reports
+        # the session's dir (plist re-materialized at boot + start-daemon.sh
+        # re-ran the ladder) → ready.
+        stale = self._resp("/somewhere/else")
+        fresh = self._resp(self._dir)
+        with patch.object(dc, "is_maintenance_mode", return_value=False), \
+             patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_is_daemon_source", return_value=True), \
+             patch.object(dc, "_code_changed", return_value=False), \
+             patch.object(dc, "_can_connect", return_value=stale), \
+             patch.object(dc, "_await_responsive", return_value=fresh), \
+             patch.object(dc, "kickstart", return_value=True) as ks, \
+             patch.object(dc, "spawn_detached_daemon") as spawn:
+            self.assertTrue(dc.ensure_daemon(self._db))
+            ks.assert_called_once()
+            spawn.assert_not_called()
+
+    def test_db_dir_match_is_noop(self):
+        with patch.object(dc, "is_maintenance_mode", return_value=False), \
+             patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_is_daemon_source", return_value=True), \
+             patch.object(dc, "_code_changed", return_value=False), \
+             patch.object(dc, "_can_connect", return_value=self._resp(self._dir)), \
+             patch.object(dc, "kickstart") as ks, \
+             patch.object(dc, "spawn_detached_daemon") as spawn:
+            self.assertTrue(dc.ensure_daemon(self._db))
+            ks.assert_not_called()
+            spawn.assert_not_called()
+
+    def test_old_daemon_without_db_dir_is_noop(self):
+        with patch.object(dc, "is_maintenance_mode", return_value=False), \
+             patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_is_daemon_source", return_value=True), \
+             patch.object(dc, "_code_changed", return_value=False), \
+             patch.object(dc, "_can_connect", return_value=self._resp(None)), \
+             patch.object(dc, "kickstart") as ks:
+            self.assertTrue(dc.ensure_daemon(self._db))
+            ks.assert_not_called()
+
+    def test_worktree_client_mismatch_never_kickstarts(self):
+        # A non-source checkout stays a pure client even when it sees a
+        # diverged daemon — the source checkout's boot converges it.
+        with patch.object(dc, "is_maintenance_mode", return_value=False), \
+             patch.object(dc, "_is_daemon_source", return_value=False), \
+             patch.object(dc, "_can_connect", return_value=self._resp("/somewhere/else")), \
+             patch.object(dc, "kickstart") as ks, \
+             patch.object(dc, "spawn_detached_daemon") as spawn:
+            self.assertTrue(dc.ensure_daemon(self._db))
+            ks.assert_not_called()
+            spawn.assert_not_called()
+
+
+class TestInstallerPlistDrift(unittest.TestCase):
+    """Step 4c (D-13): the installers render the plist template to a temp file
+    on EVERY run and diff against the installed copy — drift (template evolved,
+    or the brain moved) re-materializes + re-bootstraps; no drift leaves launchd
+    untouched. Runs the real shell scripts against a fake HOME + fake launchctl."""
+
+    DAEMON_SCRIPT = os.path.join(os.path.dirname(__file__), '..',
+                                 'hooks', 'scripts', 'install-daemon-service.sh')
+    DASH_SCRIPT = os.path.join(os.path.dirname(__file__), '..',
+                               'hooks', 'scripts', 'ensure-dashboard.sh')
+
+    def setUp(self):
+        if sys.platform != "darwin":
+            self.skipTest("launchd installer paths are macOS-only")
+        self._home = tempfile.mkdtemp(prefix="brain-plist-home-")
+        self._dbdir = os.path.join(self._home, "brain-data")
+        os.makedirs(self._dbdir)
+        open(os.path.join(self._dbdir, "brain.db"), "w").close()
+        self._agents = os.path.join(self._home, "Library", "LaunchAgents")
+        os.makedirs(self._agents)
+        self._bin = os.path.join(self._home, "bin")
+        os.makedirs(self._bin)
+        self._log = os.path.join(self._home, "launchctl.log")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._home, ignore_errors=True)
+
+    def _fake_launchctl(self, print_rc=0):
+        """launchctl stub: records every invocation and models load state like
+        the real thing — `print` answers from a state file (seeded by print_rc:
+        0 = service managed, 1 = fresh machine), `bootout` unloads, `bootstrap`
+        loads. The installers verify unload-before-copy and load-after-
+        bootstrap, so both transitions must be observable."""
+        path = os.path.join(self._bin, "launchctl")
+        state = os.path.join(self._home, "launchctl.loaded")
+        if print_rc == 0:
+            open(state, "w").close()
+        elif os.path.exists(state):
+            os.remove(state)
+        with open(path, "w") as f:
+            f.write('#!/bin/bash\necho "$@" >> "%s"\n'
+                    'case "$1" in\n'
+                    '  bootstrap) touch "%s";;\n'
+                    '  bootout) rm -f "%s";;\n'
+                    '  print) [ -f "%s" ] && exit 0; exit 1;;\n'
+                    'esac\nexit 0\n'
+                    % (self._log, state, state, state))
+        os.chmod(path, 0o755)
+
+    def _fake_curl(self, code="200"):
+        """curl stub for ensure-dashboard's _up probe."""
+        path = os.path.join(self._bin, "curl")
+        with open(path, "w") as f:
+            f.write('#!/bin/bash\nprintf "%s"\n' % code)
+        os.chmod(path, 0o755)
+
+    def _run(self, script):
+        import subprocess
+        env = dict(os.environ,
+                   HOME=self._home,
+                   PATH=self._bin + os.pathsep + os.environ.get("PATH", ""),
+                   BRAIN_DB_DIR=self._dbdir,
+                   XDG_CONFIG_HOME=os.path.join(self._home, ".config"))
+        return subprocess.run(["bash", script], env=env,
+                              capture_output=True, text=True, timeout=60)
+
+    def _calls(self):
+        if not os.path.exists(self._log):
+            return []
+        return [line.split() for line in open(self._log).read().splitlines()]
+
+    def _verbs(self):
+        return [c[0] for c in self._calls()]
+
+    # ── install-daemon-service.sh ──
+
+    def test_daemon_drift_rematerializes_and_rebootstraps(self):
+        self._fake_launchctl(print_rc=0)  # managed
+        target = os.path.join(self._agents, "com.brain.daemon.plist")
+        with open(target, "w") as f:
+            f.write("<plist>stale frozen snapshot</plist>\n")
+        r = self._run(self.DAEMON_SCRIPT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        content = open(target).read()
+        self.assertIn(self._dbdir, content, "re-materialized plist must carry the resolved brain dir")
+        self.assertNotIn("__BRAIN_DB_DIR__", content)
+        self.assertNotIn("__PLUGIN_DIR__", content)
+        verbs = self._verbs()
+        self.assertIn("bootout", verbs, "drift must re-bootstrap, not kickstart (env is frozen at bootstrap)")
+        self.assertIn("bootstrap", verbs)
+
+    def test_daemon_no_drift_leaves_launchd_untouched(self):
+        self._fake_launchctl(print_rc=0)
+        with open(os.path.join(self._agents, "com.brain.daemon.plist"), "w") as f:
+            f.write("seed")
+        self._run(self.DAEMON_SCRIPT)  # first run converges the target
+        os.remove(self._log)
+        r = self._run(self.DAEMON_SCRIPT)  # second run: no drift
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(set(self._verbs()), {"print"},
+                         "no drift → only the managed probe, no bootout/bootstrap")
+
+    def test_daemon_fresh_install_bootstraps_without_bootout(self):
+        self._fake_launchctl(print_rc=1)  # not managed
+        r = self._run(self.DAEMON_SCRIPT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        target = os.path.join(self._agents, "com.brain.daemon.plist")
+        self.assertTrue(os.path.exists(target))
+        self.assertIn(self._dbdir, open(target).read())
+        verbs = self._verbs()
+        self.assertIn("bootstrap", verbs)
+        self.assertNotIn("bootout", verbs)
+
+    # ── ensure-dashboard.sh ──
+
+    def test_dashboard_drift_rematerializes_even_when_up(self):
+        # An "up" dashboard whose plist points at a moved brain serves the
+        # WRONG data — drift must be fixed before the up fast-path exits.
+        self._fake_launchctl(print_rc=0)
+        self._fake_curl("200")
+        target = os.path.join(self._agents, "com.brain.dashboard.plist")
+        with open(target, "w") as f:
+            f.write("<plist>stale frozen snapshot</plist>\n")
+        r = self._run(self.DASH_SCRIPT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        content = open(target).read()
+        self.assertIn(self._dbdir, content)
+        self.assertNotIn("__BRAIN_DB_DIR__", content)
+        verbs = self._verbs()
+        self.assertIn("bootout", verbs)
+        self.assertIn("bootstrap", verbs)
+
+    def test_dashboard_no_drift_up_is_noop(self):
+        self._fake_launchctl(print_rc=0)
+        self._fake_curl("200")
+        target = os.path.join(self._agents, "com.brain.dashboard.plist")
+        with open(target, "w") as f:
+            f.write("seed")
+        self._run(self.DASH_SCRIPT)  # converge
+        os.remove(self._log)
+        r = self._run(self.DASH_SCRIPT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(set(self._verbs()), {"print"},
+                         "up + no drift → early exit, launchd untouched")
+
+    # ── identity preservation (review findings: tree-flip / db-dir hijack) ──
+
+    def _fake_owner_tree(self):
+        """A second 'checkout' that owns the installed plist — valid launcher
+        scripts under a tree that is NOT the one running the installer."""
+        tree = os.path.join(self._home, "other-tree")
+        scripts = os.path.join(tree, "hooks", "scripts")
+        os.makedirs(scripts)
+        for name in ("start-daemon.sh", "brain-dashboard"):
+            p = os.path.join(scripts, name)
+            with open(p, "w") as f:
+                f.write("#!/bin/bash\n")
+            os.chmod(p, 0o755)
+        return tree
+
+    def test_daemon_drift_preserves_installed_plugin_dir(self):
+        # Hooks run from the plugin copy while the daemon is launchd-pinned to
+        # the repo: re-materialization must keep the INSTALLED tree, not flip
+        # service ownership to whichever tree ran the installer.
+        self._fake_launchctl(print_rc=0)
+        owner = self._fake_owner_tree()
+        target = os.path.join(self._agents, "com.brain.daemon.plist")
+        template = os.path.join(os.path.dirname(self.DAEMON_SCRIPT),
+                                "com.brain.daemon.plist")
+        rendered = open(template).read().replace("__PLUGIN_DIR__", owner) \
+                                        .replace("__BRAIN_DB_DIR__", self._dbdir)
+        with open(target, "w") as f:
+            f.write(rendered + "\n<!-- old template residue -->\n")  # force drift
+        r = self._run(self.DAEMON_SCRIPT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        content = open(target).read()
+        self.assertIn(owner + "/hooks/scripts/start-daemon.sh", content,
+                      "installed tree must survive re-materialization")
+        repo = os.path.realpath(os.path.join(os.path.dirname(self.DAEMON_SCRIPT), "..", ".."))
+        self.assertNotIn(repo + "/hooks/scripts/start-daemon.sh", content,
+                         "the caller's tree must not capture the service")
+
+    def test_daemon_foreign_owned_current_plist_is_no_drift(self):
+        # Same template shape, different (valid) owner tree → NOT drift.
+        # Without this, plugin-copy boots and repo-side runs would ping-pong
+        # the plist with a daemon bootout on every flip.
+        self._fake_launchctl(print_rc=0)
+        owner = self._fake_owner_tree()
+        target = os.path.join(self._agents, "com.brain.daemon.plist")
+        template = os.path.join(os.path.dirname(self.DAEMON_SCRIPT),
+                                "com.brain.daemon.plist")
+        with open(target, "w") as f:
+            f.write(open(template).read().replace("__PLUGIN_DIR__", owner)
+                                         .replace("__BRAIN_DB_DIR__", self._dbdir))
+        r = self._run(self.DAEMON_SCRIPT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(set(self._verbs()), {"print"},
+                         "foreign-owned but current plist must not re-bootstrap")
+
+    def test_daemon_env_override_does_not_repoint_db_dir(self):
+        # An ephemeral BRAIN_DB_DIR (eval run, isolated copy) must not hijack
+        # the managed daemon onto its brain: installed BRAIN_DB_DIR wins
+        # unless the override came from a durable adoption channel.
+        self._fake_launchctl(print_rc=0)
+        prod = os.path.join(self._home, "prod-brain")
+        os.makedirs(prod)
+        target = os.path.join(self._agents, "com.brain.daemon.plist")
+        template = os.path.join(os.path.dirname(self.DAEMON_SCRIPT),
+                                "com.brain.daemon.plist")
+        repo = os.path.realpath(os.path.join(os.path.dirname(self.DAEMON_SCRIPT), "..", ".."))
+        with open(target, "w") as f:
+            f.write(open(template).read().replace("__PLUGIN_DIR__", repo)
+                                         .replace("__BRAIN_DB_DIR__", prod))
+        # self._dbdir (the run's BRAIN_DB_DIR) differs from prod → would be a
+        # hijack; no knob, no plugin option → render must keep prod.
+        r = self._run(self.DAEMON_SCRIPT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(prod, open(target).read(),
+                      "ephemeral env override must not re-point the daemon's brain")
+        self.assertEqual(set(self._verbs()), {"print"})
+
+    def test_daemon_knob_adoption_repoints_db_dir(self):
+        # The durable channel: BRAIN_DB_DIR in ~/.config/brain/env IS a
+        # sanctioned adoption — the plist must converge to it.
+        self._fake_launchctl(print_rc=0)
+        prod = os.path.join(self._home, "prod-brain")
+        os.makedirs(prod)
+        cfg = os.path.join(self._home, ".config", "brain")
+        os.makedirs(cfg)
+        with open(os.path.join(cfg, "env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % self._dbdir)
+        target = os.path.join(self._agents, "com.brain.daemon.plist")
+        template = os.path.join(os.path.dirname(self.DAEMON_SCRIPT),
+                                "com.brain.daemon.plist")
+        repo = os.path.realpath(os.path.join(os.path.dirname(self.DAEMON_SCRIPT), "..", ".."))
+        with open(target, "w") as f:
+            f.write(open(template).read().replace("__PLUGIN_DIR__", repo)
+                                         .replace("__BRAIN_DB_DIR__", prod))
+        r = self._run(self.DAEMON_SCRIPT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        content = open(target).read()
+        self.assertIn(self._dbdir, content, "knob adoption must re-point the plist")
+        self.assertNotIn(prod, content)
+        self.assertIn("bootout", self._verbs())
+
+    def test_daemon_bootout_failure_keeps_installed_plist(self):
+        # bootout that doesn't unload → the plist FILE must stay stale so the
+        # next run re-detects drift ("file current, launchd stale" never heals).
+        path = os.path.join(self._bin, "launchctl")
+        with open(path, "w") as f:
+            f.write('#!/bin/bash\necho "$@" >> "%s"\n'
+                    'case "$1" in print) exit 0;; esac\nexit 0\n' % self._log)
+        os.chmod(path, 0o755)  # print always managed; bootout never unloads
+        target = os.path.join(self._agents, "com.brain.daemon.plist")
+        with open(target, "w") as f:
+            f.write("<plist>stale frozen snapshot</plist>\n")
+        r = self._run(self.DAEMON_SCRIPT)
+        self.assertNotEqual(r.returncode, 0, "must fail loudly, not bless the divergence")
+        self.assertEqual(open(target).read(), "<plist>stale frozen snapshot</plist>\n",
+                         "installed plist must be untouched after a failed unload")
+
+
+class TestResolverEnvHintDemotion(unittest.TestCase):
+    """Step 4a refinement (review finding): a BRAIN_DB_DIR env dir WITHOUT
+    brain.db is a hint of last resort, not a verdict — a daemon relaunched off
+    a stale plist-baked path follows the ladder to the moved brain instead of
+    birthing a shadow brain, while a fresh install (dir exists, daemon creates
+    brain.db) still lands on the hint."""
+
+    RESOLVER = os.path.join(os.path.dirname(__file__), '..',
+                            'hooks', 'scripts', 'resolve-brain-db.sh')
+
+    def setUp(self):
+        self._home = tempfile.mkdtemp(prefix="brain-resolve-home-")
+        self._xdg = os.path.join(self._home, ".config")
+        os.makedirs(os.path.join(self._xdg, "brain"))
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._home, ignore_errors=True)
+
+    def _resolve(self, env_extra):
+        import subprocess
+        env = dict(os.environ, HOME=self._home, XDG_CONFIG_HOME=self._xdg)
+        env.pop("BRAIN_DB_DIR", None)
+        env.pop("CLAUDE_PLUGIN_DATA", None)
+        env.update(env_extra)
+        out = subprocess.run(
+            ["bash", "-c",
+             'source "%s" >/dev/null 2>&1; printf %%s "$BRAIN_DB_DIR"' % self.RESOLVER],
+            env=env, capture_output=True, text=True, timeout=60)
+        return out.stdout.strip()
+
+    def test_moved_brain_follows_resolved_env_over_stale_hint(self):
+        stale = os.path.join(self._home, "old-brain")   # dir exists, no brain.db
+        os.makedirs(stale)
+        new = os.path.join(self._home, "new-brain")
+        os.makedirs(new)
+        open(os.path.join(new, "brain.db"), "w").close()
+        with open(os.path.join(self._xdg, "brain", "resolved.env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % new)
+        self.assertEqual(self._resolve({"BRAIN_DB_DIR": stale}), new,
+                         "the record of where the brain moved must beat the stale baked hint")
+
+    def test_fresh_install_hint_survives(self):
+        hint = os.path.join(self._home, "fresh-brain")  # installer mkdir'd it
+        os.makedirs(hint)
+        self.assertEqual(self._resolve({"BRAIN_DB_DIR": hint}), hint,
+                         "fresh install: nothing else exists → the baked hint wins")
+
+    def test_hint_with_brain_db_is_adopted_outright(self):
+        d = os.path.join(self._home, "live-brain")
+        os.makedirs(d)
+        open(os.path.join(d, "brain.db"), "w").close()
+        self.assertEqual(self._resolve({"BRAIN_DB_DIR": d}), d)
+
+    def test_no_persist_guard_skips_resolved_env_write(self):
+        d = os.path.join(self._home, "live-brain")
+        os.makedirs(d)
+        open(os.path.join(d, "brain.db"), "w").close()
+        self._resolve({"BRAIN_DB_DIR": d, "BRAIN_RESOLVE_NO_PERSIST": "1"})
+        self.assertFalse(
+            os.path.exists(os.path.join(self._xdg, "brain", "resolved.env")),
+            "a NO_PERSIST consumer (start-daemon.sh) must not write the record")
+
+
+class TestDaemonPortEnvFirst(unittest.TestCase):
+    """Step 2 (D-13 family): BRAIN_DAEMON_PORT is a real contract — the
+    daemon's own DAEMON_PORT reads the env override first, exactly like every
+    shell/hook client, so setting it can't split clients and daemon across
+    two ports."""
+
+    _REPO = os.path.join(os.path.dirname(__file__), '..')
+
+    def setUp(self):
+        # Sandbox XDG so the real ~/.config/brain/env can't leak into asserts.
+        self._xdg = tempfile.mkdtemp(prefix="brain-port-xdg-")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._xdg, ignore_errors=True)
+
+    def _port(self, env_extra):
+        import subprocess
+        env = {k: v for k, v in os.environ.items() if k != "BRAIN_DAEMON_PORT"}
+        env["XDG_CONFIG_HOME"] = self._xdg
+        env.update(env_extra)
+        out = subprocess.run(
+            [sys.executable, "-c",
+             "from servers.daemon_config import DAEMON_PORT; print(DAEMON_PORT)"],
+            env=env, capture_output=True, text=True, cwd=self._REPO, timeout=60)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return out.stdout.strip().splitlines()[-1]
+
+    def test_env_override_wins(self):
+        self.assertEqual(self._port({"BRAIN_DAEMON_PORT": "47299"}), "47299")
+
+    def test_formula_when_unset(self):
+        self.assertEqual(self._port({}), str(47200 + os.getuid() % 100))
+
+    def test_env_file_fallback_covers_bare_env_processes(self):
+        # The MCP server is spawned by CC without brain-env.sh — it must read
+        # the same knob from the user env file or the daemon (which sources it)
+        # binds one port while the MCP health monitor pings another, and
+        # recover_daemon kickstart-storms a healthy daemon forever.
+        os.makedirs(os.path.join(self._xdg, "brain"))
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write("export BRAIN_DAEMON_PORT=47288\n")
+        self.assertEqual(self._port({}), "47288")
+
+    def test_malformed_value_warns_and_falls_back(self):
+        # A garbage knob must not crash-loop the daemon under KeepAlive.
+        self.assertEqual(self._port({"BRAIN_DAEMON_PORT": "auto"}),
+                         str(47200 + os.getuid() % 100))
+
+
 if __name__ == "__main__":
     unittest.main()

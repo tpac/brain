@@ -28,7 +28,12 @@ BRAIN_SERVER_DIR="$PLUGIN_ROOT/servers"
 # cannot find a brain that lives at the $CLAUDE_PLUGIN_DATA default. Hooks
 # persist what they resolve; everyone else reads it (step 4b below).
 # Generated file — user config stays untouched in ../brain/env.
+# BRAIN_RESOLVE_NO_PERSIST: consumers of the resolution that are not an
+# authority on it (start-daemon.sh — launchd hands it a baked snapshot) set
+# this so a relaunch can't clobber a fresher hook-persisted record with
+# stale baked state.
 _brain_persist_state() {
+  [ -z "${BRAIN_RESOLVE_NO_PERSIST:-}" ] || return 0
   [ -n "$BRAIN_DB_DIR" ] && [ -f "$BRAIN_DB_DIR/brain.db" ] || return 0
   local _dir _state _content _existing
   _dir="${XDG_CONFIG_HOME:-$HOME/.config}/brain"
@@ -82,9 +87,20 @@ fi
 # legacy path (existing users who never migrated must opt in explicitly).
 DB_DIR=""
 
-# 1. Explicit override
+# 1. Explicit override — adopted outright only when a brain actually lives
+#    there. A dir WITHOUT brain.db is demoted to a hint of last resort (used
+#    below only if no rung finds a real brain): a daemon relaunched off a
+#    stale plist-baked path must follow the ladder to the brain that moved
+#    (resolved.env, step 4b), not birth a shadow brain at the abandoned dir —
+#    while a genuinely fresh install (baked dir exists, daemon creates
+#    brain.db on first load) still lands on the hint.
+_ENV_HINT=""
 if [ -n "$BRAIN_DB_DIR" ] && [ -d "$BRAIN_DB_DIR" ]; then
-  DB_DIR="$BRAIN_DB_DIR"
+  if [ -f "$BRAIN_DB_DIR/brain.db" ]; then
+    DB_DIR="$BRAIN_DB_DIR"
+  else
+    _ENV_HINT="$BRAIN_DB_DIR"
+  fi
 fi
 
 # 2. Cowork: search mounted AgentsContext directories for an existing brain
@@ -118,6 +134,13 @@ if [ -z "$DB_DIR" ]; then
     _state_db_dir="$(BRAIN_DB_DIR=''; . "$_state_env" 2>/dev/null; printf '%s' "$BRAIN_DB_DIR")"
     [ -n "$_state_db_dir" ] && [ -f "$_state_db_dir/brain.db" ] && DB_DIR="$_state_db_dir"
   fi
+fi
+
+# 4c. The demoted explicit hint (step 1): no rung found an existing brain,
+#     so the explicitly-named empty dir is where a new one belongs — beats
+#     auto-creating at the standard location.
+if [ -z "$DB_DIR" ] && [ -n "$_ENV_HINT" ]; then
+  DB_DIR="$_ENV_HINT"
 fi
 
 # 5. Standard first-run: create at $CLAUDE_PLUGIN_DATA/brain

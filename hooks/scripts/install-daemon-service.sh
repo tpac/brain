@@ -13,7 +13,11 @@
 # ensure_daemon sees launchd managing the daemon (manages() → True) and routes
 # (re)starts through `launchctl kickstart -k` rather than direct-spawning a rival.
 #
-#   already managed (launchctl print ok) → no-op (every non-fresh boot)
+#   managed, installed plist current      → no-op (every non-fresh boot)
+#   managed, installed plist DRIFTED      → re-materialize + re-bootstrap (the
+#                                           installed plist is a frozen snapshot;
+#                                           a template change or a brain-location
+#                                           adoption must reach it — D-13 step 4c)
 #   not managed, macOS                    → materialize the plist template for THIS
 #                                           machine + launchctl bootstrap it
 #                                           (RunAtLoad starts it; ensure_daemon
@@ -33,11 +37,7 @@ TEMPLATE="$SCRIPT_DIR/$LABEL.plist"
 [ "$(uname -s)" = "Darwin" ] || exit 0
 
 DOMAIN="gui/$(id -u)"
-# Already loaded (installed on a prior boot, or hand-installed) → nothing to do.
-# This is the common case; only a genuinely fresh machine falls through.
-if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
-  exit 0
-fi
+TARGET="$HOME/Library/LaunchAgents/$LABEL.plist"
 
 # Resolve BRAIN_DB_DIR the same way every launch path does, so the installed
 # plist points at the right brain. boot-brain.sh already resolved + exported it
@@ -48,15 +48,84 @@ source "$SCRIPT_DIR/resolve-brain-db.sh" >/dev/null 2>&1 || true
 [ -f "$TEMPLATE" ] || { echo "[install-daemon-service] FATAL: plist template missing: $TEMPLATE" >&2; exit 1; }
 [ -n "${BRAIN_DB_DIR:-}" ] || { echo "[install-daemon-service] FATAL: BRAIN_DB_DIR unresolved — not installing" >&2; exit 1; }
 
-echo "[install-daemon-service] first run — installing launchd service $LABEL" >&2
-TARGET="$HOME/Library/LaunchAgents/$LABEL.plist"
-mkdir -p "$HOME/Library/LaunchAgents"
-# Materialize the template for this machine (real paths, no tokens).
-sed -e "s|__PLUGIN_DIR__|$PLUGIN_DIR|g" \
-    -e "s|__BRAIN_DB_DIR__|$BRAIN_DB_DIR|g" \
-    "$TEMPLATE" > "$TARGET"
-launchctl bootstrap "$DOMAIN" "$TARGET" >/dev/null 2>&1 \
-  || launchctl load -w "$TARGET" >/dev/null 2>&1 || true
+# Identity preservation: an already-installed plist names the tree that OWNS
+# the service (ProgramArguments) and the brain it serves. Re-materialization
+# converges the TEMPLATE (shape, env set, launchd timing) but must not
+# silently re-point identity:
+#  - PLUGIN_DIR: hooks run from the installed plugin copy while a dev
+#    machine's daemon is launchd-pinned to the repo — rendering with the
+#    caller's own tree would flip service ownership every boot (and ping-pong
+#    back on repo-side runs). Keep the installed tree while its launcher
+#    still exists; a vanished tree (uninstall) falls back to ours.
+#  - BRAIN_DB_DIR: only the durable adoption channels (the ~/.config/brain/env
+#    knob or userConfig brain_path) may re-point an installed service's brain.
+#    An ephemeral shell BRAIN_DB_DIR (eval runs, isolated copies) must never
+#    hijack the shared daemon onto a temp brain.
+RENDER_PLUGIN_DIR="$PLUGIN_DIR"
+RENDER_DB_DIR="$BRAIN_DB_DIR"
+if [ -f "$TARGET" ]; then
+  _installed_plugin_dir="$(sed -n 's|.*<string>\(.*\)/hooks/scripts/start-daemon.sh</string>.*|\1|p' "$TARGET" | head -1)"
+  if [ -n "$_installed_plugin_dir" ] && [ -x "$_installed_plugin_dir/hooks/scripts/start-daemon.sh" ]; then
+    RENDER_PLUGIN_DIR="$_installed_plugin_dir"
+  fi
+  _installed_db_dir="$(sed -n '/<key>BRAIN_DB_DIR<\/key>/{n;s|.*<string>\(.*\)</string>.*|\1|p;}' "$TARGET" | head -1)"
+  if [ -n "$_installed_db_dir" ] && [ "$_installed_db_dir" != "$BRAIN_DB_DIR" ]; then
+    # Same subshell-source read the resolver's step 4b uses — one grammar.
+    _knob="$(BRAIN_DB_DIR=''; . "${XDG_CONFIG_HOME:-$HOME/.config}/brain/env" 2>/dev/null; printf '%s' "$BRAIN_DB_DIR")"
+    _opt="${CLAUDE_PLUGIN_OPTION_BRAIN_PATH:-${CLAUDE_PLUGIN_OPTION_brain_path:-}}"
+    if [ "$BRAIN_DB_DIR" != "$_knob" ] && [ "$BRAIN_DB_DIR" != "$_opt" ]; then
+      RENDER_DB_DIR="$_installed_db_dir"
+    fi
+  fi
+fi
+
+# Materialize the template (real paths, no tokens) to a temp file FIRST —
+# rendering is deterministic, so comparing it against the installed copy
+# detects drift (template evolved, or the brain legitimately moved) without
+# touching launchd on the no-drift common case.
+RENDERED="$(mktemp "${TMPDIR:-/tmp}/$LABEL.plist.XXXXXX")"
+trap 'rm -f "$RENDERED"' EXIT
+sed -e "s|__PLUGIN_DIR__|$RENDER_PLUGIN_DIR|g" \
+    -e "s|__BRAIN_DB_DIR__|$RENDER_DB_DIR|g" \
+    "$TEMPLATE" > "$RENDERED"
+
+if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
+  # Already managed (every non-fresh boot). The installed plist is a frozen
+  # snapshot launchd read at bootstrap time — if it no longer matches what we'd
+  # render today, re-materialize and re-bootstrap so the daemon adopts the
+  # current template + brain location. `kickstart` is NOT enough here: launchd
+  # keeps the old EnvironmentVariables until the plist is re-bootstrapped.
+  if cmp -s "$RENDERED" "$TARGET" 2>/dev/null; then
+    exit 0
+  fi
+  echo "[install-daemon-service] installed plist drifted from template — re-materializing" >&2
+  # Unload FIRST and VERIFY it unloaded before touching the file: a
+  # still-loaded service keeps its bootstrap-time env, so overwriting the
+  # plist under it would leave "file current, launchd stale" — every future
+  # cmp blesses the divergence and it never heals.
+  launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
+  for _ in 1 2 3 4 5; do
+    launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1 || break
+    sleep 1
+  done
+  if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
+    echo "[install-daemon-service] WARN: bootout did not unload $LABEL — keeping installed plist (drift retries next run)" >&2
+    exit 1
+  fi
+  cp "$RENDERED" "$TARGET"
+  _bootstrapped=""
+  for _ in 1 2 3; do
+    launchctl bootstrap "$DOMAIN" "$TARGET" >/dev/null 2>&1 && { _bootstrapped=1; break; }
+    sleep 1
+  done
+  [ -n "$_bootstrapped" ] || launchctl load -w "$TARGET" >/dev/null 2>&1 || true
+else
+  echo "[install-daemon-service] first run — installing launchd service $LABEL" >&2
+  mkdir -p "$HOME/Library/LaunchAgents"
+  cp "$RENDERED" "$TARGET"
+  launchctl bootstrap "$DOMAIN" "$TARGET" >/dev/null 2>&1 \
+    || launchctl load -w "$TARGET" >/dev/null 2>&1 || true
+fi
 # VERIFY instead of assuming: bootstrap/load failures were swallowed above (the
 # fallback chain needs that), so re-probe launchd for the truth. A false
 # "installed" here would mask exactly the state this script exists to prevent —

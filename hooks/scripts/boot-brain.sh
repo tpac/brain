@@ -218,6 +218,17 @@ fi
 # the daemon up (boot never has set -e).
 bash "$(dirname "$0")/install-daemon-service.sh"
 
+# ── Dashboard plist drift (managed installs only) ──
+# ensure-dashboard.sh owns first-install (keyless boot / the /dashboard skill);
+# this call ONLY reconciles an ALREADY-managed dashboard whose installed plist
+# drifted from the template — without it, a drifted-but-up dashboard passes
+# every curl probe and keeps serving stale config until /dashboard is invoked.
+# Backgrounded: no boot-latency cost; up + no drift exits in one sed + cmp.
+if [ "$(uname -s)" = "Darwin" ] && launchctl print "gui/$(id -u)/com.brain.dashboard" >/dev/null 2>&1; then
+  ( nohup "$(dirname "$0")/ensure-dashboard.sh" \
+      >> "$(cd "$(dirname "$0")/../.." && pwd)/.bootstrap.log" 2>&1 & )
+fi
+
 # ── Start daemon via ensure_daemon() — fcntl-locked singleton ──
 # No inline spawning. ensure_daemon() handles: lock, ping, spawn, code-change restart.
 PYTHONPATH="$(cd "$(dirname "$0")/../.." && pwd)" python3 -c "

@@ -173,6 +173,31 @@ def _code_changed(resp: dict) -> bool:
     return bool(_CODE_FINGERPRINT != "unknown" and daemon_fp and daemon_fp != _CODE_FINGERPRINT)
 
 
+def _db_dir_changed(resp: dict, db_path: str) -> bool:
+    """True iff a restart is warranted for DATA divergence: this checkout is
+    the daemon's source AND the daemon reports a `db_dir` different from the
+    dir this session resolved (D-13 step 4b — the split-brain killer: after
+    the user adopts a new brain location, a daemon launched off the old
+    plist-baked path would keep writing the old brain forever).
+
+    Same treatment as _code_changed: source-checkout only (a kickstart from a
+    non-source checkout is the same non-convergent churn), and conservative —
+    a daemon that doesn't report db_dir (pre-step-4 code) never restarts on
+    this signal; the code-fingerprint check already covers that daemon.
+
+    Convergence: kickstart relaunches via start-daemon.sh, which re-runs the
+    resolution ladder (step 4a), against a plist install-daemon-service.sh
+    re-materialized at boot (step 4c) — so the restarted daemon lands on the
+    same dir this session resolved."""
+    if not _is_daemon_source(resp):
+        return False
+    daemon_db_dir = resp.get("result", {}).get("db_dir", "")
+    if not daemon_db_dir or not db_path:
+        return False
+    session_db_dir = os.path.dirname(os.path.abspath(db_path))
+    return os.path.realpath(daemon_db_dir) != os.path.realpath(session_db_dir)
+
+
 def ensure_daemon(db_path: str) -> bool:
     """Ensure the daemon is running AND on current code. Returns True if ready.
 
@@ -197,6 +222,19 @@ def ensure_daemon(db_path: str) -> bool:
         sys.stderr.write("[brain-daemon] Maintenance mode active — skipping startup\n")
         return False
 
+    def _needs_restart(r: dict) -> bool:
+        # Stale CODE and diverged DATA warrant the same move: kickstart.
+        if _code_changed(r):
+            return True
+        if _db_dir_changed(r, db_path):
+            sys.stderr.write(
+                "[brain-daemon] db-path divergence: daemon on %s, session "
+                "resolved %s — restarting\n"
+                % (r.get("result", {}).get("db_dir", "?"),
+                   os.path.dirname(os.path.abspath(db_path))))
+            return True
+        return False
+
     resp = _can_connect()
 
     # A non-source checkout (linked worktree / 2nd clone) is a PURE CLIENT of the
@@ -212,7 +250,7 @@ def ensure_daemon(db_path: str) -> bool:
 
     # ── Source checkout: owns lifecycle (kickstart converges; stale code reloads). ──
     # Fast path: running, responsive, and on current code → nothing to do.
-    if resp.get("ok") and not _code_changed(resp):
+    if resp.get("ok") and not _needs_restart(resp):
         return True
     # Otherwise (down, or up-but-stale) fall through to the locked (re)start.
 
@@ -232,7 +270,7 @@ def ensure_daemon(db_path: str) -> bool:
         resp = _can_connect()
         if not resp.get("ok"):
             resp = _await_responsive(_GRACE_DEADLINE_S)
-        if resp.get("ok") and not _code_changed(resp):
+        if resp.get("ok") and not _needs_restart(resp):
             sys.stderr.write("[brain-daemon] Daemon healthy (handled by another caller / recovered).\n")
             return True
 
@@ -245,7 +283,7 @@ def ensure_daemon(db_path: str) -> bool:
             # re-kickstart it, resetting the throttle (the self-sustaining storm).
             t0 = time.monotonic()
             resp = _await_responsive(_KICKSTART_DEADLINE_S)
-            if resp.get("ok") and not _code_changed(resp):
+            if resp.get("ok") and not _needs_restart(resp):
                 sys.stderr.write("[brain-daemon] Daemon ready via launchd (took %.1fs)\n"
                                  % (time.monotonic() - t0))
                 return True
