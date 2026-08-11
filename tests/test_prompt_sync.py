@@ -1,8 +1,9 @@
 """Contract tests for the seed-prompt sync discipline.
 
-Invariant: the four encoder-agent prompts that live in sibling .py files
-(s1e, community, consolidation, healer) must each export a SYSTEM_PROMPT
-constant that matches what `interaction_seed.py` expects to register.
+Invariant: every prompt listed in `sync_prompts.SEED_PROMPTS` lives in a
+sibling .py file and must export the constant that list names, matching what
+`interaction_seed.py` expects to register. The roster is DERIVED from
+SEED_PROMPTS, so adding a prompt there covers it here automatically.
 
 If someone registers a new version of a prompt via register_interaction
 and forgets to run `./dev python3 -m servers.tools.sync_prompts`, these
@@ -11,7 +12,7 @@ What they DO catch:
   - A seed file with no SYSTEM_PROMPT constant (import error).
   - An empty SYSTEM_PROMPT (seed produces a broken fresh brain).
   - The sync tool's round-trip escape bugs (render → parse → compare).
-  - A freshly seeded brain not registering all 4 encoder prompts.
+  - A freshly seeded brain not registering every prompt in SEED_PROMPTS.
 
 Run: ./dev python3 -m pytest tests/test_prompt_sync.py -v
 """
@@ -24,42 +25,44 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from servers.tools.sync_prompts import SEED_PROMPTS as _SYNC_SEED_PROMPTS
 
-# The seed files under contract. Keep in sync with
-# servers/tools/sync_prompts.SEED_PROMPTS.
+
+# The seed files under contract — DERIVED from sync_prompts.SEED_PROMPTS, never
+# hand-listed. A hand-maintained copy drifted: it omitted `s2_aspects`, so that
+# prompt had zero seed-shape coverage while CLAUDE.md claimed this test enforced
+# "fresh brains must seed every prompt in SEED_PROMPTS". Deriving makes the claim
+# true and makes a new prompt covered the moment it is registered for sync.
 #
-# Scout prompts (temporal is algo-first; its template is a shorter
-# Haiku-fallback block) have a lower min-length threshold than the
-# full encoder-agent prompts.
-SEED_FILES = [
-    ('s1e', 'servers.scales.s1.encoding_prompt'),
-    ('s2_community_enrichment', 'servers.scales.s2.community_enrichment_prompt'),
-    ('s2_consolidation_enrichment', 'servers.scales.s2.consolidation_enrichment_prompt'),
-    ('s2_healer', 'servers.scales.s2.healer_prompt'),
-    ('s1_scout_quote', 'servers.scales.s1.scouts.prompts.quote_prompt'),
-    ('s1_scout_temporal', 'servers.scales.s1.scouts.prompts.temporal_prompt'),
-    ('s1_scout_facts', 'servers.scales.s1.scouts.prompts.facts_prompt'),
-]
+# The constant name comes from the tuple too — a seed file that exports something
+# other than SYSTEM_PROMPT should fail on its own name, not on a misleading
+# "missing SYSTEM_PROMPT".
+SEED_FILES = []
+for _name, _rel_path, _constant in _SYNC_SEED_PROMPTS:
+    assert _rel_path.endswith('.py'), (
+        'SEED_PROMPTS path is not a module: %r' % _rel_path)
+    SEED_FILES.append(
+        (_name, _rel_path[:-len('.py')].replace('/', '.'), _constant))
 
 
 class TestSeedFileShape:
     """Each seed .py file must have a non-empty SYSTEM_PROMPT string."""
 
-    @pytest.mark.parametrize('name,module', SEED_FILES)
-    def test_exports_system_prompt(self, name, module):
+    @pytest.mark.parametrize('name,module,constant', SEED_FILES)
+    def test_exports_system_prompt(self, name, module, constant):
         import importlib
         m = importlib.import_module(module)
-        assert hasattr(m, 'SYSTEM_PROMPT'), f'{module} missing SYSTEM_PROMPT constant'
-        prompt = m.SYSTEM_PROMPT
-        assert isinstance(prompt, str), f'{module}.SYSTEM_PROMPT must be str, got {type(prompt)}'
+        assert hasattr(m, constant), f'{module} missing {constant} constant'
+        prompt = getattr(m, constant)
+        assert isinstance(prompt, str), f'{module}.{constant} must be str, got {type(prompt)}'
         assert len(prompt) > 100, (
-            f'{module}.SYSTEM_PROMPT is suspiciously short ({len(prompt)} chars). '
+            f'{module}.{constant} is suspiciously short ({len(prompt)} chars). '
             f'Seed files should contain real encoder prompts, not placeholders. '
             f'If you just registered a new version, run: '
             f'./dev python3 -m servers.tools.sync_prompts')
 
-    @pytest.mark.parametrize('name,module', SEED_FILES)
-    def test_seed_role_in_docstring(self, name, module):
+    @pytest.mark.parametrize('name,module,constant', SEED_FILES)
+    def test_seed_role_in_docstring(self, name, module, constant):
         """Docstring must flag the file's seed-only role so editors don't
         try to change prompt behavior by touching the file directly."""
         import importlib
@@ -72,17 +75,17 @@ class TestSeedFileShape:
 
 
 class TestFreshBrainSeeding:
-    """seed_interactions() must register all four encoder prompts on a
+    """seed_interactions() must register every prompt in SEED_PROMPTS on a
     fresh brain. Regression guard against reintroducing the 'consolidation
     not seeded' bug that bit us on 2026-04-19."""
 
-    def test_all_four_encoder_prompts_seeded(self, tmp_path):
+    def test_every_seed_prompt_is_seeded(self, tmp_path):
         from servers.brain import Brain
         db = str(tmp_path / 'brain.db')
         brain = Brain(db_path=db)
         try:
             seeded = {i['name'] for i in brain._interaction_dal.list_all()}
-            for name, _module in SEED_FILES:
+            for name, _module, _const in SEED_FILES:
                 assert name in seeded, (
                     f'Fresh brain missing {name!r}. seed_interactions() '
                     f'didn\'t register it. See servers/interaction_seed.py.')

@@ -99,20 +99,13 @@ register_interaction(name, template)         # registers as v(N+1), DORMANT
 set_interaction_active(name, version=N+1)    # flips the runtime pointer
 ./dev sync-prompts                           # mirrors ACTIVE → .py files
 ./dev sync-prompts --check                   # CI-style non-zero-exit drift check
-# then bump SEED_PROMPTS_VERSION (servers/interaction_seed.py) — see below
 ```
-
-**Bump `SEED_PROMPTS_VERSION` or the change reaches nobody who already installed** — sync updates the `.py`, not existing brains. `reconcile_seeded_prompts` advances an install only while it still runs the shipped default (`active` == the version we seeded **and** `max == active`); any human-registered version makes that prompt hands-off permanently.
 
 **Discipline** for an eval-gated prompt change: register DORMANT, run the eval, then activate + sync. Do **not** sync between register and activate — `sync-prompts` deliberately mirrors only the active version, so dormant candidates cannot leak into the seed file and be picked up by fresh-brain installs that skipped the eval.
 
 Commit the `.py` change together with whatever prompted the registration. Never edit the `.py` files by hand to change prompt behavior — that won't affect runtime and will silently drift from the DB.
 
 `tests/test_prompt_sync.py` holds the contract: each seed file must export `SYSTEM_PROMPT`, fresh brains must seed every prompt in `SEED_PROMPTS`, sync must mirror the active version (not the latest registered), and seed must never overwrite an externally-registered version.
-
-### Migrations: one runner, three streams
-
-There is a fleet — no change can be applied by hand. `run_versioned_migrations` (`servers/schema.py`) applies every versioned change at open: forward-only, idempotent, and a failed step skips the stamp so it retries. Streams: `BRAIN_VERSION`/`MAIN_MIGRATIONS` (brain.db), `LOGS_VERSION`/`LOGS_MIGRATIONS` (brain_logs.db), `SEED_PROMPTS_VERSION` (prompt content) — separate counters because structure changes rarely and prompts often. Ship a change as `(N, _migrate_vN)` + a constant bump; never an unversioned `ALTER` or a hand-run script. Steps must be sub-second — a slow boot reads as a closed port and the watchdog SIGKILLs it. `MIN_SUPPORTED_VERSION` refuses older DBs loudly rather than stamping them current.
 
 ### Python runtime — use `./dev`
 

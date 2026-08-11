@@ -893,11 +893,14 @@ Do **not** mass-rename these. Verified 2026-07-24 across all nine files:
   `scouts/muster.py`, `scouts/runners.py`, `presence.py`, `self_contract.py`).
   These attribute *who decided what*. **Leave them untouched** — they are
   legitimate attribution history, and rewriting them would destroy provenance
-  for zero gain. (Census note 2026-07-27: the full runtime footprint is ~29
-  files — the nine above plus the 8 `servers/scales/s1/examples/` few-shot
-  files (shipped prompt content, the densest concentration; also correctly
-  left alone), 4 dashboard files, and ~8 more `servers/` comment sites. The
-  conclusion stands; the original census covered about a third of it.)
+  for zero gain. (Census note 2026-07-27, **revised 2026-08-09**: the runtime
+  footprint was ~29 files — the nine above, 4 dashboard files, ~8 more
+  `servers/` comment sites, and 8 `servers/scales/s1/examples/` few-shot files.
+  **Those 8 no longer exist**: the directory was deleted (654b2e2) after it was
+  found to ship reconstructed real operator conversations to every install with
+  zero runtime consumers, and to have diverged from the live §7.6 block it once
+  generated. Current shipped-tree count is **~185 `Anchor` lines across ~43
+  files** (exact figure moves with the manifest — recount before acting); D-12 now requires all of them to derive from `BRAIN_AGENT_NAME`.)
 - **The only functional occurrences** are in `quality_contract.py:172,289,295,302,314`
   — concrete names inside LLM-facing eval criteria (e.g. `'situation names the
   actor ("When Tom corrected X")'`, `Group 4: Partnership & voice (Tom's lens)`).
