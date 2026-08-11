@@ -271,15 +271,14 @@ class ConsolidationDecoder(IntegrationUnit):
     # ══════════════════════════════════════════════════════════
 
     def _suppression_relations(self):
-        """Suppression verbs, derived from the `settlement` aspect.
+        """Suppression verbs — the contract's shared derivation.
 
-        The taxonomy's closed (routable: false) list of "this pair is already
-        resolved against each other" relations is the live source; the
-        contract constant is the degraded-registry fallback only, same
-        pattern as _has_correction_edge.
+        Delegates to consolidation_contract.suppression_relations() so the
+        decoder scan and the encoder's payload 'Settlement relations' line
+        can never disagree.
         """
-        rels = set(self.brain.aspects.settlement.edge_relations)
-        return rels or set(self.config['suppression_relations'])
+        from .consolidation_contract import suppression_relations
+        return suppression_relations(self.brain)
 
     def _scan_embeddings(self, last_ts, is_cold_start, changed_ids=None):
         """Find all node pairs above similarity threshold.
