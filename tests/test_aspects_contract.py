@@ -150,21 +150,25 @@ class TestSeedShape(unittest.TestCase):
                 with self.subTest(aspect=name, flag=flag):
                     self.assertIsInstance(spec[flag], bool)
 
-    def test_only_survivor_lineage_is_non_routable(self):
-        # survivor_lineage is system-written (absorbed_into), never offered
+    def test_non_routable_set_is_the_system_owned_pair(self):
+        # survivor_lineage is system-written (absorbed_into), settlement is
+        # the closed consolidation-suppression list — neither is ever offered
         # to the classifier. Everything else routes. A new non-routable
         # aspect is a deliberate edit — update this pin consciously.
         non_routable = {name for name, spec in self.seed.items()
                         if not spec['routable']}
-        self.assertEqual(non_routable, {'survivor_lineage'})
+        self.assertEqual(non_routable, {'survivor_lineage', 'settlement'})
 
-    def test_prompt_invisible_set_is_the_structural_trio(self):
-        # The catch-alls + the system aspect stay out of encoder vocabulary
+    def test_prompt_invisible_set_is_pinned(self):
+        # The catch-alls + the system aspects stay out of encoder vocabulary
         # blocks (the deleted EDGE_ASPECT_PROMPT_SKIP contract, now declared).
+        # settlement's verbs already appear via their semantic home aspects —
+        # offering them again as a "settlement" block would double-list them.
         invisible = {name for name, spec in self.seed.items()
                      if not spec['prompt_visible']}
         self.assertEqual(
-            invisible, {'generic_relation', 'noise', 'survivor_lineage'})
+            invisible,
+            {'generic_relation', 'noise', 'survivor_lineage', 'settlement'})
 
     def test_no_aspect_is_empty(self):
         # Required aspects must have at least one member somewhere — otherwise

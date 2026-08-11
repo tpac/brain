@@ -120,13 +120,21 @@ CONSOLIDATION = {
     'encoding_lookback_hours': 168,     # 7 days of S1E traces
 
     # ── Suppression (decoder) ──
-    # A pair is "reviewed" (skipped) if it carries any of these resolution edges.
-    # similar_to / consolidated_into = KEEP/SKIP/merge outcomes.
-    # corrects / supersedes = CONTRADICTION/SUPERSESSION outcomes — a keep that
-    # draws only a semantic resolution edge must still suppress, or the cold scan
-    # re-proposes it every cycle (churn). Aligns with s2_consolidation_eval.py,
-    # which already counts supersedes as a suppression edge.
-    'suppression_relations': {'similar_to', 'consolidated_into', 'corrects', 'supersedes'},
+    # LIVE SOURCE: the `settlement` aspect (aspects_v1.json) — the decoder
+    # derives its suppression set from brain.aspects.settlement.edge_relations.
+    # This constant is the fallback for a degraded/empty registry only, and
+    # mirrors the aspect's seed membership. A node touched by any of these
+    # edges is "reviewed"; reviewed↔reviewed pairs are skipped.
+    # similar_to / consolidated_into = KEEP/merge outcomes; corrects /
+    # supersedes / resolves (+ inverse forms — stored orientation is advisory)
+    # = one endpoint settled the other. Membership changes are a human edit
+    # to the aspect entry, never a code edit here.
+    'suppression_relations': {
+        'similar_to', 'consolidated_into',
+        'corrects', 'corrected_by',
+        'supersedes', 'superseded_by',
+        'resolves', 'resolved_by',
+    },
 
     # ── Pre-classification thresholds (decoder) ──
     'likely_consolidate_cosine': 0.90,  # Above this + structural signal = likely consolidate

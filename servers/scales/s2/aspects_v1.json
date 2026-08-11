@@ -631,5 +631,30 @@
     "prompt_visible": true,
     "structural_lineage": false,
     "metadata": {}
+  },
+  "settlement": {
+    "node_types": [],
+    "edge_relations": [
+      "similar_to",
+      "consolidated_into",
+      "corrects",
+      "corrected_by",
+      "supersedes",
+      "superseded_by",
+      "resolves",
+      "resolved_by"
+    ],
+    "meaning": "Edges meaning this PAIR is already settled against each other — a consolidation decision was made (similar_to = reviewed and kept, consolidated_into = merged) or one endpoint resolved/replaced the other (corrects, supersedes, resolves, plus inverse forms since stored orientation is advisory). The consolidation decoder derives its suppression set from this list: a node touched by any settlement edge counts as reviewed, and reviewed↔reviewed pairs are never re-proposed. CLOSED LIST (routable: false): membership changes are deliberate human edits, never classifier growth — a verb wrongly added here silently exempts pairs from review forever. NOT the broad correction_improvement family (restates/improves/changes/addresses do not settle a pair), NOT tensions (contradiction_conflict pairs are kept, never merged). Every verb here is multi-homed: its semantic home stays in its own aspect; settlement marks the suppression ROLE.",
+    "dimension": "semantic",
+    "locked": true,
+    "accepts": [
+      "edge_relations"
+    ],
+    "routable": false,
+    "prompt_visible": false,
+    "structural_lineage": false,
+    "metadata": {
+      "display_label": "settled pair"
+    }
   }
 }
