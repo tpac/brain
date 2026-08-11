@@ -30,9 +30,8 @@ FILES=(
   # hooks/ skills/ bin/ ship in FULL via `git ls-files` below — do NOT hand-list.
   # Same rot class as servers/: the hand-list silently dropped brain-daemon
   # (daemon launcher — dead on clean installs) and watch/SKILL.md before it.
-  # Data + the one runtime seed script stay explicit (scripts/ is a dev dir —
-  # only seed_brain.py belongs in the package, the other 23 are dev/migration).
-  scripts/seed_brain.py
+  # scripts/ is a dev dir — nothing in it ships (live seeding is
+  # servers/seed_pack.py, in the servers/ subtree).
 )
 
 cd "$DIR"

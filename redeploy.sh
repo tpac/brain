@@ -37,7 +37,7 @@ cd "$REPO"
 #    bin/uv) are NOT in the package and survive — bin/ is mixed (ships launchers,
 #    holds the runtime uv), so it is left to unzip -o overlay, not pruned.
 #    ${PLUGIN:?} guards against an empty var turning this into `rm -rf /…`.
-for _d in servers hooks skills dashboard data scripts .claude-plugin; do
+for _d in servers hooks skills dashboard data .claude-plugin; do
   rm -rf "${PLUGIN:?}/$_d"
 done
 unzip -o -q "$REPO/brain.plugin" -d "$PLUGIN"
