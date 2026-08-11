@@ -1,0 +1,217 @@
+"""Deploy-contract gate (DISTRIBUTION-READINESS.md 5.0b).
+
+Executable answer to "how do I know every place a deploy touches." Hand-lists
+failed twice (the 62-file build manifest; the `.claude/settings.json` permission
+entry) — so every assertion here is a SHAPE-SCAN over the git-tracked tree,
+never an enumeration. A new file that hardcodes a deploy-coupled name fails
+this gate automatically, because the gate reads the tree, not a list.
+
+Four assertions:
+  1. version lockstep    — plugin.json.version == marketplace.json entry version
+                           (drift is silent and breaks `/plugin update`)
+  2. adapter-name        — for name N from plugin.json, every occurrence of
+     containment           `mcp__plugin_N_`, `com.N.`, `<owner>/N` sits in a
+                           small allowlist
+  3. host-neutrality     — servers/ may reference the CC manifest only for the
+     (D-11)                embedder block
+  4. name derivation     — capital `Anchor` appears only where config owns it
+     (D-12)                (xfail until 5.0c consolidates the literals)
+
+The `com.N.` sub-shape is degenerate while N equals the service-layer name
+(`brain` — D-11 keeps launchd labels `com.brain.*` forever, so today every
+service file legitimately matches). It arms itself the moment 5.2 renames the
+adapter: N becomes `entity` and any `com.entity.` occurrence is a leak.
+
+Run: ./dev python3 -m pytest tests/test_deploy_contract.py -v
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# The name the service layer keeps regardless of what the CC adapter is called
+# (D-11). While the adapter name equals this, the `com.N.` shape cannot
+# distinguish adapter leaks from legitimate service code.
+SERVICE_NAME = 'brain'
+
+# Never-ships content (the 5.1 denylist — tests/archive/ and tests/results/
+# are denylisted there for the same reason they are excluded here: they carry
+# dev-machine paths and would fail 5.1's scrub-grep). Everything else tracked
+# is in scope — including tests/ (they ship, D-8) and dotfiles (the
+# permission-entry miss lived in `.claude/settings.json`). This file excludes
+# itself: the scanner must name the shapes it hunts, so scanning it self-trips
+# (its own docstrings would arm assertion 2's post-rename check forever).
+SCOPE_EXCLUDE_PREFIXES = ('docs/', 'eval/', 'tests/archive/', 'tests/results/')
+SCOPE_EXCLUDE_FILES = frozenset({'CLAUDE.md', 'tests/test_deploy_contract.py'})
+
+
+def _tracked_files():
+    try:
+        out = subprocess.run(
+            ['git', 'ls-files'], cwd=REPO, capture_output=True, text=True,
+            timeout=30, check=True,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        pytest.skip('not a git checkout — deploy gate only runs in the dev repo',
+                    allow_module_level=True)
+    return [line for line in out.splitlines() if line]
+
+
+TRACKED = _tracked_files()
+if '.claude-plugin/plugin.json' not in TRACKED:
+    # `git ls-files` succeeded but against some OTHER repo (e.g. an installed
+    # copy nested in a user's dotfiles checkout) — scanning that tree would
+    # pass vacuously, not meaningfully.
+    pytest.skip('tracked tree is not the plugin repo — deploy gate only runs '
+                'in the dev repo', allow_module_level=True)
+SCOPE = [
+    p for p in TRACKED
+    if not p.startswith(SCOPE_EXCLUDE_PREFIXES) and p not in SCOPE_EXCLUDE_FILES
+]
+
+
+def _read(rel_path):
+    with open(os.path.join(REPO, rel_path), 'rb') as f:
+        return f.read().decode('utf-8', errors='ignore')
+
+
+def _load_json(rel_path):
+    return json.loads(_read(rel_path))
+
+
+PLUGIN = _load_json('.claude-plugin/plugin.json')
+MARKETPLACE = _load_json('.claude-plugin/marketplace.json')
+PLUGIN_NAME = PLUGIN['name']
+OWNER = re.search(r'github\.com/([^/]+)', PLUGIN['repository']).group(1)
+
+
+def _files_matching(pattern):
+    """Scope files whose path or content matches `pattern` (compiled regex)."""
+    hits = []
+    for rel in SCOPE:
+        if pattern.search(rel) or pattern.search(_read(rel)):
+            hits.append(rel)
+    return hits
+
+
+class TestVersionLockstep:
+    """plugin.json and marketplace.json must carry the same version.
+
+    `/plugin update` compares the two; drift is silent until a user's update
+    no-ops. This is a risk on every release, forever.
+    """
+
+    def test_marketplace_entry_exists_for_plugin(self):
+        names = [p.get('name') for p in MARKETPLACE['plugins']]
+        assert PLUGIN_NAME in names, (
+            f'marketplace.json has no entry named {PLUGIN_NAME!r} (entries: {names})')
+
+    def test_versions_match(self):
+        entry = next(p for p in MARKETPLACE['plugins'] if p.get('name') == PLUGIN_NAME)
+        assert entry.get('version') == PLUGIN['version'], (
+            f"version drift: plugin.json={PLUGIN['version']!r} "
+            f"marketplace.json={entry.get('version')!r} — breaks /plugin update")
+
+
+class TestAdapterNameContainment:
+    """Every occurrence of an adapter-name shape sits in a small allowlist.
+
+    The allowlists are the ONLY enumeration here, and they list where the name
+    is SUPPOSED to live — a new file hardcoding the shape fails without anyone
+    updating anything.
+    """
+
+    def test_mcp_tool_prefix_contained(self):
+        # The permission entry is the shape's one legitimate home. This exact
+        # file was the miss that motivated the gate.
+        allowed = {'.claude/settings.json'}
+        pattern = re.compile(re.escape(f'mcp__plugin_{PLUGIN_NAME}_'))
+        leaks = set(_files_matching(pattern)) - allowed
+        assert not leaks, (
+            f'adapter tool-prefix mcp__plugin_{PLUGIN_NAME}_ leaked into: {sorted(leaks)}')
+
+    def test_launchd_namespace_contained(self):
+        if PLUGIN_NAME == SERVICE_NAME:
+            pytest.skip(
+                'com.N. shape is degenerate while adapter name == service name '
+                f'({SERVICE_NAME!r}); arms automatically at the 5.2 rename')
+        # Post-rename: the service namespace stays com.brain.* (D-11); the
+        # adapter name must never grow a launchd namespace of its own.
+        pattern = re.compile(re.escape(f'com.{PLUGIN_NAME}.'))
+        leaks = _files_matching(pattern)
+        assert not leaks, (
+            f'adapter launchd namespace com.{PLUGIN_NAME}.* appeared in: {sorted(leaks)} '
+            f'— service labels stay com.{SERVICE_NAME}.* (D-11)')
+
+    def test_repo_slug_contained(self):
+        # The GitHub slug belongs in the manifest (homepage/repository) and
+        # nowhere else in shipped code. Also catches /Users/<owner>/<name>
+        # personal paths, which double as a scrub-grep (5.1) early warning.
+        allowed = {'.claude-plugin/plugin.json'}
+        pattern = re.compile(rf'{re.escape(OWNER)}/{re.escape(PLUGIN_NAME)}\b')
+        leaks = set(_files_matching(pattern)) - allowed
+        assert not leaks, (
+            f'repo slug {OWNER}/{PLUGIN_NAME} leaked into: {sorted(leaks)}')
+
+
+class TestHostNeutrality:
+    """D-11: the service layer must not know it runs under Claude Code.
+
+    servers/ may reference the CC manifest only for the embedder block. The
+    day a service name derives from plugin.json, the rename hazard returns.
+    `servers/embedder.py` IS the embedder block, so it is exempt wholesale;
+    any other servers/ file must keep each manifest reference within an
+    embedder context, so a new non-embedder reference in brain.py fails too.
+    """
+
+    EMBEDDER_FILE = 'servers/embedder.py'
+    CONTEXT_LINES = 2
+
+    def test_servers_reference_manifest_only_for_embedder(self):
+        pattern = re.compile(r'plugin\.json|\.claude-plugin')
+        leaks = []
+        for rel in SCOPE:
+            if not rel.startswith('servers/') or rel == self.EMBEDDER_FILE:
+                continue
+            lines = _read(rel).splitlines()
+            for i, line in enumerate(lines):
+                if not pattern.search(line):
+                    continue
+                lo = max(0, i - self.CONTEXT_LINES)
+                window = lines[lo:i + self.CONTEXT_LINES + 1]
+                if not any('embed' in w.lower() for w in window):
+                    leaks.append(f'{rel}:{i + 1}')
+        assert not leaks, (
+            f'servers/ manifest references outside an embedder context: '
+            f'{leaks} — D-11 forbids the service layer deriving anything '
+            f'else from plugin.json')
+
+
+class TestNameDerivation:
+    """D-12: instance names derive from config; no shipped `Anchor` literal.
+
+    xfail(strict) until 5.0c consolidates the ~45 shipped files into
+    BRAIN_AGENT_NAME — the day 5.0c completes, this XPASSes and the marker
+    must come off, making the gate permanent.
+    """
+
+    # Where the name may live as CONFIG: the manifests (displayName ruling is
+    # the open D-12 gate) and the userConfig description text.
+    ALLOWED = {'.claude-plugin/plugin.json', '.claude-plugin/marketplace.json'}
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason='5.0c open — Anchor literals not yet consolidated to config (D-12)')
+    def test_agent_name_only_in_config(self):
+        pattern = re.compile(r'\bAnchor\b')
+        leaks = set(_files_matching(pattern)) - self.ALLOWED
+        assert not leaks, (
+            f'`Anchor` literal outside the config allowlist in {len(leaks)} files: '
+            f'{sorted(leaks)[:10]}{" …" if len(leaks) > 10 else ""}')

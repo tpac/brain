@@ -13,7 +13,7 @@ never the live daemon. Design: docs/RECALL-DUAL-STORE-DESIGN.md §3.3 form 1.
 import os
 import sys
 
-sys.path.insert(0, '/Users/tpac/brain')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tests.isolated_brain import IsolatedBrain  # noqa: E402
 
 _Q = "what did we do on the last session we work on ex.co?"
