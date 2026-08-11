@@ -1777,36 +1777,44 @@ class BrainRememberMixin:
 
         target_id = None
 
-        # Pass 0: ID-shape pre-check. The encoder sometimes passes an 8+ char
-        # hex ID in the `title` field when it really means "connect to this
-        # specific known node by id" — e.g. when an ID was visible in the
-        # conversation (recalled context, prior tool result, surfaced trace).
-        # Without this check, sibling-map and fuzzy-title both miss because
-        # neither matches an opaque hash. Resolve via id-prefix lookup; if
-        # found, prefer it over the title-based passes. Log a soft warning
-        # so we can see how often the encoder does this (signal for prompt
-        # tuning, not a hard error).
+        # Pass 0: hex-shaped target ⇒ it IS an id, never a title. Since s1e
+        # v34 (Option D) ids are the expected form for catalog targets, so a
+        # miss or ambiguous prefix is a miscopy — fail loudly and TERMINALLY
+        # rather than fall into title matching, where a bad hex string can
+        # match a node whose title merely quotes an id (silently-wrong edge;
+        # a wrong edge outlives a missing one). One exception before the
+        # terminal decision: a sibling created in this batch whose exact
+        # title is hex-shaped still resolves as a sibling (Pass 1 semantics —
+        # sibling ids don't exist at authoring time).
         import re as _re
         if _re.fullmatch(r'[0-9a-fA-F]{8,}', title_query.strip()):
+            prefix = title_query.strip().lower()
             try:
                 row = self.conn.execute(
                     'SELECT id FROM nodes WHERE id LIKE ? LIMIT 2',
-                    (title_query.strip().lower() + '%',)).fetchall()
-                if len(row) == 1:
-                    target_id = row[0][0]
-                elif len(row) > 1:
-                    # Ambiguous prefix — log and fall through to title path.
-                    self._log_error(
-                        'connect_to_id_prefix_ambiguous',
-                        ValueError(
-                            "connect_to title looked like an id but matched "
-                            "multiple nodes; falling back to title search"),
-                        'prefix=%s matches=%d' % (title_query[:16], len(row)))
+                    (prefix + '%',)).fetchall()
             except Exception as e:
+                reason = "id-prefix lookup failed: %s" % str(e)[:120]
                 self._log_error(
                     'connect_to_id_lookup_failed', e,
                     'id-prefix lookup for %r' % title_query[:80])
-                # fall through to the title path
+                return None, [], reason
+            if len(row) == 1:
+                target_id = row[0][0]
+            elif sibling_map and title_query.lower() in sibling_map:
+                target_id = sibling_map[title_query.lower()]
+            else:
+                if len(row) > 1:
+                    reason = ("id prefix %r is ambiguous (matches multiple "
+                              "nodes) — pass more characters of the id"
+                              % prefix[:16])
+                else:
+                    reason = ("id %r matches no node — check the copied id"
+                              % prefix[:16])
+                self._log_error(
+                    'connect_to_bad_id', ValueError(reason),
+                    'target=%s matches=%d' % (title_query[:80], len(row)))
+                return None, [], reason
 
         # Pass 1: sibling map (NEW wins on title collision)
         if not target_id and sibling_map:

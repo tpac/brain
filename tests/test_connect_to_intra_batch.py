@@ -16,6 +16,8 @@ Locks the design contract for the sibling-aware connect_to feature:
   visible on the dashboard) and skipped; it does not fail the batch or
   other entries. Sources used:
     * `connect_to_unresolved` — title matched neither sibling nor catalog
+    * `connect_to_bad_id`     — hex-shaped target missed / ambiguous at Pass 0
+                                (terminal: never falls through to title match)
     * `connect_to_self`       — would create a self-edge
     * `connect_to_invalid`    — entry shape malformed (no title field, wrong type)
     * `connect_to_failed`     — connect_typed raised (FK violation, etc.)
@@ -518,6 +520,98 @@ class TestBrainBatchAffectedAndEdgeTraces(BrainTestBase):
         self.assertTrue(all(row[0] == chain for row in rows),
                         "batch sub-op edge traces must join the batch chain_id, got %s"
                         % [row[0] for row in rows])
+
+
+class TestHexShapedTargets(BrainTestBase):
+    """Pass 0 is TERMINAL for hex-shaped connect_to targets (Option D, s1e
+    v34: ids are the expected form for catalog targets, so a hex string that
+    misses at Pass 0 is a miscopy, not a title). Miss or ambiguous prefix →
+    `connect_to_bad_id`, edge skipped, title matching never entered — a bad
+    hex must not silently attach to a node whose TITLE quotes a hex id.
+    One exception: a same-batch sibling whose exact title is hex-shaped
+    still resolves as a sibling (Pass 1 semantics)."""
+    needs_embedder = True
+
+    def test_hex_id_resolves_by_pass0(self):
+        """A real node id in the title slot resolves to that node."""
+        target = self.brain.remember(type='fact', title='Pass-0 target node',
+                                     content='Target for id-based connect_to.')
+        result = self.brain.remember_batch(nodes=[
+            {'type': 'fact', 'title': 'Id-linker node',
+             'content': 'Links by id.',
+             'connect_to': [{'title': target['id'], 'relation': 'grounds',
+                             'why': 'id-form catalog target'}]},
+        ])
+        linker_id = result['results'][0]['id']
+        edges = [e for e in _edges_from(self.brain, linker_id)
+                 if e['relation'] == 'grounds']
+        self.assertEqual(len(edges), 1)
+        self.assertEqual(edges[0]['target_id'], target['id'])
+
+    def test_hex_miss_is_terminal_never_title_matched(self):
+        """A hex target matching no id must NOT fall through to title
+        matching — even when a catalog node's title IS that exact hex."""
+        decoy = self.brain.remember(
+            type='fact', title='feedbeef',
+            content='Catalog node whose title is pure hex — the trap.')
+        result = self.brain.remember_batch(nodes=[
+            {'type': 'fact', 'title': 'Miscopy linker',
+             'content': 'Carries a miscopied id.',
+             'connect_to': [{'title': 'feedbeef', 'relation': 'extends',
+                             'why': 'hex-shaped, matches no id'}]},
+        ])
+        self.assertEqual(result['nodes_created'], 1)
+        linker_id = result['results'][0]['id']
+        edges = [e for e in _edges_from(self.brain, linker_id)
+                 if e['relation'] == 'extends']
+        self.assertEqual(edges, [],
+                         "hex miss must not title-match the decoy node")
+        self.assertNotIn(decoy['id'],
+                         [e['target_id'] for e in _edges_from(self.brain, linker_id)])
+        errors = _recent_errors(self.brain, 'connect_to_bad_id')
+        self.assertGreaterEqual(len(errors), 1,
+                                "hex miss must log connect_to_bad_id")
+
+    def test_hex_ambiguous_prefix_is_terminal(self):
+        """Two ids sharing the query prefix → terminal connect_to_bad_id,
+        no title fallback. (Production ids are 8-char so ambiguity needs
+        longer injected ids, but the branch must hold.)"""
+        for fake_id in ('abcdef120001', 'abcdef120002'):
+            self.brain.conn.execute(
+                "INSERT INTO nodes (id, type, title, content) "
+                "VALUES (?, 'fact', ?, 'ambiguity fixture')",
+                (fake_id, 'fixture ' + fake_id))
+        self.brain.conn.commit()
+        src = self.brain.remember(type='fact', title='Ambiguity source',
+                                  content='Source for ambiguous prefix test.')
+        result = self.brain._apply_connect_to(src['id'], [
+            {'title': 'abcdef12', 'relation': 'extends',
+             'why': 'ambiguous prefix'},
+        ])
+        self.assertEqual(result['created'], [])
+        self.assertEqual(len(result['failed']), 1)
+        self.assertIn('ambiguous', result['failed'][0]['reason'])
+        errors = _recent_errors(self.brain, 'connect_to_bad_id')
+        self.assertGreaterEqual(len(errors), 1)
+
+    def test_hex_sibling_title_still_resolves(self):
+        """A hex-shaped target that misses at Pass 0 but exactly matches a
+        same-batch sibling's title resolves as a sibling — the one
+        exception to the terminal decision."""
+        result = self.brain.remember_batch(nodes=[
+            {'type': 'fact', 'title': 'DEADBEEF01',
+             'content': 'Sibling whose title happens to be pure hex.'},
+            {'type': 'fact', 'title': 'Hex-sibling linker',
+             'content': 'Links to the hex-titled sibling.',
+             'connect_to': [{'title': 'deadbeef01', 'relation': 'extends',
+                             'why': 'sibling exact title, case-insensitive'}]},
+        ])
+        sibling_id = result['results'][0]['id']
+        linker_id = result['results'][1]['id']
+        edges = [e for e in _edges_from(self.brain, linker_id)
+                 if e['relation'] == 'extends']
+        self.assertEqual(len(edges), 1, "hex sibling title must resolve")
+        self.assertEqual(edges[0]['target_id'], sibling_id)
 
 
 if __name__ == '__main__':

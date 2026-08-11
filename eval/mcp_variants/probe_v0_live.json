@@ -14,56 +14,56 @@
             {
               "op": "revise",
               "node_id": "a3f81b2c",
-              "reason": "Architecture changed June 2026: restarts now route through launchctl kickstart -k, not direct Popen spawn.",
-              "content": "The brain daemon restart protocol now routes through `launchctl kickstart -k <service-target>` rather than a direct `Popen` spawn. This delegates process lifecycle management to launchd, ensuring proper environment inheritance, service supervision, and clean teardown before relaunch. The `-k` flag kills any existing instance before kickstarting, making the restart atomic from launchd's perspective."
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "note": "",
-          "ops": [
-            {
-              "op": "revise",
-              "node_id": "a3f81b2c",
-              "reason": "Architecture changed June 2026: restarts now route through launchctl kickstart -k, replacing direct Popen spawn.",
-              "content": "The brain daemon restart protocol now routes through `launchctl kickstart -k` rather than a direct Popen spawn. To restart the daemon, run:\n\n```\nlaunchctl kickstart -k <service-target>\n```\n\nThe `-k` flag kills any existing instance before relaunching, ensuring a clean restart. This replaces the previous approach of spawning the process directly via Popen, which did not integrate with launchd's service lifecycle management."
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "note": "",
-          "ops": [
-            {
-              "op": "revise",
-              "node_id": "a3f81b2c",
-              "reason": "Architecture changed June 2026: restarts now route through launchctl kickstart -k, replacing direct Popen spawn.",
-              "content": "The brain daemon restart protocol now routes through `launchctl kickstart -k` rather than a direct Popen spawn. To restart the daemon, invoke:\n\n```\nlaunchctl kickstart -k <service-target>\n```\n\nThis hands off process lifecycle management to launchd, ensuring proper service supervision, clean teardown of the old process, and reliable re-launch. The previous approach of spawning a subprocess directly via Popen is no longer used."
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "note": "",
-          "ops": [
-            {
-              "op": "revise",
-              "node_id": "a3f81b2c",
-              "reason": "Architecture changed June 2026: restarts now route through launchctl kickstart -k, not direct Popen spawn.",
-              "content": "The brain daemon restart flow now routes through `launchctl kickstart -k` rather than a direct Popen spawn.\n\n**Restart command:**\n```\nlaunchctl kickstart -k <service-target>\n```\nThe `-k` flag kills any existing instance before relaunching, ensuring a clean restart without leaving zombie processes.\n\n**Previous approach (deprecated):** Direct `Popen` spawn of the daemon process \u2014 retired June 2026 when the service was placed under launchd supervision.\n\n**Implications:**\n- launchd owns the process lifecycle; manual Popen bypasses supervision and should never be used.\n- Restart requests must go through MCP tools (see 'Use MCP not bash'), which invoke the launchctl path internally.\n- On failure, launchd handles respawn according to the service plist configuration."
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "note": "",
-          "ops": [
-            {
-              "op": "revise",
-              "node_id": "a3f81b2c",
-              "content": "The brain daemon restart protocol now routes through `launchctl kickstart -k` rather than a direct Popen spawn. To restart the daemon, invoke:\n\n```\nlaunchctl kickstart -k <service-target>\n```\n\nThe `-k` flag kills any running instance before relaunching, making the operation atomic from launchctl's perspective. Direct Popen spawning of the daemon process is no longer the correct path \u2014 use launchctl exclusively so that the service stays under proper launchd supervision.",
+              "content": "The brain daemon restart protocol now routes through `launchctl kickstart -k` rather than a direct Popen spawn. To restart the daemon, invoke:\n\n```\nlaunchctl kickstart -k <service-target>\n```\n\nThe `-k` flag kills any existing instance before relaunching, ensuring a clean restart. Direct Popen-based spawning is no longer used in this flow.",
               "reason": "Architecture changed June 2026: restarts now route through launchctl kickstart -k, not direct Popen spawn."
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "revise",
+              "node_id": "a3f81b2c",
+              "content": "The brain daemon restart protocol now routes through `launchctl kickstart -k` rather than a direct Popen spawn. The kickstart flag `-k` kills any existing instance before relaunching, ensuring a clean restart without orphaned processes. Callers invoke the launchctl command targeting the daemon's service label; no direct subprocess management of the daemon binary is performed by the caller.",
+              "reason": "Architecture changed June 2026: restarts now use launchctl kickstart -k instead of direct Popen spawn."
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "revise",
+              "node_id": "a3f81b2c",
+              "reason": "Architecture changed June 2026: restarts now route through launchctl kickstart -k, not direct Popen spawn.",
+              "content": "The brain daemon restart protocol now routes through `launchctl kickstart -k` rather than a direct Popen spawn. When a restart is needed, the caller invokes `launchctl kickstart -k <service-target>`, which causes launchd to tear down the existing daemon process and immediately relaunch it under the managed service definition. This ensures the daemon inherits the correct environment, resource limits, and sandbox profile defined in the launchd plist, and that launchd owns the process lifecycle (crash recovery, log routing, etc.). Direct Popen spawning is no longer used and should not be reintroduced."
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "revise",
+              "node_id": "a3f81b2c",
+              "reason": "Architecture changed June 2026: restarts now route through launchctl kickstart -k, not a direct Popen spawn.",
+              "content": "The brain daemon restart protocol now routes through `launchctl kickstart -k` rather than a direct Popen spawn. When a restart is needed, the MCP layer issues `launchctl kickstart -k <service-target>`, which causes launchd to forcibly stop the running daemon instance and immediately bring it back up under the managed service definition. This ensures the daemon inherits the correct environment, sandbox, and resource limits defined in the launchd plist, and avoids the orphaned-process risk that the old Popen path carried. Direct Popen spawning of the daemon is no longer supported."
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "revise",
+              "node_id": "a3f81b2c",
+              "reason": "Architecture changed June 2026: restarts now route through launchctl kickstart -k, replacing direct Popen spawn.",
+              "content": "The brain daemon restart protocol now routes through `launchctl kickstart -k` rather than a direct Popen spawn. When a restart is needed, the controlling process invokes `launchctl kickstart -k gui/<UID>/com.brain.daemon` (or equivalent service label), which instructs launchd to immediately stop the running instance and relaunch it under launchd's supervision. This ensures the daemon inherits the correct environment, respects plist-defined resource limits, and is automatically re-supervised after crashes \u2014 properties that the old direct-spawn approach did not guarantee."
             }
           ]
         }
@@ -147,7 +147,7 @@
               "op": "absorb",
               "survivor_id": "c1d2e3f4",
               "absorbed_id": "d4e5f6a7",
-              "content": "Co-accessed nodes strengthen edges on recall via Hebbian-style weight increments. The batch drain that writes these increments uses a 30s busy_timeout to handle SQLite write contention gracefully. This is the canonical writeup of the mechanism; the richer survivor content is preserved and extended with the unique detail from the absorbed node."
+              "content": "Co-accessed nodes strengthen their shared edges on every recall \u2014 each joint activation increments the edge weight (Hebbian principle). The batch drain that flushes pending weight updates uses a 30s busy_timeout to survive SQLite write contention before giving up."
             }
           ]
         },
@@ -159,7 +159,7 @@
               "op": "absorb",
               "survivor_id": "c1d2e3f4",
               "absorbed_id": "d4e5f6a7",
-              "content": "Co-accessed nodes strengthen edges on recall (Hebbian-style). The brain daemon's batch drain uses a 30s busy_timeout to handle SQLite write contention during edge weight updates. Richer canonical writeup of the mechanism; the 30s busy_timeout detail was unique to the absorbed node."
+              "content": "Co-accessed nodes strengthen edges via Hebbian-style reinforcement: every recall that touches two nodes together increments the edge weight between them, making frequently co-recalled pairs progressively easier to activate together. The batch drain that flushes these weight updates uses a 30s busy_timeout to survive SQLite write contention during concurrent sessions."
             }
           ]
         },
@@ -171,7 +171,8 @@
               "op": "absorb",
               "survivor_id": "c1d2e3f4",
               "absorbed_id": "d4e5f6a7",
-              "content": "Co-accessed nodes strengthen edges during recall via Hebbian-style updates. The brain daemon processes these strengthening events in batches, using a 30s busy_timeout to drain the batch queue and avoid SQLite write contention on the WAL writer slot."
+              "content": "Co-accessed nodes strengthen edges during recall via Hebbian-style weight increments. The batch drain that processes these increments uses a 30s busy_timeout to handle SQLite write contention gracefully. This is the canonical writeup of the mechanism.",
+              "reason": "d4e5f6a7 is a thinner duplicate; folding its unique detail (30s busy_timeout in batch drain) into the canonical survivor c1d2e3f4 before archiving."
             }
           ]
         },
@@ -183,7 +184,8 @@
               "op": "absorb",
               "survivor_id": "c1d2e3f4",
               "absorbed_id": "d4e5f6a7",
-              "content": "Co-accessed nodes strengthen edges on recall (Hebbian-style). The brain daemon's batch drain uses a 30s busy_timeout to handle SQLite write contention during edge weight updates. This is the canonical writeup of the mechanism."
+              "content": "Co-accessed nodes strengthen edges on recall via Hebbian-style weight updates. The batch drain that processes these updates uses a 30s busy_timeout to handle SQLite write contention during high-concurrency sessions. This is the canonical writeup of the co-access strengthening mechanism.",
+              "reason": "d4e5f6a7 is a thinner duplicate of c1d2e3f4; unique detail (30s busy_timeout on batch drain) folded into survivor content"
             }
           ]
         },
@@ -195,7 +197,7 @@
               "op": "absorb",
               "survivor_id": "c1d2e3f4",
               "absorbed_id": "d4e5f6a7",
-              "content": "Co-accessed nodes strengthen edges via Hebbian-style reinforcement on recall. The edge weight between two nodes increases each time both are activated in the same recall event, making frequently co-retrieved knowledge progressively more tightly linked. Implementation detail: the batch drain uses a 30s busy_timeout to handle SQLite write contention during the strengthening writes."
+              "content": "Co-accessed nodes strengthen edges via Hebbian-style reinforcement: every recall event that touches multiple nodes increments the edge weight between them, making frequently co-recalled pairs progressively more salient. The batch drain that writes these weight updates uses a 30s busy_timeout to tolerate SQLite write contention before giving up."
             }
           ]
         }
@@ -218,83 +220,83 @@
                 {
                   "title": "e5f6a7b8",
                   "relation": "downstream_consequence_of",
-                  "why": "Checkpoint starvation is a direct downstream effect of the WAL writer-slot contention: concurrent sessions blocking the writer slot prevent the TRUNCATE checkpoint from ever completing, causing -wal file growth."
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "note": "",
-          "ops": [
-            {
-              "op": "remember",
-              "type": "lesson",
-              "title": "WAL checkpoint starvation under parallel sessions",
-              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
-              "connect_to": [
-                {
-                  "title": "e5f6a7b8",
-                  "relation": "downstream_consequence_of",
-                  "why": "Checkpoint starvation is a direct downstream effect of SQLite writer-slot contention: when concurrent sessions hold the WAL writer slot in turn, the TRUNCATE checkpoint never gets a clean window to reset the -wal file."
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "note": "",
-          "ops": [
-            {
-              "op": "remember",
-              "type": "lesson",
-              "title": "WAL checkpoint starvation under parallel sessions",
-              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
-              "connect_to": [
-                {
-                  "title": "e5f6a7b8",
-                  "relation": "downstream_consequence_of",
-                  "why": "Checkpoint starvation is a direct downstream effect of writer-slot contention: concurrent sessions block the TRUNCATE checkpoint from completing, causing the -wal file to grow unboundedly."
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "note": "",
-          "ops": [
-            {
-              "op": "remember",
-              "type": "lesson",
-              "title": "WAL checkpoint starvation under parallel sessions",
-              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
-              "connect_to": [
-                {
-                  "title": "e5f6a7b8",
-                  "relation": "downstream_consequence_of",
-                  "why": "Checkpoint starvation is a direct downstream effect of writer-slot contention: the WAL grows unbounded because the checkpoint cannot acquire exclusive access while concurrent writers hold the slot."
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "passed": true,
-          "note": "",
-          "ops": [
-            {
-              "op": "remember",
-              "type": "lesson",
-              "title": "WAL checkpoint starvation under parallel sessions",
-              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
-              "connect_to": [
-                {
-                  "title": "e5f6a7b8",
-                  "relation": "downstream_consequence_of",
                   "why": "Checkpoint starvation is a direct downstream effect of writer-slot contention: when two sessions compete for the WAL writer slot, the TRUNCATE checkpoint cannot complete, causing the -wal file to grow unboundedly."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "WAL checkpoint starvation under parallel sessions",
+              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
+              "connect_to": [
+                {
+                  "title": "e5f6a7b8",
+                  "relation": "downstream_consequence_of",
+                  "why": "Checkpoint starvation is a direct downstream effect of writer-slot contention: the WAL checkpoint cannot acquire an exclusive lock when concurrent writers keep the slot busy, causing the -wal file to grow unboundedly."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "WAL checkpoint starvation under parallel sessions",
+              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
+              "connect_to": [
+                {
+                  "title": "e5f6a7b8",
+                  "relation": "downstream_consequence_of",
+                  "why": "Checkpoint starvation is a direct downstream effect of the WAL writer-slot contention: when two sessions compete for the writer slot, the TRUNCATE checkpoint cannot complete, causing the -wal file to grow unboundedly."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "WAL checkpoint starvation under parallel sessions",
+              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
+              "connect_to": [
+                {
+                  "title": "e5f6a7b8",
+                  "relation": "downstream_consequence_of",
+                  "why": "Checkpoint starvation is a direct downstream effect of writer-slot contention: the WAL cannot be truncated while competing writers hold or re-acquire the slot."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "WAL checkpoint starvation under parallel sessions",
+              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
+              "connect_to": [
+                {
+                  "title": "e5f6a7b8",
+                  "relation": "downstream_consequence_of",
+                  "why": "Checkpoint starvation is a downstream effect of writer-slot contention: the WAL file grows unbounded because the TRUNCATE checkpoint cannot acquire exclusive access while the concurrent writer holds the slot."
                 }
               ]
             }
@@ -319,7 +321,7 @@
                 {
                   "title": "e5f6a7b8",
                   "relation": "extends",
-                  "why": "Checkpoint starvation is a direct downstream consequence of SQLite write contention: concurrent writers continuously reset the WAL, preventing TRUNCATE checkpoints from ever completing."
+                  "why": "Checkpoint starvation is a downstream consequence of SQLite write contention \u2014 concurrent writers continuously reset the WAL, preventing TRUNCATE checkpoints from completing."
                 }
               ]
             }
@@ -338,7 +340,7 @@
                 {
                   "title": "e5f6a7b8",
                   "relation": "extends",
-                  "why": "Checkpoint starvation is a direct consequence of SQLite write contention: concurrent writers continuously reset the WAL, preventing TRUNCATE checkpoints from ever completing."
+                  "why": "Checkpoint starvation is a direct consequence of SQLite write contention \u2014 concurrent writers continuously reset the WAL, preventing TRUNCATE checkpoints from completing."
                 }
               ]
             }
@@ -357,7 +359,7 @@
                 {
                   "title": "e5f6a7b8",
                   "relation": "extends",
-                  "why": "Checkpoint starvation is a direct downstream consequence of SQLite write contention: concurrent writers continuously reopen the WAL, preventing TRUNCATE checkpoints from ever completing."
+                  "why": "Checkpoint starvation is a direct downstream consequence of SQLite write contention: concurrent writers continuously re-dirty WAL pages, preventing TRUNCATE checkpoints from ever completing."
                 }
               ]
             }
@@ -376,7 +378,7 @@
                 {
                   "title": "e5f6a7b8",
                   "relation": "extends",
-                  "why": "Checkpoint starvation is a direct consequence of SQLite write contention: concurrent writers continuously reset the WAL, preventing TRUNCATE checkpoints from ever completing."
+                  "why": "Checkpoint starvation is a direct downstream consequence of SQLite write contention \u2014 concurrent writers continuously reset the WAL, preventing TRUNCATE checkpoints from completing."
                 }
               ]
             }
@@ -395,7 +397,7 @@
                 {
                   "title": "e5f6a7b8",
                   "relation": "extends",
-                  "why": "Checkpoint starvation is a direct downstream consequence of SQLite write contention: concurrent writers continuously reopen the WAL, preventing the checkpointer from ever completing a TRUNCATE cycle."
+                  "why": "Checkpoint starvation is a direct downstream consequence of SQLite write contention: concurrent writers continuously reset the WAL, preventing TRUNCATE checkpoints from completing."
                 }
               ]
             }
@@ -415,7 +417,7 @@
               "op": "absorb",
               "survivor_id": "c1d2e3f4",
               "absorbed_id": "d4e5f6a7",
-              "content": "When nodes are co-accessed during recall, their shared edges are strengthened (Hebbian-style reinforcement). This is the core edge-weight update mechanism: recall patterns literally reshape the graph's activation topology over time.\n\nImplementation detail: the batch drain that flushes these edge-weight updates uses a 30-second busy_timeout on the SQLite connection to survive write contention on the WAL writer slot."
+              "content": "Co-accessed nodes strengthen edges during recall \u2014 each retrieval reinforces the connections between nodes activated together, gradually encoding which concepts appear in the same context (Hebbian-style learning on the graph). The batch drain that flushes these edge-weight updates uses a 30s busy_timeout to survive SQLite write contention without dropping strengthening events."
             }
           ]
         },
@@ -427,7 +429,7 @@
               "op": "absorb",
               "survivor_id": "c1d2e3f4",
               "absorbed_id": "d4e5f6a7",
-              "content": "Co-accessed nodes strengthen edges via Hebbian-style reinforcement: every recall that activates multiple nodes increments the edge weight between them, making frequently co-recalled concepts progressively easier to surface together.\n\nImplementation detail: the batch drain that flushes these weight updates to SQLite uses a 30-second busy_timeout to ride out WAL write contention before failing."
+              "content": "When nodes are co-accessed during recall, Hebbian strengthening fires: edges between those nodes are reinforced proportionally to co-activation frequency. This is the primary mechanism by which the brain's graph topology self-organizes around usage patterns.\n\nImplementation detail: the batch drain that flushes pending edge-weight updates uses a 30s busy_timeout on the SQLite connection, ensuring write contention from parallel sessions does not silently drop strengthening events."
             }
           ]
         },
@@ -439,7 +441,7 @@
               "op": "absorb",
               "survivor_id": "c1d2e3f4",
               "absorbed_id": "d4e5f6a7",
-              "content": "When nodes are co-accessed during recall, the edges between them are strengthened (Hebbian-style reinforcement). This is the core mechanism by which frequent co-retrieval builds denser, higher-weight connections over time.\n\nImplementation detail: the batch drain that flushes pending edge-weight updates uses a 30s busy_timeout to handle SQLite write contention gracefully, ensuring strengthening writes succeed even under parallel session load."
+              "content": "Co-accessed nodes strengthen edges during recall via Hebbian-style reinforcement. When two nodes are accessed together, the edge weight between them is incremented, making frequently co-recalled concepts progressively easier to activate together. The batch drain that processes these weight updates uses a 30s busy_timeout to handle SQLite write contention without dropping updates."
             }
           ]
         },
@@ -451,7 +453,7 @@
               "op": "absorb",
               "survivor_id": "c1d2e3f4",
               "absorbed_id": "d4e5f6a7",
-              "content": "When two nodes are co-accessed during recall, the edge between them is strengthened (Hebbian-style reinforcement). This is the primary mechanism by which frequently traversed paths become more prominent in the activation kernel.\n\nImplementation detail: the batch drain that flushes these edge-weight updates uses a 30s busy_timeout to handle SQLite write contention gracefully \u2014 ensuring strengthening writes are not silently dropped under parallel session load."
+              "content": "When nodes are co-accessed during recall, the edges between them are strengthened (Hebbian-style reinforcement). This is the core mechanism by which frequently traversed paths become more prominent in the activation graph.\n\nImplementation detail: the batch drain that flushes pending edge-weight updates uses a 30s busy_timeout to handle SQLite write contention gracefully."
             }
           ]
         },
@@ -463,7 +465,7 @@
               "op": "absorb",
               "survivor_id": "c1d2e3f4",
               "absorbed_id": "d4e5f6a7",
-              "content": "When nodes are co-accessed during recall, the edges between them are strengthened (Hebbian-style reinforcement). This is the core mechanism by which frequently co-recalled concepts develop stronger associative links over time.\n\nImplementation detail: the batch drain that flushes pending edge-weight updates uses a 30s busy_timeout to handle SQLite write contention gracefully during high-concurrency sessions."
+              "content": "When nodes are co-accessed during recall, the edges between them are strengthened (Hebbian-style reinforcement). This is the primary mechanism by which frequently co-recalled concepts develop stronger associative links over time.\n\nImplementation detail: the batch drain that flushes pending edge-weight updates uses a 30s busy_timeout to handle SQLite write contention without dropping updates."
             }
           ]
         }
@@ -482,7 +484,7 @@
               "source_id": "f1a2b3c4",
               "target_id": "a9b8c7d6",
               "relation": "similar_to",
-              "description": "Both are instances of the write-skew failure class: concurrent writers corrupt the activation index by racing on SQLite WAL writes without sufficient isolation."
+              "description": "Both nodes document the same write-skew failure class: concurrent writers corrupting the activation index under SQLite WAL contention."
             }
           ]
         },
@@ -495,7 +497,7 @@
               "source_id": "f1a2b3c4",
               "target_id": "a9b8c7d6",
               "relation": "similar_to",
-              "description": "Both nodes document the same write-skew failure class: concurrent writers corrupting the activation index, differing only in the specific session context that triggered the corruption."
+              "description": "Both are instances of the write-skew failure class: concurrent writers corrupt the activation index (idx_nodes_activation) by interleaving reads and writes without proper serialization."
             }
           ]
         },
@@ -508,7 +510,7 @@
               "source_id": "f1a2b3c4",
               "target_id": "a9b8c7d6",
               "relation": "similar_to",
-              "description": "Both are instances of the write-skew failure class: concurrent writers corrupt the activation index (idx_nodes_activation) when they race on the WAL writer slot without proper serialization."
+              "description": "Both nodes document the same write-skew failure class: concurrent writers corrupting the activation index \u2014 one names the general pattern, the other is a concrete observed instance of idx_nodes_activation corruption during parallel eval."
             }
           ]
         },
@@ -521,7 +523,7 @@
               "source_id": "f1a2b3c4",
               "target_id": "a9b8c7d6",
               "relation": "similar_to",
-              "description": "Both are instances of the write-skew failure class: concurrent writers corrupt the activation index (idx_nodes_activation) by racing on the WAL writer slot without coordination."
+              "description": "Both are instances of the write-skew failure class where concurrent writers corrupt the activation index \u2014 same root cause, different triggering sessions."
             }
           ]
         },
@@ -534,7 +536,7 @@
               "source_id": "f1a2b3c4",
               "target_id": "a9b8c7d6",
               "relation": "similar_to",
-              "description": "Both are instances of the write-skew failure class where concurrent writers corrupt the activation index \u2014 same root cause, different triggering contexts."
+              "description": "Both are instances of the same write-skew failure class: concurrent writers corrupting the activation index under SQLite WAL contention."
             }
           ]
         }
@@ -551,7 +553,7 @@
             {
               "op": "archive",
               "node_id": "9c8d7e6f",
-              "reason": "Dashboard no longer reads /tmp JSON files \u2014 it now reads SQLite directly. This node describes obsolete behavior and is retired to avoid misleading future context."
+              "reason": "Dashboard no longer reads /tmp JSON files \u2014 it now reads directly from SQLite, making this mechanism description obsolete."
             }
           ]
         },
@@ -573,7 +575,7 @@
             {
               "op": "archive",
               "node_id": "9c8d7e6f",
-              "reason": "Dashboard no longer reads /tmp JSON files \u2014 it now reads directly from SQLite, making this mechanism description obsolete and misleading."
+              "reason": "Dashboard no longer reads /tmp JSON files \u2014 it now reads directly from SQLite. This mechanism node describes a superseded data source and is obsolete."
             }
           ]
         },
@@ -584,7 +586,7 @@
             {
               "op": "archive",
               "node_id": "9c8d7e6f",
-              "reason": "Dashboard no longer reads /tmp JSON files; it now reads directly from SQLite. This node describes obsolete behavior and is retired to avoid misleading future lookups."
+              "reason": "Dashboard no longer reads /tmp JSON files \u2014 it now reads directly from SQLite. This node describes an obsolete data-source mechanism."
             }
           ]
         },
@@ -595,7 +597,7 @@
             {
               "op": "archive",
               "node_id": "9c8d7e6f",
-              "reason": "Dashboard no longer reads from /tmp JSON files \u2014 it now reads SQLite directly. This mechanism is obsolete and no longer reflects the current data source."
+              "reason": "Dashboard no longer reads /tmp JSON files \u2014 it now reads directly from SQLite, making this mechanism description obsolete."
             }
           ]
         }
