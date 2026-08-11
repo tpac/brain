@@ -14,7 +14,10 @@ S1R→S1E handoff file (surface_contract.surface_selected_path) survive.
 ALLOWLIST — time-bounded legacy: dashboard/queries/recalls.py keeps the
 old judge-result filename and dashboard/server.py the old consolidation
 filename in their pre-migration read branches; delete each entry when its
-branch dies.
+branch dies. eval/longmem/connect_ab.py READS a frozen pre-migration
+capture corpus (pooled brain-encoding-prompt-*.json) as replay input —
+the artifacts predate record_payload and can't be rerouted; delete when
+that corpus is regenerated in payload form.
 """
 import os
 import re
@@ -44,6 +47,7 @@ FORBIDDEN = [
 ALLOWLIST = {
     ("dashboard/queries/recalls.py", r"brain-judge-result-"),
     ("dashboard/server.py", r"brain-consolidation-prompt-"),
+    ("eval/longmem/connect_ab.py", r"brain-encoding-prompt-"),
 }
 
 SCAN_DIRS = ("servers", "dashboard", "hooks", "eval", "scripts")

@@ -156,6 +156,16 @@ class TestConsolidationSuppressionSource(BrainTestBase):
             derived, set(self.brain.aspects.settlement.edge_relations))
         self.assertIn('resolves', derived)  # the original gap
 
+    def test_settlement_does_not_steal_primary_homes(self):
+        # settlement multi-homes verbs owned by earlier aspects. The primary
+        # (first-claimant) reverse lookup must be unaffected — similar_to
+        # stays generic_relation, so community typed adjacency keeps
+        # skipping it (the regression test_community_health_seam caught).
+        pm = self.brain.aspects.primary_edge_map()
+        self.assertEqual(pm['similar_to'], 'generic_relation')
+        self.assertEqual(pm['corrects'], 'correction_improvement')
+        self.assertNotIn('settlement', pm.values())
+
     def test_contract_fallback_mirrors_seed_settlement(self):
         # The degraded-registry fallback must not drift from the seed —
         # a fresh install and a broken registry should suppress identically.

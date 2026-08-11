@@ -357,14 +357,14 @@ class CommunityDecoder(IntegrationUnit):
 
     def _decode(self, s1_delta, community_state, is_cold_start=False):
         # Load aspect map for typed adjacency (Step 9 of unified-aspects).
-        # rel_to_fam: every edge relation → aspect name. skip_fams: noise +
-        # generic_relation are filtered out so community detection routes on
-        # specific semantic edges, not generic association.
-        rel_to_fam = {
-            relation: name
-            for name, aspect in self.brain.aspects.all().items()
-            for relation in aspect.edge_relations
-        }
+        # rel_to_fam: every edge relation → PRIMARY aspect name (first
+        # claimant, the registry's reverse-lookup contract). skip_fams:
+        # noise + generic_relation are filtered out so community detection
+        # routes on specific semantic edges, not generic association.
+        # Must come from the registry: a hand-rolled last-claimant map let
+        # the settlement aspect steal similar_to from generic_relation and
+        # turned it into a typed adjacency edge.
+        rel_to_fam = self.brain.aspects.primary_edge_map()
         skip_fams = set(ADJACENCY_SKIP_ASPECTS)
 
         # Step 1: Typed adjacency (ALL nodes — placed nodes' edges matter)

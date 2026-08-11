@@ -692,6 +692,18 @@ class AspectRegistry:
         name = self._reverse_edge.get(r)
         return self._aspects.get(name) if name else None
 
+    def primary_edge_map(self) -> dict:
+        """relation_string → PRIMARY aspect name, for every known relation.
+
+        Primary = the FIRST aspect that claims the string in file order — the
+        same contract by_edge_relation serves one string at a time. Callers
+        that need the whole map (e.g. community typed adjacency) must use
+        this instead of rebuilding it from all(): a hand-rolled comprehension
+        lets the LAST claimant win, which silently flips a relation's family
+        when a later aspect (settlement) multi-homes it.
+        """
+        return dict(self._reverse_edge)
+
     # ── Cross-aspect unions ──
 
     def types_in(self, names: Iterable[str]) -> tuple:
