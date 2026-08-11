@@ -4,7 +4,7 @@
 
 > **STATUS UPDATE 2026-06-05:** RRF as a full-blend replacement **FAILED** its A/B (scrambled
 > brain-dev controls) and the flag-gated edits were **reverted**. The live direction is the **fix
-> ladder** in `docs/HANDOFF-RECALL-NORMALIZATION.md` — cheapest layer first (fts5 reservation,
+> ladder** in `docs/archive/session-handoffs/HANDOFF-RECALL-NORMALIZATION.md` — cheapest layer first (fts5 reservation,
 > the already-coded hub-dampening modulator), with a **diagnostic-first** step before any build, and
 > PPR/fragments-snapshot as the deeper builds only if the cheap fixes are insufficient. The two-stage
 > framing below (match-signals at stage 1, LLM rerank at stage 2, width via compression) is still

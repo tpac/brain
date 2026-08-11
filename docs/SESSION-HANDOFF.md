@@ -40,7 +40,7 @@ There is **no `cache_control` anywhere** in the surface path (neither v4 nor `v5
 - **Phase 3 — boot letter. Superseded 2026-06-06:** every delivered message now renders uniformly quoted and `render_letter` was removed (a first-person cross-stream render was a mis-attribution bug). The "letter to next boot" survives only as the encoded arc surfaced at boot (Frame + journal); boot smart-surface still parked behind the boot-reignition eval (`docs/BOOT-REIGNITION.md`).
 - **Phase 4 — encode self-turns.** `self_message: False` at `trace_contract.py:177` (verified unflipped 2026-06-05). Flip to `True` so anchor↔anchor turns encode/recall like operator turns. One dial when wanted.
 
-### S2 consolidation → live merge (`docs/S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md`)
+### S2 consolidation → live merge (`docs/archive/session-handoffs/S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md`)
 The `absorb` wiring shipped (above). Deferred remainders in that doc: the **live real-pair merge** of `96d2fdf8`/`426ae3cd`, **Track 1b**, and edge-direction handling. Eval-gated (consolidation is sacred).
 
 ### DAL Cleanup Phases 4/5/6 (`docs/DAL-CLEANUP-PLAN.md`)
@@ -52,7 +52,7 @@ Reads migration, missing DALs (incl. the incomplete `NodeDAL.purge` cascade — 
 *B4 (CCD↔brain namespace bridge) — closed 2026-06-05: CCD and brain use independent session-id spaces with no robust shared key; comms stay in the brain id space, so there's no bridge to build. Optional per-session cwd/branch ergonomics parked.*
 
 ### Known recall bug — dampening cluster (BACKLOG P1.6)
-Synaptic-fatigue (per-session anti-repeat) + hub-dampening are broken post spread-activation migration. Four RED tests reproduce it (`test_fatigue_*`, `test_hub_dampening`), parked with the recall work since 2026-05-29. Detail in `docs/S2-GATING-AND-TEST-CLEANUP-HANDOFF.md` → "Parked work". Natural bundle with the recall-arc above.
+Synaptic-fatigue (per-session anti-repeat) + hub-dampening are broken post spread-activation migration. Four RED tests reproduce it (`test_fatigue_*`, `test_hub_dampening`), parked with the recall work since 2026-05-29. Detail in `docs/archive/session-handoffs/S2-GATING-AND-TEST-CLEANUP-HANDOFF.md` → "Parked work". Natural bundle with the recall-arc above.
 
 ### Tom-time-gated
 `eval/ground_truth/` — 7 conversation templates across 5 strata are scaffolded (source conversations written), but the **ideal-node YAML is still unfilled** (verified 2026-06-05 — all `<fill>`). Tom's ~1.75h authoring session, untouched. Once filled: targeted structural-delta eval joins the longmem oracle path.
@@ -81,5 +81,5 @@ register in the doc.
 2. `docs/EPISODIC-REFERENCES.md` — recall-side work + §13.6 gate (the standout open arc)
 3. `docs/BACKLOG.md` — broad open-item registry. Verify any "open" item against code before picking it up — the dated session captures are history and aren't always pruned when an item ships.
 4. `docs/SELF-CHANNEL-DESIGN.md` — self-channel phases 3/4
-5. `docs/S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md` — absorb live-merge remainders
+5. `docs/archive/session-handoffs/S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md` — absorb live-merge remainders
 6. `docs/DAL-CLEANUP-PLAN.md` — DAL Phases 4/5/6

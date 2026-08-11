@@ -6,7 +6,7 @@ just a primitive). The locked behavioral rules below (≥2 locked → KEEP, no c
 contradiction → escalate, locked is always the survivor never absorbed) are live AND
 eval-tested: corpus cluster 20 — four locked O/K/Δ duplicates, `pre_class=likely_consolidate`,
 cosine 1.0 (maximum merge pressure) → KEEP, correct in v7. See
-`docs/S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md` §0. Consolidation is sacred → prompt
+`docs/archive/session-handoffs/S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md` §0. Consolidation is sacred → prompt
 changes remain **eval-gated**.
 
 ---

@@ -16,7 +16,7 @@ verified against live code before inclusion. Consumer counts are production-only
 Phases 0–6) is COMPLETE. The traces-door audit (2026-07-11, `e8fcb61`) fixed 4 of 5 violations;
 the fifth (daemon_hooks wake-envelope filter) is **deliberately parked** (id:c948eeb8) pending a
 `get_conversation` signature widening — respected here, not reopened.
-`docs/DAL-FOLLOWUP-HANDOFF.md`'s items are absorbed into this plan (ITEM 1 → Step 8; H1 → Step 3;
+`docs/archive/session-handoffs/DAL-FOLLOWUP-HANDOFF.md`'s items are absorbed into this plan (ITEM 1 → Step 8; H1 → Step 3;
 M1 → Step 0) — **mark that doc superseded when Step 0 lands.**
 
 **Settled constraints respected throughout:** DAL-first (CLAUDE.md); no business logic in the DAL
