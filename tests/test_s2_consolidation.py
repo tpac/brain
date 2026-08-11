@@ -134,6 +134,49 @@ class TestConsolidationScanGate(BrainTestBase):
         self.assertNotIn(untouched_id, changed)  # untouched stays out
 
 
+class TestConsolidationSuppressionSource(BrainTestBase):
+    """The suppression set derives from the settlement aspect, not a literal.
+
+    The drift this pins against: a verb added to the taxonomy's settlement
+    role (e.g. `resolves`, 2026-08-11) that a hand-typed Python set never
+    learns about — pairs settled by that verb re-propose forever.
+    """
+
+    needs_embedder = False
+
+    def _decoder(self):
+        from servers.scales.s2.consolidation_decoder import ConsolidationDecoder
+        return ConsolidationDecoder(self.brain)
+
+    def test_suppression_derives_from_settlement_aspect(self):
+        d = self._decoder()
+        derived = d._suppression_relations()
+        self.assertTrue(derived)
+        self.assertEqual(
+            derived, set(self.brain.aspects.settlement.edge_relations))
+        self.assertIn('resolves', derived)  # the original gap
+
+    def test_contract_fallback_mirrors_seed_settlement(self):
+        # The degraded-registry fallback must not drift from the seed —
+        # a fresh install and a broken registry should suppress identically.
+        import json
+        from servers.aspect_store import SEED_ASPECTS_JSON_PATH
+        from servers.scales.s2.consolidation_contract import CONSOLIDATION
+        seed = json.load(open(SEED_ASPECTS_JSON_PATH))
+        self.assertEqual(
+            set(CONSOLIDATION['suppression_relations']),
+            set(seed['settlement']['edge_relations']))
+
+    def test_empty_registry_falls_back_to_contract(self):
+        d = self._decoder()
+        # Instance attr shadows AspectRegistry.__getattr__ resolution.
+        with mock.patch.object(self.brain.aspects, 'settlement',
+                               mock.Mock(edge_relations=()), create=True):
+            self.assertEqual(
+                d._suppression_relations(),
+                set(d.config['suppression_relations']))
+
+
 class TestConsolidationStampTiming(BrainTestBase):
     """Orchestrator-level: the cutoff advances ONLY after a run completes."""
 

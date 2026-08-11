@@ -40,6 +40,8 @@ REQUIRED_ASPECTS: tuple = (
     'hierarchical_structure',   # part_of, supersedes_structurally
     'temporal_sequence',        # follows_from, leads_to
     'survivor_lineage',         # absorbed_into — archived→living-descendant redirect
+    'settlement',               # similar_to, resolves, supersedes, … — pair already
+                                # settled; consolidation suppression set (closed list)
 )
 
 

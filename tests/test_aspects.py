@@ -303,8 +303,8 @@ class TestRequiredAspectsConstant(unittest.TestCase):
     """REQUIRED_ASPECTS is the contract surface."""
 
     def test_count(self):
-        # 5 node-facing + 11 edge-facing = 16
-        self.assertEqual(len(REQUIRED_ASPECTS), 16)
+        # 5 node-facing + 12 edge-facing = 17
+        self.assertEqual(len(REQUIRED_ASPECTS), 17)
 
     def test_no_duplicates(self):
         self.assertEqual(len(set(REQUIRED_ASPECTS)), len(REQUIRED_ASPECTS))

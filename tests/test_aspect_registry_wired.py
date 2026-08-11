@@ -1,7 +1,7 @@
 """AspectRegistry wired to Brain.__init__.
 
-Tests cover the live load path: every fresh Brain ends up with the 14 required
-aspects, exposed via attribute access, with reverse lookups and surface helpers
+Tests cover the live load path: every fresh Brain ends up with every required
+aspect, exposed via attribute access, with reverse lookups and surface helpers
 working end-to-end. The registry loads them from
 servers/scales/s2/aspects_v1.json (AspectRegistry._load). The old type='aspect'
 brain-node / auto-heal mechanism these tests were originally written against is
@@ -15,12 +15,12 @@ from servers.aspects import REQUIRED_ASPECTS, Aspect
 
 
 class TestAspectRegistryWired(BrainTestBase):
-    """brain.aspects exists after Brain.__init__ and loads the 14 required."""
+    """brain.aspects exists after Brain.__init__ and loads all required aspects."""
 
     needs_embedder = False
 
     def test_all_14_required_present_after_auto_heal(self):
-        # Fresh brain → registry loads all 14 required from aspects_v1.json
+        # Fresh brain → registry loads every required aspect from aspects_v1.json
         all_aspects = self.brain.aspects.all()
         for name in REQUIRED_ASPECTS:
             with self.subTest(aspect=name):
@@ -94,7 +94,7 @@ class TestAspectRegistryWired(BrainTestBase):
 
     def test_all_with_counts_shape(self):
         result = self.brain.aspects.all_with_counts()
-        self.assertEqual(len(result), 16)
+        self.assertEqual(len(result), 17)
         for entry in result:
             self.assertIn('name', entry)
             self.assertIn('node_types_count', entry)
@@ -111,13 +111,13 @@ class TestAspectRegistryIdempotentAcrossBrains(BrainTestBase):
     def test_second_brain_loads_existing_aspects(self):
         # First brain loads the required set from aspects_v1.json
         first_count = len(self.brain.aspects.all())
-        self.assertEqual(first_count, 16)
+        self.assertEqual(first_count, 17)
 
         # Second brain over the same db_dir reads the same JSON → same set
         from servers.brain import Brain
         second_brain = Brain(self.db_path, skip_embedder=True)
         second_count = len(second_brain.aspects.all())
-        self.assertEqual(second_count, 16,
+        self.assertEqual(second_count, 17,
                          'second brain should load the same aspects from JSON')
 
 

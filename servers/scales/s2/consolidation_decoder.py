@@ -270,6 +270,17 @@ class ConsolidationDecoder(IntegrationUnit):
     # Step 1: Embedding scan
     # ══════════════════════════════════════════════════════════
 
+    def _suppression_relations(self):
+        """Suppression verbs, derived from the `settlement` aspect.
+
+        The taxonomy's closed (routable: false) list of "this pair is already
+        resolved against each other" relations is the live source; the
+        contract constant is the degraded-registry fallback only, same
+        pattern as _has_correction_edge.
+        """
+        rels = set(self.brain.aspects.settlement.edge_relations)
+        return rels or set(self.config['suppression_relations'])
+
     def _scan_embeddings(self, last_ts, is_cold_start, changed_ids=None):
         """Find all node pairs above similarity threshold.
 
@@ -284,7 +295,7 @@ class ConsolidationDecoder(IntegrationUnit):
         Incremental: new + revised nodes vs all existing.
         """
         threshold = self.config['similarity_threshold']
-        suppression = self.config['suppression_relations']
+        suppression = self._suppression_relations()
 
         # Load content (blend) embeddings — v23: from node_enrichments _primary
         content_rows = self.brain.conn.execute("""

@@ -148,8 +148,9 @@ def snapshot_nodes(conn, node_ids):
     return snapshots
 
 
-def analyze_actions(conn, before_snapshot, clusters, all_ids_before=None):
+def analyze_actions(brain, before_snapshot, clusters, all_ids_before=None):
     """Analyze what the encoder did by comparing before/after state."""
+    conn = brain.conn
     all_ids = set()
     for c in clusters:
         all_ids.update(c['nodes'])
@@ -172,12 +173,15 @@ def analyze_actions(conn, before_snapshot, clusters, all_ids_before=None):
     # may not be set on connect operations routed through brain_batch)
     # v25: forensic eval — see all suppression edges including archived
     # (archive_node archives edges pointing at archived nodes).
+    # Suppression verbs derive from the settlement aspect, same source the
+    # decoder reads — the eval must not drift from the live set.
+    settlement_rels = sorted(brain.aspects.settlement.edge_relations)
     suppression_edges = conn.execute("""
         SELECT e.source_id, e.target_id, er.relation, er.description
         FROM edges e
         JOIN edge_relations er ON er.edge_id = e.edge_id
-        WHERE er.relation IN ('consolidated_into', 'similar_to', 'supersedes')
-    """).fetchall()
+        WHERE er.relation IN (%s)
+    """ % ','.join('?' * len(settlement_rels)), settlement_rels).fetchall()
 
     # Detect revised nodes (content changed)
     revised_ids = set()
@@ -496,7 +500,7 @@ def main():
 
         # Analyze
         print("\nAnalyzing results...")
-        analysis = analyze_actions(brain.conn, before, selected, all_ids_before)
+        analysis = analyze_actions(brain, before, selected, all_ids_before)
         scores = score_results(analysis, selected, encode_result)
 
         elapsed = time.time() - t_start
