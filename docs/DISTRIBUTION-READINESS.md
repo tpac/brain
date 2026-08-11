@@ -1,5 +1,16 @@
 # Distribution Readiness — Sharing Anchor
 
+## §ACTIVE ARC (2026-08-11) — 5.0a is next: rename safety net + XDG create-branch + sandbox matrix
+**Read first:** handoff node `[thread:d13-arch-plan]` (recall it; rests on milestones id:b8ac1c04,
+id:98a66029). Shipped today: arch-plan steps 2+4 (daemon db-path divergence killed — resolver at
+launch, ping `db_dir`, plist drift re-bootstrap with identity guards; env-first port), the
+`brain-daemon` launcher rename, step 5 (six dead scripts deleted, `TestShippedScriptsReachable`).
+**Locked:** D-13, never-auto-move, installer identity guards, ladder hint-demotion. **Open:** the
+adoption UX (first gate), the XDG create-branch (replaces ladder rung 5's target), the sandbox
+matrix re-run incl. adoption-while-daemon-running. **Do not reopen:** bare env-first port (needs
+the env-file fallback), ladder step-1 bare `-d` adoption, cp-before-bootout, flat reference-count
+gating, verified-developer signing (deferred to 5.x polish).
+
 **Status:** **Goal A closed** — the Layer-4 live install worked end-to-end on a clean
 machine 2026-07-17 (§6b). Now on **Goal B: the public OSS publish** (Phase 5.7, the one-way
 door). Naming + release model settled 2026-08-06 (**D-6…D-9**, §10); §8 fork #1 is
