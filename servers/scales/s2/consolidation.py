@@ -47,6 +47,13 @@ class Consolidation(ConsolidationDecoder):
         # on a member invalidates the rejection automatically (cluster IDs
         # unchanged + edited content ⇒ the encoder's judgment may differ
         # from its prior SKIP and must re-evaluate).
+        # Deliberately updated_at, NOT revised_at: this is the cheap
+        # invalidate-on-any-change tripwire, and re-proposal still requires
+        # the pair to re-form in a scan — which the change set gates on
+        # revised_at (claim changes only). A metadata-only revise
+        # invalidates the fingerprint but never re-forms the pair, so
+        # nothing re-proposes; switching this key to revised_at would
+        # orphan every stored fingerprint for no behavioral gain.
         proposals = [{'type': 'consolidation_cluster',
                       'members': c.get('nodes', []),
                       'member_updated_at': {
