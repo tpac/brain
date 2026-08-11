@@ -7,7 +7,8 @@ closed. **D-5 (seed pack)** remains the open design gate; **Phase 1.5** (shipped
 `examples/` leak) was found and closed by deletion. **2026-08-09:** D-11 (two
 identities — the service layer never renames) and D-12 (every instance name derives
 from config) added. **5.0 fleet gap: first attempt reverted after review — still
-open**; 5.0a/5.0b/5.0c are the new prerequisites in front of the rename.
+open**; 5.0a/5.0b/5.0c are the new prerequisites in front of the rename
+(**5.0b shipped 2026-08-11** — `tests/test_deploy_contract.py`).
 **Claims audited against live code 2026-08-08** — the first such pass. Four false
 claims and three rotted `file:line` citations were corrected; the stale §3
 ("Current state", a June snapshot) was deleted outright. Section numbering skips 3
@@ -308,20 +309,28 @@ never auto-move data. Detect a candidate brain, refuse to silently create, and
 surface the choice through `additionalContext` + the boot notice, naming the path.
 Adoption uses the mechanism that already exists — `userConfig.brain_path`. *M.*
 
-**5.0b Deploy-contract gate — OPEN, gates 5.2.** Executable answer to "how do I know
-every place a deploy touches." A hand-list already failed twice (the 62-file build
-manifest; the 5.2 permission entry above). **Shape-scan, never an enumeration** —
-the same reason `build-plugin.sh` derives from `git ls-files`:
+**5.0b Deploy-contract gate — DONE 2026-08-11, `tests/test_deploy_contract.py`.**
+Executable answer to "how do I know every place a deploy touches." A hand-list
+already failed twice (the 62-file build manifest; the 5.2 permission entry above).
+**Shape-scan, never an enumeration** — the same reason `build-plugin.sh` derives
+from `git ls-files`:
   1. `plugin.json.version == marketplace.json` version — drift is silent and breaks
      `/plugin update`; it happens every release, forever
   2. adapter-name containment — for name `N` from `plugin.json`, every occurrence of
      `mcp__plugin_N_`, `com.N.`, `<owner>/N` must sit in a small allowlist; a new
      file hardcoding it fails automatically because the test reads the *tree*
-  3. host-neutrality (D-11) — `servers/` may read `plugin.json` only for the embedder
-     block; the day a service name derives from the CC manifest, this fails
+  3. host-neutrality (D-11) — `servers/` may reference the CC manifest only in an
+     embedder context (`embedder.py` exempt wholesale, everything else line-checked)
   4. name derivation (D-12) — capital `Anchor` appears only in the config allowlist
-*Assertion 2 stays noisy until the rename (today `N` = `brain`, an ordinary word);
-it goes quiet when `N` becomes `entity`.* *S.*
+*As built: the `com.N.` sub-check SKIPS while `N` = `brain` — with adapter name ==
+service name it cannot distinguish D-11-legitimate labels from leaks; it arms
+automatically at the 5.2 rename. Assertion 4 is `xfail(strict=True)` until 5.0c —
+when 5.0c completes it XPASSes and the marker must come off. Known tradeoff: while
+xfailed, a NEW `Anchor` literal produces no signal; 5.0c closes that window.
+The gate excludes its own file (the scanner must name the shapes it hunts) and the
+5.1 denylist (docs/, eval/, `CLAUDE.md`, `tests/archive/`, `tests/results/`).
+Found and fixed on first run: `tests/test_trace_chain_lane.py` hardcoded
+`/Users/tpac/brain`.* *Shipped S.*
 
 **5.0c Name / identity consolidation (D-12) — OPEN. Absorbs §8 #3.** 182 `Anchor`
 literals across 43 shipped files resolve to `BRAIN_AGENT_NAME`; `BRAIN_OPERATOR_NAME`
@@ -344,7 +353,11 @@ Two hard-fail gates, enforced in the script, not remembered:
       session logs), `conversations/`, `archives/`. *Audit 2026-08-08: `archives/`
       and `conversations/` are **not tracked** — they were the wrong names. The
       directory that actually carries session logs is `docs/archive/`. Keep the
-      inert entries as belt-and-braces, but `docs/archive/` is the one that binds.*
+      inert entries as belt-and-braces, but `docs/archive/` is the one that binds.
+      Added 2026-08-11: `tests/archive/` and `tests/results/` — dev residue
+      carrying `/Users/tpac` paths (would fail the scrub-grep anyway; the
+      denylist entry makes it explicit, and the 5.0b gate's scan scope relies
+      on it).*
   (b) **scrub-grep** — `/Users/tpac`, `\btom\b`, `Pachys`, `playbuzz`, `AgentsContext`.
 Also asserts `plugin.json.version == marketplace.json.version` (they must never
 drift — `/plugin update` compares versions). *Reversible · no-regret · M.*
