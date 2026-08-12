@@ -645,6 +645,162 @@ class TestDriftDetection(BrainTestBase):
         self.assertEqual(len(mine), 1)
         self.assertEqual(mine[0]['foreign'][0]['id'], b_id)
 
+    def test_drift_never_targets_own_communities(self):
+        """A multi-home node's own communities are never drift targets, in
+        every state order. The neighbor mass sits in home A while B comes
+        LAST in state order — an arbitrary-home drift base reads home
+        affinity 0 and proposes moving x into A, a community x is in."""
+        from servers.scales.s2.community_decoder import CommunityDecoder
+        x = self._node('dual x')
+        a_members = [self._node('a%d' % i) for i in range(4)]
+        b_rest = [self._node('b%d' % i) for i in range(2)]
+        a_id = self._community('home A', [x] + a_members)
+        self._community('home B', [x] + b_rest)
+        for m in a_members:
+            self.brain.connect(x, m, relation='implements', weight=0.8)
+
+        decoder = CommunityDecoder(self.brain)
+        state = decoder._read_community_state()
+        # Pin state order: A first, B last — no row-order luck.
+        state.sort(key=lambda c: 0 if c['id'] == a_id else 1)
+        result = decoder._decode(self._empty_s1_delta(), state,
+                                 is_cold_start=True)
+        drifts = self._drifts(result)
+        self.assertNotIn(x, [p['node_id'] for p in drifts])
+
+
+class TestAddBatchContract(BrainTestBase):
+    """add_to_existing batch contract (Step 9c + conversion filter): the
+    encoder never sees two proposals for one node, a candidate community the
+    node is already in, or an add for a node already placed elsewhere."""
+
+    needs_embedder = False
+
+    def _node(self, title):
+        return self.brain.remember(type='decision', title=title, content='c',
+                                   encoding_source='test')['id']
+
+    def _community(self, title, members):
+        cid = self.brain.remember(
+            type='community', title=title, content='c',
+            encoding_source='s2:community_detection')['id']
+        for m in members:
+            self.brain.connect(cid, m, relation='community_member', weight=0.3)
+        return cid
+
+    def _decoder(self):
+        from servers.scales.s2.community_decoder import CommunityDecoder
+        return CommunityDecoder(self.brain)
+
+    def _decode(self):
+        decoder = self._decoder()
+        state = decoder._read_community_state()
+        return decoder._decode(
+            {'encoding_runs': [], 'surface_selections': [],
+             'new_node_ids': set(), 'co_surface_pairs': []},
+            state, is_cold_start=True)
+
+    # ── _finalize_add_proposals unit behavior ──
+
+    def test_duplicate_adds_merge_to_one_proposal(self):
+        """Same node from both emitters → one proposal. Per community the
+        HIGHER-affinity entry survives (fingerprint tier, quota rank, and
+        prior suppressions key on the strongest candidate), and the
+        algorithmic-source label follows the winning head candidate."""
+        conv = {'type': 'add_to_existing', 'node_id': 'n1',
+                'source': 'overlap_check', 'overlap_frac': 0.9,
+                'communities': [{'id': 'X', 'title': 'x', 'affinity': 0.9,
+                                 'source': 'overlap_check'}]}
+        aff = {'type': 'add_to_existing', 'node_id': 'n1',
+               'communities': [{'id': 'X', 'title': 'x', 'affinity': 0.5},
+                               {'id': 'Y', 'title': 'y', 'affinity': 0.3}]}
+        out = self._decoder()._finalize_add_proposals([conv, aff], [])
+        self.assertEqual(len(out), 1)
+        merged = out[0]
+        by_id = {c['id']: c['affinity'] for c in merged['communities']}
+        self.assertEqual(by_id, {'X': 0.9, 'Y': 0.3})
+        # Head candidate is the conversion's — label kept.
+        self.assertEqual(merged.get('source'), 'overlap_check')
+        # Sorted by affinity, strongest first (feeds the fingerprint).
+        affs = [c['affinity'] for c in merged['communities']]
+        self.assertEqual(affs, sorted(affs, reverse=True))
+
+    def test_merge_head_from_affinity_emitter_drops_label(self):
+        """When the per-node affinity signal outranks the conversion's, the
+        head candidate is not algorithmic and the proposal loses the
+        not-agent-reviewed label."""
+        conv = {'type': 'add_to_existing', 'node_id': 'n1',
+                'source': 'overlap_check', 'overlap_frac': 0.62,
+                'communities': [{'id': 'X', 'title': 'x', 'affinity': 0.62,
+                                 'source': 'overlap_check'}]}
+        aff = {'type': 'add_to_existing', 'node_id': 'n1',
+               'communities': [{'id': 'Z', 'title': 'z', 'affinity': 0.8},
+                               {'id': 'X', 'title': 'x', 'affinity': 0.5}]}
+        out = self._decoder()._finalize_add_proposals([conv, aff], [])
+        self.assertEqual(len(out), 1)
+        merged = out[0]
+        self.assertEqual([c['id'] for c in merged['communities']], ['Z', 'X'])
+        # X keeps the conversion's higher 0.62 over the affinity 0.5.
+        self.assertEqual(merged['communities'][1]['affinity'], 0.62)
+        self.assertNotIn('source', merged)
+        self.assertNotIn('overlap_frac', merged)
+
+    def test_member_candidates_dropped_and_empty_proposal_removed(self):
+        """A candidate community the node already belongs to is filtered;
+        a proposal with no surviving candidates disappears."""
+        state = [{'id': 'X', 'members': {'n1', 'n2'}},
+                 {'id': 'Y', 'members': {'n2'}}]
+        p_partial = {'type': 'add_to_existing', 'node_id': 'n1',
+                     'communities': [{'id': 'X', 'title': 'x', 'affinity': 0.6},
+                                     {'id': 'Y', 'title': 'y', 'affinity': 0.4}]}
+        p_all_member = {'type': 'add_to_existing', 'node_id': 'n2',
+                        'communities': [{'id': 'X', 'title': 'x', 'affinity': 0.6},
+                                        {'id': 'Y', 'title': 'y', 'affinity': 0.4}]}
+        other = {'type': 'health_update', 'community_id': 'X', 'signal': 'dead'}
+        out = self._decoder()._finalize_add_proposals(
+            [p_partial, p_all_member, other], state)
+        adds = [p for p in out if p['type'] == 'add_to_existing']
+        self.assertEqual(len(adds), 1)
+        self.assertEqual(adds[0]['node_id'], 'n1')
+        self.assertEqual([c['id'] for c in adds[0]['communities']], ['Y'])
+        # Non-add proposals pass through untouched.
+        self.assertIn(other, out)
+
+    # ── graph-level behavior ──
+
+    def test_conversion_skips_already_placed_members(self):
+        """When a cluster converts to add_to_existing via the overlap check,
+        members already placed in ANY community are left to the drift path —
+        and add proposals stay unique per node."""
+        target_members = [self._node('t%d' % i) for i in range(5)]
+        self._community('target X', target_members)
+        placed_elsewhere = self._node('placed p')
+        self._community('other Y', [placed_elsewhere,
+                                    self._node('y1'), self._node('y2')])
+
+        # Tight cluster: 3 unplaced nodes + the placed one, every member
+        # wired into target X so the overlap check converts the cluster.
+        cluster = [self._node('c%d' % i) for i in range(3)] + [placed_elsewhere]
+        for i in range(len(cluster)):
+            for j in range(i + 1, len(cluster)):
+                self.brain.connect(cluster[i], cluster[j],
+                                   relation='implements', weight=0.8)
+        for nid in cluster:
+            for t in target_members[:3]:
+                self.brain.connect(nid, t, relation='implements', weight=0.8)
+
+        result = self._decode()
+        adds = [p for p in result['proposals']
+                if p['type'] == 'add_to_existing']
+        add_nodes = [p['node_id'] for p in adds]
+        self.assertNotIn(placed_elsewhere, add_nodes)
+        # Batch contract: one add proposal per node.
+        self.assertEqual(len(add_nodes), len(set(add_nodes)))
+        # The unplaced cluster members still route somewhere structural.
+        structural = [p for p in result['proposals']
+                      if p['type'] in ('new_community', 'add_to_existing')]
+        self.assertGreaterEqual(len(structural), 1)
+
 
 if __name__ == '__main__':
     unittest.main()
