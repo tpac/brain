@@ -124,6 +124,28 @@ def main():
     with IsolatedBrain(production_dir=args.source_dir, cleanup=True) as env:
         brain = env.brain
 
+        # The encoder resolves model DB-FIRST: interaction parameters beat
+        # the config= dict (community_encoder.py `config.get('model',
+        # self.config.get(...))`). A config-only override silently runs the
+        # DB model — stamp the arm's model into THIS copy's interaction
+        # parameters and verify, or the A/B measures nothing.
+        params = dict(brain.get_interaction_config(
+            's2_community_enrichment') or {})
+        params['model'] = args.model
+        tmpl = brain.get_interaction_prompt('s2_community_enrichment') or ''
+        reg = brain._interaction_dal.register(
+            's2_community_enrichment', template=tmpl,
+            parameters=json.dumps(params), created_by='eval:ab_model')
+        brain._interaction_dal.set_active(
+            's2_community_enrichment', reg['version'], set_by='eval:ab_model')
+        effective = (brain.get_interaction_config(
+            's2_community_enrichment') or {}).get('model')
+        report['model_effective'] = effective
+        if effective != args.model:
+            report['error'] = 'model stamp failed: effective=%s' % effective
+            _write(args.out, report)
+            sys.exit(2)
+
         dec = run_decoder(brain, dict(COMMUNITY_DETECTION))
         proposals = dec['proposals']
         actionable = [p for p in proposals if p.get('type') in ACTIONABLE]
