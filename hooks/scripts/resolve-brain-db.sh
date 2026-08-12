@@ -55,14 +55,40 @@ PLUGIN_ROOT='$PLUGIN_ROOT'"
   fi
 }
 
-# userConfig: a brain path the user set when enabling the plugin. Claude Code
-# injects it as CLAUDE_PLUGIN_OPTION_BRAIN_PATH (casing unpinned — check both).
-# The "I already have a brain, here's where" install answer. Shell/env
-# BRAIN_DB_DIR still wins (fill only when unset), mirroring the api_key rule.
-# NOTE: reaches the daemon on the hook/Popen path; a launchd-spawned daemon
-# won't see CLAUDE_PLUGIN_OPTION_* (see docs/DISTRIBUTION-READINESS.md §2.1).
+# ── The two durable adoption channels, read in ONE place each ──────────────
+# Both are read here AND by the launchd installers' identity guard (which may
+# only let a durable channel re-point an installed service's brain). They were
+# three hand-written copies each until step 6; the divergence was already
+# live — one copy of the knob read had lost the stdout discard.
+
+# The ~/.config/brain/env BRAIN_DB_DIR knob, read RAW: no `~` expansion and no
+# absolute-only filter, because that is rung 1b's POLICY (below) and not what
+# the installers' identity comparison wants. Sourced in a subshell — the file
+# is shell grammar, so one format, one parser — with the file's own stdout
+# discarded, since a user `echo` in it must not pollute the value. Empty when
+# the file or the knob is absent.
+brain_config_knob_db_dir() {
+  local _f
+  _f="$(brain_user_env_file)"
+  [ -f "$_f" ] || return 0
+  (BRAIN_DB_DIR=''; { . "$_f"; } >/dev/null 2>&1; printf '%s' "$BRAIN_DB_DIR")
+}
+
+# The brain path a user set in the plugin's settings. Claude Code injects it as
+# CLAUDE_PLUGIN_OPTION_BRAIN_PATH; the casing is unpinned by the plugins
+# reference, so both are checked — the same rule api-key-env.sh applies to the
+# key, and a one-sided fix here is the same silent no-op.
+brain_config_option_db_dir() {
+  printf '%s' "${CLAUDE_PLUGIN_OPTION_BRAIN_PATH:-${CLAUDE_PLUGIN_OPTION_brain_path:-}}"
+}
+
+# userConfig: the "I already have a brain, here's where" install answer.
+# Shell/env BRAIN_DB_DIR still wins (fill only when unset), mirroring the
+# api_key rule. NOTE: reaches the daemon on the hook/Popen path; a
+# launchd-spawned daemon won't see CLAUDE_PLUGIN_OPTION_* (see
+# docs/DISTRIBUTION-READINESS.md §2.1).
 if [ -z "${BRAIN_DB_DIR:-}" ]; then
-  BRAIN_DB_DIR="${CLAUDE_PLUGIN_OPTION_BRAIN_PATH:-${CLAUDE_PLUGIN_OPTION_brain_path:-}}"
+  BRAIN_DB_DIR="$(brain_config_option_db_dir)"
   if [ -n "$BRAIN_DB_DIR" ]; then
     # Honor the chosen location even if it doesn't exist yet — create it so the
     # resolution chain adopts it instead of silently falling through to the
@@ -114,36 +140,31 @@ fi
 
 # 1b. The user config knob (~/.config/brain/env, BRAIN_DB_DIR=...) — the
 #     durable adoption channel the boot notice points users at, and the same
-#     rung daemon_config.resolve_db_dir reads second. Sourced in a subshell —
-#     the file is shell-grammar (the installer's identity guard reads it the
-#     same way), so one format, one parser; the file's own stdout is
-#     discarded (a user `echo` in it must not pollute the value). A knob dir
-#     WITH brain.db is adopted outright; WITHOUT one it is the user's
-#     explicit choice of birthplace — held as a hint that beats a stale
-#     plist-baked hint at the last-resort rung (mkdir happens only there, so
-#     reading the knob has no side effects). A `~/` prefix is expanded (the
-#     Python reader expands it too — two readers, one grammar); any other
-#     non-absolute value is ignored, since it would resolve against each
-#     consumer's cwd and split the system.
+#     rung daemon_config.resolve_db_dir reads second. The READ is
+#     brain_config_knob_db_dir above (shared with the installers' identity
+#     guard); the POLICY is here. A knob dir WITH brain.db is adopted
+#     outright; WITHOUT one it is the user's explicit choice of birthplace —
+#     held as a hint that beats a stale plist-baked hint at the last-resort
+#     rung (mkdir happens only there, so reading the knob has no side
+#     effects). A `~/` prefix is expanded (the Python reader expands it too —
+#     two readers, one grammar); any other non-absolute value is ignored,
+#     since it would resolve against each consumer's cwd and split the system.
 _CFG_HINT=""
 if [ -z "$DB_DIR" ]; then
-  _cfg_env="${XDG_CONFIG_HOME:-$HOME/.config}/brain/env"
-  if [ -f "$_cfg_env" ]; then
-    _cfg_db_dir="$(BRAIN_DB_DIR=''; { . "$_cfg_env"; } >/dev/null 2>&1; printf '%s' "$BRAIN_DB_DIR")"
-    case "$_cfg_db_dir" in
-      "~/"*) _cfg_db_dir="$HOME/${_cfg_db_dir#"~/"}" ;;
-    esac
-    case "$_cfg_db_dir" in
-      /*)
-        if [ -f "$_cfg_db_dir/brain.db" ]; then
-          DB_DIR="$_cfg_db_dir"
-        else
-          _CFG_HINT="$_cfg_db_dir"
-        fi
-        ;;
-      *) _cfg_db_dir="" ;;
-    esac
-  fi
+  _cfg_db_dir="$(brain_config_knob_db_dir)"
+  case "$_cfg_db_dir" in
+    "~/"*) _cfg_db_dir="$HOME/${_cfg_db_dir#"~/"}" ;;
+  esac
+  case "$_cfg_db_dir" in
+    /*)
+      if [ -f "$_cfg_db_dir/brain.db" ]; then
+        DB_DIR="$_cfg_db_dir"
+      else
+        _CFG_HINT="$_cfg_db_dir"
+      fi
+      ;;
+    *) _cfg_db_dir="" ;;
+  esac
 fi
 
 # 2. Cowork: search mounted AgentsContext directories for an existing brain
@@ -180,7 +201,7 @@ fi
 if [ -z "$DB_DIR" ]; then
   _state_env="${XDG_CONFIG_HOME:-$HOME/.config}/brain/resolved.env"
   if [ -f "$_state_env" ]; then
-    _state_db_dir="$(BRAIN_DB_DIR=''; . "$_state_env" 2>/dev/null; printf '%s' "$BRAIN_DB_DIR")"
+    _state_db_dir="$(BRAIN_DB_DIR=''; { . "$_state_env"; } >/dev/null 2>&1; printf '%s' "$BRAIN_DB_DIR")"
     [ -n "$_state_db_dir" ] && [ -f "$_state_db_dir/brain.db" ] && DB_DIR="$_state_db_dir"
   fi
 fi

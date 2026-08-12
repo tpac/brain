@@ -304,6 +304,39 @@ class TestMechanismContainment:
             'a casing fix landing in only one copy re-creates the 2026-07-15 '
             'failure: user fills the plugin key field, daemon still runs keyless',
         ),
+        (
+            'launchd install/reload ritual',
+            r'(?m)^[ \t]*launchctl (bootstrap|bootout)',
+            {'hooks/scripts/launchd-install.sh'},
+            'the copy in ensure-dashboard.sh had already lost the daemon '
+            "side's post-bootstrap verification; bootout-without-verify is how "
+            '"file current, launchd stale" becomes permanent',
+        ),
+        (
+            'plist template substitution',
+            r'__PLUGIN_DIR__',
+            {'hooks/scripts/launchd-install.sh',
+             'hooks/scripts/com.brain.daemon.plist',
+             'hooks/scripts/com.brain.dashboard.plist'},
+            'a second renderer is a second chance to skip identity '
+            'preservation and re-point an installed service at the wrong tree '
+            'or the wrong brain',
+        ),
+        (
+            'config-knob read (~/.config/brain/env)',
+            r"BRAIN_DB_DIR=''",
+            {'hooks/scripts/resolve-brain-db.sh'},
+            'this idiom had three shell copies and one had already lost the '
+            "stdout discard, so a user's `echo` in the env file polluted the "
+            'resolved path',
+        ),
+        (
+            'brain path from the plugin userConfig option',
+            r'CLAUDE_PLUGIN_OPTION_(BRAIN_PATH|brain_path)',
+            {'hooks/scripts/resolve-brain-db.sh'},
+            'same unpinned-casing trap as the API key: a copy that checks one '
+            'casing is a silent no-op for half the users',
+        ),
     ]
 
     @pytest.mark.parametrize('mechanism,pattern,owners,why',

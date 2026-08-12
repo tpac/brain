@@ -1301,6 +1301,72 @@ class TestInstallerPlistDrift(unittest.TestCase):
         self.assertNotIn(prod, content)
         self.assertIn("bootout", self._verbs())
 
+    # The identity guards below existed for the daemon only — the asymmetry
+    # step 6b removed by giving both installers one implementation
+    # (launchd-install.sh). They are pinned on the DASHBOARD side because that
+    # is the copy that had drifted.
+
+    def _install_dashboard_plist(self, db_dir):
+        target = os.path.join(self._agents, "com.brain.dashboard.plist")
+        template = os.path.join(os.path.dirname(self.DASH_SCRIPT),
+                                "com.brain.dashboard.plist")
+        repo = os.path.realpath(os.path.join(os.path.dirname(self.DASH_SCRIPT), "..", ".."))
+        with open(target, "w") as f:
+            f.write(open(template).read().replace("__PLUGIN_DIR__", repo)
+                                         .replace("__BRAIN_DB_DIR__", db_dir))
+        return target
+
+    def test_dashboard_env_override_does_not_repoint_db_dir(self):
+        # An ephemeral BRAIN_DB_DIR must not hijack the singleton dashboard
+        # onto a temp brain any more than it may hijack the daemon.
+        self._fake_launchctl(print_rc=0)
+        self._fake_curl("200")
+        prod = os.path.join(self._home, "prod-brain")
+        os.makedirs(prod)
+        target = self._install_dashboard_plist(prod)
+        r = self._run(self.DASH_SCRIPT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(prod, open(target).read(),
+                      "ephemeral env override must not re-point the dashboard's brain")
+        self.assertEqual(set(self._verbs()), {"print"})
+
+    def test_dashboard_knob_adoption_repoints_db_dir(self):
+        self._fake_launchctl(print_rc=0)
+        self._fake_curl("200")
+        prod = os.path.join(self._home, "prod-brain")
+        os.makedirs(prod)
+        cfg = os.path.join(self._home, ".config", "brain")
+        os.makedirs(cfg, exist_ok=True)
+        with open(os.path.join(cfg, "env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % self._dbdir)
+        target = self._install_dashboard_plist(prod)
+        r = self._run(self.DASH_SCRIPT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        content = open(target).read()
+        self.assertIn(self._dbdir, content, "knob adoption must re-point the plist")
+        self.assertNotIn(prod, content)
+        self.assertIn("bootout", self._verbs())
+
+    def test_knob_read_ignores_env_file_stdout(self):
+        # The env file is shell grammar, so a user `echo`/banner line in it
+        # writes to the reader's stdout. The dashboard's copy of the knob read
+        # lacked the stdout discard until step 6b unified it: the polluted
+        # value then failed the "is this a durable adoption?" comparison and
+        # the installer silently kept the OLD brain despite a valid knob.
+        self._fake_launchctl(print_rc=0)
+        self._fake_curl("200")
+        prod = os.path.join(self._home, "prod-brain")
+        os.makedirs(prod)
+        cfg = os.path.join(self._home, ".config", "brain")
+        os.makedirs(cfg, exist_ok=True)
+        with open(os.path.join(cfg, "env"), "w") as f:
+            f.write("echo 'loading brain env'\nBRAIN_DB_DIR='%s'\n" % self._dbdir)
+        target = self._install_dashboard_plist(prod)
+        r = self._run(self.DASH_SCRIPT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(self._dbdir, open(target).read(),
+                      "a chatty env file must not defeat knob adoption")
+
     def test_daemon_bootout_failure_keeps_installed_plist(self):
         # bootout that doesn't unload → the plist FILE must stay stale so the
         # next run re-detects drift ("file current, launchd stale" never heals).
