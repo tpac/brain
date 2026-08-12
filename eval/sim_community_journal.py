@@ -32,7 +32,7 @@ sys.path.insert(0, ROOT)
 
 from tests.isolated_brain import IsolatedBrain
 from servers.trace_contract import extract_review_block, parse_journal_notes
-from eval.s2_community_decoder_eval import run_new_decoder
+from eval.s2_community_decoder_eval import run_decoder
 from servers.scales.s2.community_contract import COMMUNITY_DETECTION
 from servers.scales.s2.community_encoder import CommunityEncoder
 
@@ -124,7 +124,7 @@ def main():
         # 2. Real decode → encode cycle (encoder.run does per-batch
         #    write_journal_notes + record_rejections internally).
         print('\n--- decoder (cold scan) ---')
-        dec = run_new_decoder(brain, dict(COMMUNITY_DETECTION))
+        dec = run_decoder(brain, dict(COMMUNITY_DETECTION))
         proposals = dec['proposals']
         actionable = [p for p in proposals if p['type'] in (
             'new_community', 'add_to_existing', 'drift', 'health_update', 'merge_communities')]

@@ -426,7 +426,7 @@ All units use:
 - Interactions registered: `s2_community`, `s2_community_enrichment` (v6); legacy `s2_edge_families` retired in the unified-aspects refactor (2026-05-04)
 - Trace contract updated with S2 community ref_types
 - MCP `register_interaction` tool for managing learnable boundaries
-- Eval harness: `eval/s2_community_eval.py`
+- Eval harness: `eval/s2_community_decoder_eval.py`
 - **Aspects system** (2026-05-04) — `brain.aspects` exposes 14 required + emergent aspect-nodes as the unified taxonomy for both node types AND edge relations. See `docs/SESSION-HANDOFF-2026-05-04.md` and `CLAUDE.md` Aspects section.
 
 > **Status update (2026-05-08):** Aspects-as-JSON-config shipped. AspectRegistry reads `aspects_v1.json` directly; 60 brain aspect-nodes archived. Closed list of 14 aspects, multi-membership. AspectIntegration unit built + eval-tested (78.2% routing accuracy on clone) but **NOT wired into the coordinator yet** — decoder writes an O trace even when nothing's unclassified, which trips downstream gating. Two fixes needed before re-wiring (CLAUDE.md aspects section). The archived design plan is at `docs/archive/STAGE-2-ASPECTS-AS-JSON-CONFIG.md`.

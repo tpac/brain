@@ -29,7 +29,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from tests.isolated_brain import IsolatedBrain
-from eval.s2_community_decoder_eval import run_new_decoder
+from eval.s2_community_decoder_eval import run_decoder
 from servers.scales.s2.community_contract import COMMUNITY_DETECTION
 from servers.scales.s2.community_encoder import CommunityEncoder
 from servers.scales.s2.community_structural import compute_community_structural
@@ -199,7 +199,7 @@ def run_arm(label, transform, max_prop, batch):
         edges_before = _member_edge_total(brain)
         comms_before = set(_live_community_ids(brain))
 
-        dec = run_new_decoder(brain, dict(COMMUNITY_DETECTION))
+        dec = run_decoder(brain, dict(COMMUNITY_DETECTION))
         proposals = dec['proposals']
         actionable = [p for p in proposals if p['type'] in (
             'new_community', 'add_to_existing', 'drift',
