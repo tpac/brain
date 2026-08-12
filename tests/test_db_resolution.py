@@ -4,7 +4,9 @@ One configurable location, one resolution chain, every runtime reads it the
 same way: BRAIN_DB_DIR env (trusted) → ~/.config/brain/env (the user knob;
 adopted only if the dir exists) → ~/.config/brain/resolved.env (the record
 the shell resolver persists; adopted only if brain.db is there — the shell's
-4b guard) → legacy dir. The file both readers parse is SOURCED by shell
+4b guard) → the XDG service dir if a brain lives there → the legacy dir if a
+brain lives there → the XDG service dir as the final default (where new
+brains are born, 5.0a). The file both readers parse is SOURCED by shell
 consumers, so the Python grammar must tolerate shell idioms (export, quotes,
 $VAR, inline comments) — two readers of one file must not disagree.
 
@@ -25,25 +27,34 @@ from servers.daemon_config import resolve_db_dir
 from dashboard.db import _brain_dir
 
 RESOLVERS = [resolve_db_dir, _brain_dir]
-LEGACY = os.path.join(os.path.expanduser('~'), 'AgentsContext', 'brain')
 
 
 @pytest.fixture
 def cfg(monkeypatch, tmp_path):
-    """No BRAIN_DB_DIR; XDG config at tmp; returns (configdir, make_brain)."""
+    """Isolated HOME + XDG at tmp (the tail rungs — native/legacy — resolve
+    against $HOME, so the real one must not leak in); returns
+    (configdir, make_brain)."""
+    home = tmp_path / 'home'
+    home.mkdir()
+    monkeypatch.setenv('HOME', str(home))
     monkeypatch.delenv('BRAIN_DB_DIR', raising=False)
+    monkeypatch.delenv('XDG_DATA_HOME', raising=False)
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
     confdir = tmp_path / 'xdg' / 'brain'
     confdir.mkdir(parents=True)
 
     def make_brain(name, with_db=True):
-        d = tmp_path / name
-        d.mkdir()
+        d = home.joinpath(*name.split('/'))
+        d.mkdir(parents=True, exist_ok=True)
         if with_db:
             (d / 'brain.db').touch()
         return str(d)
 
     return confdir, make_brain
+
+
+def _native():
+    return os.path.join(os.path.expanduser('~'), '.local', 'share', 'brain')
 
 
 @pytest.mark.parametrize('resolve', RESOLVERS)
@@ -57,10 +68,33 @@ class TestResolutionChain:
         assert resolve() == '/env/wins'
 
     def test_user_config_file(self, resolve, cfg):
+        # knob without a brain.db: the chosen birthplace — wins only because
+        # nothing else has a brain (it's the pre-default hint, not rung 2)
         confdir, make = cfg
-        d = make('c', with_db=False)  # knob needs the dir, not a brain.db
+        d = make('c', with_db=False)
         (confdir / 'env').write_text(f'ANTHROPIC_API_KEY=sk-x\nBRAIN_DB_DIR={d}\n')
         assert resolve() == d
+
+    def test_knob_without_db_loses_to_existing_brain(self, resolve, cfg):
+        # the shell demotes a db-less knob dir to a last-resort hint; Python
+        # must not adopt it over a rung that finds a real brain (split-brain)
+        confdir, make = cfg
+        d = make('c', with_db=False)
+        native = make('.local/share/brain')
+        (confdir / 'env').write_text(f'BRAIN_DB_DIR={d}\n')
+        assert resolve() == native
+
+    def test_knob_with_db_beats_native_brain(self, resolve, cfg):
+        confdir, make = cfg
+        d = make('c')
+        make('.local/share/brain')
+        (confdir / 'env').write_text(f'BRAIN_DB_DIR={d}\n')
+        assert resolve() == d
+
+    def test_relative_knob_never_adopted(self, resolve, cfg):
+        confdir, make = cfg
+        (confdir / 'env').write_text('BRAIN_DB_DIR=relative-dir\n')
+        assert resolve() == _native()
 
     def test_user_config_beats_resolved_record(self, resolve, cfg):
         confdir, make = cfg
@@ -90,10 +124,22 @@ class TestResolutionChain:
         confdir, make = cfg
         (confdir / 'resolved.env').write_text(
             f"BRAIN_DB_DIR='{make('r', with_db=False)}'\n")
-        assert resolve() == LEGACY
+        assert resolve() == _native()
 
-    def test_legacy_fallback(self, resolve, cfg):
-        assert resolve() == LEGACY
+    def test_xdg_default_when_nothing_exists(self, resolve, cfg):
+        # where new brains are born (5.0a / D-13)
+        assert resolve() == _native()
+
+    def test_legacy_adopted_when_brain_lives_there(self, resolve, cfg):
+        confdir, make = cfg
+        legacy = make('AgentsContext/brain')
+        assert resolve() == legacy
+
+    def test_native_brain_beats_legacy_brain(self, resolve, cfg):
+        confdir, make = cfg
+        native = make('.local/share/brain')
+        make('AgentsContext/brain')
+        assert resolve() == native
 
     def test_blank_config_value_falls_through(self, resolve, cfg):
         confdir, make = cfg

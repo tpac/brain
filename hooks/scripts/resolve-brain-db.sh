@@ -73,7 +73,10 @@ if [ -z "${BRAIN_DB_DIR:-}" ]; then
   fi
 fi
 
-# If BRAIN_DB_DIR already set and valid (e.g. from boot), skip resolution
+# If BRAIN_DB_DIR already set and valid (e.g. from boot), skip resolution.
+# Clear any inherited candidate first — a stale value from a parent process
+# must not survive past a successful resolution.
+BRAIN_ADOPTION_CANDIDATE=""
 if [ -n "$BRAIN_DB_DIR" ] && [ -f "$BRAIN_DB_DIR/brain.db" ]; then
   export BRAIN_DB_DIR BRAIN_SERVER_DIR PLUGIN_ROOT
   _brain_persist_state
@@ -82,10 +85,16 @@ fi
 
 # Full resolution chain (runs at boot or if env not set).
 #
-# Priority is: existing-brain-found > standard-location > Cowork > legacy.
-# Auto-create only happens at the standard or Cowork location, never at the
-# legacy path (existing users who never migrated must opt in explicitly).
+# Priority is: explicit-choice > existing-brain-found > create-fresh.
+# Auto-create only happens at the XDG service location (D-13) or in Cowork
+# mounts, never at a legacy path (existing users who never migrated must opt
+# in explicitly) — and never while a candidate brain sits unreachable at an
+# old default (the adoption net below).
 DB_DIR=""
+
+# The service-owned data home (D-13): host-independent, never renames.
+# New brains are born here; a brain already living here is adopted first.
+_XDG_BRAIN="${XDG_DATA_HOME:-$HOME/.local/share}/brain"
 
 # 1. Explicit override — adopted outright only when a brain actually lives
 #    there. A dir WITHOUT brain.db is demoted to a hint of last resort (used
@@ -103,6 +112,40 @@ if [ -n "$BRAIN_DB_DIR" ] && [ -d "$BRAIN_DB_DIR" ]; then
   fi
 fi
 
+# 1b. The user config knob (~/.config/brain/env, BRAIN_DB_DIR=...) — the
+#     durable adoption channel the boot notice points users at, and the same
+#     rung daemon_config.resolve_db_dir reads second. Sourced in a subshell —
+#     the file is shell-grammar (the installer's identity guard reads it the
+#     same way), so one format, one parser; the file's own stdout is
+#     discarded (a user `echo` in it must not pollute the value). A knob dir
+#     WITH brain.db is adopted outright; WITHOUT one it is the user's
+#     explicit choice of birthplace — held as a hint that beats a stale
+#     plist-baked hint at the last-resort rung (mkdir happens only there, so
+#     reading the knob has no side effects). A `~/` prefix is expanded (the
+#     Python reader expands it too — two readers, one grammar); any other
+#     non-absolute value is ignored, since it would resolve against each
+#     consumer's cwd and split the system.
+_CFG_HINT=""
+if [ -z "$DB_DIR" ]; then
+  _cfg_env="${XDG_CONFIG_HOME:-$HOME/.config}/brain/env"
+  if [ -f "$_cfg_env" ]; then
+    _cfg_db_dir="$(BRAIN_DB_DIR=''; { . "$_cfg_env"; } >/dev/null 2>&1; printf '%s' "$BRAIN_DB_DIR")"
+    case "$_cfg_db_dir" in
+      "~/"*) _cfg_db_dir="$HOME/${_cfg_db_dir#"~/"}" ;;
+    esac
+    case "$_cfg_db_dir" in
+      /*)
+        if [ -f "$_cfg_db_dir/brain.db" ]; then
+          DB_DIR="$_cfg_db_dir"
+        else
+          _CFG_HINT="$_cfg_db_dir"
+        fi
+        ;;
+      *) _cfg_db_dir="" ;;
+    esac
+  fi
+fi
+
 # 2. Cowork: search mounted AgentsContext directories for an existing brain
 if [ -z "$DB_DIR" ] && [ -d "/sessions" ]; then
   for candidate in /sessions/*/mnt/AgentsContext/brain; do
@@ -110,15 +153,21 @@ if [ -z "$DB_DIR" ] && [ -d "/sessions" ]; then
   done 2>/dev/null
 fi
 
-# 3. Standard Claude Code plugin data location ($CLAUDE_PLUGIN_DATA is set
-#    by Claude Code per-plugin and survives plugin updates — the documented
-#    convention for plugin-owned runtime state).
+# 2b. The XDG service location — where new brains are born (D-13). A brain
+#     already living there is the native case and beats every legacy rung.
+if [ -z "$DB_DIR" ] && [ -f "$_XDG_BRAIN/brain.db" ]; then
+  DB_DIR="$_XDG_BRAIN"
+fi
+
+# 3. Claude Code plugin data location — ADOPTION ONLY (pre-D-13 installs
+#    were born here; $CLAUDE_PLUGIN_DATA is keyed to the plugin name, so a
+#    rename orphans it — see the adoption net below).
 if [ -z "$DB_DIR" ] && [ -n "${CLAUDE_PLUGIN_DATA:-}" ] && [ -f "$CLAUDE_PLUGIN_DATA/brain/brain.db" ]; then
   DB_DIR="$CLAUDE_PLUGIN_DATA/brain"
 fi
 
-# 4. Legacy local path (~/AgentsContext/brain/) — supported for
-#    pre-CLAUDE_PLUGIN_DATA installs. New installs land at $CLAUDE_PLUGIN_DATA.
+# 4. Legacy local path (~/AgentsContext/brain/) — adoption only, for
+#    pre-CLAUDE_PLUGIN_DATA installs. New installs land at $_XDG_BRAIN.
 if [ -z "$DB_DIR" ] && [ -f "$HOME/AgentsContext/brain/brain.db" ]; then
   DB_DIR="$HOME/AgentsContext/brain"
 fi
@@ -136,23 +185,22 @@ if [ -z "$DB_DIR" ]; then
   fi
 fi
 
-# 4c. The demoted explicit hint (step 1): no rung found an existing brain,
-#     so the explicitly-named empty dir is where a new one belongs — beats
-#     auto-creating at the standard location.
+# 4c. The demoted explicit hints: no rung found an existing brain, so an
+#     explicitly-named empty dir is where a new one belongs — beats
+#     auto-creating at the standard location. The config knob (a durable
+#     user choice) beats the env hint (possibly a stale plist-baked path).
+if [ -z "$DB_DIR" ] && [ -n "$_CFG_HINT" ]; then
+  # the hint becomes the birthplace only here — mkdir at selection time, so
+  # a typo'd knob surfaces as a visible empty brain at the named path
+  mkdir -p "$_CFG_HINT" 2>/dev/null
+  DB_DIR="$_CFG_HINT"
+fi
 if [ -z "$DB_DIR" ] && [ -n "$_ENV_HINT" ]; then
   DB_DIR="$_ENV_HINT"
 fi
 
-# 5. Standard first-run: create at $CLAUDE_PLUGIN_DATA/brain
-# ${:-} guards (here and step 3): CLAUDE_PLUGIN_DATA exists only in hook
-# executions — this file is also sourced by set -u launchers (brain-dashboard)
-# and terminals, where a bare deref kills the shell under nounset.
-if [ -z "$DB_DIR" ] && [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
-  DB_DIR="$CLAUDE_PLUGIN_DATA/brain"
-  mkdir -p "$DB_DIR" 2>/dev/null
-fi
-
-# 6. Cowork first-run: create in mounted AgentsContext
+# 5. Cowork first-run: create in mounted AgentsContext — the mount is the
+#    durable location there; the container-local XDG home is ephemeral.
 if [ -z "$DB_DIR" ] && [ -d "/sessions" ]; then
   for ac_dir in /sessions/*/mnt/AgentsContext; do
     if [ -d "$ac_dir" ] 2>/dev/null; then
@@ -163,6 +211,36 @@ if [ -z "$DB_DIR" ] && [ -d "/sessions" ]; then
   done 2>/dev/null
 fi
 
+# 6. First-run create at the XDG service location — guarded by the adoption
+#    net: if a brain sits unreachable at an old host-owned default (plugin
+#    renamed/reinstalled, so $CLAUDE_PLUGIN_DATA points elsewhere), creating
+#    fresh here would be the silent-amnesia failure D-13 exists to kill.
+#    Refuse instead: leave BRAIN_DB_DIR empty (every consumer's existing
+#    no-brain path) and name the candidate so boot can surface adoption.
+#    The net never fires past an explicit choice — a knob/hint/option dir
+#    was already taken above. Never moves or deletes anything.
+if [ -z "$DB_DIR" ]; then
+  _scan_cpd_root=""
+  [ -n "${CLAUDE_PLUGIN_DATA:-}" ] && _scan_cpd_root="$(dirname "$CLAUDE_PLUGIN_DATA")"
+  # find, not a glob: a no-match glob is a fatal error in a SOURCED file
+  # under zsh nomatch / bash failglob — it would abort the whole resolver.
+  for _scan_root in "$_scan_cpd_root" "$HOME/.claude/plugins/data"; do
+    [ -n "$_scan_root" ] && [ -d "$_scan_root" ] || continue
+    _cand="$(find "$_scan_root" -mindepth 3 -maxdepth 3 \
+               -path '*/brain/brain.db' 2>/dev/null | head -n 1)"
+    if [ -n "$_cand" ]; then
+      BRAIN_ADOPTION_CANDIDATE="$(dirname "$_cand")"
+      break
+    fi
+  done
+  if [ -z "$BRAIN_ADOPTION_CANDIDATE" ]; then
+    DB_DIR="$_XDG_BRAIN"
+    # a failed create (read-only ~/.local, ...) must surface as the boot
+    # hook's "auto-create failed" guidance, not a path that doesn't exist
+    mkdir -p "$DB_DIR" 2>/dev/null || DB_DIR=""
+  fi
+fi
+
 BRAIN_DB_DIR="$DB_DIR"
-export BRAIN_DB_DIR BRAIN_SERVER_DIR PLUGIN_ROOT
+export BRAIN_DB_DIR BRAIN_SERVER_DIR PLUGIN_ROOT BRAIN_ADOPTION_CANDIDATE
 _brain_persist_state

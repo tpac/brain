@@ -39,9 +39,14 @@ if [ ! -x "$BRAIN_PYTHON" ]; then
 fi
 
 # The ladder found nothing (no baked env, no existing brain, no persisted
-# record). No /tmp fallback — silent data loss is worse.
+# record) — or the adoption net refused to create over an orphaned brain.
+# No /tmp fallback — silent data loss is worse.
 if [ -z "$BRAIN_DB_DIR" ]; then
-    echo "[brain-daemon] FATAL: BRAIN_DB_DIR unresolved" >&2
+    if [ -n "${BRAIN_ADOPTION_CANDIDATE:-}" ]; then
+        echo "[brain-daemon] FATAL: refused to create — existing brain at $BRAIN_ADOPTION_CANDIDATE; set BRAIN_DB_DIR in ${XDG_CONFIG_HOME:-$HOME/.config}/brain/env to adopt it" >&2
+    else
+        echo "[brain-daemon] FATAL: BRAIN_DB_DIR unresolved" >&2
+    fi
     exit 1
 fi
 
