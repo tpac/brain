@@ -277,3 +277,50 @@ class TestShippedScriptsReachable:
         assert not orphans, (
             'shipped hooks/scripts files with no wiring path (dead on every '
             f'install — delete them or name their external wiring in ALLOW): {orphans}')
+
+
+class TestMechanismContainment:
+    """Duplicated mechanisms have ONE home, and this fails when a second
+    appears.
+
+    Step 6 (DISTRIBUTION-ARCH-PLAN.md) unified four mechanisms that had drifted
+    across two-to-four hand-written copies. Extraction alone does not hold that
+    line: `daemon-client.sh` was extracted for exactly this reason and was
+    deleted in step 5 as a zero-referrer script — callers had drifted back to
+    hand-rolling. What holds is a scan that fails the moment copy #2 is
+    written and names the owner in the failure message (the
+    `test_no_raw_popen_outside_daemon_launch` / raw-SQL-guardrail shape).
+
+    Each row is (mechanism, regex, owners, why) — a shape-scan over the tracked
+    tree, never an enumeration of callers. Adding a legitimate second owner is
+    a deliberate edit to this table, which is the point.
+    """
+
+    MECHANISMS = [
+        (
+            'API key from the plugin userConfig option',
+            r'CLAUDE_PLUGIN_OPTION_(API_KEY|api_key)',
+            {'hooks/scripts/api-key-env.sh'},
+            'a casing fix landing in only one copy re-creates the 2026-07-15 '
+            'failure: user fills the plugin key field, daemon still runs keyless',
+        ),
+    ]
+
+    @pytest.mark.parametrize('mechanism,pattern,owners,why',
+                             MECHANISMS,
+                             ids=[m[0] for m in MECHANISMS])
+    def test_mechanism_has_one_home(self, mechanism, pattern, owners, why):
+        # tests/ is exempt: a test EXERCISES a mechanism (feeding it the env
+        # var, asserting the wire bytes) without implementing a second copy of
+        # it. Scanning them would make covering a mechanism trip its own gate.
+        rx = re.compile(pattern)
+        hits = {rel for rel in SCOPE
+                if not rel.startswith('tests/') and rx.search(_read(rel))}
+        for owner in owners:
+            assert owner in TRACKED, (
+                f'{mechanism}: declared owner {owner} is not tracked — the '
+                'table is naming a file that no longer exists')
+        strays = sorted(hits - owners)
+        assert not strays, (
+            f'{mechanism} is owned by {sorted(owners)} — call it, do not '
+            f'copy it. Second copies found in: {strays}. Why it matters: {why}')

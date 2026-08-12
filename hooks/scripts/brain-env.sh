@@ -13,20 +13,19 @@
 _BRAIN_ENV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PLUGIN_DIR="$(cd "$_BRAIN_ENV_DIR/../.." && pwd)"
 
+# API-key + user-config resolution — owned by api-key-env.sh, shared with
+# boot-brain.sh (which runs before this file is reachable).
+. "$_BRAIN_ENV_DIR/api-key-env.sh"
+
 # Source the canonical user config (~/.config/brain/env) so secrets and
 # identity tokens (ANTHROPIC_API_KEY, BRAIN_OPERATOR_NAME, BRAIN_AGENT_NAME, ...)
 # propagate into both the hook scripts and the launchd-spawned daemon
-# launcher. set -a exports each loaded variable. NOTE: plain sourcing
-# OVERWRITES an already-set shell value — a variable in this file always
-# wins over the process env for everything downstream of this line (so a
-# BRAIN_DB_DIR knob line re-points even a plist-baked daemon env; the
-# resolver's ladder then re-confirms the same choice).
-_BRAIN_USER_ENV="${XDG_CONFIG_HOME:-$HOME/.config}/brain/env"
-if [ -f "$_BRAIN_USER_ENV" ]; then
-    set -a
-    . "$_BRAIN_USER_ENV"
-    set +a
-fi
+# launcher. Unconditional here (unlike boot-brain.sh's key-only read): every
+# variable in the file is wanted. A value in the file wins over the process
+# env for everything downstream of this line — so a BRAIN_DB_DIR knob line
+# re-points even a plist-baked daemon env; the resolver's ladder then
+# re-confirms the same choice.
+brain_source_user_env
 
 # Daemon rendezvous port — set EARLY, before the runtime-bootstrap guard below,
 # since it depends only on the uid (not the venv). The ONE shell source of the
@@ -35,17 +34,8 @@ fi
 # env above) wins. Python inside servers/ uses daemon_config.DAEMON_PORT.
 export BRAIN_DAEMON_PORT="${BRAIN_DAEMON_PORT:-$((47200 + $(id -u) % 100))}"
 
-# Additive userConfig fallback: if the env file / shell didn't supply the key,
-# take it from the plugin-config value CC injects as CLAUDE_PLUGIN_OPTION_<KEY>
-# (per plugins-reference). Env file / shell still win. Both casings checked —
-# the doc doesn't pin <KEY>'s case and a wrong name would be a silent no-op.
-if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-    if [ -n "${CLAUDE_PLUGIN_OPTION_API_KEY:-}" ]; then
-        export ANTHROPIC_API_KEY="$CLAUDE_PLUGIN_OPTION_API_KEY"
-    elif [ -n "${CLAUDE_PLUGIN_OPTION_api_key:-}" ]; then
-        export ANTHROPIC_API_KEY="$CLAUDE_PLUGIN_OPTION_api_key"
-    fi
-fi
+# Additive userConfig fallback (api-key-env.sh owns the mechanism).
+brain_api_key_from_plugin_option
 
 # Ensure runtime is installed (idempotent, fast-path on sentinel)
 if ! "$_BRAIN_ENV_DIR/ensure-runtime.sh"; then

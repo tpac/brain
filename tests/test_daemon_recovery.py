@@ -25,6 +25,7 @@ import sys
 import json
 import time
 import errno
+import shutil
 import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
@@ -1625,3 +1626,199 @@ class TestDaemonPortEnvFirst(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestApiKeyEnvHelper(unittest.TestCase):
+    """Step 6a: api-key-env.sh is the ONE definition of where
+    ANTHROPIC_API_KEY comes from — boot-brain.sh and brain-env.sh both source
+    it instead of carrying the copy that made a casing fix land on one side
+    only (the 2026-07-15 keyless-daemon failure).
+
+    The helper is sourced transitively by brain-daemon, which runs `set -e`,
+    and by resolvers that zsh also sources — so the shape is pinned here too.
+    """
+
+    HELPER = os.path.join(os.path.dirname(__file__), '..',
+                          'hooks', 'scripts', 'api-key-env.sh')
+
+    def setUp(self):
+        self._home = tempfile.mkdtemp(prefix="brain-apikey-home-")
+        self._xdg = os.path.join(self._home, ".config")
+        os.makedirs(os.path.join(self._xdg, "brain"))
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._home, ignore_errors=True)
+
+    def _write_env_file(self, body):
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write(body)
+
+    def _run(self, script, env_extra=None, shell="bash"):
+        import subprocess
+        env = dict(os.environ, HOME=self._home, XDG_CONFIG_HOME=self._xdg)
+        env.pop("ANTHROPIC_API_KEY", None)
+        env.pop("CLAUDE_PLUGIN_OPTION_API_KEY", None)
+        env.pop("CLAUDE_PLUGIN_OPTION_api_key", None)
+        env.update(env_extra or {})
+        return subprocess.run(
+            [shell, "-c", '. "%s"\n%s' % (self.HELPER, script)],
+            env=env, capture_output=True, text=True, timeout=30)
+
+    def _key(self, env_extra=None, shell="bash", prelude=""):
+        r = self._run(
+            '%sbrain_source_user_env\nbrain_api_key_from_plugin_option\n'
+            'printf %%s "${ANTHROPIC_API_KEY:-}"' % prelude,
+            env_extra, shell)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def test_env_file_supplies_key(self):
+        self._write_env_file("ANTHROPIC_API_KEY=sk-from-file\n")
+        self.assertEqual(self._key(), "sk-from-file")
+
+    def test_plugin_option_fills_when_env_file_silent(self):
+        self.assertEqual(
+            self._key({"CLAUDE_PLUGIN_OPTION_API_KEY": "sk-upper"}), "sk-upper")
+
+    def test_plugin_option_lowercase_casing_also_works(self):
+        # The plugins-reference does not pin <KEY>'s case; a one-sided fix here
+        # is the exact drift this extraction exists to prevent.
+        self.assertEqual(
+            self._key({"CLAUDE_PLUGIN_OPTION_api_key": "sk-lower"}), "sk-lower")
+
+    def test_env_file_beats_plugin_option(self):
+        self._write_env_file("ANTHROPIC_API_KEY=sk-from-file\n")
+        self.assertEqual(
+            self._key({"CLAUDE_PLUGIN_OPTION_API_KEY": "sk-option"}),
+            "sk-from-file", "the file is the durable channel — it must win")
+
+    def test_shell_export_beats_plugin_option(self):
+        self.assertEqual(
+            self._key({"ANTHROPIC_API_KEY": "sk-shell",
+                       "CLAUDE_PLUGIN_OPTION_API_KEY": "sk-option"}),
+            "sk-shell")
+
+    def test_source_exports_every_var_not_just_the_key(self):
+        # brain-env.sh depends on this: identity tokens in the file must reach
+        # the daemon, so the source is `set -a`, not a key-only read.
+        self._write_env_file("BRAIN_OPERATOR_NAME=tom\n")
+        r = self._run('brain_source_user_env\n'
+                      'bash -c \'printf %s "$BRAIN_OPERATOR_NAME"\'')
+        self.assertEqual(r.stdout, "tom", r.stderr)
+
+    def test_missing_env_file_is_not_an_error(self):
+        r = self._run('brain_source_user_env; printf %s "$?"')
+        self.assertEqual(r.stdout, "0", r.stderr)
+
+    def test_safe_under_set_e(self):
+        # brain-daemon runs `set -e` and sources this transitively: a bare
+        # failing test as a standalone command would abort the whole resolver.
+        r = self._run('set -e\nbrain_source_user_env\n'
+                      'brain_api_key_from_plugin_option\nprintf ok')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, "ok")
+
+    def test_safe_under_zsh(self):
+        if not shutil.which("zsh"):
+            self.skipTest("zsh not available")
+        self.assertEqual(
+            self._key({"CLAUDE_PLUGIN_OPTION_API_KEY": "sk-zsh"}, shell="zsh"),
+            "sk-zsh")
+
+    def test_no_trailing_newline_env_file_still_reads(self):
+        # Hand-edited files without a trailing newline exist in production
+        # (2026-08-12 finding) — `.`-sourcing must still see the last line.
+        self._write_env_file("ANTHROPIC_API_KEY=sk-no-newline")
+        self.assertEqual(self._key(), "sk-no-newline")
+
+
+class TestBootKeyMirror(unittest.TestCase):
+    """Step 6a: boot-brain.sh mirrors a userConfig-resolved key into the env
+    file, and ONLY a userConfig-resolved one.
+
+    CLAUDE_PLUGIN_OPTION_* exists only inside hook executions, so without the
+    mirror a user who fills the plugin's key field still runs a keyless daemon
+    (launchd spawns it in a separate process tree that resolves the key from
+    the env file alone — first laptop install, 2026-07-15). A key that came
+    from the shell or the file itself must NOT be written back: the file is
+    already the daemon's channel, and rewriting it would persist an ephemeral
+    eval/session key into the user's durable config.
+
+    Runs the real boot-brain.sh on its cold-install branch (no .runtime-ready),
+    where key resolution has already happened and the provisioning chain is
+    stubbed out.
+    """
+
+    SCRIPTS = os.path.join(os.path.dirname(__file__), '..', 'hooks', 'scripts')
+
+    def setUp(self):
+        self._home = tempfile.mkdtemp(prefix="brain-bootkey-home-")
+        self._xdg = os.path.join(self._home, ".config")
+        os.makedirs(os.path.join(self._xdg, "brain"))
+        # A plugin tree carrying the real boot path + stubs for everything the
+        # cold branch would otherwise launch for real (runtime bootstrap...).
+        self._tree = os.path.join(self._home, "plugin")
+        self._sd = os.path.join(self._tree, "hooks", "scripts")
+        os.makedirs(self._sd)
+        for name in ("boot-brain.sh", "api-key-env.sh", "runtime-state.sh"):
+            shutil.copy(os.path.join(self.SCRIPTS, name),
+                        os.path.join(self._sd, name))
+        for name in ("ensure-runtime.sh", "install-daemon-service.sh",
+                     "ensure-dashboard.sh"):
+            stub = os.path.join(self._sd, name)
+            with open(stub, "w") as f:
+                f.write("#!/bin/bash\nexit 0\n")
+            os.chmod(stub, 0o755)
+
+    def tearDown(self):
+        shutil.rmtree(self._home, ignore_errors=True)
+
+    @property
+    def _env_file(self):
+        return os.path.join(self._xdg, "brain", "env")
+
+    def _boot(self, env_extra):
+        import subprocess
+        env = dict(os.environ, HOME=self._home, XDG_CONFIG_HOME=self._xdg)
+        for k in ("ANTHROPIC_API_KEY", "CLAUDE_PLUGIN_OPTION_API_KEY",
+                  "CLAUDE_PLUGIN_OPTION_api_key"):
+            env.pop(k, None)
+        env.update(env_extra)
+        return subprocess.run(
+            ["bash", os.path.join(self._sd, "boot-brain.sh")],
+            input="{}", env=env, capture_output=True, text=True, timeout=60)
+
+    def _file_body(self):
+        if not os.path.exists(self._env_file):
+            return None
+        with open(self._env_file) as f:
+            return f.read()
+
+    def test_plugin_option_key_is_mirrored(self):
+        r = self._boot({"CLAUDE_PLUGIN_OPTION_API_KEY": "sk-ant-mirrored"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("ANTHROPIC_API_KEY=sk-ant-mirrored", self._file_body() or "",
+                      "a userConfig key must reach the launchd-spawned daemon")
+        self.assertEqual(os.stat(self._env_file).st_mode & 0o777, 0o600)
+
+    def test_lowercase_plugin_option_key_is_mirrored(self):
+        self._boot({"CLAUDE_PLUGIN_OPTION_api_key": "sk-ant-lower"})
+        self.assertIn("ANTHROPIC_API_KEY=sk-ant-lower", self._file_body() or "")
+
+    def test_shell_key_is_not_mirrored(self):
+        # An ephemeral shell key (eval run, isolated copy) must not be written
+        # into the user's durable config.
+        self._boot({"ANTHROPIC_API_KEY": "sk-ant-ephemeral"})
+        self.assertIsNone(self._file_body(),
+                          "a shell-supplied key must never be persisted")
+
+    def test_existing_key_line_is_never_overwritten(self):
+        with open(self._env_file, "w") as f:
+            f.write("ANTHROPIC_API_KEY=sk-ant-original\n")
+        self._boot({"CLAUDE_PLUGIN_OPTION_API_KEY": "sk-ant-newer"})
+        self.assertEqual(self._file_body(), "ANTHROPIC_API_KEY=sk-ant-original\n")
+
+    def test_non_sk_plugin_option_is_not_mirrored(self):
+        self._boot({"CLAUDE_PLUGIN_OPTION_API_KEY": "not-a-key"})
+        self.assertIsNone(self._file_body())
