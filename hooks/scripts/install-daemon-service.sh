@@ -77,8 +77,9 @@ if [ -f "$TARGET" ]; then
   fi
   _installed_db_dir="$(sed -n '/<key>BRAIN_DB_DIR<\/key>/{n;s|.*<string>\(.*\)</string>.*|\1|p;}' "$TARGET" | head -1)"
   if [ -n "$_installed_db_dir" ] && [ "$_installed_db_dir" != "$BRAIN_DB_DIR" ]; then
-    # Same subshell-source read the resolver's step 4b uses — one grammar.
-    _knob="$(BRAIN_DB_DIR=''; . "${XDG_CONFIG_HOME:-$HOME/.config}/brain/env" 2>/dev/null; printf '%s' "$BRAIN_DB_DIR")"
+    # Same subshell-source read the resolver's knob rung uses — one grammar;
+    # the file's own stdout is discarded so it can't pollute the value.
+    _knob="$(BRAIN_DB_DIR=''; { . "${XDG_CONFIG_HOME:-$HOME/.config}/brain/env"; } >/dev/null 2>&1; printf '%s' "$BRAIN_DB_DIR")"
     _opt="${CLAUDE_PLUGIN_OPTION_BRAIN_PATH:-${CLAUDE_PLUGIN_OPTION_brain_path:-}}"
     if [ "$BRAIN_DB_DIR" != "$_knob" ] && [ "$BRAIN_DB_DIR" != "$_opt" ]; then
       RENDER_DB_DIR="$_installed_db_dir"

@@ -23,7 +23,7 @@ surface, so they pay best before 5.1.
 
 ---
 
-## Step 0 — DECIDED 2026-08-11 → D-13: brains live outside every host's namespace
+## Step 0 — DECIDED 2026-08-11 → D-13; SHIPPED 2026-08-12 with 5.0a (XDG create branch + adoption net in `resolve-brain-db.sh`; `TestAdoptionNetAndXdgCreate`)
 
 *Ruled by Tom: new-brain default moves out of `$CLAUDE_PLUGIN_DATA` entirely (portability
 to other AI hosts), and resolution collapses to a single configurable location for
@@ -41,7 +41,7 @@ uninstall" stays load-bearing and unanswered.
 `~/.local/share/brain/`), which never renames. Existing steps stay as read-only *adoption*
 of brains found at the old locations. 5.0a shrinks from a permanent ladder feature to a
 transition net for the two existing default-path installs.
-**Files & call sites.** `hooks/scripts/resolve-brain-db.sh` (create branch, step 5);
+**Files & call sites.** `hooks/scripts/resolve-brain-db.sh` (create branch — now step 6, guarded by the adoption net);
 `docs/DISTRIBUTION-READINESS.md` §5.0a.
 **Verification.** Sandbox matrix from the 2026-08-08 5.0a test, plus fresh-install case
 landing at the XDG path.

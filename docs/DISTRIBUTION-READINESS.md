@@ -1,15 +1,19 @@
 # Distribution Readiness — Sharing Anchor
 
-## §ACTIVE ARC (2026-08-11) — 5.0a is next: rename safety net + XDG create-branch + sandbox matrix
-**Read first:** handoff node `[thread:d13-arch-plan]` (recall it; rests on milestones id:b8ac1c04,
-id:98a66029). Shipped today: arch-plan steps 2+4 (daemon db-path divergence killed — resolver at
-launch, ping `db_dir`, plist drift re-bootstrap with identity guards; env-first port), the
-`brain-daemon` launcher rename, step 5 (six dead scripts deleted, `TestShippedScriptsReachable`).
-**Locked:** D-13, never-auto-move, installer identity guards, ladder hint-demotion. **Open:** the
-adoption UX (first gate), the XDG create-branch (replaces ladder rung 5's target), the sandbox
-matrix re-run incl. adoption-while-daemon-running. **Do not reopen:** bare env-first port (needs
-the env-file fallback), ladder step-1 bare `-d` adoption, cp-before-bootout, flat reference-count
-gating, verified-developer signing (deferred to 5.x polish).
+## §ACTIVE ARC (2026-08-12) — 5.0a SHIPPED: XDG create + adoption net; next: step 6 (shell dedup), 5.0c
+**Read first:** handoff node `[thread:d13-arch-plan]` + the 5.0a ruling (id:cfe2113b). Shipped
+2026-08-11: arch-plan steps 2+4+5. Shipped 2026-08-12 (5.0a, three-lens reviewed): new brains born
+at `${XDG_DATA_HOME:-~/.local/share}/brain`; adoption net refuses to create over an orphaned
+plugin-data brain and boot renders a self-contained adoption notice (Flow B); the
+`~/.config/brain/env` `BRAIN_DB_DIR` knob is a ladder rung in BOTH resolvers (knob-with-brain
+adopts; db-less knob = birthplace hint, never beats a found brain — the split-brain guard);
+rename matrix automated in `TestAdoptionNetAndXdgCreate`. **Locked:** D-13, never-auto-move,
+Flow B, installer identity guards, ladder hint-demotion. **Open:** live
+adoption-while-daemon-running proof (needs second laptop or prod-daemon pause — uid-keyed /tmp
+discovery files collide). **Do not reopen:** bare env-first port (needs the env-file fallback),
+ladder step-1 bare `-d` adoption, cp-before-bootout, flat reference-count gating,
+verified-developer signing (deferred to 5.x polish), knob-dir-exists adoption in Python (the
+2026-08-12 split-brain finding).
 
 **Status:** **Goal A closed** — the Layer-4 live install worked end-to-end on a clean
 machine 2026-07-17 (§6b). Now on **Goal B: the public OSS publish** (Phase 5.7, the one-way
@@ -305,28 +309,41 @@ finding:**
 the standing build → review → commit rule. The review found three CRITICALs. The
 only thing that made it recoverable was that nothing had been deployed.*
 
-**5.0a Rename safety net — OPEN, gates 5.2.** The rename moves
+**5.0a Rename safety net + XDG create — SHIPPED 2026-08-12.** The rename moves
 `$CLAUDE_PLUGIN_DATA` (per-plugin), so a brain at the default path goes invisible.
-**Tested on a sandbox 2026-08-08, all four cases:** with `resolved.env` present,
-step 4b rescues it and creates nothing; with it **missing** or **stale** (pointing
-at a deleted dir — the uninstall shape), step 5 creates a **fresh empty brain,
-silently**. Two things the earlier write-up missed: after a successful rescue the
-brain still physically lives under the **old** plugin's data dir and `resolved.env`
-is rewritten to pin it there — so uninstalling the obsolete `brain` plugin later
-deletes the brain; and whether Claude Code wipes `$CLAUDE_PLUGIN_DATA` on uninstall
-is **undetermined from this repo** — if it does, the destructive path is the
-*common* one, not an edge case.
-**Design (Tom's constraint: no deletion risk, no move without the user guiding it):**
-never auto-move data. Detect a candidate brain, refuse to silently create, and
-surface the choice through `additionalContext` + the boot notice, naming the path.
-Adoption uses the mechanism that already exists — `userConfig.brain_path`. *M.*
+The 2026-08-08 sandbox matrix showed step 4b rescues only when `resolved.env` is
+present and current; missing/stale meant a silently created fresh brain.
+**Shipped shape (Tom ruled Flow B, 2026-08-12):**
+- **New brains are born at `${XDG_DATA_HOME:-~/.local/share}/brain`** — the
+  create branch no longer targets `$CLAUDE_PLUGIN_DATA` at all; plugin-data and
+  legacy rungs are adoption-only.
+- **The adoption net:** before creating fresh, the resolver scans the live
+  `$CLAUDE_PLUGIN_DATA`'s sibling dirs and `~/.claude/plugins/data/*/brain/` for
+  an orphaned `brain.db`. Candidate found → **refuse to create** (empty
+  `BRAIN_DB_DIR`, every consumer's existing no-brain path) and export
+  `BRAIN_ADOPTION_CANDIDATE`; the boot hook renders a self-contained notice
+  (candidate path + exact adopt/fresh-start commands, answerable without any
+  lookup) that repeats each session until the user sets the knob. Refusal lives
+  in the resolver so the launchd daemon refuses identically; boot is only the
+  renderer. Never creates, moves, or deletes.
+- **The `~/.config/brain/env` knob is now a shell-ladder rung too** (it was
+  Python-only): `BRAIN_DB_DIR=` there adopts a brain outright, or — dir without
+  `brain.db` — is honored as the explicit birthplace choice, beating both the
+  net and a stale plist-baked hint. This is the adoption mechanism the notice
+  points at (plus `userConfig.brain_path`, which fills process env in hook
+  contexts).
+- Python resolvers (`daemon_config.resolve_db_dir`, dashboard `_brain_dir`)
+  mirror the new tail: XDG-with-brain → legacy-with-brain → XDG default.
+**Tests:** `tests/test_daemon_recovery.py::TestAdoptionNetAndXdgCreate` (shell
+ladder: fresh-install-at-XDG, net refusal, sibling scan, knob-beats-net,
+knob-beats-stale-hint, CPD adoption) + `tests/test_db_resolution.py` (Python
+tail). *M.*
 **Acceptance criterion shipped 2026-08-11 (arch-plan step 4):** the daemon can no
 longer diverge from an adopted path — `brain-daemon` re-runs the resolution
 ladder on every launch (the plist-baked `BRAIN_DB_DIR` is a fast-path hint, not a
 verdict), the daemon ping reports its `db_dir` and `ensure_daemon` kickstarts on
 mismatch, and the installers re-materialize + re-bootstrap the plist when it
-drifts from the template. `tests/test_daemon_recovery.py` locks all three. The
-5.0a sandbox matrix still owes the adoption-while-daemon-running case.
+drifts from the template. `tests/test_daemon_recovery.py` locks all three.
 
 **5.0b Deploy-contract gate — DONE 2026-08-11, `tests/test_deploy_contract.py`.**
 Executable answer to "how do I know every place a deploy touches." A hand-list
@@ -403,18 +420,17 @@ reproduce on this CC version, so renaming `/dashboard` and `/watch` is **optiona
 hardening, not a required fix** — the upstream instability (§10.3) is the only
 reason to still consider it.
 
-**⚠ Migration hazard — the rename moves `$CLAUDE_PLUGIN_DATA`.** That variable is
-set **per-plugin** ([resolve-brain-db.sh:98](hooks/scripts/resolve-brain-db.sh:98)),
-so `brain` → `entity` changes the path, and any brain living at
-`$CLAUDE_PLUGIN_DATA/brain/brain.db` goes invisible → step 5 silently creates a
-**fresh empty brain** (the id:80f585de footgun). Step 4b rescues it —
-`~/.config/brain/resolved.env` is not plugin-scoped, so it persists the old path —
-but 4b was never designed as a rename-migration net and a stale/missing
-`resolved.env` means silent amnesia. **Affected:** any clean install that landed at
-the `$CLAUDE_PLUGIN_DATA` default — Tom's second laptop and the friend install.
-*Not* affected: Tom's main machine (legacy `~/AgentsContext/brain`, step 4).
-**Action: verify 4b explicitly on a copy before renaming; don't ship the rename on
-luck.**
+**⚠ Migration hazard — the rename moves `$CLAUDE_PLUGIN_DATA` — NETTED by 5.0a
+(2026-08-12).** That variable is set **per-plugin** (the plugin-data adoption rung
+in `resolve-brain-db.sh`), so `brain` → `entity` changes the path and any brain
+living at `$CLAUDE_PLUGIN_DATA/brain/brain.db` goes invisible. Rescue layers now:
+`resolved.env` (4b, not plugin-scoped) rescues silently when present and current;
+otherwise the **adoption net** finds the orphaned brain under the plugin-data
+root, refuses to create, and surfaces guided adoption via the boot notice — the
+silent-fresh-brain path (the id:80f585de footgun) no longer exists. **Affected:**
+any clean install that landed at the `$CLAUDE_PLUGIN_DATA` default — Tom's second
+laptop and the friend install. *Not* affected: Tom's main machine (legacy
+`~/AgentsContext/brain`, adoption rung).
 
 **CORRECTION 2026-08-09 — "local cost is zero" was false.** The prior claim, *"no
 permission entry anywhere references `mcp__plugin_brain_brain__*`,"* is wrong:
@@ -720,7 +736,7 @@ fast, exits cleanly for a next-session fast path otherwise).
 | Marketplace name becomes reserved → **every install breaks retroactively** | D-6 / §10.2 | Chose `anchor` (project umbrella), not a generic category noun. Anthropic's reserved list is brand + vertical words and is **re-checked on every load** |
 | Skill slash commands lose their `entity:` prefix → collide in a public user's namespace | 5.2 / §10.3 | Upstream namespacing is unstable (4+ open issues). Verify empirically before the rename; don't rely on the prefix for collision safety |
 | Public repo becomes an unmergeable-PR magnet | D-9 | CONTRIBUTING states issues-only up front, not after the first rejected PR |
-| **Plugin rename orphans an existing brain → silent empty brain** | 5.0a / 5.2 | **Sandbox-tested 2026-08-08:** 4b rescues only when `resolved.env` is present and current; missing or stale → silent fresh brain. Rescue also leaves the data under the *old* plugin's dir, so a later uninstall of `brain` deletes it. Fix = detect + refuse to silently create + guided adoption via `brain_path`; never auto-move (5.0a) |
+| ~~**Plugin rename orphans an existing brain → silent empty brain**~~ **CLOSED 2026-08-12 by 5.0a** | 5.0a / 5.2 | The silent-create path is gone: creation moved to the XDG service dir and the adoption net refuses to create while an orphaned brain sits under a plugin-data root — guided adoption via the `~/.config/brain/env` knob / `brain_path`; never auto-move. Residual: a rescued-by-4b brain still physically lives under the *old* plugin's dir until the user adopts it elsewhere — uninstalling that plugin may still delete it (surface at 5.2 rename time) |
 | Fresh installs write traces with **no identity stamping** | 5.0c (was §8 #3) | Same defect as the 182 hardcoded names: slots that ship empty and unread. Fill via `userConfig` (D-4 shape, env wins) and read from config everywhere. Publish blocker |
 | A shipped manifest carries one install's instance name | D-12 / 5.0c | `displayName: Anchor` and 182 literals pre-name every stranger's entity, contradicting "identity is accumulated, not issued". Derive from `BRAIN_AGENT_NAME` |
 | A rename touches a place no list knows about | 5.0b | Two hand-lists already failed (62-file manifest; the `.claude/settings.json` permission entry). Gate by **shape-scan over the tree**, never by enumeration |

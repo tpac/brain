@@ -16,8 +16,11 @@ export PLUGIN_DIR="$(cd "$_BRAIN_ENV_DIR/../.." && pwd)"
 # Source the canonical user config (~/.config/brain/env) so secrets and
 # identity tokens (ANTHROPIC_API_KEY, BRAIN_OPERATOR_NAME, BRAIN_AGENT_NAME, ...)
 # propagate into both the hook scripts and the launchd-spawned daemon
-# launcher. set -a exports each loaded variable; explicit shell-level
-# values still win (we don't override an already-set var).
+# launcher. set -a exports each loaded variable. NOTE: plain sourcing
+# OVERWRITES an already-set shell value — a variable in this file always
+# wins over the process env for everything downstream of this line (so a
+# BRAIN_DB_DIR knob line re-points even a plist-baked daemon env; the
+# resolver's ladder then re-confirms the same choice).
 _BRAIN_USER_ENV="${XDG_CONFIG_HOME:-$HOME/.config}/brain/env"
 if [ -f "$_BRAIN_USER_ENV" ]; then
     set -a

@@ -2,10 +2,11 @@
 # brain — SessionStart hook: boots brain, prints context + consciousness signals.
 # Output: full brain state for Claude's context (injected via SessionStart stdout)
 #
-# Brain DB resolution: see resolve-brain-db.sh — prefers $CLAUDE_PLUGIN_DATA/brain
-# (Claude Code's standard plugin data location) and falls back to legacy paths.
-# If no DB found AND no auto-create succeeds, boot fails cleanly (no /tmp fallback —
-# silent data loss is worse).
+# Brain DB resolution: see resolve-brain-db.sh — explicit choice (env/config
+# knob) > existing brain (XDG service dir, plugin-data, legacy) > fresh create
+# at ${XDG_DATA_HOME:-~/.local/share}/brain (D-13). If a candidate brain sits
+# at an unreachable old default, the resolver refuses to create and this hook
+# surfaces adoption instead — silent data loss is worse than a blocked boot.
 
 
 # Save stdin early — inline python commands below would consume it.
@@ -68,6 +69,13 @@ fi
 BRAIN_KEYLESS_BOOT=0
 if [ -z "${ANTHROPIC_API_KEY:-}" ] || [[ "${ANTHROPIC_API_KEY}" != sk-* ]]; then
   BRAIN_KEYLESS_BOOT=1   # read below: keyless warm boots bring the dashboard up
+fi
+
+# Emitted at the two points a keyless boot actually proceeds (cold install,
+# and warm boot after DB resolution succeeds) — NOT at detection: a boot the
+# adoption net blocks must not first promise "memory works from this session
+# on" and then refuse to start a brain.
+_keyless_notice() {
   cat <<EOF
 🧠 Anchor — setup in progress
 
@@ -95,6 +103,8 @@ automatic memory surfacing use the Anthropic API and need your key:
 Get a key at https://console.anthropic.com/settings/keys — the dashboard
 and env-file paths take effect on your next message, no restart needed.
 EOF
+}
+if [ "$BRAIN_KEYLESS_BOOT" = "1" ]; then
   cat >&2 <<EOF
 [brain-boot] ANTHROPIC_API_KEY not set — booting in local-only mode (no encode/surface).
 [brain-boot] Key location: $BRAIN_ENV_FILE — or the /setup page on the dashboard.
@@ -128,6 +138,7 @@ if ! brain_runtime_ready "$_BOOT_PLUGIN_ROOT"; then
       "$_BOOT_SD/install-daemon-service.sh" \
       "$_BOOT_SD/ensure-dashboard.sh" \
       >> "$_BOOT_PLUGIN_ROOT/.bootstrap.log" 2>&1 & )
+  [ "$BRAIN_KEYLESS_BOOT" = "1" ] && _keyless_notice
   cat <<EOF
 
 🧠 Anchor — first-run install in progress
@@ -178,36 +189,91 @@ if 'hooks' not in data or not isinstance(data['hooks'], dict):
   fi
 fi
 
-# No DB found AND auto-create failed — guide the user.
-# (resolve-brain-db.sh tries to auto-create at $CLAUDE_PLUGIN_DATA/brain or in
-# Cowork mounts; we only land here if those weren't writable or weren't set.)
+# No DB resolved. Two distinct cases:
+#  (a) the adoption net fired — an existing brain sits at an old host-owned
+#      default the ladder can no longer reach (plugin renamed/reinstalled).
+#      Refusing to create IS the feature: surface adoption, repeat every
+#      session until the user sets the knob. Never create/move/delete here.
+#  (b) genuinely nothing found and auto-create failed — guide the user.
+# The notice is written to be answerable without any lookup: candidate path,
+# exact commands, both options inline.
 if [ -z "$BRAIN_DB_DIR" ]; then
-  echo ""
-  echo "brain: No brain.db found and auto-create failed."
-  echo ""
-  echo "Two options:"
-  echo ""
-  echo "  1. CONNECT TO EXISTING BRAIN — Set the path to your brain folder:"
-  echo "     In Claude Code settings or .claude/settings.json, add to env:"
-  echo '       "BRAIN_DB_DIR": "/path/to/your/brain/folder"'
-  echo "     The folder should contain (or will contain) brain.db."
-  echo ""
-  echo "  2. START FRESH — Create a new brain:"
-  if [ -n "$CLAUDE_PLUGIN_DATA" ]; then
-    echo "     mkdir -p \"\$CLAUDE_PLUGIN_DATA/brain\""
-  else
-    echo "     mkdir -p ~/AgentsContext/brain"
+  _CFG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/brain"
+  _XDG_FRESH="${XDG_DATA_HOME:-$HOME/.local/share}/brain"
+  # The paths below are embedded in commands the USER will paste: single-quote
+  # them with internal quotes escaped, so a path carrying spaces/$/backticks
+  # can neither break the command nor be expanded by the user's shell. printf
+  # with a leading \n (not echo >>): a knob file whose last line lacks a
+  # trailing newline must not have the new line glued onto it.
+  _sq() { printf %s "$1" | sed "s/'/'\\\\''/g"; }
+  _CFG_Q="'$(_sq "$_CFG_FILE")'"
+  if [ -n "${BRAIN_ADOPTION_CANDIDATE:-}" ]; then
+    _CAND_Q="'$(_sq "$BRAIN_ADOPTION_CANDIDATE")'"
+    cat <<EOF
+
+🧠 Anchor — your existing brain needs one pointer
+
+An existing brain (memories intact) was found at:
+
+    $BRAIN_ADOPTION_CANDIDATE
+
+but it lives at an old install location this session's hooks can no longer
+reach automatically (this happens after the plugin is renamed or
+reinstalled). Nothing was created, moved, or deleted — this session runs
+without memory rather than silently starting a new, empty brain.
+
+Pick one, then start a new session:
+
+  1. KEEP THIS BRAIN (recommended) — point Anchor at it:
+       mkdir -p $_CFG_Q
+       printf "\nBRAIN_DB_DIR='%s'\n" $_CAND_Q >> $_CFG_Q/env
+     (or set the brain path field in the Anchor plugin's settings to that
+      same folder)
+
+  2. START FRESH — leave the old brain untouched on disk and begin a new
+     one at the standard location:
+       mkdir -p $_CFG_Q
+       printf "\nBRAIN_DB_DIR='%s'\n" '$(_sq "$_XDG_FRESH")' >> $_CFG_Q/env
+
+Claude: present these two options to the user now, with the exact commands
+above — everything needed is in this notice, no lookups required. Do not
+run the commands or create/move/delete anything yourself unless the user
+explicitly chooses an option and asks you to apply it. This notice repeats
+every session until BRAIN_DB_DIR is set.
+EOF
+    echo "[brain-boot] adoption net: candidate brain at $BRAIN_ADOPTION_CANDIDATE — refused silent create" >&2
+    exit 0
   fi
-  echo "     Then restart this session. The brain will initialize automatically."
-  echo ""
-  echo "Searched locations:"
-  echo "  - \$BRAIN_DB_DIR env var (not set)"
-  echo "  - /sessions/*/mnt/AgentsContext/brain/ (Cowork — not found)"
-  echo "  - \$CLAUDE_PLUGIN_DATA/brain/ ($([ -n "$CLAUDE_PLUGIN_DATA" ] && echo "not found at $CLAUDE_PLUGIN_DATA/brain" || echo "\$CLAUDE_PLUGIN_DATA not set"))"
-  echo "  - \$HOME/AgentsContext/brain/ (not found, legacy)"
-  echo ""
+  cat <<EOF
+
+brain: No brain.db found and auto-create failed.
+
+Two options:
+
+  1. CONNECT TO EXISTING BRAIN — point Anchor at your brain folder:
+       mkdir -p $_CFG_Q
+       printf "\nBRAIN_DB_DIR='%s'\n" '/path/to/your/brain/folder' >> $_CFG_Q/env
+     The folder should contain (or will contain) brain.db.
+
+  2. START FRESH — create a new brain at the standard location:
+       mkdir -p '$(_sq "$_XDG_FRESH")'
+     Then restart this session. The brain will initialize automatically.
+
+Searched locations:
+  - \$BRAIN_DB_DIR env var (not set)
+  - $_CFG_FILE/env BRAIN_DB_DIR= (not set)
+  - $_XDG_FRESH/ (standard — not found, create failed)
+  - /sessions/*/mnt/AgentsContext/brain/ (Cowork — not found)
+  - \$CLAUDE_PLUGIN_DATA/brain/ ($([ -n "$CLAUDE_PLUGIN_DATA" ] && echo "not found at $CLAUDE_PLUGIN_DATA/brain" || echo "\$CLAUDE_PLUGIN_DATA not set"))
+  - \$HOME/AgentsContext/brain/ (not found, legacy)
+
+EOF
   exit 0
 fi
+
+# Keyless warm boot proceeds with a resolved brain — now the setup notice is
+# true (local memory works this session; only encode/surface need the key).
+[ "$BRAIN_KEYLESS_BOOT" = "1" ] && _keyless_notice
 
 # ── Provision the launchd service on fresh installs (macOS, idempotent) ──
 # Install the LaunchAgent BEFORE ensure_daemon() so launchd owns the daemon from

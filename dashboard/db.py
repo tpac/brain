@@ -53,21 +53,36 @@ def _brain_dir() -> str:
     """Resolve the brain data dir — the dashboard's sanctioned mirror of
     daemon_config.resolve_db_dir (the disconnection contract forbids importing
     servers.*; both read the same D-13 chain): BRAIN_DB_DIR env → the user
-    config file (~/.config/brain/env, if the dir exists) → resolved.env (the
-    shell resolver's record, only if brain.db is actually there) → legacy."""
+    config file (~/.config/brain/env) if brain.db is there → resolved.env
+    (the shell resolver's record, only if brain.db is actually there) → the
+    XDG service dir (~/.local/share/brain, where new brains are born) if
+    brain.db is there → legacy if brain.db is there → the knob dir as the
+    chosen birthplace (absolute only) → the XDG dir as the final default. A
+    knob dir without brain.db must not beat a rung that finds a real brain —
+    the shell demotes it the same way."""
     d = os.environ.get("BRAIN_DB_DIR")
     if d:
         return d
     xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(
         os.path.expanduser("~"), ".config")
     cfg = _read_env_file_key(os.path.join(xdg, "brain", "env"), "BRAIN_DB_DIR")
-    if cfg and os.path.isdir(cfg):
+    if cfg and os.path.isfile(os.path.join(cfg, "brain.db")):
         return cfg
     rec = _read_env_file_key(
         os.path.join(xdg, "brain", "resolved.env"), "BRAIN_DB_DIR")
     if rec and os.path.isfile(os.path.join(rec, "brain.db")):
         return rec
-    return os.path.join(os.path.expanduser("~"), "AgentsContext", "brain")
+    native = os.path.join(
+        os.environ.get("XDG_DATA_HOME")
+        or os.path.join(os.path.expanduser("~"), ".local", "share"), "brain")
+    if os.path.isfile(os.path.join(native, "brain.db")):
+        return native
+    legacy = os.path.join(os.path.expanduser("~"), "AgentsContext", "brain")
+    if os.path.isfile(os.path.join(legacy, "brain.db")):
+        return legacy
+    if cfg and os.path.isabs(cfg):
+        return cfg
+    return native
 
 
 def brain_db_path() -> str:

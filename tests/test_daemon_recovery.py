@@ -1381,6 +1381,198 @@ class TestResolverEnvHintDemotion(unittest.TestCase):
             "a NO_PERSIST consumer (brain-daemon) must not write the record")
 
 
+class TestAdoptionNetAndXdgCreate(unittest.TestCase):
+    """5.0a: new brains are born at the XDG service dir (D-13), and the
+    create branch refuses to run while an existing brain sits unreachable at
+    an old host-owned default (plugin renamed/reinstalled) — it names the
+    candidate for boot to surface instead. An explicit choice (the
+    ~/.config/brain/env knob) always beats the net."""
+
+    RESOLVER = os.path.join(os.path.dirname(__file__), '..',
+                            'hooks', 'scripts', 'resolve-brain-db.sh')
+
+    def setUp(self):
+        self._home = tempfile.mkdtemp(prefix="brain-resolve-home-")
+        self._xdg = os.path.join(self._home, ".config")
+        os.makedirs(os.path.join(self._xdg, "brain"))
+        self._native = os.path.join(self._home, ".local", "share", "brain")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._home, ignore_errors=True)
+
+    def _resolve(self, env_extra=None):
+        """Returns (BRAIN_DB_DIR, BRAIN_ADOPTION_CANDIDATE) after sourcing."""
+        import subprocess
+        env = dict(os.environ, HOME=self._home, XDG_CONFIG_HOME=self._xdg)
+        for k in ("BRAIN_DB_DIR", "CLAUDE_PLUGIN_DATA", "XDG_DATA_HOME",
+                  "BRAIN_ADOPTION_CANDIDATE"):
+            env.pop(k, None)
+        env.update(env_extra or {})
+        out = subprocess.run(
+            ["bash", "-c",
+             'source "%s" >/dev/null 2>&1; '
+             'printf "%%s\\n%%s" "$BRAIN_DB_DIR" "$BRAIN_ADOPTION_CANDIDATE"'
+             % self.RESOLVER],
+            env=env, capture_output=True, text=True, timeout=60)
+        parts = out.stdout.split("\n")
+        return parts[0].strip(), (parts[1].strip() if len(parts) > 1 else "")
+
+    def _make_brain(self, *segments):
+        d = os.path.join(self._home, *segments)
+        os.makedirs(d, exist_ok=True)
+        open(os.path.join(d, "brain.db"), "w").close()
+        return d
+
+    def test_fresh_install_creates_at_xdg(self):
+        db_dir, cand = self._resolve()
+        self.assertEqual(db_dir, self._native,
+                         "nothing anywhere: a new brain is born at the XDG service dir")
+        self.assertEqual(cand, "")
+        self.assertTrue(os.path.isdir(self._native), "create branch mkdirs the dir")
+
+    def test_xdg_existing_brain_adopted_over_legacy(self):
+        native = self._make_brain(".local", "share", "brain")
+        self._make_brain("AgentsContext", "brain")
+        db_dir, _ = self._resolve()
+        self.assertEqual(db_dir, native)
+
+    def test_candidate_at_plugin_data_blocks_create(self):
+        cand_dir = self._make_brain(".claude", "plugins", "data",
+                                    "old-plugin-name", "brain")
+        db_dir, cand = self._resolve()
+        self.assertEqual(db_dir, "",
+                         "the net must refuse to create while a candidate exists")
+        self.assertEqual(cand, cand_dir)
+        self.assertFalse(os.path.exists(self._native),
+                         "refusal means nothing is created at the XDG dir")
+
+    def test_candidate_via_cpd_sibling_scan(self):
+        # rename case with a NON-default plugin-data root: only the live
+        # $CLAUDE_PLUGIN_DATA sibling scan can find the old plugin's brain
+        cand_dir = self._make_brain("custom-root", "data", "old-name", "brain")
+        cpd = os.path.join(self._home, "custom-root", "data", "new-name")
+        os.makedirs(cpd, exist_ok=True)
+        db_dir, cand = self._resolve({"CLAUDE_PLUGIN_DATA": cpd})
+        self.assertEqual(db_dir, "")
+        self.assertEqual(cand, cand_dir)
+
+    def test_config_knob_with_brain_adopted(self):
+        d = self._make_brain("my-brain")
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % d)
+        db_dir, _ = self._resolve()
+        self.assertEqual(db_dir, d)
+
+    def test_config_knob_beats_adoption_net(self):
+        # the user's explicit fresh-start choice defeats the repeating notice
+        self._make_brain(".claude", "plugins", "data", "old-plugin", "brain")
+        fresh = os.path.join(self._home, "chosen-fresh")
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % fresh)
+        db_dir, cand = self._resolve()
+        self.assertEqual(db_dir, fresh,
+                         "an explicit knob is a choice — the net must not fire")
+        self.assertEqual(cand, "")
+        self.assertTrue(os.path.isdir(fresh), "knob dir is honored (mkdir'd)")
+
+    def test_config_knob_beats_stale_env_hint(self):
+        stale = os.path.join(self._home, "stale-baked")
+        os.makedirs(stale)
+        knob = os.path.join(self._home, "knob-choice")
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % knob)
+        db_dir, _ = self._resolve({"BRAIN_DB_DIR": stale})
+        self.assertEqual(db_dir, knob,
+                         "durable knob beats a stale plist-baked empty dir")
+
+    def test_cpd_existing_brain_still_adopted(self):
+        # pre-D-13 install: brain at the live $CLAUDE_PLUGIN_DATA — adopted,
+        # no net, no XDG create
+        cpd = os.path.join(self._home, ".claude", "plugins", "data", "brain-x")
+        d = self._make_brain(".claude", "plugins", "data", "brain-x", "brain")
+        db_dir, cand = self._resolve({"CLAUDE_PLUGIN_DATA": cpd})
+        self.assertEqual(db_dir, d)
+        self.assertEqual(cand, "")
+
+    # -- review-finding regressions (2026-08-12 multi-lens pass) --
+
+    def test_knob_file_stdout_does_not_pollute_value(self):
+        # a user `echo` in the sourced config file must not prepend to the
+        # captured knob value
+        d = self._make_brain("my-brain")
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write('echo "loading brain env"\nBRAIN_DB_DIR=\'%s\'\n' % d)
+        db_dir, _ = self._resolve()
+        self.assertEqual(db_dir, d)
+
+    def test_quoted_tilde_knob_is_expanded(self):
+        # BRAIN_DB_DIR="~/x" (quoted, so the shell won't expand it) — the
+        # resolver expands the ~/ prefix like the Python reader does
+        d = self._make_brain("tilde-brain")
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write('BRAIN_DB_DIR="~/tilde-brain"\n')
+        db_dir, _ = self._resolve()
+        self.assertEqual(db_dir, d)
+
+    def test_relative_knob_is_ignored(self):
+        # a relative path would resolve against each consumer's cwd — ignore
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write("BRAIN_DB_DIR=relative-dir\n")
+        db_dir, cand = self._resolve()
+        self.assertEqual(db_dir, self._native)
+        self.assertEqual(cand, "")
+
+    def test_plugin_data_without_brains_does_not_block_create(self):
+        # populated plugins/data with no brain.db anywhere: the scan must
+        # come up empty (no glob abort, no false candidate) and create at XDG
+        os.makedirs(os.path.join(self._home, ".claude", "plugins", "data",
+                                 "some-other-plugin"), exist_ok=True)
+        db_dir, cand = self._resolve()
+        self.assertEqual(db_dir, self._native)
+        self.assertEqual(cand, "")
+
+    def test_resolver_survives_zsh_sourcing(self):
+        # zsh nomatch treats a no-match glob in a sourced file as fatal —
+        # the net's scan must not be a glob; whole ladder must complete
+        import subprocess
+        os.makedirs(os.path.join(self._home, ".claude", "plugins", "data",
+                                 "some-other-plugin"), exist_ok=True)
+        env = dict(os.environ, HOME=self._home, XDG_CONFIG_HOME=self._xdg)
+        for k in ("BRAIN_DB_DIR", "CLAUDE_PLUGIN_DATA", "XDG_DATA_HOME",
+                  "BRAIN_ADOPTION_CANDIDATE"):
+            env.pop(k, None)
+        out = subprocess.run(
+            ["zsh", "-c",
+             'source "%s" >/dev/null 2>&1; printf %%s "$BRAIN_DB_DIR"'
+             % self.RESOLVER],
+            env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(out.stdout.strip(), self._native)
+
+    # -- the 2026-08-08 rename sandbox matrix, automated --
+
+    def test_rename_with_current_record_rescues_silently(self):
+        # old plugin's brain + resolved.env pointing at it → 4b rescue, no net
+        old = self._make_brain(".claude", "plugins", "data", "old-name", "brain")
+        with open(os.path.join(self._xdg, "brain", "resolved.env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % old)
+        cpd = os.path.join(self._home, ".claude", "plugins", "data", "new-name")
+        os.makedirs(cpd, exist_ok=True)
+        db_dir, cand = self._resolve({"CLAUDE_PLUGIN_DATA": cpd})
+        self.assertEqual(db_dir, old)
+        self.assertEqual(cand, "")
+
+    def test_rename_with_stale_record_hits_the_net(self):
+        # resolved.env points at a deleted dir (the uninstall shape) — the
+        # 2026-08-08 silent-fresh-brain case; now the net refuses instead
+        old = self._make_brain(".claude", "plugins", "data", "old-name", "brain")
+        with open(os.path.join(self._xdg, "brain", "resolved.env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % os.path.join(self._home, "deleted"))
+        db_dir, cand = self._resolve()
+        self.assertEqual(db_dir, "")
+        self.assertEqual(cand, old)
+
+
 class TestDaemonPortEnvFirst(unittest.TestCase):
     """Step 2 (D-13 family): BRAIN_DAEMON_PORT is a real contract — the
     daemon's own DAEMON_PORT reads the env override first, exactly like every
