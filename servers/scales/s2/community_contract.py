@@ -33,6 +33,11 @@ COMMUNITY_DETECTION = {
     # 15% was too low (noise). 25% = at least 1 in 4 neighbors.
     'add_to_existing_min_affinity': 0.25,
 
+    # Max candidate communities on one add_to_existing proposal. Enforced by
+    # the Step 5b emitter AND the Step 9c merge — they must agree, or the
+    # merge silently re-truncates what the emitter allowed.
+    'add_candidates_cap': 3,
+
     # ── Embedding placement for orphans ──
     'embedding_placement_threshold': 0.50,
 

@@ -157,7 +157,6 @@ class CommunityDecoder(IntegrationUnit):
         _t_decode = time.time()  # clock-ok — idle-cycle wall-clock duration
         decode_result = self._decode(s1_delta, community_state, is_cold_start=False)
         proposals = decode_result['proposals']
-        proposals.extend(self._detect_recall_signals(s1_delta, community_state))
         decode_ms = int((time.time() - _t_decode) * 1000)
 
         if not proposals:
@@ -376,11 +375,8 @@ class CommunityDecoder(IntegrationUnit):
 
         # Identify already-placed nodes (members of existing communities)
         already_placed = set()
-        node_to_community = {}
         for comm in community_state:
-            for member_id in comm['members']:
-                already_placed.add(member_id)
-                node_to_community[member_id] = comm
+            already_placed.update(comm['members'])
 
         unplaced = set(edges_by_node.keys()) - already_placed
 
@@ -460,15 +456,24 @@ class CommunityDecoder(IntegrationUnit):
                     continue
 
                 drift_ratio = node_drift_thresholds.get(nid, default_drift_ratio)
-                home = node_to_community[nid]
-                home_aff = len(nbrs & home['members']) / len(nbrs) if nbrs else 0
+                # Home = the node's STRONGEST community. A multi-home node
+                # has several; basing the ratio on an arbitrary one makes the
+                # drift test (and the reported home) row-order dependent —
+                # the same node could flip drifting/settled between runs on
+                # an unchanged graph.
+                home = max((c for c in community_state if nid in c['members']),
+                           key=lambda c: len(nbrs & c['members']))
+                home_aff = len(nbrs & home['members']) / len(nbrs)
 
                 # Drift targets are EXISTING communities only — targets must
                 # have persistent ids so rejection fingerprints can suppress
                 # re-proposals. A same-run cluster is already a new_community
                 # proposal; once created it becomes a drift target next cycle.
                 for comm in community_state:
-                    if comm['id'] == home['id']:
+                    # A community the node already belongs to can't be a
+                    # drift target — `home` is only the strongest of a
+                    # multi-home node's communities.
+                    if nid in comm['members']:
                         continue
                     foreign_aff = len(nbrs & comm['members']) / len(nbrs)
                     # max(home_aff, floor) keeps the ratio a real lever when
@@ -567,7 +572,8 @@ class CommunityDecoder(IntegrationUnit):
         proposals = self._build_proposals(
             valid_clusters, corridors, node_affinities,
             orphan_affinities, cross_cutting, tie_analysis,
-            edges_by_node, typed_neighbors, community_state)
+            edges_by_node, typed_neighbors, community_state,
+            already_placed)
 
         # Step 9b: Add incremental proposals
         titles = {}
@@ -577,6 +583,7 @@ class CommunityDecoder(IntegrationUnit):
             titles[row[0]] = row[1][:60]
             types_map[row[0]] = row[2]
 
+        add_cap = self.config.get('add_candidates_cap', 3)
         for nid, additions in existing_additions.items():
             proposals.append({
                 'type': 'add_to_existing',
@@ -585,7 +592,7 @@ class CommunityDecoder(IntegrationUnit):
                 'node_type': types_map.get(nid, '?'),
                 'communities': [
                     {'id': cid, 'title': ctitle, 'affinity': aff}
-                    for cid, ctitle, aff in additions[:3]],
+                    for cid, ctitle, aff in additions[:add_cap]],
             })
 
         for nid, drift in drift_candidates.items():
@@ -626,6 +633,14 @@ class CommunityDecoder(IntegrationUnit):
                 'overlap_pct': merge['overlap_pct'],
                 'unique_in_smaller': merge['unique_in_smaller'],
             })
+
+        # Recall signals join the batch BEFORE the Step 9c contract, so every
+        # emitter — current and future — passes through dedup + member filter.
+        proposals.extend(self._detect_recall_signals(s1_delta, community_state))
+
+        # Step 9c: batch contract for add_to_existing — one proposal per
+        # node, no candidate the node is already a member of.
+        proposals = self._finalize_add_proposals(proposals, community_state)
 
         # Cluster summaries for trace (S3 consumption)
         cluster_summaries = []
@@ -1047,7 +1062,7 @@ class CommunityDecoder(IntegrationUnit):
                          node_affinities, orphan_affinities,
                          cross_cutting, tie_analysis,
                          edges_by_node, typed_neighbors,
-                         community_state=None):
+                         community_state=None, already_placed=None):
         proposals = []
 
         titles = {}
@@ -1062,6 +1077,9 @@ class CommunityDecoder(IntegrationUnit):
         if community_state:
             for comm in community_state:
                 comm_members[comm['id']] = comm['members']
+        if already_placed is None:  # direct callers (tests, evals)
+            already_placed = set().union(*comm_members.values()) \
+                if comm_members else set()
 
         overlap_threshold = self.config.get('cluster_overlap_threshold', 0.60)
         converted_to_add = 0
@@ -1173,13 +1191,16 @@ class CommunityDecoder(IntegrationUnit):
                         best_overlap_comm = comm_id
 
             if best_overlap_frac >= overlap_threshold and best_overlap_comm:
-                # Convert: route unplaced members to the overlapping community
+                # Convert: route unplaced members to the overlapping community.
+                # UNPLACED only — a cluster can contain nodes already placed
+                # elsewhere (seed pairs need just one unplaced endpoint), and a
+                # placed node pulled toward a foreign community is drift's
+                # concern (thresholds, per-node escalation), not an add.
                 comm_title = next(
                     (c['title'] for c in community_state
                      if c['id'] == best_overlap_comm), '?')
-                existing_members = comm_members.get(best_overlap_comm, set())
                 for nid in ms:
-                    if nid not in existing_members:
+                    if nid not in already_placed:
                         proposals.append({
                             'type': 'add_to_existing',
                             'node_id': nid,
@@ -1188,9 +1209,13 @@ class CommunityDecoder(IntegrationUnit):
                             'source': 'overlap_check',
                             'overlap_frac': round(best_overlap_frac, 2),
                             'communities': [
+                                # Candidate-level source survives the Step 9c
+                                # merge, where the proposal-level label is
+                                # recomputed from the winning head candidate.
                                 {'id': best_overlap_comm,
                                  'title': comm_title,
-                                 'affinity': best_overlap_frac}],
+                                 'affinity': best_overlap_frac,
+                                 'source': 'overlap_check'}],
                         })
                 converted_to_add += 1
                 continue
@@ -1256,6 +1281,77 @@ class CommunityDecoder(IntegrationUnit):
                   flush=True)
 
         return proposals
+
+    # ── Step 9c ──
+
+    def _finalize_add_proposals(self, proposals, community_state):
+        """Batch contract for add_to_existing: the encoder must never see
+        (a) two proposals for the same node, or (b) a candidate community
+        the node is already a member of.
+
+        Emitters produce add_to_existing without seeing each other (the
+        Step 5b affinity loop, the Step 9 overlap conversion, future recall
+        signals), so the same (node, community) can otherwise reach the
+        encoder twice in one batch. Merge to one proposal per node: candidate
+        lists union by community id keeping the HIGHER-affinity entry — the
+        rejection fingerprint tier, the quota rank, and prior suppressions
+        all key on the strongest candidate, so preferring a weaker duplicate
+        would re-arm old rejections and demote strong placements. The
+        proposal-level algorithmic-source label is recomputed from the
+        winning head candidate. Non-add proposals pass through untouched.
+
+        The member filter is a defensive belt: every live emitter is already
+        unplaced-only, so a drop here means a new emitter violated the
+        placed-nodes-go-through-drift policy — surfaced loudly, never silent.
+        """
+        members_by_comm = {c['id']: c['members'] for c in community_state or []}
+        cap = self.config.get('add_candidates_cap', 3)
+
+        finalized = []
+        held_by_node = {}
+        for p in proposals:
+            if p.get('type') != 'add_to_existing':
+                finalized.append(p)
+                continue
+            nid = p.get('node_id', '')
+            comms, dropped = [], []
+            for c in p.get('communities', []):
+                if not c.get('id'):
+                    continue
+                if nid and nid in members_by_comm.get(c['id'], ()):
+                    dropped.append(c['id'])
+                else:
+                    comms.append(c)
+            if dropped:
+                print('[s2cd] add_to_existing for %s dropped member '
+                      'candidate(s) %s — an emitter bypassed the '
+                      'placed-nodes-go-through-drift policy'
+                      % (nid[:8] or '?', ','.join(d[:8] for d in dropped)),
+                      flush=True)
+            if not comms:
+                continue
+            held = held_by_node.get(nid) if nid else None
+            if held is None:
+                merged = dict(p, communities=comms)
+                if nid:
+                    held_by_node[nid] = merged
+                finalized.append(merged)
+                continue
+            cands = {c['id']: c for c in held['communities']}
+            for c in comms:
+                prev = cands.get(c['id'])
+                if prev is None or c.get('affinity', 0) > prev.get('affinity', 0):
+                    cands[c['id']] = c
+            ranked = sorted(cands.values(),
+                            key=lambda c: -c.get('affinity', 0))[:cap]
+            held['communities'] = ranked
+            if ranked[0].get('source') == 'overlap_check':
+                held['source'] = 'overlap_check'
+                held['overlap_frac'] = round(ranked[0].get('affinity', 0), 2)
+            else:
+                held.pop('source', None)
+                held.pop('overlap_frac', None)
+        return finalized
 
     # ── Decode helpers ──
 
