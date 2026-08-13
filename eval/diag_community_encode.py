@@ -15,7 +15,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from tests.isolated_brain import IsolatedBrain
-from eval.s2_community_decoder_eval import run_new_decoder
+from eval.s2_community_decoder_eval import run_decoder
 from servers.scales.s2.community_contract import COMMUNITY_DETECTION
 from servers.scales.s2.community_encoder import CommunityEncoder
 from eval.sim_community_structural import make_v21
@@ -40,7 +40,7 @@ def dump_arm(label, transform):
             brain._interaction_dal.set_active(
                 's2_community_enrichment', reg['version'], set_by='diag:v21')
 
-        dec = run_new_decoder(brain, dict(COMMUNITY_DETECTION))
+        dec = run_decoder(brain, dict(COMMUNITY_DETECTION))
         proposals = dec['proposals']
         by_type = {}
         for p in proposals:

@@ -93,11 +93,12 @@ COMMUNITY_DETECTION = {
         'dream_observation', 'dreamed_from', 'related', 'related_to'),
 
     # ── Encoder ──
-    # Haiku 4.5 after A/B eval proved it outperforms Sonnet 4.6 on this task
-    # (Sonnet 4.6 couldn't complete 2 rounds without max_tokens truncation or
-    # running out of rounds on inspection. Haiku produced 10 communities
-    # with structured narratives in ~60s vs Sonnet's 0 writes in 2 rounds.)
-    'model': 'claude-haiku-4-5-20251001',
+    # Sonnet 4.6 after the 2026-08-12 model A/B (eval/ab_community_model.py):
+    # equal-or-better completion than Haiku 4.5, markedly more consistent
+    # across identical inputs, richer journal discipline. NOTE: the runtime
+    # model comes from the s2_community_enrichment interaction PARAMETERS
+    # (DB) — this key is the seed/fallback; change both together.
+    'model': 'claude-sonnet-4-6',
     'max_tokens': 32768,
     'max_proposals_per_call': 8,    # Smaller batches = richer per-community
                                     # context AND lower round-2 generation
@@ -160,7 +161,7 @@ ADJACENCY_SKIP_ASPECTS = ('generic_relation', 'noise')
 # ═══════════════════════════════════════════════════════════════
 
 COMMUNITY_ENRICHMENT = {
-    'model': 'claude-haiku-4-5-20251001',
+    'model': 'claude-sonnet-4-6',
     'max_tokens': 32768,
 }
 

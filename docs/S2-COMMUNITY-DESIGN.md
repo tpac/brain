@@ -91,10 +91,13 @@ Type `community`, encoding_source `s2:community_detection`.
 - S2 K: `community_proposals`
 - S2 delta: `community_enriched`, `community_created`, `recall_quality_signal`
 
-### Eval Harness (`eval/s2_community_eval.py`)
-- Scores communities across 10 dimensions
-- Composite score, duplicate detection, dimension breakdown
-- Latest eval: 0.983 composite on v6 prompt
+### Eval Harness (`eval/s2_community_decoder_eval.py`)
+- Runs the production decoder on an isolated brain copy with simulated
+  encoder acceptance — backlog convergence, fingerprint suppression,
+  proposal mix across cycles
+- `run_decoder()` is the shared seam the community sims
+  (`sim_community_journal`, `sim_community_structural`,
+  `diag_community_encode`) build on
 
 ## Bug Fixes Shipped
 
@@ -148,7 +151,7 @@ Type `community`, encoding_source `s2:community_detection`.
 | `servers/redistribution.py` | Edge-based community lookup |
 | `servers/brain_mcp.py` | register_interaction MCP tool |
 | `dashboard/brain_dashboard_standalone.py` | 3D graph, Decoding/Encoding tabs, scale filter |
-| `eval/s2_community_eval.py` | Community quality eval harness |
+| `eval/s2_community_decoder_eval.py` | Decoder eval harness (production decoder + simulated encoder) |
 | `scripts/recover_s1e_open_fields.py` | Metadata recovery script |
 | `docs/FATIGUE-REDESIGN.md` | Fatigue redesign spec |
 | `dashboard/Dashboard-nextwork.md` | Dashboard roadmap |
