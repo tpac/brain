@@ -6,8 +6,9 @@ ping, health, save, session, config, plus maintenance one-offs
 
 import json
 import os
+import time
 
-from .daemon_config import _CODE_FINGERPRINT, REPO_ROOT
+from .daemon_config import _CODE_FINGERPRINT, _PROCESS_STARTED_AT, REPO_ROOT
 from .dispatch_common import caller_session
 
 
@@ -20,6 +21,9 @@ def _handle_ping(brain, args, graph_changes):
               # detect db-path divergence (daemon_client._db_dir_changed) the
               # way source_dir lets them detect code staleness.
               "db_dir": os.path.dirname(os.path.abspath(brain.db_path)),
+              # How long THIS PROCESS has been up (not the current serving run —
+              # see _PROCESS_STARTED_AT). The dashboard health tab renders it.
+              "uptime_seconds": int(time.time() - _PROCESS_STARTED_AT),
               "threads": _t.active_count()}
     if args.get("thread_detail"):
         result["thread_list"] = [
