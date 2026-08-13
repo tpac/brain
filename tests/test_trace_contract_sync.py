@@ -19,9 +19,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TRACE_WRITER_FILES = [
     'servers/daemon_hooks.py',
     'servers/brain.py',            # stamp_boot_liveness writes a boot heartbeat (s0/K/heartbeat)
-    'servers/brain_remember.py',   # archive_node writes a delta trace
+    'servers/brain_traces.py',     # write_journal_notes batches journal_note rows
+    'servers/mutation_emitter.py', # THE mutation-trace writer (node_created/archived/deleted)
     'servers/scales/s1/encode.py',
     'servers/scales/s1/surface.py',
+    'servers/scales/s2/community.py',
     'servers/scales/s2/community_decoder.py',
     'servers/scales/s2/community_encoder.py',
     'servers/scales/s2/consolidation_decoder.py',
@@ -37,59 +39,226 @@ TRACE_WRITER_FILES = [
 ]
 
 
-def _extract_trace_writes_from_file(filepath):
-    """Extract (scale, event_type, ref_type) triples from trace write calls in a file.
+# ═══════════════════════════════════════════════════════
+# Trace-write extractor (AST)
+# ═══════════════════════════════════════════════════════
+# The trace substrate has FOUR write doors, and a writer reaches one of them
+# either directly or through a helper that binds part of the triple. The
+# extractor resolves each shape below; anything it cannot resolve statically is
+# invisible, which is what KNOWN_EXTRACTOR_BLIND ratchets.
+#
+#   door / shape                              scale comes from
+#   ────────────────────────────────────────────────────────────────────────
+#   x._trace_dal.append(scale=, event_type=,  the `scale` kwarg
+#     ref_type=)
+#   x._trace_dal.append_batch([{...}, ...])   each element's 'scale' key
+#   _s0_trace(brain, ctx, event_type=,        the helper — it hardcodes 's0'
+#     ref_type=)                              (daemon_hooks._s0_trace)
+#   self.trace(event_type, ref_type, ...)     the enclosing class's SCALE
+#     (S2Unit.trace)                          attribute, inherited if needed
+#   dispatch*('trace_append', {...})          the dict's 'scale' key
+#   {"cmd": "trace_append", "args": {...}}    the args dict's 'scale' key
+#
+# A regex can't do this: `append(chain_id=ctx.s0_chain(), scale='s0', ...)`
+# defeats any `[^)]*` scan on the nested call's paren, which is exactly how
+# brain.py and daemon_hooks.py went unseen.
 
-    Looks for patterns:
-    - brain._trace_dal.append(..., scale='X', event_type='Y', ref_type='Z')
-    - dispatch_fn('trace_append', {... 'scale': 'X', 'event_type': 'Y', 'ref_type': 'Z'})
-    - _daemon_tcp_send('trace_append', {... 'scale': 'X', ...})
-    - "cmd": "trace_append", "args": {... "scale": "X", ...}
+# Helpers that bind the scale themselves, so their call sites never pass one.
+SCALE_BINDING_HELPERS = {'_s0_trace': 's0'}
+
+# Call names that dispatch a command by string: fn('trace_append', {payload}).
+DISPATCH_CALL_NAMES = {'dispatch_fn', 'dispatch', '_daemon_tcp_send', 'send_command'}
+
+
+def _str(node):
+    """The literal str value of an AST node, or '' if it isn't a str literal."""
+    return node.value if isinstance(node, ast.Constant) and isinstance(
+        node.value, str) else ''
+
+
+def _kwarg(call, name):
+    """Literal str value of a keyword arg on a Call, or ''."""
+    for kw in call.keywords:
+        if kw.arg == name:
+            return _str(kw.value)
+    return ''
+
+
+def _dict_get(node, key):
+    """Literal str value for `key` in a dict literal (or a dict(...) call), or ''."""
+    if isinstance(node, ast.Dict):
+        for k, v in zip(node.keys, node.values):
+            if _str(k) == key:
+                return _str(v)
+        return ''
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
+            and node.func.id == 'dict':
+        return _kwarg(node, key)
+    return ''
+
+
+def _dict_node(node):
+    """True for a dict literal or a dict(...) call — the two payload shapes."""
+    return isinstance(node, ast.Dict) or (
+        isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == 'dict')
+
+
+def _attr_name(func):
+    """Trailing attribute name of a call target ('append' for x.y.append)."""
+    return func.attr if isinstance(func, ast.Attribute) else ''
+
+
+def _is_trace_dal_call(func, method):
+    """True for `<anything>._trace_dal.<method>` — the DAL door."""
+    return (isinstance(func, ast.Attribute) and func.attr == method
+            and isinstance(func.value, ast.Attribute)
+            and func.value.attr == '_trace_dal')
+
+
+def _class_scale_index():
+    """Map class name → SCALE literal across servers/, resolving inheritance.
+
+    S2 units carry their scale as a class attribute (`SCALE = 's2'`) and call
+    `self.trace(event_type, ref_type, ...)` without one — so resolving
+    `self.trace` needs the class's SCALE, and subclasses like
+    CommunityDetection(CommunityDecoder) inherit it from another FILE. Built
+    once per session (module-level cache below).
     """
-    full_path = os.path.join(ROOT, filepath)
-    with open(full_path) as f:
-        content = f.read()
+    import glob
+    own, bases = {}, {}
+    for path in glob.glob(os.path.join(ROOT, 'servers', '**', '*.py'),
+                          recursive=True):
+        try:
+            tree = ast.parse(open(path).read())
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            bases[node.name] = [b.id for b in node.bases
+                                if isinstance(b, ast.Name)]
+            for stmt in node.body:
+                if isinstance(stmt, ast.Assign) and any(
+                        isinstance(t, ast.Name) and t.id == 'SCALE'
+                        for t in stmt.targets):
+                    if _str(stmt.value):
+                        own[node.name] = _str(stmt.value)
 
-    triples = []
+    def resolve(name, seen=()):
+        if name in own:
+            return own[name]
+        if name in seen:
+            return ''
+        for base in bases.get(name, []):
+            got = resolve(base, seen + (name,))
+            if got:
+                return got
+        return ''
 
-    # Pattern 1: brain._trace_dal.append(...) or self.dal.append(...)
-    # Extract keyword args: scale='...', event_type='...', ref_type='...'
-    for match in re.finditer(
-            r'\.append\([^)]*?scale=[\'"](\w+)[\'"][^)]*?event_type=[\'"](\w+)[\'"]'
-            r'(?:[^)]*?ref_type=[\'"](\w+)[\'"])?',
-            content, re.DOTALL):
-        scale, event_type, ref_type = match.group(1), match.group(2), match.group(3) or ''
-        triples.append((scale, event_type, ref_type, filepath, match.start()))
+    return {name: resolve(name) for name in bases}
 
-    # Pattern 2: dispatch_fn('trace_append', {...}) or _daemon_tcp_send('trace_append', {...})
-    # These use dict literals with string keys
-    for match in re.finditer(
-            r"(?:dispatch_fn|_daemon_tcp_send)\s*\(\s*['\"]trace_append['\"]"
-            r"\s*,\s*\{([^}]+)\}",
-            content, re.DOTALL):
-        block = match.group(1)
-        scale = _extract_dict_value(block, 'scale')
-        event_type = _extract_dict_value(block, 'event_type')
-        ref_type = _extract_dict_value(block, 'ref_type')
+
+_CLASS_SCALES = None
+
+
+def _class_scale(name):
+    global _CLASS_SCALES
+    if _CLASS_SCALES is None:
+        _CLASS_SCALES = _class_scale_index()
+    return _CLASS_SCALES.get(name, '')
+
+
+class _TraceWriteVisitor(ast.NodeVisitor):
+    """Collect (scale, event_type, ref_type, filepath, lineno) per write site."""
+
+    def __init__(self, filepath):
+        self.filepath = filepath
+        self.triples = []
+        self._class_stack = []
+
+    def visit_ClassDef(self, node):
+        self._class_stack.append(node.name)
+        self.generic_visit(node)
+        self._class_stack.pop()
+
+    def _add(self, scale, event_type, ref_type, node):
+        # Only record a site the extractor fully resolved on the two fields the
+        # contract keys on. A partial resolve is blindness, not a triple.
         if scale and event_type:
-            triples.append((scale, event_type, ref_type or '', filepath, match.start()))
+            self.triples.append((scale, event_type, ref_type or '',
+                                 self.filepath, node.lineno))
 
-    # Pattern 3: JSON dict in post_tool_trace.py ("cmd": "trace_append")
-    for match in re.finditer(
-            r'"cmd"\s*:\s*"trace_append"[^}]*?"scale"\s*:\s*"(\w+)"'
-            r'[^}]*?"event_type"\s*:\s*"(\w+)"'
-            r'(?:[^}]*?"ref_type"\s*:\s*"(\w+)")?',
-            content, re.DOTALL):
-        scale, event_type, ref_type = match.group(1), match.group(2), match.group(3) or ''
-        triples.append((scale, event_type, ref_type, filepath, match.start()))
+    def _add_payload(self, payload, node):
+        self._add(_dict_get(payload, 'scale'), _dict_get(payload, 'event_type'),
+                  _dict_get(payload, 'ref_type'), node)
 
-    return triples
+    def visit_Call(self, node):
+        func = node.func
+
+        # ── Door 1: x._trace_dal.append(scale=..., event_type=..., ref_type=...)
+        if _is_trace_dal_call(func, 'append'):
+            self._add(_kwarg(node, 'scale'), _kwarg(node, 'event_type'),
+                      _kwarg(node, 'ref_type'), node)
+
+        # ── Door 2: x._trace_dal.append_batch([{...}, dict(...), ...])
+        elif _is_trace_dal_call(func, 'append_batch'):
+            if node.args and isinstance(node.args[0], (ast.List, ast.Tuple)):
+                for elt in node.args[0].elts:
+                    if _dict_node(elt):
+                        self._add_payload(elt, elt)
+
+        # ── Door 3: a helper that binds the scale (e.g. _s0_trace → 's0')
+        elif isinstance(func, ast.Name) and func.id in SCALE_BINDING_HELPERS:
+            self._add(SCALE_BINDING_HELPERS[func.id],
+                      _kwarg(node, 'event_type'), _kwarg(node, 'ref_type'), node)
+
+        # ── Door 4: S2Unit.trace(event_type, ref_type, ...) — scale from the class
+        elif _attr_name(func) == 'trace' and isinstance(func.value, ast.Name) \
+                and func.value.id == 'self':
+            args = node.args
+            event_type = _str(args[0]) if len(args) > 0 else _kwarg(node, 'event_type')
+            ref_type = _str(args[1]) if len(args) > 1 else _kwarg(node, 'ref_type')
+            scale = _class_scale(self._class_stack[-1]) if self._class_stack else ''
+            self._add(scale, event_type, ref_type, node)
+
+        # ── Door 5: dispatch_fn('trace_append', {...})
+        elif isinstance(func, ast.Name) and func.id in DISPATCH_CALL_NAMES \
+                and len(node.args) >= 2 and _str(node.args[0]) == 'trace_append' \
+                and _dict_node(node.args[1]):
+            self._add_payload(node.args[1], node)
+        elif _attr_name(func) in DISPATCH_CALL_NAMES \
+                and len(node.args) >= 2 and _str(node.args[0]) == 'trace_append' \
+                and _dict_node(node.args[1]):
+            self._add_payload(node.args[1], node)
+
+        self.generic_visit(node)
 
 
-def _extract_dict_value(block, key):
-    """Extract a string value from a dict-like text block."""
-    m = re.search(r"['\"]%s['\"]\s*:\s*['\"](\w+)['\"]" % key, block)
-    return m.group(1) if m else ''
+def _extract_trace_writes_from_file(filepath):
+    """Extract (scale, event_type, ref_type, filepath, lineno) per trace write.
+
+    AST-based: see the door table above for the shapes it resolves. Sites whose
+    triple isn't statically knowable (a payload built in a loop, a scale read
+    from a variable) yield nothing — a file where that is ALL the sites is
+    extractor-blind and must be declared in KNOWN_EXTRACTOR_BLIND.
+    """
+    with open(os.path.join(ROOT, filepath)) as f:
+        tree = ast.parse(f.read())
+
+    # Door 6: a JSON command dict — {"cmd": "trace_append", "args": {...}} —
+    # handed to json.dumps and written to the daemon socket (hook scripts,
+    # which have no brain object to reach the DAL through). Matched on the
+    # dict shape itself, wherever it appears.
+    visitor = _TraceWriteVisitor(filepath)
+    visitor.visit(tree)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict) and _dict_get(node, 'cmd') == 'trace_append':
+            for k, v in zip(node.keys, node.values):
+                if _str(k) == 'args' and _dict_node(v):
+                    visitor._add_payload(v, node)
+
+    return visitor.triples
 
 
 def _extract_chain_patterns(filepath):
@@ -121,6 +290,56 @@ def _extract_chain_patterns(filepath):
 class TestTraceContractSync:
     """Verify all trace writers in the codebase match the contract."""
 
+    # Writer files the extractor cannot see, and WHY. A file listed here
+    # contributes nothing to the three contract assertions below — its triples
+    # are unchecked — so the entry is a debt marker, not an exemption to reach
+    # for. The ratchet works both ways: a NEW blind file fails (the contract
+    # silently stopped covering a writer), and a file that HEALS fails too
+    # (delete the entry, the checks now cover it).
+    #
+    # Both entries build their payloads in a loop from runtime values, so no
+    # (scale, event_type, ref_type) triple exists in the source to read.
+    KNOWN_EXTRACTOR_BLIND = {
+        # Validates itself instead: _emit_mutation_traces calls
+        # validate_trace_event(scale, 'delta', ref_type) per row before writing.
+        'servers/mutation_emitter.py',
+        # ref_type is the literal 'journal_note', but `scale` is a parameter —
+        # the caller's (s1 Scribe or an S2 unit). Both are covered by the
+        # (s1|s2, delta, journal_note) registrations the contract already holds.
+        'servers/brain_traces.py',
+    }
+
+    def test_extractor_sees_every_writer_file(self):
+        """Every declared writer file yields at least one triple — or is a
+        declared blind spot. Guards the failure mode this whole file has: an
+        assertion that iterates an empty list passes vacuously, so a writer
+        going invisible looks exactly like a writer that's fine."""
+        blind, healed = [], []
+        for filepath in TRACE_WRITER_FILES:
+            visible = bool(_extract_trace_writes_from_file(filepath))
+            known = filepath in self.KNOWN_EXTRACTOR_BLIND
+            if not visible and not known:
+                blind.append(filepath)
+            elif visible and known:
+                healed.append(filepath)
+
+        assert not blind, (
+            "Trace writes in these files are invisible to the extractor, so "
+            "their scale/event_type/ref_type triples are NOT contract-checked: "
+            "%s\nEither teach _TraceWriteVisitor the call shape (see the door "
+            "table), or declare it in KNOWN_EXTRACTOR_BLIND with the reason."
+            % blind)
+        assert not healed, (
+            "These files are now visible to the extractor — remove them from "
+            "KNOWN_EXTRACTOR_BLIND so their triples are checked: %s" % healed)
+
+    def test_known_blind_files_are_writer_files(self):
+        """KNOWN_EXTRACTOR_BLIND can only name files that are actually declared
+        writers — otherwise an entry outlives the file it excused."""
+        stale = self.KNOWN_EXTRACTOR_BLIND - set(TRACE_WRITER_FILES)
+        assert not stale, (
+            "KNOWN_EXTRACTOR_BLIND names non-writer files: %s" % sorted(stale))
+
     def setup_method(self):
         from servers.trace_contract import validate_trace_event, SCALES, CHAIN_PREFIXES
         self.validate = validate_trace_event
@@ -137,29 +356,29 @@ class TestTraceContractSync:
         """Every trace write uses a scale defined in the contract."""
         for filepath in TRACE_WRITER_FILES:
             triples = _extract_trace_writes_from_file(filepath)
-            for scale, event_type, ref_type, fpath, pos in triples:
+            for scale, event_type, ref_type, fpath, line in triples:
                 assert scale in self.SCALES, \
-                    "Invalid scale '%s' in %s (event_type=%s, ref_type=%s)" % (
-                        scale, fpath, event_type, ref_type)
+                    "Invalid scale '%s' in %s:%d (event_type=%s, ref_type=%s)" % (
+                        scale, fpath, line, event_type, ref_type)
 
     def test_all_trace_writes_use_valid_event_types(self):
         """Every trace write uses a valid event_type."""
         from servers.trace_contract import EVENT_TYPES
         for filepath in TRACE_WRITER_FILES:
             triples = _extract_trace_writes_from_file(filepath)
-            for scale, event_type, ref_type, fpath, pos in triples:
+            for scale, event_type, ref_type, fpath, line in triples:
                 assert event_type in EVENT_TYPES, \
-                    "Invalid event_type '%s' in %s (scale=%s, ref_type=%s)" % (
-                        event_type, fpath, scale, ref_type)
+                    "Invalid event_type '%s' in %s:%d (scale=%s, ref_type=%s)" % (
+                        event_type, fpath, line, scale, ref_type)
 
     def test_all_trace_writes_use_valid_ref_types(self):
         """Every (scale, event_type, ref_type) triple passes contract validation."""
         for filepath in TRACE_WRITER_FILES:
             triples = _extract_trace_writes_from_file(filepath)
-            for scale, event_type, ref_type, fpath, pos in triples:
+            for scale, event_type, ref_type, fpath, line in triples:
                 ok, error = self.validate(scale, event_type, ref_type)
-                assert ok, "Contract violation in %s: %s (scale=%s, event_type=%s, ref_type=%s)" % (
-                    fpath, error, scale, event_type, ref_type)
+                assert ok, "Contract violation in %s:%d: %s (scale=%s, event_type=%s, ref_type=%s)" % (
+                    fpath, line, error, scale, event_type, ref_type)
 
     def test_all_chain_ids_follow_conventions(self):
         """Chain ID prefixes match CHAIN_PREFIXES patterns."""
@@ -212,15 +431,20 @@ class TestTraceContractSync:
                 continue
             with open(py_file) as f:
                 content = f.read()
-            # Check for direct trace writes (not imports or comments)
-            if 'trace_dal.append(' in content or "trace_append'" in content:
+            # Check for direct trace writes (not imports or comments).
+            # append_batch is its own door — matching only 'append(' is how
+            # mutation_emitter.py and brain_traces.py wrote traces for months
+            # without ever being declared here.
+            doors = ('trace_dal.append(', 'trace_dal.append_batch(',
+                     "trace_append'")
+            if any(d in content for d in doors):
                 # Ignore if it's just a reference in a comment or string
                 lines = content.split('\n')
                 for i, line in enumerate(lines):
                     stripped = line.strip()
                     if stripped.startswith('#'):
                         continue
-                    if 'trace_dal.append(' in stripped or "trace_append'" in stripped:
+                    if any(d in stripped for d in doors):
                         assert False, \
                             "Unexpected trace write in %s line %d: %s\n" \
                             "Add to TRACE_WRITER_FILES in test_trace_contract_sync.py" % (
