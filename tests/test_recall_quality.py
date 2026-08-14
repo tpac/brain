@@ -104,69 +104,12 @@ class TestScoringWeights(BrainTestBase):
 class TestDampening(BrainTestBase):
     """Verify that dampening mechanisms reduce noise from hubs and low-signal types."""
 
-    def test_hub_dampening(self):
-        """A node connected to 50+ other nodes should rank lower than an equivalent non-hub node.
-
-        Hub nodes (high-degree) tend to be generic and match too many queries. The
-        hub dampening formula (threshold/edge_count) reduces their relevance score.
-        """
-        # Create hub node
-        hub = self.brain.remember(
-            type='decision',
-            title='Adopt TypeScript strict mode for all new modules',
-            content='Every new TypeScript file must use strict mode with noImplicitAny, '
-                    'strictNullChecks, and noUncheckedIndexedAccess enabled. This catches '
-                    'null pointer errors at compile time and reduces runtime crashes by ~40%.',
-            keywords='typescript strict-mode noImplicitAny strictNullChecks compile-time safety'
-        )
-
-        # Create 55 connected nodes to make it a hub
-        for i in range(55):
-            satellite = self.brain.remember(
-                type='context',
-                title=f'Module {i}: migrated to TypeScript strict mode',
-                content=f'Module {i} was migrated to strict TypeScript. Found {i + 3} type errors '
-                        f'during migration, all resolved. No runtime regressions detected.',
-                keywords=f'typescript migration module-{i}'
-            )
-            self.brain.connect(hub['id'], satellite['id'], 'related', 0.5)
-
-        # Create non-hub node with same content
-        non_hub = self.brain.remember(
-            type='decision',
-            title='Adopt TypeScript strict mode for the payments service',
-            content='The payments service specifically needs TypeScript strict mode because it '
-                    'handles currency arithmetic where null values cause silent data corruption. '
-                    'Enable noImplicitAny and strictNullChecks as the first migration step.',
-            keywords='typescript strict-mode payments service compile-time safety'
-        )
-        # Give it just 2 connections
-        c1 = self.brain.remember(type='context', title='Payments service overview',
-                                  content='The payments service handles Stripe integration and invoice generation.',
-                                  keywords='payments stripe invoices')
-        c2 = self.brain.remember(type='context', title='Payments service testing plan',
-                                  content='Integration tests for the payments service use Stripe test mode API keys.',
-                                  keywords='payments testing stripe')
-        self.brain.connect(non_hub['id'], c1['id'], 'related', 0.5)
-        self.brain.connect(non_hub['id'], c2['id'], 'related', 0.5)
-        self.brain.save()
-
-        # Query that matches both equally by content
-        results = self.brain.recall('typescript strict mode safety', limit=10)
-        result_list = results.get('results', [])
-
-        # Find positions
-        hub_pos = None
-        non_hub_pos = None
-        for i, r in enumerate(result_list):
-            if r['id'] == hub['id']:
-                hub_pos = i
-            if r['id'] == non_hub['id']:
-                non_hub_pos = i
-
-        if hub_pos is not None and non_hub_pos is not None:
-            self.assertGreater(hub_pos, non_hub_pos,
-                               f'Hub node (pos={hub_pos}) should rank lower than non-hub (pos={non_hub_pos})')
+    # test_hub_dampening removed 2026-08-13: it drove `brain.recall()` and
+    # asserted final ordering, but hub dampening (`relevance *= threshold /
+    # edge_count`) only touches the keyword channel inside `_keyword_recall`
+    # — under laf_v1 the field score dominates the blend, so the assertion
+    # never described this path. Hub suppression on the main path is an open
+    # LAF lane question (brain 7e9e36a7), not a regression this pins.
 
     def test_type_dampening(self):
         """A 'project' node should rank lower than a 'decision' node with similar content.

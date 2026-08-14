@@ -924,7 +924,7 @@ class BrainRecallMixin:
             # v4: Hub dampening (nodes with 20+ connections get reduced relevance)
             _graph_dal = self._graph
             edge_count = _graph_dal.count_node_edges(node['id'], min_weight=0)
-            hub = self._get_tunable('hub_dampening', {'threshold': 40, 'penalty': 0.5})
+            hub = self._get_tunable('hub_dampening', {'threshold': 40})
             hub_threshold = hub.get('threshold', 40) if isinstance(hub, dict) else 40
             if edge_count > hub_threshold:
                 relevance *= hub_threshold / edge_count

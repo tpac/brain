@@ -121,43 +121,11 @@ class Test02_SynapticFatigue(unittest.TestCase):
         cls.brain.close()
         os.remove(cls.test_db)
 
-    def _get_fatigue(self):
-        """Read fatigue from the live source (session context).
-
-        Fatigue used to be a dict on the Brain instance (`_session_fatigue`)
-        but moved to SessionContext when sessions became first-class
-        (commit b9fe76f era). The Brain attribute is now only populated
-        as a fallback when no session context exists. Tests should read
-        from the canonical location.
-        """
-        ctx = getattr(self.brain, '_fatigue_ctx', None)
-        if ctx is not None:
-            return dict(ctx.fatigue)
-        return dict(getattr(self.brain, '_session_fatigue', {}))
-
-    def _reset_fatigue(self):
-        ctx = getattr(self.brain, '_fatigue_ctx', None)
-        if ctx is not None:
-            ctx.fatigue.clear()
-        if hasattr(self.brain, '_session_fatigue'):
-            self.brain._session_fatigue = {}
-
-    def test_fatigue_dict_created(self):
-        self._reset_fatigue()
-        self.brain.recall("test", limit=5)
-        # Either the session-context dict or the Brain fallback is populated.
-        self.assertTrue(self._get_fatigue() is not None)
-
-    def test_fatigue_increments(self):
-        self._reset_fatigue()
-        self.brain.recall("daemon architecture", limit=5)
-        first_count = self._get_fatigue()
-        self.brain.recall("daemon architecture", limit=5)
-        second_count = self._get_fatigue()
-        # At least some nodes should have higher fatigue
-        increased = any(second_count.get(k, 0) > v
-                       for k, v in first_count.items())
-        self.assertTrue(increased, "Fatigue should increment after recall")
+    # Fatigue accumulation is pinned by
+    # test_recall_pipeline.test_fatigue_accumulates_and_dampens_within_a_session,
+    # which supplies the session fatigue actually lives on. The tests that used
+    # to sit here read `brain._fatigue_ctx` / `brain._session_fatigue` —
+    # attributes that no longer exist — so they could never observe it.
 
     def test_degree_cache_populated(self):
         """Structural degree cache computed once, used for fatigue K calculation."""

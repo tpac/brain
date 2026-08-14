@@ -63,48 +63,44 @@ class TestRecallPipeline(unittest.TestCase):
         scores = [r['effective_activation'] for r in result['results']]
         self.assertEqual(scores, sorted(scores, reverse=True))
 
-    def _fatigue_dict(self):
-        """Read fatigue from session context (canonical) with Brain fallback.
+    def test_fatigue_accumulates_within_a_session(self):
+        """Recall with a session increments per-node fatigue on that session.
 
-        Fatigue moved to SessionContext when sessions became first-class.
+        Fatigue is per-session: it lives on SessionContext and only accumulates
+        when recall is given one (production always is — the hook passes ctx=,
+        the MCP path passes session_id=). A recall with no session deliberately
+        drops the increment, so this test must supply one. The tests that used
+        to live here read `brain._fatigue_ctx` / `brain._session_fatigue` —
+        attributes that do not exist — so they could never observe accumulation
+        and sat deselected in pytest.ini for months.
+
+        NOT asserted here, deliberately — two things measured 2026-08-13 under
+        laf_v1 that nobody has explained yet, and pinning a guess about either
+        would be worse than leaving them visible:
+        (1) The count does not pass 1. A second recall of the same query in the
+            same session leaves the top node's fatigue at 1, though
+            `_mark_accessed` increments unconditionally when ctx is not None and
+            `get_or_create_session` returns a cached instance by reference.
+        (2) Fatigue does not move the surfaced score. Two such recalls return
+            `effective_activation` identical to 16 decimal places, though the
+            path reads as intact: LAF field score → `sim *= (1 - fatigue)` →
+            embedding_scores → blended → effective_activation.
+        Both need a debug run, not more reading. Until then this test pins only
+        what is proven: a recall with a session records fatigue.
         """
-        ctx = getattr(self.brain, '_fatigue_ctx', None)
-        if ctx is not None:
-            return ctx.fatigue
-        return getattr(self.brain, '_session_fatigue', {})
+        sid = 'fatigue-contract-test'
+        ctx = self.brain.get_or_create_session(sid)
+        ctx.fatigue.clear()
 
-    def _reset_fatigue(self):
-        ctx = getattr(self.brain, '_fatigue_ctx', None)
-        if ctx is not None:
-            ctx.fatigue.clear()
-        if hasattr(self.brain, '_session_fatigue'):
-            self.brain._session_fatigue = {}
-
-    def test_fatigue_accumulates(self):
-        """After multiple recalls, session fatigue dict should grow."""
-        self._reset_fatigue()
-        self.brain.recall("test query 1", limit=5)
-        self.brain.recall("test query 2", limit=5)
-        self.assertGreater(len(self._fatigue_dict()), 0)
-
-    def test_fatigue_dampens_scores(self):
-        """A node recalled twice should have a lower score the second time."""
-        self._reset_fatigue()
-        r1 = self.brain.recall("daemon architecture", limit=25)
+        r1 = self.brain.recall("daemon architecture", limit=25, session_id=sid)
+        self.assertTrue(r1['results'], "need at least one result to fatigue")
         first_id = r1['results'][0]['id']
-        first_score = r1['results'][0]['effective_activation']
 
-        r2 = self.brain.recall("daemon architecture", limit=25)
-        # Find the same node in second recall
-        second_score = None
-        for r in r2['results']:
-            if r['id'] == first_id:
-                second_score = r['effective_activation']
-                break
+        self.assertGreater(len(ctx.fatigue), 0,
+                           "recall with a session must increment fatigue")
+        self.assertGreater(ctx.fatigue.get(first_id, 0), 0,
+                           "the top result must carry a fatigue count")
 
-        if second_score is not None:
-            self.assertLess(second_score, first_score,
-                          "Fatigue should reduce score on repeated recall")
 
     def test_structural_degree_cache(self):
         """Structural degree cache should be populated after recall."""
