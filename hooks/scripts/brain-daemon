@@ -20,9 +20,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # if brain.db is actually there — not a verdict. A daemon relaunched after
 # the user adopted a new brain location follows the ladder to the new path
 # instead of writing the frozen plist snapshot forever (D-13 step 4a).
-# `|| true`: the resolver is not errexit-safe (guarded mkdirs); a resolution
-# failure surfaces below as empty BRAIN_DB_DIR / missing BRAIN_PYTHON, with
-# the resolver's own stderr kept.
+# `|| true` covers the SOURCE returning non-zero, not the sourced file's own
+# commands: under `set -e` above, the first failing bare command anywhere in
+# the resolver chain exits this script directly and the FATAL diagnostics below
+# never print — launchd then respawns on the 10s throttle. What `|| true` does
+# buy is that a resolver ending on a false test is not itself fatal, so a
+# genuine no-brain result surfaces below as empty BRAIN_DB_DIR with the
+# resolver's own stderr kept.
 # NO_PERSIST: the daemon consumes the resolution, it is not an authority on
 # it — a relaunch running off baked plist state must not overwrite the
 # resolved.env record hooks maintain.
@@ -52,11 +56,15 @@ fi
 
 DB_PATH="$BRAIN_DB_DIR/brain.db"
 
+# The daemon's entry point — the SAME command daemon_launch.daemon_argv()
+# builds for the no-launchd spawn path, so both routes exec identically
+# (tests/test_daemon_recovery.py compares them). The DB path is an argv
+# element, so it is data whatever it contains: spaces, quotes, backslashes.
+#
+# PYTHONPATH, not a sys.path line inside the program: `-m` must resolve the
+# package before any of our code runs. It is prepended, never replaced.
+export PYTHONPATH="$PLUGIN_DIR${PYTHONPATH:+:$PYTHONPATH}"
+
 # exec so launchd supervises the daemon directly (not this shell).
 # KeepAlive restarts the daemon, not the shell, when it exits.
-exec "$BRAIN_PYTHON" -c "
-import sys, os
-sys.path.insert(0, '$PLUGIN_DIR')
-from servers.daemon_server import BrainDaemon
-BrainDaemon('$DB_PATH').start()
-"
+exec "$BRAIN_PYTHON" -m servers.daemon_server "$DB_PATH"

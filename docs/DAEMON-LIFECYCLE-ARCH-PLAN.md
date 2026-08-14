@@ -209,14 +209,17 @@ modules, and the daemon reaches *up* into the client for it:
 
 **Target state.** New `servers/daemon_launch.py` owns the launchd + spawn surface as **public** API:
 `LAUNCHD_LABEL`, `service_target()`, `kickstart()`, `manages()`, `_debugger_friendly_python()`,
-`kill_daemon()`, `port_is_occupied()`, `daemon_argv(db_path)` (interpreter + startup command +
+`kill_daemon()`, `port_is_occupied()`, `daemon_argv(db_path)` (interpreter + `-m servers.daemon_server`,
+paired with `daemon_env(db_path)` for the sys.path/BRAIN_DB_DIR/CPU env +
 `DAEMON_CPU_ENV` from Step 1), and **one** `spawn_detached_daemon(db_path)`. Both `daemon_client`
 and `daemon_server` consume it as public names — no private reach-through, no server→client import.
 
 **Files & call sites.** New `servers/daemon_launch.py`; move the primitives out of
 `daemon_client.py` and `LAUNCHD_LABEL` out of `daemon_config.py`; rewire `ensure_daemon`,
-`_relaunch_daemon`, `_perform_restart`. Consider collapsing the `-c` heredoc into a real
-`python -m servers.daemon_server` entrypoint so the startup command is a module main, not a string.
+`_relaunch_daemon`, `_perform_restart`. ~~Consider collapsing the `-c` heredoc into a real
+`python -m servers.daemon_server` entrypoint so the startup command is a module main, not a
+string.~~ DONE — distribution arch-plan step 6c (2026-08-12): `daemon_server.main()` is the entry
+point and both spawn routes exec it.
 
 **Verification.** `tests/test_daemon_recovery.py` (re-point the `_launchd_*` patch targets to the new
 module — mechanical rename). Add a test that both spawn callers use `spawn_detached_daemon` (one

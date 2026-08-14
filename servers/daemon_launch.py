@@ -186,18 +186,35 @@ def kill_daemon():
 
 def daemon_argv(db_path: str) -> list:
     """The one startup command every spawn site uses: debugger-friendly
-    interpreter + a `-c` bootstrap that pins sys.path to this checkout and
-    BRAIN_DB_DIR to the daemon's DB dir."""
-    startup = (
-        'import sys, os; '
-        'sys.path.insert(0, %r); '
-        'os.environ["BRAIN_DB_DIR"] = %r; '
-        'from servers.daemon_server import BrainDaemon; '
-        'd = BrainDaemon(%r); d.start()'
-        % (REPO_ROOT,
-           os.environ.get('BRAIN_DB_DIR', os.path.dirname(db_path)),
-           db_path))
-    return [debugger_friendly_python(), '-c', startup]
+    interpreter running the daemon's own entry point.
+
+    `python -m servers.daemon_server <db>` is the SINGLE boot incantation —
+    hooks/scripts/brain-daemon (the launchd path) execs the identical command,
+    and tests/test_daemon_recovery.py compares the two.
+
+    MUST be paired with daemon_env(db_path) and the cwd pin at the spawn site:
+    argv alone does not carry the sys.path or BRAIN_DB_DIR the daemon needs.
+    """
+    return [debugger_friendly_python(), '-m', 'servers.daemon_server', db_path]
+
+
+def daemon_env(db_path: str) -> dict:
+    """The environment daemon_argv must be spawned with: BRAIN_DB_DIR pinned to
+    the daemon's DB dir, the CPU-only invariant, and this checkout on
+    PYTHONPATH.
+
+    The cwd pin at the spawn site is what makes `-m servers.daemon_server`
+    resolve (under `-m`, cwd is sys.path[0], ahead of PYTHONPATH). PYTHONPATH
+    is the belt: it survives into anything the daemon itself spawns, which the
+    cwd does not. Prepends rather than replacing an inherited value."""
+    pythonpath = os.pathsep.join(
+        p for p in (REPO_ROOT, os.environ.get('PYTHONPATH', '')) if p)
+    return {
+        **os.environ,
+        'PYTHONPATH': pythonpath,
+        'BRAIN_DB_DIR': os.environ.get('BRAIN_DB_DIR') or os.path.dirname(db_path),
+        **DAEMON_CPU_ENV,
+    }
 
 
 def spawn_detached_daemon(db_path: str):
@@ -221,7 +238,15 @@ def spawn_detached_daemon(db_path: str):
                 stdout=log_fp,
                 stderr=log_fp,
                 start_new_session=True,
-                env={**os.environ, **DAEMON_CPU_ENV},
+                env=daemon_env(db_path),
+                # `python -m` puts the CWD at sys.path[0], AHEAD of PYTHONPATH.
+                # Inheriting the spawner's cwd (a hook runs in the user's
+                # project) would let a stray `servers/` package there shadow
+                # this checkout — the daemon would run the wrong tree's code,
+                # stickily, across restarts. This also makes the direct spawn's
+                # cwd match the plist's WorkingDirectory, so both spawn routes
+                # now agree on every element of the process.
+                cwd=REPO_ROOT,
             )
     finally:
         log_fp.close()
