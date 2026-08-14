@@ -3,7 +3,7 @@
 Eliminates repeated boilerplate: path setup, Brain import, input parsing,
 daemon connection helpers, error logging. Every hook .py file imports this.
 """
-import sys, os, json, socket, traceback, sqlite3
+import sys, os, json, traceback, sqlite3
 from datetime import datetime, timezone
 
 # ── Path setup ──
@@ -15,6 +15,16 @@ if server_dir:
     parent = os.path.dirname(server_dir)
     if parent not in sys.path:
         sys.path.insert(0, parent)
+else:
+    # BRAIN_SERVER_DIR is exported by resolve-brain-db.sh, which only the
+    # `bash <script>.sh` hooks source — a hook invoked as a bare `python3
+    # <script>.py` inherits none of it, and `import servers.*` then raises
+    # ModuleNotFoundError inside helpers that swallow exceptions. Derive the
+    # plugin root from this file's own location instead of trusting the env:
+    # hooks/scripts/hook_common.py → <plugin root>.
+    _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if os.path.isdir(os.path.join(_root, "servers")) and _root not in sys.path:
+        sys.path.insert(0, _root)
 
 
 def _get_hook_name():
@@ -113,9 +123,23 @@ def log_hook_error(source, error, context="", level="error"):
 
     This is the ONLY place hook errors should be logged. Never swallow silently.
     Uses direct SQLite (not Brain) so it works even when Brain fails to import.
+
+    Not every caller is inside a live `except`: a failure handed over as a
+    RETURN VALUE (daemon_client.send_command's transport classes, the
+    daemon-down handlers) has no sys.exc_info() to read, and those rows used to
+    persist an empty traceback column. Falling back to format_stack() records
+    the CALLER chain — which is the part worth reading anyway; the exception's
+    own frames are usually one socket call the error string already names.
     """
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-    tb = traceback.format_exc() if sys.exc_info()[2] else ""
+    if sys.exc_info()[2]:
+        tb = traceback.format_exc()
+    else:
+        # INNERMOST frames, not the whole stack: format_stack() is oldest-first,
+        # so the column's 2000-char truncation would keep the interpreter's
+        # bootstrap and cut the frames that name what actually failed. -1 drops
+        # this function.
+        tb = "".join(traceback.format_stack()[-9:-1])
     msg = "hook_error [%s] %s: %s" % (source, error, context)
 
     # Always print to stderr — never silent
@@ -302,8 +326,8 @@ def daemon_unavailable_error(hook_name=None):
 
 
 # ── Daemon helpers ──
-DAEMON_HOST = "127.0.0.1"
-DAEMON_PORT = int(os.environ.get("BRAIN_DAEMON_PORT") or (47200 + os.getuid() % 100))  # env (brain-env.sh) is the live source; formula is the fallback
+# No host/port here: servers.daemon_config owns the address (env-first, formula
+# as fallback) and daemon_client owns the wire.
 
 
 def daemon_available(timeout=2.0):
@@ -323,21 +347,13 @@ def daemon_available(timeout=2.0):
 def daemon_call(cmd, args=None, timeout=10.0):
     """Send a command to the daemon and return the result.
     Returns the result dict on success, empty dict on failure.
+
+    The quiet sibling of daemon_call_raw: same wire (daemon_client owns it),
+    no logging — for callers that treat a daemon-down as a non-event.
     """
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(timeout)
-        sock.connect((DAEMON_HOST, DAEMON_PORT))
-        msg = json.dumps({"cmd": cmd, "args": args or {}}) + "\n"
-        sock.sendall(msg.encode())
-        data = b""
-        while b"\n" not in data:
-            chunk = sock.recv(65536)
-            if not chunk:
-                break
-            data += chunk
-        sock.close()
-        resp = json.loads(data.decode().strip())
+        from servers.daemon_client import send_command
+        resp = send_command(cmd, args, timeout=timeout)
         return resp.get("result", {}) if resp.get("ok") else {}
     except Exception:
         return {}
@@ -347,51 +363,43 @@ def daemon_call_raw(cmd, args=None, timeout=10.0):
     """Send a command to the daemon and return the full response.
     Returns the raw response dict including 'ok' field.
 
+    The WIRE belongs to daemon_client.send_command; this wrapper owns the
+    hook-side OBSERVABILITY — the [BRAIN ERROR] line Claude sees and the
+    hook_errors row the dashboard and boot read. Failure classes come from
+    send_command's `transport` key, never from matching its prose.
+
     On error: always prints [BRAIN ERROR] to stderr so Claude sees it.
-    On success + debug mode: prints [BRAIN DEBUG] summary.
     """
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(timeout)
-        sock.connect((DAEMON_HOST, DAEMON_PORT))
-        msg = json.dumps({"cmd": cmd, "args": args or {}}) + "\n"
-        sock.sendall(msg.encode())
-        data = b""
-        while b"\n" not in data:
-            chunk = sock.recv(65536)
-            if not chunk:
-                break
-            data += chunk
-        sock.close()
-        text = data.decode().strip()
-        if not text:
-            # Daemon accepted the connection but closed it without writing.
-            # Surfacing this explicitly beats letting json.loads("") throw the
-            # cryptic "Expecting value: line 1 column 1 (char 0)" — the
-            # ValueError is caught below and logged to hook_errors.
-            raise ValueError("daemon returned empty response (connection closed before reply)")
-        resp = json.loads(text)
-
-        if not resp.get("ok"):
-            err = resp.get("error", "unknown error")
-            brain_error("%s failed: %s" % (cmd, err))
-            log_hook_error(cmd, err, "daemon returned ok=false")
-
-        return resp
-    except socket.timeout:
-        brain_error("%s timed out after %.0fs" % (cmd, timeout))
-        log_hook_error(cmd, "timeout", "%.0fs" % timeout)
-        return {"ok": False, "error": "timeout"}
-    except ConnectionRefusedError:
-        brain_error("%s: daemon not running" % cmd)
-        return {"ok": False, "error": "daemon not running"}
+        from servers.daemon_client import send_command
+        resp = send_command(cmd, args, timeout=timeout)
     except Exception as e:
-        # Catch-all for empty/garbled reads, JSON-parse failures, socket
-        # resets, etc. The sibling branches (ok=false, timeout) already log;
-        # this one did not — that gap is exactly how a recall failure stayed
-        # invisible (surfaced to Claude but never reached hook_errors).
+        # The client module itself is unreachable (import/path failure) — a
+        # hook must degrade, never crash the session.
         brain_error("%s: %s" % (cmd, e))
         log_hook_error(cmd, e, "daemon_call_raw failed")
         return {"ok": False, "error": str(e)}
 
+    transport = resp.get("transport")
+    if transport == "timeout":
+        brain_error("%s timed out after %.0fs" % (cmd, timeout))
+        log_hook_error(cmd, "timeout", "%.0fs" % timeout)
+        return {"ok": False, "error": "timeout"}
+    if transport == "refused":
+        brain_error("%s: daemon not running" % cmd)
+        return {"ok": False, "error": "daemon not running"}
+    if transport:
+        # Empty read, garbled JSON, socket reset. Logged, not just returned:
+        # a failure that reaches Claude but never reaches hook_errors is
+        # invisible in the dashboard and at boot.
+        err = resp.get("error", "unknown error")
+        brain_error("%s: %s" % (cmd, err))
+        log_hook_error(cmd, err, "daemon_call_raw failed")
+        return {"ok": False, "error": err}
 
+    if not resp.get("ok"):
+        err = resp.get("error", "unknown error")
+        brain_error("%s failed: %s" % (cmd, err))
+        log_hook_error(cmd, err, "daemon returned ok=false")
+
+    return resp

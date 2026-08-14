@@ -13,7 +13,6 @@ stderr gets a message and the caller gets a real error.
 import json
 import os
 import sys
-import socket
 
 # Ensure parent dir is on sys.path so `from servers.X` works
 # even when this file is run as a standalone script (not -m servers.brain_mcp)
@@ -22,9 +21,9 @@ if _parent not in sys.path:
     sys.path.insert(0, _parent)
 
 # ── Daemon communication ──
-
-DAEMON_HOST = "127.0.0.1"  # Client connects via IPv4 loopback
-from servers.daemon_config import DAEMON_PORT  # single Python source of the per-user port
+# No host/port and no socket here: daemon_config owns the address, and
+# daemon_client.send_command owns the wire protocol.
+from servers.daemon_client import send_command
 _last_daemon_fingerprint = None  # Track daemon restarts
 
 
@@ -397,29 +396,18 @@ def daemon_send(cmd, args=None, timeout=30.0):
     singleton per user; each MCP subprocess carries its own session env.
     """
     args = _stamp_caller_session(dict(args) if args else {})
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(timeout)
-    try:
-        sock.connect((DAEMON_HOST, DAEMON_PORT))
-        msg = json.dumps({"cmd": cmd, "args": args}) + "\n"
-        sock.sendall(msg.encode("utf-8"))
-        data = b""
-        while True:
-            chunk = sock.recv(65536)
-            if not chunk:
-                break
-            data += chunk
-            if b"\n" in data:
-                break
-        if data:
-            return json.loads(data.decode("utf-8").strip())
-        return {"ok": False, "error": "Empty response from daemon"}
-    except socket.timeout:
+    resp = send_command(cmd, args, timeout=timeout)
+    # The wire lives in daemon_client — including the guarantee that this is a
+    # dict. What stays here is the stamping above and the operator-facing prose
+    # below, which names the MCP server as the thing that couldn't reach the
+    # daemon.
+    transport = resp.get("transport")
+    if transport == "timeout":
         return {"ok": False, "error": "Daemon timeout ({}s)".format(timeout)}
-    except Exception as e:
-        return {"ok": False, "error": "Daemon connection error: {}".format(e)}
-    finally:
-        sock.close()
+    if transport:
+        return {"ok": False,
+                "error": "Daemon connection error: {}".format(resp.get("error"))}
+    return resp
 
 
 def ensure_daemon_running():

@@ -31,7 +31,19 @@ from .daemon_launch import (
 
 def send_command(cmd: str, args: Optional[Dict[str, Any]] = None,
                  timeout: float = 10.0) -> Dict[str, Any]:
-    """Send a command to the running daemon via TCP. Returns response dict."""
+    """Send a command to the running daemon via TCP. Returns response dict.
+
+    The ONE implementation of the daemon's wire protocol (connect, JSON +
+    newline, read to the newline, parse) — hooks, the MCP server and the
+    restart CLI all route through it rather than hand-rolling a socket.
+
+    A failure of the WIRE carries a `transport` key classifying it:
+    `timeout`, `refused`, `empty` (accepted then closed without replying) or
+    `protocol` (garbled read, reset, parse failure). Callers that must react
+    differently per class read that key — never the prose in `error`, which is
+    for humans and free to change. It is absent on success AND on a
+    daemon-level ok=false, which is the daemon answering, not the wire failing.
+    """
     addr = get_daemon_addr()
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -42,26 +54,44 @@ def send_command(cmd: str, args: Optional[Dict[str, Any]] = None,
         msg = json.dumps({"cmd": cmd, "args": args or {}}) + "\n"
         sock.sendall(msg.encode('utf-8'))
 
-        # Read response
-        data = b""
+        # Read to the newline the daemon terminates every reply with.
+        # Accumulate in a list: `data += chunk` reallocates the whole buffer
+        # each iteration, which is quadratic on the multi-megabyte replies the
+        # graph queries return.
+        chunks = []
         while True:
             chunk = sock.recv(65536)
             if not chunk:
                 break
-            data += chunk
-            if b"\n" in data:
+            chunks.append(chunk)
+            if b"\n" in chunk:
                 break
 
-        if data:
-            return json.loads(data.decode('utf-8').strip())
-        return {"ok": False, "error": "No response"}
+        text = b"".join(chunks).decode('utf-8').strip()
+        if not text:
+            # Accepted the connection, then closed it without writing. Named
+            # explicitly because letting json.loads("") throw yields the
+            # cryptic "Expecting value: line 1 column 1 (char 0)".
+            return {"ok": False, "transport": "empty",
+                    "error": "daemon returned empty response "
+                             "(connection closed before reply)"}
+        resp = json.loads(text)
+        if not isinstance(resp, dict):
+            # Valid JSON that is not an object — a foreign listener on the
+            # port. Raised rather than returned so it lands in the `protocol`
+            # class below: this function's contract is "returns a response
+            # dict", and every caller was otherwise left to discover
+            # separately that it sometimes doesn't.
+            raise ValueError("daemon returned non-object response: %r" % (resp,))
+        return resp
 
     except socket.timeout:
-        return {"ok": False, "error": "Timeout"}
+        return {"ok": False, "transport": "timeout", "error": "Timeout"}
     except ConnectionRefusedError:
-        return {"ok": False, "error": "Connection refused — daemon may be dead"}
+        return {"ok": False, "transport": "refused",
+                "error": "Connection refused — daemon may be dead"}
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        return {"ok": False, "transport": "protocol", "error": str(e)}
     finally:
         sock.close()
 

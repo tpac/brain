@@ -36,13 +36,13 @@ import collections
 import json
 import os
 import re
-import socket
 import sqlite3
 import sys
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from servers.daemon_client import is_daemon_responsive
 from servers.session_env import detect_session_env, project_from_cwd_basename  # noqa: E402
 
 DB_DIR = os.environ.get('BRAIN_DB_DIR') or os.path.expanduser('~/AgentsContext/brain')
@@ -262,13 +262,10 @@ def dump_sessions(path, needs_operator, s2cwd, target):
 
 
 def daemon_alive():
-    port = int(os.environ.get('BRAIN_DAEMON_PORT') or (47200 + os.getuid() % 100))  # env (brain-env.sh) is the live source; formula is the fallback
-    try:
-        with socket.create_connection(('127.0.0.1', port), timeout=2) as s:
-            s.sendall(b'{"command": "ping"}\n')
-            return bool(s.recv(64))
-    except OSError:
-        return False
+    """The one liveness answer (daemon_config owns the address, daemon_client
+    the wire). Not guarded: this module already imports from servers/ at import
+    time, so a broken path would have killed it long before here."""
+    return is_daemon_responsive(timeout=2)
 
 
 def apply_stamps(stamps):

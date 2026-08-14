@@ -19,6 +19,13 @@ def daemon_send(cmd: str, args=None, timeout: float = 10):
     Returns None on any failure (connection refused, timeout, daemon-side
     error). Callers must handle None — the dashboard never crashes because
     the daemon is down.
+
+    This is the ONE sanctioned copy of the wire protocol
+    (servers.daemon_client.send_command is the owner): the dashboard must keep
+    running with servers/ absent or broken, so it imports nothing from it. The
+    framing is kept identical to the owner's — read until the newline the
+    daemon terminates every reply with, rather than re-parsing the whole
+    buffer as JSON after every chunk.
     """
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -32,13 +39,10 @@ def daemon_send(cmd: str, args=None, timeout: float = 10):
             if not chunk:
                 break
             chunks.append(chunk)
-            try:
-                json.loads(b"".join(chunks))
+            if b"\n" in chunk:
                 break
-            except json.JSONDecodeError:
-                continue
         s.close()
-        resp = json.loads(b"".join(chunks))
+        resp = json.loads(b"".join(chunks).decode("utf-8").strip())
         if resp.get("ok"):
             return resp.get("result")
         return None
