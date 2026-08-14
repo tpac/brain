@@ -7,6 +7,7 @@ Pure config — no classes, no side effects beyond CPU-only env setup.
 
 import os
 import sys
+import time
 import hashlib
 
 # ─── Force CPU-only BEFORE any downstream import ───
@@ -104,6 +105,13 @@ def _code_fingerprint() -> str:
 
 # Captured at import time — represents the code version this process loaded
 _CODE_FINGERPRINT = _code_fingerprint()
+
+# Wall-clock at import — the daemon's PROCESS start (this module is imported
+# while daemon_server loads, before the brain does). Uptime is reported from
+# here, not from BrainDaemon._run_started_at: that one resets on every
+# supervisor restart *within* one process, so an operator would see "Uptime"
+# drop to zero for a daemon whose process never died.
+_PROCESS_STARTED_AT = time.time()
 
 
 def _is_worktree_checkout(repo_root: str) -> bool:
