@@ -12,6 +12,11 @@ invisible in the dashboard and at boot. Two gaps caused it:
 The fix lives in the shared daemon path (single source of truth — every hook
 calls daemon_call_raw), so these tests exercise that one function with a fake
 daemon and assert BOTH halves: a clear error string AND a hook_errors row.
+
+Since step 6d the WIRE belongs to daemon_client.send_command and only the
+observability belongs to daemon_call_raw, so the fake daemon is now pointed at
+by steering the owner's address (get_daemon_addr) rather than module constants
+on hook_common — which no longer keeps a host/port of its own.
 """
 import os
 import sys
@@ -57,11 +62,20 @@ class TestDaemonCallRawLogging(unittest.TestCase):
     def setUp(self):
         # Point hook_common's logger at a temp brain_logs.db.
         self._tmp = tempfile.mkdtemp()
-        self._saved = (hook_common.db_dir, hook_common.DAEMON_HOST, hook_common.DAEMON_PORT)
+        self._saved_db_dir = hook_common.db_dir
         hook_common.db_dir = self._tmp
+        self._addr_patch = None
 
     def tearDown(self):
-        hook_common.db_dir, hook_common.DAEMON_HOST, hook_common.DAEMON_PORT = self._saved
+        hook_common.db_dir = self._saved_db_dir
+        if self._addr_patch is not None:
+            self._addr_patch.stop()
+
+    def _point_at(self, host, port):
+        """Aim the wire owner at the fake daemon for this test."""
+        self._addr_patch = mock.patch("servers.daemon_client.get_daemon_addr",
+                                      return_value=(host, port))
+        self._addr_patch.start()
 
     def _hook_errors(self):
         db = os.path.join(self._tmp, "brain_logs.db")
@@ -77,7 +91,7 @@ class TestDaemonCallRawLogging(unittest.TestCase):
     def test_empty_response_returns_clear_error_and_logs(self):
         """Daemon accepts then closes without writing → clear message, logged."""
         host, port, _ = _serve_once(lambda conn: None)  # close without sending
-        hook_common.DAEMON_HOST, hook_common.DAEMON_PORT = host, port
+        self._point_at(host, port)
 
         resp = hook_common.daemon_call_raw("probe_empty", timeout=3.0)
 
@@ -88,10 +102,32 @@ class TestDaemonCallRawLogging(unittest.TestCase):
         self.assertTrue(any(r[0] == "probe_empty" for r in rows),
                         "empty-response failure must be logged to hook_errors")
 
+    def test_wire_failure_records_the_caller_stack(self):
+        """A failure handed over as a RETURN VALUE has no sys.exc_info(), so
+        these rows used to persist an empty traceback column. log_hook_error
+        falls back to the CALLER stack — the part worth reading; the
+        exception's own frames are one socket call the error string names."""
+        host, port, _ = _serve_once(lambda conn: conn.sendall(b"not json\n"))
+        self._point_at(host, port)
+
+        hook_common.daemon_call_raw("probe_stack", timeout=3.0)
+
+        db = os.path.join(self._tmp, "brain_logs.db")
+        conn = sqlite3.connect(db)
+        try:
+            tb = conn.execute(
+                "SELECT traceback FROM hook_errors WHERE hook_name = 'probe_stack'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertTrue(tb.strip(), "wire failures must not persist an empty traceback")
+        self.assertIn("daemon_call_raw", tb,
+                      "the caller chain is what makes the row worth reading")
+
     def test_garbage_response_is_logged(self):
         """Non-JSON reply → JSON parse error caught by the catch-all AND logged."""
         host, port, _ = _serve_once(lambda conn: conn.sendall(b"not json at all\n"))
-        hook_common.DAEMON_HOST, hook_common.DAEMON_PORT = host, port
+        self._point_at(host, port)
 
         resp = hook_common.daemon_call_raw("probe_garbage", timeout=3.0)
 

@@ -15,6 +15,11 @@
 # subscript is a Bad substitution under dash (Linux /bin/sh) that kills the
 # fallback entirely.
 _RESOLVE_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")" && pwd)"
+
+# brain-env.sh sources api-key-env.sh (guarded) and locates it with the same
+# ${BASH_SOURCE:-$0} idiom this file uses, so the config-path accessor is in
+# scope for the knob rung below. No second source here: two sourcing sites for
+# one helper is the duplication this step removes, not a safety net.
 source "$_RESOLVE_DIR/brain-env.sh"
 
 # Always resolve from script location — never use CLAUDE_PLUGIN_ROOT cache.
@@ -58,8 +63,8 @@ PLUGIN_ROOT='$PLUGIN_ROOT'"
 # ── The two durable adoption channels, read in ONE place each ──────────────
 # Both are read here AND by the launchd installers' identity guard (which may
 # only let a durable channel re-point an installed service's brain). They were
-# three hand-written copies each until step 6; the divergence was already
-# live — one copy of the knob read had lost the stdout discard.
+# read in one place because a second copy of either drifts: the stdout discard
+# below is the kind of fix that lands in one copy and not the other.
 
 # The ~/.config/brain/env BRAIN_DB_DIR knob, read RAW: no `~` expansion and no
 # absolute-only filter, because that is rung 1b's POLICY (below) and not what
@@ -67,11 +72,26 @@ PLUGIN_ROOT='$PLUGIN_ROOT'"
 # is shell grammar, so one format, one parser — with the file's own stdout
 # discarded, since a user `echo` in it must not pollute the value. Empty when
 # the file or the knob is absent.
+#
+# ONE reader for both shell-grammar config files (the user knob and the
+# generated resolved.env): same grammar, same subshell reset, same stdout
+# discard, so a fix to any of those lands once.
+_brain_db_dir_from() {
+  [ -f "$1" ] || return 0
+  (BRAIN_DB_DIR=''; { . "$1"; } >/dev/null 2>&1; printf '%s' "$BRAIN_DB_DIR")
+}
+
+# Reading the knob must depend on NOTHING but $HOME. api-key-env.sh owns the
+# config path, but if it could not be sourced (a damaged install) we fall back
+# to the literal expression rather than failing: a brain the user named must
+# not become unreachable because a sibling file went missing. brain-env.sh
+# already WARNed about the damaged install, so this stays silent.
 brain_config_knob_db_dir() {
-  local _f
-  _f="$(brain_user_env_file)"
-  [ -f "$_f" ] || return 0
-  (BRAIN_DB_DIR=''; { . "$_f"; } >/dev/null 2>&1; printf '%s' "$BRAIN_DB_DIR")
+  if command -v brain_user_env_file >/dev/null 2>&1; then
+    _brain_db_dir_from "$BRAIN_USER_ENV_FILE"
+  else
+    _brain_db_dir_from "${XDG_CONFIG_HOME:-$HOME/.config}/brain/env"
+  fi
 }
 
 # The brain path a user set in the plugin's settings. Claude Code injects it as
@@ -88,7 +108,10 @@ brain_config_option_db_dir() {
 # launchd-spawned daemon won't see CLAUDE_PLUGIN_OPTION_* (see
 # docs/DISTRIBUTION-READINESS.md §2.1).
 if [ -z "${BRAIN_DB_DIR:-}" ]; then
-  BRAIN_DB_DIR="$(brain_config_option_db_dir)"
+  # Expanded inline, not through the accessor: this runs on every hook and a
+  # $(...) around a pure parameter expansion is a fork for nothing. The
+  # accessor exists for launchd-install.sh, which needs the function form.
+  BRAIN_DB_DIR="${CLAUDE_PLUGIN_OPTION_BRAIN_PATH:-${CLAUDE_PLUGIN_OPTION_brain_path:-}}"
   if [ -n "$BRAIN_DB_DIR" ]; then
     # Honor the chosen location even if it doesn't exist yet — create it so the
     # resolution chain adopts it instead of silently falling through to the
@@ -201,7 +224,7 @@ fi
 if [ -z "$DB_DIR" ]; then
   _state_env="${XDG_CONFIG_HOME:-$HOME/.config}/brain/resolved.env"
   if [ -f "$_state_env" ]; then
-    _state_db_dir="$(BRAIN_DB_DIR=''; { . "$_state_env"; } >/dev/null 2>&1; printf '%s' "$BRAIN_DB_DIR")"
+    _state_db_dir="$(_brain_db_dir_from "$_state_env")"
     [ -n "$_state_db_dir" ] && [ -f "$_state_db_dir/brain.db" ] && DB_DIR="$_state_db_dir"
   fi
 fi

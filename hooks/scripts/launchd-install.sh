@@ -4,9 +4,6 @@
 # ensure-dashboard.sh; the label is an ARGUMENT (D-11: the service layer never
 # renames, and a helper that bakes one label is a helper for one service).
 #
-# The ritual was written twice and had already drifted: only the daemon side
-# re-verified after bootstrap, and the dashboard's first-install branch
-# rendered straight over the target instead of through the compared temp file.
 #
 # MECHANISM here, POLICY in the callers — they legitimately differ:
 #   install-daemon-service.sh  install-only; verifies with launchctl afterwards
@@ -19,8 +16,12 @@
 # read empty and the guard keeps the INSTALLED brain dir — the safe direction
 # (never hijack a service onto another brain), never a silent re-point.
 
+# Computed once at source time, not per call: `$(id -u)` is a fork + exec, and
+# install-daemon-service.sh runs SYNCHRONOUSLY on the SessionStart budget.
+_BRAIN_LAUNCHD_DOMAIN="gui/$(id -u)"
+
 brain_launchd_domain() {
-    printf 'gui/%s' "$(id -u)"
+    printf '%s' "$_BRAIN_LAUNCHD_DOMAIN"
 }
 
 brain_launchd_target() {
@@ -29,7 +30,7 @@ brain_launchd_target() {
 
 # True iff launchd has this label loaded in the user's GUI domain.
 brain_launchd_managed() {
-    launchctl print "$(brain_launchd_domain)/$1" >/dev/null 2>&1
+    launchctl print "$_BRAIN_LAUNCHD_DOMAIN/$1" >/dev/null 2>&1
 }
 
 # Materialize the template for THIS machine into $6 (real paths, no tokens).
@@ -57,9 +58,9 @@ brain_launchd_managed() {
 # checked against the launcher the template ships, because that is what the
 # re-materialized plist will exec.
 brain_launchd_render() {
-    # $1 label  $2 template  $3 launcher  $4 plugin_dir  $5 db_dir  $6 out
+    # $1 label  $2 template  $3 launcher  $4 plugin_dir  $5 db_dir  $6 out  $7 log prefix
     local _label="$1" _template="$2" _launcher="$3"
-    local _plugin_dir="$4" _db_dir="$5" _out="$6"
+    local _plugin_dir="$4" _db_dir="$5" _out="$6" _prefix="$7"
     local _target _installed_dir _installed_db _knob _opt
     _target="$(brain_launchd_target "$_label")"
 
@@ -78,9 +79,28 @@ brain_launchd_render() {
         fi
     fi
 
-    sed -e "s|__PLUGIN_DIR__|$_plugin_dir|g" \
-        -e "s|__BRAIN_DB_DIR__|$_db_dir|g" \
-        "$_template" > "$_out"
+    # A `|` in either path makes sed exit non-zero having written a PARTIAL
+    # file, and an `&` makes it succeed while re-emitting the token literally.
+    # Either way the result is not an installable plist, and an unchecked
+    # failure is indistinguishable from drift — the caller would boot out a
+    # working service to install the broken file. So: check both, and say which
+    # path shape did it, here where that knowledge belongs rather than in two
+    # callers' error strings.
+    if ! sed -e "s|__PLUGIN_DIR__|$_plugin_dir|g" \
+             -e "s|__BRAIN_DB_DIR__|$_db_dir|g" \
+             "$_template" > "$_out"; then
+        echo "$_prefix FATAL: could not render $_label.plist (a '|' in a path?)" >&2
+        return 1
+    fi
+    # `case` on a builtin read, not `grep`: one fewer fork on the SessionStart
+    # path, and it dodges grep's exit-2-on-unreadable-file, which a `! grep -q`
+    # would have inverted into "render fine".
+    case "$(<"$_out")" in
+        *__PLUGIN_DIR__*|*__BRAIN_DB_DIR__*)
+            echo "$_prefix FATAL: $_label.plist still holds unsubstituted tokens (an '&' in a path?)" >&2
+            return 1 ;;
+    esac
+    return 0
 }
 
 # Replace an ALREADY-LOADED service with the rendered plist. `kickstart` is not
@@ -96,42 +116,43 @@ brain_launchd_render() {
 brain_launchd_reinstall() {
     # $1 label  $2 rendered  $3 log prefix
     local _label="$1" _rendered="$2" _prefix="$3"
-    local _domain _target _bootstrapped=""
-    _domain="$(brain_launchd_domain)"
-    _target="$(brain_launchd_target "$_label")"
 
-    launchctl bootout "$_domain/$_label" >/dev/null 2>&1 || true
+    launchctl bootout "$_BRAIN_LAUNCHD_DOMAIN/$_label" >/dev/null 2>&1 || true
     for _ in 1 2 3 4 5; do
-        launchctl print "$_domain/$_label" >/dev/null 2>&1 || break
+        brain_launchd_managed "$_label" || break
         sleep 1
     done
-    if launchctl print "$_domain/$_label" >/dev/null 2>&1; then
+    if brain_launchd_managed "$_label"; then
         echo "$_prefix WARN: bootout did not unload $_label — keeping installed plist (drift retries next run)" >&2
         return 1
     fi
 
-    cp "$_rendered" "$_target"
-    for _ in 1 2 3; do
-        launchctl bootstrap "$_domain" "$_target" >/dev/null 2>&1 && { _bootstrapped=1; break; }
-        sleep 1
-    done
-    [ -n "$_bootstrapped" ] || launchctl load -w "$_target" >/dev/null 2>&1 || true
+    _brain_launchd_load "$_label" "$_rendered"
     return 0
 }
 
 # First install: no service loaded, so there is nothing to unload and nothing
-# to preserve. `load -w` is the fallback for launchd versions/contexts where
-# bootstrap is unavailable; both are swallowed, so callers that care must
-# VERIFY afterwards rather than assume.
+# to preserve.
 brain_launchd_install_fresh() {
     # $1 label  $2 rendered
-    local _label="$1" _rendered="$2"
-    local _domain _target
-    _domain="$(brain_launchd_domain)"
+    _brain_launchd_load "$1" "$2"
+}
+
+# Install the rendered plist and hand it to launchd — the tail both paths share.
+# `load -w` is the fallback for contexts where `bootstrap` is unavailable; both
+# are swallowed, so callers that care must VERIFY afterwards rather than assume.
+# Retried because a just-booted-out label can take a moment to free up; a first
+# install does not need the patience, but one loading routine that is
+# occasionally patient beats two that drift apart.
+_brain_launchd_load() {
+    local _label="$1" _rendered="$2" _target _bootstrapped=""
     _target="$(brain_launchd_target "$_label")"
 
-    mkdir -p "$HOME/Library/LaunchAgents"
+    mkdir -p "$(dirname "$_target")"
     cp "$_rendered" "$_target"
-    launchctl bootstrap "$_domain" "$_target" >/dev/null 2>&1 \
-        || launchctl load -w "$_target" >/dev/null 2>&1 || true
+    for _ in 1 2 3; do
+        launchctl bootstrap "$_BRAIN_LAUNCHD_DOMAIN" "$_target" >/dev/null 2>&1 && { _bootstrapped=1; break; }
+        sleep 1
+    done
+    [ -n "$_bootstrapped" ] || launchctl load -w "$_target" >/dev/null 2>&1 || true
 }

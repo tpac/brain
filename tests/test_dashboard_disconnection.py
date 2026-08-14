@@ -188,3 +188,86 @@ def test_mirrored_ref_type_constants_match_trace_contract():
     # The derived set the queries actually filter on must cover both families,
     # or one of them leaks back into the run cards.
     assert set(_NON_RUN_REF_TYPES) == set(RESIDUE_REF_TYPES) | set(EMITTER_REF_TYPES)
+
+
+# ── The one sanctioned wire copy actually works ────────────────────────────
+# dashboard/daemon_client.daemon_send is a DELIBERATE duplicate of
+# servers.daemon_client.send_command (this file's first test is why: the
+# dashboard must run with servers/ absent or broken). Step 6d rewrote its
+# framing to match the owner's — read until the newline the daemon terminates
+# every reply with, instead of re-parsing the whole buffer as JSON after each
+# chunk — and that rewrite had no behavioral coverage at all.
+
+import json as _json
+import socket as _socket
+import threading as _threading
+
+
+def _fake_daemon(handler):
+    """One-shot TCP server. Returns (host, port)."""
+    srv = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+    srv.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    host, port = srv.getsockname()
+
+    def run():
+        try:
+            conn, _ = srv.accept()
+            try:
+                conn.recv(65536)
+                handler(conn)
+            finally:
+                conn.close()
+        except OSError:
+            pass
+        finally:
+            srv.close()
+
+    _threading.Thread(target=run, daemon=True).start()
+    return host, port
+
+
+def _send(monkeypatch, handler, cmd="ping", timeout=3):
+    from dashboard import daemon_client as dcl
+    host, port = _fake_daemon(handler)
+    monkeypatch.setattr(dcl, "DAEMON_HOST", host)
+    monkeypatch.setattr(dcl, "DAEMON_PORT", port)
+    return dcl.daemon_send(cmd, timeout=timeout)
+
+
+def test_daemon_send_returns_the_result_payload(monkeypatch):
+    payload = {"ok": True, "result": {"pid": 42, "uptime_seconds": 7}}
+    got = _send(monkeypatch, lambda c: c.sendall(_json.dumps(payload).encode() + b"\n"))
+    assert got == {"pid": 42, "uptime_seconds": 7}
+
+
+def test_daemon_send_reassembles_a_reply_split_across_chunks(monkeypatch):
+    # The framing that matters: a large reply arrives in several segments and
+    # is only complete at the newline.
+    big = {"ok": True, "result": {"blob": "x" * 300000}}
+    raw = _json.dumps(big).encode() + b"\n"
+
+    def handler(conn):
+        for i in range(0, len(raw), 8192):
+            conn.sendall(raw[i:i + 8192])
+
+    got = _send(monkeypatch, handler)
+    assert got["blob"] == "x" * 300000
+
+
+def test_daemon_send_returns_none_on_daemon_level_error(monkeypatch):
+    got = _send(monkeypatch, lambda c: c.sendall(b'{"ok": false, "error": "nope"}\n'))
+    assert got is None
+
+
+def test_daemon_send_returns_none_when_the_daemon_is_down(monkeypatch):
+    from dashboard import daemon_client as dcl
+    srv = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+    srv.bind(("127.0.0.1", 0))
+    host, port = srv.getsockname()
+    srv.close()
+    monkeypatch.setattr(dcl, "DAEMON_HOST", host)
+    monkeypatch.setattr(dcl, "DAEMON_PORT", port)
+    assert dcl.daemon_send("ping", timeout=1) is None
+    assert dcl.daemon_alive() is False

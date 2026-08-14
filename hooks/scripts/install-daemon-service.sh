@@ -36,18 +36,20 @@ TEMPLATE="$SCRIPT_DIR/$LABEL.plist"
 # No launchd off macOS — ensure_daemon's detached spawn owns that path.
 [ "$(uname -s)" = "Darwin" ] || exit 0
 
-DOMAIN="gui/$(id -u)"
-TARGET="$HOME/Library/LaunchAgents/$LABEL.plist"
-
 # Resolve BRAIN_DB_DIR the same way every launch path does, so the installed
 # plist points at the right brain. boot-brain.sh already resolved + exported it
 # before calling us; this re-source fast-paths (runtime sentinel is set by now,
 # so no ensure-runtime recursion) and just confirms the value.
-source "$SCRIPT_DIR/resolve-brain-db.sh" >/dev/null 2>&1 || true
+# stdout suppressed (bootstrap noise); stderr KEPT — its sibling
+# ensure-dashboard.sh documents why: a resolution failure must say WHY, not
+# surface below as a bare "BRAIN_DB_DIR unresolved". This runs detached on the
+# cold-install chain, where .bootstrap.log is the only channel there is.
+source "$SCRIPT_DIR/resolve-brain-db.sh" >/dev/null || true
 # The plist ritual (render + identity preservation + bootstrap/reload) is
 # owned by launchd-install.sh and shared with ensure-dashboard.sh; the policy
 # below — install-only, then verify — is this script's own.
 source "$SCRIPT_DIR/launchd-install.sh"
+TARGET="$(brain_launchd_target "$LABEL")"
 
 [ -f "$TEMPLATE" ] || { echo "[install-daemon-service] FATAL: plist template missing: $TEMPLATE" >&2; exit 1; }
 [ -n "${BRAIN_DB_DIR:-}" ] || { echo "[install-daemon-service] FATAL: BRAIN_DB_DIR unresolved — not installing" >&2; exit 1; }
@@ -59,7 +61,9 @@ source "$SCRIPT_DIR/launchd-install.sh"
 RENDERED="$(mktemp "${TMPDIR:-/tmp}/$LABEL.plist.XXXXXX")"
 trap 'rm -f "$RENDERED"' EXIT
 brain_launchd_render "$LABEL" "$TEMPLATE" "brain-daemon" \
-                     "$PLUGIN_DIR" "$BRAIN_DB_DIR" "$RENDERED"
+                     "$PLUGIN_DIR" "$BRAIN_DB_DIR" "$RENDERED" \
+                     "[install-daemon-service]" \
+  || { echo "[install-daemon-service] leaving the installed service untouched" >&2; exit 1; }
 
 if brain_launchd_managed "$LABEL"; then
   # Already managed (every non-fresh boot). The installed plist is a frozen
@@ -79,11 +83,11 @@ fi
 # fallback chain needs that), so re-probe launchd for the truth. A false
 # "installed" here would mask exactly the state this script exists to prevent —
 # the daemon silently running detached (no KeepAlive) forever.
-if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
+if brain_launchd_managed "$LABEL"; then
   echo "[install-daemon-service] installed $TARGET (launchd now owns the daemon)" >&2
 else
   echo "[install-daemon-service] WARN: wrote $TARGET but launchctl bootstrap failed —" >&2
   echo "[install-daemon-service] daemon will run DETACHED via ensure_daemon (no KeepAlive," >&2
-  echo "[install-daemon-service] no boot persistence). Retry: launchctl bootstrap $DOMAIN $TARGET" >&2
+  echo "[install-daemon-service] no boot persistence). Retry: launchctl bootstrap $(brain_launchd_domain) $TARGET" >&2
   exit 1
 fi

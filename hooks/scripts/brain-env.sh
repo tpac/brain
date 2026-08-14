@@ -9,13 +9,32 @@
 # First invocation triggers ensure-runtime.sh (blocks ~60-90s on fresh install).
 # Subsequent invocations are instant — just PATH + env var wiring.
 
-# Resolve plugin dir from whichever .sh sourced us
-_BRAIN_ENV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve plugin dir from whichever .sh sourced us.
+# ${BASH_SOURCE:-$0}, NOT ${BASH_SOURCE[0]}: the subscripted form resolves to
+# the CWD under zsh and is a fatal "Bad substitution" under dash, so a sourcer
+# in either shell silently loaded the wrong tree — or died. Bare $BASH_SOURCE
+# is element 0 in bash, and $0 is the correct fallback everywhere else.
+# resolve-brain-db.sh carries the same idiom for the same reason.
+_BRAIN_ENV_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")" && pwd)"
 export PLUGIN_DIR="$(cd "$_BRAIN_ENV_DIR/../.." && pwd)"
 
 # API-key + user-config resolution — owned by api-key-env.sh, shared with
 # boot-brain.sh (which runs before this file is reachable).
-. "$_BRAIN_ENV_DIR/api-key-env.sh"
+# Readability-guarded: `.` on a missing file is a special-builtin failure that
+# `|| true` cannot rescue — it exits the shell outright under dash and under
+# `set -e` (brain-daemon sets it), before any resolution can happen. A damaged
+# install must degrade, not take the daemon down.
+if [ -r "$_BRAIN_ENV_DIR/api-key-env.sh" ]; then
+    . "$_BRAIN_ENV_DIR/api-key-env.sh"
+    # Sourced and used in the same branch: an undefined function is a 127 that
+    # `set -e` (brain-daemon sets it) turns into a dead daemon, and a flag
+    # recording "the source worked" is just this branch, spelled twice.
+    brain_source_user_env
+    brain_api_key_from_plugin_option
+else
+    echo "[brain-env] WARN: api-key-env.sh missing or unreadable (damaged install)" >&2
+    echo "[brain-env] — user config and API key will NOT be loaded this run" >&2
+fi
 
 # Source the canonical user config (~/.config/brain/env) so secrets and
 # identity tokens (ANTHROPIC_API_KEY, BRAIN_OPERATOR_NAME, BRAIN_AGENT_NAME, ...)
@@ -25,17 +44,12 @@ export PLUGIN_DIR="$(cd "$_BRAIN_ENV_DIR/../.." && pwd)"
 # env for everything downstream of this line — so a BRAIN_DB_DIR knob line
 # re-points even a plist-baked daemon env; the resolver's ladder then
 # re-confirms the same choice.
-brain_source_user_env
-
 # Daemon rendezvous port — set EARLY, before the runtime-bootstrap guard below,
 # since it depends only on the uid (not the venv). The ONE shell source of the
 # per-user port; shell scripts + hook Python read $BRAIN_DAEMON_PORT (the formula
 # survives only as a resilience fallback). An explicit value (shell / the user
 # env above) wins. Python inside servers/ uses daemon_config.DAEMON_PORT.
 export BRAIN_DAEMON_PORT="${BRAIN_DAEMON_PORT:-$((47200 + $(id -u) % 100))}"
-
-# Additive userConfig fallback (api-key-env.sh owns the mechanism).
-brain_api_key_from_plugin_option
 
 # Ensure runtime is installed (idempotent, fast-path on sentinel)
 if ! "$_BRAIN_ENV_DIR/ensure-runtime.sh"; then

@@ -37,13 +37,10 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
   brain_source_user_env "$BRAIN_ENV_FILE"
 fi
 
-# Whether the fallback below is the ONLY thing that could have supplied the
-# key — the mirror must fire for a userConfig-resolved key and for nothing
-# else (a shell/env-file key is already reachable by the daemon).
-_KEY_FROM_PLUGIN_OPTION=""
-[ -z "${ANTHROPIC_API_KEY:-}" ] && _KEY_FROM_PLUGIN_OPTION=1
-brain_api_key_from_plugin_option
-if [ -n "$_KEY_FROM_PLUGIN_OPTION" ]; then
+# Inside this branch the key was missing, so anything the fallback finds came
+# from userConfig — the only channel the launchd-spawned daemon cannot see.
+if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+  brain_api_key_from_plugin_option
   # MIRROR a userConfig-resolved key to the env file (mode 600). Required, not
   # optional: CLAUDE_PLUGIN_OPTION_* exists only in hook executions, and this
   # export dies with the hook — the launchd-spawned daemon (a separate process
@@ -54,9 +51,7 @@ if [ -n "$_KEY_FROM_PLUGIN_OPTION" ]; then
   # laptop install, 2026-07-15). Never overwrites an existing key line.
   if [[ "${ANTHROPIC_API_KEY:-}" == sk-* ]] \
      && ! grep -q '^ANTHROPIC_API_KEY=' "$BRAIN_ENV_FILE" 2>/dev/null; then
-    mkdir -p "$(dirname "$BRAIN_ENV_FILE")" 2>/dev/null
-    printf 'ANTHROPIC_API_KEY=%s\n' "$ANTHROPIC_API_KEY" >> "$BRAIN_ENV_FILE" \
-      && chmod 600 "$BRAIN_ENV_FILE" \
+    brain_append_user_env "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" \
       && echo "[brain-boot] plugin-config key mirrored to $BRAIN_ENV_FILE (mode 600) for the background daemon" >&2
   fi
 fi

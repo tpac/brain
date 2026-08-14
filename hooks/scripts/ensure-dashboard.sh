@@ -43,7 +43,9 @@ if [ "$(uname -s)" = "Darwin" ] && [ -f "$TEMPLATE" ] && [ -n "${BRAIN_DB_DIR:-}
   RENDERED="$(mktemp "${TMPDIR:-/tmp}/$LABEL.plist.XXXXXX")"
   trap 'rm -f "$RENDERED"' EXIT
   brain_launchd_render "$LABEL" "$TEMPLATE" "brain-dashboard" \
-                       "$PLUGIN_DIR" "$BRAIN_DB_DIR" "$RENDERED"
+                       "$PLUGIN_DIR" "$BRAIN_DB_DIR" "$RENDERED" \
+                       "[ensure-dashboard]" \
+    || { echo "[ensure-dashboard] leaving the installed service untouched" >&2; exit 1; }
   if brain_launchd_managed "$LABEL" \
      && ! cmp -s "$RENDERED" "$TARGET" 2>/dev/null; then
     _DRIFTED=1
@@ -57,8 +59,6 @@ fi
 
 case "$(uname -s)" in
   Darwin)
-    DOMAIN="gui/$(id -u)"
-    TARGET="$HOME/Library/LaunchAgents/$LABEL.plist"
     if [ -n "$_DRIFTED" ]; then
       # Re-materialize + re-bootstrap: launchd keeps the plist's
       # EnvironmentVariables as read at bootstrap time — kickstart alone
@@ -67,12 +67,15 @@ case "$(uname -s)" in
       brain_launchd_reinstall "$LABEL" "$RENDERED" "[ensure-dashboard]" || exit 1
     elif brain_launchd_managed "$LABEL"; then
       echo "[ensure-dashboard] service loaded but down — kickstarting"
-      launchctl kickstart -k "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
+      launchctl kickstart -k "$(brain_launchd_domain)/$LABEL" >/dev/null 2>&1 || true
     else
       echo "[ensure-dashboard] first run — installing launchd service $LABEL"
+      # $RENDERED is non-empty iff the drift block above ran (Darwin, template
+      # present, BRAIN_DB_DIR set) and the render succeeded — it exits on
+      # failure. Inside this Darwin branch the only way it is empty is a
+      # missing template or an unresolved brain dir, so those two say why.
       [ -f "$TEMPLATE" ] || { echo "[ensure-dashboard] FATAL: plist template missing: $TEMPLATE" >&2; exit 1; }
       [ -n "${BRAIN_DB_DIR:-}" ] || { echo "[ensure-dashboard] FATAL: BRAIN_DB_DIR unresolved" >&2; exit 1; }
-      [ -n "$RENDERED" ] || { echo "[ensure-dashboard] FATAL: plist not rendered" >&2; exit 1; }
       brain_launchd_install_fresh "$LABEL" "$RENDERED"
     fi
     ;;

@@ -3,15 +3,16 @@
 #
 # Sourced by brain-env.sh (every hook) and boot-brain.sh (which runs BEFORE
 # brain-env is reachable — the bootstrap ordering that forced the copy in the
-# first place). Both used to carry their own copy of the env-file source and
-# the dual-casing CLAUDE_PLUGIN_OPTION fallback; a casing fix landing in only
-# one of them re-creates the 2026-07-15 failure where a user filled in the
-# plugin's key field and the daemon still ran keyless.
+# first place). One home for the env-file source and the dual-casing
+# CLAUDE_PLUGIN_OPTION fallback: a casing fix that lands in only one copy
+# re-creates the 2026-07-15 failure where a user filled in the plugin's key
+# field and the daemon still ran keyless.
 #
-# Three functions, because the callers legitimately differ on WHEN they read:
+# Four functions, because the callers legitimately differ on WHEN they read:
 #   brain_user_env_file               — the canonical config path
 #   brain_source_user_env             — source it (set -a: every var exported)
 #   brain_api_key_from_plugin_option  — userConfig fallback, both casings
+#   brain_append_user_env             — append a line to it, safely
 #
 # POLICY stays with the callers: brain-env.sh sources the file unconditionally
 # because it needs every variable in it, not just the key; boot-brain.sh reads
@@ -24,8 +25,14 @@
 
 # The canonical user config file. One definition — every consumer that names
 # this path (resolvers, installers, the boot notices) is naming the same file.
+# Assigned at source time and read as a VARIABLE on the hook hot path: every
+# hook sources this, and wrapping a pure parameter expansion in $(...) is a
+# fork per call for nothing. The function stays for callers that want the
+# accessor form.
+BRAIN_USER_ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/brain/env"
+
 brain_user_env_file() {
-    printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/brain/env"
+    printf '%s' "$BRAIN_USER_ENV_FILE"
 }
 
 # Source the user config so secrets and identity tokens (ANTHROPIC_API_KEY,
@@ -34,12 +41,30 @@ brain_user_env_file() {
 # variable in this file always wins over the process env from here on.
 brain_source_user_env() {
     local _brain_env_f
-    _brain_env_f="${1:-$(brain_user_env_file)}"
+    _brain_env_f="${1:-$BRAIN_USER_ENV_FILE}"
     if [ -f "$_brain_env_f" ]; then
         set -a
         . "$_brain_env_f"
         set +a
     fi
+    return 0
+}
+
+# Append a line to the user config file, safely. Hand-edited files whose last
+# line has NO trailing newline exist in production (2026-08-12: the operator's
+# own), and a bare `>>` glues the new line onto the old one —
+# `BRAIN_AGENT_NAME=xxxANTHROPIC_API_KEY=sk-...`, silently corrupting both.
+# Leading \n costs one blank line in the normal case and is never wrong.
+brain_append_user_env() {
+    local _brain_env_f
+    _brain_env_f="$BRAIN_USER_ENV_FILE"
+    mkdir -p "$(dirname "$_brain_env_f")" 2>/dev/null
+    printf '\n%s\n' "$1" >> "$_brain_env_f" || return 1
+    # chmod failure is a FAILURE, not a detail to swallow: the caller announces
+    # "mode 600" to the operator, and announcing that over a world-readable file
+    # holding an API key is worse than saying nothing. Let chmod's own stderr
+    # through and report it.
+    chmod 600 "$_brain_env_f" || return 1
     return 0
 }
 
