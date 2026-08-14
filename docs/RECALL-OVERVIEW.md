@@ -233,7 +233,8 @@ Spawn fresh Claude Code session with the brain skill loaded; send identical wake
 
 **What it would measure:** Anchor's behavior at boot, with SKILL.md loaded. The only path to empirically validating SKILL.md changes, boot rewrites, and the felt-difference work that the operator (Tom) has been the only sensor for.
 
-**Status:** queued as BACKLOG P3.1.
+**Status:** queued in [BACKLOG.md](BACKLOG.md) (long tail — the fresh-Claude vs Anchor
+calibration test).
 
 ### Methodology principle
 
@@ -251,7 +252,7 @@ Spread activation broke (precision-over-reach was the wrong tradeoff) → recogn
 
 **Primary docs:**
 - `docs/RECALL-OVERVIEW.md` — this file
-- `docs/archive/FRAME-DESIGN.md` — Frame Phase 2/2.5 architecture journey (historical; live tasks folded into BACKLOG.md P4.18–P4.20 + P5.1–P5.2)
+- `docs/archive/FRAME-DESIGN.md` — Frame Phase 2/2.5 architecture journey (historical; its live tasks are folded into BACKLOG.md's long tail)
 - `CLAUDE.md` — developer guide (still pre-Frame in places; queued for next-session update)
 - `skills/brain/SKILL.md` — Anchor identity baseline (rewritten 2026-05-03)
 

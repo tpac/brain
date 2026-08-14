@@ -14,7 +14,8 @@ Entries should describe:
 When an entry's fix becomes a real work item, it migrates to
 [docs/BACKLOG.md](BACKLOG.md). Entries stay here as the cognitive-gap
 record; the backlog is where execution lives. Entry #2's fix family is
-now P1.1–P1.4 in BACKLOG.md.
+now the Frame-frontier scoring lane and the cue-side temporal lane in
+BACKLOG.md's *Now* section.
 
 ---
 

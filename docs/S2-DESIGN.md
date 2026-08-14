@@ -434,7 +434,7 @@ All units use:
 **Units built and SHIPPED:**
 - `CommunityDetection` (`scales/s2/community.py`) — Full S2CD/S2CE decoder-encoder pair. Z-score seeding, adaptive thresholds, agentic Sonnet encoder. **55 communities in production.**
 - ~~`EdgeFamilyIntegration`~~ — DISABLED 2026-05-04 in coordinator; module deleted. Replaced by the aspects system as the source of truth for edge-relation taxonomy. `AspectIntegration` built 2026-05-08 (`servers/scales/s2/aspect_{decoder,encoder,integration}.py`) but currently NOT wired into the coordinator (see Stage 2 status note above).
-- `RelationReclassifier` (`scales/s2/reclassify.py`) — One-time operation, complete. 2,621 edges reclassified.
+- `RelationReclassifier` (`scales/s2/archive/reclassify.py`) — 2,621 edges reclassified, then archived mid-migration. **Not complete:** 7,243 generic edges remain (18.1% of the live graph) and this unit is the intended fix — see BACKLOG.md. Not in the coordinator's unit list.
 
 **Dashboard shipped:**
 - 3D ForceGraph visualization with community coloring
