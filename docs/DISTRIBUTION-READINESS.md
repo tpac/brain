@@ -1,6 +1,6 @@
 # Distribution Readiness — Sharing Anchor
 
-## §ACTIVE ARC (2026-08-12) — 5.0a SHIPPED: XDG create + adoption net; next: step 6 (shell dedup), 5.0c
+## §ACTIVE ARC (2026-08-14) — arch-plan steps 0–6 SHIPPED (7–10 open); next: 5.0 attempt 2 (thread launched, plan-gated), 5.0c
 **Read first:** handoff node `[thread:d13-arch-plan]` + the 5.0a ruling (id:cfe2113b). Shipped
 2026-08-11: arch-plan steps 2+4+5. Shipped 2026-08-12 (5.0a, three-lens reviewed): new brains born
 at `${XDG_DATA_HOME:-~/.local/share}/brain`; adoption net refuses to create over an orphaned

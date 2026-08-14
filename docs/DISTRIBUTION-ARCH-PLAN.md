@@ -51,7 +51,7 @@ decision; existing installs unaffected (never-auto-move holds).
 **Respects.** Tom's "never auto-move data" (untouched — governs existing data);
 the deferred runtime-relocation decision (opposite direction: runtime, not data).
 
-## Step 1 — Delete the dev-machine install path from `servers/daemon_launch.py`
+## Step 1 — SHIPPED 2026-08-11 (8f70959): Delete the dev-machine install path from `servers/daemon_launch.py`
 
 **Problem.** `debugger_friendly_python()` candidate 2 hardcodes
 `~/.claude/plugins/marketplaces/local-desktop-app-uploads/brain/venv/bin/python` — one
@@ -71,7 +71,7 @@ list). Callers unchanged.
 **Depends on.** None — independent.
 **Respects.** D-11 host-neutrality (this *strengthens* it).
 
-## Step 2 — Make `BRAIN_DAEMON_PORT` a real contract: env-first in `daemon_config`
+## Step 2 — SHIPPED 2026-08-11 (c9fba23): Make `BRAIN_DAEMON_PORT` a real contract: env-first in `daemon_config`
 
 **Problem.** `brain-env.sh` documents `BRAIN_DAEMON_PORT` as the override and every
 shell/hook client honors it — but `daemon_config.DAEMON_PORT` (the daemon's own bind, plus
@@ -93,7 +93,7 @@ override path, which is currently broken anyway.
 **Depends on.** None — independent.
 **Respects.** Contract-first constants doctrine; `brain-env.sh` stays the shell owner.
 
-## Step 3 — One Python DB resolver, reading `resolved.env`
+## Step 3 — SHIPPED 2026-08-11 (8f70959): One Python DB resolver, reading `resolved.env`
 
 **Problem.** `resolve-brain-db.sh` is the declared owner of DB resolution and persists
 `resolved.env` *specifically so non-hook consumers can find the brain* — yet `resolved.env`
@@ -200,7 +200,7 @@ consumer outside the tree, which the allowlist mechanism is built to name.
 seed-pack design (D-5) untouched — `seed_brain.py` is the *dead predecessor*, verify
 against `seed_pack.py` before deleting.
 
-## Step 6 — Unify the duplicated shell mechanisms (four small extractions)
+## Step 6 — SHIPPED 2026-08-12 (a11c046) + follow-ups 2026-08-14 (88e02f6, 7b445a3, ff656ff, 108c5a9): Unify the duplicated shell mechanisms (four small extractions)
 
 **Problem.** Four mechanism-level duplications, each with demonstrated or imminent drift:
 (a) API-key resolution (env-file source + dual-casing `CLAUDE_PLUGIN_OPTION` fallback)
