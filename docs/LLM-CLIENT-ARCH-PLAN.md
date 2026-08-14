@@ -108,17 +108,31 @@ the decision already made for `surface.py`).
 
 ---
 
-## Step 1 — Bound the recall-lane query-expansion client
+## Step 1 — Bound *and gate* the recall-lane query-expansion call
 
-**Problem.** `servers/brain_recall.py:108` builds `anthropic.Anthropic()` with no timeout **and**
-no per-request `with_options` — the only genuinely unbounded client in `servers/`. It sits on the
-recall hot path. Its `try/except` catches exceptions, not hangs: a stalled socket blocks a
-ThreadPoolExecutor recall worker regardless. It also hardcodes `model='claude-haiku-4-5'` at
-`:113` while `SURFACE_MODEL` already exists in `scales/s1/surface_contract.py:192`.
+**Problem — two defects in one function.**
 
-**Target state.** The request is bounded (constructor timeout, or `with_options` at the call site
-as `scouts/base.py:192` does), and the model comes from the existing contract constant rather than
-a literal.
+1. **Unbounded.** `servers/brain_recall.py:108` builds `anthropic.Anthropic()` with no timeout
+   **and** no per-request `with_options` — the only genuinely unbounded client in `servers/`, on
+   the recall hot path. Its `try/except` catches exceptions, not hangs: a stalled socket blocks a
+   ThreadPoolExecutor recall worker regardless.
+2. **Ungated.** `_expand_query_via_haiku` is **the only LLM call site in the brain that never
+   checks `brain.llm_available`** — there is no reference to it anywhere in `brain_recall.py`. The
+   only guard at the call site (`:1531`) is `_do_expand`, a *quality* heuristic on candidate score
+   spread. So on a keyless brain, or one whose key is currently latched as rejected, this still
+   constructs a client and fires a call that can only 401 — swallowed silently by
+   `except: return []`. Every other lane gates: S1 Scribe (`brain.py:912`), S2
+   (`brain.py:1624`), surface (`daemon_hooks.py:480`), keepalive (`daemon_server.py:468`), voice
+   (`brain_voice.py:411`). This is the one hole in an otherwise universal gate — and it is exactly
+   the shape that produced the external install's 401 storm the rejection latch was built for.
+
+It also hardcodes `model='claude-haiku-4-5'` at `:113` (see Step 4).
+
+**Target state.** The call is gated on `llm_available` before any client work, and the request is
+bounded — constructor timeout, or `with_options` at the call site as `scouts/base.py:192` does.
+
+**Note on ordering.** Gate first, then bound: the gate makes the unbounded-client window smaller by
+removing the keyless/latched case entirely.
 
 **Files & call sites.** `servers/brain_recall.py:107-113` (`_expand_query_via_haiku`).
 
@@ -298,6 +312,40 @@ per-unit model choice, which promotes it from cleanup to prerequisite.)*
 
 ---
 
+## Appendix — provider-portability findings (researched 2026-08-14)
+
+Scoping input for the recall-lane seam, given the operator's stated direction: a **replacement**
+(one provider at a time, globally) with **per-unit model choice**. Checked against current OpenAI
+docs rather than assumed — three of four map cleanly, one does not.
+
+| Brain uses | OpenAI equivalent | Portability |
+|---|---|---|
+| `effort` (`encode.py`) | `reasoning.effort` — `none`/`low`/`medium`/`high`/`xhigh`/`max` | **clean** — value map |
+| `output_config={'format':{'type':'json_schema',…}}` (scouts, surface, expansion) | `response_format` json_schema + `strict: true` | **clean, with a schema audit** — strict mode requires every property listed in `required` and `additionalProperties: false` on every object. Our existing schemas need checking against that before they'd pass. |
+| Tool-use loop (`run_llm_loop`) | Responses API (item-centered) or Chat Completions (message-centered) | **a decision, not a mapping** — OpenAI now has two APIs. Responses is the recommendation for agentic/tool-calling work; Chat Completions is closer to `run_llm_loop`'s existing message-array shape. Picking Responses is more divergence up front, less later. |
+| **`cache_control` breakpoints, 1h + 5m TTLs** | **automatic caching only** — ≥1024 tokens, TTL fixed at 30 min | **⚠ does not port** |
+
+**The caching gap is the one that costs something behavioural, not just syntactic.** The brain
+deliberately places breakpoints at two tiers: 1h on the byte-stable system prompt
+(`run_llm_once`, `scouts/base.py:175`) and 5m on the user prefix shared across the four scouts in
+one muster cycle (id:e49766ac) — the first scout writes, the other three read. OpenAI caching is
+automatic and prefix-based with a single fixed 30-minute TTL and no explicit breakpoints, so that
+two-tier design has no direct expression: the 1h system cache becomes 30m, and the deliberate
+shared-prefix write/read becomes implicit prefix matching. Scout economics depend on this (the
+shared prefix is ~23K tokens, id:bebe1c8f), so **cost per encode cycle must be re-measured under
+any swap — it will not be a like-for-like port.**
+
+Nothing here blocks a replacement. It does mean the recall-lane seam should be shaped so the
+caching strategy is a *provider concern* behind it, not a caller concern in front of it — today
+`cache_control` blocks are assembled at the call sites, which is exactly what would have to change.
+
+Sources: [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) ·
+[reasoning models](https://developers.openai.com/api/docs/guides/reasoning) ·
+[prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching) ·
+[migrate to Responses](https://platform.openai.com/docs/guides/migrate-to-responses)
+
+---
+
 ## Open questions
 
 1. **Step 3's destination.** Which contract file should own `ANTHROPIC_CLIENT_TIMEOUT`? It is
@@ -305,3 +353,6 @@ per-unit model choice, which promotes it from cleanup to prerequisite.)*
    plausible.
 2. **Step 2's cost.** Routing 6 encoder-lane sites through `resolve_api_key` adds a stat + read per
    call. Acceptable, or measure first?
+3. **Responses vs Chat Completions**, if the replacement proceeds. Determines how much of
+   `run_llm_loop`'s shape survives, and therefore whether the recall-lane seam is scoped for one
+   wire format or two.
