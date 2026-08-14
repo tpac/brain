@@ -330,5 +330,122 @@ class TestFormatScoutReport(unittest.TestCase):
         self.assertIn("(scanned:", report)
 
 
+class TestFactsOutputSchema(unittest.TestCase):
+    """The Structured Outputs wire schema for the one scout production runs.
+
+    `scouts/base.py` passes this straight to the API as
+    output_config.format.schema, so a malformed schema is not a soft failure —
+    it 400s every facts-scout call on every install that seeded it. Nothing
+    else in the suite exercises that shape, and the two constraints below are
+    exactly the ones an ordinary-looking edit breaks silently.
+    """
+
+    def _candidate_props(self):
+        return (sc.FACTS_OUTPUT_SCHEMA["properties"]["candidates"]
+                ["items"]["properties"])
+
+    def test_exported(self):
+        self.assertIn("FACTS_OUTPUT_SCHEMA", sc.__all__)
+        self.assertIsInstance(sc.FACTS_OUTPUT_SCHEMA, dict)
+
+    def test_every_property_is_required_under_closed_objects(self):
+        """Structured Outputs requires all properties listed in `required`
+        wherever additionalProperties is false. Optional fields express
+        optionality by being nullable, never by being absent from `required`.
+        Adding a property and forgetting the `required` entry is the silent
+        break this catches.
+        """
+        seen = []
+
+        def walk(node, path):
+            if not isinstance(node, dict):
+                return
+            if node.get("type") == "object" or "properties" in node:
+                if node.get("additionalProperties") is False:
+                    props = set(node.get("properties", {}))
+                    required = set(node.get("required", []))
+                    self.assertEqual(
+                        props, required,
+                        f"{path}: every property must appear in `required` "
+                        f"when additionalProperties is false "
+                        f"(missing: {sorted(props - required)}, "
+                        f"unknown: {sorted(required - props)})")
+                    seen.append(path)
+            for key, child in (node.get("properties") or {}).items():
+                walk(child, f"{path}.{key}")
+            for key in ("items",):
+                if key in node:
+                    walk(node[key], f"{path}[]")
+            for key in ("anyOf", "oneOf", "allOf"):
+                for i, child in enumerate(node.get(key, [])):
+                    walk(child, f"{path}.{key}[{i}]")
+
+        walk(sc.FACTS_OUTPUT_SCHEMA, "root")
+        # root, candidates[], candidates[].catalog_match, scanned
+        self.assertEqual(len(seen), 4, f"closed objects walked: {seen}")
+
+    def test_schema_can_only_emit_fields_the_validator_knows(self):
+        """Encode-decode symmetry, the direction that matters: a field the wire
+        permits but the specs don't declare arrives and gets silently dropped by
+        `validate_scout_output`. Schema fields must be a subset of declared ones.
+        """
+        spec = sc.SCOUT_FIELD_SPECS["facts"]
+        declared = (set(sc.CANDIDATE_REQUIRED)
+                    | set(spec["required"]) | set(spec["optional"]))
+        self.assertLessEqual(set(self._candidate_props()), declared)
+
+    def test_schema_covers_every_field_the_validator_demands(self):
+        """The other direction: a required field absent from a closed schema is
+        unsatisfiable — the API cannot emit it, so the validator drops every
+        candidate. This is the pairing that would break the live scout.
+        """
+        spec = sc.SCOUT_FIELD_SPECS["facts"]
+        required = set(sc.CANDIDATE_REQUIRED) | set(spec["required"])
+        self.assertLessEqual(required, set(self._candidate_props()))
+
+    def test_context_anchors_is_declared_but_unreachable(self):
+        """`context_anchors` sits in SCOUT_FIELD_SPECS['facts']['optional'] but
+        not in the wire schema, which is closed (additionalProperties: false) —
+        so the facts scout cannot emit it and never has under Structured
+        Outputs. Harmless today: the live s1e prompt no longer asks for it, and
+        the validator only reads optional fields opportunistically.
+
+        Asserted explicitly rather than left as an unexplained set difference.
+        If you add it to the schema, or drop it from the specs, delete this test
+        — but do the pair, don't half-fix it.
+        """
+        spec = sc.SCOUT_FIELD_SPECS["facts"]
+        self.assertIn("context_anchors", spec["optional"])
+        self.assertNotIn("context_anchors", self._candidate_props())
+        self.assertIs(
+            sc.FACTS_OUTPUT_SCHEMA["properties"]["candidates"]["items"]
+            ["additionalProperties"], False)
+
+    def test_optional_fields_are_nullable(self):
+        """`unit` and `catalog_match` are optional per SCOUT_FIELD_SPECS, so
+        the schema must let the model decline them — required-but-nullable.
+        """
+        props = self._candidate_props()
+        self.assertIn("null", props["unit"]["type"])
+        self.assertIn({"type": "null"}, props["catalog_match"]["anyOf"])
+
+    def test_seeded_into_the_facts_scout_config(self):
+        """The schema is inert unless the interaction config carries it —
+        `base.py` reads `params['output_schema']`, not the contract module.
+        """
+        from servers.interaction_seed import S1_SCOUT_FACTS_CONFIG_V1
+        self.assertIs(S1_SCOUT_FACTS_CONFIG_V1["output_schema"],
+                      sc.FACTS_OUTPUT_SCHEMA)
+
+    def test_only_the_production_scout_ships_a_schema(self):
+        """quote/temporal are excluded from the production arm
+        (`exclude_scouts=('quote', 'temporal')` on the lived sequence), so
+        neither should acquire a wire schema without that changing first.
+        """
+        from servers import interaction_seed as seed
+        for name in ("S1_SCOUT_QUOTE_CONFIG_V1", "S1_SCOUT_TEMPORAL_CONFIG_V1"):
+            self.assertNotIn("output_schema", getattr(seed, name), name)
+
+
 if __name__ == "__main__":
     unittest.main()

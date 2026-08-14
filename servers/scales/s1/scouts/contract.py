@@ -29,6 +29,10 @@ composes the system prompt from the interaction template.
 - CANDIDATE_REQUIRED: fields every candidate must carry
 - SCOUT_FIELD_SPECS: per-scout required + optional extras
 - FIELD_LIMITS: char caps on string fields (soft-truncated with warning)
+- FACTS_OUTPUT_SCHEMA: the Anthropic Structured Outputs wire schema for the
+  facts scout, seeded into its interaction config as `output_schema`. The
+  tuples above validate what came back; this constrains what can come back
+  at all. Facts only — it is the one scout production musters.
 
 Validation philosophy (per loud-by-default):
 - Structural failures (missing required, wrong types): return {ok: False, errors}
@@ -104,6 +108,88 @@ FIELD_LIMITS = {
     "unit":                   30,
     # category_statement is envelope-level
     "category_statement":    300,
+}
+
+
+# ─── Structured Outputs wire schema ────────────────────────────────────────
+# Anthropic Structured Outputs schema for the facts scout. `scouts/base.py`
+# reads it off the interaction config (`params['output_schema']`) and passes it
+# as output_config.format.schema, which makes the response shape guaranteed
+# rather than parsed-and-hoped-for. Without it the scout falls back to
+# free-text JSON extraction, which is the format-mirror drift class: Haiku
+# answers chat-style prose when the conversation window is markdown-heavy.
+#
+# Only `facts` has a schema. It is the sole scout that runs in production —
+# `BRAIN_S1E_LIVED_SEQUENCE=1` (hooks/scripts/brain-env.sh) musters the lived
+# arm with `exclude_scouts=('quote', 'temporal')`, and temporal is retired.
+# Shipping a wire schema for machinery that never fires buys nothing.
+#
+# Two constraints make this literal rather than derived from the tuples above:
+#
+#  • Structured Outputs requires EVERY property to appear in `required` when
+#    `additionalProperties` is false. So `unit` and `catalog_match` — optional
+#    per SCOUT_FIELD_SPECS — are required here and made nullable instead. The
+#    two notions of "optional" differ on purpose: the API contract asks for the
+#    key to be present, `validate_scout_output` asks whether it carries a value.
+#  • It must reproduce the production-ACTIVE schema exactly. Deriving it from
+#    CANDIDATE_REQUIRED + SCOUT_FIELD_SPECS would let a future edit to those
+#    tuples silently reshape the wire contract the live brain already runs.
+#
+# `scanned` uses the facts-specific `fact_claims_found` counter rather than the
+# generic `considered`; SCANNED_REQUIRED only pins `turns`.
+FACTS_OUTPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "candidates": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "handle":         {"type": "string"},
+                    "entity":         {"type": "string"},
+                    "feature":        {"type": "string"},
+                    "value":          {"type": "string"},
+                    "unit":           {"type": ["string", "null"]},
+                    "evidence_quote": {"type": "string"},
+                    "evidence_turns": {"type": "array",
+                                       "items": {"type": "string"}},
+                    "why_candidate":  {"type": "string"},
+                    "catalog_match": {
+                        "anyOf": [
+                            {"type": "null"},
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "node_id":          {"type": "string"},
+                                    "has_this_feature": {"type": "boolean"},
+                                    "value_differs":    {"type": "boolean"},
+                                },
+                                "required": ["node_id", "has_this_feature",
+                                             "value_differs"],
+                                "additionalProperties": False,
+                            },
+                        ]
+                    },
+                },
+                "required": ["handle", "entity", "feature", "value", "unit",
+                             "evidence_quote", "evidence_turns",
+                             "why_candidate", "catalog_match"],
+                "additionalProperties": False,
+            },
+        },
+        "scanned": {
+            "type": "object",
+            "properties": {
+                "turns":             {"type": "integer"},
+                "fact_claims_found": {"type": "integer"},
+                "passed_threshold":  {"type": "integer"},
+            },
+            "required": ["turns", "fact_claims_found", "passed_threshold"],
+            "additionalProperties": False,
+        },
+    },
+    "required": ["candidates", "scanned"],
+    "additionalProperties": False,
 }
 
 
@@ -397,6 +483,7 @@ __all__ = [
     "SCANNED_REQUIRED",
     "SCOUT_FIELD_SPECS",
     "FIELD_LIMITS",
+    "FACTS_OUTPUT_SCHEMA",
     "SCOUT_SYSTEM_PROMPT",
     "SCOUT_ORIENTATION_PREAMBLE",
     "build_shared_prefix",

@@ -38,6 +38,7 @@ import os
 
 from .dal_logs import (AUTO_V1_PROVENANCE, BACKSTOP_PROVENANCE,
                        RECONCILE_PROVENANCE)
+from .scales.s1.scouts.contract import FACTS_OUTPUT_SCHEMA
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -249,20 +250,25 @@ S1_SCOUT_TEMPORAL_CONFIG_V1 = {
     "filter_time_only_phrases": True,
 }
 
-# max_tokens mirrors the production-ACTIVE value (5000, DB v7); the seed had
-# 3000. One drift remains: no `output_schema`, which the live config gained in
-# the structured-outputs migration and which `scouts/base.py:147` gates
-# structured parsing on — so a fresh install runs the one live scout on the
-# unstructured path. The schema belongs in a contract file rather than inline
-# here, so it lands as its own change on top of this one, together with the
-# SEED_PROMPTS_VERSION bump that carries it to the fleet.
-# `sync-prompts --check` reports the gap on every run until then.
+# Mirrors the production-ACTIVE config (DB v7). `output_schema` is the reason a
+# fresh install extracts facts the same way production does: `scouts/base.py:147`
+# reads it off this config and gates the Structured Outputs request on it, so a
+# seed without it boots the one scout production actually musters onto the
+# free-text parsing path. The schema lives in the scouts contract, not inline —
+# it is ~90 lines of wire shape, and `contract.py` already owns scout I/O.
+#
+# max_tokens rides along at the active 5000 rather than the seed's old 3000, and
+# is coupled to the schema, not cosmetic: Structured Outputs requires every
+# property present on every candidate (see FACTS_OUTPUT_SCHEMA), so a capped
+# 6-candidate response is materially longer than the free-text path produced.
+# 3000 + schema is a pairing production has never run.
 S1_SCOUT_FACTS_CONFIG_V1 = {
     "model": "claude-haiku-4-5",
     "max_candidates": 6,
     "max_tokens": 5000,
     "timeout_seconds": 25,
     "category_statement": S1_SCOUT_FACTS_CATEGORY,
+    "output_schema": FACTS_OUTPUT_SCHEMA,
 }
 
 VOICE_CONFIG_V1 = {
