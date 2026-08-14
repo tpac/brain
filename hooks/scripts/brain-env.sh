@@ -1,5 +1,8 @@
-#!/bin/bash
+#!/bin/sh
 # brain — shared environment setup, sourced by every hook .sh
+# POSIX sh — sourced (never executed), so it runs in the consumer's shell:
+# bash hooks, zsh, dash (/bin/sh on Linux). Keep bashism-free
+# (TestResolverChainPortability).
 #
 # After sourcing:
 #   $PLUGIN_DIR    resolves to plugin root

@@ -1,5 +1,8 @@
-#!/bin/bash
+#!/bin/sh
 # brain — the ONE definition of "where does ANTHROPIC_API_KEY come from?".
+# POSIX sh — sourced (never executed), so it runs in the consumer's shell:
+# bash hooks, zsh, dash (/bin/sh on Linux). Keep bashism-free
+# (TestResolverChainPortability).
 #
 # Sourced by brain-env.sh (every hook) and boot-brain.sh (which runs BEFORE
 # brain-env is reachable — the bootstrap ordering that forced the copy in the

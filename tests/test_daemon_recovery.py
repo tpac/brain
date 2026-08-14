@@ -1509,11 +1509,12 @@ class TestResolverMkdirsSafeUnderSetE(unittest.TestCase):
         self._ro.append(path)
 
     def _shells(self):
-        # No dash here: the resolver's `source` keyword at its brain-env.sh
-        # include is a bashism dash lacks, so dash + set -e dies at that line
-        # before any mkdir — a separate, pre-existing limitation. The set -e
-        # daemon path runs bash; zsh covers the other hook shell.
-        for shell in ("bash", "zsh"):
+        # dash sources via a -c one-liner here, so the brain-env.sh include
+        # degrades to its guarded damaged-install fallback (dash's $0 is the
+        # caller's path — the include can't self-locate) — fine for these
+        # tests: every mkdir under test lives in the resolver itself. The
+        # full-chain dash path is TestResolverChainPortability's concern.
+        for shell in ("bash", "zsh", "dash"):
             if shutil.which(shell):
                 yield shell
 
@@ -2500,6 +2501,120 @@ class TestKnobReadSurvivesDamagedInstall(unittest.TestCase):
         self._damage("remove")
         self.assertEqual(self._resolve("dash"), self._brain,
                          "`.` on a missing file exits dash outright unless guarded")
+
+
+class TestResolverChainPortability(unittest.TestCase):
+    """The resolver chain (resolve-brain-db.sh → brain-env.sh →
+    api-key-env.sh) is SOURCED, never executed, so it runs in the consumer's
+    shell, not its shebang: bash hooks, zsh skills/terminals, and dash
+    (/bin/sh on Linux, D-3). The chain must be POSIX — `source` at the
+    brain-env.sh include was a bashism, so under dash the chain ran
+    permanently in its damaged-install fallback (brain-env.sh never loaded,
+    the api-key owner's accessor never in scope) and died 127 under `set -e`.
+
+    Everything here drives the chain through a SIBLING driver script — the
+    real consumer shape, and the only shape dash supports at all: a sourced
+    file's $0 under dash is the CALLER's path (there is no BASH_SOURCE), so
+    the chain self-locates only when sourced from its own directory. cwd is
+    pinned elsewhere so cwd-relative resolution cannot fake a pass.
+    """
+
+    SCRIPTS = os.path.join(os.path.dirname(__file__), '..', 'hooks', 'scripts')
+
+    def setUp(self):
+        self._home = tempfile.mkdtemp(prefix="brain-chainport-home-")
+        self._xdg = os.path.join(self._home, ".config")
+        os.makedirs(os.path.join(self._xdg, "brain"))
+        self._tree = os.path.join(self._home, "plugin")
+        self._sd = os.path.join(self._tree, "hooks", "scripts")
+        os.makedirs(self._sd)
+        for name in ("resolve-brain-db.sh", "brain-env.sh", "api-key-env.sh"):
+            shutil.copy(os.path.join(self.SCRIPTS, name),
+                        os.path.join(self._sd, name))
+        stub = os.path.join(self._sd, "ensure-runtime.sh")
+        with open(stub, "w") as f:
+            f.write("#!/bin/sh\nexit 0\n")
+        os.chmod(stub, 0o755)
+        # A real brain, named by the config knob — resolving it through the
+        # NON-fallback path requires brain-env.sh to have actually loaded.
+        self._brain = os.path.join(self._home, "knobbrain")
+        os.makedirs(self._brain)
+        open(os.path.join(self._brain, "brain.db"), "w").close()
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % self._brain)
+
+    def tearDown(self):
+        shutil.rmtree(self._home, ignore_errors=True)
+
+    def _shells(self):
+        for shell in ("bash", "zsh", "dash"):
+            if shutil.which(shell):
+                yield shell
+
+    def _run_driver(self, shell, body, errexit=False):
+        import subprocess
+        driver = os.path.join(self._sd, "driver.sh")
+        with open(driver, "w") as f:
+            if errexit:
+                f.write("set -e\n")
+            f.write('. "$(dirname "$0")/resolve-brain-db.sh"\n')
+            f.write(body)
+        return subprocess.run(
+            [shell, driver], cwd="/tmp",
+            env={"HOME": self._home, "XDG_CONFIG_HOME": self._xdg,
+                 "PATH": "/usr/bin:/bin"},
+            capture_output=True, text=True, timeout=60)
+
+    PROBE = ('printf %s "$BRAIN_DB_DIR|${PLUGIN_DIR:-UNSET}|'
+             '$(command -v brain_user_env_file >/dev/null 2>&1 '
+             '&& echo fn || echo nofn)"\n')
+
+    def test_chain_loads_fully_in_each_shell(self):
+        # Not just "resolution succeeded" — the fallback also resolves the
+        # knob. FULLY loaded means brain-env.sh ran (PLUGIN_DIR exported) and
+        # api-key-env.sh ran (the accessor in scope), with no damaged-install
+        # WARN on stderr.
+        for shell in self._shells():
+            with self.subTest(shell=shell):
+                r = self._run_driver(shell, self.PROBE)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                db, plug, fn = r.stdout.split("|")
+                self.assertEqual(db, self._brain, r.stderr)
+                self.assertEqual(os.path.realpath(plug),
+                                 os.path.realpath(self._tree), r.stderr)
+                self.assertEqual(fn, "fn",
+                                 "api-key owner not in scope — the chain ran "
+                                 "in its damaged-install fallback")
+                self.assertNotIn("WARN", r.stderr)
+                self.assertNotIn("not found", r.stderr)
+
+    def test_chain_survives_set_e_in_each_shell(self):
+        # brain-daemon sources the resolver under `set -e`; a bashism there
+        # (dash: `source` → 127) kills the launcher before any FATAL prints.
+        for shell in self._shells():
+            with self.subTest(shell=shell):
+                r = self._run_driver(shell, 'printf ok:%s "$BRAIN_DB_DIR"\n',
+                                     errexit=True)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(r.stdout, "ok:%s" % self._brain, r.stderr)
+
+    def test_persist_record_stable_across_sources(self):
+        # _brain_persist_state compares before rewriting. The bash-only
+        # $(<file) read expanded EMPTY under dash, so the comparison always
+        # mismatched and every source rewrote resolved.env. tmp+mv replaces
+        # the inode, so a stable inode across sources proves the no-op path.
+        state = os.path.join(self._xdg, "brain", "resolved.env")
+        for shell in self._shells():
+            with self.subTest(shell=shell):
+                r = self._run_driver(shell, 'printf done\n')
+                self.assertEqual(r.returncode, 0, r.stderr)
+                first = os.stat(state).st_ino
+                r = self._run_driver(shell, 'printf done\n')
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(os.stat(state).st_ino, first,
+                                 "unchanged record was rewritten — the "
+                                 "existing-content read is broken in %s"
+                                 % shell)
 
 
 if __name__ == "__main__":
