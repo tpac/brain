@@ -20,12 +20,8 @@ def _check_daemon() -> dict:
 
     Through `daemon_send`, which returns exactly this payload and takes a
     timeout — a hand-rolled socket here would miss the newline framing the
-    module's client has.
-
-    NOTE: the daemon's ping result has no
-    `uptime_seconds` key — it returns status/pid/code_fingerprint/source_dir/
-    db_dir/threads — so `uptime` below is always 0 and the health tab renders
-    "Uptime: 0min" permanently."""
+    module's client has. `uptime_seconds` is process uptime, from
+    dispatch_ops._handle_ping."""
     result = daemon_send("ping", timeout=2)
     if result is None:
         return {'alive': False, 'error': 'no response'}
