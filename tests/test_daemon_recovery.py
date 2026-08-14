@@ -1482,6 +1482,86 @@ class TestResolverEnvHintDemotion(unittest.TestCase):
             "a NO_PERSIST consumer (brain-daemon) must not write the record")
 
 
+class TestResolverMkdirsSafeUnderSetE(unittest.TestCase):
+    """The resolver is sourced under the daemon launcher's `set -e`, and its
+    mkdirs are best-effort: a read-only parent must degrade to the next rung
+    (or to the existing no-brain path), never abort the whole resolver — that
+    would take the daemon down with it. Covers the persist-state dir and the
+    plugin-option hint; the Cowork-mount and config-hint mkdirs share the same
+    `|| true` shape but need /sessions or rung isolation to exercise."""
+
+    RESOLVER = os.path.join(os.path.dirname(__file__), '..',
+                            'hooks', 'scripts', 'resolve-brain-db.sh')
+
+    def setUp(self):
+        self._home = tempfile.mkdtemp(prefix="brain-resolve-home-")
+        self._xdg = os.path.join(self._home, ".config")
+        self._ro = []
+
+    def tearDown(self):
+        import shutil
+        for d in self._ro:
+            os.chmod(d, 0o755)
+        shutil.rmtree(self._home, ignore_errors=True)
+
+    def _read_only(self, path):
+        os.chmod(path, 0o555)
+        self._ro.append(path)
+
+    def _shells(self):
+        # No dash here: the resolver's `source` keyword at its brain-env.sh
+        # include is a bashism dash lacks, so dash + set -e dies at that line
+        # before any mkdir — a separate, pre-existing limitation. The set -e
+        # daemon path runs bash; zsh covers the other hook shell.
+        for shell in ("bash", "zsh"):
+            if shutil.which(shell):
+                yield shell
+
+    def _source_under_set_e(self, shell, env_extra):
+        import subprocess
+        env = dict(os.environ, HOME=self._home, XDG_CONFIG_HOME=self._xdg)
+        for k in ("BRAIN_DB_DIR", "CLAUDE_PLUGIN_DATA",
+                  "CLAUDE_PLUGIN_OPTION_BRAIN_PATH",
+                  "CLAUDE_PLUGIN_OPTION_brain_path"):
+            env.pop(k, None)
+        env.update(env_extra)
+        return subprocess.run(
+            [shell, "-c",
+             'set -e\n. "%s" >/dev/null 2>&1\nprintf %%s "ok:$BRAIN_DB_DIR"'
+             % self.RESOLVER],
+            env=env, capture_output=True, text=True, timeout=60)
+
+    def test_unwritable_persist_dir_does_not_abort(self):
+        # _brain_persist_state: ~/.config exists read-only and ~/.config/brain
+        # does not — its mkdir -p fails. The brain itself is healthy; only the
+        # record write must be skipped.
+        live = os.path.join(self._home, "live-brain")
+        os.makedirs(live)
+        open(os.path.join(live, "brain.db"), "w").close()
+        os.makedirs(self._xdg)
+        self._read_only(self._xdg)
+        for shell in self._shells():
+            with self.subTest(shell=shell):
+                r = self._source_under_set_e(shell, {"BRAIN_DB_DIR": live})
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(r.stdout, "ok:%s" % live, r.stderr)
+
+    def test_uncreatable_plugin_option_hint_does_not_abort(self):
+        # The plugin-option hint points under a read-only parent — its
+        # selection-time mkdir fails; the resolution chain must still run.
+        ro_parent = os.path.join(self._home, "ro")
+        os.makedirs(ro_parent)
+        self._read_only(ro_parent)
+        hint = os.path.join(ro_parent, "brain")
+        for shell in self._shells():
+            with self.subTest(shell=shell):
+                r = self._source_under_set_e(
+                    shell, {"CLAUDE_PLUGIN_OPTION_BRAIN_PATH": hint,
+                            "BRAIN_RESOLVE_NO_PERSIST": "1"})
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertTrue(r.stdout.startswith("ok:"), r.stderr)
+
+
 class TestAdoptionNetAndXdgCreate(unittest.TestCase):
     """5.0a: new brains are born at the XDG service dir (D-13), and the
     create branch refuses to run while an existing brain sits unreachable at

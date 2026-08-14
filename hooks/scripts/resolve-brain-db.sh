@@ -52,7 +52,9 @@ PLUGIN_ROOT='$PLUGIN_ROOT'"
   _existing=""
   [ -f "$_state" ] && _existing="$(<"$_state")"
   if [ "$_content" != "$_existing" ]; then
-    mkdir -p "$_dir" 2>/dev/null
+    # || true: sourced under the daemon launcher's set -e — persisting the
+    # record is best-effort and must never abort the resolver.
+    mkdir -p "$_dir" 2>/dev/null || true
     # tmp + mv: atomic replace — concurrent hooks/skills may be sourcing it.
     printf '%s\n' "$_content" > "$_state.tmp.$$" 2>/dev/null \
       && mv -f "$_state.tmp.$$" "$_state" 2>/dev/null \
@@ -116,8 +118,9 @@ if [ -z "${BRAIN_DB_DIR:-}" ]; then
     # Honor the chosen location even if it doesn't exist yet — create it so the
     # resolution chain adopts it instead of silently falling through to the
     # default brain. A typo then surfaces as an empty brain at the named path
-    # (visible), not a hidden default elsewhere.
-    mkdir -p "$BRAIN_DB_DIR" 2>/dev/null
+    # (visible), not a hidden default elsewhere. || true: set -e daemon path —
+    # an uncreatable hint degrades to the resolution chain, never aborts.
+    mkdir -p "$BRAIN_DB_DIR" 2>/dev/null || true
     export BRAIN_DB_DIR
   fi
 fi
@@ -251,7 +254,7 @@ if [ -z "$DB_DIR" ] && [ -d "/sessions" ]; then
   for ac_dir in /sessions/*/mnt/AgentsContext; do
     if [ -d "$ac_dir" ] 2>/dev/null; then
       DB_DIR="$ac_dir/brain"
-      mkdir -p "$DB_DIR" 2>/dev/null
+      mkdir -p "$DB_DIR" 2>/dev/null || true
       break
     fi
   done 2>/dev/null
