@@ -59,15 +59,20 @@ upward out of the encoder lane; two key resolvers with divergent semantics.
 
 ## Dependency summary
 
-Steps 0, 1 and 3 are **independent** and can run in parallel sessions in any order.
-Step 2 should run last — it touches `llm_available`, which the just-landed latch also occupies.
+Steps 0 and 3 are **independent** and can run in parallel sessions in any order. Step 4 overlaps
+Step 1's file, so Step 1 goes first (or both in one pass). Step 2 runs last — it touches
+`llm_available`, which the just-landed latch also occupies.
 
 ```
 Step 0 ──┐
-Step 1 ──┼── (independent, any order)
-Step 3 ──┘
-              Step 2  ← last; largest blast radius
+Step 3 ──┼── (independent, any order)
+Step 1 ──┴──▶ Step 4          (shared file: brain_recall.py:107-113)
+                                   Step 2  ← last; largest blast radius
 ```
+
+**If the provider replacement is the driver, Step 4 is the one that matters** — it is what makes
+the swap a config operation instead of a source edit. Steps 0/1/3 are hygiene; Step 2 is
+correctness.
 
 ---
 
@@ -201,6 +206,56 @@ Preserve that ordering through the lift.
 
 ---
 
+## Step 4 — Make model resolution table-driven at the three remaining sites
+
+**Problem.** Three LLM call sites take their model from source, not config, violating id:23a321af
+(*"model should be part of a config controlled by the user"*):
+
+| Site | Today | Interaction row |
+|---|---|---|
+| S1 Scribe `scales/s1/encode.py:165` | `model="claude-sonnet-4-6"` literal | **`s1e` exists**, config has `max_tokens` but no `model` |
+| S1 surface `scales/s1/surface_contract.py:192` | `SURFACE_MODEL` module constant | **`surface` exists**, config is `{"layout": "xml_v13"}` only |
+| Query expansion `brain_recall.py:113` | `'claude-haiku-4-5'` literal | **none — unregistered interaction** |
+
+The Scribe case is the sharpest: `encode.py:99` already reads `effort` from the table, then passes
+a hardcoded model literal into the same `run_llm_loop` call. The primary encoder's model is the one
+thing that cannot be configured. By contrast all four S2 units (`s2/base.py:511`) and all three LLM
+scouts (`scouts/base.py:139`) already resolve model from `parameters`.
+
+**Why this is now a prerequisite, not cleanup.** Under a provider **replacement** with per-unit
+model choice, every model value must be a config row or the swap requires source edits. Provider is
+global under that topology, so the table needs **no schema change** — the same `parameters.model`
+rows just carry `gpt-…` values. These three literals are the entire difference between "switch
+provider by editing config" and "switch provider by editing code".
+
+**Target state.** Every LLM call resolves its model from its interaction's `parameters`, with the
+contract value as seed/fallback only. Query expansion becomes a registered interaction — it is a
+real learnable boundary with a prompt (`_EXPANSION_PROMPT`, currently a module constant in
+`brain_recall.py`), and per id:66699ad5 the table is the source of truth for interactions at every
+scale.
+
+**Files & call sites.** `scales/s1/encode.py:165` + `S1E_CONFIG_V1` (`interaction_seed.py:157`);
+`scales/s1/surface.py` model threading + `SURFACE_CONFIG_V1` (`:153`) + `surface_contract.py:192`;
+`brain_recall.py:107-113` (register the interaction, read template + model from it).
+
+**Verification.** `tests/test_prompt_sync.py` (seed/active mirror contract — a new interaction must
+be seeded), `tests/test_contract_sync.py`, `tests/test_surface_transitions.py`,
+`tests/test_daemon_hooks.py`. Follow the registered-DORMANT → activate → `./dev sync-prompts`
+discipline for the new query-expansion interaction. **Guard against the known resolution trap**
+(id:a6dfcfe3): interaction `parameters` beat a passed `config=` dict, so verify the *effective*
+model inside the run, not the value passed in.
+
+**Blast radius.** Medium. Registering a new interaction touches the seed roster and its contract
+test. Changing where surface's model comes from touches the recall hot path — the value must not
+change in the process; this is a plumbing change, not a model change.
+
+**Depends on.** Step 1 overlaps `brain_recall.py:107-113` — do Step 1 first, or do both in one pass.
+
+**Respects.** id:23a321af (model is user config); id:66699ad5 (interactions table is source of truth
+at every scale); id:a6dfcfe3 (verify the effective model, not the passed one).
+
+---
+
 ## Deliberately excluded
 
 **An `LLMClient` / provider-adapter interface.** No second provider is chosen, so its shape would
@@ -237,9 +292,9 @@ living in `dispatch.py`. Not worth churning a file that landed the same day.
 (*"adding a second provider means adding a second mapper here"*). That is when the file stops
 being cohesive enough.
 
-**Model-ID centralization.** ~10 hardcoded IDs remain in `servers/`, but the interactions table is
-already the correct runtime home per id:23a321af, and most units already read it. Its own thread.
-(Step 1 removes one such literal only because it is touching that line anyway.)
+*(Model-ID centralization was excluded here on the grounds that it was a separate thread. That
+exclusion is **withdrawn** — see Step 4. The operator confirmed a provider **replacement** with
+per-unit model choice, which promotes it from cleanup to prerequisite.)*
 
 ---
 
