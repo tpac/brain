@@ -292,19 +292,22 @@ fi
 
 # ── Start daemon via ensure_daemon() — fcntl-locked singleton ──
 # No inline spawning. ensure_daemon() handles: lock, ping, spawn, code-change restart.
-PYTHONPATH="$(cd "$(dirname "$0")/../.." && pwd)" python3 -c "
+# Subshell cd: `python3 -c` puts the cwd at sys.path[0], AHEAD of PYTHONPATH —
+# run from a user project with its own top-level servers/ package and we would
+# import THAT one (restart-daemon.sh pins the same hazard). PLUGIN_ROOT is set
+# by resolve-brain-db.sh above.
+(cd "$PLUGIN_ROOT" && PYTHONPATH="$PLUGIN_ROOT" python3 -c "
 from servers.daemon_client import ensure_daemon; import os, sys
 db = os.path.join(os.environ.get('BRAIN_DB_DIR', ''), 'brain.db')
 sys.stderr.write('[brain-boot] Daemon %s\n' % ('ready' if ensure_daemon(db) else 'FAILED'))
-"
+")
 
 # ── Verify MCP server can start ──
 # Claude Code starts the MCP server as a separate process. If it crashes (e.g. import error),
 # Claude silently gets no brain tools. Catch that here and scream.
 MCP_CRASH=""
-PYTHONPATH="$(cd "$(dirname "$0")/../.." && pwd)" python3 -c "
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath('$PLUGIN_ROOT')), ''))
+(cd "$PLUGIN_ROOT" && PYTHONPATH="$PLUGIN_ROOT" python3 -c "
+import sys
 try:
     from servers.brain_mcp import TOOLS
     sys.stderr.write('[brain-boot] MCP server OK — %d tools available\n' % len(TOOLS))
@@ -315,7 +318,7 @@ except Exception as e:
     print('   The brain hooks still work, but recall/remember/connect MCP tools are dead.')
     print('   Fix the import error in servers/brain_mcp.py and restart the session.')
     sys.exit(1)
-" 2>&1
+") 2>&1
 MCP_EXIT=$?
 if [ $MCP_EXIT -ne 0 ]; then
   # Also check for crash sentinel from a previous failed startup
