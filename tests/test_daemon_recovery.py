@@ -1939,6 +1939,113 @@ class TestBootKeyMirror(unittest.TestCase):
         self.assertIsNone(self._file_body())
 
 
+class TestBootImportsPluginTreeNotCwd(unittest.TestCase):
+    """boot-brain.sh's `python3 -c` sites must import the PLUGIN tree's
+    servers/ package, never one sitting in the hook's cwd.
+
+    `python3 -c` puts the cwd at sys.path[0], AHEAD of PYTHONPATH — so a user
+    project carrying its own top-level `servers/` package shadowed the plugin
+    tree at the ensure_daemon and MCP-verify calls: confusing tracebacks and a
+    false "MCP SERVER BROKEN" notice every session booted from that project.
+    restart-daemon.sh already pins cwd with a `cd "$PLUGIN_ROOT"`; these tests
+    hold boot-brain.sh to the same contract.
+
+    Runs the real boot-brain.sh warm path (runtime-ready sentinel + resolved
+    brain) in a fake plugin tree whose servers/ package is a minimal stub —
+    the invariant under test is import resolution order, not daemon behavior.
+    """
+
+    SCRIPTS = os.path.join(os.path.dirname(__file__), '..', 'hooks', 'scripts')
+
+    def setUp(self):
+        self._home = tempfile.mkdtemp(prefix="brain-bootcwd-home-")
+        self._xdg = os.path.join(self._home, ".config")
+        os.makedirs(os.path.join(self._xdg, "brain"))
+
+        # Fake plugin tree: real boot chain, stubs for everything it launches.
+        self._tree = os.path.join(self._home, "plugin")
+        self._sd = os.path.join(self._tree, "hooks", "scripts")
+        os.makedirs(self._sd)
+        for name in ("boot-brain.sh", "api-key-env.sh", "runtime-state.sh",
+                     "resolve-brain-db.sh", "brain-env.sh"):
+            shutil.copy(os.path.join(self.SCRIPTS, name),
+                        os.path.join(self._sd, name))
+        for name in ("ensure-runtime.sh", "install-daemon-service.sh",
+                     "ensure-dashboard.sh"):
+            stub = os.path.join(self._sd, name)
+            with open(stub, "w") as f:
+                f.write("#!/bin/bash\nexit 0\n")
+            os.chmod(stub, 0o755)
+        with open(os.path.join(self._sd, "boot_brain.py"), "w") as f:
+            f.write("")  # boot's final exec — a no-op here
+
+        # Warm path: runtime-ready sentinel + a venv python (brain-env.sh
+        # prepends venv/bin to PATH, so link python3 too — the boot script
+        # invokes bare `python3`).
+        with open(os.path.join(self._tree, ".runtime-ready"), "w") as f:
+            f.write("ok\n")
+        vbin = os.path.join(self._tree, "venv", "bin")
+        os.makedirs(vbin)
+        os.symlink(sys.executable, os.path.join(vbin, "python"))
+        os.symlink(sys.executable, os.path.join(vbin, "python3"))
+
+        # The plugin tree's servers/ package — what boot MUST import.
+        srv = os.path.join(self._tree, "servers")
+        os.makedirs(srv)
+        open(os.path.join(srv, "__init__.py"), "w").close()
+        with open(os.path.join(srv, "daemon_client.py"), "w") as f:
+            f.write("def ensure_daemon(db):\n    return True\n")
+        with open(os.path.join(srv, "brain_mcp.py"), "w") as f:
+            f.write("TOOLS = ['a', 'b']\n")
+
+        # A resolved brain, so boot reaches the daemon + MCP-verify blocks.
+        self._db_dir = os.path.join(self._home, "braindb")
+        os.makedirs(self._db_dir)
+        open(os.path.join(self._db_dir, "brain.db"), "w").close()
+
+        # The user project boot runs from — carrying the decoy package.
+        self._project = os.path.join(self._home, "project")
+        os.makedirs(os.path.join(self._project, "servers"))
+        with open(os.path.join(self._project, "servers", "__init__.py"), "w") as f:
+            f.write("raise ImportError('decoy servers package imported "
+                    "(cwd leaked into sys.path)')\n")
+
+    def tearDown(self):
+        shutil.rmtree(self._home, ignore_errors=True)
+
+    def _boot(self, cwd):
+        import subprocess
+        env = dict(os.environ, HOME=self._home, XDG_CONFIG_HOME=self._xdg,
+                   ANTHROPIC_API_KEY="sk-ant-test",
+                   BRAIN_DB_DIR=self._db_dir)
+        for k in ("PYTHONPATH", "PYTHONHOME", "CLAUDE_PLUGIN_DATA",
+                  "CLAUDE_PLUGIN_OPTION_BRAIN_PATH",
+                  "CLAUDE_PLUGIN_OPTION_brain_path"):
+            env.pop(k, None)
+        return subprocess.run(
+            ["bash", os.path.join(self._sd, "boot-brain.sh")],
+            input="{}", cwd=cwd, env=env,
+            capture_output=True, text=True, timeout=60)
+
+    def test_boot_imports_plugin_tree_when_cwd_has_decoy_servers(self):
+        r = self._boot(cwd=self._project)
+        out = r.stdout + r.stderr
+        self.assertEqual(r.returncode, 0, out)
+        self.assertIn("MCP server OK — 2 tools available", out)
+        self.assertIn("Daemon ready", out)
+        self.assertNotIn("MCP SERVER BROKEN", out)
+        self.assertNotIn("decoy", out)
+
+    def test_boot_succeeds_from_neutral_cwd(self):
+        # Control: proves a decoy-test failure means the decoy leaked in,
+        # not that the harness itself rotted.
+        r = self._boot(cwd=self._home)
+        out = r.stdout + r.stderr
+        self.assertEqual(r.returncode, 0, out)
+        self.assertIn("MCP server OK — 2 tools available", out)
+        self.assertIn("Daemon ready", out)
+
+
 class TestBothSpawnPathsExecIdentically(unittest.TestCase):
     """Step 6c: the daemon has ONE boot incantation.
 
