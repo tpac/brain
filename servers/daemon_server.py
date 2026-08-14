@@ -11,6 +11,20 @@ the same lock.
 
 import sys
 
+if __name__ == '__main__':
+    # `python -m servers.daemon_server <brain.db>` — the daemon's single entry
+    # point (see main() at the bottom of this file).
+    #
+    # This guard sits at the TOP, before the module body, on purpose: `-m`
+    # executes this file under the name `__main__`, so importing it back under
+    # its canonical name would otherwise run the whole body a SECOND time —
+    # two module objects, two sets of class identities, every module-level
+    # side effect doubled (visibly: the trust-store warning below printed
+    # twice). Delegating here means the body runs exactly once, under the name
+    # every other importer sees.
+    from servers.daemon_server import main as _main
+    sys.exit(_main())
+
 # OS trust store injection — corporate networks TLS-intercept HTTPS with a
 # proxy CA that lives in the system keychain, which Python's bundled certifi
 # ignores; every outbound call (Anthropic API, embedding-model fetch) then
@@ -1384,3 +1398,22 @@ class BrainDaemon:
         ts = time.strftime("%H:%M:%S")
         print("[brain-daemon {}] {}".format(ts, message), file=sys.stderr)
 
+
+def main(argv=None):
+    """The daemon's entry point: `python -m servers.daemon_server <brain.db>`.
+
+    The SINGLE boot incantation. Both spawn routes exec exactly this — launchd
+    through hooks/scripts/brain-daemon, and the no-launchd fallback through
+    daemon_launch.spawn_detached_daemon (daemon_argv + daemon_env).
+
+    The caller supplies the environment (PYTHONPATH, BRAIN_DB_DIR, the CPU-only
+    invariant) — see daemon_launch.daemon_env. Nothing is resolved here: a
+    daemon that picked its own DB would be a second resolver.
+    """
+    argv = sys.argv[1:] if argv is None else argv
+    if len(argv) != 1 or not argv[0]:
+        sys.stderr.write(
+            "usage: python -m servers.daemon_server <path to brain.db>\n")
+        return 2
+    BrainDaemon(argv[0]).start()
+    return 0

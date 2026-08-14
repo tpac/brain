@@ -25,7 +25,10 @@ import sys
 import json
 import time
 import errno
+import shutil
+import socket
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch, MagicMock
 
@@ -800,13 +803,45 @@ class TestSpawnDetachedDaemon(unittest.TestCase):
         argv = popen.call_args[0][0]
         kwargs = popen.call_args[1]
         self.assertEqual(argv[0], "/usr/bin/python3")  # debugger-friendly, not raw sys.executable
-        self.assertEqual(argv[1], "-c")
-        self.assertIn("BrainDaemon", argv[2])
+        # Step 6c: `-m servers.daemon_server <db>`, the same command
+        # hooks/scripts/brain-daemon execs. The DB path is an argv element,
+        # never interpolated into Python source.
+        self.assertEqual(argv[1:3], ["-m", "servers.daemon_server"])
+        self.assertEqual(argv[3], os.path.join(tmp, "brain.db"))
+        self.assertEqual(len(argv), 4)
         self.assertTrue(kwargs["start_new_session"])
         self.assertIsNotNone(kwargs["stdin"])           # devnull, never inherited
-        from servers.daemon_config import DAEMON_CPU_ENV
+        from servers.daemon_config import DAEMON_CPU_ENV, REPO_ROOT
         self.assertTrue(set(DAEMON_CPU_ENV).issubset(kwargs["env"]),
                         "spawn must merge the full CPU-only env")
+        # The two pins that moved out of the old `-c` string and into the env,
+        # where they apply before exec instead of after interpreter start.
+        self.assertEqual(kwargs["env"]["PYTHONPATH"].split(os.pathsep)[0], REPO_ROOT,
+                         "`-m` must resolve the package whatever the spawner's cwd is")
+        self.assertEqual(kwargs["env"]["BRAIN_DB_DIR"], tmp)
+
+    def test_daemon_env_prepends_inherited_pythonpath(self):
+        # Replacing an inherited PYTHONPATH would break a caller that put
+        # something on it deliberately (eval harnesses, isolated brains).
+        with patch.dict(os.environ, {"PYTHONPATH": "/somewhere/else"}):
+            env = dl.daemon_env("/tmp/x/brain.db")
+        from servers.daemon_config import REPO_ROOT
+        self.assertEqual(env["PYTHONPATH"],
+                         REPO_ROOT + os.pathsep + "/somewhere/else")
+
+    def test_daemon_env_falls_back_to_db_parent(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("BRAIN_DB_DIR", None)
+            env = dl.daemon_env("/tmp/some-brain/brain.db")
+        self.assertEqual(env["BRAIN_DB_DIR"], "/tmp/some-brain")
+
+    def test_entry_point_rejects_bad_argv(self):
+        # A daemon that resolved its own DB would be a second resolver; the
+        # entry point takes exactly one path and refuses anything else.
+        import servers.daemon_server as ds
+        self.assertEqual(ds.main([]), 2)
+        self.assertEqual(ds.main([""]), 2)
+        self.assertEqual(ds.main(["a", "b"]), 2)
 
     def test_no_raw_popen_outside_daemon_launch(self):
         # Both spawn callers must route through spawn_detached_daemon — a direct
@@ -1300,6 +1335,72 @@ class TestInstallerPlistDrift(unittest.TestCase):
         self.assertNotIn(prod, content)
         self.assertIn("bootout", self._verbs())
 
+    # The identity guards below existed for the daemon only — the asymmetry
+    # step 6b removed by giving both installers one implementation
+    # (launchd-install.sh). They are pinned on the DASHBOARD side because that
+    # is the copy that had drifted.
+
+    def _install_dashboard_plist(self, db_dir):
+        target = os.path.join(self._agents, "com.brain.dashboard.plist")
+        template = os.path.join(os.path.dirname(self.DASH_SCRIPT),
+                                "com.brain.dashboard.plist")
+        repo = os.path.realpath(os.path.join(os.path.dirname(self.DASH_SCRIPT), "..", ".."))
+        with open(target, "w") as f:
+            f.write(open(template).read().replace("__PLUGIN_DIR__", repo)
+                                         .replace("__BRAIN_DB_DIR__", db_dir))
+        return target
+
+    def test_dashboard_env_override_does_not_repoint_db_dir(self):
+        # An ephemeral BRAIN_DB_DIR must not hijack the singleton dashboard
+        # onto a temp brain any more than it may hijack the daemon.
+        self._fake_launchctl(print_rc=0)
+        self._fake_curl("200")
+        prod = os.path.join(self._home, "prod-brain")
+        os.makedirs(prod)
+        target = self._install_dashboard_plist(prod)
+        r = self._run(self.DASH_SCRIPT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(prod, open(target).read(),
+                      "ephemeral env override must not re-point the dashboard's brain")
+        self.assertEqual(set(self._verbs()), {"print"})
+
+    def test_dashboard_knob_adoption_repoints_db_dir(self):
+        self._fake_launchctl(print_rc=0)
+        self._fake_curl("200")
+        prod = os.path.join(self._home, "prod-brain")
+        os.makedirs(prod)
+        cfg = os.path.join(self._home, ".config", "brain")
+        os.makedirs(cfg, exist_ok=True)
+        with open(os.path.join(cfg, "env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % self._dbdir)
+        target = self._install_dashboard_plist(prod)
+        r = self._run(self.DASH_SCRIPT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        content = open(target).read()
+        self.assertIn(self._dbdir, content, "knob adoption must re-point the plist")
+        self.assertNotIn(prod, content)
+        self.assertIn("bootout", self._verbs())
+
+    def test_knob_read_ignores_env_file_stdout(self):
+        # The env file is shell grammar, so a user `echo`/banner line in it
+        # writes to the reader's stdout. The dashboard's copy of the knob read
+        # lacked the stdout discard until step 6b unified it: the polluted
+        # value then failed the "is this a durable adoption?" comparison and
+        # the installer silently kept the OLD brain despite a valid knob.
+        self._fake_launchctl(print_rc=0)
+        self._fake_curl("200")
+        prod = os.path.join(self._home, "prod-brain")
+        os.makedirs(prod)
+        cfg = os.path.join(self._home, ".config", "brain")
+        os.makedirs(cfg, exist_ok=True)
+        with open(os.path.join(cfg, "env"), "w") as f:
+            f.write("echo 'loading brain env'\nBRAIN_DB_DIR='%s'\n" % self._dbdir)
+        target = self._install_dashboard_plist(prod)
+        r = self._run(self.DASH_SCRIPT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(self._dbdir, open(target).read(),
+                      "a chatty env file must not defeat knob adoption")
+
     def test_daemon_bootout_failure_keeps_installed_plist(self):
         # bootout that doesn't unload → the plist FILE must stay stale so the
         # next run re-detects drift ("file current, launchd stale" never heals).
@@ -1621,6 +1722,557 @@ class TestDaemonPortEnvFirst(unittest.TestCase):
         # A garbage knob must not crash-loop the daemon under KeepAlive.
         self.assertEqual(self._port({"BRAIN_DAEMON_PORT": "auto"}),
                          str(47200 + os.getuid() % 100))
+
+
+
+class TestApiKeyEnvHelper(unittest.TestCase):
+    """Step 6a: api-key-env.sh is the ONE definition of where
+    ANTHROPIC_API_KEY comes from — boot-brain.sh and brain-env.sh both source
+    it instead of carrying the copy that made a casing fix land on one side
+    only (the 2026-07-15 keyless-daemon failure).
+
+    The helper is sourced transitively by brain-daemon, which runs `set -e`,
+    and by resolvers that zsh also sources — so the shape is pinned here too.
+    """
+
+    HELPER = os.path.join(os.path.dirname(__file__), '..',
+                          'hooks', 'scripts', 'api-key-env.sh')
+
+    def setUp(self):
+        self._home = tempfile.mkdtemp(prefix="brain-apikey-home-")
+        self._xdg = os.path.join(self._home, ".config")
+        os.makedirs(os.path.join(self._xdg, "brain"))
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._home, ignore_errors=True)
+
+    def _write_env_file(self, body):
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write(body)
+
+    def _run(self, script, env_extra=None, shell="bash"):
+        import subprocess
+        env = dict(os.environ, HOME=self._home, XDG_CONFIG_HOME=self._xdg)
+        env.pop("ANTHROPIC_API_KEY", None)
+        env.pop("CLAUDE_PLUGIN_OPTION_API_KEY", None)
+        env.pop("CLAUDE_PLUGIN_OPTION_api_key", None)
+        env.update(env_extra or {})
+        return subprocess.run(
+            [shell, "-c", '. "%s"\n%s' % (self.HELPER, script)],
+            env=env, capture_output=True, text=True, timeout=30)
+
+    def _key(self, env_extra=None, shell="bash", prelude=""):
+        r = self._run(
+            '%sbrain_source_user_env\nbrain_api_key_from_plugin_option\n'
+            'printf %%s "${ANTHROPIC_API_KEY:-}"' % prelude,
+            env_extra, shell)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def test_env_file_supplies_key(self):
+        self._write_env_file("ANTHROPIC_API_KEY=sk-from-file\n")
+        self.assertEqual(self._key(), "sk-from-file")
+
+    def test_plugin_option_fills_when_env_file_silent(self):
+        self.assertEqual(
+            self._key({"CLAUDE_PLUGIN_OPTION_API_KEY": "sk-upper"}), "sk-upper")
+
+    def test_plugin_option_lowercase_casing_also_works(self):
+        # The plugins-reference does not pin <KEY>'s case; a one-sided fix here
+        # is the exact drift this extraction exists to prevent.
+        self.assertEqual(
+            self._key({"CLAUDE_PLUGIN_OPTION_api_key": "sk-lower"}), "sk-lower")
+
+    def test_env_file_beats_plugin_option(self):
+        self._write_env_file("ANTHROPIC_API_KEY=sk-from-file\n")
+        self.assertEqual(
+            self._key({"CLAUDE_PLUGIN_OPTION_API_KEY": "sk-option"}),
+            "sk-from-file", "the file is the durable channel — it must win")
+
+    def test_shell_export_beats_plugin_option(self):
+        self.assertEqual(
+            self._key({"ANTHROPIC_API_KEY": "sk-shell",
+                       "CLAUDE_PLUGIN_OPTION_API_KEY": "sk-option"}),
+            "sk-shell")
+
+    def test_source_exports_every_var_not_just_the_key(self):
+        # brain-env.sh depends on this: identity tokens in the file must reach
+        # the daemon, so the source is `set -a`, not a key-only read.
+        self._write_env_file("BRAIN_OPERATOR_NAME=tom\n")
+        r = self._run('brain_source_user_env\n'
+                      'bash -c \'printf %s "$BRAIN_OPERATOR_NAME"\'')
+        self.assertEqual(r.stdout, "tom", r.stderr)
+
+    def test_missing_env_file_is_not_an_error(self):
+        r = self._run('brain_source_user_env; printf %s "$?"')
+        self.assertEqual(r.stdout, "0", r.stderr)
+
+    def test_safe_under_set_e(self):
+        # brain-daemon runs `set -e` and sources this transitively: a bare
+        # failing test as a standalone command would abort the whole resolver.
+        r = self._run('set -e\nbrain_source_user_env\n'
+                      'brain_api_key_from_plugin_option\nprintf ok')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, "ok")
+
+    def test_safe_under_zsh(self):
+        if not shutil.which("zsh"):
+            self.skipTest("zsh not available")
+        self.assertEqual(
+            self._key({"CLAUDE_PLUGIN_OPTION_API_KEY": "sk-zsh"}, shell="zsh"),
+            "sk-zsh")
+
+    def test_no_trailing_newline_env_file_still_reads(self):
+        # Hand-edited files without a trailing newline exist in production
+        # (2026-08-12 finding) — `.`-sourcing must still see the last line.
+        self._write_env_file("ANTHROPIC_API_KEY=sk-no-newline")
+        self.assertEqual(self._key(), "sk-no-newline")
+
+
+class TestBootKeyMirror(unittest.TestCase):
+    """Step 6a: boot-brain.sh mirrors a userConfig-resolved key into the env
+    file, and ONLY a userConfig-resolved one.
+
+    CLAUDE_PLUGIN_OPTION_* exists only inside hook executions, so without the
+    mirror a user who fills the plugin's key field still runs a keyless daemon
+    (launchd spawns it in a separate process tree that resolves the key from
+    the env file alone — first laptop install, 2026-07-15). A key that came
+    from the shell or the file itself must NOT be written back: the file is
+    already the daemon's channel, and rewriting it would persist an ephemeral
+    eval/session key into the user's durable config.
+
+    Runs the real boot-brain.sh on its cold-install branch (no .runtime-ready),
+    where key resolution has already happened and the provisioning chain is
+    stubbed out.
+    """
+
+    SCRIPTS = os.path.join(os.path.dirname(__file__), '..', 'hooks', 'scripts')
+
+    def setUp(self):
+        self._home = tempfile.mkdtemp(prefix="brain-bootkey-home-")
+        self._xdg = os.path.join(self._home, ".config")
+        os.makedirs(os.path.join(self._xdg, "brain"))
+        # A plugin tree carrying the real boot path + stubs for everything the
+        # cold branch would otherwise launch for real (runtime bootstrap...).
+        self._tree = os.path.join(self._home, "plugin")
+        self._sd = os.path.join(self._tree, "hooks", "scripts")
+        os.makedirs(self._sd)
+        for name in ("boot-brain.sh", "api-key-env.sh", "runtime-state.sh"):
+            shutil.copy(os.path.join(self.SCRIPTS, name),
+                        os.path.join(self._sd, name))
+        for name in ("ensure-runtime.sh", "install-daemon-service.sh",
+                     "ensure-dashboard.sh"):
+            stub = os.path.join(self._sd, name)
+            with open(stub, "w") as f:
+                f.write("#!/bin/bash\nexit 0\n")
+            os.chmod(stub, 0o755)
+
+    def tearDown(self):
+        shutil.rmtree(self._home, ignore_errors=True)
+
+    @property
+    def _env_file(self):
+        return os.path.join(self._xdg, "brain", "env")
+
+    def _boot(self, env_extra):
+        import subprocess
+        env = dict(os.environ, HOME=self._home, XDG_CONFIG_HOME=self._xdg)
+        for k in ("ANTHROPIC_API_KEY", "CLAUDE_PLUGIN_OPTION_API_KEY",
+                  "CLAUDE_PLUGIN_OPTION_api_key"):
+            env.pop(k, None)
+        env.update(env_extra)
+        return subprocess.run(
+            ["bash", os.path.join(self._sd, "boot-brain.sh")],
+            input="{}", env=env, capture_output=True, text=True, timeout=60)
+
+    def _file_body(self):
+        if not os.path.exists(self._env_file):
+            return None
+        with open(self._env_file) as f:
+            return f.read()
+
+    def test_plugin_option_key_is_mirrored(self):
+        r = self._boot({"CLAUDE_PLUGIN_OPTION_API_KEY": "sk-ant-mirrored"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("ANTHROPIC_API_KEY=sk-ant-mirrored", self._file_body() or "",
+                      "a userConfig key must reach the launchd-spawned daemon")
+        self.assertEqual(os.stat(self._env_file).st_mode & 0o777, 0o600)
+
+    def test_lowercase_plugin_option_key_is_mirrored(self):
+        self._boot({"CLAUDE_PLUGIN_OPTION_api_key": "sk-ant-lower"})
+        self.assertIn("ANTHROPIC_API_KEY=sk-ant-lower", self._file_body() or "")
+
+    def test_shell_key_is_not_mirrored(self):
+        # An ephemeral shell key (eval run, isolated copy) must not be written
+        # into the user's durable config.
+        self._boot({"ANTHROPIC_API_KEY": "sk-ant-ephemeral"})
+        self.assertIsNone(self._file_body(),
+                          "a shell-supplied key must never be persisted")
+
+    def test_existing_key_line_is_never_overwritten(self):
+        with open(self._env_file, "w") as f:
+            f.write("ANTHROPIC_API_KEY=sk-ant-original\n")
+        self._boot({"CLAUDE_PLUGIN_OPTION_API_KEY": "sk-ant-newer"})
+        self.assertEqual(self._file_body(), "ANTHROPIC_API_KEY=sk-ant-original\n")
+
+    def test_mirror_does_not_glue_onto_a_file_without_a_trailing_newline(self):
+        # Hand-edited config files with no trailing newline exist in
+        # production. A bare `>>` would produce
+        # `BRAIN_AGENT_NAME=xxxANTHROPIC_API_KEY=sk-...`, corrupting both lines.
+        with open(self._env_file, "w") as f:
+            f.write("BRAIN_AGENT_NAME=anchor")   # no trailing \n
+        self._boot({"CLAUDE_PLUGIN_OPTION_API_KEY": "sk-ant-appended"})
+        body = self._file_body()
+        self.assertIn("\nANTHROPIC_API_KEY=sk-ant-appended\n", body)
+        self.assertNotIn("anchorANTHROPIC_API_KEY", body)
+        # and the file still parses as shell, which is how everything reads it
+        import subprocess
+        r = subprocess.run(
+            ["bash", "-c", '. "%s"; printf "%%s:%%s" "$BRAIN_AGENT_NAME" "$ANTHROPIC_API_KEY"'
+             % self._env_file],
+            capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.stdout, "anchor:sk-ant-appended")
+
+    def test_non_sk_plugin_option_is_not_mirrored(self):
+        self._boot({"CLAUDE_PLUGIN_OPTION_API_KEY": "not-a-key"})
+        self.assertIsNone(self._file_body())
+
+
+class TestBothSpawnPathsExecIdentically(unittest.TestCase):
+    """Step 6c: the daemon has ONE boot incantation.
+
+    hooks/scripts/brain-daemon (launchd's entry) and
+    daemon_launch.daemon_argv (the no-launchd fallback) used to be a shell
+    heredoc and a Python `-c` string that had already drifted apart on env
+    pinning — and the heredoc interpolated $DB_PATH into Python source
+    unquoted, so a brain path with a space, quote or backslash produced a
+    SyntaxError and a launchd respawn loop.
+
+    Runs the real brain-daemon against a stub interpreter that records its
+    argv, and compares it to what daemon_argv builds.
+    """
+
+    SCRIPTS = os.path.join(os.path.dirname(__file__), '..', 'hooks', 'scripts')
+
+    def setUp(self):
+        self._home = tempfile.mkdtemp(prefix="brain-spawnpath-home-")
+        self._xdg = os.path.join(self._home, ".config")
+        os.makedirs(os.path.join(self._xdg, "brain"))
+        self._tree = os.path.join(self._home, "plugin")
+        self._sd = os.path.join(self._tree, "hooks", "scripts")
+        os.makedirs(self._sd)
+        for name in ("brain-daemon", "resolve-brain-db.sh", "brain-env.sh",
+                     "api-key-env.sh", "launchd-install.sh"):
+            shutil.copy(os.path.join(self.SCRIPTS, name),
+                        os.path.join(self._sd, name))
+        stub = os.path.join(self._sd, "ensure-runtime.sh")
+        with open(stub, "w") as f:
+            f.write("#!/bin/bash\nexit 0\n")
+        os.chmod(stub, 0o755)
+        # The venv python brain-env.sh wires in — records argv + PYTHONPATH
+        # instead of starting a daemon.
+        venv = os.path.join(self._tree, "venv", "bin")
+        os.makedirs(venv)
+        self._record = os.path.join(self._home, "argv.txt")
+        py = os.path.join(venv, "python")
+        with open(py, "w") as f:
+            f.write('#!/bin/bash\nprintf "%s\\n" "$@" > "{rec}"\n'
+                    'printf "PYTHONPATH=%s\\n" "$PYTHONPATH" >> "{rec}"\n'
+                    .format(rec=self._record))
+        os.chmod(py, 0o755)
+
+    def tearDown(self):
+        shutil.rmtree(self._home, ignore_errors=True)
+
+    def _run_launcher(self, db_dir):
+        import subprocess
+        env = dict(os.environ, HOME=self._home, XDG_CONFIG_HOME=self._xdg,
+                   BRAIN_DB_DIR=db_dir)
+        env.pop("CLAUDE_PLUGIN_DATA", None)
+        env.pop("PYTHONPATH", None)
+        r = subprocess.run(["bash", os.path.join(self._sd, "brain-daemon")],
+                           env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(self._record) as f:
+            lines = f.read().splitlines()
+        argv = [l for l in lines if not l.startswith("PYTHONPATH=")]
+        pythonpath = [l for l in lines if l.startswith("PYTHONPATH=")][0][11:]
+        return argv, pythonpath
+
+    def _make_brain(self, name):
+        d = os.path.join(self._home, name)
+        os.makedirs(d)
+        open(os.path.join(d, "brain.db"), "w").close()
+        return d
+
+    def test_launcher_execs_the_module_entry_point(self):
+        db_dir = self._make_brain("brain-data")
+        argv, pythonpath = self._run_launcher(db_dir)
+        self.assertEqual(argv, ["-m", "servers.daemon_server",
+                                os.path.join(db_dir, "brain.db")])
+        self.assertIn(os.path.realpath(self._tree),
+                      [os.path.realpath(p) for p in pythonpath.split(os.pathsep)],
+                      "the plugin tree must be on PYTHONPATH for `-m` to resolve")
+
+    def test_both_paths_build_the_same_command(self):
+        db_dir = self._make_brain("brain-data")
+        db_path = os.path.join(db_dir, "brain.db")
+        shell_argv, _ = self._run_launcher(db_dir)
+        python_argv = dl.daemon_argv(db_path)[1:]  # drop the interpreter
+        self.assertEqual(shell_argv, python_argv,
+                         "launchd and the direct-spawn fallback must exec the "
+                         "same daemon command — divergence here is the class "
+                         "step 6c removed")
+
+    def test_path_with_spaces_and_quotes_survives(self):
+        # The old heredoc pasted this straight into Python source.
+        db_dir = self._make_brain("my brain's data")
+        argv, _ = self._run_launcher(db_dir)
+        self.assertEqual(argv[-1], os.path.join(db_dir, "brain.db"))
+
+class TestSendCommandTransportContract(unittest.TestCase):
+    """Step 6d: `transport` is the STABLE classification of a WIRE failure.
+
+    Three consumers branch on it — hook_common.daemon_call_raw (which error
+    text Claude sees and which hook_errors row is written), brain_mcp.daemon_send
+    and restart-daemon.sh. They must never match on the prose in `error`, which
+    is for humans; and the key must be ABSENT when the daemon answered, because
+    a daemon-level ok=false reported as a transport failure turns every
+    daemon-side error into "cannot reach the daemon".
+    """
+
+    def _serve(self, handler):
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        host, port = srv.getsockname()
+
+        def run():
+            try:
+                conn, _ = srv.accept()
+                try:
+                    conn.recv(4096)
+                    handler(conn)
+                finally:
+                    conn.close()
+            except OSError:
+                pass
+            finally:
+                srv.close()
+
+        threading.Thread(target=run, daemon=True).start()
+        return host, port
+
+    def _send(self, handler, timeout=3.0):
+        host, port = self._serve(handler)
+        with patch.object(dc, "get_daemon_addr", return_value=(host, port)):
+            return dc.send_command("probe", timeout=timeout)
+
+    def test_success_carries_no_transport(self):
+        resp = self._send(lambda c: c.sendall(b'{"ok": true, "result": {"x": 1}}\n'))
+        self.assertTrue(resp.get("ok"))
+        self.assertIsNone(resp.get("transport"))
+
+    def test_daemon_level_error_carries_no_transport(self):
+        # THE invariant: the daemon answered. Marking this a transport failure
+        # would make every daemon-side error read as an unreachable daemon.
+        resp = self._send(lambda c: c.sendall(b'{"ok": false, "error": "no such node"}\n'))
+        self.assertFalse(resp.get("ok"))
+        self.assertIsNone(resp.get("transport"),
+                          "a daemon that answers is not a wire failure")
+        self.assertEqual(resp.get("error"), "no such node")
+
+    def test_empty_reply_is_transport_empty(self):
+        resp = self._send(lambda c: None)  # accept, then close
+        self.assertEqual(resp.get("transport"), "empty")
+        self.assertIn("empty response", resp.get("error", ""))
+
+    def test_garbled_reply_is_transport_protocol(self):
+        resp = self._send(lambda c: c.sendall(b"not json at all\n"))
+        self.assertEqual(resp.get("transport"), "protocol")
+
+    def test_timeout_is_transport_timeout(self):
+        resp = self._send(lambda c: time.sleep(2), timeout=0.3)
+        self.assertEqual(resp.get("transport"), "timeout")
+
+    def test_refused_is_transport_refused(self):
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.bind(("127.0.0.1", 0))
+        host, port = srv.getsockname()
+        srv.close()  # nothing listening
+        with patch.object(dc, "get_daemon_addr", return_value=(host, port)):
+            resp = dc.send_command("probe", timeout=1.0)
+        self.assertEqual(resp.get("transport"), "refused")
+
+    def test_non_object_reply_is_a_protocol_failure_not_a_raise(self):
+        # Valid JSON that isn't an object (a foreign listener on the port).
+        # The contract is "returns a response dict" — callers must not each
+        # discover separately that it sometimes doesn't.
+        resp = self._send(lambda c: c.sendall(b'"OK"\n'))
+        self.assertIsInstance(resp, dict)
+        self.assertEqual(resp.get("transport"), "protocol")
+        self.assertIn("non-object", resp.get("error", ""))
+
+
+class TestBrainEnvCallsTheApiKeyOwner(unittest.TestCase):
+    """Step 6a left brain-env.sh — the file EVERY hook sources — as a one-line
+    caller of api-key-env.sh. Deleting that one line is far easier to do by
+    accident than deleting the inline block it replaced, and nothing else
+    covers this wiring: TestApiKeyEnvHelper tests the owner in isolation and
+    TestBootKeyMirror tests boot-brain.sh's separate copy of the call.
+
+    Blast radius if it goes: the 2026-07-15 failure, where a user filled in the
+    plugin's key field and the daemon ran keyless anyway."""
+
+    SCRIPTS = os.path.join(os.path.dirname(__file__), '..', 'hooks', 'scripts')
+
+    def setUp(self):
+        self._home = tempfile.mkdtemp(prefix="brain-envwire-home-")
+        self._xdg = os.path.join(self._home, ".config")
+        os.makedirs(os.path.join(self._xdg, "brain"))
+
+    def tearDown(self):
+        shutil.rmtree(self._home, ignore_errors=True)
+
+    def _source(self, env_extra, echo):
+        import subprocess
+        env = dict(os.environ, HOME=self._home, XDG_CONFIG_HOME=self._xdg)
+        for k in ("ANTHROPIC_API_KEY", "CLAUDE_PLUGIN_OPTION_API_KEY",
+                  "CLAUDE_PLUGIN_OPTION_api_key"):
+            env.pop(k, None)
+        env.update(env_extra)
+        r = subprocess.run(
+            ["bash", "-c", '. "%s" >/dev/null 2>&1; printf %%s "%s"'
+             % (os.path.join(self.SCRIPTS, "brain-env.sh"), echo)],
+            env=env, capture_output=True, text=True, timeout=90)
+        return r.stdout
+
+    def test_brain_env_resolves_the_key_from_the_plugin_option(self):
+        self.assertEqual(
+            self._source({"CLAUDE_PLUGIN_OPTION_API_KEY": "sk-wired"},
+                         "$ANTHROPIC_API_KEY"),
+            "sk-wired",
+            "brain-env.sh must call the api-key-env.sh owner, not skip it")
+
+    def test_brain_env_sources_the_user_config_file(self):
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write("BRAIN_OPERATOR_NAME=tom\nANTHROPIC_API_KEY=sk-from-file\n")
+        out = self._source({}, "$BRAIN_OPERATOR_NAME:$ANTHROPIC_API_KEY")
+        self.assertEqual(out, "tom:sk-from-file",
+                         "every var in the user config must reach the daemon, "
+                         "not just the key")
+
+
+class TestKnobReadSurvivesDamagedInstall(unittest.TestCase):
+    """Step 6 review finding: reading the BRAIN_DB_DIR knob must depend on
+    NOTHING but $HOME.
+
+    Before step 6 all three knob readers used the literal
+    `${XDG_CONFIG_HOME:-$HOME/.config}/brain/env` — a string that cannot fail.
+    Extraction (a) routed that read through `brain_user_env_file`, creating a
+    failure mode that did not exist: if `api-key-env.sh` is missing or
+    unreadable, the function is undefined. The first repair REFUSED in that
+    state, which made a brain the user explicitly named unreachable and told
+    them it wasn't configured. The correct repair is a fallback to the literal
+    path, so a damaged install still resolves the right brain.
+
+    Second half of the same finding: `.` on a missing file is a SPECIAL BUILTIN
+    failure that `|| true` cannot rescue — dash exits 2 and bash under `set -e`
+    (which brain-daemon sets) exits 1, both before the resolver can do
+    anything. Only a readability guard survives, so that is what both sourcing
+    sites use.
+    """
+
+    SCRIPTS = os.path.join(os.path.dirname(__file__), '..', 'hooks', 'scripts')
+
+    def setUp(self):
+        self._home = tempfile.mkdtemp(prefix="brain-damaged-home-")
+        self._xdg = os.path.join(self._home, ".config")
+        os.makedirs(os.path.join(self._xdg, "brain"))
+        # A plugin tree we can damage without touching the repo.
+        self._sd = os.path.join(self._home, "plugin", "hooks", "scripts")
+        os.makedirs(self._sd)
+        for name in ("resolve-brain-db.sh", "brain-env.sh", "api-key-env.sh",
+                     "launchd-install.sh"):
+            shutil.copy(os.path.join(self.SCRIPTS, name), os.path.join(self._sd, name))
+        stub = os.path.join(self._sd, "ensure-runtime.sh")
+        with open(stub, "w") as f:
+            f.write("#!/bin/bash\nexit 0\n")
+        os.chmod(stub, 0o755)
+        # A real brain, named only by the knob.
+        self._brain = os.path.join(self._home, "knobbrain")
+        os.makedirs(self._brain)
+        open(os.path.join(self._brain, "brain.db"), "w").close()
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % self._brain)
+
+    def tearDown(self):
+        shutil.rmtree(self._home, ignore_errors=True)
+
+    def _resolve(self, shell="bash", errexit=False):
+        import subprocess
+        resolver = os.path.join(self._sd, "resolve-brain-db.sh")
+        script = '%s. "%s" >/dev/null 2>&1 %s printf %%s "$BRAIN_DB_DIR"' % (
+            "set -e; " if errexit else "",
+            resolver,
+            "|| true;" if errexit else ";")
+        r = subprocess.run([shell, "-c", script],
+                           cwd="/tmp",
+                           env={"HOME": self._home, "PATH": "/usr/bin:/bin",
+                                "XDG_CONFIG_HOME": self._xdg},
+                           capture_output=True, text=True, timeout=60)
+        return r.stdout.strip()
+
+    def _shadow_brain_created(self):
+        return os.path.exists(os.path.join(self._home, ".local", "share", "brain"))
+
+    def _damage(self, mode="remove"):
+        p = os.path.join(self._sd, "api-key-env.sh")
+        if mode == "remove":
+            os.remove(p)
+        else:
+            os.chmod(p, 0o000)
+
+    def test_healthy_install_adopts_the_knob_brain(self):
+        for shell in ("bash", "zsh", "dash"):
+            with self.subTest(shell=shell):
+                if not shutil.which(shell):
+                    self.skipTest("%s not available" % shell)
+                self.assertEqual(self._resolve(shell), self._brain)
+
+    def test_missing_api_key_env_still_adopts_the_knob_brain(self):
+        self._damage("remove")
+        for shell in ("bash", "zsh", "dash"):
+            with self.subTest(shell=shell):
+                if not shutil.which(shell):
+                    self.skipTest("%s not available" % shell)
+                self.assertEqual(
+                    self._resolve(shell), self._brain,
+                    "a damaged install must not make the user's named brain "
+                    "unreachable — fall back to the literal config path")
+        self.assertFalse(self._shadow_brain_created(),
+                         "and it must certainly not birth a second brain")
+
+    def test_unreadable_api_key_env_still_adopts_the_knob_brain(self):
+        self._damage("chmod")
+        self.assertEqual(self._resolve("bash"), self._brain)
+        self.assertFalse(self._shadow_brain_created())
+
+    def test_damaged_install_does_not_kill_the_shell_under_errexit(self):
+        # brain-daemon runs `set -e`; a special-builtin failure there exits
+        # before any FATAL can print, and launchd respawns every 10s forever.
+        self._damage("remove")
+        self.assertEqual(self._resolve("bash", errexit=True), self._brain,
+                         "the resolver must survive `set -e` on a damaged install")
+
+    def test_damaged_install_does_not_kill_dash(self):
+        if not shutil.which("dash"):
+            self.skipTest("dash not available")
+        self._damage("remove")
+        self.assertEqual(self._resolve("dash"), self._brain,
+                         "`.` on a missing file exits dash outright unless guarded")
 
 
 if __name__ == "__main__":

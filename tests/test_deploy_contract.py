@@ -277,3 +277,148 @@ class TestShippedScriptsReachable:
         assert not orphans, (
             'shipped hooks/scripts files with no wiring path (dead on every '
             f'install — delete them or name their external wiring in ALLOW): {orphans}')
+
+
+class TestMechanismContainment:
+    """Duplicated mechanisms have ONE home, and this fails when a second
+    appears.
+
+    Step 6 (DISTRIBUTION-ARCH-PLAN.md) unified four mechanisms that had drifted
+    across two-to-four hand-written copies. Extraction alone does not hold that
+    line: `daemon-client.sh` was extracted for exactly this reason and was
+    deleted in step 5 as a zero-referrer script — callers had drifted back to
+    hand-rolling. What holds is a scan that fails the moment copy #2 is
+    written and names the owner in the failure message (the
+    `test_no_raw_popen_outside_daemon_launch` / raw-SQL-guardrail shape).
+
+    Each row is (mechanism, regex, owners, why) — a shape-scan over the tracked
+    tree, never an enumeration of callers. Adding a legitimate second owner is
+    a deliberate edit to this table, which is the point.
+
+    Two properties every row must have, because a guard that quietly stops
+    guarding is the failure this class exists to prevent:
+      ARMED    at least one declared owner still MATCHES the pattern. Without
+               this, renaming the thing inside its owner leaves the row green
+               while it guards nothing.
+      SHAPED   the pattern describes the MECHANISM, not one spelling of it. A
+               regex pinned to `json.dumps({"cmd"` misses single quotes, a
+               `payload` variable, and byte literals — including copies this
+               very repo has actually contained.
+    """
+
+    # Rows are (mechanism, regex, owners, why) or
+    # (mechanism, regex, owners, why, path_regex) when the mechanism only
+    # exists in one kind of file — the launchd ritual is shell, and scanning
+    # Python docstrings for it only finds operator instructions, never a
+    # second implementation.
+    MECHANISMS = [
+        (
+            'API key from the plugin userConfig option',
+            r'CLAUDE_PLUGIN_OPTION_(API_KEY|api_key)',
+            {'hooks/scripts/api-key-env.sh'},
+            'a casing fix landing in only one copy re-creates the 2026-07-15 '
+            'failure: user fills the plugin key field, daemon still runs keyless',
+        ),
+        (
+            'launchd install/reload ritual',
+            # Any launchctl install/reload VERB on a line that is neither a
+            # comment nor an echo. A leading-token anchor let `cp x y &&
+            # launchctl bootstrap`, `sudo launchctl bootout`, and a call inside
+            # a function body all walk past.
+            r'(?m)^(?![ \t]*#)(?!.*\becho\b).*\blaunchctl[ \t]+(?:bootstrap|bootout|load|unload)\b',
+            {'hooks/scripts/launchd-install.sh'},
+            'the copy in ensure-dashboard.sh had already lost the daemon '
+            "side's post-bootstrap verification; bootout-without-verify is how "
+            '"file current, launchd stale" becomes permanent',
+            r'^hooks/scripts/.*\.sh$',
+        ),
+        (
+            'plist template substitution',
+            r'__PLUGIN_DIR__',
+            {'hooks/scripts/launchd-install.sh',
+             'hooks/scripts/com.brain.daemon.plist',
+             'hooks/scripts/com.brain.dashboard.plist'},
+            'a second renderer is a second chance to skip identity '
+            'preservation and re-point an installed service at the wrong tree '
+            'or the wrong brain',
+        ),
+        (
+            'config-knob read (~/.config/brain/env)',
+            # Both shell grammars for extracting the knob: the subshell-source
+            # idiom (either quoting style) and a line-parser. Pinning only the
+            # first spelling let `BRAIN_DB_DIR=""` and a grep/cut parser — a
+            # second GRAMMAR, which is the hazard this row names — walk past.
+            r'''BRAIN_DB_DIR=(?:''|"")|\b(?:grep|sed|awk|cut)\b[^\n]*BRAIN_DB_DIR=''',
+            {'hooks/scripts/resolve-brain-db.sh'},
+            'this idiom had three shell copies and one had already lost the '
+            "stdout discard, so a user's `echo` in the env file polluted the "
+            'resolved path',
+        ),
+        (
+            'brain path from the plugin userConfig option',
+            r'CLAUDE_PLUGIN_OPTION_(BRAIN_PATH|brain_path)',
+            {'hooks/scripts/resolve-brain-db.sh'},
+            'same unpinned-casing trap as the API key: a copy that checks one '
+            'casing is a silent no-op for half the users',
+        ),
+        (
+            'daemon process construction',
+            r'BrainDaemon\(',
+            {'servers/daemon_server.py'},
+            'the boot incantation was written twice (a `-c` bootstrap and a '
+            'shell heredoc) and drifted on env pinning; every spawn route now '
+            'execs `python -m servers.daemon_server <db>`, so constructing the '
+            'daemon anywhere else is a second incantation by definition',
+        ),
+        (
+            'raw socket construction',
+            # The mechanism is "opens a socket at all", not one way of
+            # spelling the payload — a payload-shaped regex let single quotes,
+            # a `payload` variable and b'{"command": "ping"}' all through,
+            # including a copy this very commit deleted. Every owner below is
+            # a DECIDED exception with a reason; a new file here is not.
+            r'socket\.(socket|create_connection)\(',
+            {
+                'servers/daemon_client.py',      # the client wire, the owner
+                'servers/daemon_server.py',      # the server side — binds, not connects
+                'servers/daemon_launch.py',      # port-occupied probe — binds, not connects
+                'dashboard/daemon_client.py',    # sanctioned copy: the dashboard must
+                                                 # run when servers/ is absent or broken
+                'hooks/scripts/post_tool_trace.py',  # fires on EVERY tool call;
+                                                 # importing servers.daemon_client costs
+                                                 # ~44ms (22ms of it daemon_config's
+                                                 # import-time code fingerprint)
+            },
+            'five hand-rolled clients had three read loops and three error '
+            'vocabularies; each owner here is an exception someone reasoned '
+            'about, so a sixth socket in a new file has to be argued for',
+        ),
+    ]
+
+    @pytest.mark.parametrize('row', MECHANISMS, ids=[m[0] for m in MECHANISMS])
+    def test_mechanism_has_one_home(self, row):
+        mechanism, pattern, owners, why = row[:4]
+        path_rx = re.compile(row[4]) if len(row) > 4 else None
+        # tests/ is exempt: a test EXERCISES a mechanism (feeding it the env
+        # var, asserting the wire bytes) without implementing a second copy of
+        # it. Scanning them would make covering a mechanism trip its own gate.
+        rx = re.compile(pattern)
+        hits = {rel for rel in SCOPE
+                if not rel.startswith('tests/')
+                and (path_rx is None or path_rx.search(rel))
+                and rx.search(_read(rel))}
+        for owner in owners:
+            assert owner in TRACKED, (
+                f'{mechanism}: declared owner {owner} is not tracked — the '
+                'table is naming a file that no longer exists')
+        # ARMED: if no owner matches any more, the row is a no-op guarding
+        # nothing, and every future copy #2 passes it silently.
+        assert hits & owners, (
+            f'{mechanism}: no declared owner matches {pattern!r} — this row is '
+            f'DISARMED. Either the mechanism moved (update owners) or it was '
+            f'renamed/removed (update the pattern or delete the row); leaving '
+            f'it as-is means the next copy of it ships unnoticed.')
+        strays = sorted(hits - owners)
+        assert not strays, (
+            f'{mechanism} is owned by {sorted(owners)} — call it, do not '
+            f'copy it. Second copies found in: {strays}. Why it matters: {why}')

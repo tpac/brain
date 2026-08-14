@@ -90,6 +90,18 @@ def main():
         }
     })
 
+    # DELIBERATELY hand-rolled, NOT routed through daemon_client.send_command
+    # like every other client. The reason is COST, on the hottest path in the
+    # system: importing servers.daemon_client measures ~44ms, of which ~22ms is
+    # daemon_config md5-walking every servers/*.py to build the code
+    # fingerprint at import time. This hook fires on EVERY Bash/Edit/Read/Grep/
+    # MCP call — roughly 2500/day, so routing it through the owner would burn
+    # 100+ seconds a day to send one fire-and-forget line.
+    # servers/daemon_config.py records the same decoupling for the port read.
+    # If that import-time fingerprint ever goes lazy (DISTRIBUTION-ARCH-PLAN
+    # step 9), this exception stops being worth its keep. Until then: keep this
+    # socket in step with send_command by hand; tests/test_deploy_contract.py
+    # names it a declared owner so the divergence is visible, not accidental.
     port = int(os.environ.get("BRAIN_DAEMON_PORT") or (47200 + os.getuid() % 100))  # env (brain-env.sh) is the live source; formula is the fallback
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

@@ -20,30 +20,27 @@ BRAIN_HOOK_CWD=$(echo "$HOOK_STDIN" | python3 -c "import sys,json; print(json.lo
 export BRAIN_HOOK_CWD
 
 # ── Resolve ANTHROPIC_API_KEY from canonical config location ──
-# Single source: ${XDG_CONFIG_HOME:-$HOME/.config}/brain/env (mode 600,
-# dotenv format). Matches the CLI-tool convention (gh, stripe, kubectl, ...).
-# Env-var override: a key already in ANTHROPIC_API_KEY (shell export) wins.
-# The daemon's dispatch.load_env mirrors the env-file/shell resolution but NOT
-# the userConfig fallback below — it inherits ANTHROPIC_API_KEY from this hook's
-# env on the direct-spawn path. A launchd-spawned daemon sees neither
-# CLAUDE_PLUGIN_OPTION_* nor this export, so a userConfig-only key needs the env
-# file there. See docs/DISTRIBUTION-READINESS.md (§2 onboarding).
-BRAIN_ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/brain/env"
-if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -f "$BRAIN_ENV_FILE" ]; then
-  set -a
-  . "$BRAIN_ENV_FILE"
-  set +a
+# Mechanism owned by api-key-env.sh (shared with brain-env.sh, which cannot be
+# sourced this early — it triggers the runtime bootstrap). Single source:
+# ${XDG_CONFIG_HOME:-$HOME/.config}/brain/env (mode 600, dotenv format), the
+# CLI-tool convention (gh, stripe, kubectl, ...). Env-var override: a key
+# already in ANTHROPIC_API_KEY (shell export) wins, so the file is read only
+# when the key is still missing. The daemon's dispatch.load_env mirrors the
+# env-file/shell resolution but NOT the userConfig fallback — it inherits
+# ANTHROPIC_API_KEY from this hook's env on the direct-spawn path. A
+# launchd-spawned daemon sees neither CLAUDE_PLUGIN_OPTION_* nor this export,
+# so a userConfig-only key needs the env file there (hence the mirror below).
+# See docs/DISTRIBUTION-READINESS.md (§2 onboarding).
+source "$(dirname "$0")/api-key-env.sh"
+BRAIN_ENV_FILE="$(brain_user_env_file)"
+if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+  brain_source_user_env "$BRAIN_ENV_FILE"
 fi
 
-# Additive userConfig fallback (CLAUDE_PLUGIN_OPTION_<KEY>, plugins-reference):
-# fill the key from the plugin-config value if the env file / shell didn't.
-# Both casings checked (doc doesn't pin <KEY>'s case).
+# Inside this branch the key was missing, so anything the fallback finds came
+# from userConfig — the only channel the launchd-spawned daemon cannot see.
 if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-  if [ -n "${CLAUDE_PLUGIN_OPTION_API_KEY:-}" ]; then
-    export ANTHROPIC_API_KEY="$CLAUDE_PLUGIN_OPTION_API_KEY"
-  elif [ -n "${CLAUDE_PLUGIN_OPTION_api_key:-}" ]; then
-    export ANTHROPIC_API_KEY="$CLAUDE_PLUGIN_OPTION_api_key"
-  fi
+  brain_api_key_from_plugin_option
   # MIRROR a userConfig-resolved key to the env file (mode 600). Required, not
   # optional: CLAUDE_PLUGIN_OPTION_* exists only in hook executions, and this
   # export dies with the hook — the launchd-spawned daemon (a separate process
@@ -54,9 +51,7 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
   # laptop install, 2026-07-15). Never overwrites an existing key line.
   if [[ "${ANTHROPIC_API_KEY:-}" == sk-* ]] \
      && ! grep -q '^ANTHROPIC_API_KEY=' "$BRAIN_ENV_FILE" 2>/dev/null; then
-    mkdir -p "$(dirname "$BRAIN_ENV_FILE")" 2>/dev/null
-    printf 'ANTHROPIC_API_KEY=%s\n' "$ANTHROPIC_API_KEY" >> "$BRAIN_ENV_FILE" \
-      && chmod 600 "$BRAIN_ENV_FILE" \
+    brain_append_user_env "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" \
       && echo "[brain-boot] plugin-config key mirrored to $BRAIN_ENV_FILE (mode 600) for the background daemon" >&2
   fi
 fi

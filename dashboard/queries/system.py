@@ -9,35 +9,27 @@ Now all DB reads route through ro_connect.
 
 import json
 import os
-import socket
 
-from ..daemon_client import DAEMON_HOST, DAEMON_PORT
+from ..daemon_client import daemon_send
 from ..db import brain_db_path, logs_db_path, ro_connect
 from ..log import warn
 
 
 def _check_daemon() -> dict:
-    """TCP ping the daemon. Doesn't go through `daemon_send` because we want
-    the raw {pid, uptime_seconds, code_fingerprint} payload, and we want a
-    shorter 2s timeout (this is on the health refresh path)."""
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(2.0)
-        sock.connect((DAEMON_HOST, DAEMON_PORT))
-        sock.sendall(b'{"cmd":"ping","args":{}}\n')
-        data = sock.recv(4096)
-        sock.close()
-        resp = json.loads(data.decode().strip()) if data else {}
-        if resp.get("ok"):
-            result = resp.get("result", {})
-            return {
-                'alive': True, 'pid': result.get('pid', '?'),
-                'uptime': result.get('uptime_seconds', 0),
-                'code_fingerprint': result.get('code_fingerprint', '')[:12],
-            }
-        return {'alive': False, 'error': resp.get('error', 'bad response')}
-    except Exception as e:
-        return {'alive': False, 'error': str(e)[:100]}
+    """TCP ping the daemon, through the dashboard's one client.
+
+    Through `daemon_send`, which returns exactly this payload and takes a
+    timeout — a hand-rolled socket here would miss the newline framing the
+    module's client has. `uptime_seconds` is process uptime, from
+    dispatch_ops._handle_ping."""
+    result = daemon_send("ping", timeout=2)
+    if result is None:
+        return {'alive': False, 'error': 'no response'}
+    return {
+        'alive': True, 'pid': result.get('pid', '?'),
+        'uptime': result.get('uptime_seconds', 0),
+        'code_fingerprint': result.get('code_fingerprint', '')[:12],
+    }
 
 
 def _check_brain_db() -> dict:
