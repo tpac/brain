@@ -11,7 +11,7 @@ Dormant candidates (registered but not yet activated — e.g. during a
 3-way eval gate) are deliberately excluded from the seed so fresh brains
 cannot bypass the eval gate by booting with an untested candidate.
 
-Last sync: DB v23 (2026-08-07T18:46:23, by anchor).
+Last sync: DB v24 (2026-08-12T22:08:51, by anchor:community-model-switch-2026-08-12).
 """
 
 SYSTEM_PROMPT = """Community encoder for a persistent brain shared with its operator.
