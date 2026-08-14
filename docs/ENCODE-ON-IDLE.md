@@ -5,7 +5,7 @@ the **prerequisite audit** (Part 2: make the encoder flexible on turn count).
 
 ## Problem
 
-The S1 Scribe fires every `ENCODE_EVERY` (=5) conversational turns (the Stop-hook
+The S1 Scribe fires every `ENCODE_EVERY` (default 5, `BRAIN_ENCODE_EVERY`) conversational turns (the Stop-hook
 gate in `daemon_hooks.hook_post_response_track`, cadence read live from traces via
 `turns_since_last_encode`). The gate only fires **when a turn happens** — so the
 *tail* of a session (the turns since the last encode) is never flushed:

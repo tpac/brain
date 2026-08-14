@@ -9,12 +9,45 @@ Node formatting uses render_rich_node() from servers.contract.
 Interaction: 's1e' in interactions table. Prompt is learnable.
 """
 
+import os
+import sys
+
 from servers.contract import render_rich_node
+
+ENCODE_EVERY_DEFAULT = 5
+
+
+def _resolve_encode_every() -> int:
+    """The cadence knob's value. Env-first (brain-env.sh sources
+    ~/.config/brain/env into the daemon's environment), so an operator sets it
+    without touching the code. A non-positive or malformed value warns and
+    falls back — 0 would fire the Scribe on every turn and a negative one
+    on none, and a typo in a hand-edited config must not silently retune
+    encoding."""
+    raw = os.environ.get('BRAIN_ENCODE_EVERY', '').strip()
+    if not raw:
+        return ENCODE_EVERY_DEFAULT
+    try:
+        turns = int(raw)
+    except ValueError:
+        turns = 0
+    if turns < 1:
+        sys.stderr.write(
+            "[encode-contract] WARN: BRAIN_ENCODE_EVERY=%r is not a positive "
+            "integer — using %d\n" % (raw, ENCODE_EVERY_DEFAULT))
+        return ENCODE_EVERY_DEFAULT
+    return turns
+
 
 # How many conversational turns accumulate before the S1 Scribe fires. The gate
 # is a LEVEL trigger on turns-since-last-encode (read live from traces), not a
 # modular counter — a skipped run (lock busy) isn't lost; the next turn re-checks.
-ENCODE_EVERY = 5
+# Operator knob: BRAIN_ENCODE_EVERY in ~/.config/brain/env, read once at import
+# (daemon restart to apply). Ceiling ~10: the encoder is fed a flat "last 20
+# message rows" window (ENCODING_AGENT['max_messages'] — user+assistant, so ~10
+# turns), so a larger cadence leaves each cycle's oldest turns outside what the
+# Scribe ever reads. Raise both together, or accept the loss.
+ENCODE_EVERY = _resolve_encode_every()
 
 # turns-since-last-encode at/above this means the Scribe is WEDGED: it should have
 # fired at ENCODE_EVERY but the backlog kept growing (lock jammed, or runs erroring
@@ -26,9 +59,13 @@ SCRIBE_STARVATION_TURNS = 4 * ENCODE_EVERY
 
 def scribe_is_starved(turns_since: int) -> bool:
     """True when the Scribe is wedged and the gate should emit a loud signal.
-    Level condition, rate-limited to one alert per ENCODE_EVERY turns of continued
-    starvation (fires at 20, 25, 30… not every turn) so the error log isn't spammed."""
-    return turns_since >= SCRIBE_STARVATION_TURNS and turns_since % ENCODE_EVERY == 0
+    Level condition, rate-limited to one alert per cadence of continued starvation
+    (fires at 20, 25, 30… not every turn) so the error log isn't spammed. The
+    floor of 2 matters because the cadence is operator-settable: at
+    BRAIN_ENCODE_EVERY=1 the modulo is true for every turn, and the rate limit
+    would flood the error log instead of bounding it."""
+    return (turns_since >= SCRIBE_STARVATION_TURNS
+            and turns_since % max(ENCODE_EVERY, 2) == 0)
 
 
 # ── Idle-tail trigger (the second clause of the Scribe gate) ──

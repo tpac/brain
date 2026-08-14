@@ -460,6 +460,15 @@ class TestScribeStarvationThreshold:
         assert not scribe_is_starved(SCRIBE_STARVATION_TURNS + 1)          # rate-limited between cadences
         assert scribe_is_starved(SCRIBE_STARVATION_TURNS + ENCODE_EVERY)   # next alert one cadence later
 
+    def test_cadence_of_one_still_rate_limits(self):
+        # BRAIN_ENCODE_EVERY is operator-settable; at 1 an unfloored modulo is
+        # true every turn, turning the rate limit into the flood it prevents.
+        from unittest.mock import patch
+        from servers.scales.s1 import encode_contract as ec
+        with patch.object(ec, 'ENCODE_EVERY', 1):
+            assert ec.scribe_is_starved(ec.SCRIBE_STARVATION_TURNS)
+            assert not ec.scribe_is_starved(ec.SCRIBE_STARVATION_TURNS + 1)
+
 
 # ═══════════════════════════════════════════════════════
 # SessionContext in trace writes

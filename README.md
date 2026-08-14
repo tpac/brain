@@ -91,6 +91,9 @@ Detailed architecture: [CLAUDE.md](CLAUDE.md) (developer guide).
 | `BRAIN_DB_DIR` | `$CLAUDE_PLUGIN_DATA/brain/` | Override DB location |
 | `BRAIN_USER` | `User` | Operator label in boot context |
 | `BRAIN_PROJECT` | `default` | Project label in boot context |
+| `BRAIN_ENCODE_EVERY` | `5` | Conversational turns between S1 Scribe encodes (daemon restart to apply; above ~10 exceeds what the encoder is shown per run) |
+
+Set them in `~/.config/brain/env` — sourced by every hook and by the daemon launcher.
 
 ## Testing
 
