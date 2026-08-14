@@ -1829,6 +1829,46 @@ class TestApiKeyEnvHelper(unittest.TestCase):
         self._write_env_file("ANTHROPIC_API_KEY=sk-no-newline")
         self.assertEqual(self._key(), "sk-no-newline")
 
+    def test_failing_command_in_env_file_survives_set_e(self):
+        # A failing command in the hand-edited file (FOO=$(typo-cmd)) used to
+        # crash-loop the daemon: on macOS bash 3.2 errexit stays ACTIVE inside
+        # a sourced file even when the `.` call is guarded with `|| true`
+        # (verified 2026-08-13). The owner must drop errexit around the source
+        # so the good variables on either side of the bad line still load.
+        self._write_env_file(
+            "BRAIN_BEFORE=loaded-before\n"
+            "BRAIN_BROKEN=$(definitely-not-a-command-xyz)\n"
+            "BRAIN_AFTER=loaded-after\n")
+        for shell in ("bash", "zsh", "dash"):
+            if not shutil.which(shell):
+                continue
+            with self.subTest(shell=shell):
+                r = self._run(
+                    'set -e\nbrain_source_user_env\n'
+                    'printf %s "${BRAIN_BEFORE:-}:${BRAIN_AFTER:-}"',
+                    shell=shell)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(r.stdout, "loaded-before:loaded-after",
+                                 r.stderr)
+
+    def test_errexit_restored_after_source(self):
+        # The errexit drop is scoped to the source itself: a caller that had
+        # `set -e` on must get it back, or the daemon launcher's own failure
+        # discipline silently degrades after the first env-file read.
+        self._write_env_file("BRAIN_OK=1\n")
+        r = self._run('set -e\nbrain_source_user_env\nfalse\nprintf leaked')
+        self.assertNotEqual(r.returncode, 0,
+                            "errexit was not restored after the source")
+        self.assertEqual(r.stdout, "")
+
+    def test_source_never_enables_errexit(self):
+        # Hooks run WITHOUT set -e; the restore must be conditional on the
+        # caller's prior state, not an unconditional `set -e`.
+        self._write_env_file("BRAIN_OK=1\n")
+        r = self._run('brain_source_user_env\nfalse\nprintf ok')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, "ok")
+
 
 class TestBootKeyMirror(unittest.TestCase):
     """Step 6a: boot-brain.sh mirrors a userConfig-resolved key into the env

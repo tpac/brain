@@ -235,8 +235,10 @@ fi
 #     user choice) beats the env hint (possibly a stale plist-baked path).
 if [ -z "$DB_DIR" ] && [ -n "$_CFG_HINT" ]; then
   # the hint becomes the birthplace only here — mkdir at selection time, so
-  # a typo'd knob surfaces as a visible empty brain at the named path
-  mkdir -p "$_CFG_HINT" 2>/dev/null
+  # a typo'd knob surfaces as a visible empty brain at the named path.
+  # || true: this file is sourced under the daemon launcher's set -e, and a
+  # failed create (read-only parent) must not abort the whole resolver.
+  mkdir -p "$_CFG_HINT" 2>/dev/null || true
   DB_DIR="$_CFG_HINT"
 fi
 if [ -z "$DB_DIR" ] && [ -n "$_ENV_HINT" ]; then

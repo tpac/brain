@@ -40,12 +40,27 @@ brain_user_env_file() {
 # downstream. NOTE: plain sourcing OVERWRITES an already-set shell value — a
 # variable in this file always wins over the process env from here on.
 brain_source_user_env() {
-    local _brain_env_f
+    local _brain_env_f _brain_errexit
     _brain_env_f="${1:-$BRAIN_USER_ENV_FILE}"
     if [ -f "$_brain_env_f" ]; then
+        # The file is hand-edited (2026-08-12: the operator's own), so a
+        # failing command in it is a matter of time. Under the daemon
+        # launcher's `set -e`, errexit stays ACTIVE inside a sourced file on
+        # macOS bash 3.2 even when the `.` call is guarded with `|| true`
+        # (verified 2026-08-13) — one bad line would crash-loop the daemon on
+        # launchd's throttle while hooks (no set -e) keep working. Disable
+        # errexit around the source; restore it only if the caller had it on.
+        case $- in
+            *e*) _brain_errexit=1 ;;
+            *)   _brain_errexit="" ;;
+        esac
+        set +e
         set -a
         . "$_brain_env_f"
         set +a
+        if [ -n "$_brain_errexit" ]; then
+            set -e
+        fi
     fi
     return 0
 }
