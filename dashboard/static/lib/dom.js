@@ -107,6 +107,18 @@ export function relativeTime(utcStr) {
   return Math.round(days / 365) + 'y ago';
 }
 
+/** Elapsed seconds → 'Nh Nm' ('Nm' under an hour, 'Ns' under a minute). For
+ * spans the server reports as a NUMBER (daemon uptime) rather than as the
+ * timestamp relativeTime() takes. No day tier on purpose — uptime past a day
+ * reads fine as hours, and one unit less to scan. */
+export function formatDuration(secs) {
+  const s = Math.max(0, Math.floor(Number(secs) || 0));
+  if (s < 60) return s + 's';
+  const mins = Math.floor(s / 60);
+  if (mins < 60) return mins + 'm';
+  return Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm';
+}
+
 /** Convert a server ISO timestamp to a human-readable local time. */
 export function localTime(utcStr, mode) {
   if (!utcStr) return '';
