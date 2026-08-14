@@ -13,7 +13,7 @@
 
 import { api } from '/static/lib/api.js';
 import { poll } from '/static/lib/poll.js';
-import { escapeHtml, localTime } from '/static/lib/dom.js';
+import { escapeHtml, localTime, formatDuration } from '/static/lib/dom.js';
 
 // ── System status (polled card grid) ────────────────────────────────
 
@@ -30,7 +30,7 @@ function _statusDetails(comp, s) {
   switch (comp.key) {
     case 'daemon':
       return 'PID: ' + (s.pid || '?')
-           + ' · Uptime: ' + Math.round((s.uptime || 0) / 60) + 'min';
+           + ' · Uptime: ' + formatDuration(s.uptime);
     case 'brain_db':     return s.nodes + ' nodes · ' + (s.size_mb || '?') + 'MB';
     case 'logs_db':      return (s.size_mb || '?') + 'MB';
     case 'dashboard_db': return (s.size_mb || '?') + 'MB · Last: ' + localTime(s.last_entry);
