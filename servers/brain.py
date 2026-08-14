@@ -1790,6 +1790,10 @@ class Brain(
             fingerprint='%s:%s:%s' % (source, error_type, error_str[:100]),
             ctx=ctx,
         )
+        # After the row is written, never before: a provider refusal must be
+        # recorded even if the latch itself misbehaves.
+        if error is not None:
+            self._note_llm_failure(error, source)
 
     def _log_warning(self, source: str, message: str, context: str = '',
                      ctx=None):
@@ -2064,6 +2068,14 @@ class Brain(
         makes key replacement via /setup or the env file take effect with no
         restart, not just first-key). sk-* matches boot-brain.sh's gate: a
         placeholder value counts as missing, not as a key.
+
+        NOT a pure read — reading it also rewrites os.environ's key and can
+        clear the rejection latch. Both effects are load-bearing today (the
+        encoder lane gets key freshness ONLY via this property, since
+        s2/base.py reloads only on an empty environ), and both belong in an
+        explicit refresh this property calls rather than hidden behind an
+        attribute access. Named here so the next reader isn't surprised;
+        lifting them out is sequenced work, not a drive-by.
         """
         from .scales.dispatch import resolve_api_key
         key = resolve_api_key()
@@ -2072,12 +2084,120 @@ class Brain(
             # the env var at construction) builds with the CURRENT key.
             if os.environ.get('ANTHROPIC_API_KEY') != key:
                 os.environ['ANTHROPIC_API_KEY'] = key
+            # A key can be PRESENT and REFUSED — disabled in the console,
+            # rotated, or past a spend cap. Presence alone kept the Scribe
+            # firing at every poll against a dead key for a day (external
+            # install, 2026-08-13: 293 consecutive 401s). The latch expires on
+            # its own, so a key re-enabled by hand resumes with no restart and
+            # no change to the key's VALUE — which is what the operator
+            # actually does, and what a value-change trigger would miss.
+            if time.time() < getattr(self, '_llm_rejected_until', 0.0):
+                # ...unless the key ITSELF changed. The refusal was a verdict
+                # on the old credential, so a replaced one deserves an
+                # immediate try — otherwise pasting a fresh key into /setup
+                # does nothing for up to an hour, breaking the "picked up
+                # automatically, no restart needed" promise the keyless notice
+                # makes. Re-enabling the SAME key still waits for the clock,
+                # which is the case a value-change trigger alone would miss.
+                from .scales.dispatch import key_fingerprint
+                if key_fingerprint(key) == getattr(self, '_llm_rejected_key', ''):
+                    return False
+                self._llm_rejected_until = 0.0
+                self._llm_reject_strikes = 0     # new credential, fresh ladder
+                self._file_logger.info(
+                    'llm_available: API key replaced — clearing the %s latch'
+                    % getattr(self, '_llm_rejected_kind', 'rejection'))
             if getattr(self, '_llm_unavailable_noted', False):
                 self._llm_unavailable_noted = False
                 self._file_logger.info(
                     'llm_available: API key resolved — LLM features live')
             return True
         return False
+
+    def note_llm_rejected(self, outcome: dict, where: str = '') -> None:
+        """Pause LLM features after the provider REFUSED a call.
+
+        `outcome` is a `classify_llm_failure` result; only auth/quota kinds
+        reach here. Escalates through LLM_REJECT_BACKOFF_MINUTES per
+        consecutive rejection, or parks until the reset instant when the
+        provider named one (a quota that reopens on a date should not be
+        probed hourly until then).
+
+        System-wide on purpose: a refused credential fails every session and
+        every scale at once, so a per-session backoff would still let four
+        concurrent sessions hammer the endpoint.
+        """
+        from .brain_constants import (LLM_REJECT_BACKOFF_MINUTES,
+                                      LLM_REJECT_STRIKE_RESET_SECONDS)
+        now = time.time()
+        # Already latched → this is a straggler from a call that was in flight
+        # when the gate closed, not a fresh probe. It must not advance the
+        # ladder: four concurrent encodes failing in the same second would walk
+        # straight to the ceiling, turning a three-second blip into an hour of
+        # paused encoding. The ladder counts failed PROBES, one per window.
+        if now < getattr(self, '_llm_rejected_until', 0.0):
+            self._llm_rejected_at = now
+            return
+        if now - getattr(self, '_llm_rejected_at', 0.0) > LLM_REJECT_STRIKE_RESET_SECONDS:
+            self._llm_reject_strikes = 0
+        strikes = getattr(self, '_llm_reject_strikes', 0) + 1
+        ladder = LLM_REJECT_BACKOFF_MINUTES
+        until = now + ladder[min(strikes, len(ladder)) - 1] * 60
+        named = (outcome.get('until') or '').strip()
+        if named:
+            try:
+                # A bare date parses to LOCAL midnight; the provider likely
+                # means UTC. Resuming early just re-latches on the next ladder
+                # step, so an approximate park is safe — resuming late is what
+                # would cost, and max() below never shortens the window.
+                until = max(until, datetime.fromisoformat(named).timestamp())
+            except ValueError:
+                pass   # unparseable date — the ladder still bounds the retry
+
+        from .scales.dispatch import key_fingerprint, resolve_api_key
+        self._llm_reject_strikes = strikes
+        self._llm_rejected_at = now
+        self._llm_rejected_until = until
+        self._llm_rejected_kind = outcome.get('kind', '')
+        self._llm_rejected_detail = outcome.get('detail', '')
+        # WHICH credential was refused — llm_available lifts the latch early
+        # when the operator swaps in a different one. Fingerprint, never the key.
+        self._llm_rejected_key = key_fingerprint(resolve_api_key())
+        # One row per ENGAGE (the early return above makes every call that
+        # reaches here one): the underlying failure logged its own error, and
+        # the poll can rediscover a dead key many times inside one window.
+        self._log_error(
+            'llm_rejected', None,
+            'LLM features paused %.0f min (%s, strike %d, first hit: %s) — '
+            'provider refused the call: %s' % (
+                (until - now) / 60.0, self._llm_rejected_kind, strikes,
+                where or 'unknown', self._llm_rejected_detail))
+
+    def _note_llm_failure(self, error: Exception, source: str) -> None:
+        """Latch the LLM gate when `error` is a provider refusal.
+
+        Called from `_log_error` — the sink every failing LLM path already
+        reaches — so no caller has to thread a classification through. Anything
+        that isn't a refusal classifies as `unknown` and returns silently, so a
+        disk error or a JSON bug passes straight through.
+
+        Only auth and quota latch. A rate limit is already paced by the SDK's
+        Retry-After, a transient error by the retry helper, and an invalid
+        request is per-payload — none of them mean "stop trying entirely".
+        Narrow on purpose: a misclassification here can only cost at most one
+        ladder step of paused encoding, never a wedged brain.
+        """
+        try:
+            from .scales.dispatch import (classify_llm_failure,
+                                          LLM_AUTH_REJECTED,
+                                          LLM_QUOTA_EXHAUSTED)
+            outcome = classify_llm_failure(error)
+            if outcome['kind'] in (LLM_AUTH_REJECTED, LLM_QUOTA_EXHAUSTED):
+                self.note_llm_rejected(outcome, where=source)
+        except Exception as e:
+            # Last-resort stderr, never a recursive _log_error: this runs
+            # INSIDE the error sink.
+            sys.stderr.write('[brain] llm-failure classification failed: %s\n' % e)
 
     def note_llm_unavailable(self, where: str) -> None:
         """Record the keyless state ONCE (errors table), not per attempt.
@@ -2088,6 +2208,11 @@ class Brain(
         when the key appears, so a later key removal notes again.
         """
         if getattr(self, '_llm_unavailable_noted', False):
+            return
+        # A latched brain has a key; it was refused. Saying "not resolved"
+        # would send the operator to fix the one thing that isn't broken —
+        # note_llm_rejected already wrote the accurate row.
+        if time.time() < getattr(self, '_llm_rejected_until', 0.0):
             return
         self._llm_unavailable_noted = True
         self._log_error(

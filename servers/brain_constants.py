@@ -355,6 +355,19 @@ MAINTENANCE_FORCE_FIRE_SECONDS = 24 * 60 * 60
 # maintenance can wait its turn after the first interaction.
 MAINTENANCE_BOOT_GRACE_SECONDS = 90
 
+# ── LLM rejection backoff ──
+# How long LLM features stay paused after the provider REFUSES a call (a dead
+# key, an exhausted quota). A refusal costs no tokens, so this ladder trades
+# resume latency against noise, not money: an operator who disables and
+# re-enables the same key resumes within the hour with no restart, while a key
+# that stays dead stops being hammered after the first few minutes. Escalates
+# per consecutive rejection; the last value is the ceiling.
+LLM_REJECT_BACKOFF_MINUTES = (5, 15, 30, 60)
+
+# Strikes age out after a quiet stretch longer than the ladder's ceiling, so a
+# rejection weeks from now starts at 5 minutes instead of inheriting an hour.
+LLM_REJECT_STRIKE_RESET_SECONDS = 2 * 60 * 60
+
 # ── Dashboard (keyless-onboarding notices) ──
 # The dashboard's own default lives in dashboard/server.py (deliberately
 # servers-decoupled); this is the DAEMON-side single source for building the

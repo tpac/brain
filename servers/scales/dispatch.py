@@ -14,6 +14,120 @@ the canonical write-command CLASSIFICATION the attribution chokepoint reads.
 """
 
 import os
+import re
+
+
+# ── Provider failure classification (the LLM seam) ──
+#
+# The brain reacts to a REFUSED call — pause encoding on a dead key, park until
+# a quota window reopens — and those reactions must not know WHICH provider
+# refused. This maps one provider's exception onto a closed vocabulary; adding a
+# second provider means adding a second mapper here, never a branch at the
+# reaction site. Key resolution already lives in this module, so interpreting
+# the refusal of the key we resolved belongs beside it.
+#
+# Status code first, exception class second, deliberately: HTTP semantics port
+# across providers, `anthropic.AuthenticationError` does not. Nothing here
+# imports an SDK — the classifier is provider-neutral by construction, and the
+# test suite can exercise every branch without one.
+
+LLM_AUTH_REJECTED = 'auth_rejected'      # the credential was refused (401/403)
+LLM_QUOTA_EXHAUSTED = 'quota_exhausted'  # spend cap / credit balance reached
+LLM_RATE_LIMITED = 'rate_limited'        # slow down, retry later (429)
+LLM_INVALID_REQUEST = 'invalid_request'  # this payload is wrong (400) — e.g. too long
+LLM_TRANSIENT = 'transient'              # connectivity or a provider-side 5xx
+LLM_UNKNOWN = 'unknown'                  # not an LLM failure at all
+
+# The connectivity family carries no status code, so it is matched by exception
+# class NAME — the one place names beat types, since matching types would drag
+# an SDK import into a module that deliberately has none.
+_TRANSIENT_NAMES = frozenset((
+    'APIConnectionError', 'APITimeoutError', 'InternalServerError',
+    'ConnectError', 'ConnectTimeout', 'ReadTimeout', 'TimeoutException',
+))
+
+# A quota refusal is a 400 or 429 whose BODY says "you have spent enough" —
+# indistinguishable from a malformed request or a rate limit by status alone.
+_QUOTA_MARKERS = ('usage limit', 'credit balance', 'quota', 'billing')
+
+# Providers that name a reset instant let the brain park exactly that long
+# instead of guessing with a backoff ladder.
+_UNTIL_RE = re.compile(r'regain access on (\d{4}-\d{2}-\d{2})', re.I)
+_STATUS_RE = re.compile(r'error code:\s*(\d{3})', re.I)
+
+_UNKNOWN_OUTCOME = {'kind': LLM_UNKNOWN, 'until': '', 'retry_after': 0,
+                    'detail': ''}
+
+
+def _status_of(exc) -> int:
+    """HTTP status behind an exception, 0 when there isn't one. Checks the
+    attribute, then the response object, then the rendered message — SDKs
+    differ on which they populate, and a stringified error is sometimes all a
+    wrapper preserved."""
+    for probe in (getattr(exc, 'status_code', None),
+                  getattr(getattr(exc, 'response', None), 'status_code', None)):
+        if isinstance(probe, int):
+            return probe
+    m = _STATUS_RE.search(str(exc))
+    return int(m.group(1)) if m else 0
+
+
+def _retry_after_of(exc) -> int:
+    """Seconds the provider asked us to wait, 0 when unstated."""
+    headers = getattr(getattr(exc, 'response', None), 'headers', None)
+    try:
+        return int(float(headers.get('retry-after')))
+    except (AttributeError, TypeError, ValueError):
+        return 0
+
+
+def _classify_one(exc) -> dict:
+    text = str(exc)
+    status = _status_of(exc)
+    quota = any(m in text.lower() for m in _QUOTA_MARKERS)
+
+    if status in (401, 403):
+        return {'kind': LLM_AUTH_REJECTED, 'until': '', 'retry_after': 0,
+                'detail': text[:200]}
+    if quota and status in (400, 402, 429):
+        m = _UNTIL_RE.search(text)
+        return {'kind': LLM_QUOTA_EXHAUSTED, 'until': m.group(1) if m else '',
+                'retry_after': _retry_after_of(exc), 'detail': text[:200]}
+    if status == 429:
+        return {'kind': LLM_RATE_LIMITED, 'until': '',
+                'retry_after': _retry_after_of(exc), 'detail': text[:200]}
+    if status == 400:
+        return {'kind': LLM_INVALID_REQUEST, 'until': '', 'retry_after': 0,
+                'detail': text[:200]}
+    if status == 408 or 500 <= status < 600 or type(exc).__name__ in _TRANSIENT_NAMES:
+        return {'kind': LLM_TRANSIENT, 'until': '', 'retry_after': 0,
+                'detail': text[:200]}
+    return dict(_UNKNOWN_OUTCOME)
+
+
+def classify_llm_failure(exc) -> dict:
+    """Map a provider exception onto the brain's failure vocabulary.
+
+    Returns {'kind', 'until', 'retry_after', 'detail'} — `kind` is one of the
+    LLM_* constants above, `until` an ISO date the provider named (quota only),
+    `retry_after` seconds it asked for (rate limits only).
+
+    Unwraps `__cause__`: RunLoopError wraps mid-run failures and carries no
+    status of its own, so a round-2 401 would otherwise classify as unknown —
+    the same unwrap `retry_on_transient_api_error` does, for the same reason.
+
+    Anything that isn't a provider refusal classifies as `unknown`, so this is
+    safe to call on every exception the brain logs, LLM-related or not.
+    """
+    if exc is None:
+        return dict(_UNKNOWN_OUTCOME)
+    for candidate in (exc, getattr(exc, '__cause__', None)):
+        if candidate is None:
+            continue
+        outcome = _classify_one(candidate)
+        if outcome['kind'] != LLM_UNKNOWN:
+            return outcome
+    return dict(_UNKNOWN_OUTCOME)
 
 
 def load_env():
@@ -72,6 +186,16 @@ def resolve_api_key() -> str:
     except OSError:
         pass
     return os.environ.get('ANTHROPIC_API_KEY', '')
+
+
+def key_fingerprint(key: str) -> str:
+    """Short, non-reversible tag for a credential — enough to notice the key
+    CHANGED, never enough to reconstruct it. The rejection latch has to tell
+    "the operator re-enabled the same key" (wait for the clock) from "the
+    operator pasted a new one" (resume now), and that state sits in memory and
+    in log lines, where a raw key must never appear."""
+    import hashlib
+    return hashlib.sha256((key or '').encode()).hexdigest()[:12]
 
 
 # The write commands a scale agent can issue — the canonical classification read

@@ -409,16 +409,33 @@ class BrainVoice:
         # process resolved, or a keyless daemon boots looking healthy (first
         # laptop install, 2026-07-15). One line, only in the degraded state.
         if not brain.llm_available:
-            out.append(
-                "LLM layer: PAUSED — no API key resolved by the daemon. "
-                "Memory storage, traces and recall work; learning (encode) "
-                "and memory surfacing are off until a key is set. Tell the "
-                "operator before starting work — they should hear this from "
-                "you, not find it in the dashboard. Easiest path: open "
-                "%s and paste the key there (local "
-                "dashboard, stays on this machine); or ~/.config/brain/env "
-                "directly. Picked up automatically, no restart needed."
-                % dashboard_setup_url())
+            # Two different degraded states wear the same gate: no key at all
+            # (onboarding), or a key the provider REFUSED (disabled, rotated,
+            # past a spend cap). Sending an operator whose key is merely
+            # disabled to go "set a key" wastes the one message they read.
+            import time as _time
+            if _time.time() < getattr(brain, '_llm_rejected_until', 0.0):
+                mins = (brain._llm_rejected_until - _time.time()) / 60.0
+                out.append(
+                    "LLM layer: PAUSED — the provider REFUSED the daemon's API "
+                    "key (%s). Memory storage, traces and recall work; learning "
+                    "(encode) and memory surfacing are off. Retrying in ~%.0f "
+                    "min, automatically. Tell the operator before starting "
+                    "work: the key exists but is being rejected — check whether "
+                    "it was disabled, rotated, or has hit a spend cap. Detail: %s"
+                    % (getattr(brain, '_llm_rejected_kind', 'refused'), mins,
+                       getattr(brain, '_llm_rejected_detail', '') or 'none recorded'))
+            else:
+                out.append(
+                    "LLM layer: PAUSED — no API key resolved by the daemon. "
+                    "Memory storage, traces and recall work; learning (encode) "
+                    "and memory surfacing are off until a key is set. Tell the "
+                    "operator before starting work — they should hear this from "
+                    "you, not find it in the dashboard. Easiest path: open "
+                    "%s and paste the key there (local "
+                    "dashboard, stays on this machine); or ~/.config/brain/env "
+                    "directly. Picked up automatically, no restart needed."
+                    % dashboard_setup_url())
 
         out.append("[/BRAIN]")
 
