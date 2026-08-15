@@ -314,6 +314,13 @@ per-unit model choice, which promotes it from cleanup to prerequisite.)*
 
 ## Appendix — provider-portability findings (researched 2026-08-14)
 
+> **STATUS: RESEARCH OPEN — NOT A DECISION. Do not build against this appendix.**
+> The operator's direction (2026-08-14): *"ill want to do more research on that later. Not focus on
+> building it now."* Nothing below is settled. The five Steps above are the buildable work; the
+> provider swap is a separate, later thread that starts with more research — not with this text.
+> Treat the recommendation in §"Responses vs Chat Completions" as one stream's provisional take
+> with named gaps, not as a finding.
+
 Scoping input for the recall-lane seam, given the operator's stated direction: a **replacement**
 (one provider at a time, globally) with **per-unit model choice**. Checked against current OpenAI
 docs rather than assumed — three of four map cleanly, one does not.
@@ -339,10 +346,60 @@ Nothing here blocks a replacement. It does mean the recall-lane seam should be s
 caching strategy is a *provider concern* behind it, not a caller concern in front of it — today
 `cache_control` blocks are assembled at the call sites, which is exactly what would have to change.
 
+### Responses API vs Chat Completions — the wire-format fork
+
+OpenAI has two APIs. If a swap proceeds, one must be chosen; under a **replacement** topology the
+seam only ever carries **one** OpenAI wire format, so choosing wrong costs an adapter rewrite, not
+a caller rewrite.
+
+| | Chat Completions | Responses |
+|---|---|---|
+| Input | `messages[]` | `input[]` + top-level `instructions` |
+| Output | `choices[].message` | `output[]` of typed Items (message / reasoning / function_call) |
+| Tool call | `tool_calls[{id, function:{name, arguments}}]` | `function_call` Item, name at top level |
+| Tool result | `{"role":"tool", "tool_call_id":…}` | `function_call_output` Item with explicit `call_id` |
+| State | caller resends the array | `previous_response_id` / replay Items / Conversations API |
+| Structured output | `response_format` | `text.format` |
+| Reasoning | supported | "richer experience… improved tool usage" |
+
+**How each lands against `run_llm_loop` as it exists** (`runner.py:671-685` — manual
+`api_messages` accumulation, assistant `tool_use` blocks, `{"role":"user", content:[tool_result]}`,
+terminate on `if not tool_uses: break`):
+
+- **Chat Completions** preserves the loop's architecture. Same manual accumulation, same
+  "no tool call → done" termination, same caller-owns-the-array model — the adapter is a
+  translation layer, not a redesign. `record_round_fn`'s literal-messages capture
+  (`runner.py:363-370`) maps 1:1, so the forensics layer survives unchanged.
+- **Responses** has one architectural conflict, not merely a syntactic one: `previous_response_id`
+  is server-side conversation state, and `retry_on_transient_api_error` deliberately re-runs the
+  **whole loop** including writes that already landed (`runner.py:239-241`). Server-held state makes
+  "re-run the whole loop" ambiguous. Declining that feature removes Responses' principal advantage,
+  leaving the Item model — which costs us: `response.content[0].text` and the
+  `''.join(b.text for b in …)` extractors change shape, `reasoning` Items need filtering, and the
+  round-recorder payload shape needs rethinking.
+
+**Provisional take (one stream, 2026-08-14, NOT a decision):** Chat Completions first — it is the
+shape the loop already has, OpenAI supports it indefinitely, and under replacement the wrong pick
+costs only an adapter. Add Responses behind the same seam later *if* reasoning-model tool use
+measurably beats it.
+
+**The question that would settle it:** does the brain ever want server-side conversation state?
+A "no" makes Chat Completions clearly correct for us. That is an operator call, not a research
+finding.
+
+**Explicitly NOT verified — check these before any decision:**
+- Whether **prompt caching behaves differently between the two APIs**. Unknown, and it matters: the
+  loop places **three** breakpoints (`runner.py:339-348`), and caching is already the one dimension
+  that does not port.
+- The "40–80% cost savings" figure for Responses. It came from a secondary blog in search results,
+  **not** OpenAI's documentation. Do not weight it without a primary source.
+- Whether OpenAI-compatible endpoints on self-hosted/third-party stacks implement Responses at all
+  — many implement only Chat Completions, which would matter if "hosted model" is ever in scope.
+
 Sources: [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) ·
 [reasoning models](https://developers.openai.com/api/docs/guides/reasoning) ·
 [prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching) ·
-[migrate to Responses](https://platform.openai.com/docs/guides/migrate-to-responses)
+[migrate to Responses](https://developers.openai.com/api/docs/guides/migrate-to-responses)
 
 ---
 
