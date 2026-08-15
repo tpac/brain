@@ -383,9 +383,27 @@ shape the loop already has, OpenAI supports it indefinitely, and under replaceme
 costs only an adapter. Add Responses behind the same seam later *if* reasoning-model tool use
 measurably beats it.
 
-**The question that would settle it:** does the brain ever want server-side conversation state?
-A "no" makes Chat Completions clearly correct for us. That is an operator call, not a research
-finding.
+**SETTLED (operator, 2026-08-14): the brain owns its state. No server-side conversation state.**
+That makes Chat Completions the correct wire format for us on this axis.
+
+**Why that decision is stronger than it looks.** The Anthropic Messages API is **stateless by
+construction** — *"send the full conversation history each time"* — and has **no
+`previous_response_id` equivalent at any layer**. Server-side compaction (`compact-2026-01-12`) and
+context editing (`context-management-2025-06-27`) both look like state and are not: the client still
+owns and resends `messages`, appending the returned compaction blocks. The SDK Tool Runner keeps its
+own copy **in the client process**. Anthropic's only genuinely server-stateful surface is Managed
+Agents — a separate platform (agents + environments + sessions + SSE), not a request parameter.
+
+So `run_llm_loop`'s caller-owns-the-array shape was never a preference the brain selected — it is
+the only shape the Messages API offers. Every line of the encoder lane was written under that
+constraint. Two consequences worth carrying forward:
+
+1. **Chat Completions is structurally the same model as what we already have** (client-owned message
+   array, resent each turn). Responses' typed-Item model plus server-held state is the outlier
+   relative to *both* our code and the API it was built against.
+2. **If the brain ever does want server-side state, the comparison is not Responses vs Chat
+   Completions** — it is Managed-Agents-style hosting vs self-hosting the loop, which is a different
+   and far larger question than a provider swap. Out of scope here.
 
 **Explicitly NOT verified — check these before any decision:**
 - Whether **prompt caching behaves differently between the two APIs**. Unknown, and it matters: the
@@ -410,6 +428,7 @@ Sources: [OpenAI structured outputs](https://developers.openai.com/api/docs/guid
    plausible.
 2. **Step 2's cost.** Routing 6 encoder-lane sites through `resolve_api_key` adds a stat + read per
    call. Acceptable, or measure first?
-3. **Responses vs Chat Completions**, if the replacement proceeds. Determines how much of
-   `run_llm_loop`'s shape survives, and therefore whether the recall-lane seam is scoped for one
-   wire format or two.
+3. ~~**Responses vs Chat Completions**~~ — **partly settled 2026-08-14.** The operator ruled the
+   brain owns its state, so server-side conversation state is out and Chat Completions is correct on
+   that axis. Still unverified before any decision: per-API caching behaviour, and whether
+   OpenAI-compatible hosted stacks implement Responses at all (see the appendix).
