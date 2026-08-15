@@ -2243,7 +2243,7 @@ class Brain(
         where callers already handle them.
         """
         from .scales.dispatch import resolve_api_key
-        from .scales.runner import ANTHROPIC_CLIENT_TIMEOUT
+        from .brain_constants import ANTHROPIC_CLIENT_TIMEOUT
         key = resolve_api_key()
         client = getattr(self, 'anthropic_client', None)
         # Key-stamped cache: reuse the client only while it was built with

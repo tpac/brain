@@ -78,15 +78,22 @@ correctness.
 
 ## Step 0 — Hoist the S2 single-shot client out of the per-call path
 
-**Problem.** `scales/s2/base.py:541` evaluates `make_client()` *inside* `_call_llm`, so the healer
-and aspect units construct a fresh `anthropic.Anthropic()` — new httpx pool, cold TLS handshake —
-on **every** single-shot LLM call. The two loop encoders do not: `consolidation_encoder.py:131`
-and `community_encoder.py:430` each hoist `client = make_client()` once per `_encode` and reuse it
-across rounds. This is the same throwaway-client anti-pattern already removed from `surface.py`
-(id:7acac778 — *"cold TLS every single time, never cached"*); it survived the `945feba`
-convergence because that change made construction **uniform**, not **shared**. The cost is small
-(S2 maintenance cadence, not a hot path); the reason to fix it is that the codebase currently
-disagrees with itself about client lifetime.
+**Problem.** `scales/s2/base.py` evaluates `make_client()` *inside* `_call_llm`. `_call_llm` has
+exactly two callers, and they differ:
+
+- **Healer** (`healer_encoder.py:88`) calls it **inside a batch loop**, so a run with N batches
+  built N clients — N httpx pools, N cold TLS handshakes. **This is the defect.**
+- **Aspect** (`aspect_encoder.py:69`) calls it **once per run**, so it was already effectively
+  per-run and is unaffected either way.
+
+*(An earlier draft of this step claimed both units were affected. Verified 2026-08-14: only healer
+loops.)* The two loop encoders already do the right thing — `consolidation_encoder.py:131` and
+`community_encoder.py:430` hoist `client = make_client()` once per `_encode`. This is the
+throwaway-client anti-pattern already removed from `surface.py` (id:7acac778 — *"cold TLS every
+single time, never cached"*); it survived the `945feba` convergence because that change made
+construction **uniform**, not **shared**. The cost is small (S2 maintenance cadence, not a hot
+path); the reason to fix it is that the codebase currently disagrees with itself about client
+lifetime.
 
 **Target state.** `_call_llm` receives or reuses a client for the unit's run rather than building
 one per call, matching what consolidation and community already do.
@@ -118,13 +125,20 @@ the decision already made for `surface.py`).
    ThreadPoolExecutor recall worker regardless.
 2. **Ungated.** `_expand_query_via_haiku` is **the only LLM call site in the brain that never
    checks `brain.llm_available`** — there is no reference to it anywhere in `brain_recall.py`. The
-   only guard at the call site (`:1531`) is `_do_expand`, a *quality* heuristic on candidate score
-   spread. So on a keyless brain, or one whose key is currently latched as rejected, this still
-   constructs a client and fires a call that can only 401 — swallowed silently by
-   `except: return []`. Every other lane gates: S1 Scribe (`brain.py:912`), S2
-   (`brain.py:1624`), surface (`daemon_hooks.py:480`), keepalive (`daemon_server.py:468`), voice
-   (`brain_voice.py:411`). This is the one hole in an otherwise universal gate — and it is exactly
-   the shape that produced the external install's 401 storm the rejection latch was built for.
+   only guard at the call site is `_do_expand`, a *quality* heuristic on candidate score spread. So
+   on a keyless brain, or one whose key is currently latched as rejected, this constructs a client
+   and fires a call that can only 401 — swallowed silently by `except: return []`. Every other lane
+   gates: S1 Scribe (`brain.py:912`), S2 (`brain.py:1624`), surface (`daemon_hooks.py:480`),
+   keepalive (`daemon_server.py:468`), voice (`brain_voice.py:411`).
+
+   **Severity: latent, not live.** Query expansion is opt-in via `BRAIN_QUERY_EXPANSION`
+   (default `off`), the flag is set **nowhere in the repo**, and it is additionally force-disabled
+   whenever `laf_v1` scoring is active — which it is in production. So a default install never
+   fires this, and it did **not** contribute to the external install's 401 storm. *(An earlier
+   draft of this plan called it a live billing risk and ranked Step 1 first on that basis; that
+   was wrong.)* It is worth closing anyway: both defects become reachable the moment an operator
+   turns the flag on, and a hole in an otherwise-universal gate is cheapest to fix while the file
+   is open.
 
 It also hardcodes `model='claude-haiku-4-5'` at `:113` (see Step 4).
 
@@ -421,11 +435,21 @@ Sources: [OpenAI structured outputs](https://developers.openai.com/api/docs/guid
 
 ---
 
+## Status
+
+**Steps 0, 1 and 3 are implemented** (branch `claude/heuristic-golick-d4c209`) with
+`tests/test_recall_query_expansion.py` added, a pre-commit review applied, and a targeted
+regression sweep green. **Steps 4 and 2 remain**, in that order.
+
+---
+
 ## Open questions
 
-1. **Step 3's destination.** Which contract file should own `ANTHROPIC_CLIENT_TIMEOUT`? It is
-   daemon-level policy consumed by two layers; `brain_constants.py` and `contract.py` are both
-   plausible.
+1. ~~**Step 3's destination.**~~ **RESOLVED — `servers/brain_constants.py`.** It already holds the
+   sibling stream's `LLM_REJECT_BACKOFF_MINUTES` / `LLM_REJECT_STRIKE_RESET_SECONDS` beside the
+   daemon timing constants, and `scales/` already imports upward from `servers/` routinely
+   (`from ..contract import …` in dispatch, s2, s1). `contract.py` was rejected: it is the **node
+   field** contract ("single source of truth for node fields"), a different concern entirely.
 2. **Step 2's cost.** Routing 6 encoder-lane sites through `resolve_api_key` adds a stat + read per
    call. Acceptable, or measure first?
 3. ~~**Responses vs Chat Completions**~~ — **partly settled 2026-08-14.** The operator ruled the

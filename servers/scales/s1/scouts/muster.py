@@ -174,9 +174,12 @@ def run_muster(
     #
     # Note: ThreadPoolExecutor CAN'T interrupt running threads — cancelled
     # or timed-out scouts continue running in the background until their
-    # own internal timeouts fire. This is acceptable: the blocking time is
-    # bounded by ANTHROPIC_CLIENT_TIMEOUT for LLM scouts, and the temporal
-    # scout doesn't block. Ghost threads are released when the pool exits.
+    # own internal timeouts fire. This is acceptable: an LLM scout's ghost
+    # thread is bounded by its OWN per-request timeout — scouts/base binds
+    # `timeout_seconds` (and max_retries=0) via with_options on every call,
+    # which is what actually caps this path; the shared client below carries
+    # no constructor timeout. The temporal scout doesn't block at all. Ghost
+    # threads are released when the pool exits.
     deadline = _time.time() + timeout_s
 
     # Important: exit the `with` block WITHOUT waiting for pending threads.

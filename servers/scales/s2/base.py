@@ -481,6 +481,23 @@ class IntegrationUnit:
                     trunc['round'], trunc['output_tokens'], trunc['max_tokens']),
                 'batch %d — %s' % (batch_num, trunc_detail))
 
+    def _llm_client(self):
+        """This unit's Anthropic client, built once per run.
+
+        Units are constructed per run, so caching on the instance gives the
+        single-shot path the same per-run client lifetime the loop encoders
+        get by hoisting make_client() above their batch loop
+        (consolidation_encoder, community_encoder). Healer calls _call_llm
+        once per BATCH, so building inside the call meant a fresh client —
+        and a cold TLS pool — for every batch of a run: the throwaway-client
+        shape already removed from surface.py. Aspect calls it once per run
+        and is unaffected either way.
+        """
+        client = getattr(self, '_client', None)
+        if client is None:
+            client = self._client = make_client()
+        return client
+
     def _call_llm(self, interaction_name, user_content):
         """Call LLM with a learnable prompt from interactions table.
 
@@ -538,7 +555,7 @@ class IntegrationUnit:
             # interaction-table prompt/config load above, the JSON envelope
             # expectation, and the log-and-return-None failure policy below.
             raw, telemetry = run_llm_once(
-                make_client(), model, max_tokens, system_prompt, user_content)
+                self._llm_client(), model, max_tokens, system_prompt, user_content)
             return extract_json(raw), telemetry
 
         except Exception as e:

@@ -368,6 +368,33 @@ LLM_REJECT_BACKOFF_MINUTES = (5, 15, 30, 60)
 # rejection weeks from now starts at 5 minutes instead of inheriting an hour.
 LLM_REJECT_STRIKE_RESET_SECONDS = 2 * 60 * 60
 
+# ── LLM transport ──
+# Hard upper bound on any single Anthropic SDK call (S1 surface, S1 encode, S2
+# encoders, scouts). The SDK default is roughly 600s but is measured against
+# time.monotonic(), which does NOT advance while the process is suspended
+# (macOS sleep). A call started right before sleep can therefore hang
+# indefinitely after wake. A post-sleep hang is recovered reactively
+# (ensure_daemon at session start / the MCP health monitor during a session,
+# both force-restarting via launchctl kickstart -k); this constant bounds
+# normal-mode hangs (slow API, throttled response, etc.) so a stuck call
+# doesn't tie up a worker forever. Community encoder round 2 on cold-cache
+# batches can legitimately take ~218s; 600s leaves headroom without inviting
+# silence.
+#
+# It lives here rather than in scales/runner.py because it is daemon-level
+# transport policy, not encoder-lane detail: brain.py builds the shared client
+# with it too, and was reaching down into the encoder lane for it.
+ANTHROPIC_CLIENT_TIMEOUT = 600.0
+
+# Recall-lane query expansion gets its OWN, much tighter bound. It is a
+# best-effort ~1s Haiku call on the recall hot path, and a stall there blocks a
+# recall worker thread — so the encoder lane's 600s ceiling is the wrong shape
+# entirely. 15s is >10x the observed call time: generous enough that a slow but
+# working call still lands, short enough that a hung socket costs one recall
+# instead of ten minutes. Paired with max_retries=0 at the call site, since
+# recall proceeds on the primary query when expansion misses.
+RECALL_EXPANSION_TIMEOUT_S = 15.0
+
 # ── Dashboard (keyless-onboarding notices) ──
 # The dashboard's own default lives in dashboard/server.py (deliberately
 # servers-decoupled); this is the DAEMON-side single source for building the

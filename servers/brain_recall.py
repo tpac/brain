@@ -34,6 +34,7 @@ from .brain_constants import (
     KEYWORD_FALLBACK_WEIGHT,
     MAX_PAGE_SIZE,
     PRUNE_THRESHOLD,
+    RECALL_EXPANSION_TIMEOUT_S,
     RELEVANCE_FLOOR_ENRICHED,
     RELEVANCE_FLOOR_PRIMARY,
     _TITLE_BOOST_STOPWORDS,
@@ -105,7 +106,16 @@ def _expand_query_via_haiku(query: str) -> List[str]:
         return []
     try:
         import anthropic
-        client = anthropic.Anthropic()
+        # Bounded, and no SDK retries. This is a best-effort call on the recall
+        # hot path: the `except` below catches errors, not hangs, so only the
+        # timeout stops a stalled socket from holding a recall worker thread.
+        # The encoder lane's 600s ceiling is the wrong shape here — a recall
+        # that waits ten minutes has already failed. max_retries=0 keeps the
+        # bound hard (the SDK default of 2 would triple the worst case); recall
+        # proceeds on the primary query when expansion misses, which is the
+        # same best-effort posture scouts/base.py takes.
+        client = anthropic.Anthropic(
+            timeout=RECALL_EXPANSION_TIMEOUT_S, max_retries=0)
     except Exception:
         return []
     try:
@@ -1527,6 +1537,33 @@ class BrainRecallMixin:
                           file=sys.stderr)
                 else:
                     _do_expand = True  # too few candidates → expand
+
+            # Availability gate. Every other LLM lane checks this before
+            # spending a call that can only 401 — S1 Scribe and S2 (brain.py),
+            # surface (daemon_hooks), keepalive (daemon_server), voice
+            # (brain_voice). Expansion was the one site that didn't, so a
+            # keyless brain — or one whose key the provider has refused and the
+            # rejection latch has paused — still fired here, into a bare
+            # `except` that swallowed the 401 silently. The gates above are
+            # QUALITY gates (is expansion worth it); this is the AVAILABILITY
+            # gate (can it run at all).
+            #
+            # Operand order is load-bearing: `_do_expand` first means
+            # self.llm_available — which re-reads the key file on every access
+            # — is touched ONLY when expansion is actually enabled. Reversing
+            # the operands would put a stat + read on every recall, which
+            # resolve_api_key's contract explicitly excludes ("not the recall
+            # hot path"). tests/test_recall_query_expansion.py pins the order.
+            if _do_expand and not self.llm_available:
+                # note_llm_unavailable records the keyless state ONCE per
+                # daemon lifetime, so it cannot explain this particular skip —
+                # and the on_flat block above has already printed its
+                # "→ expand" decision. Without this line the tuning log shows
+                # an expansion that silently never happened.
+                print('[recall] query-expansion skipped: no usable API key',
+                      file=sys.stderr)
+                self.note_llm_unavailable('query expansion')
+                _do_expand = False
 
             if _do_expand:
                 try:

@@ -92,7 +92,7 @@ def collect_locked_ids(clusters):
 
 def run_critique(candidate_text):
     import anthropic
-    from servers.scales.runner import ANTHROPIC_CLIENT_TIMEOUT
+    from servers.brain_constants import ANTHROPIC_CLIENT_TIMEOUT
     from servers.scales.dispatch import load_env
     if not os.environ.get('ANTHROPIC_API_KEY'):
         load_env()

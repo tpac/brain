@@ -248,7 +248,7 @@ Answer concisely:
 
 def run_reasoning_probe(brain):
     import anthropic
-    from servers.scales.runner import ANTHROPIC_CLIENT_TIMEOUT
+    from servers.brain_constants import ANTHROPIC_CLIENT_TIMEOUT
     from servers.scales.dispatch import load_env
     if not os.environ.get('ANTHROPIC_API_KEY'):
         load_env()

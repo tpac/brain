@@ -14,19 +14,11 @@ import time
 import threading
 import json
 
-
-# Hard upper bound on any single Anthropic SDK call (S1 surface, S1
-# encode, S2 encoders, scouts). The SDK default is roughly 600s but is
-# measured against time.monotonic(), which does NOT advance while the
-# process is suspended (macOS sleep). A call started right before sleep
-# can therefore hang indefinitely after wake. A post-sleep hang is
-# recovered reactively (ensure_daemon at session start / the MCP health
-# monitor during a session, both force-restarting via launchctl
-# kickstart -k); this constant bounds normal-mode hangs (slow API,
-# throttled response, etc.) so a stuck call doesn't tie up a worker forever.
-# Community encoder round 2 on cold-cache batches can legitimately take
-# ~218s; 600s leaves headroom without inviting silence.
-ANTHROPIC_CLIENT_TIMEOUT = 600.0
+# Transport policy is daemon-level, not encoder-lane: brain.py builds the
+# daemon's shared client with the same bound, so the constant lives in
+# brain_constants and both layers import it from there. make_client() below is
+# this module's consumer.
+from ..brain_constants import ANTHROPIC_CLIENT_TIMEOUT
 
 
 class RunLoopError(Exception):
