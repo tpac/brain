@@ -87,9 +87,13 @@ ran nothing). Verified 2026-08-13: **`MAIN_MIGRATIONS` no longer appears anywher
 logs-side integration was correct and is the model. Mechanism + repro: brain
 `b5b72b74`. Latent only because the list is empty — it detonates on the first real
 migration, which is exactly when strangers have brains nobody can hand-fix.
-**Why a version bump isn't free:** `_backup_before_migration` copies the whole DB
-(675 MB) at boot before the port opens, and per the fleet rule (brain `56890464`) a
-closed port reads as *dead* — the watchdog can `kickstart -k` mid-run.
+**What a version bump costs — measured 2026-08-14, the backup is not the problem:**
+`_backup_before_migration` copies the live 723 MB `brain.db` in **0.121 s** (APFS
+copy-on-write clone), so the boot-stall fear here was wrong. The fleet rule (brain
+`56890464`) still binds, but it binds the *migration step*: a closed port reads as
+*dead* and the watchdog can `kickstart -k` after ~20 s, so a slow row-by-row step
+is the hazard, not the copy. Second real cost: each bump leaves a `.vN.bak` that
+nothing prunes.
 **Queued behind it, one bump should serve all:** 12 + 15 undeclared dead tables
 (inventory: brain `2b49ac02` — "undeclared" is not "drop-safe"; ~12 names still return
 code hits) · `bridge_proposals` (undeclared, 0 rows, still present on existing brains)

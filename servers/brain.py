@@ -245,9 +245,13 @@ class Brain(
             self.logs_db_path, check_same_thread=False,
             factory=db_backends.current.BatchAwareConnection)
         db_backends.current.apply_pragmas(self.logs_conn)
-        ensure_logs_schema(self.logs_conn)
+        ensure_logs_schema(self.logs_conn, db_path=self.logs_db_path)
 
-        # One-time migration: move log tables from brain.db to brain_logs.db
+        # One-time migration: move log tables from brain.db to brain_logs.db.
+        # This runs AFTER ensure_logs_schema has stamped a version, so any rows
+        # it imports arrive behind that stamp — it resets the logs counter when
+        # it imports anything, so the migration ladder faces the legacy data on
+        # the next open instead of treating it as already-current.
         migrate_logs_to_separate_db(self.conn, self.logs_conn)
 
         # DAL instances — incremental adoption, brain.py migrates one method at a time

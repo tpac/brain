@@ -358,6 +358,27 @@ class LogsDAL:
         return {'entries': entries, 'counts': counts}
 
 
+# Provenance values that mean "the system put this here", as opposed to a human
+# making a deployment decision. Named here, at the table's owner, and referenced
+# at every mint and read site — the shipped-prompt reconcile decides whether to
+# advance a prompt by comparing against them, so a literal copy that drifted
+# would silently reclassify every untouched install as human-owned and kill the
+# mechanism with no signal at all.
+#
+# Minted at: AUTO_V1 by InteractionDAL.register (a new name's v1 auto-activates),
+# BACKSTOP by the pointer fill-in in schema.ensure_logs_schema, RECONCILE by
+# interaction_seed when it advances a shipped prompt.
+#
+# Closed vocabulary: callers coming through the MCP door may not supply any of
+# them, or a stray call could relabel a human's deployment decision as an
+# untouched default and get published over.
+AUTO_V1_PROVENANCE = 'register:auto_v1'
+RECONCILE_PROVENANCE = 'seed:reconcile'
+BACKSTOP_PROVENANCE = 'migration:initial_active'
+SYSTEM_PROVENANCE = (AUTO_V1_PROVENANCE, RECONCILE_PROVENANCE,
+                     BACKSTOP_PROVENANCE)
+
+
 class InteractionDAL:
     """Access layer for interactions — versioned templates for system boundaries.
 
@@ -406,7 +427,7 @@ class InteractionDAL:
             self.conn.execute(
                 'INSERT OR REPLACE INTO interaction_active (name, version, set_at, set_by) '
                 'VALUES (?, ?, ?, ?)',
-                (name, version, now, 'register:auto_v1'))
+                (name, version, now, AUTO_V1_PROVENANCE))
             was_activated = True
         commit_unless_batched(self.conn)
         return {'name': name, 'version': version, 'id': new_id,
@@ -480,14 +501,34 @@ class InteractionDAL:
                 'parent_version': row[7]}
 
     def list_all(self) -> List[Dict[str, Any]]:
-        """List all interactions: name, max_version, total_versions, active_version."""
+        """List all interactions: name, max_version, total_versions,
+        active_version, active_set_by.
+
+        `active_set_by` is who flipped the pointer — the provenance the
+        shipped-prompt reconcile reads to tell a system default apart from a
+        human's deployment decision. See SYSTEM_PROVENANCE.
+        """
         rows = self.conn.execute(
-            'SELECT i.name, MAX(i.version) as v, COUNT(*) as versions, a.version '
+            'SELECT i.name, MAX(i.version) as v, COUNT(*) as versions, '
+            'a.version, a.set_by '
             'FROM interactions i '
             'LEFT JOIN interaction_active a ON a.name = i.name '
             'GROUP BY i.name ORDER BY i.name').fetchall()
         return [{'name': r[0], 'max_version': r[1], 'total_versions': r[2],
-                 'active_version': r[3]} for r in rows]
+                 'active_version': r[3], 'active_set_by': r[4]}
+                for r in rows]
+
+    def list_versions(self, name: str) -> List[Dict[str, Any]]:
+        """Every registered version of `name`, ascending: version + created_by.
+
+        Registry fact, not policy: callers decide what a given `created_by`
+        means. Used to distinguish a human's dormant candidate (which must
+        never be published over) from a crashed reconcile's residue.
+        """
+        rows = self.conn.execute(
+            'SELECT version, created_by FROM interactions '
+            'WHERE name = ? ORDER BY version', (name,)).fetchall()
+        return [{'version': r[0], 'created_by': r[1]} for r in rows]
 
 
 class TraceDAL:

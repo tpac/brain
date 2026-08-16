@@ -39,6 +39,12 @@ from datetime import datetime, timezone
 BRAIN_VERSION = 30  # v30: drop nodes.project column — project is now system-stamped kv provenance (node_metadata_kv['project']), not a nodes column. _migrate_v30_project_to_kv moves values (slug map: everything→brain except the EX.CO trio→ex.co) then DROP COLUMN. See v29 note below for prior version.
 BRAIN_VERSION_KEY = 'brain_schema_version'
 
+# brain_logs.db structural version. v1 is the baseline stamp: the table shapes
+# that existed when versioning was introduced. Structural changes from here get
+# a numbered step in LOGS_MIGRATIONS and bump this.
+LOGS_VERSION = 1
+LOGS_VERSION_KEY = 'logs_schema_version'
+
 # ─── Allowed node types ───
 NODE_TYPES = [
     'person', 'project', 'decision', 'rule', 'concept',
@@ -492,19 +498,170 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def _backup_before_migration(db_path, from_version, to_version):
-    """Create a backup before schema migration. Returns backup path or None."""
-    if not db_path or from_version == 0 or from_version >= to_version:
+# ═══════════════════════════════════════════════════════════════
+# Versioned migration runner — the ONE mechanism for "the code changed,
+# migrate this install's data forward".
+#
+# There is a fleet now (installs other than the author's), so a change cannot
+# be applied by hand on one machine. Every versioned stream below self-applies
+# at open, exactly once, in order.
+#
+# Three streams use this, each with its own counter so they move
+# independently — structure changes rarely, prompt content often, and
+# conflating them would make every prompt edit look like a schema change:
+#
+#   brain.db      brain_meta.brain_schema_version   BRAIN_VERSION
+#   brain_logs.db logs_meta.logs_schema_version     LOGS_VERSION
+#   brain_logs.db logs_meta.seed_prompts_version    SEED_PROMPTS_VERSION
+#
+# Forward-only and idempotent by version guard: a step runs iff the DB's stored
+# version is below it. Re-opening a current DB does no writes.
+#
+# THE STAMP BELONGS TO THE RUNNER. A caller that stamps its target version
+# before calling here kills every step: the runner re-reads the version, sees
+# itself already current, and returns. That inversion shipped once (dfc74ee,
+# reverted) and made MAIN_MIGRATIONS dead by construction.
+# ═══════════════════════════════════════════════════════════════
+
+def read_schema_version(conn, meta_table: str, version_key: str) -> int:
+    """Stored version for a stream, or 0 when the row is absent.
+
+    0 covers both a fresh DB and a pre-versioning install. Those two need
+    OPPOSITE handling (baseline vs. run everything), so the caller decides
+    between them with a structural test — never from this number alone.
+
+    Deliberately does not swallow operational errors. A locked DB or a corrupt
+    value read as 0 would let `fresh` baseline-stamp a fully-populated brain and
+    skip every pending step, silently and permanently. Missing-table is the one
+    benign case, and callers create the meta table before reaching here.
+    """
+    cur = conn.execute(
+        "SELECT value FROM %s WHERE key = ?" % meta_table, (version_key,))
+    row = cur.fetchone()
+    return int(row[0]) if row else 0
+
+
+def stamp_schema_version(conn, meta_table: str, version_key: str,
+                         version: int) -> None:
+    """Record a stream as migrated up to `version`."""
+    conn.execute(
+        "INSERT OR REPLACE INTO %s (key, value, updated_at) "
+        "VALUES (?, ?, ?)" % meta_table,
+        (version_key, str(version), _now()))
+
+
+def run_versioned_migrations(conn, meta_table: str, version_key: str,
+                             target_version: int, steps, label: str = '',
+                             db_path=None, fresh: bool = False) -> int:
+    """Run every step the stored version hasn't seen, then stamp. Returns the
+    version found on entry (0 = fresh or pre-versioning).
+
+    `steps` is an ordered [(version, callable(conn))]. A step runs iff
+    stored_version < its version.
+
+    `fresh` must come from a STRUCTURAL test (no tables yet), not from the
+    counter — a pre-versioning install also reads 0 and needs every step.
+    A fresh DB is born at the current shape: stamp, run nothing.
+
+    `db_path` enables the pre-migration backup required for any DB that is
+    about to be rewritten. Backup fires for a non-fresh DB with pending
+    steps INCLUDING one at version 0: pre-versioning installs are the oldest
+    DBs in the fleet and the ones a first migration is most likely to damage.
+
+    A failing step is NOT swallowed: the connection is rolled back and the
+    exception propagates with the stamp unwritten, so the migration retries on
+    the next open instead of marking a half-applied DB current.
+    """
+    versions = [v for v, _ in steps]
+    if versions != sorted(set(versions)):
+        raise ValueError('%s: migration steps must be sorted and unique: %s'
+                         % (label or meta_table, versions))
+    if versions and versions[-1] > target_version:
+        raise ValueError(
+            '%s: step v%d is above target v%d — it would run early and '
+            'stamp low, then run again after the next bump'
+            % (label or meta_table, versions[-1], target_version))
+
+    current = read_schema_version(conn, meta_table, version_key)
+    if current >= target_version:
+        return current
+
+    pending = [(v, fn) for v, fn in steps if current < v]
+    if pending and not fresh:
+        _backup_before_migration(db_path, current, target_version,
+                                 allow_zero=True, conn=conn)
+
+    ran = 0
+    if not (fresh and current == 0):
+        for step_version, step_fn in pending:
+            try:
+                step_fn(conn)
+            except Exception:
+                conn.rollback()
+                raise
+            ran += 1
+            if label:
+                print('[brain] %s: applied step v%d' % (label, step_version),
+                      flush=True)
+
+    stamp_schema_version(conn, meta_table, version_key, target_version)
+    # Summary only when steps actually ran: a stream whose ladder is empty
+    # advances its counter without doing anything, and announcing that as a
+    # migration is how a no-op gets mistaken for work.
+    if label and ran:
+        print('[brain] %s: v%d -> v%d (%d step%s)'
+              % (label, current, target_version, ran, '' if ran == 1 else 's'),
+              flush=True)
+    return current
+
+
+def _backup_before_migration(db_path, from_version, to_version,
+                             allow_zero=False, conn=None):
+    """Create a backup before schema migration. Returns backup path or None.
+
+    `allow_zero` covers pre-versioning DBs (stored version 0 with real tables).
+    The default refuses them because a version-0 read on the brain.db ladder
+    also means "brand new", where a backup would copy an empty file.
+
+    Pass `conn` whenever the DB is open (every real caller): the file is
+    checkpointed first, because in WAL mode the committed tail lives in the
+    -wal side file and copying db_path alone captures the last CHECKPOINT, not
+    the last COMMIT. Restoring such a backup next to a stale -wal is worse than
+    having none. This is the fleet's only safety net before a rewrite, so it
+    must copy a self-contained file.
+
+    Written to a pid-suffixed temp name and renamed, so two processes racing
+    (the daemon and boot_brain.py's daemon-dead fallback both open these DBs
+    unserialized) cannot interleave writes into one half-copied backup.
+    """
+    if not db_path or from_version >= to_version:
+        return None
+    if from_version == 0 and not allow_zero:
         return None
     try:
         backup_path = db_path + '.v%d.bak' % from_version
         if os.path.exists(backup_path):
             return backup_path  # already backed up from a previous attempt
-        shutil.copy2(db_path, backup_path)
+        if conn is not None:
+            try:
+                conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+            except Exception as e:
+                # A backup of an un-checkpointed DB is not one we can promise,
+                # so say so rather than producing a quietly partial file.
+                print('[brain] Backup checkpoint failed (backup may lag the '
+                      'last commit): %s' % e)
+        tmp_path = '%s.tmp.%d' % (backup_path, os.getpid())
+        shutil.copy2(db_path, tmp_path)
+        os.replace(tmp_path, backup_path)
         print('[brain] Backup created: %s' % backup_path)
         return backup_path
     except Exception as e:
         print('[brain] Backup failed (continuing anyway): %s' % e)
+        try:
+            os.unlink('%s.tmp.%d' % (db_path + '.v%d.bak' % from_version,
+                                     os.getpid()))
+        except OSError:
+            pass
         return None
 
 
@@ -1146,6 +1303,13 @@ def _migrate_edges_v22(conn):
         raise  # Don't silently continue with broken data
 
 
+# Numbered structural migrations for brain.db, for the runner to apply.
+# Empty at v30: everything up to here is handled by the declarative TABLES diff
+# plus the _backfill_data ladder, both of which stay. A v31+ change adds
+# (31, _migrate_v31) here and bumps BRAIN_VERSION — nothing else.
+MAIN_MIGRATIONS = []
+
+
 def ensure_schema(conn, db_path=None):
     """
     The ONLY function that touches table structure.
@@ -1158,17 +1322,16 @@ def ensure_schema(conn, db_path=None):
     # 1. Create brain_meta first
     conn.execute(TABLES['brain_meta']['create'])
 
-    # 2. Check current schema version
-    cur = conn.execute(
-        f"SELECT value FROM brain_meta WHERE key = ?", (BRAIN_VERSION_KEY,)
-    )
-    row = cur.fetchone()
-    current_version = int(row[0]) if row else 0
+    # 2. Check current schema version. Read into a LOCAL and pass it down:
+    #    steps 2b/8 must see the pre-migration value, and the stamp does not
+    #    land until the runner at step 9.
+    current_version = read_schema_version(conn, 'brain_meta', BRAIN_VERSION_KEY)
 
     # 2b. Backup before migration if version is changing
     backup_path = None
     if current_version > 0 and current_version < BRAIN_VERSION and db_path:
-        backup_path = _backup_before_migration(db_path, current_version, BRAIN_VERSION)
+        backup_path = _backup_before_migration(db_path, current_version,
+                                               BRAIN_VERSION, conn=conn)
 
     # 3. Get list of existing tables
     cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -1243,22 +1406,34 @@ def ensure_schema(conn, db_path=None):
     except Exception as e:
         print(f"[brain] FTS5 setup warning: {e}")
 
-    # 7. Update version
-    if current_version < BRAIN_VERSION:
-        conn.execute(
-            "INSERT OR REPLACE INTO brain_meta (key, value, updated_at) VALUES (?, ?, ?)",
-            (BRAIN_VERSION_KEY, str(BRAIN_VERSION), _now())
-        )
-
-        # Name the backup here: the retry path in _backup_before_migration
-        # returns an existing file without printing, so this is the only line
-        # that reports it on a re-run.
-        print(f"[brain] Schema ensured: v{current_version} -> v{BRAIN_VERSION}"
-              + (f" (backup: {backup_path})" if backup_path else ""))
-
-    # 8. One-time data backfills
+    # 7. One-time data backfills
     if current_version > 0 and current_version < BRAIN_VERSION:
         _backfill_data(conn, current_version)
+
+    # 8. Numbered migrations + the version stamp, both owned by the runner.
+    #    Nothing above this line may stamp BRAIN_VERSION: the runner re-reads
+    #    the version, so an earlier stamp makes it early-return and silently
+    #    skips every step. Running last also means a crash anywhere above
+    #    leaves the DB unstamped and the whole sequence retries next open.
+    #    `fresh` is structural — a brand-new DB has no `nodes` yet, while a
+    #    pre-versioning brain reads version 0 WITH tables and needs the ladder.
+    #    db_path is passed even though step 2b already backs up: 2b skips
+    #    version 0, so a populated pre-versioning brain.db would otherwise get
+    #    no backup from either path once MAIN_MIGRATIONS has a real step. The
+    #    two calls cannot double-copy — _backup_before_migration returns an
+    #    existing .bak untouched. Empty ladders hiding a gap is how attempt 1
+    #    shipped a dead runner; this one is closed before its first customer.
+    run_versioned_migrations(conn, 'brain_meta', BRAIN_VERSION_KEY,
+                             BRAIN_VERSION, MAIN_MIGRATIONS,
+                             label='brain schema', db_path=db_path,
+                             fresh=('nodes' not in existing_tables))
+
+    # Announced only after the runner returns, because the runner can raise and
+    # leave the DB unstamped. Printed before it, this line claims an upgrade
+    # that did not happen and repeats the claim on every failed boot.
+    if current_version < BRAIN_VERSION:
+        print(f"[brain] Schema ensured: v{current_version} -> v{BRAIN_VERSION}"
+              + (f" (backup: {backup_path})" if backup_path else ""))
 
     conn.commit()
 
@@ -1271,6 +1446,19 @@ def ensure_schema(conn, db_path=None):
 # These are operational/telemetry tables that grow unbounded and
 # don't need referential integrity with the knowledge graph.
 LOG_TABLES = {
+    # logs_meta — brain_logs.db's version counter, the counterpart to
+    # brain_meta in brain.db. The two are deliberately separate so each DB
+    # carries its own version and migrates independently. Created explicitly
+    # ahead of the table loop in ensure_logs_schema, so the runner can read a
+    # version without depending on dict ordering.
+    'logs_meta': {
+        'create': """CREATE TABLE IF NOT EXISTS logs_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at TEXT
+        )""",
+        'columns': {'key': None, 'value': 'NULL', 'updated_at': 'NULL'}
+    },
     # access_log — REMOVED v21 (dead table)
     'debug_log': {
         'create': """CREATE TABLE IF NOT EXISTS debug_log (
@@ -1498,12 +1686,40 @@ LOG_INDEXES = [
 ]
 
 
-def ensure_logs_schema(conn):
+# Numbered structural migrations for brain_logs.db, for the runner to apply.
+# Empty at v1: the baseline is "whatever shape this DB already had". The
+# operations in ensure_logs_schema below are self-detecting and idempotent and
+# have run unversioned for a long time; rewriting proven code to be
+# version-gated would risk the working path for no gain. New structural changes
+# ride these rails instead of adding another unversioned ALTER.
+LOGS_MIGRATIONS = []
+
+
+def ensure_logs_schema(conn, db_path=None):
     """Create all log tables in the logs database (brain_logs.db).
 
-    Also handles column migrations for existing tables via ALTER TABLE.
+    Also handles column migrations for existing tables via ALTER TABLE, and
+    runs the versioned structural migrations (LOGS_MIGRATIONS) that every
+    install applies to itself at open.
+
+    `db_path` enables the pre-migration backup for a DB that a numbered step is
+    about to rewrite. It is optional only because test callers open bare
+    connections; the daemon path always passes it.
     """
+    # Fresh-DB test FIRST, before anything creates a table. A brand-new
+    # brain_logs.db is born at the current shape and needs no steps; a
+    # pre-versioning one reads version 0 with tables present and needs them.
+    # `sqlite3.connect` on a missing file leaves sqlite_master empty, and
+    # neither the WAL pragma nor the v29 probe creates anything.
+    was_fresh = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
+    ).fetchone()[0] == 0
+
     conn.execute('PRAGMA journal_mode=WAL')
+
+    # logs_meta before the runner can read a version. Cheap and idempotent, so
+    # it runs ahead of the main table loop rather than relying on dict order.
+    conn.execute(LOG_TABLES['logs_meta']['create'])
 
     # v29: trace_events.id and trace_embeddings.trace_id must migrate from
     # INTEGER to TEXT BEFORE the CREATE TABLE IF NOT EXISTS runs — otherwise
@@ -1517,9 +1733,11 @@ def ensure_logs_schema(conn):
 
     _add_column_if_missing(conn, 'trace_events', 'interaction_id', 'INTEGER')
 
-    # Per-message self-channel TTL: add expires_at to the one existing courier
-    # (the brain was never released — no fleet of DBs to migrate). send() stamps
+    # Per-message self-channel TTL: add expires_at to the courier. send() stamps
     # it on every new message; any legacy NULL row is swept by reap as dead.
+    # Predates versioning and is idempotent, so it stays unconditional — but
+    # there IS a fleet now, so anything new goes through LOGS_MIGRATIONS rather
+    # than an unversioned ALTER.
     _add_column_if_missing(conn, 'self_inflight', 'expires_at', 'TEXT')
 
     # Initial population for interaction_active — one-time migration.
@@ -1527,13 +1745,17 @@ def ensure_logs_schema(conn):
     # with the current MAX(version) per name so runtime semantics stay
     # byte-identical until someone explicitly registers a new version.
     # Idempotent: INSERT OR IGNORE skips names that already have a pointer.
+    # The set_by it stamps is load-bearing beyond bookkeeping: the shipped-prompt
+    # reconcile reads it to decide whether an install still runs the shipped
+    # default, so it comes from the one named constant rather than a literal.
     try:
         from datetime import datetime, timezone
+        from .dal_logs import BACKSTOP_PROVENANCE
         now = datetime.now(timezone.utc).isoformat()
         conn.execute(
             'INSERT OR IGNORE INTO interaction_active (name, version, set_at, set_by) '
             'SELECT name, MAX(version), ?, ? FROM interactions GROUP BY name',
-            (now, 'migration:initial_active')
+            (now, BACKSTOP_PROVENANCE)
         )
     except Exception:
         pass  # No interactions table yet — fresh brain; seed will populate.
@@ -1543,6 +1765,22 @@ def ensure_logs_schema(conn):
             conn.execute(idx)
         except Exception:
             pass
+
+    # Finish this function's own transaction before handing off to the runner.
+    # The interaction_active backstop above is DML, so it leaves a write
+    # transaction open, and the runner's pre-migration backup needs to
+    # checkpoint the WAL — which raises `database table is locked` inside a
+    # transaction, leaving the backup to copy a file whose committed tail is
+    # still in the -wal. Committing HERE rather than inside the backup helper
+    # keeps that helper from silently ending transactions it never opened.
+    conn.commit()
+
+    # Versioned structural migrations + the version stamp, owned by the runner.
+    # Runs after the tables exist so a step can assume current shapes.
+    run_versioned_migrations(conn, 'logs_meta', LOGS_VERSION_KEY,
+                             LOGS_VERSION, LOGS_MIGRATIONS,
+                             label='logs schema', db_path=db_path,
+                             fresh=was_fresh)
     conn.commit()
 
 
@@ -1615,6 +1853,21 @@ def migrate_logs_to_separate_db(main_conn, logs_conn):
             print('[brain] Log migration note for %s: %s' % (table_name, e))
 
     if migrated:
+        # Rows imported from the legacy DB arrive AFTER ensure_logs_schema
+        # stamped this DB as current — the stamp covered the table shapes it
+        # created, not values that showed up behind it. A LOGS migration is by
+        # design a data rewrite, so leaving the stamp would exempt exactly
+        # these rows from it forever. Reset the counter so the ladder re-runs
+        # against the imported data on the next open; the steps are idempotent
+        # and the shapes are already current, so a replay is cheap.
+        try:
+            logs_conn.execute('DELETE FROM logs_meta WHERE key = ?',
+                              (LOGS_VERSION_KEY,))
+            print('[brain] logs schema: version reset — %d imported table(s) '
+                  'must face the migration ladder' % len(migrated), flush=True)
+        except Exception as e:
+            print('[brain] logs schema: version reset failed: %s' % e,
+                  flush=True)
         logs_conn.commit()
         main_conn.commit()
         print('[brain] Migrated %d log table(s) to brain_logs.db: %s' % (len(migrated), ', '.join(migrated)))
