@@ -435,11 +435,26 @@ Sources: [OpenAI structured outputs](https://developers.openai.com/api/docs/guid
 
 ---
 
-## Status
+## Status — updated 2026-08-16
 
-**Steps 0, 1 and 3 are implemented** (branch `claude/heuristic-golick-d4c209`) with
-`tests/test_recall_query_expansion.py` added, a pre-commit review applied, and a targeted
-regression sweep green. **Steps 4 and 2 remain**, in that order.
+**Steps 0, 1 and 3 are MERGED AND LIVE.** Main is at `570ff6f`; daemon restarted (PID 70192), clean
+boot. `tests/test_recall_query_expansion.py` added (7 tests, one mutation-verified). Pre-commit
+review applied: 4 findings, 3 fixed, 1 accepted (no key stamp on `_llm_client` — adding one would
+put a `resolve_api_key()` file read inside healer's batch loop). Full suite before merge: 2,586
+passed, 8 skipped, 1 xfailed.
+
+**Verified live:** Step 3 by the warmup line `anthropic_client_ms: 484` (the moved constant resolves
+in `_ensure_anthropic_client`); Step 1 by a live recall at 1068ms (the new module-level import
+resolves — a failure there kills all recall).
+
+**NOT yet verified live:** Step 0's client hoist needs a real multi-round encode. So does the
+sibling's rolling cache breakpoint (`6c07776`), which landed in the same merge. The success signal
+for that is **`in`, not `cw`** — `in <= ~50` on every round ≥1, consistently across several `[s1e]`
+runs. A single run proves nothing: 2 of 11 pre-fix runs already showed `in=1` via server-side
+auto-caching, so consistency *is* the claim. Only compare rounds inside one `[s1e]` loop — S2
+multi-batch r-lines interleave and are not one trajectory. Detail: brain id:7e15b37a.
+
+**Steps 4 then 2 remain**, in that order.
 
 ---
 
