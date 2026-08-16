@@ -25,14 +25,24 @@ S2_FINAL_MAX_PASSES = 10   # Safety cap — final flush loops until every unit r
 
 
 def _make_local_dispatch(brain):
-    """Build an in-process dispatch function — same shape as TCP dispatch, no network."""
-    from servers.daemon_dispatch import COMMAND_TABLE
+    """Build an in-process dispatch function — same shape as TCP dispatch, no network.
+
+    Routes through `dispatch_command` — the same execution chokepoint the daemon,
+    the encoder closure and IsolatedBrain.dispatch use — so eval writes get the
+    real arg-contract validation, per-op loudness checks, and mutation-trace
+    emission. The node_created rows the emitter writes ARE the run's node delta;
+    artifacts.dump_nodes reads them back (docs/EVAL-BRAIN-PATH-MIGRATION.md).
+    Calling entry.handler directly (the old shape) skipped all three — eval
+    brains carried zero node_created traces while production emitted them.
+
+    Write lock held per the dispatch contract (post-handler checks write
+    brain_logs.db); uncontended in the single-threaded eval process.
+    """
+    from servers.daemon_dispatch import dispatch_command
 
     def dispatch(cmd, args=None):
-        entry = COMMAND_TABLE.get(cmd)
-        if not entry:
-            return {"ok": False, "error": "unknown command: %s" % cmd}
-        return entry.handler(brain, args or {}, [])
+        with brain.write_lock:
+            return dispatch_command(brain, cmd, args or {}, [])
 
     return dispatch
 

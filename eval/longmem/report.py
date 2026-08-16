@@ -109,8 +109,11 @@ def _gold_in_brain_for_item(run_name: str, r: Dict,
         bundle = load_artifacts(run_name, artifact_qid, reports_root=reports_root)
     except Exception:
         return None
-    nodes = bundle.get("nodes") or []
-    if not nodes:
+    nodes = bundle.get("nodes")
+    if nodes is None:
+        # File missing → artifacts unavailable. An EMPTY nodes.jsonl is a
+        # real answer now that it holds the run delta: the encoder created
+        # nothing, so the gold is definitionally not in the brain → False.
         return None
     gold = r.get("answer_gold") or ""
     if isinstance(gold, list):

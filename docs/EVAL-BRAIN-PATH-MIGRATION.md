@@ -7,8 +7,8 @@ hand-rolled SQL dumpers, and remove the drift class that broke one of them.
 >
 > | step | state |
 > |---|---|
-> | 0 — gate: `node_created` delta is live | **VERIFIED** |
-> | 1 — `artifacts.py` node/edge reads → brain API | not started |
+> | 0 — gate: `node_created` delta is live | **AMENDED** — live in production, absent in eval brains; see step 1 |
+> | 1 — `artifacts.py` node/edge reads → brain API | **DONE** (with amendments below) |
 > | 2 — collapse the duplicate dumpers | not started |
 > | 3 — port the noun-retention metric | not started |
 > | 4 — the `context_anchors` restore eval | not started, blocked on 1-3 |
@@ -127,6 +127,51 @@ Per B2, prefer having the consumers read this directly over re-serialising to
 JSONL. If the JSONL hop cannot be removed cleanly in one step, land the
 re-sourcing first and delete the hop in step 2 — do not leave both paths alive
 past step 2.
+
+#### Step-1 amendments (found by the implementing session, 2026-08-16)
+
+Four claims above were wrong or incomplete; the implementation follows the
+amended versions:
+
+1. **Step 0 verified the wrong database.** `node_created` is live in the
+   *production* logs DB, but eval brains had **zero** rows (checked
+   empirically across frozen corpus brains): `replay._make_local_dispatch`
+   called `entry.handler()` directly, bypassing `dispatch_command` — the only
+   caller of the mutation emitter. That bypass was deliberate (brain ruling
+   `id:332d170a`, "eval sites stay traceless"), but it is superseded by the B2
+   ruling, whose delta read cannot exist without emission — and its
+   pollution rationale doesn't hold: the eval already writes the
+   system-under-test's own traces (`encoding_run`, scouts, journal) via
+   `trace_append`, and mutation traces are the same class of signal. Fixed:
+   the local dispatch now routes through `dispatch_command` (mirroring
+   `IsolatedBrain.dispatch`), which also restores `check_unknown_keys` and
+   `log_failed_batch_ops` — production faithfulness the bypass had dropped.
+   Old frozen corpora keep their already-written bundles; the delta exists in
+   every corpus built after this change.
+2. **Do not scope the delta by `session_id`.** Items ingest many haystack
+   sessions and S2 units carry no session — a session-scoped query MISSES
+   nodes. Per-item brains are fresh (`wipe=True` at every live call site), so
+   the whole logs DB is the run: `query_traces(ref_type='node_created',
+   hours=None)`, unscoped, loud on truncation.
+3. **The consumer list was wrong.** `connect_ab` parses encoder tool-call
+   payloads and `pooled_review` reads its brain directly via `filter_nodes` —
+   neither touches `nodes.jsonl`/`edges.jsonl`. The real bundle consumers are
+   `analyzer`, `report`, `structural_diff`, `run_diff` (and `harness` as the
+   producer). `report._gold_in_brain_for_item` needed one adjustment: an
+   empty delta is a real "encoder created nothing" answer, distinct from
+   missing artifacts.
+4. **The JSONL hop is not removable for `artifacts.py` — in step 2 or ever.**
+   Its consumers are post-hoc: they read `reports/` after the per-item brain
+   is deleted. The bundle *is* the durability layer (the module docstring's
+   whole reason to exist). B2's "read directly" applies to the step-2 dumpers
+   (`ab_encode`, `diff_encoding`), which analyze live in-process brains.
+
+Semantic change, accepted under B2: `nodes.jsonl` was "snapshot including the
+seed pack", it is now "the run's delta" — seed nodes and seed-pack edges no
+longer inflate per-item counts (`structural_diff`/`run_diff` metrics now
+measure what their docstrings claim). Noise relations (`co_accessed`,
+`emergent_bridge`) are excluded from `edges.jsonl` by the canonical read.
+Old bundles and new bundles are directly distinguishable by this.
 
 ### 2 — collapse the duplicate dumpers
 

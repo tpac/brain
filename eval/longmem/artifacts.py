@@ -18,8 +18,10 @@ WHAT GETS WRITTEN — per item, under
 
     meta.json          {qid, axis, run_name, dates, timings, ingest stats}
     traces.jsonl       every trace_event (S0/S1/S2/etc) — full metadata
-    nodes.jsonl        every active node with full content + KV + connections
-    edges.jsonl        every edge_relation with weights + descriptions
+    nodes.jsonl        the run's node delta (node_created traces → get_node),
+                       full content + KV + corrections; seeds excluded
+    edges.jsonl        edge relations touching the delta, with weights +
+                       descriptions (noise relations excluded)
     interactions.jsonl every interaction version this brain saw
     recall.json        query phase — query, top-N candidates with scores,
                        selected, dropped, context, classifier evidence
@@ -175,93 +177,117 @@ class EvalArtifactsDumper:
                 }
                 f.write(json.dumps(rec) + '\n')
 
-    def dump_nodes(self, brain, prefix: str = '') -> None:
-        """Dump every active (non-archived) node with full content + KV.
+    @staticmethod
+    def _delta_node_ids(brain) -> List[str]:
+        """Node ids this run created — the node_created trace delta.
 
-        File: nodes{prefix}.jsonl — one node per line. Use `prefix` for
-        before/after checkpoints in multi-stage evals.
+        Per-item eval brains are fresh (`create_fresh_eval_brain(wipe=True)`
+        everywhere live), so the whole logs DB is this run: no session filter.
+        Scoping by session_id would MISS nodes — items ingest many haystack
+        sessions and S2 units carry no session at all. Seeds load at Brain
+        init, outside dispatch, so they never appear in the delta.
+
+        Loud on truncation: a clipped delta would silently undercount the
+        very set every downstream metric is computed over.
+        """
+        res = brain.query_traces(ref_type='node_created', hours=None,
+                                 limit=10000)
+        if res.get('truncated'):
+            raise RuntimeError('node_created delta truncated: %s'
+                               % res['truncated'])
+        ids: List[str] = []
+        seen = set()
+        # get_by_ref_type returns newest-first; reverse to creation order.
+        for ev in reversed(res.get('events', [])):
+            nid = ev.get('ref_id') or ''
+            if nid and nid not in seen:
+                seen.add(nid)
+                ids.append(nid)
+        return ids
+
+    def dump_nodes(self, brain, prefix: str = '') -> None:
+        """Dump the run's node delta with full content + KV + corrections.
+
+        Sourced from the brain, not raw SQL (B2 ruling,
+        docs/EVAL-BRAIN-PATH-MIGRATION.md): which nodes exist because this
+        run ran = the node_created trace delta; content = brain.get_node,
+        the canonical pull (corrections walked, KV attached). Seeds are
+        excluded by construction — they load outside dispatch — where the
+        old snapshot SQL dumped them alongside run nodes and inflated every
+        per-item metric by the seed-pack size. Created-then-archived nodes
+        (S2 consolidation) stay visible with archived=true.
+
+        File: nodes{prefix}.jsonl — one node per line, creation order. Use
+        `prefix` for before/after checkpoints in multi-stage evals.
         """
         suffix = f'_{prefix}' if prefix else ''
         try:
-            node_rows = brain.conn.execute(
-                "SELECT id, type, title, content, keywords, activation, "
-                "stability, access_count, locked, archived, critical, "
-                "recency_score, emotion, emotion_label, emotion_source, "
-                "project, confidence, personal, personal_context, "
-                "evolution_status, resolved_at, resolved_by, due_date, "
-                "content_summary, source_attribution, scope, "
-                "encoding_version, encoding_source, revised_at, "
-                "source_turn_id, last_accessed, created_at, updated_at "
-                "FROM nodes WHERE archived = 0 ORDER BY created_at"
-            ).fetchall()
+            ids = self._delta_node_ids(brain)
+            nodes = brain.get_node(ids) if ids else {}
         except Exception as e:
             self._write_error(f'nodes{suffix}.jsonl', e)
             return
 
-        node_cols = [
-            'id', 'type', 'title', 'content', 'keywords', 'activation',
-            'stability', 'access_count', 'locked', 'archived', 'critical',
-            'recency_score', 'emotion', 'emotion_label', 'emotion_source',
-            'project', 'confidence', 'personal', 'personal_context',
-            'evolution_status', 'resolved_at', 'resolved_by', 'due_date',
-            'content_summary', 'source_attribution', 'scope',
-            'encoding_version', 'encoding_source', 'revised_at',
-            'source_turn_id', 'last_accessed', 'created_at', 'updated_at',
-        ]
-
-        # Pre-load KV by node_id for efficient join
-        kv_by_node: Dict[str, Dict[str, str]] = {}
-        try:
-            for nid, key, val in brain.conn.execute(
-                    "SELECT node_id, key, value FROM node_metadata_kv"
-            ).fetchall():
-                kv_by_node.setdefault(nid, {})[key] = val
-        except Exception:
-            pass
-
         with open(self.path(f'nodes{suffix}.jsonl'), 'w') as f:
-            for row in node_rows:
-                rec = dict(zip(node_cols, row))
-                rec['kv'] = kv_by_node.get(rec['id'], {})
+            for nid in ids:
+                node = nodes.get(nid)
+                if not node:
+                    continue
+                rec = dict(node)
+                rec['kv'] = rec.pop('_metadata', None) or {}
+                # Edges live in edges.jsonl — don't duplicate them per node.
+                rec.pop('connections', None)
                 f.write(json.dumps(rec, default=str) + '\n')
 
     def dump_edges(self, brain, prefix: str = '') -> None:
-        """Dump every active edge_relation row, joined with edges + node titles.
+        """Dump edge relations touching the run's node delta.
 
-        File: edges{prefix}.jsonl. One edge_relation per line — multiple
-        relations per (source, target) pair appear as separate rows
-        (Stage 1B model — each edge can carry multiple relations).
+        Sourced from the brain's exposed edge read — the connections
+        brain.get_node attaches (GraphDAL stays behind it). One row per
+        (source, target, relation); an edge between two run nodes appears
+        under both owners, deduped here. Noise relations (co_accessed,
+        emergent_bridge) are excluded by the canonical read — they are
+        recall/remember mechanics, not encoder behavior, which is what the
+        consumers of this file measure.
+
+        File: edges{prefix}.jsonl.
         """
         suffix = f'_{prefix}' if prefix else ''
         try:
-            rows = brain.conn.execute(
-                "SELECT er.edge_id, er.relation, er.description, er.weight, "
-                "er.encoding_source, er.decay_rate, er.created_at, "
-                "e.source_id, e.target_id, e.weight, e.co_access_count, "
-                "src.title, tgt.title "
-                "FROM edge_relations er "
-                "JOIN edges e ON er.edge_id = e.edge_id "
-                "JOIN nodes src ON e.source_id = src.id "
-                "JOIN nodes tgt ON e.target_id = tgt.id "
-                "WHERE er.archived = 0 AND src.archived = 0 AND tgt.archived = 0 "
-                "ORDER BY er.created_at"
-            ).fetchall()
+            ids = self._delta_node_ids(brain)
+            nodes = brain.get_node(ids) if ids else {}
         except Exception as e:
             self._write_error(f'edges{suffix}.jsonl', e)
             return
 
+        seen = set()
         with open(self.path(f'edges{suffix}.jsonl'), 'w') as f:
-            for r in rows:
-                rec = {
-                    'edge_id': r[0],
-                    'relation': r[1], 'description': r[2],
-                    'relation_weight': r[3], 'encoding_source': r[4],
-                    'decay_rate': r[5], 'created_at': r[6],
-                    'source_id': r[7], 'target_id': r[8],
-                    'edge_weight': r[9], 'co_access_count': r[10],
-                    'source_title': r[11], 'target_title': r[12],
-                }
-                f.write(json.dumps(rec, default=str) + '\n')
+            for nid in ids:
+                node = nodes.get(nid)
+                if not node:
+                    continue
+                for conn in node.get('connections') or []:
+                    outgoing = conn.get('direction') == 'outgoing'
+                    src_id, tgt_id = ((nid, conn.get('id')) if outgoing
+                                      else (conn.get('id'), nid))
+                    src_title, tgt_title = (
+                        (node.get('title'), conn.get('title')) if outgoing
+                        else (conn.get('title'), node.get('title')))
+                    for rel in conn.get('relations') or []:
+                        key = (src_id, tgt_id, rel.get('relation'))
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        rec = {
+                            'relation': rel.get('relation'),
+                            'description': rel.get('description'),
+                            'relation_weight': rel.get('weight'),
+                            'source_id': src_id, 'target_id': tgt_id,
+                            'edge_weight': conn.get('weight'),
+                            'source_title': src_title,
+                            'target_title': tgt_title,
+                        }
+                        f.write(json.dumps(rec, default=str) + '\n')
 
     def dump_recall(self, query_session_id: str, query: str,
                     candidates: List[Dict[str, Any]],
