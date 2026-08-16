@@ -152,8 +152,20 @@ class BrainTracesMixin:
                 ref_type=ref_type, scale=scale, hours=hours, limit=limit + 1,
                 session_id=session_id, ref_id=ref_id, chain_suffix=chain_suffix,
                 older_than=older_than)
-            return _flag_truncation({'events': rows[:limit]}, rows, limit,
-                                    key='events')
+            out = _flag_truncation({'events': rows[:limit]}, rows, limit,
+                                   key='events')
+            # The WINDOW clips as silently as the limit did. This branch
+            # outranks the session modes, so a session-scoped ref_type pull
+            # stays hours-bound (deliberate — get_by_ref_type composes
+            # predicates, no authority rule; surface passes hours=None when it
+            # wants the whole session). An ad-hoc caller reading the session
+            # bullets instead of this one gets a 24h slice that looks like the
+            # session: 0 rows for one session, 386 of 1,163 for another, in a
+            # 2026-08-16 cost audit. Naming the applied window costs one key
+            # and makes the clip visible without changing what anyone gets.
+            if hours is not None and (session_id or ref_id):
+                out['window_hours'] = hours
+            return out
         if grouped and session_id:
             chains = self._trace_dal.get_chains(
                 session_id=session_id, scale=scale, hours=hours,
