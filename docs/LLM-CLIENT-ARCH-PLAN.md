@@ -277,6 +277,36 @@ model inside the run, not the value passed in.
 test. Changing where surface's model comes from touches the recall hot path — the value must not
 change in the process; this is a plumbing change, not a model change.
 
+### ⚠ Distribution gap: `s1e` and `surface` are NOT equivalent (found 2026-08-16)
+
+The two sites this step touches are covered by *different* amounts of machinery, and treating them
+the same would quietly recreate the frozen-prompt problem the distribution mechanism exists to kill.
+
+`shipped_prompts()` covers `s1e`, `s2_aspects`, `s2_community_enrichment`,
+`s2_consolidation_enrichment`, `s2_healer`, `s1_scout_facts`. **`surface` is not in it.**
+
+| | `model` key on `s1e` | `model` key on `surface` |
+|---|---|---|
+| Fresh install | ✅ ships | ✅ ships (via seed only) |
+| Existing pristine install | ✅ on a `SEED_PROMPTS_VERSION` bump | ❌ never reaches it |
+| Rot detection | ✅ `sync-prompts --check` reports seed↔ACTIVE drift | ❌ nothing notices |
+
+Config-only interactions were deliberately excluded because several are dead config with no reader.
+But **`surface` stops being dead the moment this step puts a live model key in it.**
+
+**Decide explicitly — do not let this default silently.** Either add `surface` to
+`shipped_prompts()` when the live key goes in, or accept that its model pins for new installs only
+and *say so in the code*. A model key that reaches only fresh brains is precisely the freeze this
+whole mechanism was built to prevent, reappearing one interaction to the left.
+
+**Related trap if the query-expansion interaction is eval-gated:** the seed must not reach its
+candidate through an imported mutable constant. Either the seed reads through the ACTIVE pointer, or
+a check enforces `constant == ACTIVE`. Otherwise registering DORMANT gates nothing and fresh brains
+boot the untested candidate — this bit the facts-scout arc the same day (brain id:f9d36193).
+
+*Credit: stream `17d9ae94`, which owns the prompt-distribution machinery and is rewriting it now —
+read their landed changes before following the procedure above.*
+
 **Depends on.** Step 1 overlaps `brain_recall.py:107-113` — do Step 1 first, or do both in one pass.
 
 **Respects.** id:23a321af (model is user config); id:66699ad5 (interactions table is source of truth
