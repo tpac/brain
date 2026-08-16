@@ -16,12 +16,20 @@ The capability returns, per target trace, the nodes linked to it by relation:
         'encoded':    [node_id, ...],   # what the owning run wrote    (S1E)
         'encoded_by': trace_id | None,  # the encoding_run trace; None = unencoded
         'authored':   [node_id, ...],   # what Anchor's own tools wrote (S0, anchor_touched)
+        'created':    [node_id, ...],   # authored, split: nodes Anchor created (S0)
+        'revised':    [node_id, ...],   # authored, split: nodes Anchor revised (S0)
+        'archived':   [node_id, ...],   # nodes Anchor archived this turn (S0)
         'recalled':   [node_id, ...],   # what Anchor deliberately looked up (S0)
         'endo':       [node_id, ...],   # endo-surfaced this turn (S0, empty until wired)
         'dropped':    [node_id, ...],   # offered to Haiku, NOT picked (S1R pool − surfaced)
         'fetched_by': {node_id: tool},  # tool-fetched, ADMITTED to the pool (S1R tool_trace)
         'floored_by': {node_id: tool},  # tool-fetched, floor-rejected — never pooled
     }
+
+    `created`/`revised`/`archived` are the per-verb split of the same
+    anchor_touched delta `authored` merges (`authored` = created ∪ revised, kept
+    for the readers that only need "Anchor wrote this here") — the encoder's
+    <provenance> renders the verbs, so the split rides the same join.
 
     `fetched_by`/`floored_by` are the tool-provenance tier (K rows carry
     tool_trace with per-call result_ids/dropped_ids from 2026-07-02; older
@@ -224,17 +232,23 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces,
                 fl.setdefault(nid, tool)
 
     # anchor_touched, indexed by stop (1:1 with a turn, like surfaced). authored =
-    # created∪revised (live nodes Anchor wrote; archived is recorded in the trace
-    # but not surfaced as a link — the node is gone). recalled = deliberate
-    # lookups; endo = endo-surface (empty until wired). Shared _delta_ids parser.
+    # created∪revised (live nodes Anchor wrote), also carried split per verb —
+    # created/revised/archived — for readers that render the verbs (the encoder's
+    # <provenance>). recalled = deliberate lookups; endo = endo-surface (empty
+    # until wired). Shared _delta_ids parser.
     touched_by_stop = {}
     for t in (touched_traces or []):
         stop = _stop_of(t.get('chain_id'))
         if stop is None:
             continue
         meta = t.get('metadata')
-        e = touched_by_stop.setdefault(stop, {'authored': [], 'recalled': [], 'endo': []})
+        e = touched_by_stop.setdefault(stop, {'authored': [], 'created': [],
+                                              'revised': [], 'archived': [],
+                                              'recalled': [], 'endo': []})
         e['authored'].extend(_delta_ids(meta, 'created', 'revised'))
+        e['created'].extend(_delta_ids(meta, 'created'))
+        e['revised'].extend(_delta_ids(meta, 'revised'))
+        e['archived'].extend(_delta_ids(meta, 'archived'))
         e['recalled'].extend(_delta_ids(meta, 'recalled'))
         e['endo'].extend(_delta_ids(meta, 'endo'))
 
@@ -305,6 +319,9 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces,
         out[tid] = {
             'surfaced': surfaced, 'encoded': encoded, 'encoded_by': encoded_by,
             'authored': _dedup(tch.get('authored', [])),
+            'created': _dedup(tch.get('created', [])),
+            'revised': _dedup(tch.get('revised', [])),
+            'archived': _dedup(tch.get('archived', [])),
             'recalled': _dedup(tch.get('recalled', [])),
             'endo': _dedup(tch.get('endo', [])),
             'dropped': dropped,
@@ -316,23 +333,49 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces,
 
 def session_node_ids(encode_traces, touched_traces):
     """Session-level UNION of the nodes the brain wrote/Anchor touched — the
-    catalog's view (vs nodes_for_traces' per-turn view). PURE. No turn keying:
-    the widened catalog wants every id that appears anywhere in the session's
-    encode + touched traces, so it can hold each body once. Same `_delta_ids`
-    parser as everywhere else.
+    catalog's view (vs nodes_for_traces' per-turn view). PURE. Membership stays
+    un-keyed (the widened catalog holds each body once regardless of how often
+    an id recurs), but each id's RECENCY is preserved: catalog aging renders the
+    newest encode rounds full and trims the older ones, which needs to know
+    which stop each id was last written/touched at. Same `_delta_ids` parser as
+    everywhere else.
 
-    Returns {'encoded': set, 'authored': set, 'recalled': set} — `encoded` from
-    the S1 encode runs (created∪revised), `authored`/`recalled` from the S0
-    anchor_touched deltas. `surfaced` is NOT here: the catalog already has it from
-    the Haiku judge outputs. `endo` is omitted until the stream is wired.
+    Returns {'encoded': set, 'authored': set, 'recalled': set,
+             'stops': {node_id: last_stop}, 'run_stops': [ascending stops]} —
+    `encoded` from the S1 encode runs (created∪revised), `authored`/`recalled`
+    from the S0 anchor_touched deltas. `stops` maps each id to the NEWEST stop
+    that produced it (an id revised across runs ages by its latest touch);
+    `run_stops` is every encode run's stop, ascending — the aging cutoff's
+    axis. `surfaced` is NOT here: the catalog already has it from the Haiku
+    judge outputs. `endo` is omitted until the stream is wired.
     """
     encoded, authored, recalled = set(), set(), set()
+    stops, run_stops = {}, set()
+
+    def _mark(ids, stop):
+        if stop is None:
+            return
+        for nid in ids:
+            if stop > stops.get(nid, -1):
+                stops[nid] = stop
+
     for t in (encode_traces or []):
-        encoded.update(_delta_ids(t.get('metadata'), 'created', 'revised'))
+        ids = _delta_ids(t.get('metadata'), 'created', 'revised')
+        encoded.update(ids)
+        stop = _stop_of(t.get('chain_id'))
+        if stop is not None:
+            run_stops.add(stop)
+        _mark(ids, stop)
     for t in (touched_traces or []):
-        authored.update(_delta_ids(t.get('metadata'), 'created', 'revised'))
-        recalled.update(_delta_ids(t.get('metadata'), 'recalled'))
-    return {'encoded': encoded, 'authored': authored, 'recalled': recalled}
+        a = _delta_ids(t.get('metadata'), 'created', 'revised')
+        r = _delta_ids(t.get('metadata'), 'recalled')
+        authored.update(a)
+        recalled.update(r)
+        stop = _stop_of(t.get('chain_id'))
+        _mark(a, stop)
+        _mark(r, stop)
+    return {'encoded': encoded, 'authored': authored, 'recalled': recalled,
+            'stops': stops, 'run_stops': sorted(run_stops)}
 
 
 # The streams gather() can pull: name → (ref_type, scale). One registry, so a

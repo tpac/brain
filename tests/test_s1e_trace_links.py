@@ -136,7 +136,8 @@ def test_full_link_shape_surfaced_and_encoded_together():
         'surfaced': ['surfA', 'surfB'],
         'encoded': ['encC', 'encD'],
         'encoded_by': 'run6',
-        'authored': [], 'recalled': [], 'endo': [],  # no touched stream here
+        'authored': [], 'created': [], 'revised': [],
+        'archived': [], 'recalled': [], 'endo': [],  # no touched stream here
         'dropped': [],                               # no recall stream here
         'fetched_by': {}, 'floored_by': {},          # no tool_trace here
     }
@@ -153,7 +154,8 @@ def test_malformed_rows_are_survivable():
         target_traces=[_turn(5), {'id': 'orphan'}])  # orphan has no chain_id
     assert links['u5']['surfaced'] == ['ok']           # the good row survived
     assert links['orphan'] == {'surfaced': [], 'encoded': [], 'encoded_by': None,
-                               'authored': [], 'recalled': [], 'endo': [],
+                               'authored': [], 'created': [], 'revised': [],
+                               'archived': [], 'recalled': [], 'endo': [],
                                'dropped': [], 'fetched_by': {}, 'floored_by': {}}
 
 
@@ -230,6 +232,20 @@ def test_touched_archived_not_in_authored():
     links = nodes_for_traces([], [], [_turn(5)], touched_traces=[t])
     assert links['u5']['authored'] == ['live']
     assert 'dead' not in links['u5']['authored']
+    # ...but it IS carried on its own key (the provenance verb split renders it)
+    assert links['u5']['archived'] == ['dead']
+
+
+def test_touched_verb_split_keys_join_by_stop():
+    # created/revised/archived ride the link SPLIT per verb alongside the merged
+    # authored — the encoder's <provenance> renders the verbs (view policy).
+    links = nodes_for_traces(
+        surface_traces=[], encode_traces=[],
+        target_traces=[_turn(5)],
+        touched_traces=[_touched(5, created=['nA'], revised=['nB', 'nA'])])
+    assert links['u5']['created'] == ['nA']
+    assert links['u5']['revised'] == ['nB', 'nA']
+    assert links['u5']['authored'] == ['nA', 'nB']   # merged view unchanged
 
 
 def test_touched_absent_yields_empty_relations():
@@ -262,9 +278,24 @@ def test_session_node_ids_unions_encode_and_touched():
     assert 'surfaced' not in ids and 'endo' not in ids
 
 
+def test_session_node_ids_preserves_recency():
+    # Catalog aging needs to know WHICH stop each id was last touched at and
+    # where the encode rounds sit — `stops` (newest wins) and `run_stops`.
+    ids = session_node_ids(
+        encode_traces=[_encode(5, ['e1'], ['e2']), _encode(10, ['e3'], ['e1'])],
+        touched_traces=[_touched(3, created=['a1'], recalled=['r1']),
+                        _touched(12, recalled=['r1'])])   # r1 re-looked-up later
+    assert ids['run_stops'] == [5, 10]                    # ascending
+    assert ids['stops']['e1'] == 10                       # revised later → newest
+    assert ids['stops']['e2'] == 5
+    assert ids['stops']['a1'] == 3
+    assert ids['stops']['r1'] == 12                       # newest touch wins
+
+
 def test_session_node_ids_empty_streams():
     ids = session_node_ids([], [])
-    assert ids == {'encoded': set(), 'authored': set(), 'recalled': set()}
+    assert ids == {'encoded': set(), 'authored': set(), 'recalled': set(),
+                   'stops': {}, 'run_stops': []}
 
 
 def test_anchor_touched_metadata_builder_shape_and_dedup():

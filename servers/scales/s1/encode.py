@@ -86,6 +86,11 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     # resolving here and threading down guarantees the system prompt, body, and
     # post-process write all agree — no torn arm if the flag is toggled mid-run).
     lived = _lived_sequence_enabled()
+    # View policy (encoder_view.py): same once-per-run resolution. Lived-arm
+    # only by construction — every policy surface (catalog aging, provenance
+    # verbs, action stubs) lives in the lived render; the markdown arm has none.
+    from servers.scales.s1.encoder_view import view_policy_enabled
+    view = lived and view_policy_enabled()
 
     # 2. Build prompt (from interactions table — learnable boundary)
     enc_interaction = brain.get_interaction('s1e')
@@ -106,7 +111,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     # body. Control arm output is unchanged: same catalog, same body, the scout
     # report appended after — only the internal build order moved.
     catalog_text, catalog_ids, streams = _build_catalog(
-        brain, messages, session_id, lived)
+        brain, messages, session_id, lived, view_policy=view)
     _step("catalog(%d ids)" % len(catalog_ids))
 
     # 2b. Muster phase — Phase-1 scouts fan out in parallel, emit O/K traces on
@@ -131,7 +136,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     user_preamble, user_content, _cat_text2, _cat_ids2 = _build_user_content(
         brain, messages, counter, session_id, lived_sequence=lived,
         precomputed=(catalog_text, catalog_ids, streams),
-        scout_outputs=(scout_outputs if lived else None))
+        scout_outputs=(scout_outputs if lived else None), view_policy=view)
     if not lived and scout_report.strip():
         user_content = user_content + "\n\n## Scout reports\n\n" + scout_report
     _step("prompt(preamble=%d chars, body=%d chars)" % (
@@ -502,11 +507,13 @@ def _run_muster_phase(brain, messages, session_id, counter, catalog_text,
         return '', None, {'enabled': True, 'error': str(muster_exc)}
 
 
-def _build_catalog(brain, messages, session_id, lived):
+def _build_catalog(brain, messages, session_id, lived, view_policy=False):
     """The catalog half of the encoding input — extracted from
     _build_user_content so muster (which consumes the rendered catalog) can run
     BEFORE body assembly on the lived arm. Gathers the trace streams once
     (lived); the same tuple threads into the timeline's <provenance>.
+    `view_policy` (resolved once in run_encoding) turns on catalog aging in
+    build_node_catalog.
 
     Returns (node_catalog, cataloged_ids, streams)."""
     from servers.scales.s1.encode_contract import build_node_catalog
@@ -537,7 +544,7 @@ def _build_catalog(brain, messages, session_id, lived):
     try:
         node_catalog, cataloged_ids = build_node_catalog(
             judge_outputs, brain, extra_ids=extra_ids,
-            scope=brain.session_scope(session_id))
+            scope=brain.session_scope(session_id), view_policy=view_policy)
     except Exception as e:
         print('[s1e] ERROR building node catalog: %s' % e, flush=True)
         node_catalog, cataloged_ids = '', set()
@@ -675,7 +682,7 @@ def _render_scout_legend(legend_lines, unmapped):
 
 
 def _build_user_content(brain, messages, counter, session_id, lived_sequence=None,
-                        precomputed=None, scout_outputs=None):
+                        precomputed=None, scout_outputs=None, view_policy=None):
     """Assemble S1 encoding prompt: stable preamble + dynamic body.
 
     The split is deliberate for caching. The stable preamble (instructions
@@ -698,6 +705,9 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
     candidates inline into the timeline as per-turn <scout_notes>, with a
     <scout_legend> explaining where they came from; the trailing
     `## Scout reports` block is retired on this arm.
+    `view_policy` — the encoder_view flag, resolved once in run_encoding and
+    threaded in; None → read the env (tests / standalone callers). Lived-arm
+    only; shapes the timeline render (aging rides the precomputed catalog).
     """
     # A/B flag (piece 1, docs/S1-SCRIBE-REDESIGN.md §10.3.1): OFF (default) =
     # markdown messages-only timeline + surfaced-only catalog (the long-standing
@@ -706,11 +716,14 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
     # AND the widened catalog (surfaced ∪ encoded ∪ authored ∪ recalled, tagged).
     # Both consume the same trace streams, gathered ONCE and threaded into both.
     lived = _lived_sequence_enabled() if lived_sequence is None else lived_sequence
+    if view_policy is None:
+        from servers.scales.s1.encoder_view import view_policy_enabled
+        view_policy = lived and view_policy_enabled()
     if precomputed is not None:
         node_catalog, cataloged_ids, streams = precomputed
     else:
         node_catalog, cataloged_ids, streams = _build_catalog(
-            brain, messages, session_id, lived)
+            brain, messages, session_id, lived, view_policy=view_policy)
 
     scout_legend = ''
     if lived:
@@ -723,7 +736,7 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
                 scout_legend = _render_scout_legend(legend_lines, unmapped)
         timeline = _render_lived_sequence_timeline(
             brain, session_id, messages, streams=streams,
-            scout_notes=scout_notes)
+            scout_notes=scout_notes, view_policy=view_policy)
     else:
         timeline = _render_markdown_timeline(brain, messages)
 
@@ -929,8 +942,15 @@ def _render_markdown_timeline(brain, messages):
 
 
 def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
-                                    scout_notes=None):
+                                    scout_notes=None, view_policy=False):
     """The XML lived sequence — messages + tool actions interleaved (piece 1).
+
+    `view_policy` (encoder_view, resolved once in run_encoding): ON, three
+    render policies apply — already-encoded turns keep FULL message text (no
+    encoded_turn_trim) but get a stubbed <actions> element; node-op tool lines
+    provenance already shows are dropped from every <actions>; <provenance>
+    renders the Anchor verbs split (created/revised/recalled/archived) instead
+    of the merged encoded(Anchor). OFF: byte-identical to the pre-policy render.
 
     `scout_notes` (optional): {user_trace_id: [line, ...]} from _map_scout_notes
     — scout findings rendered inside the turn they cite (<scout_notes>), after
@@ -985,6 +1005,12 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
 
     turns = turns[-n_turns:]  # window-match the control arm
 
+    def _tool_name(ep):
+        # tool_result metadata carries {"tool": <raw CC tool name>}
+        # (post_tool_trace); non-dict metadata → None → visible by default
+        md = ep.get('metadata')
+        return md.get('tool') if isinstance(md, dict) else None
+
     def _text(ep, cap=None):
         # Full message body lives in metadata['content'] (≤4000); `summary` is the
         # 200-char display truncation. Mirror get_session_turns (dal.py): prefer
@@ -1014,6 +1040,11 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
         ref_ids.update(lk.get('surfaced') or ())
         ref_ids.update(lk.get('encoded') or ())
         ref_ids.update(lk.get('authored') or ())
+        if view_policy:
+            # the verb split also renders recalled + archived refs — fetch
+            # their titles too (authored already covers created ∪ revised)
+            ref_ids.update(lk.get('recalled') or ())
+            ref_ids.update(lk.get('archived') or ())
     if ref_ids:
         try:
             titles = {nid: (row.get('title') or '')
@@ -1028,17 +1059,22 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
     # itself — it replaces the old provenance `✓` marker. No attr when the
     # trace-link join is unavailable (degraded piece-1 path — coverage unknown).
     trim = ENCODING_AGENT.get('encoded_turn_trim', 300)
+    if view_policy:
+        from servers.scales.s1.encoder_view import (
+            ENCODED_TURN_MESSAGE_CAP, action_hidden, actions_stub_line)
 
     out = ""
     for n, t in enumerate(turns, 1):
         uid = (t['user'] or {}).get('id') if t['user'] else None
         link = links.get(uid) if uid else None
-        enc_attr, cap = '', None
+        enc_attr, cap, is_enc = '', None, False
         if link is not None:
             is_enc = bool(link.get('encoded_by'))
             enc_attr = ' encoded="%s"' % ('true' if is_enc else 'false')
             if is_enc:
-                cap = trim
+                # Policy: covered turns keep full text (the trim reversal —
+                # encoder_view.ENCODED_TURN_MESSAGE_CAP); legacy: context stub.
+                cap = ENCODED_TURN_MESSAGE_CAP if view_policy else trim
         out += '<turn n="%d"%s>\n' % (n, enc_attr)
         # Tag vocabulary is identity-native, not role-native (Tom 2026-07-02):
         # <me> = my side of the exchange; <other> = whoever is on the other side
@@ -1050,18 +1086,31 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
                 t['user'].get('id', ''), _text(t['user'], cap))
         # <provenance> sits right after <other>: chronologically, recall/surface
         # fires on the user prompt — before my reply exists (Tom 2026-07-28).
-        prov = _render_provenance(links, frontier, t, n - 1, titles)
+        prov = _render_provenance(links, frontier, t, n - 1, titles,
+                                  view_policy=view_policy)
         if prov:
             out += '  <provenance>%s</provenance>\n' % prov
         if t['assistant']:
             out += '  <me trace="%s">%s</me>\n' % (
                 t['assistant'].get('id', ''), _text(t['assistant'], cap))
         if t['actions']:
-            out += '  <actions>\n'
-            for a in t['actions']:
-                # tool cues have no metadata['content'] — the summary IS the cue
-                out += '    %s\n' % _xml_escape(a.get('summary') or '')
-            out += '  </actions>\n'
+            if view_policy and is_enc:
+                # Covered turn: the previous run already read this churn. The
+                # element stays — a stub can't be misread as "nothing happened".
+                out += '  <actions>%s</actions>\n' % actions_stub_line(
+                    len(t['actions']))
+            else:
+                acts = t['actions']
+                if view_policy:
+                    # node-op lines whose delta this turn's <provenance>
+                    # already shows (encoder_view.HIDDEN_ACTION_TOOLS)
+                    acts = [a for a in acts if not action_hidden(_tool_name(a))]
+                if acts:
+                    out += '  <actions>\n'
+                    for a in acts:
+                        # tool cues have no metadata['content'] — the summary IS the cue
+                        out += '    %s\n' % _xml_escape(a.get('summary') or '')
+                    out += '  </actions>\n'
         notes = scout_notes.get(uid) if (scout_notes and uid) else None
         if notes:
             out += '  <scout_notes>\n'
@@ -1140,16 +1189,20 @@ def _turn_links(brain, session_id, turns, streams=None):
     return links, frontier
 
 
-def _render_provenance(links, frontier, turn, idx, titles=None):
+def _render_provenance(links, frontier, turn, idx, titles=None,
+                       view_policy=False):
     """One <provenance> line for a turn — REAL refs only, no coverage markers.
 
     Coverage lives on the turn itself (the `encoded="true|false"` attribute the
     timeline render stamps), so provenance never says "covered, nothing to show"
     — the old `✓` marker is gone. What renders: `surfaced:` refs (per-turn, 1:1),
     the owning run's full id-list ONCE at the run's frontier turn (an edge-only
-    run has an empty id set → nothing), and `encoded(Anchor):` — the turn-local
-    set Anchor wrote mid-turn (link['authored'] = created ∪ revised, joined by
-    stop; empty in replayed eval corpora). `titles` maps id→title for the «tag»
+    run has an empty id set → nothing), and Anchor's own node ops (joined by
+    stop; empty in replayed eval corpora) — legacy: the merged
+    `encoded(Anchor):` (link['authored'] = created ∪ revised); view policy ON:
+    the verb split (encoder_view.PROVENANCE_SPLIT — created / revised /
+    recalled / archived), which is what lets the node-op action lines drop
+    without losing the information. `titles` maps id→title for the «tag»
     locality. Returns '' when there's nothing real to show.
     """
     uid = (turn['user'] or {}).get('id') if turn['user'] else None
@@ -1162,7 +1215,12 @@ def _render_provenance(links, frontier, turn, idx, titles=None):
     eb = link['encoded_by']
     if eb and frontier.get(eb) == idx and link['encoded']:
         parts.append('encoded(S1S): %s' % _short_refs(link['encoded'], titles))
-    if link.get('authored'):
+    if view_policy:
+        from servers.scales.s1.encoder_view import PROVENANCE_SPLIT
+        for key, label in PROVENANCE_SPLIT:
+            if link.get(key):
+                parts.append('%s: %s' % (label, _short_refs(link[key], titles)))
+    elif link.get('authored'):
         parts.append('encoded(Anchor): %s' % _short_refs(link['authored'], titles))
     return ' | '.join(parts)
 

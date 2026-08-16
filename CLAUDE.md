@@ -49,7 +49,7 @@ Where each concern lives. The module docstring is the detail — this table is t
 | Write topology, locks, batching | `servers/brain.py`, `db_backends/sqlite.py` | docstrings |
 | Recall → surface → inject | `servers/brain_recall.py`, `recall_laf.py`, `scales/s1/surface*.py` | `docs/RECALL-OVERVIEW.md` |
 | Frame (the deterministic prior) | `scales/s1/frame.py` | `docs/RECALL-OVERVIEW.md` |
-| Encoding (S1 Scribe) | `scales/s1/scribe.py`, `encode.py` | `docs/ENCODE-ON-IDLE.md` |
+| Encoding (S1 Scribe) | `scales/s1/scribe.py`, `encode.py`, `encoder_view.py` | `docs/ENCODE-ON-IDLE.md` |
 | S2 units + coordinator | `servers/scales/s2/` | `docs/S2-DESIGN.md` |
 | Suppression (state + fingerprint) | `scales/s2/rejection_table.py` | `docs/S2-DESIGN.md` |
 | Aspects (roles for types/relations) | `servers/aspects.py`, `scales/s2/aspects_v1.json` | the JSON's `_schema` key |

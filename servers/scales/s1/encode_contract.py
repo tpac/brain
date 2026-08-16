@@ -248,7 +248,7 @@ def _filter_noise_relations(nodes_map, brain):
 
 
 def build_node_catalog(judge_outputs, brain, extra_ids=None,
-                       scope=None):
+                       scope=None, view_policy=False):
     """Build the deduplicated rich-node catalog the encoder dereferences by id.
 
     Uses system render_rich_node() with S1 config (full rich, corrections heavy).
@@ -261,7 +261,16 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
             widened catalog, sourced from trace_links.session_node_ids). Each
             category is tagged by provenance so the encoder reads what it already
             wrote/looked-up vs what recall surfaced. None → surfaced-only (the
-            flag-off control arm; byte-behavior unchanged).
+            flag-off control arm; byte-behavior unchanged). When
+            session_node_ids also carried `stops`/`run_stops`, those feed the
+            aging below.
+        view_policy: catalog aging (encoder_view; resolved once per run in
+            run_encoding). ON: entries sort oldest→newest by last-touched stop
+            and entries older than the newest CATALOG_FULL_ROUNDS encode rounds
+            render trimmed ([aged] — no edges, lean corrections, content head)
+            — ~86% smaller per aged node, reversible via get_nodes. OFF
+            (default): unsorted full-depth render, byte-identical to the
+            long-standing path.
 
     Returns:
         (catalog_text, node_id_set) — formatted catalog + set of IDs rendered.
@@ -316,7 +325,24 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
     catalog_ids = all_ids - community_ids
     header = ('Node Catalog (%d nodes)' % len(catalog_ids) if widened
               else 'Node Catalog (%d nodes surfaced this session)' % len(catalog_ids))
-    lines = [header, '']
+
+    # Catalog aging (view policy): order oldest→newest and tier. Surfaced ids
+    # for the CURRENT window are protected — the likeliest dedup/revise targets
+    # keep full bodies. OFF: `order` stays the raw set (byte-identical render).
+    order, aged = catalog_ids, set()
+    if view_policy:
+        from servers.scales.s1.encoder_view import catalog_view
+        order, aged = catalog_view(
+            catalog_ids, stops=extra_ids.get('stops'),
+            run_stops=extra_ids.get('run_stops'), protected=surfaced_ids)
+
+    lines = [header]
+    if aged:
+        from servers.scales.s1.encoder_view import AGED_TAG, CATALOG_FULL_ROUNDS
+        lines.append('%d %s entries (from before the newest %d encode rounds) '
+                     'are trimmed to stubs — get_nodes expands any id.'
+                     % (len(aged), AGED_TAG, CATALOG_FULL_ROUNDS))
+    lines.append('')
     formatted_ids = set()
     # One batched fetch (returns {id: node}) — the widened union can be hundreds of
     # ids, and per-id get_node would run correction_enrich + a resolve LIKE-scan
@@ -324,18 +350,26 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
     rich_map = brain.get_node(list(catalog_ids)) if catalog_ids else {}
     if lived_arm:
         _filter_noise_relations(rich_map, brain)
-    # Loop-invariant: one scoped cfg for the whole catalog (can be hundreds
-    # of nodes), never a per-node clone.
+    # Loop-invariant: one scoped cfg per tier for the whole catalog (can be
+    # hundreds of nodes), never a per-node clone.
     catalog_cfg = (dict(S1_NODE_CONFIG, scope=scope)
                    if scope else S1_NODE_CONFIG)
-    for nid in catalog_ids:
+    aged_cfg = None
+    if aged:
+        from servers.scales.s1.encoder_view import AGED_NODE_CONFIG
+        aged_cfg = (dict(AGED_NODE_CONFIG, scope=scope)
+                    if scope else AGED_NODE_CONFIG)
+    for nid in order:
         node = rich_map.get(nid)
         if not node:
             continue
-        formatted = render_rich_node(node, catalog_cfg)
+        is_aged = nid in aged
+        formatted = render_rich_node(node, aged_cfg if is_aged else catalog_cfg)
         if not formatted:
             continue
         tag = tag_for.get(nid)
+        if is_aged:
+            tag = ('%s %s' % (AGED_TAG, tag)) if tag else AGED_TAG
         lines.append('%s %s' % (tag, formatted) if tag else formatted)
         lines.append('')
         formatted_ids.add(nid)
