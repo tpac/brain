@@ -325,7 +325,11 @@ SIGNAL_CONFIG_V1 = {
 # a burned number. Attempt 2's generation-1 content also differs from what
 # attempt 1 stamped: this version ships `parameters` alongside the template,
 # where attempt 1 carried the install's old config forward.
-SEED_PROMPTS_VERSION = 2
+#
+# 3 carries the facts scout's `output_schema` to the fleet. Generation 2 shipped
+# the config channel but not that key, so installs stamped at 2 still run the
+# one mustered scout on the free-text parsing path.
+SEED_PROMPTS_VERSION = 3
 SEED_PROMPTS_VERSION_KEY = 'seed_prompts_version'
 
 # Pointer provenance that proves the install is still running what WE put there.

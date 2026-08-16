@@ -448,6 +448,7 @@ class ShippedContentFingerprintTest(unittest.TestCase):
     # that version are relying on it.
     HISTORY = {
         2: '42b2eb3fceb655caed9b75a014fb845ed04d9546f27b0cd504f38545cc957a23',
+        3: '1c9eb4451651c2b5d8af205c0df1e3ee8309203a1f856e24da41672eba8336cf',
     }
 
     @staticmethod
