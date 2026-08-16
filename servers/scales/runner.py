@@ -136,6 +136,32 @@ def run_llm_once(client, model, max_tokens, system_prompt, user_content):
     return response.content[0].text.strip(), telemetry
 
 
+def _roll_cache_breakpoint(api_messages):
+    """Move the rolling cache breakpoint to the newest block of the conversation.
+
+    The three static breakpoints (system 1h, user preamble 1h, user body 5m) all
+    sit on the ASSEMBLED prompt. Everything the loop appends after it — assistant
+    turns and tool results — sat outside every cached prefix, so each later round
+    re-sent it at full input price. Measured on an external install (2026-08-14):
+    a 657K-token tool result billed four times while cache_read stayed frozen at
+    the round-0 total for the whole run.
+
+    A breakpoint caches the entire prefix up to it, so one marker on the newest
+    block turns those re-sends into 0.1× reads. MIGRATED, never accumulated: the
+    API allows 4 breakpoints and the static three are permanent. A tail below the
+    model's cacheable floor is processed uncached with no error, so the marker is
+    always safe to place.
+    """
+    for msg in api_messages[1:]:          # [0] carries the static user breakpoints
+        for block in msg.get('content') or ():
+            if isinstance(block, dict):
+                block.pop('cache_control', None)
+    tail = [b for b in (api_messages[-1].get('content') or ())
+            if isinstance(b, dict)]
+    if tail:
+        tail[-1]['cache_control'] = {"type": "ephemeral", "ttl": "5m"}
+
+
 def extract_json(text):
     """Extract JSON array or object from LLM response text.
 
@@ -683,6 +709,7 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                 for b in response.content]})
             tool_results, _ = _dispatch_tool_uses(response)
             api_messages.append({"role": "user", "content": tool_results})
+            _roll_cache_breakpoint(api_messages)
             response, ttft_ms, total_ms = _create_message(api_messages, rounds + 1)
             _track_usage(response, rounds + 1, ttft_ms=ttft_ms, total_ms=total_ms)
             _step("llm_r%d" % (rounds + 1))
