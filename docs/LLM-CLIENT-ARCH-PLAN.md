@@ -304,8 +304,40 @@ candidate through an imported mutable constant. Either the seed reads through th
 a check enforces `constant == ACTIVE`. Otherwise registering DORMANT gates nothing and fresh brains
 boot the untested candidate — this bit the facts-scout arc the same day (brain id:f9d36193).
 
-*Credit: stream `17d9ae94`, which owns the prompt-distribution machinery and is rewriting it now —
-read their landed changes before following the procedure above.*
+*Credit: stream `17d9ae94`, who owns the prompt-distribution machinery.*
+
+### The procedure, re-read against the landed machinery (`e3d9481`, 2026-08-16)
+
+Their rewrite **landed**, and it adds a fifth step the earlier draft of this plan didn't have:
+
+```
+register_interaction(name, template)      # registers v(N+1), DORMANT
+set_interaction_active(name, version=N+1) # flips the runtime pointer
+./dev sync-prompts                        # mirrors ACTIVE → .py seed files
+./dev sync-prompts --check                # drift gate
+# then BUMP SEED_PROMPTS_VERSION in servers/interaction_seed.py
+```
+
+**The bump is the deployment decision for the fleet**, and Step 4 cannot skip it.
+`shipped_prompts()` returns `(template, config)` pairs — **config ships too** — so adding a `model`
+key to `S1E_CONFIG_V1` *is* a shipped-config change. `tests/test_seed_prompt_reconcile.py`
+fingerprints the shipped templates and configs and **fails when they change without a bump**. That
+test is a hard gate Step 4 will hit; treat it as the reminder, not an obstacle.
+
+`reconcile_seeded_prompts` advances an install only while it still runs the shipped default —
+any human `register`/`set_active` for a name makes that name hands-off on that install permanently.
+
+**And here is the sharp edge of the `surface` decision.** `surface` is not in `shipped_prompts()`,
+so it is **not fingerprinted**. A `model` key added to `SURFACE_CONFIG_V1` would therefore:
+- reach fresh brains only,
+- never reach an existing install,
+- and **not even trip the test that exists to catch exactly this class of mistake** — because that
+  test only sees what `shipped_prompts()` returns.
+
+So the failure mode isn't just "it doesn't ship." It's "it doesn't ship *and nothing tells you*."
+Decide deliberately: add `surface` to `shipped_prompts()` along with the live key, or leave its
+model in `surface_contract.py` where it is honest about being code. Do not put a live key in a
+config that nothing distributes and nothing checks.
 
 **Depends on.** Step 1 overlaps `brain_recall.py:107-113` — do Step 1 first, or do both in one pass.
 
