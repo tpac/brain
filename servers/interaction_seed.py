@@ -253,15 +253,18 @@ S1_SCOUT_TEMPORAL_CONFIG_V1 = {
 # Mirrors the production-ACTIVE config (DB v7). `output_schema` is the reason a
 # fresh install extracts facts the same way production does: `scouts/base.py:147`
 # reads it off this config and gates the Structured Outputs request on it, so a
-# seed without it boots the one scout production actually musters onto the
-# free-text parsing path. The schema lives in the scouts contract, not inline —
-# it is ~90 lines of wire shape, and `contract.py` already owns scout I/O.
+# seed without it boots the one scout production musters onto the free-text
+# parsing path. The schema lives in the scouts contract, not inline — it is ~90
+# lines of wire shape, and `contract.py` already owns scout I/O.
 #
-# max_tokens rides along at the active 5000 rather than the seed's old 3000, and
-# is coupled to the schema, not cosmetic: Structured Outputs requires every
-# property present on every candidate (see FACTS_OUTPUT_SCHEMA), so a capped
-# 6-candidate response is materially longer than the free-text path produced.
-# 3000 + schema is a pairing production has never run.
+# It is embedded BY REFERENCE, so editing FACTS_OUTPUT_SCHEMA changes what every
+# fresh brain seeds with no other deliberate act — that is why the constant must
+# track ACTIVE and a candidate awaiting an eval lives in the DB. See the
+# invariant note at the constant before touching it.
+#
+# max_tokens is coupled to the schema, not cosmetic: every candidate carries all
+# nine fields, so a capped 6-candidate response runs materially longer than the
+# free-text path produced.
 S1_SCOUT_FACTS_CONFIG_V1 = {
     "model": "claude-haiku-4-5",
     "max_candidates": 6,

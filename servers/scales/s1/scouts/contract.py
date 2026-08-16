@@ -119,21 +119,30 @@ FIELD_LIMITS = {
 # free-text JSON extraction, which is the format-mirror drift class: Haiku
 # answers chat-style prose when the conversation window is markdown-heavy.
 #
-# Only `facts` has a schema. It is the sole scout that runs in production —
-# `BRAIN_S1E_LIVED_SEQUENCE=1` (hooks/scripts/brain-env.sh) musters the lived
-# arm with `exclude_scouts=('quote', 'temporal')`, and temporal is retired.
-# Shipping a wire schema for machinery that never fires buys nothing.
+# Only `facts` has a schema. It is the sole scout production musters —
+# `BRAIN_S1E_LIVED_SEQUENCE=1` (hooks/scripts/brain-env.sh) runs the lived arm
+# with `exclude_scouts=('quote', 'temporal')`. Excluded is not retired: both
+# still have runners in `SCOUT_RUNNERS`, sit in SCOUT_NAMES, and are seeded, so
+# an arm that re-enables them works. Shipping a wire schema for machinery no
+# arm currently musters buys nothing.
 #
-# Two constraints make this literal rather than derived from the tuples above:
+# THE INVARIANT: this constant must equal the production-ACTIVE schema. It is
+# seeded into `S1_SCOUT_FACTS_CONFIG_V1` by reference, so a fresh brain boots
+# with whatever it holds — meaning an edit here IS a deployment. A candidate
+# schema awaiting an eval belongs in the DB as a dormant version, never here;
+# `sync_prompts._fetch_active` enforces that rule for templates and
+# `check_configs` is what enforces it for this config.
 #
-#  • Structured Outputs requires EVERY property to appear in `required` when
-#    `additionalProperties` is false. So `unit` and `catalog_match` — optional
-#    per SCOUT_FIELD_SPECS — are required here and made nullable instead. The
-#    two notions of "optional" differ on purpose: the API contract asks for the
-#    key to be present, `validate_scout_output` asks whether it carries a value.
-#  • It must reproduce the production-ACTIVE schema exactly. Deriving it from
-#    CANDIDATE_REQUIRED + SCOUT_FIELD_SPECS would let a future edit to those
-#    tuples silently reshape the wire contract the live brain already runs.
+# Written literally rather than derived from CANDIDATE_REQUIRED +
+# SCOUT_FIELD_SPECS, because deriving it would let an edit to those tuples
+# silently reshape the wire contract the live brain already runs.
+#
+# `unit` and `catalog_match` are optional per SCOUT_FIELD_SPECS but appear in
+# `required` here, nullable. That mirrors live ACTIVE v7; it is NOT an API
+# demand — `SURFACE_SELECTION_SCHEMA` ships `reason` outside `required` under
+# `additionalProperties: false` and the API accepts it. The two notions of
+# "optional" simply differ: this asks for the key, `validate_scout_output` asks
+# whether it carries a value.
 #
 # `scanned` uses the facts-specific `fact_claims_found` counter rather than the
 # generic `considered`; SCANNED_REQUIRED only pins `turns`.

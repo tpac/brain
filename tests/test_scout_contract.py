@@ -348,41 +348,55 @@ class TestFactsOutputSchema(unittest.TestCase):
         self.assertIn("FACTS_OUTPUT_SCHEMA", sc.__all__)
         self.assertIsInstance(sc.FACTS_OUTPUT_SCHEMA, dict)
 
-    def test_every_property_is_required_under_closed_objects(self):
-        """Structured Outputs requires all properties listed in `required`
-        wherever additionalProperties is false. Optional fields express
-        optionality by being nullable, never by being absent from `required`.
-        Adding a property and forgetting the `required` entry is the silent
-        break this catches.
+    def test_every_object_is_closed_and_fully_required(self):
+        """Two invariants, both silently breakable by an ordinary edit.
+
+        Every object must set `additionalProperties: false` — a nested object
+        that forgets it widens what the model may emit past what the validator
+        reads. And within each object, every property must appear in
+        `required`; optional fields express optionality by being nullable.
+
+        The second rule mirrors live ACTIVE v7, and is NOT an API demand:
+        `SURFACE_SELECTION_SCHEMA` ships `reason` outside `required` under
+        `additionalProperties: false` and the API accepts it. Pinned because
+        this schema's contract is "equal to ACTIVE", not "whatever the API
+        tolerates".
+
+        Asserting the walked paths rather than their count, so a schema that
+        grows an object fails by naming it instead of `4 != 5`.
         """
-        seen = []
+        seen = set()
 
         def walk(node, path):
             if not isinstance(node, dict):
                 return
             if node.get("type") == "object" or "properties" in node:
-                if node.get("additionalProperties") is False:
-                    props = set(node.get("properties", {}))
-                    required = set(node.get("required", []))
-                    self.assertEqual(
-                        props, required,
-                        f"{path}: every property must appear in `required` "
-                        f"when additionalProperties is false "
-                        f"(missing: {sorted(props - required)}, "
-                        f"unknown: {sorted(required - props)})")
-                    seen.append(path)
+                self.assertIs(
+                    node.get("additionalProperties"), False,
+                    f"{path}: every object must set additionalProperties=False")
+                props = set(node.get("properties", {}))
+                required = set(node.get("required", []))
+                self.assertEqual(
+                    props, required,
+                    f"{path}: every property must appear in `required` "
+                    f"(missing: {sorted(props - required)}, "
+                    f"unknown: {sorted(required - props)})")
+                seen.add(path)
             for key, child in (node.get("properties") or {}).items():
                 walk(child, f"{path}.{key}")
-            for key in ("items",):
-                if key in node:
-                    walk(node[key], f"{path}[]")
+            if "items" in node:
+                walk(node["items"], f"{path}[]")
             for key in ("anyOf", "oneOf", "allOf"):
                 for i, child in enumerate(node.get(key, [])):
                     walk(child, f"{path}.{key}[{i}]")
 
         walk(sc.FACTS_OUTPUT_SCHEMA, "root")
-        # root, candidates[], candidates[].catalog_match, scanned
-        self.assertEqual(len(seen), 4, f"closed objects walked: {seen}")
+        self.assertEqual(seen, {
+            "root",
+            "root.candidates[]",
+            "root.candidates[].catalog_match.anyOf[1]",
+            "root.scanned",
+        })
 
     def test_schema_can_only_emit_fields_the_validator_knows(self):
         """Encode-decode symmetry, the direction that matters: a field the wire
@@ -428,23 +442,6 @@ class TestFactsOutputSchema(unittest.TestCase):
         props = self._candidate_props()
         self.assertIn("null", props["unit"]["type"])
         self.assertIn({"type": "null"}, props["catalog_match"]["anyOf"])
-
-    def test_seeded_into_the_facts_scout_config(self):
-        """The schema is inert unless the interaction config carries it —
-        `base.py` reads `params['output_schema']`, not the contract module.
-        """
-        from servers.interaction_seed import S1_SCOUT_FACTS_CONFIG_V1
-        self.assertIs(S1_SCOUT_FACTS_CONFIG_V1["output_schema"],
-                      sc.FACTS_OUTPUT_SCHEMA)
-
-    def test_only_the_production_scout_ships_a_schema(self):
-        """quote/temporal are excluded from the production arm
-        (`exclude_scouts=('quote', 'temporal')` on the lived sequence), so
-        neither should acquire a wire schema without that changing first.
-        """
-        from servers import interaction_seed as seed
-        for name in ("S1_SCOUT_QUOTE_CONFIG_V1", "S1_SCOUT_TEMPORAL_CONFIG_V1"):
-            self.assertNotIn("output_schema", getattr(seed, name), name)
 
 
 if __name__ == "__main__":

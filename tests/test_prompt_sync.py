@@ -74,6 +74,33 @@ class TestSeedFileShape:
             f'and that the DB is authoritative. Re-run sync_prompts to regenerate.')
 
 
+class TestSeedConfigCarriesWireSchema:
+    """The facts scout's Structured Outputs schema must reach the seed config.
+
+    `scouts/base.py` reads `params['output_schema']` off the interaction, not
+    off the contract module — so the schema is inert unless the seed dict
+    carries it. Lives here rather than in test_scout_contract.py because the
+    subject is what a fresh brain gets seeded, which is this file's concern.
+    """
+
+    def test_facts_config_carries_the_contract_schema(self):
+        from servers.interaction_seed import S1_SCOUT_FACTS_CONFIG_V1
+        from servers.scales.s1.scouts.contract import FACTS_OUTPUT_SCHEMA
+        # Identity, not equality: the seed must ship the ACTIVE-tracking
+        # constant itself. A copy could drift from it silently, and the
+        # by-reference embed is what makes an edit to the constant a
+        # deployment — see the invariant note at FACTS_OUTPUT_SCHEMA.
+        assert S1_SCOUT_FACTS_CONFIG_V1['output_schema'] is FACTS_OUTPUT_SCHEMA
+
+    def test_only_the_mustered_scout_ships_a_schema(self):
+        """quote/temporal are excluded from the production arm
+        (`exclude_scouts=('quote', 'temporal')`), so neither should acquire a
+        wire schema without that exclusion changing first."""
+        from servers import interaction_seed as seed
+        for name in ('S1_SCOUT_QUOTE_CONFIG_V1', 'S1_SCOUT_TEMPORAL_CONFIG_V1'):
+            assert 'output_schema' not in getattr(seed, name), name
+
+
 class TestFreshBrainSeeding:
     """seed_interactions() must register every prompt in SEED_PROMPTS on a
     fresh brain. Regression guard against reintroducing the 'consolidation
