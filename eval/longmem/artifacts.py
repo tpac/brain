@@ -178,8 +178,15 @@ class EvalArtifactsDumper:
                 f.write(json.dumps(rec) + '\n')
 
     @staticmethod
-    def _delta_node_ids(brain) -> List[str]:
-        """Node ids this run created — the node_created trace delta.
+    def _delta_node_ids(brain) -> Dict[str, str]:
+        """The run's node delta: {node_id: 'created' | 'revised'}, in trace
+        order (created first, then revised-only).
+
+        'created' = a node_created trace row; 'revised' = a node_revised row
+        for a node the run did NOT create — a pre-existing (seed) node the
+        encoder revised or absorbed into. Without the revised half, gold
+        content written into a seed node would be invisible to every
+        gold-bearing scan downstream.
 
         Per-item eval brains are fresh (`create_fresh_eval_brain(wipe=True)`
         everywhere live), so the whole logs DB is this run: no session filter.
@@ -190,30 +197,32 @@ class EvalArtifactsDumper:
         Loud on truncation: a clipped delta would silently undercount the
         very set every downstream metric is computed over.
         """
-        res = brain.query_traces(ref_type='node_created', hours=None,
-                                 limit=10000)
-        if res.get('truncated'):
-            raise RuntimeError('node_created delta truncated: %s'
-                               % res['truncated'])
-        ids: List[str] = []
-        seen = set()
-        # get_by_ref_type returns newest-first; reverse to creation order.
-        for ev in reversed(res.get('events', [])):
-            nid = ev.get('ref_id') or ''
-            if nid and nid not in seen:
-                seen.add(nid)
-                ids.append(nid)
-        return ids
+        delta: Dict[str, str] = {}
+        for ref_type, op in (('node_created', 'created'),
+                             ('node_revised', 'revised')):
+            res = brain.query_traces(ref_type=ref_type, hours=None,
+                                     limit=10000)
+            if res.get('truncated'):
+                raise RuntimeError('%s delta truncated: %s'
+                                   % (ref_type, res['truncated']))
+            # get_by_ref_type returns newest-first; reverse to trace order.
+            for ev in reversed(res.get('events', [])):
+                nid = ev.get('ref_id') or ''
+                if nid and nid not in delta:
+                    delta[nid] = op
+        return delta
 
     def dump_nodes(self, brain, prefix: str = '') -> None:
         """Dump the run's node delta with full content + KV + corrections.
 
         Sourced from the brain, not raw SQL (B2 ruling,
         docs/EVAL-BRAIN-PATH-MIGRATION.md): which nodes exist because this
-        run ran = the node_created trace delta; content = brain.get_node,
-        the canonical pull (corrections walked, KV attached). Seeds are
-        excluded by construction — they load outside dispatch — where the
-        old snapshot SQL dumped them alongside run nodes and inflated every
+        run ran = the node_created + node_revised trace delta (each record
+        carries `delta_op`: 'created', or 'revised' for a pre-existing node
+        the run mutated — gold absorbed into a seed stays scannable); content
+        = brain.get_node, the canonical pull (corrections walked, KV
+        attached). The untouched seed pack is excluded by construction —
+        where the old snapshot SQL dumped it wholesale and inflated every
         per-item metric by the seed-pack size. Created-then-archived nodes
         (S2 consolidation) stay visible with archived=true.
 
@@ -222,18 +231,19 @@ class EvalArtifactsDumper:
         """
         suffix = f'_{prefix}' if prefix else ''
         try:
-            ids = self._delta_node_ids(brain)
-            nodes = brain.get_node(ids) if ids else {}
+            delta = self._delta_node_ids(brain)
+            nodes = brain.get_node(list(delta)) if delta else {}
         except Exception as e:
             self._write_error(f'nodes{suffix}.jsonl', e)
             return
 
         with open(self.path(f'nodes{suffix}.jsonl'), 'w') as f:
-            for nid in ids:
+            for nid, op in delta.items():
                 node = nodes.get(nid)
                 if not node:
                     continue
                 rec = dict(node)
+                rec['delta_op'] = op
                 rec['kv'] = rec.pop('_metadata', None) or {}
                 # Edges live in edges.jsonl — don't duplicate them per node.
                 rec.pop('connections', None)
@@ -243,18 +253,20 @@ class EvalArtifactsDumper:
         """Dump edge relations touching the run's node delta.
 
         Sourced from the brain's exposed edge read — the connections
-        brain.get_node attaches (GraphDAL stays behind it). One row per
-        (source, target, relation); an edge between two run nodes appears
-        under both owners, deduped here. Noise relations (co_accessed,
-        emergent_bridge) are excluded by the canonical read — they are
-        recall/remember mechanics, not encoder behavior, which is what the
-        consumers of this file measure.
+        brain.get_node attaches (GraphDAL stays behind it). Created nodes
+        only — a revised seed's pre-existing seed↔seed edges are not run
+        behavior. One row per (source, target, relation); an edge between
+        two run nodes appears under both owners, deduped here. Noise
+        relations (co_accessed, emergent_bridge) are excluded by the
+        canonical read — they are recall/remember mechanics, not encoder
+        behavior, which is what the consumers of this file measure.
 
         File: edges{prefix}.jsonl.
         """
         suffix = f'_{prefix}' if prefix else ''
         try:
-            ids = self._delta_node_ids(brain)
+            ids = [nid for nid, op in self._delta_node_ids(brain).items()
+                   if op == 'created']
             nodes = brain.get_node(ids) if ids else {}
         except Exception as e:
             self._write_error(f'edges{suffix}.jsonl', e)

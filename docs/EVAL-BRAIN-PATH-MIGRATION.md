@@ -173,6 +173,12 @@ measure what their docstrings claim). Noise relations (`co_accessed`,
 `emergent_bridge`) are excluded from `edges.jsonl` by the canonical read.
 Old bundles and new bundles are directly distinguishable by this.
 
+Post-review widening: the node delta is `node_created` ∪ `node_revised`
+(records carry `delta_op`) — without the revised half, gold the encoder
+writes into a pre-existing seed node (revise, or absorb-into-seed-survivor)
+would be invisible to the gold-bearing scans. `edges.jsonl` stays
+created-nodes-only: a revised seed's pre-existing edges are not run behavior.
+
 ### 2 — collapse the duplicate dumpers
 
 Delete `ab_encode.dump_nodes/dump_edges` and `diff_encoding.dump_nodes/dump_edges`;

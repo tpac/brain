@@ -76,14 +76,26 @@ class TestArtifactsDumpDelta(BrainTestBase):
                                 'for the edge-dump assertion below'}]))
         self.assertTrue(res.get('ok'), res)
 
+        # A seed the run REVISES (gold absorbed into a pre-existing node)
+        # must enter the delta as 'revised' — invisible otherwise.
+        res = dispatch('brain_batch', {'operations': [
+            {'op': 'revise', 'node_id': seed_id, 'reason': 'test',
+             'content': 'seeded plus gold fact'}],
+            'encoding_source': 'encoder:test'})
+        self.assertTrue(res.get('ok'), res)
+
         dumper = self._dumper()
         dumper.dump_nodes(self.brain)
         dumper.dump_edges(self.brain)
 
         node_lines = [json.loads(l) for l in
                       Path(dumper.path('nodes.jsonl')).read_text().splitlines()]
-        self.assertEqual([n['title'] for n in node_lines], ['Run node'])
-        rec = node_lines[0]
+        by_op = {n['delta_op']: n for n in node_lines}
+        self.assertEqual(set(by_op), {'created', 'revised'})
+        self.assertEqual(by_op['revised']['id'], seed_id)
+        self.assertIn('gold fact', by_op['revised']['content'])
+        rec = by_op['created']
+        self.assertEqual(rec['title'], 'Run node')
         self.assertNotEqual(rec['id'], seed_id)
         # The consumer contract: analyzer._node_text reads kv as a dict;
         # connections stay out of nodes.jsonl (edges.jsonl carries them).
@@ -96,6 +108,10 @@ class TestArtifactsDumpDelta(BrainTestBase):
         rels = [(e['relation'], e['source_title'], e['target_title'])
                 for e in edge_lines]
         self.assertIn(('grounds', 'Run node', 'Seed node'), rels)
+        # Edges are created-nodes-only: the revised seed contributes none
+        # beyond the one the created node owns.
+        for e in edge_lines:
+            self.assertIn(rec['id'], (e['source_id'], e['target_id']))
 
     def test_empty_delta_writes_empty_files_not_errors(self):
         dumper = self._dumper()
