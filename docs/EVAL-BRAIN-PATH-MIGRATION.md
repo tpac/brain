@@ -35,6 +35,11 @@ produced three independent `dump_nodes` implementations:
 declared copy that has since diverged from its source in both KV key set and
 truncation limits. All three N+1 query `node_metadata_kv` per node in a Python loop.
 
+(A fourth hand-rolled dumper of the same drift class exists outside this work
+order's scope: `eval/oracle_audit/emb_bench/dump_pack.py` defines its own
+`dump_edges(con)` against a raw sqlite connection. Steps 1–2 do not make the
+migration complete; that one is a separate cut.)
+
 `nodes.keywords` was dropped in schema v28. `artifacts.py` still selects it, so:
 
 ```
@@ -214,6 +219,22 @@ Blocked on 1-3, because the point is to measure with an instrument we trust.
   (`_apply_interaction_override`, line 223). Two encode runs, v7 vs a DORMANT v8.
 - Register v8 DORMANT, run both arms, compare noun retention, activate + `./dev
   sync-prompts` only if it holds.
+
+**Seed-gate hazard (verified 2026-08-16, found by 17d9ae94 via 2ee7a900 —
+do not re-land it):** on `ad9981c`, `interaction_seed.py:29` imports
+`FACTS_OUTPUT_SCHEMA` and `:252` embeds it in `S1_SCOUT_FACTS_CONFIG_V1`
+**by reference**. Adding `context_anchors` to that constant at registration
+time would seed the DORMANT candidate as v1 on every fresh brain —
+bypassing the eval gate `sync_prompts._fetch_active` guards on the template
+channel, through the config channel. The correct shape: **code carries
+ACTIVE, DB carries candidates.** Build the v8 schema at registration time
+DB-only via `copy.deepcopy(FACTS_OUTPUT_SCHEMA)` — `{**...}` is a shallow
+copy and the field sits four levels down
+(`["properties"]["candidates"]["items"]["properties"]`), so spread-then-
+assign mutates the shared constant and reopens the leak. Touch the constant
++ re-sync only at activation, as one step. Invariant:
+`FACTS_OUTPUT_SCHEMA` always equals the ACTIVE version
+(17d9ae94's `check_configs` enforces it).
 
 Context for why this matters: seed_7 (`id:cc834325`) measured noun retention
 regressing on every transcript, −1 to −18pt. `context_anchors` was the fix. seed_8
