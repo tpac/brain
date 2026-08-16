@@ -246,68 +246,85 @@ the fetched `uv`. The earlier `!bin/brain-dashboard` gitignore fix no longer exi
 Ordered execution checklist as of 2026-08-06. Every naming/model decision is closed
 (D-6…D-9); only **5.6 (D-5 seed pack)** is still a design question.
 
-**5.0 Plugin updates reach existing installs — STILL OPEN. First attempt built,
-reviewed, and REVERTED 2026-08-09.** Found during the
-claims audit and absent from this doc entirely, though it gated everything else:
-seeding is create-only (`_register` no-ops once a name exists), so an install froze
-at first boot and **no prompt improvement ever reached anyone who had already
-installed**. Measured: the 8 shipped prompt files took 31 commits in 90 days,
-reaching only fresh brains. Proven on the author's own machine — its `boot` config
-still carried `tom_quotes_limit` four months after the `.py` renamed that key.
+**5.0 Plugin updates reach existing installs — BUILT 2026-08-14 on branch
+`claude/keen-heisenberg-27bdb0`; pending merge + daemon restart.** The gap it
+closes: seeding is create-only (`_register` no-ops once a name exists), so an
+install froze at first boot and **no prompt improvement ever reached anyone who
+had already installed**. Measured: the 8 shipped prompt files took 31 commits in
+90 days, reaching only fresh brains. Proven on the author's own machine — its
+`boot` config still carried `tom_quotes_limit` four months after the `.py`
+renamed that key.
 
 Publishing with this open means every install frozen at whatever quality shipped
-that day, with the fix getting harder per install. **Still true; still unfixed.**
+that day, with the fix getting harder per install.
 
-**The right shape (survives the revert).** Not a deploy script — *code owns the
-defaults; each install migrates itself forward at open*, the same contract
-`BRAIN_VERSION` already has. Three version streams (brain.db structure,
-brain_logs.db structure, shipped-prompt content) through **one** runner, separate
-counters. Advance a prompt only while the install still runs the shipped default;
-the moment a human registers or activates anything, hands-off permanently — the
-`trace_recording` interaction sits at active=1 with a dormant v2 and must never be
-published over.
+**The shape.** Not a deploy script — *code owns the defaults; each install
+migrates itself forward at open*, the same contract `BRAIN_VERSION` already has.
+Three version streams through **one** runner, `run_versioned_migrations` in
+`servers/schema.py`, with separate counters so structure and prompt content move
+independently:
 
-**Why the first attempt was reverted (three reviewers, 2026-08-09).** The design
-held; the implementation didn't. **Requirements for attempt 2, each one a review
-finding:**
-1. **The runner must own the version stamp.** `ensure_schema` stamped
-   `BRAIN_VERSION` *before* calling the runner, which re-read it and early-returned
-   — so no `MAIN_MIGRATIONS` step could ever execute. Found independently by all
-   three reviewers. `docs/SPEAKER-COUNTERPART-DESIGN.md` had warned about this exact
-   inversion on 2026-07-27; the refactor preserved it and made it load-bearing.
-2. **A version floor must lag the backup-retention horizon, not the release.**
-   The premise "no DB below v30 exists" was **false**: 606 of 657 `brain.db` files
-   on disk are below v30, including the daemon's *own* retained backup and **52
-   frozen eval corpora**. A floor at 30 bricks the daemon on restoring a
-   product-created backup, and broke the eval harness immediately. Assert the
-   floor-vs-retention relationship in a test, never in a comment.
-3. **`brain_logs.db` needs the same protection as `brain.db`.** Deleting the
-   self-detecting v29 trace-id probe left nothing to migrate *or* refuse an old
-   logs DB — it gets stamped "current" while every trace write fails with
-   `datatype mismatch`. Encoding stops silently.
-4. **The reconcile's three writes must be atomic.** `register` and `set_active`
-   self-commit; a separate baseline stamp does not. A crash between them freezes
-   that prompt out of all future updates *and* logs it as an operator decision.
-   Better: derive pristine-ness from `interaction_active.set_by`, written in the
-   same statement as the pointer.
-5. **Config must advance with the template, or the exclusion must be explicit.**
-   Carrying the install's old `parameters` onto a new template means a frozen
-   install keeps a **dated model ID** the API will retire — and the mechanism built
-   to reach the fleet cannot fix it. Note the motivating example (`boot`'s
-   `tom_quotes_limit`) is config-only and was *out of scope of the fix*.
-6. **Tests must fail when the mechanism is removed.** Mutating out the entire
-   baseline mechanism left all 8 tests green. Nothing covered two consecutive
-   bumps — the actual fleet path — and no test drove reconcile through
-   `Brain.__init__`.
-7. **The logs runner must be able to back up.** `ensure_logs_schema(conn)` takes no
-   `db_path`, so a logs migration gets no backup — violating the 2026-07-24 fleet
-   rule for the very DB the first real migration targets.
-8. **Reconcile must not run on every `Brain()`** — it mutates frozen eval corpora
-   and can race on `UNIQUE(name, version)`.
+| Stream | Counter | Ladder |
+|---|---|---|
+| brain.db structure | `brain_meta.brain_schema_version` = `BRAIN_VERSION` | `MAIN_MIGRATIONS` |
+| brain_logs.db structure | `logs_meta.logs_schema_version` = `LOGS_VERSION` | `LOGS_MIGRATIONS` |
+| shipped-prompt content | `logs_meta.seed_prompts_version` = `SEED_PROMPTS_VERSION` | the reconcile |
 
-*Process note: these two commits were merged without a pre-commit review, against
-the standing build → review → commit rule. The review found three CRITICALs. The
-only thing that made it recoverable was that nothing had been deployed.*
+Both ladders are empty; a change adds one `(version, fn)` entry and bumps its
+counter. **The runner owns the stamp** — it re-reads the version, so anything that
+stamps ahead of it silently skips every step. It writes the stamp only after all
+steps pass, backs up any non-fresh DB with pending steps (including a
+pre-versioning DB at version 0), rolls back and leaves the stream unstamped on
+failure so the next open retries, and distinguishes fresh (structural test: no
+tables) from pre-versioning (version 0 *with* tables) — the first is baselined,
+the second runs the whole ladder.
+
+**The prompt reconcile** (`reconcile_seeded_prompts`, `servers/interaction_seed.py`)
+advances one of the 8 template-carrying prompts only while the install still runs
+the shipped default, carrying template **and** `parameters` together so a frozen
+install cannot keep a dated model ID the mechanism is unable to fix.
+Pristine-ness is derived, never separately stamped: the `interaction_active`
+pointer must have been set by the system (`register:auto_v1` or `seed:reconcile`,
+written in the same statement as the pointer) and every version above active must
+be a previous reconcile's crash residue. The moment a human registers or
+activates anything for a name, it is hands-off permanently — `trace_recording`
+sits at active=1 with a dormant v2 and must never be published over.
+`migration:initial_active` is reserved but deliberately **not** pristine: it
+points a missing pointer at `MAX(version)`, which on a pre-split install can be a
+human's own version. Those three values are refused at the MCP door, or a stray
+call could relabel a deployment decision as an untouched default.
+
+Called from `daemon_server._load_brain` only — never `Brain()`, which eval
+corpora, `IsolatedBrain`, tests, and the daemon-dead `boot_brain.py` fallback all
+construct and which must never be mutated.
+
+**Live constraints for anyone extending this:**
+- **`SEED_PROMPTS_VERSION` 1 is burned.** A reverted first attempt booted on real
+  installs and stamped it; the code went away, the row did not. The counter
+  starts at 2. Before re-attempting any reverted work, check a copy of a real DB
+  for rows the reverted code wrote and decide per row whether the new code means
+  the same thing by them.
+- **No version floor ships, and none should be added casually.** 606 of 657
+  `brain.db` files on this machine are below v30, including the daemon's own
+  retained backups and 52 frozen eval corpora. A floor must lag the
+  backup-retention horizon, and that relationship belongs in a test, never a
+  comment.
+- **A bump is a deployment decision.** `./dev sync-prompts` only reaches brains
+  created afterwards; existing installs advance only on a `SEED_PROMPTS_VERSION`
+  bump. The ritual is in CLAUDE.md and `tests/test_seed_prompt_reconcile.py`
+  fingerprints the shipped content so a forgotten bump fails the suite.
+- **What a version bump costs, measured 2026-08-14.** The pre-migration backup is
+  *not* the hazard it was assumed to be: `shutil.copy2` of the live 723 MB
+  `brain.db` takes **0.121 s** and the 816 MB `brain_logs.db` **0.133 s**, because
+  APFS clones copy-on-write. Against a watchdog budget of ~20 s (`brain_mcp.py`
+  `FAILURE_THRESHOLD` 10 × `PING_INTERVAL` 2.0 s) that is three orders of
+  magnitude of margin, and the pre-serve window is already dominated by the
+  embedder load. The real constraints are (a) the **migration step itself** —
+  a row-by-row Python loop over `trace_events` would blow the window with the
+  port closed, which is what the sub-second rule is actually about, and (b)
+  **disk**: every bump leaves a `.vN.bak` that nothing prunes.
+
+Deploy: `servers/*` only, so a daemon restart. No `redeploy.sh`.
 
 **5.0a Rename safety net + XDG create — SHIPPED 2026-08-12.** The rename moves
 `$CLAUDE_PLUGIN_DATA` (per-plugin), so a brain at the default path goes invisible.

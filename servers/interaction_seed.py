@@ -1,9 +1,19 @@
-"""Seed the interactions table with v1 templates on a fresh brain.
+"""Seed the interactions table on a fresh brain, and keep shipped prompts
+reaching installs that never diverged from them.
 
-**DB is authoritative at runtime.** This module only writes an interaction
-the first time — once an entry exists (any version), the seed is a no-op.
+**DB is authoritative at runtime.** `seed_interactions` only writes an
+interaction the first time — once an entry exists (any version), it is a no-op.
 S3 / operator / anchor can register new versions later via register_interaction
 and those versions are what the encoders will read.
+
+**`reconcile_seeded_prompts` closes the freeze that create-only seeding caused.**
+Seeding alone meant an install captured the prompts of its install date forever:
+31 commits of prompt improvement in 90 days reached only brains created after
+each commit. Reconcile advances a prompt ONLY while the install is still running
+the shipped default; the moment a human registers or activates anything for that
+name, it is hands-off permanently. Gated by SEED_PROMPTS_VERSION so it runs once
+per bump, and called from the daemon only — never from `Brain()`, which would
+mutate frozen eval corpora.
 
 The actual prompt text for the four encoder agents lives in sibling files:
     servers/scales/s1/encoding_prompt.py                 (s1e)
@@ -25,6 +35,9 @@ have short templates defined inline below — they don't need the .py seed
 """
 import json
 import os
+
+from .dal_logs import (AUTO_V1_PROVENANCE, BACKSTOP_PROVENANCE,
+                       RECONCILE_PROVENANCE)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -154,17 +167,24 @@ SURFACE_CONFIG_V1 = {
     "layout": "xml_v13",
 }
 
+# Mirrors the production-ACTIVE config (DB v34): `effort` only. Every other key
+# that used to live here is read from `encode_contract.ENCODING_AGENT`, not from
+# this interaction — `encode.py:375` reads ENCODING_AGENT['max_messages'],
+# `encode.py:1224` reads ENCODING_AGENT['journal_entry_limit'], and so on. They
+# were dead config here, and keeping them would teach the wrong owner.
+# `effort` IS a live read (`encode.py:99` → the API's output_config.effort).
 S1E_CONFIG_V1 = {
-    "message_content_limit": 2500, "message_display_limit": 2500,
-    "max_messages": 10, "recall_candidates_limit": 5, "max_rounds": 5,
-    "journal_max_chars": 8000, "journal_entry_limit": 2000,
-    "max_tokens": 4096, "session_context_limit": 800,
-    "node_edge_limit": 5,
-    "timeline_snippet_limit": 200,
+    "effort": "medium",
 }
 
+# Mirrors the production-ACTIVE config (DB v24). The model was a DATED id
+# (`claude-haiku-4-5-20251001`) while production had long since moved to sonnet;
+# a dated id is exactly what the API retires out from under a frozen install.
+# `./dev sync-prompts --check` now reports drift between these dicts and the
+# active config, because the template half is machine-synced and the config half
+# is not — which is how this rotted unnoticed.
 S2_COMMUNITY_ENRICHMENT_CONFIG_V1 = {
-    "model": "claude-haiku-4-5-20251001", "max_tokens": 32768,
+    "model": "claude-sonnet-4-6", "max_tokens": 32768,
 }
 
 S2_CONSOLIDATION_ENRICHMENT_CONFIG_V1 = {
@@ -229,10 +249,18 @@ S1_SCOUT_TEMPORAL_CONFIG_V1 = {
     "filter_time_only_phrases": True,
 }
 
+# max_tokens mirrors the production-ACTIVE value (5000, DB v7); the seed had
+# 3000. One drift remains: no `output_schema`, which the live config gained in
+# the structured-outputs migration and which `scouts/base.py:147` gates
+# structured parsing on — so a fresh install runs the one live scout on the
+# unstructured path. The schema belongs in a contract file rather than inline
+# here, so it lands as its own change on top of this one, together with the
+# SEED_PROMPTS_VERSION bump that carries it to the fleet.
+# `sync-prompts --check` reports the gap on every run until then.
 S1_SCOUT_FACTS_CONFIG_V1 = {
     "model": "claude-haiku-4-5",
     "max_candidates": 6,
-    "max_tokens": 3000,
+    "max_tokens": 5000,
     "timeout_seconds": 25,
     "category_statement": S1_SCOUT_FACTS_CATEGORY,
 }
@@ -264,6 +292,239 @@ SIGNAL_CONFIG_V1 = {
     "encoding_gap_priority": 0.50, "encoding_gap_cooldown_seconds": 600,
     "encoding_gap_max_surfaces": 3,
 }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Shipped-prompt reconciliation.
+#
+# Bump SEED_PROMPTS_VERSION when a prompt or config change in this repo should
+# reach installs that are still running the shipped default. The bump IS the
+# deployment decision, deliberately explicit: a constant in a reviewable diff,
+# not an implicit consequence of editing a prompt. Same contract BRAIN_VERSION
+# has — code owns the default, each install migrates itself forward at open.
+#
+# tests/test_seed_prompt_reconcile.py holds a fingerprint of the shipped
+# templates and configs and fails when they change without a bump, because a
+# forgotten bump silently rebuilds the exact freeze this mechanism removes.
+# ═══════════════════════════════════════════════════════════════════════
+
+# Starts at 2, not 1: version 1 is BURNED. A reverted first attempt at this
+# mechanism (dfc74ee, 2026-08-09) booted on at least one real install and
+# stamped `seed_prompts_version = 1` before being reverted — the code went away,
+# the row did not. Shipping at 1 would read as "already reconciled" on exactly
+# the installs the mechanism exists for, and forward-only counters cannot reuse
+# a burned number. Attempt 2's generation-1 content also differs from what
+# attempt 1 stamped: this version ships `parameters` alongside the template,
+# where attempt 1 carried the install's old config forward.
+SEED_PROMPTS_VERSION = 2
+SEED_PROMPTS_VERSION_KEY = 'seed_prompts_version'
+
+# Pointer provenance that proves the install is still running what WE put there.
+# A strict subset of SYSTEM_PROVENANCE (asserted in the tests): every value here
+# is reserved, but not every reserved value is pristine.
+PRISTINE_ACTIVATIONS = (AUTO_V1_PROVENANCE, RECONCILE_PROVENANCE)
+
+
+def shipped_prompts():
+    """name -> (template, config dict) for every prompt the fleet should receive.
+
+    Scope is prompts that a production encode actually reads. Two exclusions,
+    both for the same reason — advancing content for machinery that never runs
+    widens the blast radius for nothing:
+
+    • Config-only interactions (`boot`, `surface`, `trace_recording`, the
+      signal/scope configs). Several are dead config with no reader at all.
+    • `s1_scout_quote` and `s1_scout_temporal`. Both are still registered in
+      `SCOUT_RUNNERS`, but production runs the lived arm
+      (`BRAIN_S1E_LIVED_SEQUENCE=1` in hooks/scripts/brain-env.sh) and
+      `encode.py` musters that arm with `exclude_scouts=('quote', 'temporal')`,
+      so neither ever fires. `temporal` was retired outright. `facts` is the one
+      live scout and stays. `seed_interactions` still CREATES all three so the
+      interactions exist if an arm re-enables them — being seeded and being
+      advanced are separate questions.
+
+    The template files are mirrored from the DB's ACTIVE version by
+    `./dev sync-prompts`; the config dicts are the shipped config line,
+    hand-maintained here and drift-checked by `sync-prompts --check`.
+    """
+    from .scales.s1.encoding_prompt import SYSTEM_PROMPT as S1E
+    from .scales.s2.community_enrichment_prompt import SYSTEM_PROMPT as COMM
+    from .scales.s2.consolidation_enrichment_prompt import SYSTEM_PROMPT as CONS
+    from .scales.s2.healer_prompt import SYSTEM_PROMPT as HEAL
+    from .scales.s2.aspect_prompt import SYSTEM_PROMPT as ASP
+    from .scales.s1.scouts.prompts.facts_prompt import SYSTEM_PROMPT as SF
+    return {
+        's1e': (S1E, S1E_CONFIG_V1),
+        's2_community_enrichment': (COMM, S2_COMMUNITY_ENRICHMENT_CONFIG_V1),
+        's2_consolidation_enrichment': (CONS,
+                                        S2_CONSOLIDATION_ENRICHMENT_CONFIG_V1),
+        's2_healer': (HEAL, S2_HEALER_CONFIG_V1),
+        's2_aspects': (ASP, S2_ASPECTS_CONFIG_V1),
+        's1_scout_facts': (SF, S1_SCOUT_FACTS_CONFIG_V1),
+    }
+
+
+def _parse_params(raw):
+    """Interaction parameters as a dict. Unparseable reads as {}."""
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _matches_shipped(interaction, template, config):
+    """True when this version already carries the shipped template AND config.
+
+    Both halves matter. A comparison on template alone silently drops a
+    config-only update — which is the motivating case for shipping config at
+    all: a frozen install keeps a dated model ID that the API will retire, and
+    the mechanism built to reach the fleet cannot fix it.
+    """
+    if (interaction.get('template') or '') != template:
+        return False
+    return _parse_params(interaction.get('parameters')) == config
+
+
+def _pointer_is_pristine(info):
+    """True when the active pointer was placed by the system, not by a human.
+
+    `BACKSTOP_PROVENANCE` is reserved but not pristine in general: it fills a
+    missing pointer with MAX(version), which on an install predating
+    `interaction_active` could be a version a human registered by hand.
+
+    The exception is decidable. With exactly one version on record, nothing but
+    the seed ever registered for that name, so MAX(version) IS the shipped
+    default and the pointer carries no human decision. Those are the oldest
+    installs in the fleet — the ones frozen longest, and the whole reason this
+    mechanism exists. Freezing them out on an ambiguity that resolves would
+    exclude precisely the population it was built to reach.
+    """
+    set_by = info.get('active_set_by')
+    if set_by in PRISTINE_ACTIVATIONS:
+        return True
+    return (set_by == BACKSTOP_PROVENANCE
+            and info.get('total_versions') == 1)
+
+
+def _pristine_advance_target(brain, name, active_version):
+    """None if a human touched this name; else a reconcile-created version
+    above `active_version` that can be re-adopted, or 0 for "advance freshly".
+
+    Pristine means the install is still running what WE put there:
+      • the active pointer was set by the system (SYSTEM_PROVENANCE), and
+      • every version above active was created by a previous reconcile.
+
+    That second clause is the load-bearing one. A registered-but-inactive
+    version normally means a human made a deployment decision — `trace_recording`
+    sits at active=1 with a dormant v2 exactly like this — and publishing over
+    it is the precise registration/activation conflation `interaction_active`
+    exists to prevent: a write is not a deployment decision. The one exception
+    is our own crash residue: a reconcile that registered and died before
+    flipping the pointer. That is recognisable by `created_by`, and re-adopting
+    it avoids stacking a duplicate version on every retry.
+    """
+    above = [v for v in brain.list_interaction_versions(name)
+             if v['version'] > active_version]
+    if any(v.get('created_by') != RECONCILE_PROVENANCE for v in above):
+        return None
+    return max([v['version'] for v in above], default=0)
+
+
+def _reconcile_pristine_prompts(brain):
+    """Advance installs still running the shipped default; never touch the rest."""
+    state = {i['name']: i for i in brain.list_interactions()}
+    advanced, held = [], []
+
+    for name, (template, config) in sorted(shipped_prompts().items()):
+        info = state.get(name)
+        if not info:
+            continue  # absent — seed_interactions owns creating it
+
+        active_version = info.get('active_version')
+        if active_version is None:
+            # No pointer row at all. get_active falls back to MAX(version), so
+            # the runtime is reading something nobody deployed on purpose;
+            # leave it to the pointer backstop in ensure_logs_schema.
+            held.append('%s(no active pointer)' % name)
+            continue
+        if not _pointer_is_pristine(info):
+            held.append('%s(activated by %s)' % (name, info.get('active_set_by')))
+            continue
+
+        residue = _pristine_advance_target(brain, name, active_version)
+        if residue is None:
+            held.append('%s(v%s+ registered by a human)'
+                        % (name, active_version + 1))
+            continue
+
+        if _matches_shipped(brain.get_interaction(name) or {}, template, config):
+            continue  # already current — no write
+
+        if residue:
+            candidate = brain.get_interaction(name, version=residue) or {}
+            if _matches_shipped(candidate, template, config):
+                # Crash residue that already carries this exact content: adopt
+                # it instead of registering a duplicate.
+                brain.set_interaction_active(name, residue,
+                                             set_by=RECONCILE_PROVENANCE)
+                advanced.append('%s->v%d (adopted)' % (name, residue))
+                continue
+
+        new = brain.register_interaction(name, template=template,
+                                         parameters=json.dumps(config),
+                                         created_by=RECONCILE_PROVENANCE)
+        brain.set_interaction_active(name, new['version'],
+                                     set_by=RECONCILE_PROVENANCE)
+        advanced.append('%s->v%d' % (name, new['version']))
+
+    # Loud on both outcomes: a silent reconcile is indistinguishable from a
+    # broken one, and a silent skip is how the original freeze went unnoticed.
+    if advanced:
+        print('[seed-reconcile] advanced shipped prompts: %s'
+              % ', '.join(advanced), flush=True)
+    if held:
+        print('[seed-reconcile] left alone (locally owned): %s'
+              % ', '.join(held), flush=True)
+
+
+def reconcile_seeded_prompts(brain):
+    """Version-gated entry point — runs once per SEED_PROMPTS_VERSION bump.
+
+    Daemon-only by design. `Brain()` must never call this: eval corpora,
+    IsolatedBrain copies, tests, and the daemon-dead fallback in
+    hooks/scripts/boot_brain.py all construct a Brain directly, and reconciling
+    there would mutate frozen corpora and race two processes on
+    UNIQUE(name, version). The daemon is a singleton and runs this before it
+    serves, so there is exactly one writer.
+    """
+    from .schema import run_versioned_migrations
+    try:
+        run_versioned_migrations(
+            brain.logs_conn, 'logs_meta', SEED_PROMPTS_VERSION_KEY,
+            SEED_PROMPTS_VERSION,
+            [(SEED_PROMPTS_VERSION,
+              lambda _conn: _reconcile_pristine_prompts(brain))],
+            label='seed prompts')
+        brain.logs_conn.commit()
+    except Exception as e:
+        # Never block boot on prompt reconciliation: the install keeps running
+        # its current prompts, and the unstamped version retries next open.
+        try:
+            brain.logs_conn.rollback()
+        except Exception:
+            pass
+        print('[seed-reconcile] WARNING: skipped (%s)' % e, flush=True)
+        # stdout alone is invisible to query_logs, and this can fail silently
+        # for many boots in a row — the freeze it exists to remove, wearing a
+        # different mask. Every comparable boot-path failure routes here.
+        try:
+            brain._log_error('seed_reconcile_failed', e,
+                             'seed_prompts_version=%d' % SEED_PROMPTS_VERSION)
+        except Exception:
+            pass
 
 
 # ═══════════════════════════════════════════════════════════════════════

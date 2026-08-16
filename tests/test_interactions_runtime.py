@@ -107,10 +107,21 @@ class TestInteractionSeeding:
                 'template and layout must flip together'
 
     def test_encoding_agent_has_prompt_and_config(self):
-        """The S1 encoder interaction has a real prompt + config.
+        """The S1 encoder interaction has a real prompt, and seeds the one
+        config key the runtime actually reads.
 
         Renamed from `encoding_agent` to `s1e` when scale-name conventions
         landed; runtime reads 's1e' (see scales/s1/encode.py).
+
+        Pins `effort` because `encode.py` reads it off this config and maps it
+        to the API's output_config — drop it from the seed and fresh brains
+        silently lose the encoder's effort setting.
+
+        Deliberately does NOT pin config keys the runtime never reads
+        (`max_messages`, `max_rounds` and friends lived here until the seed was
+        aligned to the production-ACTIVE config; the encoder reads them from
+        `encode_contract.ENCODING_AGENT`, not this config). Same reasoning as
+        test_surface_has_prompt_and_config.
         """
         from servers.interaction_seed import seed_interactions
         seed_interactions(self.brain)
@@ -118,8 +129,7 @@ class TestInteractionSeeding:
         assert enc is not None
         assert len(enc['template']) > 100  # real prompt
         config = json.loads(enc['parameters'])
-        assert 'max_messages' in config
-        assert 'max_rounds' in config
+        assert 'effort' in config
 
     def test_code_boundaries_have_empty_template(self):
         """voice_surface, boot, pre_edit, signal_assembler have no LLM prompt."""

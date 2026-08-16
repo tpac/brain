@@ -573,6 +573,10 @@ class BrainRecallMixin:
         """List all registered interactions with latest versions."""
         return self._interaction_dal.list_all()
 
+    def list_interaction_versions(self, name: str):
+        """Every registered version of one interaction: version + created_by."""
+        return self._interaction_dal.list_versions(name)
+
     def backfill_embeddings(self, batch_size: int = 20) -> int:
         """Legacy wrapper — calls backfill_vectors()."""
         result = self.backfill_vectors(batch_size)

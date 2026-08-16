@@ -99,11 +99,15 @@ register_interaction(name, template)         # registers as v(N+1), DORMANT
 set_interaction_active(name, version=N+1)    # flips the runtime pointer
 ./dev sync-prompts                           # mirrors ACTIVE → .py files
 ./dev sync-prompts --check                   # CI-style non-zero-exit drift check
+# then bump SEED_PROMPTS_VERSION in servers/interaction_seed.py — sync only
+# updates the .py for fresh brains; the bump is what reaches existing installs
 ```
 
 **Discipline** for an eval-gated prompt change: register DORMANT, run the eval, then activate + sync. Do **not** sync between register and activate — `sync-prompts` deliberately mirrors only the active version, so dormant candidates cannot leak into the seed file and be picked up by fresh-brain installs that skipped the eval.
 
 Commit the `.py` change together with whatever prompted the registration. Never edit the `.py` files by hand to change prompt behavior — that won't affect runtime and will silently drift from the DB.
+
+**The bump is the deployment decision for the fleet.** `sync-prompts` only mirrors ACTIVE into the seed `.py`, which reaches brains created afterwards; installs that already exist advance only when `SEED_PROMPTS_VERSION` changes and `reconcile_seeded_prompts` runs at the next daemon boot. It advances a prompt only while that install still runs the shipped default — any human `register`/`set_active` for a name makes it hands-off permanently. `tests/test_seed_prompt_reconcile.py` fingerprints the shipped templates + configs and fails when they change without a bump.
 
 `tests/test_prompt_sync.py` holds the contract: each seed file must export `SYSTEM_PROMPT`, fresh brains must seed every prompt in `SEED_PROMPTS`, sync must mirror the active version (not the latest registered), and seed must never overwrite an externally-registered version.
 

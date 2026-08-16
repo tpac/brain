@@ -548,6 +548,17 @@ class BrainDaemon:
         self.brain = Brain(self.db_path)
         self._log("Brain loaded from {}".format(self.db_path))
 
+        # Advance any shipped prompt this install is still running at its
+        # seeded default. Deliberately here and NOT in Brain.__init__: this is
+        # the one Brain that owns its DB exclusively (launchd singleton, before
+        # the port opens), while eval corpora, IsolatedBrain copies and the
+        # boot_brain fallback all construct a Brain that must never be mutated.
+        try:
+            from servers.interaction_seed import reconcile_seeded_prompts
+            reconcile_seeded_prompts(self.brain)
+        except Exception as e:
+            self._log("prompt reconcile failed: {}".format(e))
+
         # Start the embed queue drain worker. remember/revise/remember_batch
         # enqueue dirty node_ids; this worker embeds them in batches every
         # EMBED_DRAIN_INTERVAL seconds. S2 Heal catches gaps on idle.

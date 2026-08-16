@@ -14,6 +14,7 @@ Architecture reminder:
     - Run this before committing any prompt change so git history captures it.
 """
 import argparse
+import json
 import os
 import re
 import sqlite3
@@ -208,6 +209,49 @@ def _patch_header_version(path, interaction):
     return True
 
 
+def check_configs(conn, log=print):
+    """Report seed config dicts that have drifted from the active config.
+
+    Reported, never rewritten. The template halves are machine-generated files,
+    but the config dicts live inline in `interaction_seed.py` with comments
+    explaining each value, and a regenerate would eat them.
+
+    This exists because the two halves had different maintenance models and the
+    config half rotted silently: `s2_community_enrichment` carried a DATED model
+    id long after production moved off it, and the shipped-prompt reconcile
+    publishes config alongside the template. A fingerprint test cannot catch this
+    — it detects changes TO the dict, never the dict drifting FROM the DB.
+
+    Returns a list of (name, 'config-drift'|'config-ok') tuples.
+    """
+    from ..interaction_seed import shipped_prompts
+
+    results = []
+    for name, (_template, shipped_cfg) in sorted(shipped_prompts().items()):
+        inter = _fetch_active(conn, name)
+        if inter is None:
+            continue  # template loop already reported missing-in-db
+        try:
+            live_cfg = json.loads(inter['parameters']) if inter['parameters'] else {}
+        except (json.JSONDecodeError, TypeError):
+            live_cfg = {}
+        if live_cfg == shipped_cfg:
+            results.append((name, 'config-ok'))
+            continue
+        shipped_only = sorted(set(shipped_cfg) - set(live_cfg))
+        live_only = sorted(set(live_cfg) - set(shipped_cfg))
+        changed = sorted(k for k in set(shipped_cfg) & set(live_cfg)
+                         if shipped_cfg[k] != live_cfg[k])
+        results.append((name, 'config-drift'))
+        log('  %-34s  v%d  CONFIG DRIFT' % (name, inter['version']))
+        for label, keys in (('only in seed', shipped_only),
+                            ('only in DB', live_only),
+                            ('differing', changed)):
+            if keys:
+                log('      %-13s %s' % (label + ':', ', '.join(keys)))
+    return results
+
+
 def sync(conn, check_only=False, log=print):
     """Sync all seed prompts DB → .py. Returns list of (name, status) tuples.
 
@@ -280,16 +324,32 @@ def main():
 
     conn = sqlite3.connect(db_path)
     results = sync(conn, check_only=args.check)
+    # Config drift is reported on both paths: the seed configs ride to the fleet
+    # next to the templates, so a stale one is a shipping defect, not a nit.
+    config_results = check_configs(conn)
     conn.close()
 
+    config_drift = [r for r in config_results if r[1] == 'config-drift']
     if args.check:
         drift = [r for r in results if r[1] == 'would-change']
         if drift:
             print('\n%d seed file(s) out of sync. Run: ./dev python3 -m servers.tools.sync_prompts'
                   % len(drift), file=sys.stderr)
+        if config_drift:
+            print('\n%d seed config dict(s) drifted from the active config: %s\n'
+                  'Edit the *_CONFIG_V1 dicts in servers/interaction_seed.py by hand '
+                  '(they carry comments a regenerate would eat), then bump '
+                  'SEED_PROMPTS_VERSION so existing installs receive the fix.'
+                  % (len(config_drift), ', '.join(n for n, _ in config_drift)),
+                  file=sys.stderr)
+        if drift or config_drift:
             return 1
-        print('\nAll seed files in sync with DB.')
+        print('\nAll seed files and configs in sync with DB.')
         return 0
+    if config_drift:
+        print('\nNOTE: %d seed config dict(s) still drifted (not auto-written): %s'
+              % (len(config_drift), ', '.join(n for n, _ in config_drift)),
+              file=sys.stderr)
     return 0
 
 

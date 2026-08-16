@@ -219,11 +219,20 @@ def _handle_set_interaction_active(brain, args, graph_changes):
     already be registered. Use after register_interaction to make a
     newly-registered version live, OR to roll back to a previous version.
     """
+    from .dal_logs import SYSTEM_PROVENANCE
     name = args.get("name", "")
     version = args.get("version")
     set_by = args.get("set_by", "anchor")
     if not name or version is None:
         return {"ok": False, "error": "name and version are required"}
+    if set_by in SYSTEM_PROVENANCE:
+        # Reserved: the shipped-prompt reconcile reads these to tell its own
+        # writes apart from a human's. Accepting one here would relabel this
+        # deployment decision as an untouched default and let a later bump
+        # publish over it.
+        return {"ok": False,
+                "error": "set_by '%s' is reserved for system provenance"
+                         % set_by}
     try:
         version = int(version)
     except (TypeError, ValueError):
@@ -248,6 +257,7 @@ def _handle_register_interaction(brain, args, graph_changes):
     version 1 (first registration of a name) auto-activates — otherwise
     nothing would be readable for that name.
     """
+    from .dal_logs import SYSTEM_PROVENANCE
     name = args.get("name", "")
     template = args.get("template", "")
     parameters = args.get("parameters", "{}")
@@ -255,6 +265,12 @@ def _handle_register_interaction(brain, args, graph_changes):
 
     if not name:
         return {"ok": False, "error": "name is required"}
+    if created_by in SYSTEM_PROVENANCE:
+        # Reserved — see _handle_set_interaction_active. A version claiming to
+        # be reconcile's own would be treated as crash residue and adopted.
+        return {"ok": False,
+                "error": "created_by '%s' is reserved for system provenance"
+                         % created_by}
 
     try:
         result = brain.register_interaction(
