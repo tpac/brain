@@ -7,6 +7,9 @@ All trace readers can rely on these guarantees.
 Architecture: docs/ARCHITECTURE-FRACTAL.md
 """
 
+import hashlib
+import json
+
 from servers.loud_truncation import cap_text_loud, cap_list_loud
 
 
@@ -287,13 +290,17 @@ DELTA_METADATA_SHAPE = {
     # First-class (validated + dashboard-known + capped) rather than smuggled
     # through **extras. Empty [] for every non-aspect delta.
     'classifications':   list,
-    # Cost & provenance of producing this Δ (all int, default 0). elapsed_ms +
-    # token counts let you trend encoder latency/cost over time — and, paired
-    # with interaction_version, compare cost across prompt versions — straight
-    # from traces. truncated flags silent data loss (a max_tokens cut mid
-    # tool-call corrupts the write). interaction_version records WHICH K version
-    # produced this Δ (the FK `interaction_id` is stamped on the trace row
-    # itself; this mirror keeps it human-readable in the payload).
+    # Cost & provenance of producing this Δ. elapsed_ms + token counts let you
+    # trend encoder latency/cost over time — and, paired with the K block,
+    # compare cost across prompt versions — straight from traces. truncated
+    # flags silent data loss (a max_tokens cut mid tool-call corrupts the
+    # write). The K block records WHICH prompt+config produced this Δ:
+    # interaction_fingerprint is the content-address of the EFFECTIVE value
+    # (stable across installs; '' = unstamped, e.g. mutation deltas),
+    # interaction_source is where it came from ('default' = code, 'override' =
+    # DB row; '' = unstamped), interaction_version the override version (0 on
+    # a default run — meaningful only next to source). interaction_id (the
+    # override rowid, on the trace row itself) is install-local, display-only.
     'elapsed_ms':            int,
     'input_tokens':          int,
     'output_tokens':         int,
@@ -301,11 +308,30 @@ DELTA_METADATA_SHAPE = {
     'cache_creation_tokens': int,
     'truncated':             int,
     'interaction_version':   int,
+    'interaction_fingerprint': str,
+    'interaction_source':      str,
 }
 
 DELTA_FINAL_TEXT_LIMIT = 2000
 DELTA_ERROR_LIST_LIMIT = 5
 DELTA_CLASSIFICATIONS_LIMIT = 200  # cap aspect's per-item Δ (cold-start runs can be large)
+
+
+# ── K PROVENANCE (interaction fingerprint) ──
+# Content-address of the EFFECTIVE prompt+config a run used. The row pointer
+# (interaction_id = a rowid, interaction_version = a per-install counter) is
+# install-local and can dangle; the fingerprint identifies the K by content,
+# so it is stable across installs and unchanged when an override row is
+# collapsed into a byte-identical code default. 48 bits is ample for the
+# tens of distinct Ks a brain ever runs.
+
+def interaction_fingerprint(name: str, template: str, config: dict) -> str:
+    """12-hex sha256 over name + template + canonical(config)."""
+    h = hashlib.sha256()
+    h.update((name or '').encode())
+    h.update((template or '').encode())
+    h.update(json.dumps(config or {}, sort_keys=True).encode())
+    return h.hexdigest()[:12]
 
 
 # ── AGENT-RUN TELEMETRY (the shared cost+loop field-set) ──
@@ -512,6 +538,7 @@ def build_delta_metadata(*,
                          elapsed_ms=0, input_tokens=0, output_tokens=0,
                          cache_read_tokens=0, cache_creation_tokens=0,
                          truncated=0, interaction_version=0,
+                         interaction_fingerprint='', interaction_source='',
                          **extras):
     """Build a unified delta trace metadata dict.
 
@@ -577,7 +604,9 @@ def build_delta_metadata(*,
             input_tokens=input_tokens, output_tokens=output_tokens,
             cache_read_tokens=cache_read_tokens,
             cache_creation_tokens=cache_creation_tokens),
-        'interaction_version':   int(interaction_version or 0),
+        'interaction_version':     int(interaction_version or 0),
+        'interaction_fingerprint': str(interaction_fingerprint or ''),
+        'interaction_source':      str(interaction_source or ''),
     }
     # Extras preserved for per-unit fields (can't collide with shared keys).
     for k, v in extras.items():
@@ -1192,6 +1221,11 @@ SELECTION_METADATA_SHAPE = {
     'dropped':               list,   # IDs/tags of rejects
     'outcomes_per_candidate': dict,  # {candidate_id: 'selected'|'dropped'|...}
     'content':               str,    # the delta output (e.g. additionalContext), truncated
+    # K block — same semantics as DELTA_METADATA_SHAPE's: which prompt+config
+    # produced this selection ('' / 0 = unstamped).
+    'interaction_fingerprint': str,
+    'interaction_source':      str,
+    'interaction_version':     int,
 }
 
 SELECTION_CONTENT_LIMIT = 4000
@@ -1200,7 +1234,9 @@ SELECTION_CONTENT_LIMIT = 4000
 def build_selection_metadata(*,
                              candidates_considered=0, selected=None,
                              dropped=None, outcomes_per_candidate=None,
-                             content='', **extras):
+                             content='', interaction_fingerprint='',
+                             interaction_source='', interaction_version=0,
+                             **extras):
     """Build a unified selection-style trace metadata dict (S1R-like)."""
     metadata = {
         'candidates_considered':  int(candidates_considered or 0),
@@ -1208,6 +1244,9 @@ def build_selection_metadata(*,
         'dropped':                list(dropped or []),
         'outcomes_per_candidate': dict(outcomes_per_candidate or {}),
         'content':                (content or '')[:SELECTION_CONTENT_LIMIT],
+        'interaction_fingerprint': str(interaction_fingerprint or ''),
+        'interaction_source':      str(interaction_source or ''),
+        'interaction_version':     int(interaction_version or 0),
     }
     for k, v in extras.items():
         if k not in metadata:

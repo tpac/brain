@@ -128,6 +128,13 @@ assert a real encode run's delta trace carries a non-empty `interaction_fingerpr
 **Respects.** `id:b385ccea` (K provenance is what makes a boundary learnable). Contract-first: the new
 fields are declared in `trace_contract.py`, not inline at write sites.
 
+**Named follow-up (out of scope here).** S2 units have no K-attribution at all: their Δs ride
+`mutation_emitter` (`interaction_id: None` hardcoded), so a healer mutation is unattributable to the
+healer prompt that produced it. The organic fix is ONE edit, not per-unit wiring: the unit already
+fetches its prompt centrally (`s2/base.py:526-527`) and every write flows through
+`apply_encoder_attribution` (`s2/base.py:265`) — hand `get_interaction_stamp(name)` to that same
+chokepoint and every S2 unit's traces gain the stamp at once.
+
 ---
 
 ## Step 2 — Relocate each config default into its consumer's contract file
@@ -200,7 +207,10 @@ wire the read at `community_decoder.py:97` (`config or brain.get_interaction_con
 COMMUNITY_DETECTION`) or drop the name. Do not carry the seed's shape forward undecided.
 
 **Files & call sites.** Add `servers/interaction_defaults.py`. Update the CLAUDE.md Map row at `:58`
-(`Interactions (the K store)` currently points at `interaction_seed.py`).
+(`Interactions (the K store)` currently points at `interaction_seed.py`). Relocate
+`interaction_fingerprint()` here from `trace_contract.py` (Step 1 parked it there because this file
+didn't exist yet; it is K-identity, not trace shape — its Step 7/8 consumers import it for eval
+assertions and the collapse comparison).
 
 **Verification.** New `tests/test_interaction_defaults.py`: every registry entry's template is a
 non-empty `str` >100 chars; every config is a non-empty dict; and — the replacement for the deleted

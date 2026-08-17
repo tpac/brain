@@ -53,8 +53,10 @@ INPUT_KW = dict(
 def _begin(brain, user_content='RENDERED', layout='xml_v13', **over):
     kw = dict(
         candidates_data=CANDS, layout=layout,
-        surface_instructions='SYSTEM TEXT', interaction_version=14,
-        interaction_id=124, user_content=user_content, max_tokens=600,
+        surface_instructions='SYSTEM TEXT',
+        interaction_stamp={'fingerprint': 'abcdef123456',
+                           'source': 'override', 'version': 14, 'id': 124},
+        user_content=user_content, max_tokens=600,
         variant='v5_agentic', model='claude-haiku-4-5',
         session_id='sess-cap', **INPUT_KW)
     kw.update(over)

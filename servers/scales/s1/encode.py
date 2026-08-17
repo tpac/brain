@@ -99,6 +99,9 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     # 2. Build prompt (from interactions table — learnable boundary)
     enc_interaction = brain.get_interaction('s1e')
     enc_instructions = enc_interaction.get('template', '') if enc_interaction else ''
+    # K-provenance stamp, resolved at the same moment as the template so the
+    # delta trace records the K this run actually used.
+    enc_stamp = brain.get_interaction_stamp('s1e')
     # Per-version config rides in the interaction's parameters JSON (the
     # K-store): `effort` maps to the API's output_config.effort (absent/{} →
     # None → API default, high); `model` picks the encoder model, literal
@@ -320,12 +323,11 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             outcomes[tool] = outcomes.get(tool, 0) + 1
 
         # enc_chain computed above (post-process) — reused here for the delta.
-        # Which K version produced this Δ — the FK (interaction_id) is stamped
-        # on the trace row for joins; the version number rides in metadata for
-        # human-readable scanning. Lets higher scales A/B prompt versions from
-        # production traces (the whole point of interactions-as-K-store).
-        enc_iid = (enc_interaction or {}).get('id')
-        enc_ver = (enc_interaction or {}).get('version', 0)
+        # Which K produced this Δ — the stamp (fingerprint + source + version,
+        # resolved with the template at run start) rides the metadata; the
+        # install-local rowid rides the trace row for display. Lets higher
+        # scales A/B prompt versions from production traces (the whole point
+        # of interactions-as-K-store).
         enc_metadata = build_delta_metadata(
             actions=result.get('actions', 0),
             write_actions=result.get('write_actions', 0),
@@ -342,13 +344,15 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             cache_read_tokens=result.get('cache_read_tokens', 0),
             cache_creation_tokens=result.get('cache_creation_tokens', 0),
             truncated=len(result.get('truncations', []) or []),
-            interaction_version=enc_ver,
+            interaction_version=enc_stamp['version'],
+            interaction_fingerprint=enc_stamp['fingerprint'],
+            interaction_source=enc_stamp['source'],
             stop_counter=counter,
         )
         dispatch_fn('trace_append', {
             'chain_id': enc_chain, 'scale': 's1', 'event_type': 'delta',
             'ref_type': 'encoding_run',
-            'interaction_id': enc_iid,
+            'interaction_id': enc_stamp['id'],
             'summary': '%d actions (%d writes) in %d rounds, %dms, %d→%d tok' % (
                 result.get('actions', 0),
                 result.get('write_actions', 0),

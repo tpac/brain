@@ -87,8 +87,10 @@ def _call_surface(brain, candidates_data, user_message,
                   scope=None):
     """Call Haiku to surface relevant nodes from candidates.
 
-    Returns: (surfaced_dict, surface_prompt, max_tokens, interaction_id, telemetry)
+    Returns: (surfaced_dict, surface_prompt, max_tokens, stamp, telemetry)
         surfaced_dict has 'selected' list. Empty on failure.
+        stamp is the K-provenance dict from brain.get_interaction_stamp
+        ('fingerprint'/'source'/'version'/'id') for the trace writers.
         telemetry is the shared run-cost dict (build_run_telemetry kwargs:
         token counts + elapsed_ms + rounds + truncated) for the K trace.
 
@@ -122,7 +124,9 @@ def _call_surface(brain, candidates_data, user_message,
             "brain_logs.db. interaction_seed should have populated "
             "this on Brain construction — check seed/DAL state.")
     surface_instructions = surface_interaction['template']
-    interaction_id = surface_interaction.get('id')
+    # K-provenance stamp ({'fingerprint','source','version','id'}) — threaded
+    # to the trace writers and the replay capture as one dict.
+    stamp = brain.get_interaction_stamp('surface')
 
     # Layout rides in the interaction CONFIG ({"layout": "xml_v13"}), so a
     # version flip changes template and renderer atomically — a v13 template
@@ -179,8 +183,7 @@ def _call_surface(brain, candidates_data, user_message,
         retrieval_stats=retrieval_stats, frame=frame, layout=layout,
         shuffle_seed=shuffle_seed, scope=scope,
         surface_instructions=surface_instructions,
-        interaction_version=surface_interaction.get('version'),
-        interaction_id=interaction_id, user_content=user_content,
+        interaction_stamp=stamp, user_content=user_content,
         max_tokens=max_tokens, variant=variant, model=SURFACE_MODEL,
         session_id=session_id)
 
@@ -252,7 +255,7 @@ def _call_surface(brain, candidates_data, user_message,
     elif surfaced is None:
         surfaced = {"selected": []}
 
-    return surfaced, surface_prompt, max_tokens, interaction_id, telemetry
+    return surfaced, surface_prompt, max_tokens, stamp, telemetry
 
 
 def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
@@ -745,7 +748,7 @@ def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
 
 def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
                   graph_neighbors, additional_context, enriched, results,
-                  recall_ref, interaction_id, session_id, expansion=None,
+                  recall_ref, stamp, session_id, expansion=None,
                   frame='', telemetry=None, pt=None, selection_reason='',
                   seen_dropped=0, judge_pointer=None):
     """Write S1 surface traces: O (candidates), K (surfaced), Δ (additionalContext).
@@ -933,10 +936,13 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
                  dropped=dropped_short,
                  outcomes_per_candidate=outcomes_per_candidate,
                  content=additional_context or '',
+                 interaction_fingerprint=(stamp or {}).get('fingerprint', ''),
+                 interaction_source=(stamp or {}).get('source', ''),
+                 interaction_version=(stamp or {}).get('version', 0),
                  expanded=exp_detail,
                  query=enriched[:500],
              ),
-             interaction_id=interaction_id,
+             interaction_id=(stamp or {}).get('id'),
              session_id=session_id),
     ])
 
@@ -1043,7 +1049,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
     scope = brain.session_scope(session_id)
 
     # Call Haiku selector (unchanged — picks ≤5 from 25 candidates)
-    surfaced, surface_prompt, max_tokens, interaction_id, telemetry = _call_surface(
+    surfaced, surface_prompt, max_tokens, stamp, telemetry = _call_surface(
         brain, candidates_data, user_message, recent_messages,
         session_id, result, frame=frame, scope=scope)
     _mark('surface_haiku')
@@ -1066,7 +1072,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
         try:
             _write_traces(brain, ctx, candidates_data, set(), [], [],
                           None, enriched, results,
-                          recall_ref, interaction_id, session_id,
+                          recall_ref, stamp, session_id,
                           frame=frame, telemetry=telemetry, pt=pt,
                           selection_reason=selection_reason,
                           seen_dropped=((result.get('_retrieval_stats') or {})
@@ -1282,7 +1288,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
         _write_traces(brain, ctx, candidates_data, selected_short_ids, selected,
                       graph_neighbors_compat, additional_context,
                       enriched, results,
-                      recall_ref, interaction_id, session_id,
+                      recall_ref, stamp, session_id,
                       expansion=expansion, frame=frame, telemetry=telemetry, pt=pt,
                       selection_reason=selection_reason,
                       seen_dropped=((result.get('_retrieval_stats') or {})

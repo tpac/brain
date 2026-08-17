@@ -84,7 +84,7 @@ def capture_dir(brain=None):
 
 def begin(brain, *, candidates_data, user_message, recent_messages,
           recently_surfaced, retrieval_stats, frame, layout,
-          surface_instructions, interaction_version, interaction_id,
+          surface_instructions, interaction_stamp,
           user_content, max_tokens, variant, model, session_id,
           shuffle_seed=None, scope=None):
     """Snapshot everything known at the Haiku call boundary.
@@ -108,8 +108,13 @@ def begin(brain, *, candidates_data, user_message, recent_messages,
             'stamps': {
                 'git_sha': _git_sha(),
                 'interaction': 'surface',
-                'interaction_version': interaction_version,
-                'interaction_id': interaction_id,
+                # Flattened from the K-provenance stamp dict — key names kept
+                # stable for existing capture readers; fingerprint/source ride
+                # alongside so captures stay comparable across installs.
+                'interaction_version': (interaction_stamp or {}).get('version'),
+                'interaction_id': (interaction_stamp or {}).get('id'),
+                'interaction_fingerprint': (interaction_stamp or {}).get('fingerprint', ''),
+                'interaction_source': (interaction_stamp or {}).get('source', ''),
                 'layout': layout,
                 'variant': variant,
                 'model': model,

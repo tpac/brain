@@ -61,7 +61,9 @@ const TIPS = {
   'cache rd':   'Prompt-cache tokens read — a cache hit (cheap)',
   'cache wr':   'Prompt-cache tokens written — cache creation (one-time cost)',
   'K v':        'Interaction VERSION — which versioned prompt/config produced this Δ (the learnable boundary)',
-  'K id':       'Interaction id — FK to the exact prompt/config row in the interactions table',
+  'K':          'Run on the code default — no DB override active for this interaction',
+  'K#':         'Interaction FINGERPRINT — content-address (12-hex sha256) of the exact prompt+config this run used; stable across installs and across override collapses',
+  'K id':       'Interaction row id in this install\'s interactions table — install-local and unenforced (no FK); historic ids can dangle',
   // selection / recall
   'candidates': 'Memories scored as recall candidates before selection',
   'selected':   'Memories chosen to surface to Anchor this turn — the actual recall',
@@ -145,6 +147,7 @@ const _DELTA_KNOWN = new Set([
   'final_text', 'errors', 'created', 'revised', 'archived', 'classifications',
   'elapsed_ms', 'input_tokens', 'output_tokens', 'cache_read_tokens',
   'cache_creation_tokens', 'truncated', 'interaction_version',
+  'interaction_fingerprint', 'interaction_source',
   'human_identity', 'agent_identity',
 ]);
 
@@ -165,7 +168,12 @@ function _runCostLane(ev, m) {
   if (m.output_tokens != null)     cost += _stat('tok out', m.output_tokens);
   if (m.cache_read_tokens)         cost += _stat('cache rd', m.cache_read_tokens);
   if (m.cache_creation_tokens)     cost += _stat('cache wr', m.cache_creation_tokens);
-  if (m.interaction_version)       cost += _stat('K v', m.interaction_version, '#ffaa33');
+  // K provenance: source decides the label — an override shows its version,
+  // a default-run shows 'default' (version 0 would render as nothing).
+  // Legacy rows (no interaction_source) fall back to the bare version chip.
+  if (m.interaction_source === 'default') cost += _stat('K', 'default', '#ffaa33');
+  else if (m.interaction_version)  cost += _stat('K v', m.interaction_version, '#ffaa33');
+  if (m.interaction_fingerprint)   cost += _stat('K#', m.interaction_fingerprint);
   if (ev.interaction_id)           cost += _stat('K id', ev.interaction_id);   // truthy: hide 0/null, matching K v
   return cost;
 }

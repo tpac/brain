@@ -746,6 +746,34 @@ class Brain(
             return ''
         return interaction.get('template', '')
 
+    def get_interaction_stamp(self, name: str) -> dict:
+        """K-provenance stamp for the EFFECTIVE prompt+config behind `name`.
+
+        Returns {'fingerprint', 'source', 'version', 'id'} — the block trace
+        writers put on delta/selection metadata (fingerprint + source +
+        version) and the trace row (id). `fingerprint` content-addresses what
+        a run of `name` actually uses, so it stays comparable across installs
+        and across the override collapse; `id`/`version` are install-local.
+        `source` is 'override' when a DB row provides the value; 'default'
+        (version 0, id None) means the code default — until code-owned
+        defaults land, that only occurs for unregistered names, whose
+        effective value is genuinely ''/{} (see get_interaction_prompt).
+        """
+        from .trace_contract import interaction_fingerprint
+        interaction = self._interaction_dal.get_active(name)
+        if not interaction:
+            return {'fingerprint': interaction_fingerprint(name, '', {}),
+                    'source': 'default', 'version': 0, 'id': None}
+        try:
+            config = json.loads(interaction.get('parameters') or '{}')
+        except (json.JSONDecodeError, TypeError):
+            config = {}
+        return {'fingerprint': interaction_fingerprint(
+                    name, interaction.get('template', '') or '', config),
+                'source': 'override',
+                'version': int(interaction.get('version') or 0),
+                'id': interaction.get('id')}
+
     # get_relations_for_families — REMOVED 2026-05-04 (Step 12 of unified-aspects).
     # Replaced by brain.aspects.<name>.edge_relations (single name) or
     # brain.aspects.relations_in([names]) (multi-name union). All callers
