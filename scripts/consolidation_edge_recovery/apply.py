@@ -12,8 +12,6 @@ Run:
 import argparse
 import json
 import os
-import shutil
-import subprocess
 import sys
 import time
 from collections import defaultdict
@@ -37,10 +35,11 @@ BATCH_SIZE = 50
 
 
 def backup_live_db():
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    bak = BRAIN_DIR / f"brain.db.bak-pre-edge-recovery-{ts}"
-    print(f"[apply] backing up live DB → {bak}")
-    shutil.copy2(LIVE_BRAIN, bak)
+    from servers.db_backup import backup_before_destructive
+    bak = backup_before_destructive(str(LIVE_BRAIN), 'pre-edge-recovery')
+    if not bak:
+        raise RuntimeError('backup failed — refusing to apply')
+    print(f"[apply] live DB backed up → {bak}")
     return bak
 
 

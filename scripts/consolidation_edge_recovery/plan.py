@@ -43,6 +43,12 @@ CHAIN_DEPTH_CAP = 5
 
 
 def ro_conn(path):
+    # Gzipped backups (central mechanism) are decompressed beside the
+    # original first; harmless residue, reused across runs.
+    if str(path).endswith('.gz'):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+        from servers.db_backup import materialize_backup
+        path = materialize_backup(str(path))
     return sqlite3.connect(f"file:{path}?mode=ro", uri=True)
 
 
@@ -256,7 +262,10 @@ def main():
     backups = []
     for f in os.listdir(BRAIN_DIR):
         p = BRAIN_DIR / f
-        if (f.startswith("brain.db.bak-") or f.startswith("brain.db.v") or f == "brain.db.backup-pre-v14-20260317-144005") \
+        if (f.startswith("brain.db.bak-") or f.startswith("brain.db.v")
+                or f == "brain.db.backup-pre-v14-20260317-144005"
+                or (f.startswith("brain.db.")
+                    and f.endswith((".bak", ".bak.gz")))) \
                 and not f.endswith("-shm") and not f.endswith("-wal") \
                 and "corrupted" not in f:
             backups.append((str(p), p.stat().st_mtime))

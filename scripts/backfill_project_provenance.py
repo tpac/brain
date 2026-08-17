@@ -276,9 +276,17 @@ def apply_stamps(stamps):
     if not os.path.exists(lock):
         sys.exit('REFUSING: maintenance lock %s absent.' % lock)
     bak = sorted(f for f in os.listdir(DB_DIR)
-                 if f.startswith('brain.db.bak-'))
+                 if f.startswith('brain.db.bak-')
+                 or (f.startswith('brain.db.')
+                     and f.endswith(('.bak', '.bak.gz'))))
+    # The rolling GFS snapshots count too — any restorable image will do.
+    backups_dir = os.path.join(DB_DIR, 'backups')
+    if os.path.isdir(backups_dir):
+        bak += sorted('backups/' + f for f in os.listdir(backups_dir)
+                      if f.startswith('brain.db.') and f.endswith('.gz'))
     if not bak:
-        sys.exit('REFUSING: no brain.db.bak-* backup found in %s.' % DB_DIR)
+        sys.exit('REFUSING: no brain.db backup found in %s '
+                 '(.bak/.bak.gz beside the DB or backups/*.gz).' % DB_DIR)
     print('newest backup: %s' % bak[-1])
 
     from servers.db_backends import current as db_backend

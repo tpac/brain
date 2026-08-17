@@ -52,6 +52,12 @@ DEFAULT_BACKUP_GLOBS = [
     os.path.expanduser('~/AgentsContext/brain/brain.db.backup*'),
     os.path.expanduser('~/AgentsContext/brain/brain.db.v*.bak'),
     os.path.expanduser('~/AgentsContext/brain/brain.db.pre-*'),
+    # Central-mechanism artifacts: tagged pre-destructive backups beside the
+    # DB (raw .bak from boot-path callers, .bak.gz from scripts) and the
+    # rolling GFS snapshots (.gz, materialized on open).
+    os.path.expanduser('~/AgentsContext/brain/brain.db.*.bak'),
+    os.path.expanduser('~/AgentsContext/brain/brain.db.*.bak.gz'),
+    os.path.expanduser('~/AgentsContext/brain/backups/brain.db.*.gz'),
 ]
 EDGE_COLS = ('edge_id', 'source_id', 'target_id', 'weight',
              'co_access_count', 'last_strengthened', 'created_at')
@@ -65,6 +71,12 @@ def edge_hash(source_id: str, target_id: str) -> str:
 def open_ro(path: str) -> sqlite3.Connection:
     # immutable=1: never touches -wal/-shm siblings. Backups with non-empty
     # WALs lose their last uncheckpointed frames — acceptable for recovery.
+    # Gzipped backups (central mechanism) are decompressed to a sibling
+    # .materialized file first; harmless residue, reused across runs.
+    if path.endswith('.gz'):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from servers.db_backup import materialize_backup
+        path = materialize_backup(path)
     return sqlite3.connect('file:%s?mode=ro&immutable=1' % path, uri=True)
 
 

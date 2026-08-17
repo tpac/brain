@@ -25,9 +25,7 @@ Safety:
 import argparse
 import json
 import os
-import shutil
 import sys
-import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -82,13 +80,10 @@ def main():
         print('ERROR: save failed: %s' % save_resp.get('error'), file=sys.stderr)
         sys.exit(1)
 
-    ts = time.strftime('%Y%m%d_%H%M%S')
-    backup_path = '%s.bak-pre-stage1a-%s' % (brain_db, ts)
-    print('[migrate] Backing up brain.db to %s...' % backup_path)
-    try:
-        shutil.copy2(brain_db, backup_path)
-    except Exception as e:
-        print('ERROR: backup failed: %s' % e, file=sys.stderr)
+    from servers.db_backup import backup_before_destructive
+    backup_path = backup_before_destructive(brain_db, 'pre-stage1a')
+    if not backup_path:
+        print('ERROR: backup failed', file=sys.stderr)
         sys.exit(1)
 
     backup_size = os.path.getsize(backup_path)

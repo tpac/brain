@@ -249,30 +249,28 @@ class BackupTest(unittest.TestCase):
         self.assertGreater(os.path.getsize(path + '-wal'), 0,
                            'precondition: committed data must be in the WAL')
 
-        schema_mod._backup_before_migration(path, 0, 1, allow_zero=True,
-                                            conn=conn)
+        from servers.db_backup import backup_before_destructive
+        backup_before_destructive(path, 'v0', compress=False)
 
         bak = path + '.v0.bak'
         self.assertTrue(os.path.exists(bak), 'no backup was taken')
-        # Read the .bak ALONE — no -wal beside it, exactly as a restore would.
+        # Read the backup ALONE — no -wal beside it, exactly as a restore would.
         rows = sqlite3.connect(bak).execute(
             'SELECT COUNT(*) FROM canary').fetchone()[0]
         self.assertEqual(rows, 1,
-                         'backup captured the last checkpoint, not the last '
-                         'commit — restoring it silently loses committed data')
+                         'backup missed committed rows still in the WAL — '
+                         'restoring it silently loses committed data')
 
-    def test_logs_schema_hands_the_runner_a_quiet_connection(self):
-        """The checkpoint above only works if no transaction is open.
+    def test_backup_survives_an_open_transaction_at_the_call_site(self):
+        """The backup must not depend on the caller's transaction state.
 
         `ensure_logs_schema`'s interaction_active backstop is DML and leaves a
-        write transaction open; `PRAGMA wal_checkpoint(TRUNCATE)` raises
-        `database table is locked` inside one, and the helper downgrades that to
-        a warning and copies anyway. So the call site must commit before handing
-        off. Asserted via the warning's absence, which is the observable.
+        write transaction open when it hands off to the runner. The backup
+        opens its own read-only source connection and must capture the last
+        COMMITTED state whatever the caller's connection is doing — asserted
+        end-to-end through a real Brain boot migrating a pre-versioning
+        logs DB.
         """
-        import contextlib
-        import io
-
         from servers.brain import Brain
 
         tmp = tempfile.mkdtemp()
@@ -284,26 +282,29 @@ class BackupTest(unittest.TestCase):
         first.logs_conn.commit()
         first.logs_conn.execute('DELETE FROM logs_meta')   # → pre-versioning
         first.logs_conn.commit()
+        logs_db_path = first.logs_db_path
         first.logs_conn.close()
         first.conn.close()
 
-        buf = io.StringIO()
         orig_version = schema_mod.LOGS_VERSION
         orig_ladder = schema_mod.LOGS_MIGRATIONS
         try:
             schema_mod.LOGS_VERSION = orig_version + 1
             schema_mod.LOGS_MIGRATIONS = [(orig_version + 1, lambda c: None)]
-            with contextlib.redirect_stdout(buf):
-                second = Brain(db_path, skip_embedder=True)
+            second = Brain(db_path, skip_embedder=True)
             second.logs_conn.close()
             second.conn.close()
         finally:
             schema_mod.LOGS_VERSION = orig_version
             schema_mod.LOGS_MIGRATIONS = orig_ladder
 
-        self.assertNotIn('Backup checkpoint failed', buf.getvalue(),
-                         'the runner was handed a connection with an open '
-                         'transaction, so the backup could not checkpoint')
+        bak = logs_db_path + '.v0.bak'
+        self.assertTrue(os.path.exists(bak),
+                        'pre-versioning logs DB migrated without a backup')
+        row = sqlite3.connect(bak).execute(
+            "SELECT COUNT(*) FROM interactions WHERE name = 'x'").fetchone()[0]
+        self.assertEqual(row, 1,
+                         'backup is missing committed pre-migration data')
 
     def test_fresh_db_is_not_backed_up(self):
         path = self._db()
@@ -326,6 +327,64 @@ class BackupTest(unittest.TestCase):
         run_versioned_migrations(conn, 'logs_meta', LOGS_VERSION_KEY, 2, [],
                                  db_path=path, fresh=False)
         self.assertFalse(os.path.exists(path + '.v1.bak'))
+
+    def test_logs_split_backs_up_before_dropping_legacy_tables(self):
+        """migrate_logs_to_separate_db runs at EVERY Brain open, outside the
+        version-gated backup — so it must decide its own: a backup exactly
+        when a legacy log table is about to be DROPped, and no file touched
+        on the common boot where none exist."""
+        main_path = self._db('brain.db')
+        main = sqlite3.connect(main_path)
+        logs = sqlite3.connect(self._db('brain_logs.db'))
+
+        # Common boot: no legacy tables in main → no backup, early exit.
+        migrated = schema_mod.migrate_logs_to_separate_db(
+            main, logs, main_db_path=main_path)
+        self.assertEqual(migrated, [])
+        self.assertFalse(os.path.exists(main_path + '.pre-logs-split.bak'))
+
+        # Legacy boot: a log table still lives in brain.db.
+        main.execute(schema_mod.LOG_TABLES['debug_log']['create'])
+        main.commit()
+        logs.execute(schema_mod.LOG_TABLES['logs_meta']['create'])
+        logs.execute(schema_mod.LOG_TABLES['debug_log']['create'])
+        logs.commit()
+        migrated = schema_mod.migrate_logs_to_separate_db(
+            main, logs, main_db_path=main_path)
+        self.assertIn('debug_log', migrated)
+        self.assertTrue(os.path.exists(main_path + '.pre-logs-split.bak'),
+                        'legacy log tables were DROPped with no backup')
+        self.assertIsNone(main.execute(
+            "SELECT name FROM sqlite_master WHERE name='debug_log'"
+        ).fetchone())
+
+    def test_nodes_rebuild_backs_up_on_its_own_trigger(self):
+        """The nodes rebuild (DROP TABLE nodes) is triggered by a DDL probe,
+        not a version change — a current-version brain with legacy CHECK DDL
+        gets rebuilt. The backup must key on the rebuild trigger, not on the
+        version delta (which is zero here)."""
+        path = self._db('brain.db')
+        conn = sqlite3.connect(path)
+        conn.execute("""CREATE TABLE nodes (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL CHECK(type IN ('person','concept')),
+            title TEXT NOT NULL
+        )""")
+        conn.execute("INSERT INTO nodes VALUES ('n1', 'person', 'T')")
+        conn.execute('CREATE TABLE brain_meta (key TEXT PRIMARY KEY, '
+                     'value TEXT, updated_at TEXT)')
+        stamp_schema_version(conn, 'brain_meta', BRAIN_VERSION_KEY,
+                             schema_mod.BRAIN_VERSION)   # already current
+        conn.commit()
+
+        ensure_schema(conn, db_path=path)
+
+        bak = path + '.nodes-rebuild.bak'
+        self.assertTrue(os.path.exists(bak),
+                        'nodes table rebuilt (DROPped) with no backup')
+        # The rebuild itself must still have worked.
+        row = conn.execute("SELECT title FROM nodes WHERE id='n1'").fetchone()
+        self.assertEqual(row[0], 'T')
 
 
 class EnsureSchemaIntegrationTest(unittest.TestCase):

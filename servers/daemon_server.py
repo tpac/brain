@@ -338,9 +338,9 @@ class BrainDaemon:
         # distinct from the named pre-destructive-op `.bak` files a human
         # makes by hand — this scheduler only manages its own snapshots.
         try:
+            from .db_backup import default_backup_dir
             from .db_maintenance import DBMaintenance
-            backup_dir = os.path.join(
-                os.path.dirname(self.brain.db_path), 'backups')
+            backup_dir = default_backup_dir(self.brain.db_path)
             self._db_maintenance = DBMaintenance(
                 log_fn=self._log,
                 log_error_fn=getattr(self.brain, '_log_error', None))

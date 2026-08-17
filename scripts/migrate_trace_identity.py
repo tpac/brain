@@ -79,6 +79,21 @@ def needs_stamping(meta):
 
 
 def main(db_path):
+    # In-code enforcement of the docstring's requirements: this rewrites
+    # every trace_events row and wipes trace_embeddings, so the daemon must
+    # be paused and a backup must exist BEFORE the first write.
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from servers.daemon_config import get_maintenance_path
+    from servers.db_backup import backup_before_destructive
+    lock = get_maintenance_path()
+    if not os.path.exists(lock):
+        print('ERROR: maintenance lock missing (%s) — daemon may be live. '
+              'See docstring for the run procedure.' % lock, file=sys.stderr)
+        sys.exit(1)
+    if not backup_before_destructive(db_path, 'pre-trace-identity'):
+        print('ERROR: backup failed — refusing to migrate', file=sys.stderr)
+        sys.exit(1)
+
     print('Opening %s' % db_path)
     conn = sqlite3.connect(db_path)
     conn.execute('PRAGMA journal_mode=WAL')

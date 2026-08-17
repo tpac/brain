@@ -252,7 +252,8 @@ class Brain(
         # it imports arrive behind that stamp — it resets the logs counter when
         # it imports anything, so the migration ladder faces the legacy data on
         # the next open instead of treating it as already-current.
-        migrate_logs_to_separate_db(self.conn, self.logs_conn)
+        migrate_logs_to_separate_db(self.conn, self.logs_conn,
+                                    main_db_path=self.db_path)
 
         # DAL instances — incremental adoption, brain.py migrates one method at a time
         self._meta = BrainMetaDAL(self.conn)
@@ -2337,9 +2338,9 @@ class Brain(
         """
         commit_unless_batched(self.conn)
 
-    def save(self, backup: bool = False):
+    def save(self):
         """
-        Commit pending changes and optionally back up database.
+        Commit pending changes.
 
         Holds write_lock around the self.conn commit. save() is called
         lock-free from the daemon's S2 idle-maintenance path (_run_idle_
@@ -2352,9 +2353,6 @@ class Brain(
         (daemon_server, which already holds write_lock before calling save)
         re-acquires safely. logs_conn is a separate DB — no coordination with
         the foreground write lock is needed.
-
-        Args:
-            backup: If True, create a backup copy
         """
         with self.write_lock:
             self.conn.commit()  # commit-ok: explicit durability point (save/autosave)
@@ -2362,14 +2360,6 @@ class Brain(
             self.logs_conn.commit()
         except Exception:
             pass
-
-        if backup and self.db_path:
-            try:
-                import shutil
-                backup_path = f'{self.db_path}.backup-{datetime.utcnow().strftime("%Y%m%d-%H%M%S")}'
-                shutil.copy2(self.db_path, backup_path)
-            except Exception as e:
-                print(f'[brain] Backup failed: {e}')
 
     def close(self):
         """Commit, close all database connections, and remove from singleton cache.

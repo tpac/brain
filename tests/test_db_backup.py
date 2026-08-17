@@ -171,5 +171,143 @@ class TestBackupRoundTrip(unittest.TestCase):
         self.assertEqual(os.listdir(backup_dir), ['brain.db.20260625T120000Z.gz'])
 
 
+class TestSnapshotTo(unittest.TestCase):
+    """The raw primitive every backup and working clone routes through."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.tmp, 'brain.db')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_captures_committed_wal_tail_where_file_copy_loses_it(self):
+        """The mutation contrast that justifies the primitive: committed rows
+        living only in the -wal (daemon SIGKILLed before any checkpoint) must
+        be in the snapshot; a raw file copy of the main file loses them."""
+        writer = sqlite3.connect(self.db_path)
+        writer.execute('PRAGMA journal_mode=WAL')
+        writer.execute('CREATE TABLE t (v TEXT)')
+        writer.executemany('INSERT INTO t VALUES (?)',
+                           [('r%d' % i,) for i in range(50)])
+        writer.commit()   # committed, but only into the -wal
+        self.assertGreater(os.path.getsize(self.db_path + '-wal'), 0)
+
+        # Writer stays open (no close-time checkpoint) AND holds a fresh
+        # open transaction — the snapshot must depend on neither.
+        writer.execute("INSERT INTO t VALUES ('uncommitted')")
+
+        dest = os.path.join(self.tmp, 'clone.db')
+        size = sqlite_backend.snapshot_to(self.db_path, dest)
+        self.assertGreater(size, 0)
+        rows = sqlite3.connect(dest).execute(
+            'SELECT COUNT(*) FROM t').fetchone()[0]
+        self.assertEqual(rows, 50, 'snapshot missed the committed WAL tail '
+                                   'or included uncommitted rows')
+
+        # The contrast: copy2 of the main file alone has no tables at all.
+        torn = os.path.join(self.tmp, 'torn.db')
+        shutil.copy2(self.db_path, torn)
+        tables = sqlite3.connect(torn).execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
+        ).fetchone()[0]
+        self.assertEqual(tables, 0, 'if a raw copy now works, the primitive '
+                                    'may be over-engineered — re-probe')
+
+    def test_missing_source_fails_loudly(self):
+        with self.assertRaises(sqlite3.Error):
+            sqlite_backend.snapshot_to(
+                os.path.join(self.tmp, 'missing', 'nope.db'),
+                os.path.join(self.tmp, 'out.db'))
+
+
+class TestBackupBeforeDestructive(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.tmp, 'brain.db')
+        conn = sqlite3.connect(self.db_path)
+        conn.execute('CREATE TABLE t (v TEXT)')
+        conn.execute("INSERT INTO t VALUES ('original')")
+        conn.commit()
+        conn.close()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_creates_tagged_gz_and_roundtrips(self):
+        path = db_backup.backup_before_destructive(self.db_path, 'pre-op')
+        self.assertEqual(path, self.db_path + '.pre-op.bak.gz')
+        self.assertTrue(os.path.exists(path))
+        restored = db_backup.materialize_backup(path)
+        row = sqlite3.connect(restored).execute(
+            'SELECT v FROM t').fetchone()[0]
+        self.assertEqual(row, 'original')
+
+    def test_idempotent_per_tag_keeps_first_attempt_state(self):
+        first = db_backup.backup_before_destructive(self.db_path, 'pre-op')
+        # Mutate the DB — a retry must NOT refresh the backup with this.
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("UPDATE t SET v = 'clobbered'")
+        conn.commit()
+        conn.close()
+        second = db_backup.backup_before_destructive(self.db_path, 'pre-op')
+        self.assertEqual(first, second)
+        restored = db_backup.materialize_backup(second)
+        row = sqlite3.connect(restored).execute(
+            'SELECT v FROM t').fetchone()[0]
+        self.assertEqual(row, 'original',
+                         'retry overwrote the pre-first-attempt backup')
+
+    def test_failure_returns_none_and_leaves_no_artifact(self):
+        missing = os.path.join(self.tmp, 'ghost', 'brain.db')
+        self.assertIsNone(
+            db_backup.backup_before_destructive(missing, 'pre-op'))
+        self.assertFalse(os.path.exists(missing + '.pre-op.bak.gz'))
+
+    def test_uncompressed_shape_is_directly_openable(self):
+        """compress=False (boot-path callers): raw .bak, no materialize step."""
+        path = db_backup.backup_before_destructive(
+            self.db_path, 'v29', compress=False)
+        self.assertEqual(path, self.db_path + '.v29.bak')
+        row = sqlite3.connect(path).execute('SELECT v FROM t').fetchone()[0]
+        self.assertEqual(row, 'original')
+        # materialize_backup must pass a raw backup through untouched.
+        self.assertEqual(db_backup.materialize_backup(path), path)
+
+
+class TestEnsureBackupFresh(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.tmp, 'brain.db')
+        self.backup_dir = os.path.join(self.tmp, 'backups')
+        conn = sqlite3.connect(self.db_path)
+        conn.execute('CREATE TABLE t (v TEXT)')
+        conn.commit()
+        conn.close()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_stale_dir_snapshots_and_returns_true(self):
+        self.assertTrue(
+            db_backup.ensure_backup_fresh(self.db_path, self.backup_dir))
+        self.assertEqual(
+            len(db_backup.list_backups(self.db_path, self.backup_dir)), 1)
+
+    def test_fresh_snapshot_short_circuits(self):
+        db_backup.ensure_backup_fresh(self.db_path, self.backup_dir)
+        before = db_backup.list_backups(self.db_path, self.backup_dir)
+        self.assertTrue(
+            db_backup.ensure_backup_fresh(self.db_path, self.backup_dir))
+        self.assertEqual(
+            db_backup.list_backups(self.db_path, self.backup_dir), before,
+            'a fresh snapshot existed — the gate must not re-snapshot')
+
+    def test_unsnapshottable_db_returns_false(self):
+        missing = os.path.join(self.tmp, 'ghost', 'brain.db')
+        self.assertFalse(
+            db_backup.ensure_backup_fresh(missing, self.backup_dir))
+
+
 if __name__ == '__main__':
     unittest.main()

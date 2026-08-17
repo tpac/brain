@@ -59,6 +59,7 @@ Where each concern lives. The module docstring is the detail — this table is t
 | Scope provenance + the veil | `servers/scopes.py`, `scales/dispatch.py` | `scopes.py` docstring |
 | Node + pipeline contracts | `servers/contract.py`, `pipeline_contract.py` | docstrings |
 | Edge model | `servers/dal_graph.py` | `add_relation` docstring |
+| Backups (rolling, pre-destructive, clones) | `servers/db_backup.py`, `db_backends/sqlite.py` | module docstring |
 | Runtime flags | `hooks/scripts/brain-env.sh` | read at daemon start only |
 
 All `scales/` paths live under `servers/`. Two databases: `brain.db` (nodes, edges,
@@ -182,7 +183,7 @@ You are the sole maintainer of code quality, architecture, and cleanliness.
 
 **Contract-first** — Constants, field lists, limits, and config live in contract files. Never hardcode in hooks, dispatch, or surface code.
 
-**Backup before destructive DB operations** — `cp brain.db brain.db.bak-{timestamp}` before ANY delete, bulk update, or schema migration. No exceptions.
+**Backup before destructive DB operations** — before ANY delete, bulk update, or schema migration: `backup_before_destructive(db_path, tag)` from `servers/db_backup.py`. No exceptions. Never `cp` a live WAL-mode DB — the copy can have no tables at all. Working clones: `IsolatedBrain`.
 
 **Clean as you go** — Remove dead code the same session; delete it, don't mark it. Don't leave "TODO: remove later."
 
