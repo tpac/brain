@@ -29,6 +29,25 @@ and the eight research questions live there).
 
 ## Now — verified open
 
+### 🟡 0. Encoder view policy: behavioral A/B → sweep → activation (2026-08-17) ◀ ACTIVE ARC
+**Read first:** handoff node `caad5afc` (the letter) + measurement `155ddb64` it rests on.
+The encoder prompt diet is **merged and live-but-OFF** (main `bfa72f3`,
+`BRAIN_S1E_VIEW_POLICY` env; flag off = byte-identical control arm, proven by two
+`eval/encoder_prompt_reassembly.py` integrity PASSes). Measured on real captures:
+catalog was 80–89% of every prompt; policy cuts totals 12–16% on 4-run sessions —
+aging is round-based, so the payoff grows with run count. Policy lives in
+`encoder_view.py` (the Map's Encoding row); coordinates in `trace_links.display_turn`.
+**Locked:** actions→provenance ruling (`27db2472`) incl. brain_batch + lookups out,
+connect stays; turn coordinates 1-based; surfaced-id aging protection.
+**Open:** behavioral A/B via `eval/longmem/ab_encode.py` flipping the flag per arm —
+watch re-encoding of covered turns and revise-vs-dupe on `[aged]` stubs (byte counts
+can't see either); then frozen-corpus sweep; then activation (Tom's gate: flip
+default, retire `encoded_turn_trim` + its flag-off test, bump the s1e prompt gloss).
+Gated on API budget (claimed back 2026-09-01 — verify with one cheap call).
+**Do not reopen:** last-30 catalog cap (`9ae6820a`, dangling refs) · internal-jargon
+labels (stateless-agent test) · verb exclude list (deferred) · content-trimming as
+the lever (`155ddb64`: edges + heavy corrections are the weight).
+
 ### 🔴 1. Prompt improvements never reach existing installs
 `interaction_seed._register` returns early when the name already exists, so an install
 seeds its prompts at **first boot and is frozen there forever**. Fresh installs are
