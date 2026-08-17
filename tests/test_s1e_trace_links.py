@@ -135,7 +135,7 @@ def test_full_link_shape_surfaced_and_encoded_together():
     assert links['u5'] == {
         'surfaced': ['surfA', 'surfB'],
         'encoded': ['encC', 'encD'],
-        'encoded_by': 'run6',
+        'encoded_by': 'run6', 'encoded_by_stop': 6,
         'authored': [], 'created': [], 'revised': [], 'archived': [],
         'recalled': [], 'looked_up': [], 'endo': [],  # no touched stream here
         'dropped': [],                               # no recall stream here
@@ -154,6 +154,7 @@ def test_malformed_rows_are_survivable():
         target_traces=[_turn(5), {'id': 'orphan'}])  # orphan has no chain_id
     assert links['u5']['surfaced'] == ['ok']           # the good row survived
     assert links['orphan'] == {'surfaced': [], 'encoded': [], 'encoded_by': None,
+                               'encoded_by_stop': None,
                                'authored': [], 'created': [], 'revised': [],
                                'archived': [], 'recalled': [], 'looked_up': [],
                                'endo': [], 'dropped': [],

@@ -15,6 +15,7 @@ The capability returns, per target trace, the nodes linked to it by relation:
         'surfaced':   [node_id, ...],   # recall surfaced AND Haiku picked (S1R)
         'encoded':    [node_id, ...],   # what the owning run wrote    (S1E)
         'encoded_by': trace_id | None,  # the encoding_run trace; None = unencoded
+        'encoded_by_stop': int | None,  # that run's stop — the turn it ran on
         'authored':   [node_id, ...],   # what Anchor's own tools wrote (S0, anchor_touched)
         'created':    [node_id, ...],   # authored, split: nodes Anchor created (S0)
         'revised':    [node_id, ...],   # authored, split: nodes Anchor revised (S0)
@@ -287,7 +288,7 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces,
             continue
         stop = _stop_of(tt.get('chain_id'))
         surfaced = _dedup(surf_by_stop.get(stop, [])) if stop is not None else []
-        encoded, encoded_by = [], None
+        encoded, encoded_by, encoded_by_stop = [], None, None
         if stop is not None:
             # owning run = first run that closes a range STRICTLY AFTER this
             # turn. STRICT, not >=: a turn's S0 chain is stamped at the counter
@@ -306,7 +307,7 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces,
             # how-to-read is the mitigation. Rare (needs consecutive failures).
             for rstop, rtid, rids in runs:
                 if rstop > stop:
-                    encoded, encoded_by = list(rids), rtid
+                    encoded, encoded_by, encoded_by_stop = list(rids), rtid, rstop
                     break
         tch = touched_by_stop.get(stop) or {} if stop is not None else {}
         # dropped: explicit verdict wins over the derived pool−surfaced; either way
@@ -321,6 +322,7 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces,
         dropped = [d for d in _dedup(pool) if d not in surfaced_set]
         out[tid] = {
             'surfaced': surfaced, 'encoded': encoded, 'encoded_by': encoded_by,
+            'encoded_by_stop': encoded_by_stop,
             'authored': _dedup(tch.get('authored', [])),
             'created': _dedup(tch.get('created', [])),
             'revised': _dedup(tch.get('revised', [])),

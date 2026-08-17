@@ -1094,10 +1094,21 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
             ENCODED_TURN_MESSAGE_CAP, action_mode, action_stub,
             actions_stub_line)
 
+    if view_policy:
+        from servers.scales.s1.trace_links import _stop_of
+
     out = ""
     for n, t in enumerate(turns, 1):
         uid = (t['user'] or {}).get('id') if t['user'] else None
         link = links.get(uid) if uid else None
+        n_disp = n   # n stays the window ordinal — the frontier index below
+        if view_policy:
+            # display the real turn number (the chain stop — session-global),
+            # not the window ordinal: tells the encoder WHERE it is in the
+            # session, and shares the axis attribution speaks
+            # ('encoded(me, turn 36)'). Orphan turns keep the ordinal.
+            real = _stop_of((t['user'] or {}).get('chain_id')) if t['user'] else None
+            n_disp = real if real is not None else n
         enc_attr, cap, is_enc = '', None, False
         if link is not None:
             is_enc = bool(link.get('encoded_by'))
@@ -1118,7 +1129,7 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
             age = _relative_time((first or {}).get('created_at'), now=now, fine=True)
             if age:
                 age_attr = ' age="%s"' % age
-        out += '<turn n="%d"%s%s>\n' % (n, age_attr, enc_attr)
+        out += '<turn n="%d"%s%s>\n' % (n_disp, age_attr, enc_attr)
         # Tag vocabulary is identity-native, not role-native (Tom 2026-07-02):
         # <me> = my side of the exchange; <other> = whoever is on the other side
         # this session (usually the operator, sometimes an agent — an identity
@@ -1275,12 +1286,12 @@ def _render_provenance(links, frontier, turn, idx, titles=None,
         parts.append('surfaced: %s' % _short_refs(link['surfaced'], titles, tf))
     eb = link['encoded_by']
     if eb and frontier.get(eb) == idx and link['encoded']:
-        # policy: 'encoded(scribe)' — the (me)/(scribe) vocabulary; the legacy
-        # arm keeps its 'encoded(S1S)' string byte-for-byte
+        # policy: turn-coordinate attribution ('encoded(me, turn 36)'); the
+        # legacy arm keeps its 'encoded(S1S)' string byte-for-byte
         run_label = 'encoded(S1S)'
         if view_policy:
-            from servers.scales.s1.encoder_view import ENCODED_RUN_LABEL
-            run_label = ENCODED_RUN_LABEL
+            from servers.scales.s1.encoder_view import encoded_run_label
+            run_label = encoded_run_label(link.get('encoded_by_stop'))
         parts.append('%s: %s' % (run_label, _short_refs(link['encoded'], titles, tf)))
     if view_policy:
         from servers.scales.s1.encoder_view import PROVENANCE_SPLIT

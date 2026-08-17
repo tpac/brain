@@ -216,19 +216,27 @@ PROVENANCE_SPLIT = (
     ('archived(me)', ('archived',)),
 )
 
-# The run-attribution label for prior encode runs. One identity, two stations:
-# (me) = my session half (Anchor in conversation), (scribe) = my encoding half
-# (S1E runs). The legacy arm's 'encoded(S1S)' is jargon; 'Anchor' is an
-# internal name the operator may not even use — neither belongs in
-# encoder-facing text.
-ENCODED_RUN_LABEL = 'encoded(scribe)'
+# Attribution speaks TURN COORDINATES — the same axis the timeline's real turn
+# numbers use (a turn's chain stop; view policy renders <turn n="37"> with the
+# session-global number, not a window ordinal). 'encoded(me, turn 36)' against
+# a window of turns 37-46 lets a stateless reader compute where it is, how far
+# apart its runs land, and which entries are old — no internal names (scribe,
+# Anchor, S1S) and no gloss needed. Turn numbers are structural (chain stops),
+# so unlike relative ages they stay honest in eval replays.
 
-# Catalog provenance tags, view-policy arm — SAME vocabulary as the provenance
-# labels above, so the catalog and the timeline read as one system. Keys +
-# priority order match encode_contract.PROVENANCE_TAGS (the control arm's
-# tags); surfaced stays untagged (lowest priority) on both arms.
-PROVENANCE_TAGS_VIEW = (
-    ('authored', '[authored(me)]'),
-    ('recalled', '[recalled(me)]'),
-    ('encoded',  '[encoded(scribe)]'),
-)
+
+def encoded_run_label(run_stop=None):
+    """Run attribution for the provenance frontier line. With the stop: turn
+    coordinates. Without (odd-shaped chain): the plain first-person allusion —
+    'my earlier run' is the stub sentence's vocabulary, already grounded."""
+    return ('encoded(me, turn %d)' % run_stop) if run_stop is not None \
+        else 'encoded(my earlier run)'
+
+
+def provenance_tag_view(key, stop=None):
+    """Catalog provenance tag, view arm — same verbs as the control arm's tags
+    (authored / recalled / encoded), first person, with the turn coordinate
+    when known: '[encoded(me, turn 36)]'. Keys + priority order stay
+    encode_contract.PROVENANCE_TAGS's; surfaced stays untagged on both arms."""
+    return ('[%s(me, turn %d)]' % (key, stop)) if stop is not None \
+        else '[%s(me)]' % key

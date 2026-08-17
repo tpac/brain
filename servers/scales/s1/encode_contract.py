@@ -342,14 +342,17 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
         for nid in (ids or ()):
             tag_for.setdefault(nid, tag)   # first (highest-priority) wins
 
-    tags = PROVENANCE_TAGS
     if view_policy:
-        # same keys/priority, the (me)/(scribe) vocabulary — one voice with
-        # the timeline's provenance labels
-        from servers.scales.s1.encoder_view import PROVENANCE_TAGS_VIEW
-        tags = PROVENANCE_TAGS_VIEW
-    for key, tag in tags:                  # PRIORITY order (highest first)
-        _assign(extra_ids.get(key), tag)
+        # same keys/priority; first-person tags in TURN coordinates — one axis
+        # with the timeline's real turn numbers ('[encoded(me, turn 36)]')
+        from servers.scales.s1.encoder_view import provenance_tag_view
+        stops_map = extra_ids.get('stops') or {}
+        for key, _tag in PROVENANCE_TAGS:  # PRIORITY order (highest first)
+            for nid in (extra_ids.get(key) or ()):
+                tag_for.setdefault(nid, provenance_tag_view(key, stops_map.get(nid)))
+    else:
+        for key, tag in PROVENANCE_TAGS:   # PRIORITY order (highest first)
+            _assign(extra_ids.get(key), tag)
     _assign(surfaced_ids, '')              # surfaced: lowest priority, untagged (legacy)
 
     all_ids = set(tag_for)
@@ -386,10 +389,13 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
 
     lines = [header]
     if aged:
-        from servers.scales.s1.encoder_view import AGED_TAG, CATALOG_FULL_ROUNDS
-        lines.append('%d %s entries (from before the newest %d encode rounds) '
-                     'are trimmed to stubs — get_nodes expands any id.'
-                     % (len(aged), AGED_TAG, CATALOG_FULL_ROUNDS))
+        from servers.scales.s1.encoder_view import (AGED_TAG, aging_cutoff,
+                                                    CATALOG_FULL_ROUNDS)
+        cutoff = aging_cutoff(extra_ids.get('run_stops'))
+        lines.append('%d %s entries (last written before turn %d; my newest '
+                     '%d encode rounds stay full) are trimmed to stubs — '
+                     'get_nodes expands any id.'
+                     % (len(aged), AGED_TAG, cutoff, CATALOG_FULL_ROUNDS))
     lines.append('')
     formatted_ids = set()
     # One batched fetch (returns {id: node}) — the widened union can be hundreds of

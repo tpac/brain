@@ -221,8 +221,8 @@ def test_policy_on_encoded_turn_full_text_and_actions_stub():
     trim = ENCODING_AGENT['encoded_turn_trim']
     long_body = 'x' * (trim + 500)
     out = _render(True, eps=_two_turn_eps(covered_body='covered ' + long_body))
-    t5 = out.split('<turn n="1"')[1].split('</turn>')[0]
-    t6 = out.split('<turn n="2"')[1].split('</turn>')[0]
+    t5 = out.split('<turn n="5"')[1].split('</turn>')[0]
+    t6 = out.split('<turn n="6"')[1].split('</turn>')[0]
     # covered turn keeps FULL text (the trim reversal) …
     assert ENCODED_TURN_MESSAGE_CAP is None
     assert t5.split('<other')[1].split('</other>')[0].count('x') == trim + 500
@@ -235,7 +235,7 @@ def test_policy_on_encoded_turn_full_text_and_actions_stub():
 
 def test_policy_on_drops_node_op_lines_on_unencoded_turns():
     out = _render(True)
-    t6 = out.split('<turn n="2"')[1].split('</turn>')[0]
+    t6 = out.split('<turn n="6"')[1].split('</turn>')[0]
     assert 'remember_batch' not in t6          # provenance owns it now
     assert 'Edit: foo.py' in t6                # world-changing lines stay
 
@@ -243,7 +243,7 @@ def test_policy_on_drops_node_op_lines_on_unencoded_turns():
 def test_policy_on_search_lines_stub_to_query_head():
     # recall keeps its intent (the query) but points at provenance for results
     out = _render(True)
-    t6 = out.split('<turn n="2"')[1].split('</turn>')[0]
+    t6 = out.split('<turn n="6"')[1].split('</turn>')[0]
     assert ('recall: {"query": "catalog aging design"} → results in provenance'
             in t6)
     assert 'mcp__plugin_brain_brain__recall' not in t6   # bare name, no prefix
@@ -258,7 +258,7 @@ def test_policy_on_all_actions_hidden_drops_element():
     # unencoded turns carry no coverage claim, so the element may drop.
     eps = [e for e in _two_turn_eps() if e['id'] not in ('t6a', 't6c')]
     out = _render(True, eps=eps)
-    t6 = out.split('<turn n="2"')[1].split('</turn>')[0]
+    t6 = out.split('<turn n="6"')[1].split('</turn>')[0]
     assert '<actions>' not in t6
 
 
@@ -271,8 +271,8 @@ def test_policy_on_provenance_verb_split():
     titles = {'nodeAAAA1111': 'fresh insight', 'nodeDDDD4444': 'looked up',
               'nodeFFFF6666': 'search hit'}
     on = _render(True, touched=touched, titles=titles)
-    t5 = on.split('<turn n="1"')[1].split('</turn>')[0]
-    t6 = on.split('<turn n="2"')[1].split('</turn>')[0]
+    t5 = on.split('<turn n="5"')[1].split('</turn>')[0]
+    t6 = on.split('<turn n="6"')[1].split('</turn>')[0]
     # title-first, double-quoted refs under the policy (system-wide shape)
     assert 'created(me): "fresh insight" id:nodeAAAA' in t6
     assert 'revised(me): id:nodeBBBB' in t6              # no title → bare id
@@ -281,8 +281,8 @@ def test_policy_on_provenance_verb_split():
             in t6)
     assert t6.count('id:nodeDDDD') == 1
     assert 'archived(me): id:nodeEEEE' in t6
-    # run attribution speaks (scribe), not S1S jargon
-    assert 'encoded(scribe): id:nodeCCCC' in t5
+    # run attribution speaks turn coordinates (run6's stop), not S1S jargon
+    assert 'encoded(me, turn 6): id:nodeCCCC' in t5
     assert 'encoded(S1S)' not in on
     assert 'encoded(Anchor)' not in on          # the merged label retires
     # control arm: merged label, no verbs, id-first «tag», no looked_up render
@@ -298,9 +298,10 @@ def test_policy_on_turn_age_and_now_stamp():
     from servers.scales.s1.encoder_view import timeline_now_attr
     now = datetime(2026, 8, 1, 3, 0, 0, tzinfo=timezone.utc)  # eps at ~00:00
     on = _render(True, now=now)
-    # 2h59m floors to 2h — same floor semantics as the coarse 'Nd ago' scale
-    assert '<turn n="1" age="2h ago" encoded="true">' in on
-    assert '<turn n="2" age="2h ago" encoded="false">' in on
+    # 2h59m floors to 2h — same floor semantics as the coarse 'Nd ago' scale;
+    # n is the REAL turn number (chain stop) under the policy
+    assert '<turn n="5" age="2h ago" encoded="true">' in on
+    assert '<turn n="6" age="2h ago" encoded="false">' in on
     # no now → no age attr (degraded render, never a broken one)
     assert 'age=' not in _render(True, now=None)
     # control arm never carries ages
@@ -368,7 +369,7 @@ _EXTRA = {'encoded': {'oldnode1', 'newnode1'}, 'authored': set(),
 def test_catalog_aging_trims_old_rounds_keeps_new_full():
     text, ids = _catalog(True, _EXTRA)
     assert ids == {'oldnode1', 'newnode1'}
-    old_entry = text.split('title of oldnode1')[1].split('[encoded(scribe)]')[0]
+    old_entry = text.split('title of oldnode1')[1].split('[encoded(me, turn 15)]')[0]
     new_entry = text.split('title of newnode1')[1]
     # aged: no edges, no reasoning, lean correction, content head only
     assert 'Edges:' not in old_entry
@@ -382,14 +383,15 @@ def test_catalog_aging_trims_old_rounds_keeps_new_full():
     assert 'Edges:' in new_entry
     assert 'corrector body' in new_entry
     # aged entries are marked and the header explains the tag once; tags speak
-    # the (me)/(scribe) vocabulary under the policy
-    assert ('%s [encoded(scribe)]' % AGED_TAG) in text
+    # first-person TURN coordinates under the policy (oldnode1 written at 5)
+    assert ('%s [encoded(me, turn 5)]' % AGED_TAG) in text
     assert '[encoded] ' not in text                  # legacy tag retired here
     assert 'get_nodes expands any id' in text
+    assert 'last written before turn 10' in text     # the aging cutoff, named
     assert str(CATALOG_FULL_ROUNDS) in text.split('\n')[1]
     # flag off keeps the legacy tag vocabulary
     off, _ = _catalog(False, _EXTRA)
-    assert '[encoded] ' in off and 'encoded(scribe)' not in off
+    assert '[encoded] ' in off and '(me, turn' not in off
 
 
 def test_catalog_aging_orders_oldest_first():
