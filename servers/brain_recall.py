@@ -579,6 +579,37 @@ class BrainRecallMixin:
         result = self.backfill_vectors(batch_size)
         return result.get('total', 0) if isinstance(result, dict) else 0
 
+    def vector_coverage_sweep(self, batch_size: int = 30) -> dict:
+        """Repair vector gaps the enqueue path missed; report what it couldn't.
+
+        ONE door, because repair and detection must ask the same question.
+        Split across two callers they drifted: the repair passed `model=` and a
+        separate probe did not, and `find_missing` counts a stale-model row as
+        present without it and missing with it. A model swap — the bulk case,
+        the whole corpus — therefore read as "nothing left to do" while
+        thousands of rows waited.
+
+        `remaining` is derived from the repair's own per-type counts rather than
+        a second query: a type that filled its batch has more behind it. The two
+        halves then cannot disagree, and a node that can never be embedded —
+        which repairs nothing — can never hold a caller in a re-sweep loop.
+
+        Returns {repaired, by_type, remaining, stuck}. `stuck` is only probed
+        when repair achieved nothing, which is the one state worth waking for:
+        `_primary` is the LAF-visibility invariant, and a node without it is
+        invisible to the field entirely.
+        """
+        result = self.backfill_vectors(batch_size=batch_size) or {}
+        counts = {k: v for k, v in result.items() if isinstance(v, int)}
+        repaired = sum(counts.values())
+        remaining = any(v >= batch_size for v in counts.values())
+        stuck = []
+        if not repaired:
+            stuck = self._vec_dal.find_missing(
+                '_primary', 1, model=embedder.stats.get('model_name', ''))
+        return {'repaired': repaired, 'by_type': result,
+                'remaining': remaining, 'stuck': stuck}
+
     def backfill_vectors(self, batch_size: int = 20,
                           node_ids=None) -> dict:
         """Backfill ALL missing vectors for nodes — batched for throughput.

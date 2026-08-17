@@ -17,6 +17,7 @@ Pure-function tests — stub brain, no DB, no embedder.
 
 import os
 import sys
+import time
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -25,28 +26,44 @@ from servers import embed_queue
 
 
 class _StubVecDal:
-    def __init__(self, missing=None):
-        self.missing = missing or []
+    """Mirrors find_missing's DOCUMENTED model contract.
+
+    dal.py: "A row is 'present' only if it has a non-null embedding AND (if
+    `model` is given) was produced by the same model."
+
+    A stub that ignored `model` is exactly what let a probe omitting it ship
+    green: stale-model rows read as present, so a model swap — the whole
+    corpus — looked like an empty backlog. Rows are (node_id, embedded_by)
+    where embedded_by is None for "no embedding at all".
+    """
+
+    def __init__(self, rows=None):
+        self.rows = rows or []
+        self.seen_kwargs = {}
 
     def find_missing(self, vector_type, limit=50, **kw):
-        return self.missing[:limit]
+        self.seen_kwargs = dict(kw)
+        model = kw.get('model')
+        out = [{'id': nid} for nid, by in self.rows
+               if by is None or (model and by != model)]
+        return out[:limit]
 
 
 class _StubBrain:
-    """Records backfill_vectors calls and _log_error calls."""
+    """Stands in for the Brain door, recording what the sweep asked for."""
 
-    def __init__(self, result=None, raises=None, missing=None):
-        self.result = result if result is not None else {}
+    def __init__(self, outcome=None, raises=None):
+        self.outcome = outcome or {'repaired': 0, 'by_type': {},
+                                   'remaining': False, 'stuck': []}
         self.raises = raises
         self.calls = []
         self.errors = []
-        self._vec_dal = _StubVecDal(missing)
 
-    def backfill_vectors(self, batch_size=None, node_ids=None):
-        self.calls.append({'batch_size': batch_size, 'node_ids': node_ids})
+    def vector_coverage_sweep(self, batch_size=None):
+        self.calls.append({'batch_size': batch_size})
         if self.raises is not None:
             raise self.raises
-        return self.result
+        return self.outcome
 
     def _log_error(self, source, error, context='', ctx=None):
         self.errors.append({'source': source, 'error': error,
@@ -56,8 +73,17 @@ class _StubBrain:
         return [e['source'] for e in self.errors]
 
 
+def _outcome(repaired=0, by_type=None, remaining=False, stuck=()):
+    return {'repaired': repaired, 'by_type': by_type or {},
+            'remaining': remaining, 'stuck': list(stuck)}
+
+
 def _reset():
-    embed_queue._last_sweep_at = 0.0
+    # "Due now, but not stale" — the ordinary steady state. NOT 0.0: that is
+    # ~epoch seconds of apparent staleness, which punches through the
+    # queue-deference floor and hid a real boot-time bug until this changed.
+    embed_queue._last_sweep_at = (
+        time.time() - embed_queue.COVERAGE_SWEEP_INTERVAL - 1)
     embed_queue._queue.clear()
     embed_queue._edge_queue.clear()
 
@@ -66,12 +92,10 @@ class CoverageSweepTest(unittest.TestCase):
 
     setUp = tearDown = staticmethod(_reset)
 
-    def test_sweep_is_unscoped(self):
-        """node_ids must be omitted — a scoped sweep repairs nothing new."""
+    def test_asks_the_door_with_the_configured_batch(self):
         brain = _StubBrain()
         embed_queue._coverage_sweep(brain)
         self.assertEqual(len(brain.calls), 1)
-        self.assertIsNone(brain.calls[0]['node_ids'])
         self.assertEqual(brain.calls[0]['batch_size'],
                          embed_queue.COVERAGE_SWEEP_BATCH)
 
@@ -90,7 +114,6 @@ class CoverageSweepTest(unittest.TestCase):
         self.assertEqual(len(brain.calls), 2)
 
     def test_defers_to_scoped_work(self):
-        """A non-empty queue means the drain is about to cover those ids."""
         brain = _StubBrain()
         embed_queue._queue.add('node-1')
         embed_queue._coverage_sweep(brain)
@@ -102,67 +125,116 @@ class CoverageSweepTest(unittest.TestCase):
         embed_queue._coverage_sweep(brain)
         self.assertEqual(brain.calls, [])
 
+    def test_staleness_floor_beats_a_permanently_busy_queue(self):
+        """Deferring to scoped work must not become never running.
+
+        On a brain that always has queued work the sweep would otherwise be
+        skipped forever — and a busy brain is exactly where a writer is most
+        likely to have bypassed the enqueue hooks.
+        """
+        brain = _StubBrain()
+        embed_queue._queue.add('always-busy')
+        embed_queue._last_sweep_at = (
+            time.time() - embed_queue.COVERAGE_SWEEP_MAX_STALENESS - 1)
+        embed_queue._coverage_sweep(brain)
+        self.assertEqual(len(brain.calls), 1,
+                         'staleness floor must force a sweep past the queue guard')
+
     def test_repair_is_reported_as_an_error(self):
-        brain = _StubBrain(result={'_primary': 3, '_situation': 2})
+        brain = _StubBrain(_outcome(repaired=5, by_type={'_primary': 5}))
         embed_queue._coverage_sweep(brain)
         self.assertIn('embed_coverage_gap', brain.sources())
         self.assertIn('5', brain.errors[0]['context'])
 
     def test_stuck_node_is_reported_when_nothing_was_repaired(self):
-        """The case reporting-on-repair-only would hide forever.
-
-        A node that CANNOT be embedded repairs 0 on every sweep. If the only
-        signal were `repaired > 0` it would stay silent indefinitely — the
-        same absence-vs-failure blind spot that hid the orphaned backfill.
-        """
-        brain = _StubBrain(result={}, missing=[{'id': 'abc123'}])
+        """The case reporting-on-repair-only would hide forever."""
+        brain = _StubBrain(_outcome(repaired=0, stuck=[{'id': 'abc123'}]))
         embed_queue._coverage_sweep(brain)
         self.assertIn('embed_coverage_stuck', brain.sources())
         self.assertIn('abc123', brain.errors[0]['context'])
 
-    def test_backlog_clears_the_throttle(self):
-        """Recovery must not be capped at one batch per interval.
+    def test_remaining_clears_the_throttle(self):
+        brain = _StubBrain(_outcome(repaired=30, remaining=True))
+        embed_queue._coverage_sweep(brain)
+        embed_queue._coverage_sweep(brain)
+        self.assertEqual(len(brain.calls), 2,
+                         'a filled batch must be followed immediately')
 
-        A model change marks the whole corpus missing; at BATCH per INTERVAL
-        that is hours of drip-feed with LAF blind to every unrepaired node.
+    def test_stuck_alone_does_not_clear_the_throttle(self):
+        """A node that can never embed must not spin the sweep every tick.
+
+        This is why `remaining` comes from the repair's own batch counts and
+        not from a probe: a permanently-stuck node repairs nothing, so it can
+        never keep the loop hot.
         """
-        brain = _StubBrain(result={'_primary': 30}, missing=[{'id': 'more'}])
+        brain = _StubBrain(_outcome(repaired=0, remaining=False,
+                                    stuck=[{'id': 'never'}]))
         embed_queue._coverage_sweep(brain)
-        self.assertEqual(embed_queue._last_sweep_at, 0.0,
-                         'throttle must clear while a backlog remains')
         embed_queue._coverage_sweep(brain)
-        self.assertEqual(len(brain.calls), 2)
+        self.assertEqual(len(brain.calls), 1,
+                         'a stuck node must not re-arm the sweep every tick')
 
-    def test_clean_sweep_keeps_the_throttle(self):
-        brain = _StubBrain(result={}, missing=[])
+    def test_clean_sweep_is_silent(self):
+        brain = _StubBrain(_outcome())
         embed_queue._coverage_sweep(brain)
-        self.assertNotEqual(embed_queue._last_sweep_at, 0.0)
         self.assertEqual(brain.errors, [])
 
-    def test_non_int_values_do_not_count_as_repairs(self):
-        brain = _StubBrain(result={'error': 'embedder unavailable'})
-        embed_queue._coverage_sweep(brain)
-        self.assertNotIn('embed_coverage_gap', brain.sources())
-
     def test_failure_is_logged_and_swallowed(self):
-        """The worker thread must never die — see _worker_loop's mandate."""
         brain = _StubBrain(raises=RuntimeError('embedder down'))
-        embed_queue._coverage_sweep(brain)          # must not raise
+        embed_queue._coverage_sweep(brain)
         self.assertIn('embed_coverage_sweep', brain.sources())
+
+
+class CoverageDoorTest(unittest.TestCase):
+    """Brain.vector_coverage_sweep — repair and detection in ONE place.
+
+    They were split across two callers once; the repair passed `model=` and
+    the probe did not, so stale-model rows read as present and a model swap
+    looked like an empty backlog.
+    """
+
+    def _door(self, backfill_result, rows):
+        from servers.brain import Brain
+        vec = _StubVecDal(rows)
+
+        class _Self:
+            _vec_dal = vec
+
+            def backfill_vectors(self, batch_size=None):
+                return backfill_result
+
+        return Brain.vector_coverage_sweep(_Self(), 30), vec
+
+    def test_probe_is_given_the_model(self):
+        out, vec = self._door({}, [('n1', None)])
+        self.assertIn('model', vec.seen_kwargs,
+                      'probe must ask the same question the repair asked')
+        self.assertTrue(out['stuck'])
+
+    def test_remaining_comes_from_batch_fill_not_a_probe(self):
+        out, vec = self._door({'_primary': 30}, [])
+        self.assertTrue(out['remaining'])
+        self.assertEqual(vec.seen_kwargs, {},
+                         'no probe needed when repair reports work')
+
+    def test_partial_batch_means_backlog_drained(self):
+        out, _ = self._door({'_primary': 7}, [])
+        self.assertFalse(out['remaining'])
+
+    def test_non_int_values_are_not_counted_as_repairs(self):
+        out, _ = self._door({'error': 'embedder not ready'}, [])
+        self.assertEqual(out['repaired'], 0)
+        self.assertFalse(out['remaining'])
 
 
 class SweepIsNotInTheDrainTest(unittest.TestCase):
     """The sweep belongs to the worker loop, not to _drain_once.
 
-    Two reasons, both load-bearing:
-      1. _drain_once's only sweep-reachable branch is its empty-tick
-         early-return, so under sustained write load the branch is never
-         entered and the safety net silently switches off — exactly when an
-         enqueue miss is most likely.
-      2. The test harness (brain_test_base, isolated_brain) calls
-         _drain_once directly. Sweeping there means every test process runs
-         an unscoped backfill against whatever brain it holds — including
-         IsolatedBrain's copy of production data.
+    _drain_once's only sweep-reachable branch was its empty-tick early
+    return, so sustained write load silently switched the safety net off.
+    It is also called directly by the test harness (brain_test_base,
+    isolated_brain) — sweeping there runs an unscoped backfill against
+    IsolatedBrain's copy of production data.
     """
 
     setUp = tearDown = staticmethod(_reset)
@@ -173,12 +245,35 @@ class SweepIsNotInTheDrainTest(unittest.TestCase):
         self.assertEqual(brain.calls, [],
                          '_drain_once must not trigger the coverage sweep')
 
-    def test_worker_loop_calls_the_sweep(self):
-        """Guards the wiring — the whole failure this fix addresses was a
-        repair path nothing called."""
-        import inspect
-        src = inspect.getsource(embed_queue._worker_loop)
-        self.assertIn('_coverage_sweep(brain)', src)
+    def test_worker_loop_actually_invokes_the_sweep(self):
+        """Behavioural, not a substring match — a rename or an unreachable
+        call site must fail this, since a repair path nothing calls is the
+        exact failure the whole change exists to prevent."""
+        brain = _StubBrain()
+        called = []
+        orig = {
+            '_coverage_sweep': embed_queue._coverage_sweep,
+            '_drain_trace_embeddings_once': embed_queue._drain_trace_embeddings_once,
+            '_check_stall': embed_queue._check_stall,
+            'EMBED_DRAIN_INTERVAL': embed_queue.EMBED_DRAIN_INTERVAL,
+        }
+
+        def _stop_after_this_tick(*a, **kw):
+            embed_queue._shutdown_event.set()
+
+        embed_queue._coverage_sweep = lambda b: called.append(b)
+        embed_queue._drain_trace_embeddings_once = lambda b: None
+        embed_queue._check_stall = _stop_after_this_tick
+        embed_queue.EMBED_DRAIN_INTERVAL = 0.0
+        try:
+            embed_queue._worker_loop(brain)
+        finally:
+            embed_queue._shutdown_event.clear()
+            for k, v in orig.items():
+                setattr(embed_queue, k, v)
+
+        self.assertEqual(len(called), 1,
+                         'worker loop must invoke the coverage sweep each tick')
 
 
 class HookNoLongerOwnsVectorsTest(unittest.TestCase):

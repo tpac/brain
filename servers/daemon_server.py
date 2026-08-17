@@ -349,23 +349,22 @@ class BrainDaemon:
                 'brain', self.brain.db_path, backup_dir=backup_dir)
             self._db_maintenance.register(
                 'brain_logs', self.brain.logs_db_path, backup_dir=backup_dir)
-            self._db_maintenance.start()
-        except Exception as _dm_e:
-            # Scheduler must never block daemon startup.
-            self._log("db_maintenance start failed: %s" % _dm_e)
-            self._db_maintenance = None
-
-        # Registered separately: checkpoint/optimize/backup must not become
-        # contingent on a task registration succeeding. Backups are the one
-        # mechanism that survived the six-week idle-hook outage precisely
-        # because nothing else gated them — keep the failure domains apart.
-        if self._db_maintenance is not None:
+            # Own try: a task registration failure must not take
+            # checkpoint/optimize/backup down with it. Backups are the one
+            # mechanism that survived the six-week idle-hook outage precisely
+            # because nothing else gated them. Registered BEFORE start() —
+            # _tasks is only safe to mutate while the worker isn't iterating it.
             try:
                 self._db_maintenance.register_task(
                     'logs_retention', self.brain.run_logs_maintenance,
                     LOGS_MAINTENANCE_INTERVAL_S)
             except Exception as _t_e:
                 self._log("logs_retention task registration failed: %s" % _t_e)
+            self._db_maintenance.start()
+        except Exception as _dm_e:
+            # Scheduler must never block daemon startup.
+            self._log("db_maintenance start failed: %s" % _dm_e)
+            self._db_maintenance = None
 
         # Brain warmup — fault embeddings into mmap + build structural degree
         # cache off the user's critical path. The first recall before this
