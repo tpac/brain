@@ -238,41 +238,78 @@ def stats(db_path: str) -> Dict[str, Any]:
     }
 
 
+def snapshot_to(db_path: str, dest_db_path: str,
+                pages: int = 4000, sleep_s: float = 0.0) -> int:
+    """Consistent raw-.db snapshot of a LIVE SQLite DB, via the online
+    backup API — NOT a file copy. `cp` of a live WAL-mode DB can capture
+    a torn state (DB file + a partial WAL the copy missed); the backup
+    API produces a transactionally-consistent, self-contained file with
+    no such hazard, including committed rows still sitting in the -wal.
+
+    Copies in page batches (`pages`), optionally pausing `sleep_s`
+    between batches to throttle I/O against a busy daemon (background
+    callers pass a pause; boot-path and clone callers take the default
+    and finish fast). If a write lands mid-copy SQLite re-copies the
+    changed pages — correctness preserved.
+
+    The source is opened READ-ONLY here — never the caller's connection,
+    and never a writer. A source connection holding an open write
+    transaction deadlocks the backup against itself; a separate
+    read-only connection is immune, captures last-committed state even
+    while another connection's transaction is open, and cannot touch the
+    source (no pragmas, no close-time checkpoint) — clones of a live
+    production DB must be a pure read.
+
+    Returns the snapshot's size in bytes.
+    """
+    if not os.path.exists(db_path):
+        # A read-write connect() would CREATE an empty DB and "back it up"
+        # successfully — a silent no-op snapshot is worse than a loud failure.
+        raise sqlite3.OperationalError('snapshot source missing: %s' % db_path)
+    from urllib.parse import quote
+    src = sqlite3.connect('file:%s?mode=ro' % quote(db_path), uri=True,
+                          timeout=_MAINTENANCE_BUSY_TIMEOUT_MS / 1000.0)
+    try:
+        dst = sqlite3.connect(dest_db_path)
+        try:
+            src.backup(dst, pages=pages, sleep=sleep_s)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+    return _file_size_or_zero(dest_db_path)
+
+
 def backup_snapshot(db_path: str, dest_gz_path: str,
-                    pages: int = 4000, sleep_s: float = 0.05) -> Dict[str, Any]:
+                    pages: int = 4000, sleep_s: float = 0.05,
+                    compresslevel: int = 6) -> Dict[str, Any]:
     """Consistent, gzip-compressed snapshot of a LIVE SQLite DB.
 
-    Uses SQLite's online backup API — NOT a file copy. `cp` of a live
-    WAL-mode DB can capture a torn state (DB file + a partial WAL the
-    copy missed); the backup API produces a transactionally-consistent
-    snapshot with no such hazard. It copies in page batches (`pages`)
-    with a `sleep_s` pause between batches, yielding the read lock so the
-    daemon's writers aren't starved during the copy. If a write lands
-    mid-copy SQLite re-copies the changed pages — correctness preserved.
-
-    The snapshot lands in a temp .db, is gzipped to a `.part` file, then
-    atomically renamed to `dest_gz_path` — so the canonical .gz appears
-    only once fully written. A mid-gzip crash (disk full, process kill)
-    never leaves a truncated .gz that list_backups would treat as a valid
-    snapshot. Both intermediates are removed on every exit path. Returns
+    The copy itself is `snapshot_to` (online backup API — see there for
+    the consistency and writer-friendliness story). This wrapper owns
+    the durable-artifact shape: the snapshot lands in a temp .db, is
+    gzipped to a `.part` file, then atomically renamed to
+    `dest_gz_path` — so the canonical .gz appears only once fully
+    written. A mid-gzip crash (disk full, process kill) never leaves a
+    truncated .gz that list_backups would treat as a valid snapshot.
+    Both intermediates are removed on every exit path. Returns
     raw/compressed sizes + ratio for observability.
-    """
-    tmp_db = dest_gz_path + '.tmp.db'
-    part_gz = dest_gz_path + '.part'
-    try:
-        src = _connect_maintenance(db_path)
-        try:
-            dst = sqlite3.connect(tmp_db)
-            try:
-                src.backup(dst, pages=pages, sleep=sleep_s)
-            finally:
-                dst.close()
-        finally:
-            src.close()
 
-        raw_bytes = _file_size_or_zero(tmp_db)
+    Intermediates carry a per-call random suffix: two unserialized
+    processes (or threads) snapshotting the same destination must not
+    interleave writes into one shared temp file — each builds its own and
+    the last atomic rename wins whole.
+
+    `compresslevel` trades CPU for size: 6 suits background snapshots;
+    time-budgeted callers pass 1.
+    """
+    nonce = os.urandom(4).hex()
+    tmp_db = '%s.tmp.%s.db' % (dest_gz_path, nonce)
+    part_gz = '%s.part.%s' % (dest_gz_path, nonce)
+    try:
+        raw_bytes = snapshot_to(db_path, tmp_db, pages=pages, sleep_s=sleep_s)
         with open(tmp_db, 'rb') as f_in, \
-                gzip.open(part_gz, 'wb', compresslevel=6) as f_out:
+                gzip.open(part_gz, 'wb', compresslevel=compresslevel) as f_out:
             shutil.copyfileobj(f_in, f_out, length=1024 * 1024)
         os.replace(part_gz, dest_gz_path)   # atomic publish
     finally:

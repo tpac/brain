@@ -807,24 +807,49 @@ def hook_idle_maintenance(brain, args, graph_changes):
     # confidence adjustments. S2 integration units replace all of these.
     # Keeping the code in brain_evolution.py for reference during S2 build.
 
-    # 3b. Vocab cleanup — prune junk vocabulary nodes that pollute recall
+    # Freshness gate for the hard-destructive sections below (3b vocab
+    # cascade, the orphan arm of 9): an unrecoverable delete never runs more
+    # than ~a day away from a restorable rolling snapshot. Normally a no-op —
+    # the daily scheduler keeps snapshots fresh — it only snapshots inline
+    # after a multi-day daemon outage, and if it can't produce one, the
+    # destructive work is skipped this cycle rather than run with no net.
+    # Both DBs are evaluated unconditionally (no short-circuit): a failing
+    # brain.db gate must not leave brain_logs.db stale on top. Soft ops
+    # (edge decay archives, backfills, log-retention pruning) are recoverable
+    # and stay ungated.
     try:
-        # Strategy 1: auto-detected junk (title or content has "auto-detected")
-        junk_vocab = brain.conn.execute("""
-            SELECT id, title FROM nodes
-            WHERE type = 'vocabulary' AND archived = 0
-            AND (content LIKE '%auto-detected%' OR title LIKE '%auto-detected%')
-        """).fetchall()
+        from servers.db_backup import ensure_backup_fresh
+        brain_fresh = ensure_backup_fresh(brain.db_path)
+        logs_fresh = ensure_backup_fresh(brain.logs_db_path)
+        destructive_ok = brain_fresh and logs_fresh
+    except Exception as gate_err:
+        destructive_ok = False
+        brain._log_error('idle_backup_gate', gate_err, 'idle_maintenance')
+    if not destructive_ok:
+        output.append("BACKUP GATE: no fresh snapshot — destructive "
+                      "maintenance skipped this cycle")
 
-        # Strategy 2: single-word vocab nodes with no real definition
-        # These match everything in cosine similarity and bury real results
-        single_word_junk = brain.conn.execute("""
-            SELECT id, title FROM nodes
-            WHERE type = 'vocabulary' AND archived = 0
-            AND title NOT LIKE '% %'
-            AND (content IS NULL OR content = '' OR LENGTH(content) < 30)
-            AND confidence < 0.5
-        """).fetchall()
+    # 3b. Vocab cleanup — prune junk vocabulary nodes that pollute recall.
+    #     Hard delete → runs only behind the backup freshness gate.
+    try:
+        junk_vocab, single_word_junk = [], []
+        if destructive_ok:
+            # Strategy 1: auto-detected junk (title or content has "auto-detected")
+            junk_vocab = brain.conn.execute("""
+                SELECT id, title FROM nodes
+                WHERE type = 'vocabulary' AND archived = 0
+                AND (content LIKE '%auto-detected%' OR title LIKE '%auto-detected%')
+            """).fetchall()
+
+            # Strategy 2: single-word vocab nodes with no real definition
+            # These match everything in cosine similarity and bury real results
+            single_word_junk = brain.conn.execute("""
+                SELECT id, title FROM nodes
+                WHERE type = 'vocabulary' AND archived = 0
+                AND title NOT LIKE '% %'
+                AND (content IS NULL OR content = '' OR LENGTH(content) < 30)
+                AND confidence < 0.5
+            """).fetchall()
 
         reasons = {nid: 'auto-detected junk vocabulary'
                    for nid, _t in junk_vocab}
@@ -952,9 +977,14 @@ def hook_idle_maintenance(brain, args, graph_changes):
 
     # 8. prune_irrelevant_quotes removed 2026-04-13 — fix at encoding time, not after.
 
-    # 9. DB maintenance (prune old logs, clean orphans)
+    # 9. DB maintenance (prune old logs, clean orphans). Log-retention
+    #    pruning always runs — it reclaims space, and skipping it while the
+    #    freshness gate is failing on a full disk would be a death spiral
+    #    (no space → no snapshot → no pruning → less space). Only the
+    #    destructive orphan sweep is gated: graph_conn=None disables it.
     try:
-        maint = brain._logs_dal.run_maintenance(graph_conn=brain.conn)
+        maint = brain._logs_dal.run_maintenance(
+            graph_conn=brain.conn if destructive_ok else None)
         total_pruned = maint.get('total_pruned', 0)
         total_orphans = maint.get('total_orphans', 0)
         if total_pruned > 0 or total_orphans > 0:

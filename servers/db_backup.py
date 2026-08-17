@@ -1,16 +1,26 @@
-"""Automatic rolling database backups + grandfather-father-son retention.
+"""Database backup policy — the ONE owner of every backup the brain takes.
 
 Backend-agnostic. The consistent-snapshot mechanism (online backup API +
-gzip) lives in the active db_backend (`backup_snapshot`); this module owns
-the backend-independent policy: destination naming, listing/parsing the
-backup set, and which snapshots to keep (GFS retention).
+gzip) lives in the active db_backend (`snapshot_to` / `backup_snapshot`);
+this module owns the backend-independent policy: destination naming,
+listing/parsing the backup set, which snapshots to keep (GFS retention),
+and the two pre-destructive-operation entry points every destructive
+caller routes through:
 
-These are the AUTOMATIC rolling backups, distinct from the named
-pre-destructive-operation `.bak` files a human makes by hand (the
-"backup brain.db before destructive ops" rule). This module only ever
-touches files it created — the `{basename}.{timestamp}.gz` it writes into
-the backup dir. Hand-made `.bak*` files are never listed, kept, or pruned
-by this code.
+- `backup_before_destructive(db_path, tag)` — a named, durable
+  `{db}.{tag}.bak.gz` taken immediately before a specific rewrite
+  (schema migration, table rebuild, destructive script). Idempotent per
+  tag so a retried operation doesn't overwrite the pre-first-attempt
+  state.
+- `ensure_backup_fresh(db_path)` — the freshness gate for automatic
+  destructive maintenance (idle sweeps): guarantees a destructive op
+  never runs more than `max_age_s` away from a restorable rolling
+  snapshot, snapshotting first when the newest one is stale.
+
+The AUTOMATIC rolling backups (`backup_database`, daily scheduler) write
+`{basename}.{timestamp}.gz` into the backup dir; retention only ever
+touches files matching that scheme, so tagged `.bak.gz` files and
+hand-made `.bak*` files are never listed, kept, or pruned by it.
 
 Retention is GFS:
 - `keep_daily`   — newest snapshot of each of the most recent N days
@@ -34,6 +44,23 @@ _TS_FMT = '%Y%m%dT%H%M%SZ'
 _TS_RE = re.compile(r'\.(\d{8}T\d{6}Z)\.gz$')
 
 _DEFAULT_KEEP = {'daily': 7, 'weekly': 4, 'monthly': 3}
+
+# Rolling-snapshot cadence. Owned here (backup policy); the maintenance
+# scheduler imports it rather than carrying its own copy, so the freshness
+# gate below can never drift out of proportion with the real cadence.
+BACKUP_INTERVAL_S = 24 * 60 * 60
+
+# Freshness gate ceiling: 1.5× the snapshot cadence, so the gate is a
+# no-op whenever the scheduler is healthy and only snapshots inline when the
+# daemon has been down past a full cycle (fresh install, multi-day outage).
+_DEFAULT_MAX_AGE_S = int(1.5 * BACKUP_INTERVAL_S)
+
+
+def default_backup_dir(db_path: str) -> str:
+    """The rolling-backup directory for a DB: `backups/` beside the file.
+    One definition so the scheduler wiring and the freshness gate can never
+    look in two different places."""
+    return os.path.join(os.path.dirname(db_path), 'backups')
 
 
 def _dest_path(db_path: str, backup_dir: str, ts: datetime) -> str:
@@ -150,3 +177,108 @@ def backup_database(db_path: str, backup_dir: str, *,
     result['dest'] = os.path.basename(dest)
     result.update(prune(db_path, backup_dir, keep_daily, keep_weekly, keep_monthly))
     return result
+
+
+def backup_before_destructive(db_path: str, tag: str,
+                              compress: bool = True) -> Optional[str]:
+    """Named pre-destructive backup beside the DB: `{db_path}.{tag}.bak.gz`,
+    or `.bak` (raw) with `compress=False`.
+
+    The one entry point for "this code is about to rewrite the DB": schema
+    migrations, table rebuilds, destructive scripts. Consistent even while
+    the daemon is live and independent of any caller connection's
+    transaction state (online backup API on its own read-only connection).
+
+    `compress=False` is for time-budgeted callers: the daemon-boot
+    migration path runs before the daemon answers pings, and the MCP
+    health monitor force-restarts an unresponsive daemon after ~20s — a
+    raw snapshot of the production brain.db measures ~1s where the
+    gzipped one measures ~13s, so boot backups skip compression.
+
+    Idempotent per tag: an existing backup is returned untouched, so a
+    retried migration cannot overwrite the pre-first-attempt state. Reuse
+    is announced with the file's age — for one-shot script tags a
+    months-old leftover is a trap, and the operator must see it. Two
+    unserialized processes racing the same tag cannot interleave: each
+    builds a uniquely-named temp and the atomic rename wins whole.
+
+    Returns the backup path, or None on failure (printed loudly; the caller
+    decides whether the operation may proceed without it).
+    """
+    dest = '%s.%s.bak%s' % (db_path, tag, '.gz' if compress else '')
+    if os.path.exists(dest):
+        age_days = (datetime.now(timezone.utc).timestamp()
+                    - os.path.getmtime(dest)) / 86400.0
+        print('[brain] Reusing existing backup (%.1fd old): %s'
+              % (age_days, dest), flush=True)
+        return dest
+    try:
+        from . import db_backends
+        if compress:
+            db_backends.current.backup_snapshot(db_path, dest, compresslevel=1)
+        else:
+            tmp = '%s.tmp.%s' % (dest, os.urandom(4).hex())
+            try:
+                db_backends.current.snapshot_to(db_path, tmp)
+                os.replace(tmp, dest)
+            finally:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+        print('[brain] Backup created: %s' % dest, flush=True)
+        return dest
+    except Exception as e:
+        print('[brain] Backup FAILED for %s (%s): %s' % (db_path, tag, e),
+              flush=True)
+        return None
+
+
+def ensure_backup_fresh(db_path: str, backup_dir: Optional[str] = None,
+                        max_age_s: float = _DEFAULT_MAX_AGE_S) -> bool:
+    """Freshness gate for automatic destructive maintenance.
+
+    True means: a rolling snapshot newer than `max_age_s` exists (usually
+    the scheduler's — this returns without doing anything), or one was just
+    taken. False means no restorable snapshot could be guaranteed — the
+    caller must skip its destructive work this cycle rather than run it
+    with no net.
+    """
+    if backup_dir is None:
+        backup_dir = default_backup_dir(db_path)
+    if seconds_since_last_backup(db_path, backup_dir) <= max_age_s:
+        return True
+    try:
+        backup_database(db_path, backup_dir)
+        return True
+    except Exception as e:
+        print('[brain] Freshness-gate backup FAILED for %s: %s'
+              % (db_path, e), flush=True)
+        return False
+
+
+def materialize_backup(backup_path: str, work_dir: Optional[str] = None) -> str:
+    """A directly-openable .db path for a backup of any shape this module
+    writes. Plain `.db`/`.bak` files are returned as-is; `.gz` snapshots are
+    decompressed into `work_dir` — defaulting to the system temp dir, NEVER
+    beside the source: a full-size sibling per rolling snapshot would fill
+    the backups dir with files no retention rule tracks. The name carries a
+    hash of the source path so an existing decompression is reused within
+    and across runs, and the temp dir's normal purging owns cleanup."""
+    if not backup_path.endswith('.gz'):
+        return backup_path
+    import gzip
+    import hashlib
+    import shutil
+    import tempfile
+    base = '%s.%s.materialized' % (
+        os.path.basename(backup_path)[:-3],
+        hashlib.md5(os.path.abspath(backup_path).encode()).hexdigest()[:8])
+    out = os.path.join(work_dir or tempfile.gettempdir(), base)
+    if os.path.exists(out):
+        return out
+    tmp = out + '.part'
+    with gzip.open(backup_path, 'rb') as f_in, open(tmp, 'wb') as f_out:
+        shutil.copyfileobj(f_in, f_out, length=1024 * 1024)
+    os.replace(tmp, out)
+    return out

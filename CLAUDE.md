@@ -182,7 +182,7 @@ You are the sole maintainer of code quality, architecture, and cleanliness.
 
 **Contract-first** — Constants, field lists, limits, and config live in contract files. Never hardcode in hooks, dispatch, or surface code.
 
-**Backup before destructive DB operations** — `cp brain.db brain.db.bak-{timestamp}` before ANY delete, bulk update, or schema migration. No exceptions.
+**Backup before destructive DB operations** — before ANY delete, bulk update, or schema migration: `./dev python3 -c "from servers.db_backup import backup_before_destructive; backup_before_destructive('<db_path>', '<tag>')"`. No exceptions. Never `cp` a live WAL-mode DB — the committed tail lives in the `-wal` and the copy can have no tables at all; the central path (online backup API) is the only safe copy. Working clones for tests/evals: `IsolatedBrain`, which snapshots the same way.
 
 **Clean as you go** — Remove dead code the same session; delete it, don't mark it. Don't leave "TODO: remove later."
 

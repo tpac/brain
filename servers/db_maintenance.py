@@ -30,6 +30,10 @@ import threading
 import time
 from typing import Callable, Dict, List, Optional, Protocol
 
+# The backup cadence is backup policy and lives in db_backup (the freshness
+# gate there is defined as a multiple of it); imported, not duplicated.
+from .db_backup import BACKUP_INTERVAL_S as _DEFAULT_BACKUP_INTERVAL_S
+
 
 class BackendOps(Protocol):
     """Interface every backend implements. Methods take a db identifier
@@ -45,7 +49,6 @@ class BackendOps(Protocol):
 # Default cadences (seconds). Override per-DB via register() if needed.
 _DEFAULT_CHECKPOINT_INTERVAL_S = 5 * 60
 _DEFAULT_OPTIMIZE_INTERVAL_S = 30 * 60
-_DEFAULT_BACKUP_INTERVAL_S = 24 * 60 * 60   # daily rolling snapshot
 # Worker wakes every ~30s and checks "is anything due". Short enough to
 # stay responsive to shutdown; long enough that the scheduler is cheap.
 _TICK_INTERVAL_S = 30.0

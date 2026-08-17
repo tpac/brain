@@ -31,8 +31,6 @@ WHAT NOT TO DO:
   All schema changes go HERE, in this file.
 """
 
-import os
-import shutil
 import sqlite3
 from datetime import datetime, timezone
 
@@ -587,9 +585,14 @@ def run_versioned_migrations(conn, meta_table: str, version_key: str,
         return current
 
     pending = [(v, fn) for v, fn in steps if current < v]
-    if pending and not fresh:
-        _backup_before_migration(db_path, current, target_version,
-                                 allow_zero=True, conn=conn)
+    if pending and not fresh and db_path:
+        # Version-tagged, raw (compress=False): this runs at daemon boot
+        # before the port answers pings, and the health monitor force-
+        # restarts an unresponsive daemon — the backup must finish in
+        # seconds, not stall behind gzip. Idempotent per version, so a
+        # retried migration keeps the pre-first-attempt state.
+        from .db_backup import backup_before_destructive
+        backup_before_destructive(db_path, 'v%d' % current, compress=False)
 
     ran = 0
     if not (fresh and current == 0):
@@ -613,56 +616,6 @@ def run_versioned_migrations(conn, meta_table: str, version_key: str,
               % (label, current, target_version, ran, '' if ran == 1 else 's'),
               flush=True)
     return current
-
-
-def _backup_before_migration(db_path, from_version, to_version,
-                             allow_zero=False, conn=None):
-    """Create a backup before schema migration. Returns backup path or None.
-
-    `allow_zero` covers pre-versioning DBs (stored version 0 with real tables).
-    The default refuses them because a version-0 read on the brain.db ladder
-    also means "brand new", where a backup would copy an empty file.
-
-    Pass `conn` whenever the DB is open (every real caller): the file is
-    checkpointed first, because in WAL mode the committed tail lives in the
-    -wal side file and copying db_path alone captures the last CHECKPOINT, not
-    the last COMMIT. Restoring such a backup next to a stale -wal is worse than
-    having none. This is the fleet's only safety net before a rewrite, so it
-    must copy a self-contained file.
-
-    Written to a pid-suffixed temp name and renamed, so two processes racing
-    (the daemon and boot_brain.py's daemon-dead fallback both open these DBs
-    unserialized) cannot interleave writes into one half-copied backup.
-    """
-    if not db_path or from_version >= to_version:
-        return None
-    if from_version == 0 and not allow_zero:
-        return None
-    try:
-        backup_path = db_path + '.v%d.bak' % from_version
-        if os.path.exists(backup_path):
-            return backup_path  # already backed up from a previous attempt
-        if conn is not None:
-            try:
-                conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
-            except Exception as e:
-                # A backup of an un-checkpointed DB is not one we can promise,
-                # so say so rather than producing a quietly partial file.
-                print('[brain] Backup checkpoint failed (backup may lag the '
-                      'last commit): %s' % e)
-        tmp_path = '%s.tmp.%d' % (backup_path, os.getpid())
-        shutil.copy2(db_path, tmp_path)
-        os.replace(tmp_path, backup_path)
-        print('[brain] Backup created: %s' % backup_path)
-        return backup_path
-    except Exception as e:
-        print('[brain] Backup failed (continuing anyway): %s' % e)
-        try:
-            os.unlink('%s.tmp.%d' % (db_path + '.v%d.bak' % from_version,
-                                     os.getpid()))
-        except OSError:
-            pass
-        return None
 
 
 def _rebuild_nodes(conn, spec):
@@ -1327,11 +1280,16 @@ def ensure_schema(conn, db_path=None):
     #    land until the runner at step 9.
     current_version = read_schema_version(conn, 'brain_meta', BRAIN_VERSION_KEY)
 
-    # 2b. Backup before migration if version is changing
+    # 2b. Backup before migration if version is changing. Version 0 is
+    #     excluded here — on this ladder it means "brand new", where a
+    #     backup would copy an empty file; a populated pre-versioning brain
+    #     is backed up by the runner at step 9 instead. Raw (compress=False):
+    #     boot path, see run_versioned_migrations.
     backup_path = None
     if current_version > 0 and current_version < BRAIN_VERSION and db_path:
-        backup_path = _backup_before_migration(db_path, current_version,
-                                               BRAIN_VERSION, conn=conn)
+        from .db_backup import backup_before_destructive
+        backup_path = backup_before_destructive(
+            db_path, 'v%d' % current_version, compress=False)
 
     # 3. Get list of existing tables
     cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -1355,6 +1313,19 @@ def ensure_schema(conn, db_path=None):
             continue
 
         if table_name == 'nodes' and nodes_need_rebuild:
+            # The rebuild DROPs the nodes table, and its trigger is the DDL
+            # probe above — NOT a version change — so the version-gated
+            # backup at step 2b can miss it (a current-version brain with
+            # legacy CHECK DDL). Backup keyed on the actual trigger; if it
+            # cannot be taken, the rebuild waits for a boot that can — the
+            # probe re-fires and the legacy CHECK is tolerable meanwhile.
+            if db_path:
+                from .db_backup import backup_before_destructive
+                if not backup_before_destructive(db_path, 'nodes-rebuild',
+                                                 compress=False):
+                    print('[brain] nodes rebuild SKIPPED: no backup could '
+                          'be taken before DROP TABLE nodes', flush=True)
+                    continue
             _rebuild_nodes(conn, spec)
             continue
 
@@ -1420,8 +1391,8 @@ def ensure_schema(conn, db_path=None):
     #    db_path is passed even though step 2b already backs up: 2b skips
     #    version 0, so a populated pre-versioning brain.db would otherwise get
     #    no backup from either path once MAIN_MIGRATIONS has a real step. The
-    #    two calls cannot double-copy — _backup_before_migration returns an
-    #    existing .bak untouched. Empty ladders hiding a gap is how attempt 1
+    #    two calls cannot double-copy — backup_before_destructive returns an
+    #    existing backup untouched. Empty ladders hiding a gap is how attempt 1
     #    shipped a dead runner; this one is closed before its first customer.
     run_versioned_migrations(conn, 'brain_meta', BRAIN_VERSION_KEY,
                              BRAIN_VERSION, MAIN_MIGRATIONS,
@@ -1766,13 +1737,11 @@ def ensure_logs_schema(conn, db_path=None):
         except Exception:
             pass
 
-    # Finish this function's own transaction before handing off to the runner.
-    # The interaction_active backstop above is DML, so it leaves a write
-    # transaction open, and the runner's pre-migration backup needs to
-    # checkpoint the WAL — which raises `database table is locked` inside a
-    # transaction, leaving the backup to copy a file whose committed tail is
-    # still in the -wal. Committing HERE rather than inside the backup helper
-    # keeps that helper from silently ending transactions it never opened.
+    # Hand the runner a clean transaction boundary: the backstop DML above
+    # leaves a write transaction open, and inside one a failing step's
+    # rollback would discard this whole schema bootstrap rather than the
+    # step alone — and a step that flips PRAGMAs (foreign_keys is a silent
+    # no-op inside a transaction) or VACUUMs would misbehave.
     conn.commit()
 
     # Versioned structural migrations + the version stamp, owned by the runner.
@@ -1803,22 +1772,34 @@ def _add_column_if_missing(conn, table: str, column: str, col_type: str):
                   % (table, column, col_type, e))
 
 
-def migrate_logs_to_separate_db(main_conn, logs_conn):
+def migrate_logs_to_separate_db(main_conn, logs_conn, main_db_path=None):
     """One-time migration: copy log tables from brain.db to brain_logs.db.
 
     Idempotent — skips tables that already have data in logs_conn.
     After copying, drops the table from main_conn to reclaim space.
-    """
-    migrated = []
-    for table_name in LOG_TABLES:
-        # Check if table exists in main DB
-        cur = main_conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-            (table_name,)
-        )
-        if not cur.fetchone():
-            continue
 
+    Runs unconditionally at every Brain() open, so it decides its own backup:
+    the version-gated pre-migration backup doesn't cover it (a brain already
+    stamped current can still carry legacy log tables). When any log table
+    actually exists in the main DB — i.e. something is about to be DROPped —
+    brain.db is backed up first via `main_db_path`. The common boot (no legacy
+    tables) exits before touching anything.
+    """
+    present = [t for t in LOG_TABLES if main_conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        (t,)).fetchone()]
+    if not present:
+        return []
+    if main_db_path:
+        from .db_backup import backup_before_destructive
+        if not backup_before_destructive(main_db_path, 'pre-logs-split',
+                                         compress=False):
+            print('[brain] logs split SKIPPED: no backup could be taken '
+                  'before dropping legacy log tables', flush=True)
+            return []
+
+    migrated = []
+    for table_name in present:
         # Check if logs DB already has data for this table
         try:
             cur = logs_conn.execute('SELECT COUNT(*) FROM %s' % table_name)

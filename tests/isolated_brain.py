@@ -76,15 +76,19 @@ class IsolatedBrain:
         self.brain_db = os.path.join(self.db_dir, 'brain.db')
         self.logs_db = os.path.join(self.db_dir, 'brain_logs.db')
 
-        shutil.copy2(src_brain, self.brain_db)
+        # Consistent working clones via the online backup API — safe against
+        # a live daemon mid-write, and each clone is one self-contained .db
+        # (committed WAL tail included), so no -wal/-shm juggling. A raw
+        # copy2 of db + -wal + -shm captures the three files at different
+        # instants and can tear.
+        import sys
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+        from servers.db_backends import current as db_backend
+        db_backend.snapshot_to(src_brain, self.brain_db)
         if os.path.exists(src_logs):
-            shutil.copy2(src_logs, self.logs_db)
-
-        # Copy WAL/SHM files if they exist (ensures consistent snapshot)
-        for suffix in ('-wal', '-shm'):
-            for src in (src_brain + suffix, src_logs + suffix):
-                if os.path.exists(src):
-                    shutil.copy2(src, os.path.join(self.db_dir, os.path.basename(src)))
+            db_backend.snapshot_to(src_logs, self.logs_db)
 
         # Load .env for API keys
         if self.load_env:
@@ -125,11 +129,6 @@ class IsolatedBrain:
         os.environ['BRAIN_TMP_DIR'] = self.db_dir
 
         # Create isolated Brain instance
-        import sys
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if project_root not in sys.path:
-            sys.path.insert(0, project_root)
-
         from servers.brain import Brain
         self.brain = Brain(self.brain_db)
 
