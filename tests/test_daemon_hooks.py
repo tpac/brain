@@ -856,46 +856,6 @@ class TestSeenCandidateDedup(BrainTestBase):
                       'no prior surfacing — nothing should be dropped')
 
 
-class TestJunkPurgeManifest(BrainTestBase):
-    """The idle-maintenance junk-vocabulary purge emits one node_deleted row
-    PER node through the mutation emitter (plan step 8; ruled 2026-08-04:
-    hard deletes are recorded, with title — the trace is the only surviving
-    record). The purge path is dormant in production (0 matching nodes), so
-    the test constructs its own junk node."""
-    needs_embedder = False
-
-    def test_purge_emits_one_node_deleted_row_per_node_with_title(self):
-        from servers.daemon_hooks import hook_idle_maintenance
-        from servers.clock import brain_today
-        junk = self.brain.remember(
-            type='vocabulary', title='junkword', content='x',
-            confidence=0.3, encoding_source='anchor')['id']
-        keeper = self.brain.remember(
-            type='vocabulary', title='real term with definition',
-            content='a proper multi-word definition long enough to keep',
-            encoding_source='anchor')['id']
-
-        hook_idle_maintenance(self.brain, {}, [])
-
-        # The junk node is erased; the keeper survives.
-        self.assertIsNone(self.brain.conn.execute(
-            "SELECT 1 FROM nodes WHERE id = ?", (junk,)).fetchone())
-        self.assertIsNotNone(self.brain.conn.execute(
-            "SELECT 1 FROM nodes WHERE id = ?", (keeper,)).fetchone())
-
-        chain = 'maint-%s-mutation' % brain_today(self.brain).strftime('%Y%m%d')
-        rows = [t for t in self.brain._trace_dal.get_chain(chain)
-                if t['ref_type'] == 'node_deleted' and t['ref_id'] == junk]
-        self.assertEqual(len(rows), 1, "one node_deleted row per purged node")
-        t = rows[0]
-        self.assertEqual(t['scale'], 's2')
-        meta = t['metadata']
-        self.assertEqual(meta['type'], 'vocabulary')
-        self.assertEqual(meta['title'], 'junkword')
-        self.assertEqual(meta['deleted_by'], 's2:idle_maintenance')
-        self.assertEqual(meta['reason'],
-                         'single-word vocabulary without definition')
-        self.assertIn('nodes', meta['tables_hit'])
 
 
 class TestDecayPruneTraces(BrainTestBase):

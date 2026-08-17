@@ -783,9 +783,20 @@ def hook_post_response_track(brain, args, graph_changes):
 
 
 def hook_idle_maintenance(brain, args, graph_changes):
-    """Idle maintenance — dream, consolidate, heal, tune, reflect.
+    """Idle maintenance — edge decay only; everything else has moved or gone.
 
-    Fires on Notification(idle_prompt). Output stored as pending message.
+    Fires on Notification(idle_prompt). That event stopped arriving on
+    2026-07-04 (`idle_fires.log`, written by the hook script itself, has no
+    entry since), so anything left here is best-effort at best. Work that
+    must actually happen was moved to daemon-owned threads: vector coverage
+    to `embed_queue._coverage_sweep`, log retention and the orphan sweep to
+    the DBMaintenance scheduler. Do not add anything load-bearing here.
+
+    Edge decay stays only because it must NOT simply resume — `decay_edges`
+    multiplies the current weight by a factor of the edge's TOTAL age, so it
+    compounds per run rather than being a function of age. After the dormancy
+    one run would prune ~3,760 relations, a third of the co_accessed graph.
+    That needs the formula fixed before it moves anywhere.
     """
     import datetime
     start_time = datetime.datetime.now()
@@ -806,88 +817,6 @@ def hook_idle_maintenance(brain, args, graph_changes):
     # auto_heal() was proto-S2: dedup, auto-lock, correction consolidation,
     # confidence adjustments. S2 integration units replace all of these.
     # Keeping the code in brain_evolution.py for reference during S2 build.
-
-    # Freshness gate for the hard-destructive sections below (3b vocab
-    # cascade, the orphan arm of 9): an unrecoverable delete never runs more
-    # than ~a day away from a restorable rolling snapshot. Normally a no-op —
-    # the daily scheduler keeps snapshots fresh — it only snapshots inline
-    # after a multi-day daemon outage, and if it can't produce one, the
-    # destructive work is skipped this cycle rather than run with no net.
-    # Both DBs are evaluated unconditionally (no short-circuit): a failing
-    # brain.db gate must not leave brain_logs.db stale on top. Soft ops
-    # (edge decay archives, backfills, log-retention pruning) are recoverable
-    # and stay ungated.
-    try:
-        from servers.db_backup import ensure_backup_fresh
-        brain_fresh = ensure_backup_fresh(brain.db_path)
-        logs_fresh = ensure_backup_fresh(brain.logs_db_path)
-        destructive_ok = brain_fresh and logs_fresh
-    except Exception as gate_err:
-        destructive_ok = False
-        brain._log_error('idle_backup_gate', gate_err, 'idle_maintenance')
-    if not destructive_ok:
-        output.append("BACKUP GATE: no fresh snapshot — destructive "
-                      "maintenance skipped this cycle")
-
-    # 3b. Vocab cleanup — prune junk vocabulary nodes that pollute recall.
-    #     Hard delete → runs only behind the backup freshness gate.
-    try:
-        junk_vocab, single_word_junk = [], []
-        if destructive_ok:
-            # Strategy 1: auto-detected junk (title or content has "auto-detected")
-            junk_vocab = brain.conn.execute("""
-                SELECT id, title FROM nodes
-                WHERE type = 'vocabulary' AND archived = 0
-                AND (content LIKE '%auto-detected%' OR title LIKE '%auto-detected%')
-            """).fetchall()
-
-            # Strategy 2: single-word vocab nodes with no real definition
-            # These match everything in cosine similarity and bury real results
-            single_word_junk = brain.conn.execute("""
-                SELECT id, title FROM nodes
-                WHERE type = 'vocabulary' AND archived = 0
-                AND title NOT LIKE '% %'
-                AND (content IS NULL OR content = '' OR LENGTH(content) < 30)
-                AND confidence < 0.5
-            """).fetchall()
-
-        reasons = {nid: 'auto-detected junk vocabulary'
-                   for nid, _t in junk_vocab}
-        reasons.update({nid: 'single-word vocabulary without definition'
-                        for nid, _t in single_word_junk if nid not in reasons})
-        all_junk = {nid: title for nid, title in junk_vocab + single_word_junk}
-        if all_junk:
-            # One node_deleted manifest row PER node, title included — a hard
-            # delete's trace is the only surviving record of it (ruled
-            # 2026-08-04, plan step 8). The hook path never reaches the
-            # dispatch chokepoint, so this calls the emitter directly.
-            # Emitted per node, IMMEDIATELY after that node's cascade commits:
-            # each cascade is individually durable, so batching the emit
-            # behind the loop would let a mid-loop failure erase earlier
-            # nodes with zero record (review 2026-08-06). Explicit maint
-            # chain at s2 (encoding_source prefix routes the scale).
-            from servers.mutation_emitter import emit_mutation_traces
-            from servers.clock import brain_today
-            maint_chain = ('maint-%s-mutation'
-                           % brain_today(brain).strftime('%Y%m%d'))
-            for nid, title in all_junk.items():
-                cascade = brain.delete_node_cascade(nid)
-                emit_mutation_traces(
-                    brain, 'hook_idle_maintenance',
-                    {'nodes': {'deleted': [{
-                        'node_id': nid,
-                        'type': 'vocabulary',
-                        'title': title or '',
-                        'deleted_by': 's2:idle_maintenance',
-                        'encoding_source': 's2:idle_maintenance',
-                        'reason': reasons.get(nid, ''),
-                        'tables_hit': cascade.get('tables_hit', []),
-                    }]}},
-                    chain_id=maint_chain)
-            output.append("VOCAB CLEANUP: pruned %d junk nodes" % len(all_junk))
-            graph_changes.append("VOCAB_CLEANUP: %d pruned" % len(all_junk))
-    except Exception as e:
-        output.append("VOCAB CLEANUP ERROR: %s" % e)
 
     # 3c. Auto-tune — DISABLED 2026-04-08
     # auto_tune() adjusted brain parameters adaptively. S2 interaction
@@ -953,14 +882,10 @@ def hook_idle_maintenance(brain, args, graph_changes):
 
     # 5. Self-reflection — DISABLED 2026-04-08 (see above)
 
-    # 6. Backfill summaries
-    try:
-        backfill = brain.backfill_summaries(batch_size=50)
-        bf_count = backfill.get("updated", 0)
-        if bf_count > 0:
-            output.append("SUMMARIES: backfilled %d nodes" % bf_count)
-    except Exception as e:
-        brain._log_error('backfill_summaries', e, 'idle_maintenance')
+    # 6. Backfill summaries removed 2026-08-17 — content_summary is written
+    #    synchronously by remember() and revise(); this was a completed
+    #    migration whose only residue is three sub-30-char test nodes that
+    #    _generate_summary correctly refuses to summarize.
 
     # 7. Vector backfill moved to embed_queue._coverage_sweep — the worker that
     # already owns embedding, on its own 5s thread. This hook is driven by a
@@ -969,47 +894,16 @@ def hook_idle_maintenance(brain, args, graph_changes):
 
     # 8. prune_irrelevant_quotes removed 2026-04-13 — fix at encoding time, not after.
 
-    # 9. DB maintenance (prune old logs, clean orphans). Log-retention
-    #    pruning always runs — it reclaims space, and skipping it while the
-    #    freshness gate is failing on a full disk would be a death spiral
-    #    (no space → no snapshot → no pruning → less space). Only the
-    #    destructive orphan sweep is gated: graph_conn=None disables it.
-    try:
-        maint = brain._logs_dal.run_maintenance(
-            graph_conn=brain.conn if destructive_ok else None)
-        total_pruned = maint.get('total_pruned', 0)
-        total_orphans = maint.get('total_orphans', 0)
-        if total_pruned > 0 or total_orphans > 0:
-            parts = []
-            if total_pruned:
-                parts.append("%d log rows pruned" % total_pruned)
-            if total_orphans:
-                parts.append("%d orphans cleaned" % total_orphans)
-            output.append("DB MAINTENANCE: " + ", ".join(parts))
-            # Log details in debug mode
-            for k, v in maint.items():
-                if v > 0 and k not in ('total_pruned', 'total_orphans'):
-                    output.append("  %s: %d" % (k, v))
-    except Exception as e:
-        output.append("DB MAINTENANCE ERROR: %s" % e)
+    # 9. Log retention + orphan sweep moved to the DBMaintenance thread
+    #    (daemon_server._run_logs_maintenance) — scheduled DB work belongs
+    #    beside checkpoint/optimize/backup, which never depended on this hook.
+    #    The backup freshness gate moved with it; it guarded only 3b and 9.
 
     # 10. assess_session_health removed 2026-04-13 — information not action.
 
-    # 11. Deep integrity audit
-    try:
-        from .integrity_audit import deep_integrity_audit
-        findings = deep_integrity_audit(brain)
-        if findings:
-            severe = [f for f in findings if f.get("severity") in ("high", "medium")]
-            if severe:
-                output.append("")
-                output.append("INTEGRITY AUDIT (%d finding(s), %d need attention):" % (len(findings), len(severe)))
-                for f in severe[:5]:
-                    output.append("  [%s] %s: %s" % (f["severity"], f["type"], f["message"]))
-                graph_changes.append("INTEGRITY: %d findings" % len(findings))
-    except Exception as e:
-        output.append("INTEGRITY AUDIT ERROR: %s" % e)
-
+    # 11. Deep integrity audit removed 2026-08-17 — it returned findings into
+    #     `output`, which this fire-and-forget hook discards. Information, not
+    #     action — the same reason 8 and 10 went.
     # Log to dashboard (not additionalContext — idle maintenance is operational, not conversational)
     if output:
         try:

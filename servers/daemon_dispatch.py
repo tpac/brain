@@ -41,7 +41,7 @@ from .dispatch_ops import (
     _handle_scan_host, _handle_procedure_trigger, _handle_get_config,
     _handle_get_debug_status, _handle_enrichment_coverage, _handle_pre_edit,
     _handle_save, _handle_reset_session, _handle_set_config,
-    _handle_promote_staged, _handle_backfill_summaries, _handle_backfill_vectors,
+    _handle_promote_staged, _handle_backfill_vectors,
     _handle_diagnose, _handle_eval,
     _handle_drop_sys_revision_history,
 )
@@ -85,7 +85,6 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "set_config":          CmdEntry(_handle_set_config,         is_write=True, marks_dirty=True),
     "log_debug":           CmdEntry(_handle_log_debug,          is_write=True, marks_dirty=True),
     "promote_staged":      CmdEntry(_handle_promote_staged,     is_write=True, marks_dirty=True),
-    "backfill_summaries":  CmdEntry(_handle_backfill_summaries, is_write=True, marks_dirty=True),
     "backfill_vectors":    CmdEntry(_handle_backfill_vectors,   is_write=True, marks_dirty=True),
     "remember":              CmdEntry(_handle_remember,             is_write=True, marks_dirty=True),
     "remember_batch":        CmdEntry(_handle_remember_batch,      is_write=True, marks_dirty=True),

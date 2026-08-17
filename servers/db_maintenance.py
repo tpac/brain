@@ -80,6 +80,7 @@ class DBMaintenance:
         self._tick_interval_s = tick_interval_s
 
         self._registered: List[Dict] = []
+        self._tasks: List[Dict] = []
         self._thread: Optional[threading.Thread] = None
         self._running = False
 
@@ -120,6 +121,22 @@ class DBMaintenance:
             entry['last_backup_at'] = (
                 time.time() - age) if age != float('inf') else 0.0
         self._registered.append(entry)
+
+    def register_task(self, name: str, fn, interval_s: float) -> None:
+        """Schedule a periodic callable on this thread.
+
+        For maintenance that isn't a backend DB op — policy work that needs
+        a reliable cadence but knows about the brain (log retention, orphan
+        sweeps). The scheduler owns timing, stamping and error isolation and
+        never inspects what `fn` does, so `register`'s backend contract stays
+        db_path-only and the abstraction survives a backend swap.
+
+        Same replace-by-name idempotence as `register`, so a re-run of boot
+        wiring doesn't double-schedule.
+        """
+        self._tasks = [t for t in self._tasks if t['name'] != name]
+        self._tasks.append({'name': name, 'fn': fn,
+                            'interval_s': interval_s, 'last_run_at': 0.0})
 
     def start(self) -> None:
         if self._running:
@@ -166,6 +183,25 @@ class DBMaintenance:
             if (entry.get('backup_dir') and
                     now - entry.get('last_backup_at', 0.0) >= entry['backup_interval_s']):
                 self._run_backup(entry, now)
+        for task in self._tasks:
+            if now - task['last_run_at'] >= task['interval_s']:
+                self._run_task(task, now)
+
+    def _run_task(self, task: Dict, now: float) -> None:
+        # Stamp before running, for the same reason _run_op does — a failing
+        # task must wait out its interval rather than retry every tick.
+        task['last_run_at'] = now
+        t0 = time.time()
+        try:
+            result = task['fn']()
+            took_ms = int((time.time() - t0) * 1000)
+            self._log('task %s ok in %dms: %s' % (
+                task['name'], took_ms, _short(result)))
+        except Exception as e:
+            took_ms = int((time.time() - t0) * 1000)
+            self._report_error(
+                'db_maintenance_task', e,
+                'task=%s took=%dms' % (task['name'], took_ms))
 
     def _run_op(self, backend, entry: Dict, op_name: str, now: float) -> None:
         # Stamp the attempt time BEFORE running, not on success. A failed

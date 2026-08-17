@@ -111,11 +111,6 @@ def _handle_promote_staged(brain, args, graph_changes):
     return {"ok": True, "result": {"status": "promoted"}}
 
 
-def _handle_backfill_summaries(brain, args, graph_changes):
-    return {"ok": True, "result": brain.backfill_summaries(
-        batch_size=args.get("batch_size", 50))}
-
-
 def _handle_backfill_vectors(brain, args, graph_changes):
     """Run backfill_vectors over the graph. Computes ALL missing vector
     types per EMBEDDING_GROUPS — `_primary`, `_situation`, `title`,
