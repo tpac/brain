@@ -320,15 +320,17 @@ def test_session_node_ids_unions_encode_and_touched():
 def test_session_node_ids_preserves_recency():
     # Catalog aging needs to know WHICH stop each id was last touched at and
     # where the encode rounds sit — `stops` (newest wins) and `run_stops`.
+    # ONE coordinate system, 1-based: run stops are post-increment (already
+    # 1-based); touched stops are pre-increment turn chains, normalized +1.
     ids = session_node_ids(
         encode_traces=[_encode(5, ['e1'], ['e2']), _encode(10, ['e3'], ['e1'])],
         touched_traces=[_touched(3, created=['a1'], recalled=['r1']),
                         _touched(12, recalled=['r1'])])   # r1 re-looked-up later
-    assert ids['run_stops'] == [5, 10]                    # ascending
+    assert ids['run_stops'] == [5, 10]                    # ascending, as stamped
     assert ids['stops']['e1'] == 10                       # revised later → newest
     assert ids['stops']['e2'] == 5
-    assert ids['stops']['a1'] == 3
-    assert ids['stops']['r1'] == 12                       # newest touch wins
+    assert ids['stops']['a1'] == 4                        # chain 3 → turn 4
+    assert ids['stops']['r1'] == 13                       # newest touch wins, +1
 
 
 def test_session_node_ids_empty_streams():

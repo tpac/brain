@@ -221,8 +221,8 @@ def test_policy_on_encoded_turn_full_text_and_actions_stub():
     trim = ENCODING_AGENT['encoded_turn_trim']
     long_body = 'x' * (trim + 500)
     out = _render(True, eps=_two_turn_eps(covered_body='covered ' + long_body))
-    t5 = out.split('<turn n="5"')[1].split('</turn>')[0]
-    t6 = out.split('<turn n="6"')[1].split('</turn>')[0]
+    t5 = out.split('<turn n="6"')[1].split('</turn>')[0]
+    t6 = out.split('<turn n="7"')[1].split('</turn>')[0]
     # covered turn keeps FULL text (the trim reversal) …
     assert ENCODED_TURN_MESSAGE_CAP is None
     assert t5.split('<other')[1].split('</other>')[0].count('x') == trim + 500
@@ -235,7 +235,7 @@ def test_policy_on_encoded_turn_full_text_and_actions_stub():
 
 def test_policy_on_drops_node_op_lines_on_unencoded_turns():
     out = _render(True)
-    t6 = out.split('<turn n="6"')[1].split('</turn>')[0]
+    t6 = out.split('<turn n="7"')[1].split('</turn>')[0]
     assert 'remember_batch' not in t6          # provenance owns it now
     assert 'Edit: foo.py' in t6                # world-changing lines stay
 
@@ -243,7 +243,7 @@ def test_policy_on_drops_node_op_lines_on_unencoded_turns():
 def test_policy_on_search_lines_stub_to_query_head():
     # recall keeps its intent (the query) but points at provenance for results
     out = _render(True)
-    t6 = out.split('<turn n="6"')[1].split('</turn>')[0]
+    t6 = out.split('<turn n="7"')[1].split('</turn>')[0]
     assert ('recall: {"query": "catalog aging design"} → results in provenance'
             in t6)
     assert 'mcp__plugin_brain_brain__recall' not in t6   # bare name, no prefix
@@ -258,7 +258,7 @@ def test_policy_on_all_actions_hidden_drops_element():
     # unencoded turns carry no coverage claim, so the element may drop.
     eps = [e for e in _two_turn_eps() if e['id'] not in ('t6a', 't6c')]
     out = _render(True, eps=eps)
-    t6 = out.split('<turn n="6"')[1].split('</turn>')[0]
+    t6 = out.split('<turn n="7"')[1].split('</turn>')[0]
     assert '<actions>' not in t6
 
 
@@ -271,8 +271,8 @@ def test_policy_on_provenance_verb_split():
     titles = {'nodeAAAA1111': 'fresh insight', 'nodeDDDD4444': 'looked up',
               'nodeFFFF6666': 'search hit'}
     on = _render(True, touched=touched, titles=titles)
-    t5 = on.split('<turn n="5"')[1].split('</turn>')[0]
-    t6 = on.split('<turn n="6"')[1].split('</turn>')[0]
+    t5 = on.split('<turn n="6"')[1].split('</turn>')[0]
+    t6 = on.split('<turn n="7"')[1].split('</turn>')[0]
     # title-first, double-quoted refs under the policy (system-wide shape)
     assert 'created(me): "fresh insight" id:nodeAAAA' in t6
     assert 'revised(me): id:nodeBBBB' in t6              # no title → bare id
@@ -281,7 +281,8 @@ def test_policy_on_provenance_verb_split():
             in t6)
     assert t6.count('id:nodeDDDD') == 1
     assert 'archived(me): id:nodeEEEE' in t6
-    # run attribution speaks turn coordinates (run6's stop), not S1S jargon
+    # run attribution speaks turn coordinates (run6's post-increment stop =
+    # 1-based already) — and it MATCHES the covered turn's displayed number
     assert 'encoded(me, turn 6): id:nodeCCCC' in t5
     assert 'encoded(S1S)' not in on
     assert 'encoded(Anchor)' not in on          # the merged label retires
@@ -299,9 +300,9 @@ def test_policy_on_turn_age_and_now_stamp():
     now = datetime(2026, 8, 1, 3, 0, 0, tzinfo=timezone.utc)  # eps at ~00:00
     on = _render(True, now=now)
     # 2h59m floors to 2h — same floor semantics as the coarse 'Nd ago' scale;
-    # n is the REAL turn number (chain stop) under the policy
-    assert '<turn n="5" age="2h ago" encoded="true">' in on
-    assert '<turn n="6" age="2h ago" encoded="false">' in on
+    # n is the REAL turn number, 1-based (chain stop + 1) under the policy
+    assert '<turn n="6" age="2h ago" encoded="true">' in on
+    assert '<turn n="7" age="2h ago" encoded="false">' in on
     # no now → no age attr (degraded render, never a broken one)
     assert 'age=' not in _render(True, now=None)
     # control arm never carries ages

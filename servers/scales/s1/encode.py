@@ -91,6 +91,10 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     # verbs, action stubs) lives in the lived render; the markdown arm has none.
     from servers.scales.s1.encoder_view import view_policy_enabled
     view = lived and view_policy_enabled()
+    # Conversation time, resolved ONCE per run (like the arm flags above) —
+    # the catalog's relative headers and the timeline's now/age stamps must
+    # agree on the instant.
+    view_now = _conversation_now_safe(brain, session_id, messages) if view else None
 
     # 2. Build prompt (from interactions table — learnable boundary)
     enc_interaction = brain.get_interaction('s1e')
@@ -111,7 +115,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     # body. Control arm output is unchanged: same catalog, same body, the scout
     # report appended after — only the internal build order moved.
     catalog_text, catalog_ids, streams = _build_catalog(
-        brain, messages, session_id, lived, view_policy=view)
+        brain, messages, session_id, lived, view_policy=view, now=view_now)
     _step("catalog(%d ids)" % len(catalog_ids))
 
     # 2b. Muster phase — Phase-1 scouts fan out in parallel, emit O/K traces on
@@ -136,7 +140,8 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     user_preamble, user_content, _cat_text2, _cat_ids2 = _build_user_content(
         brain, messages, counter, session_id, lived_sequence=lived,
         precomputed=(catalog_text, catalog_ids, streams),
-        scout_outputs=(scout_outputs if lived else None), view_policy=view)
+        scout_outputs=(scout_outputs if lived else None), view_policy=view,
+        view_now=view_now)
     if not lived and scout_report.strip():
         user_content = user_content + "\n\n## Scout reports\n\n" + scout_report
     _step("prompt(preamble=%d chars, body=%d chars)" % (
@@ -507,7 +512,8 @@ def _run_muster_phase(brain, messages, session_id, counter, catalog_text,
         return '', None, {'enabled': True, 'error': str(muster_exc)}
 
 
-def _build_catalog(brain, messages, session_id, lived, view_policy=False):
+def _build_catalog(brain, messages, session_id, lived, view_policy=False,
+                   now=None):
     """The catalog half of the encoding input — extracted from
     _build_user_content so muster (which consumes the rendered catalog) can run
     BEFORE body assembly on the lived arm. Gathers the trace streams once
@@ -541,7 +547,8 @@ def _build_catalog(brain, messages, session_id, lived, view_policy=False):
                 pass
             streams, extra_ids = None, None
 
-    now = _conversation_now_safe(brain, session_id, messages) if view_policy else None
+    if view_policy and now is None:
+        now = _conversation_now_safe(brain, session_id, messages)
 
     try:
         node_catalog, cataloged_ids = build_node_catalog(
@@ -700,7 +707,8 @@ def _render_scout_legend(legend_lines, unmapped):
 
 
 def _build_user_content(brain, messages, counter, session_id, lived_sequence=None,
-                        precomputed=None, scout_outputs=None, view_policy=None):
+                        precomputed=None, scout_outputs=None, view_policy=None,
+                        view_now=None):
     """Assemble S1 encoding prompt: stable preamble + dynamic body.
 
     The split is deliberate for caching. The stable preamble (instructions
@@ -726,6 +734,8 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
     `view_policy` — the encoder_view flag, resolved once in run_encoding and
     threaded in; None → read the env (tests / standalone callers). Lived-arm
     only; shapes the timeline render (aging rides the precomputed catalog).
+    `view_now` — the run's conversation-time instant (resolved once alongside
+    the flag); None → resolve here (standalone callers).
     """
     # A/B flag (piece 1, docs/S1-SCRIBE-REDESIGN.md §10.3.1): OFF (default) =
     # markdown messages-only timeline + surfaced-only catalog (the long-standing
@@ -752,8 +762,9 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
             scout_notes = per_turn
             if legend_lines or unmapped or per_turn:
                 scout_legend = _render_scout_legend(legend_lines, unmapped)
-        conv_now = (_conversation_now_safe(brain, session_id, messages)
-                    if view_policy else None)
+        conv_now = view_now
+        if view_policy and conv_now is None:
+            conv_now = _conversation_now_safe(brain, session_id, messages)
         timeline = _render_lived_sequence_timeline(
             brain, session_id, messages, streams=streams,
             scout_notes=scout_notes, view_policy=view_policy, now=conv_now)
@@ -1095,7 +1106,7 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
             actions_stub_line)
 
     if view_policy:
-        from servers.scales.s1.trace_links import _stop_of
+        from servers.scales.s1.trace_links import display_turn
 
     out = ""
     for n, t in enumerate(turns, 1):
@@ -1103,11 +1114,10 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
         link = links.get(uid) if uid else None
         n_disp = n   # n stays the window ordinal — the frontier index below
         if view_policy:
-            # display the real turn number (the chain stop — session-global),
-            # not the window ordinal: tells the encoder WHERE it is in the
-            # session, and shares the axis attribution speaks
-            # ('encoded(me, turn 36)'). Orphan turns keep the ordinal.
-            real = _stop_of((t['user'] or {}).get('chain_id')) if t['user'] else None
+            # the real turn number — session-global, 1-based (trace_links
+            # owns the axis; run attribution 'encoded(me, turn 5)' shares it
+            # with no shift). Orphan turns keep the ordinal.
+            real = display_turn((t['user'] or {}).get('chain_id')) if t['user'] else None
             n_disp = real if real is not None else n
         enc_attr, cap, is_enc = '', None, False
         if link is not None:

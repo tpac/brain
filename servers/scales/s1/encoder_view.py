@@ -88,6 +88,15 @@ def timeline_now_attr(now):
         return ''
 
 
+def aged_header_line(n_aged, cutoff):
+    """The catalog's one-line explanation of the [aged] tag — rendered once,
+    right under the catalog header, whenever any entry aged. Names the cutoff
+    in turn coordinates so an aged entry's `turn N` reads as visibly old."""
+    return ('%d %s entries (last written before turn %s; my newest %d encode '
+            'rounds stay full) are trimmed to stubs — get_nodes expands any id.'
+            % (n_aged, AGED_TAG, cutoff, CATALOG_FULL_ROUNDS))
+
+
 def aging_cutoff(run_stops, full_rounds=CATALOG_FULL_ROUNDS):
     """The stop at/after which catalog ids stay full: the Nth-newest encode
     run's stop. None = no aging yet (fewer than N runs this session — nothing

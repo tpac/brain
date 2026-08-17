@@ -79,7 +79,8 @@ def assemble(brain, session_id, view_policy, older_than=None):
     as-of bound production never needs — the oracle capture reflects the
     streams as they stood when the run gathered them, before its own writes.
     """
-    from servers.scales.s1.encode import _gather_messages, _build_user_content
+    from servers.scales.s1.encode import (_gather_messages, _build_user_content,
+                                          _conversation_now_safe)
     from servers.scales.s1.trace_links import gather, session_node_ids
     from servers.scales.s1.encode_contract import build_node_catalog
     messages = _gather_messages(brain, session_id)
@@ -89,13 +90,14 @@ def assemble(brain, session_id, view_policy, older_than=None):
                      if m.get('role') == 'user']
     streams = gather(brain, session_id, older_than=older_than)
     extra_ids = session_node_ids(streams['encode'], streams['touched'])
+    now = _conversation_now_safe(brain, session_id, messages) if view_policy else None
     catalog_text, catalog_ids = build_node_catalog(
         judge_outputs, brain, extra_ids=extra_ids,
-        scope=brain.session_scope(session_id), view_policy=view_policy)
+        scope=brain.session_scope(session_id), view_policy=view_policy, now=now)
     preamble, body, _t, _i = _build_user_content(
         brain, messages, 0, session_id, lived_sequence=True,
         precomputed=(catalog_text, catalog_ids, streams),
-        scout_outputs=None, view_policy=view_policy)
+        scout_outputs=None, view_policy=view_policy, view_now=now)
     return preamble + "\n\n" + body
 
 

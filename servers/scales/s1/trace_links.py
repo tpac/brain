@@ -89,6 +89,17 @@ def _stop_of(chain_id):
     return int(tail) if tail.isdigit() else None
 
 
+def display_turn(chain_id):
+    """The 1-BASED turn number a turn chain names — the coordinate system the
+    encoder-facing renders speak. Turn chains stamp pre-increment (first turn
+    = chain-stop 0) while run chains stamp post-increment (a run firing after
+    the 5th turn = stop 5, already 1-based) — so chain-stop + 1 puts turns on
+    the runs' axis, and 'encode every 5 turns' reads as happening ON turn 5.
+    None for odd-shaped chains (callers keep their fallback)."""
+    stop = _stop_of(chain_id)
+    return None if stop is None else stop + 1
+
+
 def _surface_ids(ref_id):
     """Node ids a surface_selected trace recorded — its ref_id is a JSON list.
     Malformed → [] (one bad row never sinks the join; the live writer validates
@@ -357,6 +368,11 @@ def session_node_ids(encode_traces, touched_traces):
     result pages render on the per-turn <provenance> line but folding them
     into the catalog would flood it (a single recall returns up to a page of
     ids). `endo` is omitted until the stream is wired.
+
+    ONE COORDINATE SYSTEM: `stops` values are 1-BASED turn numbers (the
+    `display_turn` axis) — run stops are post-increment (already 1-based);
+    touched turn chains normalize through `display_turn`, matching what the
+    view-policy timeline displays.
     """
     encoded, authored, recalled = set(), set(), set()
     stops, run_stops = {}, set()
@@ -371,7 +387,7 @@ def session_node_ids(encode_traces, touched_traces):
     for t in (encode_traces or []):
         ids = _delta_ids(t.get('metadata'), 'created', 'revised')
         encoded.update(ids)
-        stop = _stop_of(t.get('chain_id'))
+        stop = _stop_of(t.get('chain_id'))          # post-increment: 1-based
         if stop is not None:
             run_stops.add(stop)
         _mark(ids, stop)
@@ -380,9 +396,9 @@ def session_node_ids(encode_traces, touched_traces):
         r = _delta_ids(t.get('metadata'), 'recalled')
         authored.update(a)
         recalled.update(r)
-        stop = _stop_of(t.get('chain_id'))
-        _mark(a, stop)
-        _mark(r, stop)
+        turn = display_turn(t.get('chain_id'))      # → the 1-based axis
+        _mark(a, turn)
+        _mark(r, turn)
     return {'encoded': encoded, 'authored': authored, 'recalled': recalled,
             'stops': stops, 'run_stops': sorted(run_stops)}
 

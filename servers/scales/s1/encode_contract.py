@@ -389,13 +389,10 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
 
     lines = [header]
     if aged:
-        from servers.scales.s1.encoder_view import (AGED_TAG, aging_cutoff,
-                                                    CATALOG_FULL_ROUNDS)
-        cutoff = aging_cutoff(extra_ids.get('run_stops'))
-        lines.append('%d %s entries (last written before turn %d; my newest '
-                     '%d encode rounds stay full) are trimmed to stubs — '
-                     'get_nodes expands any id.'
-                     % (len(aged), AGED_TAG, cutoff, CATALOG_FULL_ROUNDS))
+        from servers.scales.s1.encoder_view import (AGED_TAG, aged_header_line,
+                                                    aging_cutoff)
+        lines.append(aged_header_line(
+            len(aged), aging_cutoff(extra_ids.get('run_stops'))))
     lines.append('')
     formatted_ids = set()
     # One batched fetch (returns {id: node}) — the widened union can be hundreds of
