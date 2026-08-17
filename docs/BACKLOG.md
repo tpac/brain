@@ -29,6 +29,24 @@ and the eight research questions live there).
 
 ## Now — verified open
 
+### 🟡 0b. Retire `co_accessed` + `emergent_bridge` — ruled dead 2026-08-17, spec ready
+**Full execution spec: node `df681fc1`.** Both edge families are written on every
+recall / every `remember()` and read by **nothing** — verified exhaustively: every
+reference in `servers/` is an exclusion list, the write path, a comment about its own
+removal, or the `EDGE_TYPES` constant. Tom's ruling: retire completely; the signal
+lives in traces (`surface_selected`, 7,548 events back to 2026-04-07, exempt from
+retention and *older* than the edges), and a future co-access mechanism gets built as
+an explicit cache table with an eval **then**, not defended with an eval now.
+Retiring `emergent_bridge` also closes a live direction-contamination vector — it
+fires at `remember()` time on topologically-close pairs and materializes a physical
+`edges` row that fixes orientation for later semantic edges (`1b8fdb1d`); the same fix
+was applied to `co_accessed` (`c3f37710`) and never to this one.
+**Sequence, do not collapse:** stop the writes (reversible, the whole win) → delete
+~11k rows later as its own backed-up change. **Do not re-arm edge decay alongside it**
+(`09a788c0`: the formula compounds per run; one pass would prune 3,760 relations).
+**Trap:** the 1.4× rescue lift on `co_accessed` (`450cb360`) is an *eval-harness*
+number for a lane that never shipped — it reads like a blocker and isn't.
+
 ### 🟡 0. Encoder view policy: behavioral A/B → sweep → activation (2026-08-17) ◀ ACTIVE ARC
 **Read first:** handoff node `caad5afc` (the letter) + measurement `155ddb64` it rests on.
 The encoder prompt diet is **merged and live-but-OFF** (main `bfa72f3`,
