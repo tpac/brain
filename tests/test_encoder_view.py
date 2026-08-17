@@ -29,6 +29,14 @@ from servers.scales.s1.encode_contract import build_node_catalog  # noqa: E402
 
 SHORT = 'abcd1234'
 
+# The plugin-adapter tool prefix, built from the manifest — never the literal
+# (test_deploy_contract's containment gate keeps the adapter shape out of
+# source; .claude/settings.json is its one legitimate home).
+import json  # noqa: E402
+with open(os.path.join(ROOT, '.claude-plugin', 'plugin.json')) as _f:
+    _PLUGIN = json.load(_f)['name']
+PLUGIN_TOOL = ('mcp__plugin_%s_%s__' % (_PLUGIN, _PLUGIN)) + '%s'
+
 
 # ── the flag ──
 
@@ -85,14 +93,14 @@ def test_catalog_view_boundary_stop_stays_full():
 def test_action_mode_drop_stub_full():
     # writes + by-id reads + enrich: provenance carries everything → drop
     for t in ('remember_batch', 'revise', 'brain_batch', 'get_nodes', 'enrich'):
-        assert action_mode('mcp__plugin_brain_brain__%s' % t) == 'drop'
+        assert action_mode(PLUGIN_TOOL % t) == 'drop'
     assert action_mode('mcp__brain__revise') == 'drop'   # user-scope registration
     # search tools: the query head survives as a stub (intent + empty results)
     for t in ('recall', 'recall_batch', 'find_node_by_title', 'filter_nodes'):
-        assert action_mode('mcp__plugin_brain_brain__%s' % t) == 'stub'
+        assert action_mode(PLUGIN_TOOL % t) == 'stub'
     # edge ops stay visible — "connect has no provenance home, by contract"
     for t in ('connect', 'disconnect', 'revise_edge'):
-        assert action_mode('mcp__plugin_brain_brain__%s' % t) == 'full'
+        assert action_mode(PLUGIN_TOOL % t) == 'full'
     # non-brain tools stay visible, whatever their basename
     assert action_mode('Bash') == 'full'
     assert action_mode('mcp__slack__get_nodes') == 'full'
@@ -102,14 +110,14 @@ def test_action_mode_drop_stub_full():
 
 
 def test_action_stub_keeps_query_head():
-    s = action_stub('mcp__plugin_brain_brain__recall: {"query": "wal-index '
+    s = action_stub(PLUGIN_TOOL % 'recall' + ': {"query": "wal-index '
                     'contention", "limit": 8, "filter": {"type": {"in": '
                     '["decision"]}}}')
     assert s.startswith('recall: {"query": "wal-index contention"')
     assert s.endswith('→ results in provenance')
     assert '…' in s and len(s) < 110                 # trimmed, marked
     # short args survive whole, no ellipsis
-    s2 = action_stub('mcp__plugin_brain_brain__filter_nodes: {"field": "type"}')
+    s2 = action_stub(PLUGIN_TOOL % 'filter_nodes' + ': {"field": "type"}')
     assert s2 == 'filter_nodes: {"field": "type"} → results in provenance'
     assert isinstance(action_stub(None), str)        # defensive, never raises
 
@@ -183,11 +191,11 @@ def _two_turn_eps(covered_body='covered turn text', tail_body='tail turn text'):
         _msg('tool_result', 't6a', 6, 'Edit: foo.py', '2026-08-01T00:00:06',
              tool='Edit'),
         _msg('tool_result', 't6b', 6,
-             'mcp__plugin_brain_brain__remember_batch: {"nodes": [...]}',
-             '2026-08-01T00:00:07', tool='mcp__plugin_brain_brain__remember_batch'),
+             PLUGIN_TOOL % 'remember_batch' + ': {"nodes": [...]}',
+             '2026-08-01T00:00:07', tool=PLUGIN_TOOL % 'remember_batch'),
         _msg('tool_result', 't6c', 6,
-             'mcp__plugin_brain_brain__recall: {"query": "catalog aging design"}',
-             '2026-08-01T00:00:08', tool='mcp__plugin_brain_brain__recall'),
+             PLUGIN_TOOL % 'recall' + ': {"query": "catalog aging design"}',
+             '2026-08-01T00:00:08', tool=PLUGIN_TOOL % 'recall'),
     ]
 
 
@@ -246,10 +254,10 @@ def test_policy_on_search_lines_stub_to_query_head():
     t6 = out.split('<turn n="7"')[1].split('</turn>')[0]
     assert ('recall: {"query": "catalog aging design"} → results in provenance'
             in t6)
-    assert 'mcp__plugin_brain_brain__recall' not in t6   # bare name, no prefix
+    assert PLUGIN_TOOL % 'recall' not in t6   # bare name, no prefix
     # control arm renders the raw line untouched
     off = _render(False)
-    assert 'mcp__plugin_brain_brain__recall: {"query"' in off
+    assert PLUGIN_TOOL % 'recall' + ': {"query"' in off
     assert '→ results in provenance' not in off
 
 
