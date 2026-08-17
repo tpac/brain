@@ -401,7 +401,8 @@ def seed_interactions(brain):
     # Recall-lane query expansion — read by brain_recall._expand_query_via_llm
     # when BRAIN_QUERY_EXPANSION is enabled. Registered on every install (this
     # seed runs per-name-if-missing at each boot), advanced by the fleet only
-    # if it ever joins shipped_prompts() (see RECALL_QUERY_EXPANSION_CONFIG_V1).
+    # if it ever joins shipped_prompts() (see RECALL_EXPANSION_INTERACTION_DEFAULT
+    # in recall_expansion_prompt.py).
     _register('recall_query_expansion', RECALL_EXPANSION_PROMPT,
               RECALL_EXPANSION_INTERACTION_DEFAULT, 'anchor')
 
