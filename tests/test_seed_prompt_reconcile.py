@@ -304,8 +304,10 @@ class HandsOffTest(ReconcileTestBase):
         # no matter what shipped_prompts() contained.
         # `surface` left this list in generation 3: its template + layout
         # config are live reads, so it ships like the encoder prompts.
+        # boot/signal_assembler left in the override migration (Step 2): their
+        # configs were reader-less and the seed no longer registers them.
         seeded = {i['name'] for i in self.brain.list_interactions()}
-        for name in ('boot', 'trace_recording', 'signal_assembler'):
+        for name in ('trace_recording', 'scopes', 's2_community'):
             self.assertIn(name, seeded, '%s should be a seeded interaction' % name)
             self.assertNotIn(name, shipped_prompts())
         self.assertIn('surface', shipped_prompts(),

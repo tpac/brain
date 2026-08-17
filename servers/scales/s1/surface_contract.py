@@ -222,6 +222,15 @@ SURFACE_MODEL = 'claude-haiku-4-5'
 # (tests, tiny brains) don't warn.
 CACHE_MIN_PREFIX_TOKENS = 4096
 
+# Interaction config default for the `surface` K. `layout` is the ONLY key
+# the runtime reads from this config (surface.py picks the user-content
+# renderer with it); prompt-size limits live in SURFACE below, and the MODEL
+# is deliberately code, not config — see SURFACE_MODEL above (cache-floor
+# coupling).
+SURFACE_INTERACTION_DEFAULT = {
+    'layout': 'xml_v13',
+}
+
 # Judge (Haiku) — selects relevant nodes with reasoning
 # v9: max_candidates 25→20, Anchor truncation 150→400, recent_messages 5→7
 SURFACE = {

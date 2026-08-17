@@ -7,9 +7,6 @@ All trace readers can rely on these guarantees.
 Architecture: docs/ARCHITECTURE-FRACTAL.md
 """
 
-import hashlib
-import json
-
 from servers.loud_truncation import cap_text_loud, cap_list_loud
 
 
@@ -315,23 +312,6 @@ DELTA_METADATA_SHAPE = {
 DELTA_FINAL_TEXT_LIMIT = 2000
 DELTA_ERROR_LIST_LIMIT = 5
 DELTA_CLASSIFICATIONS_LIMIT = 200  # cap aspect's per-item Δ (cold-start runs can be large)
-
-
-# ── K PROVENANCE (interaction fingerprint) ──
-# Content-address of the EFFECTIVE prompt+config a run used. The row pointer
-# (interaction_id = a rowid, interaction_version = a per-install counter) is
-# install-local and can dangle; the fingerprint identifies the K by content,
-# so it is stable across installs and unchanged when an override row is
-# collapsed into a byte-identical code default. 48 bits is ample for the
-# tens of distinct Ks a brain ever runs.
-
-def interaction_fingerprint(name: str, template: str, config: dict) -> str:
-    """12-hex sha256 over name + template + canonical(config)."""
-    h = hashlib.sha256()
-    h.update((name or '').encode())
-    h.update((template or '').encode())
-    h.update(json.dumps(config or {}, sort_keys=True).encode())
-    return h.hexdigest()[:12]
 
 
 # ── AGENT-RUN TELEMETRY (the shared cost+loop field-set) ──

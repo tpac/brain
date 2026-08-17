@@ -131,14 +131,15 @@ class TestInteractionSeeding:
         config = json.loads(enc['parameters'])
         assert 'effort' in config
 
-    def test_code_boundaries_have_empty_template(self):
-        """voice_surface, boot, pre_edit, signal_assembler have no LLM prompt."""
+    def test_retired_boundaries_are_not_seeded(self):
+        """voice_surface, boot, pre_edit, signal_assembler carry no reader and
+        no config default — the seed must not reintroduce their rows."""
         from servers.interaction_seed import seed_interactions
         seed_interactions(self.brain)
+        seeded = {i['name'] for i in self.dal.list_all()}
         for name in ('voice_surface', 'boot', 'pre_edit', 'signal_assembler'):
-            interaction = self.dal.get_active(name)
-            assert interaction['template'] == '', \
-                "%s should have empty template, got %d chars" % (name, len(interaction['template']))
+            assert name not in seeded, \
+                "%s is retired (zero readers) and must not be seeded" % name
 
     def test_all_have_config(self):
         """Every boundary has a config dict, even code-only ones."""

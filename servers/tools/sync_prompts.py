@@ -346,9 +346,10 @@ def main():
                   % len(drift), file=sys.stderr)
         if config_drift:
             print('\n%d seed config dict(s) drifted from the active config: %s\n'
-                  'Edit the *_CONFIG_V1 dicts in servers/interaction_seed.py by hand '
-                  '(they carry comments a regenerate would eat), then bump '
-                  'SEED_PROMPTS_VERSION so existing installs receive the fix.'
+                  'Edit the *_INTERACTION_DEFAULT dict in the consumer\'s contract '
+                  'file (see the defaults note in servers/interaction_seed.py for '
+                  'the name->file map), then bump SEED_PROMPTS_VERSION so existing '
+                  'installs receive the fix.'
                   % (len(config_drift), ', '.join(n for n, _ in config_drift)),
                   file=sys.stderr)
         if drift or config_drift:

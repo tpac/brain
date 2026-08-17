@@ -759,7 +759,7 @@ class Brain(
         defaults land, that only occurs for unregistered names, whose
         effective value is genuinely ''/{} (see get_interaction_prompt).
         """
-        from .trace_contract import interaction_fingerprint
+        from .interaction_defaults import interaction_fingerprint
         interaction = self._interaction_dal.get_active(name)
         if not interaction:
             return {'fingerprint': interaction_fingerprint(name, '', {}),
