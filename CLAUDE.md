@@ -59,6 +59,7 @@ Where each concern lives. The module docstring is the detail — this table is t
 | Scope provenance + the veil | `servers/scopes.py`, `scales/dispatch.py` | `scopes.py` docstring |
 | Node + pipeline contracts | `servers/contract.py`, `pipeline_contract.py` | docstrings |
 | Edge model | `servers/dal_graph.py` | `add_relation` docstring |
+| Backups (rolling, pre-destructive, clones) | `servers/db_backup.py`, `db_backends` `snapshot_to` | module docstring |
 | Runtime flags | `hooks/scripts/brain-env.sh` | read at daemon start only |
 
 All `scales/` paths live under `servers/`. Two databases: `brain.db` (nodes, edges,
