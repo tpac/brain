@@ -349,14 +349,23 @@ class BrainDaemon:
                 'brain', self.brain.db_path, backup_dir=backup_dir)
             self._db_maintenance.register(
                 'brain_logs', self.brain.logs_db_path, backup_dir=backup_dir)
-            self._db_maintenance.register_task(
-                'logs_retention', self._run_logs_maintenance,
-                LOGS_MAINTENANCE_INTERVAL_S)
             self._db_maintenance.start()
         except Exception as _dm_e:
             # Scheduler must never block daemon startup.
             self._log("db_maintenance start failed: %s" % _dm_e)
             self._db_maintenance = None
+
+        # Registered separately: checkpoint/optimize/backup must not become
+        # contingent on a task registration succeeding. Backups are the one
+        # mechanism that survived the six-week idle-hook outage precisely
+        # because nothing else gated them — keep the failure domains apart.
+        if self._db_maintenance is not None:
+            try:
+                self._db_maintenance.register_task(
+                    'logs_retention', self.brain.run_logs_maintenance,
+                    LOGS_MAINTENANCE_INTERVAL_S)
+            except Exception as _t_e:
+                self._log("logs_retention task registration failed: %s" % _t_e)
 
         # Brain warmup — fault embeddings into mmap + build structural degree
         # cache off the user's critical path. The first recall before this
@@ -1101,25 +1110,6 @@ class BrainDaemon:
             spawn_detached_daemon(self.db_path)
             self._log("New daemon spawned. Shutting down old.")
             os._exit(0)
-
-    def _run_logs_maintenance(self):
-        """Log retention + orphan sweep, on the DBMaintenance thread.
-
-        Retention pruning always runs — it reclaims space, and skipping it
-        while the freshness gate fails on a full disk is a death spiral (no
-        space → no snapshot → no pruning → less space). Only the destructive
-        orphan sweep is gated on a fresh backup; `graph_conn=None` disables it.
-        """
-        from .db_backup import ensure_backup_fresh
-        try:
-            fresh = (ensure_backup_fresh(self.brain.db_path)
-                     and ensure_backup_fresh(self.brain.logs_db_path))
-        except Exception as e:
-            fresh = False
-            self.brain._log_error('logs_maintenance_backup_gate', e,
-                                  'freshness check failed — orphan sweep skipped')
-        return self.brain._logs_dal.run_maintenance(
-            graph_conn=self.brain.conn if fresh else None)
 
     def _run_idle_maintenance(self):
         """Poll brain's maintenance decision. Runs in thread pool.

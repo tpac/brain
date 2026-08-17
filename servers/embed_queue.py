@@ -233,6 +233,12 @@ def _worker_loop(brain) -> None:
                 with _lock:
                     _stats['drains_skipped_empty'] += 1
 
+            # Unscoped coverage sweep — every tick, throttled internally and
+            # deferring to a non-empty queue. Runs here rather than inside
+            # _drain_once so sustained write load can't starve it (the drain's
+            # empty-tick branch is never reached while work keeps arriving).
+            _coverage_sweep(brain)
+
             # Pull-reconciliation: trace embeddings. Independent of
             # node/edge queues — writes to brain_logs.trace_embeddings
             # via its own connection. Caps per-tick work via
@@ -495,32 +501,61 @@ def _drain_trace_embeddings_once(brain) -> None:
 
 
 def _coverage_sweep(brain) -> None:
-    """Unscoped vector sweep — runs on an empty tick, throttled.
+    """Unscoped vector sweep — driven by the worker loop, throttled.
 
     The queue repairs only what reached it. A node written by a path that
     skips the enqueue hooks, or one lost to a crash between insert and
-    enqueue, has no other route back to being embedded. An empty tick is
-    the one moment we know no scoped work is pending, so the sweep can run
-    without competing with the drain it belongs to.
+    enqueue, has no other route back to being embedded.
 
-    Repair and detection are the same pass: `backfill_vectors` no-ops when
-    nothing is missing, so a non-zero return means a node reached a drained
-    queue without its vectors — an enqueue-path gap, and an error worth
-    seeing rather than a silent self-heal.
+    Called from `_worker_loop`, NOT from `_drain_once`: the drain's own
+    early-return only fires on an empty tick, so hanging the sweep there
+    starved it under sustained write load — exactly when an enqueue miss is
+    most likely. The loop runs every tick regardless, and the emptiness
+    check below is what defers to scoped work. Keeping it out of
+    `_drain_once` also keeps it out of the test harness, which calls that
+    function directly.
+
+    BOTH outcomes are reported, because they mean different things:
+      - repaired > 0  → a node reached a drained queue unembedded; the
+        enqueue path missed it.
+      - repaired == 0 while `_primary` is still missing → a node CANNOT be
+        embedded. That is the one worth waking up for, and reporting only
+        on successful repair would have hidden it forever.
     """
     global _last_sweep_at
     now = time.time()
-    if now - _last_sweep_at < COVERAGE_SWEEP_INTERVAL:
-        return
-    _last_sweep_at = now
+    with _lock:
+        if now - _last_sweep_at < COVERAGE_SWEEP_INTERVAL:
+            return
+        # Scoped work takes precedence — a non-empty queue means the drain
+        # is mid-flight and its ids are about to be covered anyway.
+        if _queue or _edge_queue:
+            return
+        _last_sweep_at = now
     try:
         result = brain.backfill_vectors(batch_size=COVERAGE_SWEEP_BATCH) or {}
         repaired = sum(v for v in result.values() if isinstance(v, int))
+        # `_primary` is the LAF-visibility invariant: a node without it is
+        # invisible to the field entirely. Other vector types can be legitimately
+        # absent (`question` only exists where S2 wrote one), so probing those
+        # would cry wolf on every sweep.
+        still_missing = brain._vec_dal.find_missing('_primary', 1)
         if repaired:
             brain._log_error(
                 'embed_coverage_gap', None,
                 'unscoped sweep repaired %d vector(s) the enqueue path never '
                 'queued: %s' % (repaired, result))
+            if still_missing:
+                # More backlog than one batch — clear the throttle so recovery
+                # isn't rate-limited to COVERAGE_SWEEP_BATCH per interval. A
+                # re-embed after a model change marks the whole corpus missing.
+                with _lock:
+                    _last_sweep_at = 0.0
+        elif still_missing:
+            brain._log_error(
+                'embed_coverage_stuck', None,
+                'node(s) missing _primary that the sweep could not embed — '
+                'first: %s' % (still_missing[0].get('id') if still_missing else '?'))
     except Exception as e:
         brain._log_error('embed_coverage_sweep', e,
                          'unscoped vector coverage sweep failed')
@@ -687,7 +722,6 @@ def _drain_once(brain) -> None:
         # enqueues lands after a long idle period.
         with _lock:
             _stats['last_drain_at'] = t0
-        _coverage_sweep(brain)
         return
 
     elapsed_ms = int((time.time() - t0) * 1000)
