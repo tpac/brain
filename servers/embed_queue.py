@@ -35,6 +35,14 @@ DRAIN_BATCH_SIZE = 500
 # dead". Thread death is detected by daemon's thread-count watchdog.
 STALL_THRESHOLD_S = EMBED_DRAIN_INTERVAL * 3
 
+# Unscoped vector-coverage sweep. The queue only repairs what reached it;
+# a node written by a path that skips the enqueue hooks, or a crash between
+# insert and enqueue, leaves vectors missing forever. This sweep is the
+# only automatic repair for that class, so it lives beside the queue that
+# owns embedding rather than in a separate maintenance pass.
+COVERAGE_SWEEP_INTERVAL = 60.0
+COVERAGE_SWEEP_BATCH = 30
+
 # Pull-reconciliation policy for trace embeddings (v27 episodic refs).
 # Each tick: find up to N S0 trace events with no embedding yet, render
 # per §5.3, embed in one batch, store. Newest-first so recent
@@ -61,6 +69,7 @@ _edge_queue: Set[str] = set()      # edge ids needing date recomputation
 _lock = threading.Lock()
 _drain_busy = threading.Lock()  # non-blocking; used for skip-tick semantics
 _worker_started = False
+_last_sweep_at = 0.0            # coverage sweep throttle; worker thread owns it
 _shutdown_event = threading.Event()    # the SINGLE shutdown signal: set() stops the worker and wakes it out of its interval wait at once
 _worker_thread: Optional[threading.Thread] = None
 _stats = {
@@ -485,6 +494,38 @@ def _drain_trace_embeddings_once(brain) -> None:
             pass
 
 
+def _coverage_sweep(brain) -> None:
+    """Unscoped vector sweep — runs on an empty tick, throttled.
+
+    The queue repairs only what reached it. A node written by a path that
+    skips the enqueue hooks, or one lost to a crash between insert and
+    enqueue, has no other route back to being embedded. An empty tick is
+    the one moment we know no scoped work is pending, so the sweep can run
+    without competing with the drain it belongs to.
+
+    Repair and detection are the same pass: `backfill_vectors` no-ops when
+    nothing is missing, so a non-zero return means a node reached a drained
+    queue without its vectors — an enqueue-path gap, and an error worth
+    seeing rather than a silent self-heal.
+    """
+    global _last_sweep_at
+    now = time.time()
+    if now - _last_sweep_at < COVERAGE_SWEEP_INTERVAL:
+        return
+    _last_sweep_at = now
+    try:
+        result = brain.backfill_vectors(batch_size=COVERAGE_SWEEP_BATCH) or {}
+        repaired = sum(v for v in result.values() if isinstance(v, int))
+        if repaired:
+            brain._log_error(
+                'embed_coverage_gap', None,
+                'unscoped sweep repaired %d vector(s) the enqueue path never '
+                'queued: %s' % (repaired, result))
+    except Exception as e:
+        brain._log_error('embed_coverage_sweep', e,
+                         'unscoped vector coverage sweep failed')
+
+
 def _drain_once(brain) -> None:
     """Drain each queued id once per call, in BATCHES.
 
@@ -646,6 +687,7 @@ def _drain_once(brain) -> None:
         # enqueues lands after a long idle period.
         with _lock:
             _stats['last_drain_at'] = t0
+        _coverage_sweep(brain)
         return
 
     elapsed_ms = int((time.time() - t0) * 1000)

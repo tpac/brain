@@ -962,18 +962,10 @@ def hook_idle_maintenance(brain, args, graph_changes):
     except Exception as e:
         brain._log_error('backfill_summaries', e, 'idle_maintenance')
 
-    # 7. Backfill ALL vectors (primary, situation, title, high_meta, other_meta, edge_context)
-    # v23: unified backfill replaces backfill_embeddings. Runs single-threaded after S2.
-    try:
-        vec_result = brain.backfill_vectors(batch_size=30)
-        if isinstance(vec_result, dict) and not vec_result.get('error'):
-            total = sum(v for k, v in vec_result.items() if isinstance(v, int))
-            if total > 0:
-                parts = ['%s:%d' % (k, v) for k, v in vec_result.items() if isinstance(v, int) and v > 0]
-                output.append("VECTORS: backfilled %d (%s)" % (total, ', '.join(parts)))
-                graph_changes.append("VECTORS: %d backfilled" % total)
-    except Exception as e:
-        brain._log_error('backfill_vectors', e, 'idle_maintenance')
+    # 7. Vector backfill moved to embed_queue._coverage_sweep — the worker that
+    # already owns embedding, on its own 5s thread. This hook is driven by a
+    # Claude Code Notification/idle_prompt event, so vector coverage — a data
+    # integrity invariant — depended on the editor emitting a UI notification.
 
     # 8. prune_irrelevant_quotes removed 2026-04-13 — fix at encoding time, not after.
 

@@ -561,7 +561,9 @@ class BrainDaemon:
 
         # Start the embed queue drain worker. remember/revise/remember_batch
         # enqueue dirty node_ids; this worker embeds them in batches every
-        # EMBED_DRAIN_INTERVAL seconds. S2 Heal catches gaps on idle.
+        # EMBED_DRAIN_INTERVAL seconds, and sweeps for unqueued gaps on an
+        # empty tick (COVERAGE_SWEEP_INTERVAL). It owns vector coverage
+        # end to end — nothing else repairs a missing embedding.
         try:
             from servers import embed_queue
             embed_queue.start(self.brain)
