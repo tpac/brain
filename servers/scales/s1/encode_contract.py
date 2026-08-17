@@ -342,7 +342,13 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
         for nid in (ids or ()):
             tag_for.setdefault(nid, tag)   # first (highest-priority) wins
 
-    for key, tag in PROVENANCE_TAGS:       # PRIORITY order (highest first)
+    tags = PROVENANCE_TAGS
+    if view_policy:
+        # same keys/priority, the (me)/(scribe) vocabulary — one voice with
+        # the timeline's provenance labels
+        from servers.scales.s1.encoder_view import PROVENANCE_TAGS_VIEW
+        tags = PROVENANCE_TAGS_VIEW
+    for key, tag in tags:                  # PRIORITY order (highest first)
         _assign(extra_ids.get(key), tag)
     _assign(surfaced_ids, '')              # surfaced: lowest priority, untagged (legacy)
 
@@ -403,7 +409,8 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
         from servers.scales.s1.encoder_view import CATALOG_TIME_CONFIG
         # fine relative time + ownership mark (ids this session WROTE)
         own = (extra_ids.get('encoded') or set()) | (extra_ids.get('authored') or set())
-        view_cfg = dict(CATALOG_TIME_CONFIG, time_now=now, this_session_ids=own)
+        view_cfg = dict(CATALOG_TIME_CONFIG, time_now=now, this_session_ids=own,
+                        show_edge_total=True)
         catalog_cfg = dict(catalog_cfg, **view_cfg)
         if aged:
             from servers.scales.s1.encoder_view import AGED_NODE_CONFIG

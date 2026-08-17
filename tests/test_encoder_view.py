@@ -271,19 +271,24 @@ def test_policy_on_provenance_verb_split():
     titles = {'nodeAAAA1111': 'fresh insight', 'nodeDDDD4444': 'looked up',
               'nodeFFFF6666': 'search hit'}
     on = _render(True, touched=touched, titles=titles)
+    t5 = on.split('<turn n="1"')[1].split('</turn>')[0]
     t6 = on.split('<turn n="2"')[1].split('</turn>')[0]
-    # title-first refs under the policy (system-wide shape: title leads)
-    assert 'created(me): «fresh insight» id:nodeAAAA' in t6
+    # title-first, double-quoted refs under the policy (system-wide shape)
+    assert 'created(me): "fresh insight" id:nodeAAAA' in t6
     assert 'revised(me): id:nodeBBBB' in t6              # no title → bare id
     # recalled(me) merges by-id reads with search results, deduped
-    assert ('recalled(me): «looked up» id:nodeDDDD «search hit» id:nodeFFFF'
+    assert ('recalled(me): "looked up" id:nodeDDDD "search hit" id:nodeFFFF'
             in t6)
     assert t6.count('id:nodeDDDD') == 1
     assert 'archived(me): id:nodeEEEE' in t6
+    # run attribution speaks (scribe), not S1S jargon
+    assert 'encoded(scribe): id:nodeCCCC' in t5
+    assert 'encoded(S1S)' not in on
     assert 'encoded(Anchor)' not in on          # the merged label retires
     # control arm: merged label, no verbs, id-first «tag», no looked_up render
     off = _render(False, touched=touched, titles=titles)
     assert 'encoded(Anchor): id:nodeAAAA «fresh insight»' in off
+    assert 'encoded(S1S): id:nodeCCCC' in off
     assert 'created(me)' not in off and 'recalled(me)' not in off
     assert 'nodeFFFF' not in off
 
@@ -363,7 +368,7 @@ _EXTRA = {'encoded': {'oldnode1', 'newnode1'}, 'authored': set(),
 def test_catalog_aging_trims_old_rounds_keeps_new_full():
     text, ids = _catalog(True, _EXTRA)
     assert ids == {'oldnode1', 'newnode1'}
-    old_entry = text.split('title of oldnode1')[1].split('[encoded]')[0]
+    old_entry = text.split('title of oldnode1')[1].split('[encoded(scribe)]')[0]
     new_entry = text.split('title of newnode1')[1]
     # aged: no edges, no reasoning, lean correction, content head only
     assert 'Edges:' not in old_entry
@@ -376,10 +381,15 @@ def test_catalog_aging_trims_old_rounds_keeps_new_full():
     # fresh round keeps the full render
     assert 'Edges:' in new_entry
     assert 'corrector body' in new_entry
-    # aged entries are marked and the header explains the tag once
-    assert ('%s [encoded]' % AGED_TAG) in text
+    # aged entries are marked and the header explains the tag once; tags speak
+    # the (me)/(scribe) vocabulary under the policy
+    assert ('%s [encoded(scribe)]' % AGED_TAG) in text
+    assert '[encoded] ' not in text                  # legacy tag retired here
     assert 'get_nodes expands any id' in text
     assert str(CATALOG_FULL_ROUNDS) in text.split('\n')[1]
+    # flag off keeps the legacy tag vocabulary
+    off, _ = _catalog(False, _EXTRA)
+    assert '[encoded] ' in off and 'encoded(scribe)' not in off
 
 
 def test_catalog_aging_orders_oldest_first():
@@ -405,6 +415,24 @@ def _corrected_node(nid):
         'relations': [{'relation': 'supersedes', 'description': 'dup of the warn block'},
                       {'relation': 'extends', 'description': 'also extends it'}]})
     return n
+
+
+def test_catalog_edge_total_indicator():
+    # 7 edges, limit 5 → the header says so under the policy; flag off keeps
+    # the bare header (byte-identity)
+    n = _node('bignode11', edges=7)
+    extra = {'encoded': {'bignode11'}, 'authored': set(), 'recalled': set(),
+             'stops': {'bignode11': 15}, 'run_stops': [10, 15]}
+    on, _ = build_node_catalog([], _CatalogBrain({'bignode11': _node('bignode11', edges=7)}),
+                               extra_ids=extra, view_policy=True)
+    assert 'Edges (5 of 7):' in on
+    off, _ = build_node_catalog([], _CatalogBrain({'bignode11': n}),
+                                extra_ids=extra, view_policy=False)
+    assert 'Edges (5 of 7):' not in off and 'Edges:' in off
+    # within the limit → plain header on both arms
+    small, _ = build_node_catalog([], _CatalogBrain({'bignode11': _node('bignode11', edges=3)}),
+                                  extra_ids=extra, view_policy=True)
+    assert 'Edges:' in small and ' of ' not in small.split('Edges')[1][:12]
 
 
 def test_catalog_correction_edge_dedup():

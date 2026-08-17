@@ -1180,9 +1180,9 @@ def _short_refs(ids, titles=None, title_first=False):
     scan. Falls back to a bare `id:` when no title is mapped (stub brains, or an
     id the title fetch missed).
 
-    `title_first` (view policy): `«title» id:x` — title-leading like every
-    other render in the system (catalog headers, edges); the id-first form is
-    the legacy arm's."""
+    `title_first` (view policy): `"title" id:x` — title-leading AND
+    double-quoted like every other render in the system (catalog headers,
+    edges); the id-first «tag» form is the legacy arm's."""
     titles = titles or {}
     out = []
     for i in ids:
@@ -1196,7 +1196,7 @@ def _short_refs(ids, titles=None, title_first=False):
         if not t:
             out.append('id:%s' % short)
         elif title_first:
-            out.append('«%s» id:%s' % (t, short))
+            out.append('"%s" id:%s' % (t, short))
         else:
             out.append('id:%s «%s»' % (short, t))
     return ' '.join(out)
@@ -1275,7 +1275,13 @@ def _render_provenance(links, frontier, turn, idx, titles=None,
         parts.append('surfaced: %s' % _short_refs(link['surfaced'], titles, tf))
     eb = link['encoded_by']
     if eb and frontier.get(eb) == idx and link['encoded']:
-        parts.append('encoded(S1S): %s' % _short_refs(link['encoded'], titles, tf))
+        # policy: 'encoded(scribe)' — the (me)/(scribe) vocabulary; the legacy
+        # arm keeps its 'encoded(S1S)' string byte-for-byte
+        run_label = 'encoded(S1S)'
+        if view_policy:
+            from servers.scales.s1.encoder_view import ENCODED_RUN_LABEL
+            run_label = ENCODED_RUN_LABEL
+        parts.append('%s: %s' % (run_label, _short_refs(link['encoded'], titles, tf)))
     if view_policy:
         from servers.scales.s1.encoder_view import PROVENANCE_SPLIT
         for label, keys in PROVENANCE_SPLIT:

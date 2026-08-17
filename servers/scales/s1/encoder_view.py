@@ -181,10 +181,11 @@ def action_stub(summary):
 def actions_stub_line(n_actions):
     """The <actions> body for an already-encoded turn. The element renders with
     this stub rather than disappearing — absence would read as "nothing
-    happened this turn"; the stub states the filter (Tom's design). The churn
-    itself is what the previous run already read."""
-    return ('trimmed — %d action(s) recorded on this turn; a previous encode '
-            'already read them' % n_actions)
+    happened this turn"; the stub states the filter (Tom's design). First
+    person — the prompt speaks as the encoder, and the reader of this line IS
+    the one who read them last run."""
+    return ('trimmed — %d action(s) recorded on this turn; I already read '
+            'them in a previous run' % n_actions)
 
 
 # ── Encoded-turn message text ──
@@ -213,4 +214,21 @@ PROVENANCE_SPLIT = (
     ('revised(me)',  ('revised',)),
     ('recalled(me)', ('recalled', 'looked_up')),
     ('archived(me)', ('archived',)),
+)
+
+# The run-attribution label for prior encode runs. One identity, two stations:
+# (me) = my session half (Anchor in conversation), (scribe) = my encoding half
+# (S1E runs). The legacy arm's 'encoded(S1S)' is jargon; 'Anchor' is an
+# internal name the operator may not even use — neither belongs in
+# encoder-facing text.
+ENCODED_RUN_LABEL = 'encoded(scribe)'
+
+# Catalog provenance tags, view-policy arm — SAME vocabulary as the provenance
+# labels above, so the catalog and the timeline read as one system. Keys +
+# priority order match encode_contract.PROVENANCE_TAGS (the control arm's
+# tags); surfaced stays untagged (lowest priority) on both arms.
+PROVENANCE_TAGS_VIEW = (
+    ('authored', '[authored(me)]'),
+    ('recalled', '[recalled(me)]'),
+    ('encoded',  '[encoded(scribe)]'),
 )
