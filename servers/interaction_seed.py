@@ -168,14 +168,23 @@ SURFACE_CONFIG_V1 = {
     "layout": "xml_v13",
 }
 
-# Mirrors the production-ACTIVE config (DB v34): `effort` only. Every other key
-# that used to live here is read from `encode_contract.ENCODING_AGENT`, not from
-# this interaction — `encode.py:375` reads ENCODING_AGENT['max_messages'],
-# `encode.py:1224` reads ENCODING_AGENT['journal_entry_limit'], and so on. They
-# were dead config here, and keeping them would teach the wrong owner.
-# `effort` IS a live read (`encode.py:99` → the API's output_config.effort).
+# Mirrors the production-ACTIVE config (DB v35): `effort` + `model`. Every
+# other key that used to live here is read from `encode_contract.ENCODING_AGENT`,
+# not from this interaction — encode.py reads ENCODING_AGENT['max_messages'],
+# ENCODING_AGENT['journal_entry_limit'], and so on. They were dead config here,
+# and keeping them would teach the wrong owner. `effort` and `model` ARE live
+# reads (encode.py → the API's output_config.effort / run_llm_loop's model).
 S1E_CONFIG_V1 = {
-    "effort": "medium",
+    "effort": "medium", "model": "claude-sonnet-4-6",
+}
+
+# Recall-lane query expansion (brain_recall._expand_query_via_llm). Live
+# reads: `model`, `max_tokens`. Deliberately NOT in shipped_prompts():
+# expansion is env-gated off by default (BRAIN_QUERY_EXPANSION), and the
+# shipped roster excludes machinery that never runs — add it there the day
+# the flag defaults on.
+RECALL_QUERY_EXPANSION_CONFIG_V1 = {
+    "model": "claude-haiku-4-5", "max_tokens": 200,
 }
 
 # Mirrors the production-ACTIVE config (DB v24). The model was a DATED id
@@ -329,7 +338,11 @@ SIGNAL_CONFIG_V1 = {
 # 3 carries the facts scout's `output_schema` to the fleet. Generation 2 shipped
 # the config channel but not that key, so installs stamped at 2 still run the
 # one mustered scout on the free-text parsing path.
-SEED_PROMPTS_VERSION = 3
+#
+# 4 ships Step 4's s1e `model` key (table-driven model resolution) and brings
+# `surface` into shipped_prompts() — template + layout config, v15 as the
+# shipped default.
+SEED_PROMPTS_VERSION = 4
 SEED_PROMPTS_VERSION_KEY = 'seed_prompts_version'
 
 # Pointer provenance that proves the install is still running what WE put there.
@@ -558,6 +571,7 @@ def seed_interactions(brain):
     from .scales.s1.scouts.prompts.quote_prompt import SYSTEM_PROMPT as S1_SCOUT_QUOTE_PROMPT
     from .scales.s1.scouts.prompts.temporal_prompt import SYSTEM_PROMPT as S1_SCOUT_TEMPORAL_PROMPT
     from .scales.s1.scouts.prompts.facts_prompt import SYSTEM_PROMPT as S1_SCOUT_FACTS_PROMPT
+    from .recall_expansion_prompt import SYSTEM_PROMPT as RECALL_EXPANSION_PROMPT
 
     existing = {i['name'] for i in brain.list_interactions()}
 
@@ -594,6 +608,13 @@ def seed_interactions(brain):
               S1_SCOUT_TEMPORAL_CONFIG_V1,  'anchor')
     _register('s1_scout_facts',     S1_SCOUT_FACTS_PROMPT,
               S1_SCOUT_FACTS_CONFIG_V1,     'anchor')
+
+    # Recall-lane query expansion — read by brain_recall._expand_query_via_llm
+    # when BRAIN_QUERY_EXPANSION is enabled. Registered on every install (this
+    # seed runs per-name-if-missing at each boot), advanced by the fleet only
+    # if it ever joins shipped_prompts() (see RECALL_QUERY_EXPANSION_CONFIG_V1).
+    _register('recall_query_expansion', RECALL_EXPANSION_PROMPT,
+              RECALL_QUERY_EXPANSION_CONFIG_V1, 'anchor')
 
     # Short-template / config-only interactions (prompts inline).
     # 'judge' was renamed to 'surface' in commit 620fb4f (2026-05-03);

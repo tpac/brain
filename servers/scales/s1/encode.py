@@ -100,12 +100,16 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     enc_interaction = brain.get_interaction('s1e')
     enc_instructions = enc_interaction.get('template', '') if enc_interaction else ''
     # Per-version config rides in the interaction's parameters JSON (the
-    # K-store): `effort` maps to the API's output_config.effort. Absent/{} →
-    # None → API default (high). Lets an effort change ship as a prompt
-    # version (A/B-able via ab_encode's parameters injection), not a code edit.
+    # K-store): `effort` maps to the API's output_config.effort (absent/{} →
+    # None → API default, high); `model` picks the encoder model, literal
+    # fallback only for a brain whose row predates the key. Lets an effort or
+    # model change ship as a prompt version (A/B-able via ab_encode's
+    # parameters injection), not a code edit.
     # brain.get_interaction_config is the single K-store parse (active version,
     # json.loads with {}-on-error) — reuse it, don't re-hand-roll the parse.
-    enc_effort = (brain.get_interaction_config('s1e') or {}).get('effort') or None
+    enc_cfg = brain.get_interaction_config('s1e') or {}
+    enc_effort = enc_cfg.get('effort') or None
+    enc_model = enc_cfg.get('model') or 'claude-sonnet-4-6'
     system_prompt = _build_system_prompt(
         prompt_instructions=enc_instructions or None, lived=lived)
 
@@ -165,14 +169,14 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
                       prompt_pointer=prompt_pointer)
 
     # 6. Run generic LLM loop (shared with S2+)
-    _log("calling Sonnet with %d tools, %d chars context, effort=%s..." % (
-        len(tools), len(user_content), enc_effort or 'default(high)'))
+    _log("calling %s with %d tools, %d chars context, effort=%s..." % (
+        enc_model, len(tools), len(user_content), enc_effort or 'default(high)'))
     _log("PROFILE so far: %s" % " → ".join("%s:%dms" % (n, t) for n, t in profile))
 
     try:
         result = run_llm_loop(
             client=client,
-            model="claude-sonnet-4-6",
+            model=enc_model,
             effort=enc_effort,
             max_tokens=ENCODING_AGENT['max_tokens'],
             max_rounds=ENCODING_AGENT.get('max_rounds', 5),

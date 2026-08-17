@@ -51,6 +51,12 @@ SEED_PROMPTS = [
     ('s1_scout_facts',
      'servers/scales/s1/scouts/prompts/facts_prompt.py',
      'SYSTEM_PROMPT'),
+    # Recall-lane query expansion. Env-gated off by default, so it is NOT in
+    # shipped_prompts() — but its seed must still mirror ACTIVE, or a dormant
+    # candidate could leak into fresh brains through the seed file.
+    ('recall_query_expansion',
+     'servers/recall_expansion_prompt.py',
+     'SYSTEM_PROMPT'),
 ]
 
 

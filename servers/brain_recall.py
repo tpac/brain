@@ -61,49 +61,43 @@ from .brain_constants import (
 from .db_backends.sqlite import commit_unless_batched
 
 
-# ── Lexical bridge — Haiku-generated query expansion ───────────────
+# ── Lexical bridge — LLM-generated query expansion ─────────────────
 # Cosine in our embedding space is flat (top-25 spread ~0.09) and doesn't
 # bridge synonyms (feed/scratch grains) or contrastive cases (uncle/niece).
-# This helper asks Haiku for 2-3 alternate phrasings — synonyms, related
-# entities, and explicit contrasts (for abstention queries). Each phrasing
-# gets embedded; downstream cosine takes max across all phrasings.
+# This helper asks a small model for 2-3 alternate phrasings — synonyms,
+# related entities, and explicit contrasts (for abstention queries). Each
+# phrasing gets embedded; downstream cosine takes max across all phrasings.
+#
+# Prompt, model and max_tokens live in the `recall_query_expansion`
+# interaction (learnable boundary; seed in servers/recall_expansion_prompt.py,
+# registered at boot by interaction_seed).
 #
 # Opt-in via env var BRAIN_QUERY_EXPANSION=on. Failure modes are non-fatal:
-# Haiku error → skip expansion, recall continues with primary query only.
-
-_EXPANSION_PROMPT = """Generate 2-3 alternate query phrasings that bridge LEXICAL GAPS — vocabulary differences between how the user asks and how the memory was originally stored. Don't paraphrase. Don't say the same thing in different words.
-
-Each alternate MUST drop or replace at least one specific term from the original query, choosing one of these strategies:
-
-1. STRIP the specific entity, keep the activity:
-   "What did I bake for my uncle's birthday party?" → "what I baked for a birthday party"
-   "Where did I attend study abroad?" → "country I studied in", "university I went to"
-
-2. REPLACE the specific entity with a category or sibling entity (in case the memory is about a related entity):
-   "uncle's birthday" → "family member's birthday", "niece's birthday"
-   "feed" → "feed for chickens", "scratch grains for chickens"
-   "Memrise" → "language learning apps with mnemonics", "apps for memorization"
-
-3. BROADEN to the category the original is in:
-   "siblings count" → "brothers and sisters family"
-   "gym time" → "evening workout schedule"
-
-The original query gets searched separately. Your alternates must reach memories the original would NOT.
-
-Return ONLY a JSON array of 2-3 strings, no prose, no explanation.
-
-Query: "{query}"
-"""
+# LLM error → skip expansion, recall continues with primary query only.
 
 
-def _expand_query_via_haiku(query: str) -> List[str]:
-    """Ask Haiku for 2-3 alternate phrasings to bridge lexical gaps in cosine.
+def _expand_query_via_llm(brain, query: str) -> List[str]:
+    """Ask a small model for 2-3 alternate phrasings to bridge lexical gaps.
 
-    Returns list of strings (may be empty on any failure). Cost: 1 Haiku
-    call (~1s, ~300 tokens). Caller is expected to embed each separately.
+    Prompt template ({query} slot), model and max_tokens come from the
+    `recall_query_expansion` interaction. Returns list of strings (may be
+    empty on any failure). Cost: 1 small-model call (~1s, ~300 tokens).
+    Caller is expected to embed each separately.
     """
     if not query or len(query.strip()) < 3:
         return []
+    template = brain.get_interaction_prompt('recall_query_expansion')
+    if not template:
+        # Loud: without this row, expansion silently never fires while the
+        # env flag claims it is on. interaction_seed registers it at boot.
+        brain._log_error(
+            'query_expansion_missing_interaction',
+            RuntimeError('no recall_query_expansion interaction registered'),
+            'expansion skipped — recall proceeds on the primary query')
+        return []
+    cfg = brain.get_interaction_config('recall_query_expansion') or {}
+    model = cfg.get('model', 'claude-haiku-4-5')
+    max_tokens = cfg.get('max_tokens', 200)
     try:
         import anthropic
         # Bounded, and no SDK retries. This is a best-effort call on the recall
@@ -119,11 +113,14 @@ def _expand_query_via_haiku(query: str) -> List[str]:
     except Exception:
         return []
     try:
+        # Effective-model line: params (DB) are authoritative here — this
+        # print is the in-run proof of what actually gets called.
+        print('[recall] query-expansion model=%s' % model, file=sys.stderr)
         resp = client.messages.create(
-            model='claude-haiku-4-5',
-            max_tokens=200,
+            model=model,
+            max_tokens=max_tokens,
             messages=[{'role': 'user',
-                       'content': _EXPANSION_PROMPT.format(query=query)}],
+                       'content': template.format(query=query)}],
             # Anthropic Structured Outputs — guarantees a JSON array of
             # strings. Closes the drift class where Haiku returns prose
             # or markdown-fenced JSON on long-context queries.
@@ -1457,9 +1454,9 @@ class BrainRecallMixin:
                     else:
                         sim = embedder.cosine_similarity(query_vec, blob)
                         # Lexical bridge: take max cosine across all phrasings
-                        # (primary + Haiku-expanded alternates). This is the
+                        # (primary + LLM-expanded alternates). This is the
                         # mechanism that makes "uncle's birthday party" reach
-                        # "niece's birthday party" nodes — Haiku generated
+                        # "niece's birthday party" nodes — the model generated
                         # the contrastive phrasing, embedding bridged the gap.
                         for _av in alternate_vecs:
                             _alt_sim = embedder.cosine_similarity(_av, blob)
@@ -1499,14 +1496,14 @@ class BrainRecallMixin:
                     enrichment_hits[node_id] = 'primary'
                     nodes_with_embeddings += 1
 
-            # STEP 3.1: Conditional lexical bridge — Haiku query expansion
+            # STEP 3.1: Conditional lexical bridge — LLM query expansion
             # gated on cosine flatness. The cost of expansion is dominated
-            # by the Haiku call (~800ms). Most queries have a clear winner
+            # by the LLM call (~800ms). Most queries have a clear winner
             # in primary cosine and don't need it. Only when scores are
             # genuinely flat does the lexical bridge add value.
             #
             # Modes (BRAIN_QUERY_EXPANSION env var):
-            #   off (default)     — no expansion, no Haiku call
+            #   off (default)     — no expansion, no LLM call
             #   on_flat           — expand only when top1 - top10 < gate
             #   on                — expand always (research / eval; expensive)
             #
@@ -1533,7 +1530,7 @@ class BrainRecallMixin:
                         _gate = 0.05
                     _do_expand = _spread < _gate
                     # Telemetry: log every gate decision so we can tune.
-                    # Cheap (one stderr line per recall, no Haiku call).
+                    # Cheap (one stderr line per recall, no LLM call).
                     print('[recall] on_flat gate: top1=%.3f top10=%.3f '
                           'spread=%.3f gate=%.3f → %s' % (
                             _sorted[0], _sorted[9], _spread, _gate,
@@ -1571,7 +1568,7 @@ class BrainRecallMixin:
 
             if _do_expand:
                 try:
-                    _alts = _expand_query_via_haiku(expanded_query)
+                    _alts = _expand_query_via_llm(self, expanded_query)
                     alternate_strings = list(_alts)  # for FTS5 path in STEP 4.5
                     for _alt in _alts:
                         _av = embedder.embed_query(_alt)
@@ -1583,7 +1580,7 @@ class BrainRecallMixin:
                             [a[:50] for a in _alts]), file=sys.stderr)
                 except Exception as _expand_e:
                     self._log_error('query_expansion', _expand_e,
-                                    'Haiku query expansion failed — '
+                                    'LLM query expansion failed — '
                                     'proceeding with primary query only')
 
                 # Re-iterate primary cosine with alternates, take max

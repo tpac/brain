@@ -205,6 +205,12 @@ def surface_selected_path(session_id, stop_counter):
 #     route cold-start so the user's first prompt doesn't carry it)
 # Kept as a flat constant rather than buried in SURFACE so the warmup path
 # doesn't have to reach into surface-call config to know which model to ping.
+#
+# Deliberately CODE, not interaction config (decided 2026-08-17): the value is
+# coupled to CACHE_MIN_PREFIX_TOKENS below (model-specific cache floor) and to
+# the warmup ping, so a config-driven model would silently desync both. Moves
+# into the `surface` interaction's parameters when a provider adapter owns
+# cache strategy — at that point the coupling this protects dissolves.
 SURFACE_MODEL = 'claude-haiku-4-5'
 
 # Anthropic prompt-cache minimum cacheable prefix for SURFACE_MODEL.

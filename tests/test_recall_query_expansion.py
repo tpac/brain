@@ -1,7 +1,7 @@
-"""Recall-lane query expansion: the client is bounded, and the call is gated.
+"""Recall-lane query expansion: bounded client, gated call, config-driven.
 
-`_expand_query_via_haiku` is the recall hot path's only LLM call. Two
-properties matter and neither was covered before:
+`_expand_query_via_llm` is the recall hot path's only LLM call. Three
+properties matter:
 
 1. Its client is BOUNDED. The function's own `except` catches errors, not
    hangs — only a timeout stops a stalled socket from holding a recall
@@ -10,6 +10,10 @@ properties matter and neither was covered before:
    the gate a keyless brain — or one whose key the provider refused and the
    rejection latch paused — still fires a call that can only 401, and the
    bare `except` swallows it.
+3. Prompt, model and max_tokens come from the `recall_query_expansion`
+   interaction — the EFFECTIVE values are asserted at messages.create, not
+   the values passed anywhere upstream (the a6dfcfe3 trap: an override that
+   lands on the fallback side of a get(key, fallback) chain fails silently).
 
 Expansion is opt-in (`BRAIN_QUERY_EXPANSION`, default off), so these are
 latent-path guarantees: they hold whenever an operator turns it on.
@@ -47,7 +51,7 @@ class _FakeClient:
 
 
 class _FakeAnthropicModule:
-    """Captures the constructor kwargs `_expand_query_via_haiku` passes."""
+    """Captures the constructor kwargs `_expand_query_via_llm` passes."""
 
     def __init__(self, text='["alpha", "beta"]'):
         self.ctor_kwargs = None
@@ -56,6 +60,25 @@ class _FakeAnthropicModule:
     def Anthropic(self, **kwargs):
         self.ctor_kwargs = kwargs
         return self.client
+
+
+class _StubExpansionBrain:
+    """The interaction store the function reads — template + config + errors."""
+
+    def __init__(self, template='Query: "{query}"', config=None):
+        self.template = template
+        self.config = ({'model': 'claude-haiku-4-5', 'max_tokens': 200}
+                       if config is None else config)
+        self.errors = []
+
+    def get_interaction_prompt(self, name):
+        return self.template
+
+    def get_interaction_config(self, name):
+        return self.config
+
+    def _log_error(self, kind, exc, note):
+        self.errors.append(kind)
 
 
 class ExpansionClientBoundTest(unittest.TestCase):
@@ -73,7 +96,7 @@ class ExpansionClientBoundTest(unittest.TestCase):
             sys.modules['anthropic'] = self._real_anthropic
 
     def test_client_is_constructed_with_the_recall_timeout(self):
-        brain_recall._expand_query_via_haiku('a query worth expanding')
+        brain_recall._expand_query_via_llm(_StubExpansionBrain(), 'a query worth expanding')
         self.assertIsNotNone(
             self.fake.ctor_kwargs,
             'expansion did not construct a client at all')
@@ -83,7 +106,7 @@ class ExpansionClientBoundTest(unittest.TestCase):
             'an unbounded client can hold a recall worker thread on a stall')
 
     def test_client_disables_sdk_retries(self):
-        brain_recall._expand_query_via_haiku('a query worth expanding')
+        brain_recall._expand_query_via_llm(_StubExpansionBrain(), 'a query worth expanding')
         self.assertEqual(
             self.fake.ctor_kwargs.get('max_retries'), 0,
             'SDK retries would multiply the timeout bound; expansion is '
@@ -98,7 +121,7 @@ class ExpansionClientBoundTest(unittest.TestCase):
 
     def test_parses_the_expanded_alternates(self):
         """Guards the happy path so the bound change can't silently break it."""
-        alts = brain_recall._expand_query_via_haiku('a query worth expanding')
+        alts = brain_recall._expand_query_via_llm(_StubExpansionBrain(), 'a query worth expanding')
         self.assertEqual(alts, ['alpha', 'beta'])
 
 
@@ -169,6 +192,56 @@ class ExpansionGateTest(unittest.TestCase):
             'query-expansion skipped', src,
             'an availability skip must be visible to whoever is tuning '
             'BRAIN_EXPANSION_GATE from these logs')
+
+
+class ExpansionEffectiveConfigTest(unittest.TestCase):
+    """Interaction parameters are authoritative — assert the EFFECTIVE values.
+
+    The known trap (brain id:a6dfcfe3): an override that lands on the
+    fallback side of a `get(key, fallback)` chain fails silently and the
+    caller measures noise. So these tests assert what reaches
+    `messages.create`, never what was passed upstream.
+    """
+
+    def setUp(self):
+        self._real_anthropic = sys.modules.get('anthropic')
+        self.fake = _FakeAnthropicModule()
+        sys.modules['anthropic'] = self.fake
+
+    def tearDown(self):
+        if self._real_anthropic is None:
+            sys.modules.pop('anthropic', None)
+        else:
+            sys.modules['anthropic'] = self._real_anthropic
+
+    def test_model_and_max_tokens_come_from_the_interaction(self):
+        brain = _StubExpansionBrain(
+            config={'model': 'sentinel-model-x', 'max_tokens': 77})
+        brain_recall._expand_query_via_llm(brain, 'a query worth expanding')
+        call = self.fake.client.messages.calls[0]
+        self.assertEqual(call['model'], 'sentinel-model-x',
+                         'the interaction config model must be the one that '
+                         'reaches messages.create')
+        self.assertEqual(call['max_tokens'], 77)
+
+    def test_template_comes_from_the_interaction(self):
+        brain = _StubExpansionBrain(template='EXPAND >>{query}<<')
+        brain_recall._expand_query_via_llm(brain, 'a query worth expanding')
+        call = self.fake.client.messages.calls[0]
+        self.assertEqual(call['messages'][0]['content'],
+                         'EXPAND >>a query worth expanding<<')
+
+    def test_missing_interaction_skips_loudly_without_a_client(self):
+        brain = _StubExpansionBrain(template='')
+        alts = brain_recall._expand_query_via_llm(
+            brain, 'a query worth expanding')
+        self.assertEqual(alts, [])
+        self.assertEqual(brain.errors, ['query_expansion_missing_interaction'],
+                         'a missing row must land in the errors table — '
+                         'silent skip while the env flag is on is the dark-'
+                         'corner failure mode')
+        self.assertIsNone(self.fake.ctor_kwargs,
+                          'no client should be constructed without a prompt')
 
 
 if __name__ == '__main__':

@@ -123,7 +123,7 @@ the decision already made for `surface.py`).
    **and** no per-request `with_options` — the only genuinely unbounded client in `servers/`, on
    the recall hot path. Its `try/except` catches exceptions, not hangs: a stalled socket blocks a
    ThreadPoolExecutor recall worker regardless.
-2. **Ungated.** `_expand_query_via_haiku` is **the only LLM call site in the brain that never
+2. **Ungated.** `_expand_query_via_llm` is **the only LLM call site in the brain that never
    checks `brain.llm_available`** — there is no reference to it anywhere in `brain_recall.py`. The
    only guard at the call site is `_do_expand`, a *quality* heuristic on candidate score spread. So
    on a keyless brain, or one whose key is currently latched as rejected, this constructs a client
@@ -148,10 +148,10 @@ bounded — constructor timeout, or `with_options` at the call site as `scouts/b
 **Note on ordering.** Gate first, then bound: the gate makes the unbounded-client window smaller by
 removing the keyless/latched case entirely.
 
-**Files & call sites.** `servers/brain_recall.py:107-113` (`_expand_query_via_haiku`).
+**Files & call sites.** `servers/brain_recall.py:107-113` (`_expand_query_via_llm`).
 
-**Verification.** **There is no existing direct test** — `_expand_query_via_haiku` is referenced
-only from `eval/`, not `tests/`. Add one asserting the bound is applied. Regression:
+**Verification.** `tests/test_recall_query_expansion.py` — bound, gate order, and (since Step 4)
+the effective config at `messages.create`. Regression:
 `tests/test_recall_laf.py`, `tests/test_recall_quality.py`.
 
 **Blast radius.** One function. The bound must be generous enough not to truncate legitimate
@@ -294,10 +294,12 @@ the same would quietly recreate the frozen-prompt problem the distribution mecha
 Config-only interactions were deliberately excluded because several are dead config with no reader.
 But **`surface` stops being dead the moment this step puts a live model key in it.**
 
-**Decide explicitly — do not let this default silently.** Either add `surface` to
-`shipped_prompts()` when the live key goes in, or accept that its model pins for new installs only
-and *say so in the code*. A model key that reaches only fresh brains is precisely the freeze this
-whole mechanism was built to prevent, reappearing one interaction to the left.
+**RESOLVED (operator, 2026-08-17): surface's model stays in `surface_contract.py` as code.** The
+value is coupled to `CACHE_MIN_PREFIX_TOKENS` (model-specific cache floor) and the warmup ping in
+the same file — a provider swap must edit that file regardless, so a config key would be false
+configurability. The constant now carries a comment naming the decision and its trigger to revisit:
+when a provider adapter owns cache strategy, the coupling dissolves and the model moves into the
+`surface` interaction's parameters.
 
 **Related trap if the query-expansion interaction is eval-gated:** the seed must not reach its
 candidate through an imported mutable constant. Either the seed reads through the ACTIVE pointer, or
@@ -516,7 +518,17 @@ runs. A single run proves nothing: 2 of 11 pre-fix runs already showed `in=1` vi
 auto-caching, so consistency *is* the claim. Only compare rounds inside one `[s1e]` loop — S2
 multi-batch r-lines interleave and are not one trajectory. Detail: brain id:7e15b37a.
 
-**Steps 4 then 2 remain**, in that order.
+**Step 4 implemented 2026-08-17** (worktree `jolly-neumann-4f1195`, merge pending): Scribe model
+from `s1e` params (live DB v35 carries `model` + `effort`); query expansion is the registered
+`recall_query_expansion` interaction (v1, prompt + model + max_tokens from the table, seed in
+`servers/recall_expansion_prompt.py`, in the sync roster but deliberately NOT in
+`shipped_prompts()` while `BRAIN_QUERY_EXPANSION` defaults off); surface stays code (see the
+resolved decision above). `SEED_PROMPTS_VERSION` 2→3 with HISTORY appended. Both resolution paths
+mutation-verified (`tests/test_scribe_model_resolution.py`,
+`tests/test_recall_query_expansion.py::ExpansionEffectiveConfigTest`). The s1e params path goes
+live at merge + daemon restart — the encode log line now prints the effective model.
+
+**Step 2 remains**, last.
 
 ---
 
