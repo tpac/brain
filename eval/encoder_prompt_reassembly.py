@@ -109,7 +109,8 @@ def strip_scout_blocks(text):
 
 
 def section(text, name):
-    m = re.search(r'<%s>(.*?)</%s>' % (name, name), text, re.DOTALL)
+    # attrs allowed: the view policy stamps <timeline now="…">
+    m = re.search(r'<%s(?:\s[^>]*)?>(.*?)</%s>' % (name, name), text, re.DOTALL)
     return m.group(1) if m else ''
 
 

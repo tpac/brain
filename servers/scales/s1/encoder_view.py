@@ -74,6 +74,20 @@ AGED_TAG = '[aged]'
 CATALOG_TIME_CONFIG = {'time_format': 'relative', 'time_fine': True}
 
 
+def timeline_now_attr(now):
+    """The <timeline now="…"> stamp — the absolute anchor that makes every
+    relative label in the prompt invertible, and the current-time declaration
+    the encoder's date resolution never had (only the scouts got a
+    current_date). `now` is conversation time (replay-safe); renders UTC to
+    match the Frame's 'Now:' vocabulary. Returns '' when unstampable."""
+    try:
+        from datetime import timezone
+        return ' now="%s"' % now.astimezone(timezone.utc).strftime(
+            '%Y-%m-%d %H:%M UTC')
+    except Exception:
+        return ''
+
+
 def aging_cutoff(run_stops, full_rounds=CATALOG_FULL_ROUNDS):
     """The stop at/after which catalog ids stay full: the Nth-newest encode
     run's stop. None = no aging yet (fewer than N runs this session — nothing

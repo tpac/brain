@@ -541,20 +541,7 @@ def _build_catalog(brain, messages, session_id, lived, view_policy=False):
                 pass
             streams, extra_ids = None, None
 
-    now = None
-    if view_policy:
-        # Conversation time for the catalog's relative-time headers — replays
-        # inject historical [Current date:] prefixes; wall-clock would corrupt
-        # them (the S1 rule — tests/test_time_window_contract). Guarded: a stub
-        # brain without session machinery degrades to wall-clock render.
-        try:
-            from servers.clock import conversation_now
-            ctx = brain.get_or_create_session(session_id)
-            now = conversation_now(messages=messages,
-                                   session_started_at=getattr(ctx, 'started_at', None),
-                                   brain=brain)
-        except Exception:
-            now = None
+    now = _conversation_now_safe(brain, session_id, messages) if view_policy else None
 
     try:
         node_catalog, cataloged_ids = build_node_catalog(
@@ -565,6 +552,21 @@ def _build_catalog(brain, messages, session_id, lived, view_policy=False):
         print('[s1e] ERROR building node catalog: %s' % e, flush=True)
         node_catalog, cataloged_ids = '', set()
     return node_catalog, cataloged_ids, streams
+
+
+def _conversation_now_safe(brain, session_id, messages):
+    """Conversation time for the view policy's relative-time renders — replays
+    inject historical [Current date:] prefixes; wall-clock would corrupt them
+    (the S1 rule — tests/test_time_window_contract). Guarded: a stub brain
+    without session machinery degrades to None (wall-clock render)."""
+    try:
+        from servers.clock import conversation_now
+        ctx = brain.get_or_create_session(session_id)
+        return conversation_now(messages=messages,
+                                session_started_at=getattr(ctx, 'started_at', None),
+                                brain=brain)
+    except Exception:
+        return None
 
 
 def _scout_note_line(scout, cand):
@@ -750,9 +752,11 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
             scout_notes = per_turn
             if legend_lines or unmapped or per_turn:
                 scout_legend = _render_scout_legend(legend_lines, unmapped)
+        conv_now = (_conversation_now_safe(brain, session_id, messages)
+                    if view_policy else None)
         timeline = _render_lived_sequence_timeline(
             brain, session_id, messages, streams=streams,
-            scout_notes=scout_notes, view_policy=view_policy)
+            scout_notes=scout_notes, view_policy=view_policy, now=conv_now)
     else:
         timeline = _render_markdown_timeline(brain, messages)
 
@@ -822,7 +826,14 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
             body += "<node_catalog>\n%s\n</node_catalog>\n\n" % node_catalog
         if scout_legend:    # explains the <scout_notes> inside the timeline
             body += "%s\n" % scout_legend
-        body += "<timeline>\n%s</timeline>\n" % timeline
+        # `now=` stamp (view policy): the absolute anchor that makes every
+        # relative label below invertible — and the current-time declaration
+        # the encoder's date resolution never had (only the scouts got one).
+        now_attr = ''
+        if view_policy and conv_now is not None:
+            from servers.scales.s1.encoder_view import timeline_now_attr
+            now_attr = timeline_now_attr(conv_now)
+        body += "<timeline%s>\n%s</timeline>\n" % (now_attr, timeline)
     else:
         body = ""
         if journal_block:   # self-labeled
@@ -958,7 +969,8 @@ def _render_markdown_timeline(brain, messages):
 
 
 def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
-                                    scout_notes=None, view_policy=False):
+                                    scout_notes=None, view_policy=False,
+                                    now=None):
     """The XML lived sequence — messages + tool actions interleaved (piece 1).
 
     `view_policy` (encoder_view, resolved once in run_encoding): ON, three
@@ -1094,7 +1106,19 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
                 # Policy: covered turns keep full text (the trim reversal —
                 # encoder_view.ENCODED_TURN_MESSAGE_CAP); legacy: context stub.
                 cap = ENCODED_TURN_MESSAGE_CAP if view_policy else trim
-        out += '<turn n="%d"%s>\n' % (n, enc_attr)
+        age_attr = ''
+        if view_policy and now is not None:
+            # per-turn recency against conversation time — with the <timeline
+            # now=…> stamp this gives full orientation (relative labels are
+            # invertible). Caveat: replayed corpora stamp turns at replay
+            # wall-clock, so ages there degrade to 'just now' — both A/B arms
+            # share the artifact.
+            from servers.pipeline_contract import _relative_time
+            first = t['user'] or t['assistant'] or (t['actions'][0] if t['actions'] else None)
+            age = _relative_time((first or {}).get('created_at'), now=now, fine=True)
+            if age:
+                age_attr = ' age="%s"' % age
+        out += '<turn n="%d"%s%s>\n' % (n, age_attr, enc_attr)
         # Tag vocabulary is identity-native, not role-native (Tom 2026-07-02):
         # <me> = my side of the exchange; <other> = whoever is on the other side
         # this session (usually the operator, sometimes an agent — an identity
@@ -1148,13 +1172,17 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
     return out
 
 
-def _short_refs(ids, titles=None):
+def _short_refs(ids, titles=None, title_first=False):
     """Node ids as 8-char `id:` refs, each carrying its 1-line «tag» (title) when
     known — the locality affordance (fork #2): WHERE a node came up in the
     timeline, complementary to the catalog's full WHAT-it-is. The 8-char short
     still matches the catalog so a ref dereferences there; the «tag» saves the
     scan. Falls back to a bare `id:` when no title is mapped (stub brains, or an
-    id the title fetch missed)."""
+    id the title fetch missed).
+
+    `title_first` (view policy): `«title» id:x` — title-leading like every
+    other render in the system (catalog headers, edges); the id-first form is
+    the legacy arm's."""
     titles = titles or {}
     out = []
     for i in ids:
@@ -1165,7 +1193,12 @@ def _short_refs(ids, titles=None):
         # must not malform it, and a stray newline must not break the one-line
         # provenance.
         t = _xml_escape(' '.join((titles.get(i) or '').split()))
-        out.append('id:%s «%s»' % (short, t) if t else 'id:%s' % short)
+        if not t:
+            out.append('id:%s' % short)
+        elif title_first:
+            out.append('«%s» id:%s' % (t, short))
+        else:
+            out.append('id:%s «%s»' % (short, t))
     return ' '.join(out)
 
 
@@ -1237,11 +1270,12 @@ def _render_provenance(links, frontier, turn, idx, titles=None,
     if not link:
         return ''
     parts = []
+    tf = bool(view_policy)   # title-first refs under the policy (system-wide shape)
     if link['surfaced']:
-        parts.append('surfaced: %s' % _short_refs(link['surfaced'], titles))
+        parts.append('surfaced: %s' % _short_refs(link['surfaced'], titles, tf))
     eb = link['encoded_by']
     if eb and frontier.get(eb) == idx and link['encoded']:
-        parts.append('encoded(S1S): %s' % _short_refs(link['encoded'], titles))
+        parts.append('encoded(S1S): %s' % _short_refs(link['encoded'], titles, tf))
     if view_policy:
         from servers.scales.s1.encoder_view import PROVENANCE_SPLIT
         for label, keys in PROVENANCE_SPLIT:
@@ -1249,7 +1283,7 @@ def _render_provenance(links, frontier, turn, idx, titles=None,
             if ids:
                 # cross-key dedup (an id can be both read and searched-up)
                 ids = list(dict.fromkeys(ids))
-                parts.append('%s: %s' % (label, _short_refs(ids, titles)))
+                parts.append('%s: %s' % (label, _short_refs(ids, titles, tf)))
     elif link.get('authored'):
         parts.append('encoded(Anchor): %s' % _short_refs(link['authored'], titles))
     return ' | '.join(parts)

@@ -194,12 +194,12 @@ def _two_turn_eps(covered_body='covered turn text', tail_body='tail turn text'):
 _TWO_MSGS = [{'role': 'user'} for _ in range(2)]
 
 
-def _render(view_policy, eps=None, **brain_kw):
+def _render(view_policy, eps=None, now=None, **brain_kw):
     brain_kw.setdefault('encode', [_encode_trace(6, ['nodeCCCC3333'], [],
                                                  tid='run6')])
     brain = _Brain(eps if eps is not None else _two_turn_eps(), **brain_kw)
     return _render_lived_sequence_timeline(brain, 'sess', _TWO_MSGS,
-                                           view_policy=view_policy)
+                                           view_policy=view_policy, now=now)
 
 
 def test_policy_off_is_legacy_render():
@@ -272,25 +272,52 @@ def test_policy_on_provenance_verb_split():
               'nodeFFFF6666': 'search hit'}
     on = _render(True, touched=touched, titles=titles)
     t6 = on.split('<turn n="2"')[1].split('</turn>')[0]
-    assert 'created(me): id:nodeAAAA «fresh insight»' in t6
-    assert 'revised(me): id:nodeBBBB' in t6
+    # title-first refs under the policy (system-wide shape: title leads)
+    assert 'created(me): «fresh insight» id:nodeAAAA' in t6
+    assert 'revised(me): id:nodeBBBB' in t6              # no title → bare id
     # recalled(me) merges by-id reads with search results, deduped
-    assert ('recalled(me): id:nodeDDDD «looked up» id:nodeFFFF «search hit»'
+    assert ('recalled(me): «looked up» id:nodeDDDD «search hit» id:nodeFFFF'
             in t6)
     assert t6.count('id:nodeDDDD') == 1
     assert 'archived(me): id:nodeEEEE' in t6
     assert 'encoded(Anchor)' not in on          # the merged label retires
-    # control arm: merged label, no verbs, no looked_up render
+    # control arm: merged label, no verbs, id-first «tag», no looked_up render
     off = _render(False, touched=touched, titles=titles)
-    assert 'encoded(Anchor): id:nodeAAAA' in off
+    assert 'encoded(Anchor): id:nodeAAAA «fresh insight»' in off
     assert 'created(me)' not in off and 'recalled(me)' not in off
     assert 'nodeFFFF' not in off
 
 
+def test_policy_on_turn_age_and_now_stamp():
+    from datetime import datetime, timezone
+    from servers.scales.s1.encoder_view import timeline_now_attr
+    now = datetime(2026, 8, 1, 3, 0, 0, tzinfo=timezone.utc)  # eps at ~00:00
+    on = _render(True, now=now)
+    # 2h59m floors to 2h — same floor semantics as the coarse 'Nd ago' scale
+    assert '<turn n="1" age="2h ago" encoded="true">' in on
+    assert '<turn n="2" age="2h ago" encoded="false">' in on
+    # no now → no age attr (degraded render, never a broken one)
+    assert 'age=' not in _render(True, now=None)
+    # control arm never carries ages
+    assert 'age=' not in _render(False, now=now)
+    # the <timeline now="…"> stamp (assembled in _build_user_content)
+    assert timeline_now_attr(now) == ' now="2026-08-01 03:00 UTC"'
+    assert timeline_now_attr(None) == ''
+
+
 # ── catalog aging (build_node_catalog wiring) ──
 
+class _Aspects:
+    def relations_in(self, names):
+        return ('corrects', 'supersedes', 'fixes', 'resolves', 'reframes') \
+            if 'correction_improvement' in names else ()
+
+
 class _CatalogBrain:
-    """Stub for build_node_catalog: node bodies + the community-filter conn."""
+    """Stub for build_node_catalog: node bodies + the community-filter conn
+    + the aspect registry the correction dedup reads."""
+    aspects = _Aspects()
+
     def __init__(self, nodes):
         self._map = nodes
 
@@ -365,6 +392,36 @@ def test_catalog_policy_off_renders_full_everywhere():
     assert AGED_TAG not in text
     assert 'get_nodes expands' not in text
     assert text.count('Edges:') == 2      # both nodes full depth
+
+
+def _corrected_node(nid):
+    # a full-depth node whose connection to its corrector carries BOTH a
+    # correction-aspect relation (duplicated by the ⚠ block) and a plain one
+    n = _node(nid)
+    n['connections'].append({
+        'id': 'corr1234', 'title': 'the correction', 'direction': 'incoming',
+        'relation': 'supersedes', 'description': 'dup of the warn block',
+        'created_at': '2026-08-01T00:00:00',
+        'relations': [{'relation': 'supersedes', 'description': 'dup of the warn block'},
+                      {'relation': 'extends', 'description': 'also extends it'}]})
+    return n
+
+
+def test_catalog_correction_edge_dedup():
+    extra = {'encoded': {'dednode11'}, 'authored': set(), 'recalled': set(),
+             'stops': {'dednode11': 15}, 'run_stops': [10, 15]}
+    # flag off: the duplication renders (⚠ block AND the edge relation)
+    off, _ = build_node_catalog([], _CatalogBrain({'dednode11': _corrected_node('dednode11')}),
+                                extra_ids=extra, view_policy=False)
+    assert '⚠ Updated by: "the correction"' in off
+    assert 'dup of the warn block' in off
+    # policy on: the correction-aspect relation dedups out of Edges; the
+    # non-correction relation on the same connection survives
+    on, _ = build_node_catalog([], _CatalogBrain({'dednode11': _corrected_node('dednode11')}),
+                               extra_ids=extra, view_policy=True)
+    assert '⚠ Updated by: "the correction"' in on     # privileged render stays
+    assert 'dup of the warn block' not in on
+    assert 'also extends it' in on
 
 
 def test_relative_time_fine_and_now_injection():

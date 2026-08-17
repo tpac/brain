@@ -247,6 +247,45 @@ def _filter_noise_relations(nodes_map, brain):
         node['connections'] = kept
 
 
+def _dedup_correction_relations(nodes_map, brain):
+    """Drop correction-aspect relations from a node's rendered connections when
+    the node's ⚠ correction block already carries that counterpart (view
+    policy only). The ⚠ render is the privileged form — direction-explicit,
+    corrector content inline, immune to edge_limit — so the same relationship
+    in the Edges list is pure duplication (found live: f3302000 rendered its
+    supersedes→9ae6820a both ways). Multi-relation aware like the noise
+    filter: a connection survives when any NON-correction relation remains
+    (supersedes often rides with extends). Aspect source of truth:
+    correction_improvement in aspects_v1.json. Stub brains degrade quietly."""
+    try:
+        corr_rels = set(brain.aspects.relations_in(['correction_improvement']))
+    except AttributeError:
+        return
+    if not corr_rels:
+        return
+    for node in nodes_map.values():
+        corr_ids = {(c.get('id') or '')[:8]
+                    for c in (node.get('_corrections') or ())}
+        conns = node.get('connections')
+        if not corr_ids or not conns:
+            continue
+        kept = []
+        for c in conns:
+            if (c.get('id') or '')[:8] not in corr_ids:
+                kept.append(c)
+                continue
+            rels = [r for r in (c.get('relations') or ())
+                    if r.get('relation') not in corr_rels]
+            if rels:
+                c['relations'] = rels
+                c['relation'] = rels[0].get('relation') or c.get('relation')
+                c['description'] = rels[0].get('description') or ''
+                kept.append(c)
+            elif not c.get('relations') and c.get('relation') not in corr_rels:
+                kept.append(c)   # bare single-relation shape (no relations list)
+        node['connections'] = kept
+
+
 def build_node_catalog(judge_outputs, brain, extra_ids=None,
                        scope=None, view_policy=False, now=None):
     """Build the deduplicated rich-node catalog the encoder dereferences by id.
@@ -353,6 +392,8 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
     rich_map = brain.get_node(list(catalog_ids)) if catalog_ids else {}
     if lived_arm:
         _filter_noise_relations(rich_map, brain)
+    if view_policy:
+        _dedup_correction_relations(rich_map, brain)
     # Loop-invariant: one scoped cfg per tier for the whole catalog (can be
     # hundreds of nodes), never a per-node clone.
     catalog_cfg = (dict(S1_NODE_CONFIG, scope=scope)
