@@ -294,12 +294,17 @@ the same would quietly recreate the frozen-prompt problem the distribution mecha
 Config-only interactions were deliberately excluded because several are dead config with no reader.
 But **`surface` stops being dead the moment this step puts a live model key in it.**
 
-**RESOLVED (operator, 2026-08-17): surface's model stays in `surface_contract.py` as code.** The
-value is coupled to `CACHE_MIN_PREFIX_TOKENS` (model-specific cache floor) and the warmup ping in
-the same file — a provider swap must edit that file regardless, so a config key would be false
-configurability. The constant now carries a comment naming the decision and its trigger to revisit:
-when a provider adapter owns cache strategy, the coupling dissolves and the model moves into the
-`surface` interaction's parameters.
+**RESOLVED (operator, 2026-08-17), in two halves:**
+- **Model stays in `surface_contract.py` as code.** The value is coupled to
+  `CACHE_MIN_PREFIX_TOKENS` (model-specific cache floor) and the warmup ping in the same file — a
+  provider swap must edit that file regardless, so a config key would be false configurability.
+  The constant carries a comment naming the decision and its trigger to revisit: when a provider
+  adapter owns cache strategy, the coupling dissolves and the model moves into config.
+- **Template + `layout` config DO ship.** `surface` joined `shipped_prompts()` and the
+  `SEED_PROMPTS` sync roster in generation 3 (which was still unreleased, so it rode the same
+  bump); the seed moved to `servers/scales/s1/surface_prompt.py` and mirrors ACTIVE (v15 — the
+  mature prompt is the shipped default). Pristine fleet installs advance to v15; our own install
+  is hands-off at v15 already.
 
 **Related trap if the query-expansion interaction is eval-gated:** the seed must not reach its
 candidate through an imported mutable constant. Either the seed reads through the ACTIVE pointer, or
@@ -522,8 +527,10 @@ multi-batch r-lines interleave and are not one trajectory. Detail: brain id:7e15
 from `s1e` params (live DB v35 carries `model` + `effort`); query expansion is the registered
 `recall_query_expansion` interaction (v1, prompt + model + max_tokens from the table, seed in
 `servers/recall_expansion_prompt.py`, in the sync roster but deliberately NOT in
-`shipped_prompts()` while `BRAIN_QUERY_EXPANSION` defaults off); surface stays code (see the
-resolved decision above). `SEED_PROMPTS_VERSION` 2→3 with HISTORY appended. Both resolution paths
+`shipped_prompts()` while `BRAIN_QUERY_EXPANSION` defaults off); surface ships template + layout
+config while its model stays code (see the resolved decision above — folded into this same
+generation, 2026-08-17). `SEED_PROMPTS_VERSION` 2→3; the gen-3 HISTORY row was replaced when
+surface folded in (3 was never released — the append-only rule protects released generations). Both resolution paths
 mutation-verified (`tests/test_scribe_model_resolution.py`,
 `tests/test_recall_query_expansion.py::ExpansionEffectiveConfigTest`). The s1e params path goes
 live at merge + daemon restart — the encode log line now prints the effective model.

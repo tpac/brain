@@ -24,6 +24,7 @@ tests/relearned_*.db
 .env
 .venv/
 venv/
+venv
 node_modules/
 
 # Plugin-scoped runtime (installed by hooks/scripts/ensure-runtime.sh).

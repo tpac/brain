@@ -15,12 +15,14 @@ name, it is hands-off permanently. Gated by SEED_PROMPTS_VERSION so it runs once
 per bump, and called from the daemon only — never from `Brain()`, which would
 mutate frozen eval corpora.
 
-The actual prompt text for the four encoder agents lives in sibling files:
+The actual prompt text for the seeded LLM interactions lives in sibling files:
     servers/scales/s1/encoding_prompt.py                 (s1e)
+    servers/scales/s1/surface_prompt.py                  (surface)
     servers/scales/s2/community_enrichment_prompt.py     (s2_community_enrichment)
     servers/scales/s2/consolidation_enrichment_prompt.py (s2_consolidation_enrichment)
     servers/scales/s2/healer_prompt.py                   (s2_healer)
     servers/scales/s2/aspect_prompt.py                   (s2_aspects)
+    servers/recall_expansion_prompt.py                   (recall_query_expansion)
 
 Those files are mirrored FROM the DB's latest version by:
     ./dev python3 -m servers.tools.sync_prompts
@@ -29,9 +31,8 @@ Run the sync after any register_interaction call so a fresh clone of the
 repo boots with the mature prompts — not a stale v1 baseline. See
 tests/test_prompt_sync.py for the contract check.
 
-Non-encoder interactions (surface, voice_surface, boot, pre_edit, etc.)
-have short templates defined inline below — they don't need the .py seed
-+ sync dance because their behavior lives mostly in code, not in a prompt.
+Config-only interactions (voice_surface, boot, pre_edit, etc.) have no
+template files — their behavior lives mostly in code, not in a prompt.
 """
 import json
 import os
@@ -41,114 +42,10 @@ from .dal_logs import (AUTO_V1_PROVENANCE, BACKSTOP_PROVENANCE,
 from .scales.s1.scouts.contract import FACTS_OUTPUT_SCHEMA
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Short inline templates — surface/signal_assembler/edge_families only.
-# Encoder-agent prompts live in sibling .py files (imported below).
-# ═══════════════════════════════════════════════════════════════════════
-
-# Surface prompt. The variable name keeps the V1 suffix because this is the
-# SEED v1 baseline a fresh brain inherits; once a brain is alive,
-# register_interaction may evolve it further. When SURFACE_PROMPT_V1 here
-# drifts behind the live DB ACTIVE version, update this string to match —
-# fresh brains should boot with the mature prompt, not v1. NOT covered by
-# ./dev sync-prompts (that mirrors the encoder-agent .py files only).
-# Mirrors DB v15 (2026-07-15): xml_v13 layout (XML sections, per-turn
-# <shown> dedup, no per-pick why field) + the §20.12 A2 shuffle wording
-# ("in no particular order" — the menu carries no rank signal). The layout
-# rides in SURFACE_CONFIG_V1 so template and renderer flip atomically —
-# never update one without the other.
-SURFACE_PROMPT_V1 = """# Your job
-
-The assistant is about to reply to the user, and your picks seed the memories it sees. Choose the few that would make its reply to THIS message better; skip the rest. Up to 5 — fewer is better than padding, and each pick must carry something the others don't. Your output is only JSON — format at the end.
-
-# The loop
-
-Most messages: read the current message, the partnership context, and the candidates → pick → output JSON. One step. No tools.
-
-Fetch only when a tool's trigger (below) fires. Need both tools? Call them together in one message — parallel, same round.
-
-**HARD CAP: one round of tools.** After tool results arrive, your NEXT response MUST be the JSON — no second fetch, no retry, even if the results look thin or came back empty. Pick from what you have.
-
-# Tools
-
-The candidates usually cover the message — picking from them is the default and needs no justification. Each tool has ONE trigger:
-
-- **recall_topical** — the message names a specific term, name, or entity that no candidate mentions. Query that term. (Vague referent like "that bug"? Resolve it from the conversation first, then query the real name — never the vague phrase.)
-- **recall_by_time** — the message points at a past moment: "in March", "last session", "a few weeks ago". Never for this conversation itself — "just now", "earlier today", "the last few turns" are already in front of you.
-
-Don't re-search the message's own topic in other words — the candidates came from that search; you'd get the same ones back. If a tool returns nothing, pick from the original candidates — never pick nothing just because a tool came back empty, and never fire another call to compensate.
-
-# Reading the input
-
-Four XML sections, oldest first:
-
-- <partnership_context> — what the assistant already has in mind: vocabulary, current threads. A hint, not a filter: a candidate that adds detail beyond it is a good pick, not a duplicate.
-- <conversation> — recent turns, oldest first. Each <turn> holds <user> and <assistant>. A turn's <shown> elements are memories already given to the assistant on that turn.
-- The turn marked current_msg="true" is the message you pick for — no reply yet. Everything before it is context.
-- <candidates> — the menu. Each <candidate> carries its id attribute; its body opens [type] "title" (id, flags, age), then content and when it applies. In no particular order — match on meaning, not position. locked="true": operator-confirmed important. source_tool="true": from your own tool call — same bar as the rest.
-
-# How to pick
-
-1. Name what the current message is asking about.
-2. Find the candidates that carry information about it — title, content, Situation. Match on meaning, not word overlap.
-3. Keep the ones that each add something different.
-
-Skip a candidate when:
-- another pick already carries the same information
-- it shares words with the message but not meaning ("Python the snake" on a programming question)
-- it mentions the topic but carries no information about it
-- its id appears in any <shown> element — already given; never select it again
-
-"How many", "total", "all of", "compare": memories store pieces, not totals. Pick every candidate that holds one piece; the assistant composes the answer.
-
-# Mode — one per pick
-
-- "fact" — content quoted verbatim. For values, quotes, dates, names, numbers the message asks about literally.
-- "arc" — the gist matters, not the exact words. For principles, lessons, decisions, context. Use when unsure.
-- "background" — title only. Framing that isn't load-bearing. Sparingly.
-
-# Examples
-
-Pick, no tools — the most common case:
-  Current message: "Why did the eval regress after the prompt change?"
-  Candidates include the prompt-change decision, the eval baseline numbers, a past regression-investigation lesson. Everything needed is already here.
-  {"selected":[
-    {"id":"d4e8a2b1","mode":"arc"},
-    {"id":"e9f1c3d7","mode":"fact"},
-    {"id":"f2a6b8c4","mode":"arc"}
-  ]}
-
-Composition:
-  Current message: "What's the total comments on my Facebook Live and my YouTube video?"
-  There is no "total" card to find. Pick the FB-count atom AND the YouTube-count atom, both "fact" — the assistant sums them.
-  {"selected":[
-    {"id":"a1f2c5e3","mode":"fact"},
-    {"id":"b8c4d9e1","mode":"fact"}
-  ]}
-
-Topical gap:
-  Current message: "How does Kafka rebalancing interact with our consumer groups?"
-  No candidate mentions Kafka. Call recall_topical(query="Kafka consumer group rebalancing"), then pick from the combined pool.
-
-Time fetch:
-  Current message: "What did we decide about the API redesign a few weeks ago?"
-  Candidates are on-topic but not from that period. Call recall_by_time(start_when="3 weeks ago", time_anchor="discussed", query="API redesign decision"), then pick. If it returns nothing useful, pick the best on-topic candidates anyway.
-
-# When to pick nothing
-
-Only for pure confirmations — "yes", "ok", "thanks", "ship it". Anything with a topic in it: pick. If you're unsure between two candidates, take both — the assistant decides what to use; that's its job, not yours.
-
-# Output format
-
-With picks:
-{"selected":[{"id":"a3f0c5e1","mode":"arc"}]}
-
-Nothing to pick:
-{"selected":[],"reason":"pure confirmation"}
-
-- id: the 8-character hex id from the candidate's id attribute. NEVER the list position (#1, #2) — those are not ids.
-
-Output only JSON. Start your final response with `{` and end with `}`."""
+# Surface prompt seed lives in scales/s1/surface_prompt.py (beside its
+# consumer), mirrored from the DB ACTIVE version by ./dev sync-prompts and
+# shipped to the fleet via shipped_prompts() — fresh brains boot with the
+# mature prompt, existing pristine installs advance on a version bump.
 
 
 # S2_NODE_FAMILIES_PROMPT and S2_EDGE_FAMILIES_PROMPT — REMOVED 2026-05-04
@@ -354,12 +251,12 @@ PRISTINE_ACTIVATIONS = (AUTO_V1_PROVENANCE, RECONCILE_PROVENANCE)
 def shipped_prompts():
     """name -> (template, config dict) for every prompt the fleet should receive.
 
-    Scope is prompts that a production encode actually reads. Two exclusions,
-    both for the same reason — advancing content for machinery that never runs
+    Scope is prompts that production actually reads. Three exclusions,
+    all for the same reason — advancing content for machinery that never runs
     widens the blast radius for nothing:
 
-    • Config-only interactions (`boot`, `surface`, `trace_recording`, the
-      signal/scope configs). Several are dead config with no reader at all.
+    • Config-only interactions (`boot`, `trace_recording`, the signal/scope
+      configs). Several are dead config with no reader at all.
     • `s1_scout_quote` and `s1_scout_temporal`. Both are still registered in
       `SCOUT_RUNNERS`, but production runs the lived arm
       (`BRAIN_S1E_LIVED_SEQUENCE=1` in hooks/scripts/brain-env.sh) and
@@ -368,6 +265,12 @@ def shipped_prompts():
       live scout and stays. `seed_interactions` still CREATES all three so the
       interactions exist if an arm re-enables them — being seeded and being
       advanced are separate questions.
+    • `recall_query_expansion` — env-gated off by default
+      (BRAIN_QUERY_EXPANSION); joins this roster the day the flag defaults on.
+
+    `surface` ships template + `layout` config (both live reads on the recall
+    hot path). Its MODEL is deliberately not config — see SURFACE_MODEL in
+    surface_contract.py.
 
     The template files are mirrored from the DB's ACTIVE version by
     `./dev sync-prompts`; the config dicts are the shipped config line,
@@ -379,8 +282,10 @@ def shipped_prompts():
     from .scales.s2.healer_prompt import SYSTEM_PROMPT as HEAL
     from .scales.s2.aspect_prompt import SYSTEM_PROMPT as ASP
     from .scales.s1.scouts.prompts.facts_prompt import SYSTEM_PROMPT as SF
+    from .scales.s1.surface_prompt import SYSTEM_PROMPT as SURF
     return {
         's1e': (S1E, S1E_CONFIG_V1),
+        'surface': (SURF, SURFACE_CONFIG_V1),
         's2_community_enrichment': (COMM, S2_COMMUNITY_ENRICHMENT_CONFIG_V1),
         's2_consolidation_enrichment': (CONS,
                                         S2_CONSOLIDATION_ENRICHMENT_CONFIG_V1),
@@ -571,6 +476,7 @@ def seed_interactions(brain):
     from .scales.s1.scouts.prompts.quote_prompt import SYSTEM_PROMPT as S1_SCOUT_QUOTE_PROMPT
     from .scales.s1.scouts.prompts.temporal_prompt import SYSTEM_PROMPT as S1_SCOUT_TEMPORAL_PROMPT
     from .scales.s1.scouts.prompts.facts_prompt import SYSTEM_PROMPT as S1_SCOUT_FACTS_PROMPT
+    from .scales.s1.surface_prompt import SYSTEM_PROMPT as SURFACE_PROMPT
     from .recall_expansion_prompt import SYSTEM_PROMPT as RECALL_EXPANSION_PROMPT
 
     existing = {i['name'] for i in brain.list_interactions()}
@@ -620,7 +526,7 @@ def seed_interactions(brain):
     # 'judge' was renamed to 'surface' in commit 620fb4f (2026-05-03);
     # this seed only knows about 'surface'. Old 'judge' rows in older
     # brains are orphans — clean them out manually if they exist.
-    _register('surface', SURFACE_PROMPT_V1, SURFACE_CONFIG_V1, 'anchor')
+    _register('surface', SURFACE_PROMPT, SURFACE_CONFIG_V1, 'anchor')
     # Payload-recorder gates (docs/TRACE-MODES-DESIGN.md): modes as named
     # config versions — v1 normal (auto-activates), v2 debug (dormant).
     # "Entering debug" = set_interaction_active('trace_recording', 2).

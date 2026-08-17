@@ -302,10 +302,14 @@ class HandsOffTest(ReconcileTestBase):
         # Names verified to exist in seed_interactions — asserting a name that
         # was never an interaction ('signal' vs 'signal_assembler') would pass
         # no matter what shipped_prompts() contained.
+        # `surface` left this list in generation 3: its template + layout
+        # config are live reads, so it ships like the encoder prompts.
         seeded = {i['name'] for i in self.brain.list_interactions()}
-        for name in ('boot', 'surface', 'trace_recording', 'signal_assembler'):
+        for name in ('boot', 'trace_recording', 'signal_assembler'):
             self.assertIn(name, seeded, '%s should be a seeded interaction' % name)
             self.assertNotIn(name, shipped_prompts())
+        self.assertIn('surface', shipped_prompts(),
+                      'surface ships template + layout config since gen 3')
 
 
 class CrashResidueTest(ReconcileTestBase):
@@ -449,7 +453,7 @@ class ShippedContentFingerprintTest(unittest.TestCase):
     HISTORY = {
         2: '42b2eb3fceb655caed9b75a014fb845ed04d9546f27b0cd504f38545cc957a23',
         3: '1c9eb4451651c2b5d8af205c0df1e3ee8309203a1f856e24da41672eba8336cf',
-        4: 'fcee6a60c812aa5152abb0a6108d8ba3654cd87884c050b813dbfd98d1e66d8a',
+        4: '7378aa7d24900cbdbf0ba5ae96adffbe9cf6250235fd156fa6a7ed064b5dff0f',
     }
 
     @staticmethod
