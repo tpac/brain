@@ -75,7 +75,7 @@ class AspectEncoder(IntegrationUnit):
 
         # Sonnet's JSON output isn't fully predictable in shape — sometimes
         # returns the wrapped object {classifications: [...]}, sometimes a
-        # bare array [...]. Accept both. base._extract_json picks the first
+        # bare array [...]. Accept both. runner.extract_json picks the first
         # JSON structure it sees, so a bare array comes through as a list.
         if isinstance(result, list):
             classifications = result
