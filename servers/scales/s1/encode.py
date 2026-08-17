@@ -947,10 +947,11 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
 
     `view_policy` (encoder_view, resolved once in run_encoding): ON, three
     render policies apply — already-encoded turns keep FULL message text (no
-    encoded_turn_trim) but get a stubbed <actions> element; node-op tool lines
-    provenance already shows are dropped from every <actions>; <provenance>
-    renders the Anchor verbs split (created/revised/recalled/archived) instead
-    of the merged encoded(Anchor). OFF: byte-identical to the pre-policy render.
+    encoded_turn_trim) but get a stubbed <actions> element; node-op/lookup tool
+    lines provenance already shows are dropped from every <actions>;
+    <provenance> renders the verbs split (created/revised/recalled/archived
+    (me)) instead of the merged encoded(Anchor). OFF: byte-identical to the
+    pre-policy render.
 
     `scout_notes` (optional): {user_trace_id: [line, ...]} from _map_scout_notes
     — scout findings rendered inside the turn they cite (<scout_notes>), after
@@ -1041,9 +1042,10 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
         ref_ids.update(lk.get('encoded') or ())
         ref_ids.update(lk.get('authored') or ())
         if view_policy:
-            # the verb split also renders recalled + archived refs — fetch
-            # their titles too (authored already covers created ∪ revised)
+            # the verb split also renders recalled/looked_up/archived refs —
+            # fetch their titles too (authored covers created ∪ revised)
             ref_ids.update(lk.get('recalled') or ())
+            ref_ids.update(lk.get('looked_up') or ())
             ref_ids.update(lk.get('archived') or ())
     if ref_ids:
         try:
@@ -1217,9 +1219,12 @@ def _render_provenance(links, frontier, turn, idx, titles=None,
         parts.append('encoded(S1S): %s' % _short_refs(link['encoded'], titles))
     if view_policy:
         from servers.scales.s1.encoder_view import PROVENANCE_SPLIT
-        for key, label in PROVENANCE_SPLIT:
-            if link.get(key):
-                parts.append('%s: %s' % (label, _short_refs(link[key], titles)))
+        for label, keys in PROVENANCE_SPLIT:
+            ids = [i for k in keys for i in (link.get(k) or ())]
+            if ids:
+                # cross-key dedup (an id can be both read and searched-up)
+                ids = list(dict.fromkeys(ids))
+                parts.append('%s: %s' % (label, _short_refs(ids, titles)))
     elif link.get('authored'):
         parts.append('encoded(Anchor): %s' % _short_refs(link['authored'], titles))
     return ' | '.join(parts)

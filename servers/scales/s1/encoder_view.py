@@ -99,14 +99,17 @@ def catalog_view(ids, stops, run_stops, protected=()):
 # ── Actions (the <actions> block inside timeline turns) ──
 
 # Brain node-op tools whose effects the turn's <provenance> line already
-# carries structurally (created/revised/recalled(Anchor) with titled refs) —
-# the raw action line is the duplicate. Edge tools (connect / disconnect /
-# revise_edge) stay VISIBLE: anchor_touched is node-ids only, deliberately —
-# never edges. brain_batch stays visible for the same reason: it can carry
-# edge ops provenance never shows. Unknown tools default to visible.
+# carries structurally (created/revised/recalled(me) with titled refs) — the
+# raw action line is the duplicate (Tom's ruling, id:27db2472). Edge tools
+# (connect / disconnect / revise_edge) stay VISIBLE: anchor_touched is
+# node-ids only, deliberately — never edges. brain_batch is hidden WITH the
+# known cost that its batched connect sub-ops vanish from the encoder's view
+# (accepted: the timeline is not the edge ledger). Unknown tools default to
+# visible.
 HIDDEN_ACTION_TOOLS = frozenset({
-    'remember', 'remember_batch', 'revise', 'revise_batch',
+    'remember', 'remember_batch', 'revise', 'revise_batch', 'brain_batch',
     'get_node', 'get_nodes',
+    'recall', 'recall_batch', 'find_node_by_title', 'filter_nodes', 'enrich',
 })
 
 
@@ -146,13 +149,17 @@ ENCODED_TURN_MESSAGE_CAP = None
 # ── Provenance verb split ──
 
 # Node-op categories rendered per turn when the policy is on, replacing the
-# merged `encoded(Anchor)` (= created∪revised) with the verbs, plus the two
-# categories the merged form dropped. Keys match nodes_for_traces' link dict;
-# the substrate (anchor_touched → ANCHOR_TOUCHED_KEYS) has kept them separate
-# all along. Labels stay in the timeline's identity vocabulary.
+# merged `encoded(Anchor)` (= created∪revised) with the verbs, plus the
+# categories the merged form dropped (Tom's ruling, id:27db2472). Labels use
+# the timeline's identity vocabulary — (me), matching <me>/<other>. Each entry
+# is (label, link-keys): recalled(me) merges the by-id reads (`recalled`,
+# catalog-folded) with the search-tool results (`looked_up`, provenance-only)
+# into ONE line — the reader's question is "what did I look at", not which
+# tool answered it. Keys match nodes_for_traces' link dict; the substrate
+# (anchor_touched → ANCHOR_TOUCHED_KEYS) has kept them separate all along.
 PROVENANCE_SPLIT = (
-    ('created',  'created(Anchor)'),
-    ('revised',  'revised(Anchor)'),
-    ('recalled', 'recalled(Anchor)'),
-    ('archived', 'archived(Anchor)'),
+    ('created(me)',  ('created',)),
+    ('revised(me)',  ('revised',)),
+    ('recalled(me)', ('recalled', 'looked_up')),
+    ('archived(me)', ('archived',)),
 )

@@ -136,8 +136,8 @@ def test_full_link_shape_surfaced_and_encoded_together():
         'surfaced': ['surfA', 'surfB'],
         'encoded': ['encC', 'encD'],
         'encoded_by': 'run6',
-        'authored': [], 'created': [], 'revised': [],
-        'archived': [], 'recalled': [], 'endo': [],  # no touched stream here
+        'authored': [], 'created': [], 'revised': [], 'archived': [],
+        'recalled': [], 'looked_up': [], 'endo': [],  # no touched stream here
         'dropped': [],                               # no recall stream here
         'fetched_by': {}, 'floored_by': {},          # no tool_trace here
     }
@@ -155,8 +155,9 @@ def test_malformed_rows_are_survivable():
     assert links['u5']['surfaced'] == ['ok']           # the good row survived
     assert links['orphan'] == {'surfaced': [], 'encoded': [], 'encoded_by': None,
                                'authored': [], 'created': [], 'revised': [],
-                               'archived': [], 'recalled': [], 'endo': [],
-                               'dropped': [], 'fetched_by': {}, 'floored_by': {}}
+                               'archived': [], 'recalled': [], 'looked_up': [],
+                               'endo': [], 'dropped': [],
+                               'fetched_by': {}, 'floored_by': {}}
 
 
 def test_runs_out_of_order_still_pick_earliest_owning_run():
@@ -246,6 +247,43 @@ def test_touched_verb_split_keys_join_by_stop():
     assert links['u5']['created'] == ['nA']
     assert links['u5']['revised'] == ['nB', 'nA']
     assert links['u5']['authored'] == ['nA', 'nB']   # merged view unchanged
+
+
+def test_touched_looked_up_joins_but_never_reaches_catalog():
+    # `looked_up` (search-tool results) joins per turn for the provenance line,
+    # but session_node_ids deliberately ignores it — folding recall result
+    # pages into the catalog would flood what the aging work just cut.
+    t = {'id': 'at5', 'chain_id': 's0-%s-5' % SHORT,
+         'metadata': {'created': [], 'revised': [], 'archived': [],
+                      'recalled': ['byid1'], 'looked_up': ['srch1', 'srch2'],
+                      'endo': []}}
+    links = nodes_for_traces([], [], [_turn(5)], touched_traces=[t])
+    assert links['u5']['looked_up'] == ['srch1', 'srch2']
+    assert links['u5']['recalled'] == ['byid1']
+    ids = session_node_ids([], [t])
+    assert ids['recalled'] == {'byid1'}
+    assert 'srch1' not in ids['recalled']
+    assert 'looked_up' not in ids                     # never a catalog category
+
+
+def test_lookup_result_id_extractor_per_shape():
+    # The daemon accumulator's per-tool result parsing (S0 capture side of the
+    # looked_up stream) — one branch per dispatch result shape, all defensive.
+    from servers.daemon_server import BrainDaemon
+    x = BrainDaemon._lookup_result_ids
+    node = {'id': 'aaaa1111', 'title': 't'}
+    assert x('recall', {'results': [node, {'no_id': 1}]}) == ['aaaa1111']
+    assert x('recall_batch', [{'query': 'q', 'results': [node]},
+                              {'query': 'q2', 'results': None}]) == ['aaaa1111']
+    assert x('filter_nodes', {'nodes': [node]}) == ['aaaa1111']
+    assert x('enrich', {'node_id': 'bbbb2222', 'enrichments_stored': 2}) == ['bbbb2222']
+    assert x('find_node_by_title', node) == ['aaaa1111']       # top_k=1: dict
+    assert x('find_node_by_title', [node, node]) == ['aaaa1111', 'aaaa1111']
+    assert x('get_nodes', [node, {'id': 'bad', 'error': 'not found'}]) == ['aaaa1111']
+    # malformed payloads yield nothing, never raise
+    for cmd in ('recall', 'recall_batch', 'filter_nodes', 'enrich', 'get_node'):
+        assert x(cmd, None) == []
+        assert x(cmd, 'garbage') == []
 
 
 def test_touched_absent_yields_empty_relations():

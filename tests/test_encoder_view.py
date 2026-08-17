@@ -81,14 +81,21 @@ def test_catalog_view_boundary_stop_stays_full():
 
 # ── pure policy: action visibility ──
 
-def test_action_hidden_only_brain_node_ops():
+def test_action_hidden_covers_node_ops_and_lookups():
     assert action_hidden('mcp__plugin_brain_brain__remember_batch')
     assert action_hidden('mcp__plugin_brain_brain__get_nodes')
     assert action_hidden('mcp__brain__revise')          # user-scope registration
-    # edge ops + mixed batch stay visible (anchor_touched is node-ids only)
+    # id:27db2472: batch + all lookup tools move to provenance too
+    assert action_hidden('mcp__plugin_brain_brain__brain_batch')
+    assert action_hidden('mcp__plugin_brain_brain__recall')
+    assert action_hidden('mcp__plugin_brain_brain__recall_batch')
+    assert action_hidden('mcp__plugin_brain_brain__find_node_by_title')
+    assert action_hidden('mcp__plugin_brain_brain__filter_nodes')
+    assert action_hidden('mcp__plugin_brain_brain__enrich')
+    # edge ops stay visible — "connect has no provenance home, by contract"
     assert not action_hidden('mcp__plugin_brain_brain__connect')
-    assert not action_hidden('mcp__plugin_brain_brain__brain_batch')
-    assert not action_hidden('mcp__plugin_brain_brain__recall')
+    assert not action_hidden('mcp__plugin_brain_brain__disconnect')
+    assert not action_hidden('mcp__plugin_brain_brain__revise_edge')
     # non-brain tools stay visible, whatever their basename
     assert not action_hidden('Bash')
     assert not action_hidden('Edit')
@@ -234,19 +241,25 @@ def test_policy_on_provenance_verb_split():
     touched = [_touched_trace(6, created=['nodeAAAA1111'],
                               revised=['nodeBBBB2222'],
                               recalled=['nodeDDDD4444'],
+                              looked_up=['nodeFFFF6666', 'nodeDDDD4444'],
                               archived=['nodeEEEE5555'])]
-    titles = {'nodeAAAA1111': 'fresh insight', 'nodeDDDD4444': 'looked up'}
+    titles = {'nodeAAAA1111': 'fresh insight', 'nodeDDDD4444': 'looked up',
+              'nodeFFFF6666': 'search hit'}
     on = _render(True, touched=touched, titles=titles)
     t6 = on.split('<turn n="2"')[1].split('</turn>')[0]
-    assert 'created(Anchor): id:nodeAAAA «fresh insight»' in t6
-    assert 'revised(Anchor): id:nodeBBBB' in t6
-    assert 'recalled(Anchor): id:nodeDDDD «looked up»' in t6
-    assert 'archived(Anchor): id:nodeEEEE' in t6
+    assert 'created(me): id:nodeAAAA «fresh insight»' in t6
+    assert 'revised(me): id:nodeBBBB' in t6
+    # recalled(me) merges by-id reads with search results, deduped
+    assert ('recalled(me): id:nodeDDDD «looked up» id:nodeFFFF «search hit»'
+            in t6)
+    assert t6.count('id:nodeDDDD') == 1
+    assert 'archived(me): id:nodeEEEE' in t6
     assert 'encoded(Anchor)' not in on          # the merged label retires
-    # control arm: merged label, no verbs
+    # control arm: merged label, no verbs, no looked_up render
     off = _render(False, touched=touched, titles=titles)
     assert 'encoded(Anchor): id:nodeAAAA' in off
-    assert 'created(Anchor)' not in off and 'recalled(Anchor)' not in off
+    assert 'created(me)' not in off and 'recalled(me)' not in off
+    assert 'nodeFFFF' not in off
 
 
 # ── catalog aging (build_node_catalog wiring) ──
@@ -341,11 +354,18 @@ def test_catalog_surfaced_ids_protected_from_aging():
 
 
 def test_hidden_tools_and_split_stay_in_sync_with_substrate():
-    # The split keys must exist in the link contract; the hidden set must stay
-    # node-ops only (never the edge tools the provenance deliberately omits).
+    # The split keys must exist in the link contract; the hidden set must never
+    # cover the edge tools ("connect has no provenance home, by contract"), and
+    # every hidden lookup tool must have an accumulator route (else the drop
+    # loses information instead of moving it).
     from servers.scales.s1.trace_links import nodes_for_traces
+    from servers.daemon_server import BrainDaemon
     link = nodes_for_traces([], [], [{'id': 'x', 'chain_id': 's0-a-1'}])['x']
-    for key, _label in PROVENANCE_SPLIT:
-        assert key in link
-    assert not {'connect', 'disconnect', 'revise_edge', 'brain_batch'} \
-        & HIDDEN_ACTION_TOOLS
+    for _label, keys in PROVENANCE_SPLIT:
+        for key in keys:
+            assert key in link
+    assert not {'connect', 'disconnect', 'revise_edge'} & HIDDEN_ACTION_TOOLS
+    write_ops = {'remember', 'remember_batch', 'revise', 'revise_batch',
+                 'brain_batch'}                      # provenance via `affected`
+    for tool in HIDDEN_ACTION_TOOLS - write_ops:     # lookups need _LOOKUP_KEY
+        assert tool in BrainDaemon._LOOKUP_KEY, tool

@@ -19,7 +19,8 @@ The capability returns, per target trace, the nodes linked to it by relation:
         'created':    [node_id, ...],   # authored, split: nodes Anchor created (S0)
         'revised':    [node_id, ...],   # authored, split: nodes Anchor revised (S0)
         'archived':   [node_id, ...],   # nodes Anchor archived this turn (S0)
-        'recalled':   [node_id, ...],   # what Anchor deliberately looked up (S0)
+        'recalled':   [node_id, ...],   # Anchor's by-id reads, get_node[s] (S0)
+        'looked_up':  [node_id, ...],   # Anchor's search results — recall*/find/filter/enrich (S0)
         'endo':       [node_id, ...],   # endo-surfaced this turn (S0, empty until wired)
         'dropped':    [node_id, ...],   # offered to Haiku, NOT picked (S1R pool − surfaced)
         'fetched_by': {node_id: tool},  # tool-fetched, ADMITTED to the pool (S1R tool_trace)
@@ -244,12 +245,14 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces,
         meta = t.get('metadata')
         e = touched_by_stop.setdefault(stop, {'authored': [], 'created': [],
                                               'revised': [], 'archived': [],
-                                              'recalled': [], 'endo': []})
+                                              'recalled': [], 'looked_up': [],
+                                              'endo': []})
         e['authored'].extend(_delta_ids(meta, 'created', 'revised'))
         e['created'].extend(_delta_ids(meta, 'created'))
         e['revised'].extend(_delta_ids(meta, 'revised'))
         e['archived'].extend(_delta_ids(meta, 'archived'))
         e['recalled'].extend(_delta_ids(meta, 'recalled'))
+        e['looked_up'].extend(_delta_ids(meta, 'looked_up'))
         e['endo'].extend(_delta_ids(meta, 'endo'))
 
     # candidate pool + explicit-dropped (when the trace carries a verdict),
@@ -323,6 +326,7 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces,
             'revised': _dedup(tch.get('revised', [])),
             'archived': _dedup(tch.get('archived', [])),
             'recalled': _dedup(tch.get('recalled', [])),
+            'looked_up': _dedup(tch.get('looked_up', [])),
             'endo': _dedup(tch.get('endo', [])),
             'dropped': dropped,
             'fetched_by': dict(fetched_by_stop.get(stop, {})) if stop is not None else {},
@@ -347,7 +351,10 @@ def session_node_ids(encode_traces, touched_traces):
     that produced it (an id revised across runs ages by its latest touch);
     `run_stops` is every encode run's stop, ascending — the aging cutoff's
     axis. `surfaced` is NOT here: the catalog already has it from the Haiku
-    judge outputs. `endo` is omitted until the stream is wired.
+    judge outputs. `looked_up` is DELIBERATELY not here either — search-tool
+    result pages render on the per-turn <provenance> line but folding them
+    into the catalog would flood it (a single recall returns up to a page of
+    ids). `endo` is omitted until the stream is wired.
     """
     encoded, authored, recalled = set(), set(), set()
     stops, run_stops = {}, set()

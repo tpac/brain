@@ -594,7 +594,13 @@ def build_delta_metadata(*,
 # plus read-side keys S1 has no analog for (`recalled` = deliberate get_node(s);
 # `endo` = endo-surface ids, empty until endo lands). NODE ids only (full),
 # never edges or the encoding_source field (technical, encoder-invisible).
-ANCHOR_TOUCHED_KEYS = ('created', 'revised', 'archived', 'recalled', 'endo')
+# `recalled` = deliberate by-id reads (get_node[s]) — folded into the encoder
+# catalog as full bodies. `looked_up` = SEARCH-tool results (recall*,
+# find_node_by_title, filter_nodes, enrich) — rendered on the encoder's
+# <provenance> line but never catalog-folded: a recall returns whole result
+# pages, and folding those would flood the catalog the aging work just cut.
+ANCHOR_TOUCHED_KEYS = ('created', 'revised', 'archived', 'recalled',
+                       'looked_up', 'endo')
 # Shape for validate_trace_metadata — every key an id-list. Derived from the
 # constant (not a second hand-written list) so the keyset can't drift.
 ANCHOR_TOUCHED_SHAPE = {k: list for k in ANCHOR_TOUCHED_KEYS}
