@@ -504,24 +504,39 @@ Sources: [OpenAI structured outputs](https://developers.openai.com/api/docs/guid
 
 ---
 
-## Status — updated 2026-08-16
+## Status — updated 2026-08-17
 
-**Steps 0, 1 and 3 are MERGED AND LIVE.** Main is at `570ff6f`; daemon restarted (PID 70192), clean
-boot. `tests/test_recall_query_expansion.py` added (7 tests, one mutation-verified). Pre-commit
-review applied: 4 findings, 3 fixed, 1 accepted (no key stamp on `_llm_client` — adding one would
-put a `resolve_api_key()` file read inside healer's batch loop). Full suite before merge: 2,586
-passed, 8 skipped, 1 xfailed.
+**Steps 0, 1, 3 and 4 are MERGED AND LIVE. Only Step 2 remains.**
+Do not trust a commit hash written in this doc — main moved 20+ commits in a day across several
+streams. Re-derive with `git log`.
 
-**Verified live:** Step 3 by the warmup line `anthropic_client_ms: 484` (the moved constant resolves
-in `_ensure_anthropic_client`); Step 1 by a live recall at 1068ms (the new module-level import
-resolves — a failure there kills all recall).
+**Steps 0/1/3** shipped with `tests/test_recall_query_expansion.py` (7 tests, one
+mutation-verified). Pre-commit review: 4 findings, 3 fixed, 1 accepted (no key stamp on
+`_llm_client` — adding one would put a `resolve_api_key()` file read inside healer's batch loop).
+Full suite at merge: 2,586 passed, 8 skipped, 1 xfailed.
 
-**NOT yet verified live:** Step 0's client hoist needs a real multi-round encode. So does the
-sibling's rolling cache breakpoint (`6c07776`), which landed in the same merge. The success signal
-for that is **`in`, not `cw`** — `in <= ~50` on every round ≥1, consistently across several `[s1e]`
-runs. A single run proves nothing: 2 of 11 pre-fix runs already showed `in=1` via server-side
-auto-caching, so consistency *is* the claim. Only compare rounds inside one `[s1e]` loop — S2
-multi-batch r-lines interleave and are not one trajectory. Detail: brain id:7e15b37a.
+**All three are verified**, each by the observation that actually applies to it:
+- **Step 3** — the warmup line `anthropic_client_ms:` proves the moved constant resolves inside
+  `_ensure_anthropic_client`.
+- **Step 1** — a live recall completing at all proves the new module-level import resolves; a
+  failure there kills every recall.
+- **Step 0** — `tests/test_s2_client_lifetime.py` (4 cases, mutation-verified: reverting the hoist
+  fails the wiring test while the other three still pass).
+
+**Correction worth keeping.** An earlier version of this section said Step 0 was "not yet verified
+live, needs a real multi-round encode." That was wrong and would have sent a successor waiting for
+a signal that cannot arrive: `_call_llm` routes through `run_llm_once`, which is single-shot and
+emits no per-round log lines. There is no daemon.log signal for client-construction count and
+never was — a test was always the only route (brain id:2706de84). Before recording anything as
+"awaiting verification", name the exact observation that would constitute it.
+
+**The rolling cache breakpoint (`6c07776`) is `ebef255c`'s work, not this plan's** — merged
+alongside and now confirmed: 7 runs, 10 chain links, 0 breaks, across `[s1e]`, `[s2ce]` and
+`[s2-consolidation]`. Its success test is the **cr chain** (`cr(N+1)` == `cr+cw(N)` exactly), not
+`in` alone — 2 of 11 pre-fix runs already showed `in=1` from server-side auto-caching, and their
+tell was a broken chain. One untested condition remains: every observed post-fix r0 ran 117–189s,
+inside the 5m cache window, while the only known false pass came from a 368s r0. Detail:
+brain id:7e15b37a.
 
 **Step 4 implemented 2026-08-17** (worktree `jolly-neumann-4f1195`, merge pending): Scribe model
 from `s1e` params (live DB v35 carries `model` + `effort`); query expansion is the registered
