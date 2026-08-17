@@ -541,10 +541,26 @@ def _build_catalog(brain, messages, session_id, lived, view_policy=False):
                 pass
             streams, extra_ids = None, None
 
+    now = None
+    if view_policy:
+        # Conversation time for the catalog's relative-time headers — replays
+        # inject historical [Current date:] prefixes; wall-clock would corrupt
+        # them (the S1 rule — tests/test_time_window_contract). Guarded: a stub
+        # brain without session machinery degrades to wall-clock render.
+        try:
+            from servers.clock import conversation_now
+            ctx = brain.get_or_create_session(session_id)
+            now = conversation_now(messages=messages,
+                                   session_started_at=getattr(ctx, 'started_at', None),
+                                   brain=brain)
+        except Exception:
+            now = None
+
     try:
         node_catalog, cataloged_ids = build_node_catalog(
             judge_outputs, brain, extra_ids=extra_ids,
-            scope=brain.session_scope(session_id), view_policy=view_policy)
+            scope=brain.session_scope(session_id), view_policy=view_policy,
+            now=now)
     except Exception as e:
         print('[s1e] ERROR building node catalog: %s' % e, flush=True)
         node_catalog, cataloged_ids = '', set()
@@ -1063,7 +1079,8 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
     trim = ENCODING_AGENT.get('encoded_turn_trim', 300)
     if view_policy:
         from servers.scales.s1.encoder_view import (
-            ENCODED_TURN_MESSAGE_CAP, action_hidden, actions_stub_line)
+            ENCODED_TURN_MESSAGE_CAP, action_mode, action_stub,
+            actions_stub_line)
 
     out = ""
     for n, t in enumerate(turns, 1):
@@ -1102,16 +1119,24 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
                 out += '  <actions>%s</actions>\n' % actions_stub_line(
                     len(t['actions']))
             else:
-                acts = t['actions']
-                if view_policy:
-                    # node-op lines whose delta this turn's <provenance>
-                    # already shows (encoder_view.HIDDEN_ACTION_TOOLS)
-                    acts = [a for a in acts if not action_hidden(_tool_name(a))]
-                if acts:
+                lines = []
+                for a in t['actions']:
+                    if view_policy:
+                        # per-tool render mode (encoder_view): node-op lines
+                        # provenance already shows drop; search lines trim to
+                        # the query head (intent survives, incl. empty results)
+                        mode = action_mode(_tool_name(a))
+                        if mode == 'drop':
+                            continue
+                        if mode == 'stub':
+                            lines.append(_xml_escape(action_stub(a.get('summary'))))
+                            continue
+                    # tool cues have no metadata['content'] — the summary IS the cue
+                    lines.append(_xml_escape(a.get('summary') or ''))
+                if lines:
                     out += '  <actions>\n'
-                    for a in acts:
-                        # tool cues have no metadata['content'] — the summary IS the cue
-                        out += '    %s\n' % _xml_escape(a.get('summary') or '')
+                    for ln in lines:
+                        out += '    %s\n' % ln
                     out += '  </actions>\n'
         notes = scout_notes.get(uid) if (scout_notes and uid) else None
         if notes:

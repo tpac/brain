@@ -63,6 +63,16 @@ AGED_NODE_CONFIG = {
 # any entry is aged explains the tag once (entries mark themselves in place).
 AGED_TAG = '[aged]'
 
+# Catalog header time render: relative with sub-day steps ('25m ago', '3h ago')
+# — the encoder's questions are recency-shaped and mid-session the hour is the
+# signal ("revised 20m ago" = my own recent write; an absolute date can't say
+# that). Matches surface's time vocabulary (one system, one clock). Side
+# effect by design: relative mode suppresses render_rich_node's duplicate
+# absolute `Created:` line. The caller supplies `time_now` (conversation time
+# — replay-safe) and `this_session_ids` (the ids this session WROTE: encoded ∪
+# authored; reads deliberately don't qualify — reading isn't ownership).
+CATALOG_TIME_CONFIG = {'time_format': 'relative', 'time_fine': True}
+
 
 def aging_cutoff(run_stops, full_rounds=CATALOG_FULL_ROUNDS):
     """The stop at/after which catalog ids stay full: the Nth-newest encode
@@ -98,33 +108,60 @@ def catalog_view(ids, stops, run_stops, protected=()):
 
 # ── Actions (the <actions> block inside timeline turns) ──
 
-# Brain node-op tools whose effects the turn's <provenance> line already
-# carries structurally (created/revised/recalled(me) with titled refs) — the
-# raw action line is the duplicate (Tom's ruling, id:27db2472). Edge tools
-# (connect / disconnect / revise_edge) stay VISIBLE: anchor_touched is
-# node-ids only, deliberately — never edges. brain_batch is hidden WITH the
-# known cost that its batched connect sub-ops vanish from the encoder's view
-# (accepted: the timeline is not the edge ledger). Unknown tools default to
-# visible.
-HIDDEN_ACTION_TOOLS = frozenset({
+# Brain node-op tools whose lines leave <actions> (Tom's ruling, id:27db2472),
+# split by what the drop would lose:
+#   DROPPED — the turn's <provenance> already carries everything actionable
+#     (verb + ids + titles for writes; for get_node[s]/enrich the arguments ARE
+#     the ids provenance shows). brain_batch is dropped WITH the known cost
+#     that its batched connect sub-ops vanish (accepted: the timeline is not
+#     the edge ledger).
+#   STUBBED — search tools render a trimmed line keeping the QUERY head:
+#     provenance shows result ids only, so a full drop loses the search intent
+#     — and a search that found nothing would vanish entirely, though "Anchor
+#     looked for X and the brain had nothing" is encodeable signal.
+# Edge tools (connect / disconnect / revise_edge) stay fully VISIBLE:
+# anchor_touched is node-ids only, deliberately — never edges. Unknown tools
+# default to visible.
+DROPPED_ACTION_TOOLS = frozenset({
     'remember', 'remember_batch', 'revise', 'revise_batch', 'brain_batch',
-    'get_node', 'get_nodes',
-    'recall', 'recall_batch', 'find_node_by_title', 'filter_nodes', 'enrich',
+    'get_node', 'get_nodes', 'enrich',
+})
+STUBBED_ACTION_TOOLS = frozenset({
+    'recall', 'recall_batch', 'find_node_by_title', 'filter_nodes',
 })
 
+# Kept head of a stubbed search line — enough for the query, not the args blob.
+ACTION_STUB_HEAD = 60
 
-def action_hidden(tool_name):
-    """True when a tool_result line should not render: a brain-MCP node-op
-    whose delta this turn's <provenance> already shows. Keys on the raw tool
+
+def action_mode(tool_name):
+    """'full' | 'stub' | 'drop' for a tool_result line. Keys on the raw tool
     name the trace metadata carries (`mcp__<server>__<tool>` — post_tool_trace
     records CC's name verbatim), matching any brain MCP server registration
-    (plugin or user-scope)."""
+    (plugin or user-scope). Non-brain and unknown tools render full."""
     name = str(tool_name or '')
     if not name.startswith('mcp__'):
-        return False
+        return 'full'
     parts = name.split('__')
-    return (len(parts) >= 3 and 'brain' in parts[1]
-            and parts[-1] in HIDDEN_ACTION_TOOLS)
+    if len(parts) < 3 or 'brain' not in parts[1]:
+        return 'full'
+    if parts[-1] in DROPPED_ACTION_TOOLS:
+        return 'drop'
+    if parts[-1] in STUBBED_ACTION_TOOLS:
+        return 'stub'
+    return 'full'
+
+
+def action_stub(summary):
+    """The trimmed line for a stubbed search action: bare tool name + the
+    query head + where the results went. Whitespace-collapsed; the caller
+    XML-escapes (the pointer says 'provenance' in words so escaping can't
+    mangle it)."""
+    s = ' '.join(str(summary or '').split())
+    tool, _, args = s.partition(': ')
+    base = tool.split('__')[-1]
+    head = args[:ACTION_STUB_HEAD] + ('…' if len(args) > ACTION_STUB_HEAD else '')
+    return '%s: %s → results in provenance' % (base, head)
 
 
 def actions_stub_line(n_actions):

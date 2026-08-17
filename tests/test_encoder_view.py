@@ -19,9 +19,10 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from servers.scales.s1.encoder_view import (  # noqa: E402
-    view_policy_enabled, aging_cutoff, catalog_view, action_hidden,
+    view_policy_enabled, aging_cutoff, catalog_view, action_mode, action_stub,
     actions_stub_line, AGED_TAG, AGED_CONTENT_CHARS, CATALOG_FULL_ROUNDS,
-    ENCODED_TURN_MESSAGE_CAP, HIDDEN_ACTION_TOOLS, PROVENANCE_SPLIT,
+    ENCODED_TURN_MESSAGE_CAP, DROPPED_ACTION_TOOLS, STUBBED_ACTION_TOOLS,
+    PROVENANCE_SPLIT,
 )
 from servers.scales.s1.encode import _render_lived_sequence_timeline  # noqa: E402
 from servers.scales.s1.encode_contract import build_node_catalog  # noqa: E402
@@ -81,28 +82,36 @@ def test_catalog_view_boundary_stop_stays_full():
 
 # ── pure policy: action visibility ──
 
-def test_action_hidden_covers_node_ops_and_lookups():
-    assert action_hidden('mcp__plugin_brain_brain__remember_batch')
-    assert action_hidden('mcp__plugin_brain_brain__get_nodes')
-    assert action_hidden('mcp__brain__revise')          # user-scope registration
-    # id:27db2472: batch + all lookup tools move to provenance too
-    assert action_hidden('mcp__plugin_brain_brain__brain_batch')
-    assert action_hidden('mcp__plugin_brain_brain__recall')
-    assert action_hidden('mcp__plugin_brain_brain__recall_batch')
-    assert action_hidden('mcp__plugin_brain_brain__find_node_by_title')
-    assert action_hidden('mcp__plugin_brain_brain__filter_nodes')
-    assert action_hidden('mcp__plugin_brain_brain__enrich')
+def test_action_mode_drop_stub_full():
+    # writes + by-id reads + enrich: provenance carries everything → drop
+    for t in ('remember_batch', 'revise', 'brain_batch', 'get_nodes', 'enrich'):
+        assert action_mode('mcp__plugin_brain_brain__%s' % t) == 'drop'
+    assert action_mode('mcp__brain__revise') == 'drop'   # user-scope registration
+    # search tools: the query head survives as a stub (intent + empty results)
+    for t in ('recall', 'recall_batch', 'find_node_by_title', 'filter_nodes'):
+        assert action_mode('mcp__plugin_brain_brain__%s' % t) == 'stub'
     # edge ops stay visible — "connect has no provenance home, by contract"
-    assert not action_hidden('mcp__plugin_brain_brain__connect')
-    assert not action_hidden('mcp__plugin_brain_brain__disconnect')
-    assert not action_hidden('mcp__plugin_brain_brain__revise_edge')
+    for t in ('connect', 'disconnect', 'revise_edge'):
+        assert action_mode('mcp__plugin_brain_brain__%s' % t) == 'full'
     # non-brain tools stay visible, whatever their basename
-    assert not action_hidden('Bash')
-    assert not action_hidden('Edit')
-    assert not action_hidden('mcp__slack__get_nodes')
+    assert action_mode('Bash') == 'full'
+    assert action_mode('mcp__slack__get_nodes') == 'full'
     # unknown defaults to visible
-    assert not action_hidden(None)
-    assert not action_hidden('')
+    assert action_mode(None) == 'full'
+    assert action_mode('') == 'full'
+
+
+def test_action_stub_keeps_query_head():
+    s = action_stub('mcp__plugin_brain_brain__recall: {"query": "wal-index '
+                    'contention", "limit": 8, "filter": {"type": {"in": '
+                    '["decision"]}}}')
+    assert s.startswith('recall: {"query": "wal-index contention"')
+    assert s.endswith('→ results in provenance')
+    assert '…' in s and len(s) < 110                 # trimmed, marked
+    # short args survive whole, no ellipsis
+    s2 = action_stub('mcp__plugin_brain_brain__filter_nodes: {"field": "type"}')
+    assert s2 == 'filter_nodes: {"field": "type"} → results in provenance'
+    assert isinstance(action_stub(None), str)        # defensive, never raises
 
 
 def test_actions_stub_marks_itself():
@@ -176,6 +185,9 @@ def _two_turn_eps(covered_body='covered turn text', tail_body='tail turn text'):
         _msg('tool_result', 't6b', 6,
              'mcp__plugin_brain_brain__remember_batch: {"nodes": [...]}',
              '2026-08-01T00:00:07', tool='mcp__plugin_brain_brain__remember_batch'),
+        _msg('tool_result', 't6c', 6,
+             'mcp__plugin_brain_brain__recall: {"query": "catalog aging design"}',
+             '2026-08-01T00:00:08', tool='mcp__plugin_brain_brain__recall'),
     ]
 
 
@@ -228,10 +240,23 @@ def test_policy_on_drops_node_op_lines_on_unencoded_turns():
     assert 'Edit: foo.py' in t6                # world-changing lines stay
 
 
+def test_policy_on_search_lines_stub_to_query_head():
+    # recall keeps its intent (the query) but points at provenance for results
+    out = _render(True)
+    t6 = out.split('<turn n="2"')[1].split('</turn>')[0]
+    assert ('recall: {"query": "catalog aging design"} → results in provenance'
+            in t6)
+    assert 'mcp__plugin_brain_brain__recall' not in t6   # bare name, no prefix
+    # control arm renders the raw line untouched
+    off = _render(False)
+    assert 'mcp__plugin_brain_brain__recall: {"query"' in off
+    assert '→ results in provenance' not in off
+
+
 def test_policy_on_all_actions_hidden_drops_element():
-    # A tail turn whose only action is a hidden node-op: nothing to show —
+    # A tail turn whose only actions are dropped node-ops: nothing to show —
     # unencoded turns carry no coverage claim, so the element may drop.
-    eps = [e for e in _two_turn_eps() if e['id'] != 't6a']
+    eps = [e for e in _two_turn_eps() if e['id'] not in ('t6a', 't6c')]
     out = _render(True, eps=eps)
     t6 = out.split('<turn n="2"')[1].split('</turn>')[0]
     assert '<actions>' not in t6
@@ -342,6 +367,47 @@ def test_catalog_policy_off_renders_full_everywhere():
     assert text.count('Edges:') == 2      # both nodes full depth
 
 
+def test_relative_time_fine_and_now_injection():
+    from datetime import datetime, timezone
+    from servers.scales.s1.surface_contract import _relative_time
+    now = datetime(2026, 8, 16, 12, 0, 0, tzinfo=timezone.utc)
+    assert _relative_time('2026-08-16T11:35:00+00:00', now=now, fine=True) == '25m ago'
+    assert _relative_time('2026-08-16T09:00:00+00:00', now=now, fine=True) == '3h ago'
+    assert _relative_time('2026-08-16T11:59:30+00:00', now=now, fine=True) == 'just now'
+    # past a day, fine falls through to the coarse scale
+    assert _relative_time('2026-08-14T09:00:00+00:00', now=now, fine=True) == '2d ago'
+    # default (surface) vocabulary is untouched
+    assert _relative_time('2026-08-16T09:00:00+00:00', now=now) == 'today'
+
+
+def test_catalog_header_relative_time_and_session_ownership():
+    from datetime import datetime, timezone
+    brain = _CatalogBrain({'oldnode1': _node('oldnode1'),
+                           'newnode1': _node('newnode1')})
+    now = datetime(2026, 8, 1, 3, 0, 0, tzinfo=timezone.utc)  # nodes created 00:00
+    text, _ = build_node_catalog([], brain, extra_ids=_EXTRA,
+                                 view_policy=True, now=now)
+    # relative fine header + ownership mark (both ids are session-encoded)
+    assert '(id:newnode1, 3h ago, this session)' in text
+    # relative mode suppresses the duplicate absolute `Created:` line
+    assert 'Created: 2026-08-01' not in text
+    # flag off: absolute date, doubled render, no ownership mark — unchanged
+    off, _ = build_node_catalog([], brain, extra_ids=_EXTRA, view_policy=False)
+    assert '(id:newnode1, 2026-08-01)' in off
+    assert 'Created: 2026-08-01' in off
+    assert 'this session' not in off
+
+
+def test_catalog_ownership_mark_excludes_read_only_ids():
+    # a node only READ this session (recalled) gets no ownership mark
+    brain = _CatalogBrain({'readnode1': _node('readnode1')})
+    extra = {'encoded': set(), 'authored': set(), 'recalled': {'readnode1'},
+             'stops': {'readnode1': 15}, 'run_stops': [5, 10, 15]}
+    text, _ = build_node_catalog([], brain, extra_ids=extra, view_policy=True)
+    assert 'readnode1' in text
+    assert 'this session' not in text
+
+
 def test_catalog_surfaced_ids_protected_from_aging():
     # oldnode1 is old by stop but surfaced for the CURRENT window → full body.
     judge = ['picked id:oldnode1 for this turn']
@@ -364,8 +430,10 @@ def test_hidden_tools_and_split_stay_in_sync_with_substrate():
     for _label, keys in PROVENANCE_SPLIT:
         for key in keys:
             assert key in link
-    assert not {'connect', 'disconnect', 'revise_edge'} & HIDDEN_ACTION_TOOLS
+    non_full = DROPPED_ACTION_TOOLS | STUBBED_ACTION_TOOLS
+    assert not {'connect', 'disconnect', 'revise_edge'} & non_full
+    assert not DROPPED_ACTION_TOOLS & STUBBED_ACTION_TOOLS   # modes disjoint
     write_ops = {'remember', 'remember_batch', 'revise', 'revise_batch',
                  'brain_batch'}                      # provenance via `affected`
-    for tool in HIDDEN_ACTION_TOOLS - write_ops:     # lookups need _LOOKUP_KEY
+    for tool in non_full - write_ops:                # lookups need _LOOKUP_KEY
         assert tool in BrainDaemon._LOOKUP_KEY, tool

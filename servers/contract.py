@@ -719,7 +719,10 @@ def render_rich_node(node, config=None):
             return None
         if use_relative:
             from servers.pipeline_contract import _relative_time
-            return _relative_time(ts)
+            # time_now: the as-of instant (replay-safe callers pass conversation
+            # time); time_fine: sub-day '3h ago' steps (the encoder catalog).
+            return _relative_time(ts, now=cfg.get('time_now'),
+                                  fine=cfg.get('time_fine', False))
         return str(ts)[:10]
 
     # Header — individual parts are opt-out via cfg flags (defaults preserve
@@ -745,6 +748,12 @@ def render_rich_node(node, config=None):
         parts.append("created %s, revised %s" % (created_rel, revised_rel))
     elif created_rel:
         parts.append(created_rel)
+    # Ownership mark: caller-supplied set of node ids this session WROTE
+    # (encoder catalog — created/revised by a prior run or Anchor mid-session;
+    # reads deliberately don't qualify). Renders in the header so recency and
+    # ownership sit together.
+    if nid in (cfg.get('this_session_ids') or ()):
+        parts.append("this session")
 
     lines = ['[%s] "%s" (%s)' % (
         node.get('type', '?'), node.get('title', '?'), ", ".join(parts))]

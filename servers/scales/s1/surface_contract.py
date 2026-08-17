@@ -104,11 +104,20 @@ def _desc_vecs_batched(descs):
     return out
 
 
-def _relative_time(iso_str):
+def _relative_time(iso_str, now=None, fine=False):
     """Convert UTC ISO timestamp to relative time label.
 
     Returns human-readable age: 'just now', 'today', 'yesterday', '3d ago', '2w ago', '1mo ago'.
     Both surface and Anchor see this instead of raw UTC timestamps.
+
+    `fine` (encoder catalog): sub-day steps — '25m ago' / '3h ago' instead of
+    'just now' / 'today'. Mid-session the hour is the signal ("revised 20m ago
+    → my own recent write" vs "today" which swallows the whole working day).
+    Default off — surface keeps its coarse vocabulary.
+
+    `now` — the as-of instant (tz-aware). Replays must pass conversation time
+    explicitly (the same rule as iso_cutoff — see tests/test_time_window_contract);
+    None → operator wall-clock, correct for live renders only.
     """
     if not iso_str:
         return None
@@ -119,15 +128,22 @@ def _relative_time(iso_str):
         ts = datetime.fromisoformat(ts_str)
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
-        # brain_now() in operator's TZ — relative-time labels ("today",
-        # "yesterday") must reflect the operator's day boundaries, not the
-        # daemon host's UTC day boundaries. See servers/clock.py.
-        from servers.clock import brain_now
-        now = brain_now()
+        if now is None:
+            # brain_now() in operator's TZ — relative-time labels ("today",
+            # "yesterday") must reflect the operator's day boundaries, not the
+            # daemon host's UTC day boundaries. See servers/clock.py.
+            from servers.clock import brain_now
+            now = brain_now()
         delta = now - ts
         hours = delta.total_seconds() / 3600
         days = delta.days
 
+        if fine and hours < 24:
+            if delta.total_seconds() < 120:
+                return "just now"
+            if hours < 1:
+                return "%dm ago" % (delta.total_seconds() // 60)
+            return "%dh ago" % hours
         if hours < 1:
             return "just now"
         elif hours < 24:

@@ -248,7 +248,7 @@ def _filter_noise_relations(nodes_map, brain):
 
 
 def build_node_catalog(judge_outputs, brain, extra_ids=None,
-                       scope=None, view_policy=False):
+                       scope=None, view_policy=False, now=None):
     """Build the deduplicated rich-node catalog the encoder dereferences by id.
 
     Uses system render_rich_node() with S1 config (full rich, corrections heavy).
@@ -268,9 +268,12 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
             run_encoding). ON: entries sort oldest→newest by last-touched stop
             and entries older than the newest CATALOG_FULL_ROUNDS encode rounds
             render trimmed ([aged] — no edges, lean corrections, content head)
-            — ~86% smaller per aged node, reversible via get_nodes. OFF
-            (default): unsorted full-depth render, byte-identical to the
-            long-standing path.
+            — ~86% smaller per aged node, reversible via get_nodes. Headers
+            render relative fine-grained time ('3h ago') + a `this session`
+            ownership mark on ids this session wrote. OFF (default): unsorted
+            full-depth render, byte-identical to the long-standing path.
+        now: the as-of instant for relative time (conversation time — replays
+            must pass it; None → wall-clock). Only read when view_policy is on.
 
     Returns:
         (catalog_text, node_id_set) — formatted catalog + set of IDs rendered.
@@ -355,10 +358,17 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
     catalog_cfg = (dict(S1_NODE_CONFIG, scope=scope)
                    if scope else S1_NODE_CONFIG)
     aged_cfg = None
-    if aged:
-        from servers.scales.s1.encoder_view import AGED_NODE_CONFIG
-        aged_cfg = (dict(AGED_NODE_CONFIG, scope=scope)
-                    if scope else AGED_NODE_CONFIG)
+    if view_policy:
+        from servers.scales.s1.encoder_view import CATALOG_TIME_CONFIG
+        # fine relative time + ownership mark (ids this session WROTE)
+        own = (extra_ids.get('encoded') or set()) | (extra_ids.get('authored') or set())
+        view_cfg = dict(CATALOG_TIME_CONFIG, time_now=now, this_session_ids=own)
+        catalog_cfg = dict(catalog_cfg, **view_cfg)
+        if aged:
+            from servers.scales.s1.encoder_view import AGED_NODE_CONFIG
+            aged_cfg = dict(AGED_NODE_CONFIG, **view_cfg)
+            if scope:
+                aged_cfg['scope'] = scope
     for nid in order:
         node = rich_map.get(nid)
         if not node:
