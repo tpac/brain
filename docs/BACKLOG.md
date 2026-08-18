@@ -29,32 +29,18 @@ and the eight research questions live there).
 
 ## Now — verified open
 
-### 🟡 0. Encoder view policy: wire arm D to production, then activate (2026-08-18) ◀ ACTIVE ARC
-**Read first:** handoff `550b4ce8` (the letter), then blocker `6f7fc98c`.
-**The design is chosen and read-verified — and it is eval-only.** Arm **D** = full node
-body + edges suppressed-but-announced (`Edges (23, not shown — get_nodes for them):`)
-+ window-aligned cutoff. `run_encoding` never passes `window_first_turn` or
-`aged_content_chars`, so **flag ON today still renders arm B** (round cutoff, body cut
-to 400). Every arm C/D number describes a config production cannot currently produce.
-**Why D** (`ffb0f7a4`, spec `afa6bb59`, verdict `d34af9e4`): truncating the body let the
-encoder rewrite what it couldn't see. Two read-verified destructions, one under the
-fully-guarded prompt (`8aa7e7d7`). Same node under D kept everything C erased. Size vs
-unpoliced: −15% to −36%; vs merged arm B: within a few points, better on one capture.
-**Shipping order:** (1) pass both params from `_build_catalog`; (2) **make the strings
-true** — the header says "content is CUT at 400 chars" and the prompt says "`…` is a
-fragment"; both are false under D, and shipping them repeats the stale-gloss defect
-this arc exists to fix (tag wants `[body only]`, not `[aged]`/`[truncated]`);
-(3) v39 prompt: register → activate → `sync-prompts` → bump `SEED_PROMPTS_VERSION`;
-(4) retire `encoded_turn_trim` + its flag-off test; (5) wide `-k` tier, branch, merge;
-(6) `./redeploy.sh` + new session for the `get_nodes` MCP description — last, it ends
-the session.
-**Do not reopen:** `ab_encode.py` for this policy (structurally blind, `d8809f3f`) ·
-more prompt text for the turn-pointer leak (97%→90% over two attempts; `3faf5b01`
-explains why prose loses to an 87%-leaky catalog) · more prompt text against
-partial-view rewrites (`8aa7e7d7`) · `get_nodes_config` for the encoder (Tom deferred) ·
-last-30 catalog cap (`9ae6820a`) · content-trimming as the savings lever (`155ddb64`).
-**Open, and larger than the render:** run-to-run node-quality variance dwarfs every arm
-difference measured; unexplained, unexamined.
+### ~~🟡 0. Encoder view policy: wire arm D to production, then activate~~ SHIPPED 2026-08-18
+Arm D live: flag default ON, body-whole aging, window-aligned cutoff, no
+tag/header (Tom's ruling `5da51d3d` — the per-entry `Edges (N, not shown)`
+line is the marker), `encoded_turn_trim` retired, s1e v36 active + seed gen 5.
+Smoke on the deepest capture: −29.3% vs control, 59/61 aged bodies over the
+retired cap, zero cuts. Anomaly closed as harness artifact (`51d1cfa3`).
+**Do not reopen:** `ab_encode.py` for this policy (structurally blind,
+`d8809f3f`) · more prompt text for the turn-pointer leak (`3faf5b01`) ·
+`get_nodes_config` for the encoder (Tom deferred) · last-30 catalog cap
+(`9ae6820a`) · content-trimming as the savings lever (`155ddb64`).
+**Open, and larger than the render:** run-to-run node-quality variance dwarfs
+every arm difference measured; unexplained, unexamined.
 
 ### 🟡 0b. Delete retired `co_accessed` + `emergent_bridge` rows (phase 2)
 The write-stop shipped (Tom ruled both dead 2026-08-17; spec node `df681fc1`,
