@@ -1139,8 +1139,8 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
     # No attr when the trace-link join is unavailable (degraded piece-1 path —
     # coverage unknown).
     if view_policy:
-        from servers.scales.s1.encoder_view import (
-            action_mode, action_stub, actions_stub_line)
+        from servers.scales.s1.encoder_view import actions_stub_line
+        from servers.scales.s1.encoder_actions import condense_actions
 
     if view_policy:
         from servers.scales.s1.trace_links import display_turn
@@ -1197,20 +1197,19 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
                 out += '  <actions>%s</actions>\n' % actions_stub_line(
                     len(t['actions']))
             else:
-                lines = []
-                for a in t['actions']:
-                    if view_policy:
-                        # per-tool render mode (encoder_view): node-op lines
-                        # provenance already shows drop; search lines trim to
-                        # the query head (intent survives, incl. empty results)
-                        mode = action_mode(_tool_name(a))
-                        if mode == 'drop':
-                            continue
-                        if mode == 'stub':
-                            lines.append(_xml_escape(action_stub(a.get('summary'))))
-                            continue
-                    # tool cues have no metadata['content'] — the summary IS the cue
-                    lines.append(_xml_escape(a.get('summary') or ''))
+                if view_policy:
+                    # The condenser owns everything actions-shaped under the
+                    # policy: drop/stub (existing action_mode semantics),
+                    # exact dedup, and the per-turn budget with the rollup
+                    # accounting line. The tail turn gets the larger budget —
+                    # it is the encoder's actual working material.
+                    lines = [_xml_escape(ln) for ln in condense_actions(
+                        t['actions'], is_tail=(n == len(turns)))]
+                else:
+                    # Flag off: the legacy render — one verbatim summary per
+                    # action (tool cues have no metadata['content']).
+                    lines = [_xml_escape(a.get('summary') or '')
+                             for a in t['actions']]
                 if lines:
                     out += '  <actions>\n'
                     for ln in lines:

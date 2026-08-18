@@ -157,6 +157,27 @@ STUBBED_ACTION_TOOLS = frozenset({
 # Kept head of a stubbed search line — enough for the query, not the args blob.
 ACTION_STUB_HEAD = 60
 
+# ── Actions condenser (encoder_actions.py — parse → condense → render) ──
+
+# Rendered action lines per turn before the middle rolls up into the
+# accounting line. The tail turn (the encoder's actual working material)
+# gets the larger budget; older unencoded turns the smaller. Generous on
+# purpose — we haven't measured what the encoder loses when sweeps collapse,
+# so v1 clamps only the floods (sample: a review turn carried ~105 actions,
+# a healthy build turn ~12).
+ACTIONS_BUDGET = 15
+ACTIONS_BUDGET_TAIL = 30
+
+# The closing actions carry the turn's outcome (the commit, the merge, the
+# final verification) — always rendered verbatim, never rolled up.
+ACTIONS_KEEP_LAST = 2
+
+# One rendered line per action; longer labels mark their cut with '…'.
+ACTION_LABEL_CAP = 180
+
+# Distinct file targets named in the rollup line before '+N more'.
+ROLLUP_TARGET_CAP = 8
+
 
 def action_mode(tool_name):
     """'full' | 'stub' | 'drop' for a tool_result line. Keys on the raw tool
