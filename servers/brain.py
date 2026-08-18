@@ -201,11 +201,10 @@ class Brain(
 
         # Background-writer connection (2026-05-18). Owned exclusively by the
         # embed_queue worker thread for batched, deferred, non-realtime writes:
-        # temporal_extract intervals, vector backfill, recall-side access marks
-        # (`_mark_accessed`), and Hebbian co-access strengthening (moved out
-        # of the recall hot path at the surface layer). The recall hot path is
-        # read-only at SQLite. Foreground writes via `self.conn` no longer race
-        # with background batches at the WAL writer slot.
+        # temporal_extract intervals, vector backfill, and recall-side access
+        # marks (`_mark_accessed`). The recall hot path is read-only at
+        # SQLite. Foreground writes via `self.conn` no longer race with
+        # background batches at the WAL writer slot.
         #
         # Replaces the prior `self.conn_recall_write` design (Phase 8 cleanup,
         # 2026-05-18). The two-writer design split conn_recall_write from
@@ -266,9 +265,9 @@ class Brain(
 
         # Repository aggregate (DAL cleanup Phase 2): hold the brain.db DALs
         # foreground-conn-bound so methods use them by construction instead of
-        # re-instantiating XDAL(self.conn) ad hoc. The bg-writer path
-        # (recall_write_queue) constructs its own GraphDAL on conn_bg_writer —
-        # the one documented exception.
+        # re-instantiating XDAL(self.conn) ad hoc. The one documented
+        # exception is EntityDatesDAL's backfill writer, constructed on
+        # conn_bg_writer (see below).
         from .dal import (NodeDAL, Fts5DAL, TfIdfDAL, EntityDatesDAL,
                           SourceRefDAL)
         from .dal_graph import GraphDAL

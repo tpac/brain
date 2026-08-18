@@ -303,7 +303,7 @@ class BrainTestBase(unittest.TestCase):
         """Force-drain BOTH background queues synchronously.
 
         Drains embed_queue (vectors + temporal extraction) and
-        recall_write_queue (access marks + Hebbian) so tests see
+        recall_write_queue (access marks) so tests see
         synchronous behavior after calls that enqueue.
 
         Normally called automatically after remember()/revise()/recall()
@@ -319,10 +319,9 @@ class BrainTestBase(unittest.TestCase):
         background queues before returning. Tests see synchronous behavior.
 
         Recall is wrapped because Phase 5 (2026-05-18) moved
-        _mark_accessed and the surface-driven Hebbian path off the hot
-        path onto the bg_writer queue. Tests asserting on
-        nodes.access_count immediately after recall need the drain to
-        fire synchronously.
+        _mark_accessed off the hot path onto the bg_writer queue.
+        Tests asserting on nodes.access_count immediately after recall
+        need the drain to fire synchronously.
         """
         from servers import embed_queue, recall_write_queue
 

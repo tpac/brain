@@ -520,9 +520,9 @@ class TestSelectionLivenessGate(BrainTestBase):
                 self.brain, ctx, candidates_data, 'user msg', [], {},
                 'enriched query', [], 'test-recall-ref', session_id, None,
                 query_vec=None)
-            evts = self.brain._trace_dal.get_by_ref_type(
-                'surface_selected', scale='s1', hours=None,
-                session_id=session_id)
+            evts = self.brain.query_traces(
+                scale='s1', ref_type='surface_selected',
+                session_id=session_id, hours=None).get('events') or []
             self.assertTrue(evts, 'no surface_selected K trace written')
             surfaced = set(json.loads(evts[0]['ref_id']))
             self.assertIn(live['id'][:8], surfaced,
@@ -616,9 +616,9 @@ class TestSelectedIdRecovery(BrainTestBase):
                 self.brain, ctx, candidates_data, 'user msg', [], {},
                 'enriched query', [], 'test-recall-ref', session_id, None,
                 query_vec=None)
-            evts = self.brain._trace_dal.get_by_ref_type(
-                'surface_selected', scale='s1', hours=None,
-                session_id=session_id)
+            evts = self.brain.query_traces(
+                scale='s1', ref_type='surface_selected',
+                session_id=session_id, hours=None).get('events') or []
             return set(json.loads(evts[0]['ref_id'])) if evts else set()
         finally:
             surface_mod._call_surface = orig

@@ -293,10 +293,6 @@ class BrainConnectionsMixin:
     # the random-walk neighbor path is retired (GraphDAL.get_random_walk_neighbors
     # was also removed).
 
-    def _get_node_title(self, node_id: str) -> str:
-        """Get title of a node by ID, falling back to the id if absent."""
-        return self._nodes.get_title(node_id) or node_id
-
     # _find_bridge_candidates / _create_bridge removed 2026-08-17 —
     # emergent_bridge retired (node 072e26d8): triadic closure doesn't hold
     # in a typed semantic graph, and a store-time bridge materialized the

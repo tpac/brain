@@ -13,7 +13,7 @@ and the wrapper layer (connect / connect_typed).
 
 The unified contract:
   - add_relation is field-preserving upsert with sentinel pattern
-  - No auto-strengthen — Hebbian bumps live in recall_write_queue
+  - No auto-strengthen — repeated connect never bumps weight
   - Archived row → revive with passed values + defaults (semantic fresh row)
   - Each mutation emits 1 (delta, edge_relation_revised) trace event
   - connect_typed wrapper passes None=preserve through to add_relation

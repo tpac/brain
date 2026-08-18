@@ -100,8 +100,6 @@ EXTERNAL_CLAIM_KEYWORDS = {
 }
 
 # Hebbian learning
-LEARNING_RATE = 0.2
-MAX_WEIGHT = 1.0
 PRUNE_THRESHOLD = 0.05
 
 # Page sizes
@@ -238,10 +236,6 @@ EDGE_PRUNE_THRESHOLD = 0.1  # Edges below this weight after decay are deleted
 CRITICAL_BOOST = 3.0              # Recall score multiplier for critical=1 nodes
 CRITICAL_SIMILARITY_THRESHOLD = 0.20  # Lowered embedding threshold for critical nodes
 
-# Graph traversal
-SPREAD_DECAY = 0.5
-MAX_HOPS = 3
-MAX_NEIGHBORS = 50
 # STABILITY_BOOST, STABILITY_FLOOR_* removed 2026-04-13 — stability field deprecated.
 
 # B.2: Graph-augmented recall — 3-degree traversal

@@ -11,9 +11,9 @@ _build_edge_coeffs:
 
 Plus per-hop totals so we see whether one hop dominates.
 
-Seed selection: take the 5 highest-activation node IDs from the most
-recent surface-selected file (mirrors what surface.py would feed
-_graph_expand). Falls back to a hand-picked set if not found.
+Seed selection: take the node IDs from the most recent surface_selected
+trace (mirrors what surface.py would feed _graph_expand). Falls back to
+a hand-picked set if not found.
 
 Run:
     ./dev python3 scripts/profile_spread.py
@@ -24,7 +24,6 @@ Run:
 """
 from __future__ import annotations
 import argparse
-import glob
 import json
 import os
 import sys
@@ -36,29 +35,28 @@ if ROOT not in sys.path:
 
 from servers.scales.dispatch import load_env  # noqa: E402
 load_env()
-from servers.daemon_config import brain_tmp_dir  # noqa: E402
 
 
 def _latest_surface_selected_seeds() -> list[str]:
-    """Most recent surface-selected file → list of full node IDs."""
-    # Honor BRAIN_TMP_DIR via brain_tmp_dir() so we read where the daemon WROTE
-    # (matches the WRITER; default /tmp).
-    paths = glob.glob(os.path.join(brain_tmp_dir(), 'brain-*-surface-selected.json'))
-    if not paths:
-        return []
-    paths.sort(key=os.path.getmtime, reverse=True)
-    with open(paths[0]) as f:
-        d = json.load(f)
-    short_ids = d.get('selected_ids', [])
-    if not short_ids:
-        return []
-    # Resolve short IDs to full UUIDs via brain
+    """Most recent surface_selected trace → list of full node IDs.
+
+    The trace's ref_id is the JSON list of surfaced short ids (the
+    tmp-file handoff was retired with the co_accessed family).
+    """
     from servers.brain import Brain
     from servers.dal import NodeDAL
     brain = Brain.get_instance(
         os.path.join(os.environ.get('BRAIN_DB_DIR') or
                      os.path.expanduser('~/AgentsContext/brain'),
                      'brain.db'))
+    evts = brain.query_traces(
+        scale='s1', ref_type='surface_selected', hours=None,
+        limit=1).get('events') or []
+    if not evts:
+        return []
+    short_ids = json.loads(evts[0].get('ref_id') or '[]')
+    if not short_ids:
+        return []
     ndal = NodeDAL(brain.conn)
     return [ndal.resolve_id(sid) for sid in short_ids if ndal.resolve_id(sid)]
 
@@ -222,7 +220,7 @@ def main():
 
     seeds = _latest_surface_selected_seeds()
     if not seeds:
-        raise SystemExit('No surface-selected file. Trigger a recall first.')
+        raise SystemExit('No surface_selected trace found. Trigger a recall first.')
     print(f'Seeds: {len(seeds)} — {[s[:8] for s in seeds]}')
 
     from servers.brain import Brain

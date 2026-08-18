@@ -186,10 +186,9 @@ def _worker_loop(brain) -> None:
       1. `embed_queue` — node vectors + temporal date extraction.
          Heavier work; uses `_drain_busy` skip-tick semantics to avoid
          overlapping drains on cold-start (~20K entities at first boot).
-      2. `recall_write_queue` — access marks + Hebbian co-access
-         strengthening. Lightweight (atomic SQL +1s on
-         `brain.conn_bg_writer`); always called per cycle since its
-         own drain_once self-checks for empty queues.
+      2. `recall_write_queue` — access marks. Lightweight (atomic SQL
+         +1s on `brain.conn_bg_writer`); always called per cycle since
+         its own drain_once self-checks for an empty queue.
 
     Top-level try/except is the load-bearing safety net for the
     "no silent errors" mandate — the worker thread MUST never die.

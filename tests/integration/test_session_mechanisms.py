@@ -8,9 +8,9 @@ Uses a COPY of the live brain DB. Never modifies production.
 Mechanisms tested:
 1. Z-weighted 4-group embedding scoring
 2. Synaptic fatigue (degree-based)
-3. Surface-selected Hebbian (co_accessed from surface, not from cosine scan)
+3. co_accessed retirement (recall mints no edges; exclusions hold)
 4. Embedding redistribution (70/30 from frozen originals)
-5. Structural graph separation (co_accessed + emergent excluded from traversal)
+5. Structural graph separation (noise relations excluded from traversal)
 6. Layer 3 post-surface graph expansion
 7. KV metadata store (extensible without schema changes)
 8. Encoding group vectors (title, high_meta, other_meta stored at encode time)

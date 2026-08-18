@@ -18,10 +18,6 @@ One signal rides on this queue:
     drain window collapse to a single +1. Cross-session accesses to the
     same node still produce one increment per session.
 
-(The Hebbian co_accessed signal that used to share this queue was retired
-2026-08-17 — node ab56d25a. The surface_selected traces remain the durable
-co-access substrate.)
-
 Design constraints (operator: Tom):
   - No silent errors. Every except logs via brain._log_error.
   - No read-modify-write where SQL can do +1 atomically.
@@ -56,7 +52,7 @@ _access_queue: Dict[Tuple[str, str], str] = {}
 _lock = threading.Lock()
 
 # NOTE: this queue has NO shutdown signal of its own. There is ONE background
-# drain worker (it lives in embed_queue and drains BOTH queues); its single
+# drain worker (it lives in embed_queue and drains this queue too); its single
 # shutdown signal — embed_queue.request_shutdown() / _shutdown_event — stops
 # draining of this queue too. recall_write_queue is a passive data structure.
 
@@ -197,10 +193,6 @@ def drain_once(brain) -> None:
     conn = brain.conn_bg_writer
     rolled_back = False
     begin_wait_ms = 0
-    # This drain owns its own BEGIN IMMEDIATE / COMMIT envelope on the
-    # bg-writer connection — the same conn.in_batch gate the foreground
-    # brain_batch uses. Reset in the finally.
-    conn.in_batch = True
     try:
         # BEGIN IMMEDIATE so we grab the WAL writer slot upfront; without
         # this SQLite auto-begins on first write and could deadlock on
@@ -265,11 +257,6 @@ def drain_once(brain) -> None:
                 _stats['rollbacks_total'] += 1
         # NOTE: do NOT re-enqueue the snapshot. The data is intentionally
         # lost — preserves the loss contract and avoids poison-pill loops.
-    finally:
-        # Always clear batch state — the bg-writer connection is reused
-        # across drains, so a leaked True would make the next standalone
-        # write on this connection silently skip its commit.
-        conn.in_batch = False
 
     took_ms = int((time.time() - t0) * 1000)
     with _lock:

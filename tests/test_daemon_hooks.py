@@ -896,5 +896,37 @@ class TestDecayPruneTraces(BrainTestBase):
                          [{'field': 'archived', 'old': 0, 'new': 1}])
 
 
+class TestStopHookMintsNoEdges(BrainTestBase):
+    """co_accessed retirement guard: the Stop hook's post-response path must
+    not create edge_relations rows. This is the writer the retirement
+    removed (surface picks → Hebbian pairs → drain); re-wiring any co-access
+    writer into the Stop hook must fail here, not pass silently."""
+    needs_embedder = False
+
+    def test_conversational_stop_creates_no_edge_relations(self):
+        from servers.daemon_hooks import post_response_common
+        from servers import recall_write_queue
+
+        session_id = 'test-stop-no-edges'
+        ctx = self.brain.get_or_create_session(session_id)
+        # Make the turn classify as conversational (a real UserPromptSubmit
+        # would have set last_recall_stop via hook_recall).
+        ctx.last_recall_stop = ctx.stop_counter
+
+        before = self.brain.conn.execute(
+            'SELECT COUNT(*) FROM edge_relations').fetchone()[0]
+
+        post_response_common(self.brain, session_id,
+                             'user message', 'assistant response')
+        recall_write_queue.drain_once(self.brain)
+
+        after = self.brain.conn.execute(
+            'SELECT COUNT(*) FROM edge_relations').fetchone()[0]
+        self.assertEqual(after, before,
+                         'Stop-hook path created edge_relations rows — '
+                         'a co-access-style writer is back on the '
+                         'post-response path')
+
+
 if __name__ == '__main__':
     unittest.main()

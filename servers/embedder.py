@@ -471,7 +471,7 @@ def get_stats() -> dict:
     # Surface both queue drain stats — makes "my write isn't indexed"
     # and "my access marks aren't landing" debuggable without digging
     # through logs. recall_write_queue is the bg_writer queue for
-    # access marks + Hebbian co-access (Phase 5, 2026-05-18).
+    # access marks (Phase 5, 2026-05-18).
     try:
         from . import embed_queue
         out['embed_queue'] = embed_queue.get_stats()

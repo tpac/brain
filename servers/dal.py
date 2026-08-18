@@ -176,8 +176,8 @@ class NodeDAL:
     def archived_subset(self, node_ids) -> set:
         """Return the subset of `node_ids` that are archived.
 
-        Single source for liveness checks (surface selection gate,
-        Hebbian drain gate). Exact-id match — no prefix resolution;
+        Single source for liveness checks (surface selection gate).
+        Exact-id match — no prefix resolution;
         unknown ids are simply absent from the result. Empty input
         returns an empty set (no `IN ()` SQL).
         """

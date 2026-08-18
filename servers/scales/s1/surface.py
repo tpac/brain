@@ -6,7 +6,7 @@ Interaction: 'surface' in interactions table (learnable boundary)
 
 Triggered by: hook_recall (UserPromptSubmit) in daemon_hooks.py
 Reads: recall candidates from brain.recall(), interactions table
-Writes: S1 traces (O/K/Δ), tmp files for Hebbian + dashboard
+Writes: S1 traces (O/K/Δ)
 """
 
 import json
@@ -1164,9 +1164,9 @@ def run_surface(brain, ctx, candidates_data, user_message,
                     'no node — pick dropped' % raw_id,
                     'sanitized=%s session=%s' % (short_id, session_id))
 
-    # Trace + Hebbian-file input derives from what actually RESOLVED, so a
-    # recovered pick lands as its real short id (not the corrupted emission)
-    # and unresolvable ids never leak downstream.
+    # Trace input derives from what actually RESOLVED, so a recovered pick
+    # lands as its real short id (not the corrupted emission) and
+    # unresolvable ids never leak downstream.
     selected_short_ids = {fid[:8] for fid in selected_mode}
 
     # Liveness gate — Haiku's prompt carries node ids in historical text

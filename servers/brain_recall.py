@@ -1040,15 +1040,8 @@ class BrainRecallMixin:
         for node in page:
             self._mark_accessed(node['id'], session_id, ctx=None)
 
-        # v10: Hebbian co_accessed edge creation DISABLED.
-        # Previously: every recall created co_accessed edges between all top-25 results.
-        # This produced 71K noise edges (90% of graph) that destroyed topology.
-        # Biology: neurons that fire together wire together — but our "firing together"
-        # was just "scored similarly on cosine," not meaningful co-activation.
-        #
-        # Re-enable when: surface-selected node IDs are available in hook_post_response_track.
-        # Then: only strengthen between nodes the surfacer selected AND the assistant used.
-        # That's real co-activation — two memories genuinely contributing to the same response.
+        # No edge creation here — the co_accessed family is retired
+        # (node ab56d25a); surface_selected traces are the co-access substrate.
 
         # v4: Auto-instrument (skipped when called from recall
         # or hooks — they log via the precision module instead)
@@ -2173,7 +2166,7 @@ class BrainRecallMixin:
         # threads in so neighbor attachments can't re-admit walled titles.
         self._enrich_results(final_results[:3], veil=_veil)
 
-        # STEP 8: Mark accessed (for Hebbian learning + fatigue)
+        # STEP 8: Mark accessed (recognition signal + fatigue)
         # Per-session: _recall_ctx (loaded at top of this function) is passed
         # to _mark_accessed so fatigue increments land on the right session.
         sid = session_id or self.session_id
@@ -2181,7 +2174,7 @@ class BrainRecallMixin:
             try:
                 self._mark_accessed(node['id'], sid, ctx=_recall_ctx)
             except Exception as _e:
-                self._log_error("recall", _e, "marking node as accessed for Hebbian learning")
+                self._log_error("recall", _e, "marking node as accessed")
 
         # Fatigue increments live on the cached SessionContext (mutations
         # in memory). Persistence happens via the daemon autosave loop

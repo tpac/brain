@@ -20,7 +20,6 @@ import threading
 from datetime import datetime, timezone
 from collections import OrderedDict
 
-from servers.daemon_config import brain_tmp_dir
 # Hoisted: any embedder API drift fails at daemon boot, not 16s into hook_recall.
 from servers.embedder import embed_batch
 from servers import embedder as _embedder

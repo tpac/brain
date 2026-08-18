@@ -98,8 +98,6 @@ Any node can be marked `critical=1` via operator approval. Critical nodes:
 | part_of | 0.7 | Never | Structural hierarchy |
 | depends_on | 0.7 | Never | Dependency |
 | related | 0.5 | 14d half-life | General association |
-| co_accessed | 0.3 | 7d half-life | Hebbian co-recall |
-| emergent_bridge | 0.15 | 3d half-life | Auto-discovered bridge |
 
 ## Confidence System
 

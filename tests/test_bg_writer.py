@@ -9,9 +9,6 @@ Covers:
   - Drain rollback on transaction failure + loud log.
   - Concurrent enqueue from multiple threads doesn't lose work.
   - Worker loop survives an exception in drain_once.
-
-(The Hebbian co_accessed half of this queue was retired 2026-08-17 —
-node ab56d25a — and its tests went with it.)
 """
 
 import threading
@@ -212,9 +209,6 @@ class TestDrainRollbackOnFailure(BrainTestBase):
         class FailingExecutemany:
             def __getattr__(self, name):
                 return getattr(real_conn, name)
-
-            def __setattr__(self, name, value):
-                setattr(real_conn, name, value)
 
             def executemany(self, *args, **kwargs):
                 raise RuntimeError('synthetic drain failure for rollback test')

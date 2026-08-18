@@ -699,9 +699,11 @@ def hook_idle_maintenance(brain, args, graph_changes):
 
     Edge decay stays only because it must NOT simply resume — `decay_edges`
     multiplies the current weight by a factor of the edge's TOTAL age, so it
-    compounds per run rather than being a function of age. After the dormancy
-    one run would prune ~3,760 relations, a third of the co_accessed graph.
-    That needs the formula fixed before it moves anywhere.
+    compounds per run rather than being a function of age. With the
+    co_accessed / emergent_bridge EDGE_TYPES entries retired, its only
+    remaining subject is `exemplifies` — hand-authored semantic edges — so
+    after the dormancy one re-armed run would archive most of them in a
+    single pass. That needs the formula fixed before it moves anywhere.
     """
     import datetime
     start_time = datetime.datetime.now()
