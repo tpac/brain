@@ -11,8 +11,25 @@ file owns the table.
 Usage in brain.py:
     from servers.dal_logs import LogsDAL, TraceDAL
 
-    self._logs = LogsDAL(self.logs_conn)
-    self._trace_dal = TraceDAL(self.logs_conn)
+    self._logs = LogsDAL(self.logs_conn, write_conn=self.logs_conn_w,
+                         write_lock=self.write_lock)
+    self._trace_dal = TraceDAL(self.logs_conn, write_conn=self.logs_conn_w,
+                               write_lock=self.write_lock)
+
+Read/write connection split (2026-08-18): brain_logs.db writes were silently
+dropped by SQLITE_BUSY_SNAPSHOT — the shared connection held read snapshots
+(concurrent read dispatch + embed-drain cursors) while writing, and a
+read->write upgrade from a stale snapshot fails INSTANTLY, bypassing
+busy_timeout entirely (brain id:371895a8). The invariant that kills the
+mechanism: `wconn` is touched ONLY inside `_wlock` (the daemon passes
+brain.logs_write_lock — a leaf lock, separate from the graph write_lock so
+log writes never queue behind graph batches), and every statement on it is
+FULLY CONSUMED before the next write — fetchall(), or a single-step lookup
+whose cursor is discarded (CPython refcount finalizes it immediately; do not
+bind such a cursor to a name). No open cursor means no held snapshot, so
+every write transaction begins at the WAL head. Multi-row table scans belong
+on the shared read `conn`, where open cursors are harmless. Single-connection
+construction (write_conn omitted) keeps the old behavior for standalone use.
 
 See servers/dal.py for the brain.db-backed classes (nodes, edges, vectors, ...).
 """
@@ -20,11 +37,31 @@ See servers/dal.py for the brain.db-backed classes (nodes, edges, vectors, ...).
 import json
 import secrets
 import sqlite3
+import threading
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
 from .clock import iso_cutoff, iso_now
 from .db_backends.sqlite import commit_unless_batched, rollback_unless_batched
+
+
+class _LogsWriteBase:
+    """Shared read/write plumbing for the brain_logs.db DAL classes.
+
+    `conn` serves reads; `wconn` serves writes and is only ever used while
+    holding `_wlock` — that pairing is the snapshot-upgrade fix (see module
+    docstring). Callers embedded in the daemon pass brain.write_lock (a
+    reentrant TrackedRLock, so dispatch paths already holding it re-enter
+    safely); standalone users get a private RLock and, with write_conn
+    omitted, single-connection semantics identical to the pre-split DAL.
+    """
+
+    def __init__(self, conn: sqlite3.Connection,
+                 write_conn: Optional[sqlite3.Connection] = None,
+                 write_lock=None):
+        self.conn = conn
+        self.wconn = write_conn if write_conn is not None else conn
+        self._wlock = write_lock if write_lock is not None else threading.RLock()
 
 
 def _new_trace_id(conn) -> str:
@@ -50,12 +87,9 @@ def _new_trace_id(conn) -> str:
 LOG_QUERY_MAX_LIMIT = 200
 
 
-class LogsDAL:
+class LogsDAL(_LogsWriteBase):
     """Access layer for brain_logs.db tables: debug_log, access_log, recall_log,
     miss_log, dream_log, staged_learnings."""
-
-    def __init__(self, conn: sqlite3.Connection):
-        self.conn = conn
 
     # ── debug_log ──
     # Schema: id, session_id, event_type, source, file_target,
@@ -74,12 +108,13 @@ class LogsDAL:
         every log row commits immediately (durable + visible to the
         dashboard's separate connection) unless inside a batch.
         """
-        self.conn.execute(
-            'INSERT INTO debug_log (session_id, event_type, source, metadata, created_at) '
-            'VALUES (?, ?, ?, ?, ?)',
-            (session_id, event_type, source, json.dumps(metadata), iso_now())
-        )
-        commit_unless_batched(self.conn)
+        with self._wlock:
+            self.wconn.execute(
+                'INSERT INTO debug_log (session_id, event_type, source, metadata, created_at) '
+                'VALUES (?, ?, ?, ?, ?)',
+                (session_id, event_type, source, json.dumps(metadata), iso_now())
+            )
+            commit_unless_batched(self.wconn)
 
     # ── hook_errors ──
     # The daemon-independent error table the dashboard + boot read. In-process
@@ -92,16 +127,76 @@ class LogsDAL:
         """Append a hook_errors row (creating the table from the canonical schema
         if absent) and prune to the most recent 200."""
         from servers.schema import LOG_TABLES
-        self.conn.execute(LOG_TABLES['hook_errors']['create'])
-        self.conn.execute(
-            "INSERT INTO hook_errors (created_at, hook_name, level, error, context, traceback) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (iso_now(), hook_name, level, str(error), context[:500],
-             (traceback_str or "")[:2000]))
-        self.conn.execute(
-            "DELETE FROM hook_errors WHERE id NOT IN "
-            "(SELECT id FROM hook_errors ORDER BY id DESC LIMIT 200)")
-        commit_unless_batched(self.conn)
+        with self._wlock:
+            self.wconn.execute(LOG_TABLES['hook_errors']['create'])
+            self.wconn.execute(
+                "INSERT INTO hook_errors (created_at, hook_name, level, error, context, traceback) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (iso_now(), hook_name, level, str(error), context[:500],
+                 (traceback_str or "")[:2000]))
+            self.wconn.execute(
+                "DELETE FROM hook_errors WHERE id NOT IN "
+                "(SELECT id FROM hook_errors ORDER BY id DESC LIMIT 200)")
+            commit_unless_batched(self.wconn)
+
+    def liveness_ping(self) -> None:
+        """Write-path liveness probe: insert + delete a marker row, commit.
+        Raises on failure — the caller (validate_config) turns that into a
+        boot warning. Probes the WRITE connection, i.e. the path real log
+        writes take."""
+        with self._wlock:
+            self.wconn.execute(
+                "INSERT INTO debug_log (event_type, source, created_at) "
+                "VALUES ('ping', '_validate', ?)", (iso_now(),))
+            self.wconn.execute(
+                "DELETE FROM debug_log WHERE source = '_validate'")
+            commit_unless_batched(self.wconn)
+
+    def record_boot_render(self, session_id: str, user: str, project: str,
+                           text: str) -> None:
+        """Persist the exact boot text served to a session (boot_renders).
+        Policy (skip-empty, never-raise) stays with the caller."""
+        with self._wlock:
+            self.wconn.execute(
+                'INSERT INTO boot_renders '
+                '(session_id, user, project, char_count, text, created_at) '
+                'VALUES (?, ?, ?, ?, ?, ?)',
+                (session_id, user or '', project or '', len(text), text,
+                 iso_now()))
+            commit_unless_batched(self.wconn)
+
+    def prune_oversize(self, cutoff_iso: str) -> None:
+        """Emergency size prune: drop debug_log/dream_log rows older than
+        `cutoff_iso`. Policy (size threshold, cutoff choice) stays with the
+        caller (Brain._check_logs_db_size); this owns the SQL."""
+        with self._wlock:
+            self.wconn.execute(
+                "DELETE FROM debug_log WHERE created_at < ?", (cutoff_iso,))
+            self.wconn.execute(
+                "DELETE FROM dream_log WHERE created_at < ?", (cutoff_iso,))
+            commit_unless_batched(self.wconn)
+
+    def clear_errors(self, cutoff_iso: str = '',
+                     include_debug_log: bool = False) -> Dict[str, int]:
+        """Clear hook_errors (and optionally debug_log). Empty cutoff clears
+        everything. Returns per-table cleared counts."""
+        cleared = {}
+        with self._wlock:
+            if cutoff_iso:
+                c = self.wconn.execute(
+                    "DELETE FROM hook_errors WHERE created_at < ?", (cutoff_iso,))
+            else:
+                c = self.wconn.execute("DELETE FROM hook_errors")
+            cleared['hook_errors'] = c.rowcount
+            if include_debug_log:
+                if cutoff_iso:
+                    c = self.wconn.execute(
+                        "DELETE FROM debug_log WHERE created_at < ?", (cutoff_iso,))
+                else:
+                    c = self.wconn.execute("DELETE FROM debug_log")
+                cleared['debug_log'] = c.rowcount
+            commit_unless_batched(self.wconn)
+        return cleared
 
     def get_recent_errors(self, hours: int = 24, limit: int = 20) -> List[Dict[str, Any]]:
         """Get recent errors from debug_log."""
@@ -165,27 +260,28 @@ class LogsDAL:
         # recall_log: REMOVED 2026-04-05 (table dropped)
 
         # debug_log: keep errors forever, prune telemetry/other after 30 days
-        cur = self.conn.execute(
-            "DELETE FROM debug_log WHERE event_type != 'error' "
-            "AND created_at < ?",
-            (iso_cutoff(days=30),))
-        stats['debug_log_pruned'] = cur.rowcount
-
-        # suggest_log: REMOVED 2026-04-05 (table dropped)
-
-        # health_log: REMOVED 2026-04-05 (table dropped)
-
-        # hook_errors: 30 days (surfaced ones only — unsurfaced kept until shown)
-        try:
-            cur = self.conn.execute(
-                "DELETE FROM hook_errors WHERE surfaced = 1 "
+        with self._wlock:
+            cur = self.wconn.execute(
+                "DELETE FROM debug_log WHERE event_type != 'error' "
                 "AND created_at < ?",
                 (iso_cutoff(days=30),))
-            stats['hook_errors_pruned'] = cur.rowcount
-        except Exception:
-            stats['hook_errors_pruned'] = 0
+            stats['debug_log_pruned'] = cur.rowcount
 
-        commit_unless_batched(self.conn)
+            # suggest_log: REMOVED 2026-04-05 (table dropped)
+
+            # health_log: REMOVED 2026-04-05 (table dropped)
+
+            # hook_errors: 30 days (surfaced ones only — unsurfaced kept until shown)
+            try:
+                cur = self.wconn.execute(
+                    "DELETE FROM hook_errors WHERE surfaced = 1 "
+                    "AND created_at < ?",
+                    (iso_cutoff(days=30),))
+                stats['hook_errors_pruned'] = cur.rowcount
+            except Exception:
+                stats['hook_errors_pruned'] = 0
+
+            commit_unless_batched(self.wconn)
 
         # --- Graph DB orphan cleanup ---
         if graph_conn:
@@ -379,7 +475,7 @@ SYSTEM_PROVENANCE = (AUTO_V1_PROVENANCE, RECONCILE_PROVENANCE,
                      BACKSTOP_PROVENANCE)
 
 
-class InteractionDAL:
+class InteractionDAL(_LogsWriteBase):
     """Access layer for interactions — versioned templates for system boundaries.
 
     Every learnable boundary (surface prompt, encoding prompt, voice format,
@@ -395,9 +491,6 @@ class InteractionDAL:
       - `get_version()` reads a specific version (used by eval overrides).
     """
 
-    def __init__(self, conn: sqlite3.Connection):
-        self.conn = conn
-
     def register(self, name: str, template: str, parameters: str = '',
                  created_by: str = 'anchor') -> Dict[str, Any]:
         """Register a new version of an interaction. Auto-increments version.
@@ -410,26 +503,30 @@ class InteractionDAL:
             `set_active()` explicitly to flip the runtime pointer.
         """
         now = iso_now()
-        # Get current max version
-        row = self.conn.execute(
-            'SELECT MAX(version) FROM interactions WHERE name = ?', (name,)
-        ).fetchone()
-        version = (row[0] or 0) + 1 if row else 1
-        parent = version - 1 if version > 1 else None
-        self.conn.execute(
-            'INSERT INTO interactions (name, version, template, parameters, created_at, created_by, parent_version) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?)',
-            (name, version, template, parameters, now, created_by, parent))
-        new_id = self.conn.execute('SELECT last_insert_rowid()').fetchone()[0]
-        # Auto-activate v1 ONLY. Subsequent versions require explicit set_active.
-        was_activated = False
-        if version == 1:
-            self.conn.execute(
-                'INSERT OR REPLACE INTO interaction_active (name, version, set_at, set_by) '
-                'VALUES (?, ?, ?, ?)',
-                (name, version, now, AUTO_V1_PROVENANCE))
-            was_activated = True
-        commit_unless_batched(self.conn)
+        with self._wlock:
+            # Get current max version — on wconn so the read is atomic with the
+            # INSERT under the same lock hold (no register can interleave).
+            # fetchall(): a wconn statement must be exhausted, never left open
+            # (module docstring — an open cursor pins a snapshot).
+            rows = self.wconn.execute(
+                'SELECT MAX(version) FROM interactions WHERE name = ?', (name,)
+            ).fetchall()
+            version = (rows[0][0] or 0) + 1 if rows else 1
+            parent = version - 1 if version > 1 else None
+            self.wconn.execute(
+                'INSERT INTO interactions (name, version, template, parameters, created_at, created_by, parent_version) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                (name, version, template, parameters, now, created_by, parent))
+            new_id = self.wconn.execute('SELECT last_insert_rowid()').fetchall()[0][0]
+            # Auto-activate v1 ONLY. Subsequent versions require explicit set_active.
+            was_activated = False
+            if version == 1:
+                self.wconn.execute(
+                    'INSERT OR REPLACE INTO interaction_active (name, version, set_at, set_by) '
+                    'VALUES (?, ?, ?, ?)',
+                    (name, version, now, AUTO_V1_PROVENANCE))
+                was_activated = True
+            commit_unless_batched(self.wconn)
         return {'name': name, 'version': version, 'id': new_id,
                 'auto_activated': was_activated}
 
@@ -441,21 +538,24 @@ class InteractionDAL:
         actually exists in `interactions` before flipping — refuses to activate
         a non-existent version.
         """
-        # Verify the target version exists
-        row = self.conn.execute(
-            'SELECT 1 FROM interactions WHERE name = ? AND version = ?',
-            (name, version)).fetchone()
-        if not row:
-            raise ValueError(
-                "Cannot activate %s v%d: no such version registered" % (name, version))
-        now = iso_now()
-        self.conn.execute(
-            'INSERT INTO interaction_active (name, version, set_at, set_by) '
-            'VALUES (?, ?, ?, ?) '
-            'ON CONFLICT(name) DO UPDATE SET '
-            'version = excluded.version, set_at = excluded.set_at, set_by = excluded.set_by',
-            (name, version, now, set_by))
-        commit_unless_batched(self.conn)
+        with self._wlock:
+            # Verify the target version exists — on wconn, atomic with the
+            # flip. fetchall(): wconn statements must be exhausted (module
+            # docstring).
+            row = self.wconn.execute(
+                'SELECT 1 FROM interactions WHERE name = ? AND version = ?',
+                (name, version)).fetchall()
+            if not row:
+                raise ValueError(
+                    "Cannot activate %s v%d: no such version registered" % (name, version))
+            now = iso_now()
+            self.wconn.execute(
+                'INSERT INTO interaction_active (name, version, set_at, set_by) '
+                'VALUES (?, ?, ?, ?) '
+                'ON CONFLICT(name) DO UPDATE SET '
+                'version = excluded.version, set_at = excluded.set_at, set_by = excluded.set_by',
+                (name, version, now, set_by))
+            commit_unless_batched(self.wconn)
         return {'name': name, 'version': version, 'set_at': now, 'set_by': set_by}
 
     def get_active(self, name: str) -> Optional[Dict[str, Any]]:
@@ -522,7 +622,7 @@ class InteractionDAL:
         return [{'version': r[0], 'created_by': r[1]} for r in rows]
 
 
-class TraceDAL:
+class TraceDAL(_LogsWriteBase):
     """Access layer for trace_events — the fractal learning loop.
 
     Append-only event chains. Each chain tracks one integrate() cycle:
@@ -533,8 +633,10 @@ class TraceDAL:
     Each becomes a different event_type + ref_type in one table.
     """
 
-    def __init__(self, conn: sqlite3.Connection):
-        self.conn = conn
+    def __init__(self, conn: sqlite3.Connection,
+                 write_conn: Optional[sqlite3.Connection] = None,
+                 write_lock=None):
+        super().__init__(conn, write_conn=write_conn, write_lock=write_lock)
         # Identity stamped onto every trace event's metadata at write time.
         # Empty strings = unset → no stamping (graceful degradation; no
         # placeholder sentinel tokens). Set once at Brain init via
@@ -677,40 +779,49 @@ class TraceDAL:
 
         now = iso_now()
         ids = []
-        try:
-            for ev in events:
-                # Non-blocking by design: shape drift warns (stderr) and the
-                # row still lands. Stays in this loop — it must not gate writes.
-                meta_ok, meta_err = validate_trace_metadata(
-                    ev['event_type'], ev.get('ref_type', ''), ev.get('metadata'))
-                if not meta_ok:
-                    self._warn_metadata_invalid(ev.get('ref_type', ''), meta_err)
-                self._maybe_warn_identity_unset(ev['scale'], ev.get('ref_type', ''))
-                metadata = self._stamp_identity(ev.get('metadata'))
-                meta_json = json.dumps(metadata) if metadata else None
-                trace_id = _new_trace_id(self.conn)
-                self.conn.execute(
-                    'INSERT INTO trace_events '
-                    '(id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, interaction_id, created_at) '
-                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    (trace_id, ev['chain_id'], ev['scale'], ev['event_type'], ev.get('ref_type', ''),
-                     ev.get('ref_id', ''), ev.get('summary', ''), meta_json,
-                     ev.get('session_id', ''), ev.get('interaction_id'), now))
-                ids.append(trace_id)
-        except Exception:
-            # THIS is the atomicity guarantee. Without it, a raise part-way
-            # through leaves the already-inserted rows PENDING: the commit below
-            # is skipped, but `self.conn` is default-isolation, so the next
-            # unrelated write on it — including the error log reporting this
-            # very failure — commits that prefix. The result is a partial trace
-            # set that lies by omission, which is strictly worse than no traces
-            # (a missing trace is recoverable from the graph; a partial one
-            # misrepresents it). Safe to fire: every logs writer in the repo
-            # ends with commit_unless_batched, so there is never another
-            # caller's pending work here to discard.
-            rollback_unless_batched(self.conn)
-            raise
-        commit_unless_batched(self.conn)
+        with self._wlock:
+            try:
+                for ev in events:
+                    # Non-blocking by design: shape drift warns (stderr) and the
+                    # row still lands. Stays in this loop — it must not gate writes.
+                    meta_ok, meta_err = validate_trace_metadata(
+                        ev['event_type'], ev.get('ref_type', ''), ev.get('metadata'))
+                    if not meta_ok:
+                        self._warn_metadata_invalid(ev.get('ref_type', ''), meta_err)
+                    self._maybe_warn_identity_unset(ev['scale'], ev.get('ref_type', ''))
+                    metadata = self._stamp_identity(ev.get('metadata'))
+                    meta_json = json.dumps(metadata) if metadata else None
+                    # Collision check on wconn: same-transaction, so it sees
+                    # ids inserted earlier in THIS batch (the read conn's
+                    # snapshot cannot); single-step lookup, cursor discarded —
+                    # the safe wconn read pattern (module docstring).
+                    trace_id = _new_trace_id(self.wconn)
+                    self.wconn.execute(
+                        'INSERT INTO trace_events '
+                        '(id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, interaction_id, created_at) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        (trace_id, ev['chain_id'], ev['scale'], ev['event_type'], ev.get('ref_type', ''),
+                         ev.get('ref_id', ''), ev.get('summary', ''), meta_json,
+                         ev.get('session_id', ''), ev.get('interaction_id'), now))
+                    ids.append(trace_id)
+            except Exception:
+                # THIS is the atomicity guarantee. Without it, a raise part-way
+                # through leaves the already-inserted rows PENDING: the commit below
+                # is skipped, but `self.wconn` is default-isolation, so the next
+                # unrelated write on it — including the error log reporting this
+                # very failure — commits that prefix. The result is a partial trace
+                # set that lies by omission, which is strictly worse than no traces
+                # (a missing trace is recoverable from the graph; a partial one
+                # misrepresents it). Safe to fire: every logs writer in the repo
+                # ends with commit_unless_batched, so there is never another
+                # caller's pending work here to discard. Known limit: this does
+                # NOT protect against a nested logs write from INSIDE this loop
+                # (reentrant lock, same connection — its commit would publish
+                # the partial batch). No such caller exists: the two warn
+                # helpers are stderr-only by that exact design.
+                rollback_unless_batched(self.wconn)
+                raise
+            commit_unless_batched(self.wconn)
         return ids
 
     def _decode_metadata(self, raw: Optional[str]) -> Dict[str, Any]:
@@ -1504,12 +1615,13 @@ class TraceDAL:
             prepared.append((trace_id, vector, (text or '')[:500], model, now))
         if not prepared:
             return 0
-        self.conn.executemany(
-            'INSERT OR REPLACE INTO trace_embeddings '
-            '(trace_id, vector, text, model, created_at) '
-            'VALUES (?, ?, ?, ?, ?)',
-            prepared)
-        commit_unless_batched(self.conn)
+        with self._wlock:
+            self.wconn.executemany(
+                'INSERT OR REPLACE INTO trace_embeddings '
+                '(trace_id, vector, text, model, created_at) '
+                'VALUES (?, ?, ?, ?, ?)',
+                prepared)
+            commit_unless_batched(self.wconn)
         return len(prepared)
 
     def find_unembedded(self, limit: int, scales: List[str],
@@ -1563,7 +1675,7 @@ class TraceDAL:
         return [self._row_to_event(r) for r in rows]
 
 
-class SessionStateDAL:
+class SessionStateDAL(_LogsWriteBase):
     """Access layer for session_state table in brain_logs.db.
 
     Backs SessionContext's save/load/seed: each session collapses to a single
@@ -1571,9 +1683,6 @@ class SessionStateDAL:
     get/set are the read/upsert pair; ensure_default seeds without clobbering
     a racing thread's already-mutated row.
     """
-
-    def __init__(self, conn: sqlite3.Connection):
-        self.conn = conn
 
     def get(self, session_id: str, key: str, node_id: str = '') -> Optional[str]:
         """Get a single session state value."""
@@ -1586,13 +1695,14 @@ class SessionStateDAL:
         """Set a session state value (upsert)."""
         from datetime import datetime, timezone
         ts = iso_now()
-        self.conn.execute(
-            """INSERT INTO session_state (session_id, key, node_id, value, updated_at)
-               VALUES (?, ?, ?, ?, ?)
-               ON CONFLICT(session_id, key, node_id)
-               DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
-            (session_id, key, node_id, value, ts))
-        commit_unless_batched(self.conn)
+        with self._wlock:
+            self.wconn.execute(
+                """INSERT INTO session_state (session_id, key, node_id, value, updated_at)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(session_id, key, node_id)
+                   DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
+                (session_id, key, node_id, value, ts))
+            commit_unless_batched(self.wconn)
 
     # --- session-context lifecycle (the rows keyed '_session_context') ---
 
@@ -1604,10 +1714,11 @@ class SessionStateDAL:
         existing row, so a racing thread's already-mutated state is never
         clobbered on first touch.
         """
-        self.conn.execute(
-            'INSERT OR IGNORE INTO session_state '
-            '(session_id, key, node_id, value, updated_at) VALUES (?, ?, ?, ?, ?)',
-            (session_id, key, node_id, value, iso_now()))
-        commit_unless_batched(self.conn)
+        with self._wlock:
+            self.wconn.execute(
+                'INSERT OR IGNORE INTO session_state '
+                '(session_id, key, node_id, value, updated_at) VALUES (?, ?, ?, ?, ?)',
+                (session_id, key, node_id, value, iso_now()))
+            commit_unless_batched(self.wconn)
 
 

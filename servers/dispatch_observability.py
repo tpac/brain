@@ -163,29 +163,10 @@ def _handle_query_logs(brain, args, graph_changes):
 
 def _handle_clear_errors(brain, args, graph_changes):
     """Clear hook errors and optionally debug log entries."""
-    cleared = {}
     hours = args.get("hours")  # None = clear all
-
-    # Hook errors
-    if hours:
-        c = brain.logs_conn.execute(
-            "DELETE FROM hook_errors WHERE created_at < ?",
-            (iso_cutoff(hours=int(hours)),))
-    else:
-        c = brain.logs_conn.execute("DELETE FROM hook_errors")
-    cleared['hook_errors'] = c.rowcount
-
-    # Debug log (if requested)
-    if args.get("debug_log", False):
-        if hours:
-            c = brain.logs_conn.execute(
-                "DELETE FROM debug_log WHERE created_at < ?",
-                (iso_cutoff(hours=int(hours)),))
-        else:
-            c = brain.logs_conn.execute("DELETE FROM debug_log")
-        cleared['debug_log'] = c.rowcount
-
-    brain.logs_conn.commit()
+    cleared = brain._logs_dal.clear_errors(
+        cutoff_iso=iso_cutoff(hours=int(hours)) if hours else '',
+        include_debug_log=bool(args.get("debug_log", False)))
     return {"ok": True, "result": cleared}
 
 

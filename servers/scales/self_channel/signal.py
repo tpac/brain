@@ -11,8 +11,12 @@ broadcast fans out and each recipient consumes exactly once). Phase 2a is PULL:
 a recipient drains its inbox on demand. Phase 2b wires auto-delivery into
 Observation at a hook (traced as the s0 `self_message` marker).
 
-Writes go through `brain.write_lock` around `brain.logs_conn` — the canonical
-shared-logs-writer pattern (see brain.discard_session_context). TTL is
+Writes go through `brain.logs_write_lock` around `brain.logs_conn_w` — the
+dedicated logs write connection (see dal_logs.py: the shared read connection's
+open cursors poison write snapshots; writes on it get dropped by
+SQLITE_BUSY_SNAPSHOT). Reads inside a write envelope also use `logs_conn_w`
+so same-transaction visibility holds; reads outside envelopes stay on the
+shared `logs_conn`. TTL is
 per-message: send() resolves it by ADDRESS (broadcast vs directed, config-
 tunable) and stamps `expires_at` via the clock contract (iso_now/iso_after);
 readers filter `expires_at > now` and the reaper deletes `expires_at <= now`.
@@ -63,15 +67,15 @@ def send(brain, from_session, address, body, refs=None):
     # recomputes a cutoff. The sub-ms skew vs created_at is irrelevant (TTL is
     # hours) and nothing compares the two columns.
     expires_at = iso_after(hours=_resolve_ttl_hours(brain, address))
-    # Serialize the shared logs_conn write (mirrors brain.discard_session_context).
-    with brain.write_lock:
-        brain.logs_conn.execute(
+    # Serialize on logs_write_lock, write via the dedicated logs write conn.
+    with brain.logs_write_lock:
+        brain.logs_conn_w.execute(
             'INSERT INTO self_inflight '
             '(id, from_session, address, body, refs, created_at, expires_at) '
             'VALUES (?, ?, ?, ?, ?, ?, ?)',
             (mid, from_session or '', address, body, refs_json,
              created_at, expires_at))
-        brain.logs_conn.commit()
+        brain.logs_conn_w.commit()
     return {'id': mid, 'address': address,
             'created_at': created_at, 'expires_at': expires_at}
 
@@ -203,15 +207,17 @@ def drain_inbox(brain, to_session):
         return []
     now = iso_now()
     out = []
-    with brain.write_lock:
-        rows = _pending_rows(brain.logs_conn, to_session, now)
+    with brain.logs_write_lock:
+        # Everything in this envelope runs on logs_conn_w — the first-contact
+        # check must see this transaction's own uncommitted inserts.
+        rows = _pending_rows(brain.logs_conn_w, to_session, now)
         for mid, from_session, body, created_at in rows:
             # First contact = no PRIOR delivered message from this sender to me.
             # Checked BEFORE the insert below; within a multi-message batch the
             # same-transaction insert makes the 2nd+ from one sender non-first.
             first_contact = not _has_prior_delivery(
-                brain.logs_conn, to_session, from_session)
-            brain.logs_conn.execute(
+                brain.logs_conn_w, to_session, from_session)
+            brain.logs_conn_w.execute(
                 'INSERT OR IGNORE INTO self_delivered (message_id, to_session, delivered_at) '
                 'VALUES (?, ?, ?)', (mid, to_session, now))
             short = (from_session or '')[:8]
@@ -224,7 +230,7 @@ def drain_inbox(brain, to_session):
                 'first_contact': first_contact,
                 'rendered': self_contract.render_signal(body, stream_short=short),
             })
-        brain.logs_conn.commit()
+        brain.logs_conn_w.commit()
     return out
 
 
@@ -286,17 +292,17 @@ def reap_expired(brain):
     rows. Returns count reaped. Wired into the daemon's idle-maintenance tick
     (daemon_server._run_idle_maintenance); safe to call anytime."""
     now = iso_now()
-    with brain.write_lock:
+    with brain.logs_write_lock:
         # expires_at <= now → dead. IS NULL → a pre-expires_at legacy row (column
         # added to the existing courier); send() always stamps it, so a NULL can
         # only be legacy — treat as dead and sweep it.
-        cur = brain.logs_conn.execute(
+        cur = brain.logs_conn_w.execute(
             'DELETE FROM self_inflight WHERE expires_at <= ? OR expires_at IS NULL', (now,))
         reaped = cur.rowcount or 0
-        brain.logs_conn.execute(
+        brain.logs_conn_w.execute(
             'DELETE FROM self_delivered '
             'WHERE message_id NOT IN (SELECT id FROM self_inflight)')
-        brain.logs_conn.commit()
+        brain.logs_conn_w.commit()
     return reaped
 
 

@@ -294,8 +294,9 @@ class IntegrationUnit:
             # runs in-process but on a pool worker thread; without this, encoder
             # writes can interleave with concurrent client writes (and with each
             # other across S2 units). dispatch_command runs INSIDE the lock —
-            # its per-op loudness check writes brain_logs.db, and that write must
-            # be serialized like every other shared-logs_conn write.
+            # its brain.db writes need the graph serializer; logs writes it
+            # triggers serialize themselves inside the DAL write boundary
+            # (logs_write_lock nests under write_lock, leaf ordering).
             with brain.write_lock:
                 return dispatch_command(brain, cmd, cmd_args, [])
 
