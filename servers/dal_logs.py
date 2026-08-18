@@ -281,6 +281,28 @@ class LogsDAL(_LogsWriteBase):
             except Exception:
                 stats['hook_errors_pruned'] = 0
 
+            # session_state: 30 days since last update. A live session updates
+            # its row constantly (autosave), so only dead sessions' context
+            # blobs age past the window. Guarded like hook_errors — a missing
+            # table on an old install must not kill the whole pass.
+            try:
+                cur = self.wconn.execute(
+                    "DELETE FROM session_state WHERE updated_at < ?",
+                    (iso_cutoff(days=30),))
+                stats['session_state_pruned'] = cur.rowcount
+            except Exception:
+                stats['session_state_pruned'] = 0
+
+            # boot_renders: 30 days. Full boot text per session start —
+            # observability with a shelf life, not a record.
+            try:
+                cur = self.wconn.execute(
+                    "DELETE FROM boot_renders WHERE created_at < ?",
+                    (iso_cutoff(days=30),))
+                stats['boot_renders_pruned'] = cur.rowcount
+            except Exception:
+                stats['boot_renders_pruned'] = 0
+
             commit_unless_batched(self.wconn)
 
         # --- Graph DB orphan cleanup ---

@@ -352,6 +352,11 @@ MAINTENANCE_BOOT_GRACE_SECONDS = 90
 # without running; the scheduler thread has no such dependency.
 LOGS_MAINTENANCE_INTERVAL_S = 60 * 60
 
+# Weekly durable size snapshot (file + per-table via dbstat) for both DBs,
+# written to debug_log so growth is a query, not archaeology. Trend data —
+# weekly is plenty; the daemon log already carries per-tick file stats.
+DB_SIZE_TELEMETRY_INTERVAL_S = 7 * 24 * 60 * 60
+
 # ── LLM rejection backoff ──
 # How long LLM features stay paused after the provider REFUSES a call (a dead
 # key, an exhausted quota). A refusal costs no tokens, so this ladder trades

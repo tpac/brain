@@ -6,14 +6,19 @@ registered databases at fixed cadences. Backend-specific work (SQLite's
 module that implements the BackendOps protocol. If the brain ever moves
 off SQLite, swap the backend module and this scheduler stays as-is.
 
-Scope, deliberately narrow for first cut:
+Scope:
 - `checkpoint` every 5 min — flush WAL into DB and truncate the WAL file.
+  A checkpoint that cannot shrink the WAL for consecutive runs raises a
+  loud wal-pinned alert (a long-lived reader — historically the
+  dashboard's ro connections — is starving truncation).
 - `optimize` every 30 min — refresh query planner statistics.
+- `quick_check` weekly — structural integrity scan; corruption raises
+  into the error path instead of surfacing months later as weird recall.
 - `stats` collected every checkpoint tick and logged for observability.
 
-Out of scope for first cut (call out if you add them):
-- `integrity_check` at boot (refuse to start on failure)
-- `VACUUM` (manual via maintenance-lock file; locks the DB)
+Out of scope (call out if you add them):
+- `VACUUM` (manual via maintenance-lock file; locks the DB — pair with
+  post-purge migrations, useless on a DB with an empty freelist)
 - `ANALYZE` daily (heavier than optimize, only useful on big shifts)
 
 The thread is `daemon=True` so it never blocks shutdown. All operation
@@ -43,12 +48,19 @@ class BackendOps(Protocol):
     def apply_pragmas(self, conn) -> None: ...
     def checkpoint(self, db_path: str) -> Dict: ...
     def optimize(self, db_path: str) -> Dict: ...
+    def quick_check(self, db_path: str) -> Dict: ...
     def stats(self, db_path: str) -> Dict: ...
 
 
 # Default cadences (seconds). Override per-DB via register() if needed.
 _DEFAULT_CHECKPOINT_INTERVAL_S = 5 * 60
 _DEFAULT_OPTIMIZE_INTERVAL_S = 30 * 60
+_DEFAULT_QUICK_CHECK_INTERVAL_S = 7 * 24 * 60 * 60
+# Consecutive checkpoints that failed to shrink a non-empty WAL before the
+# wal-pinned alert fires. 3 × 5 min ≈ 15 minutes of continuous pinning —
+# past any legitimate long read, short enough to catch a leaked read txn
+# while the holder is still alive to inspect.
+_WAL_PINNED_ALERT_STREAK = 3
 # Worker wakes every ~30s and checks "is anything due". Short enough to
 # stay responsive to shutdown; long enough that the scheduler is cheap.
 _TICK_INTERVAL_S = 30.0
@@ -72,11 +84,13 @@ class DBMaintenance:
                  log_error_fn: Optional[Callable[[str, Exception, str], None]] = None,
                  checkpoint_interval_s: float = _DEFAULT_CHECKPOINT_INTERVAL_S,
                  optimize_interval_s: float = _DEFAULT_OPTIMIZE_INTERVAL_S,
+                 quick_check_interval_s: float = _DEFAULT_QUICK_CHECK_INTERVAL_S,
                  tick_interval_s: float = _TICK_INTERVAL_S):
         self._log = log_fn or (lambda m: print('[db_maintenance] %s' % m, flush=True))
         self._log_error = log_error_fn  # may be None during early boot
         self._checkpoint_interval_s = checkpoint_interval_s
         self._optimize_interval_s = optimize_interval_s
+        self._quick_check_interval_s = quick_check_interval_s
         self._tick_interval_s = tick_interval_s
 
         self._registered: List[Dict] = []
@@ -109,6 +123,10 @@ class DBMaintenance:
             'db_path': db_path,
             'last_checkpoint_at': 0.0,
             'last_optimize_at': 0.0,
+            # 0.0 → first quick_check fires on the first due tick after boot:
+            # cheap, and every boot gets a fresh integrity baseline.
+            'last_quick_check_at': 0.0,
+            'wal_pinned_streak': 0,
         }
         if backup_dir:
             from . import db_backup
@@ -145,10 +163,12 @@ class DBMaintenance:
         self._thread = threading.Thread(
             target=self._loop, daemon=True, name='db-maintenance')
         self._thread.start()
-        self._log('started — %d DBs registered, checkpoint=%ds optimize=%ds' % (
-            len(self._registered),
-            int(self._checkpoint_interval_s),
-            int(self._optimize_interval_s)))
+        self._log('started — %d DBs registered, checkpoint=%ds optimize=%ds '
+                  'quick_check=%ds' % (
+                      len(self._registered),
+                      int(self._checkpoint_interval_s),
+                      int(self._optimize_interval_s),
+                      int(self._quick_check_interval_s)))
 
     def stop(self) -> None:
         self._running = False
@@ -180,6 +200,8 @@ class DBMaintenance:
                 self._run_op(backend, entry, 'checkpoint', now)
             if now - entry['last_optimize_at'] >= self._optimize_interval_s:
                 self._run_op(backend, entry, 'optimize', now)
+            if now - entry['last_quick_check_at'] >= self._quick_check_interval_s:
+                self._run_op(backend, entry, 'quick_check', now)
             if (entry.get('backup_dir') and
                     now - entry.get('last_backup_at', 0.0) >= entry['backup_interval_s']):
                 self._run_backup(entry, now)
@@ -217,11 +239,39 @@ class DBMaintenance:
             took_ms = int((time.time() - t0) * 1000)
             self._log('%s %s ok in %dms: %s' % (
                 op_name, entry['name'], took_ms, _short(result)))
+            if op_name == 'checkpoint':
+                self._track_wal_pinning(entry, result)
         except Exception as e:
             took_ms = int((time.time() - t0) * 1000)
             self._report_error(
                 'db_maintenance_%s' % op_name, e,
                 'db=%s took=%dms' % (entry['name'], took_ms))
+
+    def _track_wal_pinning(self, entry: Dict, result: Dict) -> None:
+        """Loud alert when checkpoints stop shrinking a non-empty WAL.
+
+        A TRUNCATE checkpoint that leaves the WAL at its prior size means a
+        long-lived read transaction is pinning it (historically: dashboard
+        ro connections, or a leaked cursor). One occurrence is normal; a
+        streak means the WAL grows without bound and recovery time with it.
+        Alert once per streak (at the threshold), reset on any success.
+        """
+        before = result.get('wal_size_before') or 0
+        after = result.get('wal_size_after') or 0
+        pinned = before > 0 and after >= before
+        if not pinned:
+            entry['wal_pinned_streak'] = 0
+            return
+        entry['wal_pinned_streak'] += 1
+        if entry['wal_pinned_streak'] == _WAL_PINNED_ALERT_STREAK:
+            self._report_error(
+                'db_maintenance_wal_pinned',
+                RuntimeError(
+                    '%s WAL pinned at %d bytes across %d checkpoints — a '
+                    'long-lived reader is starving truncation' % (
+                        entry['name'], after, _WAL_PINNED_ALERT_STREAK)),
+                'db=%s; suspect a long-lived read txn (dashboard ro conn, '
+                'leaked cursor)' % entry['name'])
 
     def _run_backup(self, entry: Dict, now: float) -> None:
         # Attempt-stamp first, same discipline as _run_op: a failed backup
