@@ -238,6 +238,40 @@ def test_policy_on_encoded_turn_full_text_and_actions_stub():
     assert 'Edit: foo.py' in t6
 
 
+def test_tail_budget_wiring_reaches_the_renderer():
+    # Transition: the TAIL turn gets ACTIONS_BUDGET_TAIL, older turns
+    # ACTIONS_BUDGET — pinned through _render_lived_sequence_timeline
+    # itself, not just the condenser parameter (the four-angle review
+    # mutation-tested `is_tail=False` and nothing failed).
+    from servers.scales.s1.encoder_view import (
+        ACTIONS_BUDGET, ACTIONS_BUDGET_SOFT_EDGE)
+    n = ACTIONS_BUDGET + ACTIONS_BUDGET_SOFT_EDGE + 3   # rolls on old turns only
+    def eps_with_flood(flood_stop):
+        # turn grouping is sequential — build episodes in lived order
+        # timestamps must sit inside the owning turn — the renderer re-sorts
+        # episodes chronologically before grouping
+        base = '03' if flood_stop == 5 else '10'
+        flood = [_msg('tool_result', 'f%d' % i, flood_stop,
+                      'Bash: sweep %d servers/x.py' % i,
+                      '2026-08-01T00:00:%s.%03d' % (base, i), tool='Bash')
+                 for i in range(n)]
+        eps = [_msg('user_message', 'u5', 5, 'first turn', '2026-08-01T00:00:01'),
+               _msg('assistant_message', 'a5', 5, 'reply five', '2026-08-01T00:00:02')]
+        if flood_stop == 5:
+            eps += flood
+        eps += [_msg('user_message', 'u6', 6, 'tail turn', '2026-08-01T00:00:04'),
+                _msg('assistant_message', 'a6', 6, 'reply six', '2026-08-01T00:00:05')]
+        if flood_stop == 6:
+            eps += flood
+        return eps
+    # flood on the FIRST (older) turn → small budget → rollup appears
+    out_old = _render(True, eps=eps_with_flood(5), encode=[])
+    assert 'more actions, not shown' in out_old
+    # same flood on the LAST (tail) turn → big budget → renders verbatim
+    out_tail = _render(True, eps=eps_with_flood(6), encode=[])
+    assert 'more actions, not shown' not in out_tail
+
+
 def test_policy_on_drops_node_op_lines_on_unencoded_turns():
     out = _render(True)
     t6 = out.split('<turn n="7"')[1].split('</turn>')[0]

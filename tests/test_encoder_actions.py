@@ -1,13 +1,17 @@
 """Actions condenser (servers/scales/s1/encoder_actions.py) — parse →
 condense → render over typed records.
 
-Pins the module's three invariants:
-  • SELF-MARKING — every omission names itself ('×N', the '… N more' rollup)
-  • COUNT-CONSERVING — rendered ×N counts + rollup count = policy-visible total
+Pins the invariants:
+  • SELF-MARKING — '×N' only for true repeats of the same recorded action;
+    the '(N more actions, not shown: …)' accounting line; ' …' on every
+    multi-line trim; '+k more' on every capped breakdown
+  • COUNT-CONSERVING — rendered ×N counts + accounting count = true total
   • TOTAL PARSE — unknown tools degrade to a generic record, never an error
+  • PROTECTION — closing actions keep their outcome slot; writes never roll
 
-Fixtures mirror the three production timelines the design was built from
-(review-sweep flood, build session, journal-check mix).
+Fixtures mirror the production timelines the design was reviewed against
+(review-sweep flood, build session, journal-check mix) and the four-angle
+Opus review's reproduced findings (dea6cdd review, 2026-08-18).
 """
 import os
 import re
@@ -20,13 +24,34 @@ if ROOT not in sys.path:
 from servers.scales.s1.encoder_actions import (  # noqa: E402
     condense_actions, parse_action)
 from servers.scales.s1.encoder_view import (  # noqa: E402
-    ACTIONS_BUDGET, ACTIONS_BUDGET_TAIL, ACTIONS_KEEP_LAST)
+    ACTIONS_BUDGET, ACTIONS_BUDGET_SOFT_EDGE, ACTIONS_BUDGET_TAIL,
+    ACTIONS_KEEP_LAST)
 
-PLUGIN_TOOL = 'mcp__plugin_brain_brain__%s'
+# The plugin-adapter tool prefix, built from the manifest — never the literal
+# (test_deploy_contract's containment gate keeps the adapter shape out of
+# source; .claude/settings.json is its one legitimate home).
+import json  # noqa: E402
+with open(os.path.join(ROOT, '.claude-plugin', 'plugin.json')) as _f:
+    _PLUGIN = json.load(_f)['name']
+PLUGIN_TOOL = ('mcp__plugin_%s_%s__' % (_PLUGIN, _PLUGIN)) + '%s'
+ROLLUP_RE = re.compile(r'^\((\d+) more actions, not shown: ')
 
 
 def _ep(summary, tool='Bash'):
     return {'summary': summary, 'metadata': {'tool': tool}}
+
+
+def _accounted_total(lines):
+    """Apply the module's own audit rule: sum ×N counts + rollup counts."""
+    total = 0
+    for ln in lines:
+        m = ROLLUP_RE.match(ln)
+        if m:
+            total += int(m.group(1))
+            continue
+        m = re.search(r' ×(\d+)$', ln)
+        total += int(m.group(1)) if m else 1
+    return total
 
 
 # ── parse: tool families ──
@@ -37,42 +62,89 @@ def test_plain_bash_single_line():
     assert a.label == 'Bash: git status --short'
 
 
-def test_bash_shell_prefix_skipped_for_subcommand():
-    a = parse_action(_ep('Bash: cd /Users/x/brain && git merge main --no-edit'))
-    assert a.sub == 'git'
+def test_bash_verb_skips_wrappers_and_quoted_cd():
+    assert parse_action(_ep('Bash: cd "/a b" && git status')).sub == 'git'
+    assert parse_action(_ep('Bash: ./dev python3 -m pytest tests/ -q')).sub == 'pytest'
+    assert parse_action(_ep('Bash: /usr/bin/env python3 foo.py')).sub == 'foo.py'
+    assert parse_action(_ep('Bash: ../scripts/build.sh')).sub == 'build.sh'
 
 
-def test_heredoc_harvests_intent_comment():
+def test_heredoc_harvests_intent_comment_and_marks_trim():
     a = parse_action(_ep(
         "Bash: python3 - <<'EOF'\n"
         '# dal_graph.py: delete decay_edges + DEFAULT_EXCLUDED_RELATIONS\n'
         "p = 'servers/dal_graph.py'\nsrc = open(p).read()"))
     assert 'delete decay_edges + DEFAULT_EXCLUDED_RELATIONS' in a.label
+    assert a.label.endswith(' …')          # body dropped, marked — always
     assert '\n' not in a.label
 
 
-def test_python_dash_c_comment_on_later_line():
+def test_script_without_comment_falls_back_to_first_code_line():
     a = parse_action(_ep(
         'Bash: ./dev python3 -c "\n'
-        'from servers.daemon_client import send_command\n'
-        "# the daemon's own view: is the policy on?\n"
-        "r = send_command('ping', {})"))
-    assert "the daemon's own view" in a.label
-    assert a.sub == 'dev'
+        'from servers.db_backup import backup_before_destructive\n'
+        "p = backup_before_destructive('/x/brain.db', 'tag')"))
+    assert 'backup_before_destructive' in a.label   # the evidence line
+    assert a.label.endswith(' …')
 
 
-def test_multiline_without_comment_marks_trim():
-    a = parse_action(_ep('Edit: /Users/x/brain/servers/foo.py\n'
-                         '  old: class Test03\n  new: class Test03', tool='Edit'))
-    assert a.label.endswith(' …')          # the old/new heads are trimmed, marked
-    assert 'old:' not in a.label
-
-
-def test_long_paths_squeeze_to_last_three_segments():
+def test_script_skips_shebang_and_coding_cookie():
     a = parse_action(_ep(
-        'Read: /Users/tpac/brain/.claude/worktrees/retire-edge-families-719e30/'
-        'servers/scales/s2/community.py', tool='Read'))
-    assert a.label == 'Read: …/scales/s2/community.py'
+        "Bash: cat > /tmp/x.py <<'EOF'\n# -*- coding: utf-8 -*-\nimport os"))
+    assert '-*-' not in a.label
+    assert 'import os' in a.label
+
+
+def test_git_commit_harvests_subject():
+    a = parse_action(_ep(
+        'Bash: git add -A && git commit -m "$(cat <<\'EOF\'\n'
+        'refactor(edges): phase 2 — purge retired rows\n\nbody text'))
+    assert 'refactor(edges): phase 2 — purge retired rows' in a.label
+    assert a.protected                      # commit is a write verb
+
+
+def test_compound_does_not_misattribute_later_heredoc_comment():
+    # The heredoc opens on line 2; its comment must NOT read as the intent
+    # of the leading `git rm` (encoder-eye finding 10).
+    a = parse_action(_ep(
+        'Bash: git rm -q scripts/old.py\n'
+        "python3 - <<'EOF'\n# brain_constants: strip dead keys\nx = 1"))
+    assert '·' not in a.label
+    assert a.label.endswith(' …')
+
+
+def test_edit_drops_old_new_heads_but_stays_distinct():
+    e1 = _ep('Edit: /Users/x/brain/tests/t.py\n  old: 4: aaa\n  new: 4: aaa\n 5: b',
+             tool='Edit')
+    e2 = _ep('Edit: /Users/x/brain/tests/t.py\n  old: 5: ccc\n  new: 5: ddd',
+             tool='Edit')
+    a1 = parse_action(e1)
+    assert 'old:' not in a1.label and a1.label.endswith(' …')
+    # same rendered label, different raw → never folds into a false ×2
+    lines = condense_actions([e1, e2])
+    assert len(lines) == 2 and not any('×' in ln for ln in lines)
+
+
+def test_long_paths_squeeze_keeps_leading_slash():
+    a = parse_action(_ep(
+        'Read: /Users/dev/repo/.claude/worktrees/wt-x/servers/scales/s2/community.py',
+        tool='Read'))
+    assert a.label == 'Read: /…/scales/s2/community.py'
+
+
+def test_urls_are_never_squeezed():
+    a = parse_action(_ep(
+        'WebFetch: https://docs.python.org/3/library/re.html#module-re',
+        tool='WebFetch'))
+    assert 'https://docs.python.org/3/library/re.html' in a.label
+
+
+def test_targets_keep_leading_slash_and_skip_urls():
+    a = parse_action(_ep(
+        'Bash: cp /tmp/x1.txt servers/dal.py && curl https://h.com/a/b/c.py'))
+    assert '/tmp/x1.txt' in a.targets
+    assert 'servers/dal.py' in a.targets
+    assert not any('h.com' in t or 'a/b/c.py' in t for t in a.targets)
 
 
 def test_mcp_tool_name_shortens():
@@ -81,9 +153,11 @@ def test_mcp_tool_name_shortens():
     assert a.tool == 'query_traces'
 
 
-def test_unknown_tool_is_total():
+def test_unknown_tool_and_empty_summary_are_total():
     a = parse_action(_ep('SomeFutureTool: whatever args', tool='SomeFutureTool'))
-    assert a is not None and a.label.startswith('SomeFutureTool:')
+    assert a.label.startswith('SomeFutureTool:')
+    b = parse_action(_ep('', tool=None))
+    assert b.label == 'tool (no cue)'
 
 
 def test_existing_policy_drop_and_stub_respected():
@@ -95,65 +169,114 @@ def test_existing_policy_drop_and_stub_respected():
     assert stubbed.label.endswith('→ results in provenance')
 
 
-# ── condense: dedup + budget ──
+# ── condense: dedup identity, protection, budget ──
 
-def test_exact_repeats_fold_to_count():
-    lines = condense_actions([_ep('Bash: git show a73e622 --stat')] * 3)
-    assert lines == ['Bash: git show a73e622 --stat ×3']
-
-
-def test_under_budget_renders_verbatim_no_rollup():
-    eps = [_ep('Bash: step %d' % i) for i in range(ACTIONS_BUDGET)]
+def test_exact_repeats_fold_but_closing_slot_survives():
+    # A closing action that duplicates a mid-turn one must still render at
+    # the END (correctness finding 1: the outcome slot). The fold happens
+    # only among body actions.
+    eps = ([_ep('Bash: grep -rn "S%d" servers/' % i) for i in range(18)]
+           + [_ep('Bash: ./dev pytest tests/ -q')]        # mid-turn run
+           + [_ep('Read: /a/b/c/d.py', tool='Read')]
+           + [_ep('Bash: ./dev pytest tests/ -q')])       # closing re-run
     lines = condense_actions(eps)
-    assert len(lines) == ACTIONS_BUDGET
-    assert not any(ln.startswith('…') for ln in lines)
+    assert lines[-1] == 'Bash: ./dev pytest tests/ -q'    # outcome, in place
+    assert _accounted_total(lines) == len(eps)
+
+
+def test_different_scripts_same_first_line_never_fold():
+    # Dedup keys on the RAW summary — three different heredocs sharing an
+    # opener line render as three lines (invariants finding 1).
+    eps = [_ep("Bash: python3 - <<'EOF'\nimport os\nos.remove('x')"),
+           _ep("Bash: python3 - <<'EOF'\nimport sys\nprint(sys.path)"),
+           _ep("Bash: python3 - <<'EOF'\nopen('y','w').write('z')")]
+    lines = condense_actions(eps)
+    assert len(lines) == 3
+    assert not any('×' in ln for ln in lines)
+
+
+def test_worktree_and_main_tree_same_suffix_never_fold():
+    eps = [_ep('Read: /Users/x/brain/servers/scales/s1/encode.py', tool='Read'),
+           _ep('Read: /Users/x/brain/.claude/worktrees/wt/servers/scales/s1/encode.py',
+               tool='Read')]
+    lines = condense_actions(eps)
+    assert len(lines) == 2
+
+
+def test_writes_never_roll_up():
+    # 40 greps + 5 Edits scattered through the middle: every Edit renders.
+    eps = []
+    for i in range(40):
+        eps.append(_ep('Bash: grep -rn "S%d" servers/' % i))
+        if i % 8 == 0:
+            eps.append(_ep('Edit: /Users/x/brain/servers/f%d.py\n  old: a\n  new: b' % i,
+                           tool='Edit'))
+    lines = condense_actions(eps)
+    edit_lines = [ln for ln in lines if ln.startswith('Edit:')]
+    assert len(edit_lines) == 5
+    assert _accounted_total(lines) == len(eps)
+
+
+def test_under_soft_edge_renders_verbatim_no_rollup():
+    n = ACTIONS_BUDGET + ACTIONS_BUDGET_SOFT_EDGE
+    lines = condense_actions([_ep('Bash: step %d' % i) for i in range(n)])
+    assert len(lines) == n
+    assert not any(ROLLUP_RE.match(ln) for ln in lines)
+
+
+def test_one_past_soft_edge_condenses():
+    n = ACTIONS_BUDGET + ACTIONS_BUDGET_SOFT_EDGE + 1
+    lines = condense_actions([_ep('Bash: step %d' % i) for i in range(n)])
+    assert sum(1 for ln in lines if ROLLUP_RE.match(ln)) == 1
 
 
 def test_over_budget_rolls_middle_and_keeps_last():
     n = 60
     eps = [_ep('Bash: grep sweep %d servers/dal_graph.py' % i) for i in range(n - 1)]
-    eps.append(_ep('Bash: git commit -m done'))
+    eps.append(_ep('Bash: git status --short'))
     lines = condense_actions(eps)
-    assert len(lines) == ACTIONS_BUDGET + 1          # budget lines + rollup
-    assert lines[-1] == 'Bash: git commit -m done'   # outcome survives verbatim
-    rollup = [ln for ln in lines if ln.startswith('…')]
-    assert len(rollup) == 1 and 'targets:' in rollup[0]
+    assert lines[-1] == 'Bash: git status --short'
+    rollup = [ln for ln in lines if ROLLUP_RE.match(ln)]
+    assert len(rollup) == 1 and 'touched:' in rollup[0]
     assert 'servers/dal_graph.py' in rollup[0]
+    assert _accounted_total(lines) == n
 
 
-def test_count_conservation_over_mixed_flood():
-    # 105-action review-sweep shape: greps, git shows, reads, edits, dups.
-    eps = ([_ep('Bash: grep -rn "SYM_%d" servers/' % i) for i in range(70)]
-           + [_ep('Bash: git show a73e622 --stat')] * 3
+def test_count_conservation_over_mixed_flood_with_folds():
+    # The ×N branch of the audit rule must be exercised on RENDERED lines
+    # too (invariants finding 6): identical greps land in the kept head.
+    eps = ([_ep('Bash: git show HEAD --stat')] * 3          # folds, in head
+           + [_ep('Bash: grep -rn "SYM_%d" servers/' % i) for i in range(70)]
            + [_ep('Read: /Users/x/brain/servers/f%d.py' % i, tool='Read')
               for i in range(20)]
            + [_ep('Edit: /Users/x/brain/servers/g%d.py\n  old: a\n  new: b' % i,
                   tool='Edit') for i in range(12)])
-    total = 70 + 3 + 20 + 12
     lines = condense_actions(eps)
-    rendered = 0
-    for ln in lines:
-        if ln.startswith('…'):
-            rendered += int(re.match(r'… (\d+) more', ln).group(1))
-        else:
-            m = re.search(r' ×(\d+)$', ln)
-            rendered += int(m.group(1)) if m else 1
-    assert rendered == total
+    assert any(re.search(r' ×3$', ln) for ln in lines)      # rendered fold
+    assert _accounted_total(lines) == len(eps)
 
 
 def test_tail_turn_gets_larger_budget():
     eps = [_ep('Bash: step %d' % i) for i in range(ACTIONS_BUDGET_TAIL)]
     assert len(condense_actions(eps, is_tail=True)) == ACTIONS_BUDGET_TAIL
-    assert len(condense_actions(eps, is_tail=False)) == ACTIONS_BUDGET + 1
+    assert any(ROLLUP_RE.match(ln)
+               for ln in condense_actions(eps, is_tail=False))
 
 
-def test_rollup_reports_tool_mix_with_bash_subcommands():
-    eps = ([_ep('Bash: grep -n "x" f%d' % i) for i in range(30)]
-           + [_ep('Bash: sed -n "1,5p" f%d' % i) for i in range(10)]
-           + [_ep('Read: /a/b/c/d%d.py' % i, tool='Read') for i in range(8)])
+def test_rollup_marks_every_internal_cap():
+    # 8 distinct Bash verbs (cap 4) and 12 distinct targets (cap 8): both
+    # breakdowns must mark their truncation (invariants findings 4+5).
+    verbs = ['cat', 'awk', 'find', 'sort', 'cut', 'tr', 'wc', 'head']
+    eps = []
+    for v in verbs:
+        for i in range(5):
+            eps.append(_ep('Bash: %s /Users/x/brain/servers/deep/dir/t_%s_%d.py'
+                           % (v, v, i)))
     lines = condense_actions(eps)
-    rollup = next(ln for ln in lines if ln.startswith('…'))
-    assert 'Bash ×' in rollup and 'grep ×' in rollup and 'Read ×' in rollup
+    rollup = next(ln for ln in lines if ROLLUP_RE.match(ln))
+    assert re.search(r', \+\d+ more\)', rollup)             # verbs cap marked
+    assert re.search(r'touched: .*\+\d+ more', rollup)      # targets cap marked
+    assert _accounted_total(lines) == len(eps)
 
 
 def test_keep_last_constant_is_honored():

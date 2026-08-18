@@ -164,19 +164,43 @@ ACTION_STUB_HEAD = 60
 # gets the larger budget; older unencoded turns the smaller. Generous on
 # purpose — we haven't measured what the encoder loses when sweeps collapse,
 # so v1 clamps only the floods (sample: a review turn carried ~105 actions,
-# a healthy build turn ~12).
+# a healthy build turn ~12). The real ceiling is budget + soft edge (below)
+# + however many write actions the turn carries (writes never roll up).
 ACTIONS_BUDGET = 15
 ACTIONS_BUDGET_TAIL = 30
 
+# An accounting line for 1-2 actions costs more than it saves: up to
+# budget + this many actions still render verbatim.
+ACTIONS_BUDGET_SOFT_EDGE = 2
+
 # The closing actions carry the turn's outcome (the commit, the merge, the
-# final verification) — always rendered verbatim, never rolled up.
+# final verification) — always rendered verbatim, in place, and immune to
+# dedup-folding into earlier lines.
 ACTIONS_KEEP_LAST = 2
 
 # One rendered line per action; longer labels mark their cut with '…'.
 ACTION_LABEL_CAP = 180
 
-# Distinct file targets named in the rollup line before '+N more'.
-ROLLUP_TARGET_CAP = 8
+# Write actions never roll up — they are rare and they are the turn's story
+# (the encoder-eye review: a rolled-up seed-file edit was the most
+# encodeable fact of its turn). Explicit write tools here; git write-verbs
+# and harvested-intent scripts join them in the condenser's protection rule.
+WRITE_ACTION_TOOLS = frozenset({'Edit', 'Write', 'NotebookEdit'})
+GIT_WRITE_VERBS = frozenset({'commit', 'rm', 'mv', 'merge', 'revert',
+                             'push', 'tag', 'am', 'cherry-pick'})
+
+# Caps inside the rollup accounting line — every one marks itself with
+# '+k more' when it truncates (the line's job is auditability).
+ROLLUP_TARGET_CAP = 8    # distinct file targets named
+ROLLUP_TOOLS_CAP = 6     # tools in the mix breakdown
+ROLLUP_SUBS_CAP = 4      # Bash command words inside the Bash entry
+
+# Lines scanned at the head of a script body for its intent ('#' comment or
+# first code line) and for a git-commit subject.
+COMMENT_SCAN_DEPTH = 8
+
+# Absolute paths ≥4 segments render as '/…/<last this-many segments>'.
+PATH_KEEP_SEGMENTS = 3
 
 
 def action_mode(tool_name):

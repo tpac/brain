@@ -458,6 +458,7 @@ class ShippedContentFingerprintTest(unittest.TestCase):
         4: '7378aa7d24900cbdbf0ba5ae96adffbe9cf6250235fd156fa6a7ed064b5dff0f',
         5: '265385cc56e1167b36d1a78176a5294d5ad8ad0846278536434ac43e0f37344a',
         6: '64df5f53cd40f7ef085fe63a7a2665ae9db939be02fdab761d52332d81740c05',
+        7: '182761f6e8d734c501f35408795acfc298822aeb44d97cfb58c7333bf1c0418f',
     }
 
     @staticmethod

@@ -1086,12 +1086,6 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
         print('[s1e] ERROR reading lived sequence, falling back to markdown: %s' % e, flush=True)
         return _render_markdown_timeline(brain, messages)
 
-    def _tool_name(ep):
-        # tool_result metadata carries {"tool": <raw CC tool name>}
-        # (post_tool_trace); non-dict metadata → None → visible by default
-        md = ep.get('metadata')
-        return md.get('tool') if isinstance(md, dict) else None
-
     def _text(ep):
         # Full message body lives in metadata['content'] (≤4000); `summary` is the
         # 200-char display truncation. Mirror get_session_turns (dal.py): prefer
