@@ -241,7 +241,7 @@ class TestBrainConnectionsAreBatchAware(BrainTestBase):
     needs_embedder = False
 
     def test_all_three_connections_batch_aware(self):
-        for attr in ('conn', 'conn_bg_writer', 'logs_conn'):
+        for attr in ('conn', 'conn_bg_writer', 'logs_conn', 'logs_conn_w'):
             conn = getattr(self.brain, attr)
             self.assertIsInstance(
                 conn, BatchAwareConnection,

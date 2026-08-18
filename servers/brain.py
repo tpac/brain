@@ -164,6 +164,15 @@ class Brain(
         from .tracked_lock import TrackedRLock
         self.write_lock = TrackedRLock()
 
+        # Serializer for brain_logs.db writes (the DAL write boundary's
+        # `_wlock`). Deliberately SEPARATE from write_lock: logs writes are
+        # small and frequent (traces, error logs) and must not queue behind
+        # multi-second graph batches on the other database. Lock ordering is
+        # strictly write_lock -> logs_write_lock (the logs lock is a leaf:
+        # no holder ever acquires write_lock, a graph lock, or calls back
+        # out of the DAL while holding it), so no inversion is possible.
+        self.logs_write_lock = TrackedRLock()
+
         # Non-blocking guard for the Anthropic connection warm (warm_up at boot
         # + the idle keepalive loop). With try-acquire(blocking=False) it makes
         # warm_anthropic_connection idempotent under concurrency: if a warm is
@@ -246,6 +255,20 @@ class Brain(
         db_backends.current.apply_pragmas(self.logs_conn)
         ensure_logs_schema(self.logs_conn, db_path=self.logs_db_path)
 
+        # Dedicated logs WRITE connection. logs_conn serves concurrent reads
+        # (read dispatch, embed drain scans) whose open cursors hold WAL read
+        # snapshots; writing on that same connection is a read->write upgrade
+        # that fails INSTANTLY with 'database is locked' whenever an external
+        # process (hooks, MCP monitor) committed since the snapshot —
+        # busy_timeout never applies to snapshot upgrades (brain id:371895a8).
+        # This connection is used only inside the DAL write methods under
+        # write_lock, so it never holds a read cursor and every write
+        # transaction begins at the WAL head.
+        self.logs_conn_w = sqlite3.connect(
+            self.logs_db_path, check_same_thread=False,
+            factory=db_backends.current.BatchAwareConnection)
+        db_backends.current.apply_pragmas(self.logs_conn_w)
+
         # One-time migration: move log tables from brain.db to brain_logs.db.
         # This runs AFTER ensure_logs_schema has stamped a version, so any rows
         # it imports arrive behind that stamp — it resets the logs counter when
@@ -256,12 +279,18 @@ class Brain(
 
         # DAL instances — incremental adoption, brain.py migrates one method at a time
         self._meta = BrainMetaDAL(self.conn)
-        self._logs_dal = LogsDAL(self.logs_conn)
+        self._logs_dal = LogsDAL(self.logs_conn, write_conn=self.logs_conn_w,
+                                 write_lock=self.logs_write_lock)
         from .dal_logs import TraceDAL, InteractionDAL, SessionStateDAL
-        self._trace_dal = TraceDAL(self.logs_conn)
-        self._interaction_dal = InteractionDAL(self.logs_conn)
+        self._trace_dal = TraceDAL(self.logs_conn, write_conn=self.logs_conn_w,
+                                   write_lock=self.logs_write_lock)
+        self._interaction_dal = InteractionDAL(
+            self.logs_conn, write_conn=self.logs_conn_w,
+            write_lock=self.logs_write_lock)
         # logs-bound: session_state lives in brain_logs.db, not brain.db
-        self._session_state = SessionStateDAL(self.logs_conn)
+        self._session_state = SessionStateDAL(
+            self.logs_conn, write_conn=self.logs_conn_w,
+            write_lock=self.logs_write_lock)
 
         # Repository aggregate (DAL cleanup Phase 2): hold the brain.db DALs
         # foreground-conn-bound so methods use them by construction instead of
@@ -506,13 +535,8 @@ class Brain(
             size = os.path.getsize(self.logs_db_path)
             if size > self._max_logs_db_size:
                 # Delete entries older than 7 days
-                cutoff_7d = iso_cutoff(days=7)
-                self.logs_conn.execute(
-                    "DELETE FROM debug_log WHERE created_at < ?", (cutoff_7d,))
-                # access_log + recall_log tables dropped 2026-04-05
-                self.logs_conn.execute(
-                    "DELETE FROM dream_log WHERE created_at < ?", (cutoff_7d,))
-                self.logs_conn.commit()
+                # (access_log + recall_log tables dropped 2026-04-05)
+                self._logs_dal.prune_oversize(iso_cutoff(days=7))
                 self._write_to_file_log('INFO', 'logs_db', 'Pruned entries older than 7 days (DB was %dMB)' % (size // (1024*1024)))
         except Exception:
             pass
@@ -895,11 +919,12 @@ class Brain(
 
         Race-safe on first load: two threads with the same brand-new
         session_id can call concurrently. The create path takes `write_lock`
-        (the serializer for brain_logs.db writes) so the shared `logs_conn`
-        can't hit concurrent transactions; `INSERT OR IGNORE` keeps the row
-        itself idempotent. After first load, both threads operate on the same
-        cached instance (Python attribute access — `write_lock` serializes
-        actual mutations).
+        to guard the `_session_contexts` cache (check-then-create must be
+        atomic or two threads mint two instances); the DB write itself is
+        serialized inside the DAL write boundary (logs_write_lock + wconn),
+        and `INSERT OR IGNORE` keeps the row idempotent. After first load,
+        both threads operate on the same cached instance (Python attribute
+        access — `write_lock` serializes actual mutations).
         """
         from .session_context import SessionContext
         import json as _json
@@ -913,12 +938,10 @@ class Brain(
         cached = self._session_contexts.get(session_id)
         if cached is not None:
             return cached
-        # First touch: serialize the create under write_lock. INSERT OR IGNORE
-        # is row-atomic, but self.logs_conn is shared across daemon request
-        # threads (check_same_thread=False, deferred isolation) — two concurrent
-        # .execute() calls auto-BEGIN on the same connection and collide with
-        # "cannot start a transaction within a transaction". write_lock is the
-        # documented serializer for brain_logs.db writes too (see __init__).
+        # First touch: serialize the create under write_lock so the cache
+        # check-then-create is atomic (two racing threads must not mint two
+        # SessionContext instances). The DB write is serialized separately by
+        # the DAL write boundary (logs_write_lock + logs_conn_w).
         with self.write_lock:
             cached = self._session_contexts.get(session_id)  # re-check under lock
             if cached is not None:
@@ -949,10 +972,9 @@ class Brain(
         boundary. Returns the count of saves attempted.
         """
         n = 0
-        # Serialize the shared logs_conn writes. This runs on the autosave
-        # thread, outside the dispatch write path, so without write_lock it can
-        # collide with a concurrent get_or_create_session on the same
-        # connection ("cannot start a transaction within a transaction").
+        # write_lock guards the _session_contexts cache iteration against a
+        # concurrent create/discard; the DB writes themselves serialize inside
+        # the DAL write boundary (logs_write_lock + logs_conn_w).
         with self.write_lock:
             for ctx in list(self._session_contexts.values()):
                 try:
@@ -1101,7 +1123,7 @@ class Brain(
         ctx = self._session_contexts.pop(session_id, None)
         if ctx is not None:
             try:
-                with self.write_lock:  # serialize the shared logs_conn write
+                with self.write_lock:  # guard the cache entry vs autosave
                     ctx.save(self._session_state)
             except Exception as _e:
                 try:
@@ -2463,13 +2485,17 @@ class Brain(
         breaking its all-or-nothing atomicity. write_lock serializes save
         against brain_batch; it's an RLock, so the primary autosave path
         (daemon_server, which already holds write_lock before calling save)
-        re-acquires safely. logs_conn is a separate DB — no coordination with
-        the foreground write lock is needed.
+        re-acquires safely. The logs write connection commits under
+        logs_write_lock: logs_conn_w transactions only ever exist while that
+        lock is held (the DAL write-boundary invariant), so an unlocked commit
+        here could land mid-flight on another thread's append_batch and
+        publish a partial trace set.
         """
         with self.write_lock:
             self.conn.commit()  # commit-ok: explicit durability point (save/autosave)
         try:
-            self.logs_conn.commit()
+            with self.logs_write_lock:
+                self.logs_conn_w.commit()
         except Exception:
             pass
 
@@ -2501,9 +2527,29 @@ class Brain(
         except Exception as e:
             self._log_error('bg_writer_close', e, 'bg_writer close')
 
-        # logs_conn close — logged via stderr fallback because _log_error
-        # itself writes to logs_conn. Closing it last keeps prior _log_error
-        # calls in this method functional.
+        # logs connections close — logged via stderr fallback because
+        # _log_error itself writes via the logs write connection. Closed last
+        # so prior _log_error calls in this method stay functional. The wconn
+        # commit+close must hold logs_write_lock (a straggler thread — an
+        # embed drain that outlived join_worker's 3s best-effort join, an S2
+        # unit thread — may be mid-append_batch; an unlocked commit would
+        # publish its partial trace set). Bounded acquire: shutdown must not
+        # hang behind a wedged holder — on timeout, close anyway and say so.
+        _got_logs_lock = self.logs_write_lock.acquire(timeout=5.0)
+        try:
+            self.logs_conn_w.commit()
+            self.logs_conn_w.close()
+        except Exception as e:
+            import sys as _sys
+            print('[brain] logs_conn_w close failed: %s' % e, file=_sys.stderr)
+        finally:
+            if _got_logs_lock:
+                self.logs_write_lock.release()
+            else:
+                import sys as _sys
+                print('[brain] logs_conn_w closed WITHOUT lock '
+                      '(holder timeout) — a straggler write may have been '
+                      'interrupted', file=_sys.stderr)
         try:
             self.logs_conn.commit()
             self.logs_conn.close()

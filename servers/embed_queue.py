@@ -244,10 +244,11 @@ def _worker_loop(brain) -> None:
                     _stats['drains_skipped_empty'] += 1
 
             # Pull-reconciliation: trace embeddings. Independent of
-            # node/edge queues — writes to brain_logs.trace_embeddings
-            # via its own connection. Caps per-tick work via
-            # TRACE_DRAIN_LIMIT; runs on every tick so newly-written
-            # S0 trace events get anchored within ~5s.
+            # node/edge queues — reads via the shared logs conn, writes
+            # through TraceDAL's write boundary (dedicated write conn under
+            # write_lock). Caps per-tick work via TRACE_DRAIN_LIMIT; runs on
+            # every tick so newly-written S0 trace events get anchored
+            # within ~5s.
             try:
                 _drain_trace_embeddings_once(brain)
             except Exception as e:
@@ -424,9 +425,10 @@ def _render_trace_for_embedding(row: Dict) -> str:
 def _drain_trace_embeddings_once(brain) -> None:
     """Pull-reconciliation tick: find recent S0 traces with no embedding,
     render → embed in one batch → store. Independent from node/edge
-    drains (different table, different connection); runs even when
-    those queues are empty. Skip-tick on prior overlap is unnecessary
-    — TRACE_DRAIN_LIMIT caps per-tick work and the LEFT JOIN is cheap.
+    drains (different table; store goes through TraceDAL's serialized
+    write boundary); runs even when those queues are empty. Skip-tick on
+    prior overlap is unnecessary — TRACE_DRAIN_LIMIT caps per-tick work
+    and the LEFT JOIN is cheap.
     """
     try:
         from datetime import datetime, timedelta, timezone

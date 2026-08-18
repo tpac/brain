@@ -144,11 +144,12 @@ def dispatch_command(brain, cmd, args, graph_changes):
 
     THE CALLER OWNS THE WRITE LOCK. For write commands this must be called INSIDE
     the caller's `brain.write_lock` envelope (daemon: `_locked_exec`; encoder:
-    `with brain.write_lock`), because the post-handler checks write brain_logs.db
-    — and an unlocked logs_conn write is how another thread's
-    commit_unless_batched lands a partial batch. This function deliberately does
-    not acquire the lock itself: lock policy stays with the caller that knows
-    whether it already holds it.
+    `with brain.write_lock`) — brain.db writes share one connection, and an
+    unlocked commit there lands another thread's partial batch. (brain_logs.db
+    writes serialize themselves inside the DAL write boundary — logs_write_lock
+    + logs_conn_w — and no longer depend on this envelope.) This function
+    deliberately does not acquire the lock itself: lock policy stays with the
+    caller that knows whether it already holds it.
 
     Registry lookup for POLICY (is_write, marks_dirty) stays with the caller;
     this function owns EXECUTION.
