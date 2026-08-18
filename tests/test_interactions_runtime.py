@@ -480,3 +480,49 @@ class TestResolverGuards:
         assert stamp['source'] == 'default'
         assert stamp['version'] == 0
         assert stamp['id'] is None
+
+
+# ═══════════════════════════════════════════════════════
+# Pointer delete = clear (Step 5: nothing resurrects MAX)
+# ═══════════════════════════════════════════════════════
+
+class TestPointerDeleteIsClear:
+    """'No pointer' means 'no override deployed' — nothing may resurrect
+    MAX(version). The motivating landmine: trace_recording sits at active=1
+    with a dormant v2 = DEBUG (all payload kinds on); the old get_active
+    fallback turned a pointer delete into silent full-payload capture, and
+    the old ensure_logs_schema backstop re-pinned MAX on the next boot."""
+
+    def test_pointer_delete_reverts_to_code_default_and_survives_reopen(self):
+        from servers.brain import Brain
+        from servers.interaction_defaults import INTERACTION_DEFAULTS
+        with IsolatedBrain() as env:
+            brain = env.brain
+            # A dormant version ABOVE the active one — the exact shape where
+            # a MAX(version) fallback returns something nobody deployed.
+            brain.register_interaction(
+                'surface', template='SENTINEL vNext — never deployed',
+                parameters='{}')
+            assert brain.get_interaction_stamp('surface')['source'] == 'override'
+
+            brain.logs_conn.execute(
+                "DELETE FROM interaction_active WHERE name = 'surface'")
+            brain.logs_conn.commit()
+
+            # DAL: no pointer -> None, never the dormant MAX version.
+            assert brain.get_interaction('surface') is None
+            # Resolver: falls through to the code default.
+            assert (brain.get_interaction_prompt('surface')
+                    == INTERACTION_DEFAULTS['surface'][0])
+            assert brain.get_interaction_stamp('surface')['source'] == 'default'
+
+            # A boot (ensure_logs_schema + seed_interactions) must not
+            # re-create the pointer.
+            brain.save()
+            brain.close()
+            env.brain = Brain(env.brain_db)
+            assert env.brain.get_interaction('surface') is None
+            count = env.brain.logs_conn.execute(
+                "SELECT COUNT(*) FROM interaction_active "
+                "WHERE name = 'surface'").fetchone()[0]
+            assert count == 0

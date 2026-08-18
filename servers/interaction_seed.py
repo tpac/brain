@@ -195,9 +195,10 @@ def _matches_shipped(interaction, template, config):
 def _pointer_is_pristine(info):
     """True when the active pointer was placed by the system, not by a human.
 
-    `BACKSTOP_PROVENANCE` is reserved but not pristine in general: it fills a
-    missing pointer with MAX(version), which on an install predating
-    `interaction_active` could be a version a human registered by hand.
+    `BACKSTOP_PROVENANCE` is reserved but not pristine in general: it marks a
+    pointer the schema backstop filled with MAX(version), which on an install
+    predating `interaction_active` could be a version a human registered by
+    hand. The backstop itself is gone; the rows it placed persist.
 
     The exception is decidable. With exactly one version on record, nothing but
     the seed ever registered for that name, so MAX(version) IS the shipped
@@ -249,9 +250,9 @@ def _reconcile_pristine_prompts(brain):
 
         active_version = info.get('active_version')
         if active_version is None:
-            # No pointer row at all. get_active falls back to MAX(version), so
-            # the runtime is reading something nobody deployed on purpose;
-            # leave it to the pointer backstop in ensure_logs_schema.
+            # No pointer row at all. Under the override model that means no
+            # override is deployed — the runtime already reads the code
+            # default, so there is nothing to advance.
             held.append('%s(no active pointer)' % name)
             continue
         if not _pointer_is_pristine(info):

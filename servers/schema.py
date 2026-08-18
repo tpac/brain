@@ -1711,34 +1711,14 @@ def ensure_logs_schema(conn, db_path=None):
     # than an unversioned ALTER.
     _add_column_if_missing(conn, 'self_inflight', 'expires_at', 'TEXT')
 
-    # Initial population for interaction_active — one-time migration.
-    # For brains created before the active-version split, populate the pointer
-    # with the current MAX(version) per name so runtime semantics stay
-    # byte-identical until someone explicitly registers a new version.
-    # Idempotent: INSERT OR IGNORE skips names that already have a pointer.
-    # The set_by it stamps is load-bearing beyond bookkeeping: the shipped-prompt
-    # reconcile reads it to decide whether an install still runs the shipped
-    # default, so it comes from the one named constant rather than a literal.
-    try:
-        from datetime import datetime, timezone
-        from .dal_logs import BACKSTOP_PROVENANCE
-        now = datetime.now(timezone.utc).isoformat()
-        conn.execute(
-            'INSERT OR IGNORE INTO interaction_active (name, version, set_at, set_by) '
-            'SELECT name, MAX(version), ?, ? FROM interactions GROUP BY name',
-            (now, BACKSTOP_PROVENANCE)
-        )
-    except Exception:
-        pass  # No interactions table yet — fresh brain; seed will populate.
-
     for idx in LOG_INDEXES:
         try:
             conn.execute(idx)
         except Exception:
             pass
 
-    # Hand the runner a clean transaction boundary: the backstop DML above
-    # leaves a write transaction open, and inside one a failing step's
+    # Hand the runner a clean transaction boundary: schema work above can
+    # leave a write transaction open, and inside one a failing step's
     # rollback would discard this whole schema bootstrap rather than the
     # step alone — and a step that flips PRAGMAs (foreign_keys is a silent
     # no-op inside a transaction) or VACUUMs would misbehave.

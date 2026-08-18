@@ -390,8 +390,8 @@ class InteractionDAL:
       - `register()` inserts a new version row. Does NOT change which version
         the runtime reads. Decoupled by design.
       - `set_active()` flips the per-name active pointer to a chosen version.
-      - `get_active()` reads the active version. Falls back to MAX(version)
-        when no pointer exists (covers fresh brains pre-seed).
+      - `get_active()` reads via the active pointer only; None when no
+        pointer exists — "no pointer" means "no override deployed".
       - `get_version()` reads a specific version (used by eval overrides).
     """
 
@@ -461,26 +461,17 @@ class InteractionDAL:
     def get_active(self, name: str) -> Optional[Dict[str, Any]]:
         """Get the currently-active version of an interaction.
 
-        Reads via interaction_active pointer. Falls back to MAX(version) when
-        no pointer exists (fresh brain, mid-seed, or unmigrated state).
-        Returns None when no version exists at all.
+        Reads via the interaction_active pointer only. Returns None when no
+        pointer exists (or it dangles) — pointer presence is the single
+        "an override is deployed" bit; what runs then is the caller's policy
+        (the resolver falls through to the code default).
         """
-        # Try the pointer first
         row = self.conn.execute(
             'SELECT i.id, i.name, i.version, i.template, i.parameters, '
             'i.created_at, i.created_by '
             'FROM interaction_active a '
             'JOIN interactions i ON i.name = a.name AND i.version = a.version '
             'WHERE a.name = ?', (name,)).fetchone()
-        if row:
-            return {'id': row[0], 'name': row[1], 'version': row[2],
-                    'template': row[3], 'parameters': row[4],
-                    'created_at': row[5], 'created_by': row[6]}
-        # Fallback: MAX(version) — covers pre-seed bootstrap windows
-        row = self.conn.execute(
-            'SELECT id, name, version, template, parameters, created_at, created_by '
-            'FROM interactions WHERE name = ? ORDER BY version DESC LIMIT 1',
-            (name,)).fetchone()
         if not row:
             return None
         return {'id': row[0], 'name': row[1], 'version': row[2],
