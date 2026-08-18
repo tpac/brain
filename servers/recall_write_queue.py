@@ -5,7 +5,7 @@ Deferred-write queue for recall-side bookkeeping that does NOT need realtime
 persistence. The recall hot path enqueues; the embed_queue worker drains
 every EMBED_DRAIN_INTERVAL seconds via `brain.conn_bg_writer`.
 
-Two distinct signals ride on this queue:
+One signal rides on this queue:
 
   enqueue_access(node_id, session_id, ts)
     Recognition signal. Per-(node, session, drain-window) dedup'd by Dict
@@ -18,12 +18,9 @@ Two distinct signals ride on this queue:
     drain window collapse to a single +1. Cross-session accesses to the
     same node still produce one increment per session.
 
-  enqueue_hebbian_pairs(pairs, ts)
-    Associative signal. Pairs are already resolved (caller did
-    combinations() over Anchor's surface-layer picks — typically 3-5
-    nodes, so ≤ C(5,2) = 10 pairs per recall). Drain strengthens (or
-    creates) the `co_accessed` relation per pair via atomic SQL:
-        weight = MIN(MAX_WEIGHT, weight + LEARNING_RATE * 0.5)
+(The Hebbian co_accessed signal that used to share this queue was retired
+2026-08-17 — node ab56d25a. The surface_selected traces remain the durable
+co-access substrate.)
 
 Design constraints (operator: Tom):
   - No silent errors. Every except logs via brain._log_error.
@@ -32,8 +29,7 @@ Design constraints (operator: Tom):
 
 Loss semantics (accepted by operator):
   - Daemon crash mid-drain: pending queue (≤ EMBED_DRAIN_INTERVAL seconds
-    of recalls) lost. access_count is approximate. Hebbian re-fires next
-    co-occurrence.
+    of recalls) lost. access_count is approximate.
   - Transaction failure: ROLLBACK + drop the batch + log loudly. No retry
     queue (avoids poison-pill loops).
 
@@ -43,12 +39,12 @@ Stats (get_stats) feed dashboard observability.
 import sys
 import threading
 import time
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Tuple
 
 
 # ─── Module-level state ─────────────────────────────────────────────
-# All access guarded by `_lock`. Queues are mutated only via the public
-# enqueue_* functions and _snapshot_and_clear().
+# All access guarded by `_lock`. The queue is mutated only via
+# enqueue_access and _snapshot_and_clear().
 
 # Access queue: maps (node_id, session_id) → most-recent timestamp string.
 # Dict (not Set) so we preserve the latest `last_accessed` value without
@@ -56,12 +52,6 @@ from typing import Dict, Iterable, List, Tuple
 # (node, session) collapse to one +1; the timestamp stored is the most
 # recent the queue has seen.
 _access_queue: Dict[Tuple[str, str], str] = {}
-
-# Hebbian queue: list of (node_a, node_b, ts) tuples. NOT deduped at
-# enqueue time — every entry is a separate co-occurrence event. If the
-# same pair appears multiple times in one batch, the SQL drain processes
-# each entry and the weight grows by N × delta (capped at MAX_WEIGHT).
-_hebbian_queue: List[Tuple[str, str, str]] = []
 
 _lock = threading.Lock()
 
@@ -72,16 +62,13 @@ _lock = threading.Lock()
 
 _stats = {
     'access_enqueued_total': 0,
-    'hebbian_enqueued_total': 0,
     'drains_total': 0,
     'drains_skipped_empty': 0,
     'last_drain_at': None,            # epoch seconds
     'last_drain_took_ms': 0,
-    'last_drain_size': 0,             # total items (access + hebbian) in batch
+    'last_drain_size': 0,             # access items in batch
     'last_begin_wait_ms': 0,          # time spent in BEGIN IMMEDIATE (WAL slot wait)
     'access_drained_total': 0,
-    'hebbian_pairs_drained_total': 0,
-    'hebbian_pairs_skipped_archived': 0,  # pairs dropped by the liveness gate
     'errors_total': 0,                # exceptions during drain (caught + logged)
     'rollbacks_total': 0,             # transactions that hit ROLLBACK
     'overlong_drains_total': 0,       # drains that took > _OVERLONG_THRESHOLD_MS
@@ -93,9 +80,9 @@ _stats = {
 # the queue ever changes producer/consumer ratio.
 _OVERLONG_THRESHOLD_MS = 10_000
 
-# Threshold for the "producer outpacing drain" warning emission. Sum of
-# both queues. If we ever cross this, something pathological is happening
-# upstream — emit a loud warning so we notice before the queue eats RAM.
+# Threshold for the "producer outpacing drain" warning emission. If we
+# ever cross this, something pathological is happening upstream — emit a
+# loud warning so we notice before the queue eats RAM.
 _QUEUE_DEPTH_WARN = 5_000
 
 
@@ -134,44 +121,12 @@ def enqueue_access(node_id: str, session_id: str, ts: str) -> None:
               file=sys.stderr)
 
 
-def enqueue_hebbian_pairs(pairs: Iterable[Tuple[str, str]], ts: str) -> None:
-    """Enqueue Hebbian co-access events for a list of (node_a, node_b) pairs.
-
-    Caller has already resolved the pair set — typically
-    `combinations(surface_picks, 2)` where surface_picks is the 3-5
-    nodes Anchor's surface layer consciously selected. Max C(5,2) = 10
-    pairs per call.
-
-    NOT deduped at enqueue time — if the same pair is enqueued by
-    multiple recalls within one drain window, the SQL drain processes
-    each entry and weight grows accordingly (capped at MAX_WEIGHT).
-
-    Pairs are stored as-given (no sort/normalize). The drain's edge
-    lookup checks both directions, so direction-insensitive in practice.
-    Self-pairs (a == b) are silently dropped — defensive against caller
-    bugs.
-    """
-    if not pairs:
-        return
-    try:
-        with _lock:
-            for a, b in pairs:
-                if a and b and a != b:
-                    _hebbian_queue.append((a, b, ts))
-                    _stats['hebbian_enqueued_total'] += 1
-    except Exception as e:
-        with _lock:
-            _stats['enqueue_errors_total'] += 1
-        print('[recall_write_queue] enqueue_hebbian_pairs failed: %s' % e,
-              file=sys.stderr)
-
-
 # ─── Public API: introspection ───────────────────────────────────────
 
 def queue_depth() -> int:
-    """Total pending items across both queues. Cheap; for stall heartbeat."""
+    """Pending access items. Cheap; for stall heartbeat."""
     with _lock:
-        return len(_access_queue) + len(_hebbian_queue)
+        return len(_access_queue)
 
 
 def get_stats() -> dict:
@@ -180,7 +135,6 @@ def get_stats() -> dict:
         return {
             **_stats,
             'access_queue_depth': len(_access_queue),
-            'hebbian_queue_depth': len(_hebbian_queue),
             'overlong_threshold_ms': _OVERLONG_THRESHOLD_MS,
             'queue_depth_warn': _QUEUE_DEPTH_WARN,
         }
@@ -194,35 +148,30 @@ def get_stats() -> dict:
 
 # ─── Internal: snapshot/swap ─────────────────────────────────────────
 
-def _snapshot_and_clear() -> Tuple[Dict[Tuple[str, str], str],
-                                   List[Tuple[str, str, str]]]:
-    """Atomically swap queue contents to local snapshots and clear the
-    module-level structures. Subsequent enqueues land in the fresh
-    structures while the drain proceeds against the snapshot.
-
-    Returns (access_snapshot, hebbian_snapshot).
+def _snapshot_and_clear() -> Dict[Tuple[str, str], str]:
+    """Atomically swap queue contents to a local snapshot and clear the
+    module-level structure. Subsequent enqueues land in the fresh
+    structure while the drain proceeds against the snapshot.
     """
-    global _access_queue, _hebbian_queue
+    global _access_queue
     with _lock:
         access_snap = _access_queue
-        hebbian_snap = _hebbian_queue
         _access_queue = {}
-        _hebbian_queue = []
-    return access_snap, hebbian_snap
+    return access_snap
 
 
 # ─── Public API: drain ───────────────────────────────────────────────
 
 def drain_once(brain) -> None:
-    """Drain both queues against `brain.conn_bg_writer` in a single
+    """Drain the access queue against `brain.conn_bg_writer` in a single
     transaction. Called by the embed_queue worker once per cycle
     (wired in Phase 3).
 
-    Empty queues are a no-op (counted in drains_skipped_empty).
+    An empty queue is a no-op (counted in drains_skipped_empty).
     On any exception during the transaction: ROLLBACK + log via
     `bg_writer_batch_rollback` + drop the snapshot. The dropped batch
     is NOT re-queued — preserves the loss-semantic contract and avoids
-    poison-pill loops (one corrupt pair could otherwise stall the
+    poison-pill loops (one corrupt row could otherwise stall the
     queue forever).
 
     This function's contract is: never raise out — log and return.
@@ -231,8 +180,8 @@ def drain_once(brain) -> None:
     """
     t0 = time.time()
 
-    access_snap, hebbian_snap = _snapshot_and_clear()
-    batch_size = len(access_snap) + len(hebbian_snap)
+    access_snap = _snapshot_and_clear()
+    batch_size = len(access_snap)
 
     if batch_size == 0:
         # Empty tick — worker is alive, just had nothing to drain. Update
@@ -249,9 +198,8 @@ def drain_once(brain) -> None:
     rolled_back = False
     begin_wait_ms = 0
     # This drain owns its own BEGIN IMMEDIATE / COMMIT envelope on the
-    # bg-writer connection. Flag it so add_relation (via _apply_hebbian_pairs)
-    # defers its commit to the single COMMIT below — the same conn.in_batch
-    # gate the foreground brain_batch uses. Reset in the finally.
+    # bg-writer connection — the same conn.in_batch gate the foreground
+    # brain_batch uses. Reset in the finally.
     conn.in_batch = True
     try:
         # BEGIN IMMEDIATE so we grab the WAL writer slot upfront; without
@@ -265,36 +213,26 @@ def drain_once(brain) -> None:
         conn.execute('BEGIN IMMEDIATE')
         begin_wait_ms = int((time.time() - _bi_t0) * 1000)
 
-        if access_snap:
-            # Atomic +1 per (node, session) pair via executemany. The
-            # `archived = 0` filter makes the UPDATE a silent no-op on
-            # archived nodes (race between enqueue and drain — intended,
-            # not an error). Activation bump is a fixed 0.1 per recall.
-            # Deliberately does NOT touch updated_at: reads must never look
-            # like writes. Access semantics live in last_accessed; updated_at
-            # means "a write mutated this row" (contract.py field spec) —
-            # the old access-bump broke that for every consumer (community
-            # idle gate always-firing, consolidation fingerprint churn, the
-            # deleted recall_recent tool). Pinned by test_bg_writer.
-            conn.executemany(
-                'UPDATE nodes SET '
-                '    access_count = access_count + 1, '
-                '    activation = MIN(1.0, activation + 0.1), '
-                '    recency_score = 1.0, '
-                '    last_accessed = ? '
-                'WHERE id = ? AND archived = 0',
-                [(ts, nid) for (nid, _sid), ts in access_snap.items()])
-            with _lock:
-                _stats['access_drained_total'] += len(access_snap)
-
-        if hebbian_snap:
-            # _apply_hebbian_pairs returns the count it actually processed
-            # (its liveness gate may skip archived-touching pairs, which
-            # are counted in hebbian_pairs_skipped_archived instead — no
-            # double-count).
-            processed = _apply_hebbian_pairs(brain, conn, hebbian_snap)
-            with _lock:
-                _stats['hebbian_pairs_drained_total'] += processed
+        # Atomic +1 per (node, session) pair via executemany. The
+        # `archived = 0` filter makes the UPDATE a silent no-op on
+        # archived nodes (race between enqueue and drain — intended,
+        # not an error). Activation bump is a fixed 0.1 per recall.
+        # Deliberately does NOT touch updated_at: reads must never look
+        # like writes. Access semantics live in last_accessed; updated_at
+        # means "a write mutated this row" (contract.py field spec) —
+        # the old access-bump broke that for every consumer (community
+        # idle gate always-firing, consolidation fingerprint churn, the
+        # deleted recall_recent tool). Pinned by test_bg_writer.
+        conn.executemany(
+            'UPDATE nodes SET '
+            '    access_count = access_count + 1, '
+            '    activation = MIN(1.0, activation + 0.1), '
+            '    recency_score = 1.0, '
+            '    last_accessed = ? '
+            'WHERE id = ? AND archived = 0',
+            [(ts, nid) for (nid, _sid), ts in access_snap.items()])
+        with _lock:
+            _stats['access_drained_total'] += len(access_snap)
 
         conn.commit()
 
@@ -317,8 +255,7 @@ def drain_once(brain) -> None:
         try:
             brain._log_error(
                 'bg_writer_batch_rollback', e,
-                'drain_once dropped batch: access=%d hebbian=%d' %
-                (len(access_snap), len(hebbian_snap)))
+                'drain_once dropped batch: access=%d' % len(access_snap))
         except Exception as le:
             print('[recall_write_queue] _log_error itself failed: drain=%s '
                   'log=%s' % (e, le), file=sys.stderr)
@@ -352,8 +289,8 @@ def drain_once(brain) -> None:
                 'bg_writer_drain_overlong',
                 RuntimeError('drain took %dms (>%dms threshold) — BEGIN IMMEDIATE waited %dms' %
                              (took_ms, _OVERLONG_THRESHOLD_MS, begin_wait_ms)),
-                'access=%d hebbian=%d begin_wait_ms=%d' %
-                (len(access_snap), len(hebbian_snap), begin_wait_ms))
+                'access=%d begin_wait_ms=%d' %
+                (len(access_snap), begin_wait_ms))
         except Exception as le:
             print('[recall_write_queue] overlong log failed: %s' % le,
                   file=sys.stderr)
@@ -371,148 +308,14 @@ def drain_once(brain) -> None:
                   file=sys.stderr)
 
 
-# ─── Internal: hebbian application ───────────────────────────────────
-
-def _apply_hebbian_pairs(brain, conn,
-                          hebbian_snap: List[Tuple[str, str, str]]) -> None:
-    """Apply Hebbian strengthening for a list of (a, b, ts) triples.
-
-    Per-pair logic:
-      1. Look up edge_id via GraphDAL.get_edge_id (either direction).
-      2. If edge exists: atomic UPDATE on edge_relations WHERE
-         relation='co_accessed' AND archived=0. Cap weight at MAX_WEIGHT
-         via SQL MIN(). If no co_accessed row exists on the edge yet,
-         INSERT one via GraphDAL.add_relation (no auto-commit; respects
-         the outer transaction).
-      3. If no edge: GraphDAL.add_relation creates the edge AND the
-         co_accessed relation with default weight. No segment filter —
-         surface picks ARE the same context by definition (the segment
-         filter that lived in the old `_hebbian_strengthen` was a proxy
-         for "same context" that Anchor's surface selection makes
-         redundant).
-
-    Operates on `brain.conn_bg_writer`. The caller (`_drain_once`) sets
-    conn.in_batch=True around the BEGIN IMMEDIATE / COMMIT envelope, so
-    add_relation (which gates its commit on conn.in_batch via
-    commit_unless_batched) defers to the single COMMIT — earlier pairs
-    can't self-commit and break the rollback contract.
-
-    Per-pair exceptions are caught + logged but don't abort the batch.
-    The outer transaction's success/failure is independent of any
-    single pair. If a pair raises, it's lost (matches loss semantic).
-
-    Returns the number of pairs actually processed (after the liveness
-    gate) — the caller's hebbian_pairs_drained_total uses it so skipped
-    pairs aren't double-counted as drained.
-    """
-    from .brain_constants import LEARNING_RATE, MAX_WEIGHT, EDGE_TYPES
-    from .dal import NodeDAL
-    from .dal_graph import GraphDAL
-
-    co_default_weight = EDGE_TYPES['co_accessed']['defaultWeight']
-    delta = LEARNING_RATE * 0.5  # canonical Hebbian co-access bump magnitude
-    gdal = GraphDAL(conn)
-
-    # Liveness gate — never create/strengthen co_accessed edges touching an
-    # archived node. The surface selection gate keeps archived picks out of
-    # the enqueue path, but archive can land between enqueue and drain (S2
-    # absorb mid-window), and the edge this would mint is live while its
-    # node is dead — recall spread then walks INTO the archived node
-    # (2026-06-12: 4 live co_accessed edges to absorbed node 90664c51).
-    # Mirrors the access-drain's `archived = 0` no-op above.
-    ids = {nid for a, b, _ts in hebbian_snap for nid in (a, b)}
-    archived = NodeDAL(conn).archived_subset(ids)
-    if archived:
-        live_snap = [(a, b, ts) for a, b, ts in hebbian_snap
-                     if a not in archived and b not in archived]
-        with _lock:
-            _stats['hebbian_pairs_skipped_archived'] += (
-                len(hebbian_snap) - len(live_snap))
-        hebbian_snap = live_snap
-        # Loud, not stat-only (operator mandate): an archived node in a
-        # Hebbian pair means something upstream picked a dead node — the
-        # surface gate should have caught it, so reaching here is a leak
-        # signal worth investigating, not routine noise.
-        try:
-            brain._log_error(
-                'hebbian_archived_endpoint',
-                RuntimeError('hebbian pair(s) touched archived node(s) %s '
-                             '— skipped' % ','.join(
-                                 sorted(n[:8] for n in archived))),
-                'drain-time liveness gate; upstream picker admitted an '
-                'archived id (surface gate is the expected catch point)')
-        except Exception:
-            print('[recall_write_queue] archived-endpoint log failed',
-                  file=sys.stderr)
-
-    for a, b, ts in hebbian_snap:
-        try:
-            edge_id = gdal.get_edge_id(a, b)
-            if edge_id:
-                # Atomic strengthen — if a co_accessed row exists on this
-                # edge, MIN(cap, weight + delta) in one statement. If not,
-                # rowcount == 0 and we fall through to add_relation.
-                #
-                # Schema note (2026-05-18): `last_strengthened` lives on
-                # the `edges` aggregate table, NOT `edge_relations`. The
-                # initial draft of this UPDATE wrongly named it on the
-                # relation row and every pair raised "no such column".
-                # We now bump `edges.last_strengthened` in a sibling
-                # statement after the relation update.
-                cur = conn.execute(
-                    'UPDATE edge_relations '
-                    'SET weight = MIN(?, weight + ?) '
-                    'WHERE edge_id = ? AND relation = ? AND archived = 0',
-                    (MAX_WEIGHT, delta, edge_id, 'co_accessed'))
-                if cur.rowcount > 0:
-                    # Relation existed and was strengthened — also bump
-                    # the edge-level last_strengthened so analytics can
-                    # see "when did this co_accessed pair last fire".
-                    conn.execute(
-                        'UPDATE edges SET last_strengthened = ? '
-                        'WHERE edge_id = ?',
-                        (ts, edge_id))
-                else:
-                    # Edge exists but no active co_accessed relation
-                    # (either never had one, or it's archived). Use
-                    # add_relation — handles the archived-revive path
-                    # too, plus correct edge_relations field defaults.
-                    gdal.add_relation(
-                        a, b, 'co_accessed',
-                        description='hebbian co-access',
-                        weight=co_default_weight,
-                        encoding_source='recall:hebbian')
-            else:
-                # No physical edge between the pair. add_relation
-                # creates both the edges row and the edge_relations row.
-                gdal.add_relation(
-                    a, b, 'co_accessed',
-                    description='hebbian co-access',
-                    weight=co_default_weight,
-                    encoding_source='recall:hebbian')  # in_batch defers commit
-        except Exception as e:
-            try:
-                brain._log_error(
-                    'bg_writer_drain_hebbian', e,
-                    'pair=%s,%s' % (a[:8], b[:8]))
-            except Exception:
-                print('[recall_write_queue] hebbian log failed for pair '
-                      '%s,%s: %s' % (a[:8], b[:8], e), file=sys.stderr)
-            with _lock:
-                _stats['errors_total'] += 1
-
-    return len(hebbian_snap)
-
-
 # ─── Test-only helpers ───────────────────────────────────────────────
 
 def _clear_for_test() -> None:
     """Reset module state. Production code MUST NOT call this; it bypasses
     the normal enqueue → drain cycle and risks contention with the worker.
     """
-    global _access_queue, _hebbian_queue
+    global _access_queue
     with _lock:
         _access_queue = {}
-        _hebbian_queue = []
         for k in _stats:
             _stats[k] = 0 if isinstance(_stats[k], int) else None

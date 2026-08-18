@@ -8,8 +8,7 @@ record_payload / read_payload (in-process) or the sanctioned direct
 payload readers (dashboard/db.py, eval fresh_brain.capture_files_for).
 
 Operational STATE files are not capture and are deliberately out of pin
-scope: `brain-{session}-current-stop.txt` and the surface-selected
-S1R→S1E handoff file (surface_contract.surface_selected_path) survive.
+scope: `brain-{session}-current-stop.txt` survives.
 
 ALLOWLIST — time-bounded legacy: dashboard/queries/recalls.py keeps the
 old judge-result filename and dashboard/server.py the old consolidation

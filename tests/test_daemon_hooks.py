@@ -875,15 +875,16 @@ class TestDecayPruneTraces(BrainTestBase):
         b = self.brain.remember(type='test', title='decay-tgt', content='c',
                                 auto_connect=False,
                                 encoding_source='anchor')['id']
+        # exemplifies = the decays-True fixture (co_accessed retired 2026-08-17)
         res = self.brain._graph.add_relation(
-            a, b, 'co_accessed', weight=0.05, encoding_source='anchor')
+            a, b, 'exemplifies', weight=0.05, encoding_source='anchor')
         edge_id = res['edge_id']
 
         hook_idle_maintenance(self.brain, {}, [])
 
         chain = 'maint-%s-decay' % brain_today(self.brain).strftime('%Y%m%d')
         rows = [t for t in self.brain._trace_dal.get_chain(chain)
-                if t['ref_id'] == '%s:co_accessed' % edge_id]
+                if t['ref_id'] == '%s:exemplifies' % edge_id]
         self.assertEqual(len(rows), 1, 'one row per pruned relation')
         t = rows[0]
         self.assertEqual(t['ref_type'], 'edge_relation_revised')

@@ -2,8 +2,7 @@
 
 Mirrors tests/test_revise_unified.py for the edge side of the contract.
 Covers GraphDAL.add_relation upsert, the dispatch handlers' trace emission,
-and the wrapper layer (connect / connect_typed). (The Hebbian co-access bump
-lives in recall_write_queue._apply_hebbian_pairs — covered by test_bg_writer.)
+and the wrapper layer (connect / connect_typed).
 
   Class A — Connect upsert behavior
   Class B — (removed) strengthen_relation unit tests — see test_bg_writer
@@ -266,10 +265,8 @@ class TestConnectUpsertBehavior(BrainTestBase):
 # ═══════════════════════════════════════════════════════════════════════
 
 # TestStrengthenRelation removed in the DAL Phase-A cleanup: GraphDAL.
-# strengthen_relation was deleted (the Hebbian co-access bump is inlined in
-# recall_write_queue._apply_hebbian_pairs). The bump/cap/no-op behavior is
-# covered there by tests/test_bg_writer.py::TestHebbianDrainProducesEdges
-# (test_drain_strengthens_existing_co_accessed_edge).
+# strengthen_relation was deleted. (The Hebbian co-access mechanism itself
+# was retired entirely 2026-08-17 — node ab56d25a.)
 
 
 # ═══════════════════════════════════════════════════════════════════════

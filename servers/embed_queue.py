@@ -278,7 +278,7 @@ def _worker_loop(brain) -> None:
                     print('[embed_queue] coverage sweep error: %s '
                           '(log failed: %s)' % (e, le), file=sys.stderr)
 
-            # Drain recall_write_queue (access + hebbian). Fast,
+            # Drain recall_write_queue (access marks). Fast,
             # separate connection, separate transaction. drain_once is
             # contract-bound never to raise out — this try/except is
             # belt-and-suspenders.
@@ -333,8 +333,7 @@ def _check_stall(brain, recall_write_queue) -> None:
 
         embed_depth = (embed_snap.get('queue_depth', 0)
                        + embed_snap.get('edge_queue_depth', 0))
-        rwq_depth = (rwq_snap.get('access_queue_depth', 0)
-                     + rwq_snap.get('hebbian_queue_depth', 0))
+        rwq_depth = rwq_snap.get('access_queue_depth', 0)
         total_depth = embed_depth + rwq_depth
 
         if total_depth == 0:

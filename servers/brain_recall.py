@@ -2432,16 +2432,9 @@ class BrainRecallMixin:
                                 'node_activity bump failed for node=%s' %
                                 (node_id[:12] if node_id else ''))
 
-    # _hebbian_strengthen REMOVED 2026-05-18 (Phase 5):
-    # - Operated on top-15-by-cosine recall results, not what Anchor
-    #   consciously surfaced. Strengthened pairs Anchor never saw.
-    # - Read-modify-write via deprecated GraphDAL.strengthen_edge.
-    # - Wrote through primary conn on the recall hot path — load-bearing
-    #   contributor to the database-locked cascade.
-    # Hebbian semantics now live in `daemon_hooks._hebbian_strengthen`
-    # (which already operates on surface-selected nodes — the right
-    # layer) and routes through `recall_write_queue.enqueue_hebbian_pairs`
-    # for atomic SQL via brain.conn_bg_writer.
+    # _hebbian_strengthen REMOVED 2026-05-18 (Phase 5); the surface-picks
+    # successor was retired with the whole co_accessed family 2026-08-17
+    # (node ab56d25a) — surface_selected traces are the co-access substrate.
 
     # _log_recall REMOVED 2026-04-05 — recall_log writes deprecated, traces are source of truth
 

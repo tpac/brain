@@ -289,10 +289,10 @@ TABLES = {
     # reasoning_steps — REMOVED v21 (dead table)
 
     # bridge_proposals — UNDECLARED 2026-08-11. Deferred-maturation bridging
-    # (propose now, mature at matures_at); its readers went with consolidate().
-    # Bridging is now immediate — _bridge_at_store_time writes emergent_bridge
-    # edges directly. Fresh brains no longer create it; existing brains keep an
-    # empty table until the dead-table drop ships with the migration runner.
+    # (propose now, mature at matures_at); its readers went with consolidate(),
+    # and store-time bridging (emergent_bridge) was retired 2026-08-17. Fresh
+    # brains no longer create it; existing brains keep an empty table until
+    # the dead-table drop ships with the migration runner.
 
     # prune_archive — REMOVED v21 (dead table)
 

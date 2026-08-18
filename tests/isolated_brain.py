@@ -165,8 +165,8 @@ class IsolatedBrain:
             w.__wrapped__ = orig
             setattr(self.brain, name, w)
 
-        # Wrap recall too (Phase 5, 2026-05-18): mark_accessed + hebbian
-        # enqueue happens on recall; tests asserting on access_count need
+        # Wrap recall too (Phase 5, 2026-05-18): mark_accessed enqueue
+        # happens on recall; tests asserting on access_count need
         # the bg_writer drain to fire synchronously.
         for name in ('remember', 'revise', 'recall'):
             _wrap(name)

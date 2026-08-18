@@ -967,9 +967,9 @@ def _drop_archived_selected(brain, selected_mode, selected_short_ids):
 
     Mutates selected_mode (full-id keyed) and selected_short_ids (8-char
     set), and logs an ERROR per event — operator mandate: an archived node
-    being picked anywhere must be loud, never stat-only. The surfaced-ids
-    file is written by the caller AFTER this gate — single write site, only
-    the filtered set ever lands on disk.
+    being picked anywhere must be loud, never stat-only. Runs BEFORE
+    seeding and the surface_selected trace, so a dead id never seeds
+    spread or re-enters the recently-surfaced loop.
 
     Returns the list of dropped full ids (for tests / callers).
     """
@@ -980,8 +980,7 @@ def _drop_archived_selected(brain, selected_mode, selected_short_ids):
     except Exception as e:
         brain._log_error(
             'surface_liveness_gate', e,
-            'archived check failed — selection passes unfiltered '
-            '(hebbian drain gate backstops)')
+            'archived check failed — selection passes unfiltered')
         return []
     dead = sorted(nid for nid in selected_mode if nid in archived)
     if not dead:
@@ -996,25 +995,6 @@ def _drop_archived_selected(brain, selected_mode, selected_short_ids):
         'liveness gate in run_surface; the id came from session history '
         '(conversation / recently-surfaced block), not the candidate menu')
     return dead
-
-
-def _write_surface_selected_file(brain, session_id, stop_counter, short_ids):
-    """Single write site for the per-turn surfaced-ids file.
-
-    Hebbian + Stop hook read it. Path is scoped to session_id +
-    stop_counter so consecutive turns don't overwrite each other's
-    surface output before the Stop hook reads it (the counter
-    increments AFTER post_response_common). Called once per
-    run_surface, after the liveness gate, so only the filtered
-    selection ever lands on disk.
-    """
-    from servers.scales.s1.surface_contract import surface_selected_path
-    try:
-        with open(surface_selected_path(session_id, stop_counter), 'w') as f:
-            json.dump({"selected_ids": list(short_ids)}, f)
-    except Exception as e:
-        brain._log_error('surface_selected_write', e,
-                         'writing surface-selected file')
 
 
 def run_surface(brain, ctx, candidates_data, user_message,
@@ -1065,8 +1045,6 @@ def run_surface(brain, ctx, candidates_data, user_message,
         session_id, None)
 
     if not selected:
-        _write_surface_selected_file(brain, session_id, ctx.stop_counter,
-                                     set())
         judge_ptr = _record_judge_payload(ctx, recall_ref, surface_prompt,
                                           "(no selection)", brain)
         try:
@@ -1209,8 +1187,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
     # a walled id must not become a spread seed or render. Veil failure
     # fails CLOSED for the surfacing (selection purged, turn survives) —
     # scope_veil deliberately raises on a first-build failure, and an
-    # unguarded raise here would take the whole turn's traces and Hebbian
-    # file with it.
+    # unguarded raise here would take the whole turn's traces with it.
     try:
         _veil = brain.scope_veil(session_id)
     except Exception as _veil_err:
@@ -1231,11 +1208,6 @@ def run_surface(brain, ctx, candidates_data, user_message,
                 RuntimeError('walled node %s reached selection — dropped '
                              '(isolation veil)' % _wid[:8]),
                 'session=%s' % session_id)
-
-    # Surfaced-ids file (Hebbian + Stop hook input) — written once,
-    # after the gate, so only the filtered selection lands on disk.
-    _write_surface_selected_file(brain, session_id, ctx.stop_counter,
-                                 selected_short_ids)
 
     _mark('surface_id_resolve')
 

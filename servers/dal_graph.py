@@ -928,8 +928,7 @@ class GraphDAL:
     # strengthen_edge REMOVED 2026-05-18 (Phase 8 of bg_writer migration).
     # Was a deprecated read-modify-write helper used only by the old
     # brain_recall._hebbian_strengthen mixin, which Phase 5 deleted.
-    # Hebbian strengthening now uses atomic UPSERT inside
-    # recall_write_queue._apply_hebbian_pairs via add_relation.
+    # (The Hebbian mechanism itself was retired entirely 2026-08-17.)
 
     def delete_node_edges(self, node_id: str,
                           archived_by: str = 'delete_node_edges',
@@ -1111,10 +1110,8 @@ class GraphDAL:
                                   the documented "just created" signal, and a
                                   revive IS a semantic fresh row.
 
-        Auto-strengthen behavior dropped (Stage 1B Option α). Hebbian co-access
-        weight bumps are applied off the recall hot path by
-        recall_write_queue._apply_hebbian_pairs — encoder-explicit connect
-        calls are now idempotent.
+        Auto-strengthen behavior dropped (Stage 1B Option α) —
+        encoder-explicit connect calls are idempotent.
 
         Field-preservation rule (active row branch): caller passes _UNSET
         (the default) for a field → existing value preserved. Caller passes

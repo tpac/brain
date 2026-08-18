@@ -2440,7 +2440,7 @@ class Brain(
         except Exception as e:
             self._log_error('brain_close', e, 'primary conn close')
 
-        # Background-writer connection (temporal, access marks, hebbian).
+        # Background-writer connection (temporal, access marks).
         try:
             self.conn_bg_writer.commit()
         except Exception as e:

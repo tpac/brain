@@ -25,7 +25,6 @@ python3 tests/run_all.py
 
 ### Integration tests (uses DB copy)
 - `test_recall_pipeline.py` — full recall: cosine scan → z-weighted → fatigue → judge → graph expand
-- `test_hebbian_flow.py` — judge-selected IDs → co_accessed edges created
 - `test_metadata_kv.py` — remember → KV store → recall enrichment → judge sees metadata
 - `test_encoding_groups.py` — remember → group vectors created (title, high_meta, other_meta)
 

@@ -29,23 +29,21 @@ and the eight research questions live there).
 
 ## Now — verified open
 
-### 🟡 0b. Retire `co_accessed` + `emergent_bridge` — ruled dead 2026-08-17, spec ready
-**Full execution spec: node `df681fc1`.** Both edge families are written on every
-recall / every `remember()` and read by **nothing** — verified exhaustively: every
-reference in `servers/` is an exclusion list, the write path, a comment about its own
-removal, or the `EDGE_TYPES` constant. Tom's ruling: retire completely; the signal
-lives in traces (`surface_selected`, 7,548 events back to 2026-04-07, exempt from
-retention and *older* than the edges), and a future co-access mechanism gets built as
-an explicit cache table with an eval **then**, not defended with an eval now.
-Retiring `emergent_bridge` also closes a live direction-contamination vector — it
-fires at `remember()` time on topologically-close pairs and materializes a physical
-`edges` row that fixes orientation for later semantic edges (`1b8fdb1d`); the same fix
-was applied to `co_accessed` (`c3f37710`) and never to this one.
-**Sequence, do not collapse:** stop the writes (reversible, the whole win) → delete
-~11k rows later as its own backed-up change. **Do not re-arm edge decay alongside it**
-(`09a788c0`: the formula compounds per run; one pass would prune 3,760 relations).
-**Trap:** the 1.4× rescue lift on `co_accessed` (`450cb360`) is an *eval-harness*
-number for a lane that never shipped — it reads like a blocker and isn't.
+### 🟡 0b. Delete retired `co_accessed` + `emergent_bridge` rows (phase 2)
+The write-stop shipped (Tom ruled both dead 2026-08-17; spec node `df681fc1`,
+rulings `ab56d25a` / `072e26d8`). What remains is the destructive half: delete
+the ~10,813 `co_accessed` + ~150 `emergent_bridge` `edge_relations` rows —
+`backup_before_destructive` FIRST — and, in the same change, strip the two
+relation strings from the exclusion lists that exist to hide them
+(`DEFAULT_EXCLUDED_RELATIONS`, the `noise` aspect's `edge_relations`,
+`community_contract` / `community_decoder:1387`, `brain_recall:343,347`,
+`integrity_audit`'s dominance check). **Order matters: rows first, exclusion
+entries after** — the lists are live read-path filters, and removing an entry
+while its rows exist re-activates the dead family in fatigue degree, node
+connections, community adjacency, and the encoder catalog. The signal
+substrate stays untouched either way (`surface_selected` traces, exempt from
+retention). **Do not re-arm edge decay alongside it** (`09a788c0`: the formula
+compounds per run).
 
 ### 🟡 0. Encoder view policy: behavioral A/B → sweep → activation (2026-08-17) ◀ ACTIVE ARC
 **Read first:** handoff node `caad5afc` (the letter) + measurement `155ddb64` it rests on.
