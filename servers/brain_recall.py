@@ -1034,15 +1034,8 @@ class BrainRecallMixin:
         for node in page:
             self._mark_accessed(node['id'], session_id, ctx=None)
 
-        # v10: Hebbian co_accessed edge creation DISABLED.
-        # Previously: every recall created co_accessed edges between all top-25 results.
-        # This produced 71K noise edges (90% of graph) that destroyed topology.
-        # Biology: neurons that fire together wire together — but our "firing together"
-        # was just "scored similarly on cosine," not meaningful co-activation.
-        #
-        # Re-enable when: surface-selected node IDs are available in hook_post_response_track.
-        # Then: only strengthen between nodes the surfacer selected AND the assistant used.
-        # That's real co-activation — two memories genuinely contributing to the same response.
+        # No edge creation here — the co_accessed family is retired
+        # (node ab56d25a); surface_selected traces are the co-access substrate.
 
         # v4: Auto-instrument (skipped when called from recall
         # or hooks — they log via the precision module instead)
@@ -2167,7 +2160,7 @@ class BrainRecallMixin:
         # threads in so neighbor attachments can't re-admit walled titles.
         self._enrich_results(final_results[:3], veil=_veil)
 
-        # STEP 8: Mark accessed (for Hebbian learning + fatigue)
+        # STEP 8: Mark accessed (recognition signal + fatigue)
         # Per-session: _recall_ctx (loaded at top of this function) is passed
         # to _mark_accessed so fatigue increments land on the right session.
         sid = session_id or self.session_id
@@ -2175,7 +2168,7 @@ class BrainRecallMixin:
             try:
                 self._mark_accessed(node['id'], sid, ctx=_recall_ctx)
             except Exception as _e:
-                self._log_error("recall", _e, "marking node as accessed for Hebbian learning")
+                self._log_error("recall", _e, "marking node as accessed")
 
         # Fatigue increments live on the cached SessionContext (mutations
         # in memory). Persistence happens via the daemon autosave loop
@@ -2426,16 +2419,9 @@ class BrainRecallMixin:
                                 'node_activity bump failed for node=%s' %
                                 (node_id[:12] if node_id else ''))
 
-    # _hebbian_strengthen REMOVED 2026-05-18 (Phase 5):
-    # - Operated on top-15-by-cosine recall results, not what Anchor
-    #   consciously surfaced. Strengthened pairs Anchor never saw.
-    # - Read-modify-write via deprecated GraphDAL.strengthen_edge.
-    # - Wrote through primary conn on the recall hot path — load-bearing
-    #   contributor to the database-locked cascade.
-    # Hebbian semantics now live in `daemon_hooks._hebbian_strengthen`
-    # (which already operates on surface-selected nodes — the right
-    # layer) and routes through `recall_write_queue.enqueue_hebbian_pairs`
-    # for atomic SQL via brain.conn_bg_writer.
+    # _hebbian_strengthen REMOVED 2026-05-18 (Phase 5); the surface-picks
+    # successor was retired with the whole co_accessed family 2026-08-17
+    # (node ab56d25a) — surface_selected traces are the co-access substrate.
 
     # _log_recall REMOVED 2026-04-05 — recall_log writes deprecated, traces are source of truth
 

@@ -875,15 +875,16 @@ class TestDecayPruneTraces(BrainTestBase):
         b = self.brain.remember(type='test', title='decay-tgt', content='c',
                                 auto_connect=False,
                                 encoding_source='anchor')['id']
+        # exemplifies = the decays-True fixture (co_accessed retired 2026-08-17)
         res = self.brain._graph.add_relation(
-            a, b, 'co_accessed', weight=0.05, encoding_source='anchor')
+            a, b, 'exemplifies', weight=0.05, encoding_source='anchor')
         edge_id = res['edge_id']
 
         hook_idle_maintenance(self.brain, {}, [])
 
         chain = 'maint-%s-decay' % brain_today(self.brain).strftime('%Y%m%d')
         rows = [t for t in self.brain._trace_dal.get_chain(chain)
-                if t['ref_id'] == '%s:co_accessed' % edge_id]
+                if t['ref_id'] == '%s:exemplifies' % edge_id]
         self.assertEqual(len(rows), 1, 'one row per pruned relation')
         t = rows[0]
         self.assertEqual(t['ref_type'], 'edge_relation_revised')
@@ -893,6 +894,38 @@ class TestDecayPruneTraces(BrainTestBase):
         self.assertEqual(meta['encoding_source'], 'decay_pruned')
         self.assertEqual(meta['deltas'],
                          [{'field': 'archived', 'old': 0, 'new': 1}])
+
+
+class TestStopHookMintsNoEdges(BrainTestBase):
+    """co_accessed retirement guard: the Stop hook's post-response path must
+    not create edge_relations rows. This is the writer the retirement
+    removed (surface picks → Hebbian pairs → drain); re-wiring any co-access
+    writer into the Stop hook must fail here, not pass silently."""
+    needs_embedder = False
+
+    def test_conversational_stop_creates_no_edge_relations(self):
+        from servers.daemon_hooks import post_response_common
+        from servers import recall_write_queue
+
+        session_id = 'test-stop-no-edges'
+        ctx = self.brain.get_or_create_session(session_id)
+        # Make the turn classify as conversational (a real UserPromptSubmit
+        # would have set last_recall_stop via hook_recall).
+        ctx.last_recall_stop = ctx.stop_counter
+
+        before = self.brain.conn.execute(
+            'SELECT COUNT(*) FROM edge_relations').fetchone()[0]
+
+        post_response_common(self.brain, session_id,
+                             'user message', 'assistant response')
+        recall_write_queue.drain_once(self.brain)
+
+        after = self.brain.conn.execute(
+            'SELECT COUNT(*) FROM edge_relations').fetchone()[0]
+        self.assertEqual(after, before,
+                         'Stop-hook path created edge_relations rows — '
+                         'a co-access-style writer is back on the '
+                         'post-response path')
 
 
 if __name__ == '__main__':

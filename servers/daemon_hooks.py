@@ -539,93 +539,6 @@ def hook_recall(brain, args, graph_changes):
 
 
 
-def _hebbian_strengthen(brain, session_id, stop_counter):
-    """Enqueue co-access pairs from this turn's surface selection.
-
-    Reads the surface-selected file written by S1 (3-5 nodes Anchor
-    consciously chose to surface), resolves short IDs to full IDs,
-    builds all unordered pairs, and enqueues them to
-    `recall_write_queue` for batched atomic strengthening via
-    `brain.conn_bg_writer`. The background worker handles the actual
-    SQL — this function does no DB writes.
-
-    Phase 5 of bg_writer migration (2026-05-18):
-    - Was: synchronous `brain.connect_typed` + `gdal.strengthen_relation`
-      per pair, both writing through primary `brain.conn` on the post-
-      response hot path. Read-modify-write with up to N×8 SQL round-trips.
-    - Now: pure resolve + enqueue. The worker's drain does atomic
-      `UPDATE edge_relations SET weight = MIN(MAX, weight + ?)` per
-      pair, no read needed for the strengthen path.
-
-    `stop_counter` is the same counter surface.py used when writing
-    the file — both producer and consumer must agree on the path so
-    consecutive turns don't read each other's files.
-
-    Outcome tally remains so "did Hebbian run?" stays answerable
-    without a debugger.
-    """
-    from itertools import combinations
-    from . import recall_write_queue
-    from servers.scales.s1.surface_contract import surface_selected_path
-
-    outcome = {'file_missing': 0, 'few_ids': 0, 'unresolved': 0,
-               'pairs_enqueued': 0}
-    surface_path = surface_selected_path(session_id, stop_counter)
-    try:
-        if not os.path.exists(surface_path):
-            outcome['file_missing'] = 1
-            return
-
-        with open(surface_path) as f:
-            surface_ids = json.load(f).get('selected_ids', [])
-        if len(surface_ids) < 2:
-            outcome['few_ids'] = 1
-            return
-
-        # Resolve short IDs to full IDs.
-        dal = brain._nodes
-        full_ids = []
-        for sid in surface_ids:
-            full_id = dal.resolve_id(sid)
-            if full_id:
-                full_ids.append(full_id)
-        if len(full_ids) < 2:
-            outcome['unresolved'] = 1
-            return
-
-        # Build all unordered pairs and enqueue in one call. Max C(5, 2)
-        # = 10 pairs when surface picked the typical 3-5 nodes. No
-        # neighbor-cap (the old `min(j, i+8)` was an O(n²) bound that
-        # only mattered when this ran inline; the queue/drain handles
-        # batching naturally).
-        pairs = list(combinations(full_ids, 2))
-        ts = brain.now()
-        try:
-            recall_write_queue.enqueue_hebbian_pairs(pairs, ts)
-            outcome['pairs_enqueued'] = len(pairs)
-        except Exception as e:
-            brain._log_error('hebbian_enqueue', e,
-                             'enqueue_hebbian_pairs failed for %d pairs' %
-                             len(pairs))
-
-    except Exception as e:
-        # Unexpected failure in file-read / ID resolve / outer flow.
-        brain._log_error('hebbian_surface_selected_outer', e,
-                         'surface_path=%s' % surface_path)
-    finally:
-        # Durable tally so "did Hebbian run?" is answerable without a
-        # debugger. log_debug failure routes through _log_error so a
-        # broken logging path doesn't silently hide the outcome.
-        try:
-            brain.log_debug('hebbian_run', 'post_response_common', **outcome)
-        except Exception as _le:
-            try:
-                brain._log_error('hebbian_log_outcome', _le,
-                                 'log_debug failed; outcome=%s' % outcome)
-            except Exception:
-                pass  # last-resort safety; if even _log_error fails, swallow
-
-
 def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None):
     """Append one S0 turn-trace, binding the per-turn invariants in ONE place:
     chain (ctx.s0_chain()), scale ('s0'), and the session (ctx.session_id). The
@@ -644,8 +557,8 @@ def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None):
 
 
 def post_response_common(brain, session_id, user_message, assistant_response):
-    """Shared post-response path: S0 traces, Hebbian strengthening, heartbeat,
-    stop counter increment. Used by prod Stop hook and by the eval harness —
+    """Shared post-response path: S0 traces, heartbeat, stop counter
+    increment. Used by prod Stop hook and by the eval harness —
     same code, same ordering, one source of truth.
 
     Returns the SessionContext after increment.
@@ -688,14 +601,6 @@ def post_response_common(brain, session_id, user_message, assistant_response):
                 summary=(assistant_response[:200] or 'wakeup re-arm'))
     except Exception as e:
         brain._log_error('trace_s0', e, 'post_response_common')
-
-    # Hebbian strengthening reads THIS turn's surface file — a wakeup produces
-    # none, so it's only meaningful (and only run) on conversational turns.
-    if is_conversational:
-        try:
-            _hebbian_strengthen(brain, session_id, ctx.stop_counter)
-        except Exception as e:
-            brain._log_error('hebbian_surface_selected', e, 'post_response_common')
 
     # Session activity bookkeeping (NOT the watch heartbeat above) — every turn.
     try:
@@ -794,9 +699,11 @@ def hook_idle_maintenance(brain, args, graph_changes):
 
     Edge decay stays only because it must NOT simply resume — `decay_edges`
     multiplies the current weight by a factor of the edge's TOTAL age, so it
-    compounds per run rather than being a function of age. After the dormancy
-    one run would prune ~3,760 relations, a third of the co_accessed graph.
-    That needs the formula fixed before it moves anywhere.
+    compounds per run rather than being a function of age. With the
+    co_accessed / emergent_bridge EDGE_TYPES entries retired, its only
+    remaining subject is `exemplifies` — hand-authored semantic edges — so
+    after the dormancy one re-armed run would archive most of them in a
+    single pass. That needs the formula fixed before it moves anywhere.
     """
     import datetime
     start_time = datetime.datetime.now()

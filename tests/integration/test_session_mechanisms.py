@@ -8,9 +8,9 @@ Uses a COPY of the live brain DB. Never modifies production.
 Mechanisms tested:
 1. Z-weighted 4-group embedding scoring
 2. Synaptic fatigue (degree-based)
-3. Surface-selected Hebbian (co_accessed from surface, not from cosine scan)
+3. co_accessed retirement (recall mints no edges; exclusions hold)
 4. Embedding redistribution (70/30 from frozen originals)
-5. Structural graph separation (co_accessed + emergent excluded from traversal)
+5. Structural graph separation (noise relations excluded from traversal)
 6. Layer 3 post-surface graph expansion
 7. KV metadata store (extensible without schema changes)
 8. Encoding group vectors (title, high_meta, other_meta stored at encode time)
@@ -147,18 +147,14 @@ class Test02_SynapticFatigue(unittest.TestCase):
         self.assertGreater(fat_hub, fat_new)
 
 
-class Test03_SurfaceSelectedHebbian(unittest.TestCase):
-    """Hebbian co_accessed edges from surface-selected nodes only.
+class Test03_CoAccessedRetired(unittest.TestCase):
+    """co_accessed is retired (2026-08-17, node ab56d25a) — nothing may
+    create the edges, and the existing rows stay hidden behind the noise
+    aspect until the separate backed-up row deletion ships.
 
-    WHAT: Old Hebbian created co_accessed edges between ALL top-25 cosine results.
-    Produced 94K noise edges. Now: only nodes the Layer 2 surface selects get
-    co_accessed edges. These participate in graph traversal.
-
-    WHY: "Neurons that fire together wire together" — but cosine top-25 isn't
-    meaningful co-activation. Surface-selected IS meaningful.
-
-    WHERE: daemon_hooks.py hook_post_response_track reads surface-selected.json
-    EDGE TYPE: co_accessed (was noise, now meaningful after 2026-04-02 reset)
+    WHAT: recall must not mint co_accessed edges, and both load-time
+    exclusion policies must keep co_accessed / emergent_bridge out of
+    reads and traversal while their rows remain in the DB.
     """
 
     @classmethod
@@ -174,7 +170,7 @@ class Test03_SurfaceSelectedHebbian(unittest.TestCase):
         os.remove(cls.test_db)
 
     def test_co_accessed_not_created_by_recall(self):
-        """recall() should NOT create co_accessed edges anymore.
+        """recall() must NOT create co_accessed edges — the family is retired.
 
         v22 edge model: relation lives on edge_relations, not edges.edge_type.
         """
