@@ -148,7 +148,9 @@ class TestFreshBrainSeeding:
         db = str(tmp_path / 'brain.db')
         brain = Brain(db_path=db)
         try:
-            # v1 was seeded + auto-activated by Brain.__init__.
+            # v1 was seeded dormant by Brain.__init__ (registration never
+            # activates) — deploy it so there is an ACTIVE version to mirror.
+            brain._interaction_dal.set_active('s1e', 1, set_by='test')
             initial_v1 = brain.get_interaction_prompt('s1e')
             assert initial_v1
 

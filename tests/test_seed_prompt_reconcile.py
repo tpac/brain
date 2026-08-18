@@ -40,9 +40,23 @@ NAME = 's1_scout_facts'  # a template-carrying prompt, cheap to drive
 
 class ReconcileTestBase(BrainTestBase):
     """A brain whose prompts are seeded but otherwise untouched — i.e. a
-    freshly-installed fleet member."""
+    freshly-installed fleet member from the pre-override-model era.
+
+    Registration never activates anymore, so the legacy state reconcile
+    exists for (every seeded v1 auto-activated as AUTO_V1) is constructed
+    explicitly here. Installs created after the override model carry no
+    pointers and reconcile correctly leaves them alone — the code default
+    already flows."""
 
     needs_embedder = False
+
+    def setUp(self):
+        super().setUp()
+        from servers.dal_logs import AUTO_V1_PROVENANCE
+        for row in self.brain.list_interactions():
+            if not row.get('active_version'):
+                self.brain._interaction_dal.set_active(
+                    row['name'], 1, set_by=AUTO_V1_PROVENANCE)
 
     def _shipped(self, name=NAME):
         return shipped_prompts()[name]

@@ -715,7 +715,7 @@ def _build_tools():
          "version": {"type": "integer", "description": "Specific version (default 0 = currently-active version)", "default": 0}}}},
 
     {"name": "register_interaction",
-     "description": "Register a new version of an interaction (prompt template + config). Creates version N+1 if the interaction exists, or version 1 if new. **Does NOT activate** the new version — call set_interaction_active to flip the runtime pointer. Exception: version 1 (first registration of a name) auto-activates. Used to evolve learnable boundaries — surface prompts, encoder prompts, community enrichment, etc.",
+     "description": "Register a new version of an interaction (prompt template + config). Creates version N+1 if the interaction exists, or version 1 if new. **NEVER activates** — every name runs on its code default until set_interaction_active deploys an override. Used to evolve learnable boundaries — surface prompts, encoder prompts, community enrichment, etc.",
      "inputSchema": {"type": "object", "required": ["name"], "properties": {
          "name": {"type": "string", "description": "Interaction name (e.g. 's2_community_enrichment', 'surface', 'encoding_agent')"},
          "template": {"type": "string", "description": "The prompt/template text. This is the learnable content."},
@@ -728,6 +728,11 @@ def _build_tools():
          "name": {"type": "string", "description": "Interaction name (e.g. 'surface', 's1e')"},
          "version": {"type": "integer", "description": "Version number to activate. Must already be registered."},
          "set_by": {"type": "string", "description": "Who flipped the pointer (default 'anchor')"}}}},
+
+    {"name": "clear_interaction_override",
+     "description": "Delete the active pointer for an interaction — revert to the code default, immediately (TTL caches invalidated). The inverse of set_interaction_active: 'no pointer' means 'no override deployed'. Registered versions stay on record for re-activation. Reports distinctly whether a pointer was cleared or none existed.",
+     "inputSchema": {"type": "object", "required": ["name"], "properties": {
+         "name": {"type": "string", "description": "Interaction name (e.g. 'surface', 's1e')"}}}},
 
 
     # ── Daemon control ──

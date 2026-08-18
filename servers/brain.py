@@ -841,22 +841,46 @@ class Brain(
         or get_interaction_config. See InteractionDAL.set_active.
         """
         result = self._interaction_dal.set_active(name, version, set_by)
+        self.invalidate_interaction_caches(name)
+        return result
+
+    def clear_interaction_override(self, name: str) -> dict:
+        """Delete the active pointer for `name` — revert to the code default.
+
+        The inverse of set_interaction_active: "no pointer" means "no
+        override deployed", so the resolver serves the code default on the
+        next read. Registered versions stay on record for re-activation.
+        `cleared` is False when no pointer existed (already on the default).
+        """
+        cleared = self._interaction_dal.clear_active(name)
+        self.invalidate_interaction_caches(name)
+        return {'name': name, 'cleared': cleared}
+
+    def invalidate_interaction_caches(self, name: str) -> None:
+        """Drop any TTL cache holding `name`'s resolved config, so a pointer
+        flip or clear reaches the next read immediately — not after the TTL.
+
+        The next-read promise is what makes clear-then-measure workflows
+        (eval overrides, the trace_recording debug switch) trustworthy.
+        """
         if name == 'trace_recording':
             # The payload recorder TTL-caches this config (performance
-            # charter) — invalidate so the next-read promise above holds
-            # for the one config that gates live capture.
+            # charter) — the one config that gates live capture.
             self.invalidate_trace_recording_cache()
-        return result
+        elif name == 'recall_laf':
+            engine = getattr(self, '_laf_engine', None)
+            if engine is not None:
+                engine.invalidate_config()
 
     def register_interaction(self, name: str, template: str = '',
                              parameters: str = '',
                              created_by: str = 'anchor') -> dict:
         """Register a new version of an interaction (prompt + config).
 
-        Does NOT activate it (version 1 of a new name auto-activates —
-        otherwise nothing would be readable). Flip the runtime pointer with
-        set_interaction_active. Completes the interaction-registry door:
-        callers never touch _interaction_dal directly.
+        Never activates — a write is not a deployment decision; every name
+        runs on its code default until set_interaction_active deploys an
+        override. Completes the interaction-registry door: callers never
+        touch _interaction_dal directly.
 
         Configs with a registered validator (INTERACTION_VALIDATORS) are
         validated AT THIS DOOR and refused on violations — for scopes, a

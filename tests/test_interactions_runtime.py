@@ -23,8 +23,10 @@ class TestInteractionSeeding:
         with IsolatedBrain() as env:
             self.brain = env.brain
             self.dal = env.brain._interaction_dal
-            # Clear existing interactions for clean test
+            # Clear interactions AND pointers — a faithful fresh brain has
+            # neither (seeding registers dormant rows; nothing activates).
             env.brain.logs_conn.execute('DELETE FROM interactions')
+            env.brain.logs_conn.execute('DELETE FROM interaction_active')
             env.brain.logs_conn.commit()
             yield
 
@@ -79,7 +81,9 @@ class TestInteractionSeeding:
         from servers.interaction_seed import seed_interactions
         from servers.scales.s1.surface_contract import build_surface_prompt
         seed_interactions(self.brain)
-        surface = self.dal.get_active('surface')
+        # Seeded rows are dormant (registration never activates) — read the
+        # seeded content itself.
+        surface = self.dal.get_version('surface', 1)
         assert surface is not None
         template = surface['template']
         assert len(template) > 100  # real prompt, not placeholder
@@ -125,7 +129,7 @@ class TestInteractionSeeding:
         """
         from servers.interaction_seed import seed_interactions
         seed_interactions(self.brain)
-        enc = self.dal.get_active('s1e')
+        enc = self.dal.get_version('s1e', 1)
         assert enc is not None
         assert len(enc['template']) > 100  # real prompt
         config = json.loads(enc['parameters'])
@@ -146,8 +150,8 @@ class TestInteractionSeeding:
         from servers.interaction_seed import seed_interactions
         seed_interactions(self.brain)
         for interaction in self.dal.list_all():
-            active = self.dal.get_active(interaction['name'])
-            config = json.loads(active['parameters'])
+            seeded = self.dal.get_version(interaction['name'], 1)
+            config = json.loads(seeded['parameters'])
             assert isinstance(config, dict), "%s config is not a dict" % interaction['name']
             assert len(config) > 0, "%s config is empty" % interaction['name']
 
@@ -177,6 +181,7 @@ class TestBrainInteractionMethods:
         default = INTERACTION_DEFAULTS['s1e'][1]
         self.brain._interaction_dal.register(
             's1e', template='', parameters=json.dumps({'effort': 'sentinel-x'}))
+        self.brain._interaction_dal.set_active('s1e', 1, set_by='test')
         config = self.brain.get_interaction_config('s1e')
         assert config['effort'] == 'sentinel-x'
         for key, value in default.items():
@@ -191,6 +196,7 @@ class TestBrainInteractionMethods:
         self.brain._interaction_dal.register(
             'surface', template='You are a test judge. Select wisely.',
             parameters=json.dumps({}))
+        self.brain._interaction_dal.set_active('surface', 1, set_by='test')
         prompt = self.brain.get_interaction_prompt('surface')
         assert prompt == 'You are a test judge. Select wisely.'
 
@@ -198,15 +204,21 @@ class TestBrainInteractionMethods:
         with pytest.raises(KeyError):
             self.brain.get_interaction_prompt('nonexistent')
 
-    def test_register_v2_does_not_auto_activate(self):
-        """After registering v2, runtime still reads v1 until set_active is called.
-
-        This locks the active-version semantic (2026-05-10): registration
-        creates a version row but does NOT change the runtime pointer.
+    def test_register_never_auto_activates(self):
+        """Registration NEVER changes the runtime pointer — not v1, not v2.
+        A write is not a deployment decision; the name runs on its code
+        default until set_active deploys an override.
         """
+        from servers.interaction_defaults import INTERACTION_DEFAULTS
         self.brain._interaction_dal.register(
             's1e', template='', parameters=json.dumps({'effort': 'v1-effort'}))
-        # v1 should be auto-active
+        # v1 is dormant — runtime still reads the code default
+        config = self.brain.get_interaction_config('s1e')
+        assert config['effort'] == INTERACTION_DEFAULTS['s1e'][1]['effort'], \
+            "v1 register must NOT auto-activate; runtime runs the code default"
+
+        # Deploy v1 explicitly — runtime flips to the override
+        self.brain._interaction_dal.set_active('s1e', 1, set_by='test')
         config = self.brain.get_interaction_config('s1e')
         assert config['effort'] == 'v1-effort'
 
@@ -363,6 +375,7 @@ class TestInteractionFallback:
         with IsolatedBrain() as env:
             self.brain = env.brain
             env.brain.logs_conn.execute('DELETE FROM interactions')
+            env.brain.logs_conn.execute('DELETE FROM interaction_active')
             env.brain.logs_conn.commit()
             yield
 
@@ -409,8 +422,12 @@ class TestResolverGuards:
         with IsolatedBrain() as env:
             self.brain = env.brain
             env.brain.logs_conn.execute('DELETE FROM interactions')
+            env.brain.logs_conn.execute('DELETE FROM interaction_active')
             env.brain.logs_conn.commit()
             yield
+
+    def _deploy(self, name, version=1):
+        self.brain._interaction_dal.set_active(name, version, set_by='test')
 
     def _resolve_errors(self):
         return self.brain.logs_conn.execute(
@@ -421,6 +438,7 @@ class TestResolverGuards:
         from servers.interaction_defaults import INTERACTION_DEFAULTS
         self.brain._interaction_dal.register(
             's1e', template='', parameters='{not valid json')
+        self._deploy('s1e')
         config = self.brain.get_interaction_config('s1e')
         assert config == INTERACTION_DEFAULTS['s1e'][1]
         assert self._resolve_errors() >= 1
@@ -429,6 +447,7 @@ class TestResolverGuards:
         from servers.interaction_defaults import INTERACTION_DEFAULTS
         self.brain._interaction_dal.register(
             's1e', template='', parameters=json.dumps([1, 2, 3]))
+        self._deploy('s1e')
         config = self.brain.get_interaction_config('s1e')
         assert config == INTERACTION_DEFAULTS['s1e'][1]
         assert self._resolve_errors() >= 1
@@ -441,6 +460,7 @@ class TestResolverGuards:
         self.brain._interaction_dal.register(
             'scopes', template='',
             parameters=json.dumps({'project': {'mode': 'bogus'}}))
+        self._deploy('scopes')
         config = self.brain.get_interaction_config('scopes')
         assert config == SCOPES_CONFIG_V1
         assert self._resolve_errors() >= 1
@@ -463,6 +483,7 @@ class TestResolverGuards:
             INTERACTION_DEFAULTS, interaction_fingerprint)
         row = self.brain._interaction_dal.register(
             's1e', template='', parameters=json.dumps({'effort': 'high'}))
+        self._deploy('s1e')
         stamp = self.brain.get_interaction_stamp('s1e')
         template, default = INTERACTION_DEFAULTS['s1e']
         assert stamp['source'] == 'override'
@@ -476,6 +497,7 @@ class TestResolverGuards:
         does not shadow the default — it stamps 'default' like no row."""
         self.brain._interaction_dal.register(
             's1e', template='', parameters='{}')
+        self._deploy('s1e')
         stamp = self.brain.get_interaction_stamp('s1e')
         assert stamp['source'] == 'default'
         assert stamp['version'] == 0
@@ -526,3 +548,78 @@ class TestPointerDeleteIsClear:
                 "SELECT COUNT(*) FROM interaction_active "
                 "WHERE name = 'surface'").fetchone()[0]
             assert count == 0
+
+
+# ═══════════════════════════════════════════════════════
+# The clear verb (Step 6: override is a two-way door)
+# ═══════════════════════════════════════════════════════
+
+class TestClearInteractionOverride:
+    """clear_interaction_override is the inverse of set_interaction_active:
+    without it an override is a one-way door and the model degrades back
+    into the per-name freeze. Clearing must revert to the code default
+    IMMEDIATELY — the TTL caches are what would make a clear run late."""
+
+    @pytest.fixture(autouse=True)
+    def setup_brain(self):
+        with IsolatedBrain() as env:
+            self.brain = env.brain
+            env.brain.logs_conn.execute('DELETE FROM interactions')
+            env.brain.logs_conn.execute('DELETE FROM interaction_active')
+            env.brain.logs_conn.commit()
+            yield
+
+    def _deploy(self, name, template='', config=None):
+        self.brain._interaction_dal.register(
+            name, template=template, parameters=json.dumps(config or {}))
+        self.brain._interaction_dal.set_active(name, 1, set_by='test')
+
+    def test_clear_reverts_to_code_default_and_reports_distinctly(self):
+        from servers.interaction_defaults import INTERACTION_DEFAULTS
+        self._deploy('s1e', config={'effort': 'sentinel-clear'})
+        assert (self.brain.get_interaction_config('s1e')['effort']
+                == 'sentinel-clear')
+
+        result = self.brain.clear_interaction_override('s1e')
+        assert result == {'name': 's1e', 'cleared': True}
+        assert (self.brain.get_interaction_config('s1e')
+                == INTERACTION_DEFAULTS['s1e'][1])
+        assert self.brain.get_interaction_stamp('s1e')['source'] == 'default'
+        # Version rows survive the clear — re-activation stays possible.
+        assert self.brain.get_interaction('s1e', version=1) is not None
+
+        # No pointer existed — reported distinctly from "cleared".
+        assert self.brain.clear_interaction_override('s1e') == {
+            'name': 's1e', 'cleared': False}
+
+    def test_clear_reaches_trace_recording_cache_immediately(self):
+        """The landmine workflow: deploy a debug-ish override, clear it —
+        the payload recorder must see the revert NOW, not a TTL later."""
+        from servers.interaction_defaults import INTERACTION_DEFAULTS
+        self._deploy('trace_recording', config={'round_payload': True})
+        warmed = self.brain._trace_recording_config()
+        assert warmed['round_payload'] is True
+
+        self.brain.clear_interaction_override('trace_recording')
+        assert (self.brain._trace_recording_config()
+                == INTERACTION_DEFAULTS['trace_recording'][1])
+
+    def test_set_active_and_clear_reach_recall_laf_cache_immediately(self):
+        """recall_laf's engine TTL cache had NO invalidation hook — a flip
+        or clear ran up to CONFIG_TTL_S late. Both verbs must drop it."""
+        from servers.recall_laf import get_engine
+        engine = get_engine(self.brain)
+        engine.config(self.brain)
+        assert engine._cfg is not None
+
+        # Through the Brain verbs — cache invalidation is their policy,
+        # not the DAL's.
+        self.brain._interaction_dal.register(
+            'recall_laf', template='', parameters='{}')
+        self.brain.set_interaction_active('recall_laf', 1, set_by='test')
+        assert engine._cfg is None, 'set_active must drop the laf cache'
+
+        engine.config(self.brain)
+        assert engine._cfg is not None
+        self.brain.clear_interaction_override('recall_laf')
+        assert engine._cfg is None, 'clear must drop the laf cache'

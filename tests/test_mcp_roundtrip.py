@@ -800,10 +800,31 @@ class TestMCPRoundTrip(BrainTestBase):
         self._dispatch("register_interaction", {
             "name": "roundtrip_get_probe", "template": "PROBE TEMPLATE BODY",
             "parameters": "{}", "created_by": "roundtrip_test"})
+        # Registration never activates — deploy v1 so there is an active row.
+        self._dispatch("set_interaction_active", {
+            "name": "roundtrip_get_probe", "version": 1,
+            "set_by": "roundtrip_test"})
         result = self._dispatch("get_interaction", {"name": "roundtrip_get_probe"})
         self.assertIsInstance(result, dict)
         self.assertEqual(result.get("name"), "roundtrip_get_probe")
         self.assertEqual(result.get("template"), "PROBE TEMPLATE BODY")
+
+    def test_clear_interaction_override(self):
+        """clear_interaction_override deletes the pointer and reports
+        'cleared' vs 'no pointer existed' distinctly."""
+        self._dispatch("register_interaction", {
+            "name": "roundtrip_clear_probe", "template": "OVERRIDE BODY",
+            "parameters": "{}", "created_by": "roundtrip_test"})
+        self._dispatch("set_interaction_active", {
+            "name": "roundtrip_clear_probe", "version": 1,
+            "set_by": "roundtrip_test"})
+        result = self._dispatch("clear_interaction_override",
+                                {"name": "roundtrip_clear_probe"})
+        self.assertIs(result.get("cleared"), True)
+        again = self._dispatch("clear_interaction_override",
+                               {"name": "roundtrip_clear_probe"})
+        self.assertIs(again.get("cleared"), False)
+        self.assertIn("code default", again.get("note", ""))
 
     def test_register_interaction(self):
         """register_interaction adds a new interaction version."""

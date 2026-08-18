@@ -35,6 +35,7 @@ from .dispatch_observability import (
     _handle_count_traces, _handle_query_logs,
     _handle_clear_errors, _handle_log_debug, _handle_list_interactions,
     _handle_get_interaction, _handle_set_interaction_active, _handle_register_interaction,
+    _handle_clear_interaction_override,
 )
 from .dispatch_ops import (
     _handle_ping, _handle_health_check, _handle_validate_config,
@@ -101,6 +102,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "get_interaction":       CmdEntry(_handle_get_interaction,     is_write=False, marks_dirty=False),
     "register_interaction":  CmdEntry(_handle_register_interaction,is_write=True,  marks_dirty=False),
     "set_interaction_active": CmdEntry(_handle_set_interaction_active, is_write=True,  marks_dirty=False),
+    "clear_interaction_override": CmdEntry(_handle_clear_interaction_override, is_write=True, marks_dirty=False),
     "trace_append":          CmdEntry(_handle_trace_append,        is_write=True,  marks_dirty=False),
     "get_node":              CmdEntry(_handle_get_node,             is_write=False, marks_dirty=False),
     "get_nodes":             CmdEntry(_handle_get_nodes,            is_write=False, marks_dirty=False),

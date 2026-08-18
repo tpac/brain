@@ -246,16 +246,38 @@ def _handle_set_interaction_active(brain, args, graph_changes):
         return {"ok": False, "error": str(e)[:200]}
 
 
+def _handle_clear_interaction_override(brain, args, graph_changes):
+    """Delete the active pointer for an interaction — revert to the code default.
+
+    The inverse of set_interaction_active. After this call the runtime path
+    (brain.get_interaction_prompt / get_interaction_config) resolves the code
+    default, immediately — TTL caches are invalidated. Registered versions
+    stay on record for re-activation. No set_by is written (a delete leaves
+    no row), so the reserved-provenance check does not apply.
+    """
+    name = args.get("name", "")
+    if not name:
+        return {"ok": False, "error": "name is required"}
+    try:
+        result = brain.clear_interaction_override(name)
+        result["note"] = (
+            "Override cleared — runtime now resolves the code default."
+            if result.get("cleared")
+            else "No pointer existed — already running the code default.")
+        return {"ok": True, "result": result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _handle_register_interaction(brain, args, graph_changes):
     """Register a new version of an interaction (prompt + config).
 
     Creates a new version if the interaction exists, or version 1 if new.
     Used by S2/S3 to evolve learnable boundaries.
 
-    NOTE: Registration does NOT activate the new version (since 2026-05-10).
-    Call set_interaction_active to flip the runtime pointer. Exception:
-    version 1 (first registration of a name) auto-activates — otherwise
-    nothing would be readable for that name.
+    NOTE: Registration NEVER activates (a write is not a deployment
+    decision) — every name runs on its code default until
+    set_interaction_active deploys an override.
     """
     from .dal_logs import SYSTEM_PROVENANCE
     name = args.get("name", "")
@@ -289,10 +311,7 @@ def _handle_register_interaction(brain, args, graph_changes):
             "template_length": len(template),
             "note": (
                 "Registration created a new version but did NOT activate it. "
-                "Call set_interaction_active to flip the runtime pointer."
-                if active and active.get("version") != result.get("version")
-                else "First version of this interaction; auto-activated."
-            ),
+                "Call set_interaction_active to deploy it as the override."),
         }}
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
