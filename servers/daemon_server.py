@@ -359,6 +359,13 @@ class BrainDaemon:
                     LOGS_MAINTENANCE_INTERVAL_S)
             except Exception as _t_e:
                 self._log("logs_retention task registration failed: %s" % _t_e)
+            try:
+                from .brain_constants import DB_SIZE_TELEMETRY_INTERVAL_S
+                self._db_maintenance.register_task(
+                    'db_size_telemetry', self._collect_db_size_telemetry,
+                    DB_SIZE_TELEMETRY_INTERVAL_S)
+            except Exception as _t_e:
+                self._log("db_size_telemetry task registration failed: %s" % _t_e)
             self._db_maintenance.start()
         except Exception as _dm_e:
             # Scheduler must never block daemon startup.
@@ -390,6 +397,24 @@ class BrainDaemon:
         keepalive_thread.start()
 
         self._serve()
+
+    def _collect_db_size_telemetry(self):
+        """Weekly durable size snapshot for both DBs — file-level stats plus
+        per-table breakdown (dbstat, best-effort) — written as one debug_log
+        row per DB via the DAL write boundary. Turns "why did the DB grow?"
+        into a query over event_type='telemetry' instead of archaeology.
+        Runs on the db-maintenance thread (register_task)."""
+        from . import db_backends
+        backend = db_backends.current
+        out = {}
+        for name, db_path in (('brain', self.brain.db_path),
+                              ('brain_logs', self.brain.logs_db_path)):
+            payload = backend.stats(db_path)
+            payload['tables_mb'] = backend.table_sizes(db_path)
+            self.brain._logs_dal.write_event(
+                'telemetry', 'db_size_%s' % name, payload)
+            out[name] = payload['db_size_bytes']
+        return out
 
     def _run_warmup(self):
         """Background warmup. See Brain.warm_up() for what's covered."""

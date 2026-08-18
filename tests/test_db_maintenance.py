@@ -146,6 +146,8 @@ class TestSchedulerFiresOps(unittest.TestCase):
             def checkpoint(self, p):
                 fired['checkpoint'] += 1
                 return {}
+            def quick_check(self, p):
+                return {'ok': True}
             def optimize(self, p):
                 fired['optimize'] += 1
                 return {}
@@ -181,6 +183,8 @@ class TestSchedulerFiresOps(unittest.TestCase):
                 if fired['count'] == 1:
                     raise RuntimeError('first call fails')
                 return {}
+            def quick_check(self, p):
+                return {'ok': True}
             def optimize(self, p):
                 return {}
             def stats(self, p):
@@ -224,6 +228,8 @@ class TestSchedulerFiresOps(unittest.TestCase):
             def checkpoint(self, p):
                 fired['count'] += 1
                 raise RuntimeError('database is locked')
+            def quick_check(self, p):
+                return {'ok': True}
             def optimize(self, p):
                 return {}
             def stats(self, p):
@@ -255,3 +261,119 @@ class TestSchedulerFiresOps(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestQuickCheck(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.tmp, 'qc.db')
+        conn = sqlite3.connect(self.db_path)
+        conn.execute('CREATE TABLE t (id INTEGER PRIMARY KEY, body TEXT)')
+        conn.executemany('INSERT INTO t (body) VALUES (?)',
+                         [('x' * 500,) for _ in range(200)])
+        conn.commit()
+        conn.close()
+
+    def test_healthy_db_returns_ok(self):
+        self.assertEqual(sqlite_backend.quick_check(self.db_path), {'ok': True})
+
+    def test_corruption_raises_into_the_error_path(self):
+        # Flip bytes in the middle of a data page. quick_check must RAISE
+        # (RuntimeError for structural findings; sqlite may also throw its
+        # own DatabaseError first) — never return a quiet not-ok dict.
+        size = os.path.getsize(self.db_path)
+        with open(self.db_path, 'r+b') as f:
+            f.seek(size // 2)
+            f.write(b'\xde\xad\xbe\xef' * 64)
+        with self.assertRaises((RuntimeError, sqlite3.DatabaseError)):
+            sqlite_backend.quick_check(self.db_path)
+
+
+class TestTableSizes(unittest.TestCase):
+    def test_returns_per_table_mb(self):
+        tmp = tempfile.mkdtemp()
+        db_path = os.path.join(tmp, 'ts.db')
+        conn = sqlite3.connect(db_path)
+        conn.execute('CREATE TABLE big (body TEXT)')
+        conn.executemany('INSERT INTO big VALUES (?)',
+                         [('y' * 1000,) for _ in range(500)])
+        conn.commit()
+        conn.close()
+        sizes = sqlite_backend.table_sizes(db_path)
+        if not sizes:
+            self.skipTest('dbstat vtab not compiled into this sqlite build')
+        self.assertIn('big', sizes)
+        self.assertGreater(sizes['big'], 0)
+
+
+class TestWalPinnedAlert(unittest.TestCase):
+    """_track_wal_pinning: alert exactly once at the streak threshold; any
+    successful truncation resets the streak."""
+
+    def _maintenance_with_capture(self):
+        errors = []
+        m = DBMaintenance(
+            log_fn=lambda msg: None,
+            log_error_fn=lambda origin, exc, ctx: errors.append(origin))
+        return m, errors
+
+    def test_alert_fires_once_at_threshold(self):
+        m, errors = self._maintenance_with_capture()
+        entry = {'name': 'test', 'wal_pinned_streak': 0}
+        pinned = {'wal_size_before': 4096, 'wal_size_after': 4096}
+        for _ in range(5):
+            m._track_wal_pinning(entry, pinned)
+        self.assertEqual(errors.count('db_maintenance_wal_pinned'), 1)
+
+    def test_success_resets_streak(self):
+        m, errors = self._maintenance_with_capture()
+        entry = {'name': 'test', 'wal_pinned_streak': 0}
+        pinned = {'wal_size_before': 4096, 'wal_size_after': 4096}
+        truncated = {'wal_size_before': 4096, 'wal_size_after': 0}
+        m._track_wal_pinning(entry, pinned)
+        m._track_wal_pinning(entry, pinned)
+        m._track_wal_pinning(entry, truncated)   # reset
+        m._track_wal_pinning(entry, pinned)
+        m._track_wal_pinning(entry, pinned)
+        self.assertEqual(errors, [], 'streak did not reset on success')
+
+    def test_empty_wal_is_not_pinned(self):
+        m, errors = self._maintenance_with_capture()
+        entry = {'name': 'test', 'wal_pinned_streak': 0}
+        for _ in range(5):
+            m._track_wal_pinning(entry, {'wal_size_before': 0, 'wal_size_after': 0})
+        self.assertEqual(errors, [])
+
+
+class TestQuickCheckScheduled(unittest.TestCase):
+    def test_quick_check_fires_on_schedule(self):
+        fired = {'quick_check': 0}
+
+        class StubBackend:
+            def apply_pragmas(self, conn):
+                pass
+            def checkpoint(self, p):
+                return {}
+            def quick_check(self, p):
+                fired['quick_check'] += 1
+                return {'ok': True}
+            def optimize(self, p):
+                return {}
+            def stats(self, p):
+                return {}
+
+        m = DBMaintenance(
+            log_fn=lambda msg: None,
+            checkpoint_interval_s=999.0,
+            optimize_interval_s=999.0,
+            quick_check_interval_s=0.05,
+            tick_interval_s=0.05,
+        )
+        m._backend = StubBackend()
+        m.register('test', '/dev/null')
+        m.start()
+        try:
+            time.sleep(0.25)
+        finally:
+            m.stop()
+        self.assertGreaterEqual(fired['quick_check'], 1)
