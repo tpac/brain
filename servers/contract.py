@@ -870,6 +870,13 @@ def render_rich_node(node, config=None):
     edges_header = '  Edges:'
     if cfg.get('show_edge_total') and len(all_conns) > len(connections):
         edges_header = '  Edges (%d of %d):' % (len(connections), len(all_conns))
+    if cfg.get('show_edge_total') and all_conns and not connections:
+        # edge_limit=0 with edges present: say they exist. Rendering nothing
+        # made a well-connected node read as isolated — the reader cannot tell
+        # "no edges" from "edges not shown here", and only one of those is a
+        # reason to go look.
+        lines.append('  Edges (%d, not shown — get_nodes for them):'
+                     % len(all_conns))
     if connections and cfg.get('edge_style') == 'oneline':
         # Selection-grade edge render: direction + relation + target title only.
         # No description, no id, no timestamps — those are injection payload

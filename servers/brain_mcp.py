@@ -581,7 +581,7 @@ def _build_tools():
          "rich": {"type": "boolean", "description": "Default false → bounded view (full content + top-8 edges + correction gist). true → complete view: all edges + heavy correction K/V. Reach for it when drilling one node deeply.", "default": False}}}},
 
     {"name": "get_nodes",
-     "description": "Get multiple nodes by ID in one call. Bounded by default and batch-size-aware (small batches keep full content + top edges; large batches compact to a gist) so a multi-node pull never floods the turn. Pass rich=true for the complete view of each.",
+     "description": "Get multiple nodes by ID in one call. CONTENT IS CAPPED BY BATCH SIZE, so a multi-node pull never floods the turn: 1-3 ids return full content (+ top 8 edges), 4-10 return a 600-char excerpt, 11+ return a 400-char gist. Ask for the few you need in full rather than a large batch. rich=true returns the complete view at any batch size.",
      "inputSchema": {"type": "object", "required": ["node_ids"], "properties": {
          "node_ids": {"type": "array", "description": "Array of node IDs to fetch", "items": {"type": "string"}},
          "rich": {"type": "boolean", "description": "Default false → bounded, batch-size-aware view. true → complete view (all edges + heavy correction K/V) for every node. Use sparingly on large batches — it is the firehose.", "default": False}}}},

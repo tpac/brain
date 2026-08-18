@@ -287,7 +287,8 @@ def _dedup_correction_relations(nodes_map, brain):
 
 
 def build_node_catalog(judge_outputs, brain, extra_ids=None,
-                       scope=None, view_policy=False, now=None):
+                       scope=None, view_policy=False, now=None,
+                       window_first_turn=None, aged_content_chars=-1):
     """Build the deduplicated rich-node catalog the encoder dereferences by id.
 
     Uses system render_rich_node() with S1 config (full rich, corrections heavy).
@@ -313,6 +314,11 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
             full-depth render, byte-identical to the long-standing path.
         now: the as-of instant for relative time (conversation time — replays
             must pass it; None → wall-clock). Only read when view_policy is on.
+        window_first_turn: the 1-based turn the rendered timeline opens on
+            (encode.window_first_turn). Supplied → aging ages by the CHAT
+            WINDOW instead of the newest N encode rounds, so widening the
+            window widens the full-depth catalog with it. None → round-based.
+            Only read when view_policy is on.
 
     Returns:
         (catalog_text, node_id_set) — formatted catalog + set of IDs rendered.
@@ -382,17 +388,20 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
     # keep full bodies. OFF: `order` stays the raw set (byte-identical render).
     order, aged = catalog_ids, set()
     if view_policy:
-        from servers.scales.s1.encoder_view import catalog_view
+        from servers.scales.s1.encoder_view import aging_cutoff, catalog_view
+        cutoff = (window_first_turn if window_first_turn is not None
+                  else aging_cutoff(extra_ids.get('run_stops')))
         order, aged = catalog_view(
             catalog_ids, stops=extra_ids.get('stops'),
-            run_stops=extra_ids.get('run_stops'), protected=surfaced_ids)
+            run_stops=extra_ids.get('run_stops'), protected=surfaced_ids,
+            cutoff=cutoff)
 
     lines = [header]
     if aged:
-        from servers.scales.s1.encoder_view import (AGED_TAG, aged_header_line,
-                                                    aging_cutoff)
+        from servers.scales.s1.encoder_view import AGED_TAG, aged_header_line
         lines.append(aged_header_line(
-            len(aged), aging_cutoff(extra_ids.get('run_stops'))))
+            len(aged), cutoff,
+            basis='window' if window_first_turn is not None else 'rounds'))
     lines.append('')
     formatted_ids = set()
     # One batched fetch (returns {id: node}) — the widened union can be hundreds of
@@ -418,6 +427,12 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
         if aged:
             from servers.scales.s1.encoder_view import AGED_NODE_CONFIG
             aged_cfg = dict(AGED_NODE_CONFIG, **view_cfg)
+            # -1 = use the policy's own cap. None = keep content whole and let
+            # the OTHER cuts (edges, corrections, metadata) do the saving —
+            # the variant that makes a partial-view revise impossible because
+            # there is no truncated body to rewrite from.
+            if aged_content_chars != -1:
+                aged_cfg['content_limit'] = aged_content_chars
             if scope:
                 aged_cfg['scope'] = scope
     for nid in order:

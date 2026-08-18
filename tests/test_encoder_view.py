@@ -395,7 +395,10 @@ def test_catalog_aging_trims_old_rounds_keeps_new_full():
     # first-person TURN coordinates under the policy (oldnode1 written at 5)
     assert ('%s [encoded(me, turn 5)]' % AGED_TAG) in text
     assert '[encoded] ' not in text                  # legacy tag retired here
-    assert 'get_nodes expands any id' in text
+    # The contract is that the header names the expansion path and says the
+    # body is CUT — not any one phrasing of it (this assertion pinned the
+    # sentence and broke on a deliberate rewrite).
+    assert 'get_nodes' in text and 'CUT' in text
     assert 'last written before turn 10' in text     # the aging cutoff, named
     assert str(CATALOG_FULL_ROUNDS) in text.split('\n')[1]
     # flag off keeps the legacy tag vocabulary

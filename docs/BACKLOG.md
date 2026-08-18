@@ -29,24 +29,31 @@ and the eight research questions live there).
 
 ## Now — verified open
 
-### 🟡 0. Encoder view policy: behavioral A/B → sweep → activation (2026-08-17) ◀ ACTIVE ARC
-**Read first:** handoff node `caad5afc` (the letter) + measurement `155ddb64` it rests on.
-The encoder prompt diet is **merged and live-but-OFF** (main `bfa72f3`,
-`BRAIN_S1E_VIEW_POLICY` env; flag off = byte-identical control arm, proven by two
-`eval/encoder_prompt_reassembly.py` integrity PASSes). Measured on real captures:
-catalog was 80–89% of every prompt; policy cuts totals 12–16% on 4-run sessions —
-aging is round-based, so the payoff grows with run count. Policy lives in
-`encoder_view.py` (the Map's Encoding row); coordinates in `trace_links.display_turn`.
-**Locked:** actions→provenance ruling (`27db2472`) incl. brain_batch + lookups out,
-connect stays; turn coordinates 1-based; surfaced-id aging protection.
-**Open:** behavioral A/B via `eval/longmem/ab_encode.py` flipping the flag per arm —
-watch re-encoding of covered turns and revise-vs-dupe on `[aged]` stubs (byte counts
-can't see either); then frozen-corpus sweep; then activation (Tom's gate: flip
-default, retire `encoded_turn_trim` + its flag-off test, bump the s1e prompt gloss).
-Gated on API budget (claimed back 2026-09-01 — verify with one cheap call).
-**Do not reopen:** last-30 catalog cap (`9ae6820a`, dangling refs) · internal-jargon
-labels (stateless-agent test) · verb exclude list (deferred) · content-trimming as
-the lever (`155ddb64`: edges + heavy corrections are the weight).
+### 🟡 0. Encoder view policy: wire arm D to production, then activate (2026-08-18) ◀ ACTIVE ARC
+**Read first:** handoff `550b4ce8` (the letter), then blocker `6f7fc98c`.
+**The design is chosen and read-verified — and it is eval-only.** Arm **D** = full node
+body + edges suppressed-but-announced (`Edges (23, not shown — get_nodes for them):`)
++ window-aligned cutoff. `run_encoding` never passes `window_first_turn` or
+`aged_content_chars`, so **flag ON today still renders arm B** (round cutoff, body cut
+to 400). Every arm C/D number describes a config production cannot currently produce.
+**Why D** (`ffb0f7a4`, spec `afa6bb59`, verdict `d34af9e4`): truncating the body let the
+encoder rewrite what it couldn't see. Two read-verified destructions, one under the
+fully-guarded prompt (`8aa7e7d7`). Same node under D kept everything C erased. Size vs
+unpoliced: −15% to −36%; vs merged arm B: within a few points, better on one capture.
+**Shipping order:** (1) pass both params from `_build_catalog`; (2) **make the strings
+true** — the header says "content is CUT at 400 chars" and the prompt says "`…` is a
+fragment"; both are false under D, and shipping them repeats the stale-gloss defect
+this arc exists to fix (tag wants `[body only]`, not `[aged]`/`[truncated]`);
+(3) v39 prompt: register → activate → `sync-prompts` → bump `SEED_PROMPTS_VERSION`;
+(4) `./redeploy.sh` + new session for the `get_nodes` MCP description; (5) retire
+`encoded_turn_trim` + its flag-off test; (6) wide `-k` tier, branch, merge.
+**Do not reopen:** `ab_encode.py` for this policy (structurally blind, `d8809f3f`) ·
+more prompt text for the turn-pointer leak (97%→90% over two attempts; `3faf5b01`
+explains why prose loses to an 87%-leaky catalog) · more prompt text against
+partial-view rewrites (`8aa7e7d7`) · `get_nodes_config` for the encoder (Tom deferred) ·
+last-30 catalog cap (`9ae6820a`) · content-trimming as the savings lever (`155ddb64`).
+**Open, and larger than the render:** run-to-run node-quality variance dwarfs every arm
+difference measured; unexplained, unexamined.
 
 ### 🔴 1. Prompt improvements never reach existing installs
 `interaction_seed._register` returns early when the name already exists, so an install
@@ -155,6 +162,28 @@ the write door. It lives in the `connect_to` **schema description** in `contract
 defaults `relation = args.get("relation", "related_to")` in two places, so a caller
 that omits the field silently gets one. That default is the suspect if they ever
 reappear.
+
+### 🔴 4b. Encoder revise integrity — does a revise silently destroy content in production?
+**Read first:** brain `3cdb33b3`. Everything known comes from the eval harness; **production
+has never been checked.** A `revise` REPLACES content, so a partial or careless rewrite
+drops load-bearing detail while the node still looks maintained — and length is no signal
+(both read-verified losses grew or held size). Arm D closes the *aging* pathway
+(`d34af9e4`); revises on full bodies are unsampled. One unresolved anomaly: an emitted
+`content: "placeholder — this revise will fail gracefully"` against a node that exists
+(`21e5e97f`) — real, or an artifact of the harness's synthetic write ids.
+**Cheap path, no API:** production `encoding_run` traces carry `action_details` with the
+emitted ops — extract revise ops, pair with node content at that moment, diff.
+**Method warning:** the line-overlap score is a reading queue, not a verdict (`a9b9295d`) —
+it scored a genuinely better rewrite as 100% loss. Rate claims must be read-backed.
+
+### 4c. Encoder run-to-run node-quality variance — larger than any render effect
+**Read first:** brain `079d9736`. Same capture, same prompt, same arm: one run produced 23–28
+creates at `situation` 57% / 0.3 edges / 476-char content; another 4–13 at 100% / 3.0 edges /
+1,242 chars. That swing dwarfs every A/B/C/D difference measured, i.e. node quality is
+dominated by something other than the catalog render. Production trace *summaries* look
+normal (2–3 rounds, ~12–16 nodes/run) but can't show field-fill — that needs
+`action_details`. Note `source_refs` fill is NOT a quality bar (`9a30733f`: display
+provenance, sparse by design).
 
 ### 5. Healer and AspectIntegration write zero journal notes
 Two of four S2 units are mute: across 589 notes / 14 days the split is S1E 317 /

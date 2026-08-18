@@ -983,6 +983,61 @@ def _render_markdown_timeline(brain, messages):
     return timeline
 
 
+def _lived_turns(brain, session_id, n_turns):
+    """The windowed turn list the lived timeline renders: episodes grouped into
+    turns, trimmed to the last `n_turns`. Raises on read failure — the renderer
+    keeps its markdown fallback.
+
+    One owner for the window: the timeline renders these turns and
+    window_first_turn dates the catalog against them, so the two can never
+    disagree about where the conversation window opens.
+    """
+    from servers.scales.s1.encode_contract import LIVED_SEQUENCE_PULL
+    from servers.trace_contract import SAID_AND_DID_REF_TYPES
+    episodes = brain.recall_episodes(
+        session_id=session_id, ref_type=list(SAID_AND_DID_REF_TYPES),
+        sort_order='desc', limit=LIVED_SEQUENCE_PULL)['episodes']
+    # Most-recent-N pulled desc; sort chronological so turns read in order.
+    episodes = sorted(episodes, key=lambda e: e.get('created_at') or '')
+
+    # Group into turns: a user_message opens a turn; the assistant_message + the
+    # tool_results before the next user_message belong to it. A leading non-user
+    # event (rare) opens an orphan turn so nothing is dropped.
+    turns = []
+    cur = None
+    for e in episodes:
+        rt = e.get('ref_type')
+        if rt == 'user_message' or cur is None:
+            cur = {'user': None, 'assistant': None, 'actions': []}
+            turns.append(cur)
+        if rt == 'user_message':
+            cur['user'] = e
+        elif rt == 'assistant_message':
+            cur['assistant'] = e
+        elif rt == 'tool_result':
+            cur['actions'].append(e)
+
+    return turns[-n_turns:]  # window-match the control arm
+
+
+def window_first_turn(brain, session_id, messages):
+    """The 1-based turn number the rendered timeline opens on — the
+    window-aligned catalog cutoff (encode_contract.build_node_catalog's
+    `window_first_turn`). None when the window has no datable head, which the
+    caller reads as "no window cutoff available", falling back to round-based
+    aging rather than ageing everything."""
+    from servers.scales.s1.trace_links import display_turn
+    n_turns = sum(1 for m in (messages or []) if m.get('role') == 'user') or 20
+    try:
+        turns = _lived_turns(brain, session_id, n_turns)
+    except Exception:
+        return None
+    for t in turns:
+        if t.get('user'):
+            return display_turn(t['user'].get('chain_id'))
+    return None
+
+
 def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
                                     scout_notes=None, view_policy=False,
                                     now=None):
@@ -1013,41 +1068,15 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
     surfaced/judge_output is deliberately NOT rendered here — it belongs to the
     <provenance> block (piece 2). Piece 1 is a pure timeline read.
     """
-    from servers.scales.s1.encode_contract import ENCODING_AGENT, LIVED_SEQUENCE_PULL
-    from servers.trace_contract import SAID_AND_DID_REF_TYPES
+    from servers.scales.s1.encode_contract import ENCODING_AGENT
     lim = ENCODING_AGENT['message_display_limit']
     n_turns = sum(1 for m in (messages or []) if m.get('role') == 'user') or 20
 
     try:
-        episodes = brain.recall_episodes(
-            session_id=session_id,
-            ref_type=list(SAID_AND_DID_REF_TYPES),
-            sort_order='desc', limit=LIVED_SEQUENCE_PULL)['episodes']
+        turns = _lived_turns(brain, session_id, n_turns)
     except Exception as e:
         print('[s1e] ERROR reading lived sequence, falling back to markdown: %s' % e, flush=True)
         return _render_markdown_timeline(brain, messages)
-
-    # Most-recent-N pulled desc; sort chronological so turns read in order.
-    episodes = sorted(episodes, key=lambda e: e.get('created_at') or '')
-
-    # Group into turns: a user_message opens a turn; the assistant_message + the
-    # tool_results before the next user_message belong to it. A leading non-user
-    # event (rare) opens an orphan turn so nothing is dropped.
-    turns = []
-    cur = None
-    for e in episodes:
-        rt = e.get('ref_type')
-        if rt == 'user_message' or cur is None:
-            cur = {'user': None, 'assistant': None, 'actions': []}
-            turns.append(cur)
-        if rt == 'user_message':
-            cur['user'] = e
-        elif rt == 'assistant_message':
-            cur['assistant'] = e
-        elif rt == 'tool_result':
-            cur['actions'].append(e)
-
-    turns = turns[-n_turns:]  # window-match the control arm
 
     def _tool_name(ep):
         # tool_result metadata carries {"tool": <raw CC tool name>}

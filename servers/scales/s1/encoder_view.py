@@ -88,13 +88,24 @@ def timeline_now_attr(now):
         return ''
 
 
-def aged_header_line(n_aged, cutoff):
+def aged_header_line(n_aged, cutoff, basis='rounds'):
     """The catalog's one-line explanation of the [aged] tag — rendered once,
     right under the catalog header, whenever any entry aged. Names the cutoff
-    in turn coordinates so an aged entry's `turn N` reads as visibly old."""
-    return ('%d %s entries (last written before turn %s; my newest %d encode '
-            'rounds stay full) are trimmed to stubs — get_nodes expands any id.'
-            % (n_aged, AGED_TAG, cutoff, CATALOG_FULL_ROUNDS))
+    in turn coordinates so an aged entry's `turn N` reads as visibly old, and
+    names what set the cutoff so the encoder can predict what stays full."""
+    kept = ('my newest %d encode rounds stay full' % CATALOG_FULL_ROUNDS
+            if basis == 'rounds' else
+            'everything touched inside the conversation window below stays full')
+    # States the CUT, not just the trim, and names the call once for the whole
+    # catalog rather than per entry. Measured 2026-08-17: 6 revises landed on
+    # aged entries across 36 runs with zero expansions — each rewrote the node
+    # from its visible head, dropping the tail. "Trimmed to stubs" did not
+    # convey that a body ending in '…' is a fragment the revise would destroy.
+    return ('%d %s entries (last written before turn %s; %s) are stubs — '
+            'their content is CUT at %d chars and their edges dropped. '
+            'get_nodes(["<id>"]) returns any of them whole; I expand before '
+            'revising one, or the rewrite deletes what the stub never showed.'
+            % (n_aged, AGED_TAG, cutoff, kept, AGED_CONTENT_CHARS))
 
 
 def aging_cutoff(run_stops, full_rounds=CATALOG_FULL_ROUNDS):
@@ -107,7 +118,7 @@ def aging_cutoff(run_stops, full_rounds=CATALOG_FULL_ROUNDS):
     return rs[-full_rounds]
 
 
-def catalog_view(ids, stops, run_stops, protected=()):
+def catalog_view(ids, stops, run_stops, protected=(), cutoff=None):
     """Order + tier the catalog: returns (ordered_ids, aged_id_set).
 
     ordered_ids — oldest→newest by each id's last-touched stop, so the most
@@ -117,9 +128,16 @@ def catalog_view(ids, stops, run_stops, protected=()):
 
     aged — ids last touched strictly before the cutoff, minus `protected`
     (ids surfaced for the current window: the encoder's likeliest dedup/revise
-    targets keep full bodies even when their last write is old)."""
+    targets keep full bodies even when their last write is old).
+
+    `cutoff` — an explicit turn number replacing the round-based one. Passing
+    the first turn the timeline renders aligns the full-depth catalog with the
+    conversation window: ONE knob widens both, where the round-based cutoff
+    lets them drift apart (a 10-turn window against a 42-round catalog).
+    None → derived from run_stops."""
     stops = stops or {}
-    cutoff = aging_cutoff(run_stops)
+    if cutoff is None:
+        cutoff = aging_cutoff(run_stops)
     aged = set()
     if cutoff is not None:
         protected = set(protected or ())
