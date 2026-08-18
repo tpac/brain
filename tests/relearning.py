@@ -1084,7 +1084,7 @@ class ReplayEngine:
                         if target_id and node_id:
                             valid_types = {
                                 'part_of', 'related', 'corrected_by', 'exemplifies',
-                                'depends_on', 'co_accessed', 'produced'
+                                'depends_on', 'produced'
                             }
                             edge_type = relation if relation in valid_types else 'related'
                             # Use connect_typed for typed edges, plain connect for related

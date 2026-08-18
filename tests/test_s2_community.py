@@ -490,7 +490,7 @@ class TestCommunityIdleGate(BrainTestBase):
         time.sleep(0.02)
         # None of these may wake the gate:
         self.brain.remember(type='community', title='comm', content='c')   # own node type
-        self.brain.connect_typed(a, b, relation='co_accessed', weight=0.5)  # noise edge
+        self.brain.connect_typed(a, b, relation='co_anchored', weight=0.5)  # noise edge
         self.brain.connect_typed(a, b, relation='implements',              # own edge source
                                  encoding_source='s2:community_detection')
         self.assertEqual(u._should_skip(), 'no graph change since last run')

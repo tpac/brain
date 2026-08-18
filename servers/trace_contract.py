@@ -137,8 +137,8 @@ REF_TYPES = {
                          "node_created",            # node born (emitter)
                          "node_archived",           # node archived (emitter) — S2 units archive
                                                     # superseded nodes and dead communities
-                         "node_deleted",            # node HARD-deleted (emitter) — idle-maintenance
-                                                    # junk purge; the trace is the only record
+                         "node_deleted",            # node HARD-deleted (emitter) — the retired
+                                                    # junk purge wrote these; the trace is the only record
                          "journal_note"],           # S2 unit residue (consolidation, community) — one note per row
 
     # Scale 3: reasoning integration

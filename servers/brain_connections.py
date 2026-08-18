@@ -35,7 +35,6 @@ class BrainConnectionsMixin:
         ids = [e for e in (edge_ids or []) if e]
         if not ids:
             return 0
-        from .dal_graph import DEFAULT_EXCLUDED_RELATIONS
         from . import embedder as _embedder
         if not _embedder.is_ready():
             # Embedder still loading (e.g. at boot before warmup). Don't drop
@@ -47,21 +46,17 @@ class BrainConnectionsMixin:
                 embed_queue.enqueue_edge(e)
             return 0
         model = _embedder.stats.get('model_name') or ''
-        excl = sorted(DEFAULT_EXCLUDED_RELATIONS)
         ph = ','.join('?' * len(ids))
-        excl_ph = ','.join('?' * len(excl))
         # Re-embed rows that are unembedded OR embedded by a DIFFERENT model
         # (a model swap makes the stored blob unreadable — the read path filters
         # embedding_model = active — so stale-model rows must re-embed; matches
-        # node find_missing semantics). Exclude co_accessed/emergent_bridge in
-        # SQL — they're never read by recall, so embedding them is pure waste.
+        # node find_missing semantics).
         rows = self.conn.execute(
             'SELECT edge_id, relation, description FROM edge_relations '
             'WHERE edge_id IN (%s) AND archived = 0 '
-            'AND relation NOT IN (%s) '
             'AND (embedding IS NULL OR embedding_model IS NOT ?)'
-            % (ph, excl_ph),
-            [*ids, *excl, model]).fetchall()
+            % ph,
+            [*ids, model]).fetchall()
         if not rows:
             return 0
         # Compute OUTSIDE the write lock — fastembed is CPU-heavy. 'document'

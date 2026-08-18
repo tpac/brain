@@ -19,10 +19,7 @@ Properties locked:
    (`[relation] description`, no partner title), so revising a
    partner node's title does NOT invalidate the edge embedding.
 
-4. **Excluded relations skip embedding.** `co_accessed` / `emergent_bridge` are
-   excluded from spread/select_edges, so backfill leaves them NULL.
-
-5. **Archive NULLs; revive re-embeds.**
+4. **Archive NULLs; revive re-embeds.**
 """
 import os
 import sys
@@ -83,16 +80,6 @@ class TestEdgeEmbedding(BrainTestBase):
         self.assertIsNotNone(blob, 'backfill should store the embedding')
         self.assertGreater(len(blob), 0)
         self.assertTrue(model, 'embedding_model should be populated by backfill')
-
-    def test_excluded_relations_skip_embedding(self):
-        """co_accessed / emergent_bridge are excluded from spread+select_edges,
-        so backfill_edge_embeddings must skip them — they stay NULL."""
-        a, b = self._create_pair()
-        self.brain.connect_typed(a, b, relation='co_accessed', description='surface co-access')
-        self._backfill(a, b)
-        blob, _ = self._read_embedding(a, b, 'co_accessed')
-        self.assertIsNone(blob,
-                          'co_accessed edges are excluded — backfill must skip them')
 
     def test_partner_title_revision_does_not_stale_embedding(self):
         """Revising a partner node's title must not change the edge embedding —

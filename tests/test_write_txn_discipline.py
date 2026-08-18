@@ -219,7 +219,7 @@ class TestGraphWritersHaveNoCommitKwarg(unittest.TestCase):
 
     BATCH_REACHABLE_WRITERS = [
         (GraphDAL, 'add_relation'), (GraphDAL, 'remove_relation'),
-        (GraphDAL, 'delete_node_edges'), (GraphDAL, 'decay_edges'),
+        (GraphDAL, 'delete_node_edges'),
         # source_refs extracted to SourceRefDAL (Phase 5) — still batch-reachable
         (SourceRefDAL, 'add_source_refs'), (SourceRefDAL, 'replace_source_refs'),
     ]

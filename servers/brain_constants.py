@@ -220,17 +220,15 @@ EDGE_TYPES = {
     'reasoning_step': {'defaultWeight': 0.9, 'decays': False, 'description': 'Step N to Step N+1'},
     'produced': {'defaultWeight': 0.85, 'decays': False, 'description': 'Reasoning chain to Decision'},
     'corrected_by': {'defaultWeight': 0.85, 'decays': False, 'description': 'Correction event to corrector'},
-    'exemplifies': {'defaultWeight': 0.8, 'decays': True, 'halfLife': 720, 'description': 'Decision to Rule'},
+    'exemplifies': {'defaultWeight': 0.8, 'decays': False, 'description': 'Decision to Rule'},
     'part_of': {'defaultWeight': 0.7, 'decays': False, 'description': 'Node to parent'},
     'depends_on': {'defaultWeight': 0.7, 'decays': False, 'description': 'Node requires another'},
     'related': {'defaultWeight': 0.5, 'decays': False, 'description': 'Manual or inferred — intentional, no decay'},
 }
-# co_accessed + emergent_bridge retired 2026-08-17 (nodes ab56d25a, 072e26d8).
-# Existing rows remain in the DB until the separate backed-up deletion ships;
-# the exclusion lists that hide them from reads stay until then.
+# co_accessed + emergent_bridge retired 2026-08-17 (nodes ab56d25a, 072e26d8);
+# their rows were purged from the DB. Edge decay retired with them — no
+# EDGE_TYPES entry decays anymore; weights are static per edge.
 
-# Edge decay
-EDGE_PRUNE_THRESHOLD = 0.1  # Edges below this weight after decay are deleted
 
 # Critical node safety
 CRITICAL_BOOST = 3.0              # Recall score multiplier for critical=1 nodes

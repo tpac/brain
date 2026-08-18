@@ -62,7 +62,7 @@ def query_encoding_activity(conn, since_ts: str = "", limit: int = 30):
         f"LEFT JOIN nodes n2 ON n2.id = e.target_id "
         f"{where.replace('created_at', 'e.created_at')} "
         f"AND er.archived = 0 "
-        f"AND er.relation NOT IN ('co_accessed', 'emergent_bridge') "
+        f"" 
         f"ORDER BY e.created_at DESC LIMIT ?",
         args_base + (limit,),
     ).fetchall()
@@ -346,7 +346,7 @@ def query_encoding_runs(limit: int = 10, session_id: str = '', hours: int = 24):
                         "LEFT JOIN nodes n2 ON n2.id = e.target_id "
                         "WHERE e.created_at BETWEEN ? AND ? "
                         "AND er.archived = 0 "
-                        "AND er.relation NOT IN ('co_accessed', 'emergent_bridge') "
+                        "" 
                         "AND (e.source_id IN (%s) OR e.target_id IN (%s)) "
                         "ORDER BY e.created_at" % (nid_ph, nid_ph),
                         [start_ts, end_ts] + node_ids + node_ids,

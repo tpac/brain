@@ -30,7 +30,7 @@ REQUIRED_ASPECTS: tuple = (
 
     # Edge-facing (used by S2 community / consolidation / healer)
     'generic_relation',         # related, related_to (skip set in community/consolidation)
-    'noise',                    # co_accessed, emergent_bridge (skip set + structural)
+    'noise',                    # co_anchored, community_member (skip set + structural)
     'correction_improvement',   # corrects, supersedes
     'extension_refinement',     # extends, refines, elaborates
     'explanation_causation',    # explains, causes

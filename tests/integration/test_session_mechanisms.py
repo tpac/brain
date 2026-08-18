@@ -149,12 +149,12 @@ class Test02_SynapticFatigue(unittest.TestCase):
 
 class Test03_CoAccessedRetired(unittest.TestCase):
     """co_accessed is retired (2026-08-17, node ab56d25a) — nothing may
-    create the edges, and the existing rows stay hidden behind the noise
-    aspect until the separate backed-up row deletion ships.
+    create the edges; the rows were purged in phase 2 and the retired
+    names left every exclusion roster.
 
-    WHAT: recall must not mint co_accessed edges, and both load-time
-    exclusion policies must keep co_accessed / emergent_bridge out of
-    reads and traversal while their rows remain in the DB.
+    WHAT: recall must not mint co_accessed edges, the noise-aspect
+    policies must stay coherent, and the retired names must never
+    silently re-enter the noise roster.
     """
 
     @classmethod
@@ -187,9 +187,7 @@ class Test03_CoAccessedRetired(unittest.TestCase):
         structural_exclusions is the FULL noise set (flat reads — hide
         decision id:49d734ad includes community_member); traversal_exclusions
         is noise MINUS community_member (graph dynamics keep conducting
-        through communities — conduction is not visibility). The old
-        EXCLUDED_EDGE_TYPES literal's 'co_accessed is clean now' premise
-        (2026-04-02) died when Hebbian co-access writes resumed."""
+        through communities — conduction is not visibility)."""
         structural = self.brain.aspects.structural_exclusions
         traversal = self.brain.aspects.traversal_exclusions
         self.assertEqual(
@@ -198,8 +196,10 @@ class Test03_CoAccessedRetired(unittest.TestCase):
         self.assertIn('community_member', structural)
         self.assertNotIn('community_member', traversal)
         self.assertEqual(traversal, structural - {'community_member'})
+        self.assertIn('co_anchored', traversal)
+        # Retired families must never re-enter the noise roster silently.
         for rel in ('co_accessed', 'emergent_bridge'):
-            self.assertIn(rel, traversal)
+            self.assertNotIn(rel, structural)
 
 
 
@@ -227,8 +227,7 @@ class Test05_StructuralGraph(unittest.TestCase):
 
     def test_excluded_types(self):
         exclusions = self.brain.aspects.traversal_exclusions
-        self.assertIn('emergent_bridge', exclusions)
-        self.assertIn('co_accessed', exclusions)
+        self.assertIn('co_anchored', exclusions)
 
     def test_structural_edges_exist(self):
         """There should be intentional edges for traversal.
@@ -236,9 +235,7 @@ class Test05_StructuralGraph(unittest.TestCase):
         v22 edge model: relation lives on edge_relations, not edges.edge_type.
         """
         count = self.brain.conn.execute(
-            "SELECT COUNT(*) FROM edge_relations "
-            "WHERE relation NOT IN ('co_accessed', 'emergent_bridge') "
-            "AND archived=0"
+            "SELECT COUNT(*) FROM edge_relations WHERE archived=0"
         ).fetchone()[0]
         self.assertGreater(count, 1000,
                           "Should have significant structural edges")

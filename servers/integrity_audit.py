@@ -90,19 +90,8 @@ def deep_integrity_audit(brain):
             "message": "%d of %d nodes revised (%.0f%%)" % (revised, total, revised / max(1, total) * 100),
         })
 
-        # 6. Edge type distribution — are co_accessed dominating?
-        # GraphDAL.count_by_relation defaults archived=0 (v25).
-        all_counts = brain._graph.count_by_relation()
-        edge_types = list(all_counts.items())[:5]
-        total_edges = sum(cnt for _, cnt in edge_types)
-        for rel, cnt in edge_types:
-            pct = cnt / max(1, total_edges) * 100
-            if rel == 'co_accessed' and pct > 70:
-                findings.append({
-                    "type": "edge_imbalance",
-                    "severity": "info",
-                    "message": "co_accessed edges are %.0f%% of all edges — organic but noisy" % pct,
-                })
+        # (Edge-type distribution check removed with the co_accessed
+        # retirement — no relation family can dominate by mechanism anymore.)
 
         # 7. Metadata sparseness (via KV DAL)
         _meta_dal = brain._meta_kv

@@ -84,8 +84,9 @@ class TestCommunityStructural(BrainTestBase):
         a, b, c = self._node('a'), self._node('b'), self._node('c')
         for m in (a, b, c):
             self._connect(cid, m, 'community_member', 0.3)
-        # co_accessed (Hebbian noise) must NOT count as internal cohesion.
-        self._connect(a, b, 'co_accessed')
+        # 'related' (pure-generic, non_cohesion_relations) must NOT count
+        # as internal cohesion.
+        self._connect(a, b, 'related')
 
         res = compute_community_structural(self.brain, [cid])[cid]
 

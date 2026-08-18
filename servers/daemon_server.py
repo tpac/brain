@@ -151,7 +151,6 @@ class BrainDaemon:
     HOOK_TABLE = {
         "hook_recall":               (False, True),
         "hook_post_response_track":  (True,  True),
-        "hook_idle_maintenance":     (True,  True),
         "hook_pre_edit":             (False, True),
         "hook_pre_bash_safety":      (False, False),
         "hook_session_end":          (True,  True),

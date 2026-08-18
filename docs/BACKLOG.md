@@ -29,22 +29,6 @@ and the eight research questions live there).
 
 ## Now — verified open
 
-### 🟡 0b. Delete retired `co_accessed` + `emergent_bridge` rows (phase 2)
-The write-stop shipped (Tom ruled both dead 2026-08-17; spec node `df681fc1`,
-rulings `ab56d25a` / `072e26d8`). What remains is the destructive half: delete
-the ~10,813 `co_accessed` + ~150 `emergent_bridge` `edge_relations` rows —
-`backup_before_destructive` FIRST — and, in the same change, strip the two
-relation strings from the exclusion lists that exist to hide them
-(`DEFAULT_EXCLUDED_RELATIONS`, the `noise` aspect's `edge_relations`,
-`community_contract` / `community_decoder:1387`, `brain_recall:343,347`,
-`integrity_audit`'s dominance check). **Order matters: rows first, exclusion
-entries after** — the lists are live read-path filters, and removing an entry
-while its rows exist re-activates the dead family in fatigue degree, node
-connections, community adjacency, and the encoder catalog. The signal
-substrate stays untouched either way (`surface_selected` traces, exempt from
-retention). **Do not re-arm edge decay alongside it** (`09a788c0`: the formula
-compounds per run).
-
 ### 🟡 0. Encoder view policy: behavioral A/B → sweep → activation (2026-08-17) ◀ ACTIVE ARC
 **Read first:** handoff node `caad5afc` (the letter) + measurement `155ddb64` it rests on.
 The encoder prompt diet is **merged and live-but-OFF** (main `bfa72f3`,
@@ -372,8 +356,8 @@ out already done.
 - `eval_runner.py` bypasses the enrichment scoring step production uses, so scoring
   improvements are invisible to that eval
 - `brain_dashboard.db` write removal — pending the dashboard's actual deprecation
-- Historical `co_accessed` trim; empty-description generic-edge archive sweep (the
-  reclassifier can't fix these — no description to read)
+- Empty-description generic-edge archive sweep (the reclassifier can't fix
+  these — no description to read)
 - Query-aware KV field promotion in render (temporal query promotes `event_time`, "what
   did X say" promotes `user_raw_quote`)
 - Dispatcher enforcement for mandatory metadata fields — generative encoder rules run

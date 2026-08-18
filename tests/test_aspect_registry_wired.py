@@ -68,7 +68,7 @@ class TestAspectRegistryWired(BrainTestBase):
         self.assertIn('moment', types)
 
         relations = self.brain.aspects.relations_in(['noise', 'generic_relation'])
-        self.assertIn('co_accessed', relations)
+        self.assertIn('co_anchored', relations)
         self.assertIn('related_to', relations)
 
     def test_surface_meaning_maps_populated(self):

@@ -858,44 +858,6 @@ class TestSeenCandidateDedup(BrainTestBase):
 
 
 
-class TestDecayPruneTraces(BrainTestBase):
-    """Step 9 — the idle-maintenance decay prune emits one
-    edge_relation_revised row per pruned relation (per-edge ruled 2026-08-03,
-    no rollup), on its OWN maint chain: rows route s0 (encoding_source
-    mirrors the graph's archived_by='decay_pruned'), and the s2 maint chain
-    must not be reused across scales."""
-    needs_embedder = False
-
-    def test_prune_emits_per_edge_rows_on_the_decay_chain(self):
-        from servers.daemon_hooks import hook_idle_maintenance
-        from servers.clock import brain_today
-        a = self.brain.remember(type='test', title='decay-src', content='c',
-                                auto_connect=False,
-                                encoding_source='anchor')['id']
-        b = self.brain.remember(type='test', title='decay-tgt', content='c',
-                                auto_connect=False,
-                                encoding_source='anchor')['id']
-        # exemplifies = the decays-True fixture (co_accessed retired 2026-08-17)
-        res = self.brain._graph.add_relation(
-            a, b, 'exemplifies', weight=0.05, encoding_source='anchor')
-        edge_id = res['edge_id']
-
-        hook_idle_maintenance(self.brain, {}, [])
-
-        chain = 'maint-%s-decay' % brain_today(self.brain).strftime('%Y%m%d')
-        rows = [t for t in self.brain._trace_dal.get_chain(chain)
-                if t['ref_id'] == '%s:exemplifies' % edge_id]
-        self.assertEqual(len(rows), 1, 'one row per pruned relation')
-        t = rows[0]
-        self.assertEqual(t['ref_type'], 'edge_relation_revised')
-        self.assertEqual(t['scale'], 's0')
-        meta = t['metadata']
-        self.assertEqual((meta['source_id'], meta['target_id']), (a, b))
-        self.assertEqual(meta['encoding_source'], 'decay_pruned')
-        self.assertEqual(meta['deltas'],
-                         [{'field': 'archived', 'old': 0, 'new': 1}])
-
-
 class TestStopHookMintsNoEdges(BrainTestBase):
     """co_accessed retirement guard: the Stop hook's post-response path must
     not create edge_relations rows. This is the writer the retirement

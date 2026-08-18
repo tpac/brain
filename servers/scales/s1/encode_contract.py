@@ -225,7 +225,7 @@ def _filter_noise_relations(nodes_map, brain):
     """Drop noise-aspect relations from each catalog node's connections (lived
     arm only). The noise aspect (aspects_v1.json) is the single source for
     structural-only relations with no semantic claim — community_member,
-    co_accessed, emergent_bridge, and the legacy S2 markers. The encoder
+    co_anchored, and the legacy S2 markers. The encoder
     shouldn't read (or learn to imitate) plumbing edges.
 
     Multi-relation aware: a connection survives when ANY non-noise relation

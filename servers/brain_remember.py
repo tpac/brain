@@ -1117,9 +1117,8 @@ class BrainRememberMixin:
             # source_refs overlap with any existing node's refs, write a
             # structural co_anchored edge to each sibling. The graph layer
             # is the signal — no score boost, no magnitude to guess.
-            # Excluded from candidate cosine ranking at brain_recall.py:334
-            # alongside co_accessed. Sparse refs (1-3) × small cohort →
-            # negligible cost.
+            # Excluded from reads via the noise aspect. Sparse refs
+            # (1-3) × small cohort → negligible cost.
             try:
                 graph_dal = self._graph
                 siblings: set = set()

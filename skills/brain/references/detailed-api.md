@@ -94,7 +94,7 @@ Any node can be marked `critical=1` via operator approval. Critical nodes:
 | reasoning_step | 0.9 | Never | Steps in reasoning chain |
 | produced | 0.85 | Never | Chain → decision link |
 | corrected_by | 0.85 | Never | Correction events |
-| exemplifies | 0.8 | 30d half-life | Rule → example |
+| exemplifies | 0.8 | Never | Rule → example |
 | part_of | 0.7 | Never | Structural hierarchy |
 | depends_on | 0.7 | Never | Dependency |
 | related | 0.5 | 14d half-life | General association |

@@ -52,12 +52,6 @@ For **Stop**: Claude gets feedback only via JSON `decision` field. Plain stdout 
 - **What Claude sees:** Safety warnings, critical node matches, block reasons
 - **Status:** ✅ WORKING
 
-### 6. Notification(idle_prompt) → `idle-maintenance.sh` (30s)
-- **Purpose:** Dream, consolidate, self-reflect during idle
-- **Output:** Plain stdout
-- **What Claude sees:** ❌ NOTHING — Notification stdout is NOT injected
-- **Status:** ❌ OUTPUT IS DEAD — maintenance runs but results are invisible
-
 ### 7. Stop → `post-response-track.sh` (5s)
 - **Purpose:** Encoding checkpoint on Stop events
 - **Output:** Plain stdout
@@ -108,9 +102,9 @@ For **Stop**: Claude gets feedback only via JSON `decision` field. Plain stdout 
 |--------|-------|-------|
 | ✅ Working | 6 | boot, recall, pre-edit, pre-bash, stop-failure, session-end |
 | ⚠️ Partial | 2 | post-response-track (Stop path dead), worktree-context (verify) |
-| ❌ Dead output | 4 | idle-maintenance, config-change, post-bash-host, Stop path of track |
+| ❌ Dead output | 3 | config-change, post-bash-host, Stop path of track |
 
-**4 hooks produce output that Claude never sees.**
+**3 hooks produce output that Claude never sees.**
 
 ---
 
@@ -118,9 +112,8 @@ For **Stop**: Claude gets feedback only via JSON `decision` field. Plain stdout 
 
 ### Dead outputs that need fixing:
 1. **Stop → post-response-track.sh** — Encoding checkpoints on Stop are invisible. Options: (a) remove Stop registration, (b) use `additionalContext` JSON, (c) accept only UserPromptSubmit works
-2. **idle-maintenance.sh** — Dream/consolidation results invisible. Options: (a) store results in brain config, surface via next recall, (b) accept as background-only
-3. **config-change-host.sh** — Host changes invisible. Fix: store as brain node, surface via consciousness signals on next boot/recall
-4. **post-bash-host-check.sh** — Same as config-change. Fix: store as brain node
+2. **config-change-host.sh** — Host changes invisible. Fix: store as brain node, surface via consciousness signals on next boot/recall
+3. **post-bash-host-check.sh** — Same as config-change. Fix: store as brain node
 
 ### Format issues:
 - All hooks outputting to context-injecting events should use `{"additionalContext":"..."}` for clean injection

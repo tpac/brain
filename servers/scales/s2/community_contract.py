@@ -84,12 +84,12 @@ COMMUNITY_DETECTION = {
     # sweep in normal communities. 'degrading' is gone (zero-value churn).
     'low_cohesion_threshold': 0.10,  # typed int_frac below this → act on it
     # Relations that do NOT count as internal cohesion for the disconnected
-    # check: Hebbian co-access, structural membership/bridge edges, dream
-    # artifacts, and pure-generic 'related'. Everything else (similar_to,
-    # synthesizes, and all typed relations) counts — so a community linked only
-    # by these is "disconnected" → safe to auto-archive.
+    # check: structural membership edges, dream artifacts, and pure-generic
+    # 'related'. Everything else (similar_to, synthesizes, and all typed
+    # relations) counts — so a community linked only by these is
+    # "disconnected" → safe to auto-archive.
     'non_cohesion_relations': (
-        'co_accessed', 'emergent_bridge', 'community_member',
+        'community_member',
         'dream_observation', 'dreamed_from', 'related', 'related_to'),
 
     # ── Encoder ──
@@ -151,7 +151,7 @@ CORRIDOR_MIN_SIZE = 3                   # … AND member count strictly above th
 # disagree with the decoder's. One named source so the parity-critical filters
 # can't drift. (The SQL JOIN structure stays in each builder; the parity test
 # guards that.)
-ADJACENCY_EXCLUDED_RELATIONS = ('co_accessed', 'emergent_bridge', 'community_member')
+ADJACENCY_EXCLUDED_RELATIONS = ('community_member',)
 ADJACENCY_SKIP_ASPECTS = ('generic_relation', 'noise')
 
 

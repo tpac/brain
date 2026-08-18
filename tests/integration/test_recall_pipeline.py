@@ -149,8 +149,7 @@ class TestGraphExpand(unittest.TestCase):
             SELECT e.source_id
             FROM edges e
             JOIN edge_relations er ON er.edge_id = e.edge_id
-            WHERE er.relation NOT IN ('co_accessed', 'emergent_bridge')
-              AND er.archived = 0
+            WHERE er.archived = 0
             LIMIT 1
         """).fetchone()
         if not node_id:
@@ -174,8 +173,7 @@ class TestGraphExpand(unittest.TestCase):
         literal that leaked co_accessed edges) — community_member deliberately
         NOT excluded here: Anchor's manual graph walk keeps community links."""
         exclusions = self.brain.aspects.traversal_exclusions
-        self.assertIn('emergent_bridge', exclusions)
-        self.assertIn('co_accessed', exclusions)
+        self.assertIn('co_anchored', exclusions)
         self.assertNotIn('community_member', exclusions)
 
 

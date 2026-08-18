@@ -315,9 +315,7 @@ class BrainRecallMixin:
           - the recall hot path (lazy on first use)
           - Brain.warm_up()  (eager at boot, off the user's critical path)
 
-        Reads `edges` × `edge_relations`, excluding `co_accessed` /
-        `emergent_bridge` (those are dynamic Hebbian edges, not structural
-        topology). The result feeds the fatigue formula
+        Reads `edges` × `edge_relations`. The result feeds the fatigue formula
         `K = 10 / (1 + degree/10)` — hubs fatigue fast, peripherals slow.
 
         Hoisted out of the per-node cosine loop (was an `if not hasattr`
@@ -334,11 +332,9 @@ class BrainRecallMixin:
                 SELECT node_id, COUNT(*) FROM (
                     SELECT e.source_id as node_id FROM edges e
                     JOIN edge_relations er ON er.edge_id = e.edge_id
-                    WHERE er.relation NOT IN ('co_accessed','emergent_bridge')
                     UNION ALL
                     SELECT e.target_id as node_id FROM edges e
                     JOIN edge_relations er ON er.edge_id = e.edge_id
-                    WHERE er.relation NOT IN ('co_accessed','emergent_bridge')
                 ) GROUP BY node_id"""):
                 cache[row[0]] = cache.get(row[0], 0) + row[1]
         except Exception as e:
@@ -414,8 +410,11 @@ class BrainRecallMixin:
                 nodes[nid]['_corrections'] = node_corrs
 
         # ── 5. Batch fetch all connections via GraphDAL (v25) ──
-        # DAL centralizes: archived=0 default, noise-relation exclusion,
-        # direction detection, per-neighbor relation grouping.
+        # DAL centralizes: archived=0 default, direction detection,
+        # per-neighbor relation grouping. No default relation exclusion —
+        # noise hiding for the encoder view lives in encode_contract's
+        # _filter_noise_relations (aspect-owned read-exclusion for get_node
+        # is a deferred design, not implemented).
         connections_by_owner = self._graph.get_connections_bulk(found_ids)
 
         for nid in found_ids:

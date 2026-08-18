@@ -5,7 +5,7 @@ from semantic relations (multiple per edge via edge_id). Two nodes connect once
 but carry multiple relation/description pairs.
 
 Test IDs map to the plan: T1=migration, T2=multi-relation, T3=encoding,
-T4=query, T6=Hebbian, T7=decay, T9=cascade, T10=compat.
+T4=query, T9=cascade, T10=compat.
 """
 
 import unittest
@@ -274,46 +274,6 @@ class T6_HebbianPreservation(BrainTestBase):
         self.assertEqual(rel_dict['extends'], 'A extends B')
 
 
-class T7_Decay(BrainTestBase):
-    """Per-relation decay — decaying types decay, intentional types don't."""
-
-    needs_embedder = False
-
-    def test_decaying_relation_decays_extends_stays(self):
-        # exemplifies is the EDGE_TYPES decays-True fixture (co_accessed,
-        # the old fixture here, was retired 2026-08-17 with its EDGE_TYPES
-        # entry — the subject of this test is per-relation decay config).
-        a = self.brain.remember(type='decision', title='Node A', content='A',
-                                auto_connect=False)['id']
-        b = self.brain.remember(type='decision', title='Node B', content='B',
-                                auto_connect=False)['id']
-
-        self.brain.connect_typed(a, b, relation='extends', weight=0.8,
-                                 description='intentional')
-        self.brain.connect_typed(a, b, relation='exemplifies', weight=0.3,
-                                 description='')
-
-        # Backdate exemplifies to 30 days ago (one half-life)
-        from servers.dal_graph import GraphDAL
-        dal = GraphDAL(self.brain.conn)
-        edge_id = dal.get_edge_id(a, b)
-
-        self.brain.conn.execute(
-            "UPDATE edge_relations SET created_at = datetime('now', '-30 days') "
-            "WHERE edge_id = ? AND relation = 'exemplifies'",
-            (edge_id,))
-        self.brain.conn.commit()
-
-        dal.decay_edges()
-
-        rels = _get_relations_for_pair(self.brain.conn, a, b)
-        rel_dict = {r[0]: r[2] for r in rels}  # relation -> weight
-
-        self.assertAlmostEqual(rel_dict.get('extends', 0), 0.8, places=1)
-        if 'exemplifies' in rel_dict:
-            self.assertLess(rel_dict['exemplifies'], 0.3)
-
-
 class T9_Cascade(BrainTestBase):
     """Delete/archive cascades to edge_relations."""
 
@@ -503,33 +463,6 @@ class T11_SharedFlipPrimitive(BrainTestBase):
                          'the exempt redirect must never be claimed flipped')
         # And the sweep preserved its policy: embeddings NOT nulled — the
         # dangling sweep has never dropped blobs (null_embeddings=False).
-
-    def test_decay_returns_pruned_edges_with_policy(self):
-        # exemplifies = the decays-True fixture (co_accessed retired 2026-08-17)
-        dal, a, b, edge_id = self._pair('dk_a', 'dk_b', 'exemplifies',
-                                        weight=0.05)
-        # Give the row a fake embedding so the null_embeddings policy is
-        # observable.
-        self.brain.conn.execute(
-            "UPDATE edge_relations SET embedding = X'00', "
-            "embedding_model = 'test' WHERE edge_id = ?", (edge_id,))
-        self.brain.conn.commit()
-
-        r = dal.decay_edges()
-        self.assertIn([edge_id, 'exemplifies'], r['pruned_edges'])
-        self.assertEqual(r['pruned'], len(r['pruned_edges']))
-        row = self.brain.conn.execute(
-            'SELECT archived, embedding, archived_by FROM edge_relations '
-            'WHERE edge_id = ? AND relation = ?',
-            (edge_id, 'exemplifies')).fetchone()
-        self.assertEqual(row[0], 1)
-        self.assertIsNone(row[1], 'prune must NULL the embedding')
-        self.assertEqual(row[2], 'decay_pruned')
-        # recompute_weight=True: no active relations left → aggregate 0.
-        agg = self.brain.conn.execute(
-            'SELECT weight FROM edges WHERE edge_id = ?',
-            (edge_id,)).fetchone()[0]
-        self.assertEqual(agg, 0.0)
 
     def test_primitive_select_matches_update(self):
         """The observed-truth property at the primitive level: the returned
