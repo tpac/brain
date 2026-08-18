@@ -147,7 +147,6 @@ ENCODING_AGENT = {
     'message_content_limit': 2500,    # per message stored in message_stream (both roles equally)
     'message_display_limit': 2500,    # per message in timeline (both roles — shared learnings, not just Tom's words)
     'max_messages': 20,               # last N messages (~10 turns)
-    'encoded_turn_trim': 300,         # lived arm: per-message cap on ALREADY-ENCODED turns — context stub, not the read; unencoded turns keep the full display limit
     'recall_candidates_limit': 5,     # candidates per turn (pre-attached)
     'max_rounds': 5,                  # Sonnet API round limit (target: 2-3)
     'journal_max_chars': 8000,        # encoding journal truncation limit
@@ -315,9 +314,10 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
             aging below.
         view_policy: catalog aging (encoder_view; resolved once per run in
             run_encoding). ON: entries sort oldest→newest by last-touched stop
-            and entries older than the newest CATALOG_FULL_ROUNDS encode rounds
-            render trimmed ([aged] — no edges, lean corrections, content head)
-            — ~86% smaller per aged node, reversible via get_nodes. Headers
+            and entries older than the cutoff render body-only — complete
+            content, no edges (each announces its count in place — no tag, no
+            header), lean corrections — the savings live in the dropped
+            surround, reversible via get_nodes. Headers
             render relative fine-grained time ('3h ago') + a `this session`
             ownership mark on ids this session wrote. OFF (default): unsorted
             full-depth render, byte-identical to the long-standing path.
@@ -406,11 +406,6 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
             cutoff=cutoff)
 
     lines = [header]
-    if aged:
-        from servers.scales.s1.encoder_view import AGED_TAG, aged_header_line
-        lines.append(aged_header_line(
-            len(aged), cutoff,
-            basis='window' if window_first_turn is not None else 'rounds'))
     lines.append('')
     formatted_ids = set()
     # One batched fetch (returns {id: node}) — the widened union can be hundreds of
@@ -453,8 +448,6 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
         if not formatted:
             continue
         tag = tag_for.get(nid)
-        if is_aged:
-            tag = ('%s %s' % (AGED_TAG, tag)) if tag else AGED_TAG
         lines.append('%s %s' % (tag, formatted) if tag else formatted)
         lines.append('')
         formatted_ids.add(nid)

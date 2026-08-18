@@ -21,12 +21,12 @@ The arms:
 
 Sizes are the default pass. `--behavior` runs the questions bytes cannot answer:
 does the encoder re-encode turns whose <actions> were trimmed, does it expand an
-[aged] stub before writing or duplicate it, do source_refs stay sane. Each arm's
+aged entry before writing or duplicate it, do source_refs stay sane. Each arm's
 prompt goes to the encoder model with WRITES INTERCEPTED (recorded, never
 executed — no brain mutation) and READS SERVED FOR REAL against the same frozen
-copy. Reads are not stubbed on purpose: an [aged] entry's whole contract is
-"get_nodes expands me", and a stubbed expansion would make revise-vs-duplicate
-unmeasurable. Scoring stops at the first round that writes (connect_ab's rule) —
+copy. Reads are not stubbed on purpose: an aged entry's whole contract is
+"get_nodes returns the rest", and a stubbed expansion would make
+revise-vs-duplicate unmeasurable. Scoring stops at the first round that writes (connect_ab's rule) —
 that round carries the answer, and nothing downstream of a fabricated write id
 is trustworthy anyway.
 
@@ -50,12 +50,14 @@ from encoder_prompt_reassembly import (  # noqa: E402  (path set above)
     strip_scout_blocks, turn_count)
 
 # (label, view_policy, window_aligned, aged_content_chars)
-#   -1 = the policy's own 400-char cap;  None = keep content whole
+#   -1 = the policy's own config — body whole since arm D shipped as the
+#   default; B/C pin the retired 400-char cap explicitly so they keep
+#   reproducing what was measured.
 ARMS = {
     'A': ('control', False, False, -1),
-    'B': ('rounds', True, False, -1),
-    'C': ('window', True, True, -1),
-    'D': ('keep-body', True, True, None),
+    'B': ('rounds', True, False, 400),
+    'C': ('window', True, True, 400),
+    'D': ('keep-body', True, True, -1),
 }
 
 
@@ -110,13 +112,20 @@ def assemble_arm(brain, session_id, inputs, view_policy, window_aligned,
 
 
 def aged_ids_of(text):
-    """Ids the catalog tagged [aged] — read at the render position (a catalog
-    entry HEADER at column 0), never by scanning the whole prompt: our own
-    nodes quote the tag in their content, and a raw scan reports 6 aged
-    entries in the arm that ages nothing."""
+    """Ids of aged catalog entries. No tag marks them anymore (retired
+    2026-08-18: the render is self-describing) — an aged entry is one whose
+    withheld edges announce themselves in place, so detection keys on that
+    announce line inside the entry, never on a whole-prompt scan (our own
+    nodes quote the render format in their content). An aged entry with zero
+    edges is undetectable — it also renders identically to a full one."""
     import re
-    return set(re.findall(r'^\[aged\][^\n]*\(id:([0-9a-f]{6,8})',
-                          section(text, 'node_catalog'), re.M))
+    ids = set()
+    for entry in section(text, 'node_catalog').split('\n\n'):
+        if 'not shown — get_nodes for them' in entry:
+            m = re.search(r'\(id:([0-9a-f]{6,8})', entry)
+            if m:
+                ids.add(m.group(1))
+    return ids
 
 
 def compare(arms, base='A'):

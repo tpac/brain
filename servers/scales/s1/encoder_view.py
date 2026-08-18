@@ -14,15 +14,19 @@ the encoder's prompt view. Every filter marks itself in place (a stubbed
 absence can never be misread as "nothing happened" — which is why no prompt
 version registration rides this change: there are zero new how-to-read lines.
 
-Flag: BRAIN_S1E_VIEW_POLICY, OFF by default. Off = the assembled prompt is
-byte-identical to the pre-policy path — the A/B control arm
-(eval/longmem/ab_encode.py flips the flag per arm; an ungated change would
-have no control arm and could not be measured).
+Flag: BRAIN_S1E_VIEW_POLICY, ON by default (arm D activated 2026-08-18 —
+Tom's gate). Set to 0 for the emergency off-switch and the A/B control arm
+(eval/encoder_prompt_ab.py renders both arms per capture). Off is the
+pre-policy render minus the retired encoded-turn trim.
 
 Measured basis (id:155ddb64, re-measured 2026-08-16 at 80-89% catalog share):
 a catalog node renders at ~4-5K chars of which content is only ~22% — edges
 and heavy corrections dominate. So aging drops edges + heavy corrections and
-keeps a content head; cutting content alone saves almost nothing.
+keeps the content WHOLE; cutting content saves almost nothing and a truncated
+body is what let the encoder rewrite nodes from fragments — 6/36 runs revised
+an aged entry from its visible head, destroying the tail, even under a prompt
+that said to expand first (id:8aa7e7d7). Body-whole makes that failure
+structurally impossible (id:ffb0f7a4).
 """
 import os
 
@@ -30,8 +34,8 @@ import os
 def view_policy_enabled():
     """The view-policy flag (see module docstring). run_encoding resolves it
     once per run and threads it down, mirroring _lived_sequence_enabled — no
-    torn state if the env flips mid-run."""
-    return os.environ.get('BRAIN_S1E_VIEW_POLICY', '') in ('1', 'true', 'True')
+    torn state if the env flips mid-run. Default ON — unset means the policy."""
+    return os.environ.get('BRAIN_S1E_VIEW_POLICY', '1') in ('1', 'true', 'True')
 
 
 # ── Catalog aging (id:f3302000 / id:f011dc76 — the ~80-89% lever) ──
@@ -41,27 +45,26 @@ def view_policy_enabled():
 # id:3e245ff7). Everything older trims to a stub.
 CATALOG_FULL_ROUNDS = 2
 
-# Content head kept on an aged entry. Nodes lead with the claim — 2-3 sentences
-# carry the thesis. Deliberately NOT the load-bearing number in this spec: the
-# savings come from AGED_NODE_CONFIG dropping edges + heavy corrections.
-AGED_CONTENT_CHARS = 400
-
-# The trimmed entry (~700 chars vs ~4,500 full): id + type + title (recognition
-# + dedup key), situation (the "does this already exist" anchor — top-level in
-# render_rich_node, survives metadata_limit=0), content head, one ⚠ correction
-# line. NO edges, NO reasoning/quotes/KV. Trimming is reversible: get_nodes is
-# in ENCODING_TOOLS, so the encoder can expand any id on demand.
+# The aged entry: id + type + title (recognition + dedup key), situation (the
+# "does this already exist" anchor — top-level in render_rich_node, survives
+# metadata_limit=0), the WHOLE content, one ⚠ correction line. NO edges (the
+# render announces the count), NO reasoning/quotes/KV. content_limit None is
+# the policy: a complete body means a revise can never rewrite a node from a
+# fragment it mistook for the whole. Trimming is reversible: get_nodes is in
+# ENCODING_TOOLS, so the encoder can expand any id on demand. The eval harness
+# overrides content_limit per arm to reproduce the retired truncating arms.
 AGED_NODE_CONFIG = {
-    'content_limit': AGED_CONTENT_CHARS,
+    'content_limit': None,         # body stays whole — the arm-D invariant
     'edge_limit': 0,               # the heaviest render weight — dropped
     'correction_render': 'lean',   # one ⚠ header line, not the corrector body
     'metadata_limit': 0,           # no reasoning / quotes / generic KV
     'show_encoding_source': False,
 }
 
-# Marks an aged entry in the catalog; the header line the catalog renders when
-# any entry is aged explains the tag once (entries mark themselves in place).
-AGED_TAG = '[aged]'
+# No tag on aged entries (Tom, 2026-08-18): with the body whole, everything an
+# aged entry withholds announces itself in place — render_rich_node's
+# "Edges (N, not shown — get_nodes for them):" line — so a marker would add
+# nothing the encoder can't see.
 
 # Catalog header time render: relative with sub-day steps ('25m ago', '3h ago')
 # — the encoder's questions are recency-shaped and mid-session the hour is the
@@ -86,26 +89,6 @@ def timeline_now_attr(now):
             '%Y-%m-%d %H:%M UTC')
     except Exception:
         return ''
-
-
-def aged_header_line(n_aged, cutoff, basis='rounds'):
-    """The catalog's one-line explanation of the [aged] tag — rendered once,
-    right under the catalog header, whenever any entry aged. Names the cutoff
-    in turn coordinates so an aged entry's `turn N` reads as visibly old, and
-    names what set the cutoff so the encoder can predict what stays full."""
-    kept = ('my newest %d encode rounds stay full' % CATALOG_FULL_ROUNDS
-            if basis == 'rounds' else
-            'everything touched inside the conversation window below stays full')
-    # States the CUT, not just the trim, and names the call once for the whole
-    # catalog rather than per entry. Measured 2026-08-17: 6 revises landed on
-    # aged entries across 36 runs with zero expansions — each rewrote the node
-    # from its visible head, dropping the tail. "Trimmed to stubs" did not
-    # convey that a body ending in '…' is a fragment the revise would destroy.
-    return ('%d %s entries (last written before turn %s; %s) are stubs — '
-            'their content is CUT at %d chars and their edges dropped. '
-            'get_nodes(["<id>"]) returns any of them whole; I expand before '
-            'revising one, or the rewrite deletes what the stub never showed.'
-            % (n_aged, AGED_TAG, cutoff, kept, AGED_CONTENT_CHARS))
 
 
 def aging_cutoff(run_stops, full_rounds=CATALOG_FULL_ROUNDS):
@@ -213,16 +196,6 @@ def actions_stub_line(n_actions):
     the one who read them last run."""
     return ('trimmed — %d action(s) recorded on this turn; I already read '
             'them in a previous run' % n_actions)
-
-
-# ── Encoded-turn message text ──
-
-# No trim on already-encoded turns: <other> and <me> keep the full display
-# limit. Reverses encoded_turn_trim (Tom, 2026-08-15: "trimming defeats the
-# purpose and we found other areas that make much more sense to trim on") —
-# the contract key stays for the flag-off control arm and retires with it at
-# activation. None = render_lived_sequence's "no cap" (full display limit).
-ENCODED_TURN_MESSAGE_CAP = None
 
 
 # ── Provenance verb split ──

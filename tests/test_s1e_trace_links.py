@@ -613,12 +613,11 @@ def test_provenance_edge_only_run_renders_no_marker_but_attr_says_covered():
     assert '<turn n="4" encoded="false">' in out
 
 
-def test_encoded_turns_trimmed_unencoded_full():
-    # Already-encoded turns render as trimmed context stubs (encoded_turn_trim +
-    # ellipsis); the unencoded tail keeps full text — the scribe's actual read.
-    from servers.scales.s1.encode_contract import ENCODING_AGENT
-    trim = ENCODING_AGENT['encoded_turn_trim']
-    long_body = 'x' * (trim + 500)
+def test_encoded_turns_keep_full_text():
+    # encoded_turn_trim retired at activation: covered turns keep their full
+    # text on both arms — coverage is stated by the `encoded` attr, and (on the
+    # policy arm) it is the turn's <actions> that stub, never the message.
+    long_body = 'x' * 800
     eps = [
         _msg('user_message', 'u5', 5, 'covered ' + long_body, '2026-06-29T00:00:01'),
         _msg('assistant_message', 'a5', 5, 'reply five', '2026-06-29T00:00:02'),
@@ -632,10 +631,8 @@ def test_encoded_turns_trimmed_unencoded_full():
     t6 = out.split('<turn n="2"')[1].split('</turn>')[0]
     u5 = t5.split('<other')[1].split('</other>')[0]
     u6 = t6.split('<other')[1].split('</other>')[0]
-    assert len(u6) > len(u5)                    # tail keeps full text
-    assert '…' in u5                            # encoded turn cut is marked
-    assert u5.count('x') <= trim                # trimmed to the contract cap
-    assert u6.count('x') == trim + 500          # unencoded: untrimmed
+    assert u5.count('x') == 800                 # covered: untrimmed
+    assert u6.count('x') == 800                 # unencoded: untrimmed
 
 
 def test_provenance_never_leaks_encoding_source():
