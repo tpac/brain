@@ -63,6 +63,9 @@ EDGE_ROW_SHAPE = {
 # two MUST agree, or find_missing queues edgeless/short-desc nodes that yield
 # no text, and they starve the edged nodes out of the backfill batch forever.
 EDGE_CONTEXT_MIN_DESC_LENGTH = 10
+# Relations excluded from the edge_context text (structural, not semantic
+# text) — the OTHER half of the same producer/backfill parity contract.
+EDGE_CONTEXT_EXCLUDED_RELATIONS = frozenset({'community_member'})
 
 # Relations absorb() must NOT migrate to the survivor. Community placement
 # is the community unit's judged decision (affinity gate ≥0.25 + encoder
@@ -320,7 +323,7 @@ class GraphDAL:
 
         Args:
             node_ids: owner node ids to walk from
-            exclude_relations: relations to skip (defaults to noise-relation list).
+            exclude_relations: relations to skip (None → no exclusion).
                 Ignored if include_relations is set.
             include_relations: when set, ONLY relations in this iterable are
                 returned. Use for aspect-scoped walks (e.g. correction-aspect
@@ -797,18 +800,6 @@ class GraphDAL:
             membership[member_id].append({'id': comm_id, 'title': comm_title})
         return dict(membership)
 
-    def count_by_relation(self, include_archived: bool = False):
-        """Edge count grouped by relation type.
-
-        Returns dict {relation: count}, ordered by count desc. Used by
-        integrity_audit, edge_families, health_check.
-        """
-        where = '' if include_archived else 'WHERE archived = 0'
-        rows = self.conn.execute(
-            "SELECT relation, COUNT(*) as cnt FROM edge_relations %s "
-            "GROUP BY relation ORDER BY cnt DESC" % where
-        ).fetchall()
-        return {r[0]: r[1] for r in rows}
 
     def get_edge_descriptions_for(self, node_id: str,
                                   min_length: int = EDGE_CONTEXT_MIN_DESC_LENGTH,
@@ -826,7 +817,7 @@ class GraphDAL:
         if not node_id:
             raise ValueError("get_edge_descriptions_for: node_id required")
         if exclude_relations is None:
-            exclude_relations = {'community_member'}
+            exclude_relations = EDGE_CONTEXT_EXCLUDED_RELATIONS
 
         archived_clause = '' if include_archived else 'AND er.archived = 0'
         rel_clause = ''

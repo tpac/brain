@@ -485,7 +485,7 @@ class BrainRememberMixin:
           - source_refs  → union onto survivor (INSERT OR IGNORE dedups)
           - edges        → re-point absorbed's external edges to survivor,
                            upsert-dedup, drop the absorbed<->survivor intra edge;
-                           noise relations excluded by get_connections_bulk default
+                           ABSORB_EXCLUDED_RELATIONS (community_member) never migrates
           - access_count → survivor += absorbed (usage history is additive)
           - metadata KV  → fill keys survivor LACKS from absorbed; survivor wins;
                            `_sys_` keys skipped
@@ -1117,8 +1117,8 @@ class BrainRememberMixin:
             # source_refs overlap with any existing node's refs, write a
             # structural co_anchored edge to each sibling. The graph layer
             # is the signal — no score boost, no magnitude to guess.
-            # Excluded from reads via the noise aspect. Sparse refs
-            # (1-3) × small cohort → negligible cost.
+            # Hidden from the encoder catalog and graph traversal via the
+            # noise aspect. Sparse refs (1-3) × small cohort → negligible cost.
             try:
                 graph_dal = self._graph
                 siblings: set = set()

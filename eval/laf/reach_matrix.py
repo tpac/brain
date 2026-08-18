@@ -84,6 +84,13 @@ def main():
         # ONLY as a degree-normalized spread FROM the semantic field (Tom 2026-06-27):
         # persistent Hebbian weight, NO forgetting (forgetting is a future data-derived
         # modulator layer, not baked in). Excluded from every other reach lane.
+        #
+        # RETIRED SUBSTRATE (2026-08-18, node ab56d25a): co_accessed edges were
+        # purged from brain.db — this lane can only measure a live signal on a
+        # PRE-RETIREMENT snapshot. On a post-retirement brain it refuses loudly
+        # rather than scoring an all-zero lane that reads as "Hebbian spread
+        # contributes nothing". A future co-access rebuild derives from
+        # surface_selected traces (cache table + its own eval).
         ca_idx = {nid: i for i, nid in enumerate(prim_ids)}
         csrc, cdst, cw = [], [], []
         for s, t, w in conn.execute(
@@ -92,6 +99,11 @@ def main():
                 "AND (er.archived IS NULL OR er.archived=0)"):
             if s in ca_idx and t in ca_idx and s != t:
                 csrc.append(ca_idx[s]); cdst.append(ca_idx[t]); cw.append(float(w or 0.1))
+        if not csrc:
+            raise SystemExit(
+                "reach_matrix: no co_accessed rows — the family was retired and "
+                "purged (2026-08-18). Run this lane against a pre-retirement "
+                "brain snapshot, or drop the coaccess lane.")
         csrc = np.asarray(csrc, dtype=np.int64); cdst = np.asarray(cdst, dtype=np.int64)
         cw = np.asarray(cw, dtype=np.float32)
         cdeg = np.zeros(len(prim_ids), dtype=np.float32)

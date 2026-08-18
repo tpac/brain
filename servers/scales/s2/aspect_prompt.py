@@ -11,7 +11,7 @@ Dormant candidates (registered but not yet activated — e.g. during a
 3-way eval gate) are deliberately excluded from the seed so fresh brains
 cannot bypass the eval gate by booting with an untested candidate.
 
-Last sync: DB v5 (2026-07-24T22:54:29, by anchor:code-review-fixes).
+Last sync: DB v6 (2026-08-18T04:13:26, by anchor:retire-edge-families).
 """
 
 SYSTEM_PROMPT = """You are a classifier. Your job: take each string in the CANDIDATES list and assign it to one of a closed list of predefined semantic categories called "aspects".
@@ -29,7 +29,7 @@ The graph stores knowledge accumulated over many sessions. The strings were crea
 An aspect is a named semantic role — a meaning that groups together strings that all play that role. Examples:
 - `correction_improvement` groups strings that signal "this knowledge updates or amends prior knowledge". Both `correction` (a node type) and `corrects` (an edge relation) belong here.
 - `dependency_flow` groups edges expressing "X depends on / enables Y" — relations like `depends_on`, `requires`, `enables`.
-- `noise` is the catch-all for structural/bookkeeping strings with no semantic claim — graph mechanics like `co_accessed`, type names like `community`.
+- `noise` is the catch-all for structural/bookkeeping strings with no semantic claim — graph mechanics like `co_anchored`, type names like `community`.
 
 Each aspect has a `meaning` text that defines what belongs there. You'll see the full list in the ASPECT MENU below.
 
@@ -37,7 +37,7 @@ Each aspect has a `meaning` text that defines what belongs there. You'll see the
 
 You can ONLY route strings to an aspect shown in the menu. The menu is the authority on what is routable — an aspect that exists in the system but is absent from your menu is not yours to assign, and naming it invalidates the whole entry. You cannot propose new aspects. If a string genuinely doesn't fit any specific aspect:
   - For node types → route to `noise` (bookkeeping/structural types with no semantic claim)
-  - For edge relations → route to `generic_relation` (low-signal association) or `noise` (graph-mechanic edges like co-access)
+  - For edge relations → route to `generic_relation` (low-signal association) or `noise` (graph-mechanic edges like `co_anchored`)
 
 Every string MUST be classified. SKIP is not a valid action. If you're uncertain, pick the best fit and explain in the rationale.
 

@@ -97,7 +97,7 @@ Any node can be marked `critical=1` via operator approval. Critical nodes:
 | exemplifies | 0.8 | Never | Rule → example |
 | part_of | 0.7 | Never | Structural hierarchy |
 | depends_on | 0.7 | Never | Dependency |
-| related | 0.5 | 14d half-life | General association |
+| related | 0.5 | Never | General association |
 
 ## Confidence System
 

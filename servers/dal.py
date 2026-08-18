@@ -31,7 +31,8 @@ import sqlite3
 from typing import Any, Dict, List, Optional
 
 from .clock import iso_now
-from .dal_graph import EDGE_CONTEXT_MIN_DESC_LENGTH
+from .dal_graph import (EDGE_CONTEXT_EXCLUDED_RELATIONS,
+                        EDGE_CONTEXT_MIN_DESC_LENGTH)
 from .db_backends.sqlite import commit_unless_batched
 
 
@@ -1094,7 +1095,7 @@ class VectorDAL:
             # forever and starve the edged nodes. Mirror
             # GraphDAL.get_edge_descriptions_for's eligibility filter EXACTLY
             # (same exclusions, same min length) so "eligible" ⇔ "yields text".
-            excl = ['community_member']
+            excl = sorted(EDGE_CONTEXT_EXCLUDED_RELATIONS)
             excl_ph = ','.join('?' * len(excl))
             where.append(
                 'EXISTS (SELECT 1 FROM edges e '

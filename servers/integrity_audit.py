@@ -90,10 +90,7 @@ def deep_integrity_audit(brain):
             "message": "%d of %d nodes revised (%.0f%%)" % (revised, total, revised / max(1, total) * 100),
         })
 
-        # (Edge-type distribution check removed with the co_accessed
-        # retirement — no relation family can dominate by mechanism anymore.)
-
-        # 7. Metadata sparseness (via KV DAL)
+        # 6. Metadata sparseness (via KV DAL)
         _meta_dal = brain._meta_kv
         meta_total = _meta_dal.total_nodes()
         if meta_total > 0:

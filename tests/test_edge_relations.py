@@ -252,12 +252,12 @@ class T4_EdgeQuery(BrainTestBase):
         self.assertEqual(eid_ab, eid_ba)
 
 
-class T6_HebbianPreservation(BrainTestBase):
-    """co_access doesn't overwrite existing relations."""
+class T6_MultiRelationPreservation(BrainTestBase):
+    """Adding a second relation doesn't overwrite the first."""
 
     needs_embedder = False
 
-    def test_co_access_adds_not_overwrites(self):
+    def test_second_relation_adds_not_overwrites(self):
         a = self.brain.remember(type='decision', title='Node A', content='A',
                                 auto_connect=False)['id']
         b = self.brain.remember(type='decision', title='Node B', content='B',
@@ -265,12 +265,12 @@ class T6_HebbianPreservation(BrainTestBase):
 
         self.brain.connect_typed(a, b, relation='extends', weight=0.8,
                                  description='A extends B')
-        self.brain.connect(a, b, relation='co_accessed', weight=0.3)
+        self.brain.connect(a, b, relation='refines', weight=0.3)
 
         rels = _get_relations_for_pair(self.brain.conn, a, b)
         rel_dict = {r[0]: r[1] for r in rels}
         self.assertIn('extends', rel_dict)
-        self.assertIn('co_accessed', rel_dict)
+        self.assertIn('refines', rel_dict)
         self.assertEqual(rel_dict['extends'], 'A extends B')
 
 

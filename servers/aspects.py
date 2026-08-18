@@ -516,9 +516,6 @@ class AspectRegistry:
 
         # Load-time derived policies — computed once per adopt, never per
         # read (the writer owns the cache, so these can never go stale).
-        # Replaces the dated literals TRAVERSE_EXCLUDED_EDGES /
-        # EXCLUDED_EDGE_TYPES, whose "co_accessed is clean now" premise
-        # (2026-04-02) died when Hebbian co-access writes resumed.
         #
         # Two policies, one deliberate difference (Tom, 2026-07-28):
         # · structural_exclusions — the FULL noise set. For flat READS
