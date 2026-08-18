@@ -111,7 +111,14 @@ nothing prunes.
 (inventory: brain `2b49ac02` — "undeclared" is not "drop-safe"; ~12 names still return
 code hits) · `bridge_proposals` (undeclared, 0 rows, still present on existing brains)
 · 648 stale `keywords` KV rows (purge + `contract.py` skip_keys guard release ship
-together). `brain_logs.db` has no migration mechanism at all after the revert — its
+together) · **retired-edge row purge for fleet installs** (`co_accessed` +
+`emergent_bridge` edge_relations + orphaned edges + weight recompute — the exact
+SQL run on the origin brain 2026-08-18, spec node `df681fc1`). Until it ships,
+existing installs that update keep their rows and re-expose them in exactly three
+places whose hardcoded exclusions phase 2 deleted: the fatigue degree cache,
+get_node connections, and the community cohesion check. Their aspect-derived
+filters still hold (additive reconcile never removes the two names from an
+existing working copy); fresh installs have no rows at all. `brain_logs.db` has no migration mechanism at all after the revert — its
 half is blocked, not deferred.
 
 ### 🔴 4. Generic-edge pollution — 18.1% of the live graph carries no relation signal
