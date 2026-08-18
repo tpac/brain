@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a REAL aspect-integration cycle on an IsolatedBrain copy with the v7
+"""Run a REAL aspect-integration cycle on an IsolatedBrain copy with the v8
 prompt + the journal binding on _call_llm (Phase 3), and observe:
 
   1. Assembly — review block at the system tail, no closure, no arc; the
@@ -34,15 +34,22 @@ from servers.scales.s2.aspect_contract import ASPECT
 from servers.scales.s2 import base as base_mod
 
 
-def make_v7(v6: str) -> str:
-    """v6 → v7: unpin the JSON-only line so it can't suppress the appended
-    `## Review` fence. Loud assert catches prompt drift — reused verbatim at
-    landing."""
-    old_line = "Use this exact shape (no markdown fences, no prose):"
+def make_v8(v: str) -> str:
+    """→ v8: unpin the JSON-only line so it can't suppress the appended
+    `## Review` fence. 'before it', not 'around it' — 'around' is
+    bidirectional and still forbade the trailing review fence (the v7
+    half-fix; code review a108cfc finding #3). IDEMPOTENT: applies only the
+    edits whose anchors are present, so the probe keeps running against
+    whatever version is active."""
     new_line = ("Use this exact shape (no markdown fences around the array, "
-                "no prose around it):")
-    assert v6.count(old_line) == 1, 'JSON-only anchor not unique (%d)' % v6.count(old_line)
-    return v6.replace(old_line, new_line)
+                "no prose before it):")
+    out = v.replace(
+        "Use this exact shape (no markdown fences, no prose):", new_line)
+    out = out.replace(
+        "Use this exact shape (no markdown fences around the array, "
+        "no prose around it):", new_line)
+    assert new_line in out, 'JSON-only line: no known form present'
+    return out
 
 
 def main():
@@ -50,24 +57,25 @@ def main():
         brain = env.brain
         print('isolated brain: %d non-archived nodes' % env.node_count())
 
-        # 1. Derive v7 from the live v6 and activate it on the isolated brain.
+        # 1. Derive the v8 candidate from the ACTIVE prompt (no-op when v8
+        #    is already live) and activate it on the isolated brain.
         v6 = brain.get_interaction_prompt('s2_aspects') or ''
         assert v6, 'no s2_aspects prompt in isolated brain'
-        v7 = make_v7(v6)
+        v8 = make_v8(v6)
         params = brain.get_interaction_config('s2_aspects') or {}
         reg = brain._interaction_dal.register(
-            's2_aspects', template=v7,
-            parameters=json.dumps(params), created_by='eval:journal_v7')
+            's2_aspects', template=v8,
+            parameters=json.dumps(params), created_by='eval:journal_v8')
         brain._interaction_dal.set_active(
-            's2_aspects', reg['version'], set_by='eval:journal_v7')
+            's2_aspects', reg['version'], set_by='eval:journal_v8')
 
         # 1b. Assembly check (deterministic) — exactly what _call_llm builds.
         enc0 = AspectEncoder(brain, config=ASPECT)
-        asm = enc0.journal.decorate_system(v7, multi_round=False)
+        asm = enc0.journal.decorate_system(v8, multi_round=False)
         checks = {
             'review block present':     JOURNAL_REVIEW_INSTRUCTION in asm,
             'no closure (single-shot)': '## Finishing' not in asm,
-            'json-only line softened':  'no markdown fences around the array' in asm,
+            'json-only line softened':  'no prose before it' in asm,
             'review block at tail':     asm.rstrip().endswith('Stay sharp.'),
         }
         print('\n=== assembly ===')
@@ -86,7 +94,7 @@ def main():
         brain._graph.add_relation(
             seed['id'], anchor, relation='sim_probes_against',
             description='probe edge carrying a never-classified relation',
-            encoding_source='eval:journal_v7')
+            encoding_source='eval:journal_v8')
 
         dec = AspectDecoder(brain, config=ASPECT).run()
         proposals = dec.get('proposals', [])

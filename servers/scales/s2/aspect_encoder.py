@@ -79,6 +79,7 @@ class AspectEncoder(IntegrationUnit):
         if result is None:
             err = 'LLM call failed'
             self.brain._log_error(self.NAME, Exception(err), 'classifying %d proposals' % len(proposals))
+            self._trace_failed_delta(err, telemetry, len(proposals))
             return {'classified': 0, 'rejected': 0, 'errors': [err], 'journal': ''}
 
         # Sonnet's JSON output isn't fully predictable in shape — sometimes
@@ -97,6 +98,7 @@ class AspectEncoder(IntegrationUnit):
                                   'response type: %s, keys: %s' % (
                                       type(result).__name__,
                                       list(result.keys()) if isinstance(result, dict) else 'n/a'))
+            self._trace_failed_delta(err, telemetry, len(proposals))
             return {'classified': 0, 'rejected': 0, 'errors': [err], 'journal': ''}
 
         # Validate, then write through the registry's single door — it merges
@@ -167,6 +169,31 @@ class AspectEncoder(IntegrationUnit):
             'journal': journal,
             'per_aspect': per_aspect,
         }
+
+    def _trace_failed_delta(self, err, telemetry, n_proposals):
+        """Delta trace for a failed run — every exit path stamps the unit's
+        delta ref_type (the _last_run_timestamp contract), and with the
+        journal binding a failed call may already have written residue rows
+        on this chain: without a delta they'd be orphaned (unreachable from
+        every run view) and the burned tokens unrecorded."""
+        self.trace('delta', 'aspect_classified',
+                   'run failed: %s (%d proposals, %dms, %d→%d tok)' % (
+                       err, n_proposals,
+                       telemetry.get('elapsed_ms', 0),
+                       telemetry.get('input_tokens', 0),
+                       telemetry.get('output_tokens', 0)),
+                   metadata=build_delta_metadata(
+                       actions=0, write_actions=0, rounds=1,
+                       inputs_processed=n_proposals,
+                       outcomes={'classified': 0, 'rejected': 0},
+                       journal_entry='',
+                       errors=[err],
+                       elapsed_ms=telemetry.get('elapsed_ms', 0),
+                       input_tokens=telemetry.get('input_tokens', 0),
+                       output_tokens=telemetry.get('output_tokens', 0),
+                       cache_read_tokens=telemetry.get('cache_read_tokens', 0),
+                       cache_creation_tokens=telemetry.get('cache_creation_tokens', 0),
+                   ))
 
     # ─── prompt construction ─────────────────────────────────────────
 

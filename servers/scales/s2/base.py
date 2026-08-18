@@ -555,15 +555,34 @@ class IntegrationUnit:
             # expectation, and the log-and-return-None failure policy below.
             raw, telemetry = run_llm_once(
                 self._llm_client(), model, max_tokens, system_prompt, user_content)
-            if journal:
-                # Residue notes out, journal sections off the payload — the
-                # strip-before-extract ordering is enforced here by construction.
-                raw = self.journal.harvest(raw, self.chain_id())
-            return extract_json(raw), telemetry
-
         except Exception as e:
             print('[%s] LLM call failed: %s' % (self.NAME, e), flush=True)
             self.brain._log_error(self.NAME, e, 'LLM call for %s' % interaction_name)
             telemetry['elapsed_ms'] = int((time.time() - t0) * 1000)
             return None, telemetry
+
+        # Truncation is loud on the single-shot path too — the loop path
+        # checks stop_reason in _track_usage; without this, a response that
+        # hit the output ceiling read as a generic parse failure.
+        if telemetry.get('stop_reason') == 'max_tokens':
+            self.brain._log_error(
+                's2_%s_truncation' % self.NAME,
+                'max_tokens truncation: %s/%s output tokens' % (
+                    telemetry.get('output_tokens', 0), max_tokens),
+                '%s response truncated — payload likely unparseable'
+                % interaction_name)
+
+        if journal:
+            # Residue notes out, journal sections off the payload — the
+            # strip-before-extract ordering is enforced here by construction.
+            # Outside the transport try, in its own guard: a journal-layer
+            # fault must never discard a successful, paid response (degrade
+            # to the unstripped raw — extract_json is fence-robust).
+            try:
+                raw = self.journal.harvest(raw, self.chain_id())
+            except Exception as e:
+                self.brain._log_error(
+                    's2_%s_journal_harvest' % self.NAME, e,
+                    'harvest failed — parsing the unstripped response')
+        return extract_json(raw), telemetry
 

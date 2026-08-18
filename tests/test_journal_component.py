@@ -43,17 +43,18 @@ class TestHarvest(BrainTestBase):
         self.assertNotIn('## Review', remainder)
 
     def test_stripped_remainder_survives_extract_json(self):
-        """The envelope rule: the journal fence corrupts extract_json on the
-        raw text (its markdown-fence split discards the pre-fence payload, and
-        a `]` inside the fence poisons the rfind scan) — after harvest the
-        payload parses cleanly."""
-        corrupted = extract_json(FINAL_TEXT)
-        self.assertIsNone(corrupted)          # the raw text IS the hazard
+        """The envelope rule, both belts: the harvest strip removes the
+        journal fence before parsing, and extract_json is itself
+        fence-robust (post-a108cfc-review it tries every fence + the
+        fence-free remainder), so the payload parses from the stripped
+        remainder AND from the raw text alike."""
+        payload = [{"node": "abc", "score": 0.9}]
+        self.assertEqual(extract_json(FINAL_TEXT), payload)
 
         b = self._binding()
         remainder = b.harvest(FINAL_TEXT, 's2-20260728000001-consolidation')
-        self.assertEqual(extract_json(remainder),
-                         [{"node": "abc", "score": 0.9}])
+        self.assertNotIn('## Review', remainder)
+        self.assertEqual(extract_json(remainder), payload)
 
     def test_arc_bound_harvest_writes_session_arc(self):
         text = ('done.\n\n## Arc\n```\nsurvivor ladder shipped\n```\n\n'
@@ -189,6 +190,69 @@ class TestSingleShotCallLlm(BrainTestBase):
         notes = self.brain.journal_notes(scale='s2', unit='healer')
         tags = {n['tag'] for n in notes}
         self.assertIn('surprise', tags)
+
+    def test_out_of_batch_healing_dropped(self):
+        """Review a108cfc finding #1: the continuity prefix shows ids from
+        past runs; a healing for an id outside the batch has no needs_* flags
+        and must be dropped, never written."""
+        victim = self.brain.remember(
+            type='fact', title='out-of-batch victim',
+            content='node with an earned reasoning',
+            reasoning='earned reasoning that must survive')['id']
+        unit = self._unit()
+        response = ('[{"node_id": "%s", "reasoning": "hallucinated"}]'
+                    % victim[:8])
+        self._patch_llm(response)
+
+        # The batch proposes a DIFFERENT node — the victim id arrives only
+        # in the model's output (as if read from the continuity prefix).
+        other = self.brain.remember(type='fact', title='batch member',
+                                    content='the actual proposal')['id']
+        result = unit.run([{'node_id': other, 'needs_question': True,
+                            'rich_node': {'title': 'batch member',
+                                          'content': 'the actual proposal'},
+                            'conversation': []}])
+
+        self.assertEqual(result['nodes_healed'], 0)
+        self.assertEqual(result['skipped'], 1)
+        node = self.brain.get_node(victim)
+        self.assertEqual(node['_metadata'].get('reasoning'),
+                         'earned reasoning that must survive')
+
+    def test_headingless_fence_payload_survives(self):
+        """Review a108cfc finding #2: a notes fence that lost its ## Review
+        heading (the documented Haiku drift) must not poison the payload —
+        extract_json now tries every fence and the fence-free remainder."""
+        from servers.scales.runner import extract_json
+        drifted = ('[{"node_id": "ab12cd34", "question": "why?"}]\n\n'
+                   '```\ndoubt · ab12cd34 · thin conversation]\n```')
+        self.assertEqual(extract_json(drifted),
+                         [{"node_id": "ab12cd34", "question": "why?"}])
+
+    def test_salvage_refuses_json_payload_fence(self):
+        """A single-shot payload fence whose strings contain '·' must not be
+        harvested as residue notes."""
+        from servers.trace_contract import salvage_review_fence
+        text = ('```json\n[{"category": "node_types", "value": "probe", '
+                '"rationale": "generative · lesson-bearing · keep"}]\n```')
+        self.assertIsNone(salvage_review_fence(text))
+
+    def test_harvest_failure_degrades_to_raw(self):
+        """A journal-layer fault must never discard a paid response — the
+        payload parses from the unstripped raw."""
+        from servers.scales.journal import JournalBinding
+
+        class _BoomBinding(JournalBinding):
+            def harvest(self, *a, **kw):
+                raise RuntimeError('journal layer down')
+
+        unit = self._unit()
+        self._patch_llm(self.RESPONSE)
+        unit._journal_binding = _BoomBinding(self.brain, scale='s2',
+                                             unit='healer')
+        parsed, tel = unit._call_llm('s2_healer', 'payload', journal=True)
+        self.assertEqual(parsed, [{"node_id": "abcd1234",
+                                   "question": "why does x?"}])
 
     def test_aspect_run_binds_journal(self):
         """AspectEncoder.run() reaches _call_llm with journal=True and the

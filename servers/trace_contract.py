@@ -1055,6 +1055,18 @@ def salvage_review_fence(text):
         content = body[:close_fence].strip()
         if not content:
             continue
+        # A JSON payload fence is never notes: a single-line array/object
+        # whose strings contain '·' parses cleanly as one "note" and would
+        # qualify — harvesting a single-shot encoder's PAYLOAD as residue
+        # (reachable since single-shot responses carry fenced JSON; loop
+        # encoders' final text never did).
+        if content[0] in '[{':
+            import json
+            try:
+                json.loads(content)
+                continue
+            except ValueError:
+                pass
         notes, malformed = parse_journal_notes(content)
         if notes and not malformed:
             salvaged = content
