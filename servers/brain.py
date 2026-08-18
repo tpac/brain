@@ -1669,6 +1669,40 @@ class Brain(
         finally:
             self._s2_lock.release()
 
+    def run_logs_maintenance(self) -> Dict[str, Any]:
+        """Log retention + graph orphan sweep. Safe against a live DB.
+
+        The orphan arm runs on a PRIVATE maintenance connection, never
+        `self.conn`. That is the whole safety property: WAL admits this
+        writer alongside the foreground one, the short busy_timeout makes it
+        yield rather than block, and a private transaction means its commit
+        can never land on a `brain_batch` envelope the foreground is holding.
+        Passing `self.conn` here would reintroduce exactly the stray-commit
+        class that killed a savepoint mid-merge once already.
+
+        Retention pruning is never gated — it reclaims space, and skipping it
+        because the freshness gate fails on a full disk is a death spiral.
+        The destructive orphan arm is gated on a restorable snapshot;
+        `graph_conn=None` disables it for the cycle.
+        """
+        from .db_backup import ensure_backup_fresh
+        try:
+            fresh = (ensure_backup_fresh(self.db_path)
+                     and ensure_backup_fresh(self.logs_db_path))
+        except Exception as e:
+            fresh = False
+            self._log_error('logs_maintenance_backup_gate', e,
+                            'freshness check failed — orphan sweep skipped')
+        if not fresh:
+            return self._logs_dal.run_maintenance(graph_conn=None)
+
+        from . import db_backends
+        conn = db_backends.current.connect_maintenance(self.db_path)
+        try:
+            return self._logs_dal.run_maintenance(graph_conn=conn)
+        finally:
+            conn.close()
+
     def run_maintenance_if_due(self, now: Optional[float] = None
                                ) -> Optional[Dict[str, Any]]:
         """Run S2 maintenance iff idle, min-interval, and activity conditions are met.

@@ -355,6 +355,12 @@ MAINTENANCE_FORCE_FIRE_SECONDS = 24 * 60 * 60
 # maintenance can wait its turn after the first interaction.
 MAINTENANCE_BOOT_GRACE_SECONDS = 90
 
+# Log retention + orphan sweep cadence, run as a DBMaintenance task. Housekeeping
+# with no deadline — hourly reclaims space long before it matters. It lived in the
+# Claude Code idle hook until that event stopped firing and it went six weeks
+# without running; the scheduler thread has no such dependency.
+LOGS_MAINTENANCE_INTERVAL_S = 60 * 60
+
 # ── LLM rejection backoff ──
 # How long LLM features stay paused after the provider REFUSES a call (a dead
 # key, an exhausted quota). A refusal costs no tokens, so this ladder trades

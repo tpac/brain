@@ -52,6 +52,7 @@ import errno
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Dict, Any
 
+from .brain_constants import LOGS_MAINTENANCE_INTERVAL_S
 from .daemon_config import (
     IDLE_TIMEOUT_SECONDS, AUTOSAVE_INTERVAL_SECONDS,
     SOCKET_BACKLOG, MAX_MESSAGE_SIZE, THREAD_POOL_SIZE,
@@ -348,6 +349,17 @@ class BrainDaemon:
                 'brain', self.brain.db_path, backup_dir=backup_dir)
             self._db_maintenance.register(
                 'brain_logs', self.brain.logs_db_path, backup_dir=backup_dir)
+            # Own try: a task registration failure must not take
+            # checkpoint/optimize/backup down with it. Backups are the one
+            # mechanism that survived the six-week idle-hook outage precisely
+            # because nothing else gated them. Registered BEFORE start() —
+            # _tasks is only safe to mutate while the worker isn't iterating it.
+            try:
+                self._db_maintenance.register_task(
+                    'logs_retention', self.brain.run_logs_maintenance,
+                    LOGS_MAINTENANCE_INTERVAL_S)
+            except Exception as _t_e:
+                self._log("logs_retention task registration failed: %s" % _t_e)
             self._db_maintenance.start()
         except Exception as _dm_e:
             # Scheduler must never block daemon startup.
@@ -561,7 +573,9 @@ class BrainDaemon:
 
         # Start the embed queue drain worker. remember/revise/remember_batch
         # enqueue dirty node_ids; this worker embeds them in batches every
-        # EMBED_DRAIN_INTERVAL seconds. S2 Heal catches gaps on idle.
+        # EMBED_DRAIN_INTERVAL seconds, and sweeps for unqueued gaps on an
+        # empty tick (COVERAGE_SWEEP_INTERVAL). It owns vector coverage
+        # end to end — nothing else repairs a missing embedding.
         try:
             from servers import embed_queue
             embed_queue.start(self.brain)

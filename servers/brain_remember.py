@@ -1687,26 +1687,11 @@ class BrainRememberMixin:
             self._log_error('get_pending_critical', e, 'parsing pending critical approvals JSON')
             return []
 
-    def backfill_summaries(self, batch_size: int = 50) -> Dict[str, Any]:
-        """Generate content_summary for existing nodes that lack one. Run during idle."""
-        cur = self.conn.execute(
-            "SELECT id, title, content FROM nodes WHERE content IS NOT NULL AND content != '' AND content_summary IS NULL LIMIT ?",
-            (batch_size,)
-        )
-        rows = cur.fetchall()
-        count = 0
-        for node_id, title, content in rows:
-            summary = self._generate_summary(title, content)
-            if summary:
-                self.conn.execute(
-                    "UPDATE nodes SET content_summary = ? WHERE id = ?",
-                    (summary, node_id)
-                )
-                count += 1
-        if count:
-            self._maybe_commit()
-        return {'backfilled': count, 'remaining': len(rows) - count}
-
+    # backfill_summaries removed 2026-08-17 — a completed migration. remember()
+    # and revise() both write content_summary synchronously via _generate_summary,
+    # so nothing accumulates. Its only remaining candidates were three sub-30-char
+    # test nodes that _generate_summary returns None for by design, which it
+    # re-selected on every run and could never fill.
 
     # _store_node_metadata removed 2026-04-13 — old node_metadata table dropped.
 

@@ -157,11 +157,19 @@ def apply_pragmas(conn: sqlite3.Connection) -> None:
 _MAINTENANCE_BUSY_TIMEOUT_MS = 5000
 
 
-def _connect_maintenance(db_path: str, timeout_s: Optional[float] = None) -> sqlite3.Connection:
+def connect_maintenance(db_path: str, timeout_s: Optional[float] = None) -> sqlite3.Connection:
     """Open a connection for a background maintenance op with a short
     busy_timeout — it yields fast under contention instead of blocking
     the foreground writers. Applies the standard pragma set, then lowers
-    busy_timeout from the 30s default to the maintenance cap."""
+    busy_timeout from the 30s default to the maintenance cap.
+
+    This is how maintenance runs against a LIVE database: WAL admits one
+    writer alongside readers, and a private connection means a private
+    transaction — so a sweep can never join, commit or roll back work a
+    foreground writer has open. Never hand a maintenance op `brain.conn`;
+    its bare commits would land on whatever envelope that connection is
+    holding.
+    """
     if timeout_s is None:
         timeout_s = _MAINTENANCE_BUSY_TIMEOUT_MS / 1000.0
     conn = sqlite3.connect(db_path, timeout=timeout_s)
@@ -181,7 +189,7 @@ def checkpoint(db_path: str) -> Dict[str, Any]:
     """
     wal_path = db_path + '-wal'
     size_before = _file_size_or_zero(wal_path)
-    conn = _connect_maintenance(db_path)
+    conn = connect_maintenance(db_path)
     try:
         row = conn.execute('PRAGMA wal_checkpoint(TRUNCATE)').fetchone()
     finally:
@@ -203,7 +211,7 @@ def optimize(db_path: str) -> Dict[str, Any]:
     Cheap to run periodically (no-op for stable tables); expensive
     queries become quietly faster as statistics catch up to reality.
     """
-    conn = _connect_maintenance(db_path)
+    conn = connect_maintenance(db_path)
     try:
         conn.execute('PRAGMA optimize')
     finally:
@@ -219,7 +227,7 @@ def stats(db_path: str) -> Dict[str, Any]:
     wal_size = _file_size_or_zero(db_path + '-wal')
     shm_size = _file_size_or_zero(db_path + '-shm')
 
-    conn = _connect_maintenance(db_path)
+    conn = connect_maintenance(db_path)
     try:
         page_count = conn.execute('PRAGMA page_count').fetchone()[0]
         page_size = conn.execute('PRAGMA page_size').fetchone()[0]
