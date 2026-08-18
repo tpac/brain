@@ -46,7 +46,13 @@ class AspectEncoder(IntegrationUnit):
     ENCODING_SOURCE = 's2:aspect_integration'
 
     O_SOURCES = ['aspect_proposals']
-    K_SOURCES = ['llm_aspect_classifier', 'aspects_v1.json']
+    K_SOURCES = ['llm_aspect_classifier', 'aspects_v1.json', 'journal_notes']
+
+    # Residue flows to journal_note trace rows via the journal binding on
+    # _call_llm (decorate → harvest), read back via continuity(). For this
+    # unit the notes are the ONLY durable record of a classification's
+    # reasoning — aspects_proposed.json is overwritten every cycle, and a
+    # classification is permanent (never re-examined).
 
     def __init__(self, brain, dispatch_fn=None, config=None):
         super().__init__(brain, dispatch_fn)
@@ -65,8 +71,10 @@ class AspectEncoder(IntegrationUnit):
             return {'classified': 0, 'rejected': 0, 'errors': [], 'journal': ''}
 
         aspects = self.brain.aspects.all()   # {name: Aspect} — registry view
-        user_content = self._format_prompt(aspects, proposals)
-        result, telemetry = self._call_llm('s2_aspects', user_content)
+        user_content = self.journal.continuity() + self._format_prompt(
+            aspects, proposals)
+        result, telemetry = self._call_llm('s2_aspects', user_content,
+                                           journal=True)
 
         if result is None:
             err = 'LLM call failed'

@@ -119,7 +119,12 @@ from .dal_logs import (AUTO_V1_PROVENANCE, BACKSTOP_PROVENANCE,
 # shown: …) accounting line, script-intent harvest, path shortening — per
 # the stale-gloss rule (a render change that adds notation rides a prompt
 # version).
-SEED_PROMPTS_VERSION = 7
+#
+# 8 ships the healer/aspect journal binding prompts: s2_healer v5 drops the
+# legacy dead-promise journal block (residue now rides the runtime review
+# block via _call_llm's journal binding); s2_aspects v7 unpins the JSON-only
+# line so it can't suppress the `## Review` fence.
+SEED_PROMPTS_VERSION = 8
 SEED_PROMPTS_VERSION_KEY = 'seed_prompts_version'
 
 # Pointer provenance that proves the install is still running what WE put there.

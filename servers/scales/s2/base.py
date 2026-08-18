@@ -491,7 +491,7 @@ class IntegrationUnit:
             client = self._client = make_client()
         return client
 
-    def _call_llm(self, interaction_name, user_content):
+    def _call_llm(self, interaction_name, user_content, journal=False):
         """Call LLM with a learnable prompt from interactions table.
 
         Loads system prompt from interaction template.
@@ -501,6 +501,16 @@ class IntegrationUnit:
         Args:
             interaction_name: Key in interactions table (e.g. 's2_community_enrichment')
             user_content: String content for the user message
+            journal: When True, this call carries the unit's journal binding —
+                the review block decorates the system tail (single-shot: no
+                closure, no arc) and the response is harvested (residue notes
+                written on this run's chain, journal sections stripped BEFORE
+                extract_json — a `]`/`}` inside a fence after the payload
+                would corrupt its rfind-based scan). The single wiring point
+                for single-shot units (healer, aspect); continuity is the
+                caller's to prepend (once per run, not per batch — see
+                scales/journal.py placement rules). Decoration is
+                deterministic, so the 1h system-prompt cache stays byte-stable.
 
         Returns:
             (parsed_json, telemetry): parsed_json is the JSON parsed from the
@@ -523,6 +533,10 @@ class IntegrationUnit:
         model = config['model']
         max_tokens = config['max_tokens']
 
+        if journal:
+            system_prompt = self.journal.decorate_system(
+                system_prompt, multi_round=False)
+
         # read_usage(None) is the all-zero token baseline — reused on the
         # pre-usage failure path.
         telemetry = {'elapsed_ms': 0, **read_usage(None)}
@@ -540,6 +554,10 @@ class IntegrationUnit:
             # expectation, and the log-and-return-None failure policy below.
             raw, telemetry = run_llm_once(
                 self._llm_client(), model, max_tokens, system_prompt, user_content)
+            if journal:
+                # Residue notes out, journal sections off the payload — the
+                # strip-before-extract ordering is enforced here by construction.
+                raw = self.journal.harvest(raw, self.chain_id())
             return extract_json(raw), telemetry
 
         except Exception as e:

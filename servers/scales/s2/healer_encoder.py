@@ -21,7 +21,13 @@ class HealerEncoder(IntegrationUnit):
     ENCODING_SOURCE = 's2:healer'
 
     O_SOURCES = ['healer_proposals']
-    K_SOURCES = ['llm_healer']
+    K_SOURCES = ['llm_healer', 'journal_notes']
+
+    # Residue flows to journal_note trace rows via the journal binding on
+    # _call_llm (decorate → harvest), read back via continuity() — the note
+    # contract, same as the loop encoders. The synthesized journal_entry
+    # counter-string below is the TRACE record (what happened), orthogonal
+    # to residue (what the actions don't capture).
 
     def __init__(self, brain, dispatch_fn=None, config=None):
         super().__init__(brain, dispatch_fn)
@@ -74,6 +80,11 @@ class HealerEncoder(IntegrationUnit):
         tel_totals = read_usage(None)
         _t0 = time.time()
 
+        # Residue continuity — read ONCE before the loop (a per-batch read
+        # would echo batch 1's just-written notes into batch 2), prepended to
+        # every batch's content, mirroring the loop encoders.
+        journal_prefix = self.journal.continuity()
+
         batch_size = self.config['max_nodes_per_call']
         for batch_start in range(0, len(proposals), batch_size):
             batches += 1
@@ -84,8 +95,9 @@ class HealerEncoder(IntegrationUnit):
             by_full = {p['node_id']: p for p in batch}
             by_short = {p['node_id'][:8]: p for p in batch}
 
-            user_content = self._format_batch(batch)
-            result, call_tel = self._call_llm('s2_healer', user_content)
+            user_content = journal_prefix + self._format_batch(batch)
+            result, call_tel = self._call_llm('s2_healer', user_content,
+                                              journal=True)
             sum_usage(tel_totals, call_tel)
 
             if result is None:

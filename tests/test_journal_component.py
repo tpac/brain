@@ -85,5 +85,136 @@ class TestHarvest(BrainTestBase):
         self.assertIn('RECENT REVIEW NOTES', prefix)
 
 
+class TestSingleShotCallLlm(BrainTestBase):
+    """The Phase-3 wiring: _call_llm(journal=True) is the single attachment
+    point for single-shot units (healer, aspect) — review block on the system
+    tail (no closure, no arc), harvest before extract_json."""
+    needs_embedder = False
+
+    HEALING_JSON = '[{"node_id": "abcd1234", "question": "why does x?"}]'
+    RESPONSE = (HEALING_JSON +
+                '\n\n## Review\n```\ndoubt · abcd1234 · thin conversation]\n```\n')
+
+    def _unit(self):
+        from servers.scales.s2.healer_encoder import HealerEncoder
+        return HealerEncoder(self.brain)
+
+    def _patch_llm(self, response_text):
+        """Swap run_llm_once in base's namespace; returns the capture dict."""
+        from servers.scales.s2 import base as base_mod
+        captured = {}
+
+        def fake_run_llm_once(client, model, max_tokens, system_prompt,
+                              user_content):
+            captured['system'] = system_prompt
+            captured['user'] = user_content
+            return response_text, {'elapsed_ms': 1, 'input_tokens': 1,
+                                   'output_tokens': 1, 'cache_read_tokens': 0,
+                                   'cache_creation_tokens': 0}
+
+        self._orig_run_once = base_mod.run_llm_once
+        base_mod.run_llm_once = fake_run_llm_once
+        self.addCleanup(lambda: setattr(base_mod, 'run_llm_once',
+                                        self._orig_run_once))
+        # _llm_client builds a real Anthropic client — stub it out too.
+        self._orig_make_client = base_mod.make_client
+        base_mod.make_client = lambda: object()
+        self.addCleanup(lambda: setattr(base_mod, 'make_client',
+                                        self._orig_make_client))
+        return captured
+
+    def test_journal_true_decorates_and_harvests(self):
+        from servers.trace_contract import JOURNAL_REVIEW_INSTRUCTION
+        unit = self._unit()
+        captured = self._patch_llm(self.RESPONSE)
+
+        parsed, tel = unit._call_llm('s2_healer', 'payload', journal=True)
+
+        # Decoration: review block at the system tail; single-shot = no
+        # closure, no arc.
+        base_prompt = self.brain.get_interaction_prompt('s2_healer')
+        self.assertTrue(captured['system'].startswith(base_prompt.rstrip()))
+        self.assertIn(JOURNAL_REVIEW_INSTRUCTION, captured['system'])
+        self.assertNotIn('## Finishing', captured['system'])
+        self.assertNotIn('## Arc', captured['system'])
+
+        # Harvest ordering: the fence's `]` would poison extract_json on the
+        # raw text — the parsed payload proves strip-first.
+        self.assertEqual(parsed, [{"node_id": "abcd1234",
+                                   "question": "why does x?"}])
+
+        # The note landed on THIS run's chain, scoped to the unit.
+        notes = self.brain.journal_notes(scale='s2', unit='healer')
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(notes[0]['tag'], 'doubt')
+        self.assertEqual(notes[0]['chain_id'], unit.chain_id())
+
+    def test_journal_default_is_byte_identical_and_silent(self):
+        unit = self._unit()
+        captured = self._patch_llm(self.HEALING_JSON)
+
+        parsed, tel = unit._call_llm('s2_healer', 'payload')
+
+        self.assertEqual(captured['system'],
+                         self.brain.get_interaction_prompt('s2_healer'))
+        self.assertEqual(parsed, [{"node_id": "abcd1234",
+                                   "question": "why does x?"}])
+        self.assertEqual(self.brain.journal_notes(scale='s2', unit='healer'),
+                         [])
+
+    def test_healer_run_binds_journal(self):
+        """End-to-end through HealerEncoder.run(): continuity prepended,
+        journal=True on the call, residue persisted alongside the field write."""
+        nid = self.brain.remember(
+            type='fact', title='journal probe target',
+            content='node missing a question')['id']
+        unit = self._unit()
+        # Seed one prior note so continuity has something to prepend.
+        unit.journal.harvest(
+            '## Review\n```\nfriction · prior · earlier run note\n```',
+            's2-20260101000000-healer')
+        response = ('[{"node_id": "%s", "question": "why probe?"}]' % nid[:8] +
+                    '\n\n## Review\n```\nsurprise · %s · conversation absent\n```'
+                    % nid[:8])
+        captured = self._patch_llm(response)
+
+        result = unit.run([{'node_id': nid, 'needs_question': True,
+                            'rich_node': {'title': 'journal probe target',
+                                          'content': 'node missing a question'},
+                            'conversation': []}])
+
+        self.assertEqual(result['nodes_healed'], 1)
+        self.assertIn('RECENT REVIEW NOTES', captured['user'])
+        self.assertIn('earlier run note', captured['user'])
+        notes = self.brain.journal_notes(scale='s2', unit='healer')
+        tags = {n['tag'] for n in notes}
+        self.assertIn('surprise', tags)
+
+    def test_aspect_run_binds_journal(self):
+        """AspectEncoder.run() reaches _call_llm with journal=True and the
+        continuity prefix on the user content."""
+        from servers.scales.s2.aspect_encoder import AspectEncoder
+        unit = AspectEncoder(self.brain)
+        seen = {}
+
+        def fake_call(name, user_content, journal=False):
+            seen['name'] = name
+            seen['journal'] = journal
+            seen['user'] = user_content
+            return None, {'elapsed_ms': 0}
+
+        unit._call_llm = fake_call
+        unit.journal.harvest(
+            '## Review\n```\nopen · taxonomy · single-example candidates\n```',
+            's2-20260101000000-aspect_integration')
+
+        unit.run([{'category': 'node_types', 'value': 'probe_type',
+                   'count': 1, 'examples': []}])
+
+        self.assertEqual(seen['name'], 's2_aspects')
+        self.assertTrue(seen['journal'])
+        self.assertIn('single-example candidates', seen['user'])
+
+
 if __name__ == '__main__':
     unittest.main()
