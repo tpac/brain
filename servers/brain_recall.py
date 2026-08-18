@@ -86,18 +86,12 @@ def _expand_query_via_llm(brain, query: str) -> List[str]:
     """
     if not query or len(query.strip()) < 3:
         return []
+    # Resolved through the override model — template and config fall back to
+    # the code defaults in recall_expansion_prompt.py when no row exists.
     template = brain.get_interaction_prompt('recall_query_expansion')
-    if not template:
-        # Loud: without this row, expansion silently never fires while the
-        # env flag claims it is on. interaction_seed registers it at boot.
-        brain._log_error(
-            'query_expansion_missing_interaction',
-            RuntimeError('no recall_query_expansion interaction registered'),
-            'expansion skipped — recall proceeds on the primary query')
-        return []
-    cfg = brain.get_interaction_config('recall_query_expansion') or {}
-    model = cfg.get('model', 'claude-haiku-4-5')
-    max_tokens = cfg.get('max_tokens', 200)
+    cfg = brain.get_interaction_config('recall_query_expansion')
+    model = cfg['model']
+    max_tokens = cfg['max_tokens']
     try:
         import anthropic
         # Bounded, and no SDK retries. This is a best-effort call on the recall

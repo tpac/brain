@@ -123,35 +123,21 @@ def run_llm_scout(
         SCOUT_WARNING_KEY: [],
     }
 
-    # 1. Load interaction (template + parameters)
+    # 1. Resolve interaction (template + config) — the accessor overlays any
+    #    DB override onto the code default, so both are total by construction.
     interaction_name = sc.interaction_name(scout_name)
-    interaction = _load_interaction(brain, interaction_name)
-    if not interaction:
-        msg = f'no interaction entry for {interaction_name}'
-        _log(msg)
-        _log_error(brain, scout_name, 'missing_interaction', msg)
-        stub[SCOUT_ERROR_KEY].append({'type': 'missing_interaction', 'msg': msg})
-        return stub
-
-    template = interaction.get('template', '') or ''
-    params = interaction.get('parameters', {}) or {}
-    category_statement = params.get('category_statement', '')
-    model = params.get('model', 'claude-haiku-4-5')
-    max_tokens = int(params.get('max_tokens', 2000))
-    timeout_seconds = float(params.get('timeout_seconds', 25))
+    template = brain.get_interaction_prompt(interaction_name)
+    params = brain.get_interaction_config(interaction_name)
+    category_statement = params['category_statement']
+    model = params['model']
+    max_tokens = int(params['max_tokens'])
+    timeout_seconds = float(params['timeout_seconds'])
     # Optional: Anthropic Structured Outputs schema. When present,
     # output_config={'format':{'type':'json_schema','schema':...}} is passed
     # to the messages.create call and the response is guaranteed to match.
     # Closes the format-mirror drift class where Haiku returns chat-style
     # prose instead of JSON when the conversation context is markdown-heavy.
     output_schema = params.get('output_schema')
-
-    if not template.strip():
-        msg = f'empty template for {interaction_name}'
-        _log(msg)
-        _log_error(brain, scout_name, 'empty_template', msg)
-        stub[SCOUT_ERROR_KEY].append({'type': 'empty_template', 'msg': msg})
-        return stub
 
     stub['category_statement'] = category_statement
 
@@ -283,32 +269,6 @@ def run_llm_scout(
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────
-
-
-def _load_interaction(brain, name: str) -> Optional[Dict[str, Any]]:
-    """Fetch an interaction entry with parsed parameters dict.
-
-    Returns {'template': str, 'parameters': dict} or None on missing/DAL error.
-    The DAL's get_interaction returns parameters as a JSON string; we parse
-    it here so callers always see a dict.
-    """
-    try:
-        entry = brain.get_interaction(name)
-    except Exception:
-        return None
-    if not entry:
-        return None
-    params_raw = entry.get('parameters', '{}') or '{}'
-    if isinstance(params_raw, str):
-        try:
-            params = json.loads(params_raw)
-        except json.JSONDecodeError:
-            params = {}
-    elif isinstance(params_raw, dict):
-        params = params_raw
-    else:
-        params = {}
-    return {'template': entry.get('template', '') or '', 'parameters': params}
 
 
 _JSON_OBJECT_RE = re.compile(r'\{(?:[^{}"]|"(?:\\.|[^"\\])*"|\{.*\})*\}', re.DOTALL)

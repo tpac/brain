@@ -378,6 +378,40 @@ class TestDecodeTransitions(BrainTestBase):
         self.assertNotIn('<conversation>', prompt)
         self.assertIn('Conversation (previous turns, oldest first):', prompt)
 
+    def test_layout_config_reaches_the_renderer(self):
+        """Transition: interaction config → build_surface_prompt. The layout
+        the resolver hands back (K-store override overlaid on the code
+        default) must be the layout the renderer receives — sentinel-checked
+        because a wrong overlay is silent (id:9402f16e)."""
+        from servers.scales.s1 import surface as surface_mod
+        import servers.scales.s1.surface_contract as scontract
+
+        self.brain.logs_conn.execute('DELETE FROM interactions')
+        self.brain.logs_conn.commit()
+        self.brain._interaction_dal.register(
+            'surface', template='',
+            parameters=json.dumps({'layout': 'sentinel-layout'}))
+
+        captured = {}
+
+        class _Stop(Exception):
+            pass
+
+        def capturing_build(*args, **kwargs):
+            captured['layout'] = kwargs.get('layout')
+            raise _Stop()
+
+        real_build = scontract.build_surface_prompt
+        scontract.build_surface_prompt = capturing_build
+        try:
+            with self.assertRaises(_Stop):
+                surface_mod._call_surface(
+                    self.brain, [], 'a message', [], 'sess-layout', {})
+        finally:
+            scontract.build_surface_prompt = real_build
+
+        self.assertEqual(captured['layout'], 'sentinel-layout')
+
     def test_recently_surfaced_is_session_scoped(self):
         """_get_recently_surfaced must not leak surfaces from parallel sessions.
 

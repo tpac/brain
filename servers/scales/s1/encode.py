@@ -96,23 +96,21 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     # agree on the instant.
     view_now = _conversation_now_safe(brain, session_id, messages) if view else None
 
-    # 2. Build prompt (from interactions table — learnable boundary)
-    enc_interaction = brain.get_interaction('s1e')
-    enc_instructions = enc_interaction.get('template', '') if enc_interaction else ''
+    # 2. Build prompt (learnable boundary — DB override overlaid on the code
+    # default by the resolver)
+    enc_instructions = brain.get_interaction_prompt('s1e')
     # K-provenance stamp, resolved at the same moment as the template so the
     # delta trace records the K this run actually used.
     enc_stamp = brain.get_interaction_stamp('s1e')
     # Per-version config rides in the interaction's parameters JSON (the
-    # K-store): `effort` maps to the API's output_config.effort (absent/{} →
-    # None → API default, high); `model` picks the encoder model, literal
-    # fallback only for a brain whose row predates the key. Lets an effort or
-    # model change ship as a prompt version (A/B-able via ab_encode's
-    # parameters injection), not a code edit.
-    # brain.get_interaction_config is the single K-store parse (active version,
-    # json.loads with {}-on-error) — reuse it, don't re-hand-roll the parse.
-    enc_cfg = brain.get_interaction_config('s1e') or {}
-    enc_effort = enc_cfg.get('effort') or None
-    enc_model = enc_cfg.get('model') or 'claude-sonnet-4-6'
+    # K-store): `effort` maps to the API's output_config.effort; `model`
+    # picks the encoder model. Lets an effort or model change ship as a
+    # prompt version (A/B-able via ab_encode's parameters injection), not a
+    # code edit. Resolved config is total — the defaults live in
+    # encode_contract.S1E_INTERACTION_DEFAULT, nowhere else.
+    enc_cfg = brain.get_interaction_config('s1e')
+    enc_effort = enc_cfg['effort']
+    enc_model = enc_cfg['model']
     system_prompt = _build_system_prompt(
         prompt_instructions=enc_instructions or None, lived=lived)
 

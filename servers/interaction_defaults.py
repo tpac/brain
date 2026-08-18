@@ -45,7 +45,7 @@ from .scales.s2.consolidation_contract import CONSOLIDATION_ENRICHMENT
 from .scales.s2.consolidation_enrichment_prompt import SYSTEM_PROMPT as _CONSOLIDATION_PROMPT
 from .scales.s2.healer_contract import HEALER_INTERACTION_DEFAULT
 from .scales.s2.healer_prompt import SYSTEM_PROMPT as _HEALER_PROMPT
-from .scopes import SCOPES_CONFIG_V1
+from .scopes import SCOPES_CONFIG_V1, validate_scopes_config
 from .trace_contract import TRACE_RECORDING_NORMAL
 
 # name → (template, config). Config-only interactions carry '' templates.
@@ -67,6 +67,16 @@ INTERACTION_DEFAULTS = {
     # Decoder parameters (not an LLM template). The decoder currently imports
     # COMMUNITY_DETECTION directly; the interaction read is not wired.
     's2_community':          ('', COMMUNITY_DETECTION),
+}
+
+
+# name → callable(config: dict) → [violation strings]; empty list = valid.
+# Consulted at BOTH doors of the override model: register_interaction REFUSES
+# a version whose config has violations (write door), and the resolver LOGS
+# violations and runs on the code default (read seam) — an invalid override
+# must never become the running K, and must never crash a read path.
+INTERACTION_VALIDATORS = {
+    'scopes': validate_scopes_config,
 }
 
 

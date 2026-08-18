@@ -397,13 +397,16 @@ class LafV1Engine:
         now = time.monotonic()
         if self._cfg is not None and now - self._cfg_ts < CONFIG_TTL_S:
             return self._cfg
-        cfg = dict(DEFAULT_CONFIG)
         try:
-            stored = brain.get_interaction_config('recall_laf') or {}
-            cfg.update({k: stored[k] for k in DEFAULT_CONFIG if k in stored})
+            # The resolver overlays any DB override onto DEFAULT_CONFIG
+            # (the registry's default for 'recall_laf') — total by
+            # construction, parse failures already logged there.
+            cfg = brain.get_interaction_config('recall_laf')
         except Exception as e:
-            # Loud: a broken K-store must be distinguishable from an empty one.
-            # TTL-bounded, so this can't spam (≤1 log per CONFIG_TTL_S).
+            # Loud: recall must survive a broken K-store read (DAL/DB-level
+            # failure). Falls back to the SAME default home the resolver
+            # uses. TTL-bounded, so this can't spam (≤1 log per CONFIG_TTL_S).
+            cfg = dict(DEFAULT_CONFIG)
             try:
                 brain._log_error('recall_laf_config', e,
                                  'get_interaction_config failed — running on '

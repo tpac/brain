@@ -157,7 +157,9 @@ class TestInteractionSeeding:
 # ═══════════════════════════════════════════════════════
 
 class TestBrainInteractionMethods:
-    """Verify Brain.get_interaction_config() and get_interaction_prompt()."""
+    """Verify the resolver accessors: get_interaction_config() /
+    get_interaction_prompt() overlay the active DB override onto the code
+    default from INTERACTION_DEFAULTS."""
 
     @pytest.fixture(autouse=True)
     def setup_brain(self):
@@ -167,26 +169,34 @@ class TestBrainInteractionMethods:
             env.brain.logs_conn.commit()
             yield
 
-    def test_get_config_returns_dict(self):
+    def test_get_config_overlays_partial_override(self):
+        """A one-key override changes that key and ONLY that key — every
+        unmentioned key still tracks the code default (decision e183d22c:
+        overlay, not whole-value replace)."""
+        from servers.interaction_defaults import INTERACTION_DEFAULTS
+        default = INTERACTION_DEFAULTS['s1e'][1]
         self.brain._interaction_dal.register(
-            'test_boundary', template='', parameters=json.dumps({'x': 10, 'y': 20}))
-        config = self.brain.get_interaction_config('test_boundary')
-        assert config == {'x': 10, 'y': 20}
+            's1e', template='', parameters=json.dumps({'effort': 'sentinel-x'}))
+        config = self.brain.get_interaction_config('s1e')
+        assert config['effort'] == 'sentinel-x'
+        for key, value in default.items():
+            if key != 'effort':
+                assert config[key] == value
 
-    def test_get_config_missing_returns_empty(self):
-        config = self.brain.get_interaction_config('nonexistent')
-        assert config == {}
+    def test_get_config_unknown_name_raises(self):
+        with pytest.raises(KeyError):
+            self.brain.get_interaction_config('nonexistent')
 
-    def test_get_prompt_returns_text(self):
+    def test_get_prompt_returns_override_text(self):
         self.brain._interaction_dal.register(
-            'test_llm', template='You are a test judge. Select wisely.',
+            'surface', template='You are a test judge. Select wisely.',
             parameters=json.dumps({}))
-        prompt = self.brain.get_interaction_prompt('test_llm')
+        prompt = self.brain.get_interaction_prompt('surface')
         assert prompt == 'You are a test judge. Select wisely.'
 
-    def test_get_prompt_missing_returns_empty(self):
-        prompt = self.brain.get_interaction_prompt('nonexistent')
-        assert prompt == ''
+    def test_get_prompt_unknown_name_raises(self):
+        with pytest.raises(KeyError):
+            self.brain.get_interaction_prompt('nonexistent')
 
     def test_register_v2_does_not_auto_activate(self):
         """After registering v2, runtime still reads v1 until set_active is called.
@@ -195,28 +205,28 @@ class TestBrainInteractionMethods:
         creates a version row but does NOT change the runtime pointer.
         """
         self.brain._interaction_dal.register(
-            'evolving', template='', parameters=json.dumps({'threshold': 0.5}))
+            's1e', template='', parameters=json.dumps({'effort': 'v1-effort'}))
         # v1 should be auto-active
-        config = self.brain.get_interaction_config('evolving')
-        assert config['threshold'] == 0.5
+        config = self.brain.get_interaction_config('s1e')
+        assert config['effort'] == 'v1-effort'
 
         # Register v2 — must NOT change what runtime reads
         self.brain._interaction_dal.register(
-            'evolving', template='', parameters=json.dumps({'threshold': 0.8}),
+            's1e', template='', parameters=json.dumps({'effort': 'v2-effort'}),
             created_by='sleep:s3')
-        config = self.brain.get_interaction_config('evolving')
-        assert config['threshold'] == 0.5, \
+        config = self.brain.get_interaction_config('s1e')
+        assert config['effort'] == 'v1-effort', \
             "v2 register should NOT auto-activate; runtime should still see v1"
 
         # Now explicitly activate v2 — runtime flips
-        self.brain._interaction_dal.set_active('evolving', 2, set_by='test')
-        config = self.brain.get_interaction_config('evolving')
-        assert config['threshold'] == 0.8
+        self.brain._interaction_dal.set_active('s1e', 2, set_by='test')
+        config = self.brain.get_interaction_config('s1e')
+        assert config['effort'] == 'v2-effort'
 
         # Rollback to v1 by re-activating
-        self.brain._interaction_dal.set_active('evolving', 1, set_by='test')
-        config = self.brain.get_interaction_config('evolving')
-        assert config['threshold'] == 0.5
+        self.brain._interaction_dal.set_active('s1e', 1, set_by='test')
+        config = self.brain.get_interaction_config('s1e')
+        assert config['effort'] == 'v1-effort'
 
     def test_set_active_rejects_unknown_version(self):
         """set_active raises when target version isn't registered."""
@@ -341,11 +351,12 @@ class TestInteractionTraceLinkage:
 
 
 # ═══════════════════════════════════════════════════════
-# Fallback behavior
+# Fallback behavior + resolver guards
 # ═══════════════════════════════════════════════════════
 
 class TestInteractionFallback:
-    """Verify system works when interactions table is empty."""
+    """No DB row is the normal state after the override collapse: the
+    resolver returns the code default, silently."""
 
     @pytest.fixture(autouse=True)
     def setup_brain(self):
@@ -355,10 +366,117 @@ class TestInteractionFallback:
             env.brain.logs_conn.commit()
             yield
 
-    def test_config_fallback_empty_dict(self):
-        """When no interactions exist, get_interaction_config returns {}."""
-        assert self.brain.get_interaction_config('judge') == {}
+    def test_config_fallback_returns_code_default(self):
+        from servers.interaction_defaults import INTERACTION_DEFAULTS
+        assert (self.brain.get_interaction_config('surface')
+                == INTERACTION_DEFAULTS['surface'][1])
 
-    def test_prompt_fallback_empty_string(self):
-        """When no interactions exist, get_interaction_prompt returns ''."""
-        assert self.brain.get_interaction_prompt('judge') == ''
+    def test_prompt_fallback_returns_code_default(self):
+        from servers.interaction_defaults import INTERACTION_DEFAULTS
+        assert (self.brain.get_interaction_prompt('surface')
+                == INTERACTION_DEFAULTS['surface'][0])
+
+    def test_stamp_fallback_is_default_source(self):
+        """No row → source 'default', version 0, id None — and the
+        fingerprint hashes the RESOLVED default, not ''/{}."""
+        from servers.interaction_defaults import (
+            INTERACTION_DEFAULTS, interaction_fingerprint)
+        stamp = self.brain.get_interaction_stamp('surface')
+        template, config = INTERACTION_DEFAULTS['surface']
+        assert stamp == {
+            'fingerprint': interaction_fingerprint('surface', template, config),
+            'source': 'default', 'version': 0, 'id': None}
+
+    def test_unknown_name_raises(self):
+        """A typo'd or unregistered name must raise, not run on an empty
+        prompt (guard 2 — safe because tests/test_interaction_defaults.py
+        keeps the registry complete)."""
+        with pytest.raises(KeyError):
+            self.brain.get_interaction_config('judge')
+        with pytest.raises(KeyError):
+            self.brain.get_interaction_prompt('judge')
+        with pytest.raises(KeyError):
+            self.brain.get_interaction_stamp('judge')
+
+
+class TestResolverGuards:
+    """The dangerous rows: unparseable JSON and invalid values must degrade
+    LOUDLY to the code default — a typo'd override silently reverting a
+    boundary is the failure this resolver exists to prevent."""
+
+    @pytest.fixture(autouse=True)
+    def setup_brain(self):
+        with IsolatedBrain() as env:
+            self.brain = env.brain
+            env.brain.logs_conn.execute('DELETE FROM interactions')
+            env.brain.logs_conn.commit()
+            yield
+
+    def _resolve_errors(self):
+        return self.brain.logs_conn.execute(
+            "SELECT COUNT(*) FROM debug_log WHERE source = "
+            "'interaction_resolve'").fetchone()[0]
+
+    def test_unparseable_json_falls_back_loudly(self):
+        from servers.interaction_defaults import INTERACTION_DEFAULTS
+        self.brain._interaction_dal.register(
+            's1e', template='', parameters='{not valid json')
+        config = self.brain.get_interaction_config('s1e')
+        assert config == INTERACTION_DEFAULTS['s1e'][1]
+        assert self._resolve_errors() >= 1
+
+    def test_non_object_json_falls_back_loudly(self):
+        from servers.interaction_defaults import INTERACTION_DEFAULTS
+        self.brain._interaction_dal.register(
+            's1e', template='', parameters=json.dumps([1, 2, 3]))
+        config = self.brain.get_interaction_config('s1e')
+        assert config == INTERACTION_DEFAULTS['s1e'][1]
+        assert self._resolve_errors() >= 1
+
+    def test_validator_violation_falls_back_loudly(self):
+        """A scopes override with an invalid mode (written past the
+        register_interaction door, e.g. by an older version) must not
+        become the running policy."""
+        from servers.scopes import SCOPES_CONFIG_V1
+        self.brain._interaction_dal.register(
+            'scopes', template='',
+            parameters=json.dumps({'project': {'mode': 'bogus'}}))
+        config = self.brain.get_interaction_config('scopes')
+        assert config == SCOPES_CONFIG_V1
+        assert self._resolve_errors() >= 1
+
+    def test_register_door_refuses_validator_violations(self):
+        """The write door REFUSES what the read seam degrades — the generic
+        INTERACTION_VALIDATORS path that replaced the scopes special-case."""
+        with pytest.raises(ValueError):
+            self.brain.register_interaction(
+                'scopes',
+                parameters=json.dumps({'project': {'mode': 'bogus'}}))
+        with pytest.raises(ValueError):
+            self.brain.register_interaction('scopes', parameters='{not json')
+
+    def test_stamp_override_fingerprints_resolved_value(self):
+        """source='override' when a row shadows the default, and the
+        fingerprint hashes the OVERLAID effective config — not the raw
+        override fragment."""
+        from servers.interaction_defaults import (
+            INTERACTION_DEFAULTS, interaction_fingerprint)
+        row = self.brain._interaction_dal.register(
+            's1e', template='', parameters=json.dumps({'effort': 'high'}))
+        stamp = self.brain.get_interaction_stamp('s1e')
+        template, default = INTERACTION_DEFAULTS['s1e']
+        assert stamp['source'] == 'override'
+        assert stamp['version'] == row['version']
+        assert stamp['id'] == row['id']
+        assert stamp['fingerprint'] == interaction_fingerprint(
+            's1e', template, {**default, 'effort': 'high'})
+
+    def test_stamp_vacuous_row_is_default_source(self):
+        """A row that contributes nothing (empty template, empty config)
+        does not shadow the default — it stamps 'default' like no row."""
+        self.brain._interaction_dal.register(
+            's1e', template='', parameters='{}')
+        stamp = self.brain.get_interaction_stamp('s1e')
+        assert stamp['source'] == 'default'
+        assert stamp['version'] == 0
+        assert stamp['id'] is None

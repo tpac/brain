@@ -231,17 +231,23 @@ class ExpansionEffectiveConfigTest(unittest.TestCase):
         self.assertEqual(call['messages'][0]['content'],
                          'EXPAND >>a query worth expanding<<')
 
-    def test_missing_interaction_skips_loudly_without_a_client(self):
-        brain = _StubExpansionBrain(template='')
-        alts = brain_recall._expand_query_via_llm(
-            brain, 'a query worth expanding')
-        self.assertEqual(alts, [])
-        self.assertEqual(brain.errors, ['query_expansion_missing_interaction'],
-                         'a missing row must land in the errors table — '
-                         'silent skip while the env flag is on is the dark-'
-                         'corner failure mode')
-        self.assertIsNone(self.fake.ctor_kwargs,
-                          'no client should be constructed without a prompt')
+    def test_code_default_reaches_the_call_when_no_override(self):
+        """With no DB override, the resolver hands back the code default —
+        and THAT is what must reach messages.create (a missing row can no
+        longer silently disable expansion; the resolver guarantees a total
+        template+config for every registered name)."""
+        from servers.recall_expansion_prompt import (
+            SYSTEM_PROMPT, RECALL_EXPANSION_INTERACTION_DEFAULT)
+        brain = _StubExpansionBrain(
+            template=SYSTEM_PROMPT,
+            config=dict(RECALL_EXPANSION_INTERACTION_DEFAULT))
+        brain_recall._expand_query_via_llm(brain, 'a query worth expanding')
+        call = self.fake.client.messages.calls[0]
+        self.assertEqual(call['model'],
+                         RECALL_EXPANSION_INTERACTION_DEFAULT['model'])
+        self.assertEqual(call['max_tokens'],
+                         RECALL_EXPANSION_INTERACTION_DEFAULT['max_tokens'])
+        self.assertEqual(brain.errors, [])
 
 
 if __name__ == '__main__':

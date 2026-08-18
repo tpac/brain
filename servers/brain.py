@@ -719,59 +719,108 @@ class Brain(
         full = self.get_config('encoding_journal_' + session_id, '') or ''
         return full[:max_chars] if full else ''
 
-    def get_interaction_config(self, name: str) -> dict:
-        """Get the active config for an interaction. Returns {} if not found.
+    def _resolve_interaction(self, name: str):
+        """Resolve `name` to its effective K: (template, config, row, shadows).
 
-        Reads the currently-active version via interaction_active pointer.
+        The single resolution seam of the override model: the code default
+        from INTERACTION_DEFAULTS is the base; the active DB row (when
+        present) overlays it — template as a whole when non-empty, config
+        key-level (partial overrides are the normal case: one knob, not a
+        snapshot). `shadows` is True only when the row actually contributed
+        something. Guards, in order:
+        - unknown name → KeyError. An unregistered boundary would otherwise
+          run on an empty prompt with no signal; the registry completeness
+          test (tests/test_interaction_defaults.py) is what makes raising
+          safe.
+        - no row → the code default, silently (the normal state once
+          overrides collapse).
+        - unparseable parameters JSON → _log_error + code default. A typo'd
+          override must be distinguishable from "no override" — swallowing
+          it would silently revert the boundary.
+        - validator violations (INTERACTION_VALIDATORS) → _log_error + code
+          default. Same registry the write door uses to refuse; read-time
+          it degrades loudly instead of raising.
+        """
+        from .interaction_defaults import (
+            INTERACTION_DEFAULTS, INTERACTION_VALIDATORS)
+        if name not in INTERACTION_DEFAULTS:
+            raise KeyError(
+                'unknown interaction %r — no code default registered; '
+                'add it to servers/interaction_defaults.py' % name)
+        default_template, default_config = INTERACTION_DEFAULTS[name]
+        row = self._interaction_dal.get_active(name)
+        if not row:
+            return default_template, dict(default_config), None, False
+        override = {}
+        params = row.get('parameters')
+        if params:
+            try:
+                parsed = json.loads(params)
+                if not isinstance(parsed, dict):
+                    raise TypeError('parameters JSON is %s, not an object'
+                                    % type(parsed).__name__)
+                override = parsed
+            except (json.JSONDecodeError, TypeError) as e:
+                self._log_error(
+                    'interaction_resolve', e,
+                    '%s: unparseable override parameters — running on the '
+                    'code default' % name)
+        if override:
+            validator = INTERACTION_VALIDATORS.get(name)
+            if validator:
+                violations = validator(override)
+                if violations:
+                    self._log_error(
+                        'interaction_resolve',
+                        ValueError('; '.join(violations)),
+                        '%s: invalid override config — running on the code '
+                        'default' % name)
+                    override = {}
+        template = row.get('template') or default_template
+        shadows = bool(row.get('template')) or bool(override)
+        return template, {**default_config, **override}, row, shadows
+
+    def get_interaction_config(self, name: str) -> dict:
+        """Effective config for an interaction: the code default with the
+        active DB override (if any) overlaid key-level. Total by
+        construction — readers subscript; caller-side fallbacks are the
+        a6dfcfe3 trap. Raises KeyError for a name with no code default.
+
         Registering a new version does NOT change what this returns —
         call set_interaction_active() to flip the runtime to a new version.
         """
-        interaction = self._interaction_dal.get_active(name)
-        if not interaction or not interaction.get('parameters'):
-            return {}
-        try:
-            return json.loads(interaction['parameters'])
-        except (json.JSONDecodeError, TypeError):
-            return {}
+        return self._resolve_interaction(name)[1]
 
     def get_interaction_prompt(self, name: str) -> str:
-        """Get the active prompt text for an LLM interaction. Returns '' if not found.
-
-        Reads the currently-active version via interaction_active pointer.
-        See get_interaction_config() for the activation model.
+        """Effective prompt for an LLM interaction: the active DB row's
+        template when non-empty, else the code default. Raises KeyError
+        for a name with no code default. See get_interaction_config() for
+        the activation model.
         """
-        interaction = self._interaction_dal.get_active(name)
-        if not interaction:
-            return ''
-        return interaction.get('template', '')
+        return self._resolve_interaction(name)[0]
 
     def get_interaction_stamp(self, name: str) -> dict:
         """K-provenance stamp for the EFFECTIVE prompt+config behind `name`.
 
         Returns {'fingerprint', 'source', 'version', 'id'} — the block trace
         writers put on delta/selection metadata (fingerprint + source +
-        version) and the trace row (id). `fingerprint` content-addresses what
-        a run of `name` actually uses, so it stays comparable across installs
-        and across the override collapse; `id`/`version` are install-local.
-        `source` is 'override' when a DB row provides the value; 'default'
-        (version 0, id None) means the code default — until code-owned
-        defaults land, that only occurs for unregistered names, whose
-        effective value is genuinely ''/{} (see get_interaction_prompt).
+        version) and the trace row (id). `fingerprint` content-addresses the
+        RESOLVED (overlaid) value a run of `name` actually uses, so it stays
+        comparable across installs and unchanged when an override row is
+        collapsed into a byte-identical code default. `source` is 'override'
+        only when the active row actually shadows the default (non-empty
+        template or ≥1 config key); a vacuous row stamps 'default'
+        (version 0, id None) like no row at all.
         """
         from .interaction_defaults import interaction_fingerprint
-        interaction = self._interaction_dal.get_active(name)
-        if not interaction:
-            return {'fingerprint': interaction_fingerprint(name, '', {}),
-                    'source': 'default', 'version': 0, 'id': None}
-        try:
-            config = json.loads(interaction.get('parameters') or '{}')
-        except (json.JSONDecodeError, TypeError):
-            config = {}
-        return {'fingerprint': interaction_fingerprint(
-                    name, interaction.get('template', '') or '', config),
-                'source': 'override',
-                'version': int(interaction.get('version') or 0),
-                'id': interaction.get('id')}
+        template, config, row, shadows = self._resolve_interaction(name)
+        stamp = {'fingerprint': interaction_fingerprint(name, template, config),
+                 'source': 'default', 'version': 0, 'id': None}
+        if shadows:
+            stamp.update(source='override',
+                         version=int(row.get('version') or 0),
+                         id=row.get('id'))
+        return stamp
 
     # get_relations_for_families — REMOVED 2026-05-04 (Step 12 of unified-aspects).
     # Replaced by brain.aspects.<name>.edge_relations (single name) or
@@ -809,21 +858,23 @@ class Brain(
         set_interaction_active. Completes the interaction-registry door:
         callers never touch _interaction_dal directly.
 
-        The 'scopes' config is validated AT THIS DOOR (validate_scopes_config)
-        and refused on violations — a typo'd mode silently meaning "less
-        isolation than configured" is the one failure a separation contract
-        must not defer to read-time logging.
+        Configs with a registered validator (INTERACTION_VALIDATORS) are
+        validated AT THIS DOOR and refused on violations — for scopes, a
+        typo'd mode silently meaning "less isolation than configured" is the
+        one failure a separation contract must not defer to read-time
+        logging.
         """
-        if name == 'scopes':
-            from .scopes import validate_scopes_config
+        from .interaction_defaults import INTERACTION_VALIDATORS
+        validator = INTERACTION_VALIDATORS.get(name)
+        if validator:
             try:
                 config = json.loads(parameters) if parameters else {}
             except (json.JSONDecodeError, TypeError) as e:
-                raise ValueError('scopes config is not valid JSON: %s' % e)
-            violations = validate_scopes_config(config)
+                raise ValueError('%s config is not valid JSON: %s' % (name, e))
+            violations = validator(config)
             if violations:
                 raise ValueError(
-                    'scopes config refused: %s' % '; '.join(violations))
+                    '%s config refused: %s' % (name, '; '.join(violations)))
         return self._interaction_dal.register(
             name=name, template=template, parameters=parameters,
             created_by=created_by)
