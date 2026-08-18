@@ -29,42 +29,18 @@ and the eight research questions live there).
 
 ## Now — verified open
 
-### 🟡 0b. Retire `co_accessed` + `emergent_bridge` — ruled dead 2026-08-17, spec ready
-**Full execution spec: node `df681fc1`.** Both edge families are written on every
-recall / every `remember()` and read by **nothing** — verified exhaustively: every
-reference in `servers/` is an exclusion list, the write path, a comment about its own
-removal, or the `EDGE_TYPES` constant. Tom's ruling: retire completely; the signal
-lives in traces (`surface_selected`, 7,548 events back to 2026-04-07, exempt from
-retention and *older* than the edges), and a future co-access mechanism gets built as
-an explicit cache table with an eval **then**, not defended with an eval now.
-Retiring `emergent_bridge` also closes a live direction-contamination vector — it
-fires at `remember()` time on topologically-close pairs and materializes a physical
-`edges` row that fixes orientation for later semantic edges (`1b8fdb1d`); the same fix
-was applied to `co_accessed` (`c3f37710`) and never to this one.
-**Sequence, do not collapse:** stop the writes (reversible, the whole win) → delete
-~11k rows later as its own backed-up change. **Do not re-arm edge decay alongside it**
-(`09a788c0`: the formula compounds per run; one pass would prune 3,760 relations).
-**Trap:** the 1.4× rescue lift on `co_accessed` (`450cb360`) is an *eval-harness*
-number for a lane that never shipped — it reads like a blocker and isn't.
-
-### 🟡 0. Encoder view policy: behavioral A/B → sweep → activation (2026-08-17) ◀ ACTIVE ARC
-**Read first:** handoff node `caad5afc` (the letter) + measurement `155ddb64` it rests on.
-The encoder prompt diet is **merged and live-but-OFF** (main `bfa72f3`,
-`BRAIN_S1E_VIEW_POLICY` env; flag off = byte-identical control arm, proven by two
-`eval/encoder_prompt_reassembly.py` integrity PASSes). Measured on real captures:
-catalog was 80–89% of every prompt; policy cuts totals 12–16% on 4-run sessions —
-aging is round-based, so the payoff grows with run count. Policy lives in
-`encoder_view.py` (the Map's Encoding row); coordinates in `trace_links.display_turn`.
-**Locked:** actions→provenance ruling (`27db2472`) incl. brain_batch + lookups out,
-connect stays; turn coordinates 1-based; surfaced-id aging protection.
-**Open:** behavioral A/B via `eval/longmem/ab_encode.py` flipping the flag per arm —
-watch re-encoding of covered turns and revise-vs-dupe on `[aged]` stubs (byte counts
-can't see either); then frozen-corpus sweep; then activation (Tom's gate: flip
-default, retire `encoded_turn_trim` + its flag-off test, bump the s1e prompt gloss).
-Gated on API budget (claimed back 2026-09-01 — verify with one cheap call).
-**Do not reopen:** last-30 catalog cap (`9ae6820a`, dangling refs) · internal-jargon
-labels (stateless-agent test) · verb exclude list (deferred) · content-trimming as
-the lever (`155ddb64`: edges + heavy corrections are the weight).
+### ~~🟡 0. Encoder view policy: wire arm D to production, then activate~~ SHIPPED 2026-08-18
+Arm D live: flag default ON, body-whole aging, window-aligned cutoff, no
+tag/header (Tom's ruling `5da51d3d` — the per-entry `Edges (N, not shown)`
+line is the marker), `encoded_turn_trim` retired, s1e v36 active + seed gen 5.
+Smoke on the deepest capture: −29.3% vs control, 59/61 aged bodies over the
+retired cap, zero cuts. Anomaly closed as harness artifact (`51d1cfa3`).
+**Do not reopen:** `ab_encode.py` for this policy (structurally blind,
+`d8809f3f`) · more prompt text for the turn-pointer leak (`3faf5b01`) ·
+`get_nodes_config` for the encoder (Tom deferred) · last-30 catalog cap
+(`9ae6820a`) · content-trimming as the savings lever (`155ddb64`).
+**Open, and larger than the render:** run-to-run node-quality variance dwarfs
+every arm difference measured; unexplained, unexamined.
 
 ### 🔴 1. Prompt improvements never reach existing installs
 `interaction_seed._register` returns early when the name already exists, so an install
@@ -135,7 +111,14 @@ nothing prunes.
 (inventory: brain `2b49ac02` — "undeclared" is not "drop-safe"; ~12 names still return
 code hits) · `bridge_proposals` (undeclared, 0 rows, still present on existing brains)
 · 648 stale `keywords` KV rows (purge + `contract.py` skip_keys guard release ship
-together). `brain_logs.db` has no migration mechanism at all after the revert — its
+together) · **retired-edge row purge for fleet installs** (`co_accessed` +
+`emergent_bridge` edge_relations + orphaned edges + weight recompute — the exact
+SQL run on the origin brain 2026-08-18, spec node `df681fc1`). Until it ships,
+existing installs that update keep their rows and re-expose them in exactly three
+places whose hardcoded exclusions phase 2 deleted: the fatigue degree cache,
+get_node connections, and the community cohesion check. Their aspect-derived
+filters still hold (additive reconcile never removes the two names from an
+existing working copy); fresh installs have no rows at all. `brain_logs.db` has no migration mechanism at all after the revert — its
 half is blocked, not deferred.
 
 ### 🔴 4. Generic-edge pollution — 18.1% of the live graph carries no relation signal
@@ -173,6 +156,28 @@ the write door. It lives in the `connect_to` **schema description** in `contract
 defaults `relation = args.get("relation", "related_to")` in two places, so a caller
 that omits the field silently gets one. That default is the suspect if they ever
 reappear.
+
+### 🔴 4b. Encoder revise integrity — does a revise silently destroy content in production?
+**Read first:** brain `3cdb33b3`. Everything known comes from the eval harness; **production
+has never been checked.** A `revise` REPLACES content, so a partial or careless rewrite
+drops load-bearing detail while the node still looks maintained — and length is no signal
+(both read-verified losses grew or held size). Arm D closes the *aging* pathway
+(`d34af9e4`); revises on full bodies are unsampled. One unresolved anomaly: an emitted
+`content: "placeholder — this revise will fail gracefully"` against a node that exists
+(`21e5e97f`) — real, or an artifact of the harness's synthetic write ids.
+**Cheap path, no API:** production `encoding_run` traces carry `action_details` with the
+emitted ops — extract revise ops, pair with node content at that moment, diff.
+**Method warning:** the line-overlap score is a reading queue, not a verdict (`a9b9295d`) —
+it scored a genuinely better rewrite as 100% loss. Rate claims must be read-backed.
+
+### 4c. Encoder run-to-run node-quality variance — larger than any render effect
+**Read first:** brain `079d9736`. Same capture, same prompt, same arm: one run produced 23–28
+creates at `situation` 57% / 0.3 edges / 476-char content; another 4–13 at 100% / 3.0 edges /
+1,242 chars. That swing dwarfs every A/B/C/D difference measured, i.e. node quality is
+dominated by something other than the catalog render. Production trace *summaries* look
+normal (2–3 rounds, ~12–16 nodes/run) but can't show field-fill — that needs
+`action_details`. Note `source_refs` fill is NOT a quality bar (`9a30733f`: display
+provenance, sparse by design).
 
 ### 5. Healer and AspectIntegration write zero journal notes
 Two of four S2 units are mute: across 589 notes / 14 days the split is S1E 317 /
@@ -374,8 +379,8 @@ out already done.
 - `eval_runner.py` bypasses the enrichment scoring step production uses, so scoring
   improvements are invisible to that eval
 - `brain_dashboard.db` write removal — pending the dashboard's actual deprecation
-- Historical `co_accessed` trim; empty-description generic-edge archive sweep (the
-  reclassifier can't fix these — no description to read)
+- Empty-description generic-edge archive sweep (the reclassifier can't fix
+  these — no description to read)
 - Query-aware KV field promotion in render (temporal query promotes `event_time`, "what
   did X say" promotes `user_raw_quote`)
 - Dispatcher enforcement for mandatory metadata fields — generative encoder rules run

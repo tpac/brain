@@ -137,8 +137,8 @@ REF_TYPES = {
                          "node_created",            # node born (emitter)
                          "node_archived",           # node archived (emitter) — S2 units archive
                                                     # superseded nodes and dead communities
-                         "node_deleted",            # node HARD-deleted (emitter) — idle-maintenance
-                                                    # junk purge; the trace is the only record
+                         "node_deleted",            # node HARD-deleted (emitter) — the retired
+                                                    # junk purge wrote these; the trace is the only record
                          "journal_note"],           # S2 unit residue (consolidation, community) — one note per row
 
     # Scale 3: reasoning integration
@@ -274,10 +274,11 @@ DELTA_METADATA_SHAPE = {
     # directional `edge_relation_revised` event carrying
     # source_id/target_id/relation, so a flat directionless `connected` node-id
     # list (a two-sided-era vestige that couldn't represent a v22
-    # single-direction edge) was removed. SOFT/derived edges (co_accessed,
-    # emergent_bridge) are intentionally NOT traced — they're recomputable and
-    # excluded from the graph views (dashboard, S2 decisions). So "reconstruct
-    # the graph from traces" means the first-class typed graph, not the soft layer.
+    # single-direction edge) was removed. SOFT/derived edges (the noise
+    # aspect's structural relations, e.g. co_anchored) are intentionally NOT
+    # traced — they're recomputable and excluded from the graph views
+    # (dashboard, S2 decisions). So "reconstruct the graph from traces" means
+    # the first-class typed graph, not the soft layer.
     'created':           list,    # node ids created this run
     'revised':           list,    # node ids revised this run (incl. absorb survivors — content rewritten)
     'archived':          list,    # node ids archived this run (incl. absorb's folded-in originals)

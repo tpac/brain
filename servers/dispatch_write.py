@@ -303,8 +303,8 @@ def _handle_remember(brain, args, graph_changes):
         result.get('connect_to_result') if isinstance(result, dict) else None,
         enc_src)
     # pop: co_anchored is an automatic internal edge — out of the payload, and
-    # NOT traced: co_anchored is in the noise aspect (ruled 2026-08-04, same
-    # coverage rule that excludes emergent_bridge).
+    # NOT traced: co_anchored is in the noise aspect (ruled 2026-08-04 —
+    # soft/derived edges stay out of trace coverage).
     if isinstance(result, dict):
         result.pop('co_anchored_made', None)
     created_rows = []

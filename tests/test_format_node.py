@@ -244,17 +244,5 @@ class TestFormatNode(BrainTestBase):
         # and stays suppressed even for undeclared callers.
         self.assertNotIn('Counterpart:', out)
 
-    def test_edge_filter_excludes_co_accessed(self):
-        """Default edge_filter excludes co_accessed and emergent_bridge."""
-        nid = self._make_node(title='Main')
-        t1 = self._make_node(title='Related')
-        t2 = self._make_node(title='Co-accessed')
-        self._add_edge(nid, t1, relation='related_to')
-        self._add_edge(nid, t2, relation='co_accessed')
-        out = self._render(nid)
-        self.assertIn('"Related"', out)
-        self.assertNotIn('"Co-accessed"', out)
-
-
 if __name__ == '__main__':
     unittest.main()

@@ -353,7 +353,7 @@ EDGE_REF_FIELDS = ('relation', 'weight', 'description')
 # TRAVERSE — the enriched cluster atom
 # ═══════════════════════════════════════════════════════════════
 #
-# Given seed node IDs, light them up: follow edges (excluding co_accessed),
+# Given seed node IDs, light them up: follow edges (noise excluded),
 # attach correction chains, attach metadata. One function, every consumer.
 #
 # Callers: boot (S0), MCP recall, S1 Surface, get_node/get_nodes.

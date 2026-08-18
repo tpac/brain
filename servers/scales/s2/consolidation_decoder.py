@@ -871,7 +871,6 @@ class ConsolidationDecoder(IntegrationUnit):
     def _load_edge_data(self, node_ids):
         """Load typed edges per node via GraphDAL.
 
-        Uses DEFAULT_EXCLUDED_RELATIONS (co_accessed, emergent_bridge).
         community_member is kept so the encoder sees thematic neighborhood
         signals as first-class edges — it's context, not a migration target
         (S2 community detection manages placement on the next run).
@@ -885,9 +884,7 @@ class ConsolidationDecoder(IntegrationUnit):
             return {}
 
         per_member = self.brain._graph.get_neighbors_bulk(ids)
-        # exclude_relations defaults to DEFAULT_EXCLUDED_RELATIONS, so
-        # co_accessed / emergent_bridge are already out. archived=0 is the
-        # DAL default (v25).
+        # archived=0 is the DAL default (v25).
 
         edges = defaultdict(dict)
         for member, flat_rows in per_member.items():

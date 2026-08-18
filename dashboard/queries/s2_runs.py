@@ -158,8 +158,8 @@ def _short(nid) -> str:
     return str(nid)[:8]
 
 
-# Hebbian/system relations are never encoder-emitted in a consolidation batch,
-# but exclude them defensively so a stray one can't pollute the links list.
+# Retired system relations — kept defensively so a stray legacy row in an old
+# run's delta record can't pollute the links list.
 _NON_DECISION_RELATIONS = {'co_accessed', 'emergent_bridge'}
 
 

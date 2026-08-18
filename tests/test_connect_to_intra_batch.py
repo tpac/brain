@@ -171,7 +171,7 @@ class TestRememberBatchIntraBatch(BrainTestBase):
         self.assertEqual(result['nodes_created'], 1)
         node_id = result['results'][0]['id']
         edges = _edges_from(self.brain, node_id)
-        # Only auto-context co_accessed edges may exist; no 'extends' from connect_to
+        # No 'extends' edge may exist from the unresolved connect_to
         self.assertEqual([e for e in edges if e['relation'] == 'extends'], [])
         # Loud-by-default: dashboard sees the unresolved entry
         errors = _recent_errors(self.brain, 'connect_to_unresolved')
@@ -460,8 +460,8 @@ class TestBrainBatchAffectedAndEdgeTraces(BrainTestBase):
 
     def test_co_anchored_edge_emits_no_trace_and_stays_out_of_payload(self):
         """co_anchored is in the NOISE aspect (ruled 2026-08-04, emitter step
-        6): the graph edge is still written, but it emits NO trace — same
-        coverage rule that excludes emergent_bridge — and co_anchored_made
+        6): the graph edge is still written, but it emits NO trace —
+        soft/derived edges stay out of trace coverage — and co_anchored_made
         never reaches the agent-facing payload."""
         ref = 'aaaaaaaa'  # 8-char hex source-ref id
         a = _dispatch(self.brain, 'remember', {

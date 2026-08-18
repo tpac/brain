@@ -106,8 +106,8 @@ class CommunityDetection(CommunityDecoder):
         Counts: any non-community node created or revised; any non-noise,
         non-self typed edge_relation added. Excludes this unit's own writes
         (community nodes by type; community edges by encoding_source) so a
-        productive run does not immediately re-trigger itself. Hebbian
-        co_accessed edges are 'noise' and excluded — they must not wake
+        productive run does not immediately re-trigger itself. Noise-aspect
+        edges (e.g. co_anchored) are excluded — they must not wake
         community detection.
         """
         c = self.brain.conn

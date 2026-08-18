@@ -480,11 +480,12 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
 
         # Capture every encoder + surface agent call for offline replay.
         # Encoder prompts + judge results live in the item brain's
-        # {db_dir}/payloads/ (payload recorder); surface.py writes the
-        # surface-selected state dumps under BRAIN_TMP_DIR. We copy them into
-        # the item's agent_calls/ subdir so we can replay any call with a
-        # future prompt revision without re-running the eval. Paired with the
-        # interactions.jsonl snapshot (system prompts) this is full replay.
+        # {db_dir}/payloads/ (payload recorder); the surfaced ids live in the
+        # surface_selected traces (recorded via dump_recall). We copy the
+        # payloads into the item's agent_calls/ subdir so we can replay any
+        # call with a future prompt revision without re-running the eval.
+        # Paired with the interactions.jsonl snapshot (system prompts) this
+        # is full replay.
         try:
             stats = dumper.dump_agent_calls(session_ids=[
                 ingest_session_id, q_result["query_session_id"],

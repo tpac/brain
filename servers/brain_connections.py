@@ -6,16 +6,8 @@ via multiple inheritance. All methods reference self.conn, self.get_config, etc.
 which are provided by Brain.__init__.
 """
 
-from datetime import datetime
-from typing import Any, Dict, List, Optional
-from .brain_constants import (
-    EDGE_TYPES,
-    LEARNING_RATE,
-    MAX_HOPS,
-    MAX_NEIGHBORS,
-    MAX_WEIGHT,
-    SPREAD_DECAY,
-)
+from typing import Optional
+from .brain_constants import EDGE_TYPES
 
 
 class BrainConnectionsMixin:
@@ -43,7 +35,6 @@ class BrainConnectionsMixin:
         ids = [e for e in (edge_ids or []) if e]
         if not ids:
             return 0
-        from .dal_graph import DEFAULT_EXCLUDED_RELATIONS
         from . import embedder as _embedder
         if not _embedder.is_ready():
             # Embedder still loading (e.g. at boot before warmup). Don't drop
@@ -55,21 +46,17 @@ class BrainConnectionsMixin:
                 embed_queue.enqueue_edge(e)
             return 0
         model = _embedder.stats.get('model_name') or ''
-        excl = sorted(DEFAULT_EXCLUDED_RELATIONS)
         ph = ','.join('?' * len(ids))
-        excl_ph = ','.join('?' * len(excl))
         # Re-embed rows that are unembedded OR embedded by a DIFFERENT model
         # (a model swap makes the stored blob unreadable — the read path filters
         # embedding_model = active — so stale-model rows must re-embed; matches
-        # node find_missing semantics). Exclude co_accessed/emergent_bridge in
-        # SQL — they're never read by recall, so embedding them is pure waste.
+        # node find_missing semantics).
         rows = self.conn.execute(
             'SELECT edge_id, relation, description FROM edge_relations '
             'WHERE edge_id IN (%s) AND archived = 0 '
-            'AND relation NOT IN (%s) '
             'AND (embedding IS NULL OR embedding_model IS NOT ?)'
-            % (ph, excl_ph),
-            [*ids, *excl, model]).fetchall()
+            % ph,
+            [*ids, model]).fetchall()
         if not rows:
             return 0
         # Compute OUTSIDE the write lock — fastembed is CPU-heavy. 'document'
@@ -120,14 +107,13 @@ class BrainConnectionsMixin:
         """Add a relation between two nodes (idempotent upsert).
 
         Stage 1B: add_relation is field-preserving — repeated calls do NOT
-        auto-strengthen weight (Hebbian co-access bumps are applied off the
-        recall hot path by recall_write_queue._apply_hebbian_pairs), and
-        unspecified fields preserve existing values on update.
+        auto-strengthen weight, and unspecified fields preserve existing
+        values on update.
 
         Args:
             source_id: Source node ID
             target_id: Target node ID
-            relation: Relation type (e.g., 'related', 'co_accessed')
+            relation: Relation type (e.g., 'related', 'depends_on')
             weight: Edge weight (0-1) — set on create; replaces existing weight on update
 
         Returns:
@@ -151,9 +137,7 @@ class BrainConnectionsMixin:
 
         Stage 1B: field-preserving upsert. None defaults mean 'preserve existing
         on update' — pass empty string '' explicitly if you want to clear a
-        field. Repeated calls do NOT auto-strengthen weight; Hebbian co-access
-        bumps are applied off the recall hot path by
-        recall_write_queue._apply_hebbian_pairs.
+        field. Repeated calls do NOT auto-strengthen weight.
 
         Args:
             source_id: Source node ID
@@ -304,83 +288,8 @@ class BrainConnectionsMixin:
     # the random-walk neighbor path is retired (GraphDAL.get_random_walk_neighbors
     # was also removed).
 
-    def _get_node_title(self, node_id: str) -> str:
-        """Get title of a node by ID, falling back to the id if absent."""
-        return self._nodes.get_title(node_id) or node_id
-
-    def _find_bridge_candidates(self, node_id: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """
-        Find bridge candidates: 2-hop shared neighbor analysis.
-        Returns nodes that share >= threshold neighbors but no direct edge.
-        """
-        threshold = self.get_config('bridge_threshold', 2)
-        max_per_node = self.get_config('bridge_max_per_node', 5)
-
-        # Check existing bridge count via GraphDAL (archived=0 default).
-        current_bridge_count = self._graph.count_node_edges(
-            node_id, min_weight=0.0, relations={'emergent_bridge'})
-
-        if current_bridge_count >= max_per_node:
-            return []
-
-        slots_left = max_per_node - current_bridge_count
-
-        # Find 2-hop neighbors
-        candidates = self.conn.execute(f'''
-            SELECT second_hop.id, COUNT(DISTINCT mid.id) as shared_count,
-                   second_hop.title, second_hop.type,
-                   GROUP_CONCAT(mid.title, ' | ') as shared_titles
-            FROM (
-              SELECT CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END as id
-              FROM edges e
-              WHERE (e.source_id = ? OR e.target_id = ?) AND e.weight >= 0.1
-            ) AS neighbor
-            JOIN nodes mid ON mid.id = neighbor.id AND mid.archived = 0
-            JOIN edges e2 ON (e2.source_id = neighbor.id OR e2.target_id = neighbor.id) AND e2.weight >= 0.1
-            JOIN nodes second_hop ON second_hop.id = CASE WHEN e2.source_id = neighbor.id THEN e2.target_id ELSE e2.source_id END
-              AND second_hop.id != ?
-              AND second_hop.archived = 0
-            WHERE second_hop.id NOT IN (
-              SELECT CASE WHEN e3.source_id = ? THEN e3.target_id ELSE e3.source_id END
-              FROM edges e3
-              WHERE e3.source_id = ? OR e3.target_id = ?
-            )
-            GROUP BY second_hop.id
-            HAVING shared_count >= ?
-            ORDER BY shared_count DESC
-            LIMIT ?
-        ''', (node_id, node_id, node_id, node_id, node_id, node_id, node_id, threshold, min(limit, slots_left))).fetchall()
-
-        return [
-            {
-                'targetId': r[0],
-                'sharedCount': r[1],
-                'targetTitle': r[2],
-                'targetType': r[3],
-                'sharedTitles': r[4] or ''
-            }
-            for r in candidates
-        ]
-
-    def _create_bridge(self, source_id: str, target_id: str, shared_titles: str = '') -> Optional[Dict[str, Any]]:
-        """
-        Create a bridge edge between source and target.
-        Returns created edge info or None if bridge already exists.
-        """
-        # Check no direct edge already exists — BOTH directions. Edges are
-        # stored single-direction (v22), so a one-direction check misses a
-        # pre-existing reversed edge and creates a duplicate bridge.
-        if self._graph.get_edge_id(source_id, target_id) is not None:
-            return None
-
-        # Get titles
-        src_title = self._get_node_title(source_id) or source_id
-        tgt_title = self._get_node_title(target_id) or target_id
-
-        # Description: just the structural fact. LLM-generated "why" is a future consolidation improvement.
-        description = 'shares %d neighbors' % max(2, shared_titles.count('|') + 1) if shared_titles else ''
-
-        self.connect_typed(source_id, target_id, 'emergent_bridge', 0.15, 'emergent_bridge', description)
-
-        return {'sourceId': source_id, 'targetId': target_id, 'description': description, 'weight': 0.15}
+    # _find_bridge_candidates / _create_bridge removed 2026-08-17 —
+    # emergent_bridge retired (node 072e26d8): triadic closure doesn't hold
+    # in a typed semantic graph, and a store-time bridge materialized the
+    # pair's physical edge row, fixing direction for later semantic edges.
 

@@ -186,10 +186,9 @@ def _worker_loop(brain) -> None:
       1. `embed_queue` — node vectors + temporal date extraction.
          Heavier work; uses `_drain_busy` skip-tick semantics to avoid
          overlapping drains on cold-start (~20K entities at first boot).
-      2. `recall_write_queue` — access marks + Hebbian co-access
-         strengthening. Lightweight (atomic SQL +1s on
-         `brain.conn_bg_writer`); always called per cycle since its
-         own drain_once self-checks for empty queues.
+      2. `recall_write_queue` — access marks. Lightweight (atomic SQL
+         +1s on `brain.conn_bg_writer`); always called per cycle since
+         its own drain_once self-checks for an empty queue.
 
     Top-level try/except is the load-bearing safety net for the
     "no silent errors" mandate — the worker thread MUST never die.
@@ -278,7 +277,7 @@ def _worker_loop(brain) -> None:
                     print('[embed_queue] coverage sweep error: %s '
                           '(log failed: %s)' % (e, le), file=sys.stderr)
 
-            # Drain recall_write_queue (access + hebbian). Fast,
+            # Drain recall_write_queue (access marks). Fast,
             # separate connection, separate transaction. drain_once is
             # contract-bound never to raise out — this try/except is
             # belt-and-suspenders.
@@ -333,8 +332,7 @@ def _check_stall(brain, recall_write_queue) -> None:
 
         embed_depth = (embed_snap.get('queue_depth', 0)
                        + embed_snap.get('edge_queue_depth', 0))
-        rwq_depth = (rwq_snap.get('access_queue_depth', 0)
-                     + rwq_snap.get('hebbian_queue_depth', 0))
+        rwq_depth = rwq_snap.get('access_queue_depth', 0)
         total_depth = embed_depth + rwq_depth
 
         if total_depth == 0:

@@ -20,7 +20,6 @@ import threading
 from datetime import datetime, timezone
 from collections import OrderedDict
 
-from servers.daemon_config import brain_tmp_dir
 # Hoisted: any embedder API drift fails at daemon boot, not 16s into hook_recall.
 from servers.embedder import embed_batch
 from servers import embedder as _embedder
@@ -186,18 +185,6 @@ CANDIDATE_POOL = {
     'include_metadata': True,   # situation, reasoning, user_raw_quote
 }
 
-
-def surface_selected_path(session_id, stop_counter):
-    """Canonical path of the per-turn surfaced-ids file.
-
-    Writer: surface.py (once per run_surface, post liveness gate).
-    Reader: daemon_hooks._hebbian_strengthen (Stop hook).
-    Single source of truth — a writer/reader format drift here is a
-    proven bug class (a test once wrote the counter-less format and
-    Hebbian silently read nothing: file_missing on every Stop).
-    """
-    return os.path.join(brain_tmp_dir(), 'brain-%s-%d-surface-selected.json' % (
-        session_id, stop_counter))
 
 # The model used by the S1 surface step. Single source of truth — read by:
 #   - surface.py:_call_surface (the actual selection call)
@@ -1278,12 +1265,10 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
     trace_steps = []
     cached_edge_coeffs = {}  # memo across hops: enriched_text → coeff
 
-    # Variant 'thickness' (eval): multiply cosine by accumulated edge weight
-    # before any gating. Edges accumulate weight via explicit Hebbian
-    # strengthening (servers/dal.py:GraphDAL.strengthen_relation — bumps
-    # weight by LEARNING_RATE × 0.5 per call, capped at MAX_WEIGHT).
-    # Called by daemon_hooks for co_accessed edges per surface event.
-    # Today that signal is unused in spread; this variant uses it.
+    # Variant 'thickness' (eval): multiply cosine by stored edge weight
+    # before any gating. (Hebbian weight accumulation was retired
+    # 2026-08-17 — weights are now static per edge.) Today that signal
+    # is unused in spread; this variant uses it.
     import os as _os
     _THICKNESS = 'thickness' in _os.environ.get('BRAIN_RECALL_VARIANT', '').lower()
 

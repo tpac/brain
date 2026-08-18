@@ -57,18 +57,15 @@ EDGE_ROW_SHAPE = {
     'content_preview':    'str — substr of content when caller requests',
 }
 
-# Relations considered noise for semantic edge queries. Default-excluded
-# by callers that want knowledge edges only. Override per-call when you
-# need co_accessed (fatigue) or emergent_bridge (auto-links).
-# community_member is NOT in this default — it's real thematic context,
-# just not migrated by consolidation (see ABSORB_EXCLUDED_RELATIONS).
-DEFAULT_EXCLUDED_RELATIONS = frozenset(['co_accessed', 'emergent_bridge'])
 # Minimum edge-description length to feed the edge_context embedding. Single
 # source of truth shared by GraphDAL.get_edge_descriptions_for (the text
 # producer) and VectorDAL.find_missing (the backfill candidate filter) — the
 # two MUST agree, or find_missing queues edgeless/short-desc nodes that yield
 # no text, and they starve the edged nodes out of the backfill batch forever.
 EDGE_CONTEXT_MIN_DESC_LENGTH = 10
+# Relations excluded from the edge_context text (structural, not semantic
+# text) — the OTHER half of the same producer/backfill parity contract.
+EDGE_CONTEXT_EXCLUDED_RELATIONS = frozenset({'community_member'})
 
 # Relations absorb() must NOT migrate to the survivor. Community placement
 # is the community unit's judged decision (affinity gate ≥0.25 + encoder
@@ -106,8 +103,7 @@ class GraphDAL:
     honors the GRAPH QUERY CONTRACT above:
       - Returns EDGE_ROW_SHAPE dicts (node-centric, neighbor fields flat)
       - Defaults include_archived=False (v25 soft-archive filter)
-      - Accepts exclude_relations set to drop noise (see
-        DEFAULT_EXCLUDED_RELATIONS for the standard noise set)
+      - Accepts exclude_relations set to drop specific relations
 
     Raises on invalid args — no silent empty returns masking bad calls.
     """
@@ -145,7 +141,6 @@ class GraphDAL:
             node_id: Node to find neighbors of. Empty → raises ValueError.
             limit: Max neighbors (ordered by edge weight desc).
             exclude_relations: Relation types to skip. None → no exclusion.
-                Pass DEFAULT_EXCLUDED_RELATIONS for the standard noise set.
             exclude_node_ids: Node IDs to skip (already visited in traversal).
             include_archived: if False (default), filters er.archived=0.
                 Enables forensic/recovery queries when True.
@@ -258,15 +253,11 @@ class GraphDAL:
         get_connections_bulk when the caller wants relations grouped per
         (owner, neighbor).
 
-        Defaults to DEFAULT_EXCLUDED_RELATIONS when exclude_relations is None
-        (drops co_accessed, emergent_bridge). Pass an empty set to include all.
+        exclude_relations: None → no exclusion.
         """
         ids = list(node_ids)
         if not ids:
             return {}
-
-        if exclude_relations is None:
-            exclude_relations = DEFAULT_EXCLUDED_RELATIONS
 
         owner_ph = ",".join("?" * len(ids))
         where_parts = ["n.archived = 0"]
@@ -332,7 +323,7 @@ class GraphDAL:
 
         Args:
             node_ids: owner node ids to walk from
-            exclude_relations: relations to skip (defaults to noise-relation list).
+            exclude_relations: relations to skip (None → no exclusion).
                 Ignored if include_relations is set.
             include_relations: when set, ONLY relations in this iterable are
                 returned. Use for aspect-scoped walks (e.g. correction-aspect
@@ -370,8 +361,6 @@ class GraphDAL:
             rel_clause = 'AND er.relation IN (%s)' % rel_ph
             rel_params = inc_list
         else:
-            if exclude_relations is None:
-                exclude_relations = DEFAULT_EXCLUDED_RELATIONS
             if exclude_relations:
                 rel_ph = ','.join('?' * len(exclude_relations))
                 rel_clause = 'AND er.relation NOT IN (%s)' % rel_ph
@@ -441,7 +430,7 @@ class GraphDAL:
         """THE one soft-archive flip for edge_relations rows.
 
         Every archiving writer routes here (remove_relation,
-        delete_node_edges, archive_dangling_edges, decay_edges' prune arm) —
+        delete_node_edges, archive_dangling_edges) —
         one UPDATE shape, one observed-truth return, so the flip semantics
         can't drift between callers (ruled 2026-08-03, node 482ef98e).
 
@@ -811,18 +800,6 @@ class GraphDAL:
             membership[member_id].append({'id': comm_id, 'title': comm_title})
         return dict(membership)
 
-    def count_by_relation(self, include_archived: bool = False):
-        """Edge count grouped by relation type.
-
-        Returns dict {relation: count}, ordered by count desc. Used by
-        integrity_audit, edge_families, health_check.
-        """
-        where = '' if include_archived else 'WHERE archived = 0'
-        rows = self.conn.execute(
-            "SELECT relation, COUNT(*) as cnt FROM edge_relations %s "
-            "GROUP BY relation ORDER BY cnt DESC" % where
-        ).fetchall()
-        return {r[0]: r[1] for r in rows}
 
     def get_edge_descriptions_for(self, node_id: str,
                                   min_length: int = EDGE_CONTEXT_MIN_DESC_LENGTH,
@@ -833,15 +810,14 @@ class GraphDAL:
 
         Feeds edge_context embedding in _compute_group_vectors. Filters
         out short/empty descriptions (below min_length) and noise relations.
-        Default exclusion: DEFAULT_EXCLUDED_RELATIONS + 'community_member'
-        (structural, not semantic text).
+        Default exclusion: 'community_member' (structural, not semantic text).
 
         Returns list[str] of descriptions. Raises ValueError if node_id empty.
         """
         if not node_id:
             raise ValueError("get_edge_descriptions_for: node_id required")
         if exclude_relations is None:
-            exclude_relations = DEFAULT_EXCLUDED_RELATIONS | {'community_member'}
+            exclude_relations = EDGE_CONTEXT_EXCLUDED_RELATIONS
 
         archived_clause = '' if include_archived else 'AND er.archived = 0'
         rel_clause = ''
@@ -928,8 +904,7 @@ class GraphDAL:
     # strengthen_edge REMOVED 2026-05-18 (Phase 8 of bg_writer migration).
     # Was a deprecated read-modify-write helper used only by the old
     # brain_recall._hebbian_strengthen mixin, which Phase 5 deleted.
-    # Hebbian strengthening now uses atomic UPSERT inside
-    # recall_write_queue._apply_hebbian_pairs via add_relation.
+    # (The Hebbian mechanism itself was retired entirely 2026-08-17.)
 
     def delete_node_edges(self, node_id: str,
                           archived_by: str = 'delete_node_edges',
@@ -1007,70 +982,6 @@ class GraphDAL:
         commit_unless_batched(self.conn)
         return n
 
-    def decay_edges(self) -> Dict[str, Any]:
-        """Apply exponential decay to auto-generated edge relations.
-
-        Commit is gated on self.conn.in_batch (commit_unless_batched).
-
-        Operates on edge_relations via edge_id.
-        When a relation's weight drops below threshold, that relation is removed.
-        If an edge has no relations left, the physical edge is also removed.
-
-        Formula: new_weight = weight * 0.5^(hours_since_created / half_life)
-
-        Returns: {decayed: int, pruned: int,
-                  by_type: {relation: {decayed, pruned}},
-                  pruned_edges: [[edge_id, relation], ...]}  # observed flips,
-                  # for the caller's per-edge trace rows
-        """
-        from .brain_constants import EDGE_TYPES, EDGE_PRUNE_THRESHOLD
-
-        total_decayed = 0
-        total_pruned = 0
-        by_type = {}
-        pruned_edges = []
-
-        for relation, config in EDGE_TYPES.items():
-            if not config.get('decays'):
-                continue
-
-            half_life = config['halfLife']
-
-            # Apply decay on active edge_relations only (v25)
-            self.conn.execute("""
-                UPDATE edge_relations
-                SET weight = weight * power(0.5,
-                    (julianday('now') - julianday(created_at)) * 24.0 / ?)
-                WHERE relation = ?
-                  AND archived = 0
-                  AND created_at IS NOT NULL
-                  AND (julianday('now') - julianday(created_at)) * 24.0 > 0
-            """, (half_life, relation))
-            decayed = self.conn.execute('SELECT changes()').fetchone()[0]
-
-            # Soft-archive relations below threshold (v25 — was DELETE) via
-            # the shared flip primitive: embedding NULLed with the flip,
-            # aggregate weight recomputed per flipped edge, and the flipped
-            # [edge_id, relation] pairs kept — the caller emits one trace
-            # row per pruned relation (per-edge rows ruled 2026-08-03, no
-            # rollup shape). The weight-decay UPDATE above stays outside the
-            # primitive by design — it flips nothing.
-            flipped = self.bulk_archive_relations(
-                'relation = ? AND weight < ?',
-                [relation, EDGE_PRUNE_THRESHOLD], 'decay_pruned',
-                null_embeddings=True, recompute_weight=True)
-            pruned = len(flipped)
-            pruned_edges.extend(flipped)
-
-            if decayed or pruned:
-                by_type[relation] = {'decayed': decayed, 'pruned': pruned}
-                total_decayed += decayed
-                total_pruned += pruned
-
-        commit_unless_batched(self.conn)
-        return {'decayed': total_decayed, 'pruned': total_pruned,
-                'by_type': by_type, 'pruned_edges': pruned_edges}
-
     # --- edge_relations (multi-relation semantic layer via edge_id) ---
 
     @staticmethod
@@ -1111,10 +1022,8 @@ class GraphDAL:
                                   the documented "just created" signal, and a
                                   revive IS a semantic fresh row.
 
-        Auto-strengthen behavior dropped (Stage 1B Option α). Hebbian co-access
-        weight bumps are applied off the recall hot path by
-        recall_write_queue._apply_hebbian_pairs — encoder-explicit connect
-        calls are now idempotent.
+        Auto-strengthen behavior dropped (Stage 1B Option α) —
+        encoder-explicit connect calls are idempotent.
 
         Field-preservation rule (active row branch): caller passes _UNSET
         (the default) for a field → existing value preserved. Caller passes

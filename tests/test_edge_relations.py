@@ -5,7 +5,7 @@ from semantic relations (multiple per edge via edge_id). Two nodes connect once
 but carry multiple relation/description pairs.
 
 Test IDs map to the plan: T1=migration, T2=multi-relation, T3=encoding,
-T4=query, T6=Hebbian, T7=decay, T9=cascade, T10=compat.
+T4=query, T9=cascade, T10=compat.
 """
 
 import unittest
@@ -119,10 +119,9 @@ class T2_MultiRelation(BrainTestBase):
 
     def test_same_relation_idempotent(self):
         """Stage 1B (Option α): re-connecting the same relation is idempotent.
-        Repeated connect does NOT auto-strengthen weight — Hebbian co-access
-        bumps are applied off the recall hot path by
-        recall_write_queue._apply_hebbian_pairs. A later description replaces the
-        earlier one (field-preserving upsert), and the pair stays a single row.
+        Repeated connect does NOT auto-strengthen weight. A later description
+        replaces the earlier one (field-preserving upsert), and the pair
+        stays a single row.
         """
         a, b = self._create_pair()
         self.brain.connect_typed(a, b, relation='extends', weight=0.5,
@@ -253,12 +252,12 @@ class T4_EdgeQuery(BrainTestBase):
         self.assertEqual(eid_ab, eid_ba)
 
 
-class T6_HebbianPreservation(BrainTestBase):
-    """co_access doesn't overwrite existing relations."""
+class T6_MultiRelationPreservation(BrainTestBase):
+    """Adding a second relation doesn't overwrite the first."""
 
     needs_embedder = False
 
-    def test_co_access_adds_not_overwrites(self):
+    def test_second_relation_adds_not_overwrites(self):
         a = self.brain.remember(type='decision', title='Node A', content='A',
                                 auto_connect=False)['id']
         b = self.brain.remember(type='decision', title='Node B', content='B',
@@ -266,50 +265,13 @@ class T6_HebbianPreservation(BrainTestBase):
 
         self.brain.connect_typed(a, b, relation='extends', weight=0.8,
                                  description='A extends B')
-        self.brain.connect(a, b, relation='co_accessed', weight=0.3)
+        self.brain.connect(a, b, relation='refines', weight=0.3)
 
         rels = _get_relations_for_pair(self.brain.conn, a, b)
         rel_dict = {r[0]: r[1] for r in rels}
         self.assertIn('extends', rel_dict)
-        self.assertIn('co_accessed', rel_dict)
+        self.assertIn('refines', rel_dict)
         self.assertEqual(rel_dict['extends'], 'A extends B')
-
-
-class T7_Decay(BrainTestBase):
-    """Per-relation decay — decaying types decay, intentional types don't."""
-
-    needs_embedder = False
-
-    def test_co_accessed_decays_extends_stays(self):
-        a = self.brain.remember(type='decision', title='Node A', content='A',
-                                auto_connect=False)['id']
-        b = self.brain.remember(type='decision', title='Node B', content='B',
-                                auto_connect=False)['id']
-
-        self.brain.connect_typed(a, b, relation='extends', weight=0.8,
-                                 description='intentional')
-        self.brain.connect_typed(a, b, relation='co_accessed', weight=0.3,
-                                 description='')
-
-        # Backdate co_accessed to 30 days ago (one half-life)
-        from servers.dal_graph import GraphDAL
-        dal = GraphDAL(self.brain.conn)
-        edge_id = dal.get_edge_id(a, b)
-
-        self.brain.conn.execute(
-            "UPDATE edge_relations SET created_at = datetime('now', '-30 days') "
-            "WHERE edge_id = ? AND relation = 'co_accessed'",
-            (edge_id,))
-        self.brain.conn.commit()
-
-        dal.decay_edges()
-
-        rels = _get_relations_for_pair(self.brain.conn, a, b)
-        rel_dict = {r[0]: r[2] for r in rels}  # relation -> weight
-
-        self.assertAlmostEqual(rel_dict.get('extends', 0), 0.8, places=1)
-        if 'co_accessed' in rel_dict:
-            self.assertLess(rel_dict['co_accessed'], 0.3)
 
 
 class T9_Cascade(BrainTestBase):
@@ -501,32 +463,6 @@ class T11_SharedFlipPrimitive(BrainTestBase):
                          'the exempt redirect must never be claimed flipped')
         # And the sweep preserved its policy: embeddings NOT nulled — the
         # dangling sweep has never dropped blobs (null_embeddings=False).
-
-    def test_decay_returns_pruned_edges_with_policy(self):
-        dal, a, b, edge_id = self._pair('dk_a', 'dk_b', 'co_accessed',
-                                        weight=0.05)
-        # Give the row a fake embedding so the null_embeddings policy is
-        # observable.
-        self.brain.conn.execute(
-            "UPDATE edge_relations SET embedding = X'00', "
-            "embedding_model = 'test' WHERE edge_id = ?", (edge_id,))
-        self.brain.conn.commit()
-
-        r = dal.decay_edges()
-        self.assertIn([edge_id, 'co_accessed'], r['pruned_edges'])
-        self.assertEqual(r['pruned'], len(r['pruned_edges']))
-        row = self.brain.conn.execute(
-            'SELECT archived, embedding, archived_by FROM edge_relations '
-            'WHERE edge_id = ? AND relation = ?',
-            (edge_id, 'co_accessed')).fetchone()
-        self.assertEqual(row[0], 1)
-        self.assertIsNone(row[1], 'prune must NULL the embedding')
-        self.assertEqual(row[2], 'decay_pruned')
-        # recompute_weight=True: no active relations left → aggregate 0.
-        agg = self.brain.conn.execute(
-            'SELECT weight FROM edges WHERE edge_id = ?',
-            (edge_id,)).fetchone()[0]
-        self.assertEqual(agg, 0.0)
 
     def test_primitive_select_matches_update(self):
         """The observed-truth property at the primitive level: the returned

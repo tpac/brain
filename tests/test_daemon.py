@@ -177,11 +177,16 @@ class TestWorktreeHooks(unittest.TestCase):
                           f"hooks/hooks.json missing hook event: {event}")
 
     def test_worktree_hooks_reference_valid_scripts(self):
-        """Hook commands in worktree hooks.json must reference scripts that exist."""
+        """Hook commands in worktree hooks.json must reference scripts that
+        exist IN THAT WORKTREE's own hooks/scripts/. Each worktree is a
+        coherent checkout — validating stale sibling branches against main's
+        scripts dir made every legitimate script deletion on main go red
+        until all siblings merged (idle-maintenance.sh, 2026-08-18)."""
         worktrees = self._load_worktree_hooks()
-        scripts_dir = os.path.join(PROJECT_ROOT, 'hooks', 'scripts')
+        worktree_dir = os.path.join(PROJECT_ROOT, '.claude', 'worktrees')
 
         for wt_name, hooks in worktrees.items():
+            scripts_dir = os.path.join(worktree_dir, wt_name, 'hooks', 'scripts')
             for event, entries in hooks.items():
                 for entry in entries:
                     for hook in entry.get('hooks', []):

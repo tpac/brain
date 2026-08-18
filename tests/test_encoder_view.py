@@ -8,8 +8,8 @@ Two invariants under test, per policy surface:
     with the default; here the OFF arm is asserted explicitly against the
     legacy markers.
   • Flag ON → the filter marks itself in place (a stubbed <actions> says
-    trimmed, an aged entry carries [aged] + the expand hint) — absence must
-    never read as "nothing happened".
+    trimmed, an aged entry announces its unshown edges with the get_nodes
+    hint) — absence must never read as "nothing happened".
 """
 import os
 import sys
@@ -20,8 +20,8 @@ if ROOT not in sys.path:
 
 from servers.scales.s1.encoder_view import (  # noqa: E402
     view_policy_enabled, aging_cutoff, catalog_view, action_mode, action_stub,
-    actions_stub_line, AGED_TAG, AGED_CONTENT_CHARS, CATALOG_FULL_ROUNDS,
-    ENCODED_TURN_MESSAGE_CAP, DROPPED_ACTION_TOOLS, STUBBED_ACTION_TOOLS,
+    actions_stub_line, CATALOG_FULL_ROUNDS,
+    DROPPED_ACTION_TOOLS, STUBBED_ACTION_TOOLS,
     PROVENANCE_SPLIT,
 )
 from servers.scales.s1.encode import _render_lived_sequence_timeline  # noqa: E402
@@ -40,9 +40,11 @@ PLUGIN_TOOL = ('mcp__plugin_%s_%s__' % (_PLUGIN, _PLUGIN)) + '%s'
 
 # ── the flag ──
 
-def test_flag_off_by_default(monkeypatch):
+def test_flag_on_by_default(monkeypatch):
+    # Activated 2026-08-18 (Tom's gate): unset means the policy; 0 is the
+    # emergency off-switch and the A/B control arm.
     monkeypatch.delenv('BRAIN_S1E_VIEW_POLICY', raising=False)
-    assert view_policy_enabled() is False
+    assert view_policy_enabled() is True
     monkeypatch.setenv('BRAIN_S1E_VIEW_POLICY', '1')
     assert view_policy_enabled() is True
     monkeypatch.setenv('BRAIN_S1E_VIEW_POLICY', '0')
@@ -211,29 +213,24 @@ def _render(view_policy, eps=None, now=None, **brain_kw):
 
 
 def test_policy_off_is_legacy_render():
-    # Control arm: encoded turn trimmed, actions listed verbatim, no markers.
-    from servers.scales.s1.encode_contract import ENCODING_AGENT
-    trim = ENCODING_AGENT['encoded_turn_trim']
-    long_body = 'x' * (trim + 500)
+    # Control arm: no policy markers, actions listed verbatim, and covered
+    # turns keep full text here too (encoded_turn_trim retired at activation).
+    long_body = 'x' * 800
     out = _render(False, eps=_two_turn_eps(covered_body='covered ' + long_body))
     t5 = out.split('<turn n="1"')[1].split('</turn>')[0]
-    assert '…' in t5.split('<other')[1].split('</other>')[0]   # trim applied
+    assert t5.split('<other')[1].split('</other>')[0].count('x') == 800
     assert 'trimmed —' not in out                              # no stub
-    assert AGED_TAG not in out
     assert 'remember_batch' in out                             # node op visible
     assert 'Bash: ls -la' in out
 
 
 def test_policy_on_encoded_turn_full_text_and_actions_stub():
-    from servers.scales.s1.encode_contract import ENCODING_AGENT
-    trim = ENCODING_AGENT['encoded_turn_trim']
-    long_body = 'x' * (trim + 500)
+    long_body = 'x' * 800
     out = _render(True, eps=_two_turn_eps(covered_body='covered ' + long_body))
     t5 = out.split('<turn n="6"')[1].split('</turn>')[0]
     t6 = out.split('<turn n="7"')[1].split('</turn>')[0]
-    # covered turn keeps FULL text (the trim reversal) …
-    assert ENCODED_TURN_MESSAGE_CAP is None
-    assert t5.split('<other')[1].split('</other>')[0].count('x') == trim + 500
+    # covered turn keeps FULL text …
+    assert t5.split('<other')[1].split('</other>')[0].count('x') == 800
     # … and its actions collapse to the self-marking stub (element stays)
     assert '<actions>trimmed — 1 action(s)' in t5
     assert 'Bash: ls -la' not in t5
@@ -348,7 +345,10 @@ class _CatalogBrain:
 def _node(nid, content_chars=1200, edges=2):
     return {
         'id': nid, 'type': 'finding', 'title': 'title of %s' % nid,
-        'content': ('claim first. ' + 'body ' * 400)[:content_chars],
+        # distinctive tail — the truncation tests key on it: a repeating body
+        # would let content[-40:] match inside a truncated head (vacuous pass)
+        'content': (('claim first. ' + 'body ' * 400)[:content_chars - 20]
+                    + ' <<tail of %s>>' % nid),
         'situation': 'when testing catalog aging',
         'created_at': '2026-08-01T00:00:00',
         '_metadata': {'reasoning': 'long reasoning ' * 20},
@@ -380,27 +380,41 @@ def test_catalog_aging_trims_old_rounds_keeps_new_full():
     assert ids == {'oldnode1', 'newnode1'}
     old_entry = text.split('title of oldnode1')[1].split('[encoded(me, turn 15)]')[0]
     new_entry = text.split('title of newnode1')[1]
-    # aged: no edges, no reasoning, lean correction, content head only
+    # aged: no edges, no reasoning, lean correction — but the body stays WHOLE
+    # (the arm-D invariant: the tail C's truncation destroyed must survive)
     assert 'Edges:' not in old_entry
     assert 'Reasoning' not in old_entry
     assert 'corrector body' not in old_entry           # heavy body gone …
     assert '⚠ Updated by: "the correction"' in old_entry   # … marker stays
     assert 'Situation: when testing catalog aging' in old_entry
-    content_line = [l for l in old_entry.split('\n') if 'Content:' in l][0]
-    assert len(content_line) < AGED_CONTENT_CHARS + 30
+    assert _node('oldnode1')['content'][-40:] in old_entry   # tail intact
+    # …but the withheld edges announce themselves in place, with the path back
+    assert 'not shown — get_nodes for them' in old_entry
     # fresh round keeps the full render
     assert 'Edges:' in new_entry
     assert 'corrector body' in new_entry
-    # aged entries are marked and the header explains the tag once; tags speak
-    # first-person TURN coordinates under the policy (oldnode1 written at 5)
-    assert ('%s [encoded(me, turn 5)]' % AGED_TAG) in text
+    # no aged tag or catalog header (Tom, 2026-08-18: the render is
+    # self-describing); provenance tags speak first-person TURN coordinates
+    assert '[encoded(me, turn 5)]' in text
+    assert '[body only]' not in text and '[aged]' not in text
     assert '[encoded] ' not in text                  # legacy tag retired here
-    assert 'get_nodes expands any id' in text
-    assert 'last written before turn 10' in text     # the aging cutoff, named
-    assert str(CATALOG_FULL_ROUNDS) in text.split('\n')[1]
     # flag off keeps the legacy tag vocabulary
     off, _ = _catalog(False, _EXTRA)
     assert '[encoded] ' in off and '(me, turn' not in off
+
+
+def test_catalog_explicit_cap_still_truncates():
+    # The eval harness reproduces the retired truncating arms by passing
+    # aged_content_chars explicitly — the override must keep cutting even
+    # though the shipped policy default is body-whole.
+    brain = _CatalogBrain({'oldnode1': _node('oldnode1'),
+                           'newnode1': _node('newnode1')})
+    text, _ = build_node_catalog([], brain, extra_ids=_EXTRA,
+                                 view_policy=True, aged_content_chars=400)
+    old_entry = text.split('title of oldnode1')[1].split('[encoded(me, turn 15)]')[0]
+    assert _node('oldnode1')['content'][-40:] not in old_entry
+    content_line = [l for l in old_entry.split('\n') if 'Content:' in l][0]
+    assert len(content_line) < 400 + 30
 
 
 def test_catalog_aging_orders_oldest_first():
@@ -410,8 +424,7 @@ def test_catalog_aging_orders_oldest_first():
 
 def test_catalog_policy_off_renders_full_everywhere():
     text, ids = _catalog(False, _EXTRA)   # stops/run_stops present but inert
-    assert AGED_TAG not in text
-    assert 'get_nodes expands' not in text
+    assert 'not shown — get_nodes' not in text
     assert text.count('Edges:') == 2      # both nodes full depth
 
 
@@ -511,7 +524,7 @@ def test_catalog_surfaced_ids_protected_from_aging():
                            'newnode1': _node('newnode1')})
     text, _ = build_node_catalog(judge, brain, extra_ids=_EXTRA,
                                  view_policy=True)
-    assert AGED_TAG not in text           # nothing left to age
+    assert 'not shown — get_nodes' not in text     # nothing left to age
     assert text.count('Edges:') == 2
 
 

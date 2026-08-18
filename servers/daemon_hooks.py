@@ -539,93 +539,6 @@ def hook_recall(brain, args, graph_changes):
 
 
 
-def _hebbian_strengthen(brain, session_id, stop_counter):
-    """Enqueue co-access pairs from this turn's surface selection.
-
-    Reads the surface-selected file written by S1 (3-5 nodes Anchor
-    consciously chose to surface), resolves short IDs to full IDs,
-    builds all unordered pairs, and enqueues them to
-    `recall_write_queue` for batched atomic strengthening via
-    `brain.conn_bg_writer`. The background worker handles the actual
-    SQL — this function does no DB writes.
-
-    Phase 5 of bg_writer migration (2026-05-18):
-    - Was: synchronous `brain.connect_typed` + `gdal.strengthen_relation`
-      per pair, both writing through primary `brain.conn` on the post-
-      response hot path. Read-modify-write with up to N×8 SQL round-trips.
-    - Now: pure resolve + enqueue. The worker's drain does atomic
-      `UPDATE edge_relations SET weight = MIN(MAX, weight + ?)` per
-      pair, no read needed for the strengthen path.
-
-    `stop_counter` is the same counter surface.py used when writing
-    the file — both producer and consumer must agree on the path so
-    consecutive turns don't read each other's files.
-
-    Outcome tally remains so "did Hebbian run?" stays answerable
-    without a debugger.
-    """
-    from itertools import combinations
-    from . import recall_write_queue
-    from servers.scales.s1.surface_contract import surface_selected_path
-
-    outcome = {'file_missing': 0, 'few_ids': 0, 'unresolved': 0,
-               'pairs_enqueued': 0}
-    surface_path = surface_selected_path(session_id, stop_counter)
-    try:
-        if not os.path.exists(surface_path):
-            outcome['file_missing'] = 1
-            return
-
-        with open(surface_path) as f:
-            surface_ids = json.load(f).get('selected_ids', [])
-        if len(surface_ids) < 2:
-            outcome['few_ids'] = 1
-            return
-
-        # Resolve short IDs to full IDs.
-        dal = brain._nodes
-        full_ids = []
-        for sid in surface_ids:
-            full_id = dal.resolve_id(sid)
-            if full_id:
-                full_ids.append(full_id)
-        if len(full_ids) < 2:
-            outcome['unresolved'] = 1
-            return
-
-        # Build all unordered pairs and enqueue in one call. Max C(5, 2)
-        # = 10 pairs when surface picked the typical 3-5 nodes. No
-        # neighbor-cap (the old `min(j, i+8)` was an O(n²) bound that
-        # only mattered when this ran inline; the queue/drain handles
-        # batching naturally).
-        pairs = list(combinations(full_ids, 2))
-        ts = brain.now()
-        try:
-            recall_write_queue.enqueue_hebbian_pairs(pairs, ts)
-            outcome['pairs_enqueued'] = len(pairs)
-        except Exception as e:
-            brain._log_error('hebbian_enqueue', e,
-                             'enqueue_hebbian_pairs failed for %d pairs' %
-                             len(pairs))
-
-    except Exception as e:
-        # Unexpected failure in file-read / ID resolve / outer flow.
-        brain._log_error('hebbian_surface_selected_outer', e,
-                         'surface_path=%s' % surface_path)
-    finally:
-        # Durable tally so "did Hebbian run?" is answerable without a
-        # debugger. log_debug failure routes through _log_error so a
-        # broken logging path doesn't silently hide the outcome.
-        try:
-            brain.log_debug('hebbian_run', 'post_response_common', **outcome)
-        except Exception as _le:
-            try:
-                brain._log_error('hebbian_log_outcome', _le,
-                                 'log_debug failed; outcome=%s' % outcome)
-            except Exception:
-                pass  # last-resort safety; if even _log_error fails, swallow
-
-
 def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None):
     """Append one S0 turn-trace, binding the per-turn invariants in ONE place:
     chain (ctx.s0_chain()), scale ('s0'), and the session (ctx.session_id). The
@@ -644,8 +557,8 @@ def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None):
 
 
 def post_response_common(brain, session_id, user_message, assistant_response):
-    """Shared post-response path: S0 traces, Hebbian strengthening, heartbeat,
-    stop counter increment. Used by prod Stop hook and by the eval harness —
+    """Shared post-response path: S0 traces, heartbeat, stop counter
+    increment. Used by prod Stop hook and by the eval harness —
     same code, same ordering, one source of truth.
 
     Returns the SessionContext after increment.
@@ -688,14 +601,6 @@ def post_response_common(brain, session_id, user_message, assistant_response):
                 summary=(assistant_response[:200] or 'wakeup re-arm'))
     except Exception as e:
         brain._log_error('trace_s0', e, 'post_response_common')
-
-    # Hebbian strengthening reads THIS turn's surface file — a wakeup produces
-    # none, so it's only meaningful (and only run) on conversational turns.
-    if is_conversational:
-        try:
-            _hebbian_strengthen(brain, session_id, ctx.stop_counter)
-        except Exception as e:
-            brain._log_error('hebbian_surface_selected', e, 'post_response_common')
 
     # Session activity bookkeeping (NOT the watch heartbeat above) — every turn.
     try:
@@ -780,146 +685,6 @@ def hook_post_response_track(brain, args, graph_changes):
 
 
 
-
-
-def hook_idle_maintenance(brain, args, graph_changes):
-    """Idle maintenance — edge decay only; everything else has moved or gone.
-
-    Fires on Notification(idle_prompt). That event stopped arriving on
-    2026-07-04 (`idle_fires.log`, written by the hook script itself, has no
-    entry since), so anything left here is best-effort at best. Work that
-    must actually happen was moved to daemon-owned threads: vector coverage
-    to `embed_queue._coverage_sweep`, log retention and the orphan sweep to
-    the DBMaintenance scheduler. Do not add anything load-bearing here.
-
-    Edge decay stays only because it must NOT simply resume — `decay_edges`
-    multiplies the current weight by a factor of the edge's TOTAL age, so it
-    compounds per run rather than being a function of age. After the dormancy
-    one run would prune ~3,760 relations, a third of the co_accessed graph.
-    That needs the formula fixed before it moves anywhere.
-    """
-    import datetime
-    start_time = datetime.datetime.now()
-    print("[brain-hooks] idle_maintenance STARTED at %s" % start_time.isoformat(), flush=True)
-    output = []
-
-    # 1. Dream — DISABLED 2026-04-08
-    # dream() created random-walk emergent_bridge edges and thought/intuition nodes.
-    # S2 community detection + small-cluster linking replaces this with
-    # structure-aware connections instead of random walks.
-
-    # 2. Consolidate — DISABLED 2026-04-08
-    # consolidate() boosted well-connected nodes and ran auto_discover_evolutions
-    # (already paused). S2 confidence recalibration replaces node boosting.
-    # S2 dedup/synthesis replaces evolution discovery.
-
-    # 3. Self-healing — DISABLED 2026-04-08
-    # auto_heal() was proto-S2: dedup, auto-lock, correction consolidation,
-    # confidence adjustments. S2 integration units replace all of these.
-    # Keeping the code in brain_evolution.py for reference during S2 build.
-
-    # 3c. Auto-tune — DISABLED 2026-04-08
-    # auto_tune() adjusted brain parameters adaptively. S2 interaction
-    # evolution units will replace this with trace-informed optimization.
-
-    # 3d. Edge decay — apply half-life decay to auto-generated edges
-    try:
-        decay_result = brain._graph.decay_edges()
-        # Per-edge trace rows for the pruned relations (per-edge ruled
-        # 2026-08-03, no rollup). encoding_source mirrors the graph's
-        # archived_by ('decay_pruned' → scale s0); the chain is its own —
-        # never the s2 maint chain, one chain_id must never span two scales.
-        pruned_edges = decay_result.get('pruned_edges') or []
-        if pruned_edges:
-            # Own try: decay_edges committed already — a row-shaping failure
-            # degrades to missing traces, and must not divert the section
-            # into its EDGE DECAY ERROR arm while the writes are durable
-            # (review 2026-08-06).
-            try:
-                from servers.mutation_emitter import (edge_flip_rows,
-                                                      emit_mutation_traces)
-                from servers.clock import brain_today
-                emit_mutation_traces(
-                    brain, 'hook_idle_maintenance',
-                    {'edges': edge_flip_rows(
-                        brain.conn, pruned_edges, 'decay_pruned',
-                        'edge weight decayed below prune threshold')},
-                    chain_id='maint-%s-decay'
-                             % brain_today(brain).strftime('%Y%m%d'))
-            except Exception as emit_err:
-                brain._log_error(
-                    'decay_prune_trace_emit', emit_err,
-                    'decay committed %d prunes; trace rows lost'
-                    % len(pruned_edges))
-        decayed = decay_result.get('decayed', 0)
-        pruned = decay_result.get('pruned', 0)
-        if decayed or pruned:
-            parts = []
-            if decayed:
-                parts.append("%d edges decayed" % decayed)
-            if pruned:
-                parts.append("%d edges pruned" % pruned)
-            output.append("EDGE DECAY: " + ", ".join(parts))
-            graph_changes.append("EDGE_DECAY: %s" % ", ".join(parts))
-            for rel, stats in decay_result.get('by_type', {}).items():
-                output.append("  %s: %d decayed, %d pruned" % (rel, stats['decayed'], stats['pruned']))
-    except Exception as e:
-        output.append("EDGE DECAY ERROR: %s" % e)
-
-    # consolidation detection — REMOVED 2026-04-05 (pending_consolidation table dropped)
-
-    # message_stream expiry REMOVED 2026-04-05 — table deleted, traces are source of truth
-
-    # S2 graph integration is NOT triggered here. Its sole activation path is
-    # the daemon's maintenance poll (Brain.run_maintenance_if_due → run_s2),
-    # single-flighted by the daemon's _s2_running guard and gated by idle +
-    # encode-runs + min-interval. Keep it that way — a second trigger here
-    # would let S2 (Consolidation especially) run concurrently with the poll.
-
-    # 4. Reflection prompts — DISABLED 2026-04-08
-    # prompt_reflection() and auto_generate_self_reflection() were proto-S2.
-    # S2 encoding and S3 reasoning replace reflection with trace-based analysis.
-
-    # 5. Self-reflection — DISABLED 2026-04-08 (see above)
-
-    # 6. Backfill summaries removed 2026-08-17 — content_summary is written
-    #    synchronously by remember() and revise(); this was a completed
-    #    migration whose only residue is three sub-30-char test nodes that
-    #    _generate_summary correctly refuses to summarize.
-
-    # 7. Vector backfill moved to embed_queue._coverage_sweep — the worker that
-    # already owns embedding, on its own 5s thread. This hook is driven by a
-    # Claude Code Notification/idle_prompt event, so vector coverage — a data
-    # integrity invariant — depended on the editor emitting a UI notification.
-
-    # 8. prune_irrelevant_quotes removed 2026-04-13 — fix at encoding time, not after.
-
-    # 9. Log retention + orphan sweep moved to the DBMaintenance thread
-    #    (daemon_server._run_logs_maintenance) — scheduled DB work belongs
-    #    beside checkpoint/optimize/backup, which never depended on this hook.
-    #    The backup freshness gate moved with it; it guarded only 3b and 9.
-
-    # 10. assess_session_health removed 2026-04-13 — information not action.
-
-    # 11. Deep integrity audit removed 2026-08-17 — it returned findings into
-    #     `output`, which this fire-and-forget hook discards. Information, not
-    #     action — the same reason 8 and 10 went.
-    # Log to dashboard (not additionalContext — idle maintenance is operational, not conversational)
-    if output:
-        try:
-            brain.log_debug("idle_output", "hook_idle_maintenance", output="\n".join(output))
-        except Exception as e:
-            brain._log_error('log_idle_output', e, 'idle_maintenance')
-
-    # Log so we can verify idle fires and what it does
-    import datetime
-    elapsed = (datetime.datetime.now() - start_time).total_seconds()
-    print("[brain-hooks] idle_maintenance COMPLETED in %.1fs — %d output lines" % (elapsed, len(output)), flush=True)
-    for line in output:
-        print("[brain-hooks]   idle: %s" % line, flush=True)
-
-    brain.save()
-    return {"output": ""}  # Notification stdout invisible
 
 
 def hook_pre_edit(brain, args, graph_changes):

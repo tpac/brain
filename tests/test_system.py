@@ -91,7 +91,7 @@ class TestDaemonDispatch(unittest.TestCase):
     def test_hook_table_covers_all_hooks(self):
         """HOOK_TABLE has entries for all hook functions."""
         expected_hooks = [
-            'hook_recall', 'hook_post_response_track', 'hook_idle_maintenance',
+            'hook_recall', 'hook_post_response_track',
             'hook_pre_edit', 'hook_pre_bash_safety',
             'hook_session_end', 'hook_stop_failure_log',
             'hook_config_change_host', 'hook_post_bash_host_check',

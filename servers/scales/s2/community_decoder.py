@@ -210,8 +210,8 @@ class CommunityDecoder(IntegrationUnit):
         """neighbor-id set per node, both edge directions, active non-noise.
 
         A cheap 1-hop load for the unplaceable fingerprint — not the typed
-        adjacency _decode builds. Noise/generic relations (e.g. Hebbian
-        co_accessed) are excluded so they can't churn a node's placeability
+        adjacency _decode builds. Noise/generic relations (e.g. co_anchored,
+        related_to) are excluded so they can't churn a node's placeability
         fingerprint and wake it spuriously.
         """
         result = {nid: set() for nid in node_ids}
@@ -220,9 +220,9 @@ class CommunityDecoder(IntegrationUnit):
         try:
             noise = set(self.brain.aspects.relations_in(['noise', 'generic_relation']))
         except Exception as e:
-            # Don't swallow: an empty noise set INCLUDES Hebbian co_accessed edges
-            # in the fingerprint, churning it for most nodes. Log so the (rare)
-            # transient churn is visible rather than a silent spurious-wakeup wave.
+            # Don't swallow: an empty noise set INCLUDES noise edges in the
+            # fingerprint, churning it. Log so the (rare) transient churn is
+            # visible rather than a silent spurious-wakeup wave.
             noise = set()
             self.brain._log_error('s2_community_noise_aspect_load', e,
                                   'unplaceable fingerprint may churn this cycle')
@@ -688,8 +688,7 @@ class CommunityDecoder(IntegrationUnit):
     def _community_disconnected(self, members, non_cohesion=()):
         """True if the members share NO internal edge carrying a real-cohesion
         relation — i.e. they have no semantic link at all, only (at most)
-        structural/Hebbian edges (`non_cohesion`: co_accessed, community_member,
-        related, ...). This is the deterministic 'truly dead' signal: a
+        structural edges (`non_cohesion`: community_member, related, ...). This is the deterministic 'truly dead' signal: a
         structural fact, not a tuned int_frac. It counts edges over ALL
         relations (unlike typed int_frac, which drops generic_relation/noise) —
         that's what closes the blind spot: a community held together by
@@ -1384,8 +1383,7 @@ class CommunityDecoder(IntegrationUnit):
             WHERE e.source_id IN (%s) AND e.target_id IN (%s)
             AND er.archived = 0
             AND er.relation NOT IN (
-                'co_accessed', 'emergent_bridge', 'community_member',
-                'related_to', 'related')
+                'community_member', 'related_to', 'related')
             AND er.description IS NOT NULL AND er.description != ''
             ORDER BY e.weight DESC LIMIT ?
         """ % (placeholders, placeholders),

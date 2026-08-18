@@ -31,7 +31,8 @@ import sqlite3
 from typing import Any, Dict, List, Optional
 
 from .clock import iso_now
-from .dal_graph import DEFAULT_EXCLUDED_RELATIONS, EDGE_CONTEXT_MIN_DESC_LENGTH
+from .dal_graph import (EDGE_CONTEXT_EXCLUDED_RELATIONS,
+                        EDGE_CONTEXT_MIN_DESC_LENGTH)
 from .db_backends.sqlite import commit_unless_batched
 
 
@@ -176,8 +177,8 @@ class NodeDAL:
     def archived_subset(self, node_ids) -> set:
         """Return the subset of `node_ids` that are archived.
 
-        Single source for liveness checks (surface selection gate,
-        Hebbian drain gate). Exact-id match — no prefix resolution;
+        Single source for liveness checks (surface selection gate).
+        Exact-id match — no prefix resolution;
         unknown ids are simply absent from the result. Empty input
         returns an empty set (no `IN ()` SQL).
         """
@@ -1094,7 +1095,7 @@ class VectorDAL:
             # forever and starve the edged nodes. Mirror
             # GraphDAL.get_edge_descriptions_for's eligibility filter EXACTLY
             # (same exclusions, same min length) so "eligible" ⇔ "yields text".
-            excl = sorted(DEFAULT_EXCLUDED_RELATIONS | {'community_member'})
+            excl = sorted(EDGE_CONTEXT_EXCLUDED_RELATIONS)
             excl_ph = ','.join('?' * len(excl))
             where.append(
                 'EXISTS (SELECT 1 FROM edges e '

@@ -216,6 +216,12 @@ These units observe the graph itself — what S1 produced.
 
 ### 8. Edge Pruning / Strengthening
 
+> **Substrate retired (2026-08-17, node ab56d25a):** the `co_accessed` /
+> `emergent_bridge` edge families no longer exist — nothing writes them.
+> If this unit (or unit 12) is ever built, its co-access signal derives
+> from `surface_selected` traces via an explicit cache table with its own
+> eval, not from edge rows.
+
 | | |
 |---|---|
 | **O** | Edge weights, co-access patterns from S1R Hebbian strengthening, edge age, type |

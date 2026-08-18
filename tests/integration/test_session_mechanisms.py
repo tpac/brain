@@ -8,9 +8,9 @@ Uses a COPY of the live brain DB. Never modifies production.
 Mechanisms tested:
 1. Z-weighted 4-group embedding scoring
 2. Synaptic fatigue (degree-based)
-3. Surface-selected Hebbian (co_accessed from surface, not from cosine scan)
+3. co_accessed retirement (recall mints no edges; exclusions hold)
 4. Embedding redistribution (70/30 from frozen originals)
-5. Structural graph separation (co_accessed + emergent excluded from traversal)
+5. Structural graph separation (noise relations excluded from traversal)
 6. Layer 3 post-surface graph expansion
 7. KV metadata store (extensible without schema changes)
 8. Encoding group vectors (title, high_meta, other_meta stored at encode time)
@@ -147,18 +147,14 @@ class Test02_SynapticFatigue(unittest.TestCase):
         self.assertGreater(fat_hub, fat_new)
 
 
-class Test03_SurfaceSelectedHebbian(unittest.TestCase):
-    """Hebbian co_accessed edges from surface-selected nodes only.
+class Test03_CoAccessedRetired(unittest.TestCase):
+    """co_accessed is retired (2026-08-17, node ab56d25a) — nothing may
+    create the edges; the rows were purged in phase 2 and the retired
+    names left every exclusion roster.
 
-    WHAT: Old Hebbian created co_accessed edges between ALL top-25 cosine results.
-    Produced 94K noise edges. Now: only nodes the Layer 2 surface selects get
-    co_accessed edges. These participate in graph traversal.
-
-    WHY: "Neurons that fire together wire together" — but cosine top-25 isn't
-    meaningful co-activation. Surface-selected IS meaningful.
-
-    WHERE: daemon_hooks.py hook_post_response_track reads surface-selected.json
-    EDGE TYPE: co_accessed (was noise, now meaningful after 2026-04-02 reset)
+    WHAT: recall must not mint co_accessed edges, the noise-aspect
+    policies must stay coherent, and the retired names must never
+    silently re-enter the noise roster.
     """
 
     @classmethod
@@ -174,7 +170,7 @@ class Test03_SurfaceSelectedHebbian(unittest.TestCase):
         os.remove(cls.test_db)
 
     def test_co_accessed_not_created_by_recall(self):
-        """recall() should NOT create co_accessed edges anymore.
+        """recall() must NOT create co_accessed edges — the family is retired.
 
         v22 edge model: relation lives on edge_relations, not edges.edge_type.
         """
@@ -191,9 +187,7 @@ class Test03_SurfaceSelectedHebbian(unittest.TestCase):
         structural_exclusions is the FULL noise set (flat reads — hide
         decision id:49d734ad includes community_member); traversal_exclusions
         is noise MINUS community_member (graph dynamics keep conducting
-        through communities — conduction is not visibility). The old
-        EXCLUDED_EDGE_TYPES literal's 'co_accessed is clean now' premise
-        (2026-04-02) died when Hebbian co-access writes resumed."""
+        through communities — conduction is not visibility)."""
         structural = self.brain.aspects.structural_exclusions
         traversal = self.brain.aspects.traversal_exclusions
         self.assertEqual(
@@ -202,8 +196,10 @@ class Test03_SurfaceSelectedHebbian(unittest.TestCase):
         self.assertIn('community_member', structural)
         self.assertNotIn('community_member', traversal)
         self.assertEqual(traversal, structural - {'community_member'})
+        self.assertIn('co_anchored', traversal)
+        # Retired families must never re-enter the noise roster silently.
         for rel in ('co_accessed', 'emergent_bridge'):
-            self.assertIn(rel, traversal)
+            self.assertNotIn(rel, structural)
 
 
 
@@ -231,8 +227,7 @@ class Test05_StructuralGraph(unittest.TestCase):
 
     def test_excluded_types(self):
         exclusions = self.brain.aspects.traversal_exclusions
-        self.assertIn('emergent_bridge', exclusions)
-        self.assertIn('co_accessed', exclusions)
+        self.assertIn('co_anchored', exclusions)
 
     def test_structural_edges_exist(self):
         """There should be intentional edges for traversal.
@@ -240,9 +235,7 @@ class Test05_StructuralGraph(unittest.TestCase):
         v22 edge model: relation lives on edge_relations, not edges.edge_type.
         """
         count = self.brain.conn.execute(
-            "SELECT COUNT(*) FROM edge_relations "
-            "WHERE relation NOT IN ('co_accessed', 'emergent_bridge') "
-            "AND archived=0"
+            "SELECT COUNT(*) FROM edge_relations WHERE archived=0"
         ).fetchone()[0]
         self.assertGreater(count, 1000,
                           "Should have significant structural edges")
