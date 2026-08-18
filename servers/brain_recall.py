@@ -86,18 +86,12 @@ def _expand_query_via_llm(brain, query: str) -> List[str]:
     """
     if not query or len(query.strip()) < 3:
         return []
+    # Resolved through the override model — template and config fall back to
+    # the code defaults in recall_expansion_prompt.py when no row exists.
     template = brain.get_interaction_prompt('recall_query_expansion')
-    if not template:
-        # Loud: without this row, expansion silently never fires while the
-        # env flag claims it is on. interaction_seed registers it at boot.
-        brain._log_error(
-            'query_expansion_missing_interaction',
-            RuntimeError('no recall_query_expansion interaction registered'),
-            'expansion skipped — recall proceeds on the primary query')
-        return []
-    cfg = brain.get_interaction_config('recall_query_expansion') or {}
-    model = cfg.get('model', 'claude-haiku-4-5')
-    max_tokens = cfg.get('max_tokens', 200)
+    cfg = brain.get_interaction_config('recall_query_expansion')
+    model = cfg['model']
+    max_tokens = cfg['max_tokens']
     try:
         import anthropic
         # Bounded, and no SDK retries. This is a best-effort call on the recall
@@ -579,6 +573,37 @@ class BrainRecallMixin:
         result = self.backfill_vectors(batch_size)
         return result.get('total', 0) if isinstance(result, dict) else 0
 
+    def vector_coverage_sweep(self, batch_size: int = 30) -> dict:
+        """Repair vector gaps the enqueue path missed; report what it couldn't.
+
+        ONE door, because repair and detection must ask the same question.
+        Split across two callers they drifted: the repair passed `model=` and a
+        separate probe did not, and `find_missing` counts a stale-model row as
+        present without it and missing with it. A model swap — the bulk case,
+        the whole corpus — therefore read as "nothing left to do" while
+        thousands of rows waited.
+
+        `remaining` is derived from the repair's own per-type counts rather than
+        a second query: a type that filled its batch has more behind it. The two
+        halves then cannot disagree, and a node that can never be embedded —
+        which repairs nothing — can never hold a caller in a re-sweep loop.
+
+        Returns {repaired, by_type, remaining, stuck}. `stuck` is only probed
+        when repair achieved nothing, which is the one state worth waking for:
+        `_primary` is the LAF-visibility invariant, and a node without it is
+        invisible to the field entirely.
+        """
+        result = self.backfill_vectors(batch_size=batch_size) or {}
+        counts = {k: v for k, v in result.items() if isinstance(v, int)}
+        repaired = sum(counts.values())
+        remaining = any(v >= batch_size for v in counts.values())
+        stuck = []
+        if not repaired:
+            stuck = self._vec_dal.find_missing(
+                '_primary', 1, model=embedder.stats.get('model_name', ''))
+        return {'repaired': repaired, 'by_type': result,
+                'remaining': remaining, 'stuck': stuck}
+
     def backfill_vectors(self, batch_size: int = 20,
                           node_ids=None) -> dict:
         """Backfill ALL missing vectors for nodes — batched for throughput.
@@ -1009,15 +1034,8 @@ class BrainRecallMixin:
         for node in page:
             self._mark_accessed(node['id'], session_id, ctx=None)
 
-        # v10: Hebbian co_accessed edge creation DISABLED.
-        # Previously: every recall created co_accessed edges between all top-25 results.
-        # This produced 71K noise edges (90% of graph) that destroyed topology.
-        # Biology: neurons that fire together wire together — but our "firing together"
-        # was just "scored similarly on cosine," not meaningful co-activation.
-        #
-        # Re-enable when: surface-selected node IDs are available in hook_post_response_track.
-        # Then: only strengthen between nodes the surfacer selected AND the assistant used.
-        # That's real co-activation — two memories genuinely contributing to the same response.
+        # No edge creation here — the co_accessed family is retired
+        # (node ab56d25a); surface_selected traces are the co-access substrate.
 
         # v4: Auto-instrument (skipped when called from recall
         # or hooks — they log via the precision module instead)
@@ -2142,7 +2160,7 @@ class BrainRecallMixin:
         # threads in so neighbor attachments can't re-admit walled titles.
         self._enrich_results(final_results[:3], veil=_veil)
 
-        # STEP 8: Mark accessed (for Hebbian learning + fatigue)
+        # STEP 8: Mark accessed (recognition signal + fatigue)
         # Per-session: _recall_ctx (loaded at top of this function) is passed
         # to _mark_accessed so fatigue increments land on the right session.
         sid = session_id or self.session_id
@@ -2150,7 +2168,7 @@ class BrainRecallMixin:
             try:
                 self._mark_accessed(node['id'], sid, ctx=_recall_ctx)
             except Exception as _e:
-                self._log_error("recall", _e, "marking node as accessed for Hebbian learning")
+                self._log_error("recall", _e, "marking node as accessed")
 
         # Fatigue increments live on the cached SessionContext (mutations
         # in memory). Persistence happens via the daemon autosave loop
@@ -2401,16 +2419,9 @@ class BrainRecallMixin:
                                 'node_activity bump failed for node=%s' %
                                 (node_id[:12] if node_id else ''))
 
-    # _hebbian_strengthen REMOVED 2026-05-18 (Phase 5):
-    # - Operated on top-15-by-cosine recall results, not what Anchor
-    #   consciously surfaced. Strengthened pairs Anchor never saw.
-    # - Read-modify-write via deprecated GraphDAL.strengthen_edge.
-    # - Wrote through primary conn on the recall hot path — load-bearing
-    #   contributor to the database-locked cascade.
-    # Hebbian semantics now live in `daemon_hooks._hebbian_strengthen`
-    # (which already operates on surface-selected nodes — the right
-    # layer) and routes through `recall_write_queue.enqueue_hebbian_pairs`
-    # for atomic SQL via brain.conn_bg_writer.
+    # _hebbian_strengthen REMOVED 2026-05-18 (Phase 5); the surface-picks
+    # successor was retired with the whole co_accessed family 2026-08-17
+    # (node ab56d25a) — surface_selected traces are the co-access substrate.
 
     # _log_recall REMOVED 2026-04-05 — recall_log writes deprecated, traces are source of truth
 

@@ -1101,8 +1101,8 @@ class BrainRememberMixin:
         # dangling refs in a future pass).
         # Edges co_anchored creates are surfaced so the dispatch handler can
         # pop them off the agent-facing payload. They are NOT traced —
-        # co_anchored is noise-aspect (ruled 2026-08-04), same coverage rule
-        # as emergent_bridge. The graph edge itself is still first-class.
+        # co_anchored is noise-aspect (ruled 2026-08-04); soft/derived edges
+        # stay out of trace coverage. The graph edge itself is still first-class.
         co_anchored_made = []
         if source_refs:
             try:
@@ -1159,23 +1159,13 @@ class BrainRememberMixin:
                 node_id, connect_to, sibling_map=None,
                 encoding_source=encoding_source or 'anchor')
 
-        # co_accessed-on-remember REMOVED (2026-05-31). It connected a new node
-        # to recently-written nodes by temporal write-adjacency — pre-Phase-5
-        # noise (no judge selection) — and, as a side effect, MATERIALIZED each
-        # pair's physical edge with an arbitrary direction (source = the newer
-        # node). Because the model stores one physical direction per pair (v22),
-        # any later SEMANTIC edge drawn on that pair (depends_on, supersedes,
-        # corrects, ...) inherited that accidental direction via get_edge_id.
-        # co_accessed is now created ONLY on recall, from judge-selected surface
-        # picks (recall_write_queue Hebbian path), where it carries real
-        # co-activation signal. See correction node 2f344177.
-
-        # v11: Emergent bridging at store-time
-        bridges = []
-        try:
-            bridges = self._bridge_at_store_time(node_id)
-        except Exception as e:
-            self._log_error('bridge_at_store', e, 'emergent bridging for node %s' % node_id[:12])
+        # No auto-edges at store time. The model stores one physical direction
+        # per pair (v22) and add_relation reuses that row in EITHER orientation,
+        # so a structural edge minted here fixes the pair's direction for every
+        # later SEMANTIC edge (depends_on, supersedes, corrects, ...) via
+        # get_edge_id. Both store-time auto-edge mechanisms (co_accessed
+        # write-adjacency, emergent_bridge shared-neighbor closure) were
+        # retired for exactly this — see nodes 2f344177, 072e26d8.
 
         # v5: Track encoding for heartbeat + segment tracking.
         # Per-session via the ctx passed in by the caller (dispatch handlers
@@ -1687,26 +1677,11 @@ class BrainRememberMixin:
             self._log_error('get_pending_critical', e, 'parsing pending critical approvals JSON')
             return []
 
-    def backfill_summaries(self, batch_size: int = 50) -> Dict[str, Any]:
-        """Generate content_summary for existing nodes that lack one. Run during idle."""
-        cur = self.conn.execute(
-            "SELECT id, title, content FROM nodes WHERE content IS NOT NULL AND content != '' AND content_summary IS NULL LIMIT ?",
-            (batch_size,)
-        )
-        rows = cur.fetchall()
-        count = 0
-        for node_id, title, content in rows:
-            summary = self._generate_summary(title, content)
-            if summary:
-                self.conn.execute(
-                    "UPDATE nodes SET content_summary = ? WHERE id = ?",
-                    (summary, node_id)
-                )
-                count += 1
-        if count:
-            self._maybe_commit()
-        return {'backfilled': count, 'remaining': len(rows) - count}
-
+    # backfill_summaries removed 2026-08-17 — a completed migration. remember()
+    # and revise() both write content_summary synchronously via _generate_summary,
+    # so nothing accumulates. Its only remaining candidates were three sub-30-char
+    # test nodes that _generate_summary returns None for by design, which it
+    # re-selected on every run and could never fill.
 
     # _store_node_metadata removed 2026-04-13 — old node_metadata table dropped.
 
@@ -2315,22 +2290,6 @@ class BrainRememberMixin:
         if len(content) > 200:
             return content[:197] + '...'
         return content
-
-    def _bridge_at_store_time(self, node_id: str) -> List[Dict[str, Any]]:
-        """
-        Detect bridge opportunities at store-time.
-        Returns array of bridges created.
-        """
-        max_bridges = self.get_config('bridge_max_per_remember', 2)
-        candidates = self._find_bridge_candidates(node_id, limit=max_bridges)
-        created = []
-
-        for c in candidates:
-            bridge = self._create_bridge(node_id, c['targetId'], c.get('sharedTitles', ''))
-            if bridge:
-                created.append(bridge)
-
-        return created
 
     # ═══════════════════════════════════════════════════════════════
     # v6: Multi-vector enrichment (Embedding Migration to LLM)

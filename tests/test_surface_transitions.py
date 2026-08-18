@@ -9,7 +9,6 @@ Stages tested:
   recall → build_surface_prompt (candidate fields)
   judge output → format_judge_output (voice surface)
   correction_enrich (correction chain lookup)
-  judge-selected IDs → _hebbian_strengthen (co_accessed edges)
   recall → build_surface_prompt end-to-end (candidate format compatibility)
 """
 
@@ -205,88 +204,6 @@ class TestDecodeTransitions(BrainTestBase):
                     verb, {e.get('relation') for e in chain},
                     'chain for %s carries the wrong relation label' % verb)
 
-    def test_hebbian_surface_selected_to_co_accessed_edges(self):
-        """surface-selected IDs → _hebbian_strengthen: creates co_accessed edges.
-
-        The Stop hook reads surface-selected IDs from a tmp file and calls
-        _hebbian_strengthen. Only selected nodes get edges — the third
-        (unselected) node must not get edges.
-        """
-        from servers.daemon_hooks import _hebbian_strengthen
-
-        # Create 3 nodes
-        n1 = self.brain.remember(type='rule', title='Hebbian test node alpha',
-                                 content='First test node')
-        n2 = self.brain.remember(type='rule', title='Hebbian test node beta',
-                                 content='Second test node')
-        n3 = self.brain.remember(type='rule', title='Hebbian test node gamma',
-                                 content='Third test node (not selected)')
-
-        session_id = 'test-hebbian-session'
-
-        # Write surface-selected file (what _hebbian_strengthen reads).
-        # Path via the contract helper — this test once hardcoded the old
-        # counter-less format and silently tested nothing (file_missing).
-        from servers.scales.s1.surface_contract import surface_selected_path
-        surface_path = surface_selected_path(session_id, 1)
-        try:
-            with open(surface_path, 'w') as f:
-                json.dump({'selected_ids': [n1['id'][:8], n2['id'][:8]]}, f)
-
-            # Count co_accessed edges before Hebbian strengthening
-            # (remember() auto-connects recent nodes, so some may already exist)
-            pre_edges_n1_n2 = self.brain.conn.execute(
-                """SELECT COUNT(*) FROM edges e
-                JOIN edge_relations er ON er.edge_id = e.edge_id
-                WHERE ((e.source_id = ? AND e.target_id = ?) OR (e.source_id = ? AND e.target_id = ?))
-                AND er.relation = 'co_accessed'""",
-                (n1['id'], n2['id'], n2['id'], n1['id'])
-            ).fetchone()[0]
-            pre_edges_n3 = self.brain.conn.execute(
-                """SELECT COUNT(*) FROM edges e
-                JOIN edge_relations er ON er.edge_id = e.edge_id
-                WHERE (e.source_id = ? OR e.target_id = ?)
-                AND er.relation = 'co_accessed'""",
-                (n3['id'], n3['id'])
-            ).fetchone()[0]
-
-            # _hebbian_strengthen now takes stop_counter for trace correlation.
-            _hebbian_strengthen(self.brain, session_id, stop_counter=1)
-
-            # Phase 5 (2026-05-18) made Hebbian async: _hebbian_strengthen
-            # only enqueues; the bg worker's drain does the edge SQL. Drain
-            # synchronously so the assertions below see the edges.
-            from servers import recall_write_queue
-            recall_write_queue.drain_once(self.brain)
-
-            # _hebbian_strengthen creates co_accessed edges between surface-selected nodes
-            # Check that a co_accessed edge exists between n1 and n2
-            edge = self.brain.conn.execute(
-                """SELECT er.relation FROM edges e
-                JOIN edge_relations er ON er.edge_id = e.edge_id
-                WHERE ((e.source_id = ? AND e.target_id = ?) OR (e.source_id = ? AND e.target_id = ?))
-                AND er.relation = 'co_accessed'""",
-                (n1['id'], n2['id'], n2['id'], n1['id'])
-            ).fetchone()
-            self.assertIsNotNone(edge,
-                                 'No co_accessed edge between surface-selected nodes')
-            self.assertEqual(edge[0], 'co_accessed',
-                             'Edge relation should be co_accessed, got: %s' % edge[0])
-
-            # Verify n3 has no new co_accessed edges (since it was not selected)
-            post_edges_n3 = self.brain.conn.execute(
-                """SELECT COUNT(*) FROM edges e
-                JOIN edge_relations er ON er.edge_id = e.edge_id
-                WHERE (e.source_id = ? OR e.target_id = ?)
-                AND er.relation = 'co_accessed'""",
-                (n3['id'], n3['id'])
-            ).fetchone()[0]
-            self.assertEqual(post_edges_n3, pre_edges_n3,
-                             'Unselected node got new co_accessed edges')
-        finally:
-            if os.path.exists(surface_path):
-                os.unlink(surface_path)
-
     def test_recall_candidates_feed_into_surface_prompt(self):
         """recall → build_surface_prompt: recall output must produce a valid surface prompt.
 
@@ -461,6 +378,40 @@ class TestDecodeTransitions(BrainTestBase):
         self.assertNotIn('<conversation>', prompt)
         self.assertIn('Conversation (previous turns, oldest first):', prompt)
 
+    def test_layout_config_reaches_the_renderer(self):
+        """Transition: interaction config → build_surface_prompt. The layout
+        the resolver hands back (K-store override overlaid on the code
+        default) must be the layout the renderer receives — sentinel-checked
+        because a wrong overlay is silent (id:9402f16e)."""
+        from servers.scales.s1 import surface as surface_mod
+        import servers.scales.s1.surface_contract as scontract
+
+        self.brain.logs_conn.execute('DELETE FROM interactions')
+        self.brain.logs_conn.commit()
+        self.brain._interaction_dal.register(
+            'surface', template='',
+            parameters=json.dumps({'layout': 'sentinel-layout'}))
+
+        captured = {}
+
+        class _Stop(Exception):
+            pass
+
+        def capturing_build(*args, **kwargs):
+            captured['layout'] = kwargs.get('layout')
+            raise _Stop()
+
+        real_build = scontract.build_surface_prompt
+        scontract.build_surface_prompt = capturing_build
+        try:
+            with self.assertRaises(_Stop):
+                surface_mod._call_surface(
+                    self.brain, [], 'a message', [], 'sess-layout', {})
+        finally:
+            scontract.build_surface_prompt = real_build
+
+        self.assertEqual(captured['layout'], 'sentinel-layout')
+
     def test_recently_surfaced_is_session_scoped(self):
         """_get_recently_surfaced must not leak surfaces from parallel sessions.
 
@@ -550,36 +501,20 @@ class TestSelectionLivenessGate(BrainTestBase):
         self.assertEqual(dropped, [])
         self.assertIn(a['id'], selected_mode)
 
-    def test_surface_selected_file_write(self):
-        # Single write site: the file lands post-gate with whatever the
-        # caller passes — filtered ids only, by construction of run_surface.
-        from servers.scales.s1.surface import _write_surface_selected_file
-        from servers.scales.s1.surface_contract import surface_selected_path
-
-        path = surface_selected_path('test-liveness-file', 7)
-        try:
-            _write_surface_selected_file(
-                self.brain, 'test-liveness-file', 7, {'aaaa1111', 'bbbb2222'})
-            with open(path) as f:
-                on_disk = set(json.load(f)["selected_ids"])
-            self.assertEqual(on_disk, {'aaaa1111', 'bbbb2222'})
-        finally:
-            if os.path.exists(path):
-                os.remove(path)
-
     def test_run_surface_drops_archived_end_to_end(self):
         """Wiring test: an archived node Haiku selects must not reach the
-        surfaced-ids file when it goes through the REAL run_surface path.
+        surface_selected trace when it goes through the REAL run_surface path.
 
         The other gate tests call _drop_archived_selected directly — they'd
         still pass if the gate call were deleted from run_surface. This one
         drives run_surface with a canned Haiku selection (live + archived)
-        and asserts the archived id never lands in the file Hebbian reads,
-        so a wiring regression (gate removed / called in the wrong place /
-        file written before the gate) fails loudly. query_vec=None skips
-        spread expansion, so no embedder is needed."""
+        and asserts the archived id never lands in the surface_selected
+        trace — the source of the recently-surfaced block, so a leak here
+        is the self-perpetuating dead-node loop. A wiring regression (gate
+        removed / called in the wrong place / trace written before the
+        gate) fails loudly. query_vec=None skips spread expansion, so no
+        embedder is needed."""
         from servers.scales.s1 import surface as surface_mod
-        from servers.scales.s1.surface_contract import surface_selected_path
 
         live = self.brain.remember(type='test', title='wire_live', content='c',
                                    auto_connect=False,
@@ -614,24 +549,24 @@ class TestSelectionLivenessGate(BrainTestBase):
 
         orig = surface_mod._call_surface
         surface_mod._call_surface = _fake_call_surface
-        path = surface_selected_path(session_id, ctx.stop_counter)
         try:
             surface_mod.run_surface(
                 self.brain, ctx, candidates_data, 'user msg', [], {},
                 'enriched query', [], 'test-recall-ref', session_id, None,
                 query_vec=None)
-            with open(path) as f:
-                on_disk = set(json.load(f)['selected_ids'])
-            self.assertIn(live['id'][:8], on_disk,
-                          'live node missing from surfaced-ids file')
+            evts = self.brain.query_traces(
+                scale='s1', ref_type='surface_selected',
+                session_id=session_id, hours=None).get('events') or []
+            self.assertTrue(evts, 'no surface_selected K trace written')
+            surfaced = set(json.loads(evts[0]['ref_id']))
+            self.assertIn(live['id'][:8], surfaced,
+                          'live node missing from surface_selected trace')
             self.assertNotIn(
-                dead['id'][:8], on_disk,
-                'archived node reached the surfaced-ids file — '
+                dead['id'][:8], surfaced,
+                'archived node reached the surface_selected trace — '
                 'liveness gate is not wired into run_surface')
         finally:
             surface_mod._call_surface = orig
-            if os.path.exists(path):
-                os.remove(path)
 
     def test_run_surface_writes_cost_telemetry_to_k_trace(self):
         """Cost-telemetry gap closer: a real run_surface threads _call_surface's
@@ -640,7 +575,6 @@ class TestSelectionLivenessGate(BrainTestBase):
         served/empty outcome — so surface cost is queryable from traces, not
         absent (the gap that made the recall-timeout diagnosis painful)."""
         from servers.scales.s1 import surface as surface_mod
-        from servers.scales.s1.surface_contract import surface_selected_path
 
         node = self.brain.remember(type='test', title='tel_node', content='c',
                                    auto_connect=False,
@@ -663,7 +597,6 @@ class TestSelectionLivenessGate(BrainTestBase):
 
         orig = surface_mod._call_surface
         surface_mod._call_surface = _fake_call_surface
-        path = surface_selected_path(session_id, ctx.stop_counter)
         try:
             surface_mod.run_surface(
                 self.brain, ctx, candidates_data, 'user msg', [], {},
@@ -683,8 +616,6 @@ class TestSelectionLivenessGate(BrainTestBase):
             self.assertIn('phase_timing', meta)   # [] when pt not threaded (this path)
         finally:
             surface_mod._call_surface = orig
-            if os.path.exists(path):
-                os.remove(path)
 
 
 class TestSelectedIdRecovery(BrainTestBase):
@@ -700,9 +631,8 @@ class TestSelectedIdRecovery(BrainTestBase):
 
     def _run_with_selection(self, session_id, candidates_data, selection):
         """Drive the REAL run_surface with a canned Haiku selection; return
-        the surfaced-ids set the Hebbian file received."""
+        the surfaced-ids set the surface_selected K trace carries."""
         from servers.scales.s1 import surface as surface_mod
-        from servers.scales.s1.surface_contract import surface_selected_path
 
         ctx = self.brain.get_or_create_session(session_id)
 
@@ -715,18 +645,17 @@ class TestSelectedIdRecovery(BrainTestBase):
 
         orig = surface_mod._call_surface
         surface_mod._call_surface = _fake_call_surface
-        path = surface_selected_path(session_id, ctx.stop_counter)
         try:
             surface_mod.run_surface(
                 self.brain, ctx, candidates_data, 'user msg', [], {},
                 'enriched query', [], 'test-recall-ref', session_id, None,
                 query_vec=None)
-            with open(path) as f:
-                return set(json.load(f)['selected_ids'])
+            evts = self.brain.query_traces(
+                scale='s1', ref_type='surface_selected',
+                session_id=session_id, hours=None).get('events') or []
+            return set(json.loads(evts[0]['ref_id'])) if evts else set()
         finally:
             surface_mod._call_surface = orig
-            if os.path.exists(path):
-                os.remove(path)
 
     def _warnings(self, source):
         rows = self.brain.logs_conn.execute(
@@ -904,7 +833,6 @@ class TestShuffleTraceRecord(BrainTestBase):
 
     def test_run_surface_writes_presented_order_to_k_trace(self):
         from servers.scales.s1 import surface as surface_mod
-        from servers.scales.s1.surface_contract import surface_selected_path
 
         node = self.brain.remember(type='test', title='shuf_node', content='c',
                                    auto_connect=False,
@@ -930,7 +858,6 @@ class TestShuffleTraceRecord(BrainTestBase):
 
         orig = surface_mod._call_surface
         surface_mod._call_surface = _fake_call_surface
-        path = surface_selected_path(session_id, ctx.stop_counter)
         try:
             surface_mod.run_surface(
                 self.brain, ctx, candidates_data, 'user msg', [], {},
@@ -945,5 +872,3 @@ class TestShuffleTraceRecord(BrainTestBase):
             self.assertEqual(meta.get('presented_order'), [node['id'][:8]])
         finally:
             surface_mod._call_surface = orig
-            if os.path.exists(path):
-                os.remove(path)

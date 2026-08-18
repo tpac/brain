@@ -167,6 +167,15 @@ ENCODING_AGENT = {
     'node_edge_limit': 5,             # structural edges per node (with descriptions)
 }
 
+# Interaction config default for the `s1e` K (the learnable prompt+config
+# boundary). Live reads: `effort` maps to the API's output_config.effort,
+# `model` picks the encoder model (encode.py). Encoder loop knobs stay in
+# ENCODING_AGENT above — code config, not part of the per-version K.
+S1E_INTERACTION_DEFAULT = {
+    'effort': 'medium',
+    'model': 'claude-sonnet-4-6',
+}
+
 # Lived-sequence timeline (S1E code-half piece 1): how many recent s0 events to
 # pull when assembling the messages+actions interleave. Bounded by EPISODE_MAX_LIMIT
 # (=500) — recall_episodes/filter_events clamps anything larger — so 500 IS the max

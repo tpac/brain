@@ -45,8 +45,9 @@ true** — the header says "content is CUT at 400 chars" and the prompt says "`�
 fragment"; both are false under D, and shipping them repeats the stale-gloss defect
 this arc exists to fix (tag wants `[body only]`, not `[aged]`/`[truncated]`);
 (3) v39 prompt: register → activate → `sync-prompts` → bump `SEED_PROMPTS_VERSION`;
-(4) `./redeploy.sh` + new session for the `get_nodes` MCP description; (5) retire
-`encoded_turn_trim` + its flag-off test; (6) wide `-k` tier, branch, merge.
+(4) retire `encoded_turn_trim` + its flag-off test; (5) wide `-k` tier, branch, merge;
+(6) `./redeploy.sh` + new session for the `get_nodes` MCP description — last, it ends
+the session.
 **Do not reopen:** `ab_encode.py` for this policy (structurally blind, `d8809f3f`) ·
 more prompt text for the turn-pointer leak (97%→90% over two attempts; `3faf5b01`
 explains why prose loses to an 87%-leaky catalog) · more prompt text against
@@ -54,6 +55,22 @@ partial-view rewrites (`8aa7e7d7`) · `get_nodes_config` for the encoder (Tom de
 last-30 catalog cap (`9ae6820a`) · content-trimming as the savings lever (`155ddb64`).
 **Open, and larger than the render:** run-to-run node-quality variance dwarfs every arm
 difference measured; unexplained, unexamined.
+
+### 🟡 0b. Delete retired `co_accessed` + `emergent_bridge` rows (phase 2)
+The write-stop shipped (Tom ruled both dead 2026-08-17; spec node `df681fc1`,
+rulings `ab56d25a` / `072e26d8`). What remains is the destructive half: delete
+the ~10,813 `co_accessed` + ~150 `emergent_bridge` `edge_relations` rows —
+`backup_before_destructive` FIRST — and, in the same change, strip the two
+relation strings from the exclusion lists that exist to hide them
+(`DEFAULT_EXCLUDED_RELATIONS`, the `noise` aspect's `edge_relations`,
+`community_contract` / `community_decoder:1387`, `brain_recall:343,347`,
+`integrity_audit`'s dominance check). **Order matters: rows first, exclusion
+entries after** — the lists are live read-path filters, and removing an entry
+while its rows exist re-activates the dead family in fatigue degree, node
+connections, community adjacency, and the encoder catalog. The signal
+substrate stays untouched either way (`surface_selected` traces, exempt from
+retention). **Do not re-arm edge decay alongside it** (`09a788c0`: the formula
+compounds per run).
 
 ### 🔴 1. Prompt improvements never reach existing installs
 `interaction_seed._register` returns early when the name already exists, so an install

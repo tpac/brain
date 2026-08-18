@@ -11,9 +11,10 @@ revise/connect so the graph stays dense.
 """
 
 HEALER = {
-    # LLM config
+    # LLM config — must match what production runs; a wrong max_tokens here is
+    # silent (a healer batch quietly truncates instead of erroring).
     'model': 'claude-haiku-4-5',
-    'max_tokens': 2048,
+    'max_tokens': 4096,
 
     # Batch sizing
     'max_nodes_per_call': 10,        # Nodes per Haiku call
@@ -34,6 +35,13 @@ HEALER = {
     # Trace query context
     'max_trace_queries': 3,          # Real queries from S1R traces to include in prompt
     'trace_lookback_hours': 720,     # 30 days of traces to search
+}
+
+# Interaction config default for the `s2_healer` K — sliced from HEALER so
+# model/max_tokens have exactly one home in this file.
+HEALER_INTERACTION_DEFAULT = {
+    'model': HEALER['model'],
+    'max_tokens': HEALER['max_tokens'],
 }
 
 # HEALER_EDGE_FAMILIES — REMOVED 2026-05-04 (Step 10 of unified-aspects).

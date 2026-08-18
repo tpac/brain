@@ -55,14 +55,16 @@ class TestLafEngineUnits(BrainTestBase):
             self.assertIn('gain_' + field, DEFAULT_CONFIG)
 
         class FakeBrain:
+            # Models the resolver contract: get_interaction_config returns
+            # the code default with the override overlaid — total by
+            # construction (the key-level merge moved into the accessor).
             def get_interaction_config(self, name):
                 assert name == 'recall_laf'
-                return {'gain_pick': 0.9, 'unknown_key': 'ignored'}
+                return {**DEFAULT_CONFIG, 'gain_pick': 0.9}
 
         cfg = LafV1Engine().config(FakeBrain())
         self.assertEqual(cfg['gain_pick'], 0.9)          # override applied
         self.assertEqual(cfg['gain_enc'], DEFAULT_CONFIG['gain_enc'])
-        self.assertNotIn('unknown_key', cfg)             # unknown keys dropped
 
         class BrokenBrain:
             def get_interaction_config(self, name):

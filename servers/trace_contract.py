@@ -274,10 +274,11 @@ DELTA_METADATA_SHAPE = {
     # directional `edge_relation_revised` event carrying
     # source_id/target_id/relation, so a flat directionless `connected` node-id
     # list (a two-sided-era vestige that couldn't represent a v22
-    # single-direction edge) was removed. SOFT/derived edges (co_accessed,
-    # emergent_bridge) are intentionally NOT traced — they're recomputable and
-    # excluded from the graph views (dashboard, S2 decisions). So "reconstruct
-    # the graph from traces" means the first-class typed graph, not the soft layer.
+    # single-direction edge) was removed. SOFT/derived edges (the noise
+    # aspect's structural relations, e.g. co_anchored) are intentionally NOT
+    # traced — they're recomputable and excluded from the graph views
+    # (dashboard, S2 decisions). So "reconstruct the graph from traces" means
+    # the first-class typed graph, not the soft layer.
     'created':           list,    # node ids created this run
     'revised':           list,    # node ids revised this run (incl. absorb survivors — content rewritten)
     'archived':          list,    # node ids archived this run (incl. absorb's folded-in originals)
@@ -287,13 +288,17 @@ DELTA_METADATA_SHAPE = {
     # First-class (validated + dashboard-known + capped) rather than smuggled
     # through **extras. Empty [] for every non-aspect delta.
     'classifications':   list,
-    # Cost & provenance of producing this Δ (all int, default 0). elapsed_ms +
-    # token counts let you trend encoder latency/cost over time — and, paired
-    # with interaction_version, compare cost across prompt versions — straight
-    # from traces. truncated flags silent data loss (a max_tokens cut mid
-    # tool-call corrupts the write). interaction_version records WHICH K version
-    # produced this Δ (the FK `interaction_id` is stamped on the trace row
-    # itself; this mirror keeps it human-readable in the payload).
+    # Cost & provenance of producing this Δ. elapsed_ms + token counts let you
+    # trend encoder latency/cost over time — and, paired with the K block,
+    # compare cost across prompt versions — straight from traces. truncated
+    # flags silent data loss (a max_tokens cut mid tool-call corrupts the
+    # write). The K block records WHICH prompt+config produced this Δ:
+    # interaction_fingerprint is the content-address of the EFFECTIVE value
+    # (stable across installs; '' = unstamped, e.g. mutation deltas),
+    # interaction_source is where it came from ('default' = code, 'override' =
+    # DB row; '' = unstamped), interaction_version the override version (0 on
+    # a default run — meaningful only next to source). interaction_id (the
+    # override rowid, on the trace row itself) is install-local, display-only.
     'elapsed_ms':            int,
     'input_tokens':          int,
     'output_tokens':         int,
@@ -301,6 +306,8 @@ DELTA_METADATA_SHAPE = {
     'cache_creation_tokens': int,
     'truncated':             int,
     'interaction_version':   int,
+    'interaction_fingerprint': str,
+    'interaction_source':      str,
 }
 
 DELTA_FINAL_TEXT_LIMIT = 2000
@@ -512,6 +519,7 @@ def build_delta_metadata(*,
                          elapsed_ms=0, input_tokens=0, output_tokens=0,
                          cache_read_tokens=0, cache_creation_tokens=0,
                          truncated=0, interaction_version=0,
+                         interaction_fingerprint='', interaction_source='',
                          **extras):
     """Build a unified delta trace metadata dict.
 
@@ -577,7 +585,9 @@ def build_delta_metadata(*,
             input_tokens=input_tokens, output_tokens=output_tokens,
             cache_read_tokens=cache_read_tokens,
             cache_creation_tokens=cache_creation_tokens),
-        'interaction_version':   int(interaction_version or 0),
+        'interaction_version':     int(interaction_version or 0),
+        'interaction_fingerprint': str(interaction_fingerprint or ''),
+        'interaction_source':      str(interaction_source or ''),
     }
     # Extras preserved for per-unit fields (can't collide with shared keys).
     for k, v in extras.items():
@@ -1192,6 +1202,11 @@ SELECTION_METADATA_SHAPE = {
     'dropped':               list,   # IDs/tags of rejects
     'outcomes_per_candidate': dict,  # {candidate_id: 'selected'|'dropped'|...}
     'content':               str,    # the delta output (e.g. additionalContext), truncated
+    # K block — same semantics as DELTA_METADATA_SHAPE's: which prompt+config
+    # produced this selection ('' / 0 = unstamped).
+    'interaction_fingerprint': str,
+    'interaction_source':      str,
+    'interaction_version':     int,
 }
 
 SELECTION_CONTENT_LIMIT = 4000
@@ -1200,7 +1215,9 @@ SELECTION_CONTENT_LIMIT = 4000
 def build_selection_metadata(*,
                              candidates_considered=0, selected=None,
                              dropped=None, outcomes_per_candidate=None,
-                             content='', **extras):
+                             content='', interaction_fingerprint='',
+                             interaction_source='', interaction_version=0,
+                             **extras):
     """Build a unified selection-style trace metadata dict (S1R-like)."""
     metadata = {
         'candidates_considered':  int(candidates_considered or 0),
@@ -1208,6 +1225,9 @@ def build_selection_metadata(*,
         'dropped':                list(dropped or []),
         'outcomes_per_candidate': dict(outcomes_per_candidate or {}),
         'content':                (content or '')[:SELECTION_CONTENT_LIMIT],
+        'interaction_fingerprint': str(interaction_fingerprint or ''),
+        'interaction_source':      str(interaction_source or ''),
+        'interaction_version':     int(interaction_version or 0),
     }
     for k, v in extras.items():
         if k not in metadata:

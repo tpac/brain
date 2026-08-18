@@ -494,7 +494,10 @@ class TestSurfaceSelectionJournal:
 
         cands = [{'id': 'a' * 32, 'title': 'T', 'score': 0.9, 'type': 'fact'}]
         _write_traces(brain, _Ctx(), cands, {'aaaaaaaa'}, [], [],
-                      'ctx', 'query', [], 'ref-1', 7, 'sess-journal', **kw)
+                      'ctx', 'query', [], 'ref-1',
+                      {'fingerprint': 'abcdef123456', 'source': 'override',
+                       'version': 1, 'id': 7},
+                      'sess-journal', **kw)
         events = brain._trace_dal.batches[0]
         return next(e for e in events
                     if e['ref_type'] == 'surface_selected')

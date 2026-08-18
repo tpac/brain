@@ -100,8 +100,6 @@ EXTERNAL_CLAIM_KEYWORDS = {
 }
 
 # Hebbian learning
-LEARNING_RATE = 0.2
-MAX_WEIGHT = 1.0
 PRUNE_THRESHOLD = 0.05
 
 # Page sizes
@@ -226,9 +224,10 @@ EDGE_TYPES = {
     'part_of': {'defaultWeight': 0.7, 'decays': False, 'description': 'Node to parent'},
     'depends_on': {'defaultWeight': 0.7, 'decays': False, 'description': 'Node requires another'},
     'related': {'defaultWeight': 0.5, 'decays': False, 'description': 'Manual or inferred — intentional, no decay'},
-    'co_accessed': {'defaultWeight': 0.3, 'decays': True, 'halfLife': 720, 'description': 'Judge-selected Hebbian — meaningful co-activation, participates in traversal'},
-    'emergent_bridge': {'defaultWeight': 0.15, 'decays': True, 'halfLife': 720, 'description': 'Auto-discovered bridge — excluded from traversal'},
 }
+# co_accessed + emergent_bridge retired 2026-08-17 (nodes ab56d25a, 072e26d8).
+# Existing rows remain in the DB until the separate backed-up deletion ships;
+# the exclusion lists that hide them from reads stay until then.
 
 # Edge decay
 EDGE_PRUNE_THRESHOLD = 0.1  # Edges below this weight after decay are deleted
@@ -237,10 +236,6 @@ EDGE_PRUNE_THRESHOLD = 0.1  # Edges below this weight after decay are deleted
 CRITICAL_BOOST = 3.0              # Recall score multiplier for critical=1 nodes
 CRITICAL_SIMILARITY_THRESHOLD = 0.20  # Lowered embedding threshold for critical nodes
 
-# Graph traversal
-SPREAD_DECAY = 0.5
-MAX_HOPS = 3
-MAX_NEIGHBORS = 50
 # STABILITY_BOOST, STABILITY_FLOOR_* removed 2026-04-13 — stability field deprecated.
 
 # B.2: Graph-augmented recall — 3-degree traversal
@@ -256,9 +251,7 @@ INTENTIONAL_EDGE_TYPES = {
     'contradicts', 'refers_to',
 }
 # Traversal exclusions derive from the noise aspect at load time —
-# brain.aspects.structural_exclusions. (EXCLUDED_EDGE_TYPES deleted 2026-07-28:
-# a dated 1-member snapshot whose "co_accessed is clean" premise died when
-# Hebbian co-access writes resumed.)
+# brain.aspects.structural_exclusions.
 
 # Situation embeddings — WHEN knowledge matters (second vector dimension)
 SITUATION_WEIGHT = 0.2          # Additive boost for situation match during recall
@@ -354,6 +347,12 @@ MAINTENANCE_FORCE_FIRE_SECONDS = 24 * 60 * 60
 # overloaded with many things — the user gets a working brain immediately;
 # maintenance can wait its turn after the first interaction.
 MAINTENANCE_BOOT_GRACE_SECONDS = 90
+
+# Log retention + orphan sweep cadence, run as a DBMaintenance task. Housekeeping
+# with no deadline — hourly reclaims space long before it matters. It lived in the
+# Claude Code idle hook until that event stopped firing and it went six weeks
+# without running; the scheduler thread has no such dependency.
+LOGS_MAINTENANCE_INTERVAL_S = 60 * 60
 
 # ── LLM rejection backoff ──
 # How long LLM features stay paused after the provider REFUSES a call (a dead

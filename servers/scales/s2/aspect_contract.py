@@ -42,3 +42,10 @@ ASPECT = {
     'min_count_threshold': 1,
     'examples_per_candidate': 3,     # nodes/edges shown per candidate string
 }
+
+# Interaction config default for the `s2_aspects` K — sliced from ASPECT so
+# model/max_tokens have exactly one home in this file.
+ASPECT_INTERACTION_DEFAULT = {
+    'model': ASPECT['model'],
+    'max_tokens': ASPECT['max_tokens'],
+}

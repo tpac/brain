@@ -38,3 +38,11 @@ Return ONLY a JSON array of 2-3 strings, no prose, no explanation.
 
 Query: "{query}"
 """
+
+# Interaction config default for the `recall_query_expansion` K. Live reads:
+# `model`, `max_tokens` (brain_recall._expand_query_via_llm). Lives here with
+# its template — the sole consumer; two keys don't earn a contract file.
+RECALL_EXPANSION_INTERACTION_DEFAULT = {
+    'model': 'claude-haiku-4-5',
+    'max_tokens': 200,
+}

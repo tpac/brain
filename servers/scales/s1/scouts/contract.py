@@ -127,7 +127,7 @@ FIELD_LIMITS = {
 # arm currently musters buys nothing.
 #
 # THE INVARIANT: this constant must equal the production-ACTIVE schema. It is
-# seeded into `S1_SCOUT_FACTS_CONFIG_V1` by reference, so a fresh brain boots
+# embedded in `SCOUT_FACTS_INTERACTION_DEFAULT` (below) by reference, so a fresh brain boots
 # with whatever it holds — meaning an edit here IS a deployment. A candidate
 # schema awaiting an eval belongs in the DB as a dormant version, never here;
 # `sync_prompts._fetch_active` enforces that rule for templates and
@@ -199,6 +199,69 @@ FACTS_OUTPUT_SCHEMA: Dict[str, Any] = {
     },
     "required": ["candidates", "scanned"],
     "additionalProperties": False,
+}
+
+
+# ─── Interaction config defaults (the per-scout K) ─────────────────────────
+# One default per scout interaction (s1_scout_<name>). `category_statement`
+# is the single-line teaching the scout emits verbatim — S1S reads it every
+# cycle to internalize the atom-kind palette without being taught a taxonomy.
+# Only `facts` carries `output_schema` (the sole scout production musters —
+# see the invariant note at FACTS_OUTPUT_SCHEMA); quote/temporal must NOT
+# acquire one without the `exclude_scouts` arm changing first.
+
+SCOUT_QUOTE_CATEGORY = (
+    "Phrases echoed across turns or that ground multiple concepts should be "
+    "quote atoms — title = the phrase verbatim. Operator voice signatures "
+    "and load-bearing phrasings carry recall weight that paraphrases can't "
+    "replace."
+)
+
+SCOUT_TEMPORAL_CATEGORY = (
+    "Dates mentioned in conversation — relative ('2 weeks ago') or absolute "
+    "('March 15') — should become time_anchor bridges so events fan in around "
+    "shared date pivots. Reuse existing time_anchor nodes from the catalog; "
+    "create new ones only when absent."
+)
+
+SCOUT_FACTS_CATEGORY = (
+    "Entity-feature-value facts with evidence — the specific things future "
+    "queries will ask for. When an entity is mentioned with a concrete "
+    "attribute (quantity, count, name, preference, setting), that triple "
+    "deserves its own handle in the graph."
+)
+
+SCOUT_QUOTE_INTERACTION_DEFAULT = {
+    "model": "claude-haiku-4-5",
+    "max_candidates": 3,
+    "max_tokens": 2000,
+    "timeout_seconds": 25,
+    "category_statement": SCOUT_QUOTE_CATEGORY,
+}
+
+SCOUT_TEMPORAL_INTERACTION_DEFAULT = {
+    # Algorithmic scout — no primary LLM call. model reserved for fallback.
+    "model": "claude-haiku-4-5",
+    "max_candidates": 8,
+    "max_tokens": 1500,
+    "timeout_seconds": 10,
+    "category_statement": SCOUT_TEMPORAL_CATEGORY,
+    # dateparser post-filter switches
+    "prefer_dates_from": "past",
+    "weekday_requires_modifier": True,
+    "filter_time_only_phrases": True,
+}
+
+# `output_schema` embeds FACTS_OUTPUT_SCHEMA BY REFERENCE: scouts/base.py:147
+# gates the Structured Outputs request on it, and max_tokens is coupled to the
+# schema (every candidate carries all nine fields), not cosmetic.
+SCOUT_FACTS_INTERACTION_DEFAULT = {
+    "model": "claude-haiku-4-5",
+    "max_candidates": 6,
+    "max_tokens": 5000,
+    "timeout_seconds": 25,
+    "category_statement": SCOUT_FACTS_CATEGORY,
+    "output_schema": FACTS_OUTPUT_SCHEMA,
 }
 
 
@@ -493,6 +556,12 @@ __all__ = [
     "SCOUT_FIELD_SPECS",
     "FIELD_LIMITS",
     "FACTS_OUTPUT_SCHEMA",
+    "SCOUT_QUOTE_CATEGORY",
+    "SCOUT_TEMPORAL_CATEGORY",
+    "SCOUT_FACTS_CATEGORY",
+    "SCOUT_QUOTE_INTERACTION_DEFAULT",
+    "SCOUT_TEMPORAL_INTERACTION_DEFAULT",
+    "SCOUT_FACTS_INTERACTION_DEFAULT",
     "SCOUT_SYSTEM_PROMPT",
     "SCOUT_ORIENTATION_PREAMBLE",
     "build_shared_prefix",

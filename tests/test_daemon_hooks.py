@@ -856,46 +856,6 @@ class TestSeenCandidateDedup(BrainTestBase):
                       'no prior surfacing — nothing should be dropped')
 
 
-class TestJunkPurgeManifest(BrainTestBase):
-    """The idle-maintenance junk-vocabulary purge emits one node_deleted row
-    PER node through the mutation emitter (plan step 8; ruled 2026-08-04:
-    hard deletes are recorded, with title — the trace is the only surviving
-    record). The purge path is dormant in production (0 matching nodes), so
-    the test constructs its own junk node."""
-    needs_embedder = False
-
-    def test_purge_emits_one_node_deleted_row_per_node_with_title(self):
-        from servers.daemon_hooks import hook_idle_maintenance
-        from servers.clock import brain_today
-        junk = self.brain.remember(
-            type='vocabulary', title='junkword', content='x',
-            confidence=0.3, encoding_source='anchor')['id']
-        keeper = self.brain.remember(
-            type='vocabulary', title='real term with definition',
-            content='a proper multi-word definition long enough to keep',
-            encoding_source='anchor')['id']
-
-        hook_idle_maintenance(self.brain, {}, [])
-
-        # The junk node is erased; the keeper survives.
-        self.assertIsNone(self.brain.conn.execute(
-            "SELECT 1 FROM nodes WHERE id = ?", (junk,)).fetchone())
-        self.assertIsNotNone(self.brain.conn.execute(
-            "SELECT 1 FROM nodes WHERE id = ?", (keeper,)).fetchone())
-
-        chain = 'maint-%s-mutation' % brain_today(self.brain).strftime('%Y%m%d')
-        rows = [t for t in self.brain._trace_dal.get_chain(chain)
-                if t['ref_type'] == 'node_deleted' and t['ref_id'] == junk]
-        self.assertEqual(len(rows), 1, "one node_deleted row per purged node")
-        t = rows[0]
-        self.assertEqual(t['scale'], 's2')
-        meta = t['metadata']
-        self.assertEqual(meta['type'], 'vocabulary')
-        self.assertEqual(meta['title'], 'junkword')
-        self.assertEqual(meta['deleted_by'], 's2:idle_maintenance')
-        self.assertEqual(meta['reason'],
-                         'single-word vocabulary without definition')
-        self.assertIn('nodes', meta['tables_hit'])
 
 
 class TestDecayPruneTraces(BrainTestBase):
@@ -915,15 +875,16 @@ class TestDecayPruneTraces(BrainTestBase):
         b = self.brain.remember(type='test', title='decay-tgt', content='c',
                                 auto_connect=False,
                                 encoding_source='anchor')['id']
+        # exemplifies = the decays-True fixture (co_accessed retired 2026-08-17)
         res = self.brain._graph.add_relation(
-            a, b, 'co_accessed', weight=0.05, encoding_source='anchor')
+            a, b, 'exemplifies', weight=0.05, encoding_source='anchor')
         edge_id = res['edge_id']
 
         hook_idle_maintenance(self.brain, {}, [])
 
         chain = 'maint-%s-decay' % brain_today(self.brain).strftime('%Y%m%d')
         rows = [t for t in self.brain._trace_dal.get_chain(chain)
-                if t['ref_id'] == '%s:co_accessed' % edge_id]
+                if t['ref_id'] == '%s:exemplifies' % edge_id]
         self.assertEqual(len(rows), 1, 'one row per pruned relation')
         t = rows[0]
         self.assertEqual(t['ref_type'], 'edge_relation_revised')
@@ -933,6 +894,38 @@ class TestDecayPruneTraces(BrainTestBase):
         self.assertEqual(meta['encoding_source'], 'decay_pruned')
         self.assertEqual(meta['deltas'],
                          [{'field': 'archived', 'old': 0, 'new': 1}])
+
+
+class TestStopHookMintsNoEdges(BrainTestBase):
+    """co_accessed retirement guard: the Stop hook's post-response path must
+    not create edge_relations rows. This is the writer the retirement
+    removed (surface picks → Hebbian pairs → drain); re-wiring any co-access
+    writer into the Stop hook must fail here, not pass silently."""
+    needs_embedder = False
+
+    def test_conversational_stop_creates_no_edge_relations(self):
+        from servers.daemon_hooks import post_response_common
+        from servers import recall_write_queue
+
+        session_id = 'test-stop-no-edges'
+        ctx = self.brain.get_or_create_session(session_id)
+        # Make the turn classify as conversational (a real UserPromptSubmit
+        # would have set last_recall_stop via hook_recall).
+        ctx.last_recall_stop = ctx.stop_counter
+
+        before = self.brain.conn.execute(
+            'SELECT COUNT(*) FROM edge_relations').fetchone()[0]
+
+        post_response_common(self.brain, session_id,
+                             'user message', 'assistant response')
+        recall_write_queue.drain_once(self.brain)
+
+        after = self.brain.conn.execute(
+            'SELECT COUNT(*) FROM edge_relations').fetchone()[0]
+        self.assertEqual(after, before,
+                         'Stop-hook path created edge_relations rows — '
+                         'a co-access-style writer is back on the '
+                         'post-response path')
 
 
 if __name__ == '__main__':

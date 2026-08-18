@@ -35,6 +35,17 @@ DRAIN_BATCH_SIZE = 500
 # dead". Thread death is detected by daemon's thread-count watchdog.
 STALL_THRESHOLD_S = EMBED_DRAIN_INTERVAL * 3
 
+# Unscoped vector-coverage sweep. The queue only repairs what reached it;
+# a node written by a path that skips the enqueue hooks, or a crash between
+# insert and enqueue, leaves vectors missing forever. This sweep is the
+# only automatic repair for that class, so it lives beside the queue that
+# owns embedding rather than in a separate maintenance pass.
+COVERAGE_SWEEP_INTERVAL = 60.0
+COVERAGE_SWEEP_BATCH = 30
+# Ceiling on deferring to a non-empty queue. Without it, "let scoped work go
+# first" degrades into "never sweep" on a brain that always has scoped work.
+COVERAGE_SWEEP_MAX_STALENESS = 600.0
+
 # Pull-reconciliation policy for trace embeddings (v27 episodic refs).
 # Each tick: find up to N S0 trace events with no embedding yet, render
 # per §5.3, embed in one batch, store. Newest-first so recent
@@ -61,6 +72,11 @@ _edge_queue: Set[str] = set()      # edge ids needing date recomputation
 _lock = threading.Lock()
 _drain_busy = threading.Lock()  # non-blocking; used for skip-tick semantics
 _worker_started = False
+# Coverage-sweep throttle. Stamped at worker start, NOT left at 0.0: the
+# staleness floor below compares elapsed time, and 0.0 makes "time since last
+# sweep" ~epoch seconds, which clears every ceiling and would fire a full
+# unscoped sweep during cold-start against a 20K-entity queue.
+_last_sweep_at = 0.0
 _shutdown_event = threading.Event()    # the SINGLE shutdown signal: set() stops the worker and wakes it out of its interval wait at once
 _worker_thread: Optional[threading.Thread] = None
 _stats = {
@@ -118,11 +134,15 @@ def get_stats() -> dict:
 
 def start(brain) -> None:
     """Start the single drain worker. Idempotent — safe to call multiple times."""
-    global _worker_started, _worker_thread
+    global _worker_started, _worker_thread, _last_sweep_at
     with _lock:
         if _worker_started:
             return
         _worker_started = True
+        # Anchor the sweep clock to worker start so both the interval and the
+        # staleness floor measure real elapsed time. Cold-start gets its full
+        # interval to drain the queue before an unscoped sweep competes.
+        _last_sweep_at = time.time()
     if _shutdown_event.is_set():
         # A prior lifecycle latched the shutdown signal. Clear it, or the fresh
         # worker would exit on its first wait() and silently never drain.
@@ -166,10 +186,9 @@ def _worker_loop(brain) -> None:
       1. `embed_queue` — node vectors + temporal date extraction.
          Heavier work; uses `_drain_busy` skip-tick semantics to avoid
          overlapping drains on cold-start (~20K entities at first boot).
-      2. `recall_write_queue` — access marks + Hebbian co-access
-         strengthening. Lightweight (atomic SQL +1s on
-         `brain.conn_bg_writer`); always called per cycle since its
-         own drain_once self-checks for empty queues.
+      2. `recall_write_queue` — access marks. Lightweight (atomic SQL
+         +1s on `brain.conn_bg_writer`); always called per cycle since
+         its own drain_once self-checks for an empty queue.
 
     Top-level try/except is the load-bearing safety net for the
     "no silent errors" mandate — the worker thread MUST never die.
@@ -240,7 +259,25 @@ def _worker_loop(brain) -> None:
                     print('[embed_queue] trace embed error: %s '
                           '(log failed: %s)' % (e, le), file=sys.stderr)
 
-            # Drain recall_write_queue (access + hebbian). Fast,
+            # Unscoped coverage sweep — every tick, throttled internally.
+            # Runs here rather than inside _drain_once so sustained write load
+            # can't starve it (the drain's empty-tick branch is never reached
+            # while work keeps arriving), and LAST in the tick because a sweep
+            # can embed a full batch — ahead of the trace drain it would push
+            # S0 anchoring past its ~5s contract. Own try/except, like every
+            # other step here: one failing step must not cost the others.
+            try:
+                _coverage_sweep(brain)
+            except Exception as e:
+                try:
+                    brain._log_error(
+                        'embed_queue_coverage_top', e,
+                        'top-level coverage sweep caught')
+                except Exception as le:
+                    print('[embed_queue] coverage sweep error: %s '
+                          '(log failed: %s)' % (e, le), file=sys.stderr)
+
+            # Drain recall_write_queue (access marks). Fast,
             # separate connection, separate transaction. drain_once is
             # contract-bound never to raise out — this try/except is
             # belt-and-suspenders.
@@ -295,8 +332,7 @@ def _check_stall(brain, recall_write_queue) -> None:
 
         embed_depth = (embed_snap.get('queue_depth', 0)
                        + embed_snap.get('edge_queue_depth', 0))
-        rwq_depth = (rwq_snap.get('access_queue_depth', 0)
-                     + rwq_snap.get('hebbian_queue_depth', 0))
+        rwq_depth = rwq_snap.get('access_queue_depth', 0)
         total_depth = embed_depth + rwq_depth
 
         if total_depth == 0:
@@ -483,6 +519,70 @@ def _drain_trace_embeddings_once(brain) -> None:
                              'render/embed/store failed')
         except Exception:
             pass
+
+
+def _coverage_sweep(brain) -> None:
+    """Unscoped vector sweep — driven by the worker loop, throttled.
+
+    The queue repairs only what reached it. A node written by a path that
+    skips the enqueue hooks, or one lost to a crash between insert and
+    enqueue, has no other route back to being embedded.
+
+    Called from `_worker_loop`, NOT from `_drain_once`: the drain's own
+    early-return only fires on an empty tick, so hanging the sweep there
+    starved it under sustained write load — exactly when an enqueue miss is
+    most likely. The loop runs every tick regardless, and the emptiness
+    check below is what defers to scoped work. Keeping it out of
+    `_drain_once` also keeps it out of the test harness, which calls that
+    function directly.
+
+    BOTH outcomes are reported, because they mean different things:
+      - repaired > 0  → a node reached a drained queue unembedded; the
+        enqueue path missed it.
+      - repaired == 0 while `_primary` is still missing → a node CANNOT be
+        embedded. That is the one worth waking up for, and reporting only
+        on successful repair would have hidden it forever.
+    """
+    global _last_sweep_at
+    now = time.time()
+    with _lock:
+        if now - _last_sweep_at < COVERAGE_SWEEP_INTERVAL:
+            return
+        # Scoped work takes precedence — a non-empty queue means the drain is
+        # mid-flight and its ids are about to be covered anyway. But not
+        # forever: under sustained load the queue is rarely empty at the moment
+        # of the check, and that is exactly when a writer is most likely to
+        # have bypassed the enqueue hooks. MAX_STALENESS is the floor that
+        # stops "defer to scoped work" from becoming "never run".
+        if (_queue or _edge_queue) and (
+                now - _last_sweep_at < COVERAGE_SWEEP_MAX_STALENESS):
+            return
+        _last_sweep_at = now
+    try:
+        outcome = brain.vector_coverage_sweep(COVERAGE_SWEEP_BATCH)
+        if outcome['repaired']:
+            brain._log_error(
+                'embed_coverage_gap', None,
+                'unscoped sweep repaired %d vector(s) the enqueue path never '
+                'queued: %s' % (outcome['repaired'], outcome['by_type']))
+        elif outcome['stuck']:
+            brain._log_error(
+                'embed_coverage_stuck', None,
+                'node(s) missing _primary that the sweep could not embed — '
+                'first: %s' % outcome['stuck'][0].get('id'))
+        if outcome['remaining']:
+            # A type filled its batch, so more waits behind it — clear the
+            # throttle rather than rate-limiting recovery to one batch per
+            # interval. Keyed on the repair's own report, so a permanently
+            # unembeddable node (which repairs nothing) cannot spin this.
+            # Rewind by one interval rather than zeroing: 0.0 is not "due
+            # now", it reads as ~epoch seconds of staleness and would punch
+            # through the queue-deference floor as well as the throttle.
+            with _lock:
+                _last_sweep_at = time.time() - COVERAGE_SWEEP_INTERVAL
+    except Exception as e:
+        brain._log_error('embed_coverage_sweep', e,
+                         'unscoped vector coverage sweep failed')
 
 
 def _drain_once(brain) -> None:

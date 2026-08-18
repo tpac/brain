@@ -539,93 +539,6 @@ def hook_recall(brain, args, graph_changes):
 
 
 
-def _hebbian_strengthen(brain, session_id, stop_counter):
-    """Enqueue co-access pairs from this turn's surface selection.
-
-    Reads the surface-selected file written by S1 (3-5 nodes Anchor
-    consciously chose to surface), resolves short IDs to full IDs,
-    builds all unordered pairs, and enqueues them to
-    `recall_write_queue` for batched atomic strengthening via
-    `brain.conn_bg_writer`. The background worker handles the actual
-    SQL — this function does no DB writes.
-
-    Phase 5 of bg_writer migration (2026-05-18):
-    - Was: synchronous `brain.connect_typed` + `gdal.strengthen_relation`
-      per pair, both writing through primary `brain.conn` on the post-
-      response hot path. Read-modify-write with up to N×8 SQL round-trips.
-    - Now: pure resolve + enqueue. The worker's drain does atomic
-      `UPDATE edge_relations SET weight = MIN(MAX, weight + ?)` per
-      pair, no read needed for the strengthen path.
-
-    `stop_counter` is the same counter surface.py used when writing
-    the file — both producer and consumer must agree on the path so
-    consecutive turns don't read each other's files.
-
-    Outcome tally remains so "did Hebbian run?" stays answerable
-    without a debugger.
-    """
-    from itertools import combinations
-    from . import recall_write_queue
-    from servers.scales.s1.surface_contract import surface_selected_path
-
-    outcome = {'file_missing': 0, 'few_ids': 0, 'unresolved': 0,
-               'pairs_enqueued': 0}
-    surface_path = surface_selected_path(session_id, stop_counter)
-    try:
-        if not os.path.exists(surface_path):
-            outcome['file_missing'] = 1
-            return
-
-        with open(surface_path) as f:
-            surface_ids = json.load(f).get('selected_ids', [])
-        if len(surface_ids) < 2:
-            outcome['few_ids'] = 1
-            return
-
-        # Resolve short IDs to full IDs.
-        dal = brain._nodes
-        full_ids = []
-        for sid in surface_ids:
-            full_id = dal.resolve_id(sid)
-            if full_id:
-                full_ids.append(full_id)
-        if len(full_ids) < 2:
-            outcome['unresolved'] = 1
-            return
-
-        # Build all unordered pairs and enqueue in one call. Max C(5, 2)
-        # = 10 pairs when surface picked the typical 3-5 nodes. No
-        # neighbor-cap (the old `min(j, i+8)` was an O(n²) bound that
-        # only mattered when this ran inline; the queue/drain handles
-        # batching naturally).
-        pairs = list(combinations(full_ids, 2))
-        ts = brain.now()
-        try:
-            recall_write_queue.enqueue_hebbian_pairs(pairs, ts)
-            outcome['pairs_enqueued'] = len(pairs)
-        except Exception as e:
-            brain._log_error('hebbian_enqueue', e,
-                             'enqueue_hebbian_pairs failed for %d pairs' %
-                             len(pairs))
-
-    except Exception as e:
-        # Unexpected failure in file-read / ID resolve / outer flow.
-        brain._log_error('hebbian_surface_selected_outer', e,
-                         'surface_path=%s' % surface_path)
-    finally:
-        # Durable tally so "did Hebbian run?" is answerable without a
-        # debugger. log_debug failure routes through _log_error so a
-        # broken logging path doesn't silently hide the outcome.
-        try:
-            brain.log_debug('hebbian_run', 'post_response_common', **outcome)
-        except Exception as _le:
-            try:
-                brain._log_error('hebbian_log_outcome', _le,
-                                 'log_debug failed; outcome=%s' % outcome)
-            except Exception:
-                pass  # last-resort safety; if even _log_error fails, swallow
-
-
 def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None):
     """Append one S0 turn-trace, binding the per-turn invariants in ONE place:
     chain (ctx.s0_chain()), scale ('s0'), and the session (ctx.session_id). The
@@ -644,8 +557,8 @@ def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None):
 
 
 def post_response_common(brain, session_id, user_message, assistant_response):
-    """Shared post-response path: S0 traces, Hebbian strengthening, heartbeat,
-    stop counter increment. Used by prod Stop hook and by the eval harness —
+    """Shared post-response path: S0 traces, heartbeat, stop counter
+    increment. Used by prod Stop hook and by the eval harness —
     same code, same ordering, one source of truth.
 
     Returns the SessionContext after increment.
@@ -688,14 +601,6 @@ def post_response_common(brain, session_id, user_message, assistant_response):
                 summary=(assistant_response[:200] or 'wakeup re-arm'))
     except Exception as e:
         brain._log_error('trace_s0', e, 'post_response_common')
-
-    # Hebbian strengthening reads THIS turn's surface file — a wakeup produces
-    # none, so it's only meaningful (and only run) on conversational turns.
-    if is_conversational:
-        try:
-            _hebbian_strengthen(brain, session_id, ctx.stop_counter)
-        except Exception as e:
-            brain._log_error('hebbian_surface_selected', e, 'post_response_common')
 
     # Session activity bookkeeping (NOT the watch heartbeat above) — every turn.
     try:
@@ -783,9 +688,22 @@ def hook_post_response_track(brain, args, graph_changes):
 
 
 def hook_idle_maintenance(brain, args, graph_changes):
-    """Idle maintenance — dream, consolidate, heal, tune, reflect.
+    """Idle maintenance — edge decay only; everything else has moved or gone.
 
-    Fires on Notification(idle_prompt). Output stored as pending message.
+    Fires on Notification(idle_prompt). That event stopped arriving on
+    2026-07-04 (`idle_fires.log`, written by the hook script itself, has no
+    entry since), so anything left here is best-effort at best. Work that
+    must actually happen was moved to daemon-owned threads: vector coverage
+    to `embed_queue._coverage_sweep`, log retention and the orphan sweep to
+    the DBMaintenance scheduler. Do not add anything load-bearing here.
+
+    Edge decay stays only because it must NOT simply resume — `decay_edges`
+    multiplies the current weight by a factor of the edge's TOTAL age, so it
+    compounds per run rather than being a function of age. With the
+    co_accessed / emergent_bridge EDGE_TYPES entries retired, its only
+    remaining subject is `exemplifies` — hand-authored semantic edges — so
+    after the dormancy one re-armed run would archive most of them in a
+    single pass. That needs the formula fixed before it moves anywhere.
     """
     import datetime
     start_time = datetime.datetime.now()
@@ -806,88 +724,6 @@ def hook_idle_maintenance(brain, args, graph_changes):
     # auto_heal() was proto-S2: dedup, auto-lock, correction consolidation,
     # confidence adjustments. S2 integration units replace all of these.
     # Keeping the code in brain_evolution.py for reference during S2 build.
-
-    # Freshness gate for the hard-destructive sections below (3b vocab
-    # cascade, the orphan arm of 9): an unrecoverable delete never runs more
-    # than ~a day away from a restorable rolling snapshot. Normally a no-op —
-    # the daily scheduler keeps snapshots fresh — it only snapshots inline
-    # after a multi-day daemon outage, and if it can't produce one, the
-    # destructive work is skipped this cycle rather than run with no net.
-    # Both DBs are evaluated unconditionally (no short-circuit): a failing
-    # brain.db gate must not leave brain_logs.db stale on top. Soft ops
-    # (edge decay archives, backfills, log-retention pruning) are recoverable
-    # and stay ungated.
-    try:
-        from servers.db_backup import ensure_backup_fresh
-        brain_fresh = ensure_backup_fresh(brain.db_path)
-        logs_fresh = ensure_backup_fresh(brain.logs_db_path)
-        destructive_ok = brain_fresh and logs_fresh
-    except Exception as gate_err:
-        destructive_ok = False
-        brain._log_error('idle_backup_gate', gate_err, 'idle_maintenance')
-    if not destructive_ok:
-        output.append("BACKUP GATE: no fresh snapshot — destructive "
-                      "maintenance skipped this cycle")
-
-    # 3b. Vocab cleanup — prune junk vocabulary nodes that pollute recall.
-    #     Hard delete → runs only behind the backup freshness gate.
-    try:
-        junk_vocab, single_word_junk = [], []
-        if destructive_ok:
-            # Strategy 1: auto-detected junk (title or content has "auto-detected")
-            junk_vocab = brain.conn.execute("""
-                SELECT id, title FROM nodes
-                WHERE type = 'vocabulary' AND archived = 0
-                AND (content LIKE '%auto-detected%' OR title LIKE '%auto-detected%')
-            """).fetchall()
-
-            # Strategy 2: single-word vocab nodes with no real definition
-            # These match everything in cosine similarity and bury real results
-            single_word_junk = brain.conn.execute("""
-                SELECT id, title FROM nodes
-                WHERE type = 'vocabulary' AND archived = 0
-                AND title NOT LIKE '% %'
-                AND (content IS NULL OR content = '' OR LENGTH(content) < 30)
-                AND confidence < 0.5
-            """).fetchall()
-
-        reasons = {nid: 'auto-detected junk vocabulary'
-                   for nid, _t in junk_vocab}
-        reasons.update({nid: 'single-word vocabulary without definition'
-                        for nid, _t in single_word_junk if nid not in reasons})
-        all_junk = {nid: title for nid, title in junk_vocab + single_word_junk}
-        if all_junk:
-            # One node_deleted manifest row PER node, title included — a hard
-            # delete's trace is the only surviving record of it (ruled
-            # 2026-08-04, plan step 8). The hook path never reaches the
-            # dispatch chokepoint, so this calls the emitter directly.
-            # Emitted per node, IMMEDIATELY after that node's cascade commits:
-            # each cascade is individually durable, so batching the emit
-            # behind the loop would let a mid-loop failure erase earlier
-            # nodes with zero record (review 2026-08-06). Explicit maint
-            # chain at s2 (encoding_source prefix routes the scale).
-            from servers.mutation_emitter import emit_mutation_traces
-            from servers.clock import brain_today
-            maint_chain = ('maint-%s-mutation'
-                           % brain_today(brain).strftime('%Y%m%d'))
-            for nid, title in all_junk.items():
-                cascade = brain.delete_node_cascade(nid)
-                emit_mutation_traces(
-                    brain, 'hook_idle_maintenance',
-                    {'nodes': {'deleted': [{
-                        'node_id': nid,
-                        'type': 'vocabulary',
-                        'title': title or '',
-                        'deleted_by': 's2:idle_maintenance',
-                        'encoding_source': 's2:idle_maintenance',
-                        'reason': reasons.get(nid, ''),
-                        'tables_hit': cascade.get('tables_hit', []),
-                    }]}},
-                    chain_id=maint_chain)
-            output.append("VOCAB CLEANUP: pruned %d junk nodes" % len(all_junk))
-            graph_changes.append("VOCAB_CLEANUP: %d pruned" % len(all_junk))
-    except Exception as e:
-        output.append("VOCAB CLEANUP ERROR: %s" % e)
 
     # 3c. Auto-tune — DISABLED 2026-04-08
     # auto_tune() adjusted brain parameters adaptively. S2 interaction
@@ -953,71 +789,28 @@ def hook_idle_maintenance(brain, args, graph_changes):
 
     # 5. Self-reflection — DISABLED 2026-04-08 (see above)
 
-    # 6. Backfill summaries
-    try:
-        backfill = brain.backfill_summaries(batch_size=50)
-        bf_count = backfill.get("updated", 0)
-        if bf_count > 0:
-            output.append("SUMMARIES: backfilled %d nodes" % bf_count)
-    except Exception as e:
-        brain._log_error('backfill_summaries', e, 'idle_maintenance')
+    # 6. Backfill summaries removed 2026-08-17 — content_summary is written
+    #    synchronously by remember() and revise(); this was a completed
+    #    migration whose only residue is three sub-30-char test nodes that
+    #    _generate_summary correctly refuses to summarize.
 
-    # 7. Backfill ALL vectors (primary, situation, title, high_meta, other_meta, edge_context)
-    # v23: unified backfill replaces backfill_embeddings. Runs single-threaded after S2.
-    try:
-        vec_result = brain.backfill_vectors(batch_size=30)
-        if isinstance(vec_result, dict) and not vec_result.get('error'):
-            total = sum(v for k, v in vec_result.items() if isinstance(v, int))
-            if total > 0:
-                parts = ['%s:%d' % (k, v) for k, v in vec_result.items() if isinstance(v, int) and v > 0]
-                output.append("VECTORS: backfilled %d (%s)" % (total, ', '.join(parts)))
-                graph_changes.append("VECTORS: %d backfilled" % total)
-    except Exception as e:
-        brain._log_error('backfill_vectors', e, 'idle_maintenance')
+    # 7. Vector backfill moved to embed_queue._coverage_sweep — the worker that
+    # already owns embedding, on its own 5s thread. This hook is driven by a
+    # Claude Code Notification/idle_prompt event, so vector coverage — a data
+    # integrity invariant — depended on the editor emitting a UI notification.
 
     # 8. prune_irrelevant_quotes removed 2026-04-13 — fix at encoding time, not after.
 
-    # 9. DB maintenance (prune old logs, clean orphans). Log-retention
-    #    pruning always runs — it reclaims space, and skipping it while the
-    #    freshness gate is failing on a full disk would be a death spiral
-    #    (no space → no snapshot → no pruning → less space). Only the
-    #    destructive orphan sweep is gated: graph_conn=None disables it.
-    try:
-        maint = brain._logs_dal.run_maintenance(
-            graph_conn=brain.conn if destructive_ok else None)
-        total_pruned = maint.get('total_pruned', 0)
-        total_orphans = maint.get('total_orphans', 0)
-        if total_pruned > 0 or total_orphans > 0:
-            parts = []
-            if total_pruned:
-                parts.append("%d log rows pruned" % total_pruned)
-            if total_orphans:
-                parts.append("%d orphans cleaned" % total_orphans)
-            output.append("DB MAINTENANCE: " + ", ".join(parts))
-            # Log details in debug mode
-            for k, v in maint.items():
-                if v > 0 and k not in ('total_pruned', 'total_orphans'):
-                    output.append("  %s: %d" % (k, v))
-    except Exception as e:
-        output.append("DB MAINTENANCE ERROR: %s" % e)
+    # 9. Log retention + orphan sweep moved to the DBMaintenance thread
+    #    (daemon_server._run_logs_maintenance) — scheduled DB work belongs
+    #    beside checkpoint/optimize/backup, which never depended on this hook.
+    #    The backup freshness gate moved with it; it guarded only 3b and 9.
 
     # 10. assess_session_health removed 2026-04-13 — information not action.
 
-    # 11. Deep integrity audit
-    try:
-        from .integrity_audit import deep_integrity_audit
-        findings = deep_integrity_audit(brain)
-        if findings:
-            severe = [f for f in findings if f.get("severity") in ("high", "medium")]
-            if severe:
-                output.append("")
-                output.append("INTEGRITY AUDIT (%d finding(s), %d need attention):" % (len(findings), len(severe)))
-                for f in severe[:5]:
-                    output.append("  [%s] %s: %s" % (f["severity"], f["type"], f["message"]))
-                graph_changes.append("INTEGRITY: %d findings" % len(findings))
-    except Exception as e:
-        output.append("INTEGRITY AUDIT ERROR: %s" % e)
-
+    # 11. Deep integrity audit removed 2026-08-17 — it returned findings into
+    #     `output`, which this fire-and-forget hook discards. Information, not
+    #     action — the same reason 8 and 10 went.
     # Log to dashboard (not additionalContext — idle maintenance is operational, not conversational)
     if output:
         try:

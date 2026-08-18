@@ -97,6 +97,17 @@ CONSOLIDATION_NODE_FORMAT = {
 
 
 # ═══════════════════════════════════════════════════════════════
+# CONSOLIDATION ENRICHMENT LLM CONFIG
+# (stored in interactions table as 's2_consolidation_enrichment' parameters)
+# ═══════════════════════════════════════════════════════════════
+
+CONSOLIDATION_ENRICHMENT = {
+    'model': 'claude-sonnet-4-6',
+    'max_tokens': 32768,
+}
+
+
+# ═══════════════════════════════════════════════════════════════
 # CONSOLIDATION CONFIG
 # ═══════════════════════════════════════════════════════════════
 

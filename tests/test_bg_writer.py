@@ -6,7 +6,6 @@ Covers:
   - Dedup is keyed on (node_id, session_id).
   - Drain produces atomic +1 UPDATEs per dedup'd (node, session) pair.
   - mark_accessed already uses atomic +1 (no read-modify-write).
-  - Hebbian pairs from surface-layer selection (not top-15 cosine).
   - Drain rollback on transaction failure + loud log.
   - Concurrent enqueue from multiple threads doesn't lose work.
   - Worker loop survives an exception in drain_once.
@@ -105,7 +104,7 @@ class TestDedupPerSession(BrainTestBase):
         recall_write_queue.enqueue_access(
             'node1234', 'sess1', '2026-05-18T12:00:02')  # older
         # Snapshot and verify the latest ts wins
-        acc, _ = recall_write_queue._snapshot_and_clear()
+        acc = recall_write_queue._snapshot_and_clear()
         self.assertEqual(acc[('node1234', 'sess1')], '2026-05-18T12:00:05')
 
 
@@ -198,31 +197,36 @@ class TestDrainRollbackOnFailure(BrainTestBase):
         recall_write_queue._clear_for_test()
 
     def test_drain_rollback_logged_and_batch_dropped(self):
-        # Failure-injection via module-level monkey-patch on
-        # _apply_hebbian_pairs. Module functions ARE patchable
-        # (unlike sqlite3.Connection methods, which are read-only).
-        # Raising here forces drain_once into its outer except branch,
+        # Failure-injection via a connection proxy whose executemany
+        # raises (sqlite3.Connection methods are read-only, so we swap
+        # brain.conn_bg_writer for a delegating wrapper instead).
+        # Raising forces drain_once into its outer except branch,
         # which calls conn_bg_writer.rollback() and logs via
         # bg_writer_batch_rollback.
 
+        real_conn = self.brain.conn_bg_writer
+
+        class FailingExecutemany:
+            def __getattr__(self, name):
+                return getattr(real_conn, name)
+
+            def executemany(self, *args, **kwargs):
+                raise RuntimeError('synthetic drain failure for rollback test')
+
         logged = []
         original_log = self.brain._log_error
-        original_apply = recall_write_queue._apply_hebbian_pairs
 
         def log_spy(source, error, context='', ctx=None):
             logged.append((source, str(error)[:60], context[:60]))
             return original_log(source, error, context, ctx)
 
-        def apply_fail(*args, **kwargs):
-            raise RuntimeError('synthetic drain failure for rollback test')
-
         self.brain._log_error = log_spy
-        recall_write_queue._apply_hebbian_pairs = apply_fail
+        self.brain.conn_bg_writer = FailingExecutemany()
 
         try:
-            # Enqueue a hebbian pair so the failing path is reached.
-            recall_write_queue.enqueue_hebbian_pairs(
-                [('a' * 12, 'b' * 12)], '2026-05-18T12:00:00')
+            # Enqueue an access item so the failing path is reached.
+            recall_write_queue.enqueue_access(
+                'a' * 12, 'sess1', '2026-05-18T12:00:00')
 
             recall_write_queue.drain_once(self.brain)
 
@@ -236,221 +240,7 @@ class TestDrainRollbackOnFailure(BrainTestBase):
             self.assertEqual(recall_write_queue.queue_depth(), 0)
         finally:
             self.brain._log_error = original_log
-            recall_write_queue._apply_hebbian_pairs = original_apply
-
-
-class TestHebbianDrainProducesEdges(BrainTestBase):
-    """Phase 5 — surface-selected pairs actually land as co_accessed edges
-    after drain. The original tests covered enqueue but never drained,
-    which hid a real `no such column: last_strengthened` SQL bug that
-    showed up only in production."""
-
-    needs_embedder = False
-
-    def setUp(self):
-        super().setUp()
-        recall_write_queue._clear_for_test()
-
-    def test_drain_creates_co_accessed_edges_for_new_pairs(self):
-        # auto_connect=False so the test owns the edge state — fresh
-        # nodes won't get pre-linked by the "connect to recent" heuristic.
-        nids = []
-        for i in range(3):
-            r = self.brain.remember(
-                type='test', title='heb_drain_%d' % i,
-                content='c%d' % i,
-                auto_connect=False,
-                encoding_source='anchor:test')
-            nids.append(r['id'])
-
-        before = self.brain.conn.execute(
-            "SELECT COUNT(*) FROM edge_relations WHERE relation = 'co_accessed'"
-        ).fetchone()[0]
-
-        recall_write_queue.enqueue_hebbian_pairs(
-            [(nids[0], nids[1]), (nids[1], nids[2]), (nids[0], nids[2])],
-            '2026-05-18T12:00:00')
-
-        recall_write_queue.drain_once(self.brain)
-
-        after = self.brain.conn.execute(
-            "SELECT COUNT(*) FROM edge_relations WHERE relation = 'co_accessed'"
-        ).fetchone()[0]
-
-        # All 3 pairs should have produced co_accessed edges.
-        self.assertEqual(after, before + 3,
-                         'drain did not create edges (before=%d after=%d) — '
-                         'check bg_writer_drain_hebbian errors' %
-                         (before, after))
-
-        # Drain stats should reflect no errors. This is the assertion
-        # that would have caught the no-such-column bug immediately.
-        stats = recall_write_queue.get_stats()
-        self.assertEqual(stats['errors_total'], 0,
-                         'drain reported errors: %d' % stats['errors_total'])
-        self.assertEqual(stats['hebbian_pairs_drained_total'], 3)
-
-    def test_drain_strengthens_existing_co_accessed_edge(self):
-        # Two nodes with a pre-existing co_accessed edge.
-        r1 = self.brain.remember(type='test', title='heb_s_1',
-                                 content='c1', encoding_source='anchor:test')
-        r2 = self.brain.remember(type='test', title='heb_s_2',
-                                 content='c2', encoding_source='anchor:test')
-
-        # First drain — creates the co_accessed relation
-        recall_write_queue.enqueue_hebbian_pairs(
-            [(r1['id'], r2['id'])], '2026-05-18T12:00:00')
-        recall_write_queue.drain_once(self.brain)
-
-        # Snapshot weight before second drain
-        row = self.brain.conn.execute(
-            "SELECT er.weight, e.last_strengthened "
-            "FROM edge_relations er JOIN edges e ON e.edge_id = er.edge_id "
-            "WHERE er.relation = 'co_accessed' AND er.archived = 0 "
-            "  AND ((e.source_id = ? AND e.target_id = ?) OR "
-            "       (e.source_id = ? AND e.target_id = ?))",
-            (r1['id'], r2['id'], r2['id'], r1['id'])).fetchone()
-        self.assertIsNotNone(row, 'first drain failed to create the edge')
-        weight_before, ls_before = row
-
-        # Second drain — should strengthen via UPDATE branch
-        recall_write_queue.enqueue_hebbian_pairs(
-            [(r1['id'], r2['id'])], '2026-05-18T13:00:00')
-        recall_write_queue.drain_once(self.brain)
-
-        row = self.brain.conn.execute(
-            "SELECT er.weight, e.last_strengthened "
-            "FROM edge_relations er JOIN edges e ON e.edge_id = er.edge_id "
-            "WHERE er.relation = 'co_accessed' AND er.archived = 0 "
-            "  AND ((e.source_id = ? AND e.target_id = ?) OR "
-            "       (e.source_id = ? AND e.target_id = ?))",
-            (r1['id'], r2['id'], r2['id'], r1['id'])).fetchone()
-        weight_after, ls_after = row
-
-        self.assertGreater(weight_after, weight_before,
-                           'second drain did not strengthen weight')
-        self.assertEqual(ls_after, '2026-05-18T13:00:00',
-                         'last_strengthened on edges row not updated')
-
-
-class TestHebbianLivenessGate(BrainTestBase):
-    """2026-06-12 — pairs touching an archived node must not mint or
-    strengthen co_accessed edges. Observed in production: a node absorbed
-    by S2 consolidation kept being surfaced from session history; each
-    surface enqueued Hebbian pairs that created LIVE edges to the
-    archived node, making the dead node more reachable each turn."""
-
-    needs_embedder = False
-
-    def setUp(self):
-        super().setUp()
-        recall_write_queue._clear_for_test()
-
-    def test_pair_with_archived_endpoint_is_skipped(self):
-        r1 = self.brain.remember(type='test', title='heb_arch_1',
-                                 content='c1', auto_connect=False,
-                                 encoding_source='anchor:test')
-        r2 = self.brain.remember(type='test', title='heb_arch_2',
-                                 content='c2', auto_connect=False,
-                                 encoding_source='anchor:test')
-        r3 = self.brain.remember(type='test', title='heb_arch_3',
-                                 content='c3', auto_connect=False,
-                                 encoding_source='anchor:test')
-        arch = self.brain.archive_node(r2['id'], archived_by='anchor:test',
-                                       reason='liveness gate test')
-        self.assertTrue(arch.get('ok'))
-
-        # One live pair + two pairs touching the archived node.
-        recall_write_queue.enqueue_hebbian_pairs(
-            [(r1['id'], r3['id']),
-             (r1['id'], r2['id']),
-             (r2['id'], r3['id'])],
-            '2026-06-12T18:00:00')
-        recall_write_queue.drain_once(self.brain)
-
-        rows = self.brain.conn.execute(
-            "SELECT e.source_id, e.target_id FROM edge_relations er "
-            "JOIN edges e ON e.edge_id = er.edge_id "
-            "WHERE er.relation = 'co_accessed' AND er.archived = 0").fetchall()
-        touched = {nid for row in rows for nid in row}
-        self.assertNotIn(r2['id'], touched,
-                         'live co_accessed edge minted to archived node')
-        self.assertIn(r1['id'], touched, 'live pair was wrongly skipped')
-        self.assertIn(r3['id'], touched, 'live pair was wrongly skipped')
-
-        stats = recall_write_queue.get_stats()
-        self.assertEqual(stats['hebbian_pairs_skipped_archived'], 2)
-        # drained counts only the pairs actually processed — skipped pairs
-        # must not be double-counted as drained.
-        self.assertEqual(stats['hebbian_pairs_drained_total'], 1)
-        self.assertEqual(stats['errors_total'], 0)
-
-
-class TestDrainAtomicityMidBatch(BrainTestBase):
-    """Phase 5+8 — verify the drain transaction is truly atomic.
-
-    Earlier rollback test injected failure before any SQL ran. This
-    test seeds a real Hebbian batch (some pairs that strengthen, plus
-    one that triggers a failure mid-way) and asserts that NONE of the
-    pairs leave artifacts — i.e., add_relation does not commit mid-
-    batch and the outer ROLLBACK undoes the entire batch.
-    """
-
-    needs_embedder = False
-
-    def setUp(self):
-        super().setUp()
-        recall_write_queue._clear_for_test()
-
-    def test_mid_batch_failure_rolls_back_all_pairs(self):
-        # Create 3 real nodes for the strengthening pairs.
-        nids = []
-        for i in range(3):
-            r = self.brain.remember(
-                type='test', title='atomic_node_%d' % i,
-                content='c%d' % i, encoding_source='anchor:test')
-            nids.append(r['id'])
-
-        # Snapshot edges count before drain.
-        before = self.brain.conn.execute(
-            "SELECT COUNT(*) FROM edge_relations WHERE relation = 'co_accessed'"
-        ).fetchone()[0]
-
-        # Patch _apply_hebbian_pairs in-place: process one pair
-        # successfully via the real path, then raise on the second.
-        # This is the scenario the production-failure mode looks like.
-        original_apply = recall_write_queue._apply_hebbian_pairs
-        call_count = {'n': 0}
-
-        def apply_partial(brain, conn, snap):
-            # Process all but the last pair using the real implementation;
-            # then raise to simulate a mid-batch failure.
-            original_apply(brain, conn, snap[:-1])
-            call_count['n'] += 1
-            raise RuntimeError('synthetic mid-batch failure')
-
-        recall_write_queue._apply_hebbian_pairs = apply_partial
-        try:
-            # Enqueue 2 pairs. Real DAL writes happen on the first via
-            # the partial-apply; then the synthetic raise should ROLLBACK
-            # both pairs (and any edges they may have inserted).
-            recall_write_queue.enqueue_hebbian_pairs(
-                [(nids[0], nids[1]), (nids[1], nids[2])],
-                '2026-05-18T12:00:00')
-
-            recall_write_queue.drain_once(self.brain)
-
-            # No new co_accessed rows should exist — ROLLBACK undid
-            # whatever the first pair attempted. This is the atomic
-            # contract the bg_writer drain promises.
-            after = self.brain.conn.execute(
-                "SELECT COUNT(*) FROM edge_relations WHERE relation = 'co_accessed'"
-            ).fetchone()[0]
-            self.assertEqual(after, before,
-                             'mid-batch failure left orphaned co_accessed rows '
-                             '(before=%d after=%d)' % (before, after))
-        finally:
-            recall_write_queue._apply_hebbian_pairs = original_apply
+            self.brain.conn_bg_writer = real_conn
 
 
 class TestConcurrentEnqueue(BrainTestBase):
@@ -488,61 +278,6 @@ class TestConcurrentEnqueue(BrainTestBase):
         self.assertEqual(stats['access_enqueued_total'], expected)
 
 
-class TestHebbianAtSurfaceLayer(BrainTestBase):
-    """Phase 5 — Hebbian comes from surface picks (not top-15 cosine).
-
-    Verifies the daemon_hooks._hebbian_strengthen path enqueues pairs
-    based on the surface-selected file, capped at C(picks, 2).
-    """
-
-    needs_embedder = False
-
-    def setUp(self):
-        super().setUp()
-        recall_write_queue._clear_for_test()
-
-    def test_surface_selected_drives_hebbian_pairs(self):
-        from itertools import combinations
-        import json
-        import os
-        import tempfile
-
-        # Create 4 real nodes so resolve_id works
-        ids = []
-        for i in range(4):
-            r = self.brain.remember(
-                type='test', title='heb_node_%d' % i,
-                content='c%d' % i, encoding_source='anchor:test')
-            ids.append(r['id'])
-
-        # Write the surface-selected JSON file (this is what S1 surface
-        # would have written for daemon_hooks._hebbian_strengthen to consume).
-        # Short IDs only — matches surface.py's actual output shape.
-        short_ids = [nid[:8] for nid in ids]
-        session_id = 'hebbian_test_session'
-        stop_counter = 0
-        from servers.scales.s1.surface_contract import surface_selected_path
-        path = surface_selected_path(session_id, stop_counter)
-        try:
-            with open(path, 'w') as f:
-                json.dump({'selected_ids': short_ids}, f)
-
-            from servers.daemon_hooks import _hebbian_strengthen
-            _hebbian_strengthen(self.brain, session_id, stop_counter)
-
-            # Enqueued: C(4, 2) = 6 pairs. NOT 15 (the old cosine top-15
-            # cap is gone) and NOT capped at 8 neighbors (the old
-            # min(j, i+8) heuristic is gone).
-            stats = recall_write_queue.get_stats()
-            self.assertEqual(stats['hebbian_queue_depth'], 6)
-            self.assertEqual(stats['hebbian_enqueued_total'], 6)
-        finally:
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
-
-
 class TestQueueDepthIntrospection(BrainTestBase):
     """Phase 6 — get_stats surfaces what dashboard / health checks need."""
 
@@ -554,13 +289,12 @@ class TestQueueDepthIntrospection(BrainTestBase):
 
     def test_stats_keys(self):
         stats = recall_write_queue.get_stats()
-        for key in ('access_enqueued_total', 'hebbian_enqueued_total',
+        for key in ('access_enqueued_total',
                     'drains_total', 'drains_skipped_empty',
                     'last_drain_at', 'last_drain_took_ms', 'last_drain_size',
-                    'access_drained_total', 'hebbian_pairs_drained_total',
+                    'access_drained_total',
                     'errors_total', 'rollbacks_total',
-                    'overlong_drains_total', 'access_queue_depth',
-                    'hebbian_queue_depth'):
+                    'overlong_drains_total', 'access_queue_depth'):
             self.assertIn(key, stats, 'missing stat: %s' % key)
 
 

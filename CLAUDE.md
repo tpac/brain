@@ -55,7 +55,7 @@ Where each concern lives. The module docstring is the detail — this table is t
 | Aspects (roles for types/relations) | `servers/aspects.py`, `scales/s2/aspects_v1.json` | the JSON's `_schema` key |
 | Corrections | `servers/brain_corrections.py` | docstring |
 | Traces | `servers/brain_traces.py`, `trace_contract.py` | `docs/TRACES-LAYER-DESIGN.md` |
-| Interactions (the K store) | `servers/interaction_seed.py` | the roster lives there |
+| Interactions (the K store) | `servers/interaction_defaults.py`, `servers/interaction_seed.py` | defaults index (name→template,config + validators + fingerprint) in the former; resolution (override overlaid on default) in `brain.get_interaction_prompt/_config/_stamp`; seeding/reconcile in the latter |
 | Scope provenance + the veil | `servers/scopes.py`, `scales/dispatch.py` | `scopes.py` docstring |
 | Node + pipeline contracts | `servers/contract.py`, `pipeline_contract.py` | docstrings |
 | Edge model | `servers/dal_graph.py` | `add_relation` docstring |

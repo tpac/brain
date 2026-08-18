@@ -31,7 +31,7 @@ Run the sync after any register_interaction call so a fresh clone of the
 repo boots with the mature prompts — not a stale v1 baseline. See
 tests/test_prompt_sync.py for the contract check.
 
-Config-only interactions (voice_surface, boot, pre_edit, etc.) have no
+Config-only interactions (trace_recording, scopes, s2_community) have no
 template files — their behavior lives mostly in code, not in a prompt.
 """
 import json
@@ -39,7 +39,6 @@ import os
 
 from .dal_logs import (AUTO_V1_PROVENANCE, BACKSTOP_PROVENANCE,
                        RECONCILE_PROVENANCE)
-from .scales.s1.scouts.contract import FACTS_OUTPUT_SCHEMA
 
 
 # Surface prompt seed lives in scales/s1/surface_prompt.py (beside its
@@ -55,158 +54,26 @@ from .scales.s1.scouts.contract import FACTS_OUTPUT_SCHEMA
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Parameter defaults per interaction (fresh-brain v1 values).
+# Parameter defaults per interaction.
+#
+# Each config default lives in its CONSUMER's contract file (one default home
+# per interaction) and is imported here by the seed/shipped roster:
+#   s1e                    → scales/s1/encode_contract.S1E_INTERACTION_DEFAULT
+#   surface                → scales/s1/surface_contract.SURFACE_INTERACTION_DEFAULT
+#   s1_scout_*             → scales/s1/scouts/contract.SCOUT_*_INTERACTION_DEFAULT
+#   s2_community_enrichment    → scales/s2/community_contract.COMMUNITY_ENRICHMENT
+#   s2_consolidation_enrichment → scales/s2/consolidation_contract.CONSOLIDATION_ENRICHMENT
+#   s2_healer              → scales/s2/healer_contract.HEALER_INTERACTION_DEFAULT
+#   s2_aspects             → scales/s2/aspect_contract.ASPECT_INTERACTION_DEFAULT
+#   recall_query_expansion → recall_expansion_prompt.RECALL_EXPANSION_INTERACTION_DEFAULT
+#   trace_recording / scopes / s2_community → already contract-owned
+#     (trace_contract / scopes / community_contract)
+#
+# boot, voice_surface, pre_edit, signal_assembler carry NO config default and
+# are no longer seeded at all: every key was grepped reader-less (pre_edit's
+# plausible keys are read from brain_meta via Brain.get_config, a different
+# store). Their rows on existing installs are inert history.
 # ═══════════════════════════════════════════════════════════════════════
-
-# Mirrors production-ACTIVE parameters exactly. `layout` is the ONLY key
-# the runtime reads from this config (surface.py picks the user-content
-# renderer with it); prompt-size limits live in surface_contract.SURFACE.
-SURFACE_CONFIG_V1 = {
-    "layout": "xml_v13",
-}
-
-# Mirrors the production-ACTIVE config (DB v35): `effort` + `model`. Every
-# other key that used to live here is read from `encode_contract.ENCODING_AGENT`,
-# not from this interaction — encode.py reads ENCODING_AGENT['max_messages'],
-# ENCODING_AGENT['journal_entry_limit'], and so on. They were dead config here,
-# and keeping them would teach the wrong owner. `effort` and `model` ARE live
-# reads (encode.py → the API's output_config.effort / run_llm_loop's model).
-S1E_CONFIG_V1 = {
-    "effort": "medium", "model": "claude-sonnet-4-6",
-}
-
-# Recall-lane query expansion (brain_recall._expand_query_via_llm). Live
-# reads: `model`, `max_tokens`. Deliberately NOT in shipped_prompts():
-# expansion is env-gated off by default (BRAIN_QUERY_EXPANSION), and the
-# shipped roster excludes machinery that never runs — add it there the day
-# the flag defaults on.
-RECALL_QUERY_EXPANSION_CONFIG_V1 = {
-    "model": "claude-haiku-4-5", "max_tokens": 200,
-}
-
-# Mirrors the production-ACTIVE config (DB v24). The model was a DATED id
-# (`claude-haiku-4-5-20251001`) while production had long since moved to sonnet;
-# a dated id is exactly what the API retires out from under a frozen install.
-# `./dev sync-prompts --check` now reports drift between these dicts and the
-# active config, because the template half is machine-synced and the config half
-# is not — which is how this rotted unnoticed.
-S2_COMMUNITY_ENRICHMENT_CONFIG_V1 = {
-    "model": "claude-sonnet-4-6", "max_tokens": 32768,
-}
-
-S2_CONSOLIDATION_ENRICHMENT_CONFIG_V1 = {
-    "model": "claude-sonnet-4-6", "max_tokens": 32768,
-}
-
-S2_HEALER_CONFIG_V1 = {
-    "model": "claude-haiku-4-5", "max_tokens": 4096,
-}
-
-S2_ASPECTS_CONFIG_V1 = {
-    "model": "claude-sonnet-4-6", "max_tokens": 8192,
-}
-
-# ── S1 Scout configs ──────────────────────────────────────────────────
-# Each scout is its own interaction (s1_scout_<name>). The `template` field
-# carries the per-scout task prompt (seeded from prompts/<name>_prompt.py).
-# `parameters.category_statement` is the single-line teaching the scout
-# emits verbatim — S1S reads it every cycle to internalize the atom-kind
-# palette without being taught a taxonomy. Temporal is algo-first; its
-# template is a Haiku fallback reserved for v2.
-
-S1_SCOUT_QUOTE_CATEGORY = (
-    "Phrases echoed across turns or that ground multiple concepts should be "
-    "quote atoms — title = the phrase verbatim. Operator voice signatures "
-    "and load-bearing phrasings carry recall weight that paraphrases can't "
-    "replace."
-)
-
-S1_SCOUT_TEMPORAL_CATEGORY = (
-    "Dates mentioned in conversation — relative ('2 weeks ago') or absolute "
-    "('March 15') — should become time_anchor bridges so events fan in around "
-    "shared date pivots. Reuse existing time_anchor nodes from the catalog; "
-    "create new ones only when absent."
-)
-
-S1_SCOUT_FACTS_CATEGORY = (
-    "Entity-feature-value facts with evidence — the specific things future "
-    "queries will ask for. When an entity is mentioned with a concrete "
-    "attribute (quantity, count, name, preference, setting), that triple "
-    "deserves its own handle in the graph."
-)
-
-S1_SCOUT_QUOTE_CONFIG_V1 = {
-    "model": "claude-haiku-4-5",
-    "max_candidates": 3,
-    "max_tokens": 2000,
-    "timeout_seconds": 25,
-    "category_statement": S1_SCOUT_QUOTE_CATEGORY,
-}
-
-S1_SCOUT_TEMPORAL_CONFIG_V1 = {
-    # Algorithmic scout — no primary LLM call. model reserved for fallback.
-    "model": "claude-haiku-4-5",
-    "max_candidates": 8,
-    "max_tokens": 1500,
-    "timeout_seconds": 10,
-    "category_statement": S1_SCOUT_TEMPORAL_CATEGORY,
-    # dateparser post-filter switches
-    "prefer_dates_from": "past",
-    "weekday_requires_modifier": True,
-    "filter_time_only_phrases": True,
-}
-
-# Mirrors the production-ACTIVE config (DB v7). `output_schema` is the reason a
-# fresh install extracts facts the same way production does: `scouts/base.py:147`
-# reads it off this config and gates the Structured Outputs request on it, so a
-# seed without it boots the one scout production musters onto the free-text
-# parsing path. The schema lives in the scouts contract, not inline — it is ~90
-# lines of wire shape, and `contract.py` already owns scout I/O.
-#
-# It is embedded BY REFERENCE, so editing FACTS_OUTPUT_SCHEMA changes what every
-# fresh brain seeds with no other deliberate act — that is why the constant must
-# track ACTIVE and a candidate awaiting an eval lives in the DB. See the
-# invariant note at the constant before touching it.
-#
-# max_tokens is coupled to the schema, not cosmetic: every candidate carries all
-# nine fields, so a capped 6-candidate response runs materially longer than the
-# free-text path produced.
-S1_SCOUT_FACTS_CONFIG_V1 = {
-    "model": "claude-haiku-4-5",
-    "max_candidates": 6,
-    "max_tokens": 5000,
-    "timeout_seconds": 25,
-    "category_statement": S1_SCOUT_FACTS_CATEGORY,
-    "output_schema": FACTS_OUTPUT_SCHEMA,
-}
-
-VOICE_CONFIG_V1 = {
-    "content_truncation": 400, "situation_truncation": 150,
-    "quote_truncation": 150, "max_edges": 3,
-    "node_title_max": 70, "edge_title_max": 40,
-}
-
-BOOT_CONFIG_V1 = {
-    "boot_nodes_limit": 3, "boot_nodes_truncation": 200,
-    "operator_quotes_limit": 2, "operator_quotes_truncation": 120,
-    "self_knowledge_limit": 3, "self_knowledge_truncation": 150,
-    "session_decisions_limit": 4, "session_decisions_truncation": 100,
-}
-
-PRE_EDIT_CONFIG_V1 = {
-    "recall_pool_multiplier": 2, "suggestion_limit": 5,
-    "encoding_health_stale_edits": 8, "encoding_health_stale_minutes": 5,
-    "encoding_health_none_minutes": 3, "context_files_limit": 3,
-    "context_files_truncation": 200,
-}
-
-SIGNAL_CONFIG_V1 = {
-    "budget_chars": 6000, "max_proactive_signals": 5,
-    "reminder_priority": 0.80, "reminder_preempt_threshold_hours": 24,
-    "reminder_cooldown_seconds": 300, "encoding_gap_session_minutes": 20,
-    "encoding_gap_priority": 0.50, "encoding_gap_cooldown_seconds": 600,
-    "encoding_gap_max_surfaces": 3,
-}
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -283,15 +150,21 @@ def shipped_prompts():
     from .scales.s2.aspect_prompt import SYSTEM_PROMPT as ASP
     from .scales.s1.scouts.prompts.facts_prompt import SYSTEM_PROMPT as SF
     from .scales.s1.surface_prompt import SYSTEM_PROMPT as SURF
+    from .scales.s1.encode_contract import S1E_INTERACTION_DEFAULT
+    from .scales.s1.surface_contract import SURFACE_INTERACTION_DEFAULT
+    from .scales.s1.scouts.contract import SCOUT_FACTS_INTERACTION_DEFAULT
+    from .scales.s2.community_contract import COMMUNITY_ENRICHMENT
+    from .scales.s2.consolidation_contract import CONSOLIDATION_ENRICHMENT
+    from .scales.s2.healer_contract import HEALER_INTERACTION_DEFAULT
+    from .scales.s2.aspect_contract import ASPECT_INTERACTION_DEFAULT
     return {
-        's1e': (S1E, S1E_CONFIG_V1),
-        'surface': (SURF, SURFACE_CONFIG_V1),
-        's2_community_enrichment': (COMM, S2_COMMUNITY_ENRICHMENT_CONFIG_V1),
-        's2_consolidation_enrichment': (CONS,
-                                        S2_CONSOLIDATION_ENRICHMENT_CONFIG_V1),
-        's2_healer': (HEAL, S2_HEALER_CONFIG_V1),
-        's2_aspects': (ASP, S2_ASPECTS_CONFIG_V1),
-        's1_scout_facts': (SF, S1_SCOUT_FACTS_CONFIG_V1),
+        's1e': (S1E, S1E_INTERACTION_DEFAULT),
+        'surface': (SURF, SURFACE_INTERACTION_DEFAULT),
+        's2_community_enrichment': (COMM, COMMUNITY_ENRICHMENT),
+        's2_consolidation_enrichment': (CONS, CONSOLIDATION_ENRICHMENT),
+        's2_healer': (HEAL, HEALER_INTERACTION_DEFAULT),
+        's2_aspects': (ASP, ASPECT_INTERACTION_DEFAULT),
+        's1_scout_facts': (SF, SCOUT_FACTS_INTERACTION_DEFAULT),
     }
 
 
@@ -477,7 +350,17 @@ def seed_interactions(brain):
     from .scales.s1.scouts.prompts.temporal_prompt import SYSTEM_PROMPT as S1_SCOUT_TEMPORAL_PROMPT
     from .scales.s1.scouts.prompts.facts_prompt import SYSTEM_PROMPT as S1_SCOUT_FACTS_PROMPT
     from .scales.s1.surface_prompt import SYSTEM_PROMPT as SURFACE_PROMPT
-    from .recall_expansion_prompt import SYSTEM_PROMPT as RECALL_EXPANSION_PROMPT
+    from .recall_expansion_prompt import (SYSTEM_PROMPT as RECALL_EXPANSION_PROMPT,
+                                          RECALL_EXPANSION_INTERACTION_DEFAULT)
+    from .scales.s1.encode_contract import S1E_INTERACTION_DEFAULT
+    from .scales.s1.surface_contract import SURFACE_INTERACTION_DEFAULT
+    from .scales.s1.scouts.contract import (SCOUT_QUOTE_INTERACTION_DEFAULT,
+                                            SCOUT_TEMPORAL_INTERACTION_DEFAULT,
+                                            SCOUT_FACTS_INTERACTION_DEFAULT)
+    from .scales.s2.community_contract import COMMUNITY_ENRICHMENT
+    from .scales.s2.consolidation_contract import CONSOLIDATION_ENRICHMENT
+    from .scales.s2.healer_contract import HEALER_INTERACTION_DEFAULT
+    from .scales.s2.aspect_contract import ASPECT_INTERACTION_DEFAULT
 
     existing = {i['name'] for i in brain.list_interactions()}
 
@@ -493,15 +376,15 @@ def seed_interactions(brain):
     # 's1e' is the current name (only 's1e' is seeded / read at runtime).
     # 'encoding_agent' was the legacy name; its DB rows are inert history and
     # the runtime fallback to it was removed (see s1/encode.py).
-    _register('s1e', S1E_PROMPT, S1E_CONFIG_V1, 'anchor')
+    _register('s1e', S1E_PROMPT, S1E_INTERACTION_DEFAULT, 'anchor')
     _register('s2_community_enrichment', S2_COMMUNITY_PROMPT,
-              S2_COMMUNITY_ENRICHMENT_CONFIG_V1, 's2:community_detection')
+              COMMUNITY_ENRICHMENT, 's2:community_detection')
     _register('s2_consolidation_enrichment', S2_CONSOLIDATION_PROMPT,
-              S2_CONSOLIDATION_ENRICHMENT_CONFIG_V1, 's2:consolidation')
+              CONSOLIDATION_ENRICHMENT, 's2:consolidation')
     _register('s2_healer', S2_HEALER_PROMPT,
-              S2_HEALER_CONFIG_V1, 's2:healer')
+              HEALER_INTERACTION_DEFAULT, 's2:healer')
     _register('s2_aspects', S2_ASPECTS_PROMPT,
-              S2_ASPECTS_CONFIG_V1, 's2:aspect_integration')
+              ASPECT_INTERACTION_DEFAULT, 's2:aspect_integration')
 
     # S1 Scouts — each is its own interaction entry. The runtime reads
     # interaction.template for the per-scout task prompt (LLM scouts only;
@@ -509,24 +392,25 @@ def seed_interactions(brain):
     # the single-line teaching S1S sees in every scout report. Learnable
     # boundary — S3 will optimize each scout independently once built.
     _register('s1_scout_quote',     S1_SCOUT_QUOTE_PROMPT,
-              S1_SCOUT_QUOTE_CONFIG_V1,     'anchor')
+              SCOUT_QUOTE_INTERACTION_DEFAULT,     'anchor')
     _register('s1_scout_temporal',  S1_SCOUT_TEMPORAL_PROMPT,
-              S1_SCOUT_TEMPORAL_CONFIG_V1,  'anchor')
+              SCOUT_TEMPORAL_INTERACTION_DEFAULT,  'anchor')
     _register('s1_scout_facts',     S1_SCOUT_FACTS_PROMPT,
-              S1_SCOUT_FACTS_CONFIG_V1,     'anchor')
+              SCOUT_FACTS_INTERACTION_DEFAULT,     'anchor')
 
     # Recall-lane query expansion — read by brain_recall._expand_query_via_llm
     # when BRAIN_QUERY_EXPANSION is enabled. Registered on every install (this
     # seed runs per-name-if-missing at each boot), advanced by the fleet only
-    # if it ever joins shipped_prompts() (see RECALL_QUERY_EXPANSION_CONFIG_V1).
+    # if it ever joins shipped_prompts() (see RECALL_EXPANSION_INTERACTION_DEFAULT
+    # in recall_expansion_prompt.py).
     _register('recall_query_expansion', RECALL_EXPANSION_PROMPT,
-              RECALL_QUERY_EXPANSION_CONFIG_V1, 'anchor')
+              RECALL_EXPANSION_INTERACTION_DEFAULT, 'anchor')
 
     # Short-template / config-only interactions (prompts inline).
     # 'judge' was renamed to 'surface' in commit 620fb4f (2026-05-03);
     # this seed only knows about 'surface'. Old 'judge' rows in older
     # brains are orphans — clean them out manually if they exist.
-    _register('surface', SURFACE_PROMPT, SURFACE_CONFIG_V1, 'anchor')
+    _register('surface', SURFACE_PROMPT, SURFACE_INTERACTION_DEFAULT, 'anchor')
     # Payload-recorder gates (docs/TRACE-MODES-DESIGN.md): modes as named
     # config versions — v1 normal (auto-activates), v2 debug (dormant).
     # "Entering debug" = set_interaction_active('trace_recording', 2).
@@ -547,17 +431,16 @@ def seed_interactions(brain):
         brain.register_interaction('trace_recording', template='',
                                    parameters=json.dumps(TRACE_RECORDING_DEBUG),
                                    created_by='anchor')
-    _register('voice_surface', '', VOICE_CONFIG_V1, 'anchor')
+    # boot / voice_surface / pre_edit / signal_assembler — NOT seeded: every
+    # config key was grepped reader-less (see the defaults note at the top of
+    # this file), and a row with no template and no config serves nobody.
+    # Rows on existing installs are inert history (collapse policy: ADOPT).
     # Scope policy (servers/scopes.py) — config-only. Per-dimension modes
     # (open/scoped/isolated) + per-value overrides; 'scoped' everywhere is
     # the behavior-neutral default (the LAF lane is unfitted, isolation is
     # opt-in). Edit via register_interaction + set_interaction_active.
     from .scopes import SCOPES_CONFIG_V1
     _register('scopes', '', SCOPES_CONFIG_V1, 'anchor')
-    _register('boot', '', BOOT_CONFIG_V1, 'anchor')
-    _register('pre_edit', '', PRE_EDIT_CONFIG_V1, 'anchor')
-    _register('signal_assembler', '', SIGNAL_CONFIG_V1, 'anchor')
-
     # s2_community config knob (distinct from enrichment prompt — this is
     # decoder parameters, not an LLM template).
     from .scales.s2.community_contract import COMMUNITY_DETECTION

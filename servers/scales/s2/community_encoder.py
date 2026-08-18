@@ -405,15 +405,9 @@ class CommunityEncoder(IntegrationUnit):
 
         system_prompt = self.brain.get_interaction_prompt(
             's2_community_enrichment')
-        config = self._get_interaction_config('s2_community_enrichment') or {}
-        model = config.get('model', self.config.get(
-            'model', 'claude-haiku-4-5-20251001'))
-        max_tokens = config.get('max_tokens', self.config.get(
-            'max_tokens', 32768))
-
-        if not system_prompt:
-            print('[s2ce] WARNING: no enrichment prompt', flush=True)
-            return None
+        config = self.brain.get_interaction_config('s2_community_enrichment')
+        model = config['model']
+        max_tokens = config['max_tokens']
 
         # Prompt closers — the edge-aspect vocabulary, then the journal
         # component's system-tail decoration (review block + closure, DONE

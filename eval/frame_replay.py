@@ -68,7 +68,6 @@ def _capture_one(brain, ctx, spec):
     from servers.scales.s1.surface import run_surface
     from servers.pipeline_contract import CANDIDATE_POOL
     from servers.scales.s1.surface_contract import select_edges, recall_score
-    from servers.daemon_config import brain_tmp_dir
     import numpy as np
 
     qid = spec["id"]
@@ -144,16 +143,20 @@ def _capture_one(brain, ctx, spec):
         surface_err = repr(e)
     surface_ms = (time.time() - t1) * 1000
 
-    # Read back what surface saved (selected_ids file). The path encodes
-    # session + stop_counter — both written by run_surface. Honor BRAIN_TMP_DIR
-    # via brain_tmp_dir() so the readback matches the WRITER under an isolated
-    # eval run (concurrent runs don't collide on /tmp).
-    selected_path = os.path.join(brain_tmp_dir(), "brain-%s-%d-surface-selected.json" % (
-        ctx.session_id, ctx.stop_counter))
+    # Read back what surface saved: the surface_selected K trace's ref_id is
+    # the JSON list of surfaced short ids (the tmp-file handoff was retired
+    # with the co_accessed family). Latest event for this session = this
+    # query's selection; run_surface writes it in the same call, so gate on
+    # the surface call having succeeded.
     selected_ids = []
-    if os.path.exists(selected_path):
+    if surface_err is None:
         try:
-            selected_ids = json.load(open(selected_path)).get("selected_ids", [])
+            evts = brain.query_traces(
+                scale='s1', ref_type='surface_selected',
+                session_id=ctx.session_id, hours=None, limit=1).get(
+                    'events') or []
+            if evts:
+                selected_ids = json.loads(evts[0].get('ref_id') or '[]')
         except Exception:
             pass
 

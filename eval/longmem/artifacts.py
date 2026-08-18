@@ -384,13 +384,11 @@ class EvalArtifactsDumper:
 
         Returns: {'encoder_calls': N, 'surface_calls': M, 'errors': E}
         """
-        import glob
         import shutil
         from eval.longmem.fresh_brain import capture_files_for
-        # Both env vars are set per-run by fresh_brain.create_fresh_eval_brain
-        # (to the item brain dir), so concurrent runs can't cross-copy.
+        # Set per-run by fresh_brain.create_fresh_eval_brain (to the item
+        # brain dir), so concurrent runs can't cross-copy.
         db_dir = os.environ.get('BRAIN_DB_DIR', '')
-        tmp_dir = os.environ.get('BRAIN_TMP_DIR', '/tmp')
         out_dir = self.run_dir / 'agent_calls'
         out_dir.mkdir(exist_ok=True)
         encoder_n = 0
@@ -419,16 +417,9 @@ class EvalArtifactsDumper:
                     surface_n += 1
                 except Exception:
                     errors += 1
-            # Surface dumps — operational state file, one per query (typically
-            # 1 per item but eval may have multiple if the query phase re-fires).
-            for src in glob.glob(os.path.join(tmp_dir, f'brain-{sid}-*-surface-selected.json')):
-                try:
-                    name = os.path.basename(src).replace(
-                        f'brain-{sid}-', f'surface_{sid[:8]}_')
-                    shutil.copy2(src, out_dir / name)
-                    surface_n += 1
-                except Exception:
-                    errors += 1
+            # (The per-query surface-selected tmp file was retired with the
+            # co_accessed family — the surfaced ids live in the
+            # surface_selected trace, which dump_recall already records.)
         stats = {'encoder_calls': encoder_n, 'surface_calls': surface_n,
                  'errors': errors}
         self._write_json('agent_calls/_manifest.json', stats)

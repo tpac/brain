@@ -35,11 +35,11 @@ ALLOWED = {
     'brain.py': 3,                        # _log_error/_log_warning/log_debug INSERTs migrated to LogsDAL.write_event (2026-06-26); remaining: _check_logs_db_size prune DELETEs (2) + 1 INSERT
     'brain_assembly.py': 5,               # exception: health-check / integrity audit + ping
     'brain_connections.py': 1,
-    'brain_remember.py': 5,               # pending: deferred 3c; enrichment DELETEs consolidated into VectorDAL.delete_for_node
+    'brain_remember.py': 4,               # pending: deferred 3c; enrichment DELETEs consolidated into VectorDAL.delete_for_node
     'daemon_server.py': 1,
     'dispatch_observability.py': 4,       # exception: observability writes
     'dispatch_ops.py': 1,
-    'recall_write_queue.py': 3,           # exception: bg-writer connection (off foreground), batched
+    'recall_write_queue.py': 1,           # exception: bg-writer connection (off foreground), batched
     'scales/s2/rejection_table.py': 2,    # exception: owns all s2_rejections SQL — record_rejections INSERT + clear_unplaceable_rejections DELETE (relocated out of community.py)
     'scales/self_channel/signal.py': 4,   # exception: parallel-stream file (SelfChannelDAL out of this effort)
     # temporal_extraction.py: 0 — entity_dates writes migrated to EntityDatesDAL (Phase 5)

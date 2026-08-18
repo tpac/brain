@@ -6,7 +6,7 @@ Interaction: 'surface' in interactions table (learnable boundary)
 
 Triggered by: hook_recall (UserPromptSubmit) in daemon_hooks.py
 Reads: recall candidates from brain.recall(), interactions table
-Writes: S1 traces (O/K/Δ), tmp files for Hebbian + dashboard
+Writes: S1 traces (O/K/Δ)
 """
 
 import json
@@ -87,8 +87,10 @@ def _call_surface(brain, candidates_data, user_message,
                   scope=None):
     """Call Haiku to surface relevant nodes from candidates.
 
-    Returns: (surfaced_dict, surface_prompt, max_tokens, interaction_id, telemetry)
+    Returns: (surfaced_dict, surface_prompt, max_tokens, stamp, telemetry)
         surfaced_dict has 'selected' list. Empty on failure.
+        stamp is the K-provenance dict from brain.get_interaction_stamp
+        ('fingerprint'/'source'/'version'/'id') for the trace writers.
         telemetry is the shared run-cost dict (build_run_telemetry kwargs:
         token counts + elapsed_ms + rounds + truncated) for the K trace.
 
@@ -114,26 +116,17 @@ def _call_surface(brain, candidates_data, user_message,
     # field — the regex classifier and the field were both removed.)
     retrieval_stats = result.get('_retrieval_stats') if isinstance(result, dict) else None
 
-    # interaction_seed.py guarantees 'surface' is registered on every boot.
-    surface_interaction = brain.get_interaction('surface')
-    if not surface_interaction or not surface_interaction.get('template'):
-        raise RuntimeError(
-            "S1 Surface: no 'surface' interaction registered in "
-            "brain_logs.db. interaction_seed should have populated "
-            "this on Brain construction — check seed/DAL state.")
-    surface_instructions = surface_interaction['template']
-    interaction_id = surface_interaction.get('id')
+    # Resolved through the override model: DB override (if any) overlaid on
+    # the code default — total by construction.
+    surface_instructions = brain.get_interaction_prompt('surface')
+    # K-provenance stamp ({'fingerprint','source','version','id'}) — threaded
+    # to the trace writers and the replay capture as one dict.
+    stamp = brain.get_interaction_stamp('surface')
 
     # Layout rides in the interaction CONFIG ({"layout": "xml_v13"}), so a
     # version flip changes template and renderer atomically — a v13 template
     # can never run against the legacy user content or vice versa.
-    layout = 'legacy'
-    try:
-        layout = (brain.get_interaction_config('surface') or {}).get(
-            'layout', 'legacy')
-    except Exception as _cfg_err:
-        brain._log_error('surface_layout_config', _cfg_err,
-                         'reading layout from surface interaction config')
+    layout = brain.get_interaction_config('surface')['layout']
 
     # Presentation shuffle (2026-07-14, RECALL-SR-REDESIGN.md §20.12 A2):
     # the menu Haiku sees is a deterministic per-turn shuffle of the
@@ -179,8 +172,7 @@ def _call_surface(brain, candidates_data, user_message,
         retrieval_stats=retrieval_stats, frame=frame, layout=layout,
         shuffle_seed=shuffle_seed, scope=scope,
         surface_instructions=surface_instructions,
-        interaction_version=surface_interaction.get('version'),
-        interaction_id=interaction_id, user_content=user_content,
+        interaction_stamp=stamp, user_content=user_content,
         max_tokens=max_tokens, variant=variant, model=SURFACE_MODEL,
         session_id=session_id)
 
@@ -252,7 +244,7 @@ def _call_surface(brain, candidates_data, user_message,
     elif surfaced is None:
         surfaced = {"selected": []}
 
-    return surfaced, surface_prompt, max_tokens, interaction_id, telemetry
+    return surfaced, surface_prompt, max_tokens, stamp, telemetry
 
 
 def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
@@ -745,7 +737,7 @@ def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
 
 def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
                   graph_neighbors, additional_context, enriched, results,
-                  recall_ref, interaction_id, session_id, expansion=None,
+                  recall_ref, stamp, session_id, expansion=None,
                   frame='', telemetry=None, pt=None, selection_reason='',
                   seen_dropped=0, judge_pointer=None):
     """Write S1 surface traces: O (candidates), K (surfaced), Δ (additionalContext).
@@ -933,10 +925,13 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
                  dropped=dropped_short,
                  outcomes_per_candidate=outcomes_per_candidate,
                  content=additional_context or '',
+                 interaction_fingerprint=(stamp or {}).get('fingerprint', ''),
+                 interaction_source=(stamp or {}).get('source', ''),
+                 interaction_version=(stamp or {}).get('version', 0),
                  expanded=exp_detail,
                  query=enriched[:500],
              ),
-             interaction_id=interaction_id,
+             interaction_id=(stamp or {}).get('id'),
              session_id=session_id),
     ])
 
@@ -961,9 +956,9 @@ def _drop_archived_selected(brain, selected_mode, selected_short_ids):
 
     Mutates selected_mode (full-id keyed) and selected_short_ids (8-char
     set), and logs an ERROR per event — operator mandate: an archived node
-    being picked anywhere must be loud, never stat-only. The surfaced-ids
-    file is written by the caller AFTER this gate — single write site, only
-    the filtered set ever lands on disk.
+    being picked anywhere must be loud, never stat-only. Runs BEFORE
+    seeding and the surface_selected trace, so a dead id never seeds
+    spread or re-enters the recently-surfaced loop.
 
     Returns the list of dropped full ids (for tests / callers).
     """
@@ -974,8 +969,7 @@ def _drop_archived_selected(brain, selected_mode, selected_short_ids):
     except Exception as e:
         brain._log_error(
             'surface_liveness_gate', e,
-            'archived check failed — selection passes unfiltered '
-            '(hebbian drain gate backstops)')
+            'archived check failed — selection passes unfiltered')
         return []
     dead = sorted(nid for nid in selected_mode if nid in archived)
     if not dead:
@@ -990,25 +984,6 @@ def _drop_archived_selected(brain, selected_mode, selected_short_ids):
         'liveness gate in run_surface; the id came from session history '
         '(conversation / recently-surfaced block), not the candidate menu')
     return dead
-
-
-def _write_surface_selected_file(brain, session_id, stop_counter, short_ids):
-    """Single write site for the per-turn surfaced-ids file.
-
-    Hebbian + Stop hook read it. Path is scoped to session_id +
-    stop_counter so consecutive turns don't overwrite each other's
-    surface output before the Stop hook reads it (the counter
-    increments AFTER post_response_common). Called once per
-    run_surface, after the liveness gate, so only the filtered
-    selection ever lands on disk.
-    """
-    from servers.scales.s1.surface_contract import surface_selected_path
-    try:
-        with open(surface_selected_path(session_id, stop_counter), 'w') as f:
-            json.dump({"selected_ids": list(short_ids)}, f)
-    except Exception as e:
-        brain._log_error('surface_selected_write', e,
-                         'writing surface-selected file')
 
 
 def run_surface(brain, ctx, candidates_data, user_message,
@@ -1043,7 +1018,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
     scope = brain.session_scope(session_id)
 
     # Call Haiku selector (unchanged — picks ≤5 from 25 candidates)
-    surfaced, surface_prompt, max_tokens, interaction_id, telemetry = _call_surface(
+    surfaced, surface_prompt, max_tokens, stamp, telemetry = _call_surface(
         brain, candidates_data, user_message, recent_messages,
         session_id, result, frame=frame, scope=scope)
     _mark('surface_haiku')
@@ -1059,14 +1034,12 @@ def run_surface(brain, ctx, candidates_data, user_message,
         session_id, None)
 
     if not selected:
-        _write_surface_selected_file(brain, session_id, ctx.stop_counter,
-                                     set())
         judge_ptr = _record_judge_payload(ctx, recall_ref, surface_prompt,
                                           "(no selection)", brain)
         try:
             _write_traces(brain, ctx, candidates_data, set(), [], [],
                           None, enriched, results,
-                          recall_ref, interaction_id, session_id,
+                          recall_ref, stamp, session_id,
                           frame=frame, telemetry=telemetry, pt=pt,
                           selection_reason=selection_reason,
                           seen_dropped=((result.get('_retrieval_stats') or {})
@@ -1180,9 +1153,9 @@ def run_surface(brain, ctx, candidates_data, user_message,
                     'no node — pick dropped' % raw_id,
                     'sanitized=%s session=%s' % (short_id, session_id))
 
-    # Trace + Hebbian-file input derives from what actually RESOLVED, so a
-    # recovered pick lands as its real short id (not the corrupted emission)
-    # and unresolvable ids never leak downstream.
+    # Trace input derives from what actually RESOLVED, so a recovered pick
+    # lands as its real short id (not the corrupted emission) and
+    # unresolvable ids never leak downstream.
     selected_short_ids = {fid[:8] for fid in selected_mode}
 
     # Liveness gate — Haiku's prompt carries node ids in historical text
@@ -1203,8 +1176,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
     # a walled id must not become a spread seed or render. Veil failure
     # fails CLOSED for the surfacing (selection purged, turn survives) —
     # scope_veil deliberately raises on a first-build failure, and an
-    # unguarded raise here would take the whole turn's traces and Hebbian
-    # file with it.
+    # unguarded raise here would take the whole turn's traces with it.
     try:
         _veil = brain.scope_veil(session_id)
     except Exception as _veil_err:
@@ -1225,11 +1197,6 @@ def run_surface(brain, ctx, candidates_data, user_message,
                 RuntimeError('walled node %s reached selection — dropped '
                              '(isolation veil)' % _wid[:8]),
                 'session=%s' % session_id)
-
-    # Surfaced-ids file (Hebbian + Stop hook input) — written once,
-    # after the gate, so only the filtered selection lands on disk.
-    _write_surface_selected_file(brain, session_id, ctx.stop_counter,
-                                 selected_short_ids)
 
     _mark('surface_id_resolve')
 
@@ -1282,7 +1249,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
         _write_traces(brain, ctx, candidates_data, selected_short_ids, selected,
                       graph_neighbors_compat, additional_context,
                       enriched, results,
-                      recall_ref, interaction_id, session_id,
+                      recall_ref, stamp, session_id,
                       expansion=expansion, frame=frame, telemetry=telemetry, pt=pt,
                       selection_reason=selection_reason,
                       seen_dropped=((result.get('_retrieval_stats') or {})

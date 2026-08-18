@@ -96,20 +96,21 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     # agree on the instant.
     view_now = _conversation_now_safe(brain, session_id, messages) if view else None
 
-    # 2. Build prompt (from interactions table — learnable boundary)
-    enc_interaction = brain.get_interaction('s1e')
-    enc_instructions = enc_interaction.get('template', '') if enc_interaction else ''
+    # 2. Build prompt (learnable boundary — DB override overlaid on the code
+    # default by the resolver)
+    enc_instructions = brain.get_interaction_prompt('s1e')
+    # K-provenance stamp, resolved at the same moment as the template so the
+    # delta trace records the K this run actually used.
+    enc_stamp = brain.get_interaction_stamp('s1e')
     # Per-version config rides in the interaction's parameters JSON (the
-    # K-store): `effort` maps to the API's output_config.effort (absent/{} →
-    # None → API default, high); `model` picks the encoder model, literal
-    # fallback only for a brain whose row predates the key. Lets an effort or
-    # model change ship as a prompt version (A/B-able via ab_encode's
-    # parameters injection), not a code edit.
-    # brain.get_interaction_config is the single K-store parse (active version,
-    # json.loads with {}-on-error) — reuse it, don't re-hand-roll the parse.
-    enc_cfg = brain.get_interaction_config('s1e') or {}
-    enc_effort = enc_cfg.get('effort') or None
-    enc_model = enc_cfg.get('model') or 'claude-sonnet-4-6'
+    # K-store): `effort` maps to the API's output_config.effort; `model`
+    # picks the encoder model. Lets an effort or model change ship as a
+    # prompt version (A/B-able via ab_encode's parameters injection), not a
+    # code edit. Resolved config is total — the defaults live in
+    # encode_contract.S1E_INTERACTION_DEFAULT, nowhere else.
+    enc_cfg = brain.get_interaction_config('s1e')
+    enc_effort = enc_cfg['effort']
+    enc_model = enc_cfg['model']
     system_prompt = _build_system_prompt(
         prompt_instructions=enc_instructions or None, lived=lived)
 
@@ -320,12 +321,11 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             outcomes[tool] = outcomes.get(tool, 0) + 1
 
         # enc_chain computed above (post-process) — reused here for the delta.
-        # Which K version produced this Δ — the FK (interaction_id) is stamped
-        # on the trace row for joins; the version number rides in metadata for
-        # human-readable scanning. Lets higher scales A/B prompt versions from
-        # production traces (the whole point of interactions-as-K-store).
-        enc_iid = (enc_interaction or {}).get('id')
-        enc_ver = (enc_interaction or {}).get('version', 0)
+        # Which K produced this Δ — the stamp (fingerprint + source + version,
+        # resolved with the template at run start) rides the metadata; the
+        # install-local rowid rides the trace row for display. Lets higher
+        # scales A/B prompt versions from production traces (the whole point
+        # of interactions-as-K-store).
         enc_metadata = build_delta_metadata(
             actions=result.get('actions', 0),
             write_actions=result.get('write_actions', 0),
@@ -342,13 +342,15 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             cache_read_tokens=result.get('cache_read_tokens', 0),
             cache_creation_tokens=result.get('cache_creation_tokens', 0),
             truncated=len(result.get('truncations', []) or []),
-            interaction_version=enc_ver,
+            interaction_version=enc_stamp['version'],
+            interaction_fingerprint=enc_stamp['fingerprint'],
+            interaction_source=enc_stamp['source'],
             stop_counter=counter,
         )
         dispatch_fn('trace_append', {
             'chain_id': enc_chain, 'scale': 's1', 'event_type': 'delta',
             'ref_type': 'encoding_run',
-            'interaction_id': enc_iid,
+            'interaction_id': enc_stamp['id'],
             'summary': '%d actions (%d writes) in %d rounds, %dms, %d→%d tok' % (
                 result.get('actions', 0),
                 result.get('write_actions', 0),

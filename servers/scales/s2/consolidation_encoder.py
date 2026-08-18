@@ -107,15 +107,9 @@ class ConsolidationEncoder(IntegrationUnit):
 
         system_prompt = self.brain.get_interaction_prompt(
             's2_consolidation_enrichment')
-        config = self._get_interaction_config('s2_consolidation_enrichment') or {}
-        model = config.get('model', self.config.get(
-            'model', 'claude-sonnet-4-6'))
-        max_tokens = config.get('max_tokens', self.config.get(
-            'max_tokens', 32768))
-
-        if not system_prompt:
-            print('[s2-consolidation] WARNING: no enrichment prompt', flush=True)
-            return None
+        config = self.brain.get_interaction_config('s2_consolidation_enrichment')
+        model = config['model']
+        max_tokens = config['max_tokens']
 
         # Prompt closers — the edge-aspect vocabulary, then the journal
         # component's system-tail decoration (review block + closure, DONE
