@@ -556,11 +556,17 @@ def _build_catalog(brain, messages, session_id, lived, view_policy=False,
     if view_policy and now is None:
         now = _conversation_now_safe(brain, session_id, messages)
 
+    # Window-aligned cutoff (arm D): the catalog ages against the same turn
+    # window the timeline renders — widen the chat window and the full-depth
+    # catalog widens with it. None (no datable head, or flag off) falls back
+    # to round-based aging inside build_node_catalog.
+    head = window_first_turn(brain, session_id, messages) if view_policy else None
+
     try:
         node_catalog, cataloged_ids = build_node_catalog(
             judge_outputs, brain, extra_ids=extra_ids,
             scope=brain.session_scope(session_id), view_policy=view_policy,
-            now=now)
+            now=now, window_first_turn=head)
     except Exception as e:
         print('[s1e] ERROR building node catalog: %s' % e, flush=True)
         node_catalog, cataloged_ids = '', set()
@@ -985,50 +991,20 @@ def _render_markdown_timeline(brain, messages):
     return timeline
 
 
-def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
-                                    scout_notes=None, view_policy=False,
-                                    now=None):
-    """The XML lived sequence — messages + tool actions interleaved (piece 1).
+def _lived_turns(brain, session_id, n_turns):
+    """The windowed turn list the lived timeline renders: episodes grouped into
+    turns, trimmed to the last `n_turns`. Raises on read failure — the renderer
+    keeps its markdown fallback.
 
-    `view_policy` (encoder_view, resolved once in run_encoding): ON, three
-    render policies apply — already-encoded turns keep FULL message text (no
-    encoded_turn_trim) but get a stubbed <actions> element; node-op/lookup tool
-    lines provenance already shows are dropped from every <actions>;
-    <provenance> renders the verbs split (created/revised/recalled/archived
-    (me)) instead of the merged encoded(Anchor). OFF: byte-identical to the
-    pre-policy render.
-
-    `scout_notes` (optional): {user_trace_id: [line, ...]} from _map_scout_notes
-    — scout findings rendered inside the turn they cite (<scout_notes>), after
-    the actions, before the provenance. None → no annotation blocks.
-
-    Reads through the existing `recall_episodes` door (the conversational lens
-    over s0 traces), NOT a bespoke DAL query — docs/S1-SCRIBE-REDESIGN.md §10.2.
-    Tool actions arrive as `tool_result` episodes whose `summary` already carries
-    the per-tool cue ("Edit: foo.py", "Bash: …"). Window-matched to the control
-    arm (trimmed to the same number of user turns as `messages`).
-
-    `streams` (optional) is the pre-gathered {'surface','encode','touched'} dict from
-    one trace_links.gather call, threaded in so the catalog and the <provenance>
-    block share a single pull. None → _turn_links gathers its own.
-
-    surfaced/judge_output is deliberately NOT rendered here — it belongs to the
-    <provenance> block (piece 2). Piece 1 is a pure timeline read.
+    One owner for the window: the timeline renders these turns and
+    window_first_turn dates the catalog against them, so the two can never
+    disagree about where the conversation window opens.
     """
-    from servers.scales.s1.encode_contract import ENCODING_AGENT, LIVED_SEQUENCE_PULL
+    from servers.scales.s1.encode_contract import LIVED_SEQUENCE_PULL
     from servers.trace_contract import SAID_AND_DID_REF_TYPES
-    lim = ENCODING_AGENT['message_display_limit']
-    n_turns = sum(1 for m in (messages or []) if m.get('role') == 'user') or 20
-
-    try:
-        episodes = brain.recall_episodes(
-            session_id=session_id,
-            ref_type=list(SAID_AND_DID_REF_TYPES),
-            sort_order='desc', limit=LIVED_SEQUENCE_PULL)['episodes']
-    except Exception as e:
-        print('[s1e] ERROR reading lived sequence, falling back to markdown: %s' % e, flush=True)
-        return _render_markdown_timeline(brain, messages)
-
+    episodes = brain.recall_episodes(
+        session_id=session_id, ref_type=list(SAID_AND_DID_REF_TYPES),
+        sort_order='desc', limit=LIVED_SEQUENCE_PULL)['episodes']
     # Most-recent-N pulled desc; sort chronological so turns read in order.
     episodes = sorted(episodes, key=lambda e: e.get('created_at') or '')
 
@@ -1049,7 +1025,66 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
         elif rt == 'tool_result':
             cur['actions'].append(e)
 
-    turns = turns[-n_turns:]  # window-match the control arm
+    return turns[-n_turns:]  # window-match the control arm
+
+
+def window_first_turn(brain, session_id, messages):
+    """The 1-based turn number the rendered timeline opens on — the
+    window-aligned catalog cutoff (encode_contract.build_node_catalog's
+    `window_first_turn`). None when the window has no datable head, which the
+    caller reads as "no window cutoff available", falling back to round-based
+    aging rather than ageing everything."""
+    from servers.scales.s1.trace_links import display_turn
+    n_turns = sum(1 for m in (messages or []) if m.get('role') == 'user') or 20
+    try:
+        turns = _lived_turns(brain, session_id, n_turns)
+    except Exception:
+        return None
+    for t in turns:
+        if t.get('user'):
+            return display_turn(t['user'].get('chain_id'))
+    return None
+
+
+def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
+                                    scout_notes=None, view_policy=False,
+                                    now=None):
+    """The XML lived sequence — messages + tool actions interleaved (piece 1).
+
+    `view_policy` (encoder_view, resolved once in run_encoding): ON, the
+    render policies apply — already-encoded turns get a stubbed <actions>
+    element; node-op/lookup tool lines provenance already shows are dropped
+    from every <actions>; <provenance> renders the verbs split
+    (created/revised/recalled/archived (me)) instead of the merged
+    encoded(Anchor). OFF: the pre-policy render (message text is full in both
+    arms — the encoded-turn trim is retired).
+
+    `scout_notes` (optional): {user_trace_id: [line, ...]} from _map_scout_notes
+    — scout findings rendered inside the turn they cite (<scout_notes>), after
+    the actions, before the provenance. None → no annotation blocks.
+
+    Reads through the existing `recall_episodes` door (the conversational lens
+    over s0 traces), NOT a bespoke DAL query — docs/S1-SCRIBE-REDESIGN.md §10.2.
+    Tool actions arrive as `tool_result` episodes whose `summary` already carries
+    the per-tool cue ("Edit: foo.py", "Bash: …"). Window-matched to the control
+    arm (trimmed to the same number of user turns as `messages`).
+
+    `streams` (optional) is the pre-gathered {'surface','encode','touched'} dict from
+    one trace_links.gather call, threaded in so the catalog and the <provenance>
+    block share a single pull. None → _turn_links gathers its own.
+
+    surfaced/judge_output is deliberately NOT rendered here — it belongs to the
+    <provenance> block (piece 2). Piece 1 is a pure timeline read.
+    """
+    from servers.scales.s1.encode_contract import ENCODING_AGENT
+    lim = ENCODING_AGENT['message_display_limit']
+    n_turns = sum(1 for m in (messages or []) if m.get('role') == 'user') or 20
+
+    try:
+        turns = _lived_turns(brain, session_id, n_turns)
+    except Exception as e:
+        print('[s1e] ERROR reading lived sequence, falling back to markdown: %s' % e, flush=True)
+        return _render_markdown_timeline(brain, messages)
 
     def _tool_name(ep):
         # tool_result metadata carries {"tool": <raw CC tool name>}
@@ -1057,16 +1092,14 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
         md = ep.get('metadata')
         return md.get('tool') if isinstance(md, dict) else None
 
-    def _text(ep, cap=None):
+    def _text(ep):
         # Full message body lives in metadata['content'] (≤4000); `summary` is the
         # 200-char display truncation. Mirror get_session_turns (dal.py): prefer
-        # content, fall back to summary. Truncate to `cap` (default: the display
-        # limit; already-encoded turns pass the trim cap), mark the cut with an
-        # ellipsis, then escape.
+        # content, fall back to summary. Truncate to the display limit, mark the
+        # cut with an ellipsis, then escape.
         meta = ep.get('metadata')
         body = (meta.get('content') if isinstance(meta, dict) else None) or ep.get('summary') or ''
-        cap = cap if cap is not None else lim
-        cut = body[:cap] + ('…' if len(body) > cap else '')
+        cut = body[:lim] + ('…' if len(body) > lim else '')
         return _xml_escape(cut)
 
     # Piece 2: per-turn <provenance> — the trace↔node links (what recall surfaced
@@ -1099,17 +1132,15 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
         except Exception:
             titles = {}
 
-    # Already-encoded turns render as trimmed context stubs (Tom's 3.2): the
-    # scribe's read is the unencoded tail; covered turns are there for cross-turn
-    # pattern/contradiction catching, with their full substance living in the
-    # catalog (the encoded nodes). The `encoded` attr states coverage on the turn
-    # itself — it replaces the old provenance `✓` marker. No attr when the
-    # trace-link join is unavailable (degraded piece-1 path — coverage unknown).
-    trim = ENCODING_AGENT.get('encoded_turn_trim', 300)
+    # Covered turns keep their FULL message text — the encoded-turn trim is
+    # retired (Tom, 2026-08-15: "trimming defeats the purpose"); what a covered
+    # turn drops is its <actions>, stubbed below. The `encoded` attr states
+    # coverage on the turn itself — it replaces the old provenance `✓` marker.
+    # No attr when the trace-link join is unavailable (degraded piece-1 path —
+    # coverage unknown).
     if view_policy:
         from servers.scales.s1.encoder_view import (
-            ENCODED_TURN_MESSAGE_CAP, action_mode, action_stub,
-            actions_stub_line)
+            action_mode, action_stub, actions_stub_line)
 
     if view_policy:
         from servers.scales.s1.trace_links import display_turn
@@ -1125,14 +1156,10 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
             # with no shift). Orphan turns keep the ordinal.
             real = display_turn((t['user'] or {}).get('chain_id')) if t['user'] else None
             n_disp = real if real is not None else n
-        enc_attr, cap, is_enc = '', None, False
+        enc_attr, is_enc = '', False
         if link is not None:
             is_enc = bool(link.get('encoded_by'))
             enc_attr = ' encoded="%s"' % ('true' if is_enc else 'false')
-            if is_enc:
-                # Policy: covered turns keep full text (the trim reversal —
-                # encoder_view.ENCODED_TURN_MESSAGE_CAP); legacy: context stub.
-                cap = ENCODED_TURN_MESSAGE_CAP if view_policy else trim
         age_attr = ''
         if view_policy and now is not None:
             # per-turn recency against conversation time — with the <timeline
@@ -1153,7 +1180,7 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
         # user_message/assistant_message; the join is by trace id.
         if t['user']:
             out += '  <other trace="%s">%s</other>\n' % (
-                t['user'].get('id', ''), _text(t['user'], cap))
+                t['user'].get('id', ''), _text(t['user']))
         # <provenance> sits right after <other>: chronologically, recall/surface
         # fires on the user prompt — before my reply exists (Tom 2026-07-28).
         prov = _render_provenance(links, frontier, t, n - 1, titles,
@@ -1162,7 +1189,7 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
             out += '  <provenance>%s</provenance>\n' % prov
         if t['assistant']:
             out += '  <me trace="%s">%s</me>\n' % (
-                t['assistant'].get('id', ''), _text(t['assistant'], cap))
+                t['assistant'].get('id', ''), _text(t['assistant']))
         if t['actions']:
             if view_policy and is_enc:
                 # Covered turn: the previous run already read this churn. The

@@ -1,5 +1,20 @@
 # Prompt/Config Override Model — Architecture Plan
 
+## § Steps 1–4 live; next is Steps 5+6, and 5 MUST land before 6 (2026-08-18) ◀ ACTIVE ARC
+
+**Read first:** handoff node — recall `[thread:override-migration]`; plan index `id:700654c9`;
+session-3 record `id:0c742f7f`.
+The accessors ARE the resolvers (main `1fe9315`): override overlaid on `INTERACTION_DEFAULTS`,
+four guards in `Brain._resolve_interaction`, five caller literals deleted, live-verified —
+every stamp `source='override'`, surface fingerprint `af8471e407ef` byte-identical across the
+migration. The resolver's no-row default path has **zero production traffic** until Step 8.
+**Locked:** overlay semantics (decision 1); accessor signatures (eval monkeypatch + baseline
+readers); `source='override'` = row *contributed*, fingerprint equality is Step 8's classifier.
+**Open:** Steps 5–9; the Step 8 corpus-float decision (Tom owes it before session 6 ships).
+**Do not reopen:** wiring s2_community's interaction read (post-Step-8); a sibling
+`get_effective_*` accessor; whole-value override; guarding (instead of deleting) the schema
+backstop — its unversioned re-run property is the bug.
+
 Migrate prompt/config storage from **DB-owned defaults** to **code-owned defaults + DB overrides**.
 Direction approved by Tom 2026-08-17 (brain `id:63e6b1f8`). This doc is the executable worklist;
 the reasoning lives in the brain. Each step is written to run cold in a separate session.
