@@ -369,21 +369,24 @@ class TestFailurePaths(BrainTestBase):
         errors = out['_errors']
         self.assertTrue(any(e['type'] == 'bad_current_date' for e in errors))
 
-    def test_missing_interaction_returns_stub(self):
-        """Patch target is the `_load_interaction` name imported into
-        temporal.py (not scout_base's copy) — otherwise temporal.py's
-        local reference still resolves the real implementation."""
-        from unittest.mock import patch
+    def test_no_db_row_runs_on_code_default(self):
+        """Delete every interaction row: the resolver falls back to the code
+        default, so the scout RUNS (the missing-interaction stub path died
+        with the override migration — a resolved config is total by
+        construction)."""
+        from servers.scales.s1.scouts.contract import (
+            SCOUT_TEMPORAL_INTERACTION_DEFAULT)
+        self.brain.logs_conn.execute('DELETE FROM interactions')
+        self.brain.logs_conn.commit()
         turns = [{'turn_id': 't1', 'role': 'user',
                   'text': 'today I booked it'}]
-        with patch('servers.scales.s1.scouts.temporal._load_interaction',
-                   return_value=None):
-            out = t.run_temporal_scout(
-                brain=self.brain, turns=turns, catalog_nodes=[],
-                current_date='2026-04-23')
-        self.assertEqual(out['candidates'], [])
-        self.assertTrue(any(e['type'] == 'missing_interaction'
-                            for e in out['_errors']))
+        out = t.run_temporal_scout(
+            brain=self.brain, turns=turns, catalog_nodes=[],
+            current_date='2026-04-23')
+        self.assertEqual(out['_errors'], [])
+        self.assertEqual(out['category_statement'],
+                         SCOUT_TEMPORAL_INTERACTION_DEFAULT[
+                             'category_statement'])
 
 
 class TestBareNumberFalsePositives(unittest.TestCase):
