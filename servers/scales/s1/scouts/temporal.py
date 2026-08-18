@@ -39,7 +39,6 @@ from .base import (
     SCOUT_LATENCY_KEY,
     SCOUT_TOKEN_USAGE_KEY,
     SCOUT_WARNING_KEY,
-    _load_interaction,
     _log_error,
 )
 
@@ -634,18 +633,10 @@ def run_temporal_scout(
 
     t0 = time.time()
 
-    # 1. Interaction config
-    interaction = _load_interaction(brain, sc.interaction_name(scout_name))
-    if not interaction:
-        msg = 'no interaction entry for s1_scout_temporal'
-        _log(msg)
-        _log_error(brain, scout_name, 'missing_interaction', msg)
-        stub[SCOUT_ERROR_KEY].append({'type': 'missing_interaction', 'msg': msg})
-        return stub
-
-    params = interaction.get('parameters', {}) or {}
-    category_statement = params.get('category_statement', '')
-    max_candidates = int(params.get('max_candidates', 8))
+    # 1. Interaction config — resolved (override overlaid on code default)
+    params = brain.get_interaction_config(sc.interaction_name(scout_name))
+    category_statement = params['category_statement']
+    max_candidates = int(params['max_candidates'])
     stub['category_statement'] = category_statement
 
     # 2. Base date — fall back to operator wall-clock if caller didn't pass

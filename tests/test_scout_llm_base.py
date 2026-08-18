@@ -2,8 +2,8 @@
 
 Mocks the Anthropic client so tests don't hit the network. Exercises:
 - Happy path: valid output → wrapped + validated
-- Missing interaction → stub + logged error
-- Empty template → stub + logged error
+- No DB row → resolver's code default runs (and sentinel overrides reach
+  messages.create)
 - API call failure → stub + logged error, latency captured
 - Non-JSON output → stub + logged error
 - Bad JSON shape → stub returned with errors
@@ -16,7 +16,7 @@ import json
 import os
 import sys
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -203,44 +203,63 @@ class TestSystemPromptAssembly(BrainTestBase):
         client.messages.create.return_value = _mock_anthropic_response(
             json.dumps({"candidates": [], "scanned": {"turns": 0}}))
 
-        with patch.object(scout_base, '_load_interaction', return_value={
-            'template': 'quote task',
-            'parameters': {'category_statement': 'x',
-                           'model': 'claude-haiku-4-5',
-                           'timeout_seconds': 25},
-        }):
-            scout_base.run_llm_scout(
-                'quote', self.brain, _shared_prefix(),
-                anthropic_client=client)
+        # Sentinel through the K-store: an override of ONE key must reach
+        # the request options (resolver overlays it onto the code default).
+        # Clear seeded rows first so the fresh registration is the active one.
+        self.brain.logs_conn.execute('DELETE FROM interactions')
+        self.brain.logs_conn.commit()
+        self.brain._interaction_dal.register(
+            's1_scout_quote', template='',
+            parameters=json.dumps({'timeout_seconds': 33}))
+        scout_base.run_llm_scout(
+            'quote', self.brain, _shared_prefix(),
+            anthropic_client=client)
 
-        client.with_options.assert_called_once_with(timeout=25.0, max_retries=0)
+        client.with_options.assert_called_once_with(timeout=33.0, max_retries=0)
 
 
 class TestFailurePaths(BrainTestBase):
     needs_embedder = False
 
-    def test_missing_interaction_returns_stub_and_logs(self):
-        """Remove the interaction; runner must log + return stub envelope."""
-        # Simulate by patching the loader
-        with patch.object(scout_base, '_load_interaction', return_value=None):
-            out = scout_base.run_llm_scout(
-                'quote', self.brain, _shared_prefix(),
-                anthropic_client=MagicMock())
-        self.assertEqual(out['candidates'], [])
-        self.assertTrue(any(e['type'] == 'missing_interaction'
-                            for e in out[scout_base.SCOUT_ERROR_KEY]))
+    def test_no_db_row_runs_on_code_default(self):
+        """Delete every interaction row: the resolver falls back to the code
+        default, so the scout RUNS (missing-row and empty-template stub
+        paths died with the override migration — a resolved template+config
+        is total by construction)."""
+        from servers.scales.s1.scouts.contract import (
+            SCOUT_QUOTE_INTERACTION_DEFAULT)
+        self.brain.logs_conn.execute('DELETE FROM interactions')
+        self.brain.logs_conn.commit()
+        client = _mock_client(
+            json.dumps({"candidates": [], "scanned": {"turns": 0}}))
+        out = scout_base.run_llm_scout(
+            'quote', self.brain, _shared_prefix(),
+            anthropic_client=client)
+        self.assertEqual(out[scout_base.SCOUT_ERROR_KEY], [])
+        call_kwargs = client.messages.create.call_args.kwargs
+        self.assertEqual(call_kwargs['model'],
+                         SCOUT_QUOTE_INTERACTION_DEFAULT['model'])
+        self.assertEqual(call_kwargs['max_tokens'],
+                         SCOUT_QUOTE_INTERACTION_DEFAULT['max_tokens'])
 
-    def test_empty_template_returns_stub_and_logs(self):
-        with patch.object(scout_base, '_load_interaction', return_value={
-            'template': '',
-            'parameters': {'category_statement': 'x', 'model': 'claude-haiku-4-5'},
-        }):
-            out = scout_base.run_llm_scout(
-                'quote', self.brain, _shared_prefix(),
-                anthropic_client=MagicMock())
-        self.assertEqual(out['candidates'], [])
-        self.assertTrue(any(e['type'] == 'empty_template'
-                            for e in out[scout_base.SCOUT_ERROR_KEY]))
+    def test_sentinel_model_override_reaches_the_call(self):
+        """A one-key model override in the K-store must be the model that
+        reaches messages.create (the a6dfcfe3 failure shape: an override
+        landing on the fallback side of a get() chain fails silently)."""
+        self.brain.logs_conn.execute('DELETE FROM interactions')
+        self.brain.logs_conn.commit()
+        self.brain._interaction_dal.register(
+            's1_scout_quote', template='',
+            parameters=json.dumps({'model': 'sentinel-scout-model'}))
+        client = _mock_client(
+            json.dumps({"candidates": [], "scanned": {"turns": 0}}))
+        out = scout_base.run_llm_scout(
+            'quote', self.brain, _shared_prefix(),
+            anthropic_client=client)
+        self.assertEqual(out[scout_base.SCOUT_ERROR_KEY], [])
+        self.assertEqual(
+            client.messages.create.call_args.kwargs['model'],
+            'sentinel-scout-model')
 
     def test_api_error_captures_stub_and_latency(self):
         client = MagicMock()

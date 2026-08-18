@@ -116,14 +116,9 @@ def _call_surface(brain, candidates_data, user_message,
     # field — the regex classifier and the field were both removed.)
     retrieval_stats = result.get('_retrieval_stats') if isinstance(result, dict) else None
 
-    # interaction_seed.py guarantees 'surface' is registered on every boot.
-    surface_interaction = brain.get_interaction('surface')
-    if not surface_interaction or not surface_interaction.get('template'):
-        raise RuntimeError(
-            "S1 Surface: no 'surface' interaction registered in "
-            "brain_logs.db. interaction_seed should have populated "
-            "this on Brain construction — check seed/DAL state.")
-    surface_instructions = surface_interaction['template']
+    # Resolved through the override model: DB override (if any) overlaid on
+    # the code default — total by construction.
+    surface_instructions = brain.get_interaction_prompt('surface')
     # K-provenance stamp ({'fingerprint','source','version','id'}) — threaded
     # to the trace writers and the replay capture as one dict.
     stamp = brain.get_interaction_stamp('surface')
@@ -131,13 +126,7 @@ def _call_surface(brain, candidates_data, user_message,
     # Layout rides in the interaction CONFIG ({"layout": "xml_v13"}), so a
     # version flip changes template and renderer atomically — a v13 template
     # can never run against the legacy user content or vice versa.
-    layout = 'legacy'
-    try:
-        layout = (brain.get_interaction_config('surface') or {}).get(
-            'layout', 'legacy')
-    except Exception as _cfg_err:
-        brain._log_error('surface_layout_config', _cfg_err,
-                         'reading layout from surface interaction config')
+    layout = brain.get_interaction_config('surface')['layout']
 
     # Presentation shuffle (2026-07-14, RECALL-SR-REDESIGN.md §20.12 A2):
     # the menu Haiku sees is a deterministic per-turn shuffle of the

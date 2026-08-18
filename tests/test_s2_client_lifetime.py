@@ -126,6 +126,7 @@ class CallLlmWiringTest(unittest.TestCase):
         self._real_run_llm_once = s2_base.run_llm_once
         self.constructions = 0
         self.clients_seen = []
+        self.calls = []
 
         def counting_make_client():
             self.constructions += 1
@@ -133,6 +134,8 @@ class CallLlmWiringTest(unittest.TestCase):
 
         def capturing_run_llm_once(client, model, max_tokens, system, user):
             self.clients_seen.append(client)
+            self.calls.append(
+                {'model': model, 'max_tokens': max_tokens, 'system': system})
             return '{"ok": true}', {'elapsed_ms': 1}
 
         s2_base.make_client = counting_make_client
@@ -146,8 +149,6 @@ class CallLlmWiringTest(unittest.TestCase):
         """Simulates healer: several _call_llm calls on one unit instance."""
         unit = _unit()
         unit.NAME = 'healer'
-        unit._get_interaction_config = lambda name: {
-            'model': 'test-model', 'max_tokens': 128}
 
         for batch in range(3):
             result, _tel = unit._call_llm('s2_healer', 'batch %d' % batch)
@@ -161,6 +162,23 @@ class CallLlmWiringTest(unittest.TestCase):
         self.assertEqual(
             len({id(c) for c in self.clients_seen}), 1,
             'every batch must be handed the same client instance')
+
+    def test_resolved_config_and_prompt_reach_the_call(self):
+        """Sentinel: the model/max_tokens the brain's resolver hands back —
+        and its prompt — must be exactly what run_llm_once receives. A
+        caller-side fallback would eat an override silently (the a6dfcfe3
+        failure shape); _call_llm subscripts the resolved config instead."""
+        unit = _unit()
+        unit.NAME = 'healer'
+        unit.brain.get_interaction_config = lambda name: {
+            'model': 'sentinel-s2-model', 'max_tokens': 4242}
+
+        unit._call_llm('s2_healer', 'payload')
+
+        self.assertEqual(self.calls[0]['model'], 'sentinel-s2-model')
+        self.assertEqual(self.calls[0]['max_tokens'], 4242)
+        self.assertEqual(self.calls[0]['system'],
+                         'system prompt for s2_healer')
 
 
 if __name__ == '__main__':

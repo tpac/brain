@@ -428,13 +428,6 @@ class IntegrationUnit:
                    else 'last %dh' % hours))
         return res.get('episodes', [])
 
-    def _get_interaction_config(self, name):
-        """Get config dict from interactions table.
-
-        Returns {} if not found. Config is the 'parameters' JSON field.
-        """
-        return self.brain.get_interaction_config(name)
-
     def _accumulate_run(self, total, result):
         """Fold one run_llm_loop result batch into `total` (in place): the loop
         counts (rounds / actions / write_actions), the per-tool records
@@ -522,26 +515,17 @@ class IntegrationUnit:
         """
         from ..dispatch import load_env
 
-        # Load learnable prompt and config
+        # Load learnable prompt and config — resolved through the override
+        # model (DB override overlaid on the code default; total by
+        # construction, unknown names raise in the resolver).
         system_prompt = self.brain.get_interaction_prompt(interaction_name)
-        config = self._get_interaction_config(interaction_name)
-        model = config.get('model', 'claude-haiku-4-5')
-        max_tokens = config.get('max_tokens', 4096)
+        config = self.brain.get_interaction_config(interaction_name)
+        model = config['model']
+        max_tokens = config['max_tokens']
 
         # read_usage(None) is the all-zero token baseline — reused on the
-        # no-prompt early return and the pre-usage failure path.
+        # pre-usage failure path.
         telemetry = {'elapsed_ms': 0, **read_usage(None)}
-
-        if not system_prompt:
-            print('[%s] WARNING: no interaction prompt for %s' % (
-                self.NAME, interaction_name), flush=True)
-            # Loud: a missing prompt means this unit silently does nothing
-            # every cycle — surface it in the errors table, not just stdout.
-            self.brain._log_error(
-                '%s_missing_prompt' % self.NAME,
-                RuntimeError('no interaction prompt for %s' % interaction_name),
-                'unit cannot run its LLM step')
-            return None, telemetry
 
         # Ensure API key
         if not os.environ.get('ANTHROPIC_API_KEY'):

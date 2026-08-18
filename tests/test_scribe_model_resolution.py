@@ -25,10 +25,17 @@ class ScribeModelResolutionTest(unittest.TestCase):
 
     def test_model_is_read_from_the_s1e_interaction_config(self):
         self.assertIn(
-            "enc_model = enc_cfg.get('model') or 'claude-sonnet-4-6'",
+            "enc_model = enc_cfg['model']",
             self.stripped,
-            'the Scribe model must resolve from the s1e interaction config '
-            '(fallback literal only for a brain whose row predates the key)')
+            'the Scribe model must resolve from the s1e interaction config — '
+            'a subscript, no caller-side fallback: the resolver returns a '
+            'total config (code default overlaid with any DB override)')
+        self.assertIn(
+            "enc_effort = enc_cfg['effort']",
+            self.stripped,
+            "effort must subscript the resolved config too — the old "
+            "`.get('effort') or None` silently turned the 'medium' code "
+            "default into API-default high")
 
     def test_the_llm_loop_receives_the_resolved_model(self):
         self.assertIn(
