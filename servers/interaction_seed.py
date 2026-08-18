@@ -106,7 +106,12 @@ from .dal_logs import (AUTO_V1_PROVENANCE, BACKSTOP_PROVENANCE,
 # 4 ships Step 4's s1e `model` key (table-driven model resolution) and brings
 # `surface` into shipped_prompts() — template + layout config, v15 as the
 # shipped default.
-SEED_PROMPTS_VERSION = 4
+#
+# 5 ships the s1e view-policy prompt (arm D activated): provenance tags in
+# turn coordinates, lean-entry render documented as the render actually is
+# (body whole, edges announced in place), get_nodes/recall_batch named,
+# contextless-writing rule.
+SEED_PROMPTS_VERSION = 5
 SEED_PROMPTS_VERSION_KEY = 'seed_prompts_version'
 
 # Pointer provenance that proves the install is still running what WE put there.
