@@ -43,16 +43,17 @@ def make_v5(v4: str) -> str:
     HEALED/SKIPPED/PATTERNS/WATCHING block whose output the code discards —
     the dead promise; residue now rides the runtime review block), and
     unpin the JSON-only line so it can't fight the appended `## Review`
-    fence. Loud asserts catch prompt drift — reused verbatim at landing."""
+    fence. IDEMPOTENT: each edit applies only when its anchor is present,
+    so the probe keeps running after the transform lands (v5 active) —
+    post-landing it's a no-op and the sim probes the ACTIVE prompt as-is."""
     old_line = "No markdown fences, no explanation, just the JSON array."
     new_line = ("No markdown fences around the array, no explanation "
                 "before it — just the JSON array.")
-    assert v4.count(old_line) == 1, 'JSON-only anchor not unique (%d)' % v4.count(old_line)
     out = v4.replace(old_line, new_line)
+    assert new_line in out, 'JSON-only line: neither v4 nor v5 form present'
 
     j = out.find("## When Done")
-    assert j != -1, 'When Done section missing'
-    return out[:j].rstrip()
+    return out[:j].rstrip() if j != -1 else out
 
 
 def main():

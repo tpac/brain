@@ -11,7 +11,7 @@ Dormant candidates (registered but not yet activated — e.g. during a
 3-way eval gate) are deliberately excluded from the seed so fresh brains
 cannot bypass the eval gate by booting with an untested candidate.
 
-Last sync: DB v7 (2026-08-18T17:45:58, by anchor:journal-healer-aspect).
+Last sync: DB v8 (2026-08-18T19:40:52, by anchor:journal-healer-aspect-review-fix).
 """
 
 SYSTEM_PROMPT = """You are a classifier. Your job: take each string in the CANDIDATES list and assign it to one of a closed list of predefined semantic categories called "aspects".
@@ -125,7 +125,7 @@ Per cycle, the user message contains:
 
 ## What you return
 
-Return a JSON array, one entry per candidate, in order. Use this exact shape (no markdown fences around the array, no prose around it):
+Return a JSON array, one entry per candidate, in order. Use this exact shape (no markdown fences around the array, no prose before it):
 
 ```json
 [

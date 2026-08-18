@@ -120,6 +120,21 @@ class HealerEncoder(IntegrationUnit):
                     continue
 
                 proposal = by_full.get(nid) or by_short.get(nid[:8])
+                if proposal is None:
+                    # Out-of-batch healing: the journal continuity prefix
+                    # shows node ids from past runs, so the model can return
+                    # one — but without a proposal there are no needs_* flags
+                    # and the unsolicited-field guard cannot run. Ids in
+                    # continuity are context, never work orders. Drop loud.
+                    self.brain._log_error(
+                        'healer_out_of_batch_healing',
+                        Exception('healing for %s matches no proposal in '
+                                  'this batch — dropped' % nid[:8]),
+                        'model healed an id outside the batch (likely from '
+                        'the continuity prefix); no needs_* flags to guard '
+                        'against overwrites')
+                    skipped += 1
+                    continue
                 written, full_id = self._store_fields(nid, healing, proposal)
                 if written > 0:
                     nodes_healed += 1
@@ -327,10 +342,12 @@ class HealerEncoder(IntegrationUnit):
         every field-fill emits an attributed node_revised trace on the same
         chain as the healer_generated delta.
 
-        When `proposal` is provided, only fields flagged in the proposal's
-        needs_* set get written — Haiku-returned fields for slots that
-        already had content are rejected and logged. Prevents the renegade-
-        healer pattern (overwriting good data with freshly-generated text).
+        Only fields flagged in the proposal's needs_* set get written —
+        model-returned fields for slots that already had content are rejected
+        and logged. Prevents the renegade-healer pattern (overwriting good
+        data with freshly-generated text). A missing proposal rejects every
+        field — the caller drops out-of-batch healings before reaching here,
+        and this guard holds even if a new caller doesn't.
 
         Returns (count of fields written, full_id) — full_id lets the caller
         record the revised node in the delta's structured Δ. (0, None) on
@@ -342,8 +359,9 @@ class HealerEncoder(IntegrationUnit):
             value = enrichment.get(field, '').strip()
             if not (value and len(value) > 5):
                 continue
-            # Reject unsolicited fields — node already had this slot filled.
-            if proposal is not None and not proposal.get('needs_' + field, False):
+            # Reject unsolicited fields — node already had this slot filled
+            # (no proposal at all = nothing was solicited; reject everything).
+            if proposal is None or not proposal.get('needs_' + field, False):
                 self.brain._log_error(
                     'healer_unsolicited_field',
                     Exception('Haiku returned %s for %s but needs_%s=False' % (
