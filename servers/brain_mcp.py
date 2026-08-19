@@ -781,10 +781,16 @@ TOOLS = _build_tools()
 CRITICAL_TOOLS = frozenset({
     "recall",             # primary semantic read path
     "remember",           # primary write path
-    "get_node",           # exact-id pull
-    "find_node_by_title", # fuzzy-title pull
+    "get_nodes",          # exact-id pulls (single or batch)
+    "recall_episodes",    # episodic read — "what actually happened"
+    "revise",             # in-the-moment correction of a stale memory
     "filter_nodes",       # structured / bulk lookups recall can't do
     "brain_batch",        # mixed-op write (remember + revise + connect + archive)
+    "self_presence",      # the self-channel: who's live
+    "self_peek",          # look at a stream
+    "self_send",          # speak to a stream
+    "self_inbox",         # drain own messages
+    "self_outbox",        # track delivery
 })
 
 
