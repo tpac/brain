@@ -20,7 +20,8 @@ from typing import Any, Dict, Optional
 
 from .daemon_config import (
     _code_fingerprint, _CODE_FINGERPRINT, _IS_WORKTREE, REPO_ROOT,
-    get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
+    get_daemon_addr, get_socket_path, get_pid_path, get_lock_path,
+    get_startup_lock_path, get_status_path,
     get_recovery_state_path, is_maintenance_mode, resolve_db_dir,
     LAUNCHD_THROTTLE_INTERVAL_S,
 )
@@ -285,8 +286,13 @@ def ensure_daemon(db_path: str) -> bool:
         return True
     # Otherwise (down, or up-but-stale) fall through to the locked (re)start.
 
-    # Serialize the (re)start through the singleton lock.
-    lock_path = get_lock_path()
+    # Serialize the (re)start through the RESTARTER lock — NOT the daemon's
+    # singleton flock (get_lock_path). The daemon holds that one for its whole
+    # serving life, so blocking on it here hangs the boot hook whenever a
+    # healthy-but-stale daemon serves, and holding it through a (re)start
+    # makes the successor's own start() exit as a duplicate. See
+    # get_startup_lock_path's docstring — one inode per question.
+    lock_path = get_startup_lock_path()
     lock_fd = None
     try:
         lock_fd = open(lock_path, 'w')
@@ -306,10 +312,11 @@ def ensure_daemon(db_path: str) -> bool:
             return True
 
         # Healthy but on stale CODE → ask it to reload in place (the daemon
-        # execs fresh code, same PID — see BrainDaemon._exec_reload). Reload
-        # is the owner of "healthy + stale"; kickstart below narrows to
-        # corpses and db-dir divergence (a data move needs the spawn ladder's
-        # re-resolution — exec re-runs the same argv). A reload that doesn't
+        # execs hooks/scripts/brain-daemon, same PID — see
+        # BrainDaemon._exec_reload). Reload is the owner of "healthy + stale";
+        # kickstart below narrows to corpses and db-dir divergence (a data
+        # move is a deliberate operator action — the spawn ladder + plist
+        # re-materialization is its reviewed path). A reload that doesn't
         # come back healthy falls through to kickstart: at that point the
         # daemon IS the corpse case.
         if resp.get("ok") and _code_changed(resp) and not _db_dir_changed(resp, db_path):
@@ -331,6 +338,18 @@ def ensure_daemon(db_path: str) -> bool:
                     return True
             sys.stderr.write("[brain-daemon] reload did not converge within "
                              "%.0fs — falling back to kickstart\n" % _GRACE_DEADLINE_S)
+            # A reload that degraded into exit + KeepAlive respawn (backstop
+            # fired, exec failed) can still be mid-boot when the poll expires
+            # — ThrottleInterval (10s) + boot can exceed the grace budget.
+            # Same corpse test recover_daemon applies: a freshly-bound or
+            # binding daemon is booting, not a corpse — kickstarting it now
+            # would SIGKILL it mid-boot and reset the throttle.
+            age = pid_file_age_s()
+            if (age is not None and age < _GRACE_DEADLINE_S) or \
+                    (age is None and port_is_occupied()):
+                sys.stderr.write("[brain-daemon] successor is booting — "
+                                 "deferring, not kickstarting\n")
+                return False
 
         # Route the (re)start through launchd. `kickstart -k` kills any running
         # instance (covers healthy-but-stale AND hung-corpse) and respawns it in
@@ -390,6 +409,25 @@ def ensure_daemon(db_path: str) -> bool:
             sys.stderr.write("[brain-daemon] Port occupied but unresponsive — killing zombie\n")
             kill_daemon()
             time.sleep(1)
+        # Two-writer guard: wait (bounded) for the daemon's SINGLETON flock to
+        # free before spawning. A dying predecessor releases it in _cleanup
+        # AFTER closing its DB connections, so a spawn past this point can
+        # never open brain.db alongside a live writer. (The old code got this
+        # implicitly by serializing on that same flock; the dedicated startup
+        # lock above no longer does.)
+        deadline = time.monotonic() + _GRACE_DEADLINE_S
+        while time.monotonic() < deadline:
+            try:
+                with open(get_lock_path(), 'w') as probe:
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(probe, fcntl.LOCK_UN)
+                break  # free — the predecessor's DBs are closed
+            except (IOError, OSError):
+                time.sleep(0.5)
+        else:
+            sys.stderr.write("[brain-daemon] singleton flock still held after "
+                             "%.0fs — not spawning a second writer\n" % _GRACE_DEADLINE_S)
+            return False
         spawn_detached_daemon(db_path)
         for i in range(20):  # 10 seconds max
             time.sleep(0.5)

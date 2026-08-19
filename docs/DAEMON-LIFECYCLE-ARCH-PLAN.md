@@ -45,10 +45,17 @@ Each step is executable cold in its own session. Recommend; do not batch. This d
 
 ## Already resolved (do NOT re-plan)
 
-- **Restart = clean exit + KeepAlive respawn, launchd sole spawner** — commit `3cb6031`, live and
-  verified. This closed the "fourth root" (`_do_restart` detached Popen, `e6fd63aa`) and the
-  self-Popen-vs-kickstart double-mechanism. Agents that read the pre-`3cb6031` worktree flagged
-  these as live; they are fixed on `main`. (The worktree has since been fast-forwarded to `main`.)
+- **Restart = in-place exec reload; launchd sole SPAWNER** — 2026-08-19 (supersedes `3cb6031`'s
+  clean-exit-and-respawn). The `restart` command flags a reload; the MAIN thread runs the
+  ordered `_shutdown` then `_exec_reload` execs `hooks/scripts/brain-daemon` into the same
+  process: same PID, env + DB ladder re-resolved, no spawn ever — the daemon contains no spawn
+  call at all (guardrail-tested), so the "fourth root" (`_do_restart` detached Popen,
+  `e6fd63aa`) stays closed structurally. Exec failure exits loudly and KeepAlive /
+  `ensure_daemon` respawns — the former clean-exit path survives as the fallback. Spawn stays
+  launchd-only: crash = KeepAlive; hung corpse = `recover_daemon`'s corpse test (PID-file
+  mtime + port) → `kickstart -k`. `ensure_daemon` serializes on the dedicated STARTUP lock
+  (never the daemon's singleton flock — one inode per question) and converges
+  healthy-but-stale daemons via the reload; kickstart remains for corpses and db-dir moves.
 - **Step 3 RESOLVED (2026-07-06) — as a drift fix, NOT the unified primitive.** The tri-state
   design below would regress corpse recovery: its "managed+unreachable → defer to KeepAlive" arm is
   correct for `ensure_daemon` (down = process exited → KeepAlive respawns) but WRONG for
@@ -60,9 +67,9 @@ Each step is executable cold in its own session. Recommend; do not batch. This d
   `test_kickstart_failed_but_incumbent_responsive_defers_never_kills` pins it. A1 (clean-exit on
   all platforms) evaluated and DECLINED: ~4 lines saved vs an unverifiable Linux behavior change
   (restart would leave the daemon down until a client pings). Post-Step-2 there is no remaining
-  triple-written ladder: `_perform_restart` is two lines per branch, and `_relaunch_daemon`'s
-  spawn tail already delegates to `ensure_daemon`. Step 6 may treat the spawn/restart model as
-  settled: restart = clean-exit (managed) | teardown+spawn (unmanaged); recovery = kickstart →
+  triple-written ladder, and `_relaunch_daemon`'s spawn tail already delegates to
+  `ensure_daemon`. The spawn/restart model is settled (updated 2026-08-19): restart =
+  in-place exec reload (`_exec_reload`, all platforms); recovery = corpse-test → kickstart →
   re-ping-defer → source-gated kill + ensure_daemon.
 - **Step 4 RESOLVED (2026-07-07)** — dead `restart_daemon()` deleted (zero callers confirmed
   repo-wide, docs included). `stop_daemon` kept: it is the graceful TCP-shutdown utility, and its

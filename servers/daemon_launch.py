@@ -223,8 +223,13 @@ def daemon_env(db_path: str) -> dict:
     resolve (under `-m`, cwd is sys.path[0], ahead of PYTHONPATH). PYTHONPATH
     is the belt: it survives into anything the daemon itself spawns, which the
     cwd does not. Prepends rather than replacing an inherited value."""
-    pythonpath = os.pathsep.join(
-        p for p in (REPO_ROOT, os.environ.get('PYTHONPATH', '')) if p)
+    inherited = os.environ.get('PYTHONPATH', '')
+    # Dedupe: don't prepend REPO_ROOT if it's already there — a chained env
+    # (e.g. across reloads) must not grow by one entry per generation.
+    if REPO_ROOT in inherited.split(os.pathsep):
+        pythonpath = inherited
+    else:
+        pythonpath = os.pathsep.join(p for p in (REPO_ROOT, inherited) if p)
     return {
         **os.environ,
         'PYTHONPATH': pythonpath,

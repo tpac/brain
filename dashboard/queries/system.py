@@ -20,8 +20,9 @@ def _check_daemon() -> dict:
 
     Through `daemon_send`, which returns exactly this payload and takes a
     timeout — a hand-rolled socket here would miss the newline framing the
-    module's client has. `uptime_seconds` is process uptime, from
-    dispatch_ops._handle_ping."""
+    module's client has. `uptime_seconds` is the loaded code image's age,
+    from dispatch_ops._handle_ping — an in-place reload resets it while the
+    PID stays the same."""
     result = daemon_send("ping", timeout=2)
     if result is None:
         return {'alive': False, 'error': 'no response'}

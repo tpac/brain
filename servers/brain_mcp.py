@@ -732,7 +732,7 @@ def _build_tools():
 
     # ── Daemon control ──
     {"name": "restart",
-     "description": "Restart the brain daemon with fresh code. Saves the brain, clears bytecode cache, then exits cleanly so launchd relaunches a fresh instance (or, where launchd isn't managing it, spawns one directly). Use after code changes during development.",
+     "description": "Reload the brain daemon with fresh code, in place: saves the brain, tears down cleanly, then execs hooks/scripts/brain-daemon into the SAME process (same PID, ~2-4s, env and DB location re-resolved; launchd never notices). If the exec fails it exits loudly and launchd/ensure_daemon respawns — the old exit-and-relaunch behavior. Use after code changes during development.",
      "inputSchema": {"type": "object", "properties": {}}},
 
     # ── Escape hatch ──

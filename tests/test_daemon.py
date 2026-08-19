@@ -48,7 +48,7 @@ class TestIntegrity(unittest.TestCase):
         mcp_names = {t['name'] for t in MCP_TOOLS}
         dispatch_names = set(COMMAND_TABLE.keys())
         # Commands handled directly by daemon_server before COMMAND_TABLE dispatch
-        # (they kill/restart the process — can't go through normal dispatch)
+        # (they end the serve loop — restart reloads in place, shutdown exits)
         daemon_direct = {'restart', 'shutdown'}
 
         for name in mcp_names:
