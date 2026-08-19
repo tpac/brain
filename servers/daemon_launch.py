@@ -6,8 +6,8 @@ Both daemon_client (outside callers: hooks, MCP, CLI) and daemon_server (the
 restart path) consume these as public names — no private cross-module imports,
 no server→client layering inversion.
 
-POLICY lives in the callers (ensure_daemon's decision ladder, _perform_restart's
-clean-exit-when-managed); this module owns only the MECHANISMS. launchd is the
+POLICY lives in the callers (ensure_daemon's decision ladder, _exec_reload's
+in-place exec); this module owns only the MECHANISMS. launchd is the
 sole spawner where present (Errno-48 fix 2026-06-04): spawn_detached_daemon is
 legitimate ONLY on a no-launchd platform (Linux / fresh install) — spawning a
 rival alongside KeepAlive is the orphan-storm class of bug.
@@ -146,6 +146,22 @@ def port_is_occupied() -> bool:
         return True
 
 
+def pid_file_age_s():
+    """Seconds since the daemon last claimed its port, or None if no PID file.
+
+    The daemon writes its PID file immediately after _bind_socket succeeds and
+    unlinks it in teardown, so the file's mtime is "when the current instance
+    finished binding" — a boot-recency signal that stays truthful across an
+    in-place exec reload (where the PID and process start time don't change).
+    recover_daemon's corpse test reads this: unresponsive + freshly bound =
+    still warming up, not a corpse.
+    """
+    try:
+        return max(0.0, time.time() - os.stat(get_pid_path()).st_mtime)
+    except OSError:
+        return None
+
+
 def kill_daemon():
     """Kill a running daemon. Escalates SIGTERM → SIGKILL if needed."""
     pid_path = get_pid_path()
@@ -207,8 +223,13 @@ def daemon_env(db_path: str) -> dict:
     resolve (under `-m`, cwd is sys.path[0], ahead of PYTHONPATH). PYTHONPATH
     is the belt: it survives into anything the daemon itself spawns, which the
     cwd does not. Prepends rather than replacing an inherited value."""
-    pythonpath = os.pathsep.join(
-        p for p in (REPO_ROOT, os.environ.get('PYTHONPATH', '')) if p)
+    inherited = os.environ.get('PYTHONPATH', '')
+    # Dedupe: don't prepend REPO_ROOT if it's already there — a chained env
+    # (e.g. across reloads) must not grow by one entry per generation.
+    if REPO_ROOT in inherited.split(os.pathsep):
+        pythonpath = inherited
+    else:
+        pythonpath = os.pathsep.join(p for p in (REPO_ROOT, inherited) if p)
     return {
         **os.environ,
         'PYTHONPATH': pythonpath,

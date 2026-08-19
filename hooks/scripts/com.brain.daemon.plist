@@ -12,10 +12,12 @@
 	     hand-load the repo template — its placeholder paths won't resolve). See
 	     docs/DAEMON-LIFECYCLE-ARCH-PLAN.md Step 7.
 
-	     launchd is the SOLE daemon spawner where present (Errno-48 fix): this
-	     plist's KeepAlive + RunAtLoad own the lifecycle, and every (re)start
-	     routes through `launchctl kickstart -k` — no process ever Popens a rival
-	     alongside it. This file is where that policy is ENCODED.
+	     launchd is the SOLE daemon SPAWNER where present (Errno-48 fix): this
+	     plist's KeepAlive + RunAtLoad own process creation — crash respawns and
+	     corpse recovery (`launchctl kickstart -k`) — and no process ever Popens
+	     a rival alongside it. Deploy restarts are not spawns: the daemon
+	     reloads in place (exec of brain-daemon, same PID), invisible to
+	     launchd. This file is where the spawner policy is ENCODED.
 
 	     Launches hooks/scripts/brain-daemon — the single daemon entrypoint
 	     (no hardcoded Python path); it sources brain-env.sh and execs the venv

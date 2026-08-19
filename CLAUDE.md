@@ -139,7 +139,7 @@ Don't gate a deploy-restart with the maintenance lock — it makes the daemon sk
 
 ### Recovering a hung daemon
 
-Hung-but-alive daemons recover reactively: `ensure_daemon()` at session start and the MCP health monitor (2s pings, ~20s tolerance) both force-restart via `launchctl kickstart -k`; launchd `KeepAlive` respawns real exits. Pause auto-recovery for live debugging (`py-spy`/`lldb`) with the maintenance lock. Full mechanism picture: brain node id:50c9a4e0.
+Hung-but-alive daemons recover reactively: hooks and the MCP health monitor (2s pings, ~20s tolerance) call `recover_daemon()`, whose corpse test (unresponsive + PID file long past its bind) gates a `launchctl kickstart -k`; launchd `KeepAlive` respawns real exits. Deploy restarts are NOT kills: the `restart` command reloads in place (`_exec_reload` execs `hooks/scripts/brain-daemon`, same PID, env + DB ladder re-resolved), and `ensure_daemon()` at session start converges a healthy-but-stale daemon via that same reload (its own ladder — never `recover_daemon`), kickstarting only corpses and db-dir moves. Pause auto-recovery for live debugging (`py-spy`/`lldb`) with the maintenance lock. Full mechanism picture: brain node id:50c9a4e0.
 
 ### Test Integrity
 

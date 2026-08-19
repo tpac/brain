@@ -938,7 +938,8 @@ class TestMCPRoundTrip(BrainTestBase):
             if tool_name in mcp_tool_names:
                 tested.add(tool_name)
 
-        # Commands that can't be round-trip tested (they kill/restart the daemon)
+        # Commands that can't be round-trip tested (they end the serve loop —
+        # restart reloads the daemon in place, shutdown exits it)
         untestable = {'restart', 'shutdown'}
         untested = mcp_tool_names - tested - untestable
         self.assertEqual(untested, set(),

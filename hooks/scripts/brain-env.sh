@@ -63,7 +63,13 @@ fi
 
 # Wire the venv as the authoritative Python
 export BRAIN_PYTHON="$PLUGIN_DIR/venv/bin/python"
-export PATH="$PLUGIN_DIR/venv/bin:$PATH"
+# Idempotent prepend: a chained environment (in-place daemon reloads re-source
+# this file in the same process's env) must not grow PATH by one entry per
+# generation.
+case ":$PATH:" in
+    *":$PLUGIN_DIR/venv/bin:"*) ;;
+    *) export PATH="$PLUGIN_DIR/venv/bin:$PATH" ;;
+esac
 
 # Ensure nothing in the shell environment overrides venv resolution
 unset PYTHONHOME

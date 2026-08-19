@@ -262,6 +262,16 @@ new inter-layer channel to prove it isn't just async S0 (brain `bfc6d106`).
   changes which neighbors survive the per-seed limit. Extend the bulk method first, or
   leave that one alone.
 
+### 13. Defense-shrink cut — delete the outage-era daemon defenses reload-in-place obsoleted
+Deploy restarts became invisible in-place exec reloads (same PID, 2026-08-19); the
+recovery moat was sized for the 3-20s outages they used to be. **Gated: observe ~1 week
+of deploys (from 2026-08-19), then delete with the error tables as evidence.** Plan and
+ranked candidates in the brain: id:6126281f. Strongest: `ensure_daemon`'s kickstart
+escalation for healthy-but-stale (its predecessor was proven dead code for months),
+`hook_common`'s alarm-and-recover on a single failed ping, per-session MCP monitor kill
+authority. Keep: KeepAlive, the singleton flock, `recover_daemon`'s corpse test, the
+startup lock. Expected to delete more lines than the reload change added.
+
 ---
 
 ## Decisions needed
