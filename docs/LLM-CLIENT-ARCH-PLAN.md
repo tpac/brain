@@ -68,6 +68,7 @@ Step 0 ──┐
 Step 3 ──┼── (independent, any order)
 Step 1 ──┴──▶ Step 4          (shared file: brain_recall.py:107-113)
                                    Step 2  ← last; largest blast radius
+Step 5 ── (independent; added 2026-08-19, can run before or after Step 2)
 ```
 
 **If the provider replacement is the driver, Step 4 is the one that matters** — it is what makes
@@ -353,6 +354,67 @@ at every scale); id:a6dfcfe3 (verify the effective model, not the passed one).
 
 ---
 
+## Step 5 — Timeout granularity: stop letting connect inherit the read budget
+
+*(Added 2026-08-19 from the e2dc24d3 incident. Independent of Step 2.)*
+
+**Problem.** `ANTHROPIC_CLIENT_TIMEOUT = 600.0` (`brain_constants.py:389`) is a **flat** timeout:
+passing a bare float gives httpx 600s for connect, read, write, and pool alike. The 600s figure is
+read-side reasoning (community round 2 legitimately reaches ~218s) — but connect inherits it, so
+"can't reach the server" is granted the same patience as "slow generation". Two multipliers stack
+on top of the flat value:
+
+1. **SDK retries.** `make_client()` sets only `timeout`, so the SDK default `max_retries=2`
+   applies — one blocked call surfaces after up to 600s × 3 plus backoff (~30 min) before our code
+   sees any exception. (S2's loop encoders wrap rounds in `retry_on_transient_api_error`
+   (`runner.py:227`, attempts=2) on top of that — worst case doubles again.)
+2. **The run deadline is cooperative.** `SCRIBE_RUN_DEADLINE_SECONDS = 1200` is checked between
+   rounds and before the stream-fallback re-issue (`runner.py:514`, `:553`); it cannot preempt a
+   thread blocked inside a read. `scribe_hung` (1800s) exists precisely because the deadline is
+   blind while blocked.
+
+**Incident that exposed it (2026-08-18, session e2dc24d3).** Network flapped ~21:00–22:10 UTC.
+Two encode attempts failed *fast* (~3s clean `APIConnectionError` — connect-refused behaves
+exactly as wished). The third attempt's socket connected and then stalled mid-run: ~30 min blocked
+inside one `messages.stream` call (600s × 3 SDK attempts), `scribe_hung` at 1903s, deadline able to
+fire only 53 min into the run when the SDK finally returned control — 1 of 4 encode permits held
+throughout. Work landed on the next attempt, so blast radius was one permit; the same shape holding
+all four permits through a longer outage is the version that hurts.
+
+**Target state.**
+
+- The constant becomes a granular policy — `httpx.Timeout(connect=~10, read=600, write=600,
+  pool=600)` (exact split to be chosen at implementation). Dead-network connects fail in seconds;
+  slow generation keeps its headroom. Both 600s consumers take it unchanged: `make_client()`
+  (`runner.py:99`) and the daemon shared client (`brain.py:2400`).
+- The encoder lane drops SDK retries (`max_retries=0`, or 1 at most). The Scribe already has its
+  own retry layer above (`SCRIBE_RETRY_COOLDOWN_SECONDS` + `SCRIBE_MAX_FAILED_RETRIES`), and S2's
+  loop encoders have `retry_on_transient_api_error` — SDK retries underneath those only multiply a
+  block. This is the same reasoning that put `max_retries=0` on scouts and query expansion.
+- **Measure before tightening read.** `messages.stream`'s read timeout applies per-event, and a
+  healthy stream never goes minutes between events — but the *first* event arrives only after
+  server prefill, so the read bound must clear worst-case TTFT, not typical inter-chunk gaps.
+  `per_round_stats.ttft_ms` already measures exactly this; size any tighter read bound from that
+  data, not from intuition.
+
+**Files & call sites.** `brain_constants.py:389` (the constant and its comment — the comment's
+read-side rationale stays true, it just stops applying to connect); `scales/runner.py:99`;
+`brain.py:2400`. Scouts and query expansion are unaffected — they already bind per-request
+(`scouts/base.py:179`, `brain_recall.py:106`) with `max_retries=0`.
+
+**Verification.** A unit test asserting the built client's timeout object has connect ≪ read (both
+construction sites); `tests/test_s2_client_lifetime.py` stays green. For the retry drop, the
+existing failure-path tests (`tests/test_s2_retry.py`) must still pass — the wrapper's behaviour is
+unchanged, only the hidden SDK layer under it goes away.
+
+**Blast radius.** Transport policy for the encoder lane + daemon shared client. The connect split
+and retry drop are safe; a tighter read bound is the only risky edge, which is why it is gated on
+TTFT data.
+
+**Depends on.** None — independent of Step 2.
+
+---
+
 ## Deliberately excluded
 
 **An `LLMClient` / provider-adapter interface.** No second provider is chosen, so its shape would
@@ -504,9 +566,9 @@ Sources: [OpenAI structured outputs](https://developers.openai.com/api/docs/guid
 
 ---
 
-## Status — updated 2026-08-17
+## Status — updated 2026-08-19
 
-**Steps 0, 1, 3 and 4 are MERGED AND LIVE. Only Step 2 remains.**
+**Steps 0, 1, 3 and 4 are MERGED AND LIVE. Steps 2 and 5 remain.**
 Do not trust a commit hash written in this doc — main moved 20+ commits in a day across several
 streams. Re-derive with `git log`.
 
@@ -551,6 +613,9 @@ mutation-verified (`tests/test_scribe_model_resolution.py`,
 live at merge + daemon restart — the encode log line now prints the effective model.
 
 **Step 2 remains**, last.
+
+**Step 5 added 2026-08-19** (timeout granularity + encoder-lane retry drop) — not started.
+Motivated by the e2dc24d3 blocked-read incident; see the step for the full timeline.
 
 ---
 
