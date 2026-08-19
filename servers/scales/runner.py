@@ -18,7 +18,8 @@ import json
 # daemon's shared client with the same bound, so the constant lives in
 # brain_constants and both layers import it from there. make_client() below is
 # this module's consumer.
-from ..brain_constants import ANTHROPIC_CLIENT_TIMEOUT
+from ..brain_constants import (ANTHROPIC_CLIENT_TIMEOUT,
+                               ANTHROPIC_CONNECT_TIMEOUT)
 
 
 class RunLoopError(Exception):
@@ -96,7 +97,17 @@ def make_client():
     outside this seam.)
     """
     import anthropic
-    return anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
+    import httpx
+    # max_retries=1, not the SDK default 2: retry policy above this client is
+    # the callers' concern — the Scribe's cooldown paces S1E re-runs and the
+    # S2 loop encoders wrap rounds in retry_on_transient_api_error — so SDK
+    # retries only multiply a blocked read (600s × attempts before the caller
+    # sees the exception). One retry keeps the cheap Retry-After path for
+    # rate-limit blips, which S1E has no wrapper to recover from.
+    return anthropic.Anthropic(
+        timeout=httpx.Timeout(ANTHROPIC_CLIENT_TIMEOUT,
+                              connect=ANTHROPIC_CONNECT_TIMEOUT),
+        max_retries=1)
 
 
 def run_llm_once(client, model, max_tokens, system_prompt, user_content):

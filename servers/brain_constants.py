@@ -388,6 +388,16 @@ LLM_REJECT_STRIKE_RESET_SECONDS = 2 * 60 * 60
 # with it too, and was reaching down into the encoder lane for it.
 ANTHROPIC_CLIENT_TIMEOUT = 600.0
 
+# Connect gets its OWN bound. ANTHROPIC_CLIENT_TIMEOUT's 600s is read-side
+# reasoning (long encoder generations); passed as a bare float it applies to
+# connect too, granting "can't reach the server" the same patience as "slow
+# generation" — a flapping network held an encode permit ~53 min that way
+# (e2dc24d3, 2026-08-18). Construction sites combine the two via
+# httpx.Timeout(ANTHROPIC_CLIENT_TIMEOUT, connect=ANTHROPIC_CONNECT_TIMEOUT):
+# TCP+TLS to the API lands in ~1s; 10s absorbs SYN retransmits on a congested
+# link without letting a dead network eat the read budget.
+ANTHROPIC_CONNECT_TIMEOUT = 10.0
+
 # Recall-lane query expansion gets its OWN, much tighter bound. It is a
 # best-effort ~1s Haiku call on the recall hot path, and a stall there blocks a
 # recall worker thread — so the encoder lane's 600s ceiling is the wrong shape

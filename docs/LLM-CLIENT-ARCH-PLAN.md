@@ -614,8 +614,11 @@ live at merge + daemon restart — the encode log line now prints the effective 
 
 **Step 2 remains**, last.
 
-**Step 5 added 2026-08-19** (timeout granularity + encoder-lane retry drop) — not started.
-Motivated by the e2dc24d3 blocked-read incident; see the step for the full timeline.
+**Step 5 added AND its safe halves shipped 2026-08-19** (same day, same session): the connect
+split (`ANTHROPIC_CONNECT_TIMEOUT = 10.0`, both construction sites on `httpx.Timeout`) and the
+encoder-lane retry drop (`make_client` at `max_retries=1`). Pinned by
+`tests/test_client_timeout_policy.py`. The remaining piece — a tighter *read* bound — stays open,
+gated on `per_round_stats.ttft_ms` data as the step specifies.
 
 ---
 
