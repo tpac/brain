@@ -4,10 +4,12 @@ brain — Daemon Client
 Client-side functions for communicating with the brain daemon.
 Used by hook scripts and brain_mcp.py.
 
-Singleton guarantee: ensure_daemon() uses fcntl.flock on a lock file.
-First caller acquires lock, starts daemon, releases lock.
-All other callers block on the lock, wake up to a running daemon.
-No file markers, no polling races.
+Restarter coordination: ensure_daemon() serializes concurrent callers on the
+STARTUP lock (get_startup_lock_path) — first caller converges the daemon,
+the rest block and wake up to a running one. The daemon's own singleton
+identity is a DIFFERENT lock (get_lock_path), held by a serving daemon for
+its whole life; the client only ever probes it non-blockingly (the
+two-writer guard before a direct spawn). One inode per question.
 """
 
 import fcntl
@@ -233,17 +235,21 @@ def _db_dir_changed(resp: dict, db_path: str) -> bool:
 def ensure_daemon(db_path: str) -> bool:
     """Ensure the daemon is running AND on current code. Returns True if ready.
 
-    launchd owns the daemon lifecycle (com.brain.daemon: KeepAlive, RunAtLoad).
-    This function only PINGS and, when a (re)start is needed, routes it through
-    launchd via `launchctl kickstart -k` (daemon_launch.kickstart). It never kills +
-    Popens its own process alongside launchd.
+    launchd owns process CREATION (com.brain.daemon: KeepAlive, RunAtLoad).
+    This function only PINGS and, when convergence is needed: a healthy daemon
+    on stale code is asked to reload in place (the `restart` command — see
+    BrainDaemon._exec_reload); only corpses and db-dir divergence route
+    through `launchctl kickstart -k` (daemon_launch.kickstart). It never
+    kills + Popens its own process alongside launchd.
 
     Doing both was the Errno-48 storm of 2026-06-04: N sessions booted at once,
     each saw stale code, and each independently killed + respawned while
     launchd's KeepAlive ALSO respawned — several processes raced to bind the
-    port. Now every (re)start decision is serialized under the fcntl singleton
-    lock and re-checked after acquiring it, so N concurrent callers (re)start at
-    most once. Direct Popen survives ONLY as the no-launchd fallback (a fresh
+    port. Now every (re)start decision is serialized under the STARTUP lock
+    (get_startup_lock_path — a different inode from the daemon's singleton
+    flock, which a serving daemon holds for life) and re-checked after
+    acquiring it, so N concurrent callers (re)start at most once. Direct Popen
+    survives ONLY as the no-launchd fallback (a fresh
     install where the LaunchAgent isn't bootstrapped) — there's no KeepAlive to
     race there.
 
@@ -255,7 +261,8 @@ def ensure_daemon(db_path: str) -> bool:
         return False
 
     def _needs_restart(r: dict) -> bool:
-        # Stale CODE and diverged DATA warrant the same move: kickstart.
+        # Stale CODE and diverged DATA both mean "not converged" — the MOVE
+        # differs (code → in-place reload; data → kickstart via the ladder).
         if _code_changed(r):
             return True
         if _db_dir_changed(r, db_path):

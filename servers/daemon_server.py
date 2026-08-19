@@ -825,6 +825,16 @@ class BrainDaemon:
                 # (7b4a01a). Exec failure falls back to exit + KeepAlive —
                 # the pre-reload restart behavior.
                 self._log("Restart requested — reloading in place after teardown...")
+                # Freshen the PID file NOW, not only at the pre-exec rewrite:
+                # teardown (pool drain + save/close, seconds) runs with the
+                # socket open-but-unanswering and the PID file otherwise
+                # carrying its hours-old bind mtime — exactly the signature
+                # recover_daemon's corpse test kills. The utime makes the
+                # WHOLE teardown→exec→boot span read "just bound".
+                try:
+                    os.utime(self.pid_path, None)
+                except OSError:
+                    pass
                 self._reload_requested = True
                 self.running = False
                 return {"ok": True, "result": {"status": "restarting"}}
@@ -1127,11 +1137,18 @@ class BrainDaemon:
         so the launcher rebuilds it (it prepends unconditionally — passing it
         through would grow it by one entry per reload).
 
-        The PID file is rewritten just before the exec (same process, so it
-        is truthful): its mtime is what recover_daemon's corpse test reads,
-        and the breadcrumb keeps the whole boot window reading "just bound —
-        booting, not a corpse". A failed exec leaves it to age past the grace
-        budget on its own.
+        The PID file is freshened twice — utime when the restart command is
+        accepted (covers the teardown seconds, when the socket is open but
+        unanswering) and a rewrite just before the exec (covers boot). Its
+        mtime is what recover_daemon's corpse test reads, so the whole
+        teardown→exec→boot span reads "just bound — booting, not a corpse".
+        A failed exec leaves it to age past the grace budget on its own.
+
+        Caveat: the launcher re-resolves the DB through the ladder, so a
+        hand-started daemon (`python -m servers.daemon_server /custom/brain.db`
+        with no BRAIN_DB_DIR) that receives `restart` re-points at whatever
+        the ladder resolves. Both production routes bake BRAIN_DB_DIR, so the
+        hint always matches there.
 
         Failure falls through to a loud exit: on launchd KeepAlive respawns
         (fresh code from disk anyway); off-launchd the next ensure_daemon
@@ -1155,6 +1172,12 @@ class BrainDaemon:
             with open(self.pid_path, 'w') as f:   # corpse-test breadcrumb
                 f.write(str(os.getpid()))
             os.chdir(REPO_ROOT)
+            # Last-instant cancellation check: a SIGTERM (launchctl bootout,
+            # logout) landing during teardown cleared the flag — honor it here
+            # rather than exec into an unmanaged orphan.
+            if not self._reload_requested:
+                self._log("Reload cancelled by a shutdown signal — exiting.")
+                os._exit(0)
             os.execve(launcher, [launcher], env)
         except Exception as e:
             self._log("Reload exec FAILED: %s — exiting; KeepAlive/"

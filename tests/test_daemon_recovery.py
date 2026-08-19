@@ -373,7 +373,8 @@ class TestHookDelegation(unittest.TestCase):
 
 class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
     """ensure_daemon must route every (re)start through launchd (kickstart),
-    serialized under the singleton lock — never Popen alongside KeepAlive.
+    serialized under the STARTUP lock (never the daemon's own singleton flock,
+    which a serving daemon holds for life) — and never Popen alongside KeepAlive.
 
     Regression guard for the Errno-48 storm (2026-06-04): N concurrent boots
     each saw stale code and independently killed + respawned while launchd's
@@ -960,16 +961,19 @@ class TestAwaitResponsive(unittest.TestCase):
 class TestExecReloadInPlace(unittest.TestCase):
     """The `restart` command reloads in place: the handler flags the reload and
     stops the serve loop; start() (main thread) runs the ordered _shutdown()
-    THEN execs fresh code into the same process via the SINGLE boot incantation
-    (daemon_argv + daemon_env). No spawn, no launchd round-trip — the
-    competing-spawner surface (Popen orphans 2026-07-03/04, kickstart two-writer
-    window 2026-07-06) does not exist on this path. Exec failure exits loudly;
-    KeepAlive / the next ensure_daemon respawns (the pre-reload behavior)."""
+    THEN execs hooks/scripts/brain-daemon into the same process — the launchd
+    entry point, so env flags and the DB ladder re-resolve exactly as on a
+    real boot. No spawn, no launchd round-trip — the competing-spawner surface
+    (Popen orphans 2026-07-03/04, kickstart two-writer window 2026-07-06)
+    does not exist on this path. Exec failure exits loudly; KeepAlive / the
+    next ensure_daemon respawns (the pre-reload behavior)."""
 
     def _make_daemon(self):
         from servers import daemon_server as ds
         d = ds.BrainDaemon.__new__(ds.BrainDaemon)   # skip __init__ — no real brain/socket
         d.db_path = "/tmp/nonexistent-brain-test.db"
+        d.pid_path = "/tmp/nonexistent-brain-test.pid"  # absent → utime no-ops
+        d._reload_requested = True   # the state _exec_reload runs under
         d.logs = []
         d._log = lambda m: d.logs.append(m)
         return d
@@ -1049,6 +1053,52 @@ class TestExecReloadInPlace(unittest.TestCase):
         with patch.object(ds.threading, "Thread") as m_thread:
             d._dispatch("restart", {})
         m_thread.assert_not_called()
+
+    def test_restart_command_freshens_pid_file_for_teardown(self):
+        # The corpse-test breadcrumb's FIRST half: teardown runs for seconds
+        # with the socket open-but-unanswering; without the utime the PID
+        # file still carries its hours-old bind mtime and recover_daemon
+        # reads exactly a corpse. The utime makes teardown read "just bound".
+        with tempfile.TemporaryDirectory(prefix="brain-reload-test-") as tmp:
+            d = self._make_daemon()
+            d.running = True
+            d._reload_requested = False
+            d.pid_path = os.path.join(tmp, "daemon.pid")
+            with open(d.pid_path, "w") as f:
+                f.write("12345")
+            old = time.time() - 3600
+            os.utime(d.pid_path, (old, old))
+            d._dispatch("restart", {})
+            self.assertLess(time.time() - os.stat(d.pid_path).st_mtime, 5.0)
+
+    def test_exec_reload_honors_cancellation_at_the_last_instant(self):
+        # A SIGTERM landing during teardown clears the flag; _exec_reload
+        # must re-check right before execve and exit instead of exec'ing an
+        # unmanaged orphan past a launchctl bootout.
+        with tempfile.TemporaryDirectory(prefix="brain-reload-test-") as tmp:
+            d = self._make_daemon()
+            d.pid_path = os.path.join(tmp, "daemon.pid")
+            d._reload_requested = False   # cleared mid-teardown
+            with patch("shutil.rmtree"), \
+                 patch("os.chdir"), \
+                 patch("os.execve") as m_exec, \
+                 patch("os._exit", side_effect=SystemExit) as m_exit:
+                with self.assertRaises(SystemExit):
+                    d._exec_reload()
+            m_exec.assert_not_called()
+            m_exit.assert_called_once_with(0)
+
+    def test_shutdown_is_idempotent_one_backstop(self):
+        # _shutdown runs at _serve's tail AND start()'s tail on every clean
+        # path; only the FIRST call may tear down and arm the 15s force-exit
+        # backstop — two armed backstops obscured the real teardown budget.
+        d = self._make_daemon()
+        d._arm_force_exit_backstop = MagicMock()
+        d._teardown_brain = MagicMock()
+        d._shutdown()
+        d._shutdown()
+        d._arm_force_exit_backstop.assert_called_once()
+        d._teardown_brain.assert_called_once()
 
     def test_shutdown_command_cancels_pending_reload(self):
         d = self._make_daemon()
@@ -1147,6 +1197,16 @@ class TestSpawnDetachedDaemon(unittest.TestCase):
         from servers.daemon_config import REPO_ROOT
         self.assertEqual(env["PYTHONPATH"],
                          REPO_ROOT + os.pathsep + "/somewhere/else")
+
+    def test_daemon_env_pythonpath_prepend_is_idempotent(self):
+        # A chained env (boot-brain.sh exports the repo root before
+        # ensure_daemon spawns; reload envs chain generations) must not grow
+        # PYTHONPATH by one REPO_ROOT per pass.
+        from servers.daemon_config import REPO_ROOT
+        inherited = REPO_ROOT + os.pathsep + "/somewhere/else"
+        with patch.dict(os.environ, {"PYTHONPATH": inherited}):
+            env = dl.daemon_env("/tmp/x/brain.db")
+        self.assertEqual(env["PYTHONPATH"], inherited)
 
     def test_daemon_env_falls_back_to_db_parent(self):
         with patch.dict(os.environ, {}, clear=False):

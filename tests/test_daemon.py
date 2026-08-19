@@ -270,7 +270,8 @@ class TestDaemonModuleStructure(unittest.TestCase):
         from servers.daemon_launch import (kickstart, manages, kill_daemon,
                                            port_is_occupied, spawn_detached_daemon)
         from servers.daemon_config import (get_socket_path, get_pid_path,
-                                           get_lock_path, get_status_path)
+                                           get_lock_path, get_startup_lock_path,
+                                           get_status_path)
         from servers.daemon_dispatch import COMMAND_TABLE
         # Verify they're all importable and non-None
         for sym_name, sym in [
@@ -287,6 +288,7 @@ class TestDaemonModuleStructure(unittest.TestCase):
             ('get_socket_path', get_socket_path),
             ('get_pid_path', get_pid_path),
             ('get_lock_path', get_lock_path),
+            ('get_startup_lock_path', get_startup_lock_path),
             ('get_status_path', get_status_path),
             ('COMMAND_TABLE', COMMAND_TABLE),
         ]:

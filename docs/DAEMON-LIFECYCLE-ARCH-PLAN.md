@@ -465,17 +465,23 @@ worktree tests (`056c7a40`).
 
 ## Step 11 — One `SingletonLock` owner for the flock (widest blast radius — LAST)
 
-**Problem.** The flock — the brain's only real write-safety mutex — is four fragments: the path in
-`daemon_config` (`get_lock_path`), the acquire (with "never unlink a held lock") in `start()`, the
-release ("LAST, after DB close") in `_cleanup`/`_teardown_brain`, and a SEPARATE flock on the same
-file in `ensure_daemon` (serializing restart decisions). No single place states the mutex and its
-rules; the invariants that make it correct are spread across ~120 lines in two files.
+**Problem (updated 2026-08-19).** There are now TWO locks by design — do NOT re-merge them.
+`get_lock_path` is the daemon's singleton identity (blocking-held by a serving daemon for its
+whole life); `get_startup_lock_path` is the restarter coordination lock `ensure_daemon`
+serializes on. When both questions shared one inode (pre-2026-08-19), `ensure_daemon` hung
+against every healthy daemon and a successor booting under a held lock exited as a duplicate —
+that split is load-bearing, pinned by `test_reload_works_while_daemon_singleton_flock_is_held`.
+The remaining fragmentation is per-lock: the singleton's path lives in `daemon_config`, the
+acquire ("never unlink a held lock") in `start()`, the release ("LAST, after DB close") in
+`_cleanup`/`_teardown_brain`, plus `ensure_daemon`'s non-blocking two-writer probe of it before
+a direct spawn. No single place states each mutex and its rules.
 
 **Target state.** A small `SingletonLock` (own file, or a section of `daemon_launch.py` — flock +
 launchd together ARE the exclusion layer) owning path + non-blocking acquire (with pid-hint) +
 idempotent release + the "never unlink / release LAST / LOCK_NB-means-live-holder" rules as comments
 on the code that enforces them. `start()` uses it for singleton identity; `_teardown_brain` for
-release-LAST; `ensure_daemon` for restart serialization.
+release-LAST; the direct-spawn probe consumes it read-only. The STARTUP lock stays a distinct
+inode — one lock per question.
 
 **Files & call sites.** `daemon_server.py` (`start`, `_cleanup`, `_teardown_brain`),
 `daemon_client.py` (`ensure_daemon`), `daemon_config.py` (`get_lock_path`).
