@@ -2382,7 +2382,8 @@ class Brain(
         where callers already handle them.
         """
         from .scales.dispatch import resolve_api_key
-        from .brain_constants import ANTHROPIC_CLIENT_TIMEOUT
+        from .brain_constants import (ANTHROPIC_CLIENT_TIMEOUT,
+                                      ANTHROPIC_CONNECT_TIMEOUT)
         key = resolve_api_key()
         client = getattr(self, 'anthropic_client', None)
         # Key-stamped cache: reuse the client only while it was built with
@@ -2397,7 +2398,12 @@ class Brain(
         if os.environ.get('ANTHROPIC_API_KEY') != key and key:
             os.environ['ANTHROPIC_API_KEY'] = key
         import anthropic
-        client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
+        import httpx
+        # Granular timeout: 600s is a read budget; connect gets its own 10s
+        # bound so a dead network fails fast (see ANTHROPIC_CONNECT_TIMEOUT).
+        client = anthropic.Anthropic(
+            timeout=httpx.Timeout(ANTHROPIC_CLIENT_TIMEOUT,
+                                  connect=ANTHROPIC_CONNECT_TIMEOUT))
         # Keyless boot (first-run onboarding): don't cache a client that can
         # never authenticate — the next call re-resolves. sk-* (not
         # truthiness) so a placeholder like 'changeme' is never cached —
