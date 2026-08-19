@@ -1,7 +1,7 @@
 {
   "name": "brain",
   "displayName": "Anchor",
-  "version": "9.7.0",
+  "version": "9.7.1",
   "description": "Persistent identity for an AI assistant — a self-healing knowledge graph that survives across sessions, learns from every conversation, and surfaces the right memory at the right moment. The substrate an identity accumulates into, not a RAG store.",
   "author": {
     "name": "Tom Pachys",
