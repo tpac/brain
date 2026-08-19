@@ -278,6 +278,27 @@ def _generate_revise_schema():
             "NOT stored on the node. Required. Distinct from the node FIELD "
             "`reasoning` (why the node was encoded); to update that field, "
             "pass `reasoning` as well.")},
+        "content_edits": {
+            "type": "array",
+            "description": (
+                "Patch-mode content: surgical edits applied in order, each "
+                "replacing ONE exact occurrence of `old` with `new` in the "
+                "stored content. `old` is copied VERBATIM from the node's "
+                "current content and must match exactly once — a missing or "
+                "ambiguous match fails loudly with guidance. Fixes a stale "
+                "or falsified claim without re-authoring (and risking) the "
+                "rest of the content. Mutually exclusive with `content`."),
+            "items": {
+                "type": "object",
+                "required": ["old", "new"],
+                "properties": {
+                    "old": {"type": "string", "description":
+                            "Exact, unique substring of the current content"},
+                    "new": {"type": "string", "description":
+                            "Replacement text"},
+                },
+            },
+        },
     }
     for name, spec in get_writable_fields().items():
         prop = {"type": TYPE_MAP.get(spec.get("type", "str"), "string")}
@@ -294,7 +315,13 @@ def _generate_revise_schema():
         "description": (
             "Update fields on an existing brain node. Specified fields are "
             "REPLACED with the passed value; unspecified fields are PRESERVED "
-            "(only the keys you pass are touched). Immutable fields "
+            "(only the keys you pass are touched). For content there is a "
+            "patch form — `content_edits: [{old, new}, ...]` — that fixes "
+            "specific claims in place and leaves the rest of the content "
+            "untouched; prefer it over a full `content` rewrite whenever the "
+            "change is a correction rather than a restructure (a rewrite "
+            "must re-author everything the node holds, and dropped details "
+            "are silent losses). Immutable fields "
             "({id, created_at, locked}) are skipped with a warning — call "
             "still succeeds for the other fields. Revision history lives in "
             "trace events — query via `query_traces` with "
@@ -335,7 +362,7 @@ def _build_revise_batch_schema():
     item_properties["source_refs"] = _SOURCE_REFS_SCHEMA
     return {
         "name": "revise_batch",
-        "description": "Revise multiple brain nodes in one call. Same per-field replace contract as `revise()` — specified fields are REPLACED, unspecified fields are PRESERVED. Immutable fields ({id, created_at, locked}) skipped with warning. Each row emits its own trace event for revision history (queryable via `query_traces` with ref_type='node_revised'). Use this instead of multiple `revise` calls.",
+        "description": "Revise multiple brain nodes in one call. Same contract as `revise()` — specified fields are REPLACED, unspecified fields are PRESERVED, and `content_edits: [{old, new}, ...]` patches specific claims in the stored content without re-authoring the rest (prefer it for corrections; mutually exclusive with `content`). Immutable fields ({id, created_at, locked}) skipped with warning. Each row emits its own trace event for revision history (queryable via `query_traces` with ref_type='node_revised'). Use this instead of multiple `revise` calls.",
         "inputSchema": {
             "type": "object",
             "required": ["revisions"],
