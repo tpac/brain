@@ -25,7 +25,8 @@ from .daemon_config import (
     LAUNCHD_THROTTLE_INTERVAL_S,
 )
 from .daemon_launch import (
-    kickstart, kill_daemon, manages, port_is_occupied, spawn_detached_daemon,
+    kickstart, kill_daemon, manages, pid_file_age_s, port_is_occupied,
+    spawn_detached_daemon,
 )
 
 
@@ -304,6 +305,33 @@ def ensure_daemon(db_path: str) -> bool:
             sys.stderr.write("[brain-daemon] Daemon healthy (handled by another caller / recovered).\n")
             return True
 
+        # Healthy but on stale CODE → ask it to reload in place (the daemon
+        # execs fresh code, same PID — see BrainDaemon._exec_reload). Reload
+        # is the owner of "healthy + stale"; kickstart below narrows to
+        # corpses and db-dir divergence (a data move needs the spawn ladder's
+        # re-resolution — exec re-runs the same argv). A reload that doesn't
+        # come back healthy falls through to kickstart: at that point the
+        # daemon IS the corpse case.
+        if resp.get("ok") and _code_changed(resp) and not _db_dir_changed(resp, db_path):
+            sys.stderr.write("[brain-daemon] stale code on a healthy daemon — "
+                             "reloading in place\n")
+            try:
+                send_command("restart", timeout=5.0)
+            except Exception as e:
+                sys.stderr.write("[brain-daemon] reload request failed: %s\n" % e)
+            # Poll for responsive AND current-code — a bare responsive check
+            # can catch the OLD daemon in its last pre-teardown tick (stale
+            # fingerprint) and misread the reload as failed.
+            deadline = time.monotonic() + _GRACE_DEADLINE_S
+            while time.monotonic() < deadline:
+                time.sleep(0.5)
+                resp = _can_connect()
+                if resp.get("ok") and not _needs_restart(resp):
+                    sys.stderr.write("[brain-daemon] Daemon reloaded in place.\n")
+                    return True
+            sys.stderr.write("[brain-daemon] reload did not converge within "
+                             "%.0fs — falling back to kickstart\n" % _GRACE_DEADLINE_S)
+
         # Route the (re)start through launchd. `kickstart -k` kills any running
         # instance (covers healthy-but-stale AND hung-corpse) and respawns it in
         # one launchd-serialized call — no competing-spawn race with KeepAlive.
@@ -491,6 +519,20 @@ def recover_daemon(db_path: Optional[str] = None) -> bool:
         if _read_recovery_state().get("attempts"):
             _write_recovery_state(0.0, 0)  # healthy again — reset the streak
         return True
+
+    # Corpse test, not just liveness test. Unresponsive-but-just-bound is a
+    # daemon still warming up, and unresponsive-with-the-port-held-mid-teardown
+    # is a restart in flight — killing either was the double-kill of
+    # 2026-08-17/18 (a hook's recovery kickstarting into a deploy restart's
+    # boot window, SIGKILLing the healthy fresh daemon). A genuine corpse is
+    # unresponsive AND long past its bind (stale PID file). No attempt is
+    # stamped here — declining to kill a booting daemon is not a recovery
+    # attempt, and the next caller re-evaluates with a grown age.
+    age = pid_file_age_s()
+    if age is not None and age < _GRACE_DEADLINE_S:
+        return False  # bound seconds ago — booting/warming, give it its window
+    if age is None and port_is_occupied():
+        return False  # teardown/boot in motion — the successor is binding
 
     now = time.time()
     state = _read_recovery_state()

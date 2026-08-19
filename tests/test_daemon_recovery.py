@@ -91,6 +91,7 @@ class TestRecoverDaemon(unittest.TestCase):
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=True), \
              patch.object(dc, "is_daemon_responsive", return_value=False), \
+             patch.object(dc, "pid_file_age_s", return_value=9999.0), \
              patch.object(dc, "_relaunch_daemon") as relaunch:
             self.assertFalse(dc.recover_daemon())
             relaunch.assert_not_called()
@@ -99,6 +100,7 @@ class TestRecoverDaemon(unittest.TestCase):
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "is_daemon_responsive", return_value=False), \
+             patch.object(dc, "pid_file_age_s", return_value=9999.0), \
              patch.object(dc, "_relaunch_daemon") as relaunch:
             self.assertFalse(dc.recover_daemon())
             relaunch.assert_called_once()
@@ -109,6 +111,7 @@ class TestRecoverDaemon(unittest.TestCase):
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "is_daemon_responsive", return_value=False), \
+             patch.object(dc, "pid_file_age_s", return_value=9999.0), \
              patch.object(dc, "_relaunch_daemon") as relaunch:
             self.assertFalse(dc.recover_daemon())
             relaunch.assert_not_called()
@@ -119,6 +122,7 @@ class TestRecoverDaemon(unittest.TestCase):
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "is_daemon_responsive", return_value=False), \
+             patch.object(dc, "pid_file_age_s", return_value=9999.0), \
              patch.object(dc, "_relaunch_daemon") as relaunch:
             self.assertFalse(dc.recover_daemon())
             relaunch.assert_not_called()
@@ -129,10 +133,77 @@ class TestRecoverDaemon(unittest.TestCase):
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "is_daemon_responsive", return_value=False), \
+             patch.object(dc, "pid_file_age_s", return_value=9999.0), \
              patch.object(dc, "_relaunch_daemon") as relaunch:
             self.assertFalse(dc.recover_daemon())
             relaunch.assert_called_once()
         self.assertEqual(self._read()["attempts"], 1)
+
+
+class TestRecoverDaemonCorpseTest(unittest.TestCase):
+    """recover_daemon's kill decision is a CORPSE test, not a liveness test.
+    Unresponsive-but-freshly-bound (young PID file) is a daemon warming up;
+    unresponsive-with-the-port-held-and-no-PID-file is a restart in flight.
+    Kickstarting either SIGKILLs a healthy daemon mid-boot — the double-kill
+    that doubled every deploy-restart outage on 2026-08-17/18. Only
+    unresponsive + long-past-bind (stale PID file) is a corpse."""
+
+    def setUp(self):
+        self.state = os.path.join(tempfile.gettempdir(),
+                                  "brain-recovery-corpse-%d.json" % os.getpid())
+        if os.path.exists(self.state):
+            os.remove(self.state)
+
+    tearDown = setUp
+
+    def _recover(self, age, port_occupied):
+        with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
+             patch.object(dc, "is_maintenance_mode", return_value=False), \
+             patch.object(dc, "is_daemon_responsive", return_value=False), \
+             patch.object(dc, "pid_file_age_s", return_value=age), \
+             patch.object(dc, "port_is_occupied", return_value=port_occupied), \
+             patch.object(dc, "_relaunch_daemon") as relaunch:
+            result = dc.recover_daemon()
+        return result, relaunch
+
+    def test_young_pid_file_is_booting_not_corpse(self):
+        result, relaunch = self._recover(age=3.0, port_occupied=True)
+        self.assertFalse(result)
+        relaunch.assert_not_called()
+        # Declining to kill a booting daemon is NOT a recovery attempt — no
+        # cooldown/breaker state is stamped, so a later genuine corpse still
+        # gets its full attempt budget.
+        self.assertFalse(os.path.exists(self.state))
+
+    def test_missing_pid_file_with_port_held_is_restart_in_flight(self):
+        result, relaunch = self._recover(age=None, port_occupied=True)
+        self.assertFalse(result)
+        relaunch.assert_not_called()
+
+    def test_missing_pid_file_port_free_relaunches(self):
+        # Nothing bound, nothing claiming a recent bind → kickstart is safe
+        # (there is no healthy instance to kill).
+        result, relaunch = self._recover(age=None, port_occupied=False)
+        self.assertFalse(result)
+        relaunch.assert_called_once()
+
+    def test_stale_pid_file_is_a_corpse(self):
+        result, relaunch = self._recover(
+            age=dc._GRACE_DEADLINE_S + 1, port_occupied=True)
+        self.assertFalse(result)
+        relaunch.assert_called_once()
+
+    def test_pid_file_age_reads_bind_recency(self):
+        # daemon_launch.pid_file_age_s: mtime of the PID file, None if absent.
+        with tempfile.TemporaryDirectory(prefix="brain-pidage-test-") as tmp:
+            pid_path = os.path.join(tmp, "daemon.pid")
+            with patch.object(dl, "get_pid_path", return_value=pid_path):
+                self.assertIsNone(dl.pid_file_age_s())
+                with open(pid_path, "w") as f:
+                    f.write("12345")
+                age = dl.pid_file_age_s()
+                self.assertIsNotNone(age)
+                self.assertLess(age, 5.0)
 
 
 class TestRelaunchDaemon(unittest.TestCase):
@@ -333,19 +404,43 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
             ks.assert_not_called()
             spawn.assert_not_called()
 
-    def test_stale_code_kickstarts_once_never_popen(self):
-        # Responsive but stale → exactly one launchd kickstart, never a spawn.
-        # _code_changed: fast-path(stale) → under-lock recheck(stale) → ready.
+    def test_stale_code_reloads_in_place_never_kickstarts(self):
+        # Responsive but stale → reload (the daemon execs fresh code, same
+        # PID), never a kill. kickstart is for corpses; SIGKILLing a healthy
+        # daemon for a code refresh was the deploy-outage class of 2026-08.
+        # _code_changed: fast(stale) → recheck(stale) → reload-branch(stale)
+        # → post-reload poll(current).
         with patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "get_lock_path", return_value=self._lock), \
              patch.object(dc, "_is_daemon_source", return_value=True), \
              patch.object(dc, "_can_connect", return_value={"ok": True}), \
-             patch.object(dc, "_code_changed", side_effect=[True, True, False]), \
+             patch.object(dc, "_code_changed", side_effect=[True, True, True, False]), \
+             patch.object(dc, "send_command", return_value={"ok": True}) as sc, \
+             patch.object(dc, "kickstart") as ks, \
+             patch.object(dc, "spawn_detached_daemon") as spawn, \
+             patch.object(dc.time, "sleep"):
+            self.assertTrue(dc.ensure_daemon(self._db))
+            sc.assert_called_once_with("restart", timeout=5.0)
+            ks.assert_not_called()      # healthy + stale is reload's, not kickstart's
+            spawn.assert_not_called()
+
+    def test_stale_reload_not_converging_falls_back_to_kickstart(self):
+        # A reload that never comes back on current code within the grace
+        # budget IS the corpse case — escalate to kickstart exactly once.
+        with patch.object(dc, "is_maintenance_mode", return_value=False), \
+             patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_is_daemon_source", return_value=True), \
+             patch.object(dc, "_can_connect", return_value={"ok": True}), \
+             patch.object(dc, "_code_changed", side_effect=[True, True, True, False]), \
+             patch.object(dc, "send_command", return_value={"ok": True}) as sc, \
+             patch.object(dc, "_await_responsive", return_value={"ok": True}), \
+             patch.object(dc.time, "monotonic", side_effect=[0.0] + [999.0] * 9), \
              patch.object(dc, "kickstart", return_value=True) as ks, \
              patch.object(dc, "spawn_detached_daemon") as spawn, \
              patch.object(dc.time, "sleep"):
             self.assertTrue(dc.ensure_daemon(self._db))
-            ks.assert_called_once()
+            sc.assert_called_once()     # the reload was tried first
+            ks.assert_called_once()     # then escalated — once, under the lock
             spawn.assert_not_called()
 
     def test_concurrent_winner_already_restarted_skips_kickstart(self):
@@ -389,14 +484,17 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
         # returns nonzero/timed-out, the port is FREE — but the pre-kickstart
         # ping said {ok:True}. The defer branch must RE-PING (now {ok:False}) and
         # NOT defer on the stale snapshot (which would report "ready" with
-        # nothing serving). _can_connect: fast(ok), under-lock(ok), re-ping(DOWN),
-        # post-spawn(ok).
+        # nothing serving). Stale code, so the reload is tried first and never
+        # converges (monotonic jump skips its poll); then the kickstart path.
+        # _can_connect: fast(ok), under-lock(ok), re-ping(DOWN), post-spawn(ok).
         with patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "get_lock_path", return_value=self._lock), \
              patch.object(dc, "_is_daemon_source", return_value=True), \
              patch.object(dc, "_can_connect",
                           side_effect=[{"ok": True}, {"ok": True}, {"ok": False}, {"ok": True}]), \
              patch.object(dc, "_code_changed", return_value=True), \
+             patch.object(dc, "send_command", return_value={"ok": True}), \
+             patch.object(dc.time, "monotonic", side_effect=[0.0] + [999.0] * 9), \
              patch.object(dc, "kickstart", return_value=False), \
              patch.object(dc, "manages", return_value=False), \
              patch.object(dc, "port_is_occupied", return_value=False), \
@@ -406,16 +504,19 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
             spawn.assert_called_once()   # spawned — did NOT false-defer on stale resp
 
     def test_responsive_stale_kickstart_unreachable_defers_not_spawn(self):
-        # Regression guard for the 2026-06-05 orphan storm. A worktree session
-        # runs stale code, so the running daemon looks stale; kickstart can't
-        # reach launchd from that context. We MUST defer to the responsive
-        # incumbent — never kill it and spawn a competitor (the rival orphaned,
-        # squatted the port, and crash-looped the real launchd daemon).
+        # Regression guard for the 2026-06-05 orphan storm. The daemon looks
+        # stale and stays stale (a reload that never converges — monotonic jump
+        # skips its poll), and kickstart can't reach launchd from this context.
+        # We MUST defer to the responsive incumbent — never kill it and spawn a
+        # competitor (the rival orphaned, squatted the port, and crash-looped
+        # the real launchd daemon).
         with patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "get_lock_path", return_value=self._lock), \
              patch.object(dc, "_is_daemon_source", return_value=True), \
              patch.object(dc, "_can_connect", return_value={"ok": True}), \
              patch.object(dc, "_code_changed", return_value=True), \
+             patch.object(dc, "send_command", return_value={"ok": True}), \
+             patch.object(dc.time, "monotonic", side_effect=[0.0] + [999.0] * 9), \
              patch.object(dc, "kickstart", return_value=False), \
              patch.object(dc, "kill_daemon") as kill, \
              patch.object(dc, "spawn_detached_daemon") as spawn:
@@ -579,6 +680,7 @@ class TestSupervisorPhaseScoping(unittest.TestCase):
         from servers import daemon_server as ds
         d = ds.BrainDaemon.__new__(ds.BrainDaemon)   # skip __init__ — no pool/brain
         d._restart_count = 0
+        d._reload_requested = False
         d._run_started_at = 0
         d.socket_path = os.path.join(tmp, "x.sock")  # absent → start() skips unlink
         d.logs = []
@@ -735,54 +837,87 @@ class TestAwaitResponsive(unittest.TestCase):
         slept.assert_not_called()       # zero deadline never enters the retry loop
 
 
-class TestPerformRestartLaunchdSoleSpawner(unittest.TestCase):
-    """_perform_restart must never spawn a detached rival when launchd manages
-    the daemon — that orphan (non-launchd, PPID 1) squats the singleton lock and
-    wedges KeepAlive into a respawn storm, needing a manual kill (incidents
-    2026-07-03/04). Managed → clean _shutdown() (drain→save→close DB→release lock
-    LAST) then os._exit; KeepAlive respawns. Direct spawn ONLY on no-launchd."""
+class TestExecReloadInPlace(unittest.TestCase):
+    """The `restart` command reloads in place: the handler flags the reload and
+    stops the serve loop; start() (main thread) runs the ordered _shutdown()
+    THEN execs fresh code into the same process via the SINGLE boot incantation
+    (daemon_argv + daemon_env). No spawn, no launchd round-trip — the
+    competing-spawner surface (Popen orphans 2026-07-03/04, kickstart two-writer
+    window 2026-07-06) does not exist on this path. Exec failure exits loudly;
+    KeepAlive / the next ensure_daemon respawns (the pre-reload behavior)."""
 
-    def _make_daemon(self, order):
+    def _make_daemon(self):
         from servers import daemon_server as ds
         d = ds.BrainDaemon.__new__(ds.BrainDaemon)   # skip __init__ — no real brain/socket
         d.db_path = "/tmp/nonexistent-brain-test.db"
-        d._log = lambda *a, **k: None
-        # the ordered teardown: closes DB, releases lock LAST
-        d._shutdown = MagicMock(side_effect=lambda: order.append("teardown"))
+        d.logs = []
+        d._log = lambda m: d.logs.append(m)
         return d
 
-    def _run(self, managed):
-        order = []
-        d = self._make_daemon(order)
-        # os._exit truly halts in production; SystemExit models that so control
-        # can't fall through, and the if/else already makes the branches exclusive.
-        with patch("time.sleep"), \
+    def test_restart_command_flags_reload_and_stops_loop(self):
+        d = self._make_daemon()
+        d.running = True
+        d._reload_requested = False
+        resp = d._dispatch("restart", {})
+        self.assertEqual(resp, {"ok": True, "result": {"status": "restarting"}})
+        self.assertTrue(d._reload_requested)
+        self.assertFalse(d.running)   # main thread exits _serve → _shutdown → exec
+
+    def test_exec_reload_execs_single_boot_incantation(self):
+        from servers.daemon_launch import daemon_argv, REPO_ROOT
+        d = self._make_daemon()
+        with patch("shutil.rmtree"), \
+             patch("os.chdir") as m_chdir, \
+             patch("os.execve") as m_exec, \
+             patch("os._exit") as m_exit, \
+             patch("subprocess.Popen") as m_popen:
+            d._exec_reload()
+        argv = daemon_argv(d.db_path)
+        self.assertEqual(m_exec.call_args[0][0], argv[0])
+        self.assertEqual(m_exec.call_args[0][1], argv)
+        self.assertIn("BRAIN_DB_DIR", m_exec.call_args[0][2])  # daemon_env
+        m_chdir.assert_called_once_with(REPO_ROOT)  # cwd pin for `-m`
+        m_exit.assert_not_called()     # success path never exits
+        m_popen.assert_not_called()    # THE invariant — no spawn, ever
+
+    def test_exec_failure_exits_loudly_for_keepalive(self):
+        d = self._make_daemon()
+        with patch("shutil.rmtree"), \
+             patch("os.chdir"), \
+             patch("os.execve", side_effect=OSError("exec failed")), \
              patch("os._exit", side_effect=SystemExit) as m_exit, \
-             patch("subprocess.Popen") as m_popen, \
-             patch("shutil.rmtree"), \
-             patch("servers.daemon_server.spawn_detached_daemon",
-                   side_effect=lambda _db: order.append("spawn")) as m_spawn, \
-             patch("servers.daemon_server.manages", return_value=managed):
+             patch("subprocess.Popen") as m_popen:
             with self.assertRaises(SystemExit):
-                d._perform_restart()
-        return d, m_exit, m_spawn, m_popen, order
-
-    def test_managed_clean_exit_never_popens(self):
-        d, m_exit, m_spawn, m_popen, _ = self._run(managed=True)
-        d._shutdown.assert_called_once()   # ordered teardown before exit (closes DB, releases lock LAST)
-        m_spawn.assert_not_called()        # THE invariant — no detached rival; KeepAlive respawns
-        m_popen.assert_not_called()        # …and no raw Popen sneaking around the primitive
+                d._exec_reload()
         m_exit.assert_called_once_with(0)
+        m_popen.assert_not_called()
+        self.assertTrue(any("FAILED" in m for m in d.logs),
+                        "a failed exec must be loud before the fallback exit")
 
-    def test_no_launchd_direct_spawns_after_teardown(self):
-        d, m_exit, m_spawn, m_popen, order = self._run(managed=False)
-        d._shutdown.assert_called_once()
-        m_spawn.assert_called_once_with(d.db_path)   # the ONE hardened spawn (daemon_launch)
-        m_popen.assert_not_called()                  # no second, un-hardened Popen path
-        # teardown FIRST — DB closed + lock released before the successor can
-        # open brain.db (two writers corrupt the indexes).
-        self.assertEqual(order, ["teardown", "spawn"])
-        m_exit.assert_called_once_with(0)
+    def test_start_execs_only_when_reload_requested(self):
+        # The wiring: after the supervisor loop + _shutdown, start() execs
+        # iff the restart command flagged a reload.
+        for requested in (False, True):
+            with tempfile.TemporaryDirectory(prefix="brain-reload-test-") as tmp:
+                d = self._make_daemon()
+                d.brain = MagicMock()
+                d._restart_count = 0
+                d._run_started_at = 0
+                d.socket_path = os.path.join(tmp, "x.sock")
+                d._log_crash = MagicMock()
+                d._shutdown = MagicMock()
+                d._close_socket = MagicMock()
+                d._exec_reload = MagicMock()
+                d._reload_requested = requested
+                d._run = lambda: None            # clean shutdown → loop breaks
+                with patch("servers.daemon_server.get_lock_path",
+                           return_value=os.path.join(tmp, "daemon.lock")), \
+                     patch("servers.daemon_server.signal.signal"), \
+                     patch("servers.daemon_server.atexit.register"), \
+                     patch("servers.daemon_server.time.sleep"):
+                    d.start()
+                self.assertEqual(d._exec_reload.called, requested)
+                d._shutdown.assert_called_once()   # teardown ALWAYS precedes the exec
 
 
 class TestSpawnDetachedDaemon(unittest.TestCase):

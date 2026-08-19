@@ -60,7 +60,6 @@ from .daemon_config import (
     _CODE_FINGERPRINT,
     get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
 )
-from .daemon_launch import manages, spawn_detached_daemon
 from .daemon_dispatch import COMMAND_TABLE, dispatch_command
 from .dispatch_common import caller_session
 
@@ -134,6 +133,8 @@ class BrainDaemon:
         self._scribe_attempts = {}
         self._scribe_failures = {}
         self._restart_count = 0
+        self._reload_requested = False  # set by the `restart` command; start()
+                                        # execs fresh code in place after teardown
         self._run_started_at = 0  # wall-clock when the current _run() began serving
                                   # (set after bind) — the supervisor's healthy-uptime
                                   # streak reset reads it.
@@ -262,6 +263,8 @@ class BrainDaemon:
                 time.sleep(self.SUPERVISOR_RESTART_COOLDOWN)
 
         self._shutdown()
+        if self._reload_requested:
+            self._exec_reload()
 
     def _run(self):
         """Single daemon lifecycle — load brain, bind socket, serve until stopped.
@@ -803,12 +806,18 @@ class BrainDaemon:
                 return {"ok": True, "result": {"status": "shutting_down"}}
 
             if cmd == "restart":
-                self._log("Restart requested — scheduling re-exec after response...")
-                # Restart runs on its own thread AFTER this response reaches the
-                # client. The re-exec logic lives in _perform_restart (a method,
-                # not a closure, so it is unit-testable — it calls os._exit).
-                import threading as _t
-                _t.Thread(target=self._perform_restart, daemon=False).start()
+                # Reload in place: flag it and stop the serve loop. The MAIN
+                # thread exits _serve within one select tick, runs the ordered
+                # _shutdown() (this response finishes flushing during the pool
+                # drain), and start() execs fresh code into this same process
+                # (_exec_reload — same PID, no launchd round-trip, no down
+                # window beyond teardown + boot). Main thread deliberately:
+                # the 2026-04 execv ran on a handler thread and died silently
+                # (7b4a01a). Exec failure falls back to exit + KeepAlive —
+                # the pre-reload restart behavior.
+                self._log("Restart requested — reloading in place after teardown...")
+                self._reload_requested = True
+                self.running = False
                 return {"ok": True, "result": {"status": "restarting"}}
 
             # Hook commands — HOOK_TABLE is the single source of truth
@@ -1083,32 +1092,30 @@ class BrainDaemon:
                 pass
             self._write_status()
 
-    def _perform_restart(self):
-        """Restart with fresh code, letting launchd own the respawn.
+    def _exec_reload(self):
+        """Reload in place: exec fresh code into THIS process. Same PID, no
+        spawn, platform-uniform — launchd (where present) never notices, so
+        there is no KeepAlive respawn to race, no ThrottleInterval to wait
+        out, and no competing-spawner surface at all (the disease that killed
+        every earlier restart shape — Popen orphans 2026-07-03/04, the
+        two-writer kickstart window 2026-07-06). The down window shrinks to
+        teardown + boot (~3-5s), below every monitor/hook alarm threshold.
 
-        When launchd manages the daemon (macOS), tear down cleanly and exit —
-        launchd's KeepAlive (unconditional in com.brain.daemon.plist) respawns a
-        fresh, launchd-managed instance. We do NOT spawn a detached rival: that
-        orphan (PPID 1, non-launchd) is exactly what wedged KeepAlive into a
-        respawn storm and had to be killed by hand (incidents 2026-07-03/04). We
-        also do NOT `kickstart -k` ourselves — a daemon restarting *itself* only
-        needs to exit; kickstart is for recovering a daemon from OUTSIDE, and
-        self-kickstart just reopens the two-writer/self-SIGKILL races.
+        Runs on the MAIN thread only, called by start() AFTER the ordered
+        `_shutdown()` teardown (drain → save → CLOSE DB → release lock) — so
+        the exec'd successor is the only opener of brain.db, and a swallowed
+        exec failure can't hide (the 2026-04 execv died silently on a handler
+        thread — 7b4a01a). The argv/env come from daemon_launch.daemon_argv/
+        daemon_env — the SINGLE boot incantation every spawn route execs.
 
-        Only on a genuine no-launchd platform (Linux / fresh install), where
-        nothing would respawn us, do we spawn the successor directly.
-
-        Both branches run the ordered `_shutdown()` teardown (drain → save →
-        CLOSE DB → release lock LAST) BEFORE anything else can open brain.db, so
-        a respawn/successor can never hold a second writer on it (two writers
-        corrupt the indexes — see _teardown_brain).
+        Failure falls through to a loud exit: on launchd KeepAlive respawns
+        (fresh code from disk anyway); off-launchd the next ensure_daemon
+        spawns. Either way the fallback IS the pre-reload restart behavior.
         """
-        time.sleep(0.5)  # let the {status: restarting} response reach the client
-        self._log("Executing restart...")
+        self._log("Reloading: exec fresh code in place (same PID)...")
 
-        # Clear bytecode cache so the respawned daemon loads fresh code (the
-        # point of a restart). Both the KeepAlive respawn and the no-launchd
-        # Popen re-run brain-daemon, which imports servers.* from __pycache__.
+        # Clear bytecode cache so the exec'd image compiles fresh code (the
+        # point of a reload).
         import shutil
         servers_dir = os.path.dirname(os.path.abspath(__file__))
         project_dir = os.path.dirname(servers_dir)
@@ -1117,21 +1124,16 @@ class BrainDaemon:
             if os.path.isdir(cache_dir):
                 shutil.rmtree(cache_dir, ignore_errors=True)
 
-        if manages():
-            # launchd owns the lifecycle: teardown (closes DB, releases lock
-            # LAST) then exit; KeepAlive brings up a fresh managed instance.
-            self._log("Restart: launchd-managed — clean teardown + exit, KeepAlive respawns.")
-            self._shutdown()
-            os._exit(0)
-        else:
-            # No launchd: nothing respawns us, so spawn the successor ourselves
-            # via the ONE hardened spawn (daemon_launch). Teardown FIRST (closes
-            # DB, releases lock) so the successor can't double-open brain.db,
-            # THEN spawn, THEN exit.
-            self._log("Restart: no launchd — spawning successor directly.")
-            self._shutdown()
-            spawn_detached_daemon(self.db_path)
-            self._log("New daemon spawned. Shutting down old.")
+        try:
+            from .daemon_launch import daemon_argv, daemon_env, REPO_ROOT
+            argv = daemon_argv(self.db_path)
+            # cwd pin: under `-m`, cwd is sys.path[0] — same pin every spawn
+            # site applies (see daemon_env's docstring).
+            os.chdir(REPO_ROOT)
+            os.execve(argv[0], argv, daemon_env(self.db_path))
+        except Exception as e:
+            self._log("Reload exec FAILED: %s — exiting; KeepAlive/"
+                      "ensure_daemon respawns fresh code from disk." % e)
             os._exit(0)
 
     def _run_idle_maintenance(self):
