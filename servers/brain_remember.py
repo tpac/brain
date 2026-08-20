@@ -129,9 +129,13 @@ class BrainRememberMixin:
     # logged loudly in remember() (event 'remember_connections_retired'), since
     # it once had a store-time side effect worth tracking; `auto_connect` was a
     # pure toggle, so swallowing it silently is harmless.
+    # `content_edits` is revise-only (revise() pops it before classification);
+    # on any other write path it must never land as junk KV — remember() also
+    # logs it loudly ('remember_content_edits_misrouted'), since a caller
+    # passing patches to the wrong op believes an edit happened.
     _CONTROL_FIELDS = frozenset({
         'connections', 'auto_connect',
-        'reason', 'updates', 'connect_to',
+        'reason', 'updates', 'connect_to', 'content_edits',
     })
 
     def _store_node_metadata(self, node_id: str, fields: Dict[str, Any],
@@ -1016,6 +1020,20 @@ class BrainRememberMixin:
                 ValueError('remember(connections=...) is retired — use connect_to'),
                 'node %s dropped %s legacy connection(s)' % (node_id[:8], _n))
 
+        # `content_edits` belongs to revise — a remember carrying it means the
+        # caller thinks it is patching, and nothing is being patched. Swallowed
+        # from KV by _CONTROL_FIELDS; logged loudly for the same reason as
+        # `connections`: an intended side effect silently not happening.
+        if extra_fields.get('content_edits'):
+            self._log_error(
+                'remember_content_edits_misrouted',
+                ValueError('content_edits is revise-only — a remember op '
+                           'cannot patch content'),
+                'node %s dropped %d content_edit(s)'
+                % (node_id[:8], len(extra_fields['content_edits'])
+                   if isinstance(extra_fields['content_edits'], (list, tuple))
+                   else 1))
+
         # ══════════════════════════════════════════════════════════════
         # v6: AUTO-ENRICHMENT — make every node rich by default
         # The brain's data was shallow because rich encoding required
@@ -1333,7 +1351,11 @@ class BrainRememberMixin:
         # below) — everything downstream (deltas, re-embed, trace events)
         # sees an ordinary content update.
         content_edits = all_updates.pop('content_edits', None)
-        if content_edits is not None and all_updates.get('content') is not None:
+        # `content is not None` (not the merged dict) closes the falsy hole:
+        # content='' never enters all_updates, but passing it alongside
+        # content_edits is still two competing content intents.
+        if content_edits is not None and (
+                content is not None or all_updates.get('content') is not None):
             return {'error': ('content and content_edits are mutually '
                               'exclusive — pass one: content replaces '
                               'wholesale, content_edits patches in place'),
@@ -2319,11 +2341,17 @@ class BrainRememberMixin:
             try:
                 result = self.revise(node_id=node_id, content=content,
                                      reason=reason, updates=updates)
+                # `ok` rides alongside `status` so log_failed_batch_ops (which
+                # scans per-op rows for ok=False on every dispatched command)
+                # sees per-row failures — without it a revise_batch whose every
+                # row failed (e.g. content_edits old-not-found) logged nothing.
                 if result.get('error'):
-                    results.append({'node_id': node_id, 'status': 'error', 'error': result['error']})
+                    results.append({'node_id': node_id, 'ok': False,
+                                    'status': 'error', 'error': result['error']})
                 else:
                     results.append({
                         'node_id': node_id,
+                        'ok': True,
                         'status': 'revised',
                         'deltas': result.get('deltas', []),
                         'warnings': result.get('warnings', []),
@@ -2331,7 +2359,8 @@ class BrainRememberMixin:
                     revised_count += 1
             except Exception as e:
                 self._log_error('revise_batch', e, 'revising %s' % node_id[:8])
-                results.append({'node_id': node_id, 'status': 'error', 'error': str(e)})
+                results.append({'node_id': node_id, 'ok': False,
+                                'status': 'error', 'error': str(e)})
 
         return {
             'revised': revised_count,

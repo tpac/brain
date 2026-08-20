@@ -1072,6 +1072,8 @@ class TestContentEdits(BrainTestBase):
     needs_embedder = False
 
     def test_patch_applies_and_preserves_rest(self):
+        # Also covers the patch-alone shape: content_edits with no other
+        # field update passes the empty-updates check.
         nid = _make_node(self.brain, content=BODY,
                          situation='When picking up the ratchet')
         result = self.brain.revise(
@@ -1145,13 +1147,60 @@ class TestContentEdits(BrainTestBase):
             "SELECT content FROM nodes WHERE id = ?", (nid,)).fetchone()
         self.assertEqual(row[0], BODY)
 
-    def test_patch_alone_is_a_valid_call(self):
-        """content_edits with no other field update passes the empty-check."""
+    def test_empty_content_also_mutually_exclusive(self):
+        """content='' + content_edits is two competing intents — the falsy
+        named-arg path must not slip past the guard."""
         nid = _make_node(self.brain, content=BODY)
-        result = self.brain.revise(
-            node_id=nid, reason='r',
-            content_edits=[{'old': '69ba06b', 'new': 'e7b36a9'}])
-        self.assertNotIn('error', result)
+        result = self.brain.revise(node_id=nid, reason='r', content='',
+                                   content_edits=[{'old': '69ba06b',
+                                                   'new': 'x'}])
+        self.assertIn('mutually exclusive', result['error'])
+        row = self.brain.conn.execute(
+            "SELECT content FROM nodes WHERE id = ?", (nid,)).fetchone()
+        self.assertEqual(row[0], BODY)
+
+    def test_remember_swallows_content_edits_loudly(self):
+        """content_edits on a remember is misrouted patching — never stored
+        as junk KV, and logged to the errors table."""
+        result = self.brain.remember(
+            type='concept', title='patch misroute canary', content='C',
+            content_edits=[{'old': 'a', 'new': 'b'}])
+        nid = result['id']
+        self.assertIsNone(_kv_value(self.brain, nid, 'content_edits'))
+        err = self.brain.logs_conn.execute(
+            "SELECT COUNT(*) FROM debug_log WHERE event_type = 'error' "
+            "AND source = ?",
+            ('remember_content_edits_misrouted',)).fetchone()
+        self.assertGreaterEqual(err[0], 1)
+
+    def test_absorb_rejects_content_edits(self):
+        """A patch cannot fold the absorbed node in — absorb refuses loudly
+        instead of silently patching the survivor."""
+        from servers.daemon_dispatch import _handle_brain_batch
+        a = _make_node(self.brain, content='survivor body')
+        b = _make_node(self.brain, content='absorbed body')
+        r = _handle_brain_batch(self.brain, {'operations': [
+            {'op': 'absorb', 'survivor_id': a, 'absorbed_id': b,
+             'content_edits': [{'old': 'survivor', 'new': 'patched'}]}]}, [])
+        op = r['result']['results'][0]
+        self.assertFalse(op['ok'])
+        self.assertIn('not supported on absorb', op['error'])
+        row = self.brain.conn.execute(
+            "SELECT content, archived FROM nodes WHERE id = ?",
+            (b,)).fetchone()
+        self.assertEqual(row[1], 0)  # absorbed node untouched
+
+    def test_revise_batch_rows_carry_ok(self):
+        """Per-row ok rides beside status so log_failed_batch_ops sees
+        failures on the encoder's primary revise surface."""
+        nid = _make_node(self.brain, content=BODY)
+        r = self.brain.revise_batch(revisions=[
+            {'node_id': nid, 'reason': 'r',
+             'content_edits': [{'old': '69ba06b', 'new': 'x'}]},
+            {'node_id': nid, 'reason': 'r',
+             'content_edits': [{'old': 'no such text', 'new': 'y'}]}])
+        self.assertIs(r['results'][0]['ok'], True)
+        self.assertIs(r['results'][1]['ok'], False)
 
     def test_bad_shapes_error(self):
         nid = _make_node(self.brain, content=BODY)

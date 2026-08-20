@@ -267,7 +267,7 @@ _BRAIN_BATCH_DESCRIPTION = (
 
 def _generate_revise_schema():
     """Generate the 'revise' MCP tool schema from the contract."""
-    from servers.contract import get_writable_fields
+    from servers.contract import CONTENT_EDITS_SCHEMA, get_writable_fields
 
     TYPE_MAP = {"str": "string", "float": "number", "bool": "boolean", "int": "integer"}
 
@@ -278,27 +278,8 @@ def _generate_revise_schema():
             "NOT stored on the node. Required. Distinct from the node FIELD "
             "`reasoning` (why the node was encoded); to update that field, "
             "pass `reasoning` as well.")},
-        "content_edits": {
-            "type": "array",
-            "description": (
-                "Patch-mode content: surgical edits applied in order, each "
-                "replacing ONE exact occurrence of `old` with `new` in the "
-                "stored content. `old` is copied VERBATIM from the node's "
-                "current content and must match exactly once — a missing or "
-                "ambiguous match fails loudly with guidance. Fixes a stale "
-                "or falsified claim without re-authoring (and risking) the "
-                "rest of the content. Mutually exclusive with `content`."),
-            "items": {
-                "type": "object",
-                "required": ["old", "new"],
-                "properties": {
-                    "old": {"type": "string", "description":
-                            "Exact, unique substring of the current content"},
-                    "new": {"type": "string", "description":
-                            "Replacement text"},
-                },
-            },
-        },
+        # single-sourced from the contract — see CONTENT_EDITS_SCHEMA
+        "content_edits": CONTENT_EDITS_SCHEMA,
     }
     for name, spec in get_writable_fields().items():
         prop = {"type": TYPE_MAP.get(spec.get("type", "str"), "string")}
