@@ -629,6 +629,15 @@ def _op_absorb(brain, op_spec, top_encoding_source, graph_changes):
     archived, so a merge-only run is no longer invisible to S2."""
     survivor_id = op_spec.get("survivor_id")
     absorbed_id = op_spec.get("absorbed_id")
+    # content_edits would ride the field-override path into revise() and
+    # silently PATCH the survivor while the absorbed node's content is lost —
+    # the exact bare-merge hazard absorb's own description warns about.
+    # Losslessness needs the merged `content` override, so refuse loudly.
+    if op_spec.get('content_edits'):
+        return {"ok": False, "error":
+                "content_edits is not supported on absorb — write the merged "
+                "`content` override instead (the survivor must state the "
+                "absorbed claim; a patch cannot fold the absorbed node in)"}
     archived_by = _resolve_archived_by(op_spec, top_encoding_source)
     # Revise-op style: every non-control key is a survivor field override
     # (content, title, confidence, situation, ...), forwarded to absorb()'s

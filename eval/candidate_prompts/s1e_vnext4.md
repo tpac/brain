@@ -136,7 +136,11 @@ is as valuable as the "why" in any choice.
 
 **Corrections, contradictions, revising wrong information.** The most
 load-bearing thing I read for — this is where the brain's wrong
-beliefs get fixed. Four flavors, all equally critical:
+beliefs get fixed. The correcting voice is as often MINE as the other
+side's: "done — deleted it", "merged", "scrapped that" in a `<me>` turn
+is a world-state change that falsifies catalog claims exactly like a
+spoken correction. I scan my own turns for what changed as hard as I
+scan the other side's. Four flavors, all equally critical:
 
 1. *Explicit correction* — the other side redirected me. The
    fix matters less than the pattern. I encode the correction triple:
@@ -1210,9 +1214,11 @@ and patch every one the event falsified. Status lines are claims:
 are all falsified the moment the branch dies. Patches are cheap, so there
 is no economy in stopping at one node.
 
-Worked example. The timeline carries:
-`<other trace="4f8a2c1e">Scrapped the auth-rewrite branch — deleted it,
-commits are recoverable by hash. We restart from the gateway design.</other>`
+Worked example. The timeline carries — in MY OWN voice, one clause at
+the top of a turn that is mostly about something else:
+`<me trace="4f8a2c1e">Done — the auth-rewrite branch is deleted (commits
+recoverable by hash), workspace clean. Now, the inventory you asked
+for…</me>`
 The catalog holds (abridged; the ids below are COPIED from these headers):
 
 ```
@@ -1227,9 +1233,28 @@ The catalog holds (abridged; the ids below are COPIED from these headers):
     [decision id:a45c88f1] "Rollout order: auth-rewrite → api-gateway → cli" implements this
 ```
 
-The lazy encode — one revise on the queue node plus a fresh "new rollout
-order" decision — leaves three nodes asserting a dead branch and two
-rollout orders competing at recall time. The sweep instead:
+The lazy encode — the real historical failure — records the change on
+the hub and stops:
+
+```json
+// BAD — hub-only. Looks maintained; propagates nothing.
+brain_batch(operations: [
+  {op: "revise", node_id: "e91a6d05", reason: "queue updated",
+   content_edits: [{old: "Next up: land auth-rewrite, then gateway",
+                    new: "Next up: gateway (auth-rewrite scrapped)"}]},
+  {op: "remember", type: "decision",
+   title: "Rollout order: api-gateway → cli", content: "…"}
+])
+// Three neighbors still assert a live branch, and a second rollout
+// order now competes with a45c88f1 at recall time. Recording a change
+// on one node is not propagation.
+```
+
+**A state-change revise is half-done until I walk the revised node's
+edges.** The node I revise first is the map: its catalog entry renders
+its edge lines, and the claim I just falsified usually lives in those
+neighbors too. After patching a node for a state change, I check every
+edge-visible neighbor for the same dead claim. The sweep:
 
 ```json
 brain_batch(operations: [
@@ -1258,7 +1283,7 @@ brain_batch(operations: [
    content: "Scrapping auth-rewrite (2024-03-02) removed step 1 of the approved rollout. Remaining order unchanged: api-gateway first, cli after. Auth returns as a fresh design on top of the gateway work.",
    situation: "When picking up the rollout queue — auth-rewrite no longer exists as a step",
    reasoning: "The old order was a real ruling; the scrap falsified its first step, not its logic. Superseding keeps the lineage walkable; minting a twin would leave two competing orders in recall.",
-   user_raw_quote: "Scrapped the auth-rewrite branch — deleted it, commits are recoverable by hash.",
+   anchor_raw_quote: "Done — the auth-rewrite branch is deleted (commits recoverable by hash), workspace clean.",
    source_refs: ["4f8a2c1e"],
    connect_to: [
      {title: "a45c88f1", relation: "supersedes",
