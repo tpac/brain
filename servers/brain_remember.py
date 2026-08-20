@@ -2316,10 +2316,12 @@ class BrainRememberMixin:
         results = []
         revised_count = 0
 
-        for spec in revisions:
+        for _idx, spec in enumerate(revisions):
             node_id = spec.get('node_id')
             if not node_id:
-                results.append({'error': 'missing node_id', 'status': 'skipped'})
+                results.append({'op': 'revise', 'index': _idx, 'ok': False,
+                                'error': 'missing node_id',
+                                'status': 'skipped'})
                 continue
 
             reason = spec.get('reason', '')
@@ -2346,10 +2348,13 @@ class BrainRememberMixin:
                 # sees per-row failures — without it a revise_batch whose every
                 # row failed (e.g. content_edits old-not-found) logged nothing.
                 if result.get('error'):
-                    results.append({'node_id': node_id, 'ok': False,
+                    results.append({'op': 'revise', 'index': _idx,
+                                    'node_id': node_id, 'ok': False,
                                     'status': 'error', 'error': result['error']})
                 else:
                     results.append({
+                        'op': 'revise',
+                        'index': _idx,
                         'node_id': node_id,
                         'ok': True,
                         'status': 'revised',
@@ -2359,7 +2364,8 @@ class BrainRememberMixin:
                     revised_count += 1
             except Exception as e:
                 self._log_error('revise_batch', e, 'revising %s' % node_id[:8])
-                results.append({'node_id': node_id, 'ok': False,
+                results.append({'op': 'revise', 'index': _idx,
+                                'node_id': node_id, 'ok': False,
                                 'status': 'error', 'error': str(e)})
 
         return {

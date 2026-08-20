@@ -456,15 +456,31 @@ def _edge_asserts(op):
     matching is substring-on-hex, so all three forms hit."""
     out = []
     body = ' '.join(str(op.get(k) or '') for k in ('content', 'title'))
+
+    def acted_upon_is_source(rel):
+        # Passive-voice relations invert the acted-upon end: in 'X
+        # superseded_by Y' the corrected node is X, the SOURCE. The
+        # correction vocabulary carries both voices (corrected_by,
+        # superseded_by, absorbed_into, ...).
+        return rel.endswith('_by') or rel.endswith('_into')
+
     for c in (op.get('connect_to') or []):
         rels = ([r.get('relation') for r in (c.get('relations') or [])]
                 or [c.get('relation')])
         why = ' '.join([str(c.get('why') or '')] +
                        [str(r.get('why') or '') for r in (c.get('relations') or [])])
         for rel in rels:
-            out.append((str(c.get('title') or ''), rel or '', why + ' ' + body))
+            rel = rel or ''
+            if acted_upon_is_source(rel):
+                # connect_to's source is the NEW node itself — under a
+                # passive relation the catalog title is the correcTOR, so
+                # no gold target is being acted upon here.
+                continue
+            out.append((str(c.get('title') or ''), rel, why + ' ' + body))
     if (op.get('op') == 'connect') or ('target_id' in op and 'source_id' in op):
-        out.append((str(op.get('target_id') or ''), op.get('relation') or '',
+        rel = op.get('relation') or ''
+        end = 'source_id' if acted_upon_is_source(rel) else 'target_id'
+        out.append((str(op.get(end) or ''), rel,
                     str(op.get('description') or '')))
     return out
 
@@ -501,10 +517,11 @@ def score_patch_fidelity(revises, stored):
     (stored content moved) — read misses alongside the run's date before
     trusting them."""
     rows = []
+    evolving = dict(stored)  # a later op patches what an earlier op produced
     for op in revises:
         edits = op.get('content_edits') or []
         nid = str(op.get('node_id') or op.get('survivor_id') or '')[:8]
-        cur = stored.get(nid)
+        cur = evolving.get(nid)
         if not edits or cur is None:
             continue
         for i, e in enumerate(edits):
@@ -514,6 +531,7 @@ def score_patch_fidelity(revises, stored):
                 cur = cur.replace(o, str((e or {}).get('new') or ''), 1)
             else:
                 rows.append({'id': nid, 'edit': i, 'matches': n})
+        evolving[nid] = cur
     return rows
 
 

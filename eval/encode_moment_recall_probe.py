@@ -49,7 +49,11 @@ def window_messages(captured):
     data. A turn with no encoded= attribute is real (the renderer omits it
     for orphan/link-less turns) and counts as unencoded.
     """
-    timeline = section(captured, 'timeline') or captured
+    timeline = section(captured, 'timeline')
+    if not timeline:
+        raise SystemExit('capture has no <timeline> section — this probe '
+                         'requires a lived-render capture (a whole-file scan '
+                         'would read catalog-quoted turn markup as data)')
     out = []
     for m in re.finditer(
             r'<turn n="(\d+)"([^>]*)>(.*?)</turn>', timeline, re.DOTALL):

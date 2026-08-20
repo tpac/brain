@@ -1201,6 +1201,9 @@ class TestContentEdits(BrainTestBase):
              'content_edits': [{'old': 'no such text', 'new': 'y'}]}])
         self.assertIs(r['results'][0]['ok'], True)
         self.assertIs(r['results'][1]['ok'], False)
+        # index/op make the batch_op_failed log line attributable
+        self.assertEqual(r['results'][1]['index'], 1)
+        self.assertEqual(r['results'][1]['op'], 'revise')
 
     def test_bad_shapes_error(self):
         nid = _make_node(self.brain, content=BODY)
