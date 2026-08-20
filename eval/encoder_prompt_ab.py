@@ -372,6 +372,11 @@ def score_partial_view(revises, stored, aged_ids):
     never read is destroyed and re-derived. Compares the proposed body against
     the stored one and reports how much of the original survives; `aged` marks
     the ones where the encoder was reasoning from ~400 chars.
+
+    content_edits revises are handled by score_patch_fidelity instead — a
+    patch structurally cannot drop text it doesn't name, but the harness
+    SYNTHESIZES its write success, so the check that matters is whether each
+    `old` would actually have matched (score_patch_fidelity).
     """
     rows = []
     for op in revises:
@@ -420,6 +425,9 @@ def score_arm(log, aged_ids, index, brain=None):
                     refs_unknown += 1
                 elif hit['encoded']:
                     on_encoded += 1
+    _stored = stored_contents(
+        brain, [str(o.get('node_id') or o.get('survivor_id') or '')
+                for o in revise_ops]) if brain else {}
     return {
         'rounds': log['rounds'],
         'reads': len(log['reads']),
@@ -431,20 +439,20 @@ def score_arm(log, aged_ids, index, brain=None):
         'refs_on_encoded_turns': on_encoded,
         'usage': log['usage'],
         'shape': score_shape(created_ops),
-        'partial_view': score_partial_view(
-            revise_ops,
-            stored_contents(brain, [str(o.get('node_id') or
-                                        o.get('survivor_id') or '')
-                                    for o in revise_ops]) if brain else {},
-            aged_ids),
+        'partial_view': score_partial_view(revise_ops, _stored, aged_ids),
+        'patch_fidelity': score_patch_fidelity(revise_ops, _stored),
         'journal_chars': len(log['final_text']),
     }
 
 
 def _edge_asserts(op):
     """(target-string, relation, supporting-text) triples an op asserts —
-    connect_to on creates/revises plus standalone connect ops. Target is the
-    raw string the encoder wrote (an id, an 'id:xxx' form, or a title); gold
+    connect_to on creates plus standalone connect ops. DIRECTION-STRICT: only
+    the ACTED-UPON end counts as the assertion target (connect_to's `title`,
+    connect's `target_id`) — the edge model is source-acts-on-target, so 'X
+    corrects TARGET' names TARGET as the corrected node; counting the source
+    end would score a backwards correction as a pass. Target is
+    the raw string the encoder wrote (an id, 'id:xxx', or a title); gold
     matching is substring-on-hex, so all three forms hit."""
     out = []
     body = ' '.join(str(op.get(k) or '') for k in ('content', 'title'))
@@ -456,25 +464,60 @@ def _edge_asserts(op):
         for rel in rels:
             out.append((str(c.get('title') or ''), rel or '', why + ' ' + body))
     if (op.get('op') == 'connect') or ('target_id' in op and 'source_id' in op):
-        for end in ('source_id', 'target_id'):
-            out.append((str(op.get(end) or ''), op.get('relation') or '',
-                        str(op.get('description') or '')))
+        out.append((str(op.get('target_id') or ''), op.get('relation') or '',
+                    str(op.get('description') or '')))
     return out
 
 
+def _revise_text(op):
+    """The text a revise PROPOSES — new values only. content_edits contributes
+    its `new` strings; the removed `old` text must never satisfy a fact check
+    (the removed text is precisely what a correct patch deletes)."""
+    parts = [str(op.get(k) or '') for k in ('content', 'situation', 'title')]
+    parts += [str(e.get('new') or '') for e in (op.get('content_edits') or [])
+              if isinstance(e, dict)]
+    return ' '.join(parts)
+
+
 def _hex_ids(v):
-    """Every 8-char-hex-prefixed string reachable in a tool-args value."""
+    """Every exactly-8-char hex token reachable in a tool-args value. The
+    trailing guard keeps the head of a longer hex string (a full git SHA in a
+    query) from matching as a node id."""
     import re
     if isinstance(v, dict):
         return {i for x in v.values() for i in _hex_ids(x)}
     if isinstance(v, (list, tuple)):
         return {i for x in v for i in _hex_ids(x)}
     if isinstance(v, str):
-        return set(re.findall(r'\b([0-9a-f]{8})', v))
+        return set(re.findall(r'\b([0-9a-f]{8})(?![0-9a-f])', v))
     return set()
 
 
-def score_gold(gold, log, brain):
+def score_patch_fidelity(revises, stored):
+    """Would each content_edits patch have LANDED? Harness writes are
+    intercepted and synthesized as successes, so a patch whose `old` doesn't
+    match the stored content exactly once looks fine here but fails loudly in
+    production. Advisory when the isolated copy has drifted past the capture
+    (stored content moved) — read misses alongside the run's date before
+    trusting them."""
+    rows = []
+    for op in revises:
+        edits = op.get('content_edits') or []
+        nid = str(op.get('node_id') or op.get('survivor_id') or '')[:8]
+        cur = stored.get(nid)
+        if not edits or cur is None:
+            continue
+        for i, e in enumerate(edits):
+            o = str((e or {}).get('old') or '')
+            n = cur.count(o) if o else 0
+            if n == 1:
+                cur = cur.replace(o, str((e or {}).get('new') or ''), 1)
+            else:
+                rows.append({'id': nid, 'edit': i, 'matches': n})
+    return rows
+
+
+def score_gold(gold, log, corr_rels):
     """Score one behavior run against a frozen-item gold spec.
 
     Propagation gold, not counts: each `revise_or_correct` target passes on a
@@ -486,18 +529,20 @@ def score_gold(gold, log, brain):
     `unless_corrects` (superseding beats twinning). `invalid_if_read` voids
     the run: those nodes have moved past the capture in the isolated copy, so
     a run that read them was reasoning from state the item doesn't control.
+
+    `corr_rels` is the correction-relation vocabulary — callers with a brain
+    pass set(brain.aspects.relations_in(['correction_improvement'])); offline
+    re-scorers read it from aspects_v1.json. Taking the set (not the brain)
+    keeps re-scoring saved op dumps pure arithmetic.
     """
     import re
-    corr_rels = set(brain.aspects.relations_in(['correction_improvement']))
     revised, edges, creates = {}, [], []
     for w in log['writes']:
         for op in _ops_of(w):
             kind = op.get('op') or ('revise' if 'node_id' in op else 'remember')
             if kind in ('revise', 'absorb'):
                 nid = str(op.get('node_id') or op.get('survivor_id') or '')[:8]
-                revised[nid] = revised.get(nid, '') + ' ' + ' '.join(
-                    str(op.get(k) or '') for k in
-                    ('content', 'content_edits', 'situation', 'title'))
+                revised[nid] = revised.get(nid, '') + ' ' + _revise_text(op)
             elif kind == 'remember':
                 creates.append(op)
             edges.extend(_edge_asserts(op))
@@ -640,18 +685,36 @@ def main():
         if args.gold:
             with open(args.gold) as f:
                 gold = json.load(f)
+            # Fail BEFORE any API spend: a chain typo would otherwise run the
+            # whole behavior pass and shrug out an unscored one-liner.
+            if not any(parse_chain(c)[0] == gold.get('chain')
+                       for c in args.captures):
+                raise SystemExit('--gold spec is for chain %r; no such '
+                                 'capture on the command line'
+                                 % gold.get('chain'))
+            if 'F' not in want:
+                raise SystemExit('--gold items score the VERBATIM capture — '
+                                 'add F to --arms')
+        corr_rels = (set(brain.aspects.relations_in(['correction_improvement']))
+                     if gold else set())
 
         for cap_path in args.captures:
             chain, _short, _stop = parse_chain(cap_path)
             with open(cap_path) as f:
                 captured_raw = f.read()
             captured = strip_scout_blocks(captured_raw)
-            session_id, run_ts = resolve_run(brain, chain)
-            inputs = gather_inputs(brain, session_id, older_than=run_ts)
+            # Arm F needs none of the session's stored state; keep gold items
+            # runnable on captures whose messages have aged out of the copy.
+            try:
+                session_id, run_ts = resolve_run(brain, chain)
+                inputs = gather_inputs(brain, session_id, older_than=run_ts)
+            except SystemExit as e:
+                if set(want) - {'F'}:
+                    raise  # assembled arms genuinely need the session
+                print('[warn] %s — arm F continues; behavior turn-index will '
+                      'be empty (source_refs columns read 0/unknown)' % e)
+                session_id = run_ts = inputs = None
             cap_gold = gold if gold and gold.get('chain') == chain else None
-            if gold and not cap_gold:
-                print('[gold] spec is for chain %s — not scored on %s'
-                      % (gold.get('chain'), chain))
             arms = {}
             for key in want:
                 if key == 'F':
@@ -668,7 +731,9 @@ def main():
                         f.write(text)
 
             print('\n%s\n%s  (session %s, as-of %s)\n%s'
-                  % ('=' * 72, chain, session_id[:8], run_ts, '=' * 72))
+                  % ('=' * 72, chain,
+                     session_id[:8] if session_id else '<gone>', run_ts,
+                     '=' * 72))
             print('captured: %d chars, %d turns, %d catalog ids'
                   % (len(captured), turn_count(captured),
                      len(catalog_ids_of(captured))))
@@ -678,14 +743,23 @@ def main():
                       % ('PASS' if ok else 'FAIL (drift — the A/B pair below '
                          'is still same-state and honest)'))
                 print('\n'.join('  ' + ln for ln in text.splitlines()))
-            print('\narms (one copy, one instant):')
-            print(compare(arms))
+            # F is the verbatim capture (scouts intact) — comparing its bytes
+            # against scout-stripped assembled arms reads as a spurious size
+            # delta, so it sits outside the same-state table.
+            assembled = {k: v for k, v in arms.items() if k != 'F'}
+            if assembled:
+                print('\narms (one copy, one instant):')
+                print(compare(assembled))
+            if 'F' in arms:
+                print('  F frozen   %8d chars (verbatim capture — not '
+                      'compared against stripped arms)' % len(arms['F'][1]))
             if args.out_dir:
-                print('\nwrote %d arm file(s) to %s' % (len(arms), args.out_dir))
+                print('\nwrote %d arm file(s) to %s'
+                      % (len(assembled), args.out_dir))
 
             if args.behavior:
-                index = turn_index(brain, session_id, inputs['messages'],
-                                   inputs['streams'])
+                index = (turn_index(brain, session_id, inputs['messages'],
+                                    inputs['streams']) if inputs else {})
                 print('\nbehavior — %d turns in window, %d already encoded'
                       % (len(index),
                          sum(1 for v in index.values() if v['encoded'])))
@@ -696,8 +770,10 @@ def main():
                     aged = aged_ids_of(text)
                     for run in range(1, args.repeat + 1):
                         s, log = run_arm_behavior(brain, text, aged, index)
-                        g = (score_gold(cap_gold, log, brain)
-                             if cap_gold else None)
+                        # Gold criteria describe the VERBATIM capture — on
+                        # assembled arms the payload isn't the item.
+                        g = (score_gold(cap_gold, log, corr_rels)
+                             if cap_gold and key == 'F' else None)
                         for k in spend:
                             spend[k] += s['usage'][k]
                         print('  %s %-8s run%d rounds=%d reads=%d '
@@ -717,6 +793,11 @@ def main():
                                   % (sh['avg_content'], sh['avg_edges'],
                                      ' '.join('%s=%.0f%%' % (f[:4], 100 * sh[f])
                                               for f in RICH_FIELDS)))
+                        for pf in s['patch_fidelity']:
+                            print('       PATCH-WOULD-FAIL id:%s edit %d '
+                                  'matches=%d (advisory if the copy drifted '
+                                  'past the capture)'
+                                  % (pf['id'], pf['edit'], pf['matches']))
                         for pv in s['partial_view']:
                             print('       PARTIAL-VIEW revise id:%s aged=%s '
                                   '%d→%d chars, kept %s lines (%.0f%% dropped)'
