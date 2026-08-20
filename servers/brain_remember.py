@@ -69,6 +69,25 @@ def _token_edit_distance(a, b, cap):
     return min(prev[-1], cap + 1)
 
 
+def unwrap_content_edits(edits):
+    """A JSON-encoded edit list → the list. Returns (edits, unwrapped_bool).
+
+    The transport quirk brain_batch already absorbs for `operations`: a
+    caller whose tool schema doesn't declare the field (a stale MCP surface,
+    a client that flattens unknown params) emits the array as a string.
+    Recovery is lossless and unambiguous; the caller logs it loudly.
+    """
+    if isinstance(edits, str):
+        import json
+        try:
+            parsed = json.loads(edits)
+        except ValueError:
+            return edits, False
+        if isinstance(parsed, list):
+            return parsed, True
+    return edits, False
+
+
 def apply_content_edits(content, edits):
     """Apply Edit-style surgical patches to stored node content.
 
@@ -1351,6 +1370,14 @@ class BrainRememberMixin:
         # below) — everything downstream (deltas, re-embed, trace events)
         # sees an ordinary content update.
         content_edits = all_updates.pop('content_edits', None)
+        content_edits, _unwrapped = unwrap_content_edits(content_edits)
+        if _unwrapped:
+            self._log_error(
+                'revise_content_edits_stringified',
+                RuntimeError('content_edits arrived JSON-encoded as a string '
+                             '— unwrapped to %d edit(s)' % len(content_edits)),
+                'lossless recovery, revise proceeded; the caller\'s tool '
+                'schema likely predates the field (stale MCP surface)')
         # `content is not None` (not the merged dict) closes the falsy hole:
         # content='' never enters all_updates, but passing it alongside
         # content_edits is still two competing content intents.

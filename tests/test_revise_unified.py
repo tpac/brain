@@ -1205,6 +1205,24 @@ class TestContentEdits(BrainTestBase):
         self.assertEqual(r['results'][1]['index'], 1)
         self.assertEqual(r['results'][1]['op'], 'revise')
 
+    def test_stringified_content_edits_unwrapped(self):
+        """A caller whose schema predates the field emits the array as a
+        JSON string — recovered losslessly, logged loudly (same tolerance
+        brain_batch already gives stringified operations)."""
+        import json as _json
+        nid = _make_node(self.brain, content=BODY)
+        result = self.brain.revise(
+            node_id=nid, reason='r',
+            content_edits=_json.dumps([{'old': '69ba06b', 'new': 'e7b36a9'}]))
+        self.assertNotIn('error', result)
+        row = self.brain.conn.execute(
+            "SELECT content FROM nodes WHERE id = ?", (nid,)).fetchone()
+        self.assertIn('e7b36a9', row[0])
+        logged = self.brain.logs_conn.execute(
+            "SELECT COUNT(*) FROM debug_log WHERE event_type = 'error' "
+            "AND source = ?", ('revise_content_edits_stringified',)).fetchone()
+        self.assertGreaterEqual(logged[0], 1)
+
     def test_bad_shapes_error(self):
         nid = _make_node(self.brain, content=BODY)
         for bad in ([], 'patch', [{'old': '', 'new': 'x'}],
