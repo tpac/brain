@@ -837,7 +837,8 @@ class BrainRecallMixin:
     def _keyword_recall(self, query: str, filter: Optional[Dict[str, Any]] = None, limit: int = 20,
                         offset: int = 0, include_archived: bool = False, min_recency: float = 0,
                         session_id: Optional[str] = None,
-                        _skip_log: bool = False) -> Dict[str, Any]:
+                        _skip_log: bool = False,
+                        mark_accessed: bool = True) -> Dict[str, Any]:
         """INTERNAL: TF-IDF keyword recall. Used by recall() for keyword blending.
         Do NOT call directly — use recall() (embeddings + graph traversal) instead.
 
@@ -1027,11 +1028,17 @@ class BrainRecallMixin:
         # Step 7: Mark accessed (keyword-only fallback path).
         # No ctx loaded — keyword recall doesn't use fatigue for scoring, so
         # we skip ctx for the access marks too. access_count still updates.
-        if not session_id:
-            session_id = self.session_id
-
-        for node in page:
-            self._mark_accessed(node['id'], session_id, ctx=None)
+        #
+        # mark_accessed must be honored HERE as well as in _recall_impl: this
+        # function is not only the keyword-only fallback, it also runs as
+        # _recall_impl's STEP 4 on every single recall (with limit*3), so a
+        # read-only caller that guarded just the outer loop would still mark
+        # three times the requested nodes through this path.
+        if mark_accessed:
+            if not session_id:
+                session_id = self.session_id
+            for node in page:
+                self._mark_accessed(node['id'], session_id, ctx=None)
 
         # No edge creation here — the co_accessed family is retired
         # (node ab56d25a); surface_selected traces are the co-access substrate.
@@ -1097,7 +1104,8 @@ class BrainRecallMixin:
                min_recency: float = 0,
                session_id: Optional[str] = None,
                situation_vec=None, source: str = 'unknown',
-               ctx=None, as_of: Optional[str] = None) -> Dict[str, Any]:
+               ctx=None, as_of: Optional[str] = None,
+               mark_accessed: bool = True) -> Dict[str, Any]:
         """Recall: embeddings + 3-degree graph traversal + keyword blending + situation matching.
 
         `project` param removed 2026-07-03 (it had zero production callers) —
@@ -1148,6 +1156,11 @@ class BrainRecallMixin:
                 query, int(min(limit, MAX_PAGE_SIZE)), int(offset),
                 bool(include_archived), float(min_recency or 0),
                 session_id, filter_key, sit_key, as_of,
+                # mark_accessed is in the key even though it can't change the
+                # RESULT: without it an observer's read-only recall could win
+                # the single-flight race and a real recall waiting behind it
+                # would silently lose its access + fatigue marking.
+                bool(mark_accessed),
             )
         except Exception:
             # If key construction fails, skip dedup — better to do
@@ -1178,7 +1191,8 @@ class BrainRecallMixin:
                     query=query, filter=filter, limit=limit, offset=offset,
                     include_archived=include_archived, min_recency=min_recency,
                     session_id=session_id, ctx=ctx,
-                    situation_vec=situation_vec, source=source, as_of=as_of)
+                    situation_vec=situation_vec, source=source, as_of=as_of,
+                    mark_accessed=mark_accessed)
                 self._recall_cache_put(dedup_key, result)
                 inflight.set_result(result)
                 return result
@@ -1193,7 +1207,8 @@ class BrainRecallMixin:
             query=query, filter=filter, limit=limit, offset=offset,
             include_archived=include_archived, min_recency=min_recency,
             session_id=session_id, ctx=ctx,
-            situation_vec=situation_vec, source=source, as_of=as_of)
+            situation_vec=situation_vec, source=source, as_of=as_of,
+            mark_accessed=mark_accessed)
 
     # ─── recall result cache (5s TTL) ─────────────────────────────────
 
@@ -1282,7 +1297,8 @@ class BrainRecallMixin:
                      min_recency: float = 0,
                      session_id=None, situation_vec=None,
                      source: str = 'unknown', ctx=None,
-                     as_of: Optional[str] = None) -> Dict[str, Any]:
+                     as_of: Optional[str] = None,
+                     mark_accessed: bool = True) -> Dict[str, Any]:
         """Actual recall implementation — hot path. Single-flight wrapper
         in recall() ensures only one of these runs per (query, scope) at
         a time across the daemon."""
@@ -1748,7 +1764,8 @@ class BrainRecallMixin:
         # and to get keyword precision scores for exact-match tiebreaking
         # _skip_log=True: precision module handles logging via hooks, not here.
         keyword_result = self._keyword_recall(query, filter, limit * 3, offset, include_archived,
-                                    min_recency, session_id, _skip_log=True)
+                                    min_recency, session_id, _skip_log=True,
+                                    mark_accessed=mark_accessed)
         keyword_scores = {}  # node_id → keyword_effective_activation
         keyword_nodes = {}   # node_id → full node dict
         for node in keyword_result.get('results', []):
@@ -2162,12 +2179,20 @@ class BrainRecallMixin:
         # STEP 8: Mark accessed (recognition signal + fatigue)
         # Per-session: _recall_ctx (loaded at top of this function) is passed
         # to _mark_accessed so fatigue increments land on the right session.
-        sid = session_id or self.session_id
-        for node in final_results:
-            try:
-                self._mark_accessed(node['id'], sid, ctx=_recall_ctx)
-            except Exception as _e:
-                self._log_error("recall", _e, "marking node as accessed")
+        #
+        # mark_accessed=False makes this a pure READ. It exists for observers
+        # (the dashboard's recall probe) that need the real pipeline's answer
+        # without becoming part of the brain's own history: access_count,
+        # last_accessed and fatigue are what the graph renders as recall heat
+        # and what LAF scores against, so an observer that marked them would
+        # be measuring its own looking. Every in-brain caller leaves this True.
+        if mark_accessed:
+            sid = session_id or self.session_id
+            for node in final_results:
+                try:
+                    self._mark_accessed(node['id'], sid, ctx=_recall_ctx)
+                except Exception as _e:
+                    self._log_error("recall", _e, "marking node as accessed")
 
         # Fatigue increments live on the cached SessionContext (mutations
         # in memory). Persistence happens via the daemon autosave loop

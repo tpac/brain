@@ -109,8 +109,12 @@ export async function loadTraces(opts = {}) {
     try {
       const sessions = await api.sessions();
       // Note: not `opts` — that's the function parameter (opts.force/.session).
+      // Sessions read by their handle (worktree / branch tail), never raw
+      // hex — resolved once server-side in queries/sessions.py so the Traces
+      // dropdown, the stream rail, and activity cards all say the same name.
       const optsHtml = '<option value="">All sessions</option>' + sessions.map(s =>
-        '<option value="' + s.id + '"' + (s.id === sessionFilter ? ' selected' : '') + '>' + s.short + ' (' + s.events + ' events)</option>'
+        '<option value="' + s.id + '"' + (s.id === sessionFilter ? ' selected' : '') + '>'
+        + escapeHtml(s.handle || s.short) + ' · ' + s.events + ' events</option>'
       ).join('');
       sessSelect.innerHTML = optsHtml;
     } catch(e) { /* keep existing options */ }

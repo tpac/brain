@@ -22,8 +22,12 @@ import { api } from '/static/lib/api.js';
 import { poll } from '/static/lib/poll.js';
 import bus from '/static/lib/bus.js';
 import { loadNodeDetail } from '/static/lib/node_detail.js';
+import sessionRegistry from '/static/lib/sessions.js';
+import { runRecallProbe } from '/static/lib/recall_panel.js';
 
 import * as live     from '/static/tabs/live.js';
+import * as s2       from '/static/tabs/s2.js';
+import * as journals from '/static/tabs/journals.js';
 import * as graph    from '/static/tabs/graph.js';
 import * as explorer from '/static/tabs/explorer.js';
 import * as logs     from '/static/tabs/logs.js';
@@ -35,10 +39,10 @@ import * as streams  from '/static/tabs/streams.js';
 // `graph` is NOT a top-level tab — it lives inside Live as the left pane
 // (added by the P2.2 layout pivot). It's still a module because Live needs
 // to drive its activate/resize lifecycle.
-// Primary tabs (visible top-of-page): live, logs, traces.
-// Overflow tabs (in the ⋯ dropdown):  explorer, health.
-const TABS = { live, graph, explorer, logs, health, traces, streams };
-const OVERFLOW_TABS = ['explorer', 'health'];
+// Primary tabs (visible top-of-page): live, logs, s2, traces, streams.
+// Overflow tabs (in the ⋯ dropdown):  journals, explorer, health.
+const TABS = { live, s2, journals, graph, explorer, logs, health, traces, streams };
+const OVERFLOW_TABS = ['journals', 'explorer', 'health'];
 let activeTab = 'live';
 
 function switchTab(name) {
@@ -73,6 +77,17 @@ function toggleOverflowMenu(event) {
   if (event) event.stopPropagation();
   const menu = document.getElementById('tab-overflow-menu');
   if (!menu) return;
+  // The menu is position:fixed (it has to escape `.tabs`'s overflow clip), so
+  // its coordinates come from the toggle's live rect rather than from CSS.
+  const toggle = document.querySelector('.tab-overflow-toggle');
+  if (toggle) {
+    const r = toggle.getBoundingClientRect();
+    menu.style.top = r.bottom + 'px';
+    // Right-align to the toggle when a left-aligned menu would overflow the
+    // viewport — the ⋯ sits at the end of the tab bar on a narrow window.
+    const width = menu.offsetWidth || 140;
+    menu.style.left = Math.max(4, Math.min(r.left, window.innerWidth - width - 4)) + 'px';
+  }
   menu.classList.toggle('open');
 }
 function closeOverflowMenu() {
@@ -122,19 +137,10 @@ async function loadStats() {
   } catch(e) { console.error('[dashboard] loadStats failed:', e); }
 }
 
-async function loadSessions() {
-  try {
-    const sessions = await api.sessions();
-    const sel = document.getElementById('session-filter');
-    const current = sel.value;
-    sel.innerHTML = '<option value="">All sessions</option>';
-    for (const s of sessions) {
-      const label = s.short + ' (' + s.events + ' events)';
-      sel.innerHTML += '<option value="' + s.id + '">' + label + '</option>';
-    }
-    if (current) sel.value = current;
-  } catch(e) { console.error('loadSessions error:', e); }
-}
+// Session identity is a registry, not a dropdown — lib/sessions.js merges the
+// persisted env (worktree/branch/project) with live presence and publishes
+// `sessions:tick`. Every consumer (stream rail, moment chips, traces filter)
+// reads the same record, so a session's name is resolved once per page.
 
 // ── Inline-handler exposure ───────────────────────────────────────────
 // Inline `onclick="X()"` in index.html (and in dynamically-rendered
@@ -145,25 +151,33 @@ async function loadSessions() {
 
 window.switchTab             = switchTab;
 window.toggleOverflowMenu    = toggleOverflowMenu;
-window.switchFeed            = live.switchFeed;
 window.setLiveLayout         = live.setLiveLayout;
 window.toggleGraph           = live.toggleGraph;
-window.onSessionFilterChange = live.onSessionFilterChange;
-window.pinRecallToGraph      = live.pinRecallToGraph;
-window.filterByScale         = live.filterByScale;
-// toggleHookBody is the only remaining live.js toggle exposed via
-// window.* — used by the decoding-feed S2 chain entries which still
-// build their HTML via string concatenation. renderRecallEntry's
-// Show Prompt button and the encoding-feed cards both migrated to
-// addEventListener with closure-captured refs, so their respective
-// window.* mounts (toggleSurfacePrompt, toggleEncPrompt,
-// toggleConsolPrompt) are gone. Migrating _renderS2ChainEntry would
-// let us drop this last one too.
-window.toggleHookBody        = live.toggleHookBody;
+window.onS2HoursChange       = s2.onS2HoursChange;
+window.onJournalsHoursChange = journals.onJournalsHoursChange;
+window.onJournalsSearch      = journals.onJournalsSearch;
+// switchFeed / onSessionFilterChange / filterByScale / pinRecallToGraph /
+// toggleHookBody are gone with the two-feed layout: the moment stream has no
+// feed toggle, focus lives on the stream rail, and every card built by
+// lib/activity.js and tabs/s2.js wires its own listeners with closure-captured
+// refs — no window.* mount needed.
 window.loadLogs              = logs.loadLogs;
 window.loadGraph3D           = graph.loadGraph3D;
 window.onGraphSearch         = graph.onGraphSearch;
-window.onGraphSearchKey      = graph.onGraphSearchKey;
+// Enter in the graph search box runs the REAL recall pipeline (a probe), not
+// another substring pass. Typing keeps filtering locally as before — the two
+// modes share one control because they answer the same intent at different
+// depths: "show me where it is" vs "what would you actually recall".
+// Wired here rather than in graph.js so the graph module doesn't import the
+// recall panel that imports it back.
+window.onGraphSearchKey      = (event) => {
+  if (event && event.key === 'Enter') {
+    graph.onGraphSearch();
+    runRecallProbe(event.target && event.target.value);
+    return;
+  }
+  graph.onGraphSearchKey(event);
+};
 window.onGraphRefresh        = graph.onGraphRefresh;
 window.searchNodes           = explorer.searchNodes;
 window.onTraceScaleChange    = traces.onTraceScaleChange;
@@ -180,7 +194,7 @@ window.loadNodeDetail        = loadNodeDetail;
 // Page-chrome polls — 30s stats, 60s sessions. These run regardless of
 // active tab (header is always visible).
 poll.register({ key: 'stats',    interval: 30000, fetcher: loadStats });
-poll.register({ key: 'sessions', interval: 60000, fetcher: loadSessions });
+poll.register({ key: 'sessions', interval: 20000, fetcher: sessionRegistry.refresh });
 
 // Wire every tab module's polls + bus subs once. Includes `graph` even
 // though it's not a primary tab — Live embeds it and needs its lifecycle
@@ -198,6 +212,11 @@ for (const name of Object.keys(TABS)) {
   _inittedTabs.add(name);
   try { TABS[name]?.init?.(); } catch(e) { console.error('[app] init', name, 'failed:', e); }
 }
+
+// Resolve session identity before the first paint. Every surface (stream rail,
+// moment chips, Traces dropdown, Streams roster) reads names from the registry,
+// so without this first pass they all render raw hex for one poll interval.
+sessionRegistry.refresh();
 
 // Activate the initial tab (Live by default — matches the active class
 // in index.html). Subsequent switches go through switchTab.
