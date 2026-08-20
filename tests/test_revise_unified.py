@@ -1059,5 +1059,154 @@ class TestReasonReasoningDisambiguation(BrainTestBase):
         self.assertIn('reasoning', warnings[0])
 
 
+OLD_LINE = 'Committed as 69ba06b, awaiting review before merge.'
+BODY = ('The guard sits in build-plugin.sh.\n'
+        + OLD_LINE + '\n'
+        'Three paths: new version records, unchanged no-op, changed aborts.')
+
+
+class TestContentEdits(BrainTestBase):
+    """Patch-mode content: content_edits compiles to a content replace inside
+    revise() against the stored content — exact, unique, in-order matches;
+    loud errors; mutually exclusive with content."""
+    needs_embedder = False
+
+    def test_patch_applies_and_preserves_rest(self):
+        nid = _make_node(self.brain, content=BODY,
+                         situation='When picking up the ratchet')
+        result = self.brain.revise(
+            node_id=nid, reason='branch deleted',
+            content_edits=[{'old': OLD_LINE,
+                            'new': 'NEVER MERGED — branch deleted 2026-08-17.'}])
+
+        self.assertNotIn('error', result)
+        row = self.brain.conn.execute(
+            "SELECT content FROM nodes WHERE id = ?", (nid,)).fetchone()
+        self.assertIn('NEVER MERGED — branch deleted 2026-08-17.', row[0])
+        self.assertNotIn(OLD_LINE, row[0])
+        # Untouched lines survive verbatim; other fields preserved
+        self.assertIn('The guard sits in build-plugin.sh.', row[0])
+        self.assertIn('Three paths: new version records', row[0])
+        self.assertEqual(_kv_value(self.brain, nid, 'situation'),
+                         'When picking up the ratchet')
+        # Deltas carry the content change like any ordinary revise
+        self.assertTrue(any(d.get('field') == 'content'
+                            for d in result.get('deltas', [])))
+
+    def test_patch_via_updates_dict(self):
+        nid = _make_node(self.brain, content=BODY)
+        result = self.brain.revise(
+            node_id=nid, reason='r',
+            updates={'content_edits': [{'old': 'awaiting review',
+                                        'new': 'dead'}]})
+        self.assertNotIn('error', result)
+        row = self.brain.conn.execute(
+            "SELECT content FROM nodes WHERE id = ?", (nid,)).fetchone()
+        self.assertIn('Committed as 69ba06b, dead before merge.', row[0])
+
+    def test_patch_edits_apply_in_order(self):
+        nid = _make_node(self.brain, content='status: open. next: review.')
+        result = self.brain.revise(
+            node_id=nid, reason='r',
+            content_edits=[
+                {'old': 'status: open.', 'new': 'status: closed.'},
+                # Matches text produced by the previous edit — order is real.
+                {'old': 'closed. next: review.', 'new': 'closed.'},
+            ])
+        self.assertNotIn('error', result)
+        row = self.brain.conn.execute(
+            "SELECT content FROM nodes WHERE id = ?", (nid,)).fetchone()
+        self.assertEqual(row[0], 'status: closed.')
+
+    def test_no_match_errors_and_node_unchanged(self):
+        nid = _make_node(self.brain, content=BODY)
+        result = self.brain.revise(
+            node_id=nid, reason='r',
+            content_edits=[{'old': 'text that is not there', 'new': 'x'}])
+        self.assertIn('not found', result['error'])
+        row = self.brain.conn.execute(
+            "SELECT content FROM nodes WHERE id = ?", (nid,)).fetchone()
+        self.assertEqual(row[0], BODY)
+
+    def test_ambiguous_match_errors(self):
+        nid = _make_node(self.brain, content='alpha beta alpha')
+        result = self.brain.revise(
+            node_id=nid, reason='r',
+            content_edits=[{'old': 'alpha', 'new': 'gamma'}])
+        self.assertIn('matches 2 places', result['error'])
+
+    def test_mutually_exclusive_with_content(self):
+        nid = _make_node(self.brain, content=BODY)
+        result = self.brain.revise(
+            node_id=nid, reason='r', content='full rewrite',
+            content_edits=[{'old': OLD_LINE, 'new': 'x'}])
+        self.assertIn('mutually exclusive', result['error'])
+        row = self.brain.conn.execute(
+            "SELECT content FROM nodes WHERE id = ?", (nid,)).fetchone()
+        self.assertEqual(row[0], BODY)
+
+    def test_patch_alone_is_a_valid_call(self):
+        """content_edits with no other field update passes the empty-check."""
+        nid = _make_node(self.brain, content=BODY)
+        result = self.brain.revise(
+            node_id=nid, reason='r',
+            content_edits=[{'old': '69ba06b', 'new': 'e7b36a9'}])
+        self.assertNotIn('error', result)
+
+    def test_bad_shapes_error(self):
+        nid = _make_node(self.brain, content=BODY)
+        for bad in ([], 'patch', [{'old': '', 'new': 'x'}],
+                    [{'old': 'a'}], [{'old': 'a', 'new': 'a'}]):
+            result = self.brain.revise(node_id=nid, reason='r',
+                                       content_edits=bad)
+            self.assertIn('error', result, 'shape %r must fail' % (bad,))
+        row = self.brain.conn.execute(
+            "SELECT content FROM nodes WHERE id = ?", (nid,)).fetchone()
+        self.assertEqual(row[0], BODY)
+
+    def test_brain_batch_revise_op_carries_content_edits(self):
+        """The batch path: a revise op with content_edits patches; a failing
+        op stays loud in its per-op result while others proceed."""
+        from servers.daemon_dispatch import _handle_brain_batch
+        nid = _make_node(self.brain, content=BODY)
+        r = _handle_brain_batch(self.brain, {'operations': [
+            {'op': 'revise', 'node_id': nid, 'reason': 'r',
+             'content_edits': [{'old': '69ba06b', 'new': 'e7b36a9'}]},
+            {'op': 'revise', 'node_id': nid, 'reason': 'r',
+             'content_edits': [{'old': 'nonexistent claim', 'new': 'x'}]},
+        ]}, [])
+        results = r['result']['results']
+        self.assertTrue(results[0]['ok'], results[0])
+        self.assertFalse(results[1]['ok'])
+        self.assertIn('not found', results[1]['error'])
+        row = self.brain.conn.execute(
+            "SELECT content FROM nodes WHERE id = ?", (nid,)).fetchone()
+        self.assertIn('e7b36a9', row[0])
+
+    def test_revise_batch_carries_content_edits(self):
+        nid = _make_node(self.brain, content=BODY)
+        r = self.brain.revise_batch(revisions=[
+            {'node_id': nid, 'reason': 'r',
+             'content_edits': [{'old': 'awaiting review', 'new': 'dead'}]}])
+        self.assertEqual(r['revised'], 1)
+        row = self.brain.conn.execute(
+            "SELECT content FROM nodes WHERE id = ?", (nid,)).fetchone()
+        self.assertIn('dead before merge', row[0])
+
+    def test_schema_exposes_content_edits(self):
+        """MCP surfaces: the op spec, the revise tool, and revise_batch items
+        all carry content_edits (contract → schema derivation)."""
+        from servers.contract import BATCH_OP_SPECS
+        self.assertIn('content_edits', BATCH_OP_SPECS['revise']['properties'])
+        from servers import brain_mcp
+        revise_tool = next(t for t in brain_mcp.TOOLS if t['name'] == 'revise')
+        self.assertIn('content_edits',
+                      revise_tool['inputSchema']['properties'])
+        batch_tool = next(t for t in brain_mcp.TOOLS
+                          if t['name'] == 'revise_batch')
+        items = batch_tool['inputSchema']['properties']['revisions']['items']
+        self.assertIn('content_edits', items['properties'])
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -69,6 +69,47 @@ def _token_edit_distance(a, b, cap):
     return min(prev[-1], cap + 1)
 
 
+def apply_content_edits(content, edits):
+    """Apply Edit-style surgical patches to stored node content.
+
+    Each edit replaces exactly one occurrence of `old` with `new`, applied
+    in order against the running result. `old` must be copied verbatim from
+    the node's current content and match exactly once — zero or ambiguous
+    matches fail the whole revise loudly, because a patch that lands in the
+    wrong place silently corrupts the one field recall reads most. Errors
+    are written to teach the calling agent the fix, not just name the fault.
+
+    Returns (new_content, None) on success, (None, error_message) on failure.
+    """
+    if not isinstance(edits, list) or not edits:
+        return None, ("content_edits must be a non-empty list of "
+                      "{old, new} objects")
+    current = content
+    for i, e in enumerate(edits):
+        if (not isinstance(e, dict) or not isinstance(e.get('old'), str)
+                or not e['old'] or not isinstance(e.get('new'), str)):
+            return None, ("content_edits[%d] must be "
+                          "{old: <non-empty string>, new: <string>}" % i)
+        old, new = e['old'], e['new']
+        if old == new:
+            return None, ("content_edits[%d]: old and new are identical — "
+                          "a no-op edit is a mistake, not a patch" % i)
+        n = current.count(old)
+        if n == 0:
+            return None, ("content_edits[%d]: `old` not found in the node's "
+                          "current content (%d chars). `old` must be copied "
+                          "VERBATIM from the stored content — if your view "
+                          "of this node was truncated or aged, expand it "
+                          "with get_nodes first, or send a full `content` "
+                          "rewrite instead." % (i, len(current)))
+        if n > 1:
+            return None, ("content_edits[%d]: `old` matches %d places in "
+                          "the content — extend it with surrounding context "
+                          "until it is unique." % (i, n))
+        current = current.replace(old, new, 1)
+    return current, None
+
+
 class BrainRememberMixin:
     """Remember methods for Brain."""
 
@@ -1262,6 +1303,13 @@ class BrainRememberMixin:
           revise(node_id, updates={"confidence": 0.9}, reason="why")
           revise(node_id, situation="When debugging", reason="adding situation")
 
+        Patch-mode content (mutually exclusive with `content`):
+          revise(node_id, reason="why",
+                 updates={"content_edits": [{"old": "...", "new": "..."}]})
+        Each edit replaces one exact, unique occurrence in the stored
+        content (apply_content_edits) — fields other than content are
+        untouched by the patch and keep per-field replace semantics.
+
         Behavior contract:
         - Immutable fields ({id, created_at, locked}) are skipped with a
           warning. Other fields in the same call still process; the skipped
@@ -1280,13 +1328,26 @@ class BrainRememberMixin:
         if content:
             all_updates['content'] = content
 
-        if not all_updates:
+        # Patch-mode content: `content_edits` compiles to a content replace
+        # once the stored content is in hand (after the existence check
+        # below) — everything downstream (deltas, re-embed, trace events)
+        # sees an ordinary content update.
+        content_edits = all_updates.pop('content_edits', None)
+        if content_edits is not None and all_updates.get('content') is not None:
+            return {'error': ('content and content_edits are mutually '
+                              'exclusive — pass one: content replaces '
+                              'wholesale, content_edits patches in place'),
+                    'node_id': node_id}
+
+        if not all_updates and content_edits is None:
             return {'error': 'No updates provided', 'node_id': node_id}
 
         # Capture the FULL field set NOW for vector invalidation. `all_updates`
         # gets mutated below (content is popped, etc.), so we need the
         # original set or the invalidation step misses fields.
         fields_changed_for_invalidation = set(all_updates.keys())
+        if content_edits is not None:
+            fields_changed_for_invalidation.add('content')
 
         # v29 / Phase B: source_refs is a join-table field, not a node column.
         # Pop it before the field classification so it doesn't land in
@@ -1311,6 +1372,12 @@ class BrainRememberMixin:
         existing_id, node_type, title, old_content, _ = row
         old_content = old_content or ''
         ts = self.now()
+
+        if content_edits is not None:
+            patched, edit_err = apply_content_edits(old_content, content_edits)
+            if edit_err:
+                return {'error': edit_err, 'node_id': node_id}
+            all_updates['content'] = patched
 
         # ── Field classification ──
         # Top-level fields live on the nodes table (updatable via SQL).

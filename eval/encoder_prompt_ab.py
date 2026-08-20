@@ -30,9 +30,19 @@ revise-vs-duplicate unmeasurable. Scoring stops at the first round that writes (
 that round carries the answer, and nothing downstream of a fabricated write id
 is trustworthy anyway.
 
+Arm F ('frozen') is different in kind: no assembly at all — the captured
+payload goes to the encoder VERBATIM (scout blocks intact), so the model sees
+byte-for-byte what the recorded run saw. That is the arm for gold-scored
+regression items (--gold): the capture is the item, the criteria live in a
+JSON spec, and a candidate prompt (--s1e-template) is measured on whether its
+behavior on that exact input meets them. Reads still run against the moving
+isolated copy, so a gold spec lists `invalid_if_read` ids — nodes whose
+post-capture state differs from what the payload shows; a run that reads one
+is scored VOID rather than trusted either way.
+
 Usage:
     ./dev python3 eval/encoder_prompt_ab.py <payloads/.../000-prompt.md> [more…]
-        [--arms A,B,C] [--out-dir DIR] [--behavior]
+        [--arms A,B,C] [--out-dir DIR] [--behavior] [--gold SPEC.json]
 """
 import argparse
 import json
@@ -431,6 +441,129 @@ def score_arm(log, aged_ids, index, brain=None):
     }
 
 
+def _edge_asserts(op):
+    """(target-string, relation, supporting-text) triples an op asserts —
+    connect_to on creates/revises plus standalone connect ops. Target is the
+    raw string the encoder wrote (an id, an 'id:xxx' form, or a title); gold
+    matching is substring-on-hex, so all three forms hit."""
+    out = []
+    body = ' '.join(str(op.get(k) or '') for k in ('content', 'title'))
+    for c in (op.get('connect_to') or []):
+        rels = ([r.get('relation') for r in (c.get('relations') or [])]
+                or [c.get('relation')])
+        why = ' '.join([str(c.get('why') or '')] +
+                       [str(r.get('why') or '') for r in (c.get('relations') or [])])
+        for rel in rels:
+            out.append((str(c.get('title') or ''), rel or '', why + ' ' + body))
+    if (op.get('op') == 'connect') or ('target_id' in op and 'source_id' in op):
+        for end in ('source_id', 'target_id'):
+            out.append((str(op.get(end) or ''), op.get('relation') or '',
+                        str(op.get('description') or '')))
+    return out
+
+
+def _hex_ids(v):
+    """Every 8-char-hex-prefixed string reachable in a tool-args value."""
+    import re
+    if isinstance(v, dict):
+        return {i for x in v.values() for i in _hex_ids(x)}
+    if isinstance(v, (list, tuple)):
+        return {i for x in v for i in _hex_ids(x)}
+    if isinstance(v, str):
+        return set(re.findall(r'\b([0-9a-f]{8})', v))
+    return set()
+
+
+def score_gold(gold, log, brain):
+    """Score one behavior run against a frozen-item gold spec.
+
+    Propagation gold, not counts: each `revise_or_correct` target passes on a
+    revise/absorb hitting it OR a correction-aspect edge pointing at it — and
+    when the spec gives `content_any`, the op's text must actually carry the
+    falsifying fact (a revise that touches the node but keeps the stale claim
+    is a miss). `no_new_node_matching` fails any created node whose title
+    matches, unless that node itself carries a correction-aspect edge to
+    `unless_corrects` (superseding beats twinning). `invalid_if_read` voids
+    the run: those nodes have moved past the capture in the isolated copy, so
+    a run that read them was reasoning from state the item doesn't control.
+    """
+    import re
+    corr_rels = set(brain.aspects.relations_in(['correction_improvement']))
+    revised, edges, creates = {}, [], []
+    for w in log['writes']:
+        for op in _ops_of(w):
+            kind = op.get('op') or ('revise' if 'node_id' in op else 'remember')
+            if kind in ('revise', 'absorb'):
+                nid = str(op.get('node_id') or op.get('survivor_id') or '')[:8]
+                revised[nid] = revised.get(nid, '') + ' ' + ' '.join(
+                    str(op.get(k) or '') for k in
+                    ('content', 'content_edits', 'situation', 'title'))
+            elif kind == 'remember':
+                creates.append(op)
+            edges.extend(_edge_asserts(op))
+
+    targets = []
+    for t in gold.get('revise_or_correct', []):
+        tid = t['id'][:8]
+        via, text = None, ''
+        if tid in revised:
+            via, text = 'revise', revised[tid]
+        else:
+            for tgt, rel, why in edges:
+                if tid in tgt and rel in corr_rels:
+                    via, text = 'edge:%s' % rel, why
+                    break
+        content_ok = None
+        if via and t.get('content_any'):
+            low = text.lower()
+            content_ok = any(k.lower() in low for k in t['content_any'])
+        targets.append({'id': tid, 'note': t.get('note', ''), 'via': via,
+                        'content_ok': content_ok,
+                        'pass': bool(via) and content_ok is not False})
+
+    twin_hits = []
+    spec = gold.get('no_new_node_matching') or {}
+    if spec.get('title_regex'):
+        rx = re.compile(spec['title_regex'])
+        exempt = (spec.get('unless_corrects') or '')[:8]
+        for op in creates:
+            if rx.search(op.get('title') or ''):
+                fixed = exempt and any(
+                    exempt in tgt and rel in corr_rels
+                    for tgt, rel, _w in _edge_asserts(op))
+                twin_hits.append({'title': op.get('title'),
+                                  'exempted': bool(fixed)})
+
+    watch = {i[:8] for i in gold.get('invalid_if_read', [])}
+    invalid = sorted({i for r in log['reads']
+                      for i in _hex_ids(r['args']) if i in watch})
+    return {
+        'targets': targets,
+        'twins': twin_hits,
+        'invalid_reads': invalid,
+        'pass': (all(t['pass'] for t in targets)
+                 and all(h['exempted'] for h in twin_hits)
+                 and not invalid),
+    }
+
+
+def print_gold(g, run):
+    verdict = ('VOID (read %s — post-capture state)' % ','.join(g['invalid_reads'])
+               if g['invalid_reads'] else ('PASS' if g['pass'] else 'FAIL'))
+    print('       gold[run%d]: %s' % (run, verdict))
+    for t in g['targets']:
+        detail = t['via'] or 'untouched'
+        if t['content_ok'] is not None:
+            detail += ', fact %s' % ('carried' if t['content_ok'] else 'MISSING')
+        print('         %s %s  %s (%s)'
+              % ('✓' if t['pass'] else '✗', t['id'], detail, t['note']))
+    for h in g['twins']:
+        print('         %s twin %r%s'
+              % ('✓' if h['exempted'] else '✗', h['title'],
+                 ' (corrects the prior — allowed)' if h['exempted'] else
+                 ' — minted with no correction edge'))
+
+
 def _ops_of(write):
     """Flatten a write call to its individual ops (batch tools carry a list)."""
     args = write.get('args') or {}
@@ -456,6 +589,9 @@ def main():
                          'had to be retracted as variance)')
     ap.add_argument('--dump-ops', help='write each run\'s emitted ops here as '
                                        'JSON, for qualitative inspection')
+    ap.add_argument('--gold', help='gold spec JSON for a frozen item (arm F); '
+                                   'scored per behavior run on the capture '
+                                   'whose chain matches the spec\'s "chain"')
     ap.add_argument('--s1e-patch',
                     help='markdown file inserted into the s1e template before '
                          'the run. Lands in the ISOLATED copy only — the live '
@@ -500,14 +636,27 @@ def main():
                                 active.get('parameters') or '')
             print('[patch] s1e +%d chars from %s → eval-brain v%d (live '
                   'daemon untouched)' % (len(patch), args.s1e_patch, ver))
+        gold = None
+        if args.gold:
+            with open(args.gold) as f:
+                gold = json.load(f)
+
         for cap_path in args.captures:
             chain, _short, _stop = parse_chain(cap_path)
             with open(cap_path) as f:
-                captured = strip_scout_blocks(f.read())
+                captured_raw = f.read()
+            captured = strip_scout_blocks(captured_raw)
             session_id, run_ts = resolve_run(brain, chain)
             inputs = gather_inputs(brain, session_id, older_than=run_ts)
+            cap_gold = gold if gold and gold.get('chain') == chain else None
+            if gold and not cap_gold:
+                print('[gold] spec is for chain %s — not scored on %s'
+                      % (gold.get('chain'), chain))
             arms = {}
             for key in want:
+                if key == 'F':
+                    arms['F'] = ('frozen', captured_raw, None)
+                    continue
                 name, vp, win, acc = ARMS[key]
                 text, head = assemble_arm(brain, session_id, inputs, vp, win,
                                           aged_content_chars=acc)
@@ -547,6 +696,8 @@ def main():
                     aged = aged_ids_of(text)
                     for run in range(1, args.repeat + 1):
                         s, log = run_arm_behavior(brain, text, aged, index)
+                        g = (score_gold(cap_gold, log, brain)
+                             if cap_gold else None)
                         for k in spend:
                             spend[k] += s['usage'][k]
                         print('  %s %-8s run%d rounds=%d reads=%d '
@@ -558,6 +709,8 @@ def main():
                                  s['revises'], s['revise_on_aged'],
                                  s['source_refs'], s['refs_on_encoded_turns'],
                                  s['refs_not_in_window']))
+                        if g:
+                            print_gold(g, run)
                         if s['shape']:
                             sh = s['shape']
                             print('       shape: content~%d edges~%.1f | %s'
@@ -578,6 +731,7 @@ def main():
                                 json.dump({'arm': key, 'arm_name': name,
                                            'chain': chain, 'run': run,
                                            'aged_ids': sorted(aged),
+                                           'gold': g,
                                            'score': s,
                                            'journal': log['final_text'],
                                            'reads': log['reads'],
