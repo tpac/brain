@@ -1,21 +1,100 @@
 # Brain Challenges
 
-A running log of scenarios where the brain's cognitive model has a gap —
-not code bugs, but limits in how it captures, surfaces, or reasons about
-knowledge. Each entry is a place where the brain misled, confused, or
-failed to help the operator + assistant. Fixes are not required to file
-an entry; the point is to see the pattern clearly before proposing one.
+Two layers live here:
 
-Entries should describe:
-- **What happened** — concrete instance, with dates / ids where possible
-- **Why the brain fell short** — the cognitive gap, not the code path
-- **What would help** — sketch, not design
+1. **The challenge ledger** (below) — the indexed record of every failure,
+   miss, and hard-won lesson the memory system has accumulated about itself,
+   mined from the brain's own record (communities, corrections, encoder
+   journals, prompt-version diffs, eval reports). One row per distinct
+   failure; full tables in [docs/challenges/](challenges/).
+2. **Narrative entries** (bottom) — long-form cognitive-gap write-ups where a
+   single case deserves the full story. The ledger indexes these too.
 
-When an entry's fix becomes a real work item, it migrates to
-[docs/BACKLOG.md](BACKLOG.md). Entries stay here as the cognitive-gap
-record; the backlog is where execution lives. Entry #2's fix family is
-now the Frame-frontier scoring lane and the cue-side temporal lane in
-BACKLOG.md's *Now* section.
+The ledger's target function — what every row is scored against:
+**memory exists to change the next action.**
+
+## The challenge ledger
+
+Built 2026-08-20 by a 24-miner fan-out over: 299 encoder/recall-family
+communities + 3,375 member nodes, 553 loose corrections/bugs/diagnoses/opens,
+555 out-of-community lessons/principles/findings/insights, 2,552 encoder
+journal notes (s1e + S2, 2026-07-22→08-20), all 37 s1e prompt-version diffs
+with adjacent decision nodes, and the longmem eval reports + EVAL-PLATFORM
+docs. Merged and deduplicated by shared-evidence clustering (386 folded).
+Coverage note: ~600 journal notes from mid-June→July were never mined by any
+pass (operator ruling: recurring patterns will resurface; completeness not
+required).
+
+**Row semantics**
+
+| column | meaning |
+|---|---|
+| claim | one self-contained sentence naming the mechanism |
+| evidence | brain node ids (8-hex), chain ids, or file paths |
+| fix | what shipped and when — `none stated` = known, never fixed |
+| pinned-by | the test/eval/gold item protecting it — `NONE` = unprotected |
+| status | `unverified` (default) / `superseded-by:<id>` / `verified-current` (only when the text itself proves currency) |
+| corpus? | could become a gold eval item for the encode/recall corpus |
+
+Old rows carry superseded conclusions **by design** — treat `unverified` as
+"was true when written," never as current truth.
+
+**The ledger** (1,813 rows after dedup, from 2,199 raw across 24 miners)
+
+| class | rows | meaning |
+|---|---|---|
+| [encode-write](challenges/encode-write.md) | 191 | the encoder wrote a wrong or poor node |
+| [encode-notice](challenges/encode-notice.md) | 50 | the moment was noticed but encoded badly |
+| [encode-absent](challenges/encode-absent.md) | 85 | an expected node was never written — catalog gap |
+| [recall-surface](challenges/recall-surface.md) | 185 | the knowledge existed but was never surfaced |
+| [recall-rank](challenges/recall-rank.md) | 165 | surfaced but ranked or selected wrong |
+| [answer](challenges/answer.md) | 55 | recalled but misused in the reply |
+| [structure](challenges/structure.md) | 312 | graph, edges, or community layer wrong |
+| [process](challenges/process.md) | 231 | working-discipline failure around memory |
+| [eval-method](challenges/eval-method.md) | 309 | benchmark or eval methodology mistake |
+| [prompt-genealogy](challenges/prompt-genealogy.md) | 230 | prompt-design decision and its origin |
+
+Plus the version-by-version prompt history:
+[prompt-genealogy-versions.md](challenges/prompt-genealogy-versions.md) —
+all 37 s1e registrations, what changed and the recorded why.
+
+**Headline numbers (2026-08-20)**
+
+- **943 rows (52%) are `pinned-by: NONE`** — past victories protected by no
+  test, gold item, or eval. This is the regression-gap map for Q3/Q7.
+- **609 rows (34%) have `fix: none stated`** — diagnosed, never shipped.
+- **934 rows are corpus candidates** — the target list for time-travel
+  gold-item harvesting (Track A1).
+- 101 rows explicitly superseded; only 91 claim verified-current (a 12-row
+  spot-check of named pins found all 12 present in the repo).
+
+**Cross-cutting findings the merge surfaced** (each recurs across
+independent miners):
+
+- The `outcome` element of the O/K/Δ trace schema was specified at every
+  scale and never implemented — nothing in the record can currently *prove*
+  a memory changed the next action. The target function is unmeasurable by
+  design, not by accident.
+- The most re-learned lessons: *recall-before-re-deriving* (≥6 independent
+  occurrences), *build-the-ruler-first* (≥5), *examples-beat-instructions
+  for Sonnet* (≥4, same edit applied to a different prompt each time — no
+  standing cross-prompt example audit exists), *n=1 is not a measurement*
+  (≥3), *measurement circularity* (≥4 in the eval record alone).
+- The catalog holds uncorrected contradiction pairs (opposite claims about
+  the same state, no correction edge) in every large batch — including S2
+  community narratives that launder debunked findings ("+12pt z-score")
+  into the summary layer recall reads first.
+- Silent-plumbing failures recur: signals computed then dropped
+  (`edge_context` at weight 0.55 with 0 rows ever; 41 healer question
+  embeddings dropped; auto-encode dead from birth behind a 3s timeout).
+  The class survives because nothing pins wiring end-to-end.
+
+## Narrative entries
+
+Long-form gap write-ups. When an entry's fix becomes a real work item, it
+migrates to [docs/BACKLOG.md](BACKLOG.md); entries stay here as the
+cognitive-gap record. Entry #2's fix family is now the Frame-frontier
+scoring lane and the cue-side temporal lane in BACKLOG.md's *Now* section.
 
 ---
 
@@ -60,6 +139,11 @@ None of these is free. The volatility classifier adds an encoder
 decision; live-check at surface costs a DB round-trip per candidate. But
 the failure mode is real and silent — Anchor confidently built a plan on
 stale facts.
+
+2026-08-20 ledger note: none of the three proposals was ever built
+(`grep -rn volatility servers/` returns zero hits). The staleness family
+in the ledger carries five documented production misses and zero shipped
+fixes.
 
 ---
 
