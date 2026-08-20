@@ -8,14 +8,6 @@
       "port": 47304,
       "env": { "DASHBOARD_PORT": "47304" },
       "autoPort": false
-    },
-    {
-      "name": "dashboard-review",
-      "runtimeExecutable": "venv/bin/python",
-      "runtimeArgs": ["dashboard/brain_dashboard_standalone.py"],
-      "port": 47305,
-      "env": { "DASHBOARD_PORT": "47305" },
-      "autoPort": false
     }
   ]
 }
