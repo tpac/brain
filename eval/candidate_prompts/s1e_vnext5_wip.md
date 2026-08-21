@@ -944,7 +944,7 @@ its discipline:
 - `anchor_raw_quote` by the same derivation test as `user_raw_quote`: it rides when the node derives from something I SAID — an articulated stance, a finding I voiced, a reasoning step — and stays absent on nodes driven only by the other side's words or by actions. Not ceremony, not rarity: derivation decides. (The identity examples below carry it densely because identity moments are almost always my-voice-derived; a routine fact node from the other side's report still gets silence.)
 - dated nodes (events, moments, decisions tied to a specific moment) carry `event_time` kv
 - specific numbers, names, and verbatim phrases appear in BOTH the raw quote AND the title/content — cross-redundancy so the fact is findable by ANY retrieval path
-- open fields (`correction_pattern`, `emotions`, `event_time`) appear where they earn their place
+- open fields (`correction_pattern`, `emotions`, `event_time`, `question`, `thought`) appear where they earn their place
 - edges (`connect_to` inside each node) describe the semantic bridge, not the endpoints
 - voice symmetry means each voice is first-class WHEN PRESENT, not that every node carries every voice
 
@@ -957,6 +957,7 @@ against my real catalog at encode time:
 [lesson] "Ring-buffer race in embed_queue (my prior mistake)" (id:9c04e7a1, src:encoder:sonnet, 2026-01-30)
 [lesson] "Ring-buffer race in embed_queue — reader batching" (id:5d11c0a7, src:encoder:sonnet, 2026-02-14)
 [insight] "Brain vs database framing" (id:b7e2054d, src:anchor, 2026-03-02)
+[design] "Encoding-run gating via a flag file the agent polls each cycle" (id:d94f07b2, src:encoder:sonnet, 2026-04-19)
 ```
 
 ```json
@@ -975,6 +976,7 @@ remember_batch(
     {type: "event", title: "Marcus's 5K charity run — 27:12 finish, return to running",
      content: "On 2023-03-19, Marcus completed a 5K charity run in 27 minutes and 12 seconds — his first race after a break. He framed it as 'a great motivator' that pushed him to plan a return to consistent running and start exploring weekly running groups.",
      situation: "When tracking Marcus's running progress, pace baseline at restart, or fitness-restart milestones",
+     question: "What's Marcus's 5K time from when he got back into running?",
      reasoning: "Specific performance time (27:12) at a meaningful inflection point — return to running. The exact time gives a concrete baseline for future comparisons; 'great motivator' framing marks emotional anchor not just data. Number appears in title, content, and verbatim quote so any retrieval path finds it.",
      event_time: "2023-03-19",
      user_raw_quote: "I just got back into running and did a 5K charity run today, finishing in 27 minutes and 12 seconds, which was a great motivator"},
@@ -989,15 +991,20 @@ remember_batch(
     {type: "correction", title: "Ask the daemon, don't probe flag files",
      content: "I proposed gating encoding-agent runs via a flag file the agent would check each cycle. Sam redirected: have the daemon return the prompt directly (or NONE) — I just ask. The authority decides AND ships the work or the no-op; I never inspect state. Generalizes beyond gating: any read-modify-write boundary where staleness can't be detected by the reader should eliminate the read instead of guarding it.",
      situation: "When designing gating mechanisms, hook coordination, or any ask-vs-check boundary where the reader can't verify how stale a snapshot is",
-     reasoning: "Sam rejected my flag-file proposal directly. Race conditions felt obvious to me; staleness didn't — the reframe Sam forced (control-by-request rather than control-by-inspection) generalizes the lesson beyond this one design. The correction-lineage edge below is illustrative — at encode time, copy the real prior-belief node's id from the catalog.",
+     question: "Why don't we use a flag file to gate the agent runs?",
+     reasoning: "Sam rejected my flag-file proposal directly. Race conditions felt obvious to me; staleness didn't — the reframe Sam forced (control-by-request rather than control-by-inspection) generalizes the lesson beyond this one design.",
      user_raw_quote: "no don't use a flag file, have the daemon return the prompt directly",
      anchor_raw_quote: "Stale-flag was the failure mode I missed — race conditions felt obvious, staleness didn't. The reframe lands: the authority decides AND ships, callers don't peek.",
      correction_pattern: "Control-by-request rather than control-by-inspection",
+     thought: "The dashboard's config polling has the same control-by-inspection shape — unverified hunch; worth a look next time we touch it.",
      event_time: "2026-04-22",
      connect_to: [
-       {title: "<id-of-the-prior-design-this-corrects>", relation: "corrects", why: "the corrects edge gives the correction substrate (correction_improvement aspect) walkable lineage from rule back to the mistake it ruled out. PLACEHOLDER TARGET — at encode time, substitute the real catalog id of the prior belief being corrected, or omit the edge if no such node exists yet."},
+       {title: "d94f07b2", relation: "corrects", why: "the corrects edge gives the correction walkable lineage from the reframe back to the design it ruled out — the flag-file proposal is the prior belief, and recall's correction-walking demotes it once this edge exists"},
        {title: "Single-writer invariant beats clever concurrency", relation: "parallels", why: "same family — one authority decides and ships, callers neither write nor peek. Sibling in this batch, so title-form beside the catalog id above."}
      ]},
+    // content EXPANDS the quote — the mechanisms the phrase governs.
+    // Bad (interpretation that deletes to nothing): "Sam wants the
+    // brain to actually know things, which is important."
     {type: "quote", title: "I want it to know that it knows",
      content: "Sam's framing for the brain's design principle: a database retrieves when asked; a brain RECOGNIZES. Situation embeddings, confidence scoring, enrichment vectors — every recall mechanism exists to serve recognition, not search. This sentence is the thread the whole architecture hangs from.",
      situation: "When framing the brain's purpose against a database, or when architectural trade-offs force a choice between recall precision and search coverage",
@@ -1019,6 +1026,8 @@ What this canonical pattern demonstrates:
 - **event_time on dated nodes**: the event (`2023-03-19`) and the moment (`2026-04-15`) carry structured event_time kv even though neither is a "topical" date deserving a time_anchor node — bookkeeping kv is the spine
 - **Voice symmetry**: the other side's voice (user_raw_quote) on every other-side-derived node; my voice (anchor_raw_quote) on the principle (cross-context insight), the moment (my framing of the emotional event), the correction (my acknowledgment of the reframe) — my finding/excitement is preserved, not dropped to summary
 - **Edges inline**: per-node connect_to (inside each node's dict) describes outgoing edges from THAT node — no batch-level connect_to is used since each edge is node-specific
+- **Question selectivity**: 2 of 5 — the event and the correction carry a `question` because a future asker has a real phrasing for each ("What's Marcus's 5K time...", "Why don't we use a flag file..."); the principle, moment, and quote stay question-free, because a question that paraphrases the title is worse than none
+- **No `source_refs` here — deliberately**: refs are the rare surface-the-moment flag, not per-node bookkeeping; the sweep example shows the copy when a moment earns it
 
 ### Detail and meaning — same topic, two nodes
 
