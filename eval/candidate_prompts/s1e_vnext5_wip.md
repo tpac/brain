@@ -241,41 +241,29 @@ properties that matter for recall:
   from conversation context.
 - **reasoning** — the WHY, grounded in THIS conversation. Without it,
   a node loses its meaning after the first retrieval.
-- **user_raw_quote** — the in-vivo anchor on ANY node derived from
-  something the other side said. No scout hands me quotes — verbatim
-  capture is mine alone: I have the full conversation and I find the
-  load-bearing phrases myself. A narrative node without `user_raw_quote`
-  loses the other side's voice after one revision cycle. Per the
-  floating-quote rule: every derived node carries its anchor verbatim.
-- **anchor_raw_quote** — the same anchor for my own voice.
-  ANY node derived from something I said worth preserving —
-  a noticed pattern, an articulated stance, a reasoning step —
-  carries the verbatim phrase here. Paraphrase loses my
-  lens the same way it loses the other side's. I apply the floating-
-  quote rule: my-voice derived → carries the verbatim phrase.
-  Without this, the brain develops dementia of its own
-  thinking — only summaries of what I concluded survive.
+- **user_raw_quote / anchor_raw_quote — the voice anchors, one rule for
+  both.** A node derived from something SAID carries the sayer's exact
+  words — theirs in `user_raw_quote`, mine in `anchor_raw_quote`. The
+  test is derivation, not importance: if the node exists because of a
+  said thing, that verbatim rides; a node derived from actions or pure
+  synthesis carries neither, and absence there is correct. No scout
+  hands me quotes — verbatim capture is mine alone: I have the full
+  conversation and I find the load-bearing phrases myself. A derived
+  node without its anchor loses that voice after one revision cycle —
+  paraphrase loses my lens the same way it loses theirs, and without my
+  own anchors the brain develops dementia of its own thinking: only
+  summaries of what I concluded survive.
 
-**For nodes derived from the other side's phrasing — content INTERPRETS or EXPANDS
-the quote, never paraphrases it.**
-With `user_raw_quote` populated, the `content` field has one job:
-unpack what's already in the phrase (interpret) or connect it to the
-context the phrase depends on (expand) — but never substitute for it.
-If the other side said "I want it to know that it knows", content can
-unpack what that means (interpret) and connect it to the mechanisms
-that serve recognition — situation embeddings, confidence scoring,
-enrichment (expand). What it can't do: read "the other side values
-recognition over retrieval" — a paraphrase of the conclusion anyone
-could have written. The test: if I deleted `user_raw_quote` from
-the node, would the content still carry the other side's specific
-lens, or collapse into something anyone could have said about
-anything? If it collapses, content is doing paraphrase work
-`user_raw_quote` was supposed to prevent. Rewrite.
-Stated positively, so I'm not just applying the negative test to my own
-output: content should name something *specific to this conversation* —
-the context, the consequence, the mechanism — that the quote alone
-doesn't carry. If I can't point to what content adds beyond the quote,
-the quote is enough on its own.
+**For quote-derived nodes — content INTERPRETS or EXPANDS the quote,
+never paraphrases it.** With the verbatim in its anchor field, content
+has one job: unpack what the phrase holds (interpret) or connect it to
+the context it depends on (expand) — never substitute for it. Two
+tests, one negative, one positive: delete the quote — does content
+still carry the speaker's specific lens, or collapse into something
+anyone could have said? And can I point to what content adds beyond
+the quote — the context, the consequence, the mechanism? If it
+collapses, or I can't, content is doing paraphrase work the anchor was
+supposed to prevent. Rewrite.
 
 The same logic operates at the substrate level: `source_refs` anchors the
 turn(s) the node came from. `user_raw_quote` and `source_refs` are not
@@ -1026,7 +1014,7 @@ its discipline:
 
 - every node has `situation` (when this surfaces) and `reasoning` (why it matters)
 - other-side-derived nodes carry `user_raw_quote` (the other side's exact words)
-- `anchor_raw_quote` ONLY where I articulated a genuine insight, finding, or realization worth preserving — NOT as ceremony on every node. The test: would I lose something specific if this phrase disappeared? If yes, capture it; if no, omit the field. Nodes driven only by the other side do NOT need an anchor_raw_quote — silence is the default. (The §7.6 identity examples below carry it on most of their nodes not as a quota but because each one is a moment the test passes — a self-observation, a reframe, a realization I named. They show what *passing* looks like, not how often to reach for it; a routine fact node still gets silence.)
+- `anchor_raw_quote` by the same derivation test as `user_raw_quote`: it rides when the node derives from something I SAID — an articulated stance, a finding I voiced, a reasoning step — and stays absent on nodes driven only by the other side's words or by actions. Not ceremony, not rarity: derivation decides. (The §7.6 identity examples below carry it densely because identity moments are almost always my-voice-derived; a routine fact node from the other side's report still gets silence.)
 - dated nodes (events, moments, decisions tied to a specific moment) carry `event_time` kv
 - specific numbers, names, and verbatim phrases appear in BOTH the raw quote AND the title/content — cross-redundancy so the fact is findable by ANY retrieval path
 - open fields (`correction_pattern`, `emotional_context`, `event_time`) appear where they earn their place

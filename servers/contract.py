@@ -236,7 +236,7 @@ STRUCTURAL_FIELDS = {
     "id":         {"store": "nodes", "type": "str", "required": True, "immutable": True},
     "type":       {"store": "nodes", "type": "str", "required": True},
     "title":      {"store": "nodes", "type": "str", "required": True},
-    "content":    {"store": "nodes", "type": "str", "replace_on_revise": True, "history": "revision_history in metadata_kv (last 5)"},
+    "content":    {"store": "nodes", "type": "str", "replace_on_revise": True, "history": "trace events (node_revised deltas); legacy _sys_revision_history blobs dropped by migration"},
     "confidence": {"store": "nodes", "type": "float", "range": (0.0, 1.0), "default": 1.0},
     "locked":     {"store": "nodes", "type": "bool", "default": False},
     "archived":   {"store": "nodes", "type": "bool", "default": False},
@@ -986,7 +986,7 @@ def generate_field_summary():
         if spec.get("description"):
             parts.append("— %s" % spec["description"])
         elif spec.get("replace_on_revise"):
-            parts.append("— replaced on revise (old content saved to revision_history)")
+            parts.append("— replaced on revise; revision history lives in trace events")
         lines.append("  ".join(parts))
     lines.append("")
     lines.append("RETURNS: remember() and remember_batch() return related_nodes — "
