@@ -306,6 +306,16 @@
   define the register, which makes the sweep cheapest exactly when it
   matters most. (2026-08-21)
 
+## R. Recall→encode pointers (Opus scout, 2026-08-21)
+
+Full 30-row table: [challenges/recall-to-encode.md](challenges/recall-to-encode.md).
+The recall-side cross-examination every stop verdict must now pass (the
+encode-decode symmetry check the first six stops lacked). Headliners: R2
+trigger-register situation (14%→54%), R3 degree floor (0-2 edges = −20pp),
+R5 why-length admission threshold (<80 chars filtered before semantics),
+R8 live defect (no correction example carries a real corrects edge),
+R23 measured verb lift (after 5.0×, instantiates 4.1×, extends top rescuer).
+
 ## Fields — the aspect model (Tom, 2026-08-21) vs measured reality
 
 Each field is a different ASPECT of the memory. Two standing decisions ride
