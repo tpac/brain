@@ -533,6 +533,95 @@ class BrainRememberMixin:
             'vectors_deleted': vectors_deleted,
         }
 
+    # Pending lock-flip confirmations: token -> {node_id, locked, requested_at}.
+    # In-memory by design — lock flips are rare and operator-present; a pending
+    # confirm must not outlive a daemon restart without being re-requested.
+    LOCK_CONFIRM_TTL_S = 600
+
+    def set_node_lock(self, node_id: str, locked: bool,
+                      reason: str = '', confirm_token: str = None) -> Dict[str, Any]:
+        """Flip the locked flag on an existing node — the ONE door for lock
+        transitions. revise() deliberately treats `locked` as immutable; this
+        is the explicit operator path, not a relaxation of that contract.
+
+        Two-phase: without confirm_token nothing executes — returns
+        confirmation_required=True, a one-shot token (10-min TTL, in-memory)
+        and a human-readable summary the caller must relay to the operator
+        for an explicit yes. Called again with the token, it flips the flag.
+
+        Operator-channel only: reachable solely via the `set_node_lock`
+        dispatch command (never a brain_batch op); the shared S1/S2 encoder
+        dispatch closure refuses the command outright.
+
+        Guards: node must exist; an archived node cannot be locked; already
+        in the requested state is a no-op (no confirmation round-trip).
+        """
+        locked = bool(locked)
+        row = self.conn.execute(
+            'SELECT id, locked, archived, title, type, created_at, access_count '
+            'FROM nodes WHERE id = ?', (node_id,)).fetchone()
+        if not row:
+            return {'ok': False, 'error': 'Node not found', 'node_id': node_id}
+        full_id, old_locked, archived, title, node_type, created_at, access_count = row
+        old_locked = bool(old_locked)
+
+        if locked and archived:
+            self._log_error('lock_archived_node',
+                            ValueError('Cannot lock an archived node'),
+                            'set_node_lock(%s, locked=True)' % full_id[:8])
+            return {'ok': False, 'error': 'Cannot lock an archived node',
+                    'node_id': full_id}
+
+        if old_locked == locked:
+            return {'ok': True, 'node_id': full_id, 'changed': False,
+                    'note': 'node already %s' % ('locked' if locked else 'unlocked')}
+
+        pending = getattr(self, '_pending_lock_confirms', None)
+        if pending is None:
+            pending = self._pending_lock_confirms = {}
+        now = time.time()
+        for tok in [t for t, p in pending.items()
+                    if now - p['requested_at'] > self.LOCK_CONFIRM_TTL_S]:
+            del pending[tok]
+
+        verb = 'lock' if locked else 'unlock'
+        if not confirm_token:
+            import secrets
+            token = '%s-%s' % (verb, secrets.token_hex(2))
+            pending[token] = {'node_id': full_id, 'locked': locked,
+                              'requested_at': now}
+            operator = getattr(self, 'operator_name', '') or 'the human operator'
+            return {
+                'ok': True, 'confirmation_required': True,
+                'confirm_token': token, 'node_id': full_id,
+                'summary': '%s [%s] "%s" (created %s, %d accesses) — needs an '
+                           'explicit yes from %s before re-calling with the token'
+                           % (verb.upper(), node_type, (title or '')[:60],
+                              (created_at or '?')[:10], access_count or 0, operator),
+            }
+
+        spec = pending.pop(confirm_token, None)
+        if not spec or spec['node_id'] != full_id or spec['locked'] != locked:
+            self._log_error('lock_confirm_invalid',
+                            ValueError('Invalid or expired lock confirmation token'),
+                            'set_node_lock(%s, locked=%s, token=%s)'
+                            % (full_id[:8], locked, str(confirm_token)[:16]))
+            return {'ok': False, 'node_id': full_id,
+                    'error': 'Confirmation token invalid or expired — call again '
+                             'without confirm_token to request a fresh one'}
+
+        from .db_backends.sqlite import commit_unless_batched
+        self.conn.execute('UPDATE nodes SET locked = ?, updated_at = ? WHERE id = ?',
+                          (1 if locked else 0, iso_now(), full_id))
+        commit_unless_batched(self.conn)
+        return {
+            'ok': True, 'node_id': full_id, 'changed': True,
+            'title': (title or '')[:60], 'type': node_type,
+            'locked': locked,
+            'confirm_latency_s': round(now - spec['requested_at'], 1),
+            'deltas': [{'field': 'locked', 'old': old_locked, 'new': locked}],
+        }
+
     def absorb(self, survivor_id: str, absorbed_id: str,
                content: str = None, reason: str = '', updates=None,
                prune_edges=None, drop_fields=None,

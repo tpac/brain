@@ -20,7 +20,7 @@ from .mutation_emitter import emit_mutation_traces
 from .dispatch_write import (
     _handle_remember, _handle_remember_batch, _handle_revise, _handle_revise_batch,
     _handle_brain_batch, _handle_connect, _handle_connect_batch, _handle_revise_edge,
-    _handle_enrich,
+    _handle_enrich, _handle_set_node_lock,
     _validate_source_refs, _maybe_warn_source_refs_hex_format,
     _maybe_warn_source_refs_sparseness,
 )
@@ -123,6 +123,12 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "brain_batch":           CmdEntry(_handle_brain_batch,         is_write=True, marks_dirty=True,
                                       accepts=frozenset({"operations", "encoding_source",
                                                          "chain_id", "session_id", "reason"})),
+    # Operator-channel only: NOT in scales WRITE_COMMANDS, refused by the
+    # encoder dispatch closure (scales/s2/base.py). The one door for lock flips.
+    "set_node_lock":         CmdEntry(_handle_set_node_lock,       is_write=True, marks_dirty=True,
+                                      accepts=frozenset({"node_id", "locked", "reason",
+                                                         "confirm_token", "encoding_source",
+                                                         "chain_id", "session_id"})),
     "enrich":                CmdEntry(_handle_enrich,              is_write=True, marks_dirty=True),
     "eval":                  CmdEntry(_handle_eval,                is_write=True, marks_dirty=True),
     "diagnose":              CmdEntry(_handle_diagnose,            is_write=False, marks_dirty=False),
