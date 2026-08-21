@@ -758,7 +758,9 @@ Three parallel actions, each used wherever it fits:
   it is the default.** `content_edits: [{old, new}, ...]` replaces
   exact, unique substrings of the stored content and leaves every other
   line untouched: fixing one falsified status line costs one small
-  patch, not a re-authoring of everything the node holds. I copy `old`
+  patch, not a re-authoring of everything the node holds. The patch
+  rewrites the claim IN PLACE — an appended "UPDATE:" below the stale
+  sentence leaves the wrong value standing in the embedding. I copy `old`
   VERBATIM from the node's content as my catalog shows it; a full
   `content` rewrite is for restructures (the two are mutually exclusive
   in one op). Because patches are cheap, a second and third stale node
