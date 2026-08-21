@@ -51,8 +51,9 @@ Everything else makes a good salvage better. These three make it exist.
    It goes in the **handoff node** (durable), quoted by the launch prompt.
 6. **Write the handoff node** so it answers those three. (`references/handoff-artifacts.md` §1.)
 7. **Pre-mortem, and write the answer down.** Name the one line most likely to make the successor
-   confidently wrong; delete it or add its verify-before-use entry. Done when the verify-before-use
-   list changed, or you can state why it didn't.
+   confidently wrong; delete it or add its verify-before-use entry. Classic offenders: an untyped
+   hex ref, a location claim asserted from memory, a worktree named as the address (the reference's
+   cross-cutting rules). Done when the verify-before-use list changed, or you can state why it didn't.
 8. **Write the doc head** — the dated `§`, current-state and lean. (§0 of the reference.)
 9. **Build the working set** — the scratchpad file. (§2.) Then put **one self-labeled line in the
    handoff node** pointing at it: *"working set (ephemeral, may be gone): `<abs path>` — if missing
