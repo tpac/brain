@@ -110,6 +110,54 @@ class TestSetNodeLock(BrainTestBase):
         res = self.brain.set_node_lock(nid_b, True, reason='x', confirm_token=tok)
         self.assertFalse(res['ok'])
         self.assertFalse(_locked_in_db(self.brain, nid_b))
+        # A mismatched confirm must NOT burn the pending token — the operator's
+        # yes for node A still works after the wrong-node slip.
+        good = self.brain.set_node_lock(nid_a, True, reason='x', confirm_token=tok)
+        self.assertTrue(good['changed'])
+        self.assertTrue(_locked_in_db(self.brain, nid_a))
+
+    def test_token_bound_to_session(self):
+        nid = _make_node(self.brain)
+        tok = self.brain.set_node_lock(nid, True, reason='x',
+                                       session_id='stream-a')['confirm_token']
+        other = self.brain.set_node_lock(nid, True, reason='x',
+                                         confirm_token=tok, session_id='stream-b')
+        self.assertFalse(other['ok'])
+        self.assertFalse(_locked_in_db(self.brain, nid))
+        same = self.brain.set_node_lock(nid, True, reason='x',
+                                        confirm_token=tok, session_id='stream-a')
+        self.assertTrue(same['changed'])
+
+    def test_noop_phase2_consumes_token(self):
+        """A phase-2 match that lands as a no-op must still burn the token —
+        otherwise it lingers and can replay after a later state change."""
+        nid = _make_node(self.brain)
+        tok = self.brain.set_node_lock(nid, True, reason='x')['confirm_token']
+        self.brain._nodes.set_locked(nid, True)  # raced by another door
+        noop = self.brain.set_node_lock(nid, True, reason='x', confirm_token=tok)
+        self.assertTrue(noop['ok'])
+        self.assertFalse(noop['changed'])
+        self.brain._nodes.set_locked(nid, False)
+        replay = self.brain.set_node_lock(nid, True, reason='x', confirm_token=tok)
+        self.assertFalse(replay['ok'])
+        self.assertFalse(_locked_in_db(self.brain, nid))
+
+    def test_locked_must_be_boolean(self):
+        """bool('false') is True — a string must be rejected, not coerced."""
+        nid = _make_node(self.brain)
+        res = self.brain.set_node_lock(nid, 'false', reason='unlock please')
+        self.assertFalse(res['ok'])
+        self.assertIn('boolean', res['error'])
+        self.assertFalse(_locked_in_db(self.brain, nid))
+
+    def test_non_anchor_encoding_source_refused(self):
+        """Write-boundary mirror of remember()'s anchor-only lock rule."""
+        nid = _make_node(self.brain)
+        res = self.brain.set_node_lock(nid, True, reason='x',
+                                       encoding_source='s2:consolidation')
+        self.assertFalse(res['ok'])
+        self.assertIn('anchor-only', res['error'])
+        self.assertFalse(_locked_in_db(self.brain, nid))
 
     def test_expired_token_rejected(self):
         nid = _make_node(self.brain)
@@ -142,8 +190,12 @@ class TestSetNodeLockDispatch(BrainTestBase):
         self.assertFalse(self._dispatch({'locked': True, 'reason': 'x'})['ok'])
         self.assertFalse(self._dispatch({'node_id': nid, 'reason': 'x'})['ok'])
         self.assertFalse(self._dispatch({'node_id': nid, 'locked': True})['ok'])
+        # Type guard: a string 'false' must be rejected at the handler.
+        bad = self._dispatch({'node_id': nid, 'locked': 'false', 'reason': 'x'})
+        self.assertFalse(bad['ok'])
+        self.assertIn('boolean', bad['error'])
 
-    def test_flip_emits_node_revised_trace(self):
+    def test_flip_emits_node_lock_changed_trace(self):
         nid = _make_node(self.brain)
         p1 = self._dispatch({'node_id': nid, 'locked': True, 'reason': 'canon'})
         self.assertTrue(p1['ok'])
@@ -154,19 +206,25 @@ class TestSetNodeLockDispatch(BrainTestBase):
         self.assertTrue(_locked_in_db(self.brain, nid))
         rows = self.brain._trace_dal.conn.execute(
             "SELECT metadata FROM trace_events "
-            "WHERE ref_type = 'node_revised' AND ref_id = ?", (nid,)).fetchall()
+            "WHERE ref_type = 'node_lock_changed' AND ref_id = ?", (nid,)).fetchall()
         self.assertEqual(len(rows), 1)
         meta = json.loads(rows[0][0])
-        self.assertEqual(meta['deltas'],
-                         [{'field': 'locked', 'old': False, 'new': True}])
-        self.assertIn('canon', meta['reason'])
+        self.assertTrue(meta['locked'])
+        self.assertEqual(meta['reason'], 'canon')
+        self.assertIn('confirm_latency_s', meta)
+        # And it must NOT masquerade as a content revision.
+        revised = self.brain._trace_dal.conn.execute(
+            "SELECT 1 FROM trace_events "
+            "WHERE ref_type = 'node_revised' AND ref_id = ?", (nid,)).fetchall()
+        self.assertEqual(revised, [])
 
     def test_phase1_emits_no_trace(self):
         nid = _make_node(self.brain)
         self._dispatch({'node_id': nid, 'locked': True, 'reason': 'canon'})
         rows = self.brain._trace_dal.conn.execute(
             "SELECT 1 FROM trace_events "
-            "WHERE ref_type = 'node_revised' AND ref_id = ?", (nid,)).fetchall()
+            "WHERE ref_type IN ('node_lock_changed', 'node_revised') "
+            "AND ref_id = ?", (nid,)).fetchall()
         self.assertEqual(rows, [])
 
 

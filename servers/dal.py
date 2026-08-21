@@ -480,10 +480,15 @@ class NodeDAL:
     def set_locked(self, node_id: str, locked: bool) -> None:
         """Flip the locked flag. Sole caller: Brain.set_node_lock — the
         two-phase confirmed lock door. revise() keeps treating locked as
-        immutable; nothing else writes this column."""
+        immutable; nothing else writes this column.
+
+        Deliberately does NOT bump updated_at: a lock flip is metadata, not
+        content, and updated_at is the S2 community delta-gate wake signal
+        and a recency-ordering key — a flip must trigger neither. The
+        node_lock_changed trace is the record of when it happened."""
         self.conn.execute(
-            'UPDATE nodes SET locked = ?, updated_at = ? WHERE id = ?',
-            (1 if locked else 0, iso_now(), node_id))
+            'UPDATE nodes SET locked = ? WHERE id = ?',
+            (1 if locked else 0, node_id))
         commit_unless_batched(self.conn)
 
     # get_metadata removed 2026-04-13 — old node_metadata table dropped, use MetadataDAL (KV).

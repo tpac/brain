@@ -539,7 +539,9 @@ class BrainRememberMixin:
     LOCK_CONFIRM_TTL_S = 600
 
     def set_node_lock(self, node_id: str, locked: bool,
-                      reason: str = '', confirm_token: str = None) -> Dict[str, Any]:
+                      reason: str = '', confirm_token: str = None,
+                      encoding_source: str = 'anchor',
+                      session_id: str = '') -> Dict[str, Any]:
         """Flip the locked flag on an existing node — the ONE door for lock
         transitions. revise() deliberately treats `locked` as immutable; this
         is the explicit operator path, not a relaxation of that contract.
@@ -548,15 +550,35 @@ class BrainRememberMixin:
         confirmation_required=True, a one-shot token (10-min TTL, in-memory)
         and a human-readable summary the caller must relay to the operator
         for an explicit yes. Called again with the token, it flips the flag.
+        A token is bound to (node, direction, requesting session): a confirm
+        from a different session is refused, and a mismatched confirm does
+        NOT consume the pending token. Any phase-2 match — including one that
+        lands as a no-op — consumes it.
 
-        Operator-channel only: reachable solely via the `set_node_lock`
-        dispatch command (never a brain_batch op); the shared S1/S2 encoder
-        dispatch closure refuses the command outright.
+        Anchor-only at this boundary (mirrors remember()'s creation-time lock
+        rule): a non-anchor encoding_source is refused here, and the shared
+        S1/S2 encoder dispatch closure refuses the command as defense-in-depth.
+
+        `reason` is relayed in the phase-1 summary; the durable audit is the
+        node_lock_changed trace the dispatch layer emits — a direct caller
+        bypassing dispatch gets no persistence beyond that.
 
         Guards: node must exist; an archived node cannot be locked; already
         in the requested state is a no-op (no confirmation round-trip).
         """
-        locked = bool(locked)
+        if not isinstance(locked, bool):
+            return {'ok': False, 'node_id': node_id,
+                    'error': 'locked must be a boolean, got %s (%r)'
+                             % (type(locked).__name__, locked)}
+        if encoding_source and not encoding_source.startswith('anchor'):
+            self._log_error('lock_non_anchor',
+                            ValueError('set_node_lock is anchor-only'),
+                            'refused encoding_source=%s for %s'
+                            % (encoding_source, node_id[:8]))
+            return {'ok': False, 'node_id': node_id,
+                    'error': 'set_node_lock is anchor-only '
+                             '(encoding_source=%s)' % encoding_source}
+
         row = self.conn.execute(
             'SELECT id, locked, archived, title, type, created_at, access_count '
             'FROM nodes WHERE id = ?', (node_id,)).fetchone()
@@ -572,10 +594,6 @@ class BrainRememberMixin:
             return {'ok': False, 'error': 'Cannot lock an archived node',
                     'node_id': full_id}
 
-        if old_locked == locked:
-            return {'ok': True, 'node_id': full_id, 'changed': False,
-                    'note': 'node already %s' % ('locked' if locked else 'unlocked')}
-
         pending = getattr(self, '_pending_lock_confirms', None)
         if pending is None:
             pending = self._pending_lock_confirms = {}
@@ -586,36 +604,64 @@ class BrainRememberMixin:
 
         verb = 'lock' if locked else 'unlock'
         if not confirm_token:
+            if old_locked == locked:
+                return {'ok': True, 'node_id': full_id, 'changed': False,
+                        'note': 'node already %s' % ('locked' if locked else 'unlocked')}
             import secrets
-            token = '%s-%s' % (verb, secrets.token_hex(2))
+            token = '%s-%s' % (verb, secrets.token_hex(4))
             pending[token] = {'node_id': full_id, 'locked': locked,
-                              'requested_at': now}
-            operator = getattr(self, 'operator_name', '') or 'the human operator'
+                              'requested_at': now, 'session_id': session_id or ''}
+            operator = self.operator_name or 'the human operator'
             return {
                 'ok': True, 'confirmation_required': True,
                 'confirm_token': token, 'node_id': full_id,
-                'summary': '%s [%s] "%s" (created %s, %d accesses) — needs an '
-                           'explicit yes from %s before re-calling with the token'
+                'summary': '%s [%s] "%s" (created %s, %d accesses) — reason: %s '
+                           '— needs an explicit yes from %s before re-calling '
+                           'with the token'
                            % (verb.upper(), node_type, (title or '')[:60],
-                              (created_at or '?')[:10], access_count or 0, operator),
+                              (created_at or '?')[:10], access_count or 0,
+                              reason or 'none given', operator),
             }
 
-        spec = pending.pop(confirm_token, None)
-        if not spec or spec['node_id'] != full_id or spec['locked'] != locked:
-            self._log_error('lock_confirm_invalid',
-                            ValueError('Invalid or expired lock confirmation token'),
-                            'set_node_lock(%s, locked=%s, token=%s)'
-                            % (full_id[:8], locked, str(confirm_token)[:16]))
+        # Validate BEFORE consuming: a mismatched confirm (wrong node id,
+        # wrong direction, another session's token) must not burn a pending
+        # confirmation the operator is about to give.
+        spec = pending.get(confirm_token)
+        mismatch = (spec is None
+                    or spec['node_id'] != full_id
+                    or spec['locked'] != locked
+                    or (spec['session_id'] and spec['session_id'] != session_id))
+        if mismatch:
+            # Expiry/decline-then-retry is a normal operator flow — warning,
+            # not error, so the error feed stays real errors only.
+            self._log_warning('lock_confirm_invalid',
+                              'invalid/expired/mismatched lock confirm token',
+                              'set_node_lock(%s, locked=%s, token=%s)'
+                              % (full_id[:8], locked, str(confirm_token)[:16]))
             return {'ok': False, 'node_id': full_id,
                     'error': 'Confirmation token invalid or expired — call again '
                              'without confirm_token to request a fresh one'}
+        del pending[confirm_token]  # one-shot: consumed on every match below
 
+        if old_locked == locked:
+            return {'ok': True, 'node_id': full_id, 'changed': False,
+                    'note': 'node already %s' % ('locked' if locked else 'unlocked')}
+
+        latency = now - spec['requested_at']
+        if latency < 2.0:
+            # A human read-and-reply takes seconds; an instant confirm is
+            # affirmative evidence the caller skipped the relay. Loud, not
+            # blocking — the two-phase door is a forcing function by design.
+            self._log_warning('lock_confirm_instant',
+                              'confirm arrived %.1fs after request — likely '
+                              'self-confirmed without a human turn' % latency,
+                              'set_node_lock(%s, locked=%s)' % (full_id[:8], locked))
         self._nodes.set_locked(full_id, locked)
         return {
             'ok': True, 'node_id': full_id, 'changed': True,
             'title': (title or '')[:60], 'type': node_type,
             'locked': locked,
-            'confirm_latency_s': round(now - spec['requested_at'], 1),
+            'confirm_latency_s': round(latency, 1),
             'deltas': [{'field': 'locked', 'old': old_locked, 'new': locked}],
         }
 
