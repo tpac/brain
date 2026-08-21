@@ -3,6 +3,21 @@
 Loaded on demand by `/self-salvage`. The procedure lives in `SKILL.md`; these are the four artifact
 specs. Each is split **MUST** (write these or the artifact fails) vs **REFERENCE** (include if cheap).
 
+## Cross-cutting rules (every artifact: node, doc head, working set, launch prompt)
+
+- **Type every hex ref** — `id:` / `trace:` / `session`. Node ids, trace ids, and session shorts
+  share the same 8-hex surface; a reader's default resolver (`get_node`) fails plausibly on the
+  wrong kind, and a whole fork has been spent re-deriving one untyped ref. Deferred work items
+  point at the durable NODE, never at the session where the work happened. (Reader-side rescue for
+  an untyped hex you inherit: `recall_episodes(contains=<hex>)` matches all three kinds in one call.)
+- **Check the letter's own claims at write time.** Verify-before-use covers external state; the
+  claims YOU assert — a file's location ("on main" when it's branch-only), a char count, a
+  commit's presence — are checked by running the command as you write them, or they go on the
+  verify list. Asserted-from-memory is how "85.1K" ships when `wc -c` says 85,975.
+- **The branch is the address, not the worktree.** A successor may boot in a fresh worktree (an
+  account or machine move spawns a new one; the old survives untouched). "Work in worktree X"
+  misleads; write *"state lives on branch X — merge it into wherever you boot."*
+
 ---
 
 ## §0 — The doc head (git; the only carrier that survives compaction, /tmp clearing AND a recall miss)
