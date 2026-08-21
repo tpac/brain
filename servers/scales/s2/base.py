@@ -33,7 +33,8 @@ from datetime import datetime, timezone, timedelta
 # envelope parsing) live behind the runner seam — see scales/runner.py.
 from ..runner import (read_usage, sum_usage,  # noqa: F401 — re-export for callers
                       make_client, run_llm_once, extract_json)
-from ..dispatch import ATTRIBUTED_WRITE_COMMANDS, stamp_scope_provenance
+from ..dispatch import (ATTRIBUTED_WRITE_COMMANDS, OPERATOR_ONLY_COMMANDS,
+                        stamp_scope_provenance)
 
 
 # Writes whose handlers emit chain-bearing traces (node_revised /
@@ -259,16 +260,18 @@ class IntegrationUnit:
         unit_session = getattr(self, 'session_id', '') or ''
 
         def dispatch(cmd, cmd_args):
-            # Lock flips are operator-channel only — code enforcement, not
-            # prompt discipline (the related_to-ban playbook). Unit code never
-            # constructs this command; refusing here makes that structural.
-            if cmd == 'set_node_lock':
+            # Channel refusal for operator-only commands (the declared set in
+            # scales/dispatch.py). Defense-in-depth: the owner method also
+            # refuses non-anchor encoding_source at the write boundary — this
+            # closure is one channel, not the whole gate (units built with an
+            # injected dispatch_fn never reach it).
+            if cmd in OPERATOR_ONLY_COMMANDS:
                 brain._log_error(
                     's2_%s_lock_refused' % unit_name,
-                    ValueError('set_node_lock is operator-channel only'),
-                    'encoder dispatch refused lock flip (unit=%s)' % unit_name)
+                    ValueError('%s is operator-channel only' % cmd),
+                    'encoder dispatch refused %s (unit=%s)' % (cmd, unit_name))
                 return {'ok': False,
-                        'error': 'set_node_lock is operator-channel only'}
+                        'error': '%s is operator-channel only' % cmd}
             if unit_session and isinstance(cmd_args, dict):
                 from ...dispatch_common import CALLER_SESSION_KEY
                 cmd_args.setdefault(CALLER_SESSION_KEY, unit_session)

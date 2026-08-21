@@ -220,6 +220,13 @@ WRITE_COMMANDS = {
 NON_ATTRIBUTED_WRITES = {'enrich', 'trace_append', 'set_config'}
 ATTRIBUTED_WRITE_COMMANDS = WRITE_COMMANDS - NON_ATTRIBUTED_WRITES
 
+# Commands only the operator channel may issue — the shared S1/S2 encoder
+# dispatch closure (scales/s2/base.py) refuses these by membership, and the
+# owner method enforces anchor-only encoding_source at the write boundary.
+# NOT derived from WRITE_COMMANDS: that set is an attribution classification,
+# not a reachability gate — the closure passes any command it doesn't refuse.
+OPERATOR_ONLY_COMMANDS = frozenset({'set_node_lock'})
+
 
 # The scope-provenance dimension set has ONE source: contract.py derives it
 # from PROMOTED_FIELDS' system_stamped flags. Re-exported here because the

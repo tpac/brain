@@ -123,8 +123,10 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "brain_batch":           CmdEntry(_handle_brain_batch,         is_write=True, marks_dirty=True,
                                       accepts=frozenset({"operations", "encoding_source",
                                                          "chain_id", "session_id", "reason"})),
-    # Operator-channel only: NOT in scales WRITE_COMMANDS, refused by the
-    # encoder dispatch closure (scales/s2/base.py). The one door for lock flips.
+    # Operator-only (scales/dispatch.py OPERATOR_ONLY_COMMANDS): the encoder
+    # dispatch closure refuses it by membership, and the owner method refuses
+    # non-anchor encoding_source at the write boundary. The one door for lock
+    # flips. (WRITE_COMMANDS is attribution classification, not a gate.)
     "set_node_lock":         CmdEntry(_handle_set_node_lock,       is_write=True, marks_dirty=True,
                                       accepts=frozenset({"node_id", "locked", "reason",
                                                          "confirm_token", "encoding_source",

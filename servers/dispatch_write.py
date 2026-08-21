@@ -1306,15 +1306,20 @@ def _handle_set_node_lock(brain, args, graph_changes):
     reason = args.get("reason", "")
     if not node_id:
         return {"ok": False, "error": "node_id is required"}
-    if "locked" not in args:
-        return {"ok": False, "error": "locked (true/false) is required"}
+    if not isinstance(args.get("locked"), bool):
+        # bool('false') is True — a string here silently inverts the request,
+        # so the type check is a guard, not pedantry.
+        return {"ok": False, "error": "locked must be a JSON boolean "
+                                      "(true/false), got %r" % (args.get("locked"),)}
     if not reason:
         return {"ok": False, "error": "reason is required — why is this node "
                                       "being locked/unlocked?"}
 
     result = brain.set_node_lock(
         node_id=node_id, locked=args["locked"], reason=reason,
-        confirm_token=args.get("confirm_token"))
+        confirm_token=args.get("confirm_token"),
+        encoding_source=args.get("encoding_source") or 'anchor',
+        session_id=caller_session(args))
     if not result.get("ok"):
         return {"ok": False, "error": result.get("error", "set_node_lock failed")}
     if not result.get("changed"):
@@ -1323,19 +1328,22 @@ def _handle_set_node_lock(brain, args, graph_changes):
 
     graph_changes.append("LOCK: %s %s" % (
         "locked" if result.get("locked") else "unlocked", node_id[:12]))
-    # node_revised manifest row → the mutation emitter writes the loud trace
-    # (before/after delta + reason + who), same substrate revise history uses.
+    # node_lock_changed manifest row → the mutation emitter writes the loud
+    # trace. A dedicated lifecycle ref_type, NOT node_revised: revise history
+    # must never show `locked` — the field revise() treats as immutable — as
+    # a revised field.
     row = {
         "node_id": node_id,
-        "reason": "%s (confirmed after %ss)" % (
-            reason, result.get("confirm_latency_s", "?")),
+        "type": result.get("type", ""),
+        "title": result.get("title", ""),
+        "locked": result.get("locked", False),
+        "reason": reason,
         "encoding_source": args.get("encoding_source", ""),
-        "deltas": result.get("deltas", []),
-        "warnings": [],
+        "confirm_latency_s": result.get("confirm_latency_s", 0.0),
     }
     return {"ok": True, "result": result,
             "affected": _affected(revised=[node_id]),
-            "mutations": {"nodes": {"revised": [row]}}}
+            "mutations": {"nodes": {"lock_changed": [row]}}}
 
 
 def _handle_enrich(brain, args, graph_changes):
