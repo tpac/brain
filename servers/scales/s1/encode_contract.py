@@ -219,6 +219,14 @@ PROVENANCE_TAGS = (
     ('encoded',  '[encoded]'),
 )
 
+# The subconscious tag (Tom's ruling 2026-08-21): nodes production recall
+# ranked near this window that did NOT make the surface cut render as the
+# catalog's LAST entries under this tag — same reading protocol as the other
+# provenance tags, origin carried by the tag grammar. Not in PROVENANCE_TAGS:
+# associated ids are disjoint from the catalog categories by construction
+# (recall excludes them), so they never compete for priority.
+ASSOCIATED_TAG = '[associated]'
+
 
 def _filter_noise_relations(nodes_map, brain):
     """Drop noise-aspect relations from each catalog node's connections (lived
@@ -294,9 +302,26 @@ def _dedup_correction_relations(nodes_map, brain):
         node['connections'] = kept
 
 
+def surfaced_ids_of(judge_outputs):
+    """Node ids referenced by the surface outputs (pattern: id:XXXXXXXX) —
+    the single owner of that parse. build_node_catalog derives its surfaced
+    category from this; encode's associated-stub retrieval derives its
+    exclusion set from the same parse so the two can never disagree about
+    what the catalog will show."""
+    import re
+    ids = set()
+    for jo in (judge_outputs or ()):
+        if not jo or jo == '(no selection)':
+            continue
+        for match in re.finditer(r'id:([a-z0-9_]{6,8})', jo):
+            ids.add(match.group(1))
+    return ids
+
+
 def build_node_catalog(judge_outputs, brain, extra_ids=None,
                        scope=None, view_policy=False, now=None,
-                       window_first_turn=None, aged_content_chars=-1):
+                       window_first_turn=None, aged_content_chars=-1,
+                       associated_ids=None):
     """Build the deduplicated rich-node catalog the encoder dereferences by id.
 
     Uses system render_rich_node() with S1 config (full rich, corrections heavy).
@@ -328,24 +353,27 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
             WINDOW instead of the newest N encode rounds, so widening the
             window widens the full-depth catalog with it. None → round-based.
             Only read when view_policy is on.
+        associated_ids: ordered list (rank order) of subconscious stub ids —
+            nodes production recall ranked near the window that didn't make
+            the surface cut (encode._associated_stub_ids). Rendered as the
+            catalog's LAST entries, tagged ASSOCIATED_TAG, always FULL body
+            (never aged — patch-mode content_edits needs verbatim `old`
+            strings from what the encoder sees). Deliberate: they fold into
+            the returned id set, so the K trace and the S2 blindness check
+            see them — they ARE shown to the encoder. None → no stubs
+            (byte-identical to the pre-stub render).
 
     Returns:
         (catalog_text, node_id_set) — formatted catalog + set of IDs rendered.
     """
-    import re
     conn = getattr(brain, 'conn', brain)  # tests may pass raw conn
     # Lived-arm gate, captured BEFORE the `or {}` normalization below: extra_ids
     # is only ever non-None on the lived arm, and the noise-edge filter rides it
     # (control arm renders unfiltered — byte-identical to the long-standing path).
     lived_arm = extra_ids is not None
-    # Surfaced ids from surface outputs (pattern: id:XXXXXXXX). Node ids are
-    # 8-char hex (v29), so these match the full ids the trace streams carry.
-    surfaced_ids = set()
-    for jo in judge_outputs:
-        if not jo or jo == '(no selection)':
-            continue
-        for match in re.finditer(r'id:([a-z0-9_]{6,8})', jo):
-            surfaced_ids.add(match.group(1))
+    # Node ids are 8-char hex (v29), so these match the full ids the trace
+    # streams carry.
+    surfaced_ids = surfaced_ids_of(judge_outputs)
 
     # Provenance tag per id. A node in several categories gets the HIGHEST-signal
     # tag (first assignment wins via setdefault): Anchor's deliberate commit >
@@ -389,8 +417,16 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
         community_ids.add(row[0])
 
     catalog_ids = all_ids - community_ids
-    header = ('Node Catalog (%d nodes)' % len(catalog_ids) if widened
-              else 'Node Catalog (%d nodes surfaced this session)' % len(catalog_ids))
+
+    # Associated stubs join the batched fetch below but stay OUT of catalog_ids
+    # — aging and the community-skip SQL above (retrieval already type-filters
+    # them) are catalog concerns; the stubs only render last and fold into the
+    # returned id set. Their tag is provenance, so their presence widens the
+    # header (the surfaced-only phrasing would lie above a tagged entry).
+    assoc_order = [a for a in (associated_ids or ()) if a not in catalog_ids]
+    header = ('Node Catalog (%d nodes)' % (len(catalog_ids) + len(assoc_order))
+              if widened or assoc_order else
+              'Node Catalog (%d nodes surfaced this session)' % len(catalog_ids))
 
     # Catalog aging (view policy): order oldest→newest and tier. Surfaced ids
     # for the CURRENT window are protected — the likeliest dedup/revise targets
@@ -411,7 +447,8 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
     # One batched fetch (returns {id: node}) — the widened union can be hundreds of
     # ids, and per-id get_node would run correction_enrich + a resolve LIKE-scan
     # each. brain.get_node(list) is the batch form.
-    rich_map = brain.get_node(list(catalog_ids)) if catalog_ids else {}
+    fetch_ids = list(catalog_ids) + assoc_order
+    rich_map = brain.get_node(fetch_ids) if fetch_ids else {}
     if lived_arm:
         _filter_noise_relations(rich_map, brain)
     if view_policy:
@@ -449,6 +486,22 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
             continue
         tag = tag_for.get(nid)
         lines.append('%s %s' % (tag, formatted) if tag else formatted)
+        lines.append('')
+        formatted_ids.add(nid)
+
+    # Subconscious stubs LAST — adjacent to the catalog→timeline attention
+    # boundary, full body always (never aged: a patch-revise needs the
+    # verbatim text the encoder sees). Rank order preserved from retrieval.
+    for nid in assoc_order:
+        if nid in formatted_ids:
+            continue
+        node = rich_map.get(nid)
+        if not node:
+            continue
+        formatted = render_rich_node(node, catalog_cfg)
+        if not formatted:
+            continue
+        lines.append('%s %s' % (ASSOCIATED_TAG, formatted))
         lines.append('')
         formatted_ids.add(nid)
 

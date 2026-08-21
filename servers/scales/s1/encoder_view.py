@@ -1,7 +1,7 @@
 """Encoder view policy — what the S1 Scribe is SHOWN, not what is captured.
 
 POLICY, not mechanism: pure predicates + constants over plain values — no I/O,
-no brain, no env reads beyond the single flag reader. encode.py and
+no brain, no env reads beyond the flag readers. encode.py and
 encode_contract.py render; this file decides what the render feeds. The
 boundary rule: numbers shared with other consumers stay in encode_contract
 (ENCODING_AGENT is re-exported through pipeline_contract and read by
@@ -36,6 +36,32 @@ def view_policy_enabled():
     once per run and threads it down, mirroring _lived_sequence_enabled — no
     torn state if the env flips mid-run. Default ON — unset means the policy."""
     return os.environ.get('BRAIN_S1E_VIEW_POLICY', '1') in ('1', 'true', 'True')
+
+
+# ── Associated stubs (the encoder's subconscious — Tom's ruling 2026-08-21) ──
+
+def associated_stubs_enabled():
+    """BRAIN_S1E_ASSOCIATED_STUBS: render the subconscious — nodes production
+    recall ranked near this window that didn't make the surface cut — as the
+    catalog's last entries, tagged [associated] (encode._associated_stub_ids →
+    build_node_catalog). Default OFF (hard law: input changes ship flag-gated
+    so the eval can A/B them — the view-policy flag is the precedent); the
+    daemon reads the env at start via brain-env.sh. Lived arm only."""
+    return os.environ.get('BRAIN_S1E_ASSOCIATED_STUBS', '0') in ('1', 'true', 'True')
+
+
+# K: stubs rendered per run. Small by design — full format_node bodies
+# (load-bearing for patch-mode revise), so K is the token knob.
+ASSOCIATED_STUBS_K = 5
+
+# Per-seed recall fetch BEFORE catalog exclusion — must exceed the
+# catalog-hot head or novel candidates starve (measured in
+# eval/encode_moment_recall_probe.py; needle at rank 2 with this limit).
+ASSOCIATED_RECALL_LIMIT = 40
+
+# Chars of a window message used as the recall seed — the seed is the
+# message, not the essay (embedding sanity; probe's QUERY_CAP).
+ASSOCIATED_QUERY_CAP = 1500
 
 
 # ── Catalog aging (id:f3302000 / id:f011dc76 — the ~80-89% lever) ──

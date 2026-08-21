@@ -562,11 +562,40 @@ def _build_catalog(brain, messages, session_id, lived, view_policy=False,
     # to round-based aging inside build_node_catalog.
     head = window_first_turn(brain, session_id, messages) if view_policy else None
 
+    # Associated stubs (the subconscious — Tom's ruling 2026-08-21): production
+    # recall over the window's unencoded messages, catalog excluded, rendered
+    # as the catalog's LAST entries tagged [associated]. Lived arm only (the
+    # tag grammar lives on the widened catalog), flag-gated for the A/B.
+    # Guarded loud: retrieval is advisory — never block the catalog.
+    associated = None
+    from servers.scales.s1.encoder_view import associated_stubs_enabled
+    if lived and associated_stubs_enabled():
+        try:
+            from servers.scales.s1.encode_contract import surfaced_ids_of
+            # Exactly the id set build_node_catalog will catalog (surfaced ∪
+            # the provenance categories) — derived from the same parse + the
+            # same PROVENANCE_TAGS keys, so exclusion can't drift from the
+            # render. Empty ⇔ the catalog will be empty: no home for stubs.
+            from servers.scales.s1.encode_contract import PROVENANCE_TAGS
+            exclude = surfaced_ids_of(judge_outputs)
+            for key, _tag in PROVENANCE_TAGS:
+                exclude |= set((extra_ids or {}).get(key) or ())
+            if exclude:
+                associated = _associated_stub_ids(
+                    brain, messages, session_id, exclude, streams=streams)
+        except Exception as e:
+            try:
+                brain._log_error('s1e_associated_stubs', e,
+                                 'associated-stub recall failed; catalog renders without stubs')
+            except Exception:
+                pass
+            associated = None
+
     try:
         node_catalog, cataloged_ids = build_node_catalog(
             judge_outputs, brain, extra_ids=extra_ids,
             scope=brain.session_scope(session_id), view_policy=view_policy,
-            now=now, window_first_turn=head)
+            now=now, window_first_turn=head, associated_ids=associated)
     except Exception as e:
         print('[s1e] ERROR building node catalog: %s' % e, flush=True)
         node_catalog, cataloged_ids = '', set()
@@ -586,6 +615,88 @@ def _conversation_now_safe(brain, session_id, messages):
                                 brain=brain)
     except Exception:
         return None
+
+
+def _associated_stub_ids(brain, messages, session_id, exclude_ids, streams=None):
+    """The subconscious: ids of the K nodes production recall ranks nearest
+    this window that the catalog does NOT already show (Tom's ruling
+    2026-08-21 — the encoder should receive not just the conscious catalog
+    but the associative penumbra recall ranked below the surface cut).
+
+    Measured shape (eval/encode_moment_recall_probe.py, [thread:encoder-
+    staleness]): one recall per UNENCODED window message, both voices — never
+    a whole-window blob (needle absent from its top-200); turnmax aggregation
+    (a node's score is its best single-message match — turnsum buried the
+    needle at rank 18-20). Production recall is deliberate (Tom's 'nerfed
+    recall' reframe, id:400594da): LAF, edge walks, correction chains and the
+    scope veil all apply — no parallel ranker.
+
+    Time: `as_of` = conversation_now WITHOUT session_started_at — a replay's
+    [Current date:] prefix pins the candidate field to the run's instant
+    (the S1 conversation-time rule), and a live window falls through to
+    wall-clock, so mid-session sibling nodes (the cross-session race this
+    mechanism exists to catch, id:e3e328d1) stay visible. Session-start
+    fallback would hide them.
+
+    Reads are pure: mark_accessed=False — assembly is machinery, and marking
+    would inflate access counts + fatigue with the encoder's own looking
+    (the dashboard-observer precedent). Community nodes are filtered (S1E
+    never gets community bodies — same rule as the catalog's skip).
+
+    Returns rank-ordered id list (may be empty). Raises to the caller's
+    guard on read failure — advisory, never blocks the catalog.
+    """
+    from servers.scales.s1.encoder_view import (
+        ASSOCIATED_QUERY_CAP, ASSOCIATED_RECALL_LIMIT, ASSOCIATED_STUBS_K)
+
+    # Same window the timeline renders (one owner: _lived_turns), same
+    # coverage join (_turn_links, reusing the pre-gathered streams). A turn
+    # with no link is real (degraded join / orphan) and counts as unencoded —
+    # the probe's convention.
+    n_turns = sum(1 for m in (messages or []) if m.get('role') == 'user') or 20
+    turns = _lived_turns(brain, session_id, n_turns)
+    links, _frontier = _turn_links(brain, session_id, turns, streams=streams)
+
+    def _body(ep):
+        meta = ep.get('metadata')
+        body = ((meta.get('content') if isinstance(meta, dict) else None)
+                or ep.get('summary') or '')
+        return body[:ASSOCIATED_QUERY_CAP].strip()
+
+    seeds = []
+    for t in turns:
+        uid = (t['user'] or {}).get('id') if t['user'] else None
+        link = links.get(uid) if uid else None
+        if link is not None and link.get('encoded_by'):
+            continue    # covered turn — a prior run already encoded it
+        for ep in (t['user'], t['assistant']):
+            text = _body(ep) if ep else ''
+            if text:
+                seeds.append(text)
+    if not seeds:
+        return []
+
+    from servers.clock import conversation_now
+    as_of = conversation_now(messages=messages, brain=brain).isoformat()
+
+    exclude = {(i or '')[:8] for i in exclude_ids if i}
+    best = {}
+    for text in seeds:
+        r = brain.recall(query=text, limit=ASSOCIATED_RECALL_LIMIT,
+                         session_id=session_id, source='s1e_associated',
+                         as_of=as_of, mark_accessed=False)
+        for h in (r.get('results') or ()):
+            nid = str(h.get('id') or '')
+            if not nid or nid[:8] in exclude or h.get('type') == 'community':
+                continue
+            v = h.get('effective_activation')
+            score = (float(v) if isinstance(v, (int, float))
+                     and not isinstance(v, bool) else 0.0)
+            if score > best.get(nid, -1.0):
+                best[nid] = score    # turnmax, never sum
+
+    ranked = sorted(best.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [nid for nid, _s in ranked[:ASSOCIATED_STUBS_K]]
 
 
 def _scout_note_line(scout, cand):
@@ -1358,6 +1469,8 @@ def _write_pre_traces(brain, dispatch_fn, messages, user_content, counter,
     decide whether node B was created blind to A. It used to be parsed from
     messages' `recalled_raw`, which no producer populates — every K trace
     said "0 unique nodes" and the blindness check saw an empty catalog.
+    [associated] stub ids are IN this set by design — they render in the
+    catalog, so the encoder was not blind to them and the K trace must say so.
     """
     try:
         from servers.session_context import SessionContext

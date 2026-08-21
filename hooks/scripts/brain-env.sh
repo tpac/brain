@@ -87,6 +87,16 @@ export BRAIN_SURFACE_VARIANT="v5_agentic"
 # effect at daemon restart. Rollback: remove this line and restart.
 export BRAIN_RECALL_VARIANT="laf_v1"
 
+# S1 Scribe associated stubs — ON renders the encoder's subconscious: K≈5
+# nodes production recall ranks nearest the window's unencoded messages that
+# the catalog doesn't already show, as the catalog's LAST entries tagged
+# [associated] (encode._associated_stub_ids → build_node_catalog). Default
+# OFF until the encoder_prompt_ab eval gates it (input changes ship
+# flag-gated — the view-policy flag is the precedent). Lived arm only. Read
+# by the DAEMON's S1 Scribe — takes effect at daemon restart. Enable: set
+# to "1" and restart.
+export BRAIN_S1E_ASSOCIATED_STUBS="0"
+
 # S1 Scribe lived-sequence input — ON activates the v28/v29 encoder rebuild:
 # XML lived-sequence timeline (<other>/<me> + tool actions + provenance),
 # widened catalog, facts-only scout (temporal+quote retired), inline scout
