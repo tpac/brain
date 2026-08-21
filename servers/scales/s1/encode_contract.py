@@ -181,6 +181,11 @@ S1E_INTERACTION_DEFAULT = {
 # a single pull can return; the result is then trimmed to the control arm's turn count.
 LIVED_SEQUENCE_PULL = 500
 
+# Window-size fallback when the hook window carries no user rows — shared by
+# every consumer of the window rule (encode._window_n_turns is the one
+# derivation site: timeline render, catalog cutoff, associated-stub seeds).
+WINDOW_TURNS_FALLBACK = 20
+
 
 # ═══════════════════════════════════════════════════════════════
 # NODE CATALOG — uses system format_node() with S1 config
@@ -408,22 +413,26 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
     # Skip community nodes — S2CE manages communities, S1E encodes from conversation.
     # S1E still sees the community node referenced in the timeline but doesn't get
     # its full content here, so it can't revise/correct/connect to a community node
-    # instead of its members.
+    # instead of its members. Associated ids join the scan: this render is the
+    # chokepoint for the invariant — no community body leaves this function
+    # regardless of which caller supplied the ids.
     community_ids = set()
-    placeholders = ','.join('?' * len(all_ids))
+    scan_ids = all_ids | set(associated_ids or ())
+    placeholders = ','.join('?' * len(scan_ids))
     for row in conn.execute(
             "SELECT id FROM nodes WHERE id IN (%s) AND type = 'community'" % placeholders,
-            list(all_ids)):
+            list(scan_ids)):
         community_ids.add(row[0])
 
     catalog_ids = all_ids - community_ids
 
     # Associated stubs join the batched fetch below but stay OUT of catalog_ids
-    # — aging and the community-skip SQL above (retrieval already type-filters
-    # them) are catalog concerns; the stubs only render last and fold into the
-    # returned id set. Their tag is provenance, so their presence widens the
+    # — aging is a catalog concern; the stubs only render last and fold into
+    # the returned id set. Deduped at construction so the header count matches
+    # what renders. Their tag is provenance, so their presence widens the
     # header (the surfaced-only phrasing would lie above a tagged entry).
-    assoc_order = [a for a in (associated_ids or ()) if a not in catalog_ids]
+    assoc_order = [a for a in dict.fromkeys(associated_ids or ())
+                   if a not in catalog_ids and a not in community_ids]
     header = ('Node Catalog (%d nodes)' % (len(catalog_ids) + len(assoc_order))
               if widened or assoc_order else
               'Node Catalog (%d nodes surfaced this session)' % len(catalog_ids))
@@ -493,8 +502,6 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
     # boundary, full body always (never aged: a patch-revise needs the
     # verbatim text the encoder sees). Rank order preserved from retrieval.
     for nid in assoc_order:
-        if nid in formatted_ids:
-            continue
         node = rich_map.get(nid)
         if not node:
             continue

@@ -226,6 +226,12 @@ class TestScoreContractSync:
         # The old drift form must not come back.
         assert "r.get('score', 0.0)" not in src
 
+    def test_encode_stub_ranking_uses_recall_score(self):
+        # third producer (associated-stub turnmax) — same pin, same drift class
+        src = self._source('servers/scales/s1/encode.py')
+        assert 'recall_score(h)' in src
+        assert "h.get('effective_activation')" not in src
+
 
 class TestRecallByTimeDiscussed:
     # recall_recent was DELETED 2026-06-12 — its use case ('the thing we
