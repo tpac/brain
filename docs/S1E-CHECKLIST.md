@@ -295,6 +295,16 @@
   disclaimer); one honest example fence; Bad/Good pairs standardized. Runs as
   a dedicated draft-wide sweep in the global-audit stage, probe-verified
   (ask a fresh reader: what here is real, what is example, what is slot).
+- **E9. Probe emissions get the invariant sweep before celebration.** A new
+  teaching's output must be audited against ALL standing invariants — temporal
+  self-containment, voice derivation, placeholder discipline, id copying —
+  not just the new behavior. The miss that minted this box: Probe I's first
+  living `thought` was showcased while carrying "turn 9 just showed…" — a
+  window coordinate, the exact leak class three prompt versions fought
+  (a82d7b7d ratchet). Tom caught it; the verifier had checked only what was
+  new. New fields have no catalog ratchet yet — their first examples fully
+  define the register, which makes the sweep cheapest exactly when it
+  matters most. (2026-08-21)
 
 ## Fields — the aspect model (Tom, 2026-08-21) vs measured reality
 
