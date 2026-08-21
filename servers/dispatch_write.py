@@ -1298,6 +1298,46 @@ def _handle_connect_batch(brain, args, graph_changes):
     }, "mutations": {"edges": edge_rows}}
 
 
+def _handle_set_node_lock(brain, args, graph_changes):
+    """Flip a node's locked flag via the two-phase confirm door
+    (brain.set_node_lock). Operator-channel only — the encoder dispatch
+    closure refuses this command; it is deliberately NOT a brain_batch op."""
+    node_id = _resolve_id(brain, args.get("node_id", ""))
+    reason = args.get("reason", "")
+    if not node_id:
+        return {"ok": False, "error": "node_id is required"}
+    if "locked" not in args:
+        return {"ok": False, "error": "locked (true/false) is required"}
+    if not reason:
+        return {"ok": False, "error": "reason is required — why is this node "
+                                      "being locked/unlocked?"}
+
+    result = brain.set_node_lock(
+        node_id=node_id, locked=args["locked"], reason=reason,
+        confirm_token=args.get("confirm_token"))
+    if not result.get("ok"):
+        return {"ok": False, "error": result.get("error", "set_node_lock failed")}
+    if not result.get("changed"):
+        # Phase 1 (confirmation_required) or no-op — nothing flipped, no trace.
+        return {"ok": True, "result": result}
+
+    graph_changes.append("LOCK: %s %s" % (
+        "locked" if result.get("locked") else "unlocked", node_id[:12]))
+    # node_revised manifest row → the mutation emitter writes the loud trace
+    # (before/after delta + reason + who), same substrate revise history uses.
+    row = {
+        "node_id": node_id,
+        "reason": "%s (confirmed after %ss)" % (
+            reason, result.get("confirm_latency_s", "?")),
+        "encoding_source": args.get("encoding_source", ""),
+        "deltas": result.get("deltas", []),
+        "warnings": [],
+    }
+    return {"ok": True, "result": result,
+            "affected": _affected(revised=[node_id]),
+            "mutations": {"nodes": {"revised": [row]}}}
+
+
 def _handle_enrich(brain, args, graph_changes):
     result = brain.store_enrichments(
         node_id=_resolve_id(brain, args.get("node_id", "")),

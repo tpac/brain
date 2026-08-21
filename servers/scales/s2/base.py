@@ -259,6 +259,16 @@ class IntegrationUnit:
         unit_session = getattr(self, 'session_id', '') or ''
 
         def dispatch(cmd, cmd_args):
+            # Lock flips are operator-channel only — code enforcement, not
+            # prompt discipline (the related_to-ban playbook). Unit code never
+            # constructs this command; refusing here makes that structural.
+            if cmd == 'set_node_lock':
+                brain._log_error(
+                    's2_%s_lock_refused' % unit_name,
+                    ValueError('set_node_lock is operator-channel only'),
+                    'encoder dispatch refused lock flip (unit=%s)' % unit_name)
+                return {'ok': False,
+                        'error': 'set_node_lock is operator-channel only'}
             if unit_session and isinstance(cmd_args, dict):
                 from ...dispatch_common import CALLER_SESSION_KEY
                 cmd_args.setdefault(CALLER_SESSION_KEY, unit_session)

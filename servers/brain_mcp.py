@@ -560,6 +560,26 @@ def _build_tools():
              "items": _build_brain_batch_op_items()}}}},
     _generate_revise_schema(),
     _build_revise_batch_schema(),
+    {"name": "set_node_lock",
+     "description": (
+         "Lock or unlock an EXISTING node — the one door for lock flips "
+         "(revise() treats `locked` as immutable; that contract is unchanged). "
+         "Two-phase HUMAN confirmation: the first call executes nothing and "
+         "returns a one-shot confirm_token plus a summary. You MUST relay that "
+         "summary to the human speaker and get their explicit yes IN THE "
+         "CONVERSATION before re-calling with the token — never supply the "
+         "token without a human yes; if they decline, drop it (tokens expire "
+         "in 10 minutes). Guards: an archived node cannot be locked; already "
+         "in the requested state is a no-op (no confirmation needed). Every "
+         "flip is trace-logged with before/after and the request→confirm gap."),
+     "inputSchema": {"type": "object", "required": ["node_id", "locked", "reason"],
+         "properties": {
+             "node_id": {"type": "string", "description": "Node to lock/unlock."},
+             "locked": {"type": "boolean", "description": "true = lock, false = unlock."},
+             "reason": {"type": "string", "description": "Why — recorded in the trace event."},
+             "confirm_token": {"type": "string",
+                               "description": "One-shot token from the first call. Pass ONLY "
+                                              "after the human speaker explicitly confirmed."}}}},
     {"name": "enrich",
      "description": "Store V5 enrichment vectors for a node (after filling in the enrichment_prompt from remember()). Pass the generated question, anchor phrase, bridge sentence, and/or keywords. Each is embedded and stored for improved recall.",
      "inputSchema": {"type": "object", "required": ["node_id"], "properties": {
