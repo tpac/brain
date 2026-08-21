@@ -77,7 +77,6 @@ embeddings) and `brain_logs.db` (traces, session state, interactions, errors).
 - Adding an aspect is a human edit to `aspects_v1.json` plus one `REQUIRED_ASPECTS` line. The encoder only routes strings into existing aspects; it cannot propose one.
 - Scope provenance is stamped by `stamp_scope_provenance` and is never agent-authored.
 - `brain.get_node()` walks corrections on every canonical pull and attaches `_corrections`. Forgetting corrections requires deliberately bypassing the canonical pull.
-- A replay must pass its injected time via `get_frame(brain, at=...)` — nothing detects it automatically.
 
 ## Development Rules
 
@@ -87,7 +86,7 @@ embeddings) and `brain_logs.db` (traces, session state, interactions, errors).
 
 **Use `iso_now()` for any new-row timestamp** (`created_at`, `updated_at`, `last_accessed`). `Brain.now()` and TraceDAL inserts route through it. Single source of truth for the write-side format (`'…+00:00'`).
 
-**In S1/S2 code, pass `at=conversation_now(...)` explicitly.** S1/S2 reads/writes are conversation-time, not wall-clock. Eval replays inject historical `[Current date: ...]` prefixes; bare `iso_now()` / `iso_cutoff()` would anchor to today's wall-clock and silently corrupt the replay. System bookkeeping (log cleanup, integrity audits, dashboard counts) is exempt — wall-clock is correct there. `tests/test_time_window_contract.py` enforces both rules.
+**In S1/S2 code, pass `at=conversation_now(...)` explicitly.** S1/S2 reads/writes are conversation-time, not wall-clock. Eval replays inject historical `[Current date: ...]` prefixes; bare `iso_now()` / `iso_cutoff()` would anchor to today's wall-clock and silently corrupt the replay. System bookkeeping (log cleanup, integrity audits, dashboard counts) is exempt — wall-clock is correct there. The rule's axis is conversation-time data (`event_time`, relative-date resolution, renders) — masks and windows over transaction-time columns (`created_at`, trace timestamps) anchor to wall-clock instead: a conversation-time value against a transaction-time column silently corrupts replays (id:c12c4735). `tests/test_time_window_contract.py` enforces both rules.
 
 ### Encoder prompts: DB is authoritative, sync to `.py` before committing
 
@@ -199,7 +198,6 @@ You are the sole maintainer of code quality, architecture, and cleanliness.
 - **Never spawn `Brain(db_path=DB)` in a test/bench/eval script against the live `brain.db` while the daemon is running.** Two Python processes with their own writer connections will eventually corrupt an index. Instead: (a) stop the daemon with the maintenance lock `touch /tmp/brain-maintenance-{uid}.lock` and `launchctl unload`, (b) use `daemon_client.send_command` to dispatch through TCP, or (c) run against an `IsolatedBrain` copy under `tests/isolated_brain.py`.
 - **Discussion IS the work** — do not touch Edit/Write tools during design conversations. Wait for an explicit go signal.
 - **Trace the pipeline before changing it** — the decode→encode pipeline has coupled stages. Don't change one stage without understanding the full flow.
-- **Encoding depends on decoding** — if the surfacer fails, the encoder gets no context. A broken decode pipeline silently breaks encoding.
 
 **Deep, not wide.** Go all the way down on the thing you're changing — its tests, its callers, the doc that would otherwise lie, the real fix instead of the workaround. Don't widen to the adjacent problem you noticed; name it and move on. Completeness is finishing the cut, not enlarging it.
 
