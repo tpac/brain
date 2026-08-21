@@ -1,5 +1,25 @@
 # S1E Prompt Checklist — the boxes every revision must check
 
+## Walk state — stops 1-7 CLOSED, next: Stop 8 Actions (2026-08-21) ◀ ACTIVE ARC
+
+**Read first:** handoff node id:477ddcc9; the rulings chain runs 7c87589c (fundamentals) →
+13f72658 (three connections) → 4bb5b1e8 (edge honesty + prune-lexicon example).
+
+The walk: section-by-section co-review with Tom (he rules, I hold the learnings), every
+substantive edit probe-verified by stateless Sonnets before it lands. Stops 1-7 closed
+(probes A-J); draft = eval/candidate_prompts/s1e_vnext5_wip.md, 85.1K vs v37's 86.9K,
+~25 measured teachings added, NOT registered.
+
+**Locked:** target function; banner v1 never ships (position carries, text was
+staleness-biased); [associated]-in-catalog (not a separate section); edge honesty over
+floors; Allen sequencing verbs KEPT (measured top rescue paths — only the ceremony cut).
+**Open:** stops 8-11; E1/E2/E8 global audits; ship gate (DORMANT → package eval → Tom
+activates → sync + SEED_PROMPTS_VERSION); ship-package code items listed in the Assembly
+matrix row and id:477ddcc9.
+**Do not reopen:** ledger method/home; §-numbering; degree floors; <memories_beyond_catalog>
+as a section; the Allen full-cut.
+
+
 > The working instrument for the s1e prompt co-review (2026-08-21). Distilled
 > from the challenge ledger (docs/challenges/, 1,813 rows), the 37-version
 > genealogy, and Tom's fundamentals. Every proposed edit names the boxes it
