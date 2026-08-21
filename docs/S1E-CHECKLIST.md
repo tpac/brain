@@ -1,21 +1,25 @@
 # S1E Prompt Checklist — the boxes every revision must check
 
-## Walk state — stops 1-7 CLOSED, next: Stop 8 Actions (2026-08-21) ◀ ACTIVE ARC
+## Walk state — stops 1-8 CLOSED, next: Stop 9 Speed + canonical rebuild (2026-08-21) ◀ ACTIVE ARC
 
 **Read first:** handoff node id:477ddcc9; the rulings chain runs 7c87589c (fundamentals) →
 13f72658 (three connections) → 4bb5b1e8 (edge honesty + prune-lexicon example).
 
 The walk: section-by-section co-review with Tom (he rules, I hold the learnings), every
-substantive edit probe-verified by stateless Sonnets before it lands. Stops 1-7 closed
-(probes A-J); draft = eval/candidate_prompts/s1e_vnext5_wip.md, 85.1K vs v37's 86.9K,
-~25 measured teachings added, NOT registered.
+substantive edit probe-verified by stateless Sonnets before it lands. Stops 1-8 closed
+(probes A-K); draft = eval/candidate_prompts/s1e_vnext5_wip.md, 93.8K vs v37's 86.9K —
+over v37 since Stop 8's sweep example (Tom-ruled earned size; package eval is the
+backstop), ~30 measured teachings added, NOT registered.
 
 **Locked:** target function; banner v1 never ships (position carries, text was
 staleness-biased); [associated]-in-catalog (not a separate section); edge honesty over
 floors; Allen sequencing verbs KEPT (measured top rescue paths — only the ceremony cut).
-**Open:** stops 8-11; E1/E2/E8 global audits; ship gate (DORMANT → package eval → Tom
-activates → sync + SEED_PROMPTS_VERSION); ship-package code items listed in the Assembly
-matrix row and id:477ddcc9.
+**Open:** stops 9-11; probe-K finding awaiting ruling (UPDATE-append idiom — one-clause
+"patch rewrites the claim in place" candidate for the content_edits paragraph); E1/E2/E8
+global audits (E1's two-reads entry resolved at Stop 8); ship gate (DORMANT → package
+eval → Tom activates → sync + SEED_PROMPTS_VERSION); ship-package code items: the Assembly
+matrix row, id:477ddcc9, plus the source_refs 8-hex shape gate at add/replace_source_refs
+(dal.py:714 — type-checked only today; placeholders store silently; loud write boundary).
 **Do not reopen:** ledger method/home; §-numbering; degree floors; <memories_beyond_catalog>
 as a section; the Allen full-cut.
 
@@ -276,9 +280,10 @@ as a section; the Allen full-cut.
 
 - **E1. Contradiction audit (T4).** Enumerate every in-prompt tension; stamp
   each `DEAD-CONFLICT` (fix: one side wins, by position) or `OPTIONALITY`
-  (keep: mark the judgment it grants). Current known: Actions-two-reads vs
-  Speed-"everything I need"; anchor_raw_quote required-vs-selective;
-  residue-deferral vs window-slides; expansive vs 2-rounds.
+  (keep: mark the judgment it grants). Current known: anchor_raw_quote
+  required-vs-selective; residue-deferral vs window-slides; expansive vs
+  2-rounds. Resolved: Actions-two-reads vs Speed-"everything I need"
+  (Stop 8, DEAD-CONFLICT — the Speed line now defers to the two reads).
 - **E2. Example sweep after the draft settles** — every example re-audited
   against every rule that changed (A3), on all dimensions (A4), for leakable
   ids (A5).
@@ -370,7 +375,8 @@ teaching surface. Columns: what it teaches now / spare capacity / risks.
 | Temporal Ex2 (Nadia ACL, wholistic) | Temporal | 3 resolution paths; temporal authority (paraphrase-vs-source); correction node on my own wrong gloss (D12); Allen composition; fact atoms; open node for future date; inline Bad-content comment (T1 ✓) | Emotion register on the injury/recovery arc (natural home, D-emotion); question field on the fact atoms | 154 lines — the D2 poster child; several nodes lack reasoning (A4 leak); Tom already flagged length-class edits here twice |
 | Canonical 5-node batch + catalog excerpt | Speed | situation+reasoning ×5; voice symmetry w/ selective anchor_raw_quote; cross-redundancy (27:12); event_time; id-copy from grounded excerpt + sibling title beside; corrects placeholder; near-twin id-pick; open keys (correction_pattern, emotional_context); N=3 earned principle; 5-type spread | `question` (C4 — one line/node); ONE `thought` (A1 revival + selectivity); `source_refs` with real trace id; a differentiation beat in one reasoning (T6); work-state handles (C5) | Highest-attention asset (B5) — every addition leaks on all dimensions (A4); char growth (D2); keep additions off-corpus (A7) |
 | Detail+meaning pair | Speed | Two-register law as tool-call; grounds edge whose why names TWO retrieval surfaces (the closest thing to a T6 carrier today); anchor_raw_quote on a mechanism | Name the separability logic explicitly in the why (make it THE T6 carrier); question field | Duplicates the opener's E=mc² frame — deliberate reinforcement or redundancy, decide once |
-| revise_batch light/light/FULL (ghi789) | Speed | Light→FULL progression (T1 via comments); field-walk on stale value; reason discipline | `content_edits` patch form (or cede revise-teaching to the sweep example); title/type re-audit on revise (encode-write #26, untaught); preservation demo (currently prose-only) | Overlaps v-next.4's sweep example — TWO revise-teaching assets after activation; consolidate or split cleanly |
+| revise_batch patch/patch/field-walk (ghi789) | Speed | Patch→field-walk progression (T1 via comments); content_edits as correction default; preservation-by-construction demo; ladder line names the three rungs (claim → fields → neighborhood) | title/type re-audit on revise (encode-write #26 — probe K did it unprompted; still untaught in text); question on the dosage-class node (Stop 9 zone) | Split RESOLVED (Stop 8): ghi789 = one node's fields, sweep = one event's neighborhood — each names its lesson |
+| Sweep example (BAD hub-only + 4-patch GOOD batch) | Actions/Speed seam | Event→multi-node propagation (R16, real ledger case); falsified-referent law (verdict node); edge-line id targeting + supersedes-over-remint; grounded source_refs copied from a trace= attr (R7 + three-connections); restraint clause (patch only what the event falsified) | question field on its remember node (Stop 9 zone sweep); UPDATE-append counter-clause if probe-K ruling lands it here | Dev-domain skin nearer our corpus (A7) — accepted risk, package eval is backstop; +5.5K chars, first asset to push draft over v37 |
 | §7.6 A6/A7/A4/A2/A3/A8 | §7.6 | Identity/hot-register encoding; anchor-voice depth; locked + trigger usage; correction at register; agent-as-other-side (A8); source_refs shape (placeholders) | **A voice-disagreement example — me holding my ground with evidence and encoding the contradiction as signal (new D3): none of the six shows it; every §7.6 example is me being corrected or seeing, never me disagreeing** | Big real estate; locked generosity needs its disclaimer kept; placeholder discipline must survive edits (A5) |
 | v-next.4 sweep example (BAD hub-only + full sweep) | candidate | Sweep discipline (D11); content_edits patch form; labeled BAD contrast (T1 ✓); first-person falsifying evidence (D3/D12); supersedes lineage; edge-visible neighbor walk | Fix the wrong error name (`connect_to_bad_id`) in the adjacent prose while landing it; differentiation beat | ~100 added lines (D2); territory overlap with ghi789 (above) |
 | MCP description examples (brain_batch, connect_to, absorb) | MCP | connect_to resolution scopes; sibling-vs-catalog forms; forward-reference example; empty-why anti-pattern; vocabulary + never-generic ban | Correct error-name semantics live here too (mechanics = MCP home, C2); absorb's content-destructive warning held — keep | Shared across ALL callers (C3) — no encoder-specific teaching; changes need the 8-step MCP eval gate |
@@ -386,8 +392,8 @@ teaching surface. Columns: what it teaches now / spare capacity / risks.
 | Nodes | D3, D6, D5, D2, A9, E7 (5a) · C4, A1, T5 (5b pending) | **5a DONE (probe H):** voice anchors unified under one derivation rule — test is derivation not importance; probe emitted user-only/anchor-only/neither across the 3-turn calibration scenario, felt and rejected the ceremony reflex on the action-derived node ('the derivation test isn't did-I-say-something but does-the-node-exist-because-of-a-said-thing'), and withheld user_raw_quote on low-substance 'good point' — symmetric restraint both directions. Floating-quote label dissolved (named 2×, defined 0×). Interpret/expand compressed 20→10 (inertness verdict RETRACTED as confounded by surface abstention, 0099ac43 — compression on D2/E7 grounds only; Bad/Good beat queued for canonical, Stop 9). Contract appendix revision_history fix shipped (2ba8dfb). Anatomy revise-bullet needs content_edits caveat when v-next.4 merges (A3 obligation, Actions stop). **5b DONE (probe I):** three-connections anchoring rewrite (92→30 lines; refs = rare surface-the-moment flag — probe flagged exactly 1/4 nodes, the correction with both moments, and restated the rule as 'the scene is itself part of what the node means'); living thought (cross-turn hunch emitted, delivered-contract cited verbatim); emotions array on the right node; question 1/4 (lookup-fact only — reasoned selectivity, healer backfills the rest; eval-watch, not a defect); work-state identifiers in situation. Fossil sweep: §7.6 labels + 'for v19+' out. Soft spot on record: question under-emits on principle/correction types. **Reopen risk from recall scout: trigger-register situation finding (14%→54% sit-lane entry, acfb8596) may sharpen the situation teaching — awaiting the scout's table.** |
 | Edges | C3, E5, T1 (craft boxes only) | **CLOSED (probe J) — failed the recall cross-exam, redrafted, verified.** Six R-rows landed under Tom's honesty ruling (sometimes 9, sometimes 2 — never floors): reachability physics + old-graph obligation, why admission mechanics (120-180 chars, cue nouns), verb functions (corrects/supersedes demote, similar_to dedups, measured rescue verbs inline, related_to 0.2×). Probe J: 3 whys at 214/199/233 chars, 2/3 edges on catalog nodes, extends/grounds/parallels. Earlier craft-pass notes stand: First pass (craft boxes) found: MCP delegation measured-deliberate (04ff3d58), needs a guardrail test on the connect_to description's load-bearing strings (ship package); new→old bias judged physics not defect; why-bank untouched. Tom's challenge: the section was never cross-examined against recall-side evidence (recall-rank/recall-surface classes, 357 rows unread in the survival check). Opus scout dispatched 2026-08-21 for write-side implications — known seeds: rescuing-edge profile (well-described, extends-dominant), orphan-gold encode-side bridges (~53% endo misses unreachable read-side), edge-inhibition. Section verdict waits on its table. |
 | Temporal | C6, D2, E7, A4, D3, R23 | **CLOSED (probe J).** Distilled ~290→~160 lines: Allen ceremony → 'Sequence between events' (sequencing verbs KEPT — measured top rescue paths; the scout reversed my full-cut plan); Ex1 deleted (A4 violator, hub rule survives as prose); Ex2 trimmed (fact-atom dupes + recap out) + first-person voice fixes ('My since-November gloss'); validity intervals got the in-place-vs-supersedes discriminator (probe J flagged the two-patterns ambiguity, honest judgment call). event_time doctrine untouched (the measured A1 win). |
-| Actions | — | — |
-| Speed + canonical example | — | — |
+| Actions | A2, A3, E1, E7, R7, R16, R17, R19, R21 | **DONE (probe K, 2026-08-21):** the v-next.4 merge — content_edits default + short-fields scope clause; Anatomy patch caveat (A3 obligation cleared); ghi789 → patch forms + ladder line; sweep example + BAD hub-only batch ported (R16 carrier; R7 carried-by-example — supersede lands on an old id; first grounded source_refs demo); `sweep:` close line; two-reads vs Speed dead conflict FIXED in the Speed line (E1 entry resolved); error names split (connect_to_bad_id for mis-copied ids, connect_to_unresolved for sibling titles — F2 of 9dc3efad) + source_refs silent-store told truthfully (was false reassurance; code gate → ship package); E7 fold — triplicate skip/zero-nodes merged into the Skip bullet, last third-person 'the assistant' → first person. Probe K (hydroponics scenario, off-corpus): 6/6 patches via content_edits, edge-line id targeted AND superseded, close line correct with all ids, 4 old-node edges, restraint decoy untouched, unprompted type re-audit. FINDINGS: UPDATE-append idiom on 2-3 patches (stale text left standing under an appended correction — one-clause fix awaiting Tom); loose supersedes on a patched-and-living hub (eval-watch). Harness caveat: probe collapsed read/write rounds by instruction — sequencing ungraded. |
+| Speed + canonical example | (Stop 8 touched: `sweep:` close line + two-reads fix live in Speed text) | — |
 | §7.6 identity examples | — | — |
 | Closing + injected blocks + field summary | — | — |
 | MCP descriptions (brain_batch, connect_to, absorb) | — | — |
