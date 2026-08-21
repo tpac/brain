@@ -610,10 +610,7 @@ class BrainRememberMixin:
                     'error': 'Confirmation token invalid or expired — call again '
                              'without confirm_token to request a fresh one'}
 
-        from .db_backends.sqlite import commit_unless_batched
-        self.conn.execute('UPDATE nodes SET locked = ?, updated_at = ? WHERE id = ?',
-                          (1 if locked else 0, iso_now(), full_id))
-        commit_unless_batched(self.conn)
+        self._nodes.set_locked(full_id, locked)
         return {
             'ok': True, 'node_id': full_id, 'changed': True,
             'title': (title or '')[:60], 'type': node_type,
