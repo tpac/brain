@@ -14,12 +14,16 @@ backstop), ~30 measured teachings added, NOT registered.
 **Locked:** target function; banner v1 never ships (position carries, text was
 staleness-biased); [associated]-in-catalog (not a separate section); edge honesty over
 floors; Allen sequencing verbs KEPT (measured top rescue paths — only the ceremony cut).
-**Open:** stops 9-11; probe-K finding awaiting ruling (UPDATE-append idiom — one-clause
-"patch rewrites the claim in place" candidate for the content_edits paragraph); E1/E2/E8
-global audits (E1's two-reads entry resolved at Stop 8); ship gate (DORMANT → package
-eval → Tom activates → sync + SEED_PROMPTS_VERSION); ship-package code items: the Assembly
-matrix row, id:477ddcc9, plus the source_refs 8-hex shape gate at add/replace_source_refs
-(dal.py:714 — type-checked only today; placeholders store silently; loud write boundary).
+**Open:** stops 9b-11 (9a closed, probe L; UPDATE-append clause landed via micro-probe);
+E1/E2/E8 global audits (E1's two-reads entry resolved at Stop 8); ship gate (DORMANT →
+package eval → Tom activates → sync + SEED_PROMPTS_VERSION); ship-package code items: the
+Assembly matrix row, id:477ddcc9, plus the source_refs 8-hex shape gate at
+add/replace_source_refs (dal.py:714 — type-checked only today; placeholders store
+silently; loud write boundary).
+**Ship-gate PRECONDITION (Tom, 2026-08-21, id:52c8eb6d):** the voice-field rename
+(user_raw_quote→their_raw_quote, anchor_raw_quote→my_raw_quote) lands FIRST via its own
+stream (chip task_578c6b79), then this WIP takes a mechanical name-pass. Until that
+stream runs, the walk deliberately keeps the OLD names — do not pre-rename in the draft.
 **Do not reopen:** ledger method/home; §-numbering; degree floors; <memories_beyond_catalog>
 as a section; the Allen full-cut.
 
