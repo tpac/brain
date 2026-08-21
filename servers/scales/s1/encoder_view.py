@@ -63,6 +63,12 @@ ASSOCIATED_RECALL_LIMIT = 40
 # message, not the essay (embedding sanity; probe's QUERY_CAP).
 ASSOCIATED_QUERY_CAP = 1500
 
+# Most seeds paid for per run, keeping the NEWEST (the tail turns are the
+# encoder's actual working material). Bounds the sequential recall loop when
+# every turn reads unencoded (first encode of a long session, or a degraded
+# trace join) — the one dimension the other three constants don't cap.
+ASSOCIATED_SEED_CAP = 20
+
 
 # ── Catalog aging (id:f3302000 / id:f011dc76 — the ~80-89% lever) ──
 

@@ -556,11 +556,26 @@ def _build_catalog(brain, messages, session_id, lived, view_policy=False,
     if view_policy and now is None:
         now = _conversation_now_safe(brain, session_id, messages)
 
+    from servers.scales.s1.encoder_view import associated_stubs_enabled
+    stubs_on = lived and associated_stubs_enabled()
+
+    # One window pull shared by the catalog cutoff and the stub seeds — the
+    # timeline render keeps its own (the pre-existing pair); this block must
+    # not add a third. Quiet degrade mirrors window_first_turn's contract:
+    # no readable window → no cutoff, no seeds.
+    turns = None
+    if view_policy or stubs_on:
+        try:
+            turns = _lived_turns(brain, session_id, _window_n_turns(messages))
+        except Exception:
+            turns = None
+
     # Window-aligned cutoff (arm D): the catalog ages against the same turn
     # window the timeline renders — widen the chat window and the full-depth
     # catalog widens with it. None (no datable head, or flag off) falls back
     # to round-based aging inside build_node_catalog.
-    head = window_first_turn(brain, session_id, messages) if view_policy else None
+    head = (window_first_turn(brain, session_id, messages, turns=turns)
+            if view_policy else None)
 
     # Associated stubs (the subconscious — Tom's ruling 2026-08-21): production
     # recall over the window's unencoded messages, catalog excluded, rendered
@@ -568,21 +583,35 @@ def _build_catalog(brain, messages, session_id, lived, view_policy=False,
     # tag grammar lives on the widened catalog), flag-gated for the A/B.
     # Guarded loud: retrieval is advisory — never block the catalog.
     associated = None
-    from servers.scales.s1.encoder_view import associated_stubs_enabled
-    if lived and associated_stubs_enabled():
+    if stubs_on and turns is not None:
         try:
-            from servers.scales.s1.encode_contract import surfaced_ids_of
+            from servers.scales.s1.encode_contract import (
+                ASSOCIATED_TAG, PROVENANCE_TAGS, surfaced_ids_of)
+            # Loud when the flag runs ahead of the prompt: the encoder can
+            # only read the tag correctly once the active s1e prompt teaches
+            # it — a comment can't enforce that ordering, this check can.
+            # Advisory: logs, never blocks (the A/B arm decides).
+            try:
+                if ASSOCIATED_TAG not in (brain.get_interaction_prompt('s1e') or ''):
+                    brain._log_error(
+                        's1e_associated_stubs_untaught',
+                        'BRAIN_S1E_ASSOCIATED_STUBS is on but the active s1e '
+                        'prompt never mentions %s' % ASSOCIATED_TAG,
+                        'stubs render untaught — activate the prompt version '
+                        'that teaches the tag')
+            except Exception:
+                pass
             # Exactly the id set build_node_catalog will catalog (surfaced ∪
             # the provenance categories) — derived from the same parse + the
             # same PROVENANCE_TAGS keys, so exclusion can't drift from the
             # render. Empty ⇔ the catalog will be empty: no home for stubs.
-            from servers.scales.s1.encode_contract import PROVENANCE_TAGS
             exclude = surfaced_ids_of(judge_outputs)
             for key, _tag in PROVENANCE_TAGS:
                 exclude |= set((extra_ids or {}).get(key) or ())
             if exclude:
                 associated = _associated_stub_ids(
-                    brain, messages, session_id, exclude, streams=streams)
+                    brain, messages, session_id, exclude,
+                    streams=streams, turns=turns)
         except Exception as e:
             try:
                 brain._log_error('s1e_associated_stubs', e,
@@ -617,7 +646,8 @@ def _conversation_now_safe(brain, session_id, messages):
         return None
 
 
-def _associated_stub_ids(brain, messages, session_id, exclude_ids, streams=None):
+def _associated_stub_ids(brain, messages, session_id, exclude_ids,
+                         streams=None, turns=None):
     """The subconscious: ids of the K nodes production recall ranks nearest
     this window that the catalog does NOT already show (Tom's ruling
     2026-08-21 — the encoder should receive not just the conscious catalog
@@ -631,30 +661,40 @@ def _associated_stub_ids(brain, messages, session_id, exclude_ids, streams=None)
     recall' reframe, id:400594da): LAF, edge walks, correction chains and the
     scope veil all apply — no parallel ranker.
 
-    Time: `as_of` = conversation_now WITHOUT session_started_at — a replay's
-    [Current date:] prefix pins the candidate field to the run's instant
-    (the S1 conversation-time rule), and a live window falls through to
-    wall-clock, so mid-session sibling nodes (the cross-session race this
-    mechanism exists to catch, id:e3e328d1) stay visible. Session-start
-    fallback would hide them.
+    Time: NO `as_of`, deliberately. Every candidate value breaks something
+    (code-review verified, 2026-08-21): a live conversation_now is
+    operator-TZ and LAF's masks compare lexicographically against uniform
+    UTC, skewing the field by the host offset; a replay's [Current date:]
+    prefix predates every corpus node's wall-clock created_at, emptying the
+    masked universe (ValueError each round); and any as_of couples the
+    feature to BRAIN_RECALL_VARIANT=laf_v1 (the champion path raises). Live,
+    as_of≈now is a no-op mask anyway. A harness replaying against a brain
+    that holds FUTURE nodes relative to the replayed moment must pin the
+    field itself (the probe passes the run's stored UTC trace timestamp).
 
     Reads are pure: mark_accessed=False — assembly is machinery, and marking
     would inflate access counts + fatigue with the encoder's own looking
-    (the dashboard-observer precedent). Community nodes are filtered (S1E
-    never gets community bodies — same rule as the catalog's skip).
+    (the dashboard-observer precedent). Community nodes never render:
+    recall's default NODE_TYPE_EXCLUSIONS drops them here, and
+    build_node_catalog's community scan is the render chokepoint.
+
+    `turns` (optional): the pre-pulled _lived_turns list threaded from
+    _build_catalog so one window pull serves the cutoff and the seeds
+    (None → pull here; standalone/test callers). Coverage joins through
+    _turn_links on the pre-gathered `streams`; a turn with no link is real
+    (degraded join / orphan) and counts as unencoded — the probe's
+    convention.
 
     Returns rank-ordered id list (may be empty). Raises to the caller's
     guard on read failure — advisory, never blocks the catalog.
     """
     from servers.scales.s1.encoder_view import (
-        ASSOCIATED_QUERY_CAP, ASSOCIATED_RECALL_LIMIT, ASSOCIATED_STUBS_K)
+        ASSOCIATED_QUERY_CAP, ASSOCIATED_RECALL_LIMIT, ASSOCIATED_SEED_CAP,
+        ASSOCIATED_STUBS_K)
+    from servers.scales.s1.surface_contract import recall_score
 
-    # Same window the timeline renders (one owner: _lived_turns), same
-    # coverage join (_turn_links, reusing the pre-gathered streams). A turn
-    # with no link is real (degraded join / orphan) and counts as unencoded —
-    # the probe's convention.
-    n_turns = sum(1 for m in (messages or []) if m.get('role') == 'user') or 20
-    turns = _lived_turns(brain, session_id, n_turns)
+    if turns is None:
+        turns = _lived_turns(brain, session_id, _window_n_turns(messages))
     links, _frontier = _turn_links(brain, session_id, turns, streams=streams)
 
     def _body(ep):
@@ -673,25 +713,25 @@ def _associated_stub_ids(brain, messages, session_id, exclude_ids, streams=None)
             text = _body(ep) if ep else ''
             if text:
                 seeds.append(text)
+    # Dedup (repeated 'ok'/'continue' turns), then keep the NEWEST seeds —
+    # the tail turns are the encoder's working material. The cap bounds the
+    # sequential recall loop when every turn reads unencoded (first encode
+    # of a long session, or a degraded trace join).
+    seeds = list(dict.fromkeys(seeds))[-ASSOCIATED_SEED_CAP:]
     if not seeds:
         return []
-
-    from servers.clock import conversation_now
-    as_of = conversation_now(messages=messages, brain=brain).isoformat()
 
     exclude = {(i or '')[:8] for i in exclude_ids if i}
     best = {}
     for text in seeds:
         r = brain.recall(query=text, limit=ASSOCIATED_RECALL_LIMIT,
                          session_id=session_id, source='s1e_associated',
-                         as_of=as_of, mark_accessed=False)
+                         mark_accessed=False)
         for h in (r.get('results') or ()):
             nid = str(h.get('id') or '')
-            if not nid or nid[:8] in exclude or h.get('type') == 'community':
+            if not nid or nid[:8] in exclude:
                 continue
-            v = h.get('effective_activation')
-            score = (float(v) if isinstance(v, (int, float))
-                     and not isinstance(v, bool) else 0.0)
+            score = recall_score(h)
             if score > best.get(nid, -1.0):
                 best[nid] = score    # turnmax, never sum
 
@@ -1139,18 +1179,33 @@ def _lived_turns(brain, session_id, n_turns):
     return turns[-n_turns:]  # window-match the control arm
 
 
-def window_first_turn(brain, session_id, messages):
+def _window_n_turns(messages):
+    """The window-size rule — the ONE derivation of how many turns the chat
+    window spans, shared by the timeline render, the catalog cutoff
+    (window_first_turn) and the associated-stub seeds so the three can never
+    disagree about the window. Falls back to WINDOW_TURNS_FALLBACK when the
+    hook window carries no user rows."""
+    from servers.scales.s1.encode_contract import WINDOW_TURNS_FALLBACK
+    return (sum(1 for m in (messages or []) if m.get('role') == 'user')
+            or WINDOW_TURNS_FALLBACK)
+
+
+def window_first_turn(brain, session_id, messages, turns=None):
     """The 1-based turn number the rendered timeline opens on — the
     window-aligned catalog cutoff (encode_contract.build_node_catalog's
     `window_first_turn`). None when the window has no datable head, which the
     caller reads as "no window cutoff available", falling back to round-based
-    aging rather than ageing everything."""
+    aging rather than ageing everything.
+
+    `turns` (optional): the pre-pulled _lived_turns list, threaded from
+    _build_catalog so one window pull serves the cutoff and the stub seeds
+    (None → pull here; eval callers)."""
     from servers.scales.s1.trace_links import display_turn
-    n_turns = sum(1 for m in (messages or []) if m.get('role') == 'user') or 20
-    try:
-        turns = _lived_turns(brain, session_id, n_turns)
-    except Exception:
-        return None
+    if turns is None:
+        try:
+            turns = _lived_turns(brain, session_id, _window_n_turns(messages))
+        except Exception:
+            return None
     for t in turns:
         if t.get('user'):
             return display_turn(t['user'].get('chain_id'))
@@ -1189,10 +1244,9 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
     """
     from servers.scales.s1.encode_contract import ENCODING_AGENT
     lim = ENCODING_AGENT['message_display_limit']
-    n_turns = sum(1 for m in (messages or []) if m.get('role') == 'user') or 20
 
     try:
-        turns = _lived_turns(brain, session_id, n_turns)
+        turns = _lived_turns(brain, session_id, _window_n_turns(messages))
     except Exception as e:
         print('[s1e] ERROR reading lived sequence, falling back to markdown: %s' % e, flush=True)
         return _render_markdown_timeline(brain, messages)

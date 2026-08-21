@@ -575,10 +575,8 @@ def _ep(eid, ref_type, content, created_at):
 
 
 _EMPTY_STREAMS = {'surface': [], 'encode': [], 'touched': []}
-# Replay-style date prefix: conversation_now resolves from it, so the fake
-# brain is never asked for wall-clock/tz machinery.
 _DATED_MSGS = [
-    {'role': 'user', 'content': '[Current date: 2026-08-21] alpha question'},
+    {'role': 'user', 'content': 'alpha question'},
     {'role': 'user', 'content': 'beta question'},
 ]
 
@@ -600,7 +598,6 @@ class TestAssociatedStubIds:
             'alpha question': [
                 {'id': 'aaaa1111', 'type': 'finding', 'effective_activation': 0.9},
                 {'id': 'cata0001', 'type': 'rule', 'effective_activation': 0.95},
-                {'id': 'comm0001', 'type': 'community', 'effective_activation': 0.99},
             ],
             # same node again, lower score — turnmax keeps 0.9, never sums
             'alpha answer': [
@@ -612,16 +609,46 @@ class TestAssociatedStubIds:
         })
         out = _associated_stub_ids(brain, _DATED_MSGS, 'testsess',
                                    {'cata0001'}, streams=_EMPTY_STREAMS)
-        # catalog id and community filtered; rank order by best single match
+        # catalog id filtered; rank order by best single match
         assert out == ['aaaa1111', 'bbbb2222']
         # both voices of both turns seeded
         assert [q for q, _kw in brain.recall_calls] == [
             'alpha question', 'alpha answer', 'beta question']
-        # pure read at conversation time
         for _q, kw in brain.recall_calls:
+            # pure read
             assert kw['mark_accessed'] is False
-            assert kw['as_of'].startswith('2026-08-21')
             assert kw['session_id'] == 'testsess'
+            # NO as_of, deliberately — every candidate value breaks a
+            # verified case (operator-TZ skew live, empty universe in
+            # replays, laf_v1 coupling); see the function docstring
+            assert kw.get('as_of') is None
+
+    def test_seed_cap_keeps_newest(self):
+        from servers.scales.s1.encode import _associated_stub_ids
+        from servers.scales.s1.encoder_view import ASSOCIATED_SEED_CAP
+        # more distinct user turns than the cap — each its own seed text
+        n = ASSOCIATED_SEED_CAP + 5
+        eps = [_ep('u%d' % i, 'user_message', 'question number %d' % i,
+                   '2026-08-21T10:%02d:00+00:00' % i) for i in range(n)]
+        brain = _StubRecallBrain(eps, {})
+        msgs = [{'role': 'user', 'content': '[Current date: 2026-08-21] q'}] * n
+        _associated_stub_ids(brain, msgs, 'testsess', {'x'},
+                             streams=_EMPTY_STREAMS)
+        queries = [q for q, _kw in brain.recall_calls]
+        assert len(queries) == ASSOCIATED_SEED_CAP
+        # the NEWEST seeds survive the cap (tail turns are the working material)
+        assert queries[-1] == 'question number %d' % (n - 1)
+        assert queries[0] == 'question number %d' % (n - ASSOCIATED_SEED_CAP)
+
+    def test_duplicate_seeds_recalled_once(self):
+        from servers.scales.s1.encode import _associated_stub_ids
+        eps = [_ep('u%d' % i, 'user_message', 'ok',
+                   '2026-08-21T10:%02d:00+00:00' % i) for i in range(3)]
+        brain = _StubRecallBrain(eps, {})
+        msgs = [{'role': 'user', 'content': 'ok'}] * 3
+        _associated_stub_ids(brain, msgs, 'testsess', {'x'},
+                             streams=_EMPTY_STREAMS)
+        assert [q for q, _kw in brain.recall_calls] == ['ok']
 
     def test_k_cap(self):
         from servers.scales.s1.encode import _associated_stub_ids
@@ -709,6 +736,24 @@ class TestAssociatedStubsRender:
             assert text == base_text
             assert ids == base_ids
 
+    def test_associated_community_never_renders(self):
+        # the render is the chokepoint for 'S1E never gets community bodies' —
+        # it must hold for ANY caller of build_node_catalog, not just the
+        # production retrieval (whose recall already type-excludes them)
+        from servers.scales.s1.encode_contract import ASSOCIATED_TAG, build_node_catalog
+        comm_id = 'dd77ee88'
+        _insert_hex_node(self.conn, comm_id, 'community', 'A community',
+                         'Community body that must never render.')
+        text, ids = build_node_catalog(
+            [self._judge()], self.brain, extra_ids={},
+            associated_ids=[comm_id, self.NODE_B])
+        assert comm_id not in ids
+        assert 'A community' not in text
+        assert self.NODE_B in ids
+        # header counts only what can render (1 surfaced + 1 stub)
+        assert text.splitlines()[0] == 'Node Catalog (2 nodes)'
+        assert ASSOCIATED_TAG in text
+
     def test_associated_dupe_of_catalog_dropped(self):
         from servers.scales.s1.encode_contract import ASSOCIATED_TAG, build_node_catalog
         text, ids = build_node_catalog(
@@ -736,7 +781,8 @@ class TestAssociatedStubsRender:
         monkeypatch.setenv('BRAIN_S1E_ASSOCIATED_STUBS', '1')
         seen = {}
 
-        def fake_retrieval(brain, messages, session_id, exclude_ids, streams=None):
+        def fake_retrieval(brain, messages, session_id, exclude_ids,
+                           streams=None, turns=None):
             seen['exclude'] = set(exclude_ids)
             return [self.NODE_B]
 
