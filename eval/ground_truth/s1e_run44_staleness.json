@@ -1,0 +1,19 @@
+{
+  "chain": "s1e-17d9ae94-44",
+  "payload": "$BRAIN_DB_DIR/payloads/2026-08-17/s1e-17d9ae94-44/000-prompt.md",
+  "description": "Stale-sibling propagation item (finding id:27ce7658). The frozen payload carries keen-heisenberg's branch+worktree deletion verbatim in the timeline, while the catalog shows the hub (370a03d8) AND three siblings (da1fdb79, 9b9d9dda, 338cf9ad) still asserting the pre-deletion state, and the falsified merge order (78983ba6, 'keen first') visible only as an edge-line title. Prompt v35 revised the hub only and minted a merge-order twin (d8a246ef) with no supersedes edge. Gold: the state change propagates to every in-view node it falsifies, and no twin is minted while the prior decision is addressable by id.",
+  "revise_or_correct": [
+    {"id": "370a03d8", "note": "hub — CURRENT QUEUE, asserts ratchet/merge state", "content_any": ["delet", "e7b36a9"]},
+    {"id": "da1fdb79", "note": "ratchet milestone — asserts committed-awaiting-merge", "content_any": ["delet", "dangling", "recover"]},
+    {"id": "9b9d9dda", "note": "worktree audit — lists keen-heisenberg as a live worktree", "content_any": ["delet"]},
+    {"id": "338cf9ad", "note": "release-ratchet open — asserts the branch exists pending rebuild", "content_any": ["delet", "recover"]}
+  ],
+  "no_new_node_matching": {
+    "title_regex": "(?i)merge[- ]?(order|sequence|queue)",
+    "unless_corrects": "78983ba6"
+  },
+  "invalid_if_read": [
+    "370a03d8", "da1fdb79", "9b9d9dda", "338cf9ad",
+    "78983ba6", "81a803db", "d8a246ef"
+  ]
+}

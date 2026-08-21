@@ -73,6 +73,7 @@ REF_TYPES = {
                          # occupies — because scale is derived per row from the mutation's
                          # own encoding_source, so one command can emit at several scales.
                          "node_created", "node_archived", "node_deleted",
+                         "node_lock_changed",  # lock flip via set_node_lock (emitter)
                          "anchor_touched"],   # per-turn aggregate of what Anchor's own
                                               # MCP tools touched this turn (created/revised/
                                               # archived/recalled/endo) — the S0 mirror of the
@@ -100,6 +101,7 @@ REF_TYPES = {
                          "node_archived",           # node archived (emitter)
                          "node_deleted",            # node HARD-deleted (emitter) — the trace is
                                                     # the only surviving record of the node
+                         "node_lock_changed",       # lock flip (emitter; scale derived per row)
                          "journal_note"],           # S1 Scribe residue — one note (subject=ref_id) per row
 
     # Scale 2: graph integration
@@ -139,6 +141,7 @@ REF_TYPES = {
                                                     # superseded nodes and dead communities
                          "node_deleted",            # node HARD-deleted (emitter) — the retired
                                                     # junk purge wrote these; the trace is the only record
+                         "node_lock_changed",       # lock flip (emitter; scale derived per row)
                          "journal_note"],           # S2 unit residue (consolidation, community) — one note per row
 
     # Scale 3: reasoning integration
@@ -1055,6 +1058,18 @@ def salvage_review_fence(text):
         content = body[:close_fence].strip()
         if not content:
             continue
+        # A JSON payload fence is never notes: a single-line array/object
+        # whose strings contain '·' parses cleanly as one "note" and would
+        # qualify — harvesting a single-shot encoder's PAYLOAD as residue
+        # (reachable since single-shot responses carry fenced JSON; loop
+        # encoders' final text never did).
+        if content[0] in '[{':
+            import json
+            try:
+                json.loads(content)
+                continue
+            except ValueError:
+                pass
         notes, malformed = parse_journal_notes(content)
         if notes and not malformed:
             salvaged = content
@@ -1104,6 +1119,7 @@ RESIDUE_REF_TYPES = ('journal_note',)
 EMITTER_REF_TYPES = (
     'node_created', 'node_archived', 'node_deleted',
     'node_revised', 'edge_relation_revised',
+    'node_lock_changed',
 )
 
 
@@ -1371,6 +1387,38 @@ def build_node_created_metadata(*, node_id, type='', title='',
     }
 
 
+NODE_LOCK_CHANGED_METADATA_SHAPE = {
+    'node_id':           str,    # the flipped node
+    'type':              str,    # self-describing, same rationale as the lifecycle trio
+    'title':             str,
+    'locked':            bool,   # the NEW state
+    'reason':            str,    # the operator-facing why
+    'encoding_source':   str,    # who ran the command (anchor by channel)
+    'confirm_latency_s': float,  # request→confirm gap of the two-phase door
+}
+
+
+def build_lock_change_metadata(*, node_id, type='', title='', locked=False,
+                               reason='', encoding_source='',
+                               confirm_latency_s=0.0):
+    """Build trace metadata for a lock flip (set_node_lock's two-phase door).
+
+    A lifecycle/permission event, deliberately NOT node_revised: the emitter's
+    own rule is that a non-content change rendering as "Refined N memories" is
+    a lie, and revise history readers must not see `locked` — the field
+    revise() treats as immutable — appear as a revised field.
+    """
+    return {
+        'node_id':           node_id,
+        'type':              type or '',
+        'title':             title or '',
+        'locked':            bool(locked),
+        'reason':            reason or '',
+        'encoding_source':   encoding_source or '',
+        'confirm_latency_s': float(confirm_latency_s or 0.0),
+    }
+
+
 NODE_ARCHIVED_METADATA_SHAPE = {
     'node_id':         str,    # the archived node
     'type':            str,
@@ -1475,6 +1523,7 @@ METADATA_REQUIRED_BY_REF_TYPE = {
     'node_created':       NODE_CREATED_METADATA_SHAPE,
     'node_archived':      NODE_ARCHIVED_METADATA_SHAPE,
     'node_deleted':       NODE_DELETED_METADATA_SHAPE,
+    'node_lock_changed':  NODE_LOCK_CHANGED_METADATA_SHAPE,
     # The two mutation ref_types that predate the emitter. Their shapes were
     # DECLARED but never enforced — validation was dead for exactly the two
     # highest-volume mutation events in the system. Enforced as of 2026-08-04,

@@ -119,6 +119,21 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertIn("revised", result)
         self.assertEqual(result["revised"], 2)
 
+    def test_set_node_lock(self):
+        """set_node_lock two-phase confirm: token round-trip flips the flag."""
+        n = self._dispatch("remember", {
+            "type": "principle", "title": "Lock me", "content": "canonical"})
+        phase1 = self._dispatch("set_node_lock", {
+            "node_id": n["id"], "locked": True, "reason": "roundtrip test"})
+        self.assertTrue(phase1["confirmation_required"])
+        phase2 = self._dispatch("set_node_lock", {
+            "node_id": n["id"], "locked": True, "reason": "roundtrip test",
+            "confirm_token": phase1["confirm_token"]})
+        self.assertTrue(phase2["changed"])
+        row = self.brain.conn.execute(
+            "SELECT locked FROM nodes WHERE id = ?", (n["id"],)).fetchone()
+        self.assertEqual(row[0], 1)
+
     def test_connect(self):
         """connect creates an edge between two nodes."""
         n1 = self._dispatch("remember", {"type": "concept", "title": "Node A", "content": "First node"})
@@ -959,7 +974,8 @@ class TestMCPRoundTrip(BrainTestBase):
             if tool_name in mcp_tool_names:
                 tested.add(tool_name)
 
-        # Commands that can't be round-trip tested (they kill/restart the daemon)
+        # Commands that can't be round-trip tested (they end the serve loop —
+        # restart reloads the daemon in place, shutdown exits it)
         untestable = {'restart', 'shutdown'}
         untested = mcp_tool_names - tested - untestable
         self.assertEqual(untested, set(),

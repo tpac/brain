@@ -19,6 +19,8 @@ to color + icon weight; rules below pick severity based on how far
 the signal has drifted from baseline.
 """
 
+import json
+
 from ..clock import utc_cutoff
 from ..db import logs_db_path
 from ..query import safe_query
@@ -43,6 +45,12 @@ ERROR_SPIKE_HIGH_RATIO      = 10.0  # ratio ≥ this → high
 
 SURFACE_ID_DRIFT_MIN        = 3     # combined recover+lost events in 24h → flag
 SURFACE_ID_DRIFT_HIGH       = 5     # lost (unresolvable) picks ≥ this → high
+
+# Mirrors JOURNAL_OPEN_NUDGE_RUNS in servers/trace_contract.py — the run count
+# at which the encoder's own prompt starts telling it to escalate. Past that,
+# the encoder has done everything it can on its own.
+JOURNAL_STANDING_RUNS       = 5
+JOURNAL_STANDING_HIGH_RUNS  = 10    # re-raised this many times → high
 
 # Known S2 unit identifiers. Chain ids look like `s2-{YYYYMMDDHHMMSS}-{unit}`
 # (older rows: `s2-{YYYYMMDD}-{unit}`); we split on '-' and key by the unit
@@ -272,6 +280,79 @@ def _scan_surface_id_drift(conn):
     }]
 
 
+@safe_query('queries.insights_scanner', logs_db_path)
+def _scan_standing_journal_items(conn):
+    """An encoder has been asking the same question, run after run, into nothing.
+
+    Journal notes tagged `open` carry a rendered lifecycle head — `open ×12
+    since 08-17` — counting the runs the subject has stayed unresolved. Past
+    JOURNAL_STANDING_RUNS the encoder's own prompt tells it to escalate, but
+    the only escalation route it has is... another journal note. That is the
+    closed loop finding id:5732d11c named: the S2 consolidation encoder wrote
+    "operator confirmation still needed" three times running with no path to an
+    operator.
+
+    This rule is the path. It is the one insight whose subject is a question
+    for a PERSON, not a system anomaly — so it earns the panel even on a
+    perfectly healthy brain.
+    """
+    # A week, not a day: persistence is the whole signal, and the slower
+    # encoders (consolidation runs on idle) need days to accumulate the run
+    # count that makes an item standing in the first place. A 72h window
+    # measured nothing but the fast units.
+    since = utc_cutoff(hours=168)
+    rows = conn.execute(
+        "SELECT chain_id, ref_id, metadata FROM trace_events "
+        "WHERE ref_type = 'journal_note' AND created_at > ?",
+        (since,),
+    ).fetchall()
+    # Reuse the journals reader's tag parser — the ×N count lives inside a
+    # free-text tag, and re-implementing that split here is how the two
+    # would drift.
+    from .journals import journal_unit, split_tag
+    worst = {}
+    for chain_id, ref_id, meta_raw in rows:
+        try:
+            meta = json.loads(meta_raw) if meta_raw else {}
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(meta, dict):
+            continue
+        _tag, runs, since_str = split_tag(meta.get('tag') or '')
+        if runs < JOURNAL_STANDING_RUNS:
+            continue
+        subject = ref_id or ''
+        prior = worst.get(subject)
+        if not prior or runs > prior['runs']:
+            worst[subject] = {'runs': runs, 'since': since_str,
+                              'subject': subject or '(no subject)',
+                              'unit': journal_unit(chain_id),
+                              'note': (meta.get('note') or '')[:220]}
+    if not worst:
+        return []
+    items = sorted(worst.values(), key=lambda i: -i['runs'])
+    top = items[0]
+    severity = 'high' if top['runs'] >= JOURNAL_STANDING_HIGH_RUNS else 'medium'
+    detail = ('%s has re-raised "%s" across %d runs%s and cannot resolve it '
+              'alone: %s' % (top['unit'] or 'an encoder', top['subject'],
+                             top['runs'],
+                             (' since %s' % top['since']) if top['since'] else '',
+                             top['note']))
+    if len(items) > 1:
+        detail += ' — and %d other standing item%s. Open the Journals tab.' % (
+            len(items) - 1, '' if len(items) == 2 else 's')
+    else:
+        detail += ' Open the Journals tab.'
+    return [{
+        'severity': severity,
+        'icon': '\U0001f4d3',  # 📓
+        'title': '%d journal item%s waiting on you' % (
+            len(items), '' if len(items) == 1 else 's'),
+        'detail': detail,
+        'evidence': {'items': len(items), 'max_runs': top['runs']},
+    }]
+
+
 # ── Aggregator ────────────────────────────────────────────────────────
 
 def scan_all():
@@ -285,4 +366,5 @@ def scan_all():
       + _scan_empty_selections()
       + _scan_error_spike()
       + _scan_surface_id_drift()
+      + _scan_standing_journal_items()
     )

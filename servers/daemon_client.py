@@ -4,10 +4,12 @@ brain — Daemon Client
 Client-side functions for communicating with the brain daemon.
 Used by hook scripts and brain_mcp.py.
 
-Singleton guarantee: ensure_daemon() uses fcntl.flock on a lock file.
-First caller acquires lock, starts daemon, releases lock.
-All other callers block on the lock, wake up to a running daemon.
-No file markers, no polling races.
+Restarter coordination: ensure_daemon() serializes concurrent callers on the
+STARTUP lock (get_startup_lock_path) — first caller converges the daemon,
+the rest block and wake up to a running one. The daemon's own singleton
+identity is a DIFFERENT lock (get_lock_path), held by a serving daemon for
+its whole life; the client only ever probes it non-blockingly (the
+two-writer guard before a direct spawn). One inode per question.
 """
 
 import fcntl
@@ -20,12 +22,14 @@ from typing import Any, Dict, Optional
 
 from .daemon_config import (
     _code_fingerprint, _CODE_FINGERPRINT, _IS_WORKTREE, REPO_ROOT,
-    get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
+    get_daemon_addr, get_socket_path, get_pid_path, get_lock_path,
+    get_startup_lock_path, get_status_path,
     get_recovery_state_path, is_maintenance_mode, resolve_db_dir,
     LAUNCHD_THROTTLE_INTERVAL_S,
 )
 from .daemon_launch import (
-    kickstart, kill_daemon, manages, port_is_occupied, spawn_detached_daemon,
+    kickstart, kill_daemon, manages, pid_file_age_s, port_is_occupied,
+    spawn_detached_daemon,
 )
 
 
@@ -231,17 +235,21 @@ def _db_dir_changed(resp: dict, db_path: str) -> bool:
 def ensure_daemon(db_path: str) -> bool:
     """Ensure the daemon is running AND on current code. Returns True if ready.
 
-    launchd owns the daemon lifecycle (com.brain.daemon: KeepAlive, RunAtLoad).
-    This function only PINGS and, when a (re)start is needed, routes it through
-    launchd via `launchctl kickstart -k` (daemon_launch.kickstart). It never kills +
-    Popens its own process alongside launchd.
+    launchd owns process CREATION (com.brain.daemon: KeepAlive, RunAtLoad).
+    This function only PINGS and, when convergence is needed: a healthy daemon
+    on stale code is asked to reload in place (the `restart` command — see
+    BrainDaemon._exec_reload); only corpses and db-dir divergence route
+    through `launchctl kickstart -k` (daemon_launch.kickstart). It never
+    kills + Popens its own process alongside launchd.
 
     Doing both was the Errno-48 storm of 2026-06-04: N sessions booted at once,
     each saw stale code, and each independently killed + respawned while
     launchd's KeepAlive ALSO respawned — several processes raced to bind the
-    port. Now every (re)start decision is serialized under the fcntl singleton
-    lock and re-checked after acquiring it, so N concurrent callers (re)start at
-    most once. Direct Popen survives ONLY as the no-launchd fallback (a fresh
+    port. Now every (re)start decision is serialized under the STARTUP lock
+    (get_startup_lock_path — a different inode from the daemon's singleton
+    flock, which a serving daemon holds for life) and re-checked after
+    acquiring it, so N concurrent callers (re)start at most once. Direct Popen
+    survives ONLY as the no-launchd fallback (a fresh
     install where the LaunchAgent isn't bootstrapped) — there's no KeepAlive to
     race there.
 
@@ -253,7 +261,8 @@ def ensure_daemon(db_path: str) -> bool:
         return False
 
     def _needs_restart(r: dict) -> bool:
-        # Stale CODE and diverged DATA warrant the same move: kickstart.
+        # Stale CODE and diverged DATA both mean "not converged" — the MOVE
+        # differs (code → in-place reload; data → kickstart via the ladder).
         if _code_changed(r):
             return True
         if _db_dir_changed(r, db_path):
@@ -284,8 +293,13 @@ def ensure_daemon(db_path: str) -> bool:
         return True
     # Otherwise (down, or up-but-stale) fall through to the locked (re)start.
 
-    # Serialize the (re)start through the singleton lock.
-    lock_path = get_lock_path()
+    # Serialize the (re)start through the RESTARTER lock — NOT the daemon's
+    # singleton flock (get_lock_path). The daemon holds that one for its whole
+    # serving life, so blocking on it here hangs the boot hook whenever a
+    # healthy-but-stale daemon serves, and holding it through a (re)start
+    # makes the successor's own start() exit as a duplicate. See
+    # get_startup_lock_path's docstring — one inode per question.
+    lock_path = get_startup_lock_path()
     lock_fd = None
     try:
         lock_fd = open(lock_path, 'w')
@@ -303,6 +317,46 @@ def ensure_daemon(db_path: str) -> bool:
         if resp.get("ok") and not _needs_restart(resp):
             sys.stderr.write("[brain-daemon] Daemon healthy (handled by another caller / recovered).\n")
             return True
+
+        # Healthy but on stale CODE → ask it to reload in place (the daemon
+        # execs hooks/scripts/brain-daemon, same PID — see
+        # BrainDaemon._exec_reload). Reload is the owner of "healthy + stale";
+        # kickstart below narrows to corpses and db-dir divergence (a data
+        # move is a deliberate operator action — the spawn ladder + plist
+        # re-materialization is its reviewed path). A reload that doesn't
+        # come back healthy falls through to kickstart: at that point the
+        # daemon IS the corpse case.
+        if resp.get("ok") and _code_changed(resp) and not _db_dir_changed(resp, db_path):
+            sys.stderr.write("[brain-daemon] stale code on a healthy daemon — "
+                             "reloading in place\n")
+            try:
+                send_command("restart", timeout=5.0)
+            except Exception as e:
+                sys.stderr.write("[brain-daemon] reload request failed: %s\n" % e)
+            # Poll for responsive AND current-code — a bare responsive check
+            # can catch the OLD daemon in its last pre-teardown tick (stale
+            # fingerprint) and misread the reload as failed.
+            deadline = time.monotonic() + _GRACE_DEADLINE_S
+            while time.monotonic() < deadline:
+                time.sleep(0.5)
+                resp = _can_connect()
+                if resp.get("ok") and not _needs_restart(resp):
+                    sys.stderr.write("[brain-daemon] Daemon reloaded in place.\n")
+                    return True
+            sys.stderr.write("[brain-daemon] reload did not converge within "
+                             "%.0fs — falling back to kickstart\n" % _GRACE_DEADLINE_S)
+            # A reload that degraded into exit + KeepAlive respawn (backstop
+            # fired, exec failed) can still be mid-boot when the poll expires
+            # — ThrottleInterval (10s) + boot can exceed the grace budget.
+            # Same corpse test recover_daemon applies: a freshly-bound or
+            # binding daemon is booting, not a corpse — kickstarting it now
+            # would SIGKILL it mid-boot and reset the throttle.
+            age = pid_file_age_s()
+            if (age is not None and age < _GRACE_DEADLINE_S) or \
+                    (age is None and port_is_occupied()):
+                sys.stderr.write("[brain-daemon] successor is booting — "
+                                 "deferring, not kickstarting\n")
+                return False
 
         # Route the (re)start through launchd. `kickstart -k` kills any running
         # instance (covers healthy-but-stale AND hung-corpse) and respawns it in
@@ -362,6 +416,25 @@ def ensure_daemon(db_path: str) -> bool:
             sys.stderr.write("[brain-daemon] Port occupied but unresponsive — killing zombie\n")
             kill_daemon()
             time.sleep(1)
+        # Two-writer guard: wait (bounded) for the daemon's SINGLETON flock to
+        # free before spawning. A dying predecessor releases it in _cleanup
+        # AFTER closing its DB connections, so a spawn past this point can
+        # never open brain.db alongside a live writer. (The old code got this
+        # implicitly by serializing on that same flock; the dedicated startup
+        # lock above no longer does.)
+        deadline = time.monotonic() + _GRACE_DEADLINE_S
+        while time.monotonic() < deadline:
+            try:
+                with open(get_lock_path(), 'w') as probe:
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(probe, fcntl.LOCK_UN)
+                break  # free — the predecessor's DBs are closed
+            except (IOError, OSError):
+                time.sleep(0.5)
+        else:
+            sys.stderr.write("[brain-daemon] singleton flock still held after "
+                             "%.0fs — not spawning a second writer\n" % _GRACE_DEADLINE_S)
+            return False
         spawn_detached_daemon(db_path)
         for i in range(20):  # 10 seconds max
             time.sleep(0.5)
@@ -491,6 +564,20 @@ def recover_daemon(db_path: Optional[str] = None) -> bool:
         if _read_recovery_state().get("attempts"):
             _write_recovery_state(0.0, 0)  # healthy again — reset the streak
         return True
+
+    # Corpse test, not just liveness test. Unresponsive-but-just-bound is a
+    # daemon still warming up, and unresponsive-with-the-port-held-mid-teardown
+    # is a restart in flight — killing either was the double-kill of
+    # 2026-08-17/18 (a hook's recovery kickstarting into a deploy restart's
+    # boot window, SIGKILLing the healthy fresh daemon). A genuine corpse is
+    # unresponsive AND long past its bind (stale PID file). No attempt is
+    # stamped here — declining to kill a booting daemon is not a recovery
+    # attempt, and the next caller re-evaluates with a grown age.
+    age = pid_file_age_s()
+    if age is not None and age < _GRACE_DEADLINE_S:
+        return False  # bound seconds ago — booting/warming, give it its window
+    if age is None and port_is_occupied():
+        return False  # teardown/boot in motion — the successor is binding
 
     now = time.time()
     state = _read_recovery_state()

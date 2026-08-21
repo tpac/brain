@@ -21,7 +21,13 @@ class HealerEncoder(IntegrationUnit):
     ENCODING_SOURCE = 's2:healer'
 
     O_SOURCES = ['healer_proposals']
-    K_SOURCES = ['llm_healer']
+    K_SOURCES = ['llm_healer', 'journal_notes']
+
+    # Residue flows to journal_note trace rows via the journal binding on
+    # _call_llm (decorate → harvest), read back via continuity() — the note
+    # contract, same as the loop encoders. The synthesized journal_entry
+    # counter-string below is the TRACE record (what happened), orthogonal
+    # to residue (what the actions don't capture).
 
     def __init__(self, brain, dispatch_fn=None, config=None):
         super().__init__(brain, dispatch_fn)
@@ -74,6 +80,11 @@ class HealerEncoder(IntegrationUnit):
         tel_totals = read_usage(None)
         _t0 = time.time()
 
+        # Residue continuity — read ONCE before the loop (a per-batch read
+        # would echo batch 1's just-written notes into batch 2), prepended to
+        # every batch's content, mirroring the loop encoders.
+        journal_prefix = self.journal.continuity()
+
         batch_size = self.config['max_nodes_per_call']
         for batch_start in range(0, len(proposals), batch_size):
             batches += 1
@@ -84,8 +95,9 @@ class HealerEncoder(IntegrationUnit):
             by_full = {p['node_id']: p for p in batch}
             by_short = {p['node_id'][:8]: p for p in batch}
 
-            user_content = self._format_batch(batch)
-            result, call_tel = self._call_llm('s2_healer', user_content)
+            user_content = journal_prefix + self._format_batch(batch)
+            result, call_tel = self._call_llm('s2_healer', user_content,
+                                              journal=True)
             sum_usage(tel_totals, call_tel)
 
             if result is None:
@@ -108,6 +120,21 @@ class HealerEncoder(IntegrationUnit):
                     continue
 
                 proposal = by_full.get(nid) or by_short.get(nid[:8])
+                if proposal is None:
+                    # Out-of-batch healing: the journal continuity prefix
+                    # shows node ids from past runs, so the model can return
+                    # one — but without a proposal there are no needs_* flags
+                    # and the unsolicited-field guard cannot run. Ids in
+                    # continuity are context, never work orders. Drop loud.
+                    self.brain._log_error(
+                        'healer_out_of_batch_healing',
+                        Exception('healing for %s matches no proposal in '
+                                  'this batch — dropped' % nid[:8]),
+                        'model healed an id outside the batch (likely from '
+                        'the continuity prefix); no needs_* flags to guard '
+                        'against overwrites')
+                    skipped += 1
+                    continue
                 written, full_id = self._store_fields(nid, healing, proposal)
                 if written > 0:
                     nodes_healed += 1
@@ -315,10 +342,12 @@ class HealerEncoder(IntegrationUnit):
         every field-fill emits an attributed node_revised trace on the same
         chain as the healer_generated delta.
 
-        When `proposal` is provided, only fields flagged in the proposal's
-        needs_* set get written — Haiku-returned fields for slots that
-        already had content are rejected and logged. Prevents the renegade-
-        healer pattern (overwriting good data with freshly-generated text).
+        Only fields flagged in the proposal's needs_* set get written —
+        model-returned fields for slots that already had content are rejected
+        and logged. Prevents the renegade-healer pattern (overwriting good
+        data with freshly-generated text). A missing proposal rejects every
+        field — the caller drops out-of-batch healings before reaching here,
+        and this guard holds even if a new caller doesn't.
 
         Returns (count of fields written, full_id) — full_id lets the caller
         record the revised node in the delta's structured Δ. (0, None) on
@@ -330,8 +359,9 @@ class HealerEncoder(IntegrationUnit):
             value = enrichment.get(field, '').strip()
             if not (value and len(value) > 5):
                 continue
-            # Reject unsolicited fields — node already had this slot filled.
-            if proposal is not None and not proposal.get('needs_' + field, False):
+            # Reject unsolicited fields — node already had this slot filled
+            # (no proposal at all = nothing was solicited; reject everything).
+            if proposal is None or not proposal.get('needs_' + field, False):
                 self.brain._log_error(
                     'healer_unsolicited_field',
                     Exception('Haiku returned %s for %s but needs_%s=False' % (

@@ -18,6 +18,7 @@ from typing import Callable, List
 from ..clock import iso_window_around, utc_cutoff
 from ..db import brain_db_path, fetch_by_id, logs_db_path, ro_connect
 from ..log import warn
+from .journals import notes_by_chain
 
 
 # Mirror of servers/trace_contract.RESIDUE_REF_TYPES + EMITTER_REF_TYPES. The
@@ -98,6 +99,21 @@ def _query_s2_unit_runs(unit_keyword: str, hours: int, delta_columns: str,
                 return []
             delta_rows, ok_rows = _fetch_ok_deltas(
                 conn, unit_keyword, hours, delta_columns, ok_extra_columns)
+            # Journal notes for every chain in one pass, on the connection we
+            # already hold. Attached below the enricher loop so no unit's
+            # enricher has to know journals exist — every S2 unit gets the
+            # same residue shape S1E gets, from the one journal reader.
+            #
+            # Isolated in its own try: runs are the payload, residue is the
+            # garnish. Sharing the outer except meant one bad journal read
+            # returned [] for the WHOLE feed — the operator lost every run
+            # card because a sub-read failed.
+            try:
+                journal_by_chain = notes_by_chain(
+                    conn, [r[0] for r in delta_rows if r])
+            except Exception as e:
+                warn(component, '%s journal notes unavailable' % unit_keyword, exc=e)
+                journal_by_chain = {}
     except Exception as e:
         warn(component, '%s logs_db pull failed' % unit_keyword, exc=e)
         return []
@@ -138,7 +154,10 @@ def _query_s2_unit_runs(unit_keyword: str, hours: int, delta_columns: str,
                 return []
             for delta_row in delta_rows:
                 try:
-                    runs.append(enricher(bconn, delta_row, nearest_ok))
+                    run = enricher(bconn, delta_row, nearest_ok)
+                    run['journal_notes'] = journal_by_chain.get(
+                        run.get('chain_id', ''), [])
+                    runs.append(run)
                 except Exception as e:
                     # One delta failing shouldn't drop the whole feed.
                     warn(component, '%s enricher failed for chain %s' % (
@@ -227,11 +246,13 @@ def _enrich_consolidation(bconn, delta_row, nearest_ok) -> dict:
     chain_id, summary, meta_raw, created_at = delta_row
     ok_payload = nearest_ok(chain_id, created_at)
 
-    meta, journal = {}, ''
+    # `final_text` (the whole agent transcript) is deliberately NOT read here:
+    # the run's residue now comes from its parsed journal_note rows, attached
+    # centrally in _query_s2_unit_runs — same shape S1E shows.
+    meta = {}
     if meta_raw:
         try:
             meta = json.loads(meta_raw)
-            journal = meta.get('final_text', '')
         except (ValueError, TypeError) as e:
             # Loud-by-default: a corrupt delta payload silently fell back to the
             # ±60min window before. Surface it (stderr + Logs tab) and still
@@ -308,7 +329,6 @@ def _enrich_consolidation(bconn, delta_row, nearest_ok) -> dict:
         "summary": summary or '',
         "o_summary": ok_payload.get('O', {}).get('summary', ''),
         "k_summary": ok_payload.get('K', {}).get('summary', ''),
-        "journal": journal[:1000],
         "synthesized": synthesized,
         "archived": archived_nodes,
         "links": links,
@@ -399,6 +419,33 @@ def query_consolidation_runs(hours: int = 24):
     )
 
 
+# ── The O/K/Δ base run ──────────────────────────────────────────────────────
+# Every S2 unit's card is an O/K/Δ triple at minimum; only what the run
+# PRODUCED differs. This is that minimum, and it's the whole card for units
+# whose product is already in the summaries (aspect integration). Unit-specific
+# enrichers build on it rather than restating the five shared fields.
+
+def _base_run(delta_row, nearest_ok) -> dict:
+    """{chain_id, timestamp, summary, ref_type, o_summary, k_summary} from a
+    delta row whose first four columns are (chain_id, summary, metadata,
+    created_at) and whose optional fifth is ref_type."""
+    chain_id, summary, _meta_raw, created_at = delta_row[:4]
+    ok_payload = nearest_ok(chain_id, created_at)
+    return {
+        "chain_id": chain_id,
+        "timestamp": created_at,
+        "summary": summary or '',
+        "ref_type": (delta_row[4] or '') if len(delta_row) > 4 else '',
+        "o_summary": ok_payload.get('O', {}).get('summary', ''),
+        "k_summary": ok_payload.get('K', {}).get('summary', ''),
+    }
+
+
+def _enrich_ok_delta(bconn, delta_row, nearest_ok) -> dict:
+    """Enricher for units with no brain-side product to fetch."""
+    return _base_run(delta_row, nearest_ok)
+
+
 # ── Community enricher ──────────────────────────────────────────────────────
 # Community is a bit different: the community-node list is fetched ONCE
 # (not per-delta), so the enricher reads it from a closure rather than
@@ -406,23 +453,15 @@ def query_consolidation_runs(hours: int = 24):
 
 def _make_community_enricher(community_list):
     def _enrich(bconn, delta_row, nearest_ok):
-        chain_id, summary, _meta_raw, created_at, ref_type = delta_row
-        ok_payload = nearest_ok(chain_id, created_at)
+        run = _base_run(delta_row, nearest_ok)
         # `created_count` mirrors what query_community_runs reported before:
         # count of `community_created` deltas in the same chain. We don't
         # have the full delta_rows here, so 1 if THIS row was the trigger,
         # otherwise 0. The UI uses .length on `communities` for the real
         # count — this field is just a hint.
-        created_count = 1 if ref_type == 'community_created' else 0
-        return {
-            "chain_id": chain_id,
-            "timestamp": created_at,
-            "summary": summary or '',
-            "o_summary": ok_payload.get('O', {}).get('summary', ''),
-            "k_summary": ok_payload.get('K', {}).get('summary', ''),
-            "created_count": created_count,
-            "communities": community_list[:15],
-        }
+        run["created_count"] = 1 if run["ref_type"] == 'community_created' else 0
+        run["communities"] = community_list[:15]
+        return run
     return _enrich
 
 
@@ -493,6 +532,23 @@ def query_community_runs(hours: int = 24):
     return deduped
 
 
+def query_aspect_runs(hours: int = 24):
+    """S2 aspect-integration runs — the fourth unit, previously invisible.
+
+    Its product (candidate type/relation strings merged into aspects_v1.json)
+    is already stated in its O/K/Δ summaries, so the base O/K/Δ run IS the
+    whole card. Journal notes attach centrally like every other unit — which
+    is the reason this query exists: the unit was writing residue nobody could
+    read. The taxonomy itself stays on the Health tab (queries.aspects); this
+    is the per-run activity view.
+    """
+    return _query_s2_unit_runs(
+        'aspect_integration', hours,
+        delta_columns='chain_id, summary, metadata, created_at, ref_type',
+        enricher=_enrich_ok_delta,
+    )
+
+
 # ── Healer (different shape: logs-only, single forward pass) ────────────────
 
 def query_healer_runs(hours: int = 24, limit: int = 30):
@@ -506,6 +562,7 @@ def query_healer_runs(hours: int = 24, limit: int = 30):
     would distort it.
     """
     rows = []
+    journal_by_chain: dict = {}
     try:
         with ro_connect(logs_db_path()) as conn:
             if conn is None:
@@ -516,6 +573,13 @@ def query_healer_runs(hours: int = 24, limit: int = 30):
                 "AND created_at > ? ORDER BY created_at ASC",
                 (utc_cutoff(hours=hours),),
             ).fetchall()
+            # Isolated like the shared skeleton's — a journal failure must not
+            # cost the operator the healer feed.
+            try:
+                journal_by_chain = notes_by_chain(conn, {r[0] for r in rows})
+            except Exception as e:
+                warn('queries.s2_runs', 'healer journal notes unavailable', exc=e)
+                journal_by_chain = {}
     except Exception as e:
         warn('queries.s2_runs', 'healer pull failed', exc=e)
         return []
@@ -555,6 +619,7 @@ def query_healer_runs(hours: int = 24, limit: int = 30):
                 'o_ref_type': o[0],
                 'k_summary': k[1],
                 'k_ref_type': k[0],
+                'journal_notes': journal_by_chain.get(chain_id, []),
             })
 
     # Newest first — matches the consolidation/community convention.

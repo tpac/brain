@@ -106,11 +106,13 @@ def _code_fingerprint() -> str:
 # Captured at import time — represents the code version this process loaded
 _CODE_FINGERPRINT = _code_fingerprint()
 
-# Wall-clock at import — the daemon's PROCESS start (this module is imported
-# while daemon_server loads, before the brain does). Uptime is reported from
-# here, not from BrainDaemon._run_started_at: that one resets on every
-# supervisor restart *within* one process, so an operator would see "Uptime"
-# drop to zero for a daemon whose process never died.
+# Wall-clock at import — when the daemon's CODE IMAGE loaded (this module is
+# imported while daemon_server loads, before the brain does). Not from
+# BrainDaemon._run_started_at, which resets on every supervisor retry within
+# one image. Note: an in-place reload (BrainDaemon._exec_reload) re-imports
+# this module in the same PID, so "uptime" measures the age of the loaded
+# code, not of the OS process — the more useful reading now that the PID
+# survives deploys.
 _PROCESS_STARTED_AT = time.time()
 
 
@@ -293,6 +295,20 @@ def get_pid_path() -> str:
 def get_lock_path() -> str:
     """Get the daemon lock file path for startup serialization."""
     return os.path.join("/tmp", "brain-daemon-{}.lock".format(os.getuid()))
+
+
+def get_startup_lock_path() -> str:
+    """The RESTARTER coordination lock — serializes concurrent ensure_daemon
+    callers so N session boots (re)start at most once.
+
+    Deliberately a DIFFERENT file from get_lock_path(): that flock is the
+    daemon's singleton identity, held for its entire serving life. When
+    ensure_daemon used the same inode (pre-2026-08-19), acquiring it while a
+    healthy daemon served blocked forever (hanging the boot hook — the
+    stale-code branch was dead code in production), and holding it through a
+    (re)start made every respawn exit as a duplicate. One inode cannot answer
+    both "who is the one daemon" and "who is the one restarter"."""
+    return os.path.join("/tmp", "brain-startup-{}.lock".format(os.getuid()))
 
 
 def get_status_path() -> str:

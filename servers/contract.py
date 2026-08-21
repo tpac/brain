@@ -39,6 +39,31 @@ To add a new field:
 # with NO prose support (eval/mcp_variants/probe_v1_oneof_prefix.*); see
 # eval/mcp_batch_probe.py. Dict order = probed branch order — keep it.
 
+# Shared schema for revise's patch-mode content field — one source for the
+# revise/revise_batch tool schemas AND brain_batch's revise branch; two
+# hand-maintained copies of a wire contract drift.
+CONTENT_EDITS_SCHEMA = {
+    "type": "array",
+    "description": (
+        "Surgical content patches, applied in order: each item replaces ONE "
+        "exact occurrence of `old` with `new` in the stored content. `old` is "
+        "copied VERBATIM from the node's current content and must match "
+        "exactly once — a missing or ambiguous match fails this op loudly "
+        "with guidance. This is how a falsified claim gets fixed without "
+        "re-authoring — and risking — everything else the node holds. "
+        "Mutually exclusive with `content` (a full rewrite is for "
+        "restructures)."),
+    "items": {
+        "type": "object",
+        "required": ["old", "new"],
+        "properties": {
+            "old": {"type": "string", "description":
+                    "Exact, unique substring of the current content"},
+            "new": {"type": "string", "description": "Replacement text"},
+        },
+    },
+}
+
 # Shared item schema for connect_to entries — one source for the
 # remember/remember_batch schemas AND brain_batch's remember branch
 # (BATCH_OP_SPECS below). Carries the {title, relation, why} shape and
@@ -128,7 +153,12 @@ BATCH_OP_SPECS = {
     "revise": {
         "required": ["node_id", "reason"],
         "description": ("Update node fields. Any other key is a field update "
-                        "(content, situation, reasoning, ...)."),
+                        "(content, situation, reasoning, ...) — specified "
+                        "fields are REPLACED. For content, prefer "
+                        "`content_edits` when fixing specific claims: "
+                        "surgical patches that leave the rest of the content "
+                        "untouched. A full `content` rewrite is for "
+                        "restructures; the two are mutually exclusive."),
         "properties": {
             "node_id": {"type": "string", "description": "Node to revise"},
             "reason": {"type": "string", "description":
@@ -136,6 +166,7 @@ BATCH_OP_SPECS = {
                        "events, NOT stored on the node. Distinct from the "
                        "node FIELD `reasoning`, which a revise op updates "
                        "like any other field."},
+            "content_edits": CONTENT_EDITS_SCHEMA,
         },
     },
     "connect": {

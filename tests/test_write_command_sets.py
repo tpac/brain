@@ -11,7 +11,8 @@ Layer 5.)
 """
 
 from servers.scales.dispatch import (
-    WRITE_COMMANDS, NON_ATTRIBUTED_WRITES, ATTRIBUTED_WRITE_COMMANDS)
+    WRITE_COMMANDS, NON_ATTRIBUTED_WRITES, ATTRIBUTED_WRITE_COMMANDS,
+    OPERATOR_ONLY_COMMANDS)
 
 
 def test_attributed_is_derived_from_write_commands():
@@ -27,3 +28,13 @@ def test_non_attributed_are_the_structural_writes():
     # are explicitly excluded from attribution.
     assert NON_ATTRIBUTED_WRITES == {'enrich', 'trace_append', 'set_config'}
     assert not (NON_ATTRIBUTED_WRITES & ATTRIBUTED_WRITE_COMMANDS)
+
+
+def test_operator_only_commands_are_registered_and_disjoint():
+    # Operator-only commands must exist in the daemon registry (or the closure
+    # refusal guards a phantom) and must never appear in the scale write
+    # classification — a command in both would be attributed as an encoder
+    # write while the closure refuses it.
+    from servers.daemon_dispatch import COMMAND_TABLE
+    assert OPERATOR_ONLY_COMMANDS <= set(COMMAND_TABLE)
+    assert not (OPERATOR_ONLY_COMMANDS & WRITE_COMMANDS)

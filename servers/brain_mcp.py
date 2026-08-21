@@ -267,7 +267,7 @@ _BRAIN_BATCH_DESCRIPTION = (
 
 def _generate_revise_schema():
     """Generate the 'revise' MCP tool schema from the contract."""
-    from servers.contract import get_writable_fields
+    from servers.contract import CONTENT_EDITS_SCHEMA, get_writable_fields
 
     TYPE_MAP = {"str": "string", "float": "number", "bool": "boolean", "int": "integer"}
 
@@ -278,6 +278,8 @@ def _generate_revise_schema():
             "NOT stored on the node. Required. Distinct from the node FIELD "
             "`reasoning` (why the node was encoded); to update that field, "
             "pass `reasoning` as well.")},
+        # single-sourced from the contract — see CONTENT_EDITS_SCHEMA
+        "content_edits": CONTENT_EDITS_SCHEMA,
     }
     for name, spec in get_writable_fields().items():
         prop = {"type": TYPE_MAP.get(spec.get("type", "str"), "string")}
@@ -294,7 +296,13 @@ def _generate_revise_schema():
         "description": (
             "Update fields on an existing brain node. Specified fields are "
             "REPLACED with the passed value; unspecified fields are PRESERVED "
-            "(only the keys you pass are touched). Immutable fields "
+            "(only the keys you pass are touched). For content there is a "
+            "patch form — `content_edits: [{old, new}, ...]` — that fixes "
+            "specific claims in place and leaves the rest of the content "
+            "untouched; prefer it over a full `content` rewrite whenever the "
+            "change is a correction rather than a restructure (a rewrite "
+            "must re-author everything the node holds, and dropped details "
+            "are silent losses). Immutable fields "
             "({id, created_at, locked}) are skipped with a warning — call "
             "still succeeds for the other fields. Revision history lives in "
             "trace events — query via `query_traces` with "
@@ -335,7 +343,7 @@ def _build_revise_batch_schema():
     item_properties["source_refs"] = _SOURCE_REFS_SCHEMA
     return {
         "name": "revise_batch",
-        "description": "Revise multiple brain nodes in one call. Same per-field replace contract as `revise()` — specified fields are REPLACED, unspecified fields are PRESERVED. Immutable fields ({id, created_at, locked}) skipped with warning. Each row emits its own trace event for revision history (queryable via `query_traces` with ref_type='node_revised'). Use this instead of multiple `revise` calls.",
+        "description": "Revise multiple brain nodes in one call. Same contract as `revise()` — specified fields are REPLACED, unspecified fields are PRESERVED, and `content_edits: [{old, new}, ...]` patches specific claims in the stored content without re-authoring the rest (prefer it for corrections; mutually exclusive with `content`). Immutable fields ({id, created_at, locked}) skipped with warning. Each row emits its own trace event for revision history (queryable via `query_traces` with ref_type='node_revised'). Use this instead of multiple `revise` calls.",
         "inputSchema": {
             "type": "object",
             "required": ["revisions"],
@@ -552,6 +560,26 @@ def _build_tools():
              "items": _build_brain_batch_op_items()}}}},
     _generate_revise_schema(),
     _build_revise_batch_schema(),
+    {"name": "set_node_lock",
+     "description": (
+         "Lock or unlock an EXISTING node — the one door for lock flips "
+         "(revise() treats `locked` as immutable; that contract is unchanged). "
+         "Two-phase HUMAN confirmation: the first call executes nothing and "
+         "returns a one-shot confirm_token plus a summary. You MUST relay that "
+         "summary to the human speaker and get their explicit yes IN THE "
+         "CONVERSATION before re-calling with the token — never supply the "
+         "token without a human yes; if they decline, drop it (tokens expire "
+         "in 10 minutes). Guards: an archived node cannot be locked; already "
+         "in the requested state is a no-op (no confirmation needed). Every "
+         "flip is trace-logged with before/after and the request→confirm gap."),
+     "inputSchema": {"type": "object", "required": ["node_id", "locked", "reason"],
+         "properties": {
+             "node_id": {"type": "string", "description": "Node to lock/unlock."},
+             "locked": {"type": "boolean", "description": "true = lock, false = unlock."},
+             "reason": {"type": "string", "description": "Why — recorded in the trace event."},
+             "confirm_token": {"type": "string",
+                               "description": "One-shot token from the first call. Pass ONLY "
+                                              "after the human speaker explicitly confirmed."}}}},
     {"name": "enrich",
      "description": "Store V5 enrichment vectors for a node (after filling in the enrichment_prompt from remember()). Pass the generated question, anchor phrase, bridge sentence, and/or keywords. Each is embedded and stored for improved recall.",
      "inputSchema": {"type": "object", "required": ["node_id"], "properties": {
@@ -737,7 +765,7 @@ def _build_tools():
 
     # ── Daemon control ──
     {"name": "restart",
-     "description": "Restart the brain daemon with fresh code. Saves the brain, clears bytecode cache, then exits cleanly so launchd relaunches a fresh instance (or, where launchd isn't managing it, spawns one directly). Use after code changes during development.",
+     "description": "Reload the brain daemon with fresh code, in place: saves the brain, tears down cleanly, then execs hooks/scripts/brain-daemon into the SAME process (same PID, ~2-4s, env and DB location re-resolved; launchd never notices). If the exec fails it exits loudly and launchd/ensure_daemon respawns — the old exit-and-relaunch behavior. Use after code changes during development.",
      "inputSchema": {"type": "object", "properties": {}}},
 
     # ── Escape hatch ──
@@ -786,10 +814,16 @@ TOOLS = _build_tools()
 CRITICAL_TOOLS = frozenset({
     "recall",             # primary semantic read path
     "remember",           # primary write path
-    "get_node",           # exact-id pull
-    "find_node_by_title", # fuzzy-title pull
+    "get_nodes",          # exact-id pulls (single or batch)
+    "recall_episodes",    # episodic read — "what actually happened"
+    "revise",             # in-the-moment correction of a stale memory
     "filter_nodes",       # structured / bulk lookups recall can't do
     "brain_batch",        # mixed-op write (remember + revise + connect + archive)
+    "self_presence",      # the self-channel: who's live
+    "self_peek",          # look at a stream
+    "self_send",          # speak to a stream
+    "self_inbox",         # drain own messages
+    "self_outbox",        # track delivery
 })
 
 

@@ -125,20 +125,21 @@ class TestBrainVoiceRenderBoot(BrainTestBase):
         self.assertIn('for_claude', result)
         self.assertIn('for_operator', result)
 
-    def test_render_boot_contains_brain_tags(self):
+    def test_render_boot_has_no_brain_tags(self):
         voice = BrainVoice(self.brain)
         result = voice.render_boot()
         text = result['for_claude']
-        # Contract evolved (operator-directed): the SKILL.md stance is injected
-        # FIRST, so boot opens with the stance and the [BRAIN] block follows.
+        # Contract evolved (operator-directed, 2026-08-19): the [BRAIN]
+        # envelope is gone from boot. The SKILL.md stance is injected FIRST,
+        # the state block follows bare.
         self.assertTrue(text.startswith(voice._load_stance()),
-                        "boot must open with the SKILL.md stance, not [BRAIN]")
-        self.assertIn("[BRAIN]", text)
-        self.assertIn("[/BRAIN]", text)
+                        "boot must open with the SKILL.md stance")
+        self.assertNotIn("[BRAIN]", text)
+        self.assertNotIn("[/BRAIN]", text)
 
     def test_render_boot_keyless_daemon_states_llm_paused(self):
         """The banner carries the DAEMON's LLM state: a keyless daemon must
-        say so inside [BRAIN] (first laptop install: hook resolved a
+        say so in the boot output (first laptop install: hook resolved a
         userConfig key the launchd daemon never saw — boot looked healthy
         while the daemon was keyless). Keyed daemons show no such line."""
         from unittest.mock import patch, PropertyMock
@@ -151,35 +152,38 @@ class TestBrainVoiceRenderBoot(BrainTestBase):
                           new_callable=PropertyMock, return_value=False):
             keyless = voice.render_boot()['for_claude']
         self.assertIn("LLM layer: PAUSED", keyless)
-        # The line lives inside the [BRAIN] envelope.
-        self.assertLess(keyless.index("[BRAIN]"),
-                        keyless.index("LLM layer: PAUSED"))
-        self.assertLess(keyless.index("LLM layer: PAUSED"),
-                        keyless.index("[/BRAIN]"))
 
     def test_wrapper_delegates_to_render_boot(self):
         """format_boot_context() produces structurally valid boot output."""
         wrapper = self.brain.format_boot_context(user="Tom", project="test", db_dir="/test")
-        # Core structural elements
-        self.assertIn("[BRAIN]", wrapper)
-        self.assertIn("[/BRAIN]", wrapper)
-        self.assertIn("Anchor", wrapper)
-        # Identity line — new boot opens with "Anchor. The brain is yours"
-        self.assertIn("The brain is yours", wrapper)
-        # Stats line includes memory count
+        # Identity line — "I'm {name} and I have N memories, N locked."
+        # (name-less form when BRAIN_AGENT_NAME is unset)
+        self.assertIn("I have", wrapper)
         self.assertIn("memories", wrapper)
+        self.assertIn("locked", wrapper)
 
     def test_render_boot_structure(self):
-        """Boot v2 output has brain tags and identity line."""
+        """Boot v2 output has the first-person identity line, no envelope."""
         voice = BrainVoice(self.brain)
         result = voice.render_boot()
         text = result['for_claude']
-        self.assertIn("[BRAIN]", text)
-        self.assertIn("[/BRAIN]", text)
-        # New boot opens with identity line instead of "Welcome back, Anchor"
-        self.assertIn("Anchor. The brain is yours", text)
+        self.assertNotIn("[BRAIN]", text)
+        # Identity line — first person, name-aware
+        self.assertIn("I have", text)
         # Stats embedded in the identity line
         self.assertIn("memories", text)
+
+    def test_render_boot_identity_line_uses_agent_name(self):
+        """BRAIN_AGENT_NAME fills the identity line; unset → name-less form."""
+        from unittest.mock import patch
+        voice = BrainVoice(self.brain)
+        with patch.dict(os.environ, {"BRAIN_AGENT_NAME": "Anchor"}):
+            text = voice.render_boot()['for_claude']
+        self.assertIn("I'm Anchor and I have", text)
+        with patch.dict(os.environ, {"BRAIN_AGENT_NAME": ""}):
+            text = voice.render_boot()['for_claude']
+        self.assertNotIn("I'm ", text.split("\n\n")[-1])
+        self.assertIn("I have", text)
 
     def test_render_boot_operator_has_summary(self):
         """Phase 4: Operator channel includes boot summary with priority tags."""
@@ -192,8 +196,8 @@ class TestBrainVoiceRenderBoot(BrainTestBase):
         self.assertIn("@priority:", result['for_operator'])
         self.assertIn("nodes", result['for_operator'])
 
-    def test_render_boot_v2_stance_first_outside_brain_tags(self):
-        """The SKILL.md stance is injected FIRST, before/outside [BRAIN]."""
+    def test_render_boot_v2_stance_first(self):
+        """The SKILL.md stance is injected FIRST, before the state block."""
         voice = BrainVoice(self.brain)
         stance = voice._load_stance()
         self.assertTrue(stance, "stance should load from skills/brain/SKILL.md")
@@ -203,12 +207,11 @@ class TestBrainVoiceRenderBoot(BrainTestBase):
             session_id="stance-order-check")
         text = result['for_claude']
 
-        self.assertIn("[BRAIN]", text)
-        # Boot opens with the stance, not the [BRAIN] envelope
+        # Boot opens with the stance, the state block follows
         self.assertTrue(text.startswith(stance),
                         "boot must open with the identity stance")
-        self.assertLess(text.find(stance), text.find("[BRAIN]"),
-                        "stance must sit outside/before the [BRAIN] block")
+        self.assertLess(text.find(stance), text.find("memories"),
+                        "stance must sit before the state block")
 
 
 

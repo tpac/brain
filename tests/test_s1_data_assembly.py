@@ -548,3 +548,265 @@ class TestSaveSessionContext:
                      if cmd == 'set_config' and args.get('key') == key]
         assert len(ctx_calls) == 1
         assert 'lowercase prefix works too.' in ctx_calls[0][1]['value']
+
+
+class _StubRecallBrain:
+    """Minimal brain for _associated_stub_ids: canned episodes + recorded
+    recalls. No trace DAL — the test passes empty streams so _turn_links
+    joins nothing (every turn reads unencoded, the probe's convention)."""
+
+    def __init__(self, episodes, results_by_query):
+        self._episodes = episodes
+        self._results = results_by_query
+        self.recall_calls = []
+
+    def recall_episodes(self, **kw):
+        return {'episodes': list(self._episodes)}
+
+    def recall(self, query, **kw):
+        self.recall_calls.append((query, kw))
+        return {'results': list(self._results.get(query, []))}
+
+
+def _ep(eid, ref_type, content, created_at):
+    return {'id': eid, 'ref_type': ref_type, 'chain_id': 's0-testsess-1',
+            'created_at': created_at, 'summary': content[:200],
+            'metadata': {'content': content}}
+
+
+_EMPTY_STREAMS = {'surface': [], 'encode': [], 'touched': []}
+_DATED_MSGS = [
+    {'role': 'user', 'content': 'alpha question'},
+    {'role': 'user', 'content': 'beta question'},
+]
+
+
+class TestAssociatedStubIds:
+    """_associated_stub_ids — the subconscious retrieval (turnmax over
+    per-message production recall, catalog excluded)."""
+
+    def _episodes(self):
+        return [
+            _ep('u1', 'user_message', 'alpha question', '2026-08-21T10:00:00+00:00'),
+            _ep('a1', 'assistant_message', 'alpha answer', '2026-08-21T10:01:00+00:00'),
+            _ep('u2', 'user_message', 'beta question', '2026-08-21T10:02:00+00:00'),
+        ]
+
+    def test_turnmax_exclusion_and_ordering(self):
+        from servers.scales.s1.encode import _associated_stub_ids
+        brain = _StubRecallBrain(self._episodes(), {
+            'alpha question': [
+                {'id': 'aaaa1111', 'type': 'finding', 'effective_activation': 0.9},
+                {'id': 'cata0001', 'type': 'rule', 'effective_activation': 0.95},
+            ],
+            # same node again, lower score — turnmax keeps 0.9, never sums
+            'alpha answer': [
+                {'id': 'aaaa1111', 'type': 'finding', 'effective_activation': 0.5},
+            ],
+            'beta question': [
+                {'id': 'bbbb2222', 'type': 'lesson', 'effective_activation': 0.7},
+            ],
+        })
+        out = _associated_stub_ids(brain, _DATED_MSGS, 'testsess',
+                                   {'cata0001'}, streams=_EMPTY_STREAMS)
+        # catalog id filtered; rank order by best single match
+        assert out == ['aaaa1111', 'bbbb2222']
+        # both voices of both turns seeded
+        assert [q for q, _kw in brain.recall_calls] == [
+            'alpha question', 'alpha answer', 'beta question']
+        for _q, kw in brain.recall_calls:
+            # pure read
+            assert kw['mark_accessed'] is False
+            assert kw['session_id'] == 'testsess'
+            # NO as_of, deliberately — every candidate value breaks a
+            # verified case (operator-TZ skew live, empty universe in
+            # replays, laf_v1 coupling); see the function docstring
+            assert kw.get('as_of') is None
+
+    def test_seed_cap_keeps_newest(self):
+        from servers.scales.s1.encode import _associated_stub_ids
+        from servers.scales.s1.encoder_view import ASSOCIATED_SEED_CAP
+        # more distinct user turns than the cap — each its own seed text
+        n = ASSOCIATED_SEED_CAP + 5
+        eps = [_ep('u%d' % i, 'user_message', 'question number %d' % i,
+                   '2026-08-21T10:%02d:00+00:00' % i) for i in range(n)]
+        brain = _StubRecallBrain(eps, {})
+        msgs = [{'role': 'user', 'content': '[Current date: 2026-08-21] q'}] * n
+        _associated_stub_ids(brain, msgs, 'testsess', {'x'},
+                             streams=_EMPTY_STREAMS)
+        queries = [q for q, _kw in brain.recall_calls]
+        assert len(queries) == ASSOCIATED_SEED_CAP
+        # the NEWEST seeds survive the cap (tail turns are the working material)
+        assert queries[-1] == 'question number %d' % (n - 1)
+        assert queries[0] == 'question number %d' % (n - ASSOCIATED_SEED_CAP)
+
+    def test_duplicate_seeds_recalled_once(self):
+        from servers.scales.s1.encode import _associated_stub_ids
+        eps = [_ep('u%d' % i, 'user_message', 'ok',
+                   '2026-08-21T10:%02d:00+00:00' % i) for i in range(3)]
+        brain = _StubRecallBrain(eps, {})
+        msgs = [{'role': 'user', 'content': 'ok'}] * 3
+        _associated_stub_ids(brain, msgs, 'testsess', {'x'},
+                             streams=_EMPTY_STREAMS)
+        assert [q for q, _kw in brain.recall_calls] == ['ok']
+
+    def test_k_cap(self):
+        from servers.scales.s1.encode import _associated_stub_ids
+        from servers.scales.s1.encoder_view import ASSOCIATED_STUBS_K
+        hits = [{'id': 'node%04d' % i, 'type': 'fact',
+                 'effective_activation': 1.0 - i * 0.01} for i in range(9)]
+        brain = _StubRecallBrain(self._episodes(), {'alpha question': hits})
+        out = _associated_stub_ids(brain, _DATED_MSGS, 'testsess',
+                                   {'unrelated'}, streams=_EMPTY_STREAMS)
+        assert len(out) == ASSOCIATED_STUBS_K
+        assert out == ['node%04d' % i for i in range(ASSOCIATED_STUBS_K)]
+
+    def test_covered_turns_not_seeded(self, monkeypatch):
+        from servers.scales.s1 import encode
+        brain = _StubRecallBrain(self._episodes(), {
+            'beta question': [
+                {'id': 'bbbb2222', 'type': 'lesson', 'effective_activation': 0.7}],
+        })
+        # turn 1 (u1) already encoded by a prior run; turn 2 (u2) is not
+        monkeypatch.setattr(encode, '_turn_links', lambda *a, **kw: (
+            {'u1': {'surfaced': [], 'encoded': [], 'encoded_by': 'run-1'},
+             'u2': {'surfaced': [], 'encoded': [], 'encoded_by': None}}, {}))
+        out = encode._associated_stub_ids(brain, _DATED_MSGS, 'testsess',
+                                          {'unrelated'}, streams=_EMPTY_STREAMS)
+        assert [q for q, _kw in brain.recall_calls] == ['beta question']
+        assert out == ['bbbb2222']
+
+    def test_no_seeds_returns_empty_without_recall(self):
+        from servers.scales.s1.encode import _associated_stub_ids
+        brain = _StubRecallBrain([], {})
+        out = _associated_stub_ids(brain, _DATED_MSGS, 'testsess',
+                                   {'x'}, streams=_EMPTY_STREAMS)
+        assert out == []
+        assert brain.recall_calls == []
+
+
+class TestAssociatedStubsRender:
+    """build_node_catalog's associated_ids arm + the _build_catalog gate."""
+
+    NODE_A = 'aa11bb22'
+    NODE_B = 'cc33dd44'
+    NODE_C = 'ee55ff66'
+
+    @pytest.fixture(autouse=True)
+    def setup_brain(self):
+        with IsolatedBrain() as env:
+            self.brain = env.brain
+            self.conn = env.brain.conn
+            _insert_hex_node(self.conn, self.NODE_A, 'rule', 'Surfaced rule',
+                             'This rule was surfaced.')
+            _insert_hex_node(self.conn, self.NODE_B, 'lesson', 'Associated lesson',
+                             'Recall ranked this near the window.')
+            _insert_hex_node(self.conn, self.NODE_C, 'finding', 'Associated finding',
+                             'Second subconscious entry.')
+            yield
+
+    def _judge(self):
+        return '[rule] "Surfaced rule" (id:%s, conf:0.9)' % self.NODE_A
+
+    def test_associated_render_last_tagged_and_in_ids(self):
+        from servers.scales.s1.encode_contract import ASSOCIATED_TAG, build_node_catalog
+        text, ids = build_node_catalog(
+            [self._judge()], self.brain, extra_ids={},
+            associated_ids=[self.NODE_B, self.NODE_C])
+        assert {self.NODE_A, self.NODE_B, self.NODE_C} <= ids
+        assert ASSOCIATED_TAG in text
+        # stubs are the catalog's LAST entries, rank order preserved
+        assert text.index('Surfaced rule') < text.index('Associated lesson')
+        assert text.index('Associated lesson') < text.index('Associated finding')
+        assert text.splitlines()[0] == 'Node Catalog (3 nodes)'
+        # tag sits on the stub entries only
+        for line in text.splitlines():
+            if line.startswith(ASSOCIATED_TAG):
+                assert 'Associated' in line
+            if 'Surfaced rule' in line:
+                assert ASSOCIATED_TAG not in line
+
+    def test_associated_none_and_empty_byte_identical(self):
+        from servers.scales.s1.encode_contract import build_node_catalog
+        base_text, base_ids = build_node_catalog(
+            [self._judge()], self.brain, extra_ids={})
+        for assoc in (None, []):
+            text, ids = build_node_catalog(
+                [self._judge()], self.brain, extra_ids={}, associated_ids=assoc)
+            assert text == base_text
+            assert ids == base_ids
+
+    def test_associated_community_never_renders(self):
+        # the render is the chokepoint for 'S1E never gets community bodies' —
+        # it must hold for ANY caller of build_node_catalog, not just the
+        # production retrieval (whose recall already type-excludes them)
+        from servers.scales.s1.encode_contract import ASSOCIATED_TAG, build_node_catalog
+        comm_id = 'dd77ee88'
+        _insert_hex_node(self.conn, comm_id, 'community', 'A community',
+                         'Community body that must never render.')
+        text, ids = build_node_catalog(
+            [self._judge()], self.brain, extra_ids={},
+            associated_ids=[comm_id, self.NODE_B])
+        assert comm_id not in ids
+        assert 'A community' not in text
+        assert self.NODE_B in ids
+        # header counts only what can render (1 surfaced + 1 stub)
+        assert text.splitlines()[0] == 'Node Catalog (2 nodes)'
+        assert ASSOCIATED_TAG in text
+
+    def test_associated_dupe_of_catalog_dropped(self):
+        from servers.scales.s1.encode_contract import ASSOCIATED_TAG, build_node_catalog
+        text, ids = build_node_catalog(
+            [self._judge()], self.brain, extra_ids={},
+            associated_ids=[self.NODE_A])
+        # already cataloged: renders once, untagged, not double-counted —
+        # and with no stub actually rendering, the surfaced-only header stands
+        assert text.count('Surfaced rule') == 1
+        assert ASSOCIATED_TAG not in text
+        assert text.splitlines()[0] == 'Node Catalog (1 nodes surfaced this session)'
+
+    def test_build_catalog_gate_flag_off_no_retrieval(self, monkeypatch):
+        from servers.scales.s1 import encode
+        monkeypatch.delenv('BRAIN_S1E_ASSOCIATED_STUBS', raising=False)
+        monkeypatch.setattr(encode, '_associated_stub_ids',
+                            lambda *a, **kw: pytest.fail('retrieval ran with flag off'))
+        messages = [{'role': 'user', 'content': 'hi', 'judge_output': self._judge()}]
+        text, ids, _streams = encode._build_catalog(
+            self.brain, messages, 'assoc-gate-off', lived=True)
+        assert self.NODE_A in ids
+
+    def test_build_catalog_gate_flag_on_renders_stubs(self, monkeypatch):
+        from servers.scales.s1 import encode
+        from servers.scales.s1.encode_contract import ASSOCIATED_TAG
+        monkeypatch.setenv('BRAIN_S1E_ASSOCIATED_STUBS', '1')
+        seen = {}
+
+        def fake_retrieval(brain, messages, session_id, exclude_ids,
+                           streams=None, turns=None):
+            seen['exclude'] = set(exclude_ids)
+            return [self.NODE_B]
+
+        monkeypatch.setattr(encode, '_associated_stub_ids', fake_retrieval)
+        messages = [{'role': 'user', 'content': 'hi', 'judge_output': self._judge()}]
+        text, ids, _streams = encode._build_catalog(
+            self.brain, messages, 'assoc-gate-on', lived=True)
+        # exclusion set is exactly what the catalog will show
+        assert self.NODE_A in seen['exclude']
+        assert ASSOCIATED_TAG in text
+        assert self.NODE_B in ids
+
+    def test_build_catalog_retrieval_failure_degrades_loud(self, monkeypatch):
+        from servers.scales.s1 import encode
+        monkeypatch.setenv('BRAIN_S1E_ASSOCIATED_STUBS', '1')
+
+        def boom(*a, **kw):
+            raise RuntimeError('recall exploded')
+
+        monkeypatch.setattr(encode, '_associated_stub_ids', boom)
+        messages = [{'role': 'user', 'content': 'hi', 'judge_output': self._judge()}]
+        text, ids, _streams = encode._build_catalog(
+            self.brain, messages, 'assoc-gate-err', lived=True)
+        # catalog still renders, stubs absent
+        assert self.NODE_A in ids
+        from servers.scales.s1.encode_contract import ASSOCIATED_TAG
+        assert ASSOCIATED_TAG not in text

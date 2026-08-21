@@ -19,6 +19,7 @@
 // ===========================================================================
 
 import { escapeHtml, relativeTime } from '/static/lib/dom.js';
+import { sessionLabel, sessionColor, sessionTooltip } from '/static/lib/sessions.js';
 
 const _LIVE = {
   active:  { dot: 'active',  label: 'active',  color: '#33d17a' },
@@ -30,15 +31,11 @@ const _ARC_CLAMP = 150;
 
 function _shortCwd(cwd) { return (cwd || '').replace(/^\/Users\/[^/]+/, '~'); }
 function _dur(iso) { const r = relativeTime(iso); return r ? r.replace(/\s*ago$/, '') : ''; }
-function _fullBranch(s) { return (s.branch && s.branch !== 'unknown') ? s.branch : ''; }
-// Display handle = the worktree name. Worktree branches are `claude/<name>`;
-// the `claude/` namespace is shared by every stream, so drop it and lead with
-// the distinctive tail (the full branch stays in the title tooltip).
-function _handle(s) {
-  const b = _fullBranch(s);
-  if (b) return b.includes('/') ? b.slice(b.indexOf('/') + 1) : b;
-  return s.short || (s.session_id || '').slice(0, 8);
-}
+// Handle + hue + hover all come from the session registry (lib/sessions.js) —
+// the same resolution the stream rail and every moment chip use, so one stream
+// reads as one identity wherever it appears. This module used to derive the
+// handle itself; two derivations meant two chances to drift.
+function _handle(s) { return sessionLabel(s.session_id || '') || s.short || ''; }
 // Transient = a freshly-spawned agent/shell with nothing to show. An active
 // stream, or one with a focus/arc, is real even before its turn_count is
 // stamped — don't demote it to the dim row.
@@ -98,12 +95,16 @@ function _pane(s, open, boots, messages) {
   const sid = escapeHtml(s.session_id || '');
   const handle = escapeHtml(_handle(s));
 
-  let h = '<div class="stream-pane ' + (s.state === 'active' ? 'is-active ' : '') + (open ? 'is-open' : '') + '" data-sid="' + sid + '">';
+  // The stream's hue — the same one its moments carry in the Live feed and
+  // its activation carries in the graph, so a stream is one color everywhere.
+  const hue = sessionColor(s.session_id || '');
+  let h = '<div class="stream-pane ' + (s.state === 'active' ? 'is-active ' : '') + (open ? 'is-open' : '')
+    + '" data-sid="' + sid + '" style="--stream-color:' + hue + '">';
 
   // title bar (the click target for drill-down)
   h += '<div class="stream-titlebar" data-stream-toggle="' + sid + '">'
     + '<span class="live-light ' + live.dot + '"></span>'
-    + '<span class="stream-handle" title="' + escapeHtml(_fullBranch(s) || s.session_id || '') + '"><span class="glyph">⎇</span>' + handle + '</span>'
+    + '<span class="stream-handle" style="color:' + hue + '" title="' + escapeHtml(sessionTooltip(s.session_id || '')) + '"><span class="glyph">⎇</span>' + handle + '</span>'
     + '<span class="stream-hex">' + escapeHtml(s.short || '') + '</span>'
     + '<span style="flex:1"></span>'
     + '<span class="stream-state" style="color:' + live.color + '" title="' + escapeHtml(s.updated_at || '') + '">'

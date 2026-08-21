@@ -253,14 +253,20 @@ def recall_score(recall_result):
     """The ONE score semantic for surface candidates.
 
     brain.recall() results carry no 'score' key — the surface pipeline's
-    score is `effective_activation` from the scoring pipeline. Both the
-    hook's cosine pool (daemon_hooks) and fetch_tools.recall_topical MUST
-    read it through this function: the agentic admission floor compares
-    tool-fetched scores against the pool median, so the two sides forking
-    on field name silently zeroes one of them (2026-07-02: recall_topical
+    score is `effective_activation` from the scoring pipeline. Every reader
+    — the hook's cosine pool (daemon_hooks), fetch_tools.recall_topical,
+    and the encoder's associated-stub ranking (encode._associated_stub_ids)
+    — MUST read it through this function: the agentic admission floor
+    compares tool-fetched scores against the pool median, so readers forking
+    on field name silently zero one of them (2026-07-02: recall_topical
     read 'score' → 0.0 for every fetch → floor dropped 100% for 3 weeks).
+    Type-guarded: a non-numeric (or bool) value scores 0.0 rather than
+    leaking into comparisons.
     """
-    return recall_result.get('effective_activation') or 0
+    v = recall_result.get('effective_activation')
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return float(v)
+    return 0.0
 
 
 # ═══════════════════════════════════════════════════════════════

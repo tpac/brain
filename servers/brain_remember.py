@@ -69,6 +69,66 @@ def _token_edit_distance(a, b, cap):
     return min(prev[-1], cap + 1)
 
 
+def unwrap_content_edits(edits):
+    """A JSON-encoded edit list → the list. Returns (edits, unwrapped_bool).
+
+    The transport quirk brain_batch already absorbs for `operations`: a
+    caller whose tool schema doesn't declare the field (a stale MCP surface,
+    a client that flattens unknown params) emits the array as a string.
+    Recovery is lossless and unambiguous; the caller logs it loudly.
+    """
+    if isinstance(edits, str):
+        import json
+        try:
+            parsed = json.loads(edits)
+        except ValueError:
+            return edits, False
+        if isinstance(parsed, list):
+            return parsed, True
+    return edits, False
+
+
+def apply_content_edits(content, edits):
+    """Apply Edit-style surgical patches to stored node content.
+
+    Each edit replaces exactly one occurrence of `old` with `new`, applied
+    in order against the running result. `old` must be copied verbatim from
+    the node's current content and match exactly once — zero or ambiguous
+    matches fail the whole revise loudly, because a patch that lands in the
+    wrong place silently corrupts the one field recall reads most. Errors
+    are written to teach the calling agent the fix, not just name the fault.
+
+    Returns (new_content, None) on success, (None, error_message) on failure.
+    """
+    if not isinstance(edits, list) or not edits:
+        return None, ("content_edits must be a non-empty list of "
+                      "{old, new} objects")
+    current = content
+    for i, e in enumerate(edits):
+        if (not isinstance(e, dict) or not isinstance(e.get('old'), str)
+                or not e['old'] or not isinstance(e.get('new'), str)):
+            return None, ("content_edits[%d] must be "
+                          "{old: <non-empty string>, new: <string>}" % i)
+        old, new = e['old'], e['new']
+        if old == new:
+            return None, ("content_edits[%d]: old and new are identical — "
+                          "a no-op edit is a mistake, not a patch" % i)
+        n = current.count(old)
+        if n == 0:
+            return None, ("content_edits[%d]: `old` not found in the node's "
+                          "current content (%d chars). `old` must be copied "
+                          "VERBATIM from the stored content — if your view "
+                          "of this node was truncated or aged, expand it "
+                          "with get_nodes first, or send a full `content` "
+                          "rewrite instead." % (i, len(current)))
+        if n > 1:
+            return None, ("content_edits[%d]: `old` matches %d places in "
+                          "the content — extend it with surrounding context "
+                          "until it is unique." % (i, n))
+        current = current.replace(old, new, 1)
+    return current, None
+
+
 class BrainRememberMixin:
     """Remember methods for Brain."""
 
@@ -88,9 +148,13 @@ class BrainRememberMixin:
     # logged loudly in remember() (event 'remember_connections_retired'), since
     # it once had a store-time side effect worth tracking; `auto_connect` was a
     # pure toggle, so swallowing it silently is harmless.
+    # `content_edits` is revise-only (revise() pops it before classification);
+    # on any other write path it must never land as junk KV — remember() also
+    # logs it loudly ('remember_content_edits_misrouted'), since a caller
+    # passing patches to the wrong op believes an edit happened.
     _CONTROL_FIELDS = frozenset({
         'connections', 'auto_connect',
-        'reason', 'updates', 'connect_to',
+        'reason', 'updates', 'connect_to', 'content_edits',
     })
 
     def _store_node_metadata(self, node_id: str, fields: Dict[str, Any],
@@ -467,6 +531,138 @@ class BrainRememberMixin:
             'edge_relations': edge_relations,
             'absorbed_into_edge': absorbed_into_edge,
             'vectors_deleted': vectors_deleted,
+        }
+
+    # Pending lock-flip confirmations: token -> {node_id, locked, requested_at}.
+    # In-memory by design — lock flips are rare and operator-present; a pending
+    # confirm must not outlive a daemon restart without being re-requested.
+    LOCK_CONFIRM_TTL_S = 600
+
+    def set_node_lock(self, node_id: str, locked: bool,
+                      reason: str = '', confirm_token: str = None,
+                      encoding_source: str = 'anchor',
+                      session_id: str = '') -> Dict[str, Any]:
+        """Flip the locked flag on an existing node — the ONE door for lock
+        transitions. revise() deliberately treats `locked` as immutable; this
+        is the explicit operator path, not a relaxation of that contract.
+
+        Two-phase: without confirm_token nothing executes — returns
+        confirmation_required=True, a one-shot token (10-min TTL, in-memory)
+        and a human-readable summary the caller must relay to the operator
+        for an explicit yes. Called again with the token, it flips the flag.
+        A token is bound to (node, direction, requesting session): a confirm
+        from a different session is refused, and a mismatched confirm does
+        NOT consume the pending token. Any phase-2 match — including one that
+        lands as a no-op — consumes it.
+
+        Anchor-only at this boundary (mirrors remember()'s creation-time lock
+        rule): a non-anchor encoding_source is refused here, and the shared
+        S1/S2 encoder dispatch closure refuses the command as defense-in-depth.
+
+        `reason` is relayed in the phase-1 summary; the durable audit is the
+        node_lock_changed trace the dispatch layer emits — a direct caller
+        bypassing dispatch gets no persistence beyond that.
+
+        Guards: node must exist; an archived node cannot be locked; already
+        in the requested state is a no-op (no confirmation round-trip).
+        """
+        if not isinstance(locked, bool):
+            return {'ok': False, 'node_id': node_id,
+                    'error': 'locked must be a boolean, got %s (%r)'
+                             % (type(locked).__name__, locked)}
+        if encoding_source and not encoding_source.startswith('anchor'):
+            self._log_error('lock_non_anchor',
+                            ValueError('set_node_lock is anchor-only'),
+                            'refused encoding_source=%s for %s'
+                            % (encoding_source, node_id[:8]))
+            return {'ok': False, 'node_id': node_id,
+                    'error': 'set_node_lock is anchor-only '
+                             '(encoding_source=%s)' % encoding_source}
+
+        row = self.conn.execute(
+            'SELECT id, locked, archived, title, type, created_at, access_count '
+            'FROM nodes WHERE id = ?', (node_id,)).fetchone()
+        if not row:
+            return {'ok': False, 'error': 'Node not found', 'node_id': node_id}
+        full_id, old_locked, archived, title, node_type, created_at, access_count = row
+        old_locked = bool(old_locked)
+
+        if locked and archived:
+            self._log_error('lock_archived_node',
+                            ValueError('Cannot lock an archived node'),
+                            'set_node_lock(%s, locked=True)' % full_id[:8])
+            return {'ok': False, 'error': 'Cannot lock an archived node',
+                    'node_id': full_id}
+
+        pending = getattr(self, '_pending_lock_confirms', None)
+        if pending is None:
+            pending = self._pending_lock_confirms = {}
+        now = time.time()
+        for tok in [t for t, p in pending.items()
+                    if now - p['requested_at'] > self.LOCK_CONFIRM_TTL_S]:
+            del pending[tok]
+
+        verb = 'lock' if locked else 'unlock'
+        if not confirm_token:
+            if old_locked == locked:
+                return {'ok': True, 'node_id': full_id, 'changed': False,
+                        'note': 'node already %s' % ('locked' if locked else 'unlocked')}
+            import secrets
+            token = '%s-%s' % (verb, secrets.token_hex(4))
+            pending[token] = {'node_id': full_id, 'locked': locked,
+                              'requested_at': now, 'session_id': session_id or ''}
+            operator = self.operator_name or 'the human operator'
+            return {
+                'ok': True, 'confirmation_required': True,
+                'confirm_token': token, 'node_id': full_id,
+                'summary': '%s [%s] "%s" (created %s, %d accesses) — reason: %s '
+                           '— needs an explicit yes from %s before re-calling '
+                           'with the token'
+                           % (verb.upper(), node_type, (title or '')[:60],
+                              (created_at or '?')[:10], access_count or 0,
+                              reason or 'none given', operator),
+            }
+
+        # Validate BEFORE consuming: a mismatched confirm (wrong node id,
+        # wrong direction, another session's token) must not burn a pending
+        # confirmation the operator is about to give.
+        spec = pending.get(confirm_token)
+        mismatch = (spec is None
+                    or spec['node_id'] != full_id
+                    or spec['locked'] != locked
+                    or (spec['session_id'] and spec['session_id'] != session_id))
+        if mismatch:
+            # Expiry/decline-then-retry is a normal operator flow — warning,
+            # not error, so the error feed stays real errors only.
+            self._log_warning('lock_confirm_invalid',
+                              'invalid/expired/mismatched lock confirm token',
+                              'set_node_lock(%s, locked=%s, token=%s)'
+                              % (full_id[:8], locked, str(confirm_token)[:16]))
+            return {'ok': False, 'node_id': full_id,
+                    'error': 'Confirmation token invalid or expired — call again '
+                             'without confirm_token to request a fresh one'}
+        del pending[confirm_token]  # one-shot: consumed on every match below
+
+        if old_locked == locked:
+            return {'ok': True, 'node_id': full_id, 'changed': False,
+                    'note': 'node already %s' % ('locked' if locked else 'unlocked')}
+
+        latency = now - spec['requested_at']
+        if latency < 2.0:
+            # A human read-and-reply takes seconds; an instant confirm is
+            # affirmative evidence the caller skipped the relay. Loud, not
+            # blocking — the two-phase door is a forcing function by design.
+            self._log_warning('lock_confirm_instant',
+                              'confirm arrived %.1fs after request — likely '
+                              'self-confirmed without a human turn' % latency,
+                              'set_node_lock(%s, locked=%s)' % (full_id[:8], locked))
+        self._nodes.set_locked(full_id, locked)
+        return {
+            'ok': True, 'node_id': full_id, 'changed': True,
+            'title': (title or '')[:60], 'type': node_type,
+            'locked': locked,
+            'confirm_latency_s': round(latency, 1),
+            'deltas': [{'field': 'locked', 'old': old_locked, 'new': locked}],
         }
 
     def absorb(self, survivor_id: str, absorbed_id: str,
@@ -975,6 +1171,20 @@ class BrainRememberMixin:
                 ValueError('remember(connections=...) is retired — use connect_to'),
                 'node %s dropped %s legacy connection(s)' % (node_id[:8], _n))
 
+        # `content_edits` belongs to revise — a remember carrying it means the
+        # caller thinks it is patching, and nothing is being patched. Swallowed
+        # from KV by _CONTROL_FIELDS; logged loudly for the same reason as
+        # `connections`: an intended side effect silently not happening.
+        if extra_fields.get('content_edits'):
+            self._log_error(
+                'remember_content_edits_misrouted',
+                ValueError('content_edits is revise-only — a remember op '
+                           'cannot patch content'),
+                'node %s dropped %d content_edit(s)'
+                % (node_id[:8], len(extra_fields['content_edits'])
+                   if isinstance(extra_fields['content_edits'], (list, tuple))
+                   else 1))
+
         # ══════════════════════════════════════════════════════════════
         # v6: AUTO-ENRICHMENT — make every node rich by default
         # The brain's data was shallow because rich encoding required
@@ -1262,6 +1472,13 @@ class BrainRememberMixin:
           revise(node_id, updates={"confidence": 0.9}, reason="why")
           revise(node_id, situation="When debugging", reason="adding situation")
 
+        Patch-mode content (mutually exclusive with `content`):
+          revise(node_id, reason="why",
+                 updates={"content_edits": [{"old": "...", "new": "..."}]})
+        Each edit replaces one exact, unique occurrence in the stored
+        content (apply_content_edits) — fields other than content are
+        untouched by the patch and keep per-field replace semantics.
+
         Behavior contract:
         - Immutable fields ({id, created_at, locked}) are skipped with a
           warning. Other fields in the same call still process; the skipped
@@ -1280,13 +1497,38 @@ class BrainRememberMixin:
         if content:
             all_updates['content'] = content
 
-        if not all_updates:
+        # Patch-mode content: `content_edits` compiles to a content replace
+        # once the stored content is in hand (after the existence check
+        # below) — everything downstream (deltas, re-embed, trace events)
+        # sees an ordinary content update.
+        content_edits = all_updates.pop('content_edits', None)
+        content_edits, _unwrapped = unwrap_content_edits(content_edits)
+        if _unwrapped:
+            self._log_error(
+                'revise_content_edits_stringified',
+                RuntimeError('content_edits arrived JSON-encoded as a string '
+                             '— unwrapped to %d edit(s)' % len(content_edits)),
+                'lossless recovery, revise proceeded; the caller\'s tool '
+                'schema likely predates the field (stale MCP surface)')
+        # `content is not None` (not the merged dict) closes the falsy hole:
+        # content='' never enters all_updates, but passing it alongside
+        # content_edits is still two competing content intents.
+        if content_edits is not None and (
+                content is not None or all_updates.get('content') is not None):
+            return {'error': ('content and content_edits are mutually '
+                              'exclusive — pass one: content replaces '
+                              'wholesale, content_edits patches in place'),
+                    'node_id': node_id}
+
+        if not all_updates and content_edits is None:
             return {'error': 'No updates provided', 'node_id': node_id}
 
         # Capture the FULL field set NOW for vector invalidation. `all_updates`
         # gets mutated below (content is popped, etc.), so we need the
         # original set or the invalidation step misses fields.
         fields_changed_for_invalidation = set(all_updates.keys())
+        if content_edits is not None:
+            fields_changed_for_invalidation.add('content')
 
         # v29 / Phase B: source_refs is a join-table field, not a node column.
         # Pop it before the field classification so it doesn't land in
@@ -1311,6 +1553,12 @@ class BrainRememberMixin:
         existing_id, node_type, title, old_content, _ = row
         old_content = old_content or ''
         ts = self.now()
+
+        if content_edits is not None:
+            patched, edit_err = apply_content_edits(old_content, content_edits)
+            if edit_err:
+                return {'error': edit_err, 'node_id': node_id}
+            all_updates['content'] = patched
 
         # ── Field classification ──
         # Top-level fields live on the nodes table (updatable via SQL).
@@ -2227,10 +2475,12 @@ class BrainRememberMixin:
         results = []
         revised_count = 0
 
-        for spec in revisions:
+        for _idx, spec in enumerate(revisions):
             node_id = spec.get('node_id')
             if not node_id:
-                results.append({'error': 'missing node_id', 'status': 'skipped'})
+                results.append({'op': 'revise', 'index': _idx, 'ok': False,
+                                'error': 'missing node_id',
+                                'status': 'skipped'})
                 continue
 
             reason = spec.get('reason', '')
@@ -2252,11 +2502,20 @@ class BrainRememberMixin:
             try:
                 result = self.revise(node_id=node_id, content=content,
                                      reason=reason, updates=updates)
+                # `ok` rides alongside `status` so log_failed_batch_ops (which
+                # scans per-op rows for ok=False on every dispatched command)
+                # sees per-row failures — without it a revise_batch whose every
+                # row failed (e.g. content_edits old-not-found) logged nothing.
                 if result.get('error'):
-                    results.append({'node_id': node_id, 'status': 'error', 'error': result['error']})
+                    results.append({'op': 'revise', 'index': _idx,
+                                    'node_id': node_id, 'ok': False,
+                                    'status': 'error', 'error': result['error']})
                 else:
                     results.append({
+                        'op': 'revise',
+                        'index': _idx,
                         'node_id': node_id,
+                        'ok': True,
                         'status': 'revised',
                         'deltas': result.get('deltas', []),
                         'warnings': result.get('warnings', []),
@@ -2264,7 +2523,9 @@ class BrainRememberMixin:
                     revised_count += 1
             except Exception as e:
                 self._log_error('revise_batch', e, 'revising %s' % node_id[:8])
-                results.append({'node_id': node_id, 'status': 'error', 'error': str(e)})
+                results.append({'op': 'revise', 'index': _idx,
+                                'node_id': node_id, 'ok': False,
+                                'status': 'error', 'error': str(e)})
 
         return {
             'revised': revised_count,

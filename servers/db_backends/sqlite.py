@@ -246,6 +246,44 @@ def stats(db_path: str) -> Dict[str, Any]:
     }
 
 
+def quick_check(db_path: str, max_issues: int = 20) -> Dict[str, Any]:
+    """`PRAGMA quick_check` — structural integrity scan (skips index-content
+    verification, so it's fast enough for a live DB on the maintenance
+    connection). RAISES on any finding: corruption must go through the
+    scheduler's error path into the brain errors table, not sit in a log
+    line nobody reads. Healthy result is {'ok': True}.
+    """
+    conn = connect_maintenance(db_path)
+    try:
+        rows = conn.execute(
+            'PRAGMA quick_check(%d)' % max_issues).fetchall()
+    finally:
+        conn.close()
+    issues = [r[0] for r in rows if r and r[0] != 'ok']
+    if issues:
+        raise RuntimeError('quick_check found %d issue(s) in %s: %s' % (
+            len(issues), db_path, '; '.join(issues[:5])))
+    return {'ok': True}
+
+
+def table_sizes(db_path: str, top_n: int = 12) -> Dict[str, Any]:
+    """Per-table size breakdown via the dbstat virtual table, in MB,
+    largest first. Returns {} when dbstat isn't compiled in — callers
+    treat the breakdown as best-effort telemetry, never load-bearing.
+    """
+    conn = connect_maintenance(db_path)
+    try:
+        try:
+            rows = conn.execute(
+                'SELECT name, SUM(pgsize) FROM dbstat '
+                'GROUP BY name ORDER BY 2 DESC LIMIT ?', (top_n,)).fetchall()
+        except sqlite3.OperationalError:
+            return {}
+    finally:
+        conn.close()
+    return {name: round(size / 1048576.0, 1) for name, size in rows}
+
+
 def snapshot_to(db_path: str, dest_db_path: str,
                 pages: int = 4000, sleep_s: float = 0.0) -> int:
     """Consistent raw-.db snapshot of a LIVE SQLite DB, via the online

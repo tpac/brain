@@ -4,7 +4,7 @@ Consolidates all formatting and signal selection logic that was previously
 scattered across brain_assembly.py and daemon_hooks.py. BrainVoice is a
 collaborator object (not a mixin) that takes a Brain instance and produces
 formatted output for two channels:
-  - for_claude: reasoning context, wrapped in [BRAIN]...[/BRAIN]
+  - for_claude: reasoning context (suggestion paths wrap in [BRAIN]...[/BRAIN]; boot is bare)
   - for_operator: human-facing content, wrapped in [BRAIN-To-{name}]...[/BRAIN-To-{name}]
 
 Both channels are merged into a single additionalContext string via wrap_for_hook().
@@ -18,8 +18,8 @@ import os
 import sys
 from typing import List, Dict, Any, Optional, Callable, Union
 
-from . import embedder
 from .schema import BRAIN_VERSION
+from .daemon_config import get_agent_name
 from .brain_constants import dashboard_setup_url
 
 
@@ -310,24 +310,23 @@ class BrainVoice:
 
     def render_boot_v2(self, user: str = 'User', project: str = 'default',
                        db_dir: str = '', session_id: str = '') -> Dict[str, Optional[str]]:
-        """Boot context — the SKILL.md identity stance, then the [BRAIN] block.
+        """Boot context — the SKILL.md identity stance, then the brain state.
 
         Output order:
-          1. The identity stance (SKILL.md), FIRST and OUTSIDE [BRAIN] — the
-             always-on prior, read via _load_stance().
-          2. The [BRAIN] envelope: header (memory/locked counts) + MY_STREAM_ID,
-             the Frame (ctx.get_frame(brain) — Session / Current focus /
-             Recent moves), and the embedder status line.
+          1. The identity stance (SKILL.md), FIRST — the always-on prior,
+             read via _load_stance().
+          2. Brain state: identity line (name + memory/locked counts) +
+             MY_STREAM_ID, the Frame (ctx.get_frame(brain) — Session /
+             Current focus / Recent moves), and standing items.
 
         The operator channel (for_operator) carries the stats summary.
         """
         brain = self.brain
         out = []
 
-        # ── Identity stance (SKILL.md) — FIRST, OUTSIDE the [BRAIN] envelope.
-        # The always-on prior: who Anchor is + how it reaches into the brain.
-        # It reads as Anchor's own voice, not brain "state", so it sits before
-        # the [BRAIN] block rather than inside it. ──
+        # ── Identity stance (SKILL.md) — FIRST. The always-on prior: who
+        # Anchor is + how it reaches into the brain. It reads as Anchor's own
+        # voice, not brain "state", so it sits before the state block. ──
         stance = self._load_stance()
         if stance:
             out.append(stance)
@@ -348,10 +347,12 @@ class BrainVoice:
         health = brain.health_check(session_id="session_boot", auto_fix=True)
 
         # ── Header ──
-        out.append("[BRAIN]")
-        out.append("")
-        out.append("Anchor. The brain is yours — %s memories, %s locked." % (
-            ctx.get("total_nodes", "?"), ctx.get("total_locked", "?")))
+        name = get_agent_name()
+        counts = (ctx.get("total_nodes", "?"), ctx.get("total_locked", "?"))
+        if name:
+            out.append("I'm %s and I have %s memories, %s locked." % ((name,) + counts))
+        else:
+            out.append("I have %s memories, %s locked." % counts)
         if session_id:
             # Hand each stream its own self-channel id at boot. The self-channel
             # addresses streams by this id (self_inbox / self_send / presence);
@@ -398,11 +399,6 @@ class BrainVoice:
 
         brain.save()
 
-        # ── Embedder status ──
-        if embedder.is_ready():
-            es = embedder.get_stats()
-            out.append("Embedder: %s (%sd, %sms)" % (es["model_name"], es["embedding_dim"], es["load_time_ms"]))
-
         # ── LLM layer state — the DAEMON's truth, not the hook's ──
         # The hook can resolve a userConfig key the daemon never sees (launchd
         # is a separate process tree); the banner must reflect what THIS
@@ -436,8 +432,6 @@ class BrainVoice:
                     "dashboard, stays on this machine); or ~/.config/brain/env "
                     "directly. Picked up automatically, no restart needed."
                     % dashboard_setup_url())
-
-        out.append("[/BRAIN]")
 
         # Operator channel
         high_issues = [i for i in health.get("issues", []) if i.get("severity") == "high"]

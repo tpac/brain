@@ -52,10 +52,17 @@ def _handle_recall(brain, args, graph_changes):
     # degrades internally, so there is no separate keyword-only mode to fall
     # back to at this layer. If it raises, surface the failure loudly instead
     # of masking it as an empty/degraded success.
+    #
+    # mark_accessed defaults True (every real caller). A read-only observer —
+    # the dashboard's recall probe — passes False so its looking never lands
+    # in access_count / last_accessed / fatigue, which are the brain's own
+    # record of what IT recalled.
     try:
         result = brain.recall(
             query=args.get("query", ""), filter=args.get("filter"),
-            limit=args.get("limit", 8), session_id=sid, source='mcp')
+            limit=args.get("limit", 8), session_id=sid,
+            source=args.get("source") or 'mcp',
+            mark_accessed=args.get("mark_accessed", True))
     except Exception as e:
         brain._log_error("recall_failed", e, "MCP by-query recall raised")
         return {"ok": False, "error": "recall failed: %s" % e}

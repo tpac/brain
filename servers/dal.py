@@ -477,12 +477,26 @@ class NodeDAL:
         self.conn.execute('DELETE FROM nodes WHERE id = ?', (node_id,))
         commit_unless_batched(self.conn)
 
+    def set_locked(self, node_id: str, locked: bool) -> None:
+        """Flip the locked flag. Sole caller: Brain.set_node_lock — the
+        two-phase confirmed lock door. revise() keeps treating locked as
+        immutable; nothing else writes this column.
+
+        Deliberately does NOT bump updated_at: a lock flip is metadata, not
+        content, and updated_at is the S2 community delta-gate wake signal
+        and a recency-ordering key — a flip must trigger neither. The
+        node_lock_changed trace is the record of when it happened."""
+        self.conn.execute(
+            'UPDATE nodes SET locked = ? WHERE id = ?',
+            (1 if locked else 0, node_id))
+        commit_unless_batched(self.conn)
+
     # get_metadata removed 2026-04-13 — old node_metadata table dropped, use MetadataDAL (KV).
-    # NodeDAL write-helpers (update_field/update_confidence/set_critical/unlock/
+    # NodeDAL write-helpers (update_field/update_confidence/set_critical/
     # update_type/append_content/set_evolution_status/mark_accessed) removed
     # 2026-06-26 — dead since the revise()-is-the-only-content-path invariant
-    # (b2f97fb1); content/title/confidence/critical/locked go through
-    # brain_remember's revise, access goes through recall_write_queue's drain.
+    # (b2f97fb1); content/title/confidence/critical go through brain_remember's
+    # revise (locked via set_locked above), access via recall_write_queue's drain.
     # delete_for_node removed 2026-05-30 (DAL cleanup Phase 0) — was a dup of
     # VectorDAL.delete_for_node (node_enrichments is the vector table, owned by
     # VectorDAL); had zero callers.

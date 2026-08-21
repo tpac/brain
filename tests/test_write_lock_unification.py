@@ -147,9 +147,10 @@ class GetOrCreateSessionRaceTests(BrainTestBase):
 
     def test_autosave_and_create_share_logs_conn_safely(self):
         """save_session_contexts (autosave path) and get_or_create_session both
-        write the shared logs_conn. Under concurrent access without write_lock
-        they collide on the connection's transaction state ("cannot start a
-        transaction within a transaction"). All logs_conn writers must serialize.
+        write session_state through the DAL write boundary (logs_write_lock +
+        logs_conn_w). Under concurrent unserialized access, same-connection
+        writers collide on transaction state ("cannot start a transaction
+        within a transaction") — the boundary must serialize them.
 
         Barrier-synced N threads, each looping over BOTH writers, to force the
         overlapping-transaction window deterministically (loose 2-thread timing

@@ -179,18 +179,6 @@ normal (2–3 rounds, ~12–16 nodes/run) but can't show field-fill — that nee
 `action_details`. Note `source_refs` fill is NOT a quality bar (`9a30733f`: display
 provenance, sparse by design).
 
-### 5. Healer and AspectIntegration write zero journal notes
-Two of four S2 units are mute: across 589 notes / 14 days the split is S1E 317 /
-community 172 / consolidation 100, healer and aspect **zero** (brain `78677e17`).
-Cause is structural, not neglect — both are single-shot `_call_llm()` agents, so the
-`## Review` fence contract has nowhere to live. **Decided approach (brain `4a21305b`,
-Option A):** optional `review: [{tag, subject, note}]` as the last field of their
-output JSON + a structured ingestion path in `write_journal_notes`. Sharpened since
-filing: with `min_count_threshold=1` every aspect classification is a single-example,
-permanent, never-revisited decision whose rationale survives only in
-`aspects_proposed.json`, overwritten each cycle — the journal is the only possible
-audit trail (brain `abfec5e6`).
-
 ### 6. `source_refs` render expansion at SURFACE_FORMAT
 The recall-side joint-reactivation read shape: when a source-anchored node surfaces,
 expand its `source_refs` inline. Designed in
@@ -233,8 +221,7 @@ symbols present, wired into the Frame render. This is the cut the v29 activation
 called for and skipped; it kills an always-empty boot-context section. The blob
 *writer* (`encode._save_journal`) is called only on the control arm.
 Sibling tiers of the same sweep: the `BRAIN_S1E_LIVED_SEQUENCE` rollback path stays
-until the flag itself retires; vestigial `SKIPPED:`/`WATCHING:` journal instructions
-sit in the journal-exempt healer prompt, and a stale `'encoding_journal'` label sits in
+until the flag itself retires; a stale `'encoding_journal'` label sits in
 `scribe.K_SOURCES`.
 
 ### 11. Thalamus — test the premise before designing v2
@@ -274,6 +261,16 @@ new inter-layer channel to prove it isn't just async S0 (brain `bfc6d106`).
   narrow each seed's query by a `seen` set that mutates inside the loop — bulking it
   changes which neighbors survive the per-seed limit. Extend the bulk method first, or
   leave that one alone.
+
+### 13. Defense-shrink cut — delete the outage-era daemon defenses reload-in-place obsoleted
+Deploy restarts became invisible in-place exec reloads (same PID, 2026-08-19); the
+recovery moat was sized for the 3-20s outages they used to be. **Gated: observe ~1 week
+of deploys (from 2026-08-19), then delete with the error tables as evidence.** Plan and
+ranked candidates in the brain: id:6126281f. Strongest: `ensure_daemon`'s kickstart
+escalation for healthy-but-stale (its predecessor was proven dead code for months),
+`hook_common`'s alarm-and-recover on a single failed ping, per-session MCP monitor kill
+authority. Keep: KeepAlive, the singleton flock, `recover_daemon`'s corpse test, the
+startup lock. Expected to delete more lines than the reload change added.
 
 ---
 

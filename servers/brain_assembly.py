@@ -9,7 +9,7 @@ which are provided by Brain.__init__.
 from . import embedder
 from .schema import BRAIN_VERSION, BRAIN_VERSION_KEY, NODE_TYPES
 from .text_processing import split_identifier
-from .clock import iso_cutoff, iso_now
+from .clock import iso_cutoff
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 import json
@@ -393,11 +393,10 @@ class BrainAssemblyMixin:
         except Exception as e:
             warnings.append({'level': 'critical', 'message': 'brain.db is READ-ONLY: %s' % e})
 
-        # 2. Check logs DB is writable
+        # 2. Check logs DB is writable (probes the DAL write boundary — the
+        # path real log writes take)
         try:
-            self.logs_conn.execute("INSERT INTO debug_log (event_type, source, created_at) VALUES ('ping', '_validate', ?)", (self.now(),))
-            self.logs_conn.execute("DELETE FROM debug_log WHERE source = '_validate'")
-            self.logs_conn.commit()
+            self._logs_dal.liveness_ping()
         except Exception as e:
             warnings.append({'level': 'critical', 'message': 'brain_logs.db is READ-ONLY: %s' % e})
 
@@ -821,8 +820,8 @@ class BrainAssemblyMixin:
         context_boot is read-only re: the knowledge graph, but it logs what it
         served here — the same pattern as recall writing a trace from a read
         path. The dashboard's Streams→Boot view reads this to show "what
-        actually got to boot." Writes to brain_logs.db under write_lock,
-        mirroring scales/self_channel/signal.py's shared-logs-writer pattern.
+        actually got to boot." Writes through LogsDAL's write boundary
+        (dedicated write connection under write_lock — see dal_logs.py).
 
         Best-effort: a failure here must NEVER break boot (loud to stderr, not
         raised). Skips when there's no session or no text (non-SessionStart
@@ -830,13 +829,7 @@ class BrainAssemblyMixin:
         if not session_id or not text:
             return
         try:
-            with self.write_lock:
-                self.logs_conn.execute(
-                    'INSERT INTO boot_renders '
-                    '(session_id, user, project, char_count, text, created_at) '
-                    'VALUES (?, ?, ?, ?, ?, ?)',
-                    (session_id, user or '', project or '', len(text), text, iso_now()))
-                self.logs_conn.commit()
+            self._logs_dal.record_boot_render(session_id, user, project, text)
         except Exception as e:
             import sys
             print('[brain] record_boot_render failed: %s' % e,

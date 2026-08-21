@@ -45,10 +45,17 @@ Each step is executable cold in its own session. Recommend; do not batch. This d
 
 ## Already resolved (do NOT re-plan)
 
-- **Restart = clean exit + KeepAlive respawn, launchd sole spawner** — commit `3cb6031`, live and
-  verified. This closed the "fourth root" (`_do_restart` detached Popen, `e6fd63aa`) and the
-  self-Popen-vs-kickstart double-mechanism. Agents that read the pre-`3cb6031` worktree flagged
-  these as live; they are fixed on `main`. (The worktree has since been fast-forwarded to `main`.)
+- **Restart = in-place exec reload; launchd sole SPAWNER** — 2026-08-19 (supersedes `3cb6031`'s
+  clean-exit-and-respawn). The `restart` command flags a reload; the MAIN thread runs the
+  ordered `_shutdown` then `_exec_reload` execs `hooks/scripts/brain-daemon` into the same
+  process: same PID, env + DB ladder re-resolved, no spawn ever — the daemon contains no spawn
+  call at all (guardrail-tested), so the "fourth root" (`_do_restart` detached Popen,
+  `e6fd63aa`) stays closed structurally. Exec failure exits loudly and KeepAlive /
+  `ensure_daemon` respawns — the former clean-exit path survives as the fallback. Spawn stays
+  launchd-only: crash = KeepAlive; hung corpse = `recover_daemon`'s corpse test (PID-file
+  mtime + port) → `kickstart -k`. `ensure_daemon` serializes on the dedicated STARTUP lock
+  (never the daemon's singleton flock — one inode per question) and converges
+  healthy-but-stale daemons via the reload; kickstart remains for corpses and db-dir moves.
 - **Step 3 RESOLVED (2026-07-06) — as a drift fix, NOT the unified primitive.** The tri-state
   design below would regress corpse recovery: its "managed+unreachable → defer to KeepAlive" arm is
   correct for `ensure_daemon` (down = process exited → KeepAlive respawns) but WRONG for
@@ -60,9 +67,9 @@ Each step is executable cold in its own session. Recommend; do not batch. This d
   `test_kickstart_failed_but_incumbent_responsive_defers_never_kills` pins it. A1 (clean-exit on
   all platforms) evaluated and DECLINED: ~4 lines saved vs an unverifiable Linux behavior change
   (restart would leave the daemon down until a client pings). Post-Step-2 there is no remaining
-  triple-written ladder: `_perform_restart` is two lines per branch, and `_relaunch_daemon`'s
-  spawn tail already delegates to `ensure_daemon`. Step 6 may treat the spawn/restart model as
-  settled: restart = clean-exit (managed) | teardown+spawn (unmanaged); recovery = kickstart →
+  triple-written ladder, and `_relaunch_daemon`'s spawn tail already delegates to
+  `ensure_daemon`. The spawn/restart model is settled (updated 2026-08-19): restart =
+  in-place exec reload (`_exec_reload`, all platforms); recovery = corpse-test → kickstart →
   re-ping-defer → source-gated kill + ensure_daemon.
 - **Step 4 RESOLVED (2026-07-07)** — dead `restart_daemon()` deleted (zero callers confirmed
   repo-wide, docs included). `stop_daemon` kept: it is the graceful TCP-shutdown utility, and its
@@ -458,17 +465,23 @@ worktree tests (`056c7a40`).
 
 ## Step 11 — One `SingletonLock` owner for the flock (widest blast radius — LAST)
 
-**Problem.** The flock — the brain's only real write-safety mutex — is four fragments: the path in
-`daemon_config` (`get_lock_path`), the acquire (with "never unlink a held lock") in `start()`, the
-release ("LAST, after DB close") in `_cleanup`/`_teardown_brain`, and a SEPARATE flock on the same
-file in `ensure_daemon` (serializing restart decisions). No single place states the mutex and its
-rules; the invariants that make it correct are spread across ~120 lines in two files.
+**Problem (updated 2026-08-19).** There are now TWO locks by design — do NOT re-merge them.
+`get_lock_path` is the daemon's singleton identity (blocking-held by a serving daemon for its
+whole life); `get_startup_lock_path` is the restarter coordination lock `ensure_daemon`
+serializes on. When both questions shared one inode (pre-2026-08-19), `ensure_daemon` hung
+against every healthy daemon and a successor booting under a held lock exited as a duplicate —
+that split is load-bearing, pinned by `test_reload_works_while_daemon_singleton_flock_is_held`.
+The remaining fragmentation is per-lock: the singleton's path lives in `daemon_config`, the
+acquire ("never unlink a held lock") in `start()`, the release ("LAST, after DB close") in
+`_cleanup`/`_teardown_brain`, plus `ensure_daemon`'s non-blocking two-writer probe of it before
+a direct spawn. No single place states each mutex and its rules.
 
 **Target state.** A small `SingletonLock` (own file, or a section of `daemon_launch.py` — flock +
 launchd together ARE the exclusion layer) owning path + non-blocking acquire (with pid-hint) +
 idempotent release + the "never unlink / release LAST / LOCK_NB-means-live-holder" rules as comments
 on the code that enforces them. `start()` uses it for singleton identity; `_teardown_brain` for
-release-LAST; `ensure_daemon` for restart serialization.
+release-LAST; the direct-spawn probe consumes it read-only. The STARTUP lock stays a distinct
+inode — one lock per question.
 
 **Files & call sites.** `daemon_server.py` (`start`, `_cleanup`, `_teardown_brain`),
 `daemon_client.py` (`ensure_daemon`), `daemon_config.py` (`get_lock_path`).

@@ -352,6 +352,11 @@ MAINTENANCE_BOOT_GRACE_SECONDS = 90
 # without running; the scheduler thread has no such dependency.
 LOGS_MAINTENANCE_INTERVAL_S = 60 * 60
 
+# Weekly durable size snapshot (file + per-table via dbstat) for both DBs,
+# written to debug_log so growth is a query, not archaeology. Trend data —
+# weekly is plenty; the daemon log already carries per-tick file stats.
+DB_SIZE_TELEMETRY_INTERVAL_S = 7 * 24 * 60 * 60
+
 # ── LLM rejection backoff ──
 # How long LLM features stay paused after the provider REFUSES a call (a dead
 # key, an exhausted quota). A refusal costs no tokens, so this ladder trades
@@ -382,6 +387,16 @@ LLM_REJECT_STRIKE_RESET_SECONDS = 2 * 60 * 60
 # transport policy, not encoder-lane detail: brain.py builds the shared client
 # with it too, and was reaching down into the encoder lane for it.
 ANTHROPIC_CLIENT_TIMEOUT = 600.0
+
+# Connect gets its OWN bound. ANTHROPIC_CLIENT_TIMEOUT's 600s is read-side
+# reasoning (long encoder generations); passed as a bare float it applies to
+# connect too, granting "can't reach the server" the same patience as "slow
+# generation" — a flapping network held an encode permit ~53 min that way
+# (e2dc24d3, 2026-08-18). Construction sites combine the two via
+# httpx.Timeout(ANTHROPIC_CLIENT_TIMEOUT, connect=ANTHROPIC_CONNECT_TIMEOUT):
+# TCP+TLS to the API lands in ~1s; 10s absorbs SYN retransmits on a congested
+# link without letting a dead network eat the read budget.
+ANTHROPIC_CONNECT_TIMEOUT = 10.0
 
 # Recall-lane query expansion gets its OWN, much tighter bound. It is a
 # best-effort ~1s Haiku call on the recall hot path, and a stall there blocks a

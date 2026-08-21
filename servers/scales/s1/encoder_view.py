@@ -1,7 +1,7 @@
 """Encoder view policy — what the S1 Scribe is SHOWN, not what is captured.
 
 POLICY, not mechanism: pure predicates + constants over plain values — no I/O,
-no brain, no env reads beyond the single flag reader. encode.py and
+no brain, no env reads beyond the flag readers. encode.py and
 encode_contract.py render; this file decides what the render feeds. The
 boundary rule: numbers shared with other consumers stay in encode_contract
 (ENCODING_AGENT is re-exported through pipeline_contract and read by
@@ -36,6 +36,38 @@ def view_policy_enabled():
     once per run and threads it down, mirroring _lived_sequence_enabled — no
     torn state if the env flips mid-run. Default ON — unset means the policy."""
     return os.environ.get('BRAIN_S1E_VIEW_POLICY', '1') in ('1', 'true', 'True')
+
+
+# ── Associated stubs (the encoder's subconscious — Tom's ruling 2026-08-21) ──
+
+def associated_stubs_enabled():
+    """BRAIN_S1E_ASSOCIATED_STUBS: render the subconscious — nodes production
+    recall ranked near this window that didn't make the surface cut — as the
+    catalog's last entries, tagged [associated] (encode._associated_stub_ids →
+    build_node_catalog). Default OFF (hard law: input changes ship flag-gated
+    so the eval can A/B them — the view-policy flag is the precedent); the
+    daemon reads the env at start via brain-env.sh. Lived arm only."""
+    return os.environ.get('BRAIN_S1E_ASSOCIATED_STUBS', '0') in ('1', 'true', 'True')
+
+
+# K: stubs rendered per run. Small by design — full format_node bodies
+# (load-bearing for patch-mode revise), so K is the token knob.
+ASSOCIATED_STUBS_K = 5
+
+# Per-seed recall fetch BEFORE catalog exclusion — must exceed the
+# catalog-hot head or novel candidates starve (measured in
+# eval/encode_moment_recall_probe.py; needle at rank 2 with this limit).
+ASSOCIATED_RECALL_LIMIT = 40
+
+# Chars of a window message used as the recall seed — the seed is the
+# message, not the essay (embedding sanity; probe's QUERY_CAP).
+ASSOCIATED_QUERY_CAP = 1500
+
+# Most seeds paid for per run, keeping the NEWEST (the tail turns are the
+# encoder's actual working material). Bounds the sequential recall loop when
+# every turn reads unencoded (first encode of a long session, or a degraded
+# trace join) — the one dimension the other three constants don't cap.
+ASSOCIATED_SEED_CAP = 20
 
 
 # ── Catalog aging (id:f3302000 / id:f011dc76 — the ~80-89% lever) ──
@@ -156,6 +188,51 @@ STUBBED_ACTION_TOOLS = frozenset({
 
 # Kept head of a stubbed search line — enough for the query, not the args blob.
 ACTION_STUB_HEAD = 60
+
+# ── Actions condenser (encoder_actions.py — parse → condense → render) ──
+
+# Rendered action lines per turn before the middle rolls up into the
+# accounting line. The tail turn (the encoder's actual working material)
+# gets the larger budget; older unencoded turns the smaller. Generous on
+# purpose — we haven't measured what the encoder loses when sweeps collapse,
+# so v1 clamps only the floods (sample: a review turn carried ~105 actions,
+# a healthy build turn ~12). The real ceiling is budget + soft edge (below)
+# + however many write actions the turn carries (writes never roll up).
+ACTIONS_BUDGET = 15
+ACTIONS_BUDGET_TAIL = 30
+
+# An accounting line for 1-2 actions costs more than it saves: up to
+# budget + this many actions still render verbatim.
+ACTIONS_BUDGET_SOFT_EDGE = 2
+
+# The closing actions carry the turn's outcome (the commit, the merge, the
+# final verification) — always rendered verbatim, in place, and immune to
+# dedup-folding into earlier lines.
+ACTIONS_KEEP_LAST = 2
+
+# One rendered line per action; longer labels mark their cut with '…'.
+ACTION_LABEL_CAP = 180
+
+# Write actions never roll up — they are rare and they are the turn's story
+# (the encoder-eye review: a rolled-up seed-file edit was the most
+# encodeable fact of its turn). Explicit write tools here; git write-verbs
+# and harvested-intent scripts join them in the condenser's protection rule.
+WRITE_ACTION_TOOLS = frozenset({'Edit', 'Write', 'NotebookEdit'})
+GIT_WRITE_VERBS = frozenset({'commit', 'rm', 'mv', 'merge', 'revert',
+                             'push', 'tag', 'am', 'cherry-pick'})
+
+# Caps inside the rollup accounting line — every one marks itself with
+# '+k more' when it truncates (the line's job is auditability).
+ROLLUP_TARGET_CAP = 8    # distinct file targets named
+ROLLUP_TOOLS_CAP = 6     # tools in the mix breakdown
+ROLLUP_SUBS_CAP = 4      # Bash command words inside the Bash entry
+
+# Lines scanned at the head of a script body for its intent ('#' comment or
+# first code line) and for a git-commit subject.
+COMMENT_SCAN_DEPTH = 8
+
+# Absolute paths ≥4 segments render as '/…/<last this-many segments>'.
+PATH_KEEP_SEGMENTS = 3
 
 
 def action_mode(tool_name):

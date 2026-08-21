@@ -118,6 +118,10 @@ export const api = {
   consolidationRuns:   (p = {}) => get('/api/consolidation-runs' + _qs(p)),
   communityRuns:       (p = {}) => get('/api/community-runs' + _qs(p)),
   healerRuns:          (p = {}) => get('/api/healer-runs' + _qs(p)),
+  aspectRuns:          (p = {}) => get('/api/aspect-runs' + _qs(p)),
+  // Encoder journals — every encoder's residue, one endpoint.
+  journals:            (p = {}) => get('/api/journals' + _qs(p)),
+  journalSummary:      (p = {}) => get('/api/journals/summary' + _qs(p)),
   consolidationPrompt: (p = {}) => get('/api/consolidation-prompt' + _qs(p)),
   traces:              (p = {}) => get('/api/traces' + _qs(p)),
   errors:              (p = {}) => get('/api/errors' + _qs(p)),
@@ -131,6 +135,9 @@ export const api = {
   bootRenders:         (p = {}) => get('/api/boot-renders' + _qs(p)),
   selfPresence:        (p = {}) => get('/api/self-presence' + _qs(p)),
   selfSend:            (body)   => post('/api/self-send', body),
+  // The recall probe — POST because it carries a query body, not because it
+  // writes. The server pins mark_accessed=False, so it stays a pure read.
+  recall:              (body)   => post('/api/recall', body),
 };
 
 export default api;

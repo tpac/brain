@@ -18,7 +18,8 @@ import json
 # daemon's shared client with the same bound, so the constant lives in
 # brain_constants and both layers import it from there. make_client() below is
 # this module's consumer.
-from ..brain_constants import ANTHROPIC_CLIENT_TIMEOUT
+from ..brain_constants import (ANTHROPIC_CLIENT_TIMEOUT,
+                               ANTHROPIC_CONNECT_TIMEOUT)
 
 
 class RunLoopError(Exception):
@@ -96,7 +97,17 @@ def make_client():
     outside this seam.)
     """
     import anthropic
-    return anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
+    import httpx
+    # max_retries=1, not the SDK default 2: retry policy above this client is
+    # the callers' concern — the Scribe's cooldown paces S1E re-runs and the
+    # S2 loop encoders wrap rounds in retry_on_transient_api_error — so SDK
+    # retries only multiply a blocked read (600s × attempts before the caller
+    # sees the exception). One retry keeps the cheap Retry-After path for
+    # rate-limit blips, which S1E has no wrapper to recover from.
+    return anthropic.Anthropic(
+        timeout=httpx.Timeout(ANTHROPIC_CLIENT_TIMEOUT,
+                              connect=ANTHROPIC_CONNECT_TIMEOUT),
+        max_retries=1)
 
 
 def run_llm_once(client, model, max_tokens, system_prompt, user_content):
@@ -114,7 +125,12 @@ def run_llm_once(client, model, max_tokens, system_prompt, user_content):
     the caller, mirroring run_llm_loop.
 
     Returns:
-        (raw_text, telemetry): telemetry is {'elapsed_ms', **USAGE_FIELDS}.
+        (raw_text, telemetry): telemetry is {'elapsed_ms', 'stop_reason',
+        **USAGE_FIELDS}. stop_reason rides along so single-shot callers can
+        surface max_tokens truncation loudly (the loop path checks it in
+        _track_usage; without this the single-shot path reported a truncated
+        response as a generic parse failure). raw_text is '' when the stop
+        produced no content block, never an IndexError.
     """
     t0 = time.time()
     response = client.messages.create(
@@ -124,8 +140,10 @@ def run_llm_once(client, model, max_tokens, system_prompt, user_content):
                  "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
         messages=[{"role": "user", "content": user_content}])
     telemetry = {'elapsed_ms': int((time.time() - t0) * 1000),
+                 'stop_reason': getattr(response, 'stop_reason', None),
                  **read_usage(response)}
-    return response.content[0].text.strip(), telemetry
+    raw = response.content[0].text.strip() if response.content else ''
+    return raw, telemetry
 
 
 def _roll_cache_breakpoint(api_messages):
@@ -154,22 +172,9 @@ def _roll_cache_breakpoint(api_messages):
         tail[-1]['cache_control'] = {"type": "ephemeral", "ttl": "5m"}
 
 
-def extract_json(text):
-    """Extract JSON array or object from LLM response text.
-
-    Handles markdown code fences, leading/trailing text.
-    Returns parsed JSON (list or dict), or None on failure.
-    """
-    # Strip markdown fences
-    if '```' in text:
-        parts = text.split('```')
-        if len(parts) >= 3:
-            text = parts[1]
-            if text.startswith('json'):
-                text = text[4:]
-            text = text.strip()
-
-    # Find JSON array or object
+def _try_parse_json(text):
+    """First-array-then-object bracket scan over one candidate text.
+    Returns parsed JSON, or None."""
     # Try array first (most common for batched proposals)
     start = text.find('[')
     if start >= 0:
@@ -179,8 +184,6 @@ def extract_json(text):
                 return json.loads(text[start:end])
             except json.JSONDecodeError:
                 pass
-
-    # Try object
     start = text.find('{')
     if start >= 0:
         end = text.rfind('}') + 1
@@ -189,7 +192,37 @@ def extract_json(text):
                 return json.loads(text[start:end])
             except json.JSONDecodeError:
                 pass
+    return None
 
+
+def extract_json(text):
+    """Extract JSON array or object from LLM response text.
+
+    Handles markdown code fences, leading/trailing text.
+    Returns parsed JSON (list or dict), or None on failure.
+
+    Every fence is a candidate, then the fence-free remainder, then the raw
+    text. The pre-2026-08-18 shape parsed ONLY the first fence — so any
+    non-payload fence ahead of or after the payload (a `## Review` fence that
+    lost its heading and survived the journal strip, a legacy v4 healer
+    journal fence) poisoned the whole response and a paid, correct payload
+    was discarded as a parse failure.
+    """
+    candidates = []
+    if '```' in text:
+        parts = text.split('```')
+        for seg in parts[1::2]:          # fence interiors, in order
+            seg = seg.strip()
+            if seg.startswith('json'):
+                seg = seg[4:].strip()
+            candidates.append(seg)
+        # The fence-free remainder — a bare payload alongside a notes fence.
+        candidates.append('\n'.join(parts[0::2]))
+    candidates.append(text)
+    for candidate in candidates:
+        result = _try_parse_json(candidate)
+        if result is not None:
+            return result
     return None
 
 

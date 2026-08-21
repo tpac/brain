@@ -114,7 +114,21 @@ from .dal_logs import (AUTO_V1_PROVENANCE, BACKSTOP_PROVENANCE,
 #
 # 6 ships the s2_aspects noise-exemplar fix: the classifier's noise examples
 # name co_anchored — co_accessed/emergent_bridge were retired and purged.
-SEED_PROMPTS_VERSION = 6
+# 7 ships the s1e actions-condenser legend (v37): the <actions> gloss now
+# documents the render's notation — ×N repeats, the (N more actions, not
+# shown: …) accounting line, script-intent harvest, path shortening — per
+# the stale-gloss rule (a render change that adds notation rides a prompt
+# version).
+#
+# 8 ships the healer/aspect journal binding prompts: s2_healer v5 drops the
+# legacy dead-promise journal block (residue now rides the runtime review
+# block via _call_llm's journal binding); s2_aspects v7 unpins the JSON-only
+# line so it can't suppress the `## Review` fence.
+#
+# 9 ships s2_aspects v8: 'no prose before it', not 'around it' — 'around' is
+# bidirectional and still forbade the trailing review fence (a108cfc review
+# finding #3).
+SEED_PROMPTS_VERSION = 9
 SEED_PROMPTS_VERSION_KEY = 'seed_prompts_version'
 
 # Pointer provenance that proves the install is still running what WE put there.

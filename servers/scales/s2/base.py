@@ -33,7 +33,8 @@ from datetime import datetime, timezone, timedelta
 # envelope parsing) live behind the runner seam — see scales/runner.py.
 from ..runner import (read_usage, sum_usage,  # noqa: F401 — re-export for callers
                       make_client, run_llm_once, extract_json)
-from ..dispatch import ATTRIBUTED_WRITE_COMMANDS, stamp_scope_provenance
+from ..dispatch import (ATTRIBUTED_WRITE_COMMANDS, OPERATOR_ONLY_COMMANDS,
+                        stamp_scope_provenance)
 
 
 # Writes whose handlers emit chain-bearing traces (node_revised /
@@ -259,6 +260,18 @@ class IntegrationUnit:
         unit_session = getattr(self, 'session_id', '') or ''
 
         def dispatch(cmd, cmd_args):
+            # Channel refusal for operator-only commands (the declared set in
+            # scales/dispatch.py). Defense-in-depth: the owner method also
+            # refuses non-anchor encoding_source at the write boundary — this
+            # closure is one channel, not the whole gate (units built with an
+            # injected dispatch_fn never reach it).
+            if cmd in OPERATOR_ONLY_COMMANDS:
+                brain._log_error(
+                    's2_%s_lock_refused' % unit_name,
+                    ValueError('%s is operator-channel only' % cmd),
+                    'encoder dispatch refused %s (unit=%s)' % (cmd, unit_name))
+                return {'ok': False,
+                        'error': '%s is operator-channel only' % cmd}
             if unit_session and isinstance(cmd_args, dict):
                 from ...dispatch_common import CALLER_SESSION_KEY
                 cmd_args.setdefault(CALLER_SESSION_KEY, unit_session)
@@ -294,8 +307,9 @@ class IntegrationUnit:
             # runs in-process but on a pool worker thread; without this, encoder
             # writes can interleave with concurrent client writes (and with each
             # other across S2 units). dispatch_command runs INSIDE the lock —
-            # its per-op loudness check writes brain_logs.db, and that write must
-            # be serialized like every other shared-logs_conn write.
+            # its brain.db writes need the graph serializer; logs writes it
+            # triggers serialize themselves inside the DAL write boundary
+            # (logs_write_lock nests under write_lock, leaf ordering).
             with brain.write_lock:
                 return dispatch_command(brain, cmd, cmd_args, [])
 
@@ -491,7 +505,7 @@ class IntegrationUnit:
             client = self._client = make_client()
         return client
 
-    def _call_llm(self, interaction_name, user_content):
+    def _call_llm(self, interaction_name, user_content, journal=False):
         """Call LLM with a learnable prompt from interactions table.
 
         Loads system prompt from interaction template.
@@ -501,6 +515,16 @@ class IntegrationUnit:
         Args:
             interaction_name: Key in interactions table (e.g. 's2_community_enrichment')
             user_content: String content for the user message
+            journal: When True, this call carries the unit's journal binding —
+                the review block decorates the system tail (single-shot: no
+                closure, no arc) and the response is harvested (residue notes
+                written on this run's chain, journal sections stripped BEFORE
+                extract_json — a `]`/`}` inside a fence after the payload
+                would corrupt its rfind-based scan). The single wiring point
+                for single-shot units (healer, aspect); continuity is the
+                caller's to prepend (once per run, not per batch — see
+                scales/journal.py placement rules). Decoration is
+                deterministic, so the 1h system-prompt cache stays byte-stable.
 
         Returns:
             (parsed_json, telemetry): parsed_json is the JSON parsed from the
@@ -523,6 +547,10 @@ class IntegrationUnit:
         model = config['model']
         max_tokens = config['max_tokens']
 
+        if journal:
+            system_prompt = self.journal.decorate_system(
+                system_prompt, multi_round=False)
+
         # read_usage(None) is the all-zero token baseline — reused on the
         # pre-usage failure path.
         telemetry = {'elapsed_ms': 0, **read_usage(None)}
@@ -540,11 +568,34 @@ class IntegrationUnit:
             # expectation, and the log-and-return-None failure policy below.
             raw, telemetry = run_llm_once(
                 self._llm_client(), model, max_tokens, system_prompt, user_content)
-            return extract_json(raw), telemetry
-
         except Exception as e:
             print('[%s] LLM call failed: %s' % (self.NAME, e), flush=True)
             self.brain._log_error(self.NAME, e, 'LLM call for %s' % interaction_name)
             telemetry['elapsed_ms'] = int((time.time() - t0) * 1000)
             return None, telemetry
+
+        # Truncation is loud on the single-shot path too — the loop path
+        # checks stop_reason in _track_usage; without this, a response that
+        # hit the output ceiling read as a generic parse failure.
+        if telemetry.get('stop_reason') == 'max_tokens':
+            self.brain._log_error(
+                's2_%s_truncation' % self.NAME,
+                'max_tokens truncation: %s/%s output tokens' % (
+                    telemetry.get('output_tokens', 0), max_tokens),
+                '%s response truncated — payload likely unparseable'
+                % interaction_name)
+
+        if journal:
+            # Residue notes out, journal sections off the payload — the
+            # strip-before-extract ordering is enforced here by construction.
+            # Outside the transport try, in its own guard: a journal-layer
+            # fault must never discard a successful, paid response (degrade
+            # to the unstripped raw — extract_json is fence-robust).
+            try:
+                raw = self.journal.harvest(raw, self.chain_id())
+            except Exception as e:
+                self.brain._log_error(
+                    's2_%s_journal_harvest' % self.NAME, e,
+                    'harvest failed — parsing the unstripped response')
+        return extract_json(raw), telemetry
 

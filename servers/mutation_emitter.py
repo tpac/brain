@@ -46,6 +46,7 @@ FOR WHOEVER WIRES STEPS 4-7
 from .clock import brain_today
 from .trace_contract import (
     build_edge_revise_metadata,
+    build_lock_change_metadata,
     build_node_archived_metadata,
     build_node_created_metadata,
     build_node_deleted_metadata,
@@ -100,6 +101,12 @@ def _lifecycle_summary(verb):
     return _summary
 
 
+def _lock_summary(row):
+    """Lock flips pick their verb from the row's new state."""
+    return '%s [%s] %s' % ('locked' if row.get('locked') else 'unlocked',
+                           row.get('type') or '?', (row.get('title') or '')[:50])
+
+
 # The whole mapping, and the only place mutation kinds are enumerated.
 #   path       where the rows live in the manifest
 #   ref_type   the registered trace ref_type
@@ -113,6 +120,7 @@ MANIFEST_TRACE_MAP = (
     (('nodes', 'revised'),  'node_revised',          build_revise_metadata,        _node_ref_id, _changed, _changed_summary('revised %d field(s): %s', 'revise no-op')),
     (('nodes', 'archived'), 'node_archived',         build_node_archived_metadata, _node_ref_id, _always,  _lifecycle_summary('archived')),
     (('nodes', 'deleted'),  'node_deleted',          build_node_deleted_metadata,  _node_ref_id, _always,  _lifecycle_summary('deleted')),
+    (('nodes', 'lock_changed'), 'node_lock_changed', build_lock_change_metadata,   _node_ref_id, _always,  _lock_summary),
     (('edges',),            'edge_relation_revised', build_edge_revise_metadata,   _edge_ref_id, _changed, _changed_summary('%d field(s): %s', 'edge revise no-op')),
 )
 

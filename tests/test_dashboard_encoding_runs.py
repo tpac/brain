@@ -79,9 +79,28 @@ def test_reads_encoding_run_delta_not_first():
 
 
 def test_collects_journal_notes():
+    """Journal notes now come from the ONE journal reader (queries.journals),
+    shared by S1E and all four S2 units, so the row carries that reader's full
+    shape rather than the two keys this view used to build for itself.
+
+    Asserted field-by-field on the load-bearing values instead of by whole-dict
+    equality: the extra fields (`unit`, `subject`, `open_runs`, `since`) are
+    what the cross-encoder Journals view and the standing-item escalation rank
+    on, and a dict-equality assertion would fail again the next time the shared
+    reader learns a field — without anything actually being wrong.
+    """
     runs = run_chains(_conn(_base_rows()), limit=10, session_id='', hours=999999)
     notes = runs[0]['journal_notes']
-    assert notes == [{'note': 'ships to a corpus with zero cues', 'tag': 'doubt'}]
+    assert len(notes) == 1
+    n = notes[0]
+    assert n['note'] == 'ships to a corpus with zero cues'
+    assert n['tag'] == 'doubt'
+    # Attribution the shared reader adds: which encoder wrote it, and the
+    # lifecycle counters that drive the "needs you" escalation (0 here — a
+    # plain tag with no `×N since` suffix).
+    assert n['unit'] == 's1e'
+    assert n['chain_id'] == 's1e-testsess-7'
+    assert n['open_runs'] == 0 and n['since'] == ''
 
 
 def test_in_progress_run_has_no_summary_delta():

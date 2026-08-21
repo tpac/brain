@@ -27,6 +27,7 @@ from .queries import (
     explorer,
     graph,
     insights_scanner,
+    journals,
     recalls,
     s2_runs,
     self_channel,
@@ -155,9 +156,26 @@ class DashboardHandler(BaseHTTPRequestHandler):
         elif path == "/api/healer-runs":
             hours = int(params.get("hours", ["24"])[0])
             self._json(200, {"runs": s2_runs.query_healer_runs(hours=hours)})
+        elif path == "/api/aspect-runs":
+            hours = int(params.get("hours", ["24"])[0])
+            self._json(200, {"runs": s2_runs.query_aspect_runs(hours=hours)})
         elif path == "/api/consolidation-prompt":
             chain_id = params.get("chain_id", [""])[0]
             self._serve_consolidation_prompt(chain_id)
+
+        # Encoder journals — every encoder's residue, one shape, one reader.
+        elif path == "/api/journals":
+            self._json(200, {"notes": journals.query_journal_notes(
+                hours=int(params.get("hours", ["48"])[0]),
+                scale=params.get("scale", [""])[0],
+                unit=params.get("unit", [""])[0],
+                session_id=params.get("session_id", [""])[0],
+                tag=params.get("tag", [""])[0],
+                subject=params.get("subject", [""])[0],
+                limit=int(params.get("limit", ["300"])[0]))})
+        elif path == "/api/journals/summary":
+            self._json(200, journals.query_journal_summary(
+                hours=int(params.get("hours", ["48"])[0])))
 
         # Traces
         elif path == "/api/traces":
@@ -209,8 +227,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._json(404, {"error": "Not found"})
 
     def do_POST(self):
-        """The dashboard's write surfaces — exactly two, and the DB invariant
-        holds for both (CLAUDE.md: passive observer, never writes the DBs):
+        """The dashboard's POST surfaces. The DB invariant holds for all three
+        (CLAUDE.md: passive observer, never writes the DBs):
 
         * /api/self-send   → hands off to the daemon (the single writer) over
                              TCP, same as any MCP client. No write connection.
@@ -218,6 +236,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                              (~/.config/brain/env, mode 600) — the no-terminal
                              onboarding path for the API key. Localhost-only
                              (server binds 127.0.0.1). Never touches a DB.
+        * /api/recall      → runs the REAL recall pipeline through the daemon
+                             with mark_accessed=False. POST because it carries
+                             a query body, not because it writes: the flag makes
+                             it a pure read, so the operator's searching never
+                             enters access_count / fatigue and never shows up as
+                             recall heat in the graph. Observing, not requesting
+                             (principle id:818febd7).
         """
         if not self._loopback_guard():
             return self._json(403, {"error": "Forbidden"})
@@ -228,6 +253,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._handle_self_send()
         elif path == "/api/setup-key":
             self._handle_setup_key()
+        elif path == "/api/recall":
+            self._handle_recall()
         else:
             self._json(404, {"error": "Not found"})
 
@@ -301,6 +328,84 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return json.loads(raw.decode("utf-8")), None
         except Exception as e:
             return {}, str(e)
+
+    def _handle_recall(self):
+        """Run the operator's query through the brain's own recall pipeline.
+
+        Not a search box over the graph payload — the actual thing: LAF
+        scoring, graph expansion, the same ranking a session gets. That's the
+        point; a separate similarity search would answer a question the brain
+        never asks. Requires the daemon (embeddings live in that process).
+
+        mark_accessed=False and source='dashboard' are BOTH non-negotiable
+        here: the first keeps the read out of the brain's heat/fatigue record,
+        the second labels it honestly wherever it does appear.
+        """
+        body, err = self._read_json_body()
+        if err:
+            return self._json(400, {"ok": False, "error": "bad request body: %s" % err})
+        query = (body.get("query") or "").strip()
+        if not query:
+            return self._json(400, {"ok": False, "error": "'query' is required"})
+        try:
+            limit = max(1, min(int(body.get("limit") or 12), 40))
+        except (TypeError, ValueError):
+            limit = 12
+        if not daemon_alive():
+            return self._json(503, {"ok": False, "error":
+                "daemon is not running — recall needs the embedder, which "
+                "lives in the daemon process"})
+        # daemon_send ALREADY unwraps the daemon's {ok, result} envelope: it
+        # returns the payload on success and None on any failure (see
+        # daemon_client). Checking for `ok`/`result` here looked for keys that
+        # were already stripped, so every successful recall was read as a
+        # failure and reported as a flat "recall failed". The other caller in
+        # this file (self_presence) had the convention right.
+        payload = daemon_send("recall", {
+            "query": query, "limit": limit,
+            "source": "dashboard", "mark_accessed": False,
+        })
+        if not isinstance(payload, dict):
+            return self._json(502, {"ok": False, "error":
+                "the daemon did not answer the recall (down, timed out, or the "
+                "command failed) — check the Logs tab"})
+        # Trim to what the panel renders. The raw recall result carries full
+        # node content plus several telemetry blocks (~100KB for 12 results);
+        # the panel shows a ranked list, so shipping the rest is pure weight.
+        nodes = []
+        for n in (payload.get("results") or []):
+            nodes.append({
+                "id": n.get("id", ""),
+                "title": n.get("title", ""),
+                "type": n.get("type", ""),
+                "content": (n.get("content") or "")[:400],
+                "situation": (n.get("situation") or "")[:220],
+                "confidence": n.get("confidence"),
+                # `effective_activation` is where recall puts the blended
+                # score on a result node (brain_recall STEP 7). It is NOT
+                # exposed as `blended_score` — that name only exists on the
+                # internal scored_results rows, so reading it here yielded
+                # None for every result and the panel's score bars silently
+                # rendered empty.
+                "score": n.get("effective_activation"),
+                "similarity": n.get("embedding_similarity"),
+                "discovery": n.get("_discovery", ""),
+                "created_at": n.get("created_at", ""),
+                "last_accessed": n.get("last_accessed", ""),
+                "access_count": n.get("access_count", 0),
+            })
+        stats = payload.get("_embedding_stats") or {}
+        retr = payload.get("_retrieval_stats") or {}
+        return self._json(200, {
+            "ok": True,
+            "query": query,
+            "results": nodes,
+            "mode": payload.get("_recall_mode", ""),
+            "recall_ms": stats.get("recall_ms"),
+            "brain_size": retr.get("brain_size"),
+            "candidates": retr.get("candidates_after_floor"),
+            "by_source": stats.get("results_by_source") or {},
+        })
 
     def _handle_self_send(self):
         """Operator-authored send into the self-channel courier → daemon's

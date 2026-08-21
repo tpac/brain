@@ -63,3 +63,47 @@ class TestMaintenanceOrphanCleanup(BrainTestBase):
         self.assertEqual(relations_for(healthy_edge), 1)
         # Pre-existing orphan preserved for recovery
         self.assertEqual(relations_for('edg_deadbeef'), 1)
+
+
+class TestLogsRetention(BrainTestBase):
+    """run_maintenance's logs-side retention: session_state and boot_renders
+    age out at 30 days; live (recently-updated) rows survive. Added with the
+    2026-08-18 DB-stewardship pass — before it, both tables grew unbounded
+    (measured: 2,099 sessions back four months, 1,441 full boot texts)."""
+    needs_embedder = False
+
+    OLD = '2026-01-01T00:00:00+00:00'
+
+    def test_dead_session_state_pruned_live_kept(self):
+        dal = self.brain._session_state
+        dal.set('dead-session', '_session_context', '{}')
+        dal.set('live-session', '_session_context', '{}')
+        # Backdate the dead session past the 30-day window.
+        self.brain.logs_conn_w.execute(
+            "UPDATE session_state SET updated_at = ? WHERE session_id = 'dead-session'",
+            (self.OLD,))
+        self.brain.logs_conn_w.commit()
+
+        stats = self.brain._logs_dal.run_maintenance(graph_conn=None)
+
+        self.assertEqual(stats.get('session_state_pruned'), 1)
+        rows = {r[0] for r in self.brain.logs_conn.execute(
+            "SELECT session_id FROM session_state").fetchall()}
+        self.assertNotIn('dead-session', rows)
+        self.assertIn('live-session', rows)
+
+    def test_old_boot_renders_pruned_recent_kept(self):
+        self.brain._logs_dal.record_boot_render('old-sess', 'u', 'p', 'old boot text')
+        self.brain._logs_dal.record_boot_render('new-sess', 'u', 'p', 'new boot text')
+        self.brain.logs_conn_w.execute(
+            "UPDATE boot_renders SET created_at = ? WHERE session_id = 'old-sess'",
+            (self.OLD,))
+        self.brain.logs_conn_w.commit()
+
+        stats = self.brain._logs_dal.run_maintenance(graph_conn=None)
+
+        self.assertEqual(stats.get('boot_renders_pruned'), 1)
+        rows = {r[0] for r in self.brain.logs_conn.execute(
+            "SELECT session_id FROM boot_renders").fetchall()}
+        self.assertNotIn('old-sess', rows)
+        self.assertIn('new-sess', rows)

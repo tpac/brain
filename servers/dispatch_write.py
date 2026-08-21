@@ -629,6 +629,15 @@ def _op_absorb(brain, op_spec, top_encoding_source, graph_changes):
     archived, so a merge-only run is no longer invisible to S2."""
     survivor_id = op_spec.get("survivor_id")
     absorbed_id = op_spec.get("absorbed_id")
+    # content_edits would ride the field-override path into revise() and
+    # silently PATCH the survivor while the absorbed node's content is lost —
+    # the exact bare-merge hazard absorb's own description warns about.
+    # Losslessness needs the merged `content` override, so refuse loudly.
+    if op_spec.get('content_edits'):
+        return {"ok": False, "error":
+                "content_edits is not supported on absorb — write the merged "
+                "`content` override instead (the survivor must state the "
+                "absorbed claim; a patch cannot fold the absorbed node in)"}
     archived_by = _resolve_archived_by(op_spec, top_encoding_source)
     # Revise-op style: every non-control key is a survivor field override
     # (content, title, confidence, situation, ...), forwarded to absorb()'s
@@ -1287,6 +1296,54 @@ def _handle_connect_batch(brain, args, graph_changes):
         "failures": len(failure_details),
         "failure_details": failure_details,
     }, "mutations": {"edges": edge_rows}}
+
+
+def _handle_set_node_lock(brain, args, graph_changes):
+    """Flip a node's locked flag via the two-phase confirm door
+    (brain.set_node_lock). Operator-channel only — the encoder dispatch
+    closure refuses this command; it is deliberately NOT a brain_batch op."""
+    node_id = _resolve_id(brain, args.get("node_id", ""))
+    reason = args.get("reason", "")
+    if not node_id:
+        return {"ok": False, "error": "node_id is required"}
+    if not isinstance(args.get("locked"), bool):
+        # bool('false') is True — a string here silently inverts the request,
+        # so the type check is a guard, not pedantry.
+        return {"ok": False, "error": "locked must be a JSON boolean "
+                                      "(true/false), got %r" % (args.get("locked"),)}
+    if not reason:
+        return {"ok": False, "error": "reason is required — why is this node "
+                                      "being locked/unlocked?"}
+
+    result = brain.set_node_lock(
+        node_id=node_id, locked=args["locked"], reason=reason,
+        confirm_token=args.get("confirm_token"),
+        encoding_source=args.get("encoding_source") or 'anchor',
+        session_id=caller_session(args))
+    if not result.get("ok"):
+        return {"ok": False, "error": result.get("error", "set_node_lock failed")}
+    if not result.get("changed"):
+        # Phase 1 (confirmation_required) or no-op — nothing flipped, no trace.
+        return {"ok": True, "result": result}
+
+    graph_changes.append("LOCK: %s %s" % (
+        "locked" if result.get("locked") else "unlocked", node_id[:12]))
+    # node_lock_changed manifest row → the mutation emitter writes the loud
+    # trace. A dedicated lifecycle ref_type, NOT node_revised: revise history
+    # must never show `locked` — the field revise() treats as immutable — as
+    # a revised field.
+    row = {
+        "node_id": node_id,
+        "type": result.get("type", ""),
+        "title": result.get("title", ""),
+        "locked": result.get("locked", False),
+        "reason": reason,
+        "encoding_source": args.get("encoding_source", ""),
+        "confirm_latency_s": result.get("confirm_latency_s", 0.0),
+    }
+    return {"ok": True, "result": result,
+            "affected": _affected(revised=[node_id]),
+            "mutations": {"nodes": {"lock_changed": [row]}}}
 
 
 def _handle_enrich(brain, args, graph_changes):

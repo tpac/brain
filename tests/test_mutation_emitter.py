@@ -96,6 +96,7 @@ class TestEmitterContract(unittest.TestCase):
             'node_archived': dict(node_id='n1'),
             'node_deleted': dict(node_id='n1'),
             'node_revised': dict(node_id='n1', reason='r'),
+            'node_lock_changed': dict(node_id='n1'),
             'edge_relation_revised': dict(edge_id='e1', relation='extends', reason='r'),
         }
         for _p, ref_type, builder, _r, _w, _s in me.MANIFEST_TRACE_MAP:
@@ -522,7 +523,8 @@ class TestOneWriterPin(unittest.TestCase):
     def test_no_new_hand_rolled_mutation_emitters(self):
         writes = re.compile(r"_trace_dal\.(append|append_batch)\b")
         mutation_rt = re.compile(r"['\"](node_created|node_archived|node_deleted|"
-                                 r"node_revised|edge_relation_revised)['\"]")
+                                 r"node_revised|node_lock_changed|"
+                                 r"edge_relation_revised)['\"]")
         offenders = []
         for root, _dirs, files in os.walk(os.path.join(REPO, 'servers')):
             for name in files:
