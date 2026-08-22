@@ -402,9 +402,10 @@ PAYLOAD_KIND_EXT = {
 }
 
 # Named shapes for the `trace_recording` K-store interaction — modes as config
-# versions, not an env dial. Fresh brains seed NORMAL as v1 (active) and DEBUG
-# as v2 (dormant); "entering debug" = set_interaction_active, one MCP call, no
-# restart. Capture is observation-neutral: these gates change what's RECORDED,
+# versions, not an env dial. Fresh brains seed NORMAL as v1 and DEBUG as v2,
+# both dormant — the resolver serves NORMAL as the code default; "entering
+# debug" = set_interaction_active('trace_recording', 2), one MCP call, no
+# restart, and clear_interaction_override reverts it. Capture is observation-neutral: these gates change what's RECORDED,
 # never what the model sees (that's tool_result_cap, mode-invariant above).
 # Both shapes derive from PAYLOAD_KIND_EXT so a new kind can never be
 # silently absent from one of them (the recorder additionally overlays the

@@ -170,6 +170,7 @@ class TestBrainInteractionMethods:
         with IsolatedBrain() as env:
             self.brain = env.brain
             env.brain.logs_conn.execute('DELETE FROM interactions')
+            env.brain.logs_conn.execute('DELETE FROM interaction_active')
             env.brain.logs_conn.commit()
             yield
 
@@ -520,8 +521,11 @@ class TestPointerDeleteIsClear:
         from servers.interaction_defaults import INTERACTION_DEFAULTS
         with IsolatedBrain() as env:
             brain = env.brain
-            # A dormant version ABOVE the active one — the exact shape where
-            # a MAX(version) fallback returns something nobody deployed.
+            # Establish our own deployed state (don't lean on whatever the
+            # production copy's pointer happens to be), then register a
+            # dormant version ABOVE it — the exact shape where a MAX(version)
+            # fallback returns something nobody deployed.
+            brain._interaction_dal.set_active('surface', 1, set_by='test')
             brain.register_interaction(
                 'surface', template='SENTINEL vNext — never deployed',
                 parameters='{}')
@@ -623,3 +627,23 @@ class TestClearInteractionOverride:
         assert engine._cfg is not None
         self.brain.clear_interaction_override('recall_laf')
         assert engine._cfg is None, 'clear must drop the laf cache'
+        # Behavioral half: the very next config() read resolves the current
+        # value (the code default) — no TTL wait.
+        assert (engine.config(self.brain)
+                == self.brain.get_interaction_config('recall_laf'))
+
+    def test_clear_refuses_unknown_names(self):
+        """A typo'd clear must never report 'already on the default' while
+        the real override keeps running — nothing deleted + no code default
+        means refusal, not a benign no-op."""
+        with pytest.raises(KeyError):
+            self.brain.clear_interaction_override('trace_recoding')  # typo
+
+    def test_clear_purges_the_recall_result_cache(self):
+        """The recall RESULT cache keys on the query alone — a laf flip or
+        clear must purge it or an identical query re-asked within the TTL
+        returns the pre-flip result."""
+        self.brain._recall_cache_put(('probe',), {'results': ['stale']})
+        assert self.brain._recall_cache_get(('probe',)) is not None
+        self.brain.clear_interaction_override('recall_laf')
+        assert self.brain._recall_cache_get(('probe',)) is None

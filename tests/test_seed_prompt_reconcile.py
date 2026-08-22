@@ -203,6 +203,28 @@ class PristineAdvanceTest(ReconcileTestBase):
             SEED_PROMPTS_VERSION)
 
 
+class NoPointerTest(ReconcileTestBase):
+    """The healthy steady state of every post-override install: names with
+    registered rows but NO pointer run the code default. Reconcile must
+    leave them alone — the `active_version is None` branch is the ONLY
+    boot-path code standing between a deliberate clear_interaction_override
+    and a bump silently resurrecting the override."""
+
+    def test_reconcile_never_touches_a_pointer_less_name(self):
+        self.brain.clear_interaction_override(NAME)
+        versions_before = self._version_count()
+        self._reset_stream()
+
+        reconcile_seeded_prompts(self.brain)
+
+        self.assertEqual(self._pointer(), (None, None),
+                         'reconcile minted a pointer on a name whose '
+                         'override was deliberately cleared')
+        self.assertEqual(self._version_count(), versions_before,
+                         'reconcile registered a version for a '
+                         'pointer-less name')
+
+
 class HandsOffTest(ReconcileTestBase):
     """Everything reconcile must refuse to touch."""
 

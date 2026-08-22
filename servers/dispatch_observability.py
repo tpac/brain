@@ -234,7 +234,9 @@ def _handle_clear_interaction_override(brain, args, graph_changes):
     (brain.get_interaction_prompt / get_interaction_config) resolves the code
     default, immediately — TTL caches are invalidated. Registered versions
     stay on record for re-activation. No set_by is written (a delete leaves
-    no row), so the reserved-provenance check does not apply.
+    no row), so the reserved-provenance check does not apply. A typo'd name
+    (nothing deleted, no code default) is refused, never reported as
+    "already on the default".
     """
     name = args.get("name", "")
     if not name:

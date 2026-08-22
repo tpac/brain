@@ -758,7 +758,7 @@ def _build_tools():
          "set_by": {"type": "string", "description": "Who flipped the pointer (default 'anchor')"}}}},
 
     {"name": "clear_interaction_override",
-     "description": "Delete the active pointer for an interaction — revert to the code default, immediately (TTL caches invalidated). The inverse of set_interaction_active: 'no pointer' means 'no override deployed'. Registered versions stay on record for re-activation. Reports distinctly whether a pointer was cleared or none existed.",
+     "description": "Delete the active pointer for an interaction — revert to the code default, immediately (TTL caches invalidated). The inverse of set_interaction_active: 'no pointer' means 'no override deployed'. Registered versions stay on record for re-activation. Reports distinctly whether a pointer was cleared or none existed; refuses a name that has neither a pointer nor a code default (typo guard).",
      "inputSchema": {"type": "object", "required": ["name"], "properties": {
          "name": {"type": "string", "description": "Interaction name (e.g. 'surface', 's1e')"}}}},
 

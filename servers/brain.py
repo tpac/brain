@@ -875,26 +875,61 @@ class Brain(
         override deployed", so the resolver serves the code default on the
         next read. Registered versions stay on record for re-activation.
         `cleared` is False when no pointer existed (already on the default).
+
+        A name that deleted nothing AND has no code default is refused: a
+        typo'd clear ('trace_recoding') reporting "already on the default"
+        would leave the real override live behind a success message. Legacy
+        names without a code default still clear fine when their pointer
+        exists — the delete-first order is what allows that cleanup.
         """
         cleared = self._interaction_dal.clear_active(name)
+        if not cleared:
+            from .interaction_defaults import INTERACTION_DEFAULTS
+            if name not in INTERACTION_DEFAULTS:
+                raise KeyError(
+                    'unknown interaction %r — no pointer to clear and no '
+                    'code default registered; check the name' % name)
         self.invalidate_interaction_caches(name)
         return {'name': name, 'cleared': cleared}
 
     def invalidate_interaction_caches(self, name: str) -> None:
-        """Drop any TTL cache holding `name`'s resolved config, so a pointer
-        flip or clear reaches the next read immediately — not after the TTL.
+        """Drop every cache holding `name`'s resolved value, so a pointer
+        flip or clear reaches the next read immediately — not after a TTL.
 
         The next-read promise is what makes clear-then-measure workflows
         (eval overrides, the trace_recording debug switch) trustworthy.
+
+        _INTERACTION_CACHE_INVALIDATORS below is the registry of every cache
+        keyed on an interaction name — a new TTL cache over a resolved
+        interaction MUST add its name here or a deploy/clear runs late for
+        that reader, silently. (scope_veil needs no entry: its cache key
+        includes the scopes pointer version, so a flip or clear misses the
+        key and rebuilds naturally.)
         """
-        if name == 'trace_recording':
-            # The payload recorder TTL-caches this config (performance
-            # charter) — the one config that gates live capture.
-            self.invalidate_trace_recording_cache()
-        elif name == 'recall_laf':
-            engine = getattr(self, '_laf_engine', None)
-            if engine is not None:
-                engine.invalidate_config()
+        for invalidate in self._INTERACTION_CACHE_INVALIDATORS.get(name, ()):
+            invalidate(self)
+
+    _INTERACTION_CACHE_INVALIDATORS = {
+        # The payload recorder TTL-caches this config (performance charter) —
+        # the one config that gates live capture.
+        'trace_recording': (
+            lambda self: self.invalidate_trace_recording_cache(),
+        ),
+        # The LAF engine TTL-caches its gain overlay; the recall RESULT cache
+        # keys on the query alone (no config fingerprint), so it must purge
+        # too or an identical query re-asked within its TTL returns the
+        # pre-flip result.
+        'recall_laf': (
+            lambda self: (getattr(self, '_laf_engine', None) is not None
+                          and self._laf_engine.invalidate_config()),
+            lambda self: self._recall_cache_purge(),
+        ),
+        # Expansion runs inside _recall_impl, so its flips are also baked
+        # into cached recall results.
+        'recall_query_expansion': (
+            lambda self: self._recall_cache_purge(),
+        ),
+    }
 
     def register_interaction(self, name: str, template: str = '',
                              parameters: str = '',

@@ -117,8 +117,11 @@ class TestFreshBrainSeeding:
                 assert name in seeded, (
                     f'Fresh brain missing {name!r}. seed_interactions() '
                     f'didn\'t register it. See servers/interaction_seed.py.')
-                # Also assert the template is non-empty.
-                tmpl = brain.get_interaction_prompt(name)
+                # Also assert the SEEDED ROW's template is non-empty — the
+                # resolver would serve the code default even for a blank row,
+                # so reading get_interaction_prompt here would be vacuous.
+                row = brain._interaction_dal.get_version(name, 1) or {}
+                tmpl = row.get('template')
                 assert tmpl and len(tmpl) > 100, (
                     f'{name} was seeded with empty/tiny template ({len(tmpl or "")} chars).')
         finally:
@@ -149,7 +152,16 @@ class TestFreshBrainSeeding:
         brain = Brain(db_path=db)
         try:
             # v1 was seeded dormant by Brain.__init__ (registration never
-            # activates) — deploy it so there is an ACTIVE version to mirror.
+            # activates). With NO pointer, _fetch_active must return None —
+            # "no override deployed, seed file is authoritative" — and NEVER
+            # fall back to a registered version. This is the no-pointer half
+            # of the dormant-leak guard: the old MAX(version) fallback here
+            # would have mirrored an un-eval'd dormant candidate into the
+            # seed .py, which interaction_defaults imports as the CODE
+            # DEFAULT — a fleet-wide eval-gate bypass.
+            assert _fetch_active(brain.logs_conn, 's1e') is None
+
+            # Deploy v1 so there is an ACTIVE version to mirror.
             brain._interaction_dal.set_active('s1e', 1, set_by='test')
             initial_v1 = brain.get_interaction_prompt('s1e')
             assert initial_v1

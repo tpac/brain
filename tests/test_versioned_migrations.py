@@ -264,9 +264,10 @@ class BackupTest(unittest.TestCase):
     def test_backup_survives_an_open_transaction_at_the_call_site(self):
         """The backup must not depend on the caller's transaction state.
 
-        `ensure_logs_schema`'s interaction_active backstop is DML and leaves a
-        write transaction open when it hands off to the runner. The backup
-        opens its own read-only source connection and must capture the last
+        Schema work in `ensure_logs_schema` can leave a write transaction
+        open when it hands off to the runner (the shape that motivated this:
+        the since-deleted interaction_active backstop DML). The backup opens
+        its own read-only source connection and must capture the last
         COMMITTED state whatever the caller's connection is doing — asserted
         end-to-end through a real Brain boot migrating a pre-versioning
         logs DB.
