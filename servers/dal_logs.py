@@ -483,9 +483,10 @@ class LogsDAL(_LogsWriteBase):
 # would silently reclassify every untouched install as human-owned and kill the
 # mechanism with no signal at all.
 #
-# Minted at: AUTO_V1 by InteractionDAL.register (a new name's v1 auto-activates),
-# BACKSTOP by the pointer fill-in in schema.ensure_logs_schema, RECONCILE by
-# interaction_seed when it advances a shipped prompt.
+# Minted at: RECONCILE by interaction_seed when it advances a shipped prompt.
+# AUTO_V1 (register's old v1 auto-activate) and BACKSTOP (the old
+# ensure_logs_schema pointer fill-in) are no longer minted anywhere; both
+# survive to classify the live rows they stamped.
 #
 # Closed vocabulary: callers coming through the MCP door may not supply any of
 # them, or a stray call could relabel a human's deployment decision as an
@@ -508,6 +509,7 @@ class InteractionDAL(_LogsWriteBase):
       - `register()` inserts a new version row. Does NOT change which version
         the runtime reads. Decoupled by design.
       - `set_active()` flips the per-name active pointer to a chosen version.
+      - `clear_active()` deletes the pointer — reverts to the code default.
       - `get_active()` reads via the active pointer only; None when no
         pointer exists — "no pointer" means "no override deployed".
       - `get_version()` reads a specific version (used by eval overrides).
@@ -517,12 +519,10 @@ class InteractionDAL(_LogsWriteBase):
                  created_by: str = 'anchor') -> Dict[str, Any]:
         """Register a new version of an interaction. Auto-increments version.
 
-        Activation semantics:
-          - If this is version 1 (first registration for this name), AUTO-ACTIVATE.
-            Otherwise nothing is reading anything for this name — making it
-            active is the right default.
-          - If this is version 2 or later, do NOT activate. Caller must call
-            `set_active()` explicitly to flip the runtime pointer.
+        Never activates — a write is not a deployment decision. Every name
+        has a code default to run on, so a registered-but-inactive version
+        is readable state, not a dead name. Flip the runtime pointer with
+        `set_active()`.
         """
         now = iso_now()
         with self._wlock:
@@ -540,17 +540,8 @@ class InteractionDAL(_LogsWriteBase):
                 'VALUES (?, ?, ?, ?, ?, ?, ?)',
                 (name, version, template, parameters, now, created_by, parent))
             new_id = self.wconn.execute('SELECT last_insert_rowid()').fetchall()[0][0]
-            # Auto-activate v1 ONLY. Subsequent versions require explicit set_active.
-            was_activated = False
-            if version == 1:
-                self.wconn.execute(
-                    'INSERT OR REPLACE INTO interaction_active (name, version, set_at, set_by) '
-                    'VALUES (?, ?, ?, ?)',
-                    (name, version, now, AUTO_V1_PROVENANCE))
-                was_activated = True
             commit_unless_batched(self.wconn)
-        return {'name': name, 'version': version, 'id': new_id,
-                'auto_activated': was_activated}
+        return {'name': name, 'version': version, 'id': new_id}
 
     def set_active(self, name: str, version: int,
                    set_by: str = 'anchor') -> Dict[str, Any]:
@@ -579,6 +570,21 @@ class InteractionDAL(_LogsWriteBase):
                 (name, version, now, set_by))
             commit_unless_batched(self.wconn)
         return {'name': name, 'version': version, 'set_at': now, 'set_by': set_by}
+
+    def clear_active(self, name: str) -> bool:
+        """Delete the active pointer for `name` — the inverse of `set_active`.
+
+        Pure mechanics: the caller owns what "no pointer" means (the resolver
+        serves the code default) and any cache invalidation. Registered
+        versions stay on record. Returns True when a pointer was deleted,
+        False when none existed.
+        """
+        with self._wlock:
+            cur = self.wconn.execute(
+                'DELETE FROM interaction_active WHERE name = ?', (name,))
+            deleted = cur.rowcount > 0
+            commit_unless_batched(self.wconn)
+        return deleted
 
     def get_active(self, name: str) -> Optional[Dict[str, Any]]:
         """Get the currently-active version of an interaction.

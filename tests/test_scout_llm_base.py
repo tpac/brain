@@ -211,6 +211,8 @@ class TestSystemPromptAssembly(BrainTestBase):
         self.brain._interaction_dal.register(
             's1_scout_quote', template='',
             parameters=json.dumps({'timeout_seconds': 33}))
+        self.brain._interaction_dal.set_active(
+            's1_scout_quote', 1, set_by='test')
         scout_base.run_llm_scout(
             'quote', self.brain, _shared_prefix(),
             anthropic_client=client)
@@ -251,6 +253,8 @@ class TestFailurePaths(BrainTestBase):
         self.brain._interaction_dal.register(
             's1_scout_quote', template='',
             parameters=json.dumps({'model': 'sentinel-scout-model'}))
+        self.brain._interaction_dal.set_active(
+            's1_scout_quote', 1, set_by='test')
         client = _mock_client(
             json.dumps({"candidates": [], "scanned": {"turns": 0}}))
         out = scout_base.run_llm_scout(

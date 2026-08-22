@@ -34,6 +34,7 @@ _RESIDUE_REF_TYPES = ('journal_note',)
 _EMITTER_REF_TYPES = (
     'node_created', 'node_archived', 'node_deleted',
     'node_revised', 'edge_relation_revised',
+    'node_lock_changed',
 )
 # Everything the run-card queries must not mistake for a run.
 _NON_RUN_REF_TYPES = _RESIDUE_REF_TYPES + _EMITTER_REF_TYPES

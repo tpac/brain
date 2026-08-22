@@ -121,14 +121,13 @@ def _mint(brain, sid, project, title):
 
 
 def _set_scopes(brain, config):
-    """The full operator discipline: register (v1 auto-activates, later
-    versions are DORMANT) + explicit activate."""
+    """The full operator discipline: register (never activates) + explicit
+    activate to deploy the override."""
     import json
     r = brain.register_interaction(
         'scopes', template='', parameters=json.dumps(config),
         created_by='anchor')
-    if not r.get('auto_activated'):
-        brain.set_interaction_active('scopes', r['version'])
+    brain.set_interaction_active('scopes', r['version'])
 
 
 ISOLATE_CLIENT_X = {'project': {'mode': 'scoped',

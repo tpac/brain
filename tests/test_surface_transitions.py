@@ -391,6 +391,7 @@ class TestDecodeTransitions(BrainTestBase):
         self.brain._interaction_dal.register(
             'surface', template='',
             parameters=json.dumps({'layout': 'sentinel-layout'}))
+        self.brain._interaction_dal.set_active('surface', 1, set_by='test')
 
         captured = {}
 

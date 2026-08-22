@@ -69,16 +69,17 @@ def _repo_root():
 
 
 def _fetch_active(conn, name):
-    """Active template + version + parameters for an interaction, or None.
+    """DEPLOYED override (template + version + parameters), or None.
 
-    The seed file mirrors the PRODUCTION-RUNNING version (active), NOT the
-    highest registered version. Dormant candidates (registered but not yet
-    activated — e.g. during a 3-way eval gate) must NOT leak into the seed
-    file, or fresh brains would skip the eval gate by booting with the
-    untested candidate as their v1 active.
-
-    Falls back to highest version only if no row has active=1 (defensive —
-    every registered interaction should have exactly one active row).
+    The seed file mirrors the DEPLOYED version (the interaction_active
+    pointer), NEVER the highest registered one. Dormant candidates
+    (registered but not yet activated — e.g. during a 3-way eval gate) must
+    NOT leak into the seed file: the seed .py IS the code default
+    (interaction_defaults imports it), so a leak would deploy an untested
+    prompt fleet-wide. "No pointer" is the normal state under the override
+    model — it means no override is deployed and the seed .py is already
+    authoritative, so None here means "nothing to mirror", never "fall back
+    to MAX(version)".
     """
     # interaction_active is a separate pointer table — one row per name
     # carrying the version that the runtime reads. JOIN to interactions for
@@ -89,12 +90,6 @@ def _fetch_active(conn, name):
         'JOIN interaction_active ia ON ia.name = i.name AND ia.version = i.version '
         'WHERE i.name = ? LIMIT 1',
         (name,)).fetchone()
-    if not row:
-        # Defensive fallback — should never happen on a healthy table.
-        row = conn.execute(
-            'SELECT template, version, parameters, created_by, created_at '
-            'FROM interactions WHERE name = ? ORDER BY version DESC LIMIT 1',
-            (name,)).fetchone()
     if not row:
         return None
     return {'template': row[0], 'version': row[1],
@@ -239,7 +234,7 @@ def check_configs(conn, log=print):
     for name, (_template, shipped_cfg) in sorted(shipped_prompts().items()):
         inter = _fetch_active(conn, name)
         if inter is None:
-            continue  # template loop already reported missing-in-db
+            continue  # no override deployed — nothing to compare against
         try:
             live_cfg = json.loads(inter['parameters']) if inter['parameters'] else {}
         except (json.JSONDecodeError, TypeError):
@@ -264,7 +259,7 @@ def check_configs(conn, log=print):
 def sync(conn, check_only=False, log=print):
     """Sync all seed prompts DB → .py. Returns list of (name, status) tuples.
 
-    status ∈ {'synced', 'would-change', 'missing-in-db', 'no-change'}.
+    status ∈ {'synced', 'would-change', 'no-override', 'no-change'}.
     check_only=True: print diff-summary only, don't write files.
     """
     root = _repo_root()
@@ -272,8 +267,11 @@ def sync(conn, check_only=False, log=print):
     for name, rel_path, constant in SEED_PROMPTS:
         inter = _fetch_active(conn, name)
         if inter is None:
-            results.append((name, 'missing-in-db'))
-            log('  %-34s  missing in DB — seed cannot be synced' % name)
+            # No override deployed — the seed .py is already the authority
+            # (it IS the code default). Nothing to mirror, healthy state.
+            results.append((name, 'no-override'))
+            log('  %-34s  no override deployed — seed file is authoritative'
+                % name)
             continue
         path = os.path.join(root, rel_path)
         fresh = inter['template']
