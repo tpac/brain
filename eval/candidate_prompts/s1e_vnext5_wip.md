@@ -1045,6 +1045,7 @@ remember_batch(
     {type: "mechanism", title: "Recall fuses 4 z-weighted embedding groups + FTS5 + synaptic-fatigue dampening",
      content: "Recall scores candidates by cosine across four z-weighted embedding groups (title, content, situation, question), blends an FTS5 lexical lane, then dampens recently-surfaced nodes via synaptic fatigue. The concrete, findable detail — the actual fusion recipe.",
      situation: "When debugging recall ranking, tuning fusion weights, or explaining why a node did or didn't surface",
+     question: "How does recall decide which memories rank first?",
      reasoning: "Sam walked the fusion stage with me this turn; the exact recipe is the detail a future-recall me needs to reason about ranking — it won't be reconstructable from the meaning alone.",
      anchor_raw_quote: "Four groups, z-weighted, plus FTS5, minus fatigue — that's the whole recipe."},
     {type: "principle", title: "Recognition over retrieval — every recall mechanism serves knowing, not searching",
@@ -1053,7 +1054,7 @@ remember_batch(
      reasoning: "The fusion recipe is one instance; this is the meaning that governs all such choices and surfaces where the recipe never would — for queries about purpose, not mechanics.",
      connect_to: [
        {title: "Recall fuses 4 z-weighted embedding groups + FTS5 + synaptic-fatigue dampening", relation: "grounds",
-        why: "the recipe is the findable handle, 'recognition over retrieval' is the meaning it serves — the recipe surfaces for 'how does ranking work', the principle for 'why is recall built this way'; same topic, two retrieval surfaces"}
+        why: "the recipe is the findable handle, 'recognition over retrieval' is the meaning it serves — the recipe surfaces for 'how does ranking work', the principle for 'why is recall built this way'; same topic, two retrieval surfaces, kept deliberately separable so recall can choose by intent"}
      ]}
   ]
 )
@@ -1199,6 +1200,7 @@ brain_batch(operations: [
    title: "Rollout order after auth-rewrite was scrapped: api-gateway → cli",
    content: "Scrapping auth-rewrite (2024-03-02) removed step 1 of the approved rollout. Remaining order unchanged: api-gateway first, cli after. Auth returns as a fresh design on top of the gateway work.",
    situation: "When picking up the rollout queue — auth-rewrite no longer exists as a step",
+   question: "What's the rollout order now that auth-rewrite is gone?",
    reasoning: "The old order was a real ruling; the scrap falsified its first step, not its logic. Superseding keeps the lineage walkable; minting a twin would leave two competing orders in recall.",
    anchor_raw_quote: "Done — the auth-rewrite branch is deleted (commits recoverable by hash), workspace clean.",
    source_refs: ["4f8a2c1e"],
