@@ -33,6 +33,14 @@ whether its own override took. A fingerprint that does not MOVE across the
 override is the silent-arm-collapse signal (id:a6dfcfe3): both arms would
 measure the same K and the A/B would report a difference of zero as a result.
 
+Comparing arms is a CROSS-arm assertion, and no single run can make it: each
+arm only ever sees its own stamp, which is precisely the gap the old
+version-int corpus address hid in. Read each arm's stamp from that arm's own
+brain and assert the two differ. ⚠ Reading one means opening a per-item corpus
+copy — never the live `brain.db` while the daemon is up: a second writer
+connection is how an index gets corrupted (CLAUDE.md). Route a live read
+through the daemon (`daemon_client.send_command`) instead.
+
 Leak check: `./dev check-overrides`.
 """
 import json
