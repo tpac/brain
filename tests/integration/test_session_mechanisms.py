@@ -249,7 +249,7 @@ class Test06_MetadataKV(unittest.TestCase):
     MetadataDAL provides get/set/set_many/delete/coverage.
 
     WHY: Old fixed-column node_metadata table required 7-file changes per new field.
-    KV: add one line to contract. anchor_raw_quote was the first new field.
+    KV: add one line to contract. my_raw_quote was the first new field.
 
     WHERE: servers/dal_metadata.py (DAL), contract.py (METADATA_KEYS)
     TABLE: node_metadata_kv
@@ -294,9 +294,9 @@ class Test06_MetadataKV(unittest.TestCase):
         dal.delete_all('_test_kv')
         self.brain.conn.execute("DELETE FROM nodes WHERE id = '_test_kv'")
 
-    def test_anchor_raw_quote_in_contract(self):
+    def test_my_raw_quote_in_contract(self):
         from servers.contract import METADATA_KEYS
-        self.assertIn('anchor_raw_quote', METADATA_KEYS)
+        self.assertIn('my_raw_quote', METADATA_KEYS)
 
     def test_remember_stores_kv(self):
         """remember() should store metadata in KV, not old fixed table."""

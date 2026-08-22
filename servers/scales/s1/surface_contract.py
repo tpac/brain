@@ -182,7 +182,7 @@ CANDIDATE_POOL = {
     # before the filter runs (a98143f review, finding 1). Sized to the
     # seen-set ceiling: the window holds ~4 selections × ~4 turns.
     'seen_dedup_headroom': 15,
-    'include_metadata': True,   # situation, reasoning, user_raw_quote
+    'include_metadata': True,   # situation, reasoning, their_raw_quote
 }
 
 
@@ -836,8 +836,8 @@ HAIKU_FORMAT_LEAN = {
     'time_format': 'relative',
     'correction_render': 'lean',
     'edge_style': 'oneline',
-    'extra_skip_keys': ('question', 'reasoning', 'user_raw_quote',
-                        'anchor_raw_quote'),
+    'extra_skip_keys': ('question', 'reasoning', 'their_raw_quote',
+                        'my_raw_quote'),
 }
 
 
@@ -1939,7 +1939,7 @@ def _event_time_line(node):
     prepend without guarding.
 
     Future generalization (per Tom): query-aware kv field promotion. A query
-    asking 'what did X say' should promote user_raw_quote / anchor_raw_quote
+    asking 'what did X say' should promote their_raw_quote / my_raw_quote
     similarly; 'when' queries promote event_time/created_at. Current scope:
     event_time only — surgical change to test L4-fix in isolation.
     """

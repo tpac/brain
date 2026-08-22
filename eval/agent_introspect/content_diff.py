@@ -251,10 +251,10 @@ def _format_report(qid: str, prompts: Dict[str, str],
                 out.append(f"- content: {n['content']}")
             if n.get("situation"):
                 out.append(f"- situation: {n['situation']}")
-            if n.get("user_raw_quote"):
-                out.append(f"- user_raw_quote: \"{n['user_raw_quote']}\"")
-            if n.get("anchor_raw_quote"):
-                out.append(f"- anchor_raw_quote: \"{n['anchor_raw_quote']}\"")
+            if n.get("their_raw_quote"):
+                out.append(f"- their_raw_quote: \"{n['their_raw_quote']}\"")
+            if n.get("my_raw_quote"):
+                out.append(f"- my_raw_quote: \"{n['my_raw_quote']}\"")
             if n.get("source_attribution"):
                 out.append(f"- source_attribution: `{n['source_attribution']}`")
             if n.get("connect_to"):

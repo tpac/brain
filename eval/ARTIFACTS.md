@@ -63,7 +63,7 @@ One row per active (non-archived) node, with **all** core columns plus a `kv` di
 ```json
 {"id": "...", "type": "lesson", "title": "...", "content": "...",
  "keywords": "...", "activation": 1.0, "stability": 1.0, ...,
- "kv": {"situation": "...", "reasoning": "...", "user_raw_quote": "...", ...}}
+ "kv": {"situation": "...", "reasoning": "...", "their_raw_quote": "...", ...}}
 ```
 This is the encoded knowledge graph at end-of-ingest. ENCODE_MISS analysis lives here.
 

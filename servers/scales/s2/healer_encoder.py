@@ -268,10 +268,10 @@ class HealerEncoder(IntegrationUnit):
             lines.append(node.get('content', ''))
 
             # Voice quotes — grounding for the generated fields.
-            if metadata.get('user_raw_quote'):
-                lines.append('OPERATOR SAID: "%s"' % metadata['user_raw_quote'])
-            if metadata.get('anchor_raw_quote'):
-                lines.append('ASSISTANT SAID: "%s"' % metadata['anchor_raw_quote'])
+            if metadata.get('their_raw_quote'):
+                lines.append('OPERATOR SAID: "%s"' % metadata['their_raw_quote'])
+            if metadata.get('my_raw_quote'):
+                lines.append('ASSISTANT SAID: "%s"' % metadata['my_raw_quote'])
 
             # Corrections — heavy slice via the unified render_corrections().
             # Single source of truth (contract.py:render_corrections) — same

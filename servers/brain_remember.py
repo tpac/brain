@@ -824,7 +824,7 @@ class BrainRememberMixin:
             # absorbed one. (survivor-lacks is already covered by `fill`; caller
             # override via field_updates and `drop` still win below.)
             voice = {}
-            for vf in ('user_raw_quote', 'anchor_raw_quote'):
+            for vf in ('their_raw_quote', 'my_raw_quote'):
                 if vf in drop or vf in field_updates:
                     continue
                 s_val = (s_kv.get(vf) or '').strip()
@@ -1110,8 +1110,8 @@ class BrainRememberMixin:
                  evolution_status: Optional[str] = None,
                  # Promoted metadata fields (stored in node_metadata_kv)
                  reasoning: Optional[str] = None,
-                 user_raw_quote: Optional[str] = None,
-                 anchor_raw_quote: Optional[str] = None,
+                 their_raw_quote: Optional[str] = None,
+                 my_raw_quote: Optional[str] = None,
                  # `correction_of` parameter removed 2026-05-17 — corrections
                  # tracked via correction_improvement-aspect edges
                  # (corrects/supersedes/reframes/...). See render_corrections()
@@ -1229,32 +1229,32 @@ class BrainRememberMixin:
         # when the conversation has operator-asks-question + anchor-articulates-
         # principle shape, Sonnet's voice-attribution logic matches content to
         # field rather than speaker to field — it can land identical strings in
-        # BOTH user_raw_quote and anchor_raw_quote. Prompt teaching alone didn't
+        # BOTH their_raw_quote and my_raw_quote. Prompt teaching alone didn't
         # catch this (failed across v19, v20.0, v20.1 on the same corpus).
         # Loud at write boundary so the error surfaces every time it happens.
         # Non-blocking: write proceeds, but the encoder errors table records the
         # violation for retrospective audit + future S2Healer-driven cleanup.
-        if (user_raw_quote and anchor_raw_quote
-                and user_raw_quote.strip() == anchor_raw_quote.strip()
-                and len(user_raw_quote.strip()) > 0):
+        if (their_raw_quote and my_raw_quote
+                and their_raw_quote.strip() == my_raw_quote.strip()
+                and len(their_raw_quote.strip()) > 0):
             self._log_error(
                 'voice_fidelity_identical_strings',
                 ValueError(
-                    "user_raw_quote == anchor_raw_quote on node %s "
+                    "their_raw_quote == my_raw_quote on node %s "
                     "(type=%s, title=%r). Voice fields are for different "
                     "speakers; identical strings indicate Sonnet matched "
                     "content-to-field rather than speaker-to-field. "
                     "Quote: %r" % (
                         node_id, type, (title or '')[:80],
-                        user_raw_quote.strip()[:160])),
+                        their_raw_quote.strip()[:160])),
                 'encode-time voice fidelity check')
 
         # Store all metadata via unified path — promoted, emergent, and extra fields.
         _meta_fields = {}
         # Promoted fields passed as explicit args
         for _name, _val in [
-            ('reasoning', reasoning), ('user_raw_quote', user_raw_quote),
-            ('anchor_raw_quote', anchor_raw_quote),
+            ('reasoning', reasoning), ('their_raw_quote', their_raw_quote),
+            ('my_raw_quote', my_raw_quote),
             ('correction_pattern', correction_pattern), ('source_context', source_context),
             ('confidence_rationale', confidence_rationale), ('scope', scope),
             ('source_attribution', source_attribution), ('situation', situation),

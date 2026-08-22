@@ -1,7 +1,7 @@
 """query_insights() quote detection — structured metadata, not name strings.
 
 The "Zero quotes preserved this week" insight must key on the canonical quote
-storage (user_raw_quote / anchor_raw_quote in node_metadata_kv, plus
+storage (their_raw_quote / my_raw_quote in node_metadata_kv, plus
 quote-typed nodes). Operator/agent names are per-install, so content LIKE
 '%Tom said%'-style heuristics are dead — pinned here.
 """
@@ -51,7 +51,7 @@ def test_fires_when_no_quote_metadata(tmp_path, monkeypatch):
     assert _zero_quotes_fired(tmp_path, monkeypatch)
 
 
-@pytest.mark.parametrize("key", ["user_raw_quote", "anchor_raw_quote"])
+@pytest.mark.parametrize("key", ["their_raw_quote", "my_raw_quote"])
 def test_kv_quote_suppresses(tmp_path, monkeypatch, key):
     _make_brain_db(tmp_path, _plain_nodes(6), kv=[("n0", key, "exact words")])
     assert not _zero_quotes_fired(tmp_path, monkeypatch)

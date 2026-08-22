@@ -91,7 +91,7 @@ def _generate_remember_schema():
             "• `situation` is the single biggest lever for recall — write as "
             "\"When [doing X] and [Y happens]\". A vague situation means the node "
             "only surfaces for exact-match queries.\n"
-            "• `user_raw_quote` and `anchor_raw_quote` capture meaning that "
+            "• `their_raw_quote` and `my_raw_quote` capture meaning that "
             "paraphrasing loses. Use them when the operator's or your own exact "
             "words carry the principle.\n"
             "• To link a node as a correction of another, use `connect_to` "
@@ -466,7 +466,7 @@ def _build_tools():
      "inputSchema": {"type": "object", "properties": {
          "query": {"type": "string", "description": "Search query (semantic, not keyword)"},
          "node_id": {"type": "string", "description": "Look up a specific node by ID (skip search)"},
-         "filter": {"type": "object", "description": "Dict filter on node/metadata fields. Examples: {\"type\": {\"in\": [\"moment\"]}} or {\"anchor_raw_quote\": {\"exists\": true}} or {\"content\": {\"contains\": \"Anchor\"}}. Operators: exists, equals, in, contains, gte, lte. Node columns checked on result, other keys checked in metadata."},
+         "filter": {"type": "object", "description": "Dict filter on node/metadata fields. Examples: {\"type\": {\"in\": [\"moment\"]}} or {\"my_raw_quote\": {\"exists\": true}} or {\"content\": {\"contains\": \"Anchor\"}}. Operators: exists, equals, in, contains, gte, lte. Node columns checked on result, other keys checked in metadata."},
          "limit": {"type": "integer", "description": "Max results (default 8)", "default": 8},
          "neighbor_limit": {"type": "integer", "description": "Max neighbor nodes to include (default 3)", "default": 3}}}},
     _generate_remember_schema(),

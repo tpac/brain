@@ -63,8 +63,8 @@ def best_gold_node(nodes, gset):
         content = n.get('content') or ''
         kv = n.get('kv') or {}
         blob = ' '.join([title, content,
-                         kv.get('anchor_raw_quote', '') or '',
-                         kv.get('user_raw_quote', '') or '',
+                         kv.get('my_raw_quote', '') or '',
+                         kv.get('their_raw_quote', '') or '',
                          kv.get('situation', '') or '',
                          kv.get('reasoning', '') or '']).lower()
         toks = set(re.findall(r'[a-z0-9$.]+', blob))

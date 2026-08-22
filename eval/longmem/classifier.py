@@ -113,7 +113,7 @@ def _scan_brain_for_gold(brain, gold: str) -> Dict[str, Any]:
     from semantic recall ranking. Scans:
     - nodes.title, nodes.content (archived nodes excluded)
     - node_metadata_kv.value for high-signal keys (situation, reasoning,
-      user_raw_quote, anchor_raw_quote, event_description, value, entity)
+      their_raw_quote, my_raw_quote, event_description, value, entity)
 
     Match rule: ALL extracted terms must appear within a single node
     (AND across terms, OR across fields). Prevents false positives when
@@ -204,7 +204,7 @@ def _scan_brain_for_gold(brain, gold: str) -> Dict[str, Any]:
     if (terms or phrase) and not matches:
         try:
             kv_keys = (
-                "situation", "reasoning", "user_raw_quote", "anchor_raw_quote",
+                "situation", "reasoning", "their_raw_quote", "my_raw_quote",
                 "event_description", "value", "entity", "handle",
             )
             key_placeholders = ",".join("?" * len(kv_keys))

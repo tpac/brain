@@ -314,7 +314,7 @@ def run_variant(client, model: str, system_prompt: str, user_content: str,
     all_node_specs = [a.args for a in creates] + cluster_node_specs
     concept_creates = [n for n in all_node_specs if n.get("type") == "concept"]
     with_situation = [n for n in all_node_specs if n.get("situation")]
-    with_quote = [n for n in all_node_specs + [a.args for a in revises] if n.get("user_raw_quote")]
+    with_quote = [n for n in all_node_specs + [a.args for a in revises] if n.get("their_raw_quote")]
     created_types = sorted(set(n.get("type", "") for n in all_node_specs if n.get("type")))
 
     # Open fields
@@ -386,7 +386,7 @@ def run_variant(client, model: str, system_prompt: str, user_content: str,
             "content_length": len(a.args.get("content", "")),
             "has_situation": bool(a.args.get("situation")),
             "has_keywords": bool(a.args.get("keywords")),
-            "has_quote": bool(a.args.get("user_raw_quote")),
+            "has_quote": bool(a.args.get("their_raw_quote")),
             "situation": (a.args.get("situation", "") or "")[:80],
             "error": a.error or "",
         })

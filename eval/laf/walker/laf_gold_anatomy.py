@@ -82,7 +82,7 @@ def load_node_props(node_ids):
         p['has_situation'] = 'situation' in kv.get(nid, ())
         p['has_question'] = 'question' in kv.get(nid, ())
         p['has_reasoning'] = 'reasoning' in kv.get(nid, ())
-        p['has_quote'] = bool({'user_raw_quote', 'anchor_raw_quote'}
+        p['has_quote'] = bool({'their_raw_quote', 'my_raw_quote'}
                               & kv.get(nid, set()))
     return props
 

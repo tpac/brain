@@ -10,7 +10,7 @@ Quality dims (what Tom asked for — multi-dimensional, not just volume):
 2. Avg content chars per node — node focus proxy
 3. Two-register presence — ratio of principle-type nodes with an outgoing
    `grounds` edge (Tom's v13 core claim)
-4. Operator voice — % of nodes with populated `user_raw_quote` metadata
+4. Operator voice — % of nodes with populated `their_raw_quote` metadata
 5. Edge description quality — avg chars of edge `description` (non-empty)
 6. Generic edge regression — count of relations == 'related'/'related_to'
 7. Edge type diversity — distinct relation count + Shannon entropy
@@ -238,14 +238,14 @@ def two_register_presence(nodes: List[Dict[str, Any]],
 
 
 def operator_voice(nodes: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Fraction of nodes with populated user_raw_quote metadata."""
+    """Fraction of nodes with populated their_raw_quote metadata."""
     if not nodes:
-        return {"user_raw_quote_pct": 0.0, "nodes_with_quote": 0}
+        return {"their_raw_quote_pct": 0.0, "nodes_with_quote": 0}
     with_quote = sum(
         1 for n in nodes
-        if (n.get("metadata") or {}).get("user_raw_quote", "").strip())
+        if (n.get("metadata") or {}).get("their_raw_quote", "").strip())
     return {
-        "user_raw_quote_pct": 100.0 * with_quote / len(nodes),
+        "their_raw_quote_pct": 100.0 * with_quote / len(nodes),
         "nodes_with_quote": with_quote,
     }
 
@@ -528,7 +528,7 @@ def _group_mean(items: List[Dict[str, Any]]) -> Dict[str, Any]:
         "nodes_with_reasoning_pct": avg(["sizing", "nodes_with_reasoning_pct"]),
         "two_register_pct": avg(["two_register", "two_register_pct"]),
         "grounds_edges": avg(["two_register", "grounds_edges_count"]),
-        "user_raw_quote_pct": avg(["voice", "user_raw_quote_pct"]),
+        "their_raw_quote_pct": avg(["voice", "their_raw_quote_pct"]),
         "distinct_relations": avg(["edges", "distinct_relations"]),
         "avg_edge_desc_chars": avg(["edges", "avg_description_chars"]),
         "edges_populated_pct": avg(["edges", "descriptions_populated_pct"]),
@@ -568,7 +568,7 @@ def report(rows: List[Dict[str, Any]], run_dir: Path) -> None:
         ("nodes_with_reasoning_pct", "w/Reason %"),
         ("two_register_pct", "Two-reg %"),
         ("grounds_edges", "Grounds"),
-        ("user_raw_quote_pct", "Quote %"),
+        ("their_raw_quote_pct", "Quote %"),
         ("distinct_relations", "Rel types"),
         ("avg_edge_desc_chars", "EdgeDesc"),
         ("relation_entropy", "Rel entropy"),

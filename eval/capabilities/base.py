@@ -315,7 +315,7 @@ def dispatch_tool(brain: InstrumentedBrain, tool_name: str, tool_input: Dict) ->
 
         elif tool_name == "remember":
             # Filter to kwargs that brain.remember() accepts — promoted fields
-            # (reasoning, user_raw_quote, etc.) are stored separately via revise/metadata
+            # (reasoning, their_raw_quote, etc.) are stored separately via revise/metadata
             accepted = {"type", "title", "content", "keywords", "locked", "confidence",
                         "emotion", "emotion_label", "emotion_source", "project",
                         "personal", "personal_context", "critical", "encoding_source",

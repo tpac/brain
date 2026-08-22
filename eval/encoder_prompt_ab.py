@@ -350,7 +350,7 @@ def run_arm_behavior(brain, prompt_text, aged_ids, index):
 
 
 RICH_FIELDS = ('situation', 'reasoning', 'source_refs', 'connect_to',
-               'user_raw_quote', 'anchor_raw_quote')
+               'their_raw_quote', 'my_raw_quote')
 
 
 def score_shape(ops):

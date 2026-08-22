@@ -48,7 +48,7 @@ NODE_EXTENDED_FIELDS = NODE_CORE_FIELDS | {
 #
 # Why both: legacy vectors capture whole-node semantics well for retrieval
 # ranking. Field vectors capture per-field signal so activation can fade per
-# field (query about "what did Tom say" → user_raw_quote field lights up;
+# field (query about "what did Tom say" → their_raw_quote field lights up;
 # query about "when does this apply" → situation field lights up). Blending
 # them together in legacy `high_meta` made each query score muddled.
 #
@@ -80,7 +80,7 @@ EMBEDDING_GROUPS = {
     # When is this relevant + who said it (situation + quotes blend).
     'high_meta': {
         'weight': 0.70,
-        'fields': ['situation', 'user_raw_quote', 'anchor_raw_quote'],
+        'fields': ['situation', 'their_raw_quote', 'my_raw_quote'],
         'vector_type': 'high_meta',
         'always_compute': False,
         'cohort': 'legacy',
@@ -135,21 +135,21 @@ EMBEDDING_GROUPS = {
         'always_compute': False,
         'cohort': 'field',
     },
-    # Tom's verbatim voice — split from `high_meta`.
-    'field_user_raw_quote': {
+    # Their verbatim voice — split from `high_meta`.
+    'field_their_raw_quote': {
         'weight': 0.0,
-        'fields': ['user_raw_quote'],
-        'vector_type': 'user_raw_quote',
+        'fields': ['their_raw_quote'],
+        'vector_type': 'their_raw_quote',
         'always_compute': False,
         'cohort': 'field',
     },
-    # Anchor's verbatim voice — split from `high_meta`. Distinct channel from
-    # user quote; a query about Anchor's reasoning should find this cleanly
-    # without interference from Tom's words.
-    'field_anchor_raw_quote': {
+    # My own verbatim voice — split from `high_meta`. Distinct channel from
+    # their quote; a query about my reasoning should find this cleanly
+    # without interference from their words.
+    'field_my_raw_quote': {
         'weight': 0.0,
-        'fields': ['anchor_raw_quote'],
-        'vector_type': 'anchor_raw_quote',
+        'fields': ['my_raw_quote'],
+        'vector_type': 'my_raw_quote',
         'always_compute': False,
         'cohort': 'field',
     },
@@ -164,8 +164,8 @@ FIELD_VECTOR_FALLBACK = {
     'content':            ['_primary'],
     'situation':          ['_situation', 'high_meta'],
     'reasoning':          ['other_meta'],
-    'user_raw_quote':     ['high_meta'],
-    'anchor_raw_quote':   ['high_meta'],
+    'their_raw_quote':    ['high_meta'],
+    'my_raw_quote':       ['high_meta'],
     'question':           ['question'],  # no blend, direct
 }
 
@@ -173,12 +173,12 @@ FIELD_VECTOR_FALLBACK = {
 def field_vector_types():
     """Return the list of per-field vector_types the activation kernel reads.
 
-    Stable order: title → content → situation → reasoning → user quote
-    → anchor quote → question. Determinism matters for test assertions and
+    Stable order: title → content → situation → reasoning → their quote
+    → my quote → question. Determinism matters for test assertions and
     trace readability.
     """
     return ['title', 'content', 'situation', 'reasoning',
-            'user_raw_quote', 'anchor_raw_quote', 'question']
+            'their_raw_quote', 'my_raw_quote', 'question']
 
 
 def vectors_affected_by(field_name: str) -> set:

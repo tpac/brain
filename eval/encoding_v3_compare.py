@@ -288,8 +288,8 @@ def run_variant(client, model: str, system_prompt: str, user_content: str,
     # Check for situation field usage
     with_situation = [a for a in creates if a.args.get("situation")]
 
-    # Check for user_raw_quote usage
-    with_quote = [a for a in creates + revises if a.args.get("user_raw_quote")]
+    # Check for their_raw_quote usage
+    with_quote = [a for a in creates + revises if a.args.get("their_raw_quote")]
 
     # Collect unique node types created
     created_types = list(set(a.args.get("type", "") for a in creates + specialized if a.args.get("type")))

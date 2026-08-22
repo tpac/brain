@@ -94,7 +94,7 @@ def deep_integrity_audit(brain):
         _meta_dal = brain._meta_kv
         meta_total = _meta_dal.total_nodes()
         if meta_total > 0:
-            for field in ['reasoning', 'user_raw_quote', 'source_context']:
+            for field in ['reasoning', 'their_raw_quote', 'source_context']:
                 filled = _meta_dal.nodes_with_field(field)
                 pct = filled / meta_total * 100
                 if pct < 30:

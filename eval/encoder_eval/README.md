@@ -52,7 +52,7 @@ metric value(s) plus evidence (node ids, snippets) for failure attachment.
 | `probe_source_refs_coverage` | What % of nodes carry `source_refs`? Distribution of refs/node. Sparseness violations (>5). Hex-format failures. | D25, D26, D33 |
 | `probe_atomization_shape` | How many nodes per turn? Bundled (1 node covers 5 turns) vs atomized? | D3 |
 | `probe_edge_structure` | Typed `connect_to` counts by relation. Auto `co_anchored` counts. Aspect distribution. `related_to` overuse. | D20-D24, D27 |
-| `probe_voice_balance` | Per-node user_raw_quote / anchor_raw_quote presence. Symmetry on identity/correction-typed nodes. | D5, D7, D14 |
+| `probe_voice_balance` | Per-node their_raw_quote / my_raw_quote presence. Symmetry on identity/correction-typed nodes. | D5, D7, D14 |
 
 ## The pipeline
 

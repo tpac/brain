@@ -146,10 +146,10 @@ class EncoderEvalProbesTest(unittest.TestCase):
 
     def test_voice_balance_computes_symmetry(self):
         self._make(type='principle', title='balanced node',
-                    user_raw_quote='operator said something',
-                    anchor_raw_quote='anchor reframed it')
+                    their_raw_quote='operator said something',
+                    my_raw_quote='anchor reframed it')
         self._make(type='principle', title='user-only node',
-                    user_raw_quote='only operator voice')
+                    their_raw_quote='only operator voice')
         item = {'question': 'x', 'answer': 'y', 'haystack_sessions': []}
         r = probe_voice_balance(self.brain, item)
         self.assertEqual(r['identity_bearing_total'], 2)
