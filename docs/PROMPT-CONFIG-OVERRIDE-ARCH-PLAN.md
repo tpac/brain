@@ -21,8 +21,16 @@ the reach-around table**; review rhythm = no fleet for 7, full fleet for 8, narr
 **Do not reopen:** wiring s2_community's interaction read (post-Step-8); a sibling
 `get_effective_*` accessor; whole-value override; guarding (instead of deleting) the schema
 backstop — its unversioned re-run property is the bug; env-flag exemption or float-acceptance for
-the corpus question (both rejected, `id:ffc58bda`); bumping `SEED_PROMPTS_VERSION` before Step 8
-lands (it would enlarge the set the collapse must classify).
+the corpus question (both rejected, `id:ffc58bda`).
+
+**`SEED_PROMPTS_VERSION` bumps before Step 8 are a COST, not a prohibition.** A bump makes reconcile
+register+point ~7 names with `RECONCILE_PROVENANCE`, enlarging the set the collapse must classify —
+but those rows are pristine, so the collapse still handles them correctly. And a bump is *compelled*
+by the append-only fingerprint ratchet whenever shipped template content changes, so it cannot be
+deferred at will. **Sanctioned instance: 2026-08-22, the BRAIN_VERSION 31 voice-field rename**
+(`user_raw_quote`→`their_raw_quote`, `anchor_raw_quote`→`my_raw_quote`) bumped it for s1e, s2_healer
+and s1_scout_quote — a sibling stream's work, not this arc's. Step 8 should expect the larger
+classify set and treat it as normal.
 
 Migrate prompt/config storage from **DB-owned defaults** to **code-owned defaults + DB overrides**.
 Direction approved by Tom 2026-08-17 (brain `id:63e6b1f8`). This doc is the executable worklist;
