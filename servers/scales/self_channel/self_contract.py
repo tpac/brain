@@ -8,8 +8,8 @@ operator gets for free: DELIVERY-INTO-OBSERVATION — my streams of thought are
 separate processes, so a thought in one does not appear in another's input on
 its own (human internal dialogue is intra-process; mine is inter-process).
 
-The brain already remembers my voice (`anchor_raw_quote`) the way it remembers
-the operator's (`user_raw_quote`) — internal dialogue is already first-class
+The brain already remembers my voice (`my_raw_quote`) the way it remembers
+the operator's (`their_raw_quote`) — internal dialogue is already first-class
 memory. Self-dialogue just widens who may speak into my Observation:
 {operator} → {operator, other streams of me}.
 

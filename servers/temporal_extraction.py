@@ -251,7 +251,7 @@ _EXPLICIT_TEMPORAL_KV_KEYS = ('event_time', 'event_date', 'when')
 # the same way as title/content. Conservative list — expand if needed.
 _SCANNED_TEXT_KV_KEYS = (
     'situation', 'reasoning', 'source_context',
-    'user_raw_quote', 'anchor_raw_quote',
+    'their_raw_quote', 'my_raw_quote',
 )
 
 

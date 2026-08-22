@@ -102,7 +102,7 @@ Precision baked into the interval — `"May 2023"` → `(2023-05-01, 2023-05-31)
 **Extraction** (`servers/temporal_extraction.py`):
 - Regex-first, year-required. Five patterns: Q[1-4] YYYY → ISO day → ISO month → MonthName range → MonthName Day Year → MonthName Year.
 - No dateparser fallback at extraction time — bare "December" / "May" without year context is intentionally skipped to avoid the current-year-fallback class of bug.
-- Scans node `title`, `content`, and KV fields (`event_time`, `event_date`, `when`, `situation`, `reasoning`, `source_context`, `user_raw_quote`, `anchor_raw_quote`).
+- Scans node `title`, `content`, and KV fields (`event_time`, `event_date`, `when`, `situation`, `reasoning`, `source_context`, `their_raw_quote`, `my_raw_quote`).
 - Scans edge `description` + `relation`.
 - Sentinel row (`extraction_source = '_no_dates_found'`) marks "processed, no dates" so the indexer's left-join doesn't re-scan empty-result entities.
 - Cap of 20 intervals per entity to bound pathological inputs.
@@ -149,7 +149,7 @@ Sonnet under-complies on positive structural-write rules even with worked exampl
 Status: open architectural decision.
 
 ### Generic kv field promotion (Tom's note, 2026-05-11)
-Current render hard-codes the event_time line. The general pattern: **query-aware kv field promotion** — a temporal query promotes `event_time` / `created_at`; a "what did X say" query promotes `user_raw_quote`; a "why" query promotes `reasoning`. Today only event_time is promoted, hard-coded. Future: generalize via the existing `field_activation` scoring (the "cousin filtering" mechanism Tom referenced) so any kv field can promote when query-relevant.
+Current render hard-codes the event_time line. The general pattern: **query-aware kv field promotion** — a temporal query promotes `event_time` / `created_at`; a "what did X say" query promotes `their_raw_quote`; a "why" query promotes `reasoning`. Today only event_time is promoted, hard-coded. Future: generalize via the existing `field_activation` scoring (the "cousin filtering" mechanism Tom referenced) so any kv field can promote when query-relevant.
 
 ### Temporal-derivation queries still hard
 "How many weeks ago" / "how old was I when" require computing deltas. The render now exposes structured timestamps so the answerer CAN compute, but the answerer still abstains in some cases. v15.8 demonstrated the architecture works (e.g. `gpt4_b0863698` answers "7 days ago"); some items still flip on sampling variance.

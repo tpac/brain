@@ -86,8 +86,8 @@ def _hub_node(node_id="hub00001"):
             "edge_description": "supersedes the earlier assumption",
             "content": "C" * 300 + " CORR_TAIL_SENTINEL",
             "reasoning": "REASONING_SENTINEL why the correction landed",
-            "anchor_raw_quote": "ANCHOR_QUOTE_SENTINEL",
-            "user_raw_quote": "USER_QUOTE_SENTINEL",
+            "my_raw_quote": "ANCHOR_QUOTE_SENTINEL",
+            "their_raw_quote": "USER_QUOTE_SENTINEL",
         }],
     }
 

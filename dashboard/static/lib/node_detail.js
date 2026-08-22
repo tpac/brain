@@ -47,8 +47,8 @@ const FIELD_LABELS = {
   situation:          'situation',
   reasoning:          'reasoning',
   question:           'question',
-  user_raw_quote:     'user raw quote',
-  anchor_raw_quote:   'anchor raw quote',
+  their_raw_quote:     'user raw quote',
+  my_raw_quote:   'anchor raw quote',
   correction_of:      'correction_of',
   correction_pattern: 'correction pattern',
   source_context:     'source context',
@@ -114,7 +114,7 @@ function _fieldValue(key, value) {
     }, String(value));
   }
   if (typeof value === 'string') {
-    if (key === 'user_raw_quote' || key === 'anchor_raw_quote') {
+    if (key === 'their_raw_quote' || key === 'my_raw_quote') {
       return el('em', null, '"' + value + '"');
     }
     return value;
@@ -306,9 +306,9 @@ function _correctionsSection(corrections) {
       c.content
         ? el('div', { class: 'nd-conn-content' }, c.content.substring(0, 200))
         : null,
-      c.user_raw_quote
+      c.their_raw_quote
         ? el('div', { class: 'nd-conn-quote' },
-            '"' + c.user_raw_quote.substring(0, 150) + '"')
+            '"' + c.their_raw_quote.substring(0, 150) + '"')
         : null,
     ));
   }

@@ -96,7 +96,7 @@ DIMENSIONS = {
         ],
         'degrades': [
             'single-word triggers (not discriminating under cosine)',
-            'duplicates user_raw_quote (kills high_meta variance)',
+            'duplicates their_raw_quote (kills high_meta variance)',
             'narrower than the claim',
         ],
         'interacts_with': ['D5', 'D15', 'D29'],
@@ -143,7 +143,7 @@ DIMENSIONS = {
 
     'D5_voice_verbatim_or_empty': {
         'group': 'source_fidelity',
-        'intent': 'user_raw_quote and anchor_raw_quote are exact substrings of source OR empty. The verbatim contract is sacred.',
+        'intent': 'their_raw_quote and my_raw_quote are exact substrings of source OR empty. The verbatim contract is sacred.',
         'satisfies': [
             'exact substring of source turn in user_messages or agent_messages',
             'typos preserved (e.g. "supression", "thats", "ill")',
@@ -186,22 +186,22 @@ DIMENSIONS = {
 
     'D7_anchor_voice_symmetry': {
         'group': 'source_fidelity',
-        'intent': 'anchor_raw_quote populated when Anchor\'s stance IS the encoding (corrections, decisions, identity-bearing)',
+        'intent': 'my_raw_quote populated when Anchor\'s stance IS the encoding (corrections, decisions, identity-bearing)',
         'satisfies': [
             'first-person commitment in identity-bearing nodes',
             'verbatim self-correction ("You caught me — I had the rounds backwards")',
-            'symmetric emission rate with user_raw_quote on correction/decision nodes',
+            'symmetric emission rate with their_raw_quote on correction/decision nodes',
         ],
         'violates': [
             'empty on identity-bearing/correction nodes when Anchor visibly reflected',
             'smuggled self-quote that IS the content restated',
         ],
         'degrades': [
-            'first-person mentioned in reasoning instead of quoted in anchor_raw_quote',
+            'first-person mentioned in reasoning instead of quoted in my_raw_quote',
         ],
         'interacts_with': ['D5', 'D14'],
         'lens': ['S', 'T', 'B'],
-        'empirical_baseline': 'user_raw_quote ~80% Era E; anchor_raw_quote ~6%. Backwards.',
+        'empirical_baseline': 'their_raw_quote ~80% Era E; my_raw_quote ~6%. Backwards.',
         'structural_followup': 'Phase B+ encode-time validation (prompt alone failed Era E)',
     },
 
@@ -333,7 +333,7 @@ DIMENSIONS = {
         ],
         'violates': [
             'third-person clinical write-up of natural first-person moment',
-            'anchor_raw_quote empty when Anchor visibly reflected',
+            'my_raw_quote empty when Anchor visibly reflected',
             'principle node phrased as manual entry',
         ],
         'interacts_with': ['D7', 'D12'],
@@ -742,7 +742,7 @@ DIMENSIONS = {
         ],
         'degrades': [
             'voice_annotations entries exist but load_bearing prose is generic or skips the source_refs aspect',
-            'voice_annotations covers user_raw_quote/anchor_raw_quote but ignores source_refs entirely',
+            'voice_annotations covers their_raw_quote/my_raw_quote but ignores source_refs entirely',
         ],
         'interacts_with': ['D5', 'D7', 'D25'],
         'lens': ['A'],
@@ -756,7 +756,7 @@ DIMENSIONS = {
             'Turns are operator/Anchor speech (messy, layered, redundant, specific). '
             'Node content/situation/reasoning are Anchor\'s extraction register — '
             'naming the hidden structural axis the turn implies but does not state. '
-            'Verbatim quote fields (user_raw_quote/anchor_raw_quote) are the bridge: '
+            'Verbatim quote fields (their_raw_quote/my_raw_quote) are the bridge: '
             'they preserve turn phrases unchanged. Specificity is preserved end-to-end: '
             'numbers stay numbers, ranges stay ranges, exact phrases stay verbatim — '
             'never smoothed into averages or paraphrases.'
@@ -765,7 +765,7 @@ DIMENSIONS = {
             'node content/situation/reasoning share <30% literal phrase overlap with any single turn',
             'node names a structural axis (mechanism, principle, tension, register) the turn implies but does not state',
             'numbers, ranges, exact phrases preserved unchanged where they appear in either side',
-            'verbatim phrases that matter live in user_raw_quote/anchor_raw_quote, NOT duplicated into content prose',
+            'verbatim phrases that matter live in their_raw_quote/my_raw_quote, NOT duplicated into content prose',
             'turns within source_conversation are themselves diverse — different angles, not synonymic restatements of each other',
         ],
         'violates': [
@@ -841,7 +841,7 @@ CROSS_DIM_RULES = [
 
     {
         'name': 'CR6_voice_field_vs_voice_in_content',
-        'rule': 'anchor_raw_quote = verbatim Anchor speech ONLY. First-person register in content/reasoning is separate (D14 lives in content, D7 lives in quote field).',
+        'rule': 'my_raw_quote = verbatim Anchor speech ONLY. First-person register in content/reasoning is separate (D14 lives in content, D7 lives in quote field).',
         'applies': ['D5', 'D7', 'D14'],
     },
 
@@ -872,10 +872,10 @@ CROSS_DIM_RULES = [
     {
         'name': 'CR12_verbatim_bridge_vs_divergence',
         'rule': (
-            'Verbatim quote fields (user_raw_quote / anchor_raw_quote) ARE the '
+            'Verbatim quote fields (their_raw_quote / my_raw_quote) ARE the '
             'permitted bridge between turn register and node register. A phrase '
             'appearing both in a source_conversation turn AND in a node\'s '
-            'user_raw_quote/anchor_raw_quote satisfies D5/D7 and does NOT '
+            'their_raw_quote/my_raw_quote satisfies D5/D7 and does NOT '
             'violate D36 — the verbatim field is the legitimate place for that '
             'overlap. D36 fires when the same phrase is paraphrased into '
             'content/situation/reasoning prose instead.'
@@ -937,7 +937,7 @@ STRUCTURAL_FOLLOWUPS = [
     {
         'id': 'voice_symmetry_validation',
         'applies_to_dim': 'D7',
-        'work': 'Encode-time dispatch check: flag type=correction/decision/principle with non-trivial reasoning but empty anchor_raw_quote.',
+        'work': 'Encode-time dispatch check: flag type=correction/decision/principle with non-trivial reasoning but empty my_raw_quote.',
         'phase': 'Phase B+',
     },
     {
@@ -1128,7 +1128,7 @@ EXAMPLE_AUTHORING_CONVENTIONS = {
         # they describe THIS node, not external references:
         'title (of the example node being created)',
         'content / situation / reasoning (of the example node)',
-        'user_raw_quote / anchor_raw_quote (verbatim is the contract; the example demonstrates verbatim discipline)',
+        'their_raw_quote / my_raw_quote (verbatim is the contract; the example demonstrates verbatim discipline)',
         'event_time',
     ],
     'source_refs_placeholder_syntax': {
@@ -1171,7 +1171,7 @@ EXAMPLE_AUTHORING_CONVENTIONS = {
             "reasoning is written in EXTRACTION REGISTER — Anchor naming "
             "the hidden structural axis the turn implies but does not state. "
             "These two registers MUST diverge in language. The verbatim "
-            "quote fields (user_raw_quote/anchor_raw_quote) are the legitimate "
+            "quote fields (their_raw_quote/my_raw_quote) are the legitimate "
             "bridge — they preserve turn phrases unchanged. Content prose "
             "MUST NOT paraphrase the turn."
         ),
@@ -1195,7 +1195,7 @@ EXAMPLE_AUTHORING_CONVENTIONS = {
             "touching code paths; mock-based unit tests historically miss "
             "schema-divergence failures.' Different register, same claim, "
             "structural axis named. Tom's verbatim 'we keep getting burned' "
-            "lives in user_raw_quote, NOT in content prose."
+            "lives in their_raw_quote, NOT in content prose."
         ),
         'bad_pattern': (
             "Turn: 'dont mock the db, mocks miss schema bugs.' → Node "

@@ -7,7 +7,7 @@ per-item bundles to compute behavioral signals beyond pass/fail.
 Outputs:
   - eval/longmem/reports/diff_{run_a}_vs_{run_b}/comparison.md
     Markdown report with per-item table, per-axis shifts, bucket
-    distribution shift, behavioral signal counts (anchor_raw_quote
+    distribution shift, behavioral signal counts (my_raw_quote
     usage, scout-handoff usage, open-node creation, etc.)
 
 USE
@@ -45,15 +45,15 @@ def _count_open_nodes(nodes):
 
 
 def _count_third_party_quotes(nodes):
-    """Count `type='quote'` nodes that have neither user_raw_quote nor
-    anchor_raw_quote populated — these are third-party verbatim
+    """Count `type='quote'` nodes that have neither their_raw_quote nor
+    my_raw_quote populated — these are third-party verbatim
     preservation, the v15.2/v15.3 new behavior."""
     n = 0
     for node in nodes or []:
         if node.get('type') != 'quote':
             continue
         kv = node.get('kv') or {}
-        if not kv.get('user_raw_quote') and not kv.get('anchor_raw_quote'):
+        if not kv.get('their_raw_quote') and not kv.get('my_raw_quote'):
             n += 1
     return n
 
@@ -101,8 +101,8 @@ def _gather_item_signals(bundle):
     surface_v, _ = _interaction_used(interactions, 'surface')
     return {
         'node_count': len(nodes),
-        'with_user_raw_quote': _count_nodes_with_field(nodes, 'user_raw_quote'),
-        'with_anchor_raw_quote': _count_nodes_with_field(nodes, 'anchor_raw_quote'),
+        'with_their_raw_quote': _count_nodes_with_field(nodes, 'their_raw_quote'),
+        'with_my_raw_quote': _count_nodes_with_field(nodes, 'my_raw_quote'),
         'with_entity_field': _count_nodes_with_field(nodes, 'entity'),  # scout handoff
         'with_event_time': _count_nodes_with_field(nodes, 'event_time'),  # L4 + v15.8 temporal
         'open_nodes': _count_open_nodes(nodes),
@@ -216,8 +216,8 @@ def diff_runs(run_a: str, run_b: str) -> dict:
             'b_bucket': rb.get('failure_bucket'),
             'a_nodes': sig_a['node_count'],
             'b_nodes': sig_b['node_count'],
-            'a_anchor_quotes': sig_a['with_anchor_raw_quote'],
-            'b_anchor_quotes': sig_b['with_anchor_raw_quote'],
+            'a_anchor_quotes': sig_a['with_my_raw_quote'],
+            'b_anchor_quotes': sig_b['with_my_raw_quote'],
             'a_open_nodes': sig_a['open_nodes'],
             'b_open_nodes': sig_b['open_nodes'],
             'a_third_party_quotes': sig_a['third_party_quote_nodes'],
@@ -334,14 +334,14 @@ def render_md(diff: dict) -> str:
     sa, sb = diff['signal_totals']['a'], diff['signal_totals']['b']
     explanations = {
         'node_count': 'Total nodes encoded',
-        'with_user_raw_quote': 'Nodes preserving operator voice',
-        'with_anchor_raw_quote': 'Nodes preserving Anchor voice (v15+ behavior)',
+        'with_their_raw_quote': 'Nodes preserving operator voice',
+        'with_my_raw_quote': 'Nodes preserving Anchor voice (v15+ behavior)',
         'with_entity_field': 'Nodes with entity field — scout-handoff signal',
         'with_event_time': 'Nodes with event_time kv — temporal anchor (v15.8 + L4)',
         'open_nodes': 'Open-type nodes — live-contradiction encoding (v15+)',
         'third_party_quote_nodes': 'Quote nodes with no participant attribution — third-party verbatim (v15.2+)',
     }
-    for k in ['node_count', 'with_user_raw_quote', 'with_anchor_raw_quote',
+    for k in ['node_count', 'with_their_raw_quote', 'with_my_raw_quote',
               'with_entity_field', 'with_event_time', 'open_nodes',
               'third_party_quote_nodes']:
         a_v = sa.get(k, 0)

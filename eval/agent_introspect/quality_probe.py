@@ -8,7 +8,7 @@ structural quality dimensions:
   Nodes:
     - count, mean content length, mean situation length
     - type distribution (which types Sonnet reaches for)
-    - field coverage: situation, reasoning, user_raw_quote, anchor_raw_quote,
+    - field coverage: situation, reasoning, their_raw_quote, my_raw_quote,
       keywords, event_time
 
   Provenance (Fix 2 target):
@@ -75,7 +75,7 @@ OPERATOR_REVEALING_TYPES: Set[str] = {
 }
 
 # Voice fields that anchor a node to verbatim source content.
-VOICE_FIELDS = {"user_raw_quote", "anchor_raw_quote"}
+VOICE_FIELDS = {"their_raw_quote", "my_raw_quote"}
 
 
 def _extract_nodes(actions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -134,10 +134,10 @@ def _analyze_one_run(r: Dict[str, Any]) -> Dict[str, Any]:
     fields = {
         "situation": sum(1 for n in nodes if (n.get("situation") or "").strip()),
         "reasoning": sum(1 for n in nodes if (n.get("reasoning") or "").strip()),
-        "user_raw_quote": sum(1 for n in nodes
-                              if (n.get("user_raw_quote") or "").strip()),
-        "anchor_raw_quote": sum(1 for n in nodes
-                                if (n.get("anchor_raw_quote") or "").strip()),
+        "their_raw_quote": sum(1 for n in nodes
+                              if (n.get("their_raw_quote") or "").strip()),
+        "my_raw_quote": sum(1 for n in nodes
+                                if (n.get("my_raw_quote") or "").strip()),
         "keywords": sum(1 for n in nodes
                         if (n.get("keywords") or "").strip()),
         "event_time": sum(1 for n in nodes
@@ -175,7 +175,7 @@ def _analyze_one_run(r: Dict[str, Any]) -> Dict[str, Any]:
         # Field coverage (counts)
         "field_coverage_counts": fields,
         "voice_coverage_pct": (
-            (fields["user_raw_quote"] + fields["anchor_raw_quote"]) /
+            (fields["their_raw_quote"] + fields["my_raw_quote"]) /
             (len(nodes) * 2) * 100) if nodes else 0,
         "situation_coverage_pct": (
             (fields["situation"] / len(nodes) * 100) if nodes else 0),

@@ -227,7 +227,7 @@ operational gap is visible from outside.
 
 This is the inversion of entry #1's volatility problem: there, recall surfaced wrong facts; here, recall fails to surface right facts that exist.
 
-**Why it's a recall issue, not an encoder issue (Tom's reframe).** The structure of title/content/emergent fields (situation, reasoning, user_raw_quote, anchor_raw_quote, entity, etc.) is intentional — different containers carry different concepts. The encoder doing its job means the information is captured in the appropriate container. If the fact is in `content` and recall can't find it, **that's recall failing to use the structure well**, not the encoder failing.
+**Why it's a recall issue, not an encoder issue (Tom's reframe).** The structure of title/content/emergent fields (situation, reasoning, their_raw_quote, my_raw_quote, entity, etc.) is intentional — different containers carry different concepts. The encoder doing its job means the information is captured in the appropriate container. If the fact is in `content` and recall can't find it, **that's recall failing to use the structure well**, not the encoder failing.
 
 **Pattern.** v15.3 encoder is producing richer, more narrative nodes that bundle facts inside context. This is good encoding from a curation/preservation perspective (the *why* is preserved with the *what*) — but bad for atomic-fact retrieval. The pattern shows up when:
 - Query terms describe the bare fact (Hawaii cost, siblings count)

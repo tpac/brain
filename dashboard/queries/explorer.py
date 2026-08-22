@@ -160,7 +160,7 @@ def query_node_corrections(node_id: str):
     """Fetch correction-edge enrichment for one node via the daemon.
 
     Returns the raw `_corrections` list — direction / relation / edge_description
-    / content / reasoning / user_raw_quote / anchor_raw_quote per neighbor. The
+    / content / reasoning / their_raw_quote / my_raw_quote per neighbor. The
     daemon's brain.get_node already attaches this on every canonical pull, so
     we just unwrap it from the rich response. When the daemon is down, returns
     [] silently — the UI shows the node detail without a corrections section

@@ -92,65 +92,65 @@ class TestAbsorb(BrainTestBase):
     def test_kv_filled_where_survivor_lacks_survivor_wins(self):
         survivor = self._node('survivor', situation='survivor situation')
         absorbed = self._node('absorbed', situation='absorbed situation',
-                              user_raw_quote='the peer quote')
+                              their_raw_quote='the peer quote')
         r = self.brain.absorb(survivor, absorbed)
         self.assertTrue(r['ok'], r)
         kv = self.brain._meta_kv.get_all_bulk([survivor])[survivor]
-        self.assertEqual(kv.get('user_raw_quote'), 'the peer quote')  # filled
+        self.assertEqual(kv.get('their_raw_quote'), 'the peer quote')  # filled
         self.assertEqual(kv.get('situation'), 'survivor situation')   # survivor wins
 
     def test_distinct_voice_quotes_merge_appended(self):
         """Voice exception: when survivor AND absorbed both carry a distinct
         quote, the absorbed quote is APPENDED, not dropped (it's meaning
         paraphrase can't recover). Non-voice fields stay survivor-wins."""
-        survivor = self._node('survivor', user_raw_quote='survivor said this',
+        survivor = self._node('survivor', their_raw_quote='survivor said this',
                               situation='survivor situation')
-        absorbed = self._node('absorbed', user_raw_quote='absorbed said that',
-                              anchor_raw_quote='anchor reflected here',
+        absorbed = self._node('absorbed', their_raw_quote='absorbed said that',
+                              my_raw_quote='anchor reflected here',
                               situation='absorbed situation')
         r = self.brain.absorb(survivor, absorbed)
         self.assertTrue(r['ok'], r)
         kv = self.brain._meta_kv.get_all_bulk([survivor])[survivor]
         # both present + distinct → appended
-        self.assertEqual(kv.get('user_raw_quote'),
+        self.assertEqual(kv.get('their_raw_quote'),
                          'survivor said this\n\nabsorbed said that')
-        # survivor lacked anchor_raw_quote → filled (not appended)
-        self.assertEqual(kv.get('anchor_raw_quote'), 'anchor reflected here')
+        # survivor lacked my_raw_quote → filled (not appended)
+        self.assertEqual(kv.get('my_raw_quote'), 'anchor reflected here')
         # non-voice field unchanged: survivor still wins
         self.assertEqual(kv.get('situation'), 'survivor situation')
-        self.assertEqual(r.get('voice_merged'), ['user_raw_quote'])
+        self.assertEqual(r.get('voice_merged'), ['their_raw_quote'])
 
     def test_duplicate_voice_quote_not_appended(self):
-        survivor = self._node('survivor', user_raw_quote='same words')
-        absorbed = self._node('absorbed', user_raw_quote='same words')
+        survivor = self._node('survivor', their_raw_quote='same words')
+        absorbed = self._node('absorbed', their_raw_quote='same words')
         r = self.brain.absorb(survivor, absorbed)
         self.assertTrue(r['ok'], r)
         kv = self.brain._meta_kv.get_all_bulk([survivor])[survivor]
-        self.assertEqual(kv.get('user_raw_quote'), 'same words')  # no dup
+        self.assertEqual(kv.get('their_raw_quote'), 'same words')  # no dup
 
     def test_substring_voice_quote_not_appended(self):
-        survivor = self._node('survivor', user_raw_quote='the full long quote here')
-        absorbed = self._node('absorbed', user_raw_quote='long quote')  # substring
+        survivor = self._node('survivor', their_raw_quote='the full long quote here')
+        absorbed = self._node('absorbed', their_raw_quote='long quote')  # substring
         r = self.brain.absorb(survivor, absorbed)
         self.assertTrue(r['ok'], r)
         kv = self.brain._meta_kv.get_all_bulk([survivor])[survivor]
-        self.assertEqual(kv.get('user_raw_quote'), 'the full long quote here')
+        self.assertEqual(kv.get('their_raw_quote'), 'the full long quote here')
 
     def test_voice_caller_override_beats_append(self):
-        survivor = self._node('survivor', user_raw_quote='survivor quote')
-        absorbed = self._node('absorbed', user_raw_quote='absorbed quote')
-        r = self.brain.absorb(survivor, absorbed, user_raw_quote='explicit override')
+        survivor = self._node('survivor', their_raw_quote='survivor quote')
+        absorbed = self._node('absorbed', their_raw_quote='absorbed quote')
+        r = self.brain.absorb(survivor, absorbed, their_raw_quote='explicit override')
         self.assertTrue(r['ok'], r)
         kv = self.brain._meta_kv.get_all_bulk([survivor])[survivor]
-        self.assertEqual(kv.get('user_raw_quote'), 'explicit override')
+        self.assertEqual(kv.get('their_raw_quote'), 'explicit override')
 
     def test_voice_drop_respected(self):
-        survivor = self._node('survivor', user_raw_quote='survivor quote')
-        absorbed = self._node('absorbed', user_raw_quote='absorbed quote')
-        r = self.brain.absorb(survivor, absorbed, drop_fields=['user_raw_quote'])
+        survivor = self._node('survivor', their_raw_quote='survivor quote')
+        absorbed = self._node('absorbed', their_raw_quote='absorbed quote')
+        r = self.brain.absorb(survivor, absorbed, drop_fields=['their_raw_quote'])
         self.assertTrue(r['ok'], r)
         kv = self.brain._meta_kv.get_all_bulk([survivor])[survivor]
-        self.assertEqual(kv.get('user_raw_quote'), 'survivor quote')  # not appended
+        self.assertEqual(kv.get('their_raw_quote'), 'survivor quote')  # not appended
 
     def test_content_override_replaces(self):
         survivor = self._node('survivor', content='old survivor content')
@@ -202,11 +202,11 @@ class TestAbsorb(BrainTestBase):
     def test_survivor_may_be_locked(self):
         # The whole point of locked-absorb: you absorb INTO a locked node.
         survivor = self._node('survivor', locked=True)
-        absorbed = self._node('absorbed', user_raw_quote='peer quote')
+        absorbed = self._node('absorbed', their_raw_quote='peer quote')
         r = self.brain.absorb(survivor, absorbed)
         self.assertTrue(r['ok'], r)
         kv = self.brain._meta_kv.get_all_bulk([survivor])[survivor]
-        self.assertEqual(kv.get('user_raw_quote'), 'peer quote')
+        self.assertEqual(kv.get('their_raw_quote'), 'peer quote')
 
     def test_self_absorb_refused(self):
         n = self._node('n')
@@ -344,7 +344,7 @@ class TestAbsorbEmbedding(BrainTestBase):
         from servers.daemon_dispatch import COMMAND_TABLE
         survivor = self._node('survivor', source_refs=['aaaaaaaa'])
         absorbed = self._node('absorbed', source_refs=['bbbbbbbb'],
-                              user_raw_quote='peer quote')
+                              their_raw_quote='peer quote')
         res = COMMAND_TABLE['brain_batch'].handler(self.brain, {'operations': [
             {'op': 'absorb', 'survivor_id': survivor, 'absorbed_id': absorbed,
              'encoding_source': 's2:consolidation'}]}, [])
@@ -355,7 +355,7 @@ class TestAbsorbEmbedding(BrainTestBase):
         self.assertEqual(set(self.brain._source_refs.get_source_refs(survivor)),
                          {'aaaaaaaa', 'bbbbbbbb'})
         self.assertEqual(
-            self.brain._meta_kv.get_all_bulk([survivor])[survivor].get('user_raw_quote'),
+            self.brain._meta_kv.get_all_bulk([survivor])[survivor].get('their_raw_quote'),
             'peer quote')
 
     def test_content_override_via_brain_batch_op(self):

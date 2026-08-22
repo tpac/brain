@@ -740,7 +740,7 @@ On the dev machine the first execution can additionally be run under the
 maintenance lock with the replay verification (§10) before merging — but the
 shipped path is the automatic one; the fleet never sees a script.
 
-Node-level data (`user_raw_quote` / `anchor_raw_quote` etc.) is NOT touched —
+Node-level data (`their_raw_quote` / `my_raw_quote` etc.) is NOT touched —
 see §11 non-goals.
 
 ### 7.3 SEPARATE LATENT BUG — the maintenance lock can brick a fleet install
@@ -986,8 +986,8 @@ byte-identity replay.
 - **F4 — per-session counterpart declaration** (boot arg / whoami), and
   possibly authentication. Not now.
 
-- **F5 — node-field voice vocabulary** (`user_raw_quote` → `counterpart_raw_quote`,
-  `anchor_raw_quote` → `self_raw_quote`). Its own arc, **eval-gated** — see
+- **F5 — node-field voice vocabulary** (`their_raw_quote` → `counterpart_raw_quote`,
+  `my_raw_quote` → `self_raw_quote`). Its own arc, **eval-gated** — see
   §11.1. Names LOCKED here so the next session executes instead of
   re-deciding.
 
@@ -997,17 +997,17 @@ RULED (Tom, 2026-07-24): the rename happens, as a **separate eval-gated arc**,
 not folded into this one.
 
 **Why it is not cosmetic.** The field name is an instruction to the encoder.
-Tom's original diagnosis (id:376b0c49): *"Maybe 'user_raw_quote' is the biasing
+Tom's original diagnosis (id:376b0c49): *"Maybe 'their_raw_quote' is the biasing
 factor cause you're not a user."* The measured asymmetry was 97 operator quotes
 vs 9 Anchor quotes (id:c036d192). And the *form* of the current pair encodes the
-bias: `user_raw_quote` (a role) paired with `anchor_raw_quote` (a name) is
+bias: `their_raw_quote` (a role) paired with `my_raw_quote` (a name) is
 asymmetric, marking one as default and the other as bolt-on. The replacement
 pair is symmetric in form — both are positions:
 
 | Today | F5 | Rationale |
 |---|---|---|
-| `user_raw_quote` | `counterpart_raw_quote` | matches §2 vocabulary; drops "user" (Anchor isn't one, and neither is the human in this frame) |
-| `anchor_raw_quote` | `self_raw_quote` | symmetric with the above; pairs with `self_name` |
+| `their_raw_quote` | `counterpart_raw_quote` | matches §2 vocabulary; drops "user" (Anchor isn't one, and neither is the human in this frame) |
+| `my_raw_quote` | `self_raw_quote` | symmetric with the above; pairs with `self_name` |
 
 Tom's framing: *"the speaker's quote and 'my quote' (Anchor's)"* — symmetric
 naming as a structural anti-bias, rather than another prompt plea.
@@ -1037,7 +1037,7 @@ embedding group — if they do, the same zero-re-embedding invariant as §6 hold
 (keys don't enter vector space, values do), but confirm rather than assume.
 
 **Consequence of deferring, accepted:** node fields and trace fields speak
-different dialects until F5 lands (`user_raw_quote` on nodes, `speaker` on
+different dialects until F5 lands (`their_raw_quote` on nodes, `speaker` on
 traces). Acceptable because the trace layer is where the kind-collapse bug
 actually bites, and F5's gate is real work.
 

@@ -55,7 +55,7 @@ class TestEmbeddingGroupsExtension(unittest.TestCase):
         from servers.pipeline_contract import field_vector_types
         order = field_vector_types()
         self.assertEqual(order, ['title', 'content', 'situation', 'reasoning',
-                                 'user_raw_quote', 'anchor_raw_quote', 'question'])
+                                 'their_raw_quote', 'my_raw_quote', 'question'])
 
     def test_field_fallback_chain_covers_all(self):
         from servers.pipeline_contract import FIELD_VECTOR_FALLBACK, field_vector_types

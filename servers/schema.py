@@ -34,7 +34,8 @@ WHAT NOT TO DO:
 import sqlite3
 from datetime import datetime, timezone
 
-BRAIN_VERSION = 30  # v30: drop nodes.project column — project is now system-stamped kv provenance (node_metadata_kv['project']), not a nodes column. _migrate_v30_project_to_kv moves values (slug map: everything→brain except the EX.CO trio→ex.co) then DROP COLUMN. See v29 note below for prior version.
+BRAIN_VERSION = 31  # v31: voice-quote fields renamed — user_raw_quote → their_raw_quote, anchor_raw_quote → my_raw_quote. _migrate_v31_voice_fields relabels both node_metadata_kv.key and node_enrichments.vector_type (the per-field embedding lane); no re-embed, field names never enter the embedded text. See v30 note below for prior version.
+# v30: drop nodes.project column — project is now system-stamped kv provenance (node_metadata_kv['project']), not a nodes column. _migrate_v30_project_to_kv moves values (slug map: everything→brain except the EX.CO trio→ex.co) then DROP COLUMN. See v29 note below for prior version.
 BRAIN_VERSION_KEY = 'brain_schema_version'
 
 # brain_logs.db structural version. v1 is the baseline stamp: the table shapes
@@ -1256,11 +1257,61 @@ def _migrate_edges_v22(conn):
         raise  # Don't silently continue with broken data
 
 
+def rename_kv_field(conn, old_key: str, new_key: str) -> dict:
+    """Rename a promoted metadata field everywhere its NAME is stored.
+
+    A field named in `contract.PROMOTED_FIELDS` with store=metadata_kv lives
+    under its own name in two places, and both must move together:
+
+      node_metadata_kv.key      — the value itself
+      node_enrichments.vector_type — the per-field embedding lane, when the
+                                     field has one in EMBEDDING_GROUPS
+
+    Renaming only the kv key orphans the vectors: the activation kernel looks
+    up the new name, misses, and falls back to a blend while a lazy backfill
+    re-embeds rows that were never stale. Field names never enter the embedded
+    TEXT (the builders join values only), so the stored blobs stay valid — this
+    is a relabel, not a re-embed.
+
+    SQL-native and sub-second by design: this runs at daemon boot before the
+    port answers pings, and a slow step invites the health monitor to kickstart
+    the daemon mid-migration. Returns the per-table row counts for the log line.
+    """
+    kv = conn.execute(
+        "UPDATE node_metadata_kv SET key = ? WHERE key = ?",
+        (new_key, old_key)).rowcount
+    vec = conn.execute(
+        "UPDATE node_enrichments SET vector_type = ? WHERE vector_type = ?",
+        (new_key, old_key)).rowcount
+    return {'node_metadata_kv': kv, 'node_enrichments': vec}
+
+
+def _migrate_v31_voice_fields(conn):
+    """v31: voice-quote fields renamed to symmetric, frame-neutral names.
+
+    `user_raw_quote` / `anchor_raw_quote` encoded an assistant-serves-user
+    frame — a role paired with a name, marking one voice as default and the
+    other as bolt-on — and 'anchor' is jargon to the stateless model reading
+    the field list. The pair is now two positions: theirs and mine.
+
+    Idempotent by construction: the UPDATEs match the old names, so a re-run
+    finds nothing.
+    """
+    for old, new in (('user_raw_quote', 'their_raw_quote'),
+                     ('anchor_raw_quote', 'my_raw_quote')):
+        counts = rename_kv_field(conn, old, new)
+        print('[brain] v31: %s -> %s (%d kv, %d vectors)'
+              % (old, new, counts['node_metadata_kv'],
+                 counts['node_enrichments']), flush=True)
+
+
 # Numbered structural migrations for brain.db, for the runner to apply.
-# Empty at v30: everything up to here is handled by the declarative TABLES diff
-# plus the _backfill_data ladder, both of which stay. A v31+ change adds
-# (31, _migrate_v31) here and bumps BRAIN_VERSION — nothing else.
-MAIN_MIGRATIONS = []
+# The declarative TABLES diff and the _backfill_data ladder both stay; this is
+# for changes neither can express. A v32+ change adds (32, _migrate_v32) here
+# and bumps BRAIN_VERSION — nothing else.
+MAIN_MIGRATIONS = [
+    (31, _migrate_v31_voice_fields),
+]
 
 
 def ensure_schema(conn, db_path=None):

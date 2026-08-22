@@ -93,7 +93,7 @@ Currently asymmetric — Tom's voice well-preserved, Anchor's voice under-emitte
 - `anchor_introspection` — Anchor self-diagnoses a flaw in its own architecture. Era E only.
 
 **Fix**:
-- `anchor_raw_quote_smuggled` / **voice asymmetry** — `anchor_raw_quote` field captured at ~6% in Era E vs `user_raw_quote` at 80%. v17 over-corrected on emission discipline; Anchor's stance gets paraphrased into neutral. **Backwards for identity preservation.**
+- `my_raw_quote_smuggled` / **voice asymmetry** — `my_raw_quote` field captured at ~6% in Era E vs `their_raw_quote` at 80%. v17 over-corrected on emission discipline; Anchor's stance gets paraphrased into neutral. **Backwards for identity preservation.**
 - `confabulation_self_diagnosis` — when Anchor self-diagnoses something it actually didn't catch, mis-attributing agency.
 
 ### 3. Lifecycle & staleness
@@ -132,7 +132,7 @@ Currently asymmetric — Tom's voice well-preserved, Anchor's voice under-emitte
 - `good_revision_history` — node carries revision lineage with reason.
 
 **Fix**:
-- `fabricated_or_outside_window_quote` — `user_raw_quote` contains polished restatement or text not in the surrounding turns. See "Quote-fidelity probe" below. **Trust-contract violation.**
+- `fabricated_or_outside_window_quote` — `their_raw_quote` contains polished restatement or text not in the surrounding turns. See "Quote-fidelity probe" below. **Trust-contract violation.**
 
 ### 5. Abstraction quality
 The grain family — too zoomed-in vs too zoomed-out vs right grain.
@@ -189,9 +189,9 @@ Quote fidelity, source attribution, anti-fabrication.
 
 ---
 
-## Quote-fidelity probe — `user_raw_quote` is not always verbatim
+## Quote-fidelity probe — `their_raw_quote` is not always verbatim
 
-Tested 50 randomly-sampled nodes with non-empty `user_raw_quote`. For each, pulled the full source conversation (no truncation) and classified the quote against actual operator messages in the window.
+Tested 50 randomly-sampled nodes with non-empty `their_raw_quote`. For each, pulled the full source conversation (no truncation) and classified the quote against actual operator messages in the window.
 
 | Classification | Count | % | Meaning |
 |---|---|---|---|
@@ -206,7 +206,7 @@ Tested 50 randomly-sampled nodes with non-empty `user_raw_quote`. For each, pull
 Two confirmed paraphrase cases (manually verified against actual traces):
 
 - **`d4d5ec24`** (Era B, "Two-register encoding: fact-capture vs abstraction should be separate jobs"):
-  - Encoded `user_raw_quote`: *"i wonder perhaps the abstraction should happen in higher levels OR parallel, almost 2 encoders, we have many encoders in S2"*
+  - Encoded `their_raw_quote`: *"i wonder perhaps the abstraction should happen in higher levels OR parallel, almost 2 encoders, we have many encoders in S2"*
   - Actual Tom message at that timestamp: *"Big consideration. Let's brake it down together: If we have S12 encoders we will need to somehow coordinate between them. unless one feeds into the other we will have 2 integrate functions..."*
   - Same spirit, different words. Encoder rewrote Tom's framing into cleaner prose **and tagged it as verbatim**.
 
@@ -214,15 +214,15 @@ Two confirmed paraphrase cases (manually verified against actual traces):
   - Encoded: *"Why define types? Can't we stay open form and deduce?"*
   - Window's actual Tom messages don't contain this phrase. Either pulled from outside the window or fabricated outright.
 
-Accounting for confounders (no_window era, cross-session references, window narrowness), **the floor is ~10-20% of `user_raw_quote` values are not actually verbatim despite carrying the verbatim contract.**
+Accounting for confounders (no_window era, cross-session references, window narrowness), **the floor is ~10-20% of `their_raw_quote` values are not actually verbatim despite carrying the verbatim contract.**
 
 The dual-register architecture (concrete tokens at embedding + verbatim quotes for source-memory anchoring) assumes these are sacred. They aren't.
 
 **Proposed v19 fix** combines three layers (see EPISODIC-REFERENCES.md for the broader episodic-refs design context):
 
-1. **Prompt rule** (encoder-side): "`user_raw_quote` MUST be verbatim. If you're tempted to clean it up, leave the field empty — that's the right move."
-2. **Encode-time validation** (dispatch-side): when `user_raw_quote` is set, the dispatcher checks for verbatim match against recent S0 user_message traces. Reject (or downgrade to `user_paraphrase`) on mismatch.
-3. **Source_refs as ground truth** (episodic-refs side): when `user_raw_quote` is set alongside `source_refs`, the quote is the literal text at that trace_id. Trace is the authority. Collapses verification into a structural check.
+1. **Prompt rule** (encoder-side): "`their_raw_quote` MUST be verbatim. If you're tempted to clean it up, leave the field empty — that's the right move."
+2. **Encode-time validation** (dispatch-side): when `their_raw_quote` is set, the dispatcher checks for verbatim match against recent S0 user_message traces. Reject (or downgrade to `user_paraphrase`) on mismatch.
+3. **Source_refs as ground truth** (episodic-refs side): when `their_raw_quote` is set alongside `source_refs`, the quote is the literal text at that trace_id. Trace is the authority. Collapses verification into a structural check.
 
 Same architecture solves both the quote-fidelity problem and the broader episodic-references work.
 
@@ -232,10 +232,10 @@ Same architecture solves both the quote-fidelity problem and the broader episodi
 
 Three patterns surface across reviewers:
 
-1. **Earlier eras (v1-v2) hold qualities later eras lose.** v17 may be regressing on `revise-with-history`, `self-caught corrections`, `pragmatic inference on short quotes`, and (most clearly) `anchor_raw_quote` emission rate. v19 must not lose these.
+1. **Earlier eras (v1-v2) hold qualities later eras lose.** v17 may be regressing on `revise-with-history`, `self-caught corrections`, `pragmatic inference on short quotes`, and (most clearly) `my_raw_quote` emission rate. v19 must not lose these.
 2. **v13's 33K-char rewrite** introduced sophisticated framing AND the broken auto-keyword pipeline. Net was mixed; the keyword spam survived through v17.
 3. **v15.11's correction-aspect-edges** helped corrections; didn't propagate `related_to` ban to non-encoder writers (the `auto_connect` default + `encode_cluster` were the actual pollutors — both killed in commit `c015d1b` 2026-05-24).
-4. **v17's "revise discipline strengthened"** over-corrected on `anchor_raw_quote` emission. 0/6 in agent 5's Era-E sample.
+4. **v17's "revise discipline strengthened"** over-corrected on `my_raw_quote` emission. 0/6 in agent 5's Era-E sample.
 
 ---
 
@@ -271,7 +271,7 @@ These methodology limitations map 1:1 to what the encoder needs at runtime when 
 Five places where v19 should explicitly act (rubric-grade items, not just prompt tweaks):
 
 1. **Reward `pattern_naming` in titles.** Single strongest quality differentiator. Add a "title-as-handle" rule with a positive + negative example.
-2. **Symmetrize `anchor_raw_quote` emission.** Currently backwards. v17 over-corrected on emission discipline; v19 needs to teach when Anchor's stance is the encoding (~80% of correction/decision nodes — same threshold as `user_raw_quote`).
+2. **Symmetrize `my_raw_quote` emission.** Currently backwards. v17 over-corrected on emission discipline; v19 needs to teach when Anchor's stance is the encoding (~80% of correction/decision nodes — same threshold as `their_raw_quote`).
 3. **Quote-fidelity is sacred.** Add the prompt rule + plan encode-time validation. Source_refs (episodic-refs work) is the ground-truth mechanism.
 4. **Audit type on revise.** Add an explicit "if you're revising content, check whether the type still fits" rule. Catches the `closed_open_node`, `proposal_as_decision`, `plan_after_execution_smell` family.
 5. **Lifecycle markers on ephemeral nodes.** Either a `half_life` metadata field, an explicit "is this status or learning?" type-routing rule, or a separate `event` / `status` type family that auto-archives. The cluster (#3) is the biggest single source of graph noise.

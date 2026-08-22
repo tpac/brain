@@ -163,13 +163,13 @@ class TestPerFieldReplace(BrainTestBase):
         """Revising one KV field does not touch other KV fields."""
         nid = _make_node(self.brain,
                          situation='S', reasoning='R',
-                         user_raw_quote='U', anchor_raw_quote='A')
+                         their_raw_quote='U', my_raw_quote='A')
         self.brain.revise(node_id=nid, situation='S2', reason='r')
 
         # Other KV keys still present and unchanged
         self.assertEqual(_kv_value(self.brain, nid, 'reasoning'), 'R')
-        self.assertEqual(_kv_value(self.brain, nid, 'user_raw_quote'), 'U')
-        self.assertEqual(_kv_value(self.brain, nid, 'anchor_raw_quote'), 'A')
+        self.assertEqual(_kv_value(self.brain, nid, 'their_raw_quote'), 'U')
+        self.assertEqual(_kv_value(self.brain, nid, 'my_raw_quote'), 'A')
 
 
 # ═══════════════════════════════════════════════════════════════════════

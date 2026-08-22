@@ -193,7 +193,7 @@ WINDOW_TURNS_FALLBACK = 20
 
 # S1 encoder node config — full depth, no truncation.
 # Correction render: 'heavy' — full corrector content + reasoning +
-# user_raw_quote. The 2026-05-17 three-way A/B (lean vs balanced vs heavy)
+# their_raw_quote. The 2026-05-17 three-way A/B (lean vs balanced vs heavy)
 # on 3 items showed heavy was actually CHEAPER than balanced on both
 # encoder time (+8.1% vs lean, vs balanced's +11.4%) AND answerer tokens
 # (+1.0% vs balanced's +17.5%) at equal pass rate. Correction context is

@@ -9,7 +9,7 @@ compare on:
   - Node count + event_time emission rate
   - Edge density (per node) + temporal-relation edges (before / after /
     meets / met_by / during / anchored_to)
-  - anchor_raw_quote / user_raw_quote presence (voice symmetry signal)
+  - my_raw_quote / their_raw_quote presence (voice symmetry signal)
   - open-type + correction-type nodes (live-contradiction / explicit
     paraphrase rejection — v15.9 specifically wrote "correction" nodes
     calling out assistant hallucinations)
@@ -64,8 +64,8 @@ def _node_aspects(bundle: Dict[str, Any]) -> Dict[str, Any]:
         'node_count': nc,
         'event_time_count': _nodes_with_kv(nodes, 'event_time'),
         'event_time_rate': _nodes_with_kv(nodes, 'event_time') / nc if nc else 0,
-        'user_raw_quote': _nodes_with_kv(nodes, 'user_raw_quote'),
-        'anchor_raw_quote': _nodes_with_kv(nodes, 'anchor_raw_quote'),
+        'their_raw_quote': _nodes_with_kv(nodes, 'their_raw_quote'),
+        'my_raw_quote': _nodes_with_kv(nodes, 'my_raw_quote'),
         'reasoning': _nodes_with_kv(nodes, 'reasoning'),
         'keywords': _nodes_with_kv(nodes, 'keywords'),
         'situation': _nodes_with_kv(nodes, 'situation'),
@@ -99,8 +99,8 @@ def _dated_events(bundle: Dict[str, Any]) -> List[Dict[str, Any]]:
             'type': n.get('type'),
             'title': (n.get('title') or '')[:90],
             'event_time': et,
-            'user_quote': bool(kv.get('user_raw_quote')),
-            'anchor_quote': bool(kv.get('anchor_raw_quote')),
+            'user_quote': bool(kv.get('their_raw_quote')),
+            'anchor_quote': bool(kv.get('my_raw_quote')),
         })
     out.sort(key=lambda r: r['event_time'])
     return out
@@ -223,8 +223,8 @@ def render_report(runs: List[str], items_by_qid: Dict[str, Dict[str, Dict[str, A
     metrics = [
         ('node_count', 'Total nodes'),
         ('event_time_count', 'Nodes with event_time'),
-        ('user_raw_quote', 'Nodes with user_raw_quote'),
-        ('anchor_raw_quote', 'Nodes with anchor_raw_quote'),
+        ('their_raw_quote', 'Nodes with their_raw_quote'),
+        ('my_raw_quote', 'Nodes with my_raw_quote'),
         ('reasoning', 'Nodes with reasoning kv'),
         ('keywords', 'Nodes with keywords'),
         ('situation', 'Nodes with situation'),

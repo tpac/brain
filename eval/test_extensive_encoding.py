@@ -11,7 +11,7 @@ Tests the full encoding pipeline against realistic conversations that require:
 
 Each test gets a FRESH brain seeded with specific nodes to test revision behavior.
 Conversations are 5 user + 5 assistant messages — realistic back-and-forth.
-Rich metadata (reasoning, user_raw_quote, correction_pattern) verified on output.
+Rich metadata (reasoning, their_raw_quote, correction_pattern) verified on output.
 
 Usage:
     export ANTHROPIC_API_KEY=...
@@ -185,7 +185,7 @@ SCENARIOS = {
             {"role": "user", "content": "The encoding agent now gets brain context inline — the 3-degree graph neighborhood. No more blind searching."},
             {"role": "assistant", "content": "Same data source for both decode and encode paths. The distiller compresses for Claude. The encoder gets raw graph with metadata — revised_at, access_count, reasoning, edge descriptions, correction patterns."},
             {"role": "user", "content": "What metadata does each node carry now?"},
-            {"role": "assistant", "content": "From node_metadata: reasoning (why encoded), user_raw_quote (Tom's exact words), correction_of (which node it corrected), correction_pattern, source_context, validation_count. From edges: relation, weight, description, last_strengthened, co_access_count."},
+            {"role": "assistant", "content": "From node_metadata: reasoning (why encoded), their_raw_quote (Tom's exact words), correction_of (which node it corrected), correction_pattern, source_context, validation_count. From edges: relation, weight, description, last_strengthened, co_access_count."},
             {"role": "user", "content": "The daemon also has a restart command. You send {cmd: restart} and it hot-reloads."},
             {"role": "assistant", "content": "Saves brain, clears __pycache__, os.execv with same startup args. Clean hot-reload without launchd restarting the service. New code fingerprint on ping confirms fresh load."},
             {"role": "user", "content": "co_accessed edges excluded from traversal. Intentional only at degree 1, everything except co_accessed at 2-3."},

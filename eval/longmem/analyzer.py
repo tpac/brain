@@ -89,7 +89,7 @@ def _node_text(node: Dict[str, Any]) -> str:
         node.get('content_summary') or '',
     ]
     kv = node.get('kv') or {}
-    for k in ('situation', 'reasoning', 'user_raw_quote', 'anchor_raw_quote',
+    for k in ('situation', 'reasoning', 'their_raw_quote', 'my_raw_quote',
               'event_description', 'value', 'entity', 'question'):
         v = kv.get(k)
         if v:

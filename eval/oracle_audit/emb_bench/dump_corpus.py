@@ -27,8 +27,8 @@ LIVE = os.path.join(DBDIR, "brain.db")
 
 # KV fields we keep (everything Mode A needs is title+content from the nodes
 # table; the rest enable a later full-engine Mode B without a second dump).
-KV_KEYS = ("situation", "question", "reasoning", "user_raw_quote",
-           "anchor_raw_quote", "correction_pattern", "source_context", "keywords")
+KV_KEYS = ("situation", "question", "reasoning", "their_raw_quote",
+           "my_raw_quote", "correction_pattern", "source_context", "keywords")
 
 
 def snapshot():

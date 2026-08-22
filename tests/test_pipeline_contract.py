@@ -49,7 +49,7 @@ class TestEmbeddingGroups(unittest.TestCase):
         self.assertEqual(set(EMBEDDING_GROUPS.keys()), {
             'title', 'blend', 'high_meta', 'other_meta', 'edge_context', 'question',
             'field_content', 'field_reasoning',
-            'field_user_raw_quote', 'field_anchor_raw_quote',
+            'field_their_raw_quote', 'field_my_raw_quote',
         })
 
     def test_cohort_assignment(self):
@@ -60,7 +60,7 @@ class TestEmbeddingGroups(unittest.TestCase):
         })
         self.assertEqual(field, {
             'field_content', 'field_reasoning',
-            'field_user_raw_quote', 'field_anchor_raw_quote'
+            'field_their_raw_quote', 'field_my_raw_quote'
         })
 
     def test_cohort_weight_invariants(self):
@@ -133,7 +133,7 @@ class TestFormatCandidateForSurface(unittest.TestCase):
              'situation': 'When debugging',  # situation is top-level for ergonomics
              '_metadata': {'reasoning': 'Important because...',
                            'question': 'Why does this matter?',
-                           'user_raw_quote': 'verbatim operator words'}}
+                           'their_raw_quote': 'verbatim operator words'}}
         # Lean (default): situation in, scaffolding out
         result = format_candidate_for_surface(c, 1)
         self.assertIn('Situation:', result)

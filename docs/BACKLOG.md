@@ -379,7 +379,7 @@ out already done.
 - Empty-description generic-edge archive sweep (the reclassifier can't fix
   these — no description to read)
 - Query-aware KV field promotion in render (temporal query promotes `event_time`, "what
-  did X say" promotes `user_raw_quote`)
+  did X say" promotes `their_raw_quote`)
 - Dispatcher enforcement for mandatory metadata fields — generative encoder rules run
   ~0–20% compliance vs 100% for restraint rules; prompt iteration has a visible ceiling
 - UTC-internal clock refactor — required only if the daemon ever leaves the operator's

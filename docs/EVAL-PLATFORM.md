@@ -199,7 +199,7 @@ This is sharper than the original 4-bucket classifier and is what should be used
 - Per-item pass/fail with movement (`unchanged_pass`, `unchanged_fail`, `fail→pass`, `pass→fail`)
 - Per-axis pass rate shifts
 - Failure bucket distribution shift
-- Behavioral signal totals (anchor_raw_quote count, open-type node count, third-party quote node count, scout-handoff entity field count)
+- Behavioral signal totals (my_raw_quote count, open-type node count, third-party quote node count, scout-handoff entity field count)
 - Sanity check on which prompt version was actually used (from interactions.jsonl)
 
 Falls back to `results_{run}.jsonl` for runs without artifacts (e.g. pre-Phase-1 runs).

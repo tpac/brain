@@ -4,7 +4,7 @@
 Runs both prompts against the same conversation slices and compares:
 - Number of tool calls (remember, revise, connect)
 - Types chosen
-- Fields filled (situation, reasoning, user_raw_quote, open fields)
+- Fields filled (situation, reasoning, their_raw_quote, open fields)
 - Quality: richness of content, connections made
 - Questions asked (v2 feature)
 

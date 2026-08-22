@@ -55,7 +55,7 @@ D33-D35 (sentinel range, ref internal consistency, voice annotation coverage) ar
 D36 (turn↔node language divergence) is YOUR primary semantic call. Read the source_conversation turns AND the node content/situation/reasoning fields. Score:
 - satisfied: turns and nodes use different language registers; node names a structural axis the turn implies; specificity preserved; verbatim phrases bridged via raw_quote fields only
 - violated: node content paraphrases the turn; ranges flattened; numbers smoothed; exact phrases re-stated in content prose
-Per CR12: phrases shared between a turn and user_raw_quote/anchor_raw_quote are the legitimate verbatim bridge — that's NOT a D36 violation.
+Per CR12: phrases shared between a turn and their_raw_quote/my_raw_quote are the legitimate verbatim bridge — that's NOT a D36 violation.
 
 For each cross-dim rule CR1..CR12, identify:
 - Did the tension this rule names actually surface in this example?

@@ -24,15 +24,15 @@ class TestFindMissingKvFilter(BrainTestBase):
         return result['id']
 
     def test_filter_excludes_nodes_lacking_source_field(self):
-        """find_missing with source_kv_keys=['user_raw_quote'] returns only
-        nodes that have user_raw_quote populated — even if many other nodes
-        also lack the user_raw_quote vector."""
-        # 3 nodes WITH user_raw_quote
+        """find_missing with source_kv_keys=['their_raw_quote'] returns only
+        nodes that have their_raw_quote populated — even if many other nodes
+        also lack the their_raw_quote vector."""
+        # 3 nodes WITH their_raw_quote
         with_quote_ids = [
-            self._make_node(f'WithQuote {i}', user_raw_quote=f'quote {i}')
+            self._make_node(f'WithQuote {i}', their_raw_quote=f'quote {i}')
             for i in range(3)
         ]
-        # 5 nodes WITHOUT user_raw_quote
+        # 5 nodes WITHOUT their_raw_quote
         without_ids = [
             self._make_node(f'NoQuote {i}')
             for i in range(5)
@@ -41,21 +41,21 @@ class TestFindMissingKvFilter(BrainTestBase):
         vdal = VectorDAL(self.brain.conn)
 
         # Without the filter: returns nodes regardless of whether they have
-        # user_raw_quote. Up to 8 active nodes from this test.
-        unfiltered = vdal.find_missing('user_raw_quote', limit=20)
+        # their_raw_quote. Up to 8 active nodes from this test.
+        unfiltered = vdal.find_missing('their_raw_quote', limit=20)
         unfiltered_ids = {r['id'] for r in unfiltered}
         for nid in with_quote_ids + without_ids:
             self.assertIn(nid, unfiltered_ids,
                           'unfiltered must return all missing-vector nodes')
 
-        # With the filter: only the 3 with user_raw_quote
+        # With the filter: only the 3 with their_raw_quote
         filtered = vdal.find_missing(
-            'user_raw_quote', limit=20,
-            source_kv_keys=['user_raw_quote'])
+            'their_raw_quote', limit=20,
+            source_kv_keys=['their_raw_quote'])
         filtered_ids = {r['id'] for r in filtered}
         for nid in with_quote_ids:
             self.assertIn(nid, filtered_ids,
-                          'filtered must return nodes WITH user_raw_quote')
+                          'filtered must return nodes WITH their_raw_quote')
         for nid in without_ids:
             self.assertNotIn(nid, filtered_ids,
                              'filtered must EXCLUDE nodes without the kv key')
@@ -63,17 +63,17 @@ class TestFindMissingKvFilter(BrainTestBase):
     def test_filter_or_semantics_across_multiple_keys(self):
         """source_kv_keys is OR-style: a node qualifies if ANY of the keys
         is populated. Used by groups like high_meta that blend multiple kv
-        fields (situation OR user_raw_quote OR anchor_raw_quote)."""
+        fields (situation OR their_raw_quote OR my_raw_quote)."""
         only_situation = self._make_node('OnlySituation', situation='When debugging')
-        only_quote = self._make_node('OnlyQuote', user_raw_quote='said this')
-        both = self._make_node('Both', situation='When', user_raw_quote='said')
+        only_quote = self._make_node('OnlyQuote', their_raw_quote='said this')
+        both = self._make_node('Both', situation='When', their_raw_quote='said')
         neither = self._make_node('Neither')
 
         vdal = VectorDAL(self.brain.conn)
 
         result = vdal.find_missing(
             'high_meta', limit=20,
-            source_kv_keys=['situation', 'user_raw_quote', 'anchor_raw_quote'])
+            source_kv_keys=['situation', 'their_raw_quote', 'my_raw_quote'])
         ids = {r['id'] for r in result}
         self.assertIn(only_situation, ids)
         self.assertIn(only_quote, ids)
