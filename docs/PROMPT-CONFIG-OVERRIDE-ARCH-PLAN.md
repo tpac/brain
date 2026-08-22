@@ -1,19 +1,28 @@
 # Prompt/Config Override Model — Architecture Plan
 
-## § Steps 1–4 live; next is Steps 5+6, and 5 MUST land before 6 (2026-08-18) ◀ ACTIVE ARC
+## § Steps 1–6 live; next is Step 7, and every gate is now ruled (2026-08-22) ◀ ACTIVE ARC
 
-**Read first:** handoff node — recall `[thread:override-migration]`; plan index `id:700654c9`;
-session-3 record `id:0c742f7f`.
-The accessors ARE the resolvers (main `1fe9315`): override overlaid on `INTERACTION_DEFAULTS`,
-four guards in `Brain._resolve_interaction`, five caller literals deleted, live-verified —
-every stamp `source='override'`, surface fingerprint `af8471e407ef` byte-identical across the
-migration. The resolver's no-row default path has **zero production traffic** until Step 8.
-**Locked:** overlay semantics (decision 1); accessor signatures (eval monkeypatch + baseline
-readers); `source='override'` = row *contributed*, fingerprint equality is Step 8's classifier.
-**Open:** Steps 5–9; the Step 8 corpus-float decision (Tom owes it before session 6 ships).
+**Read first:** handoff node `id:080016bf`; plan index `id:700654c9`; session-4 record
+`id:7775ec63`; the four rulings `id:0274bca8`.
+"No pointer" is now **honest** (Step 5, main `d375868` — both MAX(version) fallbacks deleted) and
+**reachable** (Step 6, main `eefc15b` — `clear_interaction_override` at DAL/Brain/MCP, unified
+cache invalidation, registration never auto-activates). A 5-lens Opus fleet then found a **third**
+MAX fallback in `sync_prompts._fetch_active` — the tool writes the seed `.py` that
+`interaction_defaults` imports as the *code default*, so one clear plus a routine sync could have
+deployed an un-eval'd dormant prompt fleet-wide; it now returns `None` ("no override deployed —
+seed file is authoritative"). Surface fingerprint `af8471e407ef` byte-identical across the whole
+migration, verified live post-restart.
+**Locked:** overlay semantics (decision 1); accessor signatures; `source='override'` = row
+*contributed*, fingerprint equality is Step 8's classifier; **Step 8's collapse runs DAEMON-ONLY**,
+not as a `LOGS_MIGRATIONS` step (`id:ffc58bda` — a migration-step collapse would fire inside frozen
+eval corpora and make them float); **Step 7 consolidates rather than repairs in place, and includes
+the reach-around table**; review rhythm = no fleet for 7, full fleet for 8, narrow 2–3 lens for 9.
+**Open:** Steps 7–9. No gate is currently blocked on a human.
 **Do not reopen:** wiring s2_community's interaction read (post-Step-8); a sibling
 `get_effective_*` accessor; whole-value override; guarding (instead of deleting) the schema
-backstop — its unversioned re-run property is the bug.
+backstop — its unversioned re-run property is the bug; env-flag exemption or float-acceptance for
+the corpus question (both rejected, `id:ffc58bda`); bumping `SEED_PROMPTS_VERSION` before Step 8
+lands (it would enlarge the set the collapse must classify).
 
 Migrate prompt/config storage from **DB-owned defaults** to **code-owned defaults + DB overrides**.
 Direction approved by Tom 2026-08-17 (brain `id:63e6b1f8`). This doc is the executable worklist;
