@@ -9,7 +9,7 @@ encoded, side by side, with the ACTUAL full prompts captured (not a rebuild):
 The arms are COUPLED by design (the v-next prompt describes the lived input
 structures P1–P4 produce), so we flip the flag AND the prompt together — never
 one without the other. Prompt injection lands in the EVAL brain only; the live
-daemon's s1e is never mutated (unlike the legacy diff_encoding.register_prompt).
+daemon's s1e is never mutated.
 
 Usage:
   ./dev python3 eval/longmem/ab_encode.py --qids Q1 Q2 \\
@@ -31,6 +31,8 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from tests.interaction_override import override_interaction
+
 
 def fetch_prompt(version: int) -> tuple:
     """Read s1e@version from the live daemon (READ-ONLY). Returns (template, parameters)."""
@@ -45,20 +47,13 @@ def fetch_prompt(version: int) -> tuple:
 def inject_prompt(brain, template: str, parameters: str) -> int:
     """Register `template` into the EVAL brain and make it active. Returns the
     eval-brain version. Never touches the daemon."""
-    reg = brain._interaction_dal.register(
-        's1e', template=template, parameters=parameters or '',
-        created_by='ab_encode:injected')
-    ver = reg['version'] if isinstance(reg, dict) else reg
-    brain.set_interaction_active('s1e', ver, set_by='ab_encode')
-    # Confirm the runtime read path returns what we injected.
-    active = brain.get_interaction('s1e')
-    assert active and active.get('template') == template, \
-        "injection failed: active s1e template != injected"
-    return ver
+    return override_interaction(brain, 's1e', template=template,
+                                parameters=parameters or None,
+                                set_by='ab_encode:injected')
 
 
 def dump_nodes(brain) -> list:
-    """Non-seed nodes with key fields (from diff_encoding, kept local)."""
+    """Non-seed nodes with key fields."""
     rows = brain.conn.execute("""
         SELECT n.id, n.type, n.title, n.content, n.encoding_source
         FROM nodes n

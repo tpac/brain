@@ -34,6 +34,8 @@ from typing import List, Dict, Any, Optional, TextIO
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from tests.interaction_override import override_interaction
+
 
 # 5 axes per LongMemEval paper; information-extraction collapses the three single-session types
 AXES = {
@@ -222,59 +224,32 @@ def _stream_write_result(writers: Dict, result: Dict[str, Any]) -> None:
 
 
 def _apply_s1e_override(brain, override_path: str) -> None:
-    """Register a new s1e prompt version over the seeded v1 in this brain
-    AND set it active so the encoder actually picks it up.
+    """Point this brain's s1e at a candidate prompt file (--s1e-override).
 
-    Used by --s1e-override to test a candidate prompt against the eval
-    without modifying the seed file (which would affect all future fresh
-    brains). Preserves the seeded v1's parameters; only the template
-    changes. After this call, brain.get_interaction('s1e') returns the
-    override (active version flipped).
-
-    Since 2026-05-10 the activation step is explicit (register no longer
-    auto-activates non-v1 versions).
+    Tests a candidate without editing the seed file, which would reach every
+    future fresh brain. Preserves the effective config; only the template
+    changes.
     """
-    new_template = open(override_path).read()
-    existing = brain._interaction_dal.get_active('s1e')
-    params = existing.get('parameters', '') if existing else ''
-    result = brain._interaction_dal.register(
-        's1e', template=new_template, parameters=params,
-        created_by='eval-s1e-override')
-    # register() auto-activates only v1. For overrides on a seeded brain
-    # (which already has v1 active), flip the pointer explicitly.
-    if result.get('version', 1) > 1:
-        brain._interaction_dal.set_active(
-            's1e', result['version'], set_by='eval-s1e-override')
+    override_interaction(brain, 's1e', template=open(override_path).read(),
+                         set_by='eval-s1e-override')
 
 
 def _apply_surface_override(brain, override_path: str,
                             params_json: str = None) -> None:
-    """Register a new surface prompt version AND activate it in this brain.
+    """Point this brain's surface at a candidate prompt file (--surface-override).
 
-    Used by --surface-override to test surface v5 (agentic, with tools) on
-    the eval without registering against the live brain. Each fresh eval
-    brain gets v5 registered + activated; live daemon never sees it.
+    Companion to the BRAIN_SURFACE_VARIANT env var (set by main() when
+    --surface-override is passed) — the env var picks the tool-use loop in
+    surface.py; this makes the override prompt the one Haiku actually reads.
 
-    Companion to BRAIN_SURFACE_VARIANT=v5_agentic env var (set by main()
-    when --surface-override is passed) — the env var picks the tool-use
-    loop in surface.py; this DAL action makes the v5 prompt the one Haiku
-    actually reads.
-
-    params_json: optional interaction config for the override version
-    (e.g. '{"layout": "xml_v13"}' — the surface renderer reads `layout`
-    from the active config, so template and user-content layout flip
-    atomically). None preserves the existing active config.
+    params_json: optional config for the override (e.g. '{"layout":
+    "xml_v13"}' — the surface renderer reads `layout` from the active config,
+    so template and user-content layout flip atomically). None preserves the
+    effective config.
     """
-    new_template = open(override_path).read()
-    existing = brain._interaction_dal.get_active('surface')
-    params = params_json if params_json is not None else (
-        existing.get('parameters', '') if existing else '')
-    result = brain._interaction_dal.register(
-        'surface', template=new_template, parameters=params,
-        created_by='eval-surface-override')
-    if result.get('version', 1) > 1:
-        brain._interaction_dal.set_active(
-            'surface', result['version'], set_by='eval-surface-override')
+    override_interaction(brain, 'surface', template=open(override_path).read(),
+                         parameters=params_json,
+                         set_by='eval-surface-override')
 
 
 def run_item(item: Dict[str, Any], item_idx: int, total: int,

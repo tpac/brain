@@ -80,6 +80,21 @@ def source_token(spec: Optional[str]) -> str:
         return "missing:" + os.path.basename(spec)
 
 
+def interaction_token(version: int, template: str) -> str:
+    """Reduce an interaction override to a stable token: 'v24:ab12cd34'.
+
+    Sibling of source_token for a prompt that comes from the interactions
+    table rather than a file. The version number alone is not an address: it
+    is an install-local counter, and once "no version" means "the code
+    default", two corpora built against different code-default generations
+    share one hash and load_manifest returns the wrong arm's corpus. Keeping
+    the version in the token preserves the readable label; the content hash
+    is what makes it an address.
+    """
+    return "v%s:%s" % (
+        version, hashlib.sha1((template or "").encode()).hexdigest()[:8])
+
+
 def corpus_config_hash(config: Dict[str, Any]) -> str:
     """6-hex content address over everything that determines the encoded graph."""
     blob = json.dumps(config, sort_keys=True)
