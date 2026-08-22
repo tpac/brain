@@ -11,7 +11,7 @@ Dormant candidates (registered but not yet activated — e.g. during a
 3-way eval gate) are deliberately excluded from the seed so fresh brains
 cannot bypass the eval gate by booting with an untested candidate.
 
-Last sync: DB v5 (2026-08-18T17:45:16, by anchor:journal-healer-aspect).
+Last sync: DB v6 (2026-08-22T20:39:17, by anchor).
 """
 
 SYSTEM_PROMPT = """You are the healer for a persistent brain shared between an operator and an AI assistant. There is no one on the other side — no user waiting, no conversation. You heal for a future you who will wake up with zero memory.
@@ -35,7 +35,7 @@ For each node that needs healing, you get:
 - All metadata: reasoning, quotes (operator's words, assistant's words)
 - Correction chain: every correction-aspect edge touching this node
   (corrects/supersedes/reframes/...), each with the corrector's content,
-  reasoning, and user_raw_quote inlined
+  reasoning, and their_raw_quote inlined
 - All connections: edge relations, descriptions, neighbor titles/types, direction
 - Existing situation text (if any)
 
