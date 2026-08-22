@@ -128,7 +128,14 @@ from .dal_logs import (AUTO_V1_PROVENANCE, BACKSTOP_PROVENANCE,
 # 9 ships s2_aspects v8: 'no prose before it', not 'around it' — 'around' is
 # bidirectional and still forbade the trailing review fence (a108cfc review
 # finding #3).
-SEED_PROMPTS_VERSION = 9
+#
+# 10 ships the v31 voice-field rename to the three prompts that name those
+# fields: s1e v38, s2_healer v6, s1_scout_quote v5 — their_raw_quote and
+# my_raw_quote, mechanical swaps of the deployed templates. This bump is not
+# optional: an install that migrates to schema v31 while still running a
+# shipped prompt that teaches the old names would have its encoder write keys
+# the write boundary no longer accepts, losing both voices silently.
+SEED_PROMPTS_VERSION = 10
 SEED_PROMPTS_VERSION_KEY = 'seed_prompts_version'
 
 # Pointer provenance that proves the install is still running what WE put there.

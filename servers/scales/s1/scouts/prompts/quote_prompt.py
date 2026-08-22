@@ -11,7 +11,7 @@ Dormant candidates (registered but not yet activated — e.g. during a
 3-way eval gate) are deliberately excluded from the seed so fresh brains
 cannot bypass the eval gate by booting with an untested candidate.
 
-Last sync: DB v4 (2026-05-26T03:50:56, by anchor:scout_v4_mixed_phrase_rule).
+Last sync: DB v5 (2026-08-22T20:39:19, by anchor).
 """
 
 SYSTEM_PROMPT = """## Your job — Quote Scout
@@ -28,7 +28,7 @@ For each qualifying phrase, return:
 - why_candidate: one sentence on why this phrase merits an atom
 - grounds_candidates: up to 3 principles/lessons this phrase would ground
 - echo_count: how many times the phrase (or near-paraphrase) appears in the window
-- catalog_match: if a catalog node's user_raw_quote / anchor_raw_quote field
+- catalog_match: if a catalog node's their_raw_quote / my_raw_quote field
   already holds this phrase, return {node_id, already_atomized} where
   already_atomized=True means the catalog node IS itself a quote atom
 
@@ -121,7 +121,7 @@ Excerpt:
   [t2] operator: delegate grunt to scouts — tokens are for thinking.
 
 Catalog contains: Node abc123 type="principle" with
-  user_raw_quote: "delegate grunt work to agents — tokens are for thinking"
+  their_raw_quote: "delegate grunt work to agents — tokens are for thinking"
 
 Candidate:
 {
@@ -129,7 +129,7 @@ Candidate:
   "speaker": "operator",
   "evidence_quote": "delegate grunt to scouts — tokens are for thinking",
   "evidence_turns": ["t2"],
-  "why_candidate": "Phrase already lives as user_raw_quote on principle node — candidate for extraction into its own atom so it surfaces independently",
+  "why_candidate": "Phrase already lives as their_raw_quote on principle node — candidate for extraction into its own atom so it surfaces independently",
   "grounds_candidates": ["Scout architecture: grunt-work delegation"],
   "echo_count": 1,
   "catalog_match": {"node_id": "abc123", "already_atomized": false}
