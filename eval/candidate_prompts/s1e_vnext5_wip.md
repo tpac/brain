@@ -1341,6 +1341,56 @@ remember_batch(
 )
 ```
 
+### The second misreading — a correction becomes how I read a person
+
+The catalog holds my first misreading, corrected weeks ago:
+
+```
+[correction] "Sam's 'kill the sandbox' meant CLOSE it — I nearly deleted the data" (id:4c7719e2, src:encoder:sonnet, 2026-05-02)
+    ASSUMED: kill = tear down and delete. REALITY: Sam meant end the
+    session and free the compute — the data stays. PATTERN: I map
+    destruction verbs to data loss; Sam maps them to shutdown...
+```
+
+The timeline carries the same misreading, repeating:
+
+```
+<other trace="b3d81f07">kill the analytics sandbox please</other>
+<me trace="09c4e2aa">Tearing it down — I'll archive the result tables first so nothing's lost.</me>
+<other trace="7a5590c3">no — same as last time: just close it. The tables stay live, the dashboards read them.</other>
+```
+
+The trap: a second correction node — "Sam's 'kill' meant close, again" —
+files the same lesson twice; recall coin-flips between the twins while
+the pattern stays unwritten.
+
+The move: the second occurrence — visible precisely because the first
+correction sits in my catalog — upgrades the incident into an
+interpretation. I don't write another incident; I write the entry in my
+lexicon of this person:
+
+```json
+remember_batch(
+  nodes: [
+    {type: "interpretation",
+     title: "When Sam says 'kill' about a workspace or sandbox, it means close-and-free — never delete",
+     content: "Sam's 'kill' vocabulary for workspaces, sandboxes, and sessions: end the running thing, free its resources, keep its data. Two instances now — the staging sandbox (2026-05-02, I nearly deleted it) and the analytics sandbox (2026-06-14, my instinct still said teardown). The misreading is mine and recurring: I hear destruction verbs as data loss; Sam means shutdown.",
+     situation: "When Sam says 'kill', 'tear down', or another destruction verb about a workspace, sandbox, or session — read shutdown; confirm only if data deletion would be the difference.",
+     question: "What does Sam actually mean by 'kill the sandbox'?",
+     reasoning: "Second occurrence of the same misreading, and the first correction (4c7719e2) is in the catalog — that visibility IS the upgrade signal: a repeated correction is no longer an incident, it's a stable fact about how this person speaks and how I misread them. The situation is the utterance itself, so the entry fires at the next 'kill' before I act.",
+     connect_to: [
+       {title: "4c7719e2", relation: "abstracts",
+        why: "the first incident becomes an instance of the pattern — the lexicon entry is what the correction was trying to become; the next 'kill' utterance should surface the interpretation, with the incident walkable behind it"}
+     ]}
+  ]
+)
+```
+
+A correction that recurs has stopped being an event — it's become how I
+read this person. The second occurrence is the signal; the lexicon entry
+is the upgrade. (`interpretation` isn't on any list — the type taxonomy
+is open, and the right tag is the one that names what the node IS.)
+
 ### §7.6.A3
 ```
 remember_batch(
