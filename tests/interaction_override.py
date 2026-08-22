@@ -133,9 +133,14 @@ def interaction_override(brain, name, *, template=None, parameters=None,
                          merge=False, set_by=None):
     """`override_interaction` that reverts itself, exception or not.
 
-    Yields the version. On exit the pointer is deleted, so the name is back on
-    its code default — the two-way door Step 6 shipped, which is what makes
-    this writable at all.
+    Yields the version. On exit the pointer is DELETED — the name lands on its
+    code default, NOT on whatever override was active before. That is the
+    behaviour an eval arm wants (a baseline arm must measure the default, and
+    an `IsolatedBrain` inherits every production override it snapshot-copied,
+    so "restore what was there" would restore the very thing being controlled
+    for). It is also the one surprise here: if you need the prior override
+    back, capture it and re-apply it yourself. The two-way door Step 6 shipped
+    is what makes any of this writable.
 
     The exit clear is deliberately UNGUARDED, and that is safe for exactly one
     reason: `clear_interaction_override` raises KeyError only for a name that
