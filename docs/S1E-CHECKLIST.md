@@ -296,6 +296,67 @@ as a section; the Allen full-cut.
   deletion would have lost both. Word-level corollary of A2's true/false law.
   (Stop-1 reverse-pass, 2026-08-21)
 
+## E2/E3 OUTPUT — the example system, reverse-derived (2026-08-22)
+
+Method (Tom's, this session): reverse-pass every example into what it actually SHAPES →
+segment the shapings → find the shapes no segment covers → weave the missing ones into
+existing examples rather than adding assets. Run **blind**: three cold Opus readers got an
+examples-only corpus (18 fenced assets + 16 inline pairs, all prose stripped) so nothing
+told them what the examples were meant to teach; I wrote my own derivation first and diffed.
+Author-blindness is the point — I know the intent, which is exactly what hides the leaks.
+
+### The segment map — axes the example set covers
+
+| axis | covered | NOT covered |
+|---|---|---|
+| op shape | remember (heavy), revise-patch, revise-fieldwalk, multi-node sweep | standalone `connect`, `archive`, `absorb`, `disconnect`, **skip** |
+| knowledge kind | fact/event, decision, correction, mechanism, principle, moment, identity, quote, interpretation | open/hypothesis; `lesson`/`finding`/`milestone` (read in catalogs, never authored) |
+| catalog relation | net-new, extends, contradicts→patch, abstracts-two-instances | would-duplicate→revise as a *decision*; near-twin deliberately kept |
+| voice source | theirs, mine, both, an agent's | **neither** (action-derived node); third party / >2 voices |
+| certainty | asserted flatly | hedged, contested-unresolved, **conditional verdict** |
+| register | cool technical, hot correction, affective/identity | uncertain, mundane/logistics |
+| temporal | dated event, relative→ISO, sequence, hub | perishable/expiring state |
+| domain | infra-eng (heavy), quantified personal ×2, research ×1 | everything else |
+| scale | 1-node (modal), 2-node, 5-node | selecting from many candidates |
+
+### Ranked gap list (b=blind reader, m=my derivation, s=sibling stream af64db80)
+
+1. **Skip / zero nodes** (b,m) — no example; every exemplar is max-density; `encoded="false"` reads as an obligation. All three readers ranked it top.
+2. **Degree taught at 1.47 mean / 3 max, three nodes at zero** (b) — against R3's measured −20pp for degree 0–2. The rule says draw the edges; the set models the danger band.
+3. **Modal batch = 1 node** (b, 7 of 10 calls) — contradicts the gate's "most turns produce several, I don't ration". A3: examples win.
+4. **Conditional verdict without its truth condition** (s) + **perishable state nothing re-visits** (b) — one family: claims with no attack surface. Distinct from the as-of stamp (that's time-rot; this is condition-rot).
+5. **Falsified claims hiding in metadata fields** (s) — verified: the sweep runs 5 revise ops, **5/5 patch content only**.
+6. **Uncertainty / contested-unresolved** (b,m) — every node asserts flatly; `confidence` never set; the one hedge is a `thought` hanging off a confident correction.
+7. **Third-party attribution** (b) — every asset is dyadic; likely error is flattening a colleague's words into the counterpart's voice lane.
+8. **The human is wrong** (b) — `correction` is defined 3/3 as MY behavioral flaw with a self-diagnostic pattern.
+9. **Action-derived node carrying neither voice field** (b,m) — never shown; inverse defect live in the lexicon node (see D-list).
+10. **Retire / merge / archive** (b,m) — zero examples. **Needs Tom's ruling: deliberate (S2's job) or gap?**
+11. **Flat durable facts** (b) — inflation to reach exemplar density; abstraction-ladder pressure turns a checklist into a pseudo-principle.
+12. **Sensitive material** (b) — no floor anywhere, and Priya's anxiety is precedent for encoding a third party's health.
+13. **Within-session position change** (b) — supersession only ever shown cross-run.
+14. **`similar_to` for deliberately-kept twins** (b,m) — measured 3.4× rescue lift, zero uses; and the canonical plants a near-twin pair it never resolves.
+
+### Verified coherence defects (checked against the text, not taken on report)
+
+- **D1. Pair `grounds` runs backwards.** The principle node emits `grounds` → the mechanism, while its own `why` argues the recipe is the findable handle and the principle "the meaning it serves". Detail should ground meaning. **In the T6 carrier — and I edited that `why` at 9b without seeing it.**
+- **D2. Prompt-deictic refs inside stored edge `why`s** — "A7 declares my continuity; A4 names the structural limit…", "A6's encoding rule … gets its philosophical justification HERE." Section numbers and HERE die on storage. **E9's second conviction, in the zone I audited at Stop 10.**
+- **D3. Sam/tom split** — 8 `<trace-tom-*>` placeholders against 32 "Sam" in node bodies. A rename that reached prose, not placeholders.
+- **D4. Canonical quote node is dated 2026-03-20 and claims to be the moment insight b7e2054d "became conscious" — b7e2054d is dated 2026-03-02 in the excerpt.** 18 days earlier.
+- **D5.** An `insight` node carries `correction_pattern` while two `correction` nodes carry it — type/field incoherence on a filter axis.
+- **D6.** 2024 date island (11 instances, the auth-rewrite cluster) against 2026 everywhere else.
+- **D7.** Marcus reasoning claims the number is cross-redundant across title/content/quote, but the title says `27:12` and the other two spell it out — the node's own rationale is lexically false.
+- **D8.** The BAD batch's node is also missing situation/reasoning/edges, but only hub-only propagation is flagged — unflagged badness reads as acceptable.
+
+### Weave plan (no new assets — each gap lands in an example that exists)
+
+| move | closes | into |
+|---|---|---|
+| add a `connect` op drawing `similar_to` between the two planted ring-buffer twins | gap 14 + standalone-`connect` + the unresolved near-twin | canonical batch |
+| make one sweep patch a `situation` patch; give one patched node its truth condition | gaps 4, 5 | sweep example |
+| name what the window did NOT earn a node for, in one line | gap 1 | canonical framing |
+| fix D1–D8 | coherence | in place |
+| enrich the catalog excerpt so honest edges exist for the two zero-edge nodes | gap 2 (without manufacturing edges — Tom's honesty ruling holds) | canonical excerpt |
+
 ## E. Global audits & process gates
 
 - **E1. Contradiction audit (T4).** Enumerate every in-prompt tension; stamp
