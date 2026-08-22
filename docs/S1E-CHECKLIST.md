@@ -27,10 +27,19 @@ silently; loud write boundary), and the locked-strip log (brain_remember.py:1152
 silently demotes non-anchor locked:true — the demotion is right, its silence isn't).
 Lock doctrine (Tom, Stop 10): locking is a rare act — the brain's 352 locked nodes
 need their own review session someday (set_node_lock is the door, d80fc0a).
-**Ship-gate PRECONDITION (Tom, 2026-08-21, id:52c8eb6d):** the voice-field rename
-(user_raw_quote→their_raw_quote, anchor_raw_quote→my_raw_quote) lands FIRST via its own
-stream (chip task_578c6b79), then this WIP takes a mechanical name-pass. Until that
-stream runs, the walk deliberately keeps the OLD names — do not pre-rename in the draft.
+**Ship-gate precondition — MET 2026-08-22 (ruling id:52c8eb6d).** The voice-field rename
+landed on main via the rename stream (their work, not this walk's): BRAIN_VERSION 31 renames
+`user_raw_quote`→`their_raw_quote` and `anchor_raw_quote`→`my_raw_quote` in BOTH
+`node_metadata_kv.key` and `node_enrichments.vector_type`; no re-embed needed. That stream
+also registers **s1e v38 = a mechanical name-swap of deployed v37** (two strings only) and
+activates it, so live encodes keep writing voice fields across the schema move.
+**Consequences for this walk:** (1) the WIP's name-pass is now DUE — swap the two names,
+then SHRINK the voice-equality gloss, since the names finally carry the frame; (2) our
+candidate registers as **v39+, and its diff base is v38, not v37** — any diff review against
+v37 will show phantom voice-field churn; (3) `generate_field_summary()` inherits the new
+names automatically (it derives from the contract), and that stream already rewrote the two
+voice descriptions — so the field-summary ship-package item below starts from the new names
+and must NOT re-touch those two lines; (4) contract.py is ours to edit now — they are out.
 **Do not reopen:** ledger method/home; §-numbering; degree floors; <memories_beyond_catalog>
 as a section; the Allen full-cut.
 
