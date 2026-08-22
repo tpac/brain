@@ -100,12 +100,19 @@ def override_interaction(brain, name, *, template=None, parameters=None,
             'override of %r did not reach the resolver: registered v%s, '
             'stamp says %s v%s' % (name, version, stamp['source'],
                                    stamp['version']))
-    effective_template = brain.get_interaction_prompt(name) or ''
-    if effective_template != template:
-        raise RuntimeError(
-            'override of %r took the pointer but not the template: resolver '
-            'returns %d chars, %d were set'
-            % (name, len(effective_template), len(template)))
+    # An EMPTY template is the config-only idiom, not a template override: the
+    # resolver takes the row's template only when non-empty, so it keeps
+    # serving the code default. Asserting equality here would fail every
+    # config-only override of a name that HAS a default template
+    # (recall_query_expansion has 1233 chars), which is why this checks the
+    # template only when one was actually set.
+    if template:
+        effective_template = brain.get_interaction_prompt(name) or ''
+        if effective_template != template:
+            raise RuntimeError(
+                'override of %r took the pointer but not the template: '
+                'resolver returns %d chars, %d were set'
+                % (name, len(effective_template), len(template)))
     effective_config = brain.get_interaction_config(name) or {}
     drifted = {k: (v, effective_config.get(k)) for k, v in config.items()
                if effective_config.get(k) != v}
@@ -176,13 +183,15 @@ def main():
         print('[check-overrides] no override pointers — every interaction is '
               'on its code default.')
         return 0
-    eval_tagged = [e for e in rows
-                   if str(e.get('active_set_by') or '').startswith('eval')]
+    def is_eval(entry):
+        return str(entry.get('active_set_by') or '').startswith('eval')
+
+    eval_tagged = [e for e in rows if is_eval(e)]
     print('[check-overrides] %d override pointer(s) live:' % len(rows))
     for e in rows:
-        flag = ' ← EVAL LEAK' if e in eval_tagged else ''
         print('  %-28s v%-4s set_by=%s%s'
-              % (e['name'], e['active_version'], e.get('active_set_by'), flag))
+              % (e['name'], e['active_version'], e.get('active_set_by'),
+                 ' ← EVAL LEAK' if is_eval(e) else ''))
     if eval_tagged:
         print('\n%d pointer(s) were set by an eval and never reverted. Each one '
               'opts that name out of code defaults until cleared:'

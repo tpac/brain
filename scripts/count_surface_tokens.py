@@ -53,7 +53,18 @@ def effective_surface_template() -> tuple[str, str]:
     from servers.interaction_defaults import INTERACTION_DEFAULTS
 
     r = send_command('get_interaction', {'name': 'surface'})
-    row = (r.get('result') or {}) if isinstance(r, dict) else {}
+    if not isinstance(r, dict):
+        raise RuntimeError('daemon returned %r for get_interaction' % (r,))
+    row = r.get('result') or {}
+    # An unreachable daemon and "no override deployed" both come back falsy.
+    # Treating them alike would report the code default's token count as fact
+    # while an override was live and simply unreadable — the one wrong answer
+    # this script must not give quietly. `get_interaction` reports a missing
+    # interaction as ok=False, which is a legitimate "no override".
+    if not r.get('ok') and 'not found' not in str(r.get('error', '')).lower():
+        raise RuntimeError(
+            'could not reach the daemon to read the surface override: %s. '
+            'Start it before trusting a count.' % r.get('error'))
     if row.get('template'):
         return row['template'], "override v%s" % row.get('version')
 

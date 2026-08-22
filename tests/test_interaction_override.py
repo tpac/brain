@@ -100,6 +100,24 @@ class TestOverrideDoor:
         assert after == before
         assert 'byte-identical' in capsys.readouterr().err
 
+    def test_config_only_override_of_a_name_that_has_a_default_template(self):
+        """`template=''` is the config-only idiom, NOT a template override —
+        the resolver keeps serving the code default because it takes a row's
+        template only when non-empty. A verify that asserted "effective
+        template == what I set" would raise on every config-only override of a
+        name with a real default template."""
+        from servers.interaction_defaults import INTERACTION_DEFAULTS
+        default_template = INTERACTION_DEFAULTS['recall_query_expansion'][0]
+        assert default_template, 'fixture needs a non-empty default template'
+
+        override_interaction(self.brain, 'recall_query_expansion', template='',
+                             parameters={'limit': 3}, merge=True)
+
+        assert (self.brain.get_interaction_prompt('recall_query_expansion')
+                == default_template)
+        assert (self.brain.get_interaction_config(
+            'recall_query_expansion')['limit'] == 3)
+
     def test_parameters_accepts_the_json_string_the_dal_stores(self):
         override_interaction(self.brain, 'recall_laf', template='',
                              parameters=json.dumps({'z_norm': 'support'}))
