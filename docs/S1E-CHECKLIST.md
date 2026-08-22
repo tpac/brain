@@ -72,6 +72,39 @@ re-anchor here, not to any older command):
   before the gate, since a stray pointer silently contaminates the arm.
 - Multi-rep, never a single run (E4): same-capture variance exceeds arm deltas.
 
+**Two arm-integrity checks — do both, they catch different failures.**
+
+*Free, on the build:* `override_interaction` fingerprints the effective K before and after
+applying. If the override changed nothing it prints to stderr —
+`[override] WARN s1e v39 is byte-identical to what was already effective … an A/B across
+this override compares a K against itself`. **Watch the build's stderr; don't let it scroll.**
+
+*Manual, and the one no single build can make* — each arm only ever sees itself, so the
+cross-ARM comparison is ours to run. Per arm, after its build:
+
+```bash
+./dev python3 -c "
+import sys; sys.path.insert(0,'.')
+from servers.brain import Brain
+b = Brain(db_path='<corpus_item_dir>/brain.db')
+print(b.get_interaction_stamp('s1e'))"
+```
+
+Then assert **`fingerprint_A != fingerprint_B`**. The stamp is 12 hex over the RESOLVED
+(overlaid) template *and* config, so one `!=` is the complete check — two arms with
+different version ints can still resolve to the same K when the difference lives in the
+config half. Our gate should differ by construction (v38 vs v39 are genuinely different
+text); **if the fingerprints match, stop** — the override didn't take, and the config half
+is now the likely cause.
+
+⚠ That snippet spawns `Brain(db_path=…)` deliberately against a **corpus item's isolated
+copy**. Never repoint it at the live `brain.db` while the daemon runs (CLAUDE.md).
+
+**Do not cross the two values:** `corpus.interaction_token(version, template)` →
+`v39:<sha1[:8]>` is the CACHE-side address and deliberately excludes config (matching how
+the non-override path addresses `s1e="active"`); the 12-hex `get_interaction_stamp` is the
+RUN-side integrity check and includes config. Different functions, different purposes.
+
 **Collision audit (theirs, reported 2026-08-22).** 11 frozen manifests, 4 carrying overrides,
 all 4 version maps distinct — no measurement we cite shows a visible collided hash. Their own
 caveat is the load-bearing half and is worth preserving: the failure is **silent by
