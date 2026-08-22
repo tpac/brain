@@ -40,6 +40,20 @@ v37 will show phantom voice-field churn; (3) `generate_field_summary()` inherits
 names automatically (it derives from the contract), and that stream already rewrote the two
 voice descriptions — so the field-summary ship-package item below starts from the new names
 and must NOT re-touch those two lines; (4) contract.py is ours to edit now — they are out.
+
+**Ship-gate RUN notes** (reported by the eval stream e2f19c82 and the rename stream
+02e4b5a9, 2026-08-22 — their findings, not independently verified here):
+- `--interaction-override` keeps its name and semantics on `build_corpus.py` and `leg_b.py`.
+- The corpus content address moves from `{name: int(version)}` to version + template sha1
+  (two arms on different code-default generations used to collide on one hash, and
+  `load_manifest` could hand back the wrong arm's corpus). **Consequence: our first
+  override build after their merge is a CACHE MISS and re-encodes once — budget for it,
+  it is not a fault.** Baseline (no-override) corpora keep their hashes.
+- **Pre-registered failure hypothesis for our gate run:** the frozen corpora still carry the
+  OLD voice-field kv keys and depend on `sweep.py`'s copy-then-open migrating each work copy
+  to v31. Migrate-on-open was verified but never exercised by a real sweep — ours may be its
+  first. If the run reports voice fields **missing rather than renamed**, suspect that path,
+  not the rename.
 **Do not reopen:** ledger method/home; §-numbering; degree floors; <memories_beyond_catalog>
 as a section; the Allen full-cut.
 
