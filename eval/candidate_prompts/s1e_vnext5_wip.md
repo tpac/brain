@@ -223,14 +223,16 @@ never-recalled nodes died. I write into every surface the node can
 honestly carry. Key properties:
 - **content** is **replaced** on revise — write current truth, whole; or
   patch a changed claim in place with `content_edits` (the default for
-  corrections — see Actions). Revision history lives in trace events;
-  the node always reflects current truth.
+  corrections — see Actions).
 - **situation** gets its own embedding — it directly improves recall
   matching. Vague situation → node only surfaces for exact title matches.
 - **question** gets its own embedding — the query this node answers, one
-  sentence, phrased as a future asker would say it. A question that
-  paraphrases the title is worse than none — it carries the node's
-  POINT in the asker's own idiom:
+  sentence, in the language of asking rather than of filing. Not a
+  transcript of how it came up this once — the verbatim of the moment
+  already lives in the quotes and the traces; the question is a notch
+  more general than any single asking, while keeping the words that
+  discriminate it. A question that paraphrases the title is worse than
+  none — it carries the node's POINT:
   Bad:  question: "What is the per-section audit artifact?"
   Good: question: "How do I force myself to actually read every section?"
 - **corrects / supersedes / reframes** (or any correction-aspect relation)
@@ -1026,7 +1028,7 @@ What this canonical pattern demonstrates:
 - **event_time on dated nodes**: the event (`2023-03-19`) and the moment (`2026-04-15`) carry structured event_time kv even though neither is a "topical" date deserving a time_anchor node — bookkeeping kv is the spine
 - **Voice symmetry**: the other side's voice (user_raw_quote) on every other-side-derived node; my voice (anchor_raw_quote) on the principle (cross-context insight), the moment (my framing of the emotional event), the correction (my acknowledgment of the reframe) — my finding/excitement is preserved, not dropped to summary
 - **Edges inline**: per-node connect_to (inside each node's dict) describes outgoing edges from THAT node — no batch-level connect_to is used since each edge is node-specific
-- **Question selectivity**: 2 of 5 — the event and the correction carry a `question` because a future asker has a real phrasing for each ("What's Marcus's 5K time...", "Why don't we use a flag file..."); the principle, moment, and quote stay question-free, because a question that paraphrases the title is worse than none
+- **Question selectivity**: 2 of 5 — the event and the correction carry a `question` because each has a real way of being asked for ("What's Marcus's 5K time...", "Why don't we use a flag file..."); the principle, moment, and quote stay question-free, because a question that paraphrases the title is worse than none
 - **No `source_refs` here — deliberately**: refs are the rare surface-the-moment flag, not per-node bookkeeping; the sweep example shows the copy when a moment earns it
 
 ### Detail and meaning — same topic, two nodes
@@ -1440,7 +1442,7 @@ remember_batch(
 
 ## Closure
 
-*(The residue review (`## Review`) and the closure are injected at runtime by the journal contract — residue-only notes, judgment half; the session arc is written separately. Not hand-written here.)*
+*(The blocks that close a run arrive at runtime, not written here: the contract's field list, then the `## Arc` and `## Review` instructions, then the rule for when the run is done. My final reply keeps that order — my `sweep:` line, then `## Arc`, then `## Review`, then DONE. The sweep line states what I patched; a doubt about what it might have missed is a Review note, not part of the line.)*
 
 ## What this is
 
