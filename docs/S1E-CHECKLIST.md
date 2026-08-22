@@ -54,6 +54,32 @@ and must NOT re-touch those two lines; (4) contract.py is ours to edit now — t
   to v31. Migrate-on-open was verified but never exercised by a real sweep — ours may be its
   first. If the run reports voice fields **missing rather than renamed**, suspect that path,
   not the rename.
+
+**THE GATE RUNBOOK** (confirmed unchanged by the eval stream after their Step 7 reshape —
+re-anchor here, not to any older command):
+
+```bash
+./dev python3 eval/longmem/build_corpus.py --interaction-override "s1e=39" --label gate-vnext5 [--items N | --qids a,b,c]
+./dev python3 eval/longmem/sweep.py --corpus <hash> --label gate-vnext5
+```
+
+- `--interaction-override` keeps its `name=version[,name=version]` format and semantics:
+  it fetches that DORMANT version's template from the live daemon and applies it to each
+  fresh per-item eval brain only. `39` assumes our candidate registers behind v38 (the
+  mechanical name-swap) — confirm the real number at register time.
+- `--pooled` still refuses to compose with an override.
+- `./dev check-overrides` reports whether a previous run left a pointer behind — run it
+  before the gate, since a stray pointer silently contaminates the arm.
+- Multi-rep, never a single run (E4): same-capture variance exceeds arm deltas.
+
+**Collision audit (theirs, reported 2026-08-22).** 11 frozen manifests, 4 carrying overrides,
+all 4 version maps distinct — no measurement we cite shows a visible collided hash. Their own
+caveat is the load-bearing half and is worth preserving: the failure is **silent by
+construction** (a collision CACHE HITs and writes no second manifest), so "no duplicates on
+disk" is equally consistent with "never happened" and "happened and silently reused build #1."
+Unfalsifiable after the fact. Exposure is narrower than it first looks — a template override
+replaces the template wholesale, so the risk sits in the CONFIG half (model/effort/max_tokens
+inherited from the eval brain's default) differing between two same-map builds.
 **Do not reopen:** ledger method/home; §-numbering; degree floors; <memories_beyond_catalog>
 as a section; the Allen full-cut.
 
