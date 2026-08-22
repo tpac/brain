@@ -461,6 +461,18 @@ One `get_interaction_effective` command would collapse it to a single call — a
 skipped here because Step 7's blast radius is "eval tree only, no runtime code" and the review
 rhythm Tom ruled depends on that staying true.
 
+**The corpus-hash collision was a correctness bug in past A/B methodology, not an ergonomics fix.**
+Any prior A/B whose two arms shared an override version map but were built against different
+code-default generations could have compared an arm against itself. Audit of the 11 frozen manifests
+on disk: 4 carry `interaction_overrides`, all 4 maps DISTINCT (`{s1e:26}`, `{s1e:29}`,
+`{s1_scout_facts:7, s1e:24}`, `{s1e:25}`), each its own labelled arm — so no cited measurement shows
+a collided hash. **That audit cannot be conclusive, and the reason matters:** a collision writes no
+second manifest — `load_manifest` CACHE HITs and returns the first — so "no duplicate maps on disk"
+is equally consistent with "never happened" and "happened, silently reused the first corpus". The
+exposure is narrower than it first looks (a template override replaces the template wholesale, so
+what could differ between two same-map builds is the CONFIG half inherited from the code default),
+but it is real and unfalsifiable after the fact. Recorded rather than resolved.
+
 **Also changed, beyond the table:** `artifacts.dump_traces` routes through `query_traces(hours=None)`,
 which flags truncation where the raw dump just ended, and drops the `interaction_id` column — an
 install-local rowid nothing JOINs, whose replacement (the fingerprint) already travels in the event
