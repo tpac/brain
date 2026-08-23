@@ -303,10 +303,13 @@ PROMOTED_FIELDS = {
     "reasoning": {
         "store": "metadata_kv",
         "type": "str",
-        "description": ("Why this was encoded — decision rationale, stored "
-                        "on the node. NOT revise()'s `reason` param — that is "
-                        "the audit note for a revision, recorded in trace "
-                        "events and never stored on the node."),
+        "description": ("What this claim rests on — how it was established "
+                        "(measured, reported, inferred), how strongly, and "
+                        "what would change it. Written for a reader who has "
+                        "never seen this prompt. NOT revise()'s `reason` "
+                        "param — that is the audit note for a revision, "
+                        "recorded in trace events and never stored on the "
+                        "node."),
     },
     "their_raw_quote": {
         "store": "metadata_kv",

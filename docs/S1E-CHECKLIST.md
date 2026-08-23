@@ -1,30 +1,47 @@
 # S1E Prompt Checklist — the boxes every revision must check
 
-## Walk state — WALK COMPLETE (stops 1-11, probes A-P); next: 4 rulings → defects → weave → contract → audits → gate (2026-08-22) ◀ ACTIVE ARC
+## Walk state — walk COMPLETE + items 1-4 and the reasoning contract fix LANDED; next: weave → MCP membership → E1/E8/E10 → gate (2026-08-23) ◀ ACTIVE ARC
 
-**Where this stands.** The section-by-section walk is finished. What remains is not more
-walking — it is a fix list, one contract change, two audits, and the gate. Draft is
-97,944 chars; NOTHING is registered. Diff base is **v38** (the rename stream's mechanical
-name-swap); our candidate registers as **v39**.
+**Where this stands.** The section-by-section walk is finished and every Tom-ruled fix from
+it has landed and been probe-verified. What remains is the weave, one eval-gated MCP change,
+three audits, and the gate. Draft is 100,276 chars; NOTHING is registered. Diff base is
+**v38** (the rename stream's mechanical name-swap); our candidate registers as **v39**
+(verified against `list_interactions`: s1e max 38, active 38).
 
 **Order of work, and why:**
-1. **Four rulings from Tom** — drafts written and shown 2026-08-22, awaiting his word:
-   (a) the live-question pilot (does one named vertical teaching ride in v-next.5?);
-   (b) canonical excerpt enrichment (2 catalog lines so the zero-edge nodes gain honest
-   targets); (c) the sixth canonical node (action-derived, no voice fields — closes the
-   derivation rule's negative case, the `<actions>` encode-side demo, and C5 at once);
-   (d) RULED: retire/archive is a real gap, its own thread, not a v-next.5 item (id:9eaed612).
-   Full draft text in the working set; rationale in id:a6c13aad.
-2. **The 8 verified defects** (E2/E3 section below) — mechanical once (b)/(c) are ruled,
-   since both touch the canonical.
-3. **The weave plan** (E2/E3 section) — 5 moves, no new assets. The `similar_to` connect op
+
+DONE 2026-08-23 — all Tom-ruled, all probe-verified (arms Q positive, R negative
+control, S single-variable re-test; every arm production-faithful, incl. `## Arc`):
+- **ad7e68e** — name-pass (44 sites → `their_raw_quote`/`my_raw_quote`, gloss shrunk);
+  `reasoning` boundary in the three leaking canonical fields (this was also D7's real
+  fix); the **open-node closure teaching** folded into corrections flavor 3 — three
+  branches (retype+`resolves` / stay-open+narrow+`partially_resolves` / close+mint);
+  canonical excerpt +2 catalog lines with `completes` and `resolves` edges; the sixth
+  action-derived node; D1 (arrow moved onto the mechanism node — **no** global `grounds`
+  direction asserted, live usage runs both ways), D2 (three sites, not two), D3, D8.
+  **D5 and D6 dropped** — both premises failed measurement.
+- **2a5acbd** — `reasoning` re-aimed in contract.py from "why this was encoded" to
+  evidence strength. Reaches live v38 encoding on daemon restart, not gated behind v39.
+  Verified by probe S: pipeline narration and rule-citation gone, and the meta-observation
+  relocated itself to `thought` + the Review fence unprompted.
+- The killed pilot: **the live-question teaching does NOT ship** (id:99b81b25 — the
+  encoder authors 169 of 225 `open` nodes, so its premise inverted). Its replacement is
+  the closure teaching above (id:99f5d84b).
+
+REMAINING:
+1. **The weave plan** (E2/E3 section) — 5 moves, no new assets. The `similar_to` connect op
    between the planted ring-buffer twins closes three gaps at once.
-4. **contract.py field summary — REGISTRATION BLOCKER, not cleanup** (id:68fd6e05). Probes
-   emitted `locked` and `encoding_source` — fields NO example sets — purely on the contract
-   list's authority. contract.py is free (rename stream merged out).
-5. **E1 contradiction audit + E8 format census** — unrun, and they must run over the
-   SETTLED draft, not before the weave.
-6. **Ship gate** — the runbook below is complete: invocation, check-overrides pre-step,
+2. **MCP membership change** — add `question`/`event_time`, drop `critical`/`personal`/
+   `personal_context`, `encoding_source` → `system_stamped`, fix the stale `content` line,
+   describe the 11 bare fields. Tom-agreed 2026-08-23. **Ships as its own eval-gated
+   change, NOT inside the v39 package** (154793b6 + cross-caller scope 807394de) — folding
+   it in means the eval can't attribute the delta. Held back: `locked` (needs the
+   audience split — one `get_writable_fields()` serves both MCP callers who *can* lock and
+   an encoder whose locks are silently demoted), `source_refs` (wants its 8-hex shape gate
+   first), `thought` (1 use — let the teaching earn it), the `emotions` migration fork.
+3. **E1 + E8 + E10 audits** — unrun, and they must run over the SETTLED draft, not before
+   the weave. E10 is new (Tom, 2026-08-23) and is where item 2's findings came from.
+4. **Ship gate** — the runbook below is complete: invocation, check-overrides pre-step,
    expected one-time cache miss, migrate-on-open pre-registered as first suspect, and both
    arm-integrity checks.
 
@@ -35,22 +52,25 @@ retire/archive (id:9eaed612).
 
 **Probe fidelity note:** probes A-O were built WITHOUT the `## Arc` block (production S1E binds
 `arc=True` — encode.py `_journal`). Probe P is the first production-faithful arm; rebuild future
-arms with field summary → arc → review → closure, in that order.
+arms with field summary → arc → review → closure, in that order. **The recipe and the reusable
+scenarios now live in `eval/candidate_prompts/probe_scenarios/`** (README carries the arm build,
+the tool-ban clause, and the settled/unsettled pair — they only mean something together, since
+the positive arm alone can't separate a working teaching from one that fires on everything).
 
 **Read first:** handoff node id:477ddcc9; the rulings chain runs 7c87589c (fundamentals) →
 13f72658 (three connections) → 4bb5b1e8 (edge honesty + prune-lexicon example).
 
 The walk: section-by-section co-review with Tom (he rules, I hold the learnings), every
-substantive edit probe-verified by stateless Sonnets before it lands. Stops 1-9 closed
-(probes A-N); draft = eval/candidate_prompts/s1e_vnext5_wip.md, 98.1K vs v37's 86.9K —
-over v37 since Stop 8's sweep example (Tom-ruled earned size; package eval is the
-backstop), ~30 measured teachings added, NOT registered.
+substantive edit probe-verified by stateless Sonnets before it lands. All stops closed
+(probes A-P, then Q/R/S on the fix set); draft = eval/candidate_prompts/s1e_vnext5_wip.md,
+100.3K vs v37's 86.9K — over v37 since Stop 8's sweep example (Tom-ruled earned size;
+package eval is the backstop), ~30 measured teachings added, NOT registered.
 
 **Locked:** target function; banner v1 never ships (position carries, text was
 staleness-biased); [associated]-in-catalog (not a separate section); edge honesty over
 floors; Allen sequencing verbs KEPT (measured top rescue paths — only the ceremony cut).
-**Open:** stops 9b-11 (9a closed, probe L; UPDATE-append clause landed via micro-probe);
-E1/E2/E8 global audits (E1's two-reads entry resolved at Stop 8); ship gate (override eval
+**Open:** E1/E2/E8/E10 global audits (E1's two-reads entry resolved at Stop 8; E10's first
+entries are the MCP findings in REMAINING item 2); ship gate (override eval
 → package eval → Tom approves → the candidate lands as the code default); ship-package code items: the
 Assembly matrix row, id:477ddcc9, plus the source_refs 8-hex shape gate at
 add/replace_source_refs (dal.py:714 — type-checked only today; placeholders store
@@ -64,8 +84,8 @@ landed on main via the rename stream (their work, not this walk's): BRAIN_VERSIO
 `node_metadata_kv.key` and `node_enrichments.vector_type`; no re-embed needed. That stream
 also registers **s1e v38 = a mechanical name-swap of deployed v37** (two strings only) and
 activates it, so live encodes keep writing voice fields across the schema move.
-**Consequences for this walk:** (1) the WIP's name-pass is now DUE — swap the two names,
-then SHRINK the voice-equality gloss, since the names finally carry the frame; (2) our
+**Consequences for this walk:** (1) the WIP's name-pass is DONE (ad7e68e — 44 sites, gloss
+shrunk 12→10 lines since the possessive now rides in the field name); (2) our
 candidate registers as **v39+, and its diff base is v38, not v37** — any diff review against
 v37 will show phantom voice-field churn; (3) `generate_field_summary()` inherits the new
 names automatically (it derives from the contract), and that stream already rewrote the two
@@ -86,8 +106,37 @@ and must NOT re-touch those two lines; (4) contract.py is ours to edit now — t
   first. If the run reports voice fields **missing rather than renamed**, suspect that path,
   not the rename.
 
-**THE GATE RUNBOOK** (confirmed unchanged by the eval stream after their Step 7 reshape —
-re-anchor here, not to any older command):
+**THE SHIPPING PATH CHANGED UNDER US — 2026-08-23, mid-session.** The override-migration
+stream's Step 8 (the install collapse) landed on main and the daemon ran it, so **`s1e` now
+has NO active pointer**: `list_interactions` showed `active_version: 38` (set_by `anchor`)
+at this session's start and `null` by its end, and `get_interaction('s1e')` now answers
+*"no override deployed — the runtime reads its code default (`servers/interaction_defaults.py`)"*.
+**This is that arc's INTENDED end state, not a breakage** — pointer-less is normal now
+(id:bd39c56c). Consequences, and they replace this runbook's baseline and final step:
+
+- **The live prompt is the code default** — 86,833 chars, already carrying the v31 voice
+  names, i.e. v38's text. So the **baseline arm runs with NO override**, not `s1e=38`. An
+  `s1e=38` baseline would be override-vs-override and would not measure against what
+  production actually runs.
+- **`v39` is still the right number** — max_version is 38, and registered versions stay on
+  record through the collapse.
+- **Activating v39 is NOT the ship act any more.** Tom's ruling in that arc
+  (`docs/PROMPT-CONFIG-OVERRIDE-ARCH-PLAN.md`, decision 3): *"the eval gate becomes a
+  process rule: experimental changes land as overrides, get promoted into the code default
+  after the eval passes."* A permanent override would also freeze `s1e` against every
+  future code default — precisely the condition the collapse existed to clear.
+- **Ship sequence:** register v39 → deploy as a *temporary* override for the eval arm →
+  package eval → on Tom's pass, **promote the template into the code default**
+  (`interaction_defaults.py` + the seed `.py` via `sync-prompts`) and bump
+  `SEED_PROMPTS_VERSION` → then **clear the override** so the install returns to
+  pointer-less. `clear_interaction_override` (their Step 6) is that verb.
+- Unchanged and still correct below: `--interaction-override` mechanics, `--pooled`
+  refusing to compose, `check-overrides` as the leak check, multi-rep over single runs,
+  and BOTH arm-integrity checks.
+
+**THE GATE RUNBOOK** (eval mechanics confirmed by the eval stream after their Step 7
+reshape — re-anchor here, not to any older command; read the shipping-path block above
+first, it changes the baseline arm and the final step):
 
 ```bash
 ./dev python3 eval/longmem/build_corpus.py --interaction-override "s1e=39" --label gate-vnext5 [--items N | --qids a,b,c]
@@ -124,8 +173,9 @@ print(b.get_interaction_stamp('s1e'))"
 Then assert **`fingerprint_A != fingerprint_B`**. The stamp is 12 hex over the RESOLVED
 (overlaid) template *and* config, so one `!=` is the complete check — two arms with
 different version ints can still resolve to the same K when the difference lives in the
-config half. Our gate should differ by construction (v38 vs v39 are genuinely different
-text); **if the fingerprints match, stop** — the override didn't take, and the config half
+config half. Our gate should differ by construction (the pointer-less code default vs v39
+are genuinely different text); **if the fingerprints match, stop** — the override didn't
+take, and the config half
 is now the likely cause.
 
 ⚠ That snippet spawns `Brain(db_path=…)` deliberately against a **corpus item's isolated
@@ -454,13 +504,13 @@ Author-blindness is the point — I know the intent, which is exactly what hides
 
 ### Weave plan (no new assets — each gap lands in an example that exists)
 
-| move | closes | into |
-|---|---|---|
-| add a `connect` op drawing `similar_to` between the two planted ring-buffer twins | gap 14 + standalone-`connect` + the unresolved near-twin | canonical batch |
-| make one sweep patch a `situation` patch; give one patched node its truth condition | gaps 4, 5 | sweep example |
-| name what the window did NOT earn a node for, in one line | gap 1 | canonical framing |
-| fix D1–D8 | coherence | in place |
-| enrich the catalog excerpt so honest edges exist for the two zero-edge nodes | gap 2 (without manufacturing edges — Tom's honesty ruling holds) | canonical excerpt |
+| move | closes | into | status |
+|---|---|---|---|
+| add a `connect` op drawing `similar_to` between the two planted ring-buffer twins | gap 14 + standalone-`connect` + the unresolved near-twin | canonical batch | DONE — Tom ruled convert. Canonical is now `brain_batch` with 6 `remember` ops + 1 standalone `connect` (9c04e7a1 `similar_to` 5d11c0a7), which is what the prompt's own rule at ~798 prescribes for a mix. Teaches `connect` vs `connect_to` and that the field is `description`, not `why`. **Self-check caught a contradiction the conversion created:** the round-1 line named two single-purpose batches directly above an example doing the opposite — tool names now stripped from it and from the sibling-title rule, so ~798 is the single owner of tool selection (also retires an E7 redundancy). |
+| make one sweep patch a `situation` patch; give one patched node its truth condition | gaps 4, 5 | sweep example | DONE — b8e05f92 gains a `situation` replacement in the same op; the why-list now carries "staleness is not only in `content`" + the truth condition ("any rebuild", not "before merge") |
+| name what the window did NOT earn a node for, in one line | gap 1 | canonical framing | DONE — demonstrates-list gains "What this round did NOT encode": the TCP migration got an edge, not a node; six nodes is an outcome, not a target |
+| fix D1–D8 | coherence | in place | DONE (ad7e68e) — D5/D6 dropped on measurement, D7 dissolved into the reasoning fix |
+| enrich the catalog excerpt so honest edges exist for the two zero-edge nodes | gap 2 (without manufacturing edges — Tom's honesty ruling holds) | canonical excerpt | DONE (ad7e68e) — +2 catalog lines, `completes` and `resolves` |
 
 ## E. Global audits & process gates
 
@@ -520,6 +570,42 @@ Author-blindness is the point — I know the intent, which is exactly what hides
   new. New fields have no catalog ratchet yet — their first examples fully
   define the register, which makes the sweep cheapest exactly when it
   matters most. (2026-08-21)
+
+- **E10. MCP surface audit — does the tool layer support the prompt, or fight
+  it?** (Tom, 2026-08-23.) Runs AFTER the prompt settles, because the prompt is
+  what defines the support the MCP layer owes. **This is not a symmetric
+  contradiction check:** the contract field summary is injected last under
+  "from contract", so by A3 the MCP surface WINS any disagreement by position —
+  a contradiction here is the prompt losing, not a tie. Proved twice
+  (68fd6e05: probes emitted `locked`/`encoding_source` that no example sets;
+  17c604ad: the `reasoning` leak survived an example-side fix because the field
+  description was driving it). Four checks:
+  1. **Coverage, both directions.** Every field the prompt teaches appears in
+     `get_writable_fields()`; every field the list advertises is either taught
+     or deliberately silent. Known 2026-08-23: taught-but-absent — `question`
+     (10,662 nodes, own vector at weight 0.90), `event_time` (430),
+     `source_refs` (26), `thought` (1), `emotions` (0); advertised-but-dead —
+     `critical` (0 of 12,041), `personal` (4), `personal_context` (2),
+     `encoding_source` (spurious emission; wants `system_stamped` like
+     `project`), `locked` (silent no-op for `encoder:sonnet`).
+  2. **Agreement on shared fields.** Where both surfaces describe one field,
+     they must not contradict. Fixed 2026-08-23: `reasoning` ("why this was
+     encoded" → evidence strength, 2a5acbd). Open: the `emotion`+`emotion_label`
+     pair (1,070/981 nodes) vs the prompt's `emotions` array (0) — two live
+     representations of one dimension, a migration question.
+  3. **Dereference.** Every prompt line that POINTS into a tool description
+     must resolve to text still saying what the pointer promises — the prompt
+     doesn't merely coexist with MCP, it depends on it (1b7984f8 found three
+     such delegation lines).
+  4. **Cross-caller safety.** A description aimed at S1E also teaches S2 units,
+     the healer, and Anchor-via-MCP (807394de). Membership changes ship as their
+     own eval-gated change (154793b6), never folded into a prompt package where
+     the eval can't attribute the delta.
+
+  Why it needs its own box: the section-by-section walk audits the prompt
+  against itself, so this entire class is structurally invisible to it. Tom had
+  asked for it once before as a one-off (8a9f5996, clean at the time); it never
+  became a step, and everything above accumulated in the gap.
 
 ## R. Recall→encode pointers (Opus scout, 2026-08-21)
 
