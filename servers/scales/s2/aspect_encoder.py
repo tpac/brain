@@ -346,22 +346,22 @@ class AspectEncoder(IntegrationUnit):
                         value, category, dropped, valid_for_cat))
                 aspects_list = valid_for_cat
 
-            # Noise-exclusivity boundary. `noise` means "no semantic claim"
-            # (graph mechanics + bookkeeping artifacts). If the encoder also
-            # routed this string to a real aspect, that semantic claim refutes
-            # noise — keep the meaning, strip noise. Preserves the invariant
-            # noise ∩ {any other aspect} = ∅, which is what lets exclusion
-            # filters trust "not in noise" == "is real knowledge". Mirrors the
-            # category-mismatch filter above: drop the bad member, keep the
-            # survivors, log loud.
+            # Noise + semantic is a LEGAL answer, kept as returned (Tom,
+            # 2026-08-23). Noise vetoes at read time, so the noise member is
+            # the load-bearing half: stripping it — as this boundary used to,
+            # on the reasoning that a semantic claim refutes noise — deleted
+            # exactly the half that does the filtering and silently un-noised
+            # machinery the classifier had correctly flagged. Keeping both
+            # preserves what the string MEANS while the veto governs what it
+            # DOES. Recorded, not refused: dual routing is legal now, so it
+            # belongs in the debug log rather than the errors table, and it is
+            # the only signal telling us whether the classifier uses this at all.
             if 'noise' in aspects_list and len(aspects_list) > 1:
-                kept = [a for a in aspects_list if a != 'noise']
-                self.brain._log_error(
+                self.brain._log_warning(
                     self.NAME,
-                    Exception('noise + semantic aspect — stripped noise'),
-                    'value="%s" category=%s aspects=%s kept=%s' % (
-                        value, category, aspects_list, kept))
-                aspects_list = kept
+                    'noise + semantic aspect — kept both, noise vetoes on read',
+                    'value="%s" category=%s aspects=%s' % (
+                        value, category, aspects_list))
 
             if (category, value) in seen:
                 rejected.append({'classification': c, 'reason': 'duplicate classification of (%s, %s)' % (category, value)})

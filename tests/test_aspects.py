@@ -379,18 +379,20 @@ class TestWriteDoorGate(unittest.TestCase):
         self.assertIn('door_test_rel',
                       data['correction_improvement']['edge_relations'])
 
-    def test_add_members_refuses_noise_overlap_and_leaves_file_intact(self):
-        before = self._file_bytes()
-        with self.assertRaises(AspectContractError):
-            self.registry.add_members(
-                [{'category': 'edge_relations', 'value': 'corrects',
-                  'aspects': ['noise']}],
-                source='test')
-        self.assertEqual(self._file_bytes(), before)   # write refused
-        # registry snapshot unharmed
-        self.assertNotIn('corrects', self.registry.noise.edge_relations)
-        self.assertTrue(any('write refused' in e[1] for e in self.brain.errors),
-                        self.brain.errors)
+    def test_add_members_accepts_noise_overlap_and_noise_then_vetoes(self):
+        """Noise vetoes rather than being exclusive (Tom, 2026-08-23), so the
+        door no longer refuses a semantic verb being filed as machinery. The
+        veto is what makes this safe: the string keeps its semantic membership
+        but resolves to noise and lands in the exclusion sets."""
+        self.registry.add_members(
+            [{'category': 'edge_relations', 'value': 'corrects',
+              'aspects': ['noise']}],
+            source='test')
+        self.assertIn('corrects', self.registry.noise.edge_relations)
+        self.assertIn('corrects', self.registry.by_name(
+            'correction_improvement').edge_relations)
+        self.assertEqual(self.registry.by_edge_relation('corrects').name, 'noise')
+        self.assertIn('corrects', self.registry.structural_exclusions)
 
     def test_add_members_refuses_unknown_aspect_name(self):
         # A typo'd aspect name must fail loud, never setdefault-create a
@@ -405,7 +407,15 @@ class TestWriteDoorGate(unittest.TestCase):
         self.assertEqual(self._file_bytes(), before)
         self.assertNotIn('correction_improvment', self.registry.all())
 
-    def test_heal_refused_when_result_would_break_exclusivity(self):
+    def test_heal_lands_when_seed_and_working_copy_disagree(self):
+        """The fleet gap, as a regression test.
+
+        A working copy where the classifier filed a string one way and the
+        seed files it another used to make the heal refuse the WHOLE reconcile
+        — every divergent install froze on its old taxonomy, silently, with no
+        migration lane to reach it (aspects have no version counter). Noise
+        vetoing instead of excluding is what lets the additive heal land.
+        """
         import json
         import os
         import servers.aspects as aspects_mod
@@ -430,9 +440,20 @@ class TestWriteDoorGate(unittest.TestCase):
             changed = aspects_mod.reconcile_working_copy(log_fn=logged.append)
         finally:
             aspects_mod.SEED_ASPECTS_JSON_PATH = orig
-        self.assertFalse(changed)                      # heal refused
-        self.assertEqual(self._file_bytes(), before)   # file untouched
-        self.assertTrue(any('heal REFUSED' in m for m in logged), logged)
+        self.assertTrue(changed)                        # heal landed
+        self.assertNotEqual(self._file_bytes(), before)  # file advanced
+        self.assertFalse([m for m in logged if 'heal REFUSED' in m], logged)
+        # The seed's semantic claim arrived, the working copy's noise call
+        # survived, and noise wins for anything that filters.
+        with open(self.work) as f:
+            healed = json.load(f)
+        self.assertIn('contested_rel',
+                      healed['correction_improvement']['edge_relations'])
+        self.assertIn('contested_rel', healed['noise']['edge_relations'])
+        reloaded = aspects_mod.AspectRegistry.from_dict(None, healed)
+        self.assertEqual(
+            reloaded.by_edge_relation('contested_rel').name, 'noise')
+        self.assertNotIn('contested_rel', reloaded.lineage_relations)
 
     def test_reconcile_heals_missing_fact_fields(self):
         # Job 4: a pre-Step-4 working copy (no accepts/routable/... anywhere)

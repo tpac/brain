@@ -59,13 +59,23 @@ def render_edge_aspects_block(aspects):
     `prompt_visible` fact in aspects_v1.json — structural/system aspects declare
     false) and node-only aspects (no edge relations); each shown aspect lists its
     first 8 relations. Returns '' when there's nothing to show.
+
+    Noise members are dropped from every list. `prompt_visible` is per-ASPECT,
+    so it cannot say "this one relation is machinery" — and since noise vetoes,
+    a relation offered here that also sits in noise would be taught to the
+    encoder and then filtered on read. Teaching a verb we discard is worse than
+    not teaching it.
     """
+    noise_aspect = aspects.get('noise')
+    noise = frozenset(noise_aspect.edge_relations) if noise_aspect else frozenset()
     lines = []
     for name, aspect in sorted(aspects.items()):
         if not aspect.prompt_visible or not aspect.edge_relations:
             continue
-        lines.append('- **%s**: %s' % (
-            name, ', '.join(list(aspect.edge_relations[:8]))))
+        shown = [r for r in aspect.edge_relations if r not in noise][:8]
+        if not shown:
+            continue
+        lines.append('- **%s**: %s' % (name, ', '.join(shown)))
     if not lines:
         return ''
     return ('## Edge Aspects (%d from brain.aspects)\n\n%s\n\n'
@@ -532,14 +542,43 @@ class AspectRegistry:
             frozenset(noise.edge_relations) if noise else frozenset())
         self.traversal_exclusions: frozenset = (
             self.structural_exclusions - {'community_member'})
+
+        # Noise VETOES: a string in noise is machinery, whatever else claims
+        # it. Membership is what the exclusion sets above already read, so
+        # they veto by construction — but the reverse maps are first-claimant
+        # (setdefault, above), which made the PRIMARY aspect of a dual-homed
+        # string depend on JSON key order. Consumers that skip by primary
+        # family rather than by membership — community typed adjacency is the
+        # live one — would then include or skip a noise relation according to
+        # where `noise` happens to sit in the file. Force noise to win here,
+        # once, so every derived view agrees: primary_edge_map, by_edge_relation,
+        # by_node_type, and the S2 adjacency skip that reads them.
+        if noise:
+            for t in noise.node_types:
+                if t in self._reverse_node:
+                    self._reverse_node[t] = 'noise'
+            for r in noise.edge_relations:
+                if r in self._reverse_edge:
+                    self._reverse_edge[r] = 'noise'
         # Union of edge relations across structural-lineage aspects (the
         # per-aspect `structural_lineage` fact) — edges whose relation type
         # itself carries meaning ride along in spread activation even with
         # weak enriched-text cosine. Replaces surface_contract's deleted
         # LINEAGE_FAMILIES literal, whose hardcoded names drifted dead once
         # already (five stale aspect names, silent until 2026-06-08).
+        # Noise wins here too (Tom, 2026-08-23). The union is "rides along if
+        # ANY lineage aspect declares it", which is a veto pointing the other
+        # way: without the subtraction a string in noise + a lineage aspect
+        # would sit in traversal_exclusions AND in the ride-along set —
+        # dropped from graph dynamics and boosted in graph dynamics at once.
+        # Subtracts the TRAVERSAL set, not the structural one: the consumer is
+        # spread activation, so this must honour the same community_member
+        # carve-out the dynamics exclusion makes — conduction is not
+        # visibility, and a community edge that a lineage aspect claims should
+        # keep riding along.
         self.lineage_relations: frozenset = frozenset(self.relations_in(
-            [n for n, a in self._aspects.items() if a.structural_lineage]))
+            [n for n, a in self._aspects.items()
+             if a.structural_lineage])) - self.traversal_exclusions
 
     def reconcile_with_seed(self) -> bool:
         """Re-run the seed reconcile (first-boot copy + additive heal) and

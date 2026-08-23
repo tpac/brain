@@ -321,8 +321,9 @@ class TestWisdomCuration(unittest.TestCase):
 
 class TestMultiMembershipShape(unittest.TestCase):
     """Multi-membership is allowed (a string can appear in 2+ aspects).
-    Reverse lookup remains deterministic — the FIRST aspect to list a
-    string in JSON iteration order wins for `by_node_type`/`by_edge_relation`.
+    Reverse lookup remains deterministic — noise wins if it claims the string
+    at all, otherwise the FIRST aspect to list it in JSON iteration order wins
+    for `by_node_type`/`by_edge_relation`.
 
     Was previously TestNoMemberOverlap, which enforced single-membership.
     Single-membership was dropped 2026-05-08 — recall expressivity (one
@@ -356,14 +357,83 @@ class TestMultiMembershipShape(unittest.TestCase):
         # And per-string agreement between the two construction paths, whole
         # seed: from_dict must resolve every string exactly like a file-loaded
         # registry would (one _adopt body — this pins that it stays one).
+        # Rule: noise wins if it claims the string at all, else first-claimant.
+        noise_nodes = set(self.seed['noise'].get('node_types') or [])
+        noise_edges = set(self.seed['noise'].get('edge_relations') or [])
         for t, primary in registry._reverse_node.items():
-            self.assertEqual(primary, next(
-                n for n, s in self.seed.items() if t in s['node_types']),
-                'first-claimant violated for node type %s' % t)
+            expected = 'noise' if t in noise_nodes else next(
+                n for n, s in self.seed.items() if t in s['node_types'])
+            self.assertEqual(primary, expected,
+                             'primary-aspect rule violated for node type %s' % t)
         for r, primary in registry._reverse_edge.items():
-            self.assertEqual(primary, next(
-                n for n, s in self.seed.items() if r in s['edge_relations']),
-                'first-claimant violated for edge relation %s' % r)
+            expected = 'noise' if r in noise_edges else next(
+                n for n, s in self.seed.items() if r in s['edge_relations'])
+            self.assertEqual(primary, expected,
+                             'primary-aspect rule violated for relation %s' % r)
+
+
+class TestNoiseVetoes(unittest.TestCase):
+    """Noise is a VETO, not an exclusive category (Tom, 2026-08-23).
+
+    A string in noise is machinery whatever else claims it. This replaced the
+    noise ∩ semantic = ∅ invariant, which forbade the dual state instead of
+    resolving it — and in doing so made the additive heal refuse whole
+    reconciles, freezing every divergent install on its old taxonomy.
+
+    Each test here pins one derived view against the dual state, because the
+    filters read membership (already veto-shaped) while community adjacency
+    reads the PRIMARY aspect, and lineage ride-along is a union that vetoes the
+    opposite way. Those three had to be made to agree.
+    """
+
+    def setUp(self):
+        import copy
+        self.seed = _load_seed()
+        # `corrects` is semantic (correction_improvement, a lineage aspect) —
+        # dual-home it into noise, the exact state the old gate refused.
+        self.dual = copy.deepcopy(self.seed)
+        self.dual['noise']['edge_relations'].append('corrects')
+        self.registry = AspectRegistry.from_dict(None, self.dual)
+
+    def test_primary_aspect_is_noise_regardless_of_file_order(self):
+        """Community typed adjacency skips by PRIMARY family, so if primary
+        stayed first-claimant a dual-homed noise relation would be counted as
+        cohesion whenever noise sorted later in the file."""
+        self.assertEqual(self.registry.by_edge_relation('corrects').name, 'noise')
+        self.assertEqual(self.registry.primary_edge_map()['corrects'], 'noise')
+
+    def test_exclusion_sets_still_carry_it(self):
+        self.assertIn('corrects', self.registry.structural_exclusions)
+        self.assertIn('corrects', self.registry.traversal_exclusions)
+
+    def test_lineage_ride_along_yields_to_noise(self):
+        """correction_improvement declares structural_lineage, so without the
+        subtraction `corrects` would be boosted in spread activation and
+        excluded from it at the same time."""
+        self.assertIn('corrects', self.registry.relations_in(
+            ['correction_improvement']))
+        self.assertNotIn('corrects', self.registry.lineage_relations)
+
+    def test_vocabulary_block_stops_offering_it(self):
+        from servers.aspects import render_edge_aspects_block
+        block = render_edge_aspects_block(self.registry.all())
+        self.assertNotIn('corrects', block)
+        # Still a useful block — only the vetoed verb is gone.
+        self.assertIn('Edge Aspects', block)
+
+    def test_semantic_membership_is_preserved_not_erased(self):
+        """The veto governs what a relation DOES, not what it MEANS — anything
+        asking which aspects claim it must still see the semantic one."""
+        self.assertIn('corrects', self.registry.by_name(
+            'correction_improvement').edge_relations)
+
+    def test_baseline_seed_has_no_dual_membership_today(self):
+        """The rules above only bite on dual state; the shipped seed has none,
+        so enabling the veto changed no live behaviour."""
+        noise = set(self.seed['noise'].get('edge_relations') or [])
+        overlap = {r for n, s in self.seed.items() if n != 'noise'
+                   for r in (s.get('edge_relations') or []) if r in noise}
+        self.assertEqual(overlap, set())
 
 
 class TestLineageDerivation(unittest.TestCase):
@@ -417,11 +487,15 @@ class TestStructuralValidity(unittest.TestCase):
 
     validate_taxonomy is the single home of the structural rules (entries are
     objects; member lists are unique non-empty strings; all required aspects
-    present; noise ∩ semantic = ∅). The registry's write door refuses on it
-    and the boot load reports on it, so pinning the seed against the same
-    function means the shipped baseline can never fail the gate a write is
-    held to. Replaces the hand-rolled lists-shape / well-formed-members /
-    noise-exclusivity tests, which each re-implemented one slice of it.
+    present). The registry's write door refuses on it and the boot load reports
+    on it, so pinning the seed against the same function means the shipped
+    baseline can never fail the gate a write is held to. Replaces the
+    hand-rolled lists-shape / well-formed-members tests, which each
+    re-implemented one slice of it.
+
+    Noise ∩ semantic = ∅ is deliberately NOT here any more: noise vetoes in
+    the registry instead of being forbidden by the gate. See
+    TestNoiseVetoes below for the rules that replaced it.
 
     Seed-only CURATION standards (locked, meaning length, display labels,
     no-extra-aspects) deliberately stay as separate tests above — the working
@@ -436,16 +510,21 @@ class TestStructuralValidity(unittest.TestCase):
         from servers.aspect_store import validate_taxonomy
         self.assertEqual(validate_taxonomy(self.seed), [])
 
-    def test_validator_catches_noise_overlap(self):
-        # The 2026-07-24 class of defect: a noise member that also carries a
-        # semantic claim. The validator must name both sides.
+    def test_dual_noise_and_semantic_membership_is_valid(self):
+        """A string in noise AND a semantic aspect must PASS the gate.
+
+        This inverts the 2026-07-24 rule. Forbidding it made the additive heal
+        refuse whole reconciles whenever a seed member collided with a
+        classifier-grown working copy, which left every divergent install stuck
+        on its old taxonomy with no migration lane. Noise vetoes instead — the
+        behaviour lives in the registry (TestNoiseVetoes), not in a gate that
+        rejects the data.
+        """
         from servers.aspect_store import validate_taxonomy
         import copy
-        broken = copy.deepcopy(self.seed)
-        broken['noise']['edge_relations'].append('corrects')
-        violations = validate_taxonomy(broken)
-        self.assertTrue(any('noise-exclusivity' in v and 'corrects' in v
-                            for v in violations), violations)
+        dual = copy.deepcopy(self.seed)
+        dual['noise']['edge_relations'].append('corrects')
+        self.assertEqual(validate_taxonomy(dual), [])
 
     def test_validator_catches_malformed_and_duplicate_members(self):
         from servers.aspect_store import validate_taxonomy

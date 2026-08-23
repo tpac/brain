@@ -33,9 +33,13 @@ class _StubBrain:
 
     def __init__(self):
         self.errors = []
+        self.warnings = []
 
     def _log_error(self, name, exc, msg):
         self.errors.append((str(exc), msg))
+
+    def _log_warning(self, name, message, context=''):
+        self.warnings.append((message, context))
 
 
 def _encoder():
@@ -86,22 +90,30 @@ class TestMenuDerivation(unittest.TestCase):
         self.assertNotIn('survivor_lineage', self.prompt)
 
 
-class TestNoiseExclusivityGuard(unittest.TestCase):
+class TestNoiseDualRouting(unittest.TestCase):
+    """noise + semantic is a LEGAL classification, kept as returned (Tom,
+    2026-08-23). This boundary used to strip noise on the reasoning that a
+    semantic claim refutes it — which deleted the half that does the
+    filtering, silently un-noising machinery the classifier had flagged.
+    Noise vetoes at read time instead; here we only record and preserve.
+    """
 
-    def test_noise_stripped_when_dual_routed_with_semantic(self):
+    def test_both_kept_when_dual_routed_with_semantic(self):
         enc = _encoder()
         cls = [{'category': 'edge_relations', 'value': 'foo_rel',
                 'aspects': ['noise', 'correction_improvement']}]
         accepted, rejected = enc._validate_classifications(cls, _props('foo_rel'))
         self.assertEqual(rejected, [])
-        self.assertEqual(accepted[0]['aspects'], ['correction_improvement'])
+        self.assertEqual(accepted[0]['aspects'],
+                         ['noise', 'correction_improvement'])
 
-    def test_noise_stripped_when_listed_secondary(self):
+    def test_both_kept_when_noise_listed_secondary(self):
         enc = _encoder()
         cls = [{'category': 'edge_relations', 'value': 'baz_rel',
                 'aspects': ['correction_improvement', 'noise']}]
         accepted, _ = enc._validate_classifications(cls, _props('baz_rel'))
-        self.assertEqual(accepted[0]['aspects'], ['correction_improvement'])
+        self.assertEqual(accepted[0]['aspects'],
+                         ['correction_improvement', 'noise'])
 
     def test_pure_noise_preserved(self):
         enc = _encoder()
@@ -118,14 +130,18 @@ class TestNoiseExclusivityGuard(unittest.TestCase):
         accepted, _ = enc._validate_classifications(cls, _props('qux_rel'))
         self.assertEqual(accepted[0]['aspects'], ['dependency_flow', 'temporal_sequence'])
 
-    def test_guard_logs_loud(self):
+    def test_dual_route_recorded_as_warning_not_error(self):
+        """Visibility without a false alarm: dual routing is legal now, so it
+        must not land in the errors table — but it stays recorded, since it is
+        the only signal telling us whether the classifier uses it at all."""
         enc = _encoder()
         cls = [{'category': 'edge_relations', 'value': 'foo_rel',
                 'aspects': ['noise', 'correction_improvement']}]
         enc._validate_classifications(cls, _props('foo_rel'))
-        self.assertTrue(
-            any('stripped noise' in e[0] for e in enc.brain.errors),
-            "noise-strip should log loudly to the brain errors table")
+        self.assertTrue(any('noise vetoes on read' in m
+                            for m, _ctx in enc.brain.warnings),
+                        enc.brain.warnings)
+        self.assertEqual(enc.brain.errors, [])
 
 
 if __name__ == '__main__':

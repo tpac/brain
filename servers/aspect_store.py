@@ -99,13 +99,21 @@ def validate_taxonomy(data) -> list:
       2. node_types / edge_relations, when present, are lists of unique,
          non-empty strings
       3. every REQUIRED_ASPECTS name is present
-      4. noise-exclusivity: a string in `noise` appears in NO other aspect
-         (either category) — "not in noise" exclusion filters trust this
-      5. per-aspect fact fields, when present, are well-shaped: `accepts`
+      4. per-aspect fact fields, when present, are well-shaped: `accepts`
          is a non-empty list drawn from {node_types, edge_relations};
          `routable` / `prompt_visible` / `structural_lineage` are booleans.
          Presence itself is a seed-curation standard (tests), not a gate —
          emergent aspects and pre-heal working copies legitimately lack them.
+
+    Noise-exclusivity is deliberately NOT an invariant (Tom, 2026-08-23).
+    Noise vetoes instead: a string in noise is machinery whatever else claims
+    it, enforced in the registry rather than forbidden here. Requiring
+    disjointness made the additive heal refuse whole reconciles — a seed
+    member colliding with a classifier-grown working copy left every divergent
+    install stuck on its old taxonomy, silently, with no migration lane to
+    reach it. It was also justified by an exclusion filter reading "not in
+    noise" as "is real knowledge", which never shipped: INTENTIONAL_EDGE_TYPES
+    is still a static verb list.
 
     Keys starting with '_' are reserved for in-file documentation
     (`_schema`) — JSON has no comments. Skipped here and by every reader
@@ -115,7 +123,6 @@ def validate_taxonomy(data) -> list:
     if not isinstance(data, dict):
         return ['taxonomy root is %s, expected object' % type(data).__name__]
 
-    entries = {}
     for name, entry in data.items():
         if name.startswith('_'):
             continue
@@ -123,7 +130,6 @@ def validate_taxonomy(data) -> list:
             violations.append("aspect '%s': entry is %s, expected object"
                               % (name, type(entry).__name__))
             continue
-        entries[name] = entry
         for category in ('node_types', 'edge_relations'):
             members = entry.get(category)
             if members is None:
@@ -161,22 +167,6 @@ def validate_taxonomy(data) -> list:
     if missing:
         violations.append('required aspects missing: %s' % missing)
 
-    noise = entries.get('noise')
-    if noise is not None:
-        for category in ('node_types', 'edge_relations'):
-            members = noise.get(category)
-            noise_set = set(members) if isinstance(members, list) else set()
-            if not noise_set:
-                continue
-            for name, entry in entries.items():
-                if name == 'noise':
-                    continue
-                other = entry.get(category)
-                overlap = noise_set & set(other) if isinstance(other, list) else set()
-                if overlap:
-                    violations.append(
-                        "noise-exclusivity broken: noise shares %s with '%s': %s"
-                        % (category, name, sorted(overlap)))
     return violations
 
 
