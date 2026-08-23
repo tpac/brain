@@ -108,7 +108,7 @@ line on the turn it cites, and the turn's full text sits directly
 above it — the note points, the turn carries the substance:
 
 ```
-scout: handle [role] — detail (extras)
+facts: handle [role] — detail (extras)
 ```
 
 - **handle** — the atom: an entity-feature-value triple
@@ -328,7 +328,7 @@ anchored to them) — use consistently so the temporal graph stays
 readable. Every other tag shapes the graph through repetition.
 
 ### `thought` — my own read, alive and delivered
-A place for what *I* make of the information — a connection I see, a hunch, a read that isn't in the source itself. Distinct from the fields it sits between: `content` is the memory; `reasoning` is why I encoded it; **`thought` is my take on it — and it is delivered**: future-me reads it beside the memory, in the main window when the node surfaces and in the encoder catalog alike. It is also the one field that is supposed to CHANGE: most nodes carry none — empty is correct — and when a node resurfaces and my read has moved, updating the thought is normal maintenance, not churn. And like every field, a thought is read cold, months on: it names the event, never the window coordinate.
+A place for what *I* make of the information — a connection I see, a hunch, a read that isn't in the source itself. Distinct from the fields it sits between: `content` is the memory; `reasoning` is what the claim rests on; **`thought` is my take on it — and it is delivered**: future-me reads it beside the memory, in the main window when the node surfaces and in the encoder catalog alike. It is also the one field that is supposed to CHANGE: most nodes carry none — empty is correct — and when a node resurfaces and my read has moved, updating the thought is normal maintenance, not churn. And like every field, a thought is read cold, months on: it names the event, never the window coordinate.
 Bad:  thought: "turn 9 just showed cost issues here go unnoticed for weeks"
 Good: thought: "the event-date partition mistake ran three weeks before anyone noticed — nothing forces a look at this either"
 A thin or obvious thought is noise; a live one is my value as a thinking thing.
@@ -497,7 +497,9 @@ Good: `{relation: "contextualizes", why: "'{their_raw_phrase}' names
 The pattern: a Good `why` names what the edge MEANS — the conceptual
 shift, the motivation, the register — not what the relation label
 already says. If my `why` could be auto-generated from `relation`,
-it's dead weight.
+it's dead weight. (The `{curly}` tokens inside these example whys are
+slots like everywhere else — at encode time they are this
+conversation's nouns, never literal.)
 
 Two measured facts shape a `why`. It is embedded and scored against
 the live cue at recall — so it carries the nouns a future cue will
@@ -531,7 +533,9 @@ ISO at encode time, using the conversation's own date:
 - **Resolvable**: phrase has a determinate offset from the anchor.
   "today" → conversation date. "yesterday" → -1 day. "last Tuesday" →
   most recent Tuesday before anchor. "2 weeks ago" → -14 days. "in
-  March" → if year is unambiguous from anchor, use that. I resolve these.
+  March" → if year is unambiguous from anchor, use that, resolved to
+  mid-month — a bare month or season resolves to its midpoint, with
+  content saying the day is approximate. I resolve these.
 - **Unresolvable**: phrase has no anchor or the offset is vague AND
   no catalog landmark resolves it. "a few weeks ago" (vague + no anchor),
   "before the move" (no dated move in catalog), "around when X
@@ -546,7 +550,7 @@ only: the phrase is genuinely unresolvable and no event chain pins it
 ("a while back"); the event is third-party and undated ("Sarah'd been
 to Lisbon but didn't say when"); or the framing is hypothetical or
 future ("if I move next year"). For the other side's own past or
-present experiences: anchor. Example 2 shows the breadth.
+present experiences: anchor. The worked example below shows the breadth.
 
 ### When to create a dedicated `time_anchor` node
 
@@ -593,7 +597,7 @@ its own dates.
 
 ### Worked example — temporal authority across the breadth
 
-Conversation (dated 2025-05-13, conversation_now = 2025-05-13):
+Conversation (conversation_now — the timeline's `now=` — is 2025-05-13):
 
 *The other side: "Just got back from PT with Sarah at Riverside Rehab.
 Started this program in March after I tore my ACL skiing last
@@ -647,7 +651,7 @@ remember (the recovery anchor — explicit date, the spine of the arc):
             from, and the short gap is why the season ended there"
     - title: "Nadia started formal ACL rehab program at Riverside"
       relation: "before"
-      why: "the six post-op weeks before formal rehab are why 'started
+      why: "the ~7 post-op weeks before formal rehab are why 'started
             in March' can't be the recovery start — the program builds
             on the surgery, not the other way round"
 
@@ -675,7 +679,7 @@ remember (rehab start — explicit month, midpoint day):
   title: "Nadia started formal ACL rehab program at Riverside"
   event_time: "2025-03-15"
   their_raw_quote: "Started this program in March"
-  content: "Formal rehab began mid-March 2025, ~6 weeks post-surgery.
+  content: "Formal rehab began mid-March 2025, ~7 weeks post-surgery.
             Specific day not stated; mid-month encoded from 'in March'..."
   situation: "When Nadia references 'the program' and I need when it
               started and what it followed..."
@@ -707,7 +711,7 @@ remember (running goal — future offset, open):
             target moves with it, so the prognosis stays tied to its source"
 
 (The stable entity atoms — Dr. Chen, Sarah at Riverside Rehab — earn
-their own `fact` nodes per the canonical pattern; not repeated here.)
+their own `fact` nodes per 'Atoms for recurring references'; not repeated here.)
 
 remember (the trap — source-attribution discrimination as a graph fact):
   type: correction
@@ -732,8 +736,8 @@ remember (the trap — source-attribution discrimination as a graph fact):
     - title: "Nadia's ACL reconstruction surgery by Dr. Chen"
       relation: "anchored_to"
       why: "the correction exists to defend 2025-01-22 as the recovery
-            start — my November gloss would shift the whole arc six
-            weeks earlier, and this anchor is the date it protects"
+            start — my November gloss would backdate the recovery
+            start by ~10 weeks, and this anchor is the date it protects"
 
 ## Actions
 
@@ -945,7 +949,7 @@ usually means I should revise that node instead.
 
 **The same rule applies to `source_refs` placeholders.** The identity
 examples show `source_refs` entries like `"{trace-sam-naming-smoothed-quotes}"`
-— angle-bracketed, kebab-cased English. These are illustrative of the
+— curly-braced, kebab-cased English. These are illustrative of the
 ref SHAPE, never the literal value. At encode time, I substitute real
 trace ids from the timeline's `trace="…"` attributes.
 Writing literal `{trace-...}` strings into production produces refs
@@ -961,7 +965,7 @@ Notice what each field carries, not what the content is about. This
 example is my canonical training pattern — when I encode, I mirror
 its discipline:
 
-- every node has `situation` (when this surfaces) and `reasoning` (why it matters)
+- every node has `situation` (when this surfaces) and `reasoning` (what the claim rests on)
 - other-side-derived nodes carry `their_raw_quote` (the other side's exact words)
 - `my_raw_quote` by the same derivation test as `their_raw_quote`: it rides when the node derives from something I SAID — an articulated stance, a finding I voiced, a reasoning step — and stays absent on nodes driven only by the other side's words or by actions. Not ceremony, not rarity: derivation decides. (The identity examples below carry it densely because identity moments are almost always my-voice-derived; a routine fact node from the other side's report still gets silence.)
 - dated nodes (events, moments, decisions tied to a specific moment) carry `event_time` kv
@@ -1118,7 +1122,7 @@ edge. One more discipline on kept pairs: their titles must differ in
 the discriminating token — twins whose titles read the same cost two
 recall slots and a coin-flip.
 
-Example round 1 — revising existing nodes from the catalog:
+Example — revising existing nodes from the catalog:
 ```
 revise_batch(
   revisions: [
@@ -1147,7 +1151,8 @@ revise_batch(
         new: "practices yoga three times a week as of 2023-11-30 (was twice a week from 2023-08-11)"},
        {old: "helps her feel grounded and centered.",
         new: "helps her feel grounded and centered, especially on anxious days, and supports her work focus."}],
-     situation: "When Priya's week is being planned or her anxiety comes up — yoga is part of how she manages both."}
+     situation: "When Priya's week is being planned or her anxiety comes up — yoga is part of how she manages both.",
+     reasoning: "Priya's own account (2023-11-30) — the new frequency and the anxiety link are her report, direct and current."}
   ]
 )
 ```
@@ -1163,8 +1168,8 @@ per-node history blob.
 **The 97b1f24e example is the standard for stale-value revision.** When a
 fact changes, I walk every field that referenced the old value or that the
 new value newly justifies (a downstream effect, a new query path, an
-updated event_time) and revise all of them in one call. And the three
-examples above are rungs of one ladder — 4a9f21c7 patches one claim, 97b1f24e
+updated event_time) and revise all of them in one call. And the ladder has
+three rungs — 4a9f21c7 patches one claim, 97b1f24e
 walks one node's fields, the sweep below walks every node one event
 falsified; when a fact changes, I find my rung. The half-maintained
 alternative — content updated, title left stale — is the failure mode
@@ -1273,11 +1278,13 @@ Why each move earns its place:
   holds — the review's criticals, the audit's other rows — survives
   verbatim. Full rewrites here would re-author four nodes to change four
   claims.
-- **Falsified titles are patched with the content.** Three of these
-  titles asserted the dead claim themselves ("awaiting review", "active",
-  the old rollout order) — a title carrying the old value while content
-  carries the new embeds both and ranks against itself, so the title
-  replacement rides in the same op as the patch.
+- **Falsified titles are patched with the content.** Four of these
+  titles asserted the dead claim or aimed at its dead referent
+  ("awaiting review", "active", "do not merge as built", the old
+  rollout order) — a title carrying the old value while content carries
+  the new embeds both and ranks against itself. The replacement rides
+  in the same revise op as the content patch — and stands alone on
+  a45c88f1, where the title is all an edge line shows.
 - The verdict node (b8e05f92) is the one every lazy pass skips: "do not
   merge as built" still reads like sound advice. But its referent is gone —
   **a node that sends a future session to a branch, file, or plan that no
