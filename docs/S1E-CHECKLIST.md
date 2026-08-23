@@ -46,9 +46,28 @@ DONE 2026-08-23 (continued):
   (wants its 8-hex shape gate first), `thought` (1 use — let the teaching earn it),
   the `emotions` migration fork.
 
+DONE 2026-08-23 — **E1 + E8 + E10 ran over the settled draft.** Method: E8 as a
+mechanical census (author-run); E1 and E10 by BLIND Opus readers (draft + the live
+post-membership tool surface, no priming) — the author of the text never audited it.
+E1 returned 15 dead-conflicts / 6 optionality; E10 returned 26 findings incl. two
+double-hits with E8/E1 (temporal why-length, the trace-marker form). The mechanical
+fix set landed under already-ruled law: 043ea84 (draft — examples now obey their own
+rules; 105,074 chars) + 1da0129 (tool-side: connect_batch's related_to default
+killed, revise-side source_refs REPLACE text, marker form covers the lived arm,
+field summary carries source_refs). E8's fresh-reader probe (real/example/slot)
+verifies the grammar unification.
+
 REMAINING:
-1. **E1 + E8 + E10 audits** — unrun, and they must run over the SETTLED draft. E10 is
-   new (Tom, 2026-08-23); the MCP membership change above was its first entry list.
+1. **Bucket-B rulings (Tom)** — the design questions the audits sharpened: the
+   `emotions` array-vs-scalar fork (examples teach a key the contract doesn't
+   declare; the declared pair stays empty); `thought` promotion; round-count
+   coherence (read round + 2-round shape + the RETURNS line's connect-now cadence);
+   the surfaced-not-a-cue vs referenced-earns-a-connection default; the
+   maybe-worth-it residue boundary vs keep-when-unsure; untaught capabilities
+   (absorb/archive/disconnect, `rule` type unexemplified, confidence delegated?,
+   evolution_status vs type-mutation); the locked paragraph's fate for a caller
+   whose locks are demoted; E1's D3 (my_raw_quote carrying encode-time
+   editorializing that belongs in `thought` — interacts with the thought ruling).
 2. **Ship gate** — the runbook below is complete: invocation, check-overrides pre-step,
    expected one-time cache miss, migrate-on-open pre-registered as first suspect, and both
    arm-integrity checks.
