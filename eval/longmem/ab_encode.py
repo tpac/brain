@@ -171,7 +171,7 @@ def run_assertions(brain, arm: str, question: str, cap_files: list,
             prov_ok = "encoded(S1S)" in body or "surfaced:" in body
             tl_ok = "<timeline" in body and "<turn" in body   # view policy stamps now="…"
             a["lived_catalog_populated"] = (cat_ok, "widened <node_catalog> present in last prompt")
-            a["lived_timeline_xml"] = (tl_ok, "<timeline>/<turn> XML present")
+            a["lived_timeline_xml"] = (tl_ok, "<timeline …>/<turn …> XML present")
             a["lived_provenance_present"] = (prov_ok, "<provenance> carried a real ref (soft — needs 2+ encodes)")
         except Exception as e:
             a["lived_catalog_populated"] = (False, "capture read failed: %s" % e)
