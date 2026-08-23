@@ -244,3 +244,36 @@ This is the inversion of entry #1's volatility problem: there, recall surfaced w
 This entry stays here as the cognitive-gap record. The fixes are recall-pipeline work — already known from prior research (`951f3ac8`, `87bb8718`, `6b07b072`), now confirmed urgent by today's eval evidence.
 
 ---
+
+## 4. Names that fight the model they carry (2026-08-21)
+
+**What happened.** Mid-way through the s1e prompt co-review, Tom eyed the
+canonical examples and caught what 37 prompt versions, a 1,813-row ledger,
+and eleven probes had all read past: the voice-quote field NAMES are wrong.
+`user_raw_quote` encodes the assistant-serves-user frame that three separate
+fix-waves had been un-teaching at the prompt layer (the D3 voice-equality
+work), and `anchor_raw_quote` is internal jargon a stateless encoder only
+understands through a gloss. Every run paid a mapping tax ("theirs in
+user_raw_quote, mine in anchor_raw_quote") to translate the schema's frame
+into the prompt's frame. Ruling: rename to `their_raw_quote` /
+`my_raw_quote` via a standalone migration stream (decision id:52c8eb6d).
+
+**The class.** A name is a teaching channel that never stops transmitting
+(T2 applies to identifiers, not just descriptions). When a name encodes a
+frame the system has since rejected, every consumer re-learns the wrong
+frame on every read — and prompt-layer corrections fight a schema-layer
+signal, which is why three fix-waves moved the behavior only partway.
+Instances already on record: `user_raw_quote`/`anchor_raw_quote` (this
+entry); `connect_to_unresolved` claimed for mis-copied ids after the real
+source became `connect_to_bad_id` (fixed, walk Stop 8); the retired
+`tom_quotes_limit` config key surviving rename by four months (18cd056c).
+
+**The commissioned sweep (not yet run).** A scout pass over every
+agent-facing identifier — field names, error-source names, type tags,
+relation verbs, config keys, tool parameter names — scoring each against
+the question: *does this name teach the model we currently hold, or a
+frame we've since rejected?* Output shape: the recall-to-encode pointer
+table (one row per mislabel, evidence, blast radius, stamp). Run it the way
+the R-rows were mined — a single Opus scout with the current contracts and
+the identity docs side by side.
+
