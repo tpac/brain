@@ -1035,10 +1035,16 @@ def generate_field_summary():
         elif spec.get("replace_on_revise"):
             parts.append("— replaced on revise; revision history lives in trace events")
         lines.append("  ".join(parts))
+    # source_refs is a join-table field, not a contract column — appended
+    # here explicitly so the agent-facing list is actually complete.
+    lines.append("source_refs  (array)  — 8-char hex trace ids anchoring the node "
+                 "to its originating moments; sparse (1-3 load-bearing turns), "
+                 "copied verbatim from the input's trace markers")
     lines.append("")
-    lines.append("RETURNS: remember() and remember_batch() return related_nodes — "
+    lines.append("RETURNS: every remember (single or batch) returns related_nodes — "
                  "the top 5 most similar existing nodes with full content. "
-                 "Use these to connect() immediately without a separate recall round. "
+                 "Use these to draw edges immediately (a connect op, or connect_to) "
+                 "without a separate recall round. "
                  "related_nodes is NOT the outcome of connect_to — when you pass "
                  "connect_to, the response carries a separate connect_to_result "
                  "{created:[...], failed:[{title, reason}]} reporting which edges "

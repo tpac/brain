@@ -42,9 +42,10 @@ _SOURCE_REFS_SCHEMA = {
     "items": {"type": "string"},
     "description": (
         "Trace event ids anchoring this node to its originating moments. "
-        "Each id is an 8-char hex string copied verbatim from the "
-        "`[trace:<hex>]` markers in the conversation timeline you were "
-        "given. Sparse by design: pick 1-3 load-bearing turns per node — "
+        "Each id is an 8-char hex string copied verbatim from the trace "
+        "markers in your input — the `trace=\"<hex>\"` attribute on "
+        "timeline turns, or `[trace:<hex>]` markers in conversation "
+        "renders. Sparse by design: pick 1-3 load-bearing turns per node — "
         "the turn(s) whose content is what made this node encodeable. "
         "Adjacent context is what graph traversal is for; source_refs are "
         "for the moments that GENERATED this node. Leave empty when the "
@@ -334,10 +335,22 @@ def _build_revise_batch_schema():
     emit it.
     """
     item_properties = dict(_generate_revise_schema()["inputSchema"]["properties"])
-    item_properties["source_refs"] = _SOURCE_REFS_SCHEMA
+    # NOT _SOURCE_REFS_SCHEMA: that text carries remember-side advice
+    # ("leave empty when...") which on a revise is a silent ref-wipe.
+    item_properties["source_refs"] = {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": (
+            "REPLACE semantics: passing this REPLACES the node's existing "
+            "refs (atomic delete+insert). Omit the field entirely to "
+            "preserve current refs; pass [] only to deliberately clear "
+            "them — an empty list is a wipe, not a no-op. Ids are 8-char "
+            "hex trace ids, same form as on remember."
+        ),
+    }
     return {
         "name": "revise_batch",
-        "description": "Revise multiple brain nodes in one call. Same contract as `revise()` — specified fields are REPLACED, unspecified fields are PRESERVED, and `content_edits: [{old, new}, ...]` patches specific claims in the stored content without re-authoring the rest (prefer it for corrections; mutually exclusive with `content`). Immutable fields ({id, created_at, locked}) skipped with warning. Each row emits its own trace event for revision history (queryable via `query_traces` with ref_type='node_revised'). Use this instead of multiple `revise` calls.",
+        "description": "Revise multiple brain nodes in one call — one call, many revisions, instead of one call per node. Specified fields are REPLACED, unspecified fields are PRESERVED, and `content_edits: [{old, new}, ...]` patches specific claims in the stored content without re-authoring the rest (prefer it for corrections; mutually exclusive with `content`). Immutable fields ({id, created_at, locked}) skipped with warning. Each row emits its own trace event for revision history (queryable via `query_traces` with ref_type='node_revised').",
         "inputSchema": {
             "type": "object",
             "required": ["revisions"],
@@ -528,9 +541,9 @@ def _build_tools():
                      "two nodes); bare edges with empty descriptions are recall dead weight."),
      "inputSchema": {"type": "object", "required": ["connections"], "properties": {
          "connections": {"type": "array", "description": "Array of connections to create", "items": {
-             "type": "object", "required": ["source_id", "target_id"], "properties": {
+             "type": "object", "required": ["source_id", "target_id", "relation"], "properties": {
                  "source_id": {"type": "string"}, "target_id": {"type": "string"},
-                 "relation": {"type": "string", "default": "related_to"},
+                 "relation": {"type": "string", "description": "Open-text verb — specific, never `related`/`related_to`"},
                  "description": {"type": "string",
                                  "description": ("What the edge MEANS — embedded for recall. "
                                                  "Target ≥30 chars. Don't restate node titles. "
