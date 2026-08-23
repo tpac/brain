@@ -57,17 +57,27 @@ killed, revise-side source_refs REPLACE text, marker form covers the lived arm,
 field summary carries source_refs). E8's fresh-reader probe (real/example/slot)
 verifies the grammar unification.
 
+DONE 2026-08-23 — **Bucket-B rulings (Tom) landed.** (1) `emotions` fork: minimal
+move only — the three example sites now write the declared `emotion`+`emotion_label`
+pair (recall reads it); the array/migration design is DEFERRED, owner: a future
+emotion session ("we'll deal with emotion later, as long as it starts writing").
+(2) `thought` PROMOTED into the contract + named remember() param; delivery verified
+real on both surfaces (generic KV render). (3) `my_raw_quote` scope per Tom: moments
+important to ME — about myself or about the information — scope line added to the
+voice rule; the two editorializing quotes rewritten as said-shaped realizations.
+(4) Cadence unified: read-when-needed → encode → close (~2-3), with the anti-loop
+guard (one read round at most). (5) `surfaced` softened to context-not-obligation.
+(6) Residue route narrowed to the under-3-anchors case. (7) `locked` trimmed to
+anchor-only-not-mine. (8) `confidence` DELEGATED(MCP — the field description
+teaches selectivity at decision time); `evolution_status` deliberate encoder
+silence (closure teaching's type-mutation is the ruled mechanism);
+absorb/archive/disconnect + a `rule`-type example → v-next.6; flavor 3 now points
+at the Validity-intervals discriminator. (9) The write boundary refuses a missing
+edge `relation` loudly (was: silent `related_to`) at _handle_connect (covers
+brain_batch's connect op) + the connect_batch loop.
+
 REMAINING:
-1. **Bucket-B rulings (Tom)** — the design questions the audits sharpened: the
-   `emotions` array-vs-scalar fork (examples teach a key the contract doesn't
-   declare; the declared pair stays empty); `thought` promotion; round-count
-   coherence (read round + 2-round shape + the RETURNS line's connect-now cadence);
-   the surfaced-not-a-cue vs referenced-earns-a-connection default; the
-   maybe-worth-it residue boundary vs keep-when-unsure; untaught capabilities
-   (absorb/archive/disconnect, `rule` type unexemplified, confidence delegated?,
-   evolution_status vs type-mutation); the locked paragraph's fate for a caller
-   whose locks are demoted; E1's D3 (my_raw_quote carrying encode-time
-   editorializing that belongs in `thought` — interacts with the thought ruling).
+1. **Tom's full read of the draft** before anything registers.
 2. **Ship gate** — the runbook below is complete: invocation, check-overrides pre-step,
    expected one-time cache miss, migrate-on-open pre-registered as first suspect, and both
    arm-integrity checks.

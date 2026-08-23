@@ -1157,7 +1157,14 @@ def _handle_connect(brain, args, graph_changes):
     # the node birth default (remember(): `encoding_source or 'anchor'`). This is
     # applied at CREATE only — add_relation preserves encoding_source on an
     # active-row update — so re-connecting an existing edge never relabels it.
-    relation = args.get("relation", "related_to")
+    # No silent default: an unnamed relation used to become `related_to`,
+    # the one verb every layer bans (0.2× lift, pollutes the activation
+    # kernel). Missing relation fails loudly instead.
+    relation = args.get("relation")
+    if not relation:
+        return {"ok": False,
+                "error": "relation is required — a specific verb; nothing "
+                         "defaults to related_to any more"}
     encoding_source = args.get("encoding_source") or 'anchor'
     src_id = _resolve_id(brain, args.get("source_id", ""))
     tgt_id = _resolve_id(brain, args.get("target_id", ""))
@@ -1235,7 +1242,7 @@ def _handle_connect_batch(brain, args, graph_changes):
     created = 0
     failure_details = []  # [{source_id, target_id, relation, reason}]
     for c in connections:
-        relation = c.get("relation", "related_to")
+        relation = c.get("relation", "")
         src_raw = c.get("source_id", "")
         tgt_raw = c.get("target_id", "")
         # Self-correcting guard: if an endpoint is missing AND the caller sent
@@ -1254,6 +1261,20 @@ def _handle_connect_batch(brain, args, graph_changes):
                 'connect_batch_missing_endpoint',
                 ValueError("missing source_id/target_id%s" % hint),
                 'keys=%s' % sorted(c.keys()))
+            continue
+        # No silent default: an unnamed relation used to become `related_to`,
+        # the one verb every layer bans. Skip the edge, say why.
+        if not relation:
+            failure_details.append({
+                "source_id": str(src_raw)[:8], "target_id": str(tgt_raw)[:8],
+                "relation": "",
+                "reason": "relation is required — a specific verb; nothing "
+                          "defaults to related_to any more"})
+            brain._log_error(
+                'connect_batch_missing_relation',
+                ValueError("missing relation: %s -> %s"
+                           % (str(src_raw)[:8], str(tgt_raw)[:8])),
+                'edge skipped')
             continue
         try:
             # Resolve the edge's CREATOR (per-row → batch-level → 'anchor'),

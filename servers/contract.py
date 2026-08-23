@@ -353,6 +353,16 @@ PROMOTED_FIELDS = {
                         "recorded in trace events and never stored on the "
                         "node."),
     },
+    "thought": {
+        "store": "metadata_kv",
+        "type": "str",
+        "description": ("My own read on the memory — a hunch, a connection, "
+                        "a take the content doesn't carry. Delivered: "
+                        "rendered beside the node at recall and in encoder "
+                        "catalogs. A living field — update it when a re-read "
+                        "moves it; most nodes carry none, and empty is "
+                        "correct."),
+    },
     "their_raw_quote": {
         "store": "metadata_kv",
         "type": "str",
