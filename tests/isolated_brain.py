@@ -87,8 +87,22 @@ class IsolatedBrain:
             sys.path.insert(0, project_root)
         from servers.db_backends import current as db_backend
         db_backend.snapshot_to(src_brain, self.brain_db)
-        if os.path.exists(src_logs):
-            db_backend.snapshot_to(src_logs, self.logs_db)
+        # Refuse a production dir with no logs DB rather than continuing
+        # without one. Brain() seeds a FRESH logs schema when the file is
+        # absent, and the result is not obviously broken — it reads as a clean
+        # install: zero override pointers, every interaction on its code
+        # default, no traces, no error rows. That is indistinguishable from a
+        # successfully collapsed brain, so a collapse verification or an
+        # override A/B would confirm itself against a brain that never held
+        # the state being measured.
+        if not os.path.exists(src_logs):
+            raise RuntimeError(
+                "no brain_logs.db beside %s — refusing to build an isolated "
+                "brain without it: Brain() would seed a fresh logs schema and "
+                "the copy would read as a clean install (no override "
+                "pointers, no traces) rather than as a failure. Pass a "
+                "production_dir holding both databases." % src_brain)
+        db_backend.snapshot_to(src_logs, self.logs_db)
 
         # Load .env for API keys
         if self.load_env:
