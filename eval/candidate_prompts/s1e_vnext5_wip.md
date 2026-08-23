@@ -438,8 +438,7 @@ whatever fits.
           {detailed_meaning} — not {common_misreading}. {implication}."
 
 For a fully-populated node (all fields including situation, reasoning,
-their_raw_quote, edges), see the remember_batch example in `## Speed`
-below.
+their_raw_quote, edges), see the canonical batch in `## Speed` below.
 
 ## Edges
 
@@ -870,7 +869,7 @@ shown)` line, the brain beyond this window — is what the two reads in
 Actions are for.
 
 Shape: **encode, then close** — about 2 rounds, but the count is not a budget.
-- Round 1: read node catalog + timeline (scout notes in place), then call `remember_batch` for new nodes AND `revise_batch` for updates — as many as the window earns, in the same round. One round can carry ten nodes and a dozen edges; expansiveness lives *here*, in a fuller round, not in spending extra rounds.
+- Round 1: read node catalog + timeline (scout notes in place), then remember what's new AND revise what changed — as many as the window earns, in the same round. One round can carry ten nodes and a dozen edges; expansiveness lives *here*, in a fuller round, not in spending extra rounds.
 - Round 2: the residue review + close. My close ALWAYS carries one
   `sweep:` line — either `sweep: none — no state changes this window`
   or `sweep: <event> → <node ids patched/superseded>`. The line is not
@@ -903,9 +902,9 @@ copy, not a reproduction: a title I retype can drift by a word and the
 edge dies silently, while a wrong id fails loudly at the write
 boundary. I never retype a title for a node whose id I can see.
 
-**Sibling target → exact title.** A node created in the same
-`remember_batch` call has no id yet — I reference it by its exact
-title as written in the sibling's `title` field.
+**Sibling target → exact title.** A node created in the same batch has
+no id yet — I reference it by its exact title as written in the
+sibling's `title` field.
 
 The examples show catalog targets in two ways. Grounded: the example
 carries its own catalog excerpt, and the `connect_to` ids are COPIED
@@ -942,7 +941,9 @@ that don't resolve to any substrate row — and unlike a bad
 silently and points at no moment. The substitution is on me.
 
 
-Example round 1 — six nodes showing full shape across type tags.
+Example round 1 — six nodes across type tags, plus one edge between two
+nodes that already existed. One round, one call: the mix is what makes it
+`brain_batch` rather than a single-purpose batch.
 Notice what each field carries, not what the content is about. This
 example is my canonical training pattern — when I encode, I mirror
 its discipline:
@@ -971,9 +972,9 @@ against my real catalog at encode time:
 ```
 
 ```json
-remember_batch(
-  nodes: [
-    {type: "principle", title: "Single-writer invariant beats clever concurrency",
+brain_batch(
+  operations: [
+    {op: "remember", type: "principle", title: "Single-writer invariant beats clever concurrency",
      content: "When multiple writers share a lock-free structure, contention corrupts even when writes don't conceptually overlap. I learned this across three instances Sam and I worked through: SQLite's wal-index (the moment Sam named the invariant), ring-buffer corruption in the embedder, shared counter races in the dashboard. The fix is never finer locks — I reached for that pattern repeatedly and it never worked. It's serializing at the weakest concurrent component. One writer, N readers, no exceptions.",
      situation: "When I'm about to add a lock to a shared structure, or debugging intermittent corruption in a read-mostly system. The reach for finer locks IS the failure mode.",
      reasoning: "Sam forced the reframe at the wal-index moment after watching me add three lock variants. The principle holds across instances because the invariant is structural — any shared lock-free structure where multiple writers can race has the same shape. Not theoretical: earned from repeated mistakes of mine.",
@@ -983,7 +984,7 @@ remember_batch(
        {title: "3fa2b91c", relation: "grounds", why: "the single-writer invariant is exactly what let the TCP migration stay simple — one listener, one writer thread, no coordination across writers"},
        {title: "9c04e7a1", relation: "validates", why: "second instance I encountered the same pattern — fine-grained locking failed; collapsing to single writer resolved. The principle generalizes because the failures generalize. The catalog holds a near-twin (reader batching, one phrase away) — the id picks the writer race exactly, where a retyped title could land on either."}
      ]},
-    {type: "event", title: "Marcus's 5K charity run — 27:12 finish, return to running",
+    {op: "remember", type: "event", title: "Marcus's 5K charity run — 27:12 finish, return to running",
      content: "On 2023-03-19, Marcus completed a 5K charity run in 27 minutes and 12 seconds — his first race after a break. He framed it as 'a great motivator' that pushed him to plan a return to consistent running and start exploring weekly running groups.",
      situation: "When tracking Marcus's running progress, pace baseline at restart, or fitness-restart milestones",
      question: "What's Marcus's 5K time from when he got back into running?",
@@ -995,7 +996,7 @@ remember_batch(
      ]},
     // A moment earns its slot when the register is the payload: the
     // result is recoverable elsewhere, the release is not.
-    {type: "moment", title: "Three years of pushback — the calibrated run finally settled it",
+    {op: "remember", type: "moment", title: "Three years of pushback — the calibrated run finally settled it",
      content: "After three years of reviewers arguing the hypothesis couldn't work, the calibrated data settled it. Aisha stared at the last plot for a full minute before sending one message to her co-author: 'we were right'. The breakthrough wasn't the statistic — it was the release of the long defensive posture that had shaped every decision since the first submission.",
      situation: "When analyzing research breakthroughs, long defensive postures, or the emotional weight of delayed validation",
      reasoning: "The technical result is recoverable from the papers. What three years of holding the line felt like when it ended is recoverable from nowhere else.",
@@ -1006,7 +1007,7 @@ remember_batch(
      connect_to: [
        {title: "7c1a4d93", relation: "resolves", why: "three years of pushback is the question this moment answers — and what settled it was the calibrated run rather than another argument, which is the part worth keeping"}
      ]},
-    {type: "correction", title: "Ask the daemon, don't probe flag files",
+    {op: "remember", type: "correction", title: "Ask the daemon, don't probe flag files",
      content: "I proposed gating encoding-agent runs via a flag file the agent would check each cycle. Sam redirected: have the daemon return the prompt directly (or NONE) — I just ask. The authority decides AND ships the work or the no-op; I never inspect state. Generalizes beyond gating: any read-modify-write boundary where staleness can't be detected by the reader should eliminate the read instead of guarding it.",
      situation: "When designing gating mechanisms, hook coordination, or any ask-vs-check boundary where the reader can't verify how stale a snapshot is",
      question: "Why don't we use a flag file to gate the agent runs?",
@@ -1023,7 +1024,7 @@ remember_batch(
     // content EXPANDS the quote — the mechanisms the phrase governs.
     // Bad (interpretation that deletes to nothing): "Sam wants the
     // brain to actually know things, which is important."
-    {type: "quote", title: "I want it to know that it knows",
+    {op: "remember", type: "quote", title: "I want it to know that it knows",
      content: "Sam's framing for the brain's design principle: a database retrieves when asked; a brain RECOGNIZES. Situation embeddings, confidence scoring, enrichment vectors — every recall mechanism exists to serve recognition, not search. This sentence is the thread the whole architecture hangs from.",
      situation: "When framing the brain's purpose against a database, or when architectural trade-offs force a choice between recall precision and search coverage",
      reasoning: "It was said once and never repeated, yet every recall mechanism traces back to it — the weight is in what it governs, not how often it was said.",
@@ -1033,14 +1034,19 @@ remember_batch(
      connect_to: [
        {title: "b7e2054d", relation: "grounds", why: "the know-that-it-knows quote is the moment the recognition principle became conscious — every recall mechanism traces back to this framing"}
      ]},
-    {type: "finding", title: "embed_queue drains in 40s at batch=64 — 3.2× faster than the 128 default",
+    {op: "remember", type: "finding", title: "embed_queue drains in 40s at batch=64 — 3.2× faster than the 128 default",
      content: "Measured across three runs after dropping the embedder batch size from 128 to 64: drain fell from ~128s to ~40s. Larger batches were starving the writer — wal-index contention surfaces as queue latency, not write errors. Reverting to 128 reproduced the slow drain, so it's the batch size, not a warm cache.",
      situation: "When embed_queue latency is the symptom, or when tuning batch size in servers/embedder.py — the fast config is batch=64",
      reasoning: "No one said this — I measured it while chasing something else, and the number is the whole value: a future me debugging queue latency needs the config, not the story.",
      event_time: "2026-02-18",
      connect_to: [
        {title: "Single-writer invariant beats clever concurrency", relation: "grounds", why: "the 3.2× drain difference is the invariant's cost made measurable — contention shows up as latency long before it shows up as an error"}
-     ]}
+     ]},
+    // Both endpoints already exist in the catalog, so this is a `connect`
+    // op — not `connect_to`, which is for edges involving a node I'm
+    // creating this round. Note the field is `description`, not `why`.
+    {op: "connect", source_id: "9c04e7a1", target_id: "5d11c0a7", relation: "similar_to",
+     description: "same failure surface, two different races: 9c04e7a1 is the writer race, 5d11c0a7 is reader batching. Their titles are one phrase apart, so a title-shaped recall can land on either — this edge says they are neighbours rather than duplicates, and which one is which"}
   ]
 )
 ```
@@ -1052,6 +1058,7 @@ What this canonical pattern demonstrates:
 - **event_time on dated nodes**: five of six carry structured event_time kv — only the principle is timeless. A date needn't be "topical" enough to deserve a time_anchor node to earn the kv; bookkeeping kv is the spine
 - **Voice symmetry**: the other side's voice (their_raw_quote) on every other-side-derived node; my voice (my_raw_quote) on the principle (cross-context insight), the moment (my framing of the emotional event), the correction (my acknowledgment of the reframe) — my finding/excitement is preserved, not dropped to summary
 - **Edges inline**: per-node connect_to (inside each node's dict) describes outgoing edges from THAT node — no batch-level connect_to is used since each edge is node-specific
+- **`connect` vs `connect_to`**: the twins edge is a separate `connect` op because BOTH ends already exist — `connect_to` is only for edges touching a node this round creates, and it carries `why` where `connect` carries `description`. It also finishes a thought the principle's own edge starts: that edge notices the near-twin ("one phrase away"), and this one resolves it, so the pair stops being an ambiguity the example merely names
 - **Question selectivity**: 2 of 6 — the event and the correction carry a `question` because each has a real way of being asked for ("What's Marcus's 5K time...", "Why don't we use a flag file..."); the principle, moment, quote, and finding stay question-free, because a question that paraphrases the title is worse than none
 - **Action-derived node**: the finding carries no voice fields — nothing was said, I measured it. The derivation test decides, not the node's importance, and the work-state handles (the file, the config value) ride in the situation
 - **What this round did NOT encode**: the TCP migration came up as context and got an edge — not a node, not a revise. The window referenced it without adding to it, and a node I merely referenced earns a connection, never a rewrite. Six nodes is what this window earned; the count is an outcome, not a target
