@@ -1,6 +1,37 @@
 # S1E Prompt Checklist — the boxes every revision must check
 
-## Walk state — stops 1-11 CLOSED (probes A-P), next: MCP-description rows + E1/E2/E8 global audits (2026-08-22) ◀ ACTIVE ARC
+## Walk state — WALK COMPLETE (stops 1-11, probes A-P); next: 4 rulings → defects → weave → contract → audits → gate (2026-08-22) ◀ ACTIVE ARC
+
+**Where this stands.** The section-by-section walk is finished. What remains is not more
+walking — it is a fix list, one contract change, two audits, and the gate. Draft is
+97,944 chars; NOTHING is registered. Diff base is **v38** (the rename stream's mechanical
+name-swap); our candidate registers as **v39**.
+
+**Order of work, and why:**
+1. **Four rulings from Tom** — drafts written and shown 2026-08-22, awaiting his word:
+   (a) the live-question pilot (does one named vertical teaching ride in v-next.5?);
+   (b) canonical excerpt enrichment (2 catalog lines so the zero-edge nodes gain honest
+   targets); (c) the sixth canonical node (action-derived, no voice fields — closes the
+   derivation rule's negative case, the `<actions>` encode-side demo, and C5 at once);
+   (d) RULED: retire/archive is a real gap, its own thread, not a v-next.5 item (id:9eaed612).
+   Full draft text in the working set; rationale in id:a6c13aad.
+2. **The 8 verified defects** (E2/E3 section below) — mechanical once (b)/(c) are ruled,
+   since both touch the canonical.
+3. **The weave plan** (E2/E3 section) — 5 moves, no new assets. The `similar_to` connect op
+   between the planted ring-buffer twins closes three gaps at once.
+4. **contract.py field summary — REGISTRATION BLOCKER, not cleanup** (id:68fd6e05). Probes
+   emitted `locked` and `encoding_source` — fields NO example sets — purely on the contract
+   list's authority. contract.py is free (rename stream merged out).
+5. **E1 contradiction audit + E8 format census** — unrun, and they must run over the
+   SETTLED draft, not before the weave.
+6. **Ship gate** — the runbook below is complete: invocation, check-overrides pre-step,
+   expected one-time cache miss, migrate-on-open pre-registered as first suspect, and both
+   arm-integrity checks.
+
+**Deferred by design, with owners named:** the vertical axis beyond the pilot (six more
+teachings shaped like Emerging patterns — evidence in id:56631bce); the journal→graph
+route (id:7b2d67e8, constrained by ruling 68063517: residue into the Frame is *hurtful*);
+retire/archive (id:9eaed612).
 
 **Probe fidelity note:** probes A-O were built WITHOUT the `## Arc` block (production S1E binds
 `arc=True` — encode.py `_journal`). Probe P is the first production-faithful arm; rebuild future
