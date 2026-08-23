@@ -44,9 +44,13 @@ def fetch_prompt(version: int) -> tuple:
     return res['template'], res.get('parameters', '') or ''
 
 
-def inject_prompt(brain, template: str, parameters: str) -> int:
+def inject_prompt(brain, template: str, parameters=None) -> int:
     """Register `template` into the EVAL brain and make it active. Returns the
-    eval-brain version. Never touches the daemon."""
+    eval-brain version. Never touches the daemon.
+
+    `parameters` takes a config dict, the JSON string the DAL stores, or None
+    to preserve whatever config is effective.
+    """
     return override_interaction(brain, 's1e', template=template,
                                 parameters=parameters or None,
                                 set_by='ab_encode:injected')

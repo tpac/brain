@@ -327,7 +327,12 @@ def run_arm_behavior(brain, prompt_text, aged_ids, index):
         log['reads'].append({'tool': name, 'args': args})
         return real(cmd, args)
 
-    enc = brain.get_interaction('s1e') or {}
+    # The RESOLVER, not the override row: get_interaction returns the active
+    # row, which is None on a brain with no pointer — and then
+    # prompt_instructions below goes None and the arm encodes with no s1e
+    # instructions at all. "No pointer" is the normal state once overrides
+    # collapse, so the row read is a scheduled break, not a latent one.
+    enc_template = brain.get_interaction_prompt('s1e') or None
     cfg = brain.get_interaction_config('s1e') or {}
     # Runs to completion rather than cutting at the write round: the journal /
     # session-context the encoder emits is FINAL text, so stopping early threw
@@ -340,7 +345,7 @@ def run_arm_behavior(brain, prompt_text, aged_ids, index):
         max_tokens=ENCODING_AGENT['max_tokens'],
         max_rounds=ENCODING_AGENT.get('max_rounds', 5),
         system_prompt=_build_system_prompt(
-            prompt_instructions=enc.get('template') or None, lived=True),
+            prompt_instructions=enc_template, lived=True),
         user_content=prompt_text,
         tools=_get_tool_schemas(),
         dispatch_fn=dispatch) or {}
@@ -674,20 +679,23 @@ def main():
     # calls out, so it stays keyless.
     with IsolatedBrain(cleanup=True, load_env=args.behavior) as env:
         brain = env.brain
+        # Both arms read the EFFECTIVE prompt through the resolver. The override
+        # row (get_interaction) is absent on a pointer-less brain, which would
+        # make --s1e-template report the base as 0 chars and hand --s1e-patch an
+        # empty template to anchor into.
         if args.s1e_template:
             from eval.longmem.ab_encode import inject_prompt
-            active = brain.get_interaction('s1e') or {}
+            base = brain.get_interaction_prompt('s1e') or ''
             with open(args.s1e_template) as f:
                 tmpl = f.read()
-            ver = inject_prompt(brain, tmpl, active.get('parameters') or '')
+            ver = inject_prompt(brain, tmpl,
+                                brain.get_interaction_config('s1e'))
             print('[template] s1e %d -> %d chars from %s → eval-brain v%d '
                   '(live daemon untouched)'
-                  % (len(active.get('template') or ''), len(tmpl),
-                     args.s1e_template, ver))
+                  % (len(base), len(tmpl), args.s1e_template, ver))
         elif args.s1e_patch:
             from eval.longmem.ab_encode import inject_prompt
-            active = brain.get_interaction('s1e') or {}
-            tmpl = active.get('template') or ''
+            tmpl = brain.get_interaction_prompt('s1e') or ''
             if args.patch_before not in tmpl:
                 raise SystemExit('anchor %r not in the s1e template — the '
                                  'patch would land somewhere arbitrary'
@@ -696,7 +704,7 @@ def main():
                 patch = f.read().rstrip() + '\n\n'
             ver = inject_prompt(brain, tmpl.replace(args.patch_before,
                                                     patch + args.patch_before, 1),
-                                active.get('parameters') or '')
+                                brain.get_interaction_config('s1e'))
             print('[patch] s1e +%d chars from %s → eval-brain v%d (live '
                   'daemon untouched)' % (len(patch), args.s1e_patch, ver))
         gold = None
