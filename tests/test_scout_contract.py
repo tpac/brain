@@ -444,5 +444,27 @@ class TestFactsOutputSchema(unittest.TestCase):
         self.assertIn({"type": "null"}, props["catalog_match"]["anyOf"])
 
 
+class TestSchemaReachesTheDefault(unittest.TestCase):
+    """The wire schema is inert unless the interaction default carries it —
+    scouts/base.py reads `params['output_schema']` off the resolved config,
+    not off the contract module."""
+
+    def test_facts_config_carries_the_contract_schema(self):
+        # Identity, not equality: the default must ship the ACTIVE-tracking
+        # constant itself. A copy could drift from it silently, and the
+        # by-reference embed is what makes an edit to the constant a
+        # deployment — see the invariant note at FACTS_OUTPUT_SCHEMA.
+        self.assertIs(sc.SCOUT_FACTS_INTERACTION_DEFAULT['output_schema'],
+                      sc.FACTS_OUTPUT_SCHEMA)
+
+    def test_only_the_mustered_scout_ships_a_schema(self):
+        """quote/temporal are excluded from the production arm
+        (`exclude_scouts=('quote', 'temporal')`), so neither should acquire a
+        wire schema without that exclusion changing first."""
+        for name in ('SCOUT_QUOTE_INTERACTION_DEFAULT',
+                     'SCOUT_TEMPORAL_INTERACTION_DEFAULT'):
+            self.assertNotIn('output_schema', getattr(sc, name), name)
+
+
 if __name__ == "__main__":
     unittest.main()

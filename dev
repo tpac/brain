@@ -33,14 +33,8 @@ if [ ! -x "$BRAIN_PYTHON" ]; then
     exit 1
 fi
 
-# Convenience shortcuts. `./dev sync-prompts` is a common reflex after
-# editing any encoder prompt via register_interaction — keeps the seed
-# .py files mirrored to the DB's latest version.
+# Convenience shortcuts.
 case "${1:-}" in
-    sync-prompts)
-        shift
-        exec "$BRAIN_PYTHON" -m servers.tools.sync_prompts "$@"
-        ;;
     check-overrides)
         shift
         exec "$BRAIN_PYTHON" -m tests.interaction_override "$@"

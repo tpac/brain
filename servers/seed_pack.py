@@ -27,8 +27,9 @@ Rules for what belongs here
 
 Not in scope
 ============
-- Interaction prompts (surfacer, encoder, consolidator prompts) live in interactions table,
-  seeded separately by interaction_seed.py.
+- Interaction prompts (surfacer, encoder, consolidator prompts) — code owns their
+  defaults (indexed by interaction_defaults.py); the interactions table holds only
+  deployed overrides.
 - Operator-specific rules (working style preferences, naming conventions) must be learned
   per-partnership, not seeded.
 """

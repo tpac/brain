@@ -67,7 +67,7 @@ _INTERACTION_NAME = 'scopes'
 # install constant (speaker arc F4).
 SESSION_RESOLVABLE = ('project',)
 
-# Seed config (interaction_seed registers this as v1) — explicit defaults
+# Code default (indexed by interaction_defaults) — explicit defaults
 # for every dimension so the operator edits a real shape, not an empty dict.
 SCOPES_CONFIG_V1 = {
     dim: {'mode': DEFAULT_MODE, 'overrides': {}}

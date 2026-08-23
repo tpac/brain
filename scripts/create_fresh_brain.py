@@ -42,13 +42,6 @@ def create_fresh_brain(output_dir: str = None, skip_embedder: bool = True) -> st
     from servers.brain import Brain
     brain = Brain(db_path, skip_embedder=skip_embedder)
 
-    # Seed interactions (judge, encoding_agent, etc.)
-    try:
-        from servers.interaction_seed import seed_interactions
-        seed_interactions(brain)
-    except Exception as e:
-        print("WARNING: interaction seeding failed: %s" % e)
-
     brain.save()
     brain.close()
 

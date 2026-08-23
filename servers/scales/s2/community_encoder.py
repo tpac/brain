@@ -14,7 +14,7 @@ import os
 import time
 
 from .base import IntegrationUnit
-from .community_contract import COMMUNITY_DETECTION, S2CE_NODE_FORMAT
+from .community_contract import S2CE_NODE_FORMAT
 from servers.trace_contract import build_delta_metadata
 
 from .rejection_table import (
@@ -40,7 +40,9 @@ class CommunityEncoder(IntegrationUnit):
 
     def __init__(self, brain, dispatch_fn=None, config=None):
         super().__init__(brain, dispatch_fn)
-        self.config = config or COMMUNITY_DETECTION
+        # Same resolver read as CommunityDecoder — the pipeline passes its
+        # config down, so this fires only for standalone construction.
+        self.config = config or brain.get_interaction_config('s2_community')
 
     def run(self, proposals, community_state):
         """Encode proposals into community nodes.

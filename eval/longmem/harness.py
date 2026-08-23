@@ -226,9 +226,9 @@ def _stream_write_result(writers: Dict, result: Dict[str, Any]) -> None:
 def _apply_s1e_override(brain, override_path: str) -> None:
     """Point this brain's s1e at a candidate prompt file (--s1e-override).
 
-    Tests a candidate without editing the seed file, which would reach every
-    future fresh brain. Preserves the effective config; only the template
-    changes.
+    Tests a candidate without editing the code default, which would deploy
+    it to every install at the next restart. Preserves the effective config;
+    only the template changes.
     """
     override_interaction(brain, 's1e', template=open(override_path).read(),
                          set_by='eval-s1e-override')

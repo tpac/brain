@@ -69,8 +69,8 @@ from .db_backends.sqlite import commit_unless_batched
 # phrasing gets embedded; downstream cosine takes max across all phrasings.
 #
 # Prompt, model and max_tokens live in the `recall_query_expansion`
-# interaction (learnable boundary; seed in servers/recall_expansion_prompt.py,
-# registered at boot by interaction_seed).
+# interaction (learnable boundary; code default in
+# servers/recall_expansion_prompt.py).
 #
 # Opt-in via env var BRAIN_QUERY_EXPANSION=on. Failure modes are non-fatal:
 # LLM error → skip expansion, recall continues with primary query only.

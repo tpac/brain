@@ -7,9 +7,9 @@ config default lives in its CONSUMER's contract file (one default home per
 interaction); each template lives in its prompt `.py` file. The override
 resolver (the get_interaction_* accessors) resolves against this index.
 
-Deliberately NOT `shipped_prompts()` (interaction_seed.py): that roster
-answers "what should the fleet be force-advanced to" (7 names) and dies with
-the distribution machinery. This index covers every name with a reader.
+Deliberately wider than the old shipped-prompt roster (7 fleet-advanced
+names), which died with the distribution machinery: this index covers every
+name with a reader.
 
 Names deliberately absent:
 - `encoding_agent`, `s2_edge_families`, `s2_node_families` — dead legacy;
@@ -64,8 +64,8 @@ INTERACTION_DEFAULTS = {
     'recall_laf':            ('', _RECALL_LAF_DEFAULT),
     'trace_recording':       ('', TRACE_RECORDING_NORMAL),
     'scopes':                ('', SCOPES_CONFIG_V1),
-    # Decoder parameters (not an LLM template). The decoder currently imports
-    # COMMUNITY_DETECTION directly; the interaction read is not wired.
+    # Decoder parameters (not an LLM template); CommunityDecoder/Encoder
+    # read this through the resolver at construction.
     's2_community':          ('', COMMUNITY_DETECTION),
 }
 

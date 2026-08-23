@@ -733,19 +733,24 @@ def _build_tools():
          "hours": {"type": "integer", "description": "Look back window in hours (default 24)", "default": 24}}}},
 
     {"name": "list_interactions",
-     "description": "List all registered interactions — versioned templates for every learnable boundary in the system (surfacer, encoder, voice, boot, etc.). Returns per name: max_version (highest registered), total_versions, active_version (the deployed override, or null when the name runs on its code default), and active_set_by / active_set_at (who deployed that override, and when).",
+     "description": "List all registered interactions — versioned templates for every learnable boundary in the system (surface, s1e, scouts, S2 units, etc.). Returns per name: max_version (highest registered), total_versions, active_version (the deployed override, or null when the name runs on its code default), and active_set_by / active_set_at (who deployed that override, and when).",
      "inputSchema": {"type": "object", "properties": {}}},
 
     {"name": "get_interaction",
      "description": "Get a specific interaction template by name. Returns the template text, parameters, version, and who created it. Default returns the ACTIVE version (what the runtime currently reads). Pass a version number to inspect a specific version.",
      "inputSchema": {"type": "object", "required": ["name"], "properties": {
-         "name": {"type": "string", "description": "Interaction name (e.g. 'surface', 'encoding_agent', 'voice_surface', 'boot')"},
+         "name": {"type": "string", "description": "Interaction name (e.g. 's1e', 'surface', 'trace_recording', 'scopes')"},
          "version": {"type": "integer", "description": "Specific version (default 0 = currently-active version)", "default": 0}}}},
+
+    {"name": "get_interaction_effective",
+     "description": "The RESOLVED value an interaction actually runs: the code default with the active override (if any) overlaid — effective template, effective config, and the K-provenance stamp (fingerprint / source / version). Answers \"what is <name> actually running?\"; get_interaction returns the raw override row only and cannot see the default half.",
+     "inputSchema": {"type": "object", "required": ["name"], "properties": {
+         "name": {"type": "string", "description": "Interaction name (e.g. 's1e', 'surface', 'trace_recording', 'scopes')"}}}},
 
     {"name": "register_interaction",
      "description": "Register a new version of an interaction (prompt template + config). Creates version N+1 if the interaction exists, or version 1 if new. **NEVER activates** — every name runs on its code default until set_interaction_active deploys an override. Used to evolve learnable boundaries — surface prompts, encoder prompts, community enrichment, etc.",
      "inputSchema": {"type": "object", "required": ["name"], "properties": {
-         "name": {"type": "string", "description": "Interaction name (e.g. 's2_community_enrichment', 'surface', 'encoding_agent')"},
+         "name": {"type": "string", "description": "Interaction name (e.g. 's2_community_enrichment', 'surface', 's1e')"},
          "template": {"type": "string", "description": "The prompt/template text. This is the learnable content."},
          "parameters": {"type": "string", "description": "JSON config string (model, max_tokens, thresholds, etc.)"},
          "created_by": {"type": "string", "description": "Who created this version (e.g. 'anchor', 's2:community_detection', 's3:optimization')"}}}},

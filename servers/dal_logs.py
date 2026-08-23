@@ -477,16 +477,14 @@ class LogsDAL(_LogsWriteBase):
 
 
 # Provenance values that mean "the system put this here", as opposed to a human
-# making a deployment decision. Named here, at the table's owner, and referenced
-# at every mint and read site — the shipped-prompt reconcile decides whether to
-# advance a prompt by comparing against them, so a literal copy that drifted
-# would silently reclassify every untouched install as human-owned and kill the
-# mechanism with no signal at all.
+# making a deployment decision. Named here, at the table's owner — the one-time
+# override collapse and the pointer audits read them to tell
+# system-placed pointers from a human's deployment decisions.
 #
-# Minted at: RECONCILE by interaction_seed when it advances a shipped prompt.
-# AUTO_V1 (register's old v1 auto-activate) and BACKSTOP (the old
-# ensure_logs_schema pointer fill-in) are no longer minted anywhere; both
-# survive to classify the live rows they stamped.
+# None is minted anymore: RECONCILE belonged to the deleted shipped-prompt
+# reconcile, AUTO_V1 to register's old v1 auto-activate, BACKSTOP to the old
+# ensure_logs_schema pointer fill-in. All three survive to classify the live
+# rows they stamped.
 #
 # Closed vocabulary: callers coming through the MCP door may not supply any of
 # them, or a stray call could relabel a human's deployment decision as an
