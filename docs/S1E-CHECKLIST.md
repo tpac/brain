@@ -127,9 +127,10 @@ at this session's start and `null` by its end, and `get_interaction('s1e')` now 
   future code default — precisely the condition the collapse existed to clear.
 - **Ship sequence:** register v39 → deploy as a *temporary* override for the eval arm →
   package eval → on Tom's pass, **promote the template into the code default**
-  (`interaction_defaults.py` + the seed `.py` via `sync-prompts`) and bump
-  `SEED_PROMPTS_VERSION` → then **clear the override** so the install returns to
-  pointer-less. `clear_interaction_override` (their Step 6) is that verb.
+  (edit `SYSTEM_PROMPT` in `scales/s1/encoding_prompt.py` — that file IS the default
+  `interaction_defaults.py` serves; no sync, no version bump since Step 9 deleted both)
+  → then **clear the override** so the install returns to pointer-less.
+  `clear_interaction_override` (their Step 6) is that verb.
 - Unchanged and still correct below: `--interaction-override` mechanics, `--pooled`
   refusing to compose, `check-overrides` as the leak check, multi-rep over single runs,
   and BOTH arm-integrity checks.
