@@ -604,6 +604,24 @@ class BrainDaemon:
         except Exception as e:
             self._log("override collapse failed: {}".format(e))
 
+        # Feedback at the moment a default edit is expected to land: a live
+        # override pointer SHADOWS its code default, so an edited prompt .py
+        # changes nothing for that name until the override is cleared. Named
+        # per boot — the restart IS the deployment step, so this is where an
+        # operator looks when an edit doesn't take.
+        try:
+            shadowing = [e for e in self.brain.list_interactions()
+                         if e.get('active_version') is not None]
+            if shadowing:
+                self._log(
+                    "override pointers shadowing code defaults (an edited "
+                    "default is inert for these until cleared): %s" % ", ".join(
+                        "%s v%s (set_by=%s)" % (e['name'], e['active_version'],
+                                                e.get('active_set_by'))
+                        for e in shadowing))
+        except Exception as e:
+            self._log("override shadow report failed: {}".format(e))
+
         # Start the embed queue drain worker. remember/revise/remember_batch
         # enqueue dirty node_ids; this worker embeds them in batches every
         # EMBED_DRAIN_INTERVAL seconds, and sweeps for unqueued gaps on an
