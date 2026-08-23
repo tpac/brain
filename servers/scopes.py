@@ -34,7 +34,7 @@ materialized by two indexed KV queries per isolated dimension:
               wall (hiding the legacy unscoped corpus would empty the brain
               there).
 
-Consumers (recall assembly pre-limit, graph-neighbor attachments, spread
+Consumers (recall assembly pre-limit, edge attachments, spread
 expansion, boot lanes, filter_nodes, fetch tools) do ONE set-membership
 check. There is no per-candidate policy evaluation, no per-call KV fetch,
 and therefore no fail-open I/O path at check time. Cache: keyed on
