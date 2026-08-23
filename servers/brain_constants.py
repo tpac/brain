@@ -105,6 +105,11 @@ PRUNE_THRESHOLD = 0.05
 # Page sizes
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
+
+# How many recall results get the canonical pull (canonicalize_results). One
+# policy for every recall door — a deep result list is a menu, and the reader
+# opens what it picks with get_node.
+RECALL_ENRICH_CAP = 8
 CONTEXT_BOOT_LOCKED_LIMIT = 50
 CONTEXT_BOOT_RECALL_LIMIT = 15
 CONTEXT_BOOT_RECENT_LIMIT = 10

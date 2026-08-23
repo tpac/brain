@@ -528,6 +528,34 @@ class TestRememberRich(BrainTestBase):
         self.assertIn('_metadata', node)
         self.assertEqual(recall_result['_recall_mode'], 'by_id')
 
+    def test_recall_node_carries_the_canonical_shape(self):
+        """By-id recall must agree with the canonical pull.
+
+        recall_node used to read the bare DB row, so a corrected node came
+        back with no _corrections and no situation — a superseded claim
+        handed over with its correction marker stripped off. Every recall
+        door now routes through canonicalize_results.
+        """
+        claim = self.brain.remember_rich(
+            type='finding', title='Claim: the allowlist is read at render',
+            content='Asserted before anyone grepped the consumer side.',
+            situation='When deciding whether a filter is load-bearing')['id']
+        fix = self.brain.remember_rich(
+            type='correction', title='Correction: nothing reads it',
+            content='The render path never looks at that key.')['id']
+        self.brain.connect_typed(
+            fix, claim, relation='corrects',
+            description='verified on the read side, not the write side')
+
+        node = self.brain.recall_node(claim)['results'][0]
+        rich = self.brain.get_node(claim)
+        for key in ('_metadata', 'situation', '_corrections', 'connections'):
+            self.assertEqual(node.get(key), rich.get(key), key)
+        self.assertTrue(node['_corrections'],
+                        'the correction chain must ride along on by-id recall')
+        self.assertEqual(node['situation'],
+                         'When deciding whether a filter is load-bearing')
+
     # removed — tested deleted method (2026-04-13)
 
 # ── P6: Surface Layer ────────────────────────────────────────────────

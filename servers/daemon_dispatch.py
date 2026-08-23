@@ -25,7 +25,7 @@ from .dispatch_write import (
     _maybe_warn_source_refs_sparseness,
 )
 from .dispatch_read import (
-    _enrich_recall_results, _handle_recall, _handle_recall_batch, _handle_get_node,
+    _handle_recall, _handle_recall_batch, _handle_get_node,
     _handle_get_nodes, _handle_find_node_by_title, _handle_filter_nodes,
     _handle_graph_expand, _handle_context_boot,
 )

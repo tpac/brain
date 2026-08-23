@@ -158,10 +158,6 @@ has expired):
 ## Step 3 — Hot-path N+1 batch fixes (eval-gated)
 
 **Problem.** Verified per-call loops on hot paths where the bulk door already exists:
-- `dispatch_read.py:21-22` — MCP `recall` enrichment calls `brain.get_node(id)` per result (≤8);
-  the batch form is documented ("5 queries instead of N×4") and `_handle_get_nodes` already uses it
-- `brain_recall.py:2226` — `_enrich_results` metadata `self._meta_kv.get(nid)` per node →
-  `get_all_bulk` (used 30 lines away at `:397`)
 - `brain_recall.py:199` — `_apply_filter._matches` `get_field` per node per key →
   `get_fields_bulk` hoisted above the loop (= handoff H1, still open, confirmed)
 - `pipeline_contract.py:477-481` — `mdal.get(sid)` per seed → `get_all_bulk`
@@ -172,8 +168,8 @@ has expired):
   (`community_internal_fraction`/`maturity` ARE in COMMUNITY_METADATA_KEYS) then discards them.
   Widen the dict at `:343-350`; delete the helper.
 - `consolidation_encoder.py:345` — `get_node` per cluster member (cold path; do while there)
-NEIGHBOR halves of `_enrich_results` (`:2236`) and `pipeline_contract.traverse` (`:444-448`) are
-NOT here — they need Step 5's `get_neighbors_bulk` signature work first.
+The NEIGHBOR half of `pipeline_contract.traverse` (`:444-448`) is NOT here — it needs Step 5's
+`get_neighbors_bulk` signature work first.
 **Verification.** Equivalence-gate: `eval/surface_funnel.py` + a recall-output-unchanged assertion
 (model: `test_batch_tfidf_dal_equivalence.py`). Targeted: recall pipeline, community tests.
 **Blast radius.** Hot path — behavior-preserving but eval-gated. **Depends on.** None.
@@ -207,15 +203,14 @@ NOT here — they need Step 5's `get_neighbors_bulk` signature work first.
 - `get_neighbors` defaults `exclude_relations=None` → NO exclusion; `get_neighbors_bulk` defaults
   the SAME kwarg → `DEFAULT_EXCLUDED_RELATIONS`. Opposite meanings, same name. Bulk also lacks
   `limit`(per-owner)/`exclude_node_ids`/`content_preview_chars`, which is why
-  `pipeline_contract.py:444` loops per seed (live N+1) and `_enrich_results:2236` can't batch.
+  `pipeline_contract.py:444` loops per seed (live N+1).
 - `get_community_members(cid, include_archived, require_active_member)` vs
   `get_members_bulk(cids, include_archived)` — bulk hardcodes `member.archived=0` AND adds a
   `c.type='community' AND c.archived=0` gate the single doesn't have; `community_decoder.py:339`
   loops per community because the bulk lacks `require_active_member=False`.
 **Target state.** Align kwargs + defaults explicitly (a reviewed decision, not a silent merge);
-single forms delegate to bulk; then batch the three blocked call sites (traverse loop,
-`_enrich_results` neighbors — with `include_relations` pushed into SQL replacing the
-fetch-3×-filter-in-Python idiom — and the community-members loop).
+single forms delegate to bulk; then batch the two blocked call sites (the traverse loop and the
+community-members loop).
 **Verification.** Recall equivalence gate + `test_community_structural.py`,
 `test_community_membership_reconcile.py`, spread-activation tests. Full suite (DAL tier).
 **Blast radius.** Recall + S2 candidate sets if a default flips silently — hence reviewed.

@@ -478,6 +478,16 @@ GET_NODES_FULL_FORMAT = {
 # filtered field it should surface. Keep in sync with the DAL's SELECT.
 SKINNY_NODE_FIELDS = ('id', 'title', 'type', 'confidence', 'created_at')
 
+# What the canonical pull (Brain.get_node) attaches on top of the bare DB row:
+# the KV block, the two fields promoted out of it to top-level, the correction
+# chain, and the edges. `canonicalize_results` overlays exactly these onto a
+# recall result, so a result carries the same shape whichever recall door the
+# caller came through. Keep in sync with get_node's assembly — the parity test
+# (tests/test_recall_door_parity.py) fails if get_node grows an attachment
+# this tuple doesn't name.
+CANONICAL_ATTACHMENT_KEYS = ('_metadata', 'situation', 'project',
+                             '_corrections', 'connections')
+
 # connect_to catalog-title matching (write path) — deterministic token
 # matching, NO vectors (decision 2026-07-30: a wrong edge outlives a missing
 # one; cosine near-misses put a wrong node 0.003 below a right one). A title

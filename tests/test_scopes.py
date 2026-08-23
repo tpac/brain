@@ -198,17 +198,17 @@ class TestFunnelCoverage(BrainTestBase):
                                  'walled client fact')
         _set_scopes(self.brain, ISOLATE_CLIENT_X)
 
-    def test_recall_envelope_drops_walled_connections(self):
+    def test_canonicalize_results_drops_walled_connections(self):
         # A kept node edged to a walled node must not leak the walled title
-        # through the MCP recall envelope's `connections` — the id would
-        # feed the out-of-candidate admission path (leak escalation).
-        from servers.dispatch_read import _enrich_recall_results
+        # through `connections` — the id would feed the out-of-candidate
+        # admission path (leak escalation). canonicalize_results is the one
+        # door every recall shape goes through, so scrubbing here covers
+        # by-query, by-id and batch at once.
         self.brain.connect(self.brain_node, self.client_node,
                            relation='extends')
-        result = {'results': [{'id': self.brain_node}]}
-        _enrich_recall_results(self.brain, result, None,
-                              session_id='sess-brain')
-        conn_ids = {c['id'] for c in result['results'][0]['connections']}
+        results = [{'id': self.brain_node}]
+        self.brain.canonicalize_results(results, session_id='sess-brain')
+        conn_ids = {c['id'] for c in results[0]['connections']}
         assert self.client_node not in conn_ids
         # get_node applies no veil — the edge IS there at the data layer.
         # Guards the test itself against the edge silently not existing.

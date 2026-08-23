@@ -7,38 +7,9 @@ filter, graph expansion, boot context.
 from .dispatch_common import _resolve_id, caller_session
 
 
-def _enrich_recall_results(brain, result, graph_changes, session_id=''):
-    """Enrich recall results via brain.get_node() — the shared data atom.
-
-    Anchor's MCP recall gets full enrichment per node:
-    metadata, corrections, connections, situation.
-    """
-    results = result.get("results", [])
-    if not results:
-        return
-
-    # Scope veil on edge attachments: a connection line carries the
-    # neighbor's id + title — the leak payload — so walled neighbors drop
-    # from what recall's MCP envelope hands back. session_id: the caller's
-    # ambient session (same value the recall itself was gated with).
-    veil = brain.scope_veil(session_id or brain.session_id)
-
-    # Enrich each result with brain.get_node() data. scrub_node drops
-    # walled entries from connections (id+title) AND _corrections (which
-    # carry the walled corrector's FULL content and raw quotes).
-    from .scopes import scrub_node
-    for r in results[:8]:
-        rich = brain.get_node(r.get("id", ""))
-        if rich:
-            r["_metadata"] = rich.get("_metadata", {})
-            r["_corrections"] = rich.get("_corrections", [])
-            r["connections"] = rich.get("connections", [])
-            r["situation"] = rich.get("situation", "")
-            scrub_node(r, veil)
-
-
 def _handle_recall(brain, args, graph_changes):
-    # By-ID recall: returns single enriched node
+    # By-ID recall: returns single enriched node (canonicalized inside
+    # recall_node, so this door and the by-query one below agree)
     node_id = args.get("node_id")
     if node_id:
         node_id = _resolve_id(brain, node_id)
@@ -66,8 +37,7 @@ def _handle_recall(brain, args, graph_changes):
         brain._log_error("recall_failed", e, "MCP by-query recall raised")
         return {"ok": False, "error": "recall failed: %s" % e}
 
-    # Enrich with corrections, graph expansion, metadata — same context as hook path
-    _enrich_recall_results(brain, result, graph_changes, session_id=sid)
+    brain.canonicalize_results(result.get("results", []), session_id=sid)
 
     return {"ok": True, "result": result}
 
@@ -83,6 +53,10 @@ def _handle_recall_batch(brain, args, graph_changes):
         try:
             result = brain.recall(query=q, filter=batch_filter, limit=limit,
                                   session_id=sid, source='mcp')
+            # Same canonical door as single recall — a batch is no reason to
+            # hand back nodes with their corrections stripped off.
+            brain.canonicalize_results(result.get("results", []),
+                                       session_id=sid)
             results.append({"query": q, "results": result.get("results", [])})
         except Exception as e:
             results.append({"query": q, "results": [], "error": str(e)})

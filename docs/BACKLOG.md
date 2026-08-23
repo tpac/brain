@@ -239,18 +239,17 @@ new inter-layer channel to prove it isn't just async S0 (brain `bfc6d106`).
   test maintenance.
 - **`judge_output` → `surface_output`** across the trace metadata contract. Derived
   field, no data migration. Defer until something else touches `dal.py`.
-- **Three N+1s left on the recall hot path** — the residue of the DAL cleanup arc
-  (id:72502ef9, verified 2026-08-17). All three sit inside `_keyword_recall` /
-  `_enrich_results`, which run unconditionally under `laf_v1`; they are not dead paths.
-  `GraphDAL.count_node_edges` fires once per activated seed in `_keyword_recall`'s
-  scoring loop — tens of round-trips per recall, no bulk sibling exists. Biggest of the
-  three. `TfIdfDAL.get_doc_freq` fires once per unique query term in
-  `_batch_tfidf_scores`. `GraphDAL.get_neighbors` loops in `dispatch_read` and
-  `pipeline_contract`. **The last one is not a drop-in swap:** `get_neighbors_bulk`
-  accepts neither `exclude_node_ids` nor `content_preview_chars`, and both callers
-  narrow each seed's query by a `seen` set that mutates inside the loop — bulking it
-  changes which neighbors survive the per-seed limit. Extend the bulk method first, or
-  leave that one alone.
+- **Two N+1s left on the recall hot path** — the residue of the DAL cleanup arc
+  (id:72502ef9). Both sit inside `_keyword_recall`, which runs unconditionally under
+  `laf_v1`; they are not dead paths. `GraphDAL.count_node_edges` fires once per
+  activated seed in its scoring loop — tens of round-trips per recall, no bulk sibling
+  exists. Bigger of the two. `TfIdfDAL.get_doc_freq` fires once per unique query term in
+  `_batch_tfidf_scores`.
+  The remaining `GraphDAL.get_neighbors` loop is `pipeline_contract`'s, and it is **not
+  a drop-in swap:** `get_neighbors_bulk` accepts neither `exclude_node_ids` nor
+  `content_preview_chars`, and the caller narrows each seed's query by a `seen` set that
+  mutates inside the loop — bulking it changes which neighbors survive the per-seed
+  limit. Extend the bulk method first (Step 5 of the DAL-boundary plan), or leave it.
 
 ### 13. Defense-shrink cut — delete the outage-era daemon defenses reload-in-place obsoleted
 Deploy restarts became invisible in-place exec reloads (same PID, 2026-08-19); the

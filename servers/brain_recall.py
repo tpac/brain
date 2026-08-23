@@ -32,6 +32,7 @@ from .brain_constants import (
     KEYWORD_FALLBACK_WEIGHT,
     MAX_PAGE_SIZE,
     PRUNE_THRESHOLD,
+    RECALL_ENRICH_CAP,
     RECALL_EXPANSION_TIMEOUT_S,
     RELEVANCE_FLOOR_ENRICHED,
     RELEVANCE_FLOOR_PRIMARY,
@@ -424,6 +425,38 @@ class BrainRecallMixin:
         if single:
             return nodes.get(full_ids[0])
         return nodes
+
+    def canonicalize_results(self, results, session_id: str = '') -> None:
+        """Overlay the canonical pull onto recall results, in place.
+
+        The ONE door that makes a recall result complete. get_node is the
+        canonical pull — metadata, situation, corrections, connections — and
+        this lays exactly its attachments (CANONICAL_ATTACHMENT_KEYS) over
+        each result, leaving recall's own scoring fields untouched. Then the
+        session veil scrubs those attachments: a connection or correction
+        line carries a neighbor's id and title, and a correction its full
+        text, which is the payload a wall exists to stop.
+
+        Every recall door routes through here — by-query, by-id and batch —
+        so no caller can hand back a node with its corrections missing.
+        Bypassing it is how `recall(node_id=…)` used to return a superseded
+        claim with no correction marker attached.
+        """
+        from .contract import CANONICAL_ATTACHMENT_KEYS
+        from .scopes import scrub_node
+        rich = self.get_node([r['id'] for r in results[:RECALL_ENRICH_CAP]
+                              if isinstance(r, dict) and r.get('id')])
+        if not rich:
+            return
+        veil = self.scope_veil(session_id or self.session_id)
+        for r in results[:RECALL_ENRICH_CAP]:
+            node = rich.get(r.get('id')) if isinstance(r, dict) else None
+            if not node:
+                continue
+            for key in CANONICAL_ATTACHMENT_KEYS:
+                if key in node:
+                    r[key] = node[key]
+            scrub_node(r, veil)
 
     def filter_nodes(self, field: str, include=None, exclude=None,
                      lt=None, gt=None, limit: int = 50,
@@ -2159,10 +2192,11 @@ class BrainRecallMixin:
         # (Scope veil already applied pre-[:limit] — candidates were gated
         # before truncation, and _iso_dropped carries the walled ids.)
 
-        # STEP 7.5: Enrich top 3 results with KV metadata.
-        # All results keep full content (no truncation); the top 3 also carry
-        # their metadata for richer understanding.
-        self._enrich_results(final_results[:3])
+        # No enrichment here: recall scores and returns, and each door
+        # canonicalizes what it hands out (canonicalize_results). The hook
+        # path runs its own get_node pass over the capped candidate pool, so
+        # enriching a top-3 slice here only ever produced a shape a
+        # downstream consumer immediately overwrote.
 
         # STEP 8: Mark accessed (recognition signal + fatigue)
         # Per-session: _recall_ctx (loaded at top of this function) is passed
@@ -2266,26 +2300,6 @@ class BrainRecallMixin:
 
         return result
 
-    def _enrich_results(self, results: List[Dict[str, Any]]) -> None:
-        """Attach KV metadata to recall results, in place.
-
-        Called by both recall (text search) and recall_node (ID lookup).
-        The caller decides WHICH results to enrich — this method enriches all
-        it receives. Edge context comes from `connections` (get_node), not
-        from here.
-        """
-        for node in results:
-            nid = node.get('id')
-            if not nid:
-                continue
-
-            try:
-                meta = self._meta_kv.get(nid)
-                if meta:
-                    node['_metadata'] = meta
-            except Exception as e:
-                self._log_error('recall_node_meta', e, 'fetching node metadata for enrichment')
-
     # _traverse_graph removed 2026-04-14 — dead code, 0 callers.
     # S1R uses _graph_expand() in surface.py instead.
 
@@ -2296,11 +2310,11 @@ class BrainRecallMixin:
         consistent interface regardless of how the node was found.
 
         By-id reach is the veil's sanctioned open door — the NODE returns
-        regardless of scope.
+        regardless of scope. Its ATTACHMENTS are still scrubbed, inside
+        canonicalize_results: reaching for a known id says nothing about
+        the neighbors and correctors it happens to be linked to.
         """
-        from .dal import NodeDAL
-        node_dal = self._nodes
-        node = node_dal.get_naked_node(node_id)
+        node = self._nodes.get_naked_node(node_id)
         if not node:
             return {'results': []}
 
@@ -2311,7 +2325,7 @@ class BrainRecallMixin:
         node['_source'] = 'direct_lookup'
 
         results = [node]
-        self._enrich_results(results)
+        self.canonicalize_results(results, session_id)
 
         return {
             'results': results,
