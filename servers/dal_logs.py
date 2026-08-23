@@ -621,20 +621,23 @@ class InteractionDAL(_LogsWriteBase):
 
     def list_all(self) -> List[Dict[str, Any]]:
         """List all interactions: name, max_version, total_versions,
-        active_version, active_set_by.
+        active_version, active_set_by, active_set_at.
 
         `active_set_by` is who flipped the pointer — the provenance the
         shipped-prompt reconcile reads to tell a system default apart from a
-        human's deployment decision. See SYSTEM_PROVENANCE.
+        human's deployment decision. See SYSTEM_PROVENANCE. `active_set_at`
+        is when, which is what distinguishes a recent deliberate deployment
+        from years-old seed residue when a collapse is being reviewed.
         """
         rows = self.conn.execute(
             'SELECT i.name, MAX(i.version) as v, COUNT(*) as versions, '
-            'a.version, a.set_by '
+            'a.version, a.set_by, a.set_at '
             'FROM interactions i '
             'LEFT JOIN interaction_active a ON a.name = i.name '
             'GROUP BY i.name ORDER BY i.name').fetchall()
         return [{'name': r[0], 'max_version': r[1], 'total_versions': r[2],
-                 'active_version': r[3], 'active_set_by': r[4]}
+                 'active_version': r[3], 'active_set_by': r[4],
+                 'active_set_at': r[5]}
                 for r in rows]
 
     def list_versions(self, name: str) -> List[Dict[str, Any]]:

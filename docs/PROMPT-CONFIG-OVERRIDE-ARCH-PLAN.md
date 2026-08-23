@@ -1,9 +1,15 @@
 # Prompt/Config Override Model — Architecture Plan
 
-## § Steps 1–7 live; next is Step 8, the collapse (2026-08-22) ◀ ACTIVE ARC
+## § Steps 1–8 built; next is Step 9, deleting the machinery (2026-08-23) ◀ ACTIVE ARC
 
-**Read first:** plan index `id:700654c9`; the four rulings `id:0274bca8`; session-4
-record `id:7775ec63`; session-5 handoff `id:080016bf`.
+**Read first:** plan index `id:700654c9`; the four rulings `id:0274bca8`; session-5
+record `id:bd39c56c`; session-6 handoff `id:3bd64412`.
+**Step 8 built** — `servers/interaction_collapse.py`, called from daemon boot after
+`reconcile_seeded_prompts`, gated by its own `interaction_collapse_version`. Pointer-only, zero row
+deletes, audit record committed before the first drop. Measured on a production copy: **19 of 21
+pointers drop, 2 remain** (`recall_laf` SKIP, `trace_recording` PIN); every registry name flips
+`source=override → default`; effective values move for exactly the three `ADOPT` names and nothing
+else — `surface` still fingerprints `af8471e407ef`, byte-identical across the whole migration.
 **Step 7 landed** — `tests/interaction_override.py` is the one override door
 (`override_interaction` + the self-reverting `interaction_override` context manager);
 the six hand-rolled register+activate copies and both legacy generations
@@ -24,7 +30,7 @@ migration, verified live post-restart.
 not as a `LOGS_MIGRATIONS` step (`id:ffc58bda` — a migration-step collapse would fire inside frozen
 eval corpora and make them float); **Step 7 consolidates rather than repairs in place, and includes
 the reach-around table**; review rhythm = no fleet for 7, full fleet for 8, narrow 2–3 lens for 9.
-**Open:** Steps 8–9. No gate is currently blocked on a human.
+**Open:** Step 9. No gate is currently blocked on a human.
 **Do not reopen:** wiring s2_community's interaction read (post-Step-8); a sibling
 `get_effective_*` accessor; whole-value override; guarding (instead of deleting) the schema
 backstop — its unversioned re-run property is the bug; env-flag exemption or float-acceptance for
@@ -36,8 +42,10 @@ but those rows are pristine, so the collapse still handles them correctly. And a
 by the append-only fingerprint ratchet whenever shipped template content changes, so it cannot be
 deferred at will. **Sanctioned instance: 2026-08-22, the BRAIN_VERSION 31 voice-field rename**
 (`user_raw_quote`→`their_raw_quote`, `anchor_raw_quote`→`my_raw_quote`) bumped it for s1e, s2_healer
-and s1_scout_quote — a sibling stream's work, not this arc's. Step 8 should expect the larger
-classify set and treat it as normal.
+and s1_scout_quote — a sibling stream's work, not this arc's. Measured at Step 8, the classify set did
+**not** in fact grow: reconcile advances only names whose pointer provenance is still pristine, and
+every live name carries `anchor` or `migration:initial_active`, so the bump held them all. The
+enlargement stays the right expectation for a pristine install; it simply did not apply here.
 
 Migrate prompt/config storage from **DB-owned defaults** to **code-owned defaults + DB overrides**.
 Direction approved by Tom 2026-08-17 (brain `id:63e6b1f8`). This doc is the executable worklist;
@@ -66,11 +74,13 @@ update changes the default; every name without an override follows on the next r
    `get_active` falls back to `ORDER BY version DESC LIMIT 1`, and `schema.py:1725-1730` re-materializes
    a pointer at `MAX(version)` on **every** boot, committed at `:1745` *before* the migration runner at
    `:1749`. Clearing `s1e`'s pointer today leaves v35 active, silently, forever. → Step 5.
-2. **The naive collapse predicate is actively harmful on `trace_recording`.** It is the only name where
-   active (1) ≠ MAX (2). Its v1 params byte-match `TRACE_RECORDING_NORMAL`, so `_matches_shipped`
-   returns True → "drop the pointer" → `get_active` returns v2 = `TRACE_RECORDING_DEBUG` =
-   `{k: True for k in PAYLOAD_KIND_EXT}` → **full payload capture on every LLM round**. → Step 8 policy
-   table (`PIN`).
+2. **`trace_recording` is the one name where a wrong verdict is expensive.** It is the only name where
+   active (1) ≠ MAX (2), and v2 is `TRACE_RECORDING_DEBUG` = `{k: True for k in PAYLOAD_KIND_EXT}` =
+   **full payload capture on every LLM round**. The specific route to that disaster — drop the pointer,
+   `get_active` falls back to MAX, debug goes live — was closed by Step 5, which deleted the fallback:
+   no pointer now resolves to the code default (`TRACE_RECORDING_NORMAL`), which its v1 params already
+   byte-match. `PIN` therefore costs one inert pointer and stands on the conservative choice, not on a
+   live hazard. → Step 8 policy table (`PIN`).
 3. **Five caller literals already disagree with their code default**, and the migration makes them
    reachable (today `seed_interactions` guarantees a row, so they are dead code). → Step 4.
 4. **`shipped_prompts()` covers 7 of the 16 registered names.** Reusing it as the defaults registry
@@ -558,9 +568,16 @@ history *and* the target of 6,416 resolvable historical trace pointers; deleting
 (no `REFERENCES` clause) and instead silently orphans display data — which has already happened once
 (`interaction_id = 7`, 2,022 traces, unnoticed since 2026-05-02). **Delete zero rows.**
 
-**The predicate is `_matches_shipped`'s semantics** (`interaction_seed.py:309-319` — template equality
-**and** parsed-params equality; both halves matter), re-derived against the Step 3 registry, then that
-function is deleted with the rest.
+**The predicate is fingerprint equality of the RESOLVED value against the code default** — not `source`,
+which reports whether a row *contributed*, not whether it *deviated*, and so calls a byte-identical row
+an override. This is `_matches_shipped`'s semantics (`interaction_seed.py:309-319` — template equality
+**and** parsed-params equality; both halves matter) re-derived against the Step 3 registry, with one
+deliberate refinement the overlay model forces: `_matches_shipped` compares the *row* to the shipped
+value, which was right when a row replaced the whole value. Under overlay, a partial override that sets
+one key to exactly the default's value for that key is not a deviation — the resolved value is
+identical — and comparing resolved-to-default drops it where row-to-shipped would freeze the name
+forever. Resolved-value equality is also the only predicate that makes the loud check tautologically
+safe: it drops a pointer exactly when doing so provably cannot change what runs.
 
 **Per-name policy table in code — five verdicts.** The table is the deliberate deployment decision in a
 reviewable diff, carrying forward the one genuinely good property `SEED_PROMPTS_VERSION` had
@@ -569,65 +586,99 @@ reviewable diff, carrying forward the one genuinely good property `SEED_PROMPTS_
 
 | Verdict | Names | Behavior |
 |---|---|---|
-| `COMPARE` | the 7 shipped + `pre_edit`, `voice_surface`, `signal_assembler`, `scopes`, `recall_query_expansion` | run the predicate: match → drop pointer; differ → keep as override |
-| `ADOPT` | `boot`, `s2_community`, `s1_scout_quote`, `s1_scout_temporal` | drop the pointer unconditionally — content is dead or inert |
+| `COMPARE` | the 7 shipped + `scopes`, `recall_query_expansion` | run the predicate: match → drop pointer; differ → keep as override |
+| `ADOPT` | `s2_community`, `s1_scout_quote`, `s1_scout_temporal` | drop the pointer unconditionally — the row can never converge with the default |
 | `PIN` | `trace_recording` | **never touch** (active ≠ MAX, documented debug recipe) |
-| `RETIRE` | `encoding_agent`, `s2_edge_families`, `s2_node_families` | drop the pointer, keep version rows |
+| `RETIRE` | `boot`, `pre_edit`, `voice_surface`, `signal_assembler`, `encoding_agent`, `s2_edge_families`, `s2_node_families` | drop the pointer, keep version rows |
 | `SKIP` | `recall_laf` | never tell the collapse it has a code default, or the measured `{"z_norm":"support"}` tuning is dropped |
 
-**Why `ADOPT` rather than `COMPARE` for those four.** `boot`'s live keys are `tom_quotes_*` vs the code's
-`operator_quotes_*` and **nothing reads either** — `docs/DISTRIBUTION-READINESS.md:255` already cites
-this exact row as the proof that seeding froze installs, so freezing it would enshrine the artifact that
-justified the mechanism being deleted. `s2_community` has 25 code keys vs 8 DB keys with one in common,
-and no reader. `s1_scout_quote`/`s1_scout_temporal` carry an `output_schema` the code dicts omit *and*
-`tests/test_prompt_sync.py:95-101` **asserts** the omission — so code and DB can never converge, and
-`COMPARE` would guarantee permanent override status for two scouts that never run
-(`exclude_scouts=('quote','temporal')`).
+**`RETIRE` is exactly the set of names with no code default** — the seven `INTERACTION_DEFAULTS` lists
+as "deliberately absent". That equivalence is an invariant a test holds
+(`tests/test_interaction_collapse.py::TestPolicyTableShape`), so the table cannot drift from the
+registry: a name that gains or loses a default must change buckets or the suite goes red. It is also
+why `pre_edit`, `voice_surface` and `signal_assembler` are not `COMPARE` — Step 2 deleted their config
+defaults *and* stopped seeding them, so there is nothing to compare a row against. `boot` joins them
+for the same reason; `docs/DISTRIBUTION-READINESS.md:255` cites its `tom_quotes_*` row as the proof
+that seeding froze installs, and nothing reads either spelling.
+
+**Why `ADOPT` rather than `COMPARE` for the other three.** `s2_community` has 25 code keys vs 8 DB keys
+with one in common, and no reader. `s1_scout_quote`/`s1_scout_temporal` carry an `output_schema` the
+code dicts omit *and* `tests/test_prompt_sync.py:95-101` **asserts** the omission — so code and DB can
+never converge, and `COMPARE` would guarantee permanent override status for two scouts that never run
+(`exclude_scouts=('quote','temporal')`). `ADOPT` is the only verdict licensed to change a name's
+effective value, which is what the loud check keys on.
 
 "Match any historical default" was considered and rejected: it needs a git-archaeology table of retired
 dicts (new permanent accretion) and still fails for quote/temporal, whose drift came from a human
 `register`, not a stale default.
 
 **Also required for `scopes`:** the code default never passes through `register_interaction`'s door
-validation (`brain.py:788-800`), so the accessor must run `validate_scopes_config` on the default too —
-otherwise the door is bypassed for the one value that ships to everyone.
+validation, and the resolver only validates a config the DB actually *contributed* — so once the
+pointer drops, no runtime check ever judges the one value that ships to everyone. The write boundary
+for a code default is the commit that changes it, so the door is a test
+(`test_interaction_defaults.py::TestDefaultsPassTheirOwnValidator`) rather than a per-read validation:
+a runtime check would fire after the invalid default had already shipped, and has no better value to
+fall back to.
 
 **Mechanics.**
-- Home: `LOGS_MIGRATIONS` (`schema.py:1666`, currently `[]`), `LOGS_VERSION` 1 → 2. **Not**
-  `seed_prompts_version` — that key is being deleted and reusing it leaves a dangling counter.
-- **Backup twice.** The runner fires `backup_before_destructive(db_path, 'v%d' % current)` at
-  `schema.py:588-595` — but that tag is keyed on the stream version, so a future step at the same
-  version silently reuses the file (`db_backup.py:209-214`). Add an explicit
-  `backup_before_destructive(logs_db_path, 'pre-override-collapse')` inside the step.
-- **Write an audit record before deleting anything**: `(name, version, set_by, set_at,
-  sha256(template), parameters, verdict)` as JSON. The deleted pointers are the only unrecoverable
-  information, and it is 21 rows. This turns rollback into a pure replay (`INSERT OR REPLACE INTO
-  interaction_active`, delete the `logs_schema_version` stamp, restart) and lets an operator tell a
-  *dropped* pointer from one that never existed.
-- One implicit transaction, all 21 verdicts inside it. Stamp goes after the work — the runner already
-  does this correctly.
+- Home: `servers/interaction_collapse.py`, called from **daemon boot** (`daemon_server._load_brain`,
+  right after `reconcile_seeded_prompts`), gated by its own `interaction_collapse_version` key through
+  `run_versioned_migrations`. **Not** `LOGS_MIGRATIONS` (corpus float, `id:ffc58bda`) and **not**
+  `seed_prompts_version` — that key is being deleted and reusing it leaves a dangling counter. Its own
+  module because the collapse outlives `interaction_seed.py`, which Step 9 deletes.
+- **Order: after reconcile.** Reconcile can advance a pristine name onto the current shipped content,
+  which the collapse then recognises as the code default and drops. Collapsing first costs a boot —
+  a dropped pointer reads as "no override" to reconcile, so it advances nothing.
+- **Backup, or refuse.** One explicit `backup_before_destructive(logs_db_path,
+  'pre-override-collapse', compress=False)` inside the step, and a falsy return **raises** rather than
+  proceeding — this is the only code path that rewrites a production DB, and an unstamped run simply
+  retries next boot. `compress=False` for the reason `schema.py`'s runner already gives: this runs
+  before the port answers pings, and the health monitor force-restarts an unresponsive daemon at ~20s.
+  The runner's own `v%d`-tagged backup is deliberately not used — that tag is keyed on the stream
+  version, so a future step at the same version silently reuses the file (`db_backup.py:209-214`).
+- **Write an audit record before dropping anything**: `(name, version, set_by, set_at,
+  row_fingerprint, parameters, verdict)` as JSON in `logs_meta.interaction_collapse_audit`, committed
+  first and **never overwritten** (first write wins, so a retry cannot erase the pre-first-attempt
+  state). The dropped pointers are the only unrecoverable information, and it is 21 rows. This turns
+  rollback into a pure replay of `set_interaction_active(name, version, set_by)` and lets an operator
+  tell a *dropped* pointer from one that never existed.
+- **The audit is the rollback path, not a transaction.** Pointer drops go through the interactions DAL
+  on its own write connection (committing per call, releasing the write lock) while the version stamp
+  goes through `brain.logs_conn` — two connections on one file, the same split `reconcile_seeded_prompts`
+  already lives with, so there is no single envelope to roll back. Committing the audit *before* the
+  first drop is strictly stronger than a transaction anyway: it survives a hard crash mid-collapse,
+  where a rollback would leave no record of what was attempted.
+- Stamp goes after the work — the runner already does this correctly.
 
 **The loud check that closes the detection gap.** A wrong collapse is invisible from the after-state,
 because "effective value unchanged" *is* the predicate. No structural test can see it. So, inside the
-step: (1) snapshot `{name: (prompt, config)}` for all 21 names **through the accessors** before any
-write; (2) apply verdicts; (3) re-read all 21; (4) any name whose effective value changed and is not
-`ADOPT` → `brain._log_error('interaction_collapse_drift', …)` and **raise**, so the runner rolls back
-and retries next boot. That single assertion catches the `trace_recording` disaster automatically
-(before = v1 NORMAL, after = v2 DEBUG, changed, not `ADOPT` → refuse). Log the per-name verdict on both
-branches, per `interaction_seed.py:414-415`'s own reasoning.
+step: (1) snapshot `{name: fingerprint}` for every registry name **through the accessors** before any
+write; (2) apply verdicts; (3) re-read; (4) any name whose effective value changed and is not `ADOPT`
+→ **restore every pointer this run dropped from the audit record**, then
+`brain._log_error('interaction_collapse_drift', …)` and **raise**, so the version stays unstamped and
+the next boot retries from the original state. Restoring is not optional: raising alone would leave the
+pointers dropped, and the retry would then measure a *already-collapsed* before-state and pass — the
+silent path this check exists to prevent. Log the per-name verdict on both branches, per
+`interaction_seed.py:414-415`'s own reasoning.
 
-**Frozen-corpus caveat.** `ensure_logs_schema` runs inside `Brain.__init__`, so a `LOGS_MIGRATIONS` step
-also runs in eval corpora, `IsolatedBrain` copies, and tests — where `reconcile_seeded_prompts` was
-deliberately daemon-only (`interaction_seed.py:427-433`). The collapse leaves effective values unchanged
-*at that instant*, but a collapsed corpus then **floats with future code edits**, which a frozen corpus
-must not do. Either exempt eval/IsolatedBrain via an env flag or state that corpora are re-pinned by
-overrides. **Decide before shipping.**
+The snapshot covers registry names only: a `RETIRE` name has no code default, so the accessors raise
+for it by design and there is no effective value to preserve.
 
-**Verification.** Two `IsolatedBrain` runs, one per git ref, each dumping the 21
-`(name, sha256(prompt), config)` triples to the scratch dir; diff them. Any difference other than an
-intended `ADOPT` is a failure. `tests/isolated_brain.py:78-80` clones via the online backup API, safe
-against a live daemon — which is why this is legal where `Brain(db_path=…/brain.db)` is not. Prefer this
-over any structural check; structural checks pass by construction here.
+**Frozen-corpus question — RULED, `id:ffc58bda`.** `ensure_logs_schema` runs inside `Brain.__init__`,
+so a `LOGS_MIGRATIONS` step would also run in eval corpora, `IsolatedBrain` copies and tests. The
+collapse leaves effective values unchanged *at that instant*, but a collapsed corpus then **floats with
+future code edits**, which a frozen corpus must not do. Resolved by moving the call site to daemon boot,
+exactly where `reconcile_seeded_prompts` already lives for this same reason. Env-flag exemption and
+float-acceptance were both rejected. `TestDaemonOnly` holds it: constructing a `Brain` must leave the
+pointers alone, and `brain.py`/`schema.py` must not name the entry point.
+
+**Verification.** Behavioral, not structural — structural checks pass by construction here. The
+before-state must be asserted, not assumed: "no pointers, every name on its code default" is also what a
+brain that never held overrides reads like, so `TestCollapseBehavior` refuses to trust a fixture whose
+pointers it has not first seen (`test_before_state_actually_holds_overrides`). `tests/isolated_brain.py`
+clones via the online backup API, safe against a live daemon — which is why this is legal where
+`Brain(db_path=…/brain.db)` is not, and it now refuses a production dir with no logs DB rather than
+seeding a fresh schema that would fake the success reading.
 
 **Blast radius.** The only step that writes to a production DB. Recoverable via the audit record.
 

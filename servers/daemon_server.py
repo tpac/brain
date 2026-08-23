@@ -603,6 +603,18 @@ class BrainDaemon:
         except Exception as e:
             self._log("prompt reconcile failed: {}".format(e))
 
+        # Reclassify seeded rows as "no override deployed", once per install.
+        # Here for the same reason reconcile is, and AFTER it: reconcile can
+        # advance a pristine name onto the current shipped content, which the
+        # collapse then recognises as the code default and drops. The reverse
+        # order costs a boot — a dropped pointer reads as "no override" to
+        # reconcile, so it advances nothing and the drop waits for next start.
+        try:
+            from servers.interaction_collapse import collapse_seeded_overrides
+            collapse_seeded_overrides(self.brain)
+        except Exception as e:
+            self._log("override collapse failed: {}".format(e))
+
         # Start the embed queue drain worker. remember/revise/remember_batch
         # enqueue dirty node_ids; this worker embeds them in batches every
         # EMBED_DRAIN_INTERVAL seconds, and sweeps for unqueued gaps on an

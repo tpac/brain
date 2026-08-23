@@ -69,6 +69,30 @@ class TestRegistryCompleteness:
             "accessor literals with no code default: %s" % sorted(missing)
 
 
+class TestDefaultsPassTheirOwnValidator:
+    """A code default never passes through `register_interaction`'s door, and
+    the resolver only validates a config the DB actually contributed — so no
+    runtime check ever judges the value that ships to everyone. Once the
+    collapse drops the override pointers, that value IS the running config.
+    Committing the default is its only write boundary, which makes this test
+    the door for it."""
+
+    def test_every_validated_name_has_a_valid_default(self):
+        from servers.interaction_defaults import INTERACTION_VALIDATORS
+        for name, validate in INTERACTION_VALIDATORS.items():
+            _template, config = INTERACTION_DEFAULTS[name]
+            violations = validate(config)
+            assert not violations, (
+                "%s ships a code default its own validator rejects: %s"
+                % (name, violations))
+
+    def test_validators_name_registry_entries(self):
+        from servers.interaction_defaults import INTERACTION_VALIDATORS
+        unknown = set(INTERACTION_VALIDATORS) - set(INTERACTION_DEFAULTS)
+        assert not unknown, \
+            "validators for names with no code default: %s" % sorted(unknown)
+
+
 class TestFingerprint:
     def test_fingerprint_is_stable_and_canonical(self):
         from servers.interaction_defaults import interaction_fingerprint

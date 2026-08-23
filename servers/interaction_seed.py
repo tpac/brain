@@ -472,7 +472,8 @@ def seed_interactions(brain):
     # boot / voice_surface / pre_edit / signal_assembler — NOT seeded: every
     # config key was grepped reader-less (see the defaults note at the top of
     # this file), and a row with no template and no config serves nobody.
-    # Rows on existing installs are inert history (collapse policy: ADOPT).
+    # Rows on existing installs are inert history (collapse policy: RETIRE —
+    # they carry no code default, so there is nothing to compare against).
     # Scope policy (servers/scopes.py) — config-only. Per-dimension modes
     # (open/scoped/isolated) + per-value overrides; 'scoped' everywhere is
     # the behavior-neutral default (the LAF lane is unfitted, isolation is
