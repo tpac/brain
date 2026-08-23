@@ -91,7 +91,7 @@ def _generate_remember_schema():
             "• `situation` is the single biggest lever for recall — write as "
             "\"When [doing X] and [Y happens]\". A vague situation means the node "
             "only surfaces for exact-match queries.\n"
-            "• `user_raw_quote` and `anchor_raw_quote` capture meaning that "
+            "• `their_raw_quote` and `my_raw_quote` capture meaning that "
             "paraphrasing loses. Use them when the operator's or your own exact "
             "words carry the principle.\n"
             "• To link a node as a correction of another, use `connect_to` "
@@ -466,7 +466,7 @@ def _build_tools():
      "inputSchema": {"type": "object", "properties": {
          "query": {"type": "string", "description": "Search query (semantic, not keyword)"},
          "node_id": {"type": "string", "description": "Look up a specific node by ID (skip search)"},
-         "filter": {"type": "object", "description": "Dict filter on node/metadata fields. Examples: {\"type\": {\"in\": [\"moment\"]}} or {\"anchor_raw_quote\": {\"exists\": true}} or {\"content\": {\"contains\": \"Anchor\"}}. Operators: exists, equals, in, contains, gte, lte. Node columns checked on result, other keys checked in metadata."},
+         "filter": {"type": "object", "description": "Dict filter on node/metadata fields. Examples: {\"type\": {\"in\": [\"moment\"]}} or {\"my_raw_quote\": {\"exists\": true}} or {\"content\": {\"contains\": \"Anchor\"}}. Operators: exists, equals, in, contains, gte, lte. Node columns checked on result, other keys checked in metadata."},
          "limit": {"type": "integer", "description": "Max results (default 8)", "default": 8},
          "neighbor_limit": {"type": "integer", "description": "Max neighbor nodes to include (default 3)", "default": 3}}}},
     _generate_remember_schema(),
@@ -743,7 +743,7 @@ def _build_tools():
          "version": {"type": "integer", "description": "Specific version (default 0 = currently-active version)", "default": 0}}}},
 
     {"name": "register_interaction",
-     "description": "Register a new version of an interaction (prompt template + config). Creates version N+1 if the interaction exists, or version 1 if new. **Does NOT activate** the new version — call set_interaction_active to flip the runtime pointer. Exception: version 1 (first registration of a name) auto-activates. Used to evolve learnable boundaries — surface prompts, encoder prompts, community enrichment, etc.",
+     "description": "Register a new version of an interaction (prompt template + config). Creates version N+1 if the interaction exists, or version 1 if new. **NEVER activates** — every name runs on its code default until set_interaction_active deploys an override. Used to evolve learnable boundaries — surface prompts, encoder prompts, community enrichment, etc.",
      "inputSchema": {"type": "object", "required": ["name"], "properties": {
          "name": {"type": "string", "description": "Interaction name (e.g. 's2_community_enrichment', 'surface', 'encoding_agent')"},
          "template": {"type": "string", "description": "The prompt/template text. This is the learnable content."},
@@ -756,6 +756,11 @@ def _build_tools():
          "name": {"type": "string", "description": "Interaction name (e.g. 'surface', 's1e')"},
          "version": {"type": "integer", "description": "Version number to activate. Must already be registered."},
          "set_by": {"type": "string", "description": "Who flipped the pointer (default 'anchor')"}}}},
+
+    {"name": "clear_interaction_override",
+     "description": "Delete the active pointer for an interaction — revert to the code default, immediately (TTL caches invalidated). The inverse of set_interaction_active: 'no pointer' means 'no override deployed'. Registered versions stay on record for re-activation. Reports distinctly whether a pointer was cleared or none existed; refuses a name that has neither a pointer nor a code default (typo guard).",
+     "inputSchema": {"type": "object", "required": ["name"], "properties": {
+         "name": {"type": "string", "description": "Interaction name (e.g. 'surface', 's1e')"}}}},
 
 
     # ── Daemon control ──

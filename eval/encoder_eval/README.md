@@ -33,7 +33,6 @@ AND answer correctness. Divergences are diagnostic.
 eval/encoder_eval/
 ├── __init__.py
 ├── README.md            — this file
-├── version_pinner.py    — set_interaction_active context mgr (s1e v19/v21/v22)
 ├── quality_probes.py    — 6 encoding-quality probes
 ├── harness.py           — per-(version, item) driver, composes longmem pieces
 ├── runner.py            — CLI entry with staged checkpointed execution
@@ -52,15 +51,16 @@ metric value(s) plus evidence (node ids, snippets) for failure attachment.
 | `probe_source_refs_coverage` | What % of nodes carry `source_refs`? Distribution of refs/node. Sparseness violations (>5). Hex-format failures. | D25, D26, D33 |
 | `probe_atomization_shape` | How many nodes per turn? Bundled (1 node covers 5 turns) vs atomized? | D3 |
 | `probe_edge_structure` | Typed `connect_to` counts by relation. Auto `co_anchored` counts. Aspect distribution. `related_to` overuse. | D20-D24, D27 |
-| `probe_voice_balance` | Per-node user_raw_quote / anchor_raw_quote presence. Symmetry on identity/correction-typed nodes. | D5, D7, D14 |
+| `probe_voice_balance` | Per-node their_raw_quote / my_raw_quote presence. Symmetry on identity/correction-typed nodes. | D5, D7, D14 |
 
 ## The pipeline
 
 Per (version, item) cell:
 
-1. **Pin version** — `version_pinner.S1eVersion(v).__enter__()` calls
-   `set_interaction_active` and captures the prior. Restored on exit even
-   if the body raises.
+1. **Override the prompt** — `tests.interaction_override.interaction_override(
+   brain, 's1e', template=...)` registers + activates the arm's prompt in the
+   EVAL brain and clears the pointer on exit, even if the body raises. The
+   arm's K is compared on `brain.get_interaction_stamp('s1e')['fingerprint']`.
 2. **Fresh brain** — `eval/longmem/fresh_brain.create_fresh_eval_brain(qid)`
    makes an isolated per-item DB at `~/AgentsContext/brain-eval-{run}/{qid}/`.
 3. **Replay haystack** — `eval/longmem/replay.replay_item(brain, ...)`

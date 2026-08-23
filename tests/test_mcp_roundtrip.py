@@ -815,10 +815,41 @@ class TestMCPRoundTrip(BrainTestBase):
         self._dispatch("register_interaction", {
             "name": "roundtrip_get_probe", "template": "PROBE TEMPLATE BODY",
             "parameters": "{}", "created_by": "roundtrip_test"})
+        # Registration never activates — deploy v1 so there is an active row.
+        self._dispatch("set_interaction_active", {
+            "name": "roundtrip_get_probe", "version": 1,
+            "set_by": "roundtrip_test"})
         result = self._dispatch("get_interaction", {"name": "roundtrip_get_probe"})
         self.assertIsInstance(result, dict)
         self.assertEqual(result.get("name"), "roundtrip_get_probe")
         self.assertEqual(result.get("template"), "PROBE TEMPLATE BODY")
+
+    def test_clear_interaction_override(self):
+        """clear_interaction_override deletes the pointer, reports 'cleared'
+        vs 'no pointer existed' distinctly, and refuses typo'd names."""
+        # A deployed non-registry name (the legacy-cleanup path): the delete
+        # succeeds regardless of the code-default registry.
+        self._dispatch("register_interaction", {
+            "name": "roundtrip_clear_probe", "template": "OVERRIDE BODY",
+            "parameters": "{}", "created_by": "roundtrip_test"})
+        self._dispatch("set_interaction_active", {
+            "name": "roundtrip_clear_probe", "version": 1,
+            "set_by": "roundtrip_test"})
+        result = self._dispatch("clear_interaction_override",
+                                {"name": "roundtrip_clear_probe"})
+        self.assertIs(result.get("cleared"), True)
+
+        # A registry name with no pointer: distinct "already on the default".
+        again = self._dispatch("clear_interaction_override", {"name": "s1e"})
+        self.assertIs(again.get("cleared"), False)
+        self.assertIn("code default", again.get("note", ""))
+
+        # A typo'd name (nothing deleted, no code default): refused, never
+        # a benign success.
+        raw = dispatch_command(self.brain, "clear_interaction_override",
+                               {"name": "trace_recoding"}, [])
+        self.assertIs(raw.get("ok"), False)
+        self.assertIn("unknown interaction", raw.get("error", ""))
 
     def test_register_interaction(self):
         """register_interaction adds a new interaction version."""
@@ -829,10 +860,11 @@ class TestMCPRoundTrip(BrainTestBase):
             "created_by": "roundtrip_test",
         })
         self.assertIsInstance(result, dict)
-        # Should return version info (registered_version since 2026-05-10)
-        self.assertTrue(
-            'registered_version' in result or 'version' in result or 'name' in result,
-            f"Expected version info in result, got: {result}")
+        self.assertEqual(result.get('registered_version'), 1)
+        # Registration NEVER activates — the door must report that honestly,
+        # not tell the operator its write is live.
+        self.assertIsNone(result.get('active_version'))
+        self.assertIn('did NOT activate', result.get('note', ''))
 
     def test_set_interaction_active(self):
         """set_interaction_active flips the active version pointer."""

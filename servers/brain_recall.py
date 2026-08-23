@@ -173,7 +173,7 @@ def _apply_filter(nodes: list, filter_dict: dict, conn) -> list:
 
     Filter format:
         {"type": {"in": ["moment", "reflection"]}}
-        {"anchor_raw_quote": {"exists": True}}
+        {"my_raw_quote": {"exists": True}}
         {"content": {"contains": "Anchor"}}
         {"confidence": {"gte": 0.9}}
         {"locked": {"equals": 1}}
@@ -1117,7 +1117,7 @@ class BrainRecallMixin:
             query: Search query
             filter: Dict filter on node/metadata fields. Examples:
                 {"type": {"in": ["moment", "reflection"]}}
-                {"anchor_raw_quote": {"exists": True}}
+                {"my_raw_quote": {"exists": True}}
                 {"content": {"contains": "Anchor"}}
                 {"confidence": {"gte": 0.9}}
             limit: Max results
@@ -1246,6 +1246,17 @@ class BrainRecallMixin:
                 oldest = min(self._recall_cache,
                              key=lambda k: self._recall_cache[k][1])
                 del self._recall_cache[oldest]
+
+    def _recall_cache_purge(self) -> None:
+        """Drop every cached recall result — called by
+        Brain.invalidate_interaction_caches when a recall-shaping interaction
+        (recall_laf, recall_query_expansion) flips or clears. The dedup key
+        carries no config fingerprint, so without the purge an identical query
+        re-asked within the TTL returns the pre-flip result verbatim."""
+        if not hasattr(self, '_recall_cache'):
+            return
+        with self._recall_cache_lock:
+            self._recall_cache.clear()
 
     def _recall_inflight_acquire(self, key):
         """Return (future, is_leader). Lazy-inits inflight state on first call.

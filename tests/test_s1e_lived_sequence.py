@@ -5,10 +5,15 @@ Verifies the A/B flag's two arms (docs/S1-SCRIBE-REDESIGN.md §10.3.1):
   - ON  → the XML lived sequence (messages + tool actions interleaved), read via
           the existing recall_episodes door, grouped into turns by timestamp.
 
+Both the renderer alone and the ASSEMBLED body (through _build_user_content, where
+the <timeline> wrapper and its `now=` stamp are added) — a renderer that works but
+assembles into an empty shell is the gap the wrapper-only checks can't see.
+
 No DB needed — a tiny stub brain feeds the readers the controlled inputs.
 """
 import os
 import sys
+from datetime import datetime, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -16,7 +21,7 @@ if ROOT not in sys.path:
 
 from servers.scales.s1.encode import (  # noqa: E402
     _render_markdown_timeline, _render_lived_sequence_timeline,
-    _lived_sequence_enabled, _xml_escape,
+    _lived_sequence_enabled, _xml_escape, _build_user_content,
 )
 
 
@@ -130,6 +135,67 @@ def test_lived_sequence_window_matches_control_turn_count():
     out = _render_lived_sequence_timeline(brain, 'sess', MESSAGES)
     assert out.count('<turn n="') == 2          # trimmed to control's 2 turns
     assert 'old turn' not in out                # the oldest turn dropped
+
+
+# ── the assembled body (_build_user_content wraps + stamps the render) ──
+
+_NOW = datetime(2026, 6, 29, 14, 5, tzinfo=timezone.utc)   # 14h after the fixtures
+
+
+def _assembly_brain():
+    """_StubBrain + the three doors _build_user_content knocks on beyond the
+    renderer (continuity notes, session arc, failed-encode residue), all empty
+    — so the assembled body is the timeline section alone."""
+    brain = _StubBrain(EPISODES)
+    brain.journal_notes = lambda **kw: []
+    brain.session_context_for = lambda sid: ''
+    brain.query_traces = lambda **kw: {'events': []}
+    return brain
+
+
+def _assemble(view_now):
+    # precomputed=('', set(), None) skips _build_catalog — the catalog has its own
+    # tests; this one is about the timeline surviving assembly.
+    _pre, body, _cat, _ids = _build_user_content(
+        _assembly_brain(), MESSAGES, counter=2, session_id='sess',
+        lived_sequence=True, precomputed=('', set(), None),
+        view_policy=True, view_now=view_now)
+    return body
+
+
+def test_assembled_body_stamps_timeline_and_carries_the_render():
+    # The stamp (view policy): the absolute anchor that makes the relative `age=`
+    # labels invertible. Deterministic here — view_now is passed, not derived.
+    body = _assemble(_NOW)
+    assert '<timeline now="2026-06-29 14:05 UTC">' in body
+
+    # …and the render must be INSIDE that wrapper. An empty <timeline></timeline>
+    # (assembly dropping the render) satisfies a wrapper-only check but fails here.
+    inner = body.split('<timeline now="2026-06-29 14:05 UTC">')[1].split('</timeline>')[0]
+    assert inner.count('<turn n="') == 2
+    assert '<turn n="1" age="14h ago" encoded="false">' in inner
+    assert '<turn n="2" age="14h ago" encoded="false">' in inner
+    # full metadata['content'] survives assembly, not the 200-char summary
+    assert '<other trace="u1">the recall keeps locking — can you check the ' \
+           'wal-index path?</other>' in inner
+    assert '<me trace="a1">found it — the bg writer holds the lock through the ' \
+           'whole batch</me>' in inner
+    # tool actions survive too, each in its own turn
+    t1, t2 = inner.split('<turn n="2"')
+    assert 'Edit: servers/dal.py' in t1 and 'Bash: pytest test_write_txn.py' in t2
+
+
+def test_assembled_timeline_degrades_to_bare_tag_when_unstampable():
+    # No conversation time resolvable (stub brain has no session machinery, so
+    # _conversation_now_safe yields None) → the stamp and the per-turn ages drop,
+    # but the timeline still renders. A degraded render, never a broken one —
+    # this is why bare-'<timeline>' checks elsewhere still pass.
+    body = _assemble(None)
+    assert '<timeline>' in body and 'now=' not in body and 'age=' not in body
+    inner = body.split('<timeline>')[1].split('</timeline>')[0]
+    assert inner.count('<turn n="') == 2
+    assert '<turn n="1" encoded="false">' in inner
+    assert 'Edit: servers/dal.py' in inner
 
 
 def test_markdown_control_arm_unchanged():

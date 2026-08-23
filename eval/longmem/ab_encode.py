@@ -9,7 +9,7 @@ encoded, side by side, with the ACTUAL full prompts captured (not a rebuild):
 The arms are COUPLED by design (the v-next prompt describes the lived input
 structures P1–P4 produce), so we flip the flag AND the prompt together — never
 one without the other. Prompt injection lands in the EVAL brain only; the live
-daemon's s1e is never mutated (unlike the legacy diff_encoding.register_prompt).
+daemon's s1e is never mutated.
 
 Usage:
   ./dev python3 eval/longmem/ab_encode.py --qids Q1 Q2 \\
@@ -31,6 +31,8 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from tests.interaction_override import override_interaction
+
 
 def fetch_prompt(version: int) -> tuple:
     """Read s1e@version from the live daemon (READ-ONLY). Returns (template, parameters)."""
@@ -45,20 +47,13 @@ def fetch_prompt(version: int) -> tuple:
 def inject_prompt(brain, template: str, parameters: str) -> int:
     """Register `template` into the EVAL brain and make it active. Returns the
     eval-brain version. Never touches the daemon."""
-    reg = brain._interaction_dal.register(
-        's1e', template=template, parameters=parameters or '',
-        created_by='ab_encode:injected')
-    ver = reg['version'] if isinstance(reg, dict) else reg
-    brain.set_interaction_active('s1e', ver, set_by='ab_encode')
-    # Confirm the runtime read path returns what we injected.
-    active = brain.get_interaction('s1e')
-    assert active and active.get('template') == template, \
-        "injection failed: active s1e template != injected"
-    return ver
+    return override_interaction(brain, 's1e', template=template,
+                                parameters=parameters or None,
+                                set_by='ab_encode:injected')
 
 
 def dump_nodes(brain) -> list:
-    """Non-seed nodes with key fields (from diff_encoding, kept local)."""
+    """Non-seed nodes with key fields."""
     rows = brain.conn.execute("""
         SELECT n.id, n.type, n.title, n.content, n.encoding_source
         FROM nodes n
@@ -174,9 +169,9 @@ def run_assertions(brain, arm: str, question: str, cap_files: list,
                              for b in m.get("content", []) if isinstance(b, dict))
             cat_ok = "<node_catalog>" in body and "Node Catalog" in body
             prov_ok = "encoded(S1S)" in body or "surfaced:" in body
-            tl_ok = "<timeline>" in body and "<turn" in body
+            tl_ok = "<timeline" in body and "<turn" in body   # view policy stamps now="…"
             a["lived_catalog_populated"] = (cat_ok, "widened <node_catalog> present in last prompt")
-            a["lived_timeline_xml"] = (tl_ok, "<timeline>/<turn> XML present")
+            a["lived_timeline_xml"] = (tl_ok, "<timeline …>/<turn …> XML present")
             a["lived_provenance_present"] = (prov_ok, "<provenance> carried a real ref (soft — needs 2+ encodes)")
         except Exception as e:
             a["lived_catalog_populated"] = (False, "capture read failed: %s" % e)

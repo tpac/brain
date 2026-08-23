@@ -14,7 +14,7 @@ Living record of what happened when we moved this design out of the doc and into
 
 **Episodic-references substrate is end-to-end live in production.** v22 active since `2026-05-26T00:46:54Z` (commit `c144ddf`).
 
-- **Step 6** — encoder prompt v22 (commit `c144ddf`). Five additive changes over v21: (1) `[trace:<hex>]` marker convention in "Reading the conversation"; (2) §7.4 "Anchoring nodes in the substrate" — full prose with three patterns (Pure synthesis / Anchored synthesis / Pure reference) + the one judgment rule; (3) §7.5 sparseness discipline (1-3 typical, second-guess at 5-6); (4) revise() REPLACE semantics for source_refs (present REPLACES, absent PRESERVES, empty list CLEARS); (5) source_refs analog to the user_raw_quote interpret/expand rule. Three Sonnet probes (cold-read interpretation, live encoding simulation, comparative audit) validated the prose before registration. Activated after the 50-cell longmem eval.
+- **Step 6** — encoder prompt v22 (commit `c144ddf`). Five additive changes over v21: (1) `[trace:<hex>]` marker convention in "Reading the conversation"; (2) §7.4 "Anchoring nodes in the substrate" — full prose with three patterns (Pure synthesis / Anchored synthesis / Pure reference) + the one judgment rule; (3) §7.5 sparseness discipline (1-3 typical, second-guess at 5-6); (4) revise() REPLACE semantics for source_refs (present REPLACES, absent PRESERVES, empty list CLEARS); (5) source_refs analog to the their_raw_quote interpret/expand rule. Three Sonnet probes (cold-read interpretation, live encoding simulation, comparative audit) validated the prose before registration. Activated after the 50-cell longmem eval.
 - **Step 7** — co_anchored auto-edge in dispatch (commit `07ab3f1`). Decision 15 wired: when `brain.remember()` or `brain.revise()` persists source_refs, the dispatcher queries `node_source_refs(trace_id)` for siblings sharing any ref and writes structural `co_anchored` edges via `GraphDAL.add_relation`. Excluded from candidate cosine ranking (same pattern as `co_accessed`). Sparse refs × small cohort → negligible cost. Skip-self handled; deduped across multiple refs per node. 5 new co_anchored tests pass.
 - **Layer 1 validator extensions** (commit `07ab3f1`). Two soft-warn additions in `daemon_dispatch.py`:
   - `_maybe_warn_source_refs_hex_format`: rate-limited warn when any ref fails `^[0-9a-f]{8}$` (reviewer F6, closed).
@@ -49,7 +49,7 @@ Forensic probes on `c2ac3c61` (multi_session precision-refinement) identified th
 - quote_scout v3: new Skip bullet ("routine factual claims = facts scout's territory")
 
 **Cycle 2 — v24 / facts v7 / quote v4 (post-probe refined, DORMANT)**:
-- s1e v24: "originating phrase" disambiguated to "originating turn's verbatim phrasing stays in user_raw_quote — keep the vague phrase; don't overwrite with the refined wording"
+- s1e v24: "originating phrase" disambiguated to "originating turn's verbatim phrasing stays in their_raw_quote — keep the vague phrase; don't overwrite with the refined wording"
 - facts_scout v7: Cap statement preserves "recall-weight" framing (not strict exclusion rules) + refinement-pair clarifier
 - quote_scout v4: appended mixed-content handling ("isolate the distinctive phrase as the handle; don't quote the factual setup")
 
@@ -65,7 +65,7 @@ Forensic probes on `c2ac3c61` (multi_session precision-refinement) identified th
 - Option B: Re-run `gpt4_d31cdae3` against v24 ×3 to distinguish stochastic vs. deterministic regression. ~15 min, ~$2.
 - Option C: Leave DORMANT, accumulate more eval evidence.
 
-**Reusable evaluator pattern**: `apply_interaction_override(brain, name, template)` — works for any interaction, not just s1e. Implemented in `eval/encoder_eval/targeted_v24_eval.py`. Future version comparisons can override any combination of s1e + scouts in fresh eval brains without touching production daemon state.
+**Reusable evaluator pattern**: `override_interaction(brain, name, template=...)` — works for any interaction, not just s1e. Lives in `tests/interaction_override.py` (consolidated there 2026-08-22; the per-eval copies are gone), with `interaction_override(...)` as the self-reverting context-manager form. Future version comparisons can override any combination of s1e + scouts in fresh eval brains without touching production daemon state.
 
 ### What shipped — Phase B Steps 0+0.5+1+2+3+4 (2026-05-25 mid-day)
 
@@ -192,7 +192,7 @@ Locked decisions from the design conversation. Each is one line + WHY. New decis
 
     a. **Embedding: CONCRETE tokens** (`Tom`, `Anchor`, future partner names) — NOT abstract role labels. Concept cells in human MTL (Quian Quiroga 2005, Neuron 2026) are sparse, modality-invariant pointers to *specific individuals* that stay stable across context — that's where identity coherence comes from. Roles (`operator`, `partner`) live in a separate mPFC system and bind via edges. Abstract `OPERATOR` slot at embedding actively breaks the stability it was meant to provide (slot meaning changes when partners change). New partners enter as new concrete tokens at first encounter; old tokens stay intact in the embedding neighborhood.
 
-    b. **Display: ASYMMETRIC** — first-person for Anchor's narrated turns ("I noticed...", "I said..."), labeled third-person for operator turns ("Tom said..."). This is the field perspective (DMN/mPFC self subsystem) tied to self-continuity and integration. Observer perspective ("ANCHOR: ...") is tied to depersonalization and identity fragmentation. Carve-outs: `user_raw_quote` / `anchor_raw_quote` stay verbatim and labeled (source-memory anchors); correction turns stay tagged ("Tom corrected: ..." — source attribution here is catastrophic to lose); very old / cross-partner episodes may want observer mode in future (age-graded rendering, not v1).
+    b. **Display: ASYMMETRIC** — first-person for Anchor's narrated turns ("I noticed...", "I said..."), labeled third-person for operator turns ("Tom said..."). This is the field perspective (DMN/mPFC self subsystem) tied to self-continuity and integration. Observer perspective ("ANCHOR: ...") is tied to depersonalization and identity fragmentation. Carve-outs: `their_raw_quote` / `my_raw_quote` stay verbatim and labeled (source-memory anchors); correction turns stay tagged ("Tom corrected: ..." — source attribution here is catastrophic to lose); very old / cross-partner episodes may want observer mode in future (age-graded rendering, not v1).
 
     c. **Frame→display mechanic: pointer verbatim, thin reconstructive layer above when partner-state differs.** Render reads identity from `trace_events.metadata` as source of truth. Frame carries `current_partner` / `current_agent` context, assembled at boot from config (§4.6). When trace identity == current → render naturally ("Tom said..."). When they differ → prepend reconstructive frame ("Tom, your operator at the time, said...") so old memories stay readable across partner changes without rewriting the pointer. Identity reconstruction sits on top of the verbatim pointer; the pointer never gets overwritten (matches Schacter constructive memory + per-utterance binding stickiness).
 
@@ -234,7 +234,7 @@ Run those two mechanisms over time and the brain produces *the visible shape of 
 | Product | What it is | Where it lives in Anchor today |
 |---|---|---|
 | **Theory of mind** | Anchor's evolving model of who the other is — situation, interests, emotional patterns | `personal_context`, `active_thread`, `interest` nodes |
-| **Preferences** | Patterns about how they do things | `preference` nodes; style markers carried in `user_raw_quote` |
+| **Preferences** | Patterns about how they do things | `preference` nodes; style markers carried in `their_raw_quote` |
 | **Correction record** | What got fixed across exchanges | `correction` type + corrects-aspect edges |
 | **Shared vocabulary** | Inside-references and terms-of-art that mean something specific between them | Cross-node semantic atoms with mutual references; emerges over time |
 | **Affinity-weighted recall** | Differential attention manifested at retrieval — some memories surface more | `co_access_count`, `critical`, `locked`, recency, emotional metadata |
@@ -872,7 +872,7 @@ connect_to: [
 
 **Fields where literal values are OK**:
 - `title`, `content`, `situation`, `reasoning` of the example node being created
-- `user_raw_quote`, `anchor_raw_quote` — verbatim discipline is the teaching itself
+- `their_raw_quote`, `my_raw_quote` — verbatim discipline is the teaching itself
 - `event_time` — illustrates the temporal anchoring shape
 
 Full convention in `servers/scales/s1/quality_contract.py::EXAMPLE_AUTHORING_CONVENTIONS`.
@@ -904,7 +904,7 @@ Each scenario gets a full worked example showing: input window with `[trace:N]` 
 
 **D. Patterns about discipline**:
 
-11. **Style marker / preference** — a phrase like *"without forcing it"* anchored to its turn with `user_raw_quote` + a single source_ref. Demonstrates the discipline of phrase-level + turn-level co-existence (§12.7).
+11. **Style marker / preference** — a phrase like *"without forcing it"* anchored to its turn with `their_raw_quote` + a single source_ref. Demonstrates the discipline of phrase-level + turn-level co-existence (§12.7).
 12. **Sparse vs. dense anchoring** — contrasting good (3 specific refs each anchoring a distinct aspect) vs. bad (10 vague refs to "everything related") for the same node. Demonstrates decision 13 in the wild.
 
 **E. Patterns about retrieval-time behavior** (encoder's mental model of what surface returns):
@@ -928,7 +928,7 @@ Concrete delete + modify list with line targets so execution applies edits mecha
 | L242-265 (Atomization: the retrieval-divergence test) | Keep, but immediately followed by the new "Anchoring nodes in the substrate" subsection (§7.4) | **No delete** — atomization rule is still right; source_refs complement it (atomization decides between 1-vs-3 nodes; source_refs decide between content-vs-pointer for any chosen node). |
 | L98-129 (Corrections / contradictions block, four flavors) | All four flavors stay (explicit correction, catalog contradiction, stale value, live contradiction) | **Modify** — add a closing paragraph about source_refs lineage for cases that earn new correction nodes (decision 17). Don't disturb the four flavors themselves. |
 | L267-307 (Flat → Rich examples) | Four worked examples | **Modify** — augment 1-2 of these with source_refs to demonstrate the new field in context. Full text in §7.6. |
-| L194-202 (`content INTERPRETS or EXPANDS the quote`) | Frames `user_raw_quote` as the verbatim anchor that content interprets | **Modify** — extend: source_refs now provides the same role at the trace level; user_raw_quote stays for phrase-level, source_refs adds turn-level. Both coexist; not redundant. |
+| L194-202 (`content INTERPRETS or EXPANDS the quote`) | Frames `their_raw_quote` as the verbatim anchor that content interprets | **Modify** — extend: source_refs now provides the same role at the trace level; their_raw_quote stays for phrase-level, source_refs adds turn-level. Both coexist; not redundant. |
 | Throughout (encoder-input docs) | The encoder reads catalog + conversation + scout reports | **Modify** — add note that each turn shows its `trace:NNNNN` id, and that ids are what get copied into source_refs (§6.5). |
 
 **Things explicitly NOT removed:**
@@ -936,7 +936,7 @@ Concrete delete + modify list with line targets so execution applies edits mecha
 - The "Default brevity instincts" callout block (still valid).
 - The scout-deference / paraphrase / skip-when-unsure callouts (still valid).
 - The four Flat→Rich transformations (augment, don't replace).
-- The `user_raw_quote` / `anchor_raw_quote` discipline (still load-bearing — phrase-level anchoring is finer-grained than turn-level refs and serves different purposes).
+- The `their_raw_quote` / `my_raw_quote` discipline (still load-bearing — phrase-level anchoring is finer-grained than turn-level refs and serves different purposes).
 
 ### 7.8 — Coordination with §7.6
 
@@ -1312,11 +1312,11 @@ This stays simple in v1. If a future S2 unit needs to anchor in another S2 event
 
 Decision 5 corrects an earlier misreading. PostToolUse hook ([post_tool_trace.py](hooks/scripts/post_tool_trace.py)) writes each tool call as its own `trace_event` row today (decision 353135fa). Tool calls are first-class addressable trace events from day one. No Phase 2 work needed.
 
-### 12.7 — Co-existence with `user_raw_quote` / `anchor_raw_quote`
+### 12.7 — Co-existence with `their_raw_quote` / `my_raw_quote`
 
-Phrase-level anchoring (`user_raw_quote`, `anchor_raw_quote`) and turn-level anchoring (`source_refs`) coexist. They're different granularities:
+Phrase-level anchoring (`their_raw_quote`, `my_raw_quote`) and turn-level anchoring (`source_refs`) coexist. They're different granularities:
 
-- `user_raw_quote: "without forcing it"` — verbatim phrase from a turn, embedded directly on the node, used for tight quote-matching at recall
+- `their_raw_quote: "without forcing it"` — verbatim phrase from a turn, embedded directly on the node, used for tight quote-matching at recall
 - `source_refs: [trace_of_t4]` — the whole turn pointed at, with the surrounding context preserved
 
 Both contribute to recall. The encoder can use just one, the other, or both. Section 7's prompt updates teach the relationship.

@@ -1006,7 +1006,7 @@ Re-ran `reach_matrix.py` with graph-1hop typed — excluding the 9 `noise`-aspec
 third of its total) ran through `noise` edges. **Vindicates `d1d1a90c`** (co_accessed excluded *because* it floods).
 De-noised, **graph-1hop is reach-REDUNDANT (0 unique)** — its 16 golds are all reached by fields/FTS too.
 
-**Corrected reach picture:** the ONLY unique-reach signals are **FTS (2), title (1), user_raw_quote (1)**. Every
+**Corrected reach picture:** the ONLY unique-reach signals are **FTS (2), title (1), their_raw_quote (1)**. Every
 field-vector AND typed-graph = 0 unique → mutually redundant FOR REACH. Read-side reach saturates ~54–58% union on
 a *handful* of complementary signals (`_primary` + FTS + title/voice); the ~42% residual (e.g. `6a964255`) no
 read-signal reaches → encode-gap / next-move (§16's 14%+22%, out of read-scope). **episodic STILL 0 coverage**
@@ -1342,7 +1342,7 @@ activation reaching each gold (pooled 98 nodes, **4/4-slice convergence** on the
 - **`cos_outcome` — 65%, PREDICTOR-GATED.** The gold is the *answer the move concludes*, cosine-near the OUTCOME, not the cue
   (only ~28% are *truly* gated — most have a realizable rescue). This is "recall is prediction" quantified (`ca840441`).
 - Realizable rescues: **`cos_cue`-SEGMENT × multi-field** (segment the cue — the long-anchor blob dilutes; match non-content
-  fields like `anchor_raw_quote`/`title`); **graph typed-1hop from a cosine seed** (the edge `why` text often IS the need);
+  fields like `my_raw_quote`/`title`); **graph typed-1hop from a cosine seed** (the edge `why` text often IS the need);
   **`fts` rare token**; **episodic**; plus a **dedup/consolidation** meta-op (near-dup clusters steal slots).
 
 **18.21.3 — Per-field health audit** (`eval/laf/gold24_field_audit.py`; invariants hold: MaxSim ≥ its groups, `_primary` ==
@@ -2389,9 +2389,10 @@ old per-item near-ceiling setup (94.4% recall-conditional).
    number of gain tables for ~free.
 5. **Leg B — engine path**: turn-by-turn real `brain.recall` with the flag on, as-of cut
    at each cue (§20.11); arms applied via the eval platform's EXISTING interaction-override
-   mechanism (`_apply_interaction_override` / the sweep `--surface-params` pattern
-   generalized to any interaction, ~10 lines) — **arms = registered config JSONs, zero
-   arm-specific harness code**, and the same switch Stage-3 would flip in production.
+   mechanism (`tests.interaction_override.override_interaction`, which generalizes to any
+   interaction — the generalization this section asked for landed 2026-08-22) — **arms =
+   registered config JSONs, zero arm-specific harness code**, and the same switch Stage-3
+   would flip in production.
    Surfaced-context capture/compare via `frame_replay.py` (the §20.17 G3 tool). QA leg =
    `sweep.py`/`judge.py`/`report.py`/`compare_arms.py` untouched.
 

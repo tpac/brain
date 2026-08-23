@@ -217,7 +217,7 @@ behavior change yet, and no leak (spread's `get_connections_bulk` defaults
 Phase 1 CODE COMPLETE (`ae6e7d8d`, branch `claude/absorbed-into-ae6e7d8d`):
 `absorbed_into` written in `archive_node` gated on `extra['survivor_id']` (single
 chokepoint) + step-3 reaper exemption + aspect SEED + voice merge-append
-(distinct `user_raw_quote`/`anchor_raw_quote` → appended, not survivor-wins-drop).
+(distinct `their_raw_quote`/`my_raw_quote` → appended, not survivor-wins-drop).
 26 tests green. Pairs with the dangling-edge-reaper exemption (`4c971da`, main).
 **Everything stays INERT until a deliberate daemon restart** (writers + reaper
 exemption go live together; backfill must be RE-RUN after, since the old-code
@@ -260,7 +260,7 @@ recovery artifact, delete `_sys_archived_*` keys, no stamping bug).
    - Fold in the **voice fix** here (independent of `bc34734d` — that was a
      stream/session id that filed a *finding*, never a commit; implement fresh):
      in absorb's metadata fill (`brain_remember.py` ~442-445), merge-append
-     distinctive `user_raw_quote`/`anchor_raw_quote` from the absorbed peer
+     distinctive `their_raw_quote`/`my_raw_quote` from the absorbed peer
      instead of survivor-wins-drop; + a voice-preservation rule in
      `consolidation_enrichment_prompt` parallel to the numbers/dates rule.
 2. **Backfill — remaining + census.** DONE: 216 clean 1-hop archived→live.

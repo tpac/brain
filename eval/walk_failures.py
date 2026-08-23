@@ -55,8 +55,8 @@ def _find_gold_in_nodes(nodes, gold_terms):
         content = n.get('content','') or ''
         kv = n.get('kv') or {}
         blob = ' '.join([title, content,
-                          kv.get('anchor_raw_quote',''),
-                          kv.get('user_raw_quote',''),
+                          kv.get('my_raw_quote',''),
+                          kv.get('their_raw_quote',''),
                           kv.get('situation',''),
                           kv.get('reasoning','')]).lower()
         tokens = set(re.findall(r"[a-z0-9$.]+", blob))

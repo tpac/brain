@@ -58,6 +58,7 @@ from q1_sweep import (GAINS, load, gate_provenance, configs,        # noqa: E402
 from moment_influence import turn_fields                            # noqa: E402
 from reach_leg import rank_rows, TEXT_CAP                           # noqa: E402
 from tests.isolated_brain import IsolatedBrain                       # noqa: E402
+from tests.interaction_override import override_interaction          # noqa: E402
 
 SLOTS = (('op', 0), ('op', 1), ('anchor', 1), ('op', 2), ('anchor', 2))
 LANES = ('maxsim', 'sit', 'idf', 'pick', 'enc')   # lane_cache axis order
@@ -141,16 +142,11 @@ def main():
         # the carrier of fitted gains — wholesale replacement would wipe a
         # corpus brain's gains to module defaults and let base-parity pass
         # against a config that brain never ran (review 2026-07-21).
-        stored_cfg = env.brain.get_interaction_config('recall_laf') or {}
-        if stored_cfg.get('z_norm') != 'support':
-            merged = dict(stored_cfg)
-            merged['z_norm'] = 'support'
-            r = env.brain._interaction_dal.register(
-                name='recall_laf', template='',
-                parameters=json.dumps(merged),
-                created_by='eval:field_cache_build')
-            env.brain.set_interaction_active(
-                'recall_laf', r['version'], set_by='eval:field_cache_build')
+        if (env.brain.get_interaction_config('recall_laf') or {}).get(
+                'z_norm') != 'support':
+            override_interaction(env.brain, 'recall_laf', template='',
+                                 parameters={'z_norm': 'support'}, merge=True,
+                                 set_by='eval:field_cache_build')
         n = eng._n
         master_hash = hashlib.sha256(
             ('|'.join(eng._master[:n])).encode()).hexdigest()[:16]

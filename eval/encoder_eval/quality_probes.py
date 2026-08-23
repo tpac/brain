@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 def _live_nodes(brain, encoder_only: bool = True) -> List[Dict[str, Any]]:
     """Return non-archived nodes with their kv-metadata (situation, reasoning,
-    user_raw_quote, anchor_raw_quote) attached.
+    their_raw_quote, my_raw_quote) attached.
 
     Nodes table holds the structural columns; per-node free-form fields live
     in `node_metadata_kv` (key-value rows). MetadataDAL.get_all_bulk hydrates
@@ -58,8 +58,8 @@ def _live_nodes(brain, encoder_only: bool = True) -> List[Dict[str, Any]]:
             'id': nid, 'type': ntype, 'title': title, 'content': content or '',
             'situation': meta.get('situation', '') or '',
             'reasoning': meta.get('reasoning', '') or '',
-            'user_raw_quote': meta.get('user_raw_quote', '') or '',
-            'anchor_raw_quote': meta.get('anchor_raw_quote', '') or '',
+            'their_raw_quote': meta.get('their_raw_quote', '') or '',
+            'my_raw_quote': meta.get('my_raw_quote', '') or '',
             'encoding_source': enc_source, 'created_at': created_at,
         })
     return out
@@ -116,7 +116,7 @@ def probe_brain_presence(brain, item: Dict[str, Any]) -> Dict[str, Any]:
 
     nodes = _live_nodes(brain)
     field_weights = {'title': 1.0, 'content': 0.85, 'situation': 0.70,
-                     'user_raw_quote': 0.90, 'anchor_raw_quote': 0.90,
+                     'their_raw_quote': 0.90, 'my_raw_quote': 0.90,
                      'reasoning': 0.40}
     best = {'score': 0.0}
     partials = []
@@ -189,8 +189,8 @@ def probe_specificity_preservation(brain, item: Dict[str, Any]) -> Dict[str, Any
     nodes = _live_nodes(brain)
     node_blob = '\n'.join(
         n.get(f) or '' for n in nodes
-        for f in ('title', 'content', 'situation', 'user_raw_quote',
-                  'anchor_raw_quote', 'reasoning'))
+        for f in ('title', 'content', 'situation', 'their_raw_quote',
+                  'my_raw_quote', 'reasoning'))
 
     # in-content path
     in_content = {n for n in numerics if n in node_blob}
@@ -383,7 +383,7 @@ def probe_edge_structure(brain, item: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def probe_voice_balance(brain, item: Dict[str, Any]) -> Dict[str, Any]:
-    """user_raw_quote vs anchor_raw_quote presence. Symmetry on identity /
+    """their_raw_quote vs my_raw_quote presence. Symmetry on identity /
     correction / decision types — the dims where D7 anchor_voice_symmetry
     fires hardest."""
     nodes = _live_nodes(brain)
@@ -395,14 +395,14 @@ def probe_voice_balance(brain, item: Dict[str, Any]) -> Dict[str, Any]:
                               'pattern', 'moment'}
 
     total = len(nodes)
-    with_user = sum(1 for n in nodes if (n.get('user_raw_quote') or '').strip())
-    with_anchor = sum(1 for n in nodes if (n.get('anchor_raw_quote') or '').strip())
+    with_user = sum(1 for n in nodes if (n.get('their_raw_quote') or '').strip())
+    with_anchor = sum(1 for n in nodes if (n.get('my_raw_quote') or '').strip())
 
     # Identity-bearing subset (where symmetry matters most)
     id_nodes = [n for n in nodes if n['type'] in IDENTITY_BEARING_TYPES]
     id_total = len(id_nodes)
-    id_with_user = sum(1 for n in id_nodes if (n.get('user_raw_quote') or '').strip())
-    id_with_anchor = sum(1 for n in id_nodes if (n.get('anchor_raw_quote') or '').strip())
+    id_with_user = sum(1 for n in id_nodes if (n.get('their_raw_quote') or '').strip())
+    id_with_anchor = sum(1 for n in id_nodes if (n.get('my_raw_quote') or '').strip())
 
     # Symmetry score = min/max on identity-bearing nodes — high when balanced
     if id_total == 0:
@@ -417,8 +417,8 @@ def probe_voice_balance(brain, item: Dict[str, Any]) -> Dict[str, Any]:
     return {
         'score': symmetry if symmetry is not None else 0.0,
         'total_nodes': total,
-        'with_user_raw_quote': with_user,
-        'with_anchor_raw_quote': with_anchor,
+        'with_their_raw_quote': with_user,
+        'with_my_raw_quote': with_anchor,
         'user_pct': round(with_user / total * 100, 1),
         'anchor_pct': round(with_anchor / total * 100, 1),
         'identity_bearing_total': id_total,

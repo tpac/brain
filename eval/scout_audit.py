@@ -116,8 +116,8 @@ def _check_gold_in_nodes(nodes, gold_terms):
     for n in nodes:
         title = (n.get('title') or '').lower()
         kv = n.get('kv') or {}
-        aq = (kv.get('anchor_raw_quote') or '').lower()
-        uq = (kv.get('user_raw_quote') or '').lower()
+        aq = (kv.get('my_raw_quote') or '').lower()
+        uq = (kv.get('their_raw_quote') or '').lower()
         for blob in (title, aq, uq):
             # Count contiguous gold-term hits in tokenized blob
             tokens = re.findall(r"[a-z0-9$.]+", blob)
@@ -139,8 +139,8 @@ def _check_gold_in_nodes(nodes, gold_terms):
         blob = ' '.join([
             (n.get('title') or ''),
             (n.get('content') or ''),
-            ((n.get('kv') or {}).get('anchor_raw_quote') or ''),
-            ((n.get('kv') or {}).get('user_raw_quote') or ''),
+            ((n.get('kv') or {}).get('my_raw_quote') or ''),
+            ((n.get('kv') or {}).get('their_raw_quote') or ''),
             ((n.get('kv') or {}).get('situation') or ''),
             ((n.get('kv') or {}).get('reasoning') or ''),
         ]).lower()

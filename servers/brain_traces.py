@@ -939,9 +939,9 @@ class BrainTracesMixin:
     # Gate-config TTL (seconds). Per-round/per-prompt kinds put the gate
     # lookup on every agent round and every user prompt (judge), so the
     # config read is TTL-cached (the LAFEngine.config pattern — performance
-    # charter, docs/TRACE-MODES-DESIGN.md). set_interaction_active
-    # invalidates on a `trace_recording` flip, so "entering debug" still
-    # bites on the very next write, not a TTL later.
+    # charter, docs/TRACE-MODES-DESIGN.md). Brain.invalidate_interaction_caches
+    # invalidates on a `trace_recording` flip or clear, so entering AND
+    # leaving debug bite on the very next write, not a TTL later.
     TRACE_RECORDING_CFG_TTL_S = 60.0
 
     def _trace_recording_config(self):
@@ -956,8 +956,9 @@ class BrainTracesMixin:
         return self._trace_rec_cfg
 
     def invalidate_trace_recording_cache(self):
-        """Drop the cached gate config — called by set_interaction_active
-        when the `trace_recording` pointer flips."""
+        """Drop the cached gate config — called by
+        Brain.invalidate_interaction_caches when the `trace_recording`
+        pointer flips or clears."""
         self._trace_rec_cfg = None
 
     def _payload_kind_enabled(self, kind, chain_id):

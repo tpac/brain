@@ -126,56 +126,81 @@ class EvalArtifactsDumper:
         self._write_json('meta.json', meta)
 
     def dump_interactions(self, brain) -> None:
-        """Dump every interaction version present in this brain.
+        """Dump which prompt+config every boundary actually RAN, plus every
+        registered override version present in this brain.
 
-        Captures which prompt versions the encoder/surfacer/etc. used —
-        critical for retrospective ("which version of the encoder produced
-        these nodes?").
+        Two records per line-kind, because a version dump alone answers the
+        retrospective question ("which encoder produced these nodes?") only
+        while every boundary has a row. Under the override model most names
+        have NO row and run their code default, so a rows-only dump reports
+        nothing for exactly the boundaries that did the work. `kind:
+        'effective'` carries the resolved fingerprint — the content address of
+        what ran, whether it came from a row or from code.
         """
         try:
-            rows = brain.logs_conn.execute(
-                "SELECT id, name, version, template, parameters, "
-                "created_at, created_by, parent_version "
-                "FROM interactions ORDER BY name, version"
-            ).fetchall()
+            listing = brain.list_interactions()
         except Exception as e:
             self._write_error('interactions.jsonl', e)
             return
 
         with open(self.path('interactions.jsonl'), 'w') as f:
-            for r in rows:
-                rec = {
-                    'id': r[0], 'name': r[1], 'version': r[2],
-                    'template': r[3] or '',
-                    'parameters': self._safe_json(r[4]),
-                    'created_at': r[5], 'created_by': r[6],
-                    'parent_version': r[7],
-                }
-                f.write(json.dumps(rec) + '\n')
+            from servers.interaction_defaults import INTERACTION_DEFAULTS
+            for name in sorted(INTERACTION_DEFAULTS):
+                stamp = brain.get_interaction_stamp(name)
+                f.write(json.dumps({
+                    'kind': 'effective', 'name': name,
+                    'fingerprint': stamp['fingerprint'],
+                    'source': stamp['source'],
+                    'version': stamp['version'],
+                }) + '\n')
+            for entry in listing:
+                name = entry['name']
+                for v in brain.list_interaction_versions(name):
+                    row = brain.get_interaction(name, version=v['version']) or {}
+                    f.write(json.dumps({
+                        'kind': 'version', 'name': name,
+                        'version': v['version'],
+                        'template': row.get('template') or '',
+                        'parameters': self._safe_json(row.get('parameters')),
+                        'created_at': row.get('created_at'),
+                        'created_by': v.get('created_by'),
+                        'active': entry.get('active_version') == v['version'],
+                        'active_set_by': entry.get('active_set_by'),
+                    }) + '\n')
+
+    TRACE_DUMP_LIMIT = 200000
 
     def dump_traces(self, brain) -> None:
-        """Dump every trace_event (any scale, any event_type)."""
+        """Dump every trace_event (any scale, any event_type), through the
+        trace query API — which flags truncation, where the raw dump would
+        just end.
+
+        No `interaction_id` column: it is an install-local rowid that nothing
+        JOINs, and the K-provenance it used to stand for now travels in the
+        event metadata as `interaction_fingerprint` — content-addressed, so it
+        stays meaningful in a frozen corpus where the row it pointed at is
+        gone.
+        """
         try:
-            rows = brain.logs_conn.execute(
-                "SELECT id, chain_id, scale, event_type, ref_type, ref_id, "
-                "summary, metadata, session_id, interaction_id, created_at "
-                "FROM trace_events ORDER BY id"
-            ).fetchall()
+            out = brain.query_traces(hours=None, limit=self.TRACE_DUMP_LIMIT)
         except Exception as e:
             self._write_error('traces.jsonl', e)
             return
 
+        rows = out.get('events') or []
+        if out.get('truncated'):
+            # Its own marker, not `.error`: a truncated dump is real data that
+            # stops early, and a consumer must be able to tell that from a
+            # dump that never happened. Per-item eval brains are fresh, so
+            # thousands of rows — hitting this means the dumper ran against
+            # something far bigger than one item.
+            with open(self.path('traces.jsonl.truncated'), 'w') as f:
+                f.write('trace dump hit the %d-row limit — this is a prefix '
+                        'of the run, not the run\n' % self.TRACE_DUMP_LIMIT)
+
         with open(self.path('traces.jsonl'), 'w') as f:
-            for r in rows:
-                rec = {
-                    'id': r[0], 'chain_id': r[1], 'scale': r[2],
-                    'event_type': r[3], 'ref_type': r[4], 'ref_id': r[5],
-                    'summary': r[6] or '',
-                    'metadata': self._safe_json(r[7]),
-                    'session_id': r[8], 'interaction_id': r[9],
-                    'created_at': r[10],
-                }
-                f.write(json.dumps(rec) + '\n')
+            for r in sorted(rows, key=lambda e: e['id']):
+                f.write(json.dumps(r) + '\n')
 
     @staticmethod
     def _delta_node_ids(brain) -> Dict[str, str]:

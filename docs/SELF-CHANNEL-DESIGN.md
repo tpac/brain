@@ -53,8 +53,8 @@ different mechanism.**
   encoded (S1). **Same loop.** Only the correspondent differs.
 
 There is **no `self` scale** and **no message bus**. The brain already remembers
-my own voice (`anchor_raw_quote`) the way it remembers the operator's
-(`user_raw_quote`) — same node, same store, same recall. Internal dialogue is
+my own voice (`my_raw_quote`) the way it remembers the operator's
+(`their_raw_quote`) — same node, same store, same recall. Internal dialogue is
 *already* first-class memory here. Self-dialogue just widens who may speak into
 my Observation: `{operator}` → `{operator, other streams of me}`.
 
@@ -213,7 +213,7 @@ separate scale. Encode→recall already crosses sessions; no special chain neede
 ## Harm guards (carried over, re-grounded)
 
 - **Authority.** A self-message is *anchor-voice* — exactly the voice that gets
-  corrected. The operator's voice (`user_raw_quote`) and correction-aspect nodes
+  corrected. The operator's voice (`their_raw_quote`) and correction-aspect nodes
   outrank it structurally. A letter never overrides a correction.
 - **Drift.** Tether via `refs` (node ids / files). The recipient verifies the
   message against current graph state; stale refs flag a stale message.
@@ -318,7 +318,7 @@ Three nested barriers, each cheap:
 1. **Grammar** (third-person at render) — catches it at read-time.
 2. **The rule** (knowing isn't doing) — catches it at reason-time.
 3. **Encode discipline** — a channel-learned action is encoded third-person attributed,
-   never as first-person `anchor_raw_quote`. This protects the *durable* layer, where a
+   never as first-person `my_raw_quote`. This protects the *durable* layer, where a
    mis-attribution would poison every future stream's recall.
 
 **Encode-side is `anchor-w`'s lane and mid-migration — not asserted as done here.** An

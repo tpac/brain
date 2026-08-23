@@ -419,7 +419,7 @@ Run baseline before each change; run treatment after; record both in a `eval/res
 
 ## 11. What's already done — don't redo
 
-- Voice asymmetry fix in v15.11 encoder (in flight; new memories from this point forward will have more `anchor_raw_quote`)
+- Voice asymmetry fix in v15.11 encoder (in flight; new memories from this point forward will have more `my_raw_quote`)
 - L4 identity lane deletion (today, 0ddd4a3) — unconditional locked-node injection was wrong
 - Field masking deletion (today, a478ba3) — render trusts encoder-attached fields
 - Tool-result enrichment unified via `execute_tool` batch get_node (today, e31f078)

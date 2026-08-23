@@ -38,15 +38,15 @@ class TestVectorsAffectedBy(unittest.TestCase):
         result = vectors_affected_by('situation')
         self.assertEqual(result, {'_situation', 'high_meta'})
 
-    def test_user_raw_quote_invalidates_high_meta_and_field(self):
-        result = vectors_affected_by('user_raw_quote')
+    def test_their_raw_quote_invalidates_high_meta_and_field(self):
+        result = vectors_affected_by('their_raw_quote')
         self.assertIn('high_meta', result)
-        self.assertIn('user_raw_quote', result)
+        self.assertIn('their_raw_quote', result)
 
-    def test_anchor_raw_quote_invalidates_high_meta_and_field(self):
-        result = vectors_affected_by('anchor_raw_quote')
+    def test_my_raw_quote_invalidates_high_meta_and_field(self):
+        result = vectors_affected_by('my_raw_quote')
         self.assertIn('high_meta', result)
-        self.assertIn('anchor_raw_quote', result)
+        self.assertIn('my_raw_quote', result)
 
     def test_reasoning_invalidates_other_meta_and_field(self):
         result = vectors_affected_by('reasoning')
@@ -142,18 +142,18 @@ class TestReviseInvalidatesVectors(BrainTestBase):
         self.assertIn('content', after,
                       'field-cohort content unaffected by title change')
 
-    def test_revise_user_raw_quote_invalidates_high_meta_and_field(self):
+    def test_revise_their_raw_quote_invalidates_high_meta_and_field(self):
         node = self.brain.remember(
             type='quote', title='Test', content='c',
-            user_raw_quote='old quote')
+            their_raw_quote='old quote')
         nid = node['id']
-        self._seed_vectors(nid, ['high_meta', 'user_raw_quote', '_situation', '_primary'])
+        self._seed_vectors(nid, ['high_meta', 'their_raw_quote', '_situation', '_primary'])
 
-        self.brain.revise(node_id=nid, user_raw_quote='new quote', reason='test')
+        self.brain.revise(node_id=nid, their_raw_quote='new quote', reason='test')
 
         after = self._vector_types_for_node(nid)
         self.assertNotIn('high_meta', after)
-        self.assertNotIn('user_raw_quote', after)
+        self.assertNotIn('their_raw_quote', after)
         self.assertIn('_situation', after, 'dedicated _situation vector unaffected by quote change')
         self.assertIn('_primary', after)
 

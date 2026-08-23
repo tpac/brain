@@ -308,15 +308,15 @@ PROMOTED_FIELDS = {
                         "the audit note for a revision, recorded in trace "
                         "events and never stored on the node."),
     },
-    "user_raw_quote": {
+    "their_raw_quote": {
         "store": "metadata_kv",
         "type": "str",
-        "description": "Operator's exact words.",
+        "description": "Their exact words — my counterpart's, verbatim.",
     },
-    "anchor_raw_quote": {
+    "my_raw_quote": {
         "store": "metadata_kv",
         "type": "str",
-        "description": "Anchor's exact words — reflections, realizations, insights.",
+        "description": "My own exact words — reflections, realizations, insights.",
     },
     # `correction_of` removed 2026-05-17 — corrections are tracked via
     # correction_improvement-aspect edges (corrects, supersedes, reframes,
@@ -528,7 +528,7 @@ def _truncate(s: str, limit: int) -> str:
 # reasoning, the operator's words, and Anchor's words. Anything else on
 # the corrector's metadata is either bookkeeping or downstream-of-surface
 # context the heavy render shouldn't replay.
-_CORRECTION_HEAVY_KV_KEYS = ('reasoning', 'user_raw_quote', 'anchor_raw_quote')
+_CORRECTION_HEAVY_KV_KEYS = ('reasoning', 'their_raw_quote', 'my_raw_quote')
 
 
 def render_corrections(corrections, mode='lean',
@@ -546,13 +546,13 @@ def render_corrections(corrections, mode='lean',
     Args:
         corrections: list of correction dicts (output of correction_enrich).
             Each carries: id, title, type, direction, relation,
-            edge_description, content, reasoning, user_raw_quote.
+            edge_description, content, reasoning, their_raw_quote.
         mode: 'none' | 'lean' | 'balanced' | 'heavy'.
               none     → no lines emitted
               lean     → header line only (title + id) — legacy default
               balanced → + relation verb + edge_description + content excerpt
               heavy    → + full content + corrector K/V (reasoning,
-                         user_raw_quote, anchor_raw_quote) honouring the
+                         their_raw_quote, my_raw_quote) honouring the
                          noise filter.
         content_limit_balanced: char cap for content excerpt in balanced mode
         content_limit_heavy: char cap for content in heavy mode
@@ -851,7 +851,7 @@ def render_rich_node(node, config=None):
     # Voice fields bypass meta_limit — operator and Anchor verbatim
     # quotes are high-signal-per-char and naturally short. Truncating
     # them at 150 chars loses the actual words. Cap defensively at 600.
-    _VOICE_KEYS = ('user_raw_quote', 'anchor_raw_quote')
+    _VOICE_KEYS = ('their_raw_quote', 'my_raw_quote')
     _VOICE_LIMIT = 600
     if meta_limit > 0:
         for key, val in meta.items():

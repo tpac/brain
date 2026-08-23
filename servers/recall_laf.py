@@ -432,6 +432,15 @@ class LafV1Engine:
         self._cfg, self._cfg_ts = cfg, now
         return cfg
 
+    def invalidate_config(self):
+        """Drop the cached overlay so the next config() re-resolves now.
+
+        Called by Brain.invalidate_interaction_caches when the recall_laf
+        pointer flips or clears — without it a deploy/clear runs up to
+        CONFIG_TTL_S late.
+        """
+        self._cfg, self._cfg_ts = None, 0.0
+
     # ── field matrices: growable buffers + rowid-watermark incremental upserts ──
     def _ensure_capacity(self, need):
         if need <= self._cap:

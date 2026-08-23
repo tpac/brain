@@ -61,7 +61,7 @@ exist, a natural experiment). What actually survived:
 | Content: "two living things" quote | yes | ✓ (textual) |
 | Content: table schema (`parent_version`) | yes | ✗ LOST |
 | Content: roadmap (s2/s3/s4) | yes | ✗ LOST |
-| Voice: `user_raw_quote` (structured field) | yes | ✗ LOST |
+| Voice: `their_raw_quote` (structured field) | yes | ✗ LOST |
 | `source_refs` | n/a (pre-v29) | ✗ structurally never migrated (zero handling in `scales/s2/`) |
 | `access_count` | 3999 | ✗ NOT merged (survivor 3542) |
 | Edges | 10 | ~partial |

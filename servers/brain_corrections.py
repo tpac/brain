@@ -44,8 +44,8 @@ class BrainCorrectionsMixin:
             edge_description (str) the edge's `why` text
             content         (str)  neighbor's full content (renderer slices)
             reasoning       (str)  neighbor's reasoning metadata
-            user_raw_quote  (str)  neighbor's user_raw_quote metadata
-            anchor_raw_quote (str) neighbor's anchor_raw_quote metadata
+            their_raw_quote  (str)  neighbor's their_raw_quote metadata
+            my_raw_quote (str) neighbor's my_raw_quote metadata
 
         Loud-by-default: any failure inside the aspect walk gets logged via
         self._log_error AND returns an empty dict so the calling pipeline
@@ -111,7 +111,7 @@ class BrainCorrectionsMixin:
         meta_dal = self._meta_kv
         meta_by_id = meta_dal.get_fields_bulk(
             list(neighbor_ids),
-            ['reasoning', 'user_raw_quote', 'anchor_raw_quote'])
+            ['reasoning', 'their_raw_quote', 'my_raw_quote'])
 
         corrections = {}
         for owner_full, conns in connections.items():
@@ -140,8 +140,8 @@ class BrainCorrectionsMixin:
                         'edge_description': rel.get('description') or '',
                         'content': content,
                         'reasoning': meta.get('reasoning') or '',
-                        'user_raw_quote': meta.get('user_raw_quote') or '',
-                        'anchor_raw_quote': meta.get('anchor_raw_quote') or '',
+                        'their_raw_quote': meta.get('their_raw_quote') or '',
+                        'my_raw_quote': meta.get('my_raw_quote') or '',
                     })
 
             if not bucket:

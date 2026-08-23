@@ -122,11 +122,11 @@ def donor_map(cues):
 
 
 def run_arm(name, corpus_pooled, work_root, cues, gains_json):
-    from build_corpus import _apply_interaction_override
+    from tests.interaction_override import override_interaction
     brain = fresh_brain_copy(corpus_pooled, work_root / name)
     if gains_json is not None:
-        _apply_interaction_override(brain, 'recall_laf', template='',
-                                    parameters=gains_json)
+        override_interaction(brain, 'recall_laf', template='',
+                             parameters=gains_json)
     donors = donor_map(cues) if name == 'C1' else None
     rows = []
     t_arm = time.time()

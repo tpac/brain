@@ -2,8 +2,8 @@
 
 Tests c2ac3c61 (the multi_session precision-refinement failure) + 4 v22-passing
 items across axes to verify no regression. Per-cell brain has all three
-interactions overridden via the brain's local _interaction_dal — production
-daemon is untouched.
+interactions overridden in its own interactions table — production daemon is
+untouched.
 
 Usage:
     ./dev python3 -m eval.encoder_eval.targeted_v24_eval
@@ -27,6 +27,7 @@ from eval.longmem.replay import replay_item, query_brain
 from eval.longmem.answerer import answer_question
 from eval.longmem.judge import judge_one
 from eval.encoder_eval.quality_probes import run_all_probes
+from tests.interaction_override import override_interaction
 
 
 # Two arms: 3 interactions per arm, version-pinned per cell
@@ -50,22 +51,6 @@ ITEMS_QIDS = [
 ]
 
 
-def apply_interaction_override(brain, name: str, template: str) -> None:
-    """Generalization of harness._apply_s1e_override for any interaction.
-
-    Registers the template as a new version in the eval brain's local
-    interactions table and activates it. Production daemon is not touched.
-    """
-    existing = brain._interaction_dal.get_active(name)
-    params = existing.get('parameters', '') if existing else ''
-    result = brain._interaction_dal.register(
-        name, template=template, parameters=params,
-        created_by=f'eval-override-{name}')
-    if result.get('version', 1) > 1:
-        brain._interaction_dal.set_active(
-            name, result['version'], set_by=f'eval-override-{name}')
-
-
 def fetch_template(name: str, version: int) -> str:
     r = send_command('get_interaction', {'name': name, 'version': version})
     return r['result']['template']
@@ -79,7 +64,7 @@ def run_cell(arm_name: str, templates: dict, item: dict, run_name: str) -> dict:
     brain = create_fresh_eval_brain(path=item_db, wipe=True)
     # Apply all three overrides to this eval brain's interaction table
     for name, version in arm_versions.items():
-        apply_interaction_override(brain, name, templates[(name, version)])
+        override_interaction(brain, name, template=templates[(name, version)])
 
     t0 = time.time()
     ingest_session_id = f"ingest-{qid}"

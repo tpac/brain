@@ -29,11 +29,12 @@ produced three independent `dump_nodes` implementations:
 |---|---|---|
 | `eval/longmem/artifacts.py:178` | 32 columns, incl. `keywords` | **broken** |
 | `eval/longmem/ab_encode.py:60` | 5 cols + KV(`situation`,`event_time`), content→220 | diverged |
-| `eval/longmem/diff_encoding.py:19` | 5 cols + KV(`situation`,`question`,`event_time`,`reasoning`), content→300 | diverged |
+| ~~`eval/longmem/diff_encoding.py:19`~~ | 5 cols + KV(`situation`,`question`,`event_time`,`reasoning`), content→300 | **file deleted** 2026-08-22 (override migration Step 7) |
 
-`ab_encode`'s docstring says it outright — *"(from diff_encoding, kept local)"* — a
-declared copy that has since diverged from its source in both KV key set and
-truncation limits. All three N+1 query `node_metadata_kv` per node in a Python loop.
+`ab_encode`'s docstring used to say it outright — *"(from diff_encoding, kept
+local)"* — a declared copy that had since diverged from its source in both KV key
+set and truncation limits. Both remaining dumpers N+1 query `node_metadata_kv` per
+node in a Python loop.
 
 (A fourth hand-rolled dumper of the same drift class exists outside this work
 order's scope: `eval/oracle_audit/emb_bench/dump_pack.py` defines its own
@@ -168,8 +169,8 @@ amended versions:
 4. **The JSONL hop is not removable for `artifacts.py` — in step 2 or ever.**
    Its consumers are post-hoc: they read `reports/` after the per-item brain
    is deleted. The bundle *is* the durability layer (the module docstring's
-   whole reason to exist). B2's "read directly" applies to the step-2 dumpers
-   (`ab_encode`, `diff_encoding`), which analyze live in-process brains.
+   whole reason to exist). B2's "read directly" applies to the step-2 dumper
+   (`ab_encode`), which analyzes a live in-process brain.
 
 Semantic change, accepted under B2: `nodes.jsonl` was "snapshot including the
 seed pack", it is now "the run's delta" — seed nodes and seed-pack edges no
@@ -186,10 +187,12 @@ created-nodes-only: a revised seed's pre-existing edges are not run behavior.
 
 ### 2 — collapse the duplicate dumpers
 
-Delete `ab_encode.dump_nodes/dump_edges` and `diff_encoding.dump_nodes/dump_edges`;
-point both at the single reader from step 1. Reconcile the divergence deliberately:
-they disagree on KV keys (2 vs 4) and truncation (220/120 vs 300/150). Pick one and
-say why in the commit — do not preserve both by parameterising.
+Delete `ab_encode.dump_nodes/dump_edges`; point it at the single reader from step 1.
+**Half of this step landed for free:** `diff_encoding.py` was deleted whole on
+2026-08-22 (override migration Step 7 — zero importers, and its `register_prompt`
+mutated the production daemon), so only `ab_encode`'s copy remains and there is no
+longer a divergence to reconcile. Its KV key set (2) and truncation (220/120) are
+what step 1's reader must either match or deliberately supersede.
 
 Also in scope, same class of rot:
 - `eval/longmem/cost_summary.py:41` — `'scout_synthesis'`, a scout deleted from the
@@ -216,7 +219,8 @@ Blocked on 1-3, because the point is to measure with an instrument we trust.
 - `context_anchors` is an **encode**-side field. `sweep.py` is explicitly "Stage 2 —
   recall over a frozen corpus, zero encoding" and cannot see it.
 - `build_corpus.py` **does** support `interaction_overrides={'s1_scout_facts': N}`
-  (`_apply_interaction_override`, line 223). Two encode runs, v7 vs a DORMANT v8.
+  (now `tests.interaction_override.override_interaction`). Two encode runs, v7 vs a
+  DORMANT v8.
 - Register v8 DORMANT, run both arms, compare noun retention, activate + `./dev
   sync-prompts` only if it holds.
 

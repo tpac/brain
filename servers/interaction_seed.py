@@ -128,7 +128,14 @@ from .dal_logs import (AUTO_V1_PROVENANCE, BACKSTOP_PROVENANCE,
 # 9 ships s2_aspects v8: 'no prose before it', not 'around it' — 'around' is
 # bidirectional and still forbade the trailing review fence (a108cfc review
 # finding #3).
-SEED_PROMPTS_VERSION = 9
+#
+# 10 ships the v31 voice-field rename to the three prompts that name those
+# fields: s1e v38, s2_healer v6, s1_scout_quote v5 — their_raw_quote and
+# my_raw_quote, mechanical swaps of the deployed templates. This bump is not
+# optional: an install that migrates to schema v31 while still running a
+# shipped prompt that teaches the old names would have its encoder write keys
+# the write boundary no longer accepts, losing both voices silently.
+SEED_PROMPTS_VERSION = 10
 SEED_PROMPTS_VERSION_KEY = 'seed_prompts_version'
 
 # Pointer provenance that proves the install is still running what WE put there.
@@ -263,7 +270,7 @@ def _pristine_advance_target(brain, name, active_version):
 def _reconcile_pristine_prompts(brain):
     """Advance installs still running the shipped default; never touch the rest."""
     state = {i['name']: i for i in brain.list_interactions()}
-    advanced, held = [], []
+    advanced, held, defaulted = [], [], []
 
     for name, (template, config) in sorted(shipped_prompts().items()):
         info = state.get(name)
@@ -274,8 +281,11 @@ def _reconcile_pristine_prompts(brain):
         if active_version is None:
             # No pointer row at all. Under the override model that means no
             # override is deployed — the runtime already reads the code
-            # default, so there is nothing to advance.
-            held.append('%s(no active pointer)' % name)
+            # default, so there is nothing to advance. NOT "locally owned":
+            # this is the healthy steady state of every post-override
+            # install, reported separately so a fresh boot doesn't read as
+            # seven local deployment decisions.
+            defaulted.append(name)
             continue
         if not _pointer_is_pristine(info):
             held.append('%s(activated by %s)' % (name, info.get('active_set_by')))
@@ -315,6 +325,9 @@ def _reconcile_pristine_prompts(brain):
     if held:
         print('[seed-reconcile] left alone (locally owned): %s'
               % ', '.join(held), flush=True)
+    if defaulted:
+        print('[seed-reconcile] on code default (no override): %s'
+              % ', '.join(defaulted), flush=True)
 
 
 def reconcile_seeded_prompts(brain):
@@ -435,8 +448,10 @@ def seed_interactions(brain):
     # brains are orphans — clean them out manually if they exist.
     _register('surface', SURFACE_PROMPT, SURFACE_INTERACTION_DEFAULT, 'anchor')
     # Payload-recorder gates (docs/TRACE-MODES-DESIGN.md): modes as named
-    # config versions — v1 normal (auto-activates), v2 debug (dormant).
-    # "Entering debug" = set_interaction_active('trace_recording', 2).
+    # config versions — v1 normal, v2 debug, both dormant (registration
+    # never activates; the resolver serves TRACE_RECORDING_NORMAL as the
+    # code default). "Entering debug" =
+    # set_interaction_active('trace_recording', 2).
     # Each registration guards on its own absence (version count, not just
     # the name) so a boot that crashed between the two self-heals on the
     # next seed instead of losing the debug version forever; >= 2 versions

@@ -736,7 +736,7 @@ class ConsolidationDecoder(IntegrationUnit):
         for row in self.brain.conn.execute("""
             SELECT node_id, key, value FROM node_metadata_kv
             WHERE node_id IN (%s)
-            AND key IN ('user_raw_quote', 'anchor_raw_quote', 'situation',
+            AND key IN ('their_raw_quote', 'my_raw_quote', 'situation',
                         'reasoning')
         """ % placeholders, list(node_ids)).fetchall():
             if row[0] in data:

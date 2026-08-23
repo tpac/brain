@@ -11,6 +11,7 @@ The system-prompt injection (write-side instructions) is covered in
 test_s1e_lived_sequence.py. See docs/S1-SCRIBE-REDESIGN.md §10.3.4.
 """
 import os
+import re
 
 from tests.brain_test_base import BrainTestBase
 from servers.scales.s1.encode import _build_user_content
@@ -99,7 +100,10 @@ class TestResidueWiring(BrainTestBase):
         pre, body, _cat, _ids = _build_user_content(
             self.brain, _msgs(), counter=8, session_id=sid, lived_sequence=True)
         assert '<continuity>' in body and '</continuity>' in body
-        assert '<timeline>' in body and '</timeline>' in body
+        # prefix — the view policy stamps <timeline now="…">; this test's concern
+        # is XML wrappers vs legacy markdown headers, not the tag's attributes
+        # (exact shape + contents pinned in test_s1e_lived_sequence).
+        assert '<timeline' in body and '</timeline>' in body
         assert 'Session arc: building S1E' in body      # arc folded into continuity
         assert 'RECENT REVIEW NOTES' in body            # residue also in continuity
         assert '### Session Context' not in body        # legacy headers gone
@@ -108,13 +112,25 @@ class TestResidueWiring(BrainTestBase):
         # owns it — two voices describing the layout would confound the A/B)
         assert 'Encoding Journal' not in pre and 'Conversation Timeline' not in pre
 
+    def test_lived_timeline_stamp_resolves_against_a_real_brain(self):
+        # The other half of the stamp: test_s1e_lived_sequence pins its SHAPE by
+        # handing view_now in, which proves nothing about production being able to
+        # DERIVE the time. This is the only real-brain assembly site, so it owns
+        # the _conversation_now_safe wiring — if that regresses to None the tag
+        # silently loses its temporal anchor and every relative `age=` below it
+        # stops being invertible. Pattern, not a literal: the value is real time.
+        _pre, body, _cat, _ids = _build_user_content(
+            self.brain, _msgs(), counter=8, session_id='sess-stamp',
+            lived_sequence=True)
+        assert re.search(r'<timeline now="\d{4}-\d\d-\d\d \d\d:\d\d UTC">', body)
+
     def test_control_body_keeps_markdown_headers_and_legend(self):
         # Control arm: legacy ### markdown headers, NO XML wrappers; the preamble
         # keeps the full legacy section legend. Byte-shape unchanged.
         pre, body, _cat, _ids = _build_user_content(
             self.brain, _msgs(), counter=8, session_id='sess-md', lived_sequence=False)
         assert '### Conversation Timeline' in body
-        assert '<continuity>' not in body and '<timeline>' not in body
+        assert '<continuity>' not in body and '<timeline' not in body
         assert 'Conversation Timeline' in pre and 'Encoding Journal' in pre
 
     def test_s1e_continuity_k_default_is_five(self):

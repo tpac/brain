@@ -289,7 +289,7 @@ S2CE_COMMUNITY_FORMAT = {
 # _corrections   — always (story arc: what corrected what)
 # connections    — 4 edges with relation + description (the story between nodes)
 # reasoning      — if present (why this was encoded — helps understand intent)
-# anchor/user_raw_quote — if present (exact words carry weight)
+# anchor/their_raw_quote — if present (exact words carry weight)
 #
 # Fields the encoder does NOT need per representative:
 # activation, stability, recency_score — internal scoring

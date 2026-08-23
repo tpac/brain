@@ -79,7 +79,7 @@ transport.
 was the wrong shape. **Self↔Self is the existing S0/S1 loop with a different
 correspondent** — a conversation with myself is the same mechanism as a
 conversation with the operator. The brain already remembers my own voice
-(`anchor_raw_quote`) the way it remembers the operator's (`user_raw_quote`), so
+(`my_raw_quote`) the way it remembers the operator's (`their_raw_quote`), so
 internal dialogue is *already* first-class memory. No `self` scale, no bus.
 
 The only genuinely new wire is **delivery-into-Observation**: my streams of

@@ -201,8 +201,8 @@ def build_rich_fixture(brain):
     absorbed = node('absorbed — redundant', content='absorbed content',
                     situation='when absorbed (survivor wins this)',
                     source_refs=['bbbbbbbb', 'cccccccc'],
-                    user_raw_quote='the operator said this',
-                    anchor_raw_quote='Anchor reflected this')
+                    their_raw_quote='the operator said this',
+                    my_raw_quote='Anchor reflected this')
     # Emergent KV the survivor lacks → must fill.
     brain._meta_kv.set_many(absorbed, {'emergent_key': 'emergent value'})
     # Access history.

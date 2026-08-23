@@ -6,8 +6,8 @@ anywhere else in the codebase. Keys are validated against the contract.
 Usage:
     dal = MetadataDAL(conn)
     dal.set(node_id, 'reasoning', 'Why this was encoded')
-    dal.set_many(node_id, {'reasoning': '...', 'anchor_raw_quote': '...'})
-    meta = dal.get(node_id)  # → {'reasoning': '...', 'anchor_raw_quote': '...'}
+    dal.set_many(node_id, {'reasoning': '...', 'my_raw_quote': '...'})
+    meta = dal.get(node_id)  # → {'reasoning': '...', 'my_raw_quote': '...'}
     dal.delete(node_id, 'reasoning')
 
 Storage convention:

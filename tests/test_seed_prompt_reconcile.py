@@ -40,9 +40,23 @@ NAME = 's1_scout_facts'  # a template-carrying prompt, cheap to drive
 
 class ReconcileTestBase(BrainTestBase):
     """A brain whose prompts are seeded but otherwise untouched — i.e. a
-    freshly-installed fleet member."""
+    freshly-installed fleet member from the pre-override-model era.
+
+    Registration never activates anymore, so the legacy state reconcile
+    exists for (every seeded v1 auto-activated as AUTO_V1) is constructed
+    explicitly here. Installs created after the override model carry no
+    pointers and reconcile correctly leaves them alone — the code default
+    already flows."""
 
     needs_embedder = False
+
+    def setUp(self):
+        super().setUp()
+        from servers.dal_logs import AUTO_V1_PROVENANCE
+        for row in self.brain.list_interactions():
+            if not row.get('active_version'):
+                self.brain._interaction_dal.set_active(
+                    row['name'], 1, set_by=AUTO_V1_PROVENANCE)
 
     def _shipped(self, name=NAME):
         return shipped_prompts()[name]
@@ -187,6 +201,28 @@ class PristineAdvanceTest(ReconcileTestBase):
             read_schema_version(self.brain.logs_conn, 'logs_meta',
                                 SEED_PROMPTS_VERSION_KEY),
             SEED_PROMPTS_VERSION)
+
+
+class NoPointerTest(ReconcileTestBase):
+    """The healthy steady state of every post-override install: names with
+    registered rows but NO pointer run the code default. Reconcile must
+    leave them alone — the `active_version is None` branch is the ONLY
+    boot-path code standing between a deliberate clear_interaction_override
+    and a bump silently resurrecting the override."""
+
+    def test_reconcile_never_touches_a_pointer_less_name(self):
+        self.brain.clear_interaction_override(NAME)
+        versions_before = self._version_count()
+        self._reset_stream()
+
+        reconcile_seeded_prompts(self.brain)
+
+        self.assertEqual(self._pointer(), (None, None),
+                         'reconcile minted a pointer on a name whose '
+                         'override was deliberately cleared')
+        self.assertEqual(self._version_count(), versions_before,
+                         'reconcile registered a version for a '
+                         'pointer-less name')
 
 
 class HandsOffTest(ReconcileTestBase):
@@ -461,6 +497,7 @@ class ShippedContentFingerprintTest(unittest.TestCase):
         7: '182761f6e8d734c501f35408795acfc298822aeb44d97cfb58c7333bf1c0418f',
         8: '20cc74ce796388f201956c58c5f8913e107a24fd21cc45fe72f9e63284d578e8',
         9: 'b6ac54c0e9c3895ffaf9e0529b928b1568d004f0d4dcdb77ee2b7281496b2747',
+        10: '91011c8f71ac3a38a76aad47cd20868b6e87ff8509509a7489387fcafa04c8e6',
     }
 
     @staticmethod
