@@ -29,8 +29,6 @@ from .brain_constants import (
     CRITICAL_SIMILARITY_THRESHOLD,
     DECAY_HALF_LIFE,
     EMBEDDING_PRIMARY_WEIGHT,
-    GRAPH_AUGMENT_TOP_N,
-    INTENTIONAL_EDGE_TYPES,
     KEYWORD_FALLBACK_WEIGHT,
     MAX_PAGE_SIZE,
     PRUNE_THRESHOLD,
@@ -38,12 +36,6 @@ from .brain_constants import (
     RELEVANCE_FLOOR_ENRICHED,
     RELEVANCE_FLOOR_PRIMARY,
     _TITLE_BOOST_STOPWORDS,
-    TRAVERSE_DAMPEN,
-    TRAVERSE_LIMITS,
-    TRAVERSE_SEMANTIC_BONUS,
-    TRAVERSE_SEMANTIC_THRESHOLD,
-    TRAVERSE_CONVERGENCE_BOOST,
-    FRESHNESS_MULTIPLIERS,
     SITUATION_WEIGHT,
     SITUATION_THRESHOLD,
     NOISE_FLOOR_THRESHOLD,
@@ -2042,18 +2034,6 @@ class BrainRecallMixin:
         else:
             scored_results = scored_results[:limit]
 
-        # STEP 6.5: Graph traversal MOVED to Layer 3 (post-surface).
-        # Previously: traversed from top-5 cosine results (often hubs).
-        # Now: traversal happens in pre_response_recall.py AFTER the surfacer
-        # selects relevant nodes. The surfacer's selections are the right seeds.
-        # The _traverse_graph() function still exists for Layer 3 to call
-        # via the 'graph_expand' daemon command.
-        graph_neighborhoods = {}
-        try:
-            pass  # Traversal deferred to Layer 3
-        except Exception as e:
-            self._log_error("recall", e, "STEP 6.5 graph traversal")
-
         # STEP 6.9: Per-result relevance floor.
         # v8.7: Changed from all-or-nothing (top result gates everything) to per-result.
         # Each result must meet its own floor based on how it was discovered.
@@ -2152,8 +2132,6 @@ class BrainRecallMixin:
                     'freshness': _freshness,
                 }
 
-                # Attach graph neighborhood from traversal
-                node['_graph'] = graph_neighborhoods.get(nid, {})
                 node['_discovery'] = sr.get('_source', 'embedding')
 
                 # v4: Contextual qualifier matching.
@@ -2181,11 +2159,10 @@ class BrainRecallMixin:
         # (Scope veil already applied pre-[:limit] — candidates were gated
         # before truncation, and _iso_dropped carries the walled ids.)
 
-        # STEP 7.5: Enrich top 3 results with metadata + neighbors
-        # All results keep full content (no truncation). Top 3 also get
-        # metadata and neighbor context for richer understanding. The veil
-        # threads in so neighbor attachments can't re-admit walled titles.
-        self._enrich_results(final_results[:3], veil=_veil)
+        # STEP 7.5: Enrich top 3 results with KV metadata.
+        # All results keep full content (no truncation); the top 3 also carry
+        # their metadata for richer understanding.
+        self._enrich_results(final_results[:3])
 
         # STEP 8: Mark accessed (recognition signal + fatigue)
         # Per-session: _recall_ctx (loaded at top of this function) is passed
@@ -2289,67 +2266,37 @@ class BrainRecallMixin:
 
         return result
 
-    def _enrich_results(self, results: List[Dict[str, Any]], neighbor_limit: int = 3,
-                        veil=None) -> None:
-        """Enrich recall results with metadata and neighbor context.
+    def _enrich_results(self, results: List[Dict[str, Any]]) -> None:
+        """Attach KV metadata to recall results, in place.
 
-        This is the ONE place that makes a node result 'complete'.
         Called by both recall (text search) and recall_node (ID lookup).
-        The caller decides WHICH results to enrich — this method enriches all it receives.
-        Mutates results in place.
-
-        `veil`: the session's scope veil — walled neighbors are dropped from
-        the attachment, because a neighbor line carries id+title (the leak
-        payload) and the id would feed the out-of-candidate admission path.
+        The caller decides WHICH results to enrich — this method enriches all
+        it receives. Edge context comes from `connections` (get_node), not
+        from here.
         """
-        veil = veil or frozenset()
-        graph_dal = self._graph
         for node in results:
             nid = node.get('id')
             if not nid:
                 continue
 
-            # Attach metadata from KV store
             try:
-                from .dal_metadata import MetadataDAL
-                _meta_dal = self._meta_kv
-                meta = _meta_dal.get(nid)
+                meta = self._meta_kv.get(nid)
                 if meta:
                     node['_metadata'] = meta
             except Exception as e:
                 self._log_error('recall_node_meta', e, 'fetching node metadata for enrichment')
 
-            # Attach neighbor context — reuse existing get_neighbors_with_context,
-            # filter to intentional edges in Python
-            if neighbor_limit > 0:
-                try:
-                    all_neighbors = graph_dal.get_neighbors(
-                        nid, limit=neighbor_limit * 3  # fetch extra, filter down
-                    )
-                    node['_neighbors'] = [
-                        {'id': nb['id'], 'type': nb['type'], 'title': nb['title'],
-                         'relation': nb['relation'], 'weight': nb['weight']}
-                        for nb in all_neighbors
-                        if nb.get('relation') in INTENTIONAL_EDGE_TYPES
-                        and nb.get('id') not in veil
-                    ][:neighbor_limit]
-                except Exception as e:
-                    self._log_error('recall_node_neighbors', e, 'fetching neighbor context')
-                    node['_neighbors'] = []
-
     # _traverse_graph removed 2026-04-14 — dead code, 0 callers.
     # S1R uses _graph_expand() in surface.py instead.
 
-    def recall_node(self, node_id: str, neighbor_limit: int = 3,
-                    session_id: str = '') -> Dict[str, Any]:
+    def recall_node(self, node_id: str, session_id: str = '') -> Dict[str, Any]:
         """Recall a specific node by ID with full enrichment.
 
         Returns same shape as recall() so callers get a
         consistent interface regardless of how the node was found.
 
         By-id reach is the veil's sanctioned open door — the NODE returns
-        regardless of scope. Its NEIGHBORS were never reached for, so the
-        veil still scrubs the attachments (id+title is the leak payload).
+        regardless of scope.
         """
         from .dal import NodeDAL
         node_dal = self._nodes
@@ -2364,8 +2311,7 @@ class BrainRecallMixin:
         node['_source'] = 'direct_lookup'
 
         results = [node]
-        self._enrich_results(results, neighbor_limit=neighbor_limit,
-                             veil=self.scope_veil(session_id or ''))
+        self._enrich_results(results)
 
         return {
             'results': results,

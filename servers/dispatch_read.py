@@ -43,8 +43,7 @@ def _handle_recall(brain, args, graph_changes):
     if node_id:
         node_id = _resolve_id(brain, node_id)
         result = brain.recall_node(
-            node_id, neighbor_limit=args.get("neighbor_limit", 3),
-            session_id=caller_session(args))
+            node_id, session_id=caller_session(args))
         return {"ok": True, "result": result}
 
     sid = caller_session(args)  # identity: drives this session's fatigue/activity
