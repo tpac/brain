@@ -49,7 +49,8 @@ def effective_surface_template() -> tuple[str, str]:
     """
     from servers.daemon_client import send_command
 
-    r = send_command('get_interaction_effective', {'name': 'surface'})
+    r = send_command('get_interaction_effective',
+                     {'name': 'surface', 'include_template': True})
     if not isinstance(r, dict):
         raise RuntimeError(
             'daemon returned %r for get_interaction_effective' % (r,))

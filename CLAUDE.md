@@ -102,7 +102,10 @@ do not "clean" them.
 dict and merge — the daemon reads it at next restart. No registration, no sync
 ceremony, no version bump. The eval gate is a process rule, not a code path:
 candidates land as overrides and get promoted into the default after the eval
-passes.
+passes. ⚠ The daemon runs the MAIN tree — a prompt edit in a worktree reaches
+it only after merge (the session-boot staleness reload fingerprints main, not
+worktrees). **New boundary:** the full recipe is in
+`servers/interaction_defaults.py`'s docstring.
 
 **Deploy an override on THIS install** (experiment / hotfix / debug):
 

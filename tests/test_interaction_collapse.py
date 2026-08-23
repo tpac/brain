@@ -192,6 +192,15 @@ class TestDaemonOnly:
                                        COLLAPSE_VERSION_KEY) == 0, \
                 "Brain.__init__ ran the collapse — frozen corpora would float"
 
+    def test_daemon_load_brain_calls_the_collapse(self):
+        """The wiring itself, at BODY level — the file-scan below stays green
+        if someone deletes the call and leaves the import, and the collapse
+        then ships dead on every uncollapsed install."""
+        import inspect
+        from servers import daemon_server
+        src = inspect.getsource(daemon_server.BrainDaemon._load_brain)
+        assert 'collapse_seeded_overrides(self.brain)' in src
+
     def test_only_the_daemon_reaches_the_collapse(self):
         import os
         root = os.path.join(os.path.dirname(__file__), '..', 'servers')
@@ -233,6 +242,17 @@ class TestCollapseBehavior:
                                    COLLAPSE_VERSION_KEY) == 0
         assert read_meta_value(self.brain.logs_conn, 'logs_meta',
                                AUDIT_KEY) is None
+
+    def test_collapse_never_mints_a_pointer(self):
+        """The pointer SET may only shrink. A minted pointer to a
+        byte-identical row moves no fingerprint — invisible to every
+        per-name assertion here — while re-freezing that name against
+        future default changes: the exact freeze the migration removes."""
+        before = set(_pointers(self.brain))
+        _collapse_overrides(self.brain)
+        after = set(_pointers(self.brain))
+        assert after <= before, \
+            'the collapse minted pointers: %s' % sorted(after - before)
 
     def test_matching_compare_drops_its_pointer(self):
         _collapse_overrides(self.brain)

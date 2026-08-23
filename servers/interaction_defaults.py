@@ -18,6 +18,23 @@ Names deliberately absent:
   config key grepped reader-less (pre_edit's plausible keys read from
   brain_meta, a different store).
 - Aspects (`aspects_v1.json`) — already the after-model; no override layer.
+
+ADDING A NEW LEARNABLE BOUNDARY — the complete recipe (a step skipped here
+ships a boundary that LOOKS learnable but resolves to a raising KeyError,
+discovered in production via the errors table):
+1. Config dict in the consumer's contract file (`*_INTERACTION_DEFAULT`
+   naming); template in a `*_prompt.py` exporting SYSTEM_PROMPT (LLM
+   boundaries only — config-only names use template '').
+2. Import both here; add the INTERACTION_DEFAULTS entry.
+3. Validator in INTERACTION_VALIDATORS if the config has invariants a typo'd
+   override must not violate (scopes is the model).
+4. Prompt-backed name → add to PROMPT_BACKED in
+   tests/test_interaction_defaults.py (its complement test fails loudly if
+   you forget).
+5. Verdict row in the collapse module's COLLAPSE_POLICY
+   (its test file holds registry↔table parity).
+Read it ONLY through get_interaction_prompt/_config (or `_call_llm(name)`
+for S2 units) — a direct import of the default trips the bypass guard.
 """
 import hashlib
 import json

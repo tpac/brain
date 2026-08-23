@@ -212,21 +212,28 @@ def _handle_get_interaction(brain, args, graph_changes):
 def _handle_get_interaction_effective(brain, args, graph_changes):
     """The RESOLVED value a run of `name` actually uses: the code default
     with the active override (if any) overlaid — effective template,
-    effective config, and the K-provenance stamp. The read-side complement
-    of get_interaction, which returns the raw override ROW and cannot see
-    the default half."""
+    effective config, and the K-provenance stamp, from ONE resolution.
+    The read-side complement of get_interaction, which returns the raw
+    override ROW and cannot see the default half.
+
+    Templates run to ~90KB (s1e), so the full body ships only on
+    include_template=true; the default answer carries a bounded preview
+    plus template_length — enough to identify the content without flooding
+    an MCP render that has no truncation chokepoint of its own."""
     name = args.get("name", "")
     if not name:
         return {"ok": False, "error": "name is required"}
     try:
-        return {"ok": True, "result": {
-            "name": name,
-            "template": brain.get_interaction_prompt(name),
-            "config": brain.get_interaction_config(name),
-            "stamp": brain.get_interaction_stamp(name),
-        }}
+        result = brain.get_interaction_effective(name)
     except KeyError as e:
         return {"ok": False, "error": str(e).strip("'\"")}
+    template = result.pop("template") or ""
+    result["template_length"] = len(template)
+    if args.get("include_template"):
+        result["template"] = template
+    else:
+        result["template_preview"] = template[:400]
+    return {"ok": True, "result": result}
 
 
 def _handle_set_interaction_active(brain, args, graph_changes):
@@ -257,6 +264,16 @@ def _handle_set_interaction_active(brain, args, graph_changes):
         return {"ok": False, "error": "version must be an integer"}
     try:
         result = brain.set_interaction_active(name, version, set_by)
+        from .interaction_defaults import INTERACTION_DEFAULTS
+        if name not in INTERACTION_DEFAULTS:
+            # The write doors accept any name (tests and legacy cleanup need
+            # that), but only registry names have a runtime reader — say so
+            # HERE, at deploy time, or the typo is discovered never.
+            result = dict(result or {})
+            result["note"] = (
+                "WARNING: %r has no code default in interaction_defaults.py "
+                "— no runtime path resolves this name, so this pointer "
+                "deploys nothing. Typo?" % name)
         return {"ok": True, "result": result}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
@@ -324,14 +341,20 @@ def _handle_register_interaction(brain, args, graph_changes):
         # plus the currently-active version so the caller knows whether it
         # took effect at runtime.
         active = brain.get_interaction(name)
+        note = ("Registration created a new version but did NOT activate it. "
+                "Call set_interaction_active to deploy it as the override.")
+        from .interaction_defaults import INTERACTION_DEFAULTS
+        if name not in INTERACTION_DEFAULTS:
+            note += (" WARNING: %r has no code default in "
+                     "interaction_defaults.py — no runtime path resolves "
+                     "this name, so activating it deploys nothing. Typo?"
+                     % name)
         return {"ok": True, "result": {
             "name": name,
             "registered_version": result.get("version"),
             "active_version": active.get("version") if active else None,
             "template_length": len(template),
-            "note": (
-                "Registration created a new version but did NOT activate it. "
-                "Call set_interaction_active to deploy it as the override."),
+            "note": note,
         }}
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}

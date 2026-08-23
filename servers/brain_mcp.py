@@ -743,9 +743,10 @@ def _build_tools():
          "version": {"type": "integer", "description": "Specific version (default 0 = currently-active version)", "default": 0}}}},
 
     {"name": "get_interaction_effective",
-     "description": "The RESOLVED value an interaction actually runs: the code default with the active override (if any) overlaid — effective template, effective config, and the K-provenance stamp (fingerprint / source / version). Answers \"what is <name> actually running?\"; get_interaction returns the raw override row only and cannot see the default half.",
+     "description": "The RESOLVED value an interaction actually runs: the code default with the active override (if any) overlaid — effective config, the K-provenance stamp (fingerprint / source / version), and the template as a bounded preview + length (templates run to ~90KB; pass include_template=true for the full body). Answers \"what is <name> actually running?\"; get_interaction returns the raw override row only and cannot see the default half.",
      "inputSchema": {"type": "object", "required": ["name"], "properties": {
-         "name": {"type": "string", "description": "Interaction name (e.g. 's1e', 'surface', 'trace_recording', 'scopes')"}}}},
+         "name": {"type": "string", "description": "Interaction name (e.g. 's1e', 'surface', 'trace_recording', 'scopes')"},
+         "include_template": {"type": "boolean", "description": "Return the FULL effective template instead of the 400-char preview (default false)", "default": False}}}},
 
     {"name": "register_interaction",
      "description": "Register a new version of an interaction (prompt template + config). Creates version N+1 if the interaction exists, or version 1 if new. **NEVER activates** — every name runs on its code default until set_interaction_active deploys an override. Used to evolve learnable boundaries — surface prompts, encoder prompts, community enrichment, etc.",

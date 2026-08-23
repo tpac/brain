@@ -834,9 +834,15 @@ class TestMCPRoundTrip(BrainTestBase):
 
         result = self._dispatch("get_interaction_effective", {"name": "s1e"})
         self.assertEqual(result.get("name"), "s1e")
-        self.assertEqual(result.get("template"), default_template)
+        # Bounded by default: preview + length, no full body.
+        self.assertNotIn("template", result)
+        self.assertEqual(result.get("template_preview"), default_template[:400])
+        self.assertEqual(result.get("template_length"), len(default_template))
         self.assertEqual(result.get("config"), default_config)
         self.assertEqual(result.get("stamp", {}).get("source"), "default")
+        full = self._dispatch("get_interaction_effective",
+                              {"name": "s1e", "include_template": True})
+        self.assertEqual(full.get("template"), default_template)
 
         # Deploy a config-only override: the resolved config overlays the
         # one key, the template stays the default, the stamp flips.
@@ -847,7 +853,8 @@ class TestMCPRoundTrip(BrainTestBase):
         self._dispatch("set_interaction_active", {
             "name": "s1e", "version": reg["registered_version"],
             "set_by": "roundtrip_test"})
-        eff = self._dispatch("get_interaction_effective", {"name": "s1e"})
+        eff = self._dispatch("get_interaction_effective",
+                             {"name": "s1e", "include_template": True})
         self.assertEqual(eff["config"].get("effort"), "roundtrip-effective")
         self.assertEqual(eff["template"], default_template)
         self.assertEqual(eff["stamp"]["source"], "override")

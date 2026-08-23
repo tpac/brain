@@ -304,7 +304,7 @@ These units observe S1 traces — how S1 produced the graph — and optimize S1'
 |---|---|
 | **O** | S1R traces across sessions — candidates available, selections made, what Anchor used or ignored |
 | **K** | Current `surface` interaction prompt + version history + trace outcomes |
-| **Δ** | Revised surface prompt or config parameters, registered as new interaction version |
+| **Δ** | Revised surface prompt or config, registered as a DORMANT version (registration never deploys — `set_interaction_active` does, as a per-install override; a winner gets promoted into the code default) |
 | **Autonomy** | LLM judgment → signal queue → Tom reviews before activation |
 
 **Impact:** S1R selects better nodes. This is the highest-leverage boundary in the system — the surface prompt controls what Anchor sees. A 5% improvement here compounds across every turn.
@@ -312,7 +312,7 @@ These units observe S1 traces — how S1 produced the graph — and optimize S1'
 **Example:** Traces show surfacer consistently ranks correction nodes low even when the original is in context. S2 revises the prompt to weight correction relationships higher during selection.
 
 **Pros:**
-- No code change needed — `surface` interaction is already wired to the table
+- No code change needed — `surface` resolves through the override layer (code default + deployed override)
 - Version history enables rollback — if v3 is worse than v2, revert
 - Trace-to-version linking already designed (interaction_id in trace events)
 
@@ -338,7 +338,7 @@ These units observe S1 traces — how S1 produced the graph — and optimize S1'
 
 **Pros:**
 - Self-improving feedback loop — S2's own corrections inform encoder behavior
-- `encoding_agent` interaction is already wired to the table
+- `s1e` (the live encoder name; `encoding_agent` is retired) resolves through the override layer
 - Directly reduces S2's own workload over time
 
 **Cons:**

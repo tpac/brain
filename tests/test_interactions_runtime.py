@@ -495,6 +495,19 @@ class TestBrainOpenWritesNothing:
             assert self._snapshot(env.brain) == before, \
                 'constructing a Brain wrote to the interactions store'
 
+    def test_fresh_brain_has_an_empty_interactions_store(self, tmp_path):
+        """The reopen check above runs on a production COPY whose rows mask a
+        re-added create-only seed (it skips existing names, so the snapshot
+        stays byte-identical). Only a genuinely fresh brain can REQUIRE
+        boot-writes-nothing rather than permit it."""
+        from servers.brain import Brain
+        brain = Brain(db_path=str(tmp_path / 'brain.db'), skip_embedder=True)
+        try:
+            assert brain.list_interactions() == [], \
+                'Brain.__init__ seeded interaction rows on a fresh brain'
+        finally:
+            brain.close()
+
 
 # ═══════════════════════════════════════════════════════
 # Reserved provenance (the collapse migration and audits read these)

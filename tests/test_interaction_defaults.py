@@ -103,13 +103,23 @@ class TestSurfaceDefaultPairsTemplateWithLayout:
 
 
 class TestRegistryCompleteness:
-    """Every literal name the runtime passes to get_interaction_prompt /
-    get_interaction_config / get_interaction / get_interaction_stamp must be
-    a registry key. A name outside the registry has no code default — under
-    the override model a default-run on it resolves to nothing, silently."""
+    """Every name the runtime passes to the resolver must be a registry key.
+    A name outside the registry has no code default — under the override
+    model a default-run on it resolves to nothing (the resolver raises, and
+    the unit ships green because a test tier cannot fail for a registry
+    entry nobody wrote).
+
+    Three consumer shapes, each collected its own way — a literal-only scan
+    missed 6 of 14 names because S2 units and scouts reach the resolver
+    through variables (`_call_llm('s2_healer', ...)` → `base.py`'s
+    `get_interaction_prompt(interaction_name)`):
+      1. direct accessor literals,
+      2. `_call_llm('<name>', ...)` literals (the S2 unit pattern),
+      3. name REGISTRIES that feed the resolver (scouts, scopes)."""
 
     _CALL_RE = re.compile(
         r"get_interaction(?:_prompt|_config|_stamp)?\(\s*['\"]([a-z0-9_]+)['\"]")
+    _CALL_LLM_RE = re.compile(r"_call_llm\(\s*['\"]([a-z0-9_]+)['\"]")
 
     def _literal_names_in_servers(self):
         names = set()
@@ -119,15 +129,35 @@ class TestRegistryCompleteness:
                     continue
                 path = os.path.join(root, fn)
                 with open(path, encoding='utf-8') as f:
-                    names.update(self._CALL_RE.findall(f.read()))
+                    text = f.read()
+                names.update(self._CALL_RE.findall(text))
+                names.update(self._CALL_LLM_RE.findall(text))
         return names
 
     def test_every_runtime_literal_is_a_registry_key(self):
         literals = self._literal_names_in_servers()
         assert literals, "grep found no accessor literals — regex broken?"
+        # The scan must see the S2-unit shape, or a regex edit quietly
+        # shrinks coverage back to the literal-only blind spot.
+        assert 's2_healer' in literals and 's2_aspects' in literals, \
+            "_call_llm literal collection went blind"
         missing = literals - set(INTERACTION_DEFAULTS)
         assert not missing, \
             "accessor literals with no code default: %s" % sorted(missing)
+
+    def test_registry_fed_names_are_registry_keys(self):
+        """Consumers whose interaction name arrives through a registry, not
+        a literal: every scout in SCOUT_NAMES resolves interaction_name(),
+        and ScopePolicy loads scopes._INTERACTION_NAME. A new scout added to
+        SCOUT_NAMES without a code default must fail HERE, not in
+        production via the errors table."""
+        from servers.scales.s1.scouts import contract as sc
+        from servers.scopes import _INTERACTION_NAME as SCOPES_NAME
+        missing = [sc.interaction_name(s) for s in sc.SCOUT_NAMES
+                   if sc.interaction_name(s) not in INTERACTION_DEFAULTS]
+        assert not missing, \
+            "scouts reach the resolver with no code default: %s" % missing
+        assert SCOPES_NAME in INTERACTION_DEFAULTS
 
 
 class TestDefaultsPassTheirOwnValidator:

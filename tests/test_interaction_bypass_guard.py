@@ -33,9 +33,29 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 PROMPT_IMPORT_RE = re.compile(
     r'from\s+\S*_prompt\s+import\s+'
     r'(?:[^\n(]*\bSYSTEM_PROMPT\b|\([^)]*\bSYSTEM_PROMPT\b)')
+# Config defaults wear three naming conventions: the legacy *_CONFIG_V1
+# (scopes), the contract-file *_INTERACTION_DEFAULT (everything since
+# Step 2), and a handful of plain names that predate both. A guard that
+# only knew the first covered one default out of fourteen.
 CONFIG_V1_IMPORT_RE = re.compile(
     r'from\s+\S+\s+import\s+'
-    r'(?:[^\n(]*\b\w+_CONFIG_V1\b|\([^)]*\b\w+_CONFIG_V1\b)')
+    r'(?:[^\n(]*\b\w+(?:_CONFIG_V1|_INTERACTION_DEFAULT)\b'
+    r'|\([^)]*\b\w+(?:_CONFIG_V1|_INTERACTION_DEFAULT)\b)')
+# Plain-named config defaults, scanned as an explicit list (too generic to
+# suffix-match). DEFAULT_CONFIG (recall_laf) is deliberately absent: the
+# name is used by unrelated modules and it is only ever self-referenced.
+PLAIN_DEFAULT_SYMBOLS = ('COMMUNITY_DETECTION', 'COMMUNITY_ENRICHMENT',
+                         'CONSOLIDATION_ENRICHMENT', 'TRACE_RECORDING_NORMAL')
+PLAIN_DEFAULT_RE = re.compile(
+    r'from\s+\S+\s+import\s+(?:[^\n(]*|\([^)]*)\b(%s)\b'
+    % '|'.join(PLAIN_DEFAULT_SYMBOLS))
+# brain_traces legitimately imports TRACE_RECORDING_NORMAL as the overlay
+# BASE its readers merge the resolved config onto — it is not a bypass;
+# the effective value still comes from the resolver.
+PLAIN_DEFAULT_ALLOWED = {
+    'servers/interaction_defaults.py',
+    'servers/brain_traces.py',
+}
 PROMPT_IMPORT_ALLOWED = {'servers/interaction_defaults.py'}
 
 # ── Shape 2: reaching past the accessor doors ────────────────────────────────
@@ -62,6 +82,9 @@ class TestNoDirectDefaultImports(unittest.TestCase):
             text = path.read_text()
             for regex in (PROMPT_IMPORT_RE, CONFIG_V1_IMPORT_RE):
                 for m in regex.finditer(text):
+                    offenders.append('%s: %s' % (rel, m.group(0).strip()))
+            if rel not in PLAIN_DEFAULT_ALLOWED:
+                for m in PLAIN_DEFAULT_RE.finditer(text):
                     offenders.append('%s: %s' % (rel, m.group(0).strip()))
         self.assertEqual(offenders, [], (
             'runtime code imports a prompt/config default directly, skipping '
@@ -113,6 +136,14 @@ class TestDetectorsHaveTeeth(unittest.TestCase):
             'from .scopes import SCOPES_CONFIG_V1'))
         self.assertTrue(CONFIG_V1_IMPORT_RE.search(
             'from .scopes import (\n    SCOPES_CONFIG_V1,\n)'))
+        self.assertTrue(CONFIG_V1_IMPORT_RE.search(
+            'from .healer_contract import HEALER_INTERACTION_DEFAULT'))
+        self.assertFalse(CONFIG_V1_IMPORT_RE.search(
+            'HEALER_INTERACTION_DEFAULT = {'))   # the defining assignment
+        self.assertTrue(PLAIN_DEFAULT_RE.search(
+            'from .community_contract import COMMUNITY_DETECTION'))
+        self.assertFalse(PLAIN_DEFAULT_RE.search(
+            'COMMUNITY_DETECTION = {'))          # the defining assignment
         self.assertFalse(CONFIG_V1_IMPORT_RE.search(
             'SCOPES_CONFIG_V1 = {'))          # the defining assignment
         self.assertFalse(CONFIG_V1_IMPORT_RE.search(

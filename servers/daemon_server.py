@@ -605,17 +605,27 @@ class BrainDaemon:
             self._log("override collapse failed: {}".format(e))
 
         # Feedback at the moment a default edit is expected to land: a live
-        # override pointer SHADOWS its code default, so an edited prompt .py
-        # changes nothing for that name until the override is cleared. Named
-        # per boot — the restart IS the deployment step, so this is where an
-        # operator looks when an edit doesn't take.
+        # override pointer SHADOWS its code default (the whole template when
+        # the row carries one; config key-by-key), so an edit to a shadowed
+        # value doesn't take. Named per boot — the restart IS the deployment
+        # step, so this is where an operator looks when an edit doesn't land.
+        # The two permanent COLLAPSE_POLICY pointers (PIN/SKIP) are excluded:
+        # printing them every boot would habituate the line into noise, and
+        # they are kept by design — a real anomaly must arrive on a line that
+        # is otherwise absent.
         try:
+            from servers.interaction_collapse import COLLAPSE_POLICY, PIN, SKIP
+            permanent = {n for n, v in COLLAPSE_POLICY.items()
+                         if v in (PIN, SKIP)}
             shadowing = [e for e in self.brain.list_interactions()
-                         if e.get('active_version') is not None]
+                         if e.get('active_version') is not None
+                         and e['name'] not in permanent]
             if shadowing:
                 self._log(
-                    "override pointers shadowing code defaults (an edited "
-                    "default is inert for these until cleared): %s" % ", ".join(
+                    "override pointers shadowing code defaults (template "
+                    "whole, config keys they set — an edit to a shadowed "
+                    "value won't land until the override is cleared): %s"
+                    % ", ".join(
                         "%s v%s (set_by=%s)" % (e['name'], e['active_version'],
                                                 e.get('active_set_by'))
                         for e in shadowing))

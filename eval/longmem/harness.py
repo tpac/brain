@@ -293,13 +293,12 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
     # Optional s1e prompt override — register a new version over the seeded
     # v1 BEFORE haystack replay so the override is what the encoder uses.
     if s1e_override:
-        try:
-            _apply_s1e_override(brain, s1e_override)
-            print(f"[harness] item {item_idx+1}: s1e override applied from "
-                  f"{s1e_override}", flush=True)
-        except Exception as e:
-            print(f"[harness] item {item_idx+1}: s1e override FAILED: {e}",
-                  flush=True)
+        # A failed override must ABORT the item, not degrade it: continuing
+        # here encodes on the code default while the run records the result
+        # as a treatment-arm measurement — a silently corrupt A/B.
+        _apply_s1e_override(brain, s1e_override)
+        print(f"[harness] item {item_idx+1}: s1e override applied from "
+              f"{s1e_override}", flush=True)
 
     # Optional surface prompt override — register + activate v5 in this
     # eval brain. Companion env var BRAIN_SURFACE_VARIANT=v5_agentic is

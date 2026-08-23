@@ -83,6 +83,9 @@ def override_interaction(brain, name, *, template=None, parameters=None,
     you must not wipe (recall_laf's config is the carrier of fitted gains, so
     a wholesale replace would reset a corpus brain's gains to module defaults
     and let a base-parity check pass against a config that brain never ran).
+    Side effect to know: the stored row then carries the FULL merged dict, so
+    outside the self-reverting CM a merge=True override pins every config key
+    against future code-default changes, not just the ones you set.
 
     Raises RuntimeError if the override did not reach the resolver. Prints a
     loud warning — not an error — when the fingerprint does not move: that is
@@ -184,16 +187,27 @@ def interaction_override(brain, name, *, template=None, parameters=None,
 
 # ─── Leak check ────────────────────────────────────────────────────────────
 
-def stray_overrides():
-    """Every live override pointer on the running brain, via the daemon.
+def stray_overrides(brain=None):
+    """Every live override pointer — on the running daemon, or on `brain`.
 
     After the override collapse a production install carries only its PIN and
     SKIP baseline (`trace_recording`, `recall_laf` — see
     `servers/interaction_collapse.COLLAPSE_POLICY`), so any other pointer is
-    either a deliberate deployment or a forgotten revert. Routed through the
-    daemon rather than a second Brain: two writer connections against a live
-    WAL database is how an index gets corrupted.
+    either a deliberate deployment or a forgotten revert.
+
+    Pass `brain` to inspect a CORPUS or IsolatedBrain copy instead of the
+    live install — an eval baseline arm inherits every pointer the
+    production copy carried, and a stray third pointer there silently turns
+    "treatment vs default" into "treatment vs somebody's override". Checking
+    the copy before the run is the only way to see that.
+
+    With no `brain`, routed through the daemon rather than a second Brain:
+    two writer connections against a live WAL database is how an index gets
+    corrupted.
     """
+    if brain is not None:
+        return [e for e in brain.list_interactions()
+                if e.get('active_version') is not None]
     from servers.daemon_client import send_command
     r = send_command('list_interactions', {})
     if not r.get('ok'):
@@ -203,7 +217,15 @@ def stray_overrides():
 
 
 def main():
-    rows = stray_overrides()
+    # Exit codes are a contract for scripted gates: 0 = clean, 1 = eval
+    # leak found, 2 = COULD NOT CHECK (daemon unreachable). Letting the
+    # transport error escape as a traceback would exit 1 — the same code
+    # as a real leak — and a CI gate could never tell them apart.
+    try:
+        rows = stray_overrides()
+    except RuntimeError as e:
+        print('[check-overrides] could not check: %s' % e, file=sys.stderr)
+        return 2
     if not rows:
         print('[check-overrides] no override pointers — every interaction is '
               'on its code default.')

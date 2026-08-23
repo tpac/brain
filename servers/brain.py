@@ -829,6 +829,14 @@ class Brain(
         template or ≥1 config key); a vacuous row stamps 'default'
         (version 0, id None) like no row at all.
         """
+        return self.get_interaction_effective(name)['stamp']
+
+    def get_interaction_effective(self, name: str) -> dict:
+        """Template, config and stamp from ONE resolution — mutually
+        consistent by construction. Three separate accessor calls can
+        straddle a concurrent set_interaction_active and return a template
+        from the old row with a config from the new; this is the door for
+        callers that need the whole effective value."""
         from .interaction_defaults import interaction_fingerprint
         template, config, row, shadows = self._resolve_interaction(name)
         stamp = {'fingerprint': interaction_fingerprint(name, template, config),
@@ -837,7 +845,8 @@ class Brain(
             stamp.update(source='override',
                          version=int(row.get('version') or 0),
                          id=row.get('id'))
-        return stamp
+        return {'name': name, 'template': template, 'config': config,
+                'stamp': stamp}
 
     # get_relations_for_families — REMOVED 2026-05-04 (Step 12 of unified-aspects).
     # Replaced by brain.aspects.<name>.edge_relations (single name) or
