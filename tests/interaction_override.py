@@ -55,7 +55,17 @@ def _as_dict(parameters):
     if isinstance(parameters, str):
         if not parameters.strip():
             return {}
-        return json.loads(parameters)
+        parsed = json.loads(parameters)
+        # The resolver refuses a non-object override config at READ time by
+        # logging and falling back to the default — silently, from the caller's
+        # side. Refusing it here instead means the eval fails where the mistake
+        # is, rather than running an arm on the code default it thought it had
+        # overridden.
+        if not isinstance(parsed, dict):
+            raise TypeError(
+                'parameters JSON must be an object, got %s'
+                % type(parsed).__name__)
+        return parsed
     raise TypeError('parameters must be a dict, a JSON string, or None — got %r'
                     % type(parameters).__name__)
 

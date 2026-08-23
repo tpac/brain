@@ -125,6 +125,10 @@ class TestOverrideDoor:
                 == 'support')
         assert _as_dict('') == {}
         assert _as_dict(None) is None
+        # A JSON array would make the resolver log-and-default at READ time —
+        # silently, from the arm's side. Refuse it where the mistake is.
+        with pytest.raises(TypeError):
+            _as_dict('[1, 2]')
 
     # ─── taking it back ─────────────────────────────────────────────────
 
