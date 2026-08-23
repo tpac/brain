@@ -106,8 +106,37 @@ and must NOT re-touch those two lines; (4) contract.py is ours to edit now — t
   first. If the run reports voice fields **missing rather than renamed**, suspect that path,
   not the rename.
 
-**THE GATE RUNBOOK** (confirmed unchanged by the eval stream after their Step 7 reshape —
-re-anchor here, not to any older command):
+**THE SHIPPING PATH CHANGED UNDER US — 2026-08-23, mid-session.** The override-migration
+stream's Step 8 (the install collapse) landed on main and the daemon ran it, so **`s1e` now
+has NO active pointer**: `list_interactions` showed `active_version: 38` (set_by `anchor`)
+at this session's start and `null` by its end, and `get_interaction('s1e')` now answers
+*"no override deployed — the runtime reads its code default (`servers/interaction_defaults.py`)"*.
+**This is that arc's INTENDED end state, not a breakage** — pointer-less is normal now
+(id:bd39c56c). Consequences, and they replace this runbook's baseline and final step:
+
+- **The live prompt is the code default** — 86,833 chars, already carrying the v31 voice
+  names, i.e. v38's text. So the **baseline arm runs with NO override**, not `s1e=38`. An
+  `s1e=38` baseline would be override-vs-override and would not measure against what
+  production actually runs.
+- **`v39` is still the right number** — max_version is 38, and registered versions stay on
+  record through the collapse.
+- **Activating v39 is NOT the ship act any more.** Tom's ruling in that arc
+  (`docs/PROMPT-CONFIG-OVERRIDE-ARCH-PLAN.md`, decision 3): *"the eval gate becomes a
+  process rule: experimental changes land as overrides, get promoted into the code default
+  after the eval passes."* A permanent override would also freeze `s1e` against every
+  future code default — precisely the condition the collapse existed to clear.
+- **Ship sequence:** register v39 → deploy as a *temporary* override for the eval arm →
+  package eval → on Tom's pass, **promote the template into the code default**
+  (`interaction_defaults.py` + the seed `.py` via `sync-prompts`) and bump
+  `SEED_PROMPTS_VERSION` → then **clear the override** so the install returns to
+  pointer-less. `clear_interaction_override` (their Step 6) is that verb.
+- Unchanged and still correct below: `--interaction-override` mechanics, `--pooled`
+  refusing to compose, `check-overrides` as the leak check, multi-rep over single runs,
+  and BOTH arm-integrity checks.
+
+**THE GATE RUNBOOK** (eval mechanics confirmed by the eval stream after their Step 7
+reshape — re-anchor here, not to any older command; read the shipping-path block above
+first, it changes the baseline arm and the final step):
 
 ```bash
 ./dev python3 eval/longmem/build_corpus.py --interaction-override "s1e=39" --label gate-vnext5 [--items N | --qids a,b,c]
@@ -144,8 +173,9 @@ print(b.get_interaction_stamp('s1e'))"
 Then assert **`fingerprint_A != fingerprint_B`**. The stamp is 12 hex over the RESOLVED
 (overlaid) template *and* config, so one `!=` is the complete check — two arms with
 different version ints can still resolve to the same K when the difference lives in the
-config half. Our gate should differ by construction (v38 vs v39 are genuinely different
-text); **if the fingerprints match, stop** — the override didn't take, and the config half
+config half. Our gate should differ by construction (the pointer-less code default vs v39
+are genuinely different text); **if the fingerprints match, stop** — the override didn't
+take, and the config half
 is now the likely cause.
 
 ⚠ That snippet spawns `Brain(db_path=…)` deliberately against a **corpus item's isolated
