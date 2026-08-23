@@ -1,9 +1,9 @@
 # Prompt/Config Override Model — Architecture Plan
 
-## § Steps 1–8 built; next is Step 9, deleting the machinery (2026-08-23) ◀ ACTIVE ARC
+## § Steps 1–8 LIVE; next is Step 9, deleting the machinery (2026-08-23) ◀ ACTIVE ARC
 
-**Read first:** plan index `id:700654c9`; the four rulings `id:0274bca8`; session-5
-record `id:bd39c56c`; session-6 handoff `id:3bd64412`.
+**Read first:** plan index `id:700654c9`; session-7 handoff `id:54472d44`; session-6
+record `id:f36c8f89`; the four rulings `id:0274bca8`.
 **Step 8 LANDED and LIVE** (main `e82e9eb`) — `servers/interaction_collapse.py`, called from daemon
 boot after `reconcile_seeded_prompts` and gated on it. Pointer-only, zero row deletes, audit record
 committed before the first drop. **Ran in production on the 2026-08-23 restart: 21 override pointers
