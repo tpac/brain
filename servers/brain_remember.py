@@ -1108,6 +1108,7 @@ class BrainRememberMixin:
                  situation: Optional[str] = None,
                  question: Optional[str] = None,
                  event_time: Optional[str] = None,
+                 thought: Optional[str] = None,
                  source_turn_id: Optional[str] = None,
                  evolution_status: Optional[str] = None,
                  # Promoted metadata fields (stored in node_metadata_kv)
@@ -1261,6 +1262,7 @@ class BrainRememberMixin:
             ('confidence_rationale', confidence_rationale), ('scope', scope),
             ('source_attribution', source_attribution), ('situation', situation),
             ('question', question), ('event_time', event_time),
+            ('thought', thought),
         ]:
             if _val is not None:
                 _meta_fields[_name] = _val
