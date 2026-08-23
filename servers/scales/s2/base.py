@@ -60,24 +60,32 @@ def apply_encoder_attribution(cmd, cmd_args, *, encoding_source, run_chain_id,
       node-creating ops carry deterministic provenance; S2 units pass ''
       (graph-scope work never invents provenance); None leaves args untouched.
 
-    ``setdefault`` for the first two, so an explicitly-supplied value wins.
-    ``scope`` fields are the opposite — force/strip — because they are
-    session-derived, never agent-authored. Mutates ``cmd_args`` in place; a
+    ``encoding_source`` is force-stamped like the scope fields — attribution
+    is run-derived, never agent-authored (an LLM-authored value in a tool
+    call's args must not win over the unit's identity; a differing supplied
+    value is overridden with a warning). ``chain_id`` keeps ``setdefault``
+    so an explicitly-supplied chain wins. Mutates ``cmd_args`` in place; a
     no-op on non-dict args and on reads (get_nodes / recall_batch are in
     neither set — they carry no attribution, and a chain_id on a read is
     meaningless). The in-process encoder dispatch is the one factory S1
     Scribe and the S2 units share, so the attribution rules live here, once.
 
-    Returns: warning strings from the scope stamp (dropped/overridden
-    agent-supplied values) for the caller to log.
+    Returns: warning strings from the attribution + scope stamps
+    (dropped/overridden agent-supplied values) for the caller to log.
     """
     if not isinstance(cmd_args, dict):
         return []
+    warnings = []
     if cmd in ATTRIBUTED_WRITE_COMMANDS:
-        cmd_args.setdefault('encoding_source', encoding_source)
+        supplied = cmd_args.get('encoding_source')
+        if supplied is not None and supplied != encoding_source:
+            warnings.append(
+                "encoding_source %r overridden to %r on %s (system-stamped, "
+                "never agent-authored)" % (supplied, encoding_source, cmd))
+        cmd_args['encoding_source'] = encoding_source
     if run_chain_id and cmd in CHAIN_AWARE_WRITES:
         cmd_args.setdefault('chain_id', run_chain_id)
-    return stamp_scope_provenance(cmd, cmd_args, scope)
+    return warnings + stamp_scope_provenance(cmd, cmd_args, scope)
 
 
 class IntegrationUnit:

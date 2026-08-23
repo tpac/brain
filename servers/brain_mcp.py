@@ -68,12 +68,6 @@ def _generate_remember_schema():
         prop = {"type": TYPE_MAP.get(spec.get("type", "str"), "string")}
         if spec.get("description"):
             prop["description"] = spec["description"]
-        elif name == "type":
-            prop["description"] = "Node type (decision, rule, lesson, mechanism, vocabulary, etc.)"
-        elif name == "title":
-            prop["description"] = "Specific, scannable title"
-        elif name == "content":
-            prop["description"] = "Rich content with reasoning, tradeoffs, specifics"
         if spec.get("default") is not None:
             prop["default"] = spec["default"]
         properties[name] = prop

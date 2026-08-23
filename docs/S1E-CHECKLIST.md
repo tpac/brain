@@ -1,10 +1,11 @@
 # S1E Prompt Checklist — the boxes every revision must check
 
-## Walk state — walk COMPLETE + items 1-4 and the reasoning contract fix LANDED; next: weave → MCP membership → E1/E8/E10 → gate (2026-08-23) ◀ ACTIVE ARC
+## Walk state — walk + weave + MCP membership COMPLETE; next: E1/E8/E10 → gate (2026-08-23) ◀ ACTIVE ARC
 
 **Where this stands.** The section-by-section walk is finished and every Tom-ruled fix from
-it has landed and been probe-verified. What remains is the weave, one eval-gated MCP change,
-three audits, and the gate. Draft is 100,276 chars; NOTHING is registered. Diff base is
+it has landed and been probe-verified. The weave (5 moves) and the MCP membership change
+are on main. What remains is three audits and the gate. Draft is 102,508 chars; NOTHING
+is registered. Diff base is
 **v38** (the rename stream's mechanical name-swap); our candidate registers as **v39**
 (verified against `list_interactions`: s1e max 38, active 38).
 
@@ -28,20 +29,27 @@ control, S single-variable re-test; every arm production-faithful, incl. `## Arc
   encoder authors 169 of 225 `open` nodes, so its premise inverted). Its replacement is
   the closure teaching above (id:99f5d84b).
 
+DONE 2026-08-23 (continued):
+- **The weave plan** (E2/E3 section) — all 5 moves landed (aedb73d, 6b7545e); the move
+  table below carries per-move detail.
+- **MCP membership change** (b59c694) — `question`/`event_time` writable (named
+  remember() params), `critical`/`personal`/`personal_context` retired via
+  `agent_writable=False` (read paths stay), `encoding_source` system-stamped +
+  force-stamped at apply_encoder_attribution (setdefault let an LLM-authored value
+  win), stale `content` line fixed, every remaining bare field described, brain_mcp's
+  local description fallbacks removed. Tom waived the eval gate (stale surface;
+  168 unit tests green). Residual, named: brain_batch per-op `encoding_source`
+  still wins over top-level inside the handlers (serves legitimate multi-scale
+  emitters; nothing advertises the key to any LLM). Held back as before: `locked`
+  (needs the audience split — one `get_writable_fields()` serves both MCP callers
+  who *can* lock and an encoder whose locks are silently demoted), `source_refs`
+  (wants its 8-hex shape gate first), `thought` (1 use — let the teaching earn it),
+  the `emotions` migration fork.
+
 REMAINING:
-1. **The weave plan** (E2/E3 section) — 5 moves, no new assets. The `similar_to` connect op
-   between the planted ring-buffer twins closes three gaps at once.
-2. **MCP membership change** — add `question`/`event_time`, drop `critical`/`personal`/
-   `personal_context`, `encoding_source` → `system_stamped`, fix the stale `content` line,
-   describe the 11 bare fields. Tom-agreed 2026-08-23. **Ships as its own eval-gated
-   change, NOT inside the v39 package** (154793b6 + cross-caller scope 807394de) — folding
-   it in means the eval can't attribute the delta. Held back: `locked` (needs the
-   audience split — one `get_writable_fields()` serves both MCP callers who *can* lock and
-   an encoder whose locks are silently demoted), `source_refs` (wants its 8-hex shape gate
-   first), `thought` (1 use — let the teaching earn it), the `emotions` migration fork.
-3. **E1 + E8 + E10 audits** — unrun, and they must run over the SETTLED draft, not before
-   the weave. E10 is new (Tom, 2026-08-23) and is where item 2's findings came from.
-4. **Ship gate** — the runbook below is complete: invocation, check-overrides pre-step,
+1. **E1 + E8 + E10 audits** — unrun, and they must run over the SETTLED draft. E10 is
+   new (Tom, 2026-08-23); the MCP membership change above was its first entry list.
+2. **Ship gate** — the runbook below is complete: invocation, check-overrides pre-step,
    expected one-time cache miss, migrate-on-open pre-registered as first suspect, and both
    arm-integrity checks.
 

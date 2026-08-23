@@ -234,23 +234,46 @@ VALID_BATCH_OPS = frozenset(BATCH_OP_SPECS)
 
 STRUCTURAL_FIELDS = {
     "id":         {"store": "nodes", "type": "str", "required": True, "immutable": True},
-    "type":       {"store": "nodes", "type": "str", "required": True},
-    "title":      {"store": "nodes", "type": "str", "required": True},
-    "content":    {"store": "nodes", "type": "str", "replace_on_revise": True, "history": "trace events (node_revised deltas); legacy _sys_revision_history blobs dropped by migration"},
-    "confidence": {"store": "nodes", "type": "float", "range": (0.0, 1.0), "default": 1.0},
-    "locked":     {"store": "nodes", "type": "bool", "default": False},
-    "archived":   {"store": "nodes", "type": "bool", "default": False},
-    "critical":   {"store": "nodes", "type": "bool", "default": False},
-    "emotion":    {"store": "nodes", "type": "float"},
-    "emotion_label": {"store": "nodes", "type": "str", "default": "neutral"},
+    "type":       {"store": "nodes", "type": "str", "required": True,
+                   "description": "Node type (decision, lesson, mechanism, correction, moment, open, ... — open vocabulary, use what fits)."},
+    "title":      {"store": "nodes", "type": "str", "required": True,
+                   "description": "Specific and scannable — the title is itself an embedded recall vector; specificity is findability."},
+    "content":    {"store": "nodes", "type": "str", "replace_on_revise": True, "history": "trace events (node_revised deltas); legacy _sys_revision_history blobs dropped by migration",
+                   "description": ("Rich content — reasoning, tradeoffs, specifics. On revise, "
+                                   "prefer content_edits (exact old→new patches) over full "
+                                   "replacement: a rewrite must re-author everything the node "
+                                   "holds, and dropped details are silent losses.")},
+    "confidence": {"store": "nodes", "type": "float", "range": (0.0, 1.0), "default": 1.0,
+                   "description": ("0.0-1.0. Set below 1.0 when the claim is hedged, contested, "
+                                   "or inferred — recall exposes it and filters select on it. "
+                                   "Don't fabricate precision.")},
+    "locked":     {"store": "nodes", "type": "bool", "default": False,
+                   "description": ("Protect from non-anchor revision. Anchor-only — a non-anchor "
+                                   "caller's locked:true is demoted at the write boundary. "
+                                   "Locking is a rare act.")},
+    # agent_writable=False: retired from the agent-facing write surface
+    # (get_writable_fields) — the column and its read paths stay (recall's
+    # critical boost / personal penalty), but no agent is offered the field:
+    # near-zero live use, dead options tax every write decision.
+    "archived":   {"store": "nodes", "type": "bool", "default": False, "agent_writable": False},
+    "critical":   {"store": "nodes", "type": "bool", "default": False, "agent_writable": False},
+    "emotion":    {"store": "nodes", "type": "float",
+                   "description": "Emotional charge of the moment — signed; recall reads the magnitude. Pair with emotion_label."},
+    "emotion_label": {"store": "nodes", "type": "str", "default": "neutral",
+                      "description": "Name of the felt register ('satisfaction', 'frustration', ...)."},
     # `project` lives in PROMOTED_FIELDS (metadata_kv) — the nodes.project
     # column was dropped in schema v30. Provenance is system-stamped at the
     # write boundary, never agent-authored.
-    "personal":   {"store": "nodes", "type": "str"},
-    "personal_context": {"store": "nodes", "type": "str"},
-    "evolution_status":  {"store": "nodes", "type": "str"},
+    "personal":   {"store": "nodes", "type": "str", "agent_writable": False},
+    "personal_context": {"store": "nodes", "type": "str", "agent_writable": False},
+    "evolution_status":  {"store": "nodes", "type": "str",
+                          "description": "Claim lifecycle once settled: active | resolved | validated | confirmed | disproven | dismissed."},
     "source_turn_id":   {"store": "nodes", "type": "str", "description": "message_stream ID that produced this node (episode linkage)"},
-    "encoding_source":  {"store": "nodes", "type": "str", "description": "Who created this node. Convention: category:process. anchor = direct MCP, encoder:sonnet = encoding agent, idle:dreams/redistribution/etc, hook:boot/compaction. Only anchor can lock."},
+    # system_stamped: excluded from the agent-facing schemas — MCP writes
+    # default to 'anchor' at the write boundary; scale agents get theirs
+    # force-stamped by apply_encoder_attribution. Never agent-authored
+    # (the `project` precedent: advertising it as an input only trains drift).
+    "encoding_source":  {"store": "nodes", "type": "str", "system_stamped": True, "description": "Who created this node. Convention: category:process. anchor = direct MCP, encoder:sonnet = encoding agent, s2:<unit> = graph units, hook:boot/compaction, migration:*. Only anchor can lock."},
     "created_at":   {"store": "nodes", "type": "str", "immutable": True, "description": "ISO 8601 timestamp, auto-set on insert. Filterable with lt/gt for date-range queries."},
     "updated_at":   {"store": "nodes", "type": "str", "immutable": True, "description": "ISO 8601 timestamp, auto-updated on revise. Filterable with lt/gt for date-range queries."},
 }
@@ -299,6 +322,25 @@ PROMOTED_FIELDS = {
         "embeds": True,
         "derived_vector": "_situation",
         "description": "When is this knowledge relevant? One sentence. Stored in node_metadata_kv (canonical); a derived _situation embedding row in node_enrichments provides recall scoring. Enrichment text column is deprecated for _situation — kv is the single source of truth.",
+    },
+    "question": {
+        "store": "metadata_kv",
+        "type": "str",
+        "embeds": True,
+        "derived_vector": "question",
+        "description": ("The question this node answers, as the other side "
+                        "would ask it — gets its own recall embedding, "
+                        "bridging how it's stored and how it's asked for. "
+                        "Skip when the title already asks it."),
+    },
+    "event_time": {
+        "store": "metadata_kv",
+        "type": "str",
+        "description": ("When the remembered thing HAPPENED — ISO 8601, "
+                        "distinct from created_at (when it was written). "
+                        "Resolve relative dates to absolute; leave absent "
+                        "rather than guess. Read by the temporal lane at "
+                        "recall."),
     },
     "reasoning": {
         "store": "metadata_kv",
@@ -352,12 +394,14 @@ ALL_FIELDS = {**STRUCTURAL_FIELDS, **PROMOTED_FIELDS}
 
 def get_writable_fields():
     """Fields an AGENT can set via remember() or revise() — feeds the MCP
-    schemas. Excludes immutable fields and system_stamped ones (project:
-    the write boundary derives it from the session; advertising it as an
-    input would only train drift)."""
+    schemas and the encoder's field summary. Excludes immutable fields,
+    system_stamped ones (project, counterpart, encoding_source: the write
+    boundary derives them; advertising them as inputs would only train
+    drift), and agent_writable=False ones (retired from the write surface;
+    columns and read paths stay)."""
     return {k: v for k, v in ALL_FIELDS.items()
             if not v.get("immutable") and not v.get("system_stamped")
-            and k != "archived"}
+            and v.get("agent_writable", True)}
 
 
 def get_remember_fields():
