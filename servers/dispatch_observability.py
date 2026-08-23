@@ -183,12 +183,29 @@ def _handle_list_interactions(brain, args, graph_changes):
 
 
 def _handle_get_interaction(brain, args, graph_changes):
-    """Get a specific interaction by name. version=0 returns latest."""
-    result = brain.get_interaction(
-        name=args.get("name", ""),
-        version=args.get("version", 0))
+    """Get a specific interaction by name. version=0 returns the ACTIVE row."""
+    name = args.get("name", "")
+    version = args.get("version", 0)
+    result = brain.get_interaction(name=name, version=version)
     if not result:
-        return {"ok": False, "error": "Interaction not found: %s" % args.get("name", "")}
+        # Post-collapse, "no active row" is the NORMAL state of a healthy
+        # name: no override deployed, the runtime reads the code default.
+        # Saying "not found" for it reads as if the name itself is gone.
+        # ok:False is kept for every branch — callers key on ok, and the
+        # prose is display-only (daemon_client contract).
+        from .interaction_defaults import INTERACTION_DEFAULTS
+        known = name in INTERACTION_DEFAULTS or brain.list_interaction_versions(name)
+        if version and known:
+            return {"ok": False,
+                    "error": "%s has no version %s on record" % (name, version)}
+        if known:
+            return {"ok": False, "error":
+                    "%s has no override deployed — the runtime reads its code "
+                    "default (servers/interaction_defaults.py). Registered "
+                    "versions stay on record: pass version=N to inspect one, "
+                    "or register_interaction + set_interaction_active to "
+                    "deploy an override." % name}
+        return {"ok": False, "error": "Interaction not found: %s" % name}
     return {"ok": True, "result": result}
 
 

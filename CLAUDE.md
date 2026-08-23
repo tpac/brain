@@ -88,28 +88,40 @@ embeddings) and `brain_logs.db` (traces, session state, interactions, errors).
 
 **In S1/S2 code, pass `at=conversation_now(...)` explicitly.** S1/S2 reads/writes are conversation-time, not wall-clock. Eval replays inject historical `[Current date: ...]` prefixes; bare `iso_now()` / `iso_cutoff()` would anchor to today's wall-clock and silently corrupt the replay. System bookkeeping (log cleanup, integrity audits, dashboard counts) is exempt — wall-clock is correct there. The rule's axis is conversation-time data (`event_time`, relative-date resolution, renders) — masks and windows over transaction-time columns (`created_at`, trace timestamps) anchor to wall-clock instead: a conversation-time value against a transaction-time column silently corrupts replays (id:c12c4735). `tests/test_time_window_contract.py` enforces both rules.
 
-### Encoder prompts: DB is authoritative, sync to `.py` before committing
+### Prompts & configs: code owns the default, the DB holds only overrides
 
-The live prompts for encoder agents live in the `interactions` table in `brain_logs.db`. The seed `.py` files listed in `SEED_PROMPTS` (`servers/tools/sync_prompts.py`) are **seed-only** — they bootstrap fresh brains that have no DB entry yet. They must mirror the **production-ACTIVE** version (not the highest registered) so a `git clone` inherits the prompt the runtime is actually using, never an untested dormant candidate.
+Since the Step 8 collapse (2026-08-23) the runtime resolves every interaction
+through `get_interaction_prompt/_config`: the **code default** (`SYSTEM_PROMPT`
+in the prompt `.py`, config dict in the consumer's contract file — indexed by
+`servers/interaction_defaults.py`) unless an **override pointer** is deployed.
+A healthy install shows **2** pointers in `./dev check-overrides` — `recall_laf`
+and `trace_recording` are permanent by design (`interaction_collapse.COLLAPSE_POLICY`);
+do not "clean" them.
 
-**Discipline** for a normal prompt change:
+**Change the production default** (fleet-wide): edit the prompt `.py` / contract
+dict and merge — the daemon reads it at next restart. No registration, no sync
+ceremony. Until Step 9 deletes the distribution machinery, two vestiges still
+apply to the 7 shipped names: `./dev sync-prompts --check` must stay green, and
+`tests/test_seed_prompt_reconcile.py`'s ratchet forces a `SEED_PROMPTS_VERSION`
+bump on any shipped-template edit (it still deploys to not-yet-collapsed installs).
+
+**Deploy an override on THIS install** (experiment / hotfix / debug):
 
 ```bash
 register_interaction(name, template)         # registers as v(N+1), DORMANT
-set_interaction_active(name, version=N+1)    # flips the runtime pointer
-./dev sync-prompts                           # mirrors ACTIVE → .py files
-./dev sync-prompts --check                   # CI-style non-zero-exit drift check
-# then bump SEED_PROMPTS_VERSION in servers/interaction_seed.py — sync only
-# updates the .py for fresh brains; the bump is what reaches existing installs
+set_interaction_active(name, version=N+1)    # deploys — runtime reads it on next call
+clear_interaction_override(name)             # reverts to the code default
 ```
 
-**Discipline** for an eval-gated prompt change: register DORMANT, run the eval, then activate + sync. Do **not** sync between register and activate — `sync-prompts` deliberately mirrors only the active version, so dormant candidates cannot leak into the seed file and be picked up by fresh-brain installs that skipped the eval.
+**Eval / A/B**: never hand-roll — `tests/interaction_override.py` is the one
+door (`override_interaction(...)` + the self-reverting `interaction_override(...)`
+CM). Baseline arms need no clearing anymore: an IsolatedBrain copy of collapsed
+production starts at the 2-pointer baseline. Promotion after a green eval =
+move the winning template into the code default, then `clear_interaction_override`.
 
-Commit the `.py` change together with whatever prompted the registration. Never edit the `.py` files by hand to change prompt behavior — that won't affect runtime and will silently drift from the DB.
-
-**The bump is the deployment decision for the fleet.** `sync-prompts` only mirrors ACTIVE into the seed `.py`, which reaches brains created afterwards; installs that already exist advance only when `SEED_PROMPTS_VERSION` changes and `reconcile_seeded_prompts` runs at the next daemon boot. It advances a prompt only while that install still runs the shipped default — any human `register`/`set_active` for a name makes it hands-off permanently. `tests/test_seed_prompt_reconcile.py` fingerprints the shipped templates + configs and fails when they change without a bump.
-
-`tests/test_prompt_sync.py` holds the contract: each seed file must export `SYSTEM_PROMPT`, fresh brains must seed every prompt in `SEED_PROMPTS`, sync must mirror the active version (not the latest registered), and seed must never overwrite an externally-registered version.
+`tests/test_prompt_sync.py` + `test_interaction_defaults.py` hold the contract:
+seed files export `SYSTEM_PROMPT`, every accessor literal has a registry entry,
+and code defaults pass their own validators.
 
 ### Python runtime — use `./dev`
 
