@@ -16,8 +16,11 @@ Two ways the drift comes back, one test each:
 
 1. A NEW door is added that skips the canonical pull. Caught by
    `test_recall_producing_handlers_are_known` — a tripwire on the set of
-   dispatch handlers that produce recall results. It fails when someone adds
-   one, which is the moment to add it to the parity test below.
+   dispatch handlers that produce recall results, across every
+   `servers/dispatch_*.py`. It fails when someone adds one, which is the
+   moment to add it to the parity test below. Blind spot worth knowing: it
+   matches direct `brain.recall*` calls, so a door that reaches results
+   through a helper function would slip past.
 
 2. `get_node` GROWS an attachment that CANONICAL_ATTACHMENT_KEYS doesn't
    list. Then the doors diverge again on the new field, silently, because the
@@ -26,11 +29,11 @@ Two ways the drift comes back, one test each:
 """
 
 import ast
-import inspect
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO))
 
 from servers import dispatch_read
 from servers.contract import CANONICAL_ATTACHMENT_KEYS
@@ -42,19 +45,30 @@ from tests.brain_test_base import BrainTestBase
 # without adding it there is the regression this list exists to make loud.
 KNOWN_RECALL_DOORS = {'_handle_recall', '_handle_recall_batch'}
 
+# Node-returning recall entry points. `recall_episodes` is deliberately absent:
+# it returns trace episodes, not nodes, so it has no canonical node shape to
+# agree with.
+RECALL_CALLS = ('recall', 'recall_node', 'recall_batch')
+
 SESSION = 'sess-parity'
 
 
 def _handlers_producing_recall_results():
-    """Dispatch-read functions whose body calls brain.recall / recall_node."""
-    tree = ast.parse(inspect.getsource(dispatch_read))
+    """Every dispatch handler whose body calls brain.recall / recall_node.
+
+    Scans ALL servers/dispatch_*.py modules, not just dispatch_read — a door
+    added in a sibling module is exactly the case this guard exists to catch,
+    and scoping the scan to one file would let it through while the suite
+    reported green.
+    """
     found = set()
-    for fn in [n for n in ast.walk(tree)
-               if isinstance(n, ast.FunctionDef)]:
-        for call in [n for n in ast.walk(fn) if isinstance(n, ast.Call)]:
-            attr = getattr(call.func, 'attr', None)
-            if attr in ('recall', 'recall_node', 'recall_batch'):
-                found.add(fn.name)
+    for path in sorted((REPO / 'servers').glob('dispatch_*.py')):
+        tree = ast.parse(path.read_text())
+        for fn in [n for n in ast.walk(tree)
+                   if isinstance(n, ast.FunctionDef)]:
+            for call in [n for n in ast.walk(fn) if isinstance(n, ast.Call)]:
+                if getattr(call.func, 'attr', None) in RECALL_CALLS:
+                    found.add(fn.name)
     return found
 
 
@@ -134,6 +148,30 @@ class TestRecallDoorParity(BrainTestBase):
         self.fail('%s door returned no result for the seeded node (%d '
                   'results) — recall itself is broken, or the seed no longer '
                   'matches the query' % (door, len(results)))
+
+    def test_canonicalize_covers_every_result_not_a_slice(self):
+        """No cap — every result, however deep the list.
+
+        A cap here reads as a cost saving and acts as a correctness boundary:
+        the renderer draws whatever it is handed, so results past the cap
+        render as authoritative with their correction chain silently absent.
+        Measured live before this was fixed: with an 8-result cap and
+        limit=11, indices 8 and 9 came back with no connections, no situation
+        and no _corrections — and index 8 was a node that HAS corrections.
+        """
+        ids = [self.brain.remember_rich(
+                   type='fact', title='Zarquon sample %d' % i,
+                   content='sample body %d' % i)['id']
+               for i in range(11)]
+        results = [{'id': nid} for nid in ids]
+        self.brain.canonicalize_results(results, session_id=SESSION)
+        # get_node sets `connections` unconditionally on every node it finds,
+        # so its absence means this result never went through the pull.
+        bare = [i for i, r in enumerate(results) if 'connections' not in r]
+        assert not bare, (
+            'results at %s were returned without the canonical pull — a cap '
+            'is silently rendering later results as authoritative with their '
+            'corrections absent' % bare)
 
     def test_canonical_keys_cover_what_get_node_attaches(self):
         """The overlay list must not fall behind get_node's assembly.

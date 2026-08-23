@@ -32,7 +32,6 @@ from .brain_constants import (
     KEYWORD_FALLBACK_WEIGHT,
     MAX_PAGE_SIZE,
     PRUNE_THRESHOLD,
-    RECALL_ENRICH_CAP,
     RECALL_EXPANSION_TIMEOUT_S,
     RELEVANCE_FLOOR_ENRICHED,
     RELEVANCE_FLOOR_PRIMARY,
@@ -441,15 +440,33 @@ class BrainRecallMixin:
         so no caller can hand back a node with its corrections missing.
         Bypassing it is how `recall(node_id=…)` used to return a superseded
         claim with no correction marker attached.
+
+        EVERY result, not a slice. A cap here reads as a cost saving and acts
+        as a correctness boundary: the renderer draws whatever it is handed,
+        so capped-off results render as authoritative with their correction
+        chain silently absent — the exact failure this door exists to remove.
+        Measured at ~2.5ms/node, bounded per call by recall's MAX_PAGE_SIZE.
+        recall_batch multiplies that by its query count; if that ever needs
+        bounding, the lever is the recall LIMIT — how many nodes a caller
+        asked for — never a cap on how many of them come back whole.
+
+        A failed pull RAISES rather than degrading. Returning a node whose
+        corrections could not be read is indistinguishable, downstream, from
+        a node that has none — so silence here would reintroduce the hazard
+        in its worst form. The dispatcher turns the raise into a loud error.
+
+        `session_id` falls back to the brain's ambient session, matching the
+        by-query door: the doors resolving the veil differently is the
+        divergence this method was written to end.
         """
         from .contract import CANONICAL_ATTACHMENT_KEYS
         from .scopes import scrub_node
-        rich = self.get_node([r['id'] for r in results[:RECALL_ENRICH_CAP]
+        rich = self.get_node([r['id'] for r in results
                               if isinstance(r, dict) and r.get('id')])
         if not rich:
             return
         veil = self.scope_veil(session_id or self.session_id)
-        for r in results[:RECALL_ENRICH_CAP]:
+        for r in results:
             node = rich.get(r.get('id')) if isinstance(r, dict) else None
             if not node:
                 continue
