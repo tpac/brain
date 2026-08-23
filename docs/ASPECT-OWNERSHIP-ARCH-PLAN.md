@@ -17,8 +17,8 @@ not re-examined. Numbers below were measured against the live brain and the ship
 2026-07-25 and are perishable — re-derive before acting on any of them.
 
 **A coverage failure worth inheriting.** The first draft of this plan presented
-`INTENTIONAL_EDGE_TYPES` as an urgent discovery. It is a deliberate operator deferral from a month
-earlier (`id:28f7fe69`), and Step 0A now says so. The cause: the review recalled the aspect *storage*
+`INTENTIONAL_EDGE_TYPES` as an urgent discovery. It was a deliberate operator deferral from a month
+earlier (`id:28f7fe69`); Step 0A records how it actually closed. The cause: the review recalled the aspect *storage*
 history and passed those constraints to the review agents, but never recalled the aspect *filter*
 history — so the agents found real code, correctly, and the synthesis mistook a parked decision for a
 new one. **Any future review of this surface must recall both halves.** The brain prevents
@@ -84,27 +84,29 @@ note it on the node.
 
 ---
 
-## Step 0A — `INTENTIONAL_EDGE_TYPES` — ALREADY PARKED BY THE OPERATOR. Do not schedule this.
+## Step 0A — `INTENTIONAL_EDGE_TYPES` — CLOSED. The constant is gone; nothing to schedule.
 
-**Status: deferred on purpose, one month ago, by Tom. Not a new finding.** Brain node `id:28f7fe69`
-records a full audit of exactly this class — three hardcoded edge-filter lists predating the aspect
-registry. Two were fixed (`LINEAGE_FAMILIES` → aspects union, commit `5be197be`;
-`EXCLUDED_EDGE_TYPES` → noise guard, commit `4d190406`). This was the third, and Tom's words on the
-node are explicit:
+**Status: deleted, not swapped.** Brain node `id:28f7fe69` parked the allowlist → "not noise" swap
+pending a recall-quality eval. The eval was never needed: the machinery the allowlist filtered turned
+out to be **unread on every path**, so the answer was deletion, and the swap question is moot.
 
-> *"intentional edge types shouldnt be done here. I've taken the idea and also you'll remember it
-> for the right time and or a different stream. let's do the fixes."*
+**What the evidence was.** `_enrich_results` attached `_neighbors`; `daemon_hooks` converted it to
+`_graph = {"degree_1": …}`; nothing rendered it. `render_rich_node` — the single node renderer behind
+both the Haiku candidate menu and the MCP recall output — reads `connections`, never `_graph` or
+`_neighbors`. Demonstrated rather than argued: `build_surface_prompt` over real nodes was
+**byte-identical** with and without the attachments (4404 bytes both ways), all 67 production surface
+prompts from 2026-08-23 contained no structural neighbor render, and a live `recall({node_id})`
+printed no edges at all while `get_node` on the same node printed six.
 
-**Why it was parked, and why that still holds:** the swap is conceptually ready — the noise guard
-removed the only technical blocker — but it **changes production recall behavior** and needs its own
-eval stream with recall-quality benchmarks. It is not a side-fix, and it is not this plan's business.
+**Why it had rotted, for the record.** The list was hand-enumerated in March (`de7b9e3`), six weeks
+before aspects existed, to mean "everything but noise." Measured at deletion: it kept 56% of edges on
+March-era nodes but only 15.5% on nodes encoded that week — it dropped `corrects`, `grounds`,
+`refines`, `supersedes` while keeping `related`/`related_to`. Same failure class as
+`LINEAGE_FAMILIES`, and the reason a hand list is the wrong mechanism even when its output is read.
 
-**Scope, stated accurately** (the first draft of this doc overstated it): the constant has exactly
-**one** use site — `brain_recall._enrich_results` (`servers/brain_recall.py:2243`), which attaches
-`_neighbors` for display. Called on the top 3 of a recall and in `recall_node`; `_neighbors` is read
-only by `daemon_hooks.py:388`, which promotes it to context. It does **not** touch candidate
-selection, scoring, ranking, or the LAF field. The measured 25,566-of-36,219-rows figure is real and
-is about that neighbor-context list — not about recall being 70% broken.
+The live graph-expansion mechanism is `_graph_expand` in `servers/scales/s1/surface.py` — spreading
+activation from the surfacer's picks, query-vector scored, no allowlist. That is what B.2 was reaching
+for, and it was already there.
 
 **If and when it is picked up:** it wants its own session with a recall-quality benchmark, and Step 6
 should land first so `structural_exclusions(brain)` already exists to swap in.

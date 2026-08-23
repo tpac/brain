@@ -198,23 +198,24 @@ class TestFunnelCoverage(BrainTestBase):
                                  'walled client fact')
         _set_scopes(self.brain, ISOLATE_CLIENT_X)
 
-    def test_neighbor_attachment_drops_walled_titles(self):
-        # A kept node edged to a walled node must not leak the walled
-        # title through _neighbors — the id would feed the out-of-candidate
-        # admission path (leak escalation).
+    def test_recall_envelope_drops_walled_connections(self):
+        # A kept node edged to a walled node must not leak the walled title
+        # through the MCP recall envelope's `connections` — the id would
+        # feed the out-of-candidate admission path (leak escalation).
+        from servers.dispatch_read import _enrich_recall_results
         self.brain.connect(self.brain_node, self.client_node,
                            relation='extends')
-        veil = self.brain.scope_veil('sess-brain')
-        results = [{'id': self.brain_node}]
-        self.brain._enrich_results(results, veil=veil)
-        neighbor_ids = {n['id'] for n in results[0].get('_neighbors', [])}
-        assert self.client_node not in neighbor_ids
-        # Without the veil the edge IS there (guards the test itself
-        # against the edge silently not existing).
-        results2 = [{'id': self.brain_node}]
-        self.brain._enrich_results(results2)
+        result = {'results': [{'id': self.brain_node}]}
+        _enrich_recall_results(self.brain, result, None,
+                              session_id='sess-brain')
+        conn_ids = {c['id'] for c in result['results'][0]['connections']}
+        assert self.client_node not in conn_ids
+        # get_node applies no veil — the edge IS there at the data layer.
+        # Guards the test itself against the edge silently not existing.
+        # (A sessionless viewer is NOT the unveiled case: an `isolated`
+        # value is walled from every scope, including no scope at all.)
         assert self.client_node in {
-            n['id'] for n in results2[0].get('_neighbors', [])}
+            c['id'] for c in self.brain.get_node(self.brain_node)['connections']}
 
     def test_filter_nodes_enumeration_is_gated(self):
         out = self.brain.filter_nodes(field='type', include=['fact'],
@@ -377,9 +378,7 @@ class TestReviewFixes(BrainTestBase):
             '_corrections': [{'id': self.client_node[:8],
                               'node_id': self.client_node,
                               'content': 'THE WALLED FULL TEXT'}],
-            '_neighbors': [{'id': self.client_node}],
         }
         scrub_node(node, frozenset({self.client_node}))
         assert [c['id'] for c in node['connections']] == [self.brain_node]
         assert node['_corrections'] == []
-        assert node['_neighbors'] == []

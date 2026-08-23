@@ -112,8 +112,8 @@ def validate_taxonomy(data) -> list:
     member colliding with a classifier-grown working copy left every divergent
     install stuck on its old taxonomy, silently, with no migration lane to
     reach it. It was also justified by an exclusion filter reading "not in
-    noise" as "is real knowledge", which never shipped: INTENTIONAL_EDGE_TYPES
-    is still a static verb list.
+    noise" as "is real knowledge", which never shipped — the static verb list
+    it would have replaced was deleted unread instead.
 
     Keys starting with '_' are reserved for in-file documentation
     (`_schema`) — JSON has no comments. Skipped here and by every reader

@@ -425,11 +425,6 @@ def hook_recall(brain, args, graph_changes):
             # Attach recall-specific fields (not in DB — from scoring pipeline)
             node_data["score"] = recall_score(r)
             node_data["discovery"] = r.get("_discovery", "embedding")
-            graph = r.get("_graph", {})
-            if graph:
-                node_data["_graph"] = graph
-            elif r.get("_neighbors"):
-                node_data["_graph"] = {"degree_1": r["_neighbors"], "degree_2": [], "degree_3": []}
             candidates_data.append(node_data)
         # v8.8: Include vocab context — connectors surfaced separately
         # DEPRECATED 2026-04-01: vocab_context removed (vocab → concept migration)
