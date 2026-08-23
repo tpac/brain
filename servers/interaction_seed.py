@@ -333,6 +333,12 @@ def _reconcile_pristine_prompts(brain):
 def reconcile_seeded_prompts(brain):
     """Version-gated entry point — runs once per SEED_PROMPTS_VERSION bump.
 
+    Returns True when this install is reconciled up to SEED_PROMPTS_VERSION
+    (including "already was"), False when the attempt failed. The override
+    collapse gates on that: it stamps once and never re-runs, so classifying
+    rows that a failed reconcile left stale would freeze them as overrides
+    permanently — the exact freeze this whole arc removes.
+
     Daemon-only by design. `Brain()` must never call this: eval corpora,
     IsolatedBrain copies, tests, and the daemon-dead fallback in
     hooks/scripts/boot_brain.py all construct a Brain directly, and reconciling
@@ -349,6 +355,7 @@ def reconcile_seeded_prompts(brain):
               lambda _conn: _reconcile_pristine_prompts(brain))],
             label='seed prompts')
         brain.logs_conn.commit()
+        return True
     except Exception as e:
         # Never block boot on prompt reconciliation: the install keeps running
         # its current prompts, and the unstamped version retries next open.
@@ -365,6 +372,7 @@ def reconcile_seeded_prompts(brain):
                              'seed_prompts_version=%d' % SEED_PROMPTS_VERSION)
         except Exception:
             pass
+        return False
 
 
 # ═══════════════════════════════════════════════════════════════════════

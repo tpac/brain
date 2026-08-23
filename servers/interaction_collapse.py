@@ -32,8 +32,12 @@ so the write lock is released) while the version stamp goes through
 `reconcile_seeded_prompts` already lives with. So there is no single envelope to
 roll back. Instead the audit is committed BEFORE the first drop and never
 overwritten, which is strictly stronger: it survives a hard crash mid-collapse,
-where a rollback would leave no record of what was attempted. Restoring is a
-pure replay of `set_interaction_active(name, version, set_by)`.
+where a rollback would leave no record of what was attempted.
+
+**Rolling back by hand** is a pure replay of the audit —
+`set_interaction_active(name, version, set_by)` per entry — AND deleting the
+`interaction_collapse_version` row from `logs_meta`. Skipping that second half
+puts the pointers back on an install that will never re-collapse.
 """
 import json
 
@@ -41,8 +45,11 @@ from .interaction_defaults import INTERACTION_DEFAULTS, interaction_fingerprint
 
 COLLAPSE_VERSION = 1
 COLLAPSE_VERSION_KEY = 'interaction_collapse_version'
-AUDIT_KEY = 'interaction_collapse_audit'
-BACKUP_TAG = 'pre-override-collapse'
+# Both keyed by version: a future pass must take its own backup and write its
+# own audit, or it runs against a stale snapshot and leaves a record of the
+# WRONG pass — and this record is the whole rollback story.
+AUDIT_KEY = 'interaction_collapse_audit_v%d' % COLLAPSE_VERSION
+BACKUP_TAG = 'pre-override-collapse-v%d' % COLLAPSE_VERSION
 
 # Verdicts. COMPARE is the only conditional one; the rest are decisions.
 COMPARE = 'compare'
@@ -67,9 +74,10 @@ RETIRE = 'retire'
 #          wrong version turns on full payload capture for every LLM round, and
 #          it is the only name whose active version is deliberately not its
 #          highest. The conservative verdict costs one inert pointer.
-# SKIP     never touched. `recall_laf`'s row carries measured gain tuning that
-#          the code default does not; telling the collapse it has a default
-#          invites a future predicate change to drop real measurements.
+# SKIP     never touched. `recall_laf`'s row carries measured gain tuning the
+#          code default does not, so COMPARE would keep it anyway — SKIP says
+#          not to look, so a future predicate change cannot reclassify a real
+#          measurement into a drop.
 # RETIRE   drop unconditionally. These names have NO code default — they are the
 #          seven `INTERACTION_DEFAULTS` names as "deliberately absent": four
 #          retired names whose every config key grepped reader-less, and three
@@ -122,12 +130,19 @@ def _effective_fingerprints(brain):
             for name in INTERACTION_DEFAULTS}
 
 
-def _audit_entries(brain, live):
-    """Replay record for every live pointer: enough to put it back verbatim.
+def _audit_entries(brain, live, effective):
+    """Replay record for every live pointer: enough to put it back verbatim,
+    plus what it was RESOLVING TO before anything was dropped.
 
     `set_at` is not needed to replay (re-activating stamps a fresh one) but it
     is what tells an operator whether a pointer was a recent deliberate deploy
     or years-old seed residue — the judgment a rollback actually turns on.
+
+    `effective_fingerprint` is the load-bearing one. It is the drift check's
+    own currency, so a retry after a crash can rebuild the true pre-collapse
+    baseline instead of measuring the half-collapsed state it woke up in. The
+    raw row is recoverable from `version` + `parameters`; the value the row
+    RESOLVED to is not, once the pointer is gone.
     """
     entries = []
     for info in live:
@@ -136,36 +151,39 @@ def _audit_entries(brain, live):
         if version is None:
             continue
         row = brain.get_interaction(name) or {}
-        try:
-            params = json.loads(row.get('parameters') or '{}')
-        except (json.JSONDecodeError, TypeError):
-            params = {}
         entries.append({
             'name': name,
             'version': version,
             'set_by': info.get('active_set_by'),
             'set_at': info.get('active_set_at'),
-            # Content-address of the ROW, in the same currency as the
-            # classifier — directly comparable to the code default's
-            # fingerprint when someone asks why a pointer was dropped.
-            'row_fingerprint': interaction_fingerprint(
-                name, row.get('template') or '',
-                params if isinstance(params, dict) else {}),
+            'effective_fingerprint': effective.get(name),
             'parameters': row.get('parameters') or '',
             'verdict': COLLAPSE_POLICY.get(name, 'unknown'),
         })
     return entries
 
 
-def _restore(brain, entries, dropped):
-    """Replay the audit for every pointer this run dropped."""
-    by_name = {e['name']: e for e in entries}
+def _restore(brain, audit, dropped):
+    """Replay the audit for every pointer this run dropped.
+
+    Never raises: a restore is always the recovery path for a failure already
+    in flight, and letting one un-replayable name abort the loop would both
+    strand the rest and replace the original error with this one. Returns the
+    names that could not be put back, for the caller to name in that error.
+    """
+    by_name = {e['name']: e for e in audit}
+    failed = []
     for name in dropped:
         entry = by_name.get(name)
         if not entry:
+            failed.append(name)
             continue
-        brain.set_interaction_active(name, entry['version'],
-                                     set_by=entry['set_by'])
+        try:
+            brain.set_interaction_active(name, entry['version'],
+                                         set_by=entry['set_by'])
+        except Exception:
+            failed.append(name)
+    return failed
 
 
 def _collapse_overrides(brain):
@@ -192,44 +210,65 @@ def _collapse_overrides(brain):
             'pre-collapse backup of %s failed — refusing to drop pointers'
             % brain.logs_db_path)
 
-    entries = _audit_entries(brain, pointered)
+    before = _effective_fingerprints(brain)
+    entries = _audit_entries(brain, pointered, before)
     # First write wins: a retry must not overwrite the pre-first-attempt
     # record, or the original pointers become unrecoverable.
-    if read_meta_value(brain.logs_conn, 'logs_meta', AUDIT_KEY) is None:
+    stored = read_meta_value(brain.logs_conn, 'logs_meta', AUDIT_KEY)
+    if stored is None:
         write_meta_value(brain.logs_conn, 'logs_meta', AUDIT_KEY,
                          json.dumps(entries))
         brain.logs_conn.commit()
+        audit = entries
+    else:
+        audit = json.loads(stored)
 
-    before = _effective_fingerprints(brain)
+    # A previous attempt may have dropped pointers and died before stamping.
+    # `before` measured now would be that half-collapsed state, and comparing
+    # it to itself makes the drift check pass vacuously for exactly the names
+    # a crash left unverified. The audit holds what they truly resolved to.
+    for entry in audit:
+        recorded = entry.get('effective_fingerprint')
+        if recorded and entry['name'] in before:
+            before[entry['name']] = recorded
 
     dropped, kept, unknown = [], [], []
-    for entry in entries:
-        name, verdict = entry['name'], entry['verdict']
-        if verdict in (PIN, SKIP):
-            kept.append('%s(%s)' % (name, verdict))
-            continue
-        if verdict == 'unknown':
-            # A name this build has never heard of. Leaving it is the
-            # conservative read: it may be a deliberate local deployment.
-            unknown.append(name)
-            continue
-        if verdict == COMPARE:
-            default_template, default_config = INTERACTION_DEFAULTS[name]
-            if before[name] != interaction_fingerprint(
-                    name, default_template, default_config):
-                kept.append('%s(differs)' % name)
+    try:
+        for entry in entries:
+            name, verdict = entry['name'], entry['verdict']
+            if verdict in (PIN, SKIP):
+                kept.append('%s(%s)' % (name, verdict))
                 continue
-        brain.clear_interaction_override(name)
-        dropped.append(name)
+            if verdict == 'unknown':
+                # A name this build has never heard of. Leaving it is the
+                # conservative read: it may be a deliberate local deployment.
+                unknown.append(name)
+                continue
+            if verdict == COMPARE:
+                default_template, default_config = INTERACTION_DEFAULTS[name]
+                if before[name] != interaction_fingerprint(
+                        name, default_template, default_config):
+                    kept.append('%s(differs)' % name)
+                    continue
+            # Recorded BEFORE the call: the delete commits first and cache
+            # invalidation follows it, so an invalidator that raises would
+            # otherwise leave a dropped pointer outside the restore's reach.
+            dropped.append(name)
+            brain.clear_interaction_override(name)
+    except Exception:
+        _restore(brain, audit, dropped)
+        raise
 
     after = _effective_fingerprints(brain)
     drifted = sorted(n for n in before
                      if before[n] != after[n]
                      and COLLAPSE_POLICY.get(n) not in _MAY_CHANGE_EFFECTIVE)
     if drifted:
-        _restore(brain, entries, dropped)
+        failed = _restore(brain, audit, dropped)
         detail = ', '.join('%s %s->%s' % (n, before[n], after[n])
                            for n in drifted)
+        if failed:
+            detail += ' | COULD NOT RESTORE: %s' % ', '.join(sorted(failed))
         error = RuntimeError(
             'collapse changed the effective value of %s — pointers restored '
             'from the audit record; nothing stamped, retrying next boot'
@@ -237,8 +276,15 @@ def _collapse_overrides(brain):
         brain._log_error('interaction_collapse_drift', error, detail)
         raise error
 
+    by_verdict = {}
+    for name in dropped:
+        by_verdict.setdefault(COLLAPSE_POLICY.get(name, 'unknown'),
+                              []).append(name)
     print('[collapse] dropped %d pointer(s): %s'
-          % (len(dropped), ', '.join(sorted(dropped)) or '-'), flush=True)
+          % (len(dropped),
+             '; '.join('%s=%s' % (v, ','.join(sorted(names)))
+                       for v, names in sorted(by_verdict.items())) or '-'),
+          flush=True)
     if kept:
         print('[collapse] kept as real overrides: %s'
               % ', '.join(sorted(kept)), flush=True)

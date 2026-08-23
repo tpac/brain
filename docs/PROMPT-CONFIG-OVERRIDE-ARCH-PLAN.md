@@ -613,12 +613,19 @@ dicts (new permanent accretion) and still fails for quote/temporal, whose drift 
 `register`, not a stale default.
 
 **Also required for `scopes`:** the code default never passes through `register_interaction`'s door
-validation, and the resolver only validates a config the DB actually *contributed* — so once the
-pointer drops, no runtime check ever judges the one value that ships to everyone. The write boundary
-for a code default is the commit that changes it, so the door is a test
-(`test_interaction_defaults.py::TestDefaultsPassTheirOwnValidator`) rather than a per-read validation:
-a runtime check would fire after the invalid default had already shipped, and has no better value to
-fall back to.
+validation, and the resolver validates only a config the DB actually *contributed* (`if override:`) —
+so once the pointer drops, that seam stops judging the value at all. It is **not** left unvalidated,
+though: `ScopePolicy.__init__` runs `validate_scopes_config` on the merged config on every
+construction, and `scope_veil` rebuilds it on each cache miss, so an invalid default degrades per
+dimension to `'scoped'` and logs `scopes_config_invalid` — loud, not silent. The gap is one of
+*timing*, not coverage, so the fix is a test
+(`test_interaction_defaults.py::TestDefaultsPassTheirOwnValidator`): the write boundary for a code
+default is the commit that changes it, and failing there beats discovering it at runtime after the bad
+default has already shipped, where there is no better value to fall back to.
+
+Note the limit of that reasoning before reusing it: it holds because `scopes`' sole consumer
+self-validates. A future `INTERACTION_VALIDATORS` entry whose consumer does **not** would have a
+genuinely unvalidated read seam, and would need the resolver check this step declined.
 
 **Mechanics.**
 - Home: `servers/interaction_collapse.py`, called from **daemon boot** (`daemon_server._load_brain`,
@@ -626,9 +633,14 @@ fall back to.
   `run_versioned_migrations`. **Not** `LOGS_MIGRATIONS` (corpus float, `id:ffc58bda`) and **not**
   `seed_prompts_version` — that key is being deleted and reusing it leaves a dangling counter. Its own
   module because the collapse outlives `interaction_seed.py`, which Step 9 deletes.
-- **Order: after reconcile.** Reconcile can advance a pristine name onto the current shipped content,
-  which the collapse then recognises as the code default and drops. Collapsing first costs a boot —
-  a dropped pointer reads as "no override" to reconcile, so it advances nothing.
+- **Order: after reconcile, and GATED on it.** Reconcile can advance a pristine name onto the current
+  shipped content, which the collapse then recognises as the code default and drops. Collapsing first
+  costs a boot — a dropped pointer reads as "no override" to reconcile, so it advances nothing. The
+  gate matters more than the order: `reconcile_seeded_prompts` swallows its own failures, so without a
+  return value the daemon cannot tell a completed reconcile from a skipped one. Since the collapse
+  stamps once and never re-runs, classifying rows a failed reconcile left stale would freeze them as
+  local overrides **permanently** — the exact freeze this arc exists to remove. It now returns a bool
+  and the collapse runs only on True.
 - **Backup, or refuse.** One explicit `backup_before_destructive(logs_db_path,
   'pre-override-collapse', compress=False)` inside the step, and a falsy return **raises** rather than
   proceeding — this is the only code path that rewrites a production DB, and an unstamped run simply
@@ -639,9 +651,17 @@ fall back to.
 - **Write an audit record before dropping anything**: `(name, version, set_by, set_at,
   row_fingerprint, parameters, verdict)` as JSON in `logs_meta.interaction_collapse_audit`, committed
   first and **never overwritten** (first write wins, so a retry cannot erase the pre-first-attempt
-  state). The dropped pointers are the only unrecoverable information, and it is 21 rows. This turns
-  rollback into a pure replay of `set_interaction_active(name, version, set_by)` and lets an operator
-  tell a *dropped* pointer from one that never existed.
+  state). Both the key and the backup tag are suffixed with `COLLAPSE_VERSION`, or a future pass
+  silently reuses this pass's snapshot and leaves a record describing the wrong one. The dropped
+  pointers are the only unrecoverable information, and it is 21 rows. Rollback is then a pure replay
+  of `set_interaction_active(name, version, set_by)` **plus deleting the
+  `interaction_collapse_version` row** — replaying alone puts the pointers back on an install that
+  will never re-collapse. It also lets an operator tell a *dropped* pointer from one that never existed.
+- **`effective_fingerprint` rides in every audit entry**, because it is the drift check's own currency.
+  A crash between the first drop and the stamp would otherwise leave the retry measuring the
+  half-collapsed state as its baseline — comparing it to itself, and passing vacuously for exactly the
+  names the crash left unverified. The retry seeds `before` from the audit instead. The raw row is
+  recoverable from `version` + `parameters`; what it *resolved to* is not, once the pointer is gone.
 - **The audit is the rollback path, not a transaction.** Pointer drops go through the interactions DAL
   on its own write connection (committing per call, releasing the write lock) while the version stamp
   goes through `brain.logs_conn` — two connections on one file, the same split `reconcile_seeded_prompts`

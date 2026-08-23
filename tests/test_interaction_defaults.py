@@ -79,6 +79,9 @@ class TestDefaultsPassTheirOwnValidator:
 
     def test_every_validated_name_has_a_valid_default(self):
         from servers.interaction_defaults import INTERACTION_VALIDATORS
+        assert 'scopes' in INTERACTION_VALIDATORS, (
+            "scopes lost its validator — this loop would go vacuous and the "
+            "one config that governs isolation would ship unchecked")
         for name, validate in INTERACTION_VALIDATORS.items():
             _template, config = INTERACTION_DEFAULTS[name]
             violations = validate(config)
