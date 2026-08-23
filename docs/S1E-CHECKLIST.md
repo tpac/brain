@@ -52,7 +52,10 @@ retire/archive (id:9eaed612).
 
 **Probe fidelity note:** probes A-O were built WITHOUT the `## Arc` block (production S1E binds
 `arc=True` — encode.py `_journal`). Probe P is the first production-faithful arm; rebuild future
-arms with field summary → arc → review → closure, in that order.
+arms with field summary → arc → review → closure, in that order. **The recipe and the reusable
+scenarios now live in `eval/candidate_prompts/probe_scenarios/`** (README carries the arm build,
+the tool-ban clause, and the settled/unsettled pair — they only mean something together, since
+the positive arm alone can't separate a working teaching from one that fires on everything).
 
 **Read first:** handoff node id:477ddcc9; the rulings chain runs 7c87589c (fundamentals) →
 13f72658 (three connections) → 4bb5b1e8 (edge honesty + prune-lexicon example).
@@ -470,13 +473,13 @@ Author-blindness is the point — I know the intent, which is exactly what hides
 
 ### Weave plan (no new assets — each gap lands in an example that exists)
 
-| move | closes | into |
-|---|---|---|
-| add a `connect` op drawing `similar_to` between the two planted ring-buffer twins | gap 14 + standalone-`connect` + the unresolved near-twin | canonical batch |
-| make one sweep patch a `situation` patch; give one patched node its truth condition | gaps 4, 5 | sweep example |
-| name what the window did NOT earn a node for, in one line | gap 1 | canonical framing |
-| fix D1–D8 | coherence | in place |
-| enrich the catalog excerpt so honest edges exist for the two zero-edge nodes | gap 2 (without manufacturing edges — Tom's honesty ruling holds) | canonical excerpt |
+| move | closes | into | status |
+|---|---|---|---|
+| add a `connect` op drawing `similar_to` between the two planted ring-buffer twins | gap 14 + standalone-`connect` + the unresolved near-twin | canonical batch | **OPEN — needs a Tom call.** Gap confirmed: zero standalone `connect` examples in the whole prompt. But `connect` needs two EXISTING nodes, so it can't sit inside a `remember_batch`, and the prompt's own rule (line ~798, "brain_batch for any MIX") means the honest fix is converting the canonical call to `brain_batch`. That reshapes the highest-attention example. |
+| make one sweep patch a `situation` patch; give one patched node its truth condition | gaps 4, 5 | sweep example | DONE — b8e05f92 gains a `situation` replacement in the same op; the why-list now carries "staleness is not only in `content`" + the truth condition ("any rebuild", not "before merge") |
+| name what the window did NOT earn a node for, in one line | gap 1 | canonical framing | DONE — demonstrates-list gains "What this round did NOT encode": the TCP migration got an edge, not a node; six nodes is an outcome, not a target |
+| fix D1–D8 | coherence | in place | DONE (ad7e68e) — D5/D6 dropped on measurement, D7 dissolved into the reasoning fix |
+| enrich the catalog excerpt so honest edges exist for the two zero-edge nodes | gap 2 (without manufacturing edges — Tom's honesty ruling holds) | canonical excerpt | DONE (ad7e68e) — +2 catalog lines, `completes` and `resolves` |
 
 ## E. Global audits & process gates
 

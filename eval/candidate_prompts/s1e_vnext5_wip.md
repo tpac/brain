@@ -1054,6 +1054,7 @@ What this canonical pattern demonstrates:
 - **Edges inline**: per-node connect_to (inside each node's dict) describes outgoing edges from THAT node — no batch-level connect_to is used since each edge is node-specific
 - **Question selectivity**: 2 of 6 — the event and the correction carry a `question` because each has a real way of being asked for ("What's Marcus's 5K time...", "Why don't we use a flag file..."); the principle, moment, quote, and finding stay question-free, because a question that paraphrases the title is worse than none
 - **Action-derived node**: the finding carries no voice fields — nothing was said, I measured it. The derivation test decides, not the node's importance, and the work-state handles (the file, the config value) ride in the situation
+- **What this round did NOT encode**: the TCP migration came up as context and got an edge — not a node, not a revise. The window referenced it without adding to it, and a node I merely referenced earns a connection, never a rewrite. Six nodes is what this window earned; the count is an outcome, not a target
 - **No `source_refs` here — deliberately**: refs are the rare surface-the-moment flag, not per-node bookkeeping; the sweep example shows the copy when a moment earns it
 
 ### Detail and meaning — same topic, two nodes
@@ -1216,10 +1217,11 @@ brain_batch(operations: [
      {old: "Committed f3c9d21 on the auth-rewrite branch, review scheduled",
       new: "NEVER MERGED — branch deleted 2024-03-02, f3c9d21 recoverable by hash until gc"}]},
   {op: "revise", node_id: "b8e05f92",
-   reason: "the branch this verdict gates no longer exists",
+   reason: "the branch this verdict gates no longer exists — the verdict outlives it",
    content_edits: [
      {old: "Two criticals stand; rebuild needs the session-token fix before merge",
-      new: "Branch DELETED 2024-03-02 — the merge question is moot. The two criticals + session-token fix still apply to any rebuild"}]},
+      new: "Branch DELETED 2024-03-02 — the merge question is moot. The two criticals + session-token fix still apply to any rebuild"}],
+   situation: "When a fresh auth design comes up for review — the two criticals gate any rebuild, not just the branch that died"},
   {op: "revise", node_id: "c37d10be",
    reason: "workspace audit lists a deleted branch as active",
    content_edits: [
@@ -1249,7 +1251,12 @@ Why each move earns its place:
   **a node that sends a future session to a branch, file, or plan that no
   longer exists is falsified even when its advice still sounds right.**
   Patch the dead referent's status; carry the advice forward where it
-  still transfers.
+  still transfers. **And staleness is not only in `content`:** that node's
+  `situation` pointed at a merge decision that can never be made again, so
+  it gets replaced in the same op — a patched claim whose situation still
+  aims at the dead thing will never surface for the live one. Rewriting the
+  situation is also where the surviving claim gets its truth condition: not
+  "before merge" but "any rebuild".
 - a45c88f1 never appears as a catalog entry — only as an edge line on the
   queue node. Its id is right there on that line, and an edge-line id is
   as targetable as a header id. Superseding it beats re-minting: one edge
