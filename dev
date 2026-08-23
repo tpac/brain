@@ -45,7 +45,7 @@ esac
 if [ $# -eq 0 ]; then
     echo "[dev] Python: $($BRAIN_PYTHON --version) at $BRAIN_PYTHON"
     echo "[dev] PATH has $REPO_ROOT/venv/bin prepended. 'exit' to leave."
-    echo "[dev] Shortcuts: ./dev sync-prompts [--check] | ./dev check-overrides"
+    echo "[dev] Shortcuts: ./dev check-overrides"
     exec "${SHELL:-/bin/bash}"
 fi
 

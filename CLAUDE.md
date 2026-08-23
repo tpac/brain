@@ -179,7 +179,7 @@ Before changing sacred systems, benchmark FIRST:
 - Recall: `eval/brain_recall_identity_eval.py` / `eval/surface_funnel.py` against `servers/brain_recall.py` (see `eval/README.md`)
 - Encoding: `eval/s1_encode_eval.py` against `scales/s1/encode.py`
 - Frame / surface: `eval/frame_replay.py` capture/compare against an isolated brain copy
-- Longmem end-to-end (encode→recall→answer): the **Frozen Corpus** two-stage harness — `eval/longmem/build_corpus.py` encodes once (slow), `eval/longmem/sweep.py` recalls over the frozen brains cheaply, many times; `--interaction-override` A/Bs DORMANT prompt versions. Full reference: `docs/EVAL-PLATFORM.md`.
+- Longmem end-to-end (encode→recall→answer): the **Frozen Corpus** two-stage harness — `eval/longmem/build_corpus.py` encodes once (slow), `eval/longmem/sweep.py` recalls over the frozen brains cheaply, many times; `build_corpus.py --interaction-override` A/Bs prompt candidates. Full reference: `docs/EVAL-PLATFORM.md`.
 
 ### Encode-Decode Symmetry
 

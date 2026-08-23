@@ -212,14 +212,14 @@ door; `_load` reverts to a pure read). `servers/scales/s2/aspect_contract.py` �
 lines, ending at ~40 lines of pure config, the shape `healer_contract.py` already has.
 `aspect_encoder.py:370-396` (`_load_aspects`/`_write_aspects` become door calls).
 `aspect_decoder.py:116-133` (`_load_classified_strings` becomes a registry call — removes a third
-production loader). `servers/brain.py:333` (call `reconcile_with_seed()` explicitly before
-constructing the registry, adjacent to `seed_interactions` at `:302`, so boot materialization is
-visible in the init sequence where its two siblings already are).
+production loader). `servers/brain.py` (call `reconcile_with_seed()` explicitly before
+constructing the registry in `Brain.__init__`, so boot materialization is
+visible in the init sequence).
 
 **Verification.** `tests/test_aspects_contract.py`, `tests/test_aspects.py`,
 `tests/test_aspect_registry_wired.py`, `tests/test_absorbed_into_edge.py` (the self-heal tests),
 `tests/test_aspects_path_isolation.py` (**critical** — it guards the live file against test writes,
-by content and mtime), `tests/test_prompt_sync.py`. Full suite before merge: the taxonomy feeds
+by content and mtime), `tests/test_interaction_defaults.py`. Full suite before merge: the taxonomy feeds
 Frame, surface, and every S2 unit.
 
 **Blast radius.** Large but mechanical — ~10 files, mostly moves. The risk is

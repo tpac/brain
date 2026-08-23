@@ -107,7 +107,7 @@ def _expand_query_via_llm(brain, query: str) -> List[str]:
     except Exception:
         return []
     try:
-        # Effective-model line: params (DB) are authoritative here — this
+        # Effective-model line: the resolved config decides the model — this
         # print is the in-run proof of what actually gets called.
         print('[recall] query-expansion model=%s' % model, file=sys.stderr)
         resp = client.messages.create(

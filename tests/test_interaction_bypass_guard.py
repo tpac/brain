@@ -27,10 +27,15 @@ import unittest
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
 # ── Shape 1: direct default imports in runtime code ─────────────────────────
+# Each regex has two alternates: the one-line form and the parenthesised
+# (possibly multiline) form — a linter reflowing a long import must not
+# carry a violation out of the detector's sight.
 PROMPT_IMPORT_RE = re.compile(
-    r'from\s+\S*_prompt\s+import\s+[^\n]*\bSYSTEM_PROMPT\b')
+    r'from\s+\S*_prompt\s+import\s+'
+    r'(?:[^\n(]*\bSYSTEM_PROMPT\b|\([^)]*\bSYSTEM_PROMPT\b)')
 CONFIG_V1_IMPORT_RE = re.compile(
-    r'from\s+\S+\s+import\s+[^\n]*\b\w+_CONFIG_V1\b')
+    r'from\s+\S+\s+import\s+'
+    r'(?:[^\n(]*\b\w+_CONFIG_V1\b|\([^)]*\b\w+_CONFIG_V1\b)')
 PROMPT_IMPORT_ALLOWED = {'servers/interaction_defaults.py'}
 
 # ── Shape 2: reaching past the accessor doors ────────────────────────────────
@@ -91,6 +96,7 @@ class TestDetectorsHaveTeeth(unittest.TestCase):
             'from .scales.s1.surface_prompt import SYSTEM_PROMPT',
             'from servers.scales.s2.healer_prompt import SYSTEM_PROMPT as H',
             'from ..encoding_prompt import FOO, SYSTEM_PROMPT',
+            'from .surface_prompt import (\n    FOO,\n    SYSTEM_PROMPT,\n)',
         ]
         for s in catches:
             self.assertTrue(PROMPT_IMPORT_RE.search(s), s)
@@ -105,6 +111,8 @@ class TestDetectorsHaveTeeth(unittest.TestCase):
     def test_config_v1_import_detector(self):
         self.assertTrue(CONFIG_V1_IMPORT_RE.search(
             'from .scopes import SCOPES_CONFIG_V1'))
+        self.assertTrue(CONFIG_V1_IMPORT_RE.search(
+            'from .scopes import (\n    SCOPES_CONFIG_V1,\n)'))
         self.assertFalse(CONFIG_V1_IMPORT_RE.search(
             'SCOPES_CONFIG_V1 = {'))          # the defining assignment
         self.assertFalse(CONFIG_V1_IMPORT_RE.search(

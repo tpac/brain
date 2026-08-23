@@ -302,11 +302,15 @@ SEED_NODES = [
             "the place where the brain's operational cognition lives. Changing a node "
             "changes what is known. Changing an interaction changes how knowing happens.\n\n"
             "Practical consequences:\n"
-            "- Every agent should read its prompt and config from the interactions table, "
-            "not hardcode them. A hardcoded prompt is frozen cognition — no higher scale can optimize it.\n"
+            "- Every agent reads its prompt and config through the resolver "
+            "(get_interaction_prompt/_config): the code default unless an override "
+            "is deployed. A prompt read around the resolver is frozen cognition — "
+            "no higher scale can optimize it.\n"
             "- Interactions are versioned. Compare traces across versions to evaluate changes.\n"
-            "- Seeding the interactions table is part of baby brain setup — without seed prompts, agents have no instructions.\n"
-            "- When behavior feels off, check whether the interaction prompt still matches intent."
+            "- A fresh brain has no interaction rows at all — code owns every default; "
+            "the table holds only deployed overrides.\n"
+            "- When behavior feels off, check whether an override is deployed and "
+            "whether the effective prompt still matches intent."
         ),
         "question": "What is the difference between storing memory and shaping how the brain thinks?",
         "situation": "When deciding whether to hardcode a prompt or load it from the interactions table, or when a higher scale wants to adapt agent behavior",

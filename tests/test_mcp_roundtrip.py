@@ -824,6 +824,48 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertEqual(result.get("name"), "roundtrip_get_probe")
         self.assertEqual(result.get("template"), "PROBE TEMPLATE BODY")
 
+    def test_get_interaction_effective(self):
+        """get_interaction_effective returns the RESOLVED value: the code
+        default when no override is deployed, the override-overlaid value
+        when one is, with the stamp's source flipping — and refuses a name
+        with no code default (nothing to resolve)."""
+        from servers.interaction_defaults import INTERACTION_DEFAULTS
+        default_template, default_config = INTERACTION_DEFAULTS["s1e"]
+
+        result = self._dispatch("get_interaction_effective", {"name": "s1e"})
+        self.assertEqual(result.get("name"), "s1e")
+        self.assertEqual(result.get("template"), default_template)
+        self.assertEqual(result.get("config"), default_config)
+        self.assertEqual(result.get("stamp", {}).get("source"), "default")
+
+        # Deploy a config-only override: the resolved config overlays the
+        # one key, the template stays the default, the stamp flips.
+        reg = self._dispatch("register_interaction", {
+            "name": "s1e", "template": "",
+            "parameters": '{"effort": "roundtrip-effective"}',
+            "created_by": "roundtrip_test"})
+        self._dispatch("set_interaction_active", {
+            "name": "s1e", "version": reg["registered_version"],
+            "set_by": "roundtrip_test"})
+        eff = self._dispatch("get_interaction_effective", {"name": "s1e"})
+        self.assertEqual(eff["config"].get("effort"), "roundtrip-effective")
+        self.assertEqual(eff["template"], default_template)
+        self.assertEqual(eff["stamp"]["source"], "override")
+        for key, value in default_config.items():
+            if key != "effort":
+                self.assertEqual(eff["config"].get(key), value)
+
+        # Clear restores the pure default (leaves the fixture clean too).
+        self._dispatch("clear_interaction_override", {"name": "s1e"})
+        back = self._dispatch("get_interaction_effective", {"name": "s1e"})
+        self.assertEqual(back["stamp"]["source"], "default")
+
+        # A name with no code default has nothing to resolve — refused.
+        raw = dispatch_command(self.brain, "get_interaction_effective",
+                               {"name": "roundtrip_no_default"}, [])
+        self.assertIs(raw.get("ok"), False)
+        self.assertIn("unknown interaction", raw.get("error", ""))
+
     def test_clear_interaction_override(self):
         """clear_interaction_override deletes the pointer, reports 'cleared'
         vs 'no pointer existed' distinctly, and refuses typo'd names."""

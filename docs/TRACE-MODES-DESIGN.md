@@ -137,8 +137,11 @@ gains), per-kind **on/off**:
 `servers/trace_contract.py`. "Entering debug" = an ordinary override carrying
 `TRACE_RECORDING_DEBUG` (`register_interaction` + `set_interaction_active` —
 instant, reversible, no restart, works from a live conversation while the daemon
-stays up); `clear_interaction_override` exits it. Discrete shapes, no dial, one
-switch.
+stays up); `clear_interaction_override` exits it. (On an install that carries
+the collapse's PIN pointer, the clear also drops that pointer — harmless, the
+effective config is the NORMAL default either way; re-activate the prior
+version instead if you want `./dev check-overrides`'s 2-pointer baseline
+preserved.) Discrete shapes, no dial, one switch.
 
 The recorder reads the config per call (1-2 SELECTs on logs_conn — negligible at
 per-round frequency; if it ever matters, copy the `LAFEngine.config` TTL-cache

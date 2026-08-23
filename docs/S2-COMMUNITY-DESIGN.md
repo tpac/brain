@@ -145,7 +145,7 @@ Type `community`, encoding_source `s2:community_detection`.
 | `servers/scales/s1/encode_contract.py` | Exclude community nodes from S1E catalog |
 | `servers/daemon_dispatch.py` | Open fields pass-through fix + register_interaction |
 | `servers/daemon_hooks.py` | Simplified idle hook |
-| `servers/interaction_seed.py` | S2CE interaction seeding (legacy s2_*_families seeds removed 2026-05-04) |
+| ~~`servers/interaction_seed.py`~~ (DELETED 2026-08-23) | S2CE interaction seeding (legacy s2_*_families seeds removed 2026-05-04; the whole module fell to the override collapse — code owns defaults now) |
 | `servers/trace_contract.py` | S2 community ref_types |
 | `servers/contract.py` | Metadata render filtering for community nodes |
 | `servers/redistribution.py` | Edge-based community lookup |

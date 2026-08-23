@@ -1377,7 +1377,7 @@ Pass criteria: every step succeeds; node surfaces; source renders correctly; emb
 
 Existing tests must still pass:
 - `tests/test_contract_sync.py` — node shape unchanged for nodes without refs
-- `tests/test_interaction_defaults.py` — the encoder prompt default stays resolvable and passes its validators
+- `tests/test_interaction_defaults.py` — the encoder prompt default stays a complete, well-shaped registry entry
 - `tests/test_dispatch_contract_sync.py` — tool schema additions don't break existing op dispatch
 - `tests/test_trace_contract_sync.py` — trace_event shape unchanged
 

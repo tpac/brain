@@ -85,9 +85,10 @@ on the *current* prompts; save numbers.
 
 ### Phase 1 — De-personalize (the gate)
 
-**1.1 Parameterize the operator name.** Replace literal "Tom" as *operator
-identity* with a variable/placeholder across seed prompts (`community_enrichment_prompt.py:12,84`,
-sweep all four seed prompts + `interaction_seed.py`).
+**1.1 Parameterize the operator name.** ~~Replace literal "Tom" as *operator
+identity* with a variable/placeholder across the shipped prompts.~~ DONE (see
+the Goal-A checklist below; `interaction_seed.py` has since been deleted —
+the prompt `.py` files are the code defaults now).
 - *Why:* "Tom" hardcoded in a shared prompt is already a latent correctness bug.
 - *Reversible:* yes · *No-regret:* **yes** · *Risk:* low · *Effort:* S
 - *Verify:* grep for operator-identity "Tom" in shipped `servers/` returns only

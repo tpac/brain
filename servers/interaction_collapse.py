@@ -67,7 +67,7 @@ RETIRE = 'retire'
 #          status for content nothing wants: `s2_community`'s row holds 8 keys
 #          against the code dict's 25 with one in common and no reader at all,
 #          and the two mustered-out scouts carry an `output_schema` the code
-#          dicts deliberately omit — an omission tests/test_prompt_sync.py
+#          dicts deliberately omit — an omission tests/test_scout_contract.py
 #          asserts, so code and DB are held apart by contract.
 # PIN      never touched. `trace_recording` is the one name where activating the
 #          wrong version turns on full payload capture for every LLM round, and
