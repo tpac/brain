@@ -35,9 +35,10 @@ from eval.longmem.fresh_brain import create_fresh_eval_brain, enable_round_captu
 from eval.longmem.classifier import _scan_brain_for_gold
 from eval.longmem.corpus import (
     corpus_config_hash, corpus_dir, corpus_item_dir, manifest_path,
-    load_manifest, save_manifest, source_token, summarize_s2_deltas,
-    merge_s2_totals,
+    load_manifest, save_manifest, source_token, interaction_token,
+    summarize_s2_deltas, merge_s2_totals,
 )
+from tests.interaction_override import override_interaction
 
 
 def _load_env() -> None:
@@ -210,7 +211,7 @@ def _fetch_interaction_template(name: str, version: int) -> str:
 
     Used to pull DORMANT prompt versions (e.g. s1e v24, s1_scout_facts v7) so the
     eval can A/B them against the active ones. Reads production's interactions
-    table via TCP; the eval brain is untouched until _apply_interaction_override.
+    table via TCP; the eval brain is untouched until override_interaction.
     """
     from servers.daemon_client import send_command
     r = send_command('get_interaction', {'name': name, 'version': int(version)})
@@ -218,27 +219,6 @@ def _fetch_interaction_template(name: str, version: int) -> str:
     if not tmpl:
         raise RuntimeError("could not fetch %s v%s from daemon: %s" % (name, version, r))
     return tmpl
-
-
-def _apply_interaction_override(brain, name: str, template: str = None,
-                                parameters: str = None) -> None:
-    """Register + activate a new version of `name` in THIS eval brain only
-    (production daemon untouched). Generalizes harness._apply_s1e_override to
-    any interaction; mirrors eval.encoder_eval.targeted_v24_eval. Either side
-    can be overridden independently: template=None keeps the active template,
-    parameters=None keeps the active parameters (config-only interactions
-    like recall_laf override parameters with template='')."""
-    existing = brain._interaction_dal.get_active(name)
-    if template is None:
-        template = existing.get('template', '') if existing else ''
-    if parameters is None:
-        parameters = existing.get('parameters', '') if existing else ''
-    result = brain._interaction_dal.register(
-        name, template=template, parameters=parameters,
-        created_by='eval-override-%s' % name)
-    if result.get('version', 1) > 1 or not existing:
-        brain._interaction_dal.set_active(
-            name, result['version'], set_by='eval-override-%s' % name)
 
 
 def build_corpus(items_per_axis: int, seed: int, oracle: str,
@@ -275,6 +255,16 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
 
     qid_list = sorted(it["question_id"] for it in picked)
 
+    # Fetch DORMANT override templates from the live daemon once (reused per
+    # item) — BEFORE the content address, because the address is over the
+    # template CONTENT, not the version number that names it.
+    override_templates = {}
+    if interaction_overrides:
+        for name, version in sorted(interaction_overrides.items()):
+            override_templates[name] = _fetch_interaction_template(name, version)
+            print(f"[corpus] override: {name} → v{version} ({len(override_templates[name])} chars)",
+                  flush=True)
+
     # Content address: everything that determines the encoded graph.
     config = {
         "s1e": source_token(s1e),
@@ -285,10 +275,15 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
     }
     # Interaction overrides (e.g. DORMANT s1e v24 + s1_scout_facts v7) change the
     # encoded graph, so they're part of the content address — a v22 corpus and a
-    # v24+v7 corpus get distinct hashes.
+    # v24+v7 corpus get distinct hashes. Addressed on the template CONTENT: a
+    # version int is install-local and, once "version absent" means "code
+    # default", not a complete address — two corpora built against different
+    # code-default generations would hash identically and load_manifest would
+    # hand back the wrong arm's corpus.
     if interaction_overrides:
         config["interaction_overrides"] = {
-            k: int(v) for k, v in sorted(interaction_overrides.items())}
+            name: interaction_token(version, override_templates[name])
+            for name, version in sorted(interaction_overrides.items())}
     # Lived arm joins the content address ONLY when on (key absent on control →
     # every pre-existing control corpus keeps its hash; no cache invalidation).
     # Without this, a lived and a control build with the same versions would
@@ -308,14 +303,6 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
     # Surface override needs the agentic-loop env var, same as harness.
     if ingest_surface != "active":
         os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"
-
-    # Fetch DORMANT override templates from the live daemon once (reused per item).
-    override_templates = {}
-    if interaction_overrides:
-        for name, version in sorted(interaction_overrides.items()):
-            override_templates[name] = _fetch_interaction_template(name, version)
-            print(f"[corpus] override: {name} → v{version} ({len(override_templates[name])} chars)",
-                  flush=True)
 
     os.makedirs(corpus_dir(h), exist_ok=True)
 
@@ -364,7 +351,7 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
         if ingest_surface != "active":
             _apply_surface_override(brain, ingest_surface)
         for ov_name, ov_template in override_templates.items():
-            _apply_interaction_override(brain, ov_name, ov_template)
+            override_interaction(brain, ov_name, template=ov_template)
 
         t0 = time.time()
         stats = replay_item(

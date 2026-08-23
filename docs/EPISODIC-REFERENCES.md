@@ -65,7 +65,7 @@ Forensic probes on `c2ac3c61` (multi_session precision-refinement) identified th
 - Option B: Re-run `gpt4_d31cdae3` against v24 ×3 to distinguish stochastic vs. deterministic regression. ~15 min, ~$2.
 - Option C: Leave DORMANT, accumulate more eval evidence.
 
-**Reusable evaluator pattern**: `apply_interaction_override(brain, name, template)` — works for any interaction, not just s1e. Implemented in `eval/encoder_eval/targeted_v24_eval.py`. Future version comparisons can override any combination of s1e + scouts in fresh eval brains without touching production daemon state.
+**Reusable evaluator pattern**: `override_interaction(brain, name, template=...)` — works for any interaction, not just s1e. Lives in `tests/interaction_override.py` (consolidated there 2026-08-22; the per-eval copies are gone), with `interaction_override(...)` as the self-reverting context-manager form. Future version comparisons can override any combination of s1e + scouts in fresh eval brains without touching production daemon state.
 
 ### What shipped — Phase B Steps 0+0.5+1+2+3+4 (2026-05-25 mid-day)
 

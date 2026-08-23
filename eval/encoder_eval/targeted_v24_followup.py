@@ -31,7 +31,6 @@ from eval.longmem.answerer import answer_question
 from eval.longmem.judge import judge_one
 from eval.encoder_eval.quality_probes import run_all_probes
 from eval.encoder_eval.targeted_v24_eval import (
-    apply_interaction_override,
     fetch_template,
     run_cell as _run_cell_with_arm,
 )

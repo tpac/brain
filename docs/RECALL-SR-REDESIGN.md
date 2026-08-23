@@ -2389,9 +2389,10 @@ old per-item near-ceiling setup (94.4% recall-conditional).
    number of gain tables for ~free.
 5. **Leg B — engine path**: turn-by-turn real `brain.recall` with the flag on, as-of cut
    at each cue (§20.11); arms applied via the eval platform's EXISTING interaction-override
-   mechanism (`_apply_interaction_override` / the sweep `--surface-params` pattern
-   generalized to any interaction, ~10 lines) — **arms = registered config JSONs, zero
-   arm-specific harness code**, and the same switch Stage-3 would flip in production.
+   mechanism (`tests.interaction_override.override_interaction`, which generalizes to any
+   interaction — the generalization this section asked for landed 2026-08-22) — **arms =
+   registered config JSONs, zero arm-specific harness code**, and the same switch Stage-3
+   would flip in production.
    Surfaced-context capture/compare via `frame_replay.py` (the §20.17 G3 tool). QA leg =
    `sweep.py`/`judge.py`/`report.py`/`compare_arms.py` untouched.
 

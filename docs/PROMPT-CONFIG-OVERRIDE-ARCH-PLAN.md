@@ -1,9 +1,16 @@
 # Prompt/Config Override Model — Architecture Plan
 
-## § Steps 1–6 live; next is Step 7, and every gate is now ruled (2026-08-22) ◀ ACTIVE ARC
+## § Steps 1–7 live; next is Step 8, the collapse (2026-08-22) ◀ ACTIVE ARC
 
-**Read first:** handoff node `id:080016bf`; plan index `id:700654c9`; session-4 record
-`id:7775ec63`; the four rulings `id:0274bca8`.
+**Read first:** plan index `id:700654c9`; the four rulings `id:0274bca8`; session-4
+record `id:7775ec63`; session-5 handoff `id:080016bf`.
+**Step 7 landed** — `tests/interaction_override.py` is the one override door
+(`override_interaction` + the self-reverting `interaction_override` context manager);
+the six hand-rolled register+activate copies and both legacy generations
+(`diff_encoding.py`, `version_pinner.py`) are deleted; the reach-around table is
+routed through its owners; corpora are content-addressed on the applied template
+(`corpus.interaction_token`) instead of an install-local version int; leak check is
+`./dev check-overrides`.
 "No pointer" is now **honest** (Step 5, main `d375868` — both MAX(version) fallbacks deleted) and
 **reachable** (Step 6, main `eefc15b` — `clear_interaction_override` at DAL/Brain/MCP, unified
 cache invalidation, registration never auto-activates). A 5-lens Opus fleet then found a **third**
@@ -17,7 +24,7 @@ migration, verified live post-restart.
 not as a `LOGS_MIGRATIONS` step (`id:ffc58bda` — a migration-step collapse would fire inside frozen
 eval corpora and make them float); **Step 7 consolidates rather than repairs in place, and includes
 the reach-around table**; review rhythm = no fleet for 7, full fleet for 8, narrow 2–3 lens for 9.
-**Open:** Steps 7–9. No gate is currently blocked on a human.
+**Open:** Steps 8–9. No gate is currently blocked on a human.
 **Do not reopen:** wiring s2_community's interaction read (post-Step-8); a sibling
 `get_effective_*` accessor; whole-value override; guarding (instead of deleting) the schema
 backstop — its unversioned re-run property is the bug; env-flag exemption or float-acceptance for
@@ -423,11 +430,58 @@ bypass" — added at all three owners rather than reached around.
 
 ---
 
-## Step 7 — Make eval and A/B override a prompt in one place, and revert automatically
+## Step 7 — Make eval and A/B override a prompt in one place, and revert automatically ✅ DONE
 
-**Problem (Tom's requirement, decision 4).** Overriding a prompt for a test today means touching one of
-**six** hand-rolled register+activate implementations, and there is no way to revert — so nothing can
-clean up after itself, and a forgotten override silently opts that name out of code defaults forever.
+**LANDED 2026-08-22.** `tests/interaction_override.py` holds both verbs; every site below is
+converted or deleted; 109 focused tests green; both rewritten artifact dumps exercised against an
+`IsolatedBrain`; `./dev check-overrides` run live (21 pointers, 0 eval-tagged).
+
+Four things the target state below did not anticipate, all found while executing:
+1. **The exit clear needs no guard, and that is a property worth knowing.**
+   `clear_interaction_override` raises KeyError for a name that deleted nothing and has no code
+   default — which in `__exit__` would replace a propagating body exception, turning a leak-proof
+   block into an error-masking one. It cannot happen: entry reads the resolver, which refuses
+   unregistered names before anything is written, so every name that reaches the clear has a code
+   default. `test_unregistered_name_is_refused_before_anything_is_written` pins the entry gate that
+   holds this up. A `try/except` there would have been unreachable *and* harmful.
+2. **`template=''` is the config-only idiom, not a template override.** The resolver takes a row's
+   template only when non-empty, so the read-back verify must check the template only when one was
+   actually set — otherwise every config-only override of a name with a real default template
+   (`recall_query_expansion`, 1233 chars) raises spuriously. Today's call sites use `recall_laf`
+   (empty default) and passed by luck.
+3. **A seventh copy:** `eval/encoder_eval/targeted_v24_followup.py` imported (unused)
+   `apply_interaction_override` from `targeted_v24_eval`. Grepping for `def` misses importers.
+4. **`count_surface_tokens` read MAX(version)** — the latest REGISTERED prompt — in a script whose
+   only question is what production actually sends. Now resolves override-else-default, and raises
+   rather than reporting the default's count when the daemon is unreachable (both were falsy).
+
+**Deferred, deliberately:** there is no daemon door for the RESOLVED effective value, so
+`count_surface_tokens` composes `get_interaction` (override) with `INTERACTION_DEFAULTS` (default).
+One `get_interaction_effective` command would collapse it to a single call — a Step 9 candidate,
+skipped here because Step 7's blast radius is "eval tree only, no runtime code" and the review
+rhythm Tom ruled depends on that staying true.
+
+**The corpus-hash collision was a correctness bug in past A/B methodology, not an ergonomics fix.**
+Any prior A/B whose two arms shared an override version map but were built against different
+code-default generations could have compared an arm against itself. Audit of the 11 frozen manifests
+on disk: 4 carry `interaction_overrides`, all 4 maps DISTINCT (`{s1e:26}`, `{s1e:29}`,
+`{s1_scout_facts:7, s1e:24}`, `{s1e:25}`), each its own labelled arm — so no cited measurement shows
+a collided hash. **That audit cannot be conclusive, and the reason matters:** a collision writes no
+second manifest — `load_manifest` CACHE HITs and returns the first — so "no duplicate maps on disk"
+is equally consistent with "never happened" and "happened, silently reused the first corpus". The
+exposure is narrower than it first looks (a template override replaces the template wholesale, so
+what could differ between two same-map builds is the CONFIG half inherited from the code default),
+but it is real and unfalsifiable after the fact. Recorded rather than resolved.
+
+**Also changed, beyond the table:** `artifacts.dump_traces` routes through `query_traces(hours=None)`,
+which flags truncation where the raw dump just ended, and drops the `interaction_id` column — an
+install-local rowid nothing JOINs, whose replacement (the fingerprint) already travels in the event
+metadata. Verified no consumer reads it.
+
+**Problem (Tom's requirement, decision 4).** Overriding a prompt for a test meant touching one of
+**six** hand-rolled register+activate implementations, and there was no way to revert — so nothing
+could clean up after itself, and a forgotten override silently opted that name out of code defaults
+forever.
 
 Six copies: `eval/longmem/build_corpus.py:223-241` (`_apply_interaction_override`, the most general —
 `None` on either side preserves the active value); `eval/longmem/harness.py:224-247`

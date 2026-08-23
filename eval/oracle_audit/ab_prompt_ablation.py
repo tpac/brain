@@ -28,11 +28,9 @@ with IsolatedBrain() as env:
 
     prompts = {}
     for v in ARM_VERSIONS:
-        row = b.logs_conn.execute(
-            "SELECT template FROM interactions WHERE name='surface' AND version=?",
-            (v,)).fetchone()
+        row = b.get_interaction('surface', version=v)
         assert row, "surface v%d not registered" % v
-        prompts[v] = row[0]
+        prompts[v] = row['template']
 
     # Stage 1: enriched candidates per query (shared across arms)
     per_q = []

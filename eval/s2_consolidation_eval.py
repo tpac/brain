@@ -423,21 +423,6 @@ def main():
         if args.keep:
             print("Isolated brain at: %s" % env.db_dir)
 
-        # Register the prompt if not present
-        prompt_text = None
-        existing = brain.get_interaction_prompt('s2_consolidation_enrichment')
-        if not existing:
-            from servers.scales.s2.consolidation_enrichment_prompt import CONSOLIDATION_ENRICHMENT_PROMPT
-            brain._interaction_dal.register(
-                name='s2_consolidation_enrichment',
-                template=CONSOLIDATION_ENRICHMENT_PROMPT,
-                parameters=json.dumps({
-                    'model': 'claude-sonnet-4-6',
-                    'max_tokens': 16384,
-                }),
-                created_by='eval')
-            print("Registered consolidation enrichment prompt (v1)")
-
         # Run decoder
         print("\nRunning decoder (cold start)...")
         decode_result = run_decoder(brain)

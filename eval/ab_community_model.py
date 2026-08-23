@@ -119,6 +119,7 @@ def main():
     args = ap.parse_args()
 
     from tests.isolated_brain import IsolatedBrain
+    from tests.interaction_override import override_interaction
 
     report = {'label': args.label, 'model': args.model}
     with IsolatedBrain(production_dir=args.source_dir, cleanup=True) as env:
@@ -129,22 +130,16 @@ def main():
         # self.config.get(...))`). A config-only override silently runs the
         # DB model — stamp the arm's model into THIS copy's interaction
         # parameters and verify, or the A/B measures nothing.
-        params = dict(brain.get_interaction_config(
-            's2_community_enrichment') or {})
-        params['model'] = args.model
-        tmpl = brain.get_interaction_prompt('s2_community_enrichment') or ''
-        reg = brain._interaction_dal.register(
-            's2_community_enrichment', template=tmpl,
-            parameters=json.dumps(params), created_by='eval:ab_model')
-        brain._interaction_dal.set_active(
-            's2_community_enrichment', reg['version'], set_by='eval:ab_model')
-        effective = (brain.get_interaction_config(
-            's2_community_enrichment') or {}).get('model')
-        report['model_effective'] = effective
-        if effective != args.model:
-            report['error'] = 'model stamp failed: effective=%s' % effective
+        try:
+            override_interaction(brain, 's2_community_enrichment',
+                                 parameters={'model': args.model}, merge=True,
+                                 set_by='eval:ab_model')
+        except RuntimeError as e:
+            report['error'] = 'model stamp failed: %s' % e
             _write(args.out, report)
             sys.exit(2)
+        report['model_effective'] = (brain.get_interaction_config(
+            's2_community_enrichment') or {}).get('model')
 
         dec = run_decoder(brain, dict(COMMUNITY_DETECTION))
         proposals = dec['proposals']

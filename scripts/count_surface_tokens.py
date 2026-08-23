@@ -9,16 +9,16 @@ block is shorter, the `cache_control: ephemeral` markers in
 no tokens are ever cached.
 
 This script:
-  1. Reads the latest 'surface' interaction template from brain.db (read-only)
+  1. Resolves the EFFECTIVE 'surface' template — the deployed override if one
+     exists, else the code default — the same rule the runtime resolves by
   2. Calls Anthropic's count_tokens endpoint with that template as the system
      block (matching how surface.py builds the request)
   3. Reports the count and whether it crosses the 4096 cacheability threshold
 
-Read-only against the live brain. Safe to run while the daemon is up.
+Read-only, via the daemon. Safe to run while the daemon is up.
 """
 from __future__ import annotations
 import os
-import sqlite3
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -31,49 +31,57 @@ load_env()
 
 import anthropic  # noqa: E402
 
-BRAIN_DB_DIR = (
-    os.environ.get('BRAIN_DB_DIR')
-    or os.path.expanduser('~/AgentsContext/brain')
-)
-LOGS_DB = os.path.join(BRAIN_DB_DIR, 'brain_logs.db')
 HAIKU_MIN_CACHEABLE = 4096  # tokens; per Anthropic prompt-caching docs
 
 
-def latest_surface_template() -> tuple[str, int, str]:
-    """Return (template_text, version, name_used) for the surface prompt.
+def effective_surface_template() -> tuple[str, str]:
+    """Return (template_text, provenance) for the surface prompt the runtime
+    actually sends.
 
-    Falls back to 'judge' (legacy) if 'surface' is missing — matches
-    surface.py:82 fallback logic. The interactions table lives in
-    brain_logs.db (not brain.db).
+    Resolution is the override model's, not "latest registered": the active
+    pointer's template when a pointer exists and its template is non-empty,
+    else the code default. Reading MAX(version) — what this did before — could
+    report an un-eval'd dormant candidate's token count while production sends
+    something else entirely, which defeats the only question the script asks.
+
+    Routed through the daemon rather than a connection of its own; there is no
+    daemon door for the RESOLVED value yet, so the override half comes from
+    `get_interaction` and the default half from the code registry. One
+    `get_interaction_effective` command would collapse this to a single call.
     """
-    uri = f'file:{LOGS_DB}?mode=ro'
-    con = sqlite3.connect(uri, uri=True)
-    con.row_factory = sqlite3.Row
-    cur = con.cursor()
+    from servers.daemon_client import send_command
+    from servers.interaction_defaults import INTERACTION_DEFAULTS
 
-    # The interactions table stores versioned prompts. Pull the latest version
-    # for 'surface' (or 'judge' if surface missing).
-    for name in ('surface', 'judge'):
-        cur.execute(
-            "SELECT template, version FROM interactions "
-            "WHERE name = ? ORDER BY version DESC LIMIT 1",
-            (name,),
-        )
-        row = cur.fetchone()
-        if row and row['template']:
-            con.close()
-            return row['template'], row['version'], name
+    r = send_command('get_interaction', {'name': 'surface'})
+    if not isinstance(r, dict):
+        raise RuntimeError('daemon returned %r for get_interaction' % (r,))
+    row = r.get('result') or {}
+    # An unreachable daemon and "no override deployed" both come back falsy.
+    # Treating them alike would report the code default's token count as fact
+    # while an override was live and simply unreadable — the one wrong answer
+    # this script must not give quietly. The `transport` key is the documented
+    # discriminator: present only when the WIRE failed, absent when the daemon
+    # answered (including its own ok=false, which here means "no override").
+    # Not the `error` prose — daemon_client declares that free to change.
+    if r.get('transport'):
+        raise RuntimeError(
+            'could not reach the daemon to read the surface override '
+            '(%s: %s). Start it before trusting a count.'
+            % (r['transport'], r.get('error')))
+    if row.get('template'):
+        return row['template'], "override v%s" % row.get('version')
 
-    con.close()
-    raise RuntimeError("No 'surface' or 'judge' interaction found in brain_logs.db")
+    template = INTERACTION_DEFAULTS['surface'][0]
+    if not template:
+        raise RuntimeError(
+            "no surface override deployed and no code default in "
+            "servers/interaction_defaults.py — nothing to measure")
+    return template, 'code default (no override deployed)'
 
 
 def main():
-    template, version, name_used = latest_surface_template()
-    print(f"Loaded '{name_used}' interaction v{version}")
-    if name_used == 'judge':
-        print("⚠ Note: production fell back to legacy 'judge' interaction "
-              "— no 'surface' row exists in brain_logs.db.")
+    template, provenance = effective_surface_template()
+    print(f"Loaded 'surface' interaction — {provenance}")
     print(f"Template byte length: {len(template):,} bytes "
           f"({len(template) / 1024:.1f} KB)")
 

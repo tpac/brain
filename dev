@@ -41,13 +41,17 @@ case "${1:-}" in
         shift
         exec "$BRAIN_PYTHON" -m servers.tools.sync_prompts "$@"
         ;;
+    check-overrides)
+        shift
+        exec "$BRAIN_PYTHON" -m tests.interaction_override "$@"
+        ;;
 esac
 
 # No args → interactive subshell with env primed. Exit brings you back.
 if [ $# -eq 0 ]; then
     echo "[dev] Python: $($BRAIN_PYTHON --version) at $BRAIN_PYTHON"
     echo "[dev] PATH has $REPO_ROOT/venv/bin prepended. 'exit' to leave."
-    echo "[dev] Shortcuts: ./dev sync-prompts [--check]"
+    echo "[dev] Shortcuts: ./dev sync-prompts [--check] | ./dev check-overrides"
     exec "${SHELL:-/bin/bash}"
 fi
 
