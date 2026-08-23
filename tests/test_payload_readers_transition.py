@@ -146,8 +146,18 @@ class TestRoundRecorderEndToEnd(BrainTestBase):
             if os.path.isdir(root) else []
         self.assertNotIn('s1e-abcd1234-9', chains)
 
+    def _enter_debug(self):
+        """Deploy TRACE_RECORDING_DEBUG as an ordinary override — the
+        post-collapse recipe (nothing pre-registers a dormant v2 anymore)."""
+        import json
+        from servers.trace_contract import TRACE_RECORDING_DEBUG
+        reg = self.brain.register_interaction(
+            'trace_recording', template='',
+            parameters=json.dumps(TRACE_RECORDING_DEBUG))
+        self.brain.set_interaction_active('trace_recording', reg['version'])
+
     def test_debug_flip_records_pinned_shape(self):
-        self.brain.set_interaction_active('trace_recording', 2)  # debug
+        self._enter_debug()
         rec = self.brain.round_recorder('s1e-abcd1234-10')
         rec(0, dict(self.PARTS))
         rec(1, dict(self.PARTS))
@@ -170,9 +180,9 @@ class TestRoundRecorderEndToEnd(BrainTestBase):
         TTL cache must not serve the stale gate after a flip."""
         rec = self.brain.round_recorder('s1e-abcd1234-11')
         rec(0, dict(self.PARTS))            # primes the cache (normal: off)
-        self.brain.set_interaction_active('trace_recording', 2)
+        self._enter_debug()
         rec(1, dict(self.PARTS))            # must record despite warm cache
-        self.brain.set_interaction_active('trace_recording', 1)
+        self.brain.clear_interaction_override('trace_recording')
         found = []
         for dirpath, _dirs, names in os.walk(
                 os.path.join(self.tmp, 'payloads')):

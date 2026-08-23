@@ -61,8 +61,8 @@ from .db_backends.sqlite import commit_unless_batched
 # phrasing gets embedded; downstream cosine takes max across all phrasings.
 #
 # Prompt, model and max_tokens live in the `recall_query_expansion`
-# interaction (learnable boundary; seed in servers/recall_expansion_prompt.py,
-# registered at boot by interaction_seed).
+# interaction (learnable boundary; code default in
+# servers/recall_expansion_prompt.py).
 #
 # Opt-in via env var BRAIN_QUERY_EXPANSION=on. Failure modes are non-fatal:
 # LLM error → skip expansion, recall continues with primary query only.
@@ -99,7 +99,7 @@ def _expand_query_via_llm(brain, query: str) -> List[str]:
     except Exception:
         return []
     try:
-        # Effective-model line: params (DB) are authoritative here — this
+        # Effective-model line: the resolved config decides the model — this
         # print is the in-run proof of what actually gets called.
         print('[recall] query-expansion model=%s' % model, file=sys.stderr)
         resp = client.messages.create(

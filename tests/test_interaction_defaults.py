@@ -41,6 +41,67 @@ class TestRegistryShape:
                     "%s is config-only but carries a template" % name
 
 
+class TestDefaultFilesOwnTheirContent:
+    """The inverse of the old seed-role check: no default file may claim the
+    DB is authoritative or carry sync provenance. Editing a *_prompt.py IS
+    the deployment now — a docstring telling editors otherwise re-teaches
+    the model this migration deleted."""
+
+    FORBIDDEN = ('seed', 'authoritative', 'last sync')
+
+    def _prompt_files(self):
+        found = []
+        for root, _dirs, files in os.walk(SERVERS_DIR):
+            for fn in files:
+                if fn.endswith('_prompt.py'):
+                    found.append(os.path.join(root, fn))
+        return found
+
+    def test_no_default_file_claims_db_ownership(self):
+        import ast
+        files = self._prompt_files()
+        assert len(files) >= 10, 'prompt-file walk found only %d' % len(files)
+        offenders = {}
+        for path in files:
+            with open(path, encoding='utf-8') as f:
+                doc = (ast.get_docstring(ast.parse(f.read())) or '').lower()
+            hits = [w for w in self.FORBIDDEN if w in doc]
+            if hits:
+                offenders[os.path.basename(path)] = hits
+        assert not offenders, (
+            'default files still carrying pre-override-model docstrings '
+            '(code owns the default; the DB holds only overrides): %s'
+            % offenders)
+
+
+class TestSurfaceDefaultPairsTemplateWithLayout:
+    """Template + layout flip atomically — that's why layout rides in the
+    interaction config. A default that pairs an XML template with a legacy
+    layout (or names a layout build_surface_prompt doesn't implement) must
+    fail here. Behavior-based: renders one candidate through the default's
+    layout, no layout whitelist."""
+
+    def test_surface_template_and_layout_flip_together(self):
+        from servers.scales.s1.surface_contract import build_surface_prompt
+        template, config = INTERACTION_DEFAULTS['surface']
+        layout = config.get('layout', 'legacy')
+        cand = {'id': 'a' * 32, 'title': 'Default check', 'type': 'fact',
+                'content': 'body', 'score': 0.9,
+                'created_at': '2026-07-01T00:00:00+00:00'}
+        prompt, _ = build_surface_prompt([cand], 'a message', layout=layout)
+        if layout == 'xml_v13':
+            assert '<candidate id="aaaaaaaa"' in prompt, \
+                'default layout did not reach the XML renderer'
+            assert '<candidate' in template, \
+                'xml_v13 layout paired with a template that never ' \
+                'teaches the <candidate> grammar'
+        else:
+            assert '<candidate' not in prompt
+            assert '<candidate' not in template, \
+                'XML-speaking template paired with legacy layout — ' \
+                'template and layout must flip together'
+
+
 class TestRegistryCompleteness:
     """Every literal name the runtime passes to get_interaction_prompt /
     get_interaction_config / get_interaction / get_interaction_stamp must be

@@ -170,8 +170,21 @@ class TestDaemonOnly:
     eval corpus collapses and then floats with future code edits."""
 
     def test_constructing_a_brain_does_not_collapse(self):
+        """State-independent: the production copy arrives STAMPED (the
+        collapse ran live 2026-08-23), so asserting stamp==0 on the copy
+        reads inherited state, not Brain behavior — the single-use-fixture
+        trap. Un-stamp the copy, reopen a Brain on it, and assert the stamp
+        is STILL absent: construction must never run the collapse."""
+        from servers.brain import Brain
         from servers.schema import read_schema_version
         with IsolatedBrain(load_env=False) as env:
+            env.brain.logs_conn.execute(
+                'DELETE FROM logs_meta WHERE key = ?', (COLLAPSE_VERSION_KEY,))
+            env.brain.logs_conn.commit()
+            env.brain.save()
+            env.brain.close()
+
+            env.brain = Brain(env.brain_db)
             # The stamp, not the pointer count: a successfully collapsed brain
             # still carries PIN+SKIP pointers, so "pointers exist" cannot tell
             # "never collapsed" from "collapsed".

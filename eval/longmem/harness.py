@@ -226,9 +226,9 @@ def _stream_write_result(writers: Dict, result: Dict[str, Any]) -> None:
 def _apply_s1e_override(brain, override_path: str) -> None:
     """Point this brain's s1e at a candidate prompt file (--s1e-override).
 
-    Tests a candidate without editing the seed file, which would reach every
-    future fresh brain. Preserves the effective config; only the template
-    changes.
+    Tests a candidate without editing the code default, which would deploy
+    it to every install at the next restart. Preserves the effective config;
+    only the template changes.
     """
     override_interaction(brain, 's1e', template=open(override_path).read(),
                          set_by='eval-s1e-override')
@@ -552,9 +552,10 @@ def main():
                              "Use to re-run specific failures with rich artifacts: "
                              "--qids 58470ed2,b86304ba,852ce960. Order is preserved.")
     parser.add_argument("--s1e-override", default=None,
-                        help="Path to s1e prompt file to register over the seeded v1 in "
+                        help="Path to s1e prompt file to deploy as an override in "
                              "each fresh eval brain (e.g. eval/prompts/s1e_v15_3.txt). "
-                             "Used to test prompt revisions on the eval before launching.")
+                             "Used to test prompt revisions on the eval before landing "
+                             "them as the code default.")
     parser.add_argument("--surface-override", default=None,
                         help="Path to surface prompt file to register AND activate in each "
                              "fresh eval brain (e.g. eval/surface_v5_prompt.txt). "

@@ -129,9 +129,9 @@ FIELD_LIMITS = {
 # THE INVARIANT: this constant must equal the production-ACTIVE schema. It is
 # embedded in `SCOUT_FACTS_INTERACTION_DEFAULT` (below) by reference, so a fresh brain boots
 # with whatever it holds — meaning an edit here IS a deployment. A candidate
-# schema awaiting an eval belongs in the DB as a dormant version, never here;
-# `sync_prompts._fetch_active` enforces that rule for templates and
-# `check_configs` is what enforces it for this config.
+# schema awaiting an eval belongs in the DB as a dormant version, never here
+# (the eval gate is a process rule: overrides first, promote into the
+# default after the eval passes).
 #
 # Written literally rather than derived from CANDIDATE_REQUIRED +
 # SCOUT_FIELD_SPECS, because deriving it would let an edit to those tuples

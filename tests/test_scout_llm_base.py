@@ -205,7 +205,8 @@ class TestSystemPromptAssembly(BrainTestBase):
 
         # Sentinel through the K-store: an override of ONE key must reach
         # the request options (resolver overlays it onto the code default).
-        # Clear seeded rows first so the fresh registration is the active one.
+        # Empty the store (a no-op on a fresh brain — nothing seeds rows
+        # anymore) so the fresh registration is deterministically v1.
         self.brain.logs_conn.execute('DELETE FROM interactions')
         self.brain.logs_conn.commit()
         self.brain._interaction_dal.register(

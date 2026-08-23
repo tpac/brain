@@ -505,13 +505,14 @@ def _now():
 # be applied by hand on one machine. Every versioned stream below self-applies
 # at open, exactly once, in order.
 #
-# Three streams use this, each with its own counter so they move
-# independently — structure changes rarely, prompt content often, and
-# conflating them would make every prompt edit look like a schema change:
+# Two streams use this, each with its own counter so they move independently:
 #
 #   brain.db      brain_meta.brain_schema_version   BRAIN_VERSION
 #   brain_logs.db logs_meta.logs_schema_version     LOGS_VERSION
-#   brain_logs.db logs_meta.seed_prompts_version    SEED_PROMPTS_VERSION
+#
+# (logs_meta.seed_prompts_version was a third stream — the shipped-prompt
+# reconcile, deleted with the distribution machinery. Its stamp rows on
+# existing installs are inert history.)
 #
 # Forward-only and idempotent by version guard: a step runs iff the DB's stored
 # version is below it. Re-opening a current DB does no writes.

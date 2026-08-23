@@ -19,7 +19,6 @@ isolated brain only.
 
     ./dev python3 eval/sim_healer_journal.py [n_nodes]
 """
-import json
 import os
 import sys
 import time
@@ -28,6 +27,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from tests.isolated_brain import IsolatedBrain
+from tests.interaction_override import override_interaction
 from servers.trace_contract import (JOURNAL_REVIEW_INSTRUCTION,
                                     extract_review_block, parse_journal_notes)
 from servers.scales.s2.healer_decoder import HealerDecoder
@@ -66,11 +66,8 @@ def main():
         assert v4, 'no s2_healer prompt in isolated brain'
         v5 = make_v5(v4)
         params = brain.get_interaction_config('s2_healer') or {}
-        reg = brain._interaction_dal.register(
-            's2_healer', template=v5,
-            parameters=json.dumps(params), created_by='eval:journal_v5')
-        brain._interaction_dal.set_active(
-            's2_healer', reg['version'], set_by='eval:journal_v5')
+        override_interaction(brain, 's2_healer', template=v5,
+                             parameters=params, set_by='eval:journal_v5')
 
         # 1b. Assembly check (deterministic) — exactly what _call_llm builds.
         cfg = dict(HEALER)

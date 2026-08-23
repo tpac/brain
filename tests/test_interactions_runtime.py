@@ -1,159 +1,14 @@
 """Tests for interactions as living boundaries.
 
-Interactions hold prompt text (for LLM boundaries) and config JSON
-(for all boundaries). Code reads from the interactions table at runtime.
-Higher scales write new versions to evolve behavior.
+Code owns every interaction's default (servers/interaction_defaults.py);
+the interactions table holds only deployed OVERRIDES. The resolver
+accessors overlay the active row onto the code default at read time.
 
 Run: python3 -m pytest tests/test_interactions_runtime.py -v
 """
 import json
 import pytest
 from tests.isolated_brain import IsolatedBrain
-
-
-# ═══════════════════════════════════════════════════════
-# Seeding
-# ═══════════════════════════════════════════════════════
-
-class TestInteractionSeeding:
-    """Verify seed_interactions populates all 6 boundaries."""
-
-    @pytest.fixture(autouse=True)
-    def setup_brain(self):
-        with IsolatedBrain() as env:
-            self.brain = env.brain
-            self.dal = env.brain._interaction_dal
-            # Clear interactions AND pointers — a faithful fresh brain has
-            # neither (seeding registers dormant rows; nothing activates).
-            env.brain.logs_conn.execute('DELETE FROM interactions')
-            env.brain.logs_conn.execute('DELETE FROM interaction_active')
-            env.brain.logs_conn.commit()
-            yield
-
-    def test_seed_creates_all_interactions(self):
-        """Seed registers the core S1/S2 interactions.
-
-        Asserts a core subset is present rather than exact equality —
-        the seed list grows as new boundaries get learnable prompts
-        (scouts were added 2026-04-23, healer earlier). A subset check
-        keeps this from breaking on every legitimate addition.
-        """
-        from servers.interaction_seed import seed_interactions
-        seed_interactions(self.brain)
-        all_interactions = self.dal.list_all()
-        names = {i['name'] for i in all_interactions}
-        core_required = {'surface', 's1e', 's2_community',
-                         's2_community_enrichment',
-                         's2_consolidation_enrichment',
-                         's2_healer'}
-        missing = core_required - names
-        assert not missing, "Seed missing core interactions: %s" % missing
-
-    def test_seed_is_idempotent(self):
-        """Running seed twice doesn't create duplicates.
-
-        Idempotency = re-seeding adds NOTHING: same names, same version
-        counts. (Not "exactly one version" — trace_recording deliberately
-        seeds two: v1 normal active, v2 debug dormant, per
-        docs/TRACE-MODES-DESIGN.md "modes as config versions".)
-        """
-        from servers.interaction_seed import seed_interactions
-        seed_interactions(self.brain)
-        before = {i['name']: i['total_versions'] for i in self.dal.list_all()}
-        # Pin the multi-version seed's FIRST-seed shape too: a bug that
-        # registers debug twice in one run would otherwise pass before==after.
-        assert before['trace_recording'] == 2
-        seed_interactions(self.brain)
-        after = {i['name']: i['total_versions'] for i in self.dal.list_all()}
-        assert after == before
-
-    def test_surface_has_prompt_and_config(self):
-        """Fresh brains seed a real surface prompt whose layout the runtime
-        renderer actually implements, and whose template teaches the same
-        grammar that layout renders. Template + layout flip atomically —
-        that's why layout rides in the interaction config — so a seed that
-        pairs an XML template with a legacy layout (or names a layout
-        build_surface_prompt doesn't implement) must fail here.
-
-        Deliberately does NOT pin config keys the runtime never reads
-        (max_candidates etc. lived here until 2026-07-15; prompt-size
-        limits come from surface_contract.SURFACE, not this config)."""
-        from servers.interaction_seed import seed_interactions
-        from servers.scales.s1.surface_contract import build_surface_prompt
-        seed_interactions(self.brain)
-        # Seeded rows are dormant (registration never activates) — read the
-        # seeded content itself.
-        surface = self.dal.get_version('surface', 1)
-        assert surface is not None
-        template = surface['template']
-        assert len(template) > 100  # real prompt, not placeholder
-
-        config = json.loads(surface['parameters'])
-        layout = config.get('layout', 'legacy')
-
-        # Render one candidate through the seeded layout — an unknown
-        # layout value silently falls back to legacy rendering and fails
-        # the grammar checks below (behavior-based, no layout whitelist).
-        cand = {'id': 'a' * 32, 'title': 'Seeded check', 'type': 'fact',
-                'content': 'body', 'score': 0.9,
-                'created_at': '2026-07-01T00:00:00+00:00'}
-        prompt, _ = build_surface_prompt([cand], 'a message', layout=layout)
-        if layout == 'xml_v13':
-            assert '<candidate id="aaaaaaaa"' in prompt, \
-                'seeded layout did not reach the XML renderer'
-            assert '<candidate' in template, \
-                'xml_v13 layout paired with a template that never ' \
-                'teaches the <candidate> grammar'
-        else:
-            assert '<candidate' not in prompt
-            assert '<candidate' not in template, \
-                'XML-speaking template paired with legacy layout — ' \
-                'template and layout must flip together'
-
-    def test_encoding_agent_has_prompt_and_config(self):
-        """The S1 encoder interaction has a real prompt, and seeds the one
-        config key the runtime actually reads.
-
-        Renamed from `encoding_agent` to `s1e` when scale-name conventions
-        landed; runtime reads 's1e' (see scales/s1/encode.py).
-
-        Pins `effort` because `encode.py` reads it off this config and maps it
-        to the API's output_config — drop it from the seed and fresh brains
-        silently lose the encoder's effort setting.
-
-        Deliberately does NOT pin config keys the runtime never reads
-        (`max_messages`, `max_rounds` and friends lived here until the seed was
-        aligned to the production-ACTIVE config; the encoder reads them from
-        `encode_contract.ENCODING_AGENT`, not this config). Same reasoning as
-        test_surface_has_prompt_and_config.
-        """
-        from servers.interaction_seed import seed_interactions
-        seed_interactions(self.brain)
-        enc = self.dal.get_version('s1e', 1)
-        assert enc is not None
-        assert len(enc['template']) > 100  # real prompt
-        config = json.loads(enc['parameters'])
-        assert 'effort' in config
-
-    def test_retired_boundaries_are_not_seeded(self):
-        """voice_surface, boot, pre_edit, signal_assembler carry no reader and
-        no config default — the seed must not reintroduce their rows."""
-        from servers.interaction_seed import seed_interactions
-        seed_interactions(self.brain)
-        seeded = {i['name'] for i in self.dal.list_all()}
-        for name in ('voice_surface', 'boot', 'pre_edit', 'signal_assembler'):
-            assert name not in seeded, \
-                "%s is retired (zero readers) and must not be seeded" % name
-
-    def test_all_have_config(self):
-        """Every boundary has a config dict, even code-only ones."""
-        from servers.interaction_seed import seed_interactions
-        seed_interactions(self.brain)
-        for interaction in self.dal.list_all():
-            seeded = self.dal.get_version(interaction['name'], 1)
-            config = json.loads(seeded['parameters'])
-            assert isinstance(config, dict), "%s config is not a dict" % interaction['name']
-            assert len(config) > 0, "%s config is empty" % interaction['name']
 
 
 # ═══════════════════════════════════════════════════════
@@ -542,8 +397,8 @@ class TestPointerDeleteIsClear:
                     == INTERACTION_DEFAULTS['surface'][0])
             assert brain.get_interaction_stamp('surface')['source'] == 'default'
 
-            # A boot (ensure_logs_schema + seed_interactions) must not
-            # re-create the pointer.
+            # A boot must not re-create the pointer (Brain.__init__ writes
+            # nothing to the interactions store).
             brain.save()
             brain.close()
             env.brain = Brain(env.brain_db)
@@ -552,6 +407,147 @@ class TestPointerDeleteIsClear:
                 "SELECT COUNT(*) FROM interaction_active "
                 "WHERE name = 'surface'").fetchone()[0]
             assert count == 0
+
+
+# ═══════════════════════════════════════════════════════
+# Override resolution (the whole override model in one test)
+# ═══════════════════════════════════════════════════════
+
+class TestOverrideResolution:
+    """An override survives the code default moving underneath it — the
+    core guarantee of the override model: nothing is ever written between
+    code and DB, so a deployed override outlives any number of default
+    changes, and clearing it lands on the CURRENT default."""
+
+    @pytest.fixture(autouse=True)
+    def setup_brain(self):
+        with IsolatedBrain() as env:
+            self.brain = env.brain
+            env.brain.logs_conn.execute('DELETE FROM interactions')
+            env.brain.logs_conn.execute('DELETE FROM interaction_active')
+            env.brain.logs_conn.commit()
+            yield
+
+    def test_override_survives_a_default_change(self, monkeypatch):
+        from servers.interaction_defaults import INTERACTION_DEFAULTS
+        override_prompt = 'OVERRIDE PROMPT — deployed before the default moved'
+        self.brain.register_interaction(
+            's1e', template=override_prompt,
+            parameters=json.dumps({'effort': 'override-effort'}))
+        self.brain.set_interaction_active('s1e', 1, set_by='test')
+        assert self.brain.get_interaction_prompt('s1e') == override_prompt
+
+        # The repo moves on: a merge changes the code default underneath.
+        _old_template, old_config = INTERACTION_DEFAULTS['s1e']
+        new_default = ('NEW SHIPPED DEFAULT — landed after the override. ' * 4,
+                       {**old_config, 'effort': 'new-default-effort'})
+        monkeypatch.setitem(INTERACTION_DEFAULTS, 's1e', new_default)
+
+        # The override still wins.
+        assert self.brain.get_interaction_prompt('s1e') == override_prompt
+        assert (self.brain.get_interaction_config('s1e')['effort']
+                == 'override-effort')
+        # Unmentioned keys track the NEW default (overlay, not snapshot).
+        for key, value in new_default[1].items():
+            if key != 'effort':
+                assert self.brain.get_interaction_config('s1e')[key] == value
+
+        # Clearing lands on the current default, not the one from deploy time.
+        self.brain.clear_interaction_override('s1e')
+        assert self.brain.get_interaction_prompt('s1e') == new_default[0]
+        assert (self.brain.get_interaction_config('s1e')['effort']
+                == 'new-default-effort')
+
+
+# ═══════════════════════════════════════════════════════
+# Boot writes nothing
+# ═══════════════════════════════════════════════════════
+
+class TestBrainOpenWritesNothing:
+    """Brain.__init__ writes nothing to the interactions store. Seeding is
+    gone; the daemon-boot collapse is the single sanctioned boot-path write.
+    Reopening a Brain on an existing DB must leave every name, version count
+    and pointer byte-identical — catches any future write-on-boot."""
+
+    @staticmethod
+    def _snapshot(brain):
+        return sorted(
+            (i['name'], i['total_versions'], i.get('active_version'))
+            for i in brain.list_interactions())
+
+    def test_reopen_is_byte_identical(self):
+        from servers.brain import Brain
+        with IsolatedBrain() as env:
+            brain = env.brain
+            # A registered row + pointer so the comparison is non-vacuous
+            # even on an empty copy.
+            brain.register_interaction(
+                's1e', template='local override', parameters='{}')
+            versions = brain.list_interaction_versions('s1e')
+            brain.set_interaction_active(
+                's1e', versions[-1]['version'], set_by='test')
+            before = self._snapshot(brain)
+            assert before, 'empty interactions store — comparison is vacuous'
+
+            brain.save()
+            brain.close()
+            env.brain = Brain(env.brain_db)
+            assert self._snapshot(env.brain) == before, \
+                'constructing a Brain wrote to the interactions store'
+
+
+# ═══════════════════════════════════════════════════════
+# Reserved provenance (the collapse migration and audits read these)
+# ═══════════════════════════════════════════════════════
+
+class TestReservedProvenance:
+    """The MCP door may not mint the reserved provenance values — the
+    collapse migration and pointer audits read them to tell system-placed
+    pointers from human deployment decisions."""
+
+    NAME = 's1e'
+
+    @pytest.fixture(autouse=True)
+    def setup_brain(self):
+        with IsolatedBrain() as env:
+            self.brain = env.brain
+            env.brain.logs_conn.execute('DELETE FROM interactions')
+            env.brain.logs_conn.execute('DELETE FROM interaction_active')
+            env.brain.logs_conn.commit()
+            # A real registered version, so set_active's refusal below can
+            # only come from the provenance check.
+            self.brain.register_interaction(
+                self.NAME, template='x', parameters='{}', created_by='test')
+            yield
+
+    def test_set_active_refuses_reserved_set_by(self):
+        from servers.dal_logs import SYSTEM_PROVENANCE
+        from servers.dispatch_observability import _handle_set_interaction_active
+        for reserved in SYSTEM_PROVENANCE:
+            result = _handle_set_interaction_active(
+                self.brain, {'name': self.NAME, 'version': 1,
+                             'set_by': reserved}, None)
+            assert not result['ok'], reserved
+            assert 'reserved' in result['error']
+
+    def test_register_refuses_reserved_created_by(self):
+        from servers.dal_logs import SYSTEM_PROVENANCE
+        from servers.dispatch_observability import _handle_register_interaction
+        for reserved in SYSTEM_PROVENANCE:
+            result = _handle_register_interaction(
+                self.brain,
+                {'name': self.NAME, 'template': 'x',
+                 'created_by': reserved}, None)
+            assert not result['ok'], reserved
+            assert 'reserved' in result['error']
+
+    def test_normal_provenance_still_works(self):
+        from servers.dispatch_observability import _handle_register_interaction
+        result = _handle_register_interaction(
+            self.brain,
+            {'name': self.NAME, 'template': 'x', 'created_by': 'anchor'},
+            None)
+        assert result['ok']
 
 
 # ═══════════════════════════════════════════════════════

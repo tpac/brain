@@ -669,7 +669,7 @@ def main():
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--oracle", default="eval/longmem/data/longmemeval_oracle.json")
     p.add_argument("--s1e", default="active",
-                   help="'active' (seeded v1) or a path to an s1e prompt file to encode with")
+                   help="'active' (the resolved default) or a path to an s1e prompt file to encode with")
     p.add_argument("--ingest-surface", dest="ingest_surface", default="active",
                    help="'active' or a path to a surface prompt file used during ingest recall")
     p.add_argument("--s2-every-n", dest="s2_every_n", type=int, default=2,

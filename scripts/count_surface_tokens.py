@@ -44,39 +44,39 @@ def effective_surface_template() -> tuple[str, str]:
     report an un-eval'd dormant candidate's token count while production sends
     something else entirely, which defeats the only question the script asks.
 
-    Routed through the daemon rather than a connection of its own; there is no
-    daemon door for the RESOLVED value yet, so the override half comes from
-    `get_interaction` and the default half from the code registry. One
-    `get_interaction_effective` command would collapse this to a single call.
+    Routed through the daemon rather than a connection of its own;
+    `get_interaction_effective` returns the resolved value in one call.
     """
     from servers.daemon_client import send_command
-    from servers.interaction_defaults import INTERACTION_DEFAULTS
 
-    r = send_command('get_interaction', {'name': 'surface'})
+    r = send_command('get_interaction_effective', {'name': 'surface'})
     if not isinstance(r, dict):
-        raise RuntimeError('daemon returned %r for get_interaction' % (r,))
-    row = r.get('result') or {}
-    # An unreachable daemon and "no override deployed" both come back falsy.
-    # Treating them alike would report the code default's token count as fact
-    # while an override was live and simply unreadable — the one wrong answer
-    # this script must not give quietly. The `transport` key is the documented
-    # discriminator: present only when the WIRE failed, absent when the daemon
-    # answered (including its own ok=false, which here means "no override").
-    # Not the `error` prose — daemon_client declares that free to change.
+        raise RuntimeError(
+            'daemon returned %r for get_interaction_effective' % (r,))
+    # An unreachable daemon must not be reported as a count. The `transport`
+    # key is the documented discriminator: present only when the WIRE failed,
+    # absent when the daemon answered. Not the `error` prose — daemon_client
+    # declares that free to change.
     if r.get('transport'):
         raise RuntimeError(
-            'could not reach the daemon to read the surface override '
+            'could not reach the daemon to resolve the surface template '
             '(%s: %s). Start it before trusting a count.'
             % (r['transport'], r.get('error')))
-    if row.get('template'):
-        return row['template'], "override v%s" % row.get('version')
-
-    template = INTERACTION_DEFAULTS['surface'][0]
+    if not r.get('ok'):
+        raise RuntimeError(
+            'get_interaction_effective failed: %s' % r.get('error'))
+    result = r.get('result') or {}
+    template = result.get('template') or ''
     if not template:
         raise RuntimeError(
-            "no surface override deployed and no code default in "
-            "servers/interaction_defaults.py — nothing to measure")
-    return template, 'code default (no override deployed)'
+            'surface resolves to an empty template — nothing to measure')
+    stamp = result.get('stamp') or {}
+    if stamp.get('source') == 'override':
+        provenance = 'override v%s (fingerprint %s)' % (
+            stamp.get('version'), stamp.get('fingerprint'))
+    else:
+        provenance = 'code default (fingerprint %s)' % stamp.get('fingerprint')
+    return template, provenance
 
 
 def main():

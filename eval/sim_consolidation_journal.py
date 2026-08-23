@@ -18,7 +18,6 @@ exact transform reused at landing — and activated on the isolated brain.
 
     ./dev python3 eval/sim_consolidation_journal.py [n_clusters]
 """
-import json
 import os
 import re
 import sys
@@ -29,6 +28,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from tests.isolated_brain import IsolatedBrain
+from tests.interaction_override import override_interaction
 from servers.trace_contract import extract_review_block, parse_journal_notes
 from servers.scales.s2.consolidation_encoder import ConsolidationEncoder
 from servers.scales.s2.consolidation_contract import CONSOLIDATION
@@ -91,11 +91,8 @@ def main():
         assert v8, 'no s2_consolidation_enrichment prompt in isolated brain'
         v9 = make_v9(v8)
         params = brain.get_interaction_config('s2_consolidation_enrichment') or {}
-        reg = brain._interaction_dal.register(
-            's2_consolidation_enrichment', template=v9,
-            parameters=json.dumps(params), created_by='eval:journal_v9')
-        brain._interaction_dal.set_active(
-            's2_consolidation_enrichment', reg['version'], set_by='eval:journal_v9')
+        override_interaction(brain, 's2_consolidation_enrichment', template=v9,
+                             parameters=params, set_by='eval:journal_v9')
 
         # 1b. Assembly check (deterministic) — exactly what the encoder will build.
         enc0 = ConsolidationEncoder(brain, config=CONSOLIDATION)

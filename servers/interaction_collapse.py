@@ -13,7 +13,7 @@ with no `REFERENCES` clause — deleting rows raises nothing and silently orphan
 display data. Only `interaction_active` pointers are touched, so every version
 stays re-activatable.
 
-**Daemon-only, like `reconcile_seeded_prompts`.** `ensure_logs_schema` runs
+**Daemon-only.** `ensure_logs_schema` runs
 inside `Brain.__init__`, so shipping this as a `LOGS_MIGRATIONS` step would fire
 it in frozen eval corpora, `IsolatedBrain` copies and test brains. Effective
 values are unchanged at that instant — that IS the predicate — but a collapsed
@@ -28,9 +28,8 @@ whether a row contributed, not whether it deviated.
 **Why the audit record is the rollback path, not a transaction.** Pointer drops
 go through the interactions DAL (its own write connection, committing per call
 so the write lock is released) while the version stamp goes through
-`brain.logs_conn` — two connections on one file, the same split
-`reconcile_seeded_prompts` already lives with. So there is no single envelope to
-roll back. Instead the audit is committed BEFORE the first drop and never
+`brain.logs_conn` — two connections on one file. So there is no single envelope
+to roll back. Instead the audit is committed BEFORE the first drop and never
 overwritten, which is strictly stronger: it survives a hard crash mid-collapse,
 where a rollback would leave no record of what was attempted.
 
@@ -68,7 +67,7 @@ RETIRE = 'retire'
 #          status for content nothing wants: `s2_community`'s row holds 8 keys
 #          against the code dict's 25 with one in common and no reader at all,
 #          and the two mustered-out scouts carry an `output_schema` the code
-#          dicts deliberately omit — an omission tests/test_prompt_sync.py
+#          dicts deliberately omit — an omission tests/test_scout_contract.py
 #          asserts, so code and DB are held apart by contract.
 # PIN      never touched. `trace_recording` is the one name where activating the
 #          wrong version turns on full payload capture for every LLM round, and

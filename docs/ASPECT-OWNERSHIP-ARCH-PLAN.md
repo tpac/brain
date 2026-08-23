@@ -214,14 +214,14 @@ door; `_load` reverts to a pure read). `servers/scales/s2/aspect_contract.py` �
 lines, ending at ~40 lines of pure config, the shape `healer_contract.py` already has.
 `aspect_encoder.py:370-396` (`_load_aspects`/`_write_aspects` become door calls).
 `aspect_decoder.py:116-133` (`_load_classified_strings` becomes a registry call — removes a third
-production loader). `servers/brain.py:333` (call `reconcile_with_seed()` explicitly before
-constructing the registry, adjacent to `seed_interactions` at `:302`, so boot materialization is
-visible in the init sequence where its two siblings already are).
+production loader). `servers/brain.py` (call `reconcile_with_seed()` explicitly before
+constructing the registry in `Brain.__init__`, so boot materialization is
+visible in the init sequence).
 
 **Verification.** `tests/test_aspects_contract.py`, `tests/test_aspects.py`,
 `tests/test_aspect_registry_wired.py`, `tests/test_absorbed_into_edge.py` (the self-heal tests),
 `tests/test_aspects_path_isolation.py` (**critical** — it guards the live file against test writes,
-by content and mtime), `tests/test_prompt_sync.py`. Full suite before merge: the taxonomy feeds
+by content and mtime), `tests/test_interaction_defaults.py`. Full suite before merge: the taxonomy feeds
 Frame, surface, and every S2 unit.
 
 **Blast radius.** Large but mechanical — ~10 files, mostly moves. The risk is
@@ -755,9 +755,6 @@ but each is a genuine defect. Fold them into whichever step touches the same fil
   never re-seeds — permanently the empty-registry state the function's own comment calls
   catastrophic. Fix: copy into a tempfile + `os.replace`, and on `JSONDecodeError` move the corrupt
   file aside and re-seed rather than returning False. Belongs with Step 1.
-- **`_render_py`'s `constant` parameter is accepted and never used** (`sync_prompts.py`) — the
-  template hardcodes `SYSTEM_PROMPT`. A `SEED_PROMPTS` entry declaring any other constant name would
-  be permanently out of sync and have its constant renamed on every sync. Latent; one-line fix.
 - **Three aspect names sitting in `noise.edge_relations`** (`temporal_sequence`,
   `extension_refinement`, `validation_evidence`) — audited harmless (`id:40e7125a`), one-line
   cleanup, do it whenever Step 5 or Step 6 opens the JSON.
@@ -766,13 +763,3 @@ but each is a genuine defect. Fold them into whichever step touches the same fil
   the "harder eval" starting state gets un-wiped. Default (keep-seeds) mode unaffected.
   Eval-script-only; fix is to make the script strip members AFTER Brain construction, or
   seed its work file from a non-seed baseline.
-
-## Also noted, outside this boundary
-
-`ASPECT['model'] = 'claude-sonnet-4-6'` and `max_tokens` in `aspect_contract.py:19-20` are **dead for
-this unit**: `base._call_llm` takes both only from the interactions table (`base.py:572`), never
-`self.config`. The sibling units chain to `self.config`, so the identical-looking key is live for
-them and dead here, and a third hand-copy sits at `interaction_seed.py:179`. If the `s2_aspects` row
-ever lacks `model`, classification silently downgrades to `claude-haiku-4-5` while the most
-authoritative-looking source says Sonnet. Fix: drop the two keys from `ASPECT`, and make
-`base._call_llm`'s hardcoded fallback log when the row carries no model.

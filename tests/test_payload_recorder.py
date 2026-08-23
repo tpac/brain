@@ -54,15 +54,21 @@ class TestPayloadRecorder(BrainTestBase):
         self.assertIsNone(
             self.brain.record_payload('s1e-abc-6', 'round_payload', 'x'))
 
-    def test_debug_version_flip_opens_round_payload(self):
-        """Modes are config versions: v2 (debug) is seeded dormant;
-        set_interaction_active is the whole switch — no restart, no env."""
-        self.brain.set_interaction_active('trace_recording', 2)
+    def test_debug_override_opens_round_payload(self):
+        """Entering debug is an ordinary override carrying
+        TRACE_RECORDING_DEBUG (nothing pre-registers versions anymore);
+        clear_interaction_override is the whole exit — no restart, no env."""
+        import json
+        from servers.trace_contract import TRACE_RECORDING_DEBUG
+        reg = self.brain.register_interaction(
+            'trace_recording', template='',
+            parameters=json.dumps(TRACE_RECORDING_DEBUG))
+        self.brain.set_interaction_active('trace_recording', reg['version'])
         ptr = self.brain.record_payload('s1e-abc-7', 'round_payload',
                                         {'round': 0})
         self.assertIsNotNone(ptr)
-        # Flip back: gated again.
-        self.brain.set_interaction_active('trace_recording', 1)
+        # Clear the override: back on the NORMAL code default, gated again.
+        self.brain.clear_interaction_override('trace_recording')
         self.assertIsNone(
             self.brain.record_payload('s1e-abc-7', 'round_payload',
                                       {'round': 1}, seq=1))

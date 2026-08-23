@@ -22,7 +22,6 @@ from datetime import datetime, timezone
 
 from .community_decoder import CommunityDecoder
 from .community_encoder import CommunityEncoder
-from .community_contract import COMMUNITY_DETECTION
 from .rejection_table import (
     filter_rejected, record_rejections, clear_unplaceable_rejections)
 

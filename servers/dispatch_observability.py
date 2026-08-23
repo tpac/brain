@@ -209,6 +209,26 @@ def _handle_get_interaction(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
+def _handle_get_interaction_effective(brain, args, graph_changes):
+    """The RESOLVED value a run of `name` actually uses: the code default
+    with the active override (if any) overlaid — effective template,
+    effective config, and the K-provenance stamp. The read-side complement
+    of get_interaction, which returns the raw override ROW and cannot see
+    the default half."""
+    name = args.get("name", "")
+    if not name:
+        return {"ok": False, "error": "name is required"}
+    try:
+        return {"ok": True, "result": {
+            "name": name,
+            "template": brain.get_interaction_prompt(name),
+            "config": brain.get_interaction_config(name),
+            "stamp": brain.get_interaction_stamp(name),
+        }}
+    except KeyError as e:
+        return {"ok": False, "error": str(e).strip("'\"")}
+
+
 def _handle_set_interaction_active(brain, args, graph_changes):
     """Flip the active version pointer for an interaction.
 
@@ -224,10 +244,10 @@ def _handle_set_interaction_active(brain, args, graph_changes):
     if not name or version is None:
         return {"ok": False, "error": "name and version are required"}
     if set_by in SYSTEM_PROVENANCE:
-        # Reserved: the shipped-prompt reconcile reads these to tell its own
-        # writes apart from a human's. Accepting one here would relabel this
-        # deployment decision as an untouched default and let a later bump
-        # publish over it.
+        # Reserved: the collapse migration and pointer audits read these to
+        # tell system-placed pointers from a human's deployment decisions.
+        # Accepting one here would relabel this deployment decision as
+        # system-placed residue.
         return {"ok": False,
                 "error": "set_by '%s' is reserved for system provenance"
                          % set_by}
@@ -288,8 +308,8 @@ def _handle_register_interaction(brain, args, graph_changes):
     if not name:
         return {"ok": False, "error": "name is required"}
     if created_by in SYSTEM_PROVENANCE:
-        # Reserved — see _handle_set_interaction_active. A version claiming to
-        # be reconcile's own would be treated as crash residue and adopted.
+        # Reserved — see _handle_set_interaction_active. A version wearing
+        # system provenance would read as system residue to the audits.
         return {"ok": False,
                 "error": "created_by '%s' is reserved for system provenance"
                          % created_by}

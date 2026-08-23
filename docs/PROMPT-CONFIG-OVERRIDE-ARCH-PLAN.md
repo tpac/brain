@@ -1,9 +1,22 @@
 # Prompt/Config Override Model — Architecture Plan
 
-## § Steps 1–8 LIVE; next is Step 9, deleting the machinery (2026-08-23) ◀ ACTIVE ARC
+## § COMPLETE — Steps 1–9 landed; code owns the defaults, the machinery is gone (2026-08-23)
 
-**Read first:** plan index `id:700654c9`; session-7 handoff `id:54472d44`; session-6
-record `id:f36c8f89`; the four rulings `id:0274bca8`.
+**Read first:** plan index `id:700654c9` (entry 9 carries session 7's landing record).
+**Step 9 LANDED** — `interaction_seed.py`, `tools/sync_prompts.py`, the ratchet
+(`test_seed_prompt_reconcile.py`) and `test_prompt_sync.py` are deleted; 12 invariants
+survive in `test_interaction_defaults.py` / `test_interactions_runtime.py` /
+`test_scout_contract.py`; `tests/test_interaction_bypass_guard.py` holds the seam
+(no default imported around the resolver, no `_interaction_dal` outside the Brain —
+the 16 eval reach-arounds were converted first). The collapse call in
+`daemon_server._load_brain` runs ungated (own version stamp; the reconcile gate
+dissolved with reconcile — accepted cost: an uncollapsed install updating straight
+past Step 9 freezes its stale pointers as overrides; today's fleet is one
+already-collapsed install). Also landed: `s2_community`'s config is resolver-read
+(CommunityDecoder/Encoder), and `get_interaction_effective` (daemon command + MCP
+tool) returns the resolved template/config/stamp in one call.
+**The payoff:** promote-to-default is bump-free — editing the prompt `.py` and
+merging IS the fleet deployment; the eval gate is decision 3's process rule.
 **Step 8 LANDED and LIVE** (main `e82e9eb`) — `servers/interaction_collapse.py`, called from daemon
 boot after `reconcile_seeded_prompts` and gated on it. Pointer-only, zero row deletes, audit record
 committed before the first drop. **Ran in production on the 2026-08-23 restart: 21 override pointers
@@ -37,7 +50,7 @@ migration, verified live post-restart.
 not as a `LOGS_MIGRATIONS` step (`id:ffc58bda` — a migration-step collapse would fire inside frozen
 eval corpora and make them float); **Step 7 consolidates rather than repairs in place, and includes
 the reach-around table**; review rhythm = no fleet for 7, full fleet for 8, narrow 2–3 lens for 9.
-**Open:** Step 9. No gate is currently blocked on a human.
+**Open:** nothing — the arc is closed.
 **Do not reopen:** wiring s2_community's interaction read (post-Step-8); a sibling
 `get_effective_*` accessor; whole-value override; guarding (instead of deleting) the schema
 backstop — its unversioned re-run property is the bug; env-flag exemption or float-acceptance for
@@ -716,7 +729,7 @@ Blockers 1 and 2.
 
 ---
 
-## Step 9 — Delete the machinery, fix the docs, add the bypass guard
+## Step 9 — Delete the machinery, fix the docs, add the bypass guard ✅ DONE
 
 **Problem.** ~940 lines of distribution machinery become dead, and roughly 30 doc surfaces assert the
 model that was just inverted. CLAUDE.md is current-state-only by rule, and a doc that lies is a defect.

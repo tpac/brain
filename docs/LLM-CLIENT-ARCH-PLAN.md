@@ -237,6 +237,13 @@ Preserve that ordering through the lift.
 
 ## Step 4 — Make model resolution table-driven at the three remaining sites
 
+> **Record only — the distribution machinery this step reasons about is gone
+> (2026-08-23).** `interaction_seed.py`, `sync_prompts.py`, `SEED_PROMPTS_VERSION`,
+> `shipped_prompts()` and the fingerprint ratchet were deleted by the interaction
+> collapse: code owns every prompt/config default (`servers/interaction_defaults.py`),
+> the DB holds only overrides, and editing a default reaches every install at the
+> next daemon restart. Do not run the procedure below.
+
 **Problem.** Three LLM call sites take their model from source, not config, violating id:23a321af
 (*"model should be part of a config controlled by the user"*):
 

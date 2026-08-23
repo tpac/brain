@@ -221,24 +221,17 @@ Blocked on 1-3, because the point is to measure with an instrument we trust.
 - `build_corpus.py` **does** support `interaction_overrides={'s1_scout_facts': N}`
   (now `tests.interaction_override.override_interaction`). Two encode runs, v7 vs a
   DORMANT v8.
-- Register v8 DORMANT, run both arms, compare noun retention, activate + `./dev
-  sync-prompts` only if it holds.
+- Run v8 as an override arm, run both arms, compare noun retention, and move
+  `context_anchors` into the code default only if it holds.
 
-**Seed-gate hazard (verified 2026-08-16, found by 17d9ae94 via 2ee7a900 —
-do not re-land it):** on `ad9981c`, `interaction_seed.py:29` imports
-`FACTS_OUTPUT_SCHEMA` and `:252` embeds it in `S1_SCOUT_FACTS_CONFIG_V1`
-**by reference**. Adding `context_anchors` to that constant at registration
-time would seed the DORMANT candidate as v1 on every fresh brain —
-bypassing the eval gate `sync_prompts._fetch_active` guards on the template
-channel, through the config channel. The correct shape: **code carries
-ACTIVE, DB carries candidates.** Build the v8 schema at registration time
-DB-only via `copy.deepcopy(FACTS_OUTPUT_SCHEMA)` — `{**...}` is a shallow
-copy and the field sits four levels down
-(`["properties"]["candidates"]["items"]["properties"]`), so spread-then-
-assign mutates the shared constant and reopens the leak. Touch the constant
-+ re-sync only at activation, as one step. Invariant:
-`FACTS_OUTPUT_SCHEMA` always equals the ACTIVE version
-(17d9ae94's `check_configs` enforces it).
+**Shared-constant hazard (verified 2026-08-16, found by 17d9ae94 via 2ee7a900):**
+`SCOUT_FACTS_INTERACTION_DEFAULT` (`scales/s1/scouts/contract.py`) embeds
+`FACTS_OUTPUT_SCHEMA` **by reference**. Build the v8 schema for the override arm
+via `copy.deepcopy(FACTS_OUTPUT_SCHEMA)` — `{**...}` is a shallow copy and the
+field sits four levels down
+(`["properties"]["candidates"]["items"]["properties"]`), so spread-then-assign
+mutates the shared constant in-process and silently contaminates the baseline
+arm. Touch the constant itself only when promoting the winner, as one step.
 
 Context for why this matters: seed_7 (`id:cc834325`) measured noun retention
 regressing on every transcript, −1 to −18pt. `context_anchors` was the fix. seed_8

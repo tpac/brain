@@ -592,37 +592,35 @@ class BrainDaemon:
         self.brain = Brain(self.db_path)
         self._log("Brain loaded from {}".format(self.db_path))
 
-        # Advance any shipped prompt this install is still running at its
-        # seeded default. Deliberately here and NOT in Brain.__init__: this is
-        # the one Brain that owns its DB exclusively (launchd singleton, before
-        # the port opens), while eval corpora, IsolatedBrain copies and the
-        # boot_brain fallback all construct a Brain that must never be mutated.
-        reconciled = False
+        # Reclassify pre-override-model seeded rows as "no override deployed",
+        # once per install (its own version stamp; a stamped install no-ops).
+        # Deliberately here and NOT in Brain.__init__: this is the one Brain
+        # that owns its DB exclusively (launchd singleton, before the port
+        # opens), while eval corpora, IsolatedBrain copies and the boot_brain
+        # fallback all construct a Brain that must never be mutated.
         try:
-            from servers.interaction_seed import reconcile_seeded_prompts
-            reconciled = reconcile_seeded_prompts(self.brain)
+            from servers.interaction_collapse import collapse_seeded_overrides
+            collapse_seeded_overrides(self.brain)
         except Exception as e:
-            self._log("prompt reconcile failed: {}".format(e))
+            self._log("override collapse failed: {}".format(e))
 
-        # Reclassify seeded rows as "no override deployed", once per install.
-        # Here for the same reason reconcile is, and AFTER it: reconcile can
-        # advance a pristine name onto the current shipped content, which the
-        # collapse then recognises as the code default and drops. The reverse
-        # order costs a boot — a dropped pointer reads as "no override" to
-        # reconcile, so it advances nothing and the drop waits for next start.
-        #
-        # Gated on reconcile having succeeded, because the collapse stamps once
-        # and never re-runs: a name left stale by a failed reconcile would be
-        # classified as a genuine local override and frozen permanently.
-        if reconciled:
-            try:
-                from servers.interaction_collapse import collapse_seeded_overrides
-                collapse_seeded_overrides(self.brain)
-            except Exception as e:
-                self._log("override collapse failed: {}".format(e))
-        else:
-            self._log("override collapse deferred: prompt reconcile "
-                      "did not complete this boot")
+        # Feedback at the moment a default edit is expected to land: a live
+        # override pointer SHADOWS its code default, so an edited prompt .py
+        # changes nothing for that name until the override is cleared. Named
+        # per boot — the restart IS the deployment step, so this is where an
+        # operator looks when an edit doesn't take.
+        try:
+            shadowing = [e for e in self.brain.list_interactions()
+                         if e.get('active_version') is not None]
+            if shadowing:
+                self._log(
+                    "override pointers shadowing code defaults (an edited "
+                    "default is inert for these until cleared): %s" % ", ".join(
+                        "%s v%s (set_by=%s)" % (e['name'], e['active_version'],
+                                                e.get('active_set_by'))
+                        for e in shadowing))
+        except Exception as e:
+            self._log("override shadow report failed: {}".format(e))
 
         # Start the embed queue drain worker. remember/revise/remember_batch
         # enqueue dirty node_ids; this worker embeds them in batches every

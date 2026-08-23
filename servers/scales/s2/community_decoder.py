@@ -28,7 +28,6 @@ import numpy as np
 
 from .base import IntegrationUnit
 from .community_contract import (
-    COMMUNITY_DETECTION,
     COMMUNITY_METADATA_KEYS,
     ADJACENCY_EXCLUDED_RELATIONS,
     ADJACENCY_SKIP_ASPECTS,
@@ -94,7 +93,10 @@ class CommunityDecoder(IntegrationUnit):
 
     def __init__(self, brain, dispatch_fn=None, config=None):
         super().__init__(brain, dispatch_fn)
-        self.config = config or COMMUNITY_DETECTION
+        # Resolver read: the code default is community_contract's
+        # COMMUNITY_DETECTION unless an s2_community override is deployed —
+        # this is what makes the decoder's knobs a learnable boundary.
+        self.config = config or brain.get_interaction_config('s2_community')
 
     def run(self):
         """Decode only — returns proposals for the encoder.

@@ -34,7 +34,8 @@ from .dispatch_observability import (
     _handle_recall_episodes,
     _handle_count_traces, _handle_query_logs,
     _handle_clear_errors, _handle_log_debug, _handle_list_interactions,
-    _handle_get_interaction, _handle_set_interaction_active, _handle_register_interaction,
+    _handle_get_interaction, _handle_get_interaction_effective,
+    _handle_set_interaction_active, _handle_register_interaction,
     _handle_clear_interaction_override,
 )
 from .dispatch_ops import (
@@ -100,6 +101,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "count_traces":          CmdEntry(_handle_count_traces,        is_write=False, marks_dirty=False),
     "list_interactions":     CmdEntry(_handle_list_interactions,   is_write=False, marks_dirty=False),
     "get_interaction":       CmdEntry(_handle_get_interaction,     is_write=False, marks_dirty=False),
+    "get_interaction_effective": CmdEntry(_handle_get_interaction_effective, is_write=False, marks_dirty=False),
     "register_interaction":  CmdEntry(_handle_register_interaction,is_write=True,  marks_dirty=False),
     "set_interaction_active": CmdEntry(_handle_set_interaction_active, is_write=True,  marks_dirty=False),
     "clear_interaction_override": CmdEntry(_handle_clear_interaction_override, is_write=True, marks_dirty=False),

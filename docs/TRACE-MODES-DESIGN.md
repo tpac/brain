@@ -131,11 +131,17 @@ gains), per-kind **on/off**:
  "retention_days": 14}
 ```
 
-**Modes survive as named config versions**, preserving the modes-not-dial ruling:
-`normal` (the default above — bare minimum forever) and `debug` (everything true)
-are both pre-registered; "entering debug" = `set_interaction_active` — one MCP
-call, instant, reversible, no restart, works from a live conversation while the
-daemon stays up. Discrete shapes, no dial, one switch.
+**Modes survive as named config shapes**, preserving the modes-not-dial ruling:
+`normal` (`TRACE_RECORDING_NORMAL`, the code default — bare minimum forever) and
+`debug` (`TRACE_RECORDING_DEBUG`, everything true), both in
+`servers/trace_contract.py`. "Entering debug" = an ordinary override carrying
+`TRACE_RECORDING_DEBUG` (`register_interaction` + `set_interaction_active` —
+instant, reversible, no restart, works from a live conversation while the daemon
+stays up); `clear_interaction_override` exits it. (On an install that carries
+the collapse's PIN pointer, the clear also drops that pointer — harmless, the
+effective config is the NORMAL default either way; re-activate the prior
+version instead if you want `./dev check-overrides`'s 2-pointer baseline
+preserved.) Discrete shapes, no dial, one switch.
 
 The recorder reads the config per call (1-2 SELECTs on logs_conn — negligible at
 per-round frequency; if it ever matters, copy the `LAFEngine.config` TTL-cache

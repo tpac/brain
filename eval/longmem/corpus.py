@@ -66,10 +66,10 @@ def save_manifest(corpus_hash: str, manifest: Dict[str, Any]) -> str:
 def source_token(spec: Optional[str]) -> str:
     """Reduce a prompt source ('active' or a file path) to a stable token.
 
-    'active' → the seeded v1 the fresh eval brain boots with (which mirrors
-    the production-active prompt, per the sync-prompts discipline). A file
-    path → a content hash, so editing the override file changes the corpus
-    hash and forces a rebuild.
+    'active' → whatever the fresh eval brain resolves for the name (the code
+    default — a fresh brain carries no interaction rows). A file path → a
+    content hash, so editing the override file changes the corpus hash and
+    forces a rebuild.
     """
     if not spec or spec == "active":
         return "active"

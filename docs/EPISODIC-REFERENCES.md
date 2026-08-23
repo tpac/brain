@@ -1377,7 +1377,7 @@ Pass criteria: every step succeeds; node surfaces; source renders correctly; emb
 
 Existing tests must still pass:
 - `tests/test_contract_sync.py` — node shape unchanged for nodes without refs
-- `tests/test_prompt_sync.py` — v19 prompt must round-trip through register_interaction + sync-prompts
+- `tests/test_interaction_defaults.py` — the encoder prompt default stays a complete, well-shaped registry entry
 - `tests/test_dispatch_contract_sync.py` — tool schema additions don't break existing op dispatch
 - `tests/test_trace_contract_sync.py` — trace_event shape unchanged
 
@@ -1479,8 +1479,8 @@ The execution map for the next session. Each task names file paths, dependencies
 22. [ ] Insert new "Anchoring nodes in the substrate" subsection with §7.4 + §7.5 prose
 23. [ ] Apply removals/modifications per §7.7
 24. [ ] Insert §7.6 examples (from the focused follow-up session that filled them)
-25. [ ] `register_interaction('s1e', template=...)` to write v19 to DB
-26. [ ] `./dev sync-prompts` to mirror to `.py` seed
+25. [ ] A/B the candidate as an override (`tests/interaction_override.py`) against the current default
+26. [ ] Land the winner as `SYSTEM_PROMPT` in `servers/scales/s1/encoding_prompt.py` — the code default is the deployment
 27. [ ] Same updates to S2 encoder prompts (community, consolidation, healer) — at minimum teach them the source_refs field and sparseness discipline
 
 **Day 3-4 — Tests + validation** (~0.5-1 day)

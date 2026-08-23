@@ -163,8 +163,9 @@ messages" is doubly imprecise: the cadence is every 5 **turns** (≈10 messages)
 window is 20 messages, and with idle-flush it won't be "every 5" at all. Reword to be
 cadence-agnostic: *"You run periodically — usually every few turns, sometimes when a
 session goes idle. Each run you see a sliding window of recent turns; the journal
-tells you what earlier runs already handled."* (Prompt change → goes through the
-register → activate → `./dev sync-prompts` discipline; eval-gated, see below.)
+tells you what earlier runs already handled."* (Prompt change → edit `SYSTEM_PROMPT`
+in the prompt `.py`; that file *is* the deployed default. Eval-gated, see below —
+A/B a candidate through `tests/interaction_override.py` before merging it.)
 
 ### Non-issues (verified, no change)
 

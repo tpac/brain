@@ -50,7 +50,7 @@ So the list is a **band-aid for unreliable edge-writing**, not just a display co
 - **Decoder decisions: ZERO impact.** Membership and structure come from edges, never from `community_size`/`community_internal_fraction`/`community_is_corridor`. The bug **never corrupted a clustering / drift / merge / health decision** — it was display-only the entire time. *(This is the key safety property.)*
 - **Display (dashboard run-cards, recall render of a community node): corrected.** `community_size` appears in the render field list (`servers/contract.py:559`) — it's metadata, not a recall ranking input.
 - **`reconcile_community_membership`: unaffected** by `community_size`; it uses `community_members` (intent) + edges.
-- **Encoder prompt: simplified** — dropping the structural-field instructions is a prompt change (register → activate → `./dev sync-prompts`).
+- **Encoder prompt: simplified** — dropping the structural-field instructions is a prompt change (edit `SYSTEM_PROMPT` in the prompt `.py` — the code default is what ships).
 
 ## 6. Proposed direction
 
