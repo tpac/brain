@@ -129,6 +129,31 @@ class TestPolicyTableShape:
         allowed = {COMPARE, ADOPT, PIN, SKIP, RETIRE}
         assert set(COLLAPSE_POLICY.values()) <= allowed
 
+    def test_no_runtime_reader_names_a_retired_interaction(self):
+        """RETIRE is the one bucket the drift check cannot cover: those names
+        have no code default, so they are absent from the effective-value
+        snapshot and their pointers are dropped unverified. That is only safe
+        while nothing reads them — which is the property this holds."""
+        import os
+        import re
+        root = os.path.join(os.path.dirname(__file__), '..', 'servers')
+        retired = sorted(n for n, v in COLLAPSE_POLICY.items() if v == RETIRE)
+        pattern = re.compile(
+            r"get_interaction(?:_prompt|_config|_stamp)?\(\s*['\"](%s)['\"]"
+            % '|'.join(retired))
+        offenders = []
+        for dirpath, _dirs, files in os.walk(root):
+            for fn in files:
+                if not fn.endswith('.py'):
+                    continue
+                path = os.path.join(dirpath, fn)
+                with open(path, encoding='utf-8') as f:
+                    for hit in pattern.findall(f.read()):
+                        offenders.append('%s reads %s' % (fn, hit))
+        assert not offenders, (
+            "a RETIRE name gained a reader — its pointer is dropped with no "
+            "effective-value check: %s" % offenders)
+
     def test_probe_names_carry_the_verdicts_these_tests_assume(self):
         """If a name is re-bucketed, the behavioural tests below would quietly
         start asserting the wrong branch."""
