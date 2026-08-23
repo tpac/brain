@@ -4,12 +4,19 @@
 
 **Read first:** plan index `id:700654c9`; the four rulings `id:0274bca8`; session-5
 record `id:bd39c56c`; session-6 handoff `id:3bd64412`.
-**Step 8 built** — `servers/interaction_collapse.py`, called from daemon boot after
-`reconcile_seeded_prompts`, gated by its own `interaction_collapse_version`. Pointer-only, zero row
-deletes, audit record committed before the first drop. Measured on a production copy: **19 of 21
-pointers drop, 2 remain** (`recall_laf` SKIP, `trace_recording` PIN); every registry name flips
-`source=override → default`; effective values move for exactly the three `ADOPT` names and nothing
-else — `surface` still fingerprints `af8471e407ef`, byte-identical across the whole migration.
+**Step 8 LANDED and LIVE** (main `e82e9eb`) — `servers/interaction_collapse.py`, called from daemon
+boot after `reconcile_seeded_prompts` and gated on it. Pointer-only, zero row deletes, audit record
+committed before the first drop. **Ran in production on the 2026-08-23 restart: 21 override pointers
+→ 2.** The two survivors are the intended baseline — `recall_laf` (SKIP) and `trace_recording` (PIN) —
+so "zero overrides" is NOT the success reading. Effective values moved for exactly the three `ADOPT`
+names and nothing else; `surface` still fingerprints `af8471e407ef`, byte-identical across the whole
+migration. Zero collapse error rows. Rollback snapshot:
+`brain_logs.db.pre-override-collapse-v1.bak` (888 MB) beside the live DB — replay the audit in
+`logs_meta.interaction_collapse_audit_v1` **and** delete the `interaction_collapse_version` row.
+
+**Code now owns the defaults in the world, not just in the code.** Step 4 moved resolution into the
+accessors, but every install still carried a row for every name, so the default path had never once
+run in production. It does now.
 **Step 7 landed** — `tests/interaction_override.py` is the one override door
 (`override_interaction` + the self-reverting `interaction_override` context manager);
 the six hand-rolled register+activate copies and both legacy generations
