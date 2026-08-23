@@ -187,10 +187,12 @@ def interaction_override(brain, name, *, template=None, parameters=None,
 def stray_overrides():
     """Every live override pointer on the running brain, via the daemon.
 
-    After Step 8 a production install carries zero overrides, so any pointer
-    is either a deliberate deployment or a forgotten revert. Routed through
-    the daemon rather than a second Brain: two writer connections against a
-    live WAL database is how an index gets corrupted.
+    After the override collapse a production install carries only its PIN and
+    SKIP baseline (`trace_recording`, `recall_laf` — see
+    `servers/interaction_collapse.COLLAPSE_POLICY`), so any other pointer is
+    either a deliberate deployment or a forgotten revert. Routed through the
+    daemon rather than a second Brain: two writer connections against a live
+    WAL database is how an index gets corrupted.
     """
     from servers.daemon_client import send_command
     r = send_command('list_interactions', {})

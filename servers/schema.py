@@ -540,13 +540,31 @@ def read_schema_version(conn, meta_table: str, version_key: str) -> int:
     return int(row[0]) if row else 0
 
 
-def stamp_schema_version(conn, meta_table: str, version_key: str,
-                         version: int) -> None:
-    """Record a stream as migrated up to `version`."""
+def read_meta_value(conn, meta_table: str, key: str):
+    """Raw stored value for `key`, or None when the row is absent.
+
+    The un-coerced counterpart to `read_schema_version`, for meta rows that
+    carry payload rather than a counter (the override-collapse audit record).
+    """
+    cur = conn.execute(
+        "SELECT value FROM %s WHERE key = ?" % meta_table, (key,))
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
+def write_meta_value(conn, meta_table: str, key: str, value: str) -> None:
+    """Record `value` under `key` in a meta k/v table. Not committed here —
+    the caller owns the transaction boundary."""
     conn.execute(
         "INSERT OR REPLACE INTO %s (key, value, updated_at) "
         "VALUES (?, ?, ?)" % meta_table,
-        (version_key, str(version), _now()))
+        (key, value, _now()))
+
+
+def stamp_schema_version(conn, meta_table: str, version_key: str,
+                         version: int) -> None:
+    """Record a stream as migrated up to `version`."""
+    write_meta_value(conn, meta_table, version_key, str(version))
 
 
 def run_versioned_migrations(conn, meta_table: str, version_key: str,

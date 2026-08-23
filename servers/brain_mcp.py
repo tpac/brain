@@ -733,7 +733,7 @@ def _build_tools():
          "hours": {"type": "integer", "description": "Look back window in hours (default 24)", "default": 24}}}},
 
     {"name": "list_interactions",
-     "description": "List all registered interactions — versioned templates for every learnable boundary in the system (surfacer, encoder, voice, boot, etc.). Returns per name: max_version (highest registered), total_versions, and active_version (which one runtime currently reads).",
+     "description": "List all registered interactions — versioned templates for every learnable boundary in the system (surfacer, encoder, voice, boot, etc.). Returns per name: max_version (highest registered), total_versions, active_version (the deployed override, or null when the name runs on its code default), and active_set_by / active_set_at (who deployed that override, and when).",
      "inputSchema": {"type": "object", "properties": {}}},
 
     {"name": "get_interaction",
