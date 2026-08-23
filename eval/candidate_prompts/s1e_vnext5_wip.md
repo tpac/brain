@@ -264,8 +264,10 @@ honestly carry. Key properties:
   Good: situation: "when the deploy hangs and pytest never returns"
   For a `rule`, the trigger is the ACTION about to happen — the
   command, the flag, the file — not the concept the rule protects.
-- **reasoning** — the WHY, grounded in THIS conversation. Without it,
-  a node loses its meaning after the first retrieval.
+- **reasoning** — what the claim rests on: how it was established
+  (measured, reported, inferred), how strongly, and what would change
+  it. This is where a future reader learns how much weight to give the
+  node — written for someone who has never seen this prompt.
 - **their_raw_quote / my_raw_quote — one rule for both.** A node
   derived from something SAID carries the sayer's exact words. The test
   is derivation, not importance: if the node exists because of a said
