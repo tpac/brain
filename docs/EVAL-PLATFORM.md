@@ -211,7 +211,7 @@ In `eval/longmem/harness.py`:
 - **Streaming JSONL writes** — `hypotheses_{run}.jsonl` + `results_{run}.jsonl` append after each item. Crash at item N preserves items 1..N-1.
 - **`--smoke-test`** — 1 item per axis × 5 axes serial, ~3-5 min wall, exits non-zero on pipeline failures. Run BEFORE any long run.
 - **`--qids`** — comma-separated qid list overrides stratified sampling for targeted re-runs.
-- **`--s1e-override <path>`** — registers an alternate s1e prompt over the seeded v1 in each fresh brain. Used to test prompt revisions without touching the seed file.
+- **`--s1e-override <path>`** — deploys an alternate s1e prompt as an override in each fresh brain (via `tests/interaction_override.py`), leaving the effective config intact. Used to test prompt revisions without editing the code default.
 
 ### Encoder prompt probe + diff
 

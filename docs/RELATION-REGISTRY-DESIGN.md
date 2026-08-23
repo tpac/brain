@@ -256,8 +256,9 @@ This mirrors how aspects bootstrapped: human-curated seed, classifier for growth
   has a registry entry; every entry's values are in the closed enum; no verb
   missing a dimension.
 - `AspectRegistry` write-door validates dimensions on every write.
-- `sync-prompts` discipline for the classifier prompt (DB-authoritative, seed
-  mirrors ACTIVE).
+- The classifier prompt lives as a code default (`SYSTEM_PROMPT` in its prompt
+  `.py`, indexed by `servers/interaction_defaults.py`); the DB holds only
+  per-install overrides.
 - Self-heal: a fresh brain seeds the registry from the committed baseline.
 
 ---

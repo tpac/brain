@@ -783,8 +783,9 @@ lock-protected.
 - **D28** (`servers/scales/s1/quality_contract.py:590`,
   `D28_identity_tokens_concrete`) updates to the `speaker` key — same
   dimension, new vocabulary.
-- **`./dev sync-prompts --check`** guards interaction-prompt drift if any
-  active prompt mentions the old keys.
+- **Prompt sweep** — no automated drift gate exists: grep the code-default
+  prompts (indexed by `servers/interaction_defaults.py`) for the old keys, and
+  check `list_interactions` for any deployed override that still carries them.
 
 ### 8.1 The migration itself needs a test (gap, now filled)
 
@@ -872,9 +873,10 @@ assertions — §4.0), `test_core.py:541` / `relearning.py:912`
 `docs/ARCHITECTURE-FRACTAL.md`, `docs/BACKLOG.md`, `CLAUDE.md` if it gains a
 vocabulary line.
 
-### Prompts (interactions DB is authoritative)
-Grep active versions for old vocabulary → `register_interaction` +
-`set_interaction_active` + `./dev sync-prompts`, per the prompt discipline.
+### Prompts (code owns the default)
+Grep the prompt `.py` defaults for old vocabulary and edit `SYSTEM_PROMPT` in
+place — the edit *is* the deployment. Also check `list_interactions` for any
+deployed override carrying the old keys.
 
 ### Hardcoded `Tom` sweep — INSPECTED, and it is almost entirely a non-task
 
@@ -959,7 +961,7 @@ as LOGS_VERSION 1.
 
 Why this doesn't take five sessions: every drift vector has a named guard —
 missed writer → §8 write-boundary rejection; missed reader → old keys no
-longer exist in data (§7); prompt drift → sync-prompts check; missed file →
+longer exist in data (§7); prompt drift → the §9 prompt-default grep; missed file →
 §9 checklist is exhaustive by grep, not by memory; regression → full suite +
 byte-identity replay.
 
@@ -1028,8 +1030,8 @@ measured against the current baseline before and after.
 **F5 scope (for the arc that executes it):** `node_metadata_kv` key rename
 (v30 moved these to kv, so it is a key UPDATE, not a JSON rewrite — cheaper
 than the trace migration), the MCP agent-facing schema (→ `redeploy.sh` + new
-session), all four encoder prompts (register → activate → `./dev sync-prompts`
-each), the full contract-sync chain (`remember()` → MCP schema → dispatch →
+session), all four encoder prompt defaults (edit `SYSTEM_PROMPT` in each
+prompt `.py`), the full contract-sync chain (`remember()` → MCP schema → dispatch →
 encoder tools → SKILL.md), `contract.py`, `dal_metadata.py`, the S2
 healer/community/consolidation contracts, quality + surface contracts, scouts.
 **Verify before executing:** whether the quote *values* feed any node

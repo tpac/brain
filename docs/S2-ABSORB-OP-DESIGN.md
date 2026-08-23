@@ -28,7 +28,7 @@ Lever A goes live in the running daemon on next **restart**.
 - Track 1a (stop-the-churn prompt) shipped separately: `s2_consolidation_enrichment` **v6 active** (`714ee68`) — see `S2-CONSOLIDATION-LOCKED-ABSORB.md`.
 
 **NEXT (the actual work):**
-1. **Wire consolidation to emit `absorb`** — rewrite `consolidation_enrichment_prompt.py`: CONSOLIDATE/EVOLVE + the three edge-migration sections collapse into "use `absorb`". Register DORMANT → eval → activate → `./dev sync-prompts`. Consolidation is sacred → **eval-gated**.
+1. **Wire consolidation to emit `absorb`** — rewrite `consolidation_enrichment_prompt.py`: CONSOLIDATE/EVOLVE + the three edge-migration sections collapse into "use `absorb`". A/B the candidate through `tests/interaction_override.py`, then move the winner into the code default (`SYSTEM_PROMPT` in that `.py`). Consolidation is sacred → **eval-gated**.
 2. **Build the preservation-probe gate** ("The gate" below) — prove `absorb` is lossless on a richly-populated fixture (refs + voice + emergent KV + access + edges) before the new prompt activates.
 3. **Live lossless merge** of the real pair: operator unlocks `96d2fdf8` → `absorb` into `426ae3cd` → verify schema/roadmap/quote/refs/access all land. Safe now because `absorb` preserves them (the lock was the only thing guarding them — audit `988de522`).
 4. **Track 1b (still open):** `archive_node` locked-refusal `_log_error`→`_log_warning` + an actionable once-per-pair "locked near-dupe → unlock to merge" alert.

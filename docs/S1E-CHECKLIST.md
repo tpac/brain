@@ -50,8 +50,8 @@ backstop), ~30 measured teachings added, NOT registered.
 staleness-biased); [associated]-in-catalog (not a separate section); edge honesty over
 floors; Allen sequencing verbs KEPT (measured top rescue paths — only the ceremony cut).
 **Open:** stops 9b-11 (9a closed, probe L; UPDATE-append clause landed via micro-probe);
-E1/E2/E8 global audits (E1's two-reads entry resolved at Stop 8); ship gate (DORMANT →
-package eval → Tom activates → sync + SEED_PROMPTS_VERSION); ship-package code items: the
+E1/E2/E8 global audits (E1's two-reads entry resolved at Stop 8); ship gate (override eval
+→ package eval → Tom approves → the candidate lands as the code default); ship-package code items: the
 Assembly matrix row, id:477ddcc9, plus the source_refs 8-hex shape gate at
 add/replace_source_refs (dal.py:714 — type-checked only today; placeholders store
 silently; loud write boundary), and the locked-strip log (brain_remember.py:1152
@@ -184,9 +184,10 @@ as a section; the Allen full-cut.
    risks (every dimension leaks, A4). Most box-fixes should land as example
    weaves, not new rules or sections (the v33 lesson) — the inventory is how
    we know which example has room.
-7. **Ship gate:** register DORMANT → eval (run-44 staleness set + longmem
-   sweep, multiple reps — no single-run conclusions) → Tom activates →
-   sync-prompts.
+7. **Ship gate:** A/B the candidate as an override (`tests/interaction_override.py`)
+   → eval (run-44 staleness set + longmem sweep, multiple reps — no single-run
+   conclusions) → Tom approves → the candidate replaces `SYSTEM_PROMPT` in
+   `encoding_prompt.py`.
 
 ## T. Tom's fundamentals (the frame — 2026-08-21)
 

@@ -55,7 +55,7 @@ Where each concern lives. The module docstring is the detail — this table is t
 | Aspects (roles for types/relations) | `servers/aspects.py`, `scales/s2/aspects_v1.json` | the JSON's `_schema` key |
 | Corrections | `servers/brain_corrections.py` | docstring |
 | Traces | `servers/brain_traces.py`, `trace_contract.py` | `docs/TRACES-LAYER-DESIGN.md` |
-| Interactions (the K store) | `servers/interaction_defaults.py`, `servers/interaction_seed.py` | defaults index (name→template,config + validators + fingerprint) in the former; resolution (override overlaid on default) in `brain.get_interaction_prompt/_config/_stamp`; seeding/reconcile in the latter |
+| Interactions (the K store) | `servers/interaction_defaults.py`, `servers/interaction_collapse.py` | defaults index (name→template,config + validators + fingerprint) in the former; resolution (override overlaid on default) in `brain.get_interaction_prompt/_config/_stamp`; the one-time pointer collapse (daemon-boot, version-stamped) in the latter |
 | Scope provenance + the veil | `servers/scopes.py`, `scales/dispatch.py` | `scopes.py` docstring |
 | Node + pipeline contracts | `servers/contract.py`, `pipeline_contract.py` | docstrings |
 | Edge model | `servers/dal_graph.py` | `add_relation` docstring |
@@ -100,10 +100,9 @@ do not "clean" them.
 
 **Change the production default** (fleet-wide): edit the prompt `.py` / contract
 dict and merge — the daemon reads it at next restart. No registration, no sync
-ceremony. Until Step 9 deletes the distribution machinery, two vestiges still
-apply to the 7 shipped names: `./dev sync-prompts --check` must stay green, and
-`tests/test_seed_prompt_reconcile.py`'s ratchet forces a `SEED_PROMPTS_VERSION`
-bump on any shipped-template edit (it still deploys to not-yet-collapsed installs).
+ceremony, no version bump. The eval gate is a process rule, not a code path:
+candidates land as overrides and get promoted into the default after the eval
+passes.
 
 **Deploy an override on THIS install** (experiment / hotfix / debug):
 
@@ -119,9 +118,11 @@ CM). Baseline arms need no clearing anymore: an IsolatedBrain copy of collapsed
 production starts at the 2-pointer baseline. Promotion after a green eval =
 move the winning template into the code default, then `clear_interaction_override`.
 
-`tests/test_prompt_sync.py` + `test_interaction_defaults.py` hold the contract:
-seed files export `SYSTEM_PROMPT`, every accessor literal has a registry entry,
-and code defaults pass their own validators.
+`tests/test_interaction_defaults.py` + `test_interaction_bypass_guard.py` hold
+the contract: every accessor literal has a registry entry, code defaults pass
+their own validators, no default file claims the DB is authoritative, and
+nothing imports a default around the resolver or reaches `_interaction_dal`
+outside the Brain.
 
 ### Python runtime — use `./dev`
 
@@ -186,7 +187,7 @@ Encoding and decoding are two halves of the same system. If you add a field to e
 
 ### Loud by Default
 
-Silent failures are the most dangerous class of bug; assume every `try/except` is a potential dark corner. The brain has a small family of mechanisms that surface what used to hide: dispatcher `check_unknown_keys` catches dropped fields; per-unit `consecutive_failures` counters surface stuck S2 units; `brain_batch_invalid_op`, oversized-cluster, embedding-decode, and max_tokens-truncation errors all log to the brain errors table. Tests lock the contracts (`test_dispatch_contract_sync`, `test_trace_contract_sync`, `test_contract_sync`, `test_prompt_sync`). When adding new code, the question isn't "can this fail?" — it's "would I know if it did?"
+Silent failures are the most dangerous class of bug; assume every `try/except` is a potential dark corner. The brain has a small family of mechanisms that surface what used to hide: dispatcher `check_unknown_keys` catches dropped fields; per-unit `consecutive_failures` counters surface stuck S2 units; `brain_batch_invalid_op`, oversized-cluster, embedding-decode, and max_tokens-truncation errors all log to the brain errors table. Tests lock the contracts (`test_dispatch_contract_sync`, `test_trace_contract_sync`, `test_contract_sync`, `test_interaction_defaults`). When adding new code, the question isn't "can this fail?" — it's "would I know if it did?"
 
 ### Code Ownership
 

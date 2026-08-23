@@ -258,6 +258,14 @@ renamed that key.
 Publishing with this open means every install frozen at whatever quality shipped
 that day, with the fix getting harder per install.
 
+**The prompt-content half of this section is obsolete (2026-08-23).** The
+interaction collapse dissolved it: code owns every prompt/config default
+(`servers/interaction_defaults.py`), the DB holds only overrides, so editing a
+default reaches every install at the next daemon restart. `interaction_seed.py`,
+`sync_prompts.py`, and `SEED_PROMPTS_VERSION` are deleted. What remains live
+below is the **structural** migration runner (`brain.db` / `brain_logs.db`), which
+is still unbuilt — see BACKLOG item 3.
+
 **The shape.** Not a deploy script — *code owns the defaults; each install
 migrates itself forward at open*, the same contract `BRAIN_VERSION` already has.
 Three version streams through **one** runner, `run_versioned_migrations` in
@@ -309,10 +317,7 @@ construct and which must never be mutated.
   retained backups and 52 frozen eval corpora. A floor must lag the
   backup-retention horizon, and that relationship belongs in a test, never a
   comment.
-- **A bump is a deployment decision.** `./dev sync-prompts` only reaches brains
-  created afterwards; existing installs advance only on a `SEED_PROMPTS_VERSION`
-  bump. The ritual is in CLAUDE.md and `tests/test_seed_prompt_reconcile.py`
-  fingerprints the shipped content so a forgotten bump fails the suite.
+- *(Obsolete — the prompt-content stream is gone; see the note at the top of 5.0.)*
 - **What a version bump costs, measured 2026-08-14.** The pre-migration backup is
   *not* the hazard it was assumed to be: `shutil.copy2` of the live 723 MB
   `brain.db` takes **0.121 s** and the 816 MB `brain_logs.db` **0.133 s**, because
@@ -390,8 +395,8 @@ literals across 43 shipped files resolve to `BRAIN_AGENT_NAME`; `BRAIN_OPERATOR_
 gains an acquisition path (`userConfig`, D-4 shape). Three unequal classes:
   1. **mechanical (~90)** — boot message, dashboard UI, comments → read from config
   2. **prompts (~45)** — `encoding_prompt`, `quality_contract`, `surface_contract`
-     are DB-authoritative: register → activate → sync → bump `SEED_PROMPTS_VERSION`.
-     The 5.0 mechanism is what makes this reach existing installs at all
+     are code defaults: edit the `.py` and every install picks it up at its next
+     daemon restart
   3. **seed pack (45)** — **this is D-5.** A fresh brain is seeded with nodes
      asserting "I'm Anchor" before it holds a memory; that is precisely the
      seed-pack session's question, not this one's

@@ -137,7 +137,7 @@ locked node *should* grow with converging knowledge) — confirm before shipping
 
 | File | Change |
 |---|---|
-| `servers/scales/s2/consolidation_enrichment_prompt.py` | the reframe (primary) — seed mirror |
+| `servers/scales/s2/consolidation_enrichment_prompt.py` | the reframe (primary) — the deployed default |
 | `servers/brain_remember.py:158` | archive_node locked-refusal → warning severity |
 | `servers/scales/s2/base.py:291` | add locked check to cluster-scope archive_guard |
 | `servers/scales/s2/rejection_table.py` | record guard-refused archives (suppression) |
@@ -145,14 +145,14 @@ locked node *should* grow with converging knowledge) — confirm before shipping
 
 ## Implementation discipline
 
-- **Prompt change** goes through the interaction path, DB-authoritative:
-  `register_interaction('s2_consolidation_enrichment', …)` →
-  `set_interaction_active(version)` → `./dev sync-prompts`. The `.py` seed must
-  mirror the ACTIVE version, not the latest registered.
-- **Eval-gate** (consolidation is sacred). Add a locked-cluster case to the
-  consolidation eval and verify: (a) locked node never archived, (b) locked
-  survivor enriched with the unlocked members' unique detail, (c) no
-  contradiction silently absorbed. Activate only after the eval passes.
+- **Prompt change** edits `SYSTEM_PROMPT` in
+  `consolidation_enrichment_prompt.py` — the code default *is* the deployed
+  prompt; the DB holds only per-install overrides.
+- **Eval-gate** (consolidation is sacred). A/B the candidate through
+  `tests/interaction_override.py` before merging it. Add a locked-cluster case
+  to the consolidation eval and verify: (a) locked node never archived, (b)
+  locked survivor enriched with the unlocked members' unique detail, (c) no
+  contradiction silently absorbed. Merge the default only after it passes.
 
 ## Thematic note
 

@@ -92,7 +92,7 @@ Normal user↔anchor sessions are **byte-identical** under all of this; only wat
 
 Tom asked: *"are there more misplaced functions/definitions/decisions? how would you plan for the right architecture?"* The plan (parked):
 1. **Codify the placement laws** (from CLAUDE.md prose → an explicit list): observation layers never judge value; schemas/definitions/limits live in `schema.py`/contracts, never inline in writers; no raw SQL outside `dal/`; one name, one concept.
-2. **Make each mechanical law a scanning test** (extend the family of `test_time_window_contract`, `test_prompt_sync`, `test_dispatch_contract_sync`) — e.g. `no-raw-SQL-outside-dal`, `no-CREATE-TABLE-outside-schema`. These become the architectural eyes Tom doesn't have (he doesn't read code) and catch existing + future misplacements mechanically.
+2. **Make each mechanical law a scanning test** (extend the family of `test_time_window_contract`, `test_interaction_defaults`, `test_dispatch_contract_sync`) — e.g. `no-raw-SQL-outside-dal`, `no-CREATE-TABLE-outside-schema`. These become the architectural eyes Tom doesn't have (he doesn't read code) and catch existing + future misplacements mechanically.
 3. **Structured read-sweep** for the non-mechanical laws (filtering-in-observation, wrong-scale) — one pass per subsystem. Costs real tokens; get Tom's go + scope first.
 4. **Triage by damage × risk; fix high-damage-low-risk first; lock each with a test.**
 

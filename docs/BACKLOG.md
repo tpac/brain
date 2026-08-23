@@ -42,27 +42,17 @@ retired cap, zero cuts. Anomaly closed as harness artifact (`51d1cfa3`).
 **Open, and larger than the render:** run-to-run node-quality variance dwarfs
 every arm difference measured; unexplained, unexamined.
 
-### 🔴 1. Prompt improvements never reach existing installs
-`interaction_seed._register` returns early when the name already exists, so an install
-seeds its prompts at **first boot and is frozen there forever**. Fresh installs are
-fine; every existing one is permanently stale, for *every* prompt change. Verified
-2026-08-13: the early return is live, and the only other `register_interaction` caller
-is the MCP handler (a human). Blocks the value of every prompt improvement the moment
-a second machine exists — so it gates launch, not just hygiene.
-**The fix exists in git and was thrown out with something else.** `dfc74ee`
-(2026-08-09, "versioned migration layer + shipped-prompt reconcile") built exactly
-this: `SEED_PROMPTS_VERSION` + `reconcile_seeded_prompts`, which advances a prompt
-**only** while the install is still running the shipped default — the moment a human
-registers or activates anything, that prompt is hands-off for good. Gated so it runs
-once per version bump. It shipped with 145 lines of tests
-(`tests/test_seed_prompt_reconcile.py`). It was reverted in `58581ff` because it rode
-in the **same commit** as the migration-runner layer that three reviewers found dead by
-construction. So the work here is re-landing the reconcile half on its own, not
-designing it — and it couples to item 3, which is the other half of that same revert.
-Same-day correction that still holds: **S2 does not rewrite prompts** (zero
+### ~~🔴 1. Prompt improvements never reach existing installs~~ CLOSED 2026-08-23
+Dissolved rather than fixed: interactions collapsed to **code owns the default, the DB
+holds only overrides** (`servers/interaction_defaults.py`, resolved by
+`get_interaction_prompt/_config`). Editing the default `.py` *is* the deployment —
+every install picks it up at the next daemon restart, no reconcile, no version bump.
+The distribution machinery this item was going to re-land (`interaction_seed.py`,
+`sync_prompts.py`, `SEED_PROMPTS_VERSION`) is deleted. Item 3's migration-runner half
+of the same revert is unaffected and still open.
+Correction that still holds: **S2 does not rewrite prompts** (zero
 `register_interaction` call sites under `servers/scales/`; the `s2:*` `created_by`
-values are caller-supplied strings). CLAUDE.md's present-tense self-modification claim
-is aspirational, which reopens interactions-as-files.
+values are caller-supplied strings).
 
 ### 🔴 2. Fatigue: accumulates, but nothing observable happens
 **The four-test "dampening cluster" was closed 2026-08-13 — the tests were stale, not

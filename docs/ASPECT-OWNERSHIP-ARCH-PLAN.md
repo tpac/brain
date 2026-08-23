@@ -753,9 +753,6 @@ but each is a genuine defect. Fold them into whichever step touches the same fil
   never re-seeds — permanently the empty-registry state the function's own comment calls
   catastrophic. Fix: copy into a tempfile + `os.replace`, and on `JSONDecodeError` move the corrupt
   file aside and re-seed rather than returning False. Belongs with Step 1.
-- **`_render_py`'s `constant` parameter is accepted and never used** (`sync_prompts.py`) — the
-  template hardcodes `SYSTEM_PROMPT`. A `SEED_PROMPTS` entry declaring any other constant name would
-  be permanently out of sync and have its constant renamed on every sync. Latent; one-line fix.
 - **Three aspect names sitting in `noise.edge_relations`** (`temporal_sequence`,
   `extension_refinement`, `validation_evidence`) — audited harmless (`id:40e7125a`), one-line
   cleanup, do it whenever Step 5 or Step 6 opens the JSON.
@@ -764,13 +761,3 @@ but each is a genuine defect. Fold them into whichever step touches the same fil
   the "harder eval" starting state gets un-wiped. Default (keep-seeds) mode unaffected.
   Eval-script-only; fix is to make the script strip members AFTER Brain construction, or
   seed its work file from a non-seed baseline.
-
-## Also noted, outside this boundary
-
-`ASPECT['model'] = 'claude-sonnet-4-6'` and `max_tokens` in `aspect_contract.py:19-20` are **dead for
-this unit**: `base._call_llm` takes both only from the interactions table (`base.py:572`), never
-`self.config`. The sibling units chain to `self.config`, so the identical-looking key is live for
-them and dead here, and a third hand-copy sits at `interaction_seed.py:179`. If the `s2_aspects` row
-ever lacks `model`, classification silently downgrades to `claude-haiku-4-5` while the most
-authoritative-looking source says Sonnet. Fix: drop the two keys from `ASPECT`, and make
-`base._call_llm`'s hardcoded fallback log when the row carries no model.
