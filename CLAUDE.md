@@ -77,6 +77,7 @@ embeddings) and `brain_logs.db` (traces, session state, interactions, errors).
 - Adding an aspect is a human edit to `aspects_v1.json` plus one `REQUIRED_ASPECTS` line. The encoder only routes strings into existing aspects; it cannot propose one.
 - Scope provenance is stamped by `stamp_scope_provenance` and is never agent-authored.
 - `brain.get_node()` walks corrections on every canonical pull and attaches `_corrections`. Forgetting corrections requires deliberately bypassing the canonical pull.
+- Recall's doors reach that pull through `brain.canonicalize_results` — one method, every shape (by-query, by-id, batch): it overlays `CANONICAL_ATTACHMENT_KEYS` and scrubs the veil over the attachments. A new recall door routes through it, or `test_recall_door_parity` fails.
 
 ## Development Rules
 
@@ -190,7 +191,7 @@ Encoding and decoding are two halves of the same system. If you add a field to e
 
 ### Loud by Default
 
-Silent failures are the most dangerous class of bug; assume every `try/except` is a potential dark corner. The brain has a small family of mechanisms that surface what used to hide: dispatcher `check_unknown_keys` catches dropped fields; per-unit `consecutive_failures` counters surface stuck S2 units; `brain_batch_invalid_op`, oversized-cluster, embedding-decode, and max_tokens-truncation errors all log to the brain errors table. Tests lock the contracts (`test_dispatch_contract_sync`, `test_trace_contract_sync`, `test_contract_sync`, `test_interaction_defaults`). When adding new code, the question isn't "can this fail?" — it's "would I know if it did?"
+Silent failures are the most dangerous class of bug; assume every `try/except` is a potential dark corner. The brain has a small family of mechanisms that surface what used to hide: dispatcher `check_unknown_keys` catches dropped fields; per-unit `consecutive_failures` counters surface stuck S2 units; `brain_batch_invalid_op`, oversized-cluster, embedding-decode, and max_tokens-truncation errors all log to the brain errors table. Tests lock the contracts (`test_dispatch_contract_sync`, `test_trace_contract_sync`, `test_contract_sync`, `test_interaction_defaults`, `test_recall_door_parity`). When adding new code, the question isn't "can this fail?" — it's "would I know if it did?"
 
 ### Code Ownership
 
