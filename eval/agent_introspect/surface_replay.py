@@ -109,20 +109,14 @@ def replay_one(run_dir: Path, qid: str, system_prompt: str,
     brain = Brain(brain_db_file)
 
     # Register candidate prompt as a new 'surface' version + activate it.
-    # register() only auto-activates v1; the seeded brain already has v1
-    # (and possibly the v5 eval override as v2), so we need explicit
-    # set_active to point at our replay version.
-    existing = brain._interaction_dal.get_active('surface')
     # 8192 (Haiku's per-call max) vs production's 2048. v6 prompts Haiku
     # to write justifications per pick; 2048 truncated 54026fce in round 1,
     # 4096 truncated 75832dbd in round 2. Use Haiku's full ceiling.
-    params = json.dumps({'model': 'claude-haiku-4-5', 'max_tokens': 8192})
-    result = brain._interaction_dal.register(
-        'surface', template=system_prompt, parameters=params,
-        created_by='surface_replay')
-    if result.get('version', 1) > 1:
-        brain._interaction_dal.set_active(
-            'surface', result['version'], set_by='surface_replay')
+    from tests.interaction_override import override_interaction
+    override_interaction(
+        brain, 'surface', template=system_prompt,
+        parameters={'model': 'claude-haiku-4-5', 'max_tokens': 8192},
+        set_by='surface_replay')
 
     # Reconstruct dynamic content
     candidates_data = _candidates_from_recall(run_dir, qid)

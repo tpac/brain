@@ -20,7 +20,6 @@ temp dir, cleaned on exit). Two parts:
 
     ./dev python3 eval/sim_community_structural.py [max_proposals] [batch_size]
 """
-import json
 import os
 import sys
 import time
@@ -29,6 +28,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from tests.isolated_brain import IsolatedBrain
+from tests.interaction_override import override_interaction
 from eval.s2_community_decoder_eval import run_decoder
 from servers.scales.s2.community_contract import COMMUNITY_DETECTION
 from servers.scales.s2.community_encoder import CommunityEncoder
@@ -190,11 +190,8 @@ def run_arm(label, transform, max_prop, batch):
             assert v20, 'no s2_community_enrichment in isolated brain'
             v21 = transform(v20)
             params = brain.get_interaction_config('s2_community_enrichment') or {}
-            reg = brain._interaction_dal.register(
-                's2_community_enrichment', template=v21,
-                parameters=json.dumps(params), created_by='eval:v21')
-            brain._interaction_dal.set_active(
-                's2_community_enrichment', reg['version'], set_by='eval:v21')
+            override_interaction(brain, 's2_community_enrichment', template=v21,
+                                 parameters=params, set_by='eval:v21')
 
         edges_before = _member_edge_total(brain)
         comms_before = set(_live_community_ids(brain))

@@ -21,7 +21,6 @@ Three things validated:
 
     ./dev python3 eval/sim_community_journal.py [max_proposals] [batch_size]
 """
-import json
 import os
 import re
 import sys
@@ -31,6 +30,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from tests.isolated_brain import IsolatedBrain
+from tests.interaction_override import override_interaction
 from servers.trace_contract import extract_review_block, parse_journal_notes
 from eval.s2_community_decoder_eval import run_decoder
 from servers.scales.s2.community_contract import COMMUNITY_DETECTION
@@ -106,11 +106,8 @@ def main():
         assert v19, 'no s2_community_enrichment prompt in isolated brain'
         v20 = make_v20(v19)
         params = brain.get_interaction_config('s2_community_enrichment') or {}
-        reg = brain._interaction_dal.register(
-            's2_community_enrichment', template=v20,
-            parameters=json.dumps(params), created_by='eval:journal_port_v20')
-        brain._interaction_dal.set_active(
-            's2_community_enrichment', reg['version'], set_by='eval:journal_port_v20')
+        override_interaction(brain, 's2_community_enrichment', template=v20,
+                             parameters=params, set_by='eval:journal_port_v20')
         active = brain.get_interaction_prompt('s2_community_enrichment') or ''
         print('\n=== v20 prompt checks ===')
         print('  journal section removed : %s' % ('## Journal (after ALL tool calls)' not in active))

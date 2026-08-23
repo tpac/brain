@@ -312,11 +312,11 @@ def main():
     brain = create_fresh_eval_brain(path=tmpdir, wipe=True)
 
     # Register the candidate prompt as the active s1e
+    from tests.interaction_override import override_interaction
     system_prompt_raw = Path(args.prompt).read_text()
-    brain._interaction_dal.register('s1e', template=system_prompt_raw,
-                                      parameters=json.dumps({'max_tokens': 4000,
-                                                              'max_rounds': 5}),
-                                      created_by='encoder_replay')
+    override_interaction(brain, 's1e', template=system_prompt_raw,
+                         parameters={'max_tokens': 4000, 'max_rounds': 5},
+                         set_by='encoder_replay')
     try:
         system_prompt = system_prompt_raw
         qids = [q.strip() for q in args.qids.split(',') if q.strip()]

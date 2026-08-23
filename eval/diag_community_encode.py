@@ -15,6 +15,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from tests.isolated_brain import IsolatedBrain
+from tests.interaction_override import override_interaction
 from eval.s2_community_decoder_eval import run_decoder
 from servers.scales.s2.community_contract import COMMUNITY_DETECTION
 from servers.scales.s2.community_encoder import CommunityEncoder
@@ -34,11 +35,8 @@ def dump_arm(label, transform):
             v20 = brain.get_interaction_prompt('s2_community_enrichment') or ''
             v21 = transform(v20)
             params = brain.get_interaction_config('s2_community_enrichment') or {}
-            reg = brain._interaction_dal.register(
-                's2_community_enrichment', template=v21,
-                parameters=json.dumps(params), created_by='diag:v21')
-            brain._interaction_dal.set_active(
-                's2_community_enrichment', reg['version'], set_by='diag:v21')
+            override_interaction(brain, 's2_community_enrichment', template=v21,
+                                 parameters=params, set_by='diag:v21')
 
         dec = run_decoder(brain, dict(COMMUNITY_DETECTION))
         proposals = dec['proposals']
