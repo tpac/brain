@@ -335,6 +335,12 @@ class BrainRecallMixin:
                 'building structural degree cache')
         self._structural_degree_cache = cache
 
+    def get_source_refs(self, node_id: str) -> list:
+        """Source refs (trace event ids) for one node — the public door to
+        SourceRefDAL. Readers (eval, tooling) route here, never _source_refs."""
+        full = self._nodes.resolve_id(node_id) if len(str(node_id)) < 16 else node_id
+        return self._source_refs.get_source_refs(full) if full else []
+
     def get_node(self, node_id_or_ids):
         """Fully assembled node(s): content + metadata + correction chain + connections.
 

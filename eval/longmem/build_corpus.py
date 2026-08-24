@@ -221,6 +221,30 @@ def _fetch_interaction_template(name: str, version: int) -> str:
     return tmpl
 
 
+def _k_fingerprints(override_templates: dict = None) -> dict:
+    """Resolved-K fingerprints for the content address, per encoding name.
+
+    "active" alone stopped being a complete address when "no override" came to
+    mean "code default": the default changes by merge, and a cached corpus
+    built under an older default would cache-HIT and silently masquerade as
+    what production runs now (brain id:f36def04). Fingerprint the EFFECTIVE
+    template+config — override template (if any) over the code-default config,
+    which is exactly what the fresh eval brain resolves. Doubles as the
+    manifest's build-time record of the K each arm ran (the runbook's stamp
+    check resolves at READ time and cannot see a stale build). One-time cache
+    invalidation for every pre-existing corpus: intended — all predate the
+    970cdfc replay fix anyway.
+    """
+    from servers.interaction_defaults import (INTERACTION_DEFAULTS,
+                                              interaction_fingerprint)
+    ovr = override_templates or {}
+    fps = {}
+    for name in ("s1e", "surface"):
+        d_tpl, d_cfg = INTERACTION_DEFAULTS[name]
+        fps[name] = interaction_fingerprint(name, ovr.get(name, d_tpl), d_cfg)
+    return fps
+
+
 def build_corpus(items_per_axis: int, seed: int, oracle: str,
                  s1e: str, ingest_surface: str, s2_every_n: int,
                  label: str, qids: str = None, force: bool = False,
@@ -290,6 +314,7 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
     # collide on one hash and the cache would hand back the wrong arm's corpus.
     if lived:
         config["s1e_lived"] = True
+    config["k_fingerprints"] = _k_fingerprints(override_templates)
     h = corpus_config_hash(config)
     ov_str = (" / overrides=%s" % config["interaction_overrides"]) if interaction_overrides else ""
     print(f"[corpus] config hash = {h}  ({config['s1e']} / surface={config['ingest_surface']} "
@@ -523,6 +548,7 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
         "oracle": os.path.basename(oracle),
         "qids": qid_list,
     }
+    config["k_fingerprints"] = _k_fingerprints()
     h = corpus_config_hash(config)
     print(f"[pooled] config hash = {h}  ({len(qid_list)} items / "
           f"{len(plan)} sessions / {n_user_turns} user turns / "

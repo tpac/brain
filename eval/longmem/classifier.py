@@ -67,6 +67,21 @@ _STOPWORDS = frozenset([
 ])
 
 
+# Sources that are not the eval transcript's encoder output: the seed pack
+# every fresh eval brain ships with, plus system writers. A gold "found" in
+# these is a false positive — the fact was never encoded from the transcript
+# (a seed node once satisfied a digit-only term and stamped answerable=True
+# on an item whose encode produced nothing).
+NON_TRANSCRIPT_SOURCE_PREFIXES = ('anchor:seed', 's2:', 'migration:', 'hook:')
+
+
+def _src_exclude(alias: str = "") -> str:
+    """SQL clause excluding non-transcript sources (constants only, no params)."""
+    return " AND ".join(
+        f"COALESCE({alias}encoding_source,'') NOT LIKE '{p}%'"
+        for p in NON_TRANSCRIPT_SOURCE_PREFIXES)
+
+
 def _extract_key_terms(gold: str, limit: int = 10) -> List[str]:
     """Extract recall-signal terms from a gold answer string.
 
@@ -136,6 +151,10 @@ def _scan_brain_for_gold(brain, gold: str) -> Dict[str, Any]:
     """
     gold_str = (gold or "").strip()
     terms = _extract_key_terms(gold_str)
+    # A lone single-character term (a bare digit) matches almost any corpus —
+    # too weak to certify presence by itself. Drop it; the phrase pass still runs.
+    if len(terms) == 1 and len(terms[0]) < 2:
+        terms = []
     phrase = gold_str.lower() if len(gold_str) > 3 else None
 
     result: Dict[str, Any] = {
@@ -161,7 +180,7 @@ def _scan_brain_for_gold(brain, gold: str) -> Dict[str, Any]:
             rows = conn.execute(
                 "SELECT id, title, substr(content, 1, 200) "
                 "FROM nodes "
-                "WHERE archived = 0 "
+                f"WHERE archived = 0 AND {_src_exclude()} "
                 "  AND (LOWER(title) LIKE ? OR LOWER(content) LIKE ?) "
                 "LIMIT 10",
                 (f"%{phrase}%", f"%{phrase}%"),
@@ -186,7 +205,7 @@ def _scan_brain_for_gold(brain, gold: str) -> Dict[str, Any]:
             rows = conn.execute(
                 f"SELECT id, title, substr(content, 1, 200) "
                 f"FROM nodes "
-                f"WHERE archived = 0 AND {conditions} "
+                f"WHERE archived = 0 AND {_src_exclude()} AND {conditions} "
                 f"LIMIT 10",
                 params,
             ).fetchall()
@@ -213,7 +232,7 @@ def _scan_brain_for_gold(brain, gold: str) -> Dict[str, Any]:
                     f"SELECT DISTINCT kv.node_id, kv.key, substr(kv.value, 1, 200), n.title "
                     f"FROM node_metadata_kv kv "
                     f"JOIN nodes n ON n.id = kv.node_id "
-                    f"WHERE n.archived = 0 "
+                    f"WHERE n.archived = 0 AND {_src_exclude('n.')} "
                     f"  AND kv.key IN ({key_placeholders}) "
                     f"  AND LOWER(kv.value) LIKE ? "
                     f"LIMIT 10",
@@ -232,7 +251,7 @@ def _scan_brain_for_gold(brain, gold: str) -> Dict[str, Any]:
                     f"SELECT DISTINCT kv.node_id, kv.key, substr(kv.value, 1, 200), n.title "
                     f"FROM node_metadata_kv kv "
                     f"JOIN nodes n ON n.id = kv.node_id "
-                    f"WHERE n.archived = 0 "
+                    f"WHERE n.archived = 0 AND {_src_exclude('n.')} "
                     f"  AND kv.key IN ({key_placeholders}) "
                     f"  AND {conditions} "
                     f"LIMIT 10",
