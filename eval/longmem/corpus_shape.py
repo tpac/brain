@@ -74,6 +74,21 @@ NEUTRAL_LABELS = {'', 'neutral', 'none'}
 KV_FIELDS = ('situation', 'reasoning', 'question', 'thought', 'event_time',
              'their_raw_quote', 'my_raw_quote')
 
+# ── Journal guardrails (encode-side, read off the captured prompt) ──
+# A run's journal is rendered into the NEXT run's prompt, so the LAST s1e
+# prompt capture is where run N-1's arc/notes are read. An item with fewer
+# than this many captures never had a journal rendered at all — it reports
+# null, not zero, and drops out of the rates.
+JOURNAL_MIN_RUNS = 2
+# Below this the `## Arc` section is a stub/placeholder, not an arc.
+ARC_MIN_CHARS = 20
+# The prompt MIXES heading levels: `## Arc` / `## Review` are h2, but what
+# follows them (`### Node Catalog`, `### Conversation Timeline`) is h3. A
+# section therefore ends at the next h2 OR h3 — stopping only at `## ` reads
+# the catalog and transcript renders as Review content and reports a 20-37K
+# "over-production" that is really the payload's own render.
+JOURNAL_SECTION_RE = r'^## %s\s*$(.*?)(?=^#{2,3} |\Z)'
+
 # Metrics that CANNOT come from a built corpus — the brain stores state, not
 # the ops that produced it. Reported in the output so nobody reads their
 # absence as a zero.
@@ -86,8 +101,9 @@ NOT_COMPUTABLE = [
     "which write op produced them.",
     "connect_to (edge declared at creation) vs a separate connect op — both "
     "land as the same edge row.",
-    "Encoder rounds, tokens, latency, journal use, scout notes — payload/"
-    "trace facts, not graph facts.",
+    "Encoder rounds, tokens, latency, scout notes — payload/trace facts, "
+    "not graph facts. (The journal's arc/review IS read, from the captured "
+    "prompts — see the journal block.)",
     "Nodes the encoder created and S2 later archived — filter_nodes reads "
     "archived=0, so consolidation casualties are out of the scored set.",
     "Whether a source_ref points at the turn that actually GENERATED the "
@@ -134,6 +150,80 @@ def _all_live_node_ids(brain) -> List[str]:
 def _is_encoder(source: str) -> bool:
     src = source or ''
     return not any(src.startswith(p) for p in NON_ENCODER_SOURCE_PREFIXES)
+
+
+def _journal_section(text: str, name: str) -> Optional[str]:
+    """The `## {name}` body, bounded by the next h2/h3 heading or EOF.
+
+    None when the heading is absent — the renderer omits an empty section, so
+    absent and present-but-empty are different facts and must not collapse.
+    """
+    m = re.search(JOURNAL_SECTION_RE % name, text, re.M | re.S)
+    return m.group(1).strip() if m else None
+
+
+def score_journal(item_dir: str) -> Dict[str, Any]:
+    """Journal guardrails off the item's captured s1e prompts.
+
+    `capture_files_for` owns the recorder layout
+    ({item}/payloads/{date}/s1e-{sid8}-{stop}/000-prompt.md) and orders by
+    (stop, seq, attempt), so [-1] is the LAST run's prompt — the one carrying
+    the previous run's journal. Items below JOURNAL_MIN_RUNS captures report
+    null and are excluded from the rates; corpora with no captures at all
+    (older builds) report journal_captures=0 and null metrics.
+    """
+    from eval.longmem.fresh_brain import capture_files_for
+    files = capture_files_for(item_dir, prefix='s1e', kind='prompt')
+    rec: Dict[str, Any] = {
+        'journal_captures': len(files),
+        'journal_rendered': None, 'arc_produced': None, 'arc_chars': None,
+        'review_chars': None, 'review_notes_count': None,
+    }
+    if len(files) < JOURNAL_MIN_RUNS:
+        return rec
+
+    text = open(files[-1]).read()
+    arc = _journal_section(text, 'Arc')
+    review = _journal_section(text, 'Review')
+    rec.update({
+        # Neither heading present = the journal-dead case: the previous run
+        # wrote nothing for the renderer to emit.
+        'journal_rendered': arc is not None or review is not None,
+        'arc_produced': len(arc or '') > ARC_MIN_CHARS,
+        'arc_chars': len(arc or ''),
+        'review_chars': len(review or ''),
+        'review_notes_count': sum(1 for line in (review or '').splitlines()
+                                  if line.strip()),
+    })
+    return rec
+
+
+def _journal_aggregate(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Rates over the ELIGIBLE items only (>= JOURNAL_MIN_RUNS captures)."""
+    eligible = [it for it in items if it['arc_produced'] is not None]
+    captures = sum(it['journal_captures'] for it in items)
+    if not eligible:
+        return {'payloads': captures > 0, 'eligible_items': 0,
+                'items_with_captures': sum(1 for it in items
+                                           if it['journal_captures']),
+                'journal_rendered_rate': None, 'arc_produced_rate': None,
+                'review_chars_mean': None, 'review_chars_max': None,
+                'review_notes_mean': None}
+    reviews = [it['review_chars'] for it in eligible]
+    return {
+        'payloads': True,
+        'eligible_items': len(eligible),
+        'items_with_captures': sum(1 for it in items if it['journal_captures']),
+        'journal_rendered_rate': _rate(
+            sum(1 for it in eligible if it['journal_rendered']), len(eligible)),
+        'arc_produced_rate': _rate(
+            sum(1 for it in eligible if it['arc_produced']), len(eligible)),
+        'arc_chars_mean': round(mean(it['arc_chars'] for it in eligible), 1),
+        'review_chars_mean': round(mean(reviews), 1),
+        'review_chars_max': max(reviews),
+        'review_notes_mean': round(
+            mean(it['review_notes_count'] for it in eligible), 1),
+    }
 
 
 def _runs(brain) -> Tuple[Dict[str, int], Dict[str, int]]:
@@ -387,8 +477,12 @@ def score_corpus(corpus_hash: str) -> Dict[str, Any]:
                     rec = score_item(brain, qid)
                 finally:
                     brain.close()
-            print('[shape] %s/%s  nodes=%d edges=%d'
-                  % (corpus_hash, qid, rec['nodes_scored'], rec['edges_total']),
+            # Journal guardrails read the ORIGINAL item dir — payloads are
+            # deliberately not copied into the work dir.
+            rec.update(score_journal(src))
+            print('[shape] %s/%s  nodes=%d edges=%d journal_prompts=%d'
+                  % (corpus_hash, qid, rec['nodes_scored'], rec['edges_total'],
+                     rec['journal_captures']),
                   file=sys.stderr, flush=True)
             items.append(rec)
         finally:
@@ -401,6 +495,7 @@ def score_corpus(corpus_hash: str) -> Dict[str, Any]:
         'items': items,
         'aggregate': _aggregate(items),
         'pooled': _pooled(items),
+        'journal': _journal_aggregate(items),
         'not_computable': NOT_COMPUTABLE,
     }
 
@@ -479,24 +574,44 @@ ITEM_COLS = (
     ('deg02', 'degree_0_2_pct', '%6s'), ('why', 'why_chars_mean', '%6s'),
     ('band', 'why_in_band_pct', '%5s'), ('resc', 'rescue_verb_pct', '%5s'),
     ('cat', 'catalog_target_pct', '%5s'),
+    # journal guardrails — null (printed '-') on items with < 2 captures
+    ('jrn', 'journal_captures', '%4s'), ('rndr', 'journal_rendered', '%5s'),
+    ('arc', 'arc_chars', '%5s'), ('rvw', 'review_chars', '%5s'),
+    ('note', 'review_notes_count', '%5s'),
 )
+
+# Columns fed by the journal block: no aggregate row (their rates are over
+# eligible items only, which the mean/sd row cannot express).
+JOURNAL_COLS = {'journal_captures', 'journal_rendered', 'arc_chars',
+                'review_chars', 'review_notes_count'}
+
+
+def _cell(v: Any) -> Any:
+    """Table cell: None → '-', bool → Y/N (a null metric must not read 0)."""
+    if v is None:
+        return '-'
+    if isinstance(v, bool):
+        return 'Y' if v else 'N'
+    return v
 
 
 def render_corpus(rep: Dict[str, Any]) -> str:
     L = []
-    L.append('=' * 118)
+    L.append('=' * 140)
     L.append('CORPUS %s  label=%s  items=%d'
              % (rep['corpus_hash'], rep['label'] or '-', len(rep['items'])))
-    L.append('=' * 118)
+    L.append('=' * 140)
     L.append(' '.join(fmt % name for name, _, fmt in ITEM_COLS))
     for it in rep['items']:
-        L.append(' '.join(fmt % it[key] for _, key, fmt in ITEM_COLS))
-    L.append('-' * 118)
+        L.append(' '.join(fmt % _cell(it[key]) for _, key, fmt in ITEM_COLS))
+    L.append('-' * 140)
     agg = rep['aggregate']
     L.append('mean ' + ' '.join(
-        fmt % agg[key]['mean'] for _, key, fmt in ITEM_COLS[1:]))
+        fmt % ('' if key in JOURNAL_COLS else agg[key]['mean'])
+        for _, key, fmt in ITEM_COLS[1:]))
     L.append('sd   ' + ' '.join(
-        fmt % agg[key]['sd'] for _, key, fmt in ITEM_COLS[1:]))
+        fmt % ('' if key in JOURNAL_COLS else agg[key]['sd'])
+        for _, key, fmt in ITEM_COLS[1:]))
     p = rep['pooled']
     L.append('')
     L.append('pooled: %d nodes, %d edges, %d source_refs, %d empty edge-why, '
@@ -516,7 +631,9 @@ def render_corpus(rep: Dict[str, Any]) -> str:
     verdict = 'OK' if p['generic_relation_count'] == 0 else 'LOUD FAIL'
     L.append('generic related/related_to: %d  → %s'
              % (p['generic_relation_count'], verdict))
-    orderings = sorted({it['catalog_ordering'] for it in rep['items']})
+    # Only items that HAVE edges say anything about the ordering used.
+    orderings = sorted({it['catalog_ordering'] for it in rep['items']
+                        if it['edges_total']})
     L.append('rescue-verb share: %.1f%%   catalog-targeting ordering: %s'
              % (p['rescue_verb_pct'], ','.join(orderings) or '-'))
     if 'created_at' in orderings:
@@ -524,7 +641,24 @@ def render_corpus(rep: Dict[str, Any]) -> str:
                  'no encoding_run traces, an edge to a sibling written '
                  'moments earlier in the SAME run scores as a hit. Only '
                  'compare arms that share an ordering.')
+    L.append(_render_journal(rep['journal']))
     return '\n'.join(L)
+
+
+def _render_journal(j: Dict[str, Any]) -> str:
+    if not j['payloads']:
+        return 'journal guardrails — payloads: none (corpus has no s1e prompt captures)'
+    if not j['eligible_items']:
+        return ('journal guardrails — %d item(s) captured but none reached %d '
+                'runs; no journal was ever rendered'
+                % (j['items_with_captures'], JOURNAL_MIN_RUNS))
+    return ('journal guardrails (%d eligible items): journal rendered %.1f%% '
+            '| arc produced %.1f%% (mean %.0f chars) | review chars mean %.0f '
+            'max %d | review notes mean %.1f'
+            % (j['eligible_items'], j['journal_rendered_rate'],
+               j['arc_produced_rate'], j['arc_chars_mean'],
+               j['review_chars_mean'], j['review_chars_max'],
+               j['review_notes_mean']))
 
 
 COMPARE_KEYS = AGG_KEYS
@@ -553,6 +687,18 @@ def render_compare(reps: List[Dict[str, Any]]) -> str:
                        ('pooled nodes', 'nodes_scored')):
         L.append('%-24s' % label
                  + ''.join('%22s' % r['pooled'][key] for r in reps))
+    L.append('-' * 100)
+    L.append('%-24s' % 'JOURNAL (eligible only)'
+             + ''.join('%22s' % ('n=%s' % r['journal']['eligible_items'])
+                       for r in reps))
+    for label, key in (('journal_rendered_rate', 'journal_rendered_rate'),
+                       ('arc_produced_rate', 'arc_produced_rate'),
+                       ('review_chars_mean', 'review_chars_mean'),
+                       ('review_chars_max', 'review_chars_max'),
+                       ('review_notes_mean', 'review_notes_mean')):
+        L.append('%-24s' % label
+                 + ''.join('%22s' % _cell(r['journal'].get(key))
+                           for r in reps))
     return '\n'.join(L)
 
 

@@ -1,13 +1,26 @@
 # S1E Prompt Checklist — the boxes every revision must check
 
-## Walk state — EVERY challenge closed; next: KPI framework ruling → register v39 → gate (2026-08-24) ◀ ACTIVE ARC
+## Walk state — GATE RAN 2026-08-24: v39 wins every axis; awaiting Tom's promote pass ◀ ACTIVE ARC
 
-**Where this stands.** The section-by-section walk is finished and every Tom-ruled fix from
-it has landed and been probe-verified. The weave (5 moves) and the MCP membership change
-are on main. What remains is three audits and the gate. Draft is 102,508 chars; NOTHING
-is registered. Diff base is
-**v38** (the rename stream's mechanical name-swap); our candidate registers as **v39**
-(verified against `list_interactions`: s1e max 38, active 38).
+**Where this stands.** v39 IS REGISTERED (dormant, 109,878 chars, header stripped) and the
+gate eval ran end-to-end: baseline (pointer-less code default, corpus fcc338, --force) vs
+v39 (corpus a3be7a), 10 gate-v29 qids, sweep --variance 3. **v39: 60→83.3% overall,
+recall-conditional 64.3→86.2%, do-no-harm PASS (wins or ties all 10 items), 2→0
+whole-conversation zero-encodes, event_time +37pp, catalog-targeting 22→40%, all three
+journal guardrails PASS** (baseline's journal is entirely dead; v39 restores arc + residue
+notes, disciplined). Full report: https://claude.ai/code/artifact/54dcd1af-3d8f-4851-8869-d49c80ee3c45
+Gate-run harness fixes landed on main (merge 1433756): gold-scan seed/digit contamination,
+baseline "active" cache addressing (k_fingerprints now in the corpus content address +
+manifest), Brain.get_source_refs, corpus_shape.py (the L1 encode-shape scorer). A false
+over-production flag was retracted mid-run (id:2f149c13 — measurement artifact).
+
+**REMAINING:**
+1. **Tom's pass on promotion** (recommendation: promote v39 as-is).
+2. On pass: promote the template into `SYSTEM_PROMPT` in `scales/s1/encoding_prompt.py`,
+   merge (daemon runs main), install stays pointer-less (v39 was never activated).
+3. v-next.6 seeds: why-length overshoot (mean 193 vs 120–180 band), emotion pair never
+   fires (0/90), 4/9 items arc-silent. Harness follow-ups: abstract-gold scan blindness,
+   answerer world-knowledge fabrication on abstention items (benchmark semantics — Tom rules).
 
 **Order of work, and why:**
 
@@ -102,18 +115,10 @@ eval/candidate_prompts/audits/e7_redundancy_vnext5.md — 28 scars DEFERRED post
 (E5 + eval attribution; id:4f9a7e20). Draft: 111,498 chars. Completion-pass milestone:
 id:b5e358b7. Handoff: id:bb0740dd.
 
-REMAINING (fresh session — launch prompt armed):
-1. **KPI framework ruling (Tom)** — he ruled the four needles too shallow ("a much more
-   sophisticated KPIs and benchmark"); the draft framework (L0 integrity / L1
-   encode-shape script-computable / L2 brain-presence PRIMARY / L3 recall-differentiated,
-   judge-needing KPIs flagged with cost) lives in handoff id:bb0740dd. NOTHING evals
-   before he rules it.
-2. **Register** — step 0: strip the 7-line WIP header; re-verify pointer + version at
-   that moment; register v39 DORMANT.
-3. **Ship gate** — the runbook below is complete: invocation, check-overrides pre-step,
-   expected one-time cache miss, migrate-on-open pre-registered as first suspect, and both
-   arm-integrity checks. Baseline arm = NO override. On Tom's pass: promote into
-   encoding_prompt.py SYSTEM_PROMPT, clear the override.
+DONE 2026-08-24 — **the gate ran** (see the ACTIVE ARC head at the top for results and
+what remains). The KPI framework became the four-level L0–L3 ladder (arm integrity /
+encode-shape via corpus_shape.py / brain-presence / recall-differentiated), v39 registered
+dormant, both arms built fresh and swept at variance 3.
 
 **Deferred by design, with owners named:** the vertical axis beyond the pilot (six more
 teachings shaped like Emerging patterns — evidence in id:56631bce); the journal→graph
