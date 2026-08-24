@@ -262,17 +262,23 @@ def main():
     row('recall p95 ms', lambda a: float(np.percentile(lat[a], 95)),
         fmt='%.0f', dfmt='%+.0f', scale=1)
     c2 = d.leg_b.get('c2') or {}
+    if c2.get('pass') is None:
+        # Missing leg_b_report.json, or a zero-sample run: a check that
+        # never examined anything renders as NOT RUN, never as ✗.
+        c2_txt = 'NOT RUN (%s)' % (
+            c2.get('status') or 'no c2 block in leg_b_report.json')
+    else:
+        c2_txt = '%d/%d mismatches → %s' % (
+            len(c2.get('mismatches', [])), c2.get('first_cues', 0),
+            '✓' if c2['pass'] else '✗')
     p_pass = delta >= 0.05 and ci[0] > 0
     L += ['',
           '**P-primary (§20.18):** Δ(A1−A0f) = %+.3f, clustered 95%% CI '
           '[%.3f, %.3f] → **%s**' % (delta, ci[0], ci[1],
                                      'PASS' if p_pass else 'FAIL'),
-          '**C1 shuffle:** %.3f vs A0f %.3f → %s · **C2 identity:** %s/%s '
-          'mismatches → %s'
+          '**C1 shuffle:** %.3f vs A0f %.3f → %s · **C2 identity:** %s'
           % (soft_r['C1'], soft_r['A0f'],
-             '✓' if soft_r['C1'] < soft_r['A0f'] else '✗',
-             len(c2.get('mismatches', [])), c2.get('first_cues', '?'),
-             '✓' if c2.get('pass') else '✗'), '',
+             '✓' if soft_r['C1'] < soft_r['A0f'] else '✗', c2_txt), '',
           '## Per-item side by side (mean delivered soft@5)', '',
           '| qid | axis | A0 | A1 | Δ | move |', '|---|---|---:|---:|---:|:---:|']
     ups = downs = 0

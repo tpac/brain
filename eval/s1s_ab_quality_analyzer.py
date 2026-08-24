@@ -441,13 +441,19 @@ def analyze_job(brain_dir: Path, job_result: Dict[str, Any],
     conn, logs = _load_job_brain(brain_dir)
     try:
         # Anchor the "what's new" filter to the session start timestamp
-        # recorded on the encoding_prompt trace. Falls back to scribe's
-        # first remember if missing.
+        # recorded on the encoding_prompt trace. The runner suffixes '-{pid}',
+        # so probe with '-%' — a bare '%' would let r1 also match r11+.
         session_id = f"smoke-{transcript['slug']}-{job_result['arm']}-r{job_result['run_idx']}"
         row = logs.execute(
             "SELECT MIN(created_at) FROM trace_events WHERE session_id LIKE ?",
-            (session_id + "%",)).fetchone()
-        session_start = row[0] if row and row[0] else "1970-01-01"
+            (session_id + "-%",)).fetchone()
+        if not row or not row[0]:
+            raise RuntimeError(
+                "no trace_events for session %s-* in %s — cannot anchor the "
+                "what's-new filter (a 1970 fallback would silently score "
+                "every non-seed node in the brain as this job's output)"
+                % (session_id, brain_dir))
+        session_start = row[0]
 
         nodes = _new_nodes_of_job(conn, session_start)
         edges = _new_edges_of_job(conn, session_start)
@@ -579,10 +585,18 @@ def report(rows: List[Dict[str, Any]], run_dir: Path) -> None:
 
     for slug in slugs:
         print(f"### {slug}")
-        print(f"{'DIMENSION':<22}  {'A (mean)':>10}  {'B (mean)':>10}  {'Δ (B-A)':>10}")
-        print("-" * 60)
         a = agg.get((slug, "A"), {})
         b = agg.get((slug, "B"), {})
+        n_a, n_b = a.get("n_jobs", 0), b.get("n_jobs", 0)
+        if not n_a or not n_b:
+            # An arm with zero completed jobs would render every dimension
+            # 0.00 and show the other arm's magnitude as an improvement arrow.
+            print(f"⚠ SKIPPED — arm with zero completed jobs (A: {n_a} jobs, "
+                  f"B: {n_b} jobs); no comparison exists for this transcript")
+            print()
+            continue
+        print(f"{'DIMENSION':<22}  {f'A (n={n_a})':>10}  {f'B (n={n_b})':>10}  {'Δ (B-A)':>10}")
+        print("-" * 60)
         for key, label in dims:
             va = a.get(key, 0)
             vb = b.get(key, 0)

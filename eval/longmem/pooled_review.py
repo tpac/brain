@@ -107,8 +107,14 @@ def render(corpus_hash: str) -> str:
     # ── Encoded nodes: everything non-seed, grouped by encoding_source ──
     w('\n---\n## Encoded nodes (non-seed)\n')
     rows = brain.filter_nodes(field='encoding_source',
-                              exclude=['seed'], limit=200, rich=False)
+                              exclude=['anchor:seed'], limit=200, rich=False)
     nodes = rows.get('nodes', rows) if isinstance(rows, dict) else rows
+    total = rows.get('total_count') if isinstance(rows, dict) else None
+    w('%d rendered / %s matching' % (len(nodes),
+                                     total if total is not None else '?'))
+    if total is not None and total > len(nodes):
+        w('**⚠ TRUNCATED at the DAL row cap — the sections below are a '
+          'prefix of the corpus, not all of it.**')
     by_src = {}
     for nd in nodes:
         by_src.setdefault(nd.get('encoding_source') or '?', []).append(nd)
@@ -122,7 +128,9 @@ def render(corpus_hash: str) -> str:
             sit = node.get('situation') or (node.get('metadata') or {}).get('situation')
             if sit:
                 w('    - situation: %s' % _trim(str(sit), 220))
-            refs = node.get('source_refs') or (node.get('metadata') or {}).get('source_refs')
+            # source_refs live in node_source_refs, never on get_node output —
+            # the owner's reader is the only door (corpus_shape pattern).
+            refs = brain.get_source_refs(nd['id'])
             if refs:
                 w('    - source_refs: %s' % refs)
 

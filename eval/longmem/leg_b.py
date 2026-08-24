@@ -43,6 +43,10 @@ os.environ['BRAIN_RECALL_VARIANT'] = 'laf_v1'   # before any servers import
 
 DEFAULT_ARMS = ('A0', 'A0f', 'A1', 'A1a', 'C1')
 RECALL_LIMIT = 25
+# brain_recall._empty_recall exit modes: an empty cands list under one of
+# these is a broken-embedder artifact, not knows-nothing — it must not feed
+# soft_r as a measured correlation.
+FAILED_RECALL_MODES = ('embedder_unavailable', 'embed_failed')
 
 
 def load_cues(walker_path, cue_side='op', logs_db=None):
@@ -138,8 +142,16 @@ def run_arm(name, corpus_pooled, work_root, cues, gains_json):
         ms = int((time.time() - t0) * 1000)
         cands = [(r.get('id'), r.get('effective_activation'))
                  for r in out.get('results', [])]
-        rows.append({'key': [sid, epoch, seq], 'ms': ms, 'cands': cands})
+        rows.append({'key': [sid, epoch, seq], 'ms': ms,
+                     'recall_mode': out.get('_recall_mode'), 'cands': cands})
     wall = time.time() - t_arm
+    failed = [r for r in rows if r['recall_mode'] in FAILED_RECALL_MODES]
+    if failed:
+        print('[leg_b] ⚠ arm %s: %d/%d cues returned a FAILED recall (%s) — '
+              'their empty candidate lists feed soft_r as data'
+              % (name, len(failed), len(rows),
+                 ', '.join(sorted({r['recall_mode'] for r in failed}))),
+              flush=True)
     try:
         brain.close()
     except Exception:
@@ -235,23 +247,28 @@ def main():
     if 'A1' in results and 'A0f' in results and args.cue_side == 'op':
         firsts = {(sid, epoch, seq) for sid, epoch, seq, ts, _ in cues
                   if seq == 0}
-        mismatches = []
-        a0f_by_key = {tuple(r['key']): r for r in results['A0f']}
-        for r in results['A1']:
-            key = tuple(r['key'])
-            if key not in firsts:
-                continue
-            other = a0f_by_key.get(key)
-            ids1 = [c[0] for c in r['cands']]
-            ids0 = [c[0] for c in other['cands']]
-            s1 = np.array([c[1] or 0 for c in r['cands']], float)
-            s0 = np.array([c[1] or 0 for c in other['cands']], float)
-            if ids1 != ids0 or (len(s1) == len(s0)
-                                and np.abs(s1 - s0).max() > 1e-9):
-                mismatches.append(key)
-        report['c2'] = {'first_cues': len(firsts),
-                        'mismatches': [list(k) for k in mismatches],
-                        'pass': not mismatches}
+        if not firsts:
+            # A check that examined zero samples cannot pass.
+            report['c2'] = {'first_cues': 0, 'mismatches': [], 'pass': None,
+                            'status': 'not_run: no seq==0 cues in this corpus'}
+        else:
+            mismatches = []
+            a0f_by_key = {tuple(r['key']): r for r in results['A0f']}
+            for r in results['A1']:
+                key = tuple(r['key'])
+                if key not in firsts:
+                    continue
+                other = a0f_by_key.get(key)
+                ids1 = [c[0] for c in r['cands']]
+                ids0 = [c[0] for c in other['cands']]
+                s1 = np.array([c[1] or 0 for c in r['cands']], float)
+                s0 = np.array([c[1] or 0 for c in other['cands']], float)
+                if ids1 != ids0 or (len(s1) == len(s0)
+                                    and np.abs(s1 - s0).max() > 1e-9):
+                    mismatches.append(key)
+            report['c2'] = {'first_cues': len(firsts),
+                            'mismatches': [list(k) for k in mismatches],
+                            'pass': not mismatches}
 
     out = work_root / 'leg_b_report.json'
     out.write_text(json.dumps(report, indent=1))

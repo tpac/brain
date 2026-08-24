@@ -107,9 +107,13 @@ def _s1e_stamp_from_traces(bundle):
     runner wrote AT ENCODE TIME (interaction_version / fingerprint /
     source). This is what actually answers "which s1e prompt did this arm
     run"; the interactions.jsonl snapshot only says what was registered."""
-    for t in bundle.get('traces') or []:
-        if t.get('ref_type') != 'encoding_run' or t.get('scale') != 's1':
-            continue
+    # traces.jsonl is sorted by random hex id — order by created_at so the
+    # stamp picked is the run's first encode, not an arbitrary one.
+    runs = sorted((t for t in bundle.get('traces') or []
+                   if t.get('ref_type') == 'encoding_run'
+                   and t.get('scale') == 's1'),
+                  key=lambda t: t.get('created_at') or '')
+    for t in runs:
         md = t.get('metadata') or {}
         if isinstance(md, str):
             try:
