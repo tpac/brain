@@ -182,7 +182,10 @@ def score_journal(brain, session_ids: List[str]) -> Dict[str, Any]:
     if res.get('truncated'):
         raise RuntimeError('journal_note trace pull truncated: %s'
                            % res['truncated'])
-    notes = res.get('events') or []
+    # S1E's guardrail counts S1E's notes: S2 units journal through the same
+    # ref_type at scale 's2' (on the lived path both write — mixing them
+    # inflated the count 15 vs the true 6 on the first lived smoke).
+    notes = [e for e in (res.get('events') or []) if e.get('scale') == 's1']
     note_chars = 0
     for ev in notes:
         md = ev.get('metadata')
