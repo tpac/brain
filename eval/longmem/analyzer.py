@@ -89,7 +89,10 @@ def _node_text(node: Dict[str, Any]) -> str:
         node.get('content_summary') or '',
     ]
     kv = node.get('kv') or {}
+    # Both voice-field generations: bundles dumped before schema v31 carry
+    # user_raw_quote/anchor_raw_quote; post-rename bundles the their_/my_ pair.
     for k in ('situation', 'reasoning', 'their_raw_quote', 'my_raw_quote',
+              'user_raw_quote', 'anchor_raw_quote',
               'event_description', 'value', 'entity', 'question'):
         v = kv.get(k)
         if v:
@@ -197,21 +200,40 @@ def _refine_bucket(bundle: Dict[str, Any]
     ('passed', {...}) so callers can distinguish pass-through from failure.
     """
     meta = bundle.get('meta') or {}
-    nodes = bundle.get('nodes') or []
-    traces = bundle.get('traces') or []
-    recall = bundle.get('recall') or {}
-    result = bundle.get('result') or {}
-    gold = meta.get('gold', '') or result.get('answer_gold', '')
-    original_bucket = result.get('failure_bucket')
+    nodes = bundle.get('nodes')
+    traces = bundle.get('traces')
+    recall = bundle.get('recall')
+    result = bundle.get('result')
 
     # Pass-through: don't run failure refinement on items that succeeded.
     # The harness's judge already decided this; refining further is noise.
-    if result.get('correct') is True:
+    if result is not None and result.get('correct') is True:
         return 'passed', {
             'original_bucket': None,
             'note': 'Item passed the judge — no failure to refine.',
             'hypothesis': result.get('hypothesis', '')[:200],
         }
+
+    # load_artifacts returns None for a MISSING file (an empty nodes.jsonl is
+    # [] — a real "encoder created nothing" answer). A missing file must not
+    # refine as encoder_no_extract / no_query_signal — or, with result.json
+    # gone, turn a passing item into a failure. Same tri-state report.py's
+    # _gold_in_brain_for_item already keeps for this class.
+    missing = [name for name, val in (('nodes', nodes), ('traces', traces),
+                                      ('recall', recall), ('result', result))
+               if val is None]
+    if missing:
+        return 'artifacts_missing', {
+            'original_bucket': (result or {}).get('failure_bucket'),
+            'missing_files': missing,
+            'note': 'artifact files absent — item not measurable; check '
+                    '*.jsonl.error sidecars in the item dir',
+        }
+
+    result = result or {}
+    recall = recall or {}
+    gold = meta.get('gold', '') or result.get('answer_gold', '')
+    original_bucket = result.get('failure_bucket')
 
     encoder_runs = _walk_encoder(traces)
     scouts = _walk_scouts(traces)
@@ -331,6 +353,14 @@ def _markdown(bundle: Dict[str, Any], refined: str,
     # failure-specific evidence keys that aren't populated for passed items.
     if refined == 'passed':
         lines.append('Item passed the judge. No failure analysis needed.')
+        lines.append('')
+        return '\n'.join(lines)
+
+    if refined == 'artifacts_missing':
+        lines.append(f"⚠ Artifact files missing: "
+                     f"{', '.join(evidence.get('missing_files', []))} — item "
+                     f"not measurable; check *.jsonl.error sidecars in the "
+                     f"item dir.")
         lines.append('')
         return '\n'.join(lines)
 

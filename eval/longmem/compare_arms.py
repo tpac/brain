@@ -71,9 +71,18 @@ def render_summary(run_a: str, run_b: str, label_a: str, label_b: str,
     n_b = agg_b.get('n_items', 0)
     lines.append(f'| Items completed | {n_a} | {n_b} | {n_b - n_a:+d} |')
     lines.append(f'| Pass rate | {pa:.1%} ({pna}/{n_a}) | {pb:.1%} ({pnb}/{n_b}) | {(pb-pa)*100:+.1f}pp |')
-    lines.append(f'| Total cohort cost (USD) | ${ca:.2f} | ${cb:.2f} | ${cb-ca:+.2f} ({_pct(ca, cb)}) |')
-    lines.append(f'| Wall time p50 (s) | {p50a/1000:.1f} | {p50b/1000:.1f} | {(p50b-p50a)/1000:+.1f}s ({_pct(p50a, p50b)}) |')
-    lines.append(f'| Wall time p90 (s) | {p90a/1000:.1f} | {p90b/1000:.1f} | {(p90b-p90a)/1000:+.1f}s ({_pct(p90a, p90b)}) |')
+    # A zero on the A side means UNMEASURED (see the rubric guard below) —
+    # render it as such here too, or the reader meets a confident $0.00
+    # two sections before the caveat.
+    _ca = f'${ca:.2f}' if ca else 'unmeasured'
+    _dc = f'${cb-ca:+.2f} ({_pct(ca, cb)})' if ca else '—'
+    lines.append(f'| Total cohort cost (USD) | {_ca} | ${cb:.2f} | {_dc} |')
+    _p50a = f'{p50a/1000:.1f}' if p50a else 'unmeasured'
+    _d50 = f'{(p50b-p50a)/1000:+.1f}s ({_pct(p50a, p50b)})' if p50a else '—'
+    lines.append(f'| Wall time p50 (s) | {_p50a} | {p50b/1000:.1f} | {_d50} |')
+    _p90a = f'{p90a/1000:.1f}' if p90a else 'unmeasured'
+    _d90 = f'{(p90b-p90a)/1000:+.1f}s ({_pct(p90a, p90b)})' if p90a else '—'
+    lines.append(f'| Wall time p90 (s) | {_p90a} | {p90b/1000:.1f} | {_d90} |')
     lines.append('')
 
     # Cost decomposition
@@ -121,14 +130,22 @@ def render_summary(run_a: str, run_b: str, label_a: str, label_b: str,
     pass_rate_ok = (pb - pa) >= -0.05  # B no worse than A by >5pp
     lines.append(f'| Aggregate pass rate | B ≥ A − 5pp | {pa:.1%} | {pb:.1%} | '
                  f'{"✓" if pass_rate_ok else "✗"} |')
-    # 4. Cost
-    cost_ok = cb <= 2 * ca if ca else True
-    lines.append(f'| Cohort cost | B ≤ 2× A | ${ca:.2f} | ${cb:.2f} | '
-                 f'{"✓" if cost_ok else "✗"} |')
-    # 5. Latency
-    latency_ok = p90b <= 1.5 * p90a if p90a else True
-    lines.append(f'| p90 latency | B ≤ 1.5× A p90 | {p90a/1000:.1f}s | {p90b/1000:.1f}s | '
-                 f'{"✓" if latency_ok else "✗"} |')
+    # 4. Cost — a zero A cost means UNMEASURED (e.g. no eval log parsed),
+    # not free: render the row as unmeasured instead of a vacuous pass.
+    if ca:
+        cost_ok = cb <= 2 * ca
+        lines.append(f'| Cohort cost | B ≤ 2× A | ${ca:.2f} | ${cb:.2f} | '
+                     f'{"✓" if cost_ok else "✗"} |')
+    else:
+        lines.append(f'| Cohort cost | B ≤ 2× A | unmeasured | ${cb:.2f} | ? |')
+    # 5. Latency — same rule.
+    if p90a:
+        latency_ok = p90b <= 1.5 * p90a
+        lines.append(f'| p90 latency | B ≤ 1.5× A p90 | {p90a/1000:.1f}s | '
+                     f'{p90b/1000:.1f}s | {"✓" if latency_ok else "✗"} |')
+    else:
+        lines.append(f'| p90 latency | B ≤ 1.5× A p90 | unmeasured | '
+                     f'{p90b/1000:.1f}s | ? |')
     lines.append('')
     lines.append('(Per-axis + encoder-structure criteria are in '
                  '[run_diff.md](run_diff.md) and [structural_diff.md](structural_diff.md).)')

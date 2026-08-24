@@ -289,7 +289,10 @@ def _context_has_gold(question: str, gold: str, context: str) -> bool:
         )
         text = "".join(b.text for b in resp.content if hasattr(b, "text")).strip().upper()
         return text.startswith("PRESENT")
-    except Exception:
+    except Exception as e:
+        # Loud: an API failure here silently flips the RECALL/ANSWER split.
+        print(f"[classifier] WARN sufficiency judge failed ({e}) — "
+              f"defaulting to PRESENT (ANSWER_MISS)", flush=True)
         return True  # default to ANSWER_MISS on error — more conservative
 
 
@@ -302,7 +305,9 @@ def _recall_relevant_nodes(brain, gold: str, top_n: int = 15) -> List[Dict[str, 
     """
     try:
         results = brain.recall(gold, top_n=top_n) or []
-    except Exception:
+    except Exception as e:
+        print(f"[classifier] WARN diagnostic recall failed ({e}) — "
+              f"relevant_to_gold evidence will be empty", flush=True)
         return []
     out = []
     for r in results:
@@ -330,7 +335,11 @@ def _read_s1r_trace(brain, query_session_id: str) -> Optional[Dict[str, Any]]:
             "WHERE session_id = ? AND scale = 's1' "
             "ORDER BY created_at ASC",
             (query_session_id,)).fetchall()
-    except Exception:
+    except Exception as e:
+        # Loud: a failed trace read must not masquerade as "recall returned
+        # zero candidates" (it flips the bucket to RECALL_MISS downstream).
+        print(f"[classifier] WARN s1r trace read failed for "
+              f"{query_session_id[:12]} ({e})", flush=True)
         return None
 
     if not row:
@@ -383,7 +392,8 @@ def _read_s1r_trace(brain, query_session_id: str) -> Optional[Dict[str, Any]]:
 
 def _bucket(scan: Dict[str, Any], trace: Optional[Dict],
             has_context: bool, abstained: bool,
-            question: str = "", gold: str = "") -> str:
+            question: str = "", gold: str = "",
+            context_override: Optional[str] = None) -> str:
     """Pick the failure bucket from scan + trace state.
 
     Buckets:
@@ -412,7 +422,11 @@ def _bucket(scan: Dict[str, Any], trace: Optional[Dict],
 
     n_cand = len(trace["candidates"])
     n_sel = len(trace["selected"])
-    ctx_chars = len(trace["context"])
+    # The Δ-trace copy of the context is capped at SELECTION_CONTENT_LIMIT
+    # (4000 chars) — gold past the cap flips ANSWER_MISS to RECALL_MISS.
+    # Callers that hold the real answerer input pass it as context_override.
+    ctx = context_override if context_override is not None else trace["context"]
+    ctx_chars = len(ctx)
 
     if n_cand == 0:
         return "RECALL_MISS"
@@ -421,7 +435,7 @@ def _bucket(scan: Dict[str, Any], trace: Optional[Dict],
         return "SURFACE_MISS"
 
     gold_str = gold if isinstance(gold, str) else json.dumps(gold)
-    if _context_has_gold(question, gold_str, trace["context"]):
+    if _context_has_gold(question, gold_str, ctx):
         return "ANSWER_MISS"
     return "RECALL_MISS"
 
@@ -450,8 +464,14 @@ def _reason(question: str, gold: str, hypothesis: str, bucket: str,
 
 def classify_failure(brain, question: str, gold: str, hypothesis: str,
                      query_session_id: str, has_context: bool,
-                     abstained: bool) -> Dict[str, Any]:
+                     abstained: bool,
+                     context: Optional[str] = None) -> Dict[str, Any]:
     """Per-item classification. Called inline after query, before cleanup.
+
+    `context` is the UNTRUNCATED additionalContext the answerer actually saw
+    (the Δ-trace copy is capped at 4000 chars — judging gold-presence on it
+    flips ANSWER_MISS to RECALL_MISS when the gold sits past the cap). Pass
+    it whenever the caller holds it; None falls back to the trace copy.
 
     Returns:
         {failure_bucket, failure_reason, failure_evidence: {...}}
@@ -463,7 +483,8 @@ def classify_failure(brain, question: str, gold: str, hypothesis: str,
     trace = _read_s1r_trace(brain, query_session_id)
 
     bucket = _bucket(scan, trace, has_context, abstained,
-                     question=question, gold=gold_str)
+                     question=question, gold=gold_str,
+                     context_override=context)
 
     evidence: Dict[str, Any] = {
         "gold_in_brain": {
@@ -478,7 +499,10 @@ def classify_failure(brain, question: str, gold: str, hypothesis: str,
         ],
         "recall_candidates_count": len(trace["candidates"]) if trace else 0,
         "selected_ids": trace["selected"] if trace else [],
-        "context_chars": len(trace["context"]) if trace else 0,
+        # The context the bucket was actually judged on — the caller's
+        # untruncated string when passed, else the (4000-cap) trace copy.
+        "context_chars": len(context if context is not None
+                             else (trace["context"] if trace else "")),
         "query_fired": bool(trace),
     }
     if "db_error" in scan:

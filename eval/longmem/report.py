@@ -161,6 +161,10 @@ def render_report(run_json_path: str) -> str:
     # from the harness when re-rendering a run_*.json directly.
     source = report.get("graded_results") or report.get("results", [])
     graded = [r for r in source if "correct" in r]
+    # Items that crashed before grading (harness writes {question_id, error}
+    # dicts) — kept out of the score but rendered, so a 10-item run with 6
+    # crashes can't read as "4/4 = 100%".
+    crashed = [r for r in source if "correct" not in r]
     total = len(graded)
     correct = sum(1 for r in graded if r["correct"])
     score = correct / total if total else 0
@@ -190,6 +194,11 @@ def render_report(run_json_path: str) -> str:
     lines.append(f"**Overall: {correct}/{total} = {score:.0%}** "
                  f"(wall clock {report.get('total_ms', 0)/1000:.1f}s"
                  f"{', variance=' + str(variance_n) if variance_n > 1 else ''})")
+    if crashed:
+        ids = ", ".join(str(r.get("question_id", "?")) for r in crashed[:10])
+        lines.append("")
+        lines.append(f"⚠ **{len(crashed)} item(s) crashed before grading** "
+                     f"(excluded from the score): {ids}")
     lines.append("")
 
     # ── By axis ──

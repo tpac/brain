@@ -93,7 +93,11 @@ def _snapshot_error_count(brain) -> int:
     try:
         return brain.logs_conn.execute(
             "SELECT COUNT(*) FROM debug_log WHERE event_type='error'").fetchone()[0]
-    except Exception:
+    except Exception as e:
+        # Loud: a failed read here makes the "silent errors" guardrail (and
+        # the smoke gate's brain_errors_new threshold) pass vacuously.
+        print(f"[harness] WARN error-count read failed ({e}) — "
+              f"brain_errors guardrail is blind this item", flush=True)
         return 0
 
 
@@ -105,7 +109,9 @@ def _new_errors_since(brain, baseline_count: int) -> List[Dict[str, Any]]:
         rows = brain.logs_conn.execute(
             "SELECT source, metadata FROM debug_log WHERE event_type='error' "
             "ORDER BY id DESC LIMIT ?", (20,)).fetchall()
-    except Exception:
+    except Exception as e:
+        print(f"[harness] WARN error-rows read failed ({e}) — "
+              f"brain_errors guardrail is blind this item", flush=True)
         return []
     current = _snapshot_error_count(brain)
     n_new = max(0, current - baseline_count)
@@ -292,26 +298,31 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
 
     # Optional s1e prompt override — register a new version over the seeded
     # v1 BEFORE haystack replay so the override is what the encoder uses.
-    if s1e_override:
-        # A failed override must ABORT the item, not degrade it: continuing
-        # here encodes on the code default while the run records the result
-        # as a treatment-arm measurement — a silently corrupt A/B.
-        _apply_s1e_override(brain, s1e_override)
-        print(f"[harness] item {item_idx+1}: s1e override applied from "
-              f"{s1e_override}", flush=True)
-
-    # Optional surface prompt override — register + activate v5 in this
-    # eval brain. Companion env var BRAIN_SURFACE_VARIANT=v5_agentic is
-    # set by main() when --surface-override is passed, so this brain's
-    # surface call uses the agentic tool-use loop reading the v5 prompt.
-    if surface_override:
-        try:
+    # A failed override must ABORT the item, not degrade it: continuing
+    # encodes/surfaces on the code default while the run records the result
+    # as a treatment-arm measurement — a silently corrupt A/B. (For surface:
+    # BRAIN_SURFACE_VARIANT stays set by main(), compounding the mismatch.)
+    # The abort must not leak the per-item brain — the caller catches item
+    # exceptions and continues, so an unclosed Brain per aborted item piles up.
+    try:
+        if s1e_override:
+            _apply_s1e_override(brain, s1e_override)
+            print(f"[harness] item {item_idx+1}: s1e override applied from "
+                  f"{s1e_override}", flush=True)
+        # Optional surface prompt override — register + activate v5 in this
+        # eval brain. Companion env var BRAIN_SURFACE_VARIANT=v5_agentic is
+        # set by main() when --surface-override is passed, so this brain's
+        # surface call uses the agentic tool-use loop reading the v5 prompt.
+        if surface_override:
             _apply_surface_override(brain, surface_override)
             print(f"[harness] item {item_idx+1}: surface override applied from "
                   f"{surface_override}", flush=True)
-        except Exception as e:
-            print(f"[harness] item {item_idx+1}: surface override FAILED: {e}",
-                  flush=True)
+    except Exception:
+        try:
+            brain.close()
+        except Exception:
+            pass
+        raise
 
     err_baseline = _snapshot_error_count(brain)
 
@@ -371,7 +382,8 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
     if not correct:
         failure_info = classify_failure(
             brain, item["question"], item["answer"], a_result["hypothesis"],
-            q_result["query_session_id"], a_result["has_context"], a_result["abstained"])
+            q_result["query_session_id"], a_result["has_context"], a_result["abstained"],
+            context=q_result["additional_context"])
         print(f"[harness] failure: {failure_info['failure_bucket']} — {failure_info['failure_reason'][:140]}",
               flush=True)
 
@@ -430,10 +442,11 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
         "judge_raw": j["raw"],
         "comparison": j.get("comparison", ""),
         "judge_reasoning": j.get("reasoning", ""),
-        # Answerer API failure marker (e.g. a 529 killing the call): without
-        # it the row is a scored miss indistinguishable from a real brain
-        # failure. Key absent on clean rows.
+        # Failure-mode markers, keys absent on clean rows: an answerer API
+        # error (e.g. a 529 killing the call) or an unparseable judge output
+        # would otherwise score as an indistinguishable brain miss.
         **({"answerer_error": a_result["error"]} if a_result.get("error") else {}),
+        **({"judge_parse_failed": True} if j.get("judge_parse_failed") else {}),
         "brain_errors_new": new_errors,
         **failure_info,
         "ingest": ingest_stats,
@@ -470,7 +483,10 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
             ])
             print(f"[harness] agent_calls captured: "
                   f"encoder={stats['encoder_calls']} "
-                  f"surface={stats['surface_calls']}", flush=True)
+                  f"surface={stats['surface_calls']}"
+                  + (f" — {stats['errors']} copy error(s), see "
+                     f"agent_calls/_manifest.json" if stats.get('errors') else ""),
+                  flush=True)
         except Exception as e:
             print(f"[harness] agent_calls capture failed (non-fatal): {e}",
                   flush=True)

@@ -111,8 +111,9 @@ NOT_COMPUTABLE = [
     "connect_to (edge declared at creation) vs a separate connect op — both "
     "land as the same edge row.",
     "Encoder rounds, tokens, latency, scout notes — payload/trace facts, "
-    "not graph facts. (The journal's arc/review IS read, from the captured "
-    "prompts — see the journal block.)",
+    "not graph facts. (The journal's arc/review IS read — from the stored "
+    "objects: journal_note traces + the session_context/encoding_journal "
+    "brain_meta blobs; see the journal block.)",
     "Nodes the encoder created and S2 later archived — filter_nodes reads "
     "archived=0, so consolidation casualties are out of the scored set.",
     "Whether a source_ref points at the turn that actually GENERATED the "

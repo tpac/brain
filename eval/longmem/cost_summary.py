@@ -102,12 +102,63 @@ def parse_eval_log(log_path: Path) -> Dict[str, List[Dict[str, Any]]]:
                 'hit_pct': int(m_tok.group('hit') or 0),
                 'profile': m_tok.group('profile') or '',
             }
-            # Parse per-round latencies from profile
-            row['llm_ms'] = sum(
-                int(x) for x in re.findall(r'llm_r\d+=(\d+)ms', row['profile'])
-            )
+            # Profile marks are CUMULATIVE elapsed since run start
+            # (runner._step) — per-step duration is the delta from the
+            # preceding mark; summing raw llm_r* marks multiply-counts.
+            marks = [(n, int(ms)) for n, ms in
+                     re.findall(r'(\w+)=(\d+)ms', row['profile'])]
+            llm = prev = 0
+            for name, ms in marks:
+                if name.startswith('llm_r'):
+                    llm += max(0, ms - prev)
+                prev = ms
+            row['llm_ms'] = llm
             by_qid[current_qid].append(row)
     return by_qid
+
+
+def encoder_rows_from_traces(run_name: str, qid: str) -> Optional[List[Dict[str, Any]]]:
+    """Encoder rollup from the item bundle's encoding_run delta traces — the
+    STORED object behind the stdout line parse_eval_log scrapes
+    (build_delta_metadata: tokens, rounds, elapsed_ms, interaction stamp).
+    Preferred source; the log parse stays as fallback for pre-artifact runs.
+
+    Returns None when the bundle has no traces.jsonl (fall back to the log);
+    [] is a real answer (traces dumped, no S1E runs).
+    """
+    from eval.longmem.artifacts import load_artifacts
+    try:
+        bundle = load_artifacts(run_name, qid)
+    except Exception:
+        return None
+    traces = bundle.get('traces')
+    if traces is None:
+        return None
+    rows = []
+    for t in traces:
+        # S1E only — S2 units emit the same unified delta shape at scale s2.
+        if t.get('ref_type') != 'encoding_run' or t.get('scale') != 's1':
+            continue
+        md = t.get('metadata') or {}
+        if isinstance(md, str):
+            try:
+                md = json.loads(md)
+            except Exception:
+                md = {}
+        rows.append({
+            'rounds': md.get('rounds', 0),
+            'actions': md.get('actions', 0),
+            'writes': md.get('write_actions', 0),
+            'reads': len(md.get('read_calls') or []),
+            'fresh_in': md.get('input_tokens', 0),
+            'cached_read': md.get('cache_read_tokens', 0),
+            'cached_write': md.get('cache_creation_tokens', 0),
+            'tokens_out': md.get('output_tokens', 0),
+            'hit_pct': 0,
+            'profile': '',
+            'llm_ms': md.get('elapsed_ms', 0),
+        })
+    return rows
 
 
 # ─── Per-item rollup ──────────────────────────────────────────────────────
@@ -129,8 +180,13 @@ def per_item_costs(run_name: str, encoder_by_qid: Dict[str, List[Dict[str, Any]]
         recall = json.loads((d / 'recall.json').read_text()) if (d / 'recall.json').exists() else {}
         ans = recall.get('answerer_response') or {}
 
-        # Encoder rollup
-        enc_calls = encoder_by_qid.get(qid, [])
+        # Encoder rollup — traces first (the stored object), stdout-log
+        # scrape as fallback. An EMPTY traces result also falls back: the
+        # delta write is failure-isolated (brain.loud) so traces.jsonl can
+        # legitimately hold zero encoding_run rows while the log has data.
+        enc_calls = encoder_rows_from_traces(run_name, qid)
+        if not enc_calls:
+            enc_calls = encoder_by_qid.get(qid, [])
         enc = {
             'calls': len(enc_calls),
             'rounds': sum(c['rounds'] for c in enc_calls),
@@ -173,6 +229,7 @@ def per_item_costs(run_name: str, encoder_by_qid: Dict[str, List[Dict[str, Any]]
             'ans_tokens_out': ans_out,
             'ans_cost_usd': ans_cost,
             'ans_ms': ans_ms,
+            'ingest_ms': result.get('ingest_ms', 0),
             'total_item_ms': total_ms,
             'item_total_cost_usd': enc['cost'] + ans_cost,
         })
@@ -268,6 +325,20 @@ def summarize(run_name: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     encoder_by_qid = parse_eval_log(log_path)
     rows = per_item_costs(run_name, encoder_by_qid)
     agg = cohort_aggregate(rows)
+    # Loud when the encoder side is blind: an item that DID ingest
+    # (encoding happened — ingest_ms > 0) yet got encoder rows from neither
+    # bundle traces nor the stdout log renders $0/0-token encoder columns
+    # that mean UNMEASURED, not free. Per-item, so partial blindness warns
+    # too. Sweeps (ingest_ms 0, no encoding) are the legitimate-$0 case.
+    blind = [r['qid'] for r in rows
+             if r['enc_calls'] == 0 and r.get('ingest_ms')]
+    if blind:
+        print(f'[cost] WARN {run_name}: {len(blind)}/{len(rows)} ingested '
+              f'item(s) have NO encoder data (neither encoding_run traces '
+              f'nor log rows'
+              f'{"; " + log_path.name + " does not exist" if not log_path.exists() else ""}) '
+              f'— their encoder tokens/cost are UNMEASURED (rendered as 0): '
+              f'{blind[:5]}', flush=True)
     return rows, agg
 
 

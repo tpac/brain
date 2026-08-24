@@ -209,7 +209,8 @@ def sweep(corpus_hash: str, surface: str, variance: int, label: str,
                 else:
                     failure_info = classify_failure(
                         brain, question, gold, ar["hypothesis"],
-                        qr["query_session_id"], ar["has_context"], ar["abstained"])
+                        qr["query_session_id"], ar["has_context"], ar["abstained"],
+                        context=qr["additional_context"])
 
             total_ms = int((time.time() - t0) * 1000)
             mark = "✓" if correct else "✗"
@@ -231,10 +232,13 @@ def sweep(corpus_hash: str, surface: str, variance: int, label: str,
                 "judge_raw": j["raw"],
                 "comparison": j.get("comparison", ""),
                 "judge_reasoning": j.get("reasoning", ""),
-                # Answerer API failure marker (e.g. a 529 killing the call):
-                # without it the row is a scored miss indistinguishable from a
-                # real brain failure. Key absent on clean rows.
+                # Failure-mode markers, keys absent on clean rows: an answerer
+                # API error (e.g. a 529 killing the call) or an unparseable
+                # judge output would otherwise score as an indistinguishable
+                # brain miss.
                 **({"answerer_error": ar["error"]} if ar.get("error") else {}),
+                **({"judge_parse_failed": True}
+                   if j.get("judge_parse_failed") else {}),
                 "s2_reach": reach,
                 **failure_info,
                 "ingest_ms": 0,            # sweep does no encoding

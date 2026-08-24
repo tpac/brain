@@ -414,6 +414,12 @@ class EvalArtifactsDumper:
         # Set per-run by fresh_brain.create_fresh_eval_brain (to the item
         # brain dir), so concurrent runs can't cross-copy.
         db_dir = os.environ.get('BRAIN_DB_DIR', '')
+        if not db_dir:
+            # Loud: an unset env would glob relative to cwd and report
+            # "0 captured calls" as if capture legitimately found nothing.
+            print('[artifacts] WARN BRAIN_DB_DIR unset — agent_calls capture '
+                  'has no payload dir to read; reporting zero calls',
+                  flush=True)
         out_dir = self.run_dir / 'agent_calls'
         out_dir.mkdir(exist_ok=True)
         encoder_n = 0

@@ -105,7 +105,17 @@ def summarize_run(run_name: str) -> str:
         body.append(f'**Question:** {meta.get("question", "?")}')
         body.append('')
         if n_calls == 0 and n_rounds <= 1:
-            body.append('_(no tool calls — surface chose to answer with retrieval alone)_')
+            if bundle.get('recall') is None:
+                body.append('_⚠ recall.json missing — tool trace unavailable '
+                            '(capture state unknown, not a behavioral finding)_')
+            elif n_rounds == 0 and (variant or '').startswith('v5'):
+                # The agentic surface ALWAYS writes a round record, even on a
+                # no-fire run (sweep.py's probe-fidelity invariant) — an empty
+                # trace under v5 means capture broke, not "chose no tools".
+                body.append('_⚠ tool_trace EMPTY under the agentic variant — '
+                            'capture broke; not a behavioral finding_')
+            else:
+                body.append('_(no tool calls — surface chose to answer with retrieval alone)_')
             body.append('')
             continue
         for ri, r in enumerate(rounds):

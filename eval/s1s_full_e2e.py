@@ -117,7 +117,7 @@ def run_item(item: Dict[str, Any], run_name: str, arm: str = 'B') -> Dict[str, A
         failure_info = classify_failure(
             brain, item['question'], item['answer'], a_result['hypothesis'],
             q_result['query_session_id'], a_result['has_context'],
-            a_result['abstained'])
+            a_result['abstained'], context=q_result['additional_context'])
 
     # Capture detailed internal state
     err_after = brain.logs_conn.execute(

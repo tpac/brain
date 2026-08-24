@@ -140,12 +140,20 @@ def judge_one(question: str, gold: str, hypothesis: str,
     reasoning = parsed.get("reasoning") or ""
     correct = verdict == "YES"
 
-    return {
+    out = {
         "correct": correct,
         "raw": verdict or text[:40],
         "comparison": comparison,
         "reasoning": reasoning,
     }
+    if not parsed:
+        # Unparseable judge output is UNGRADED, not a measured NO — without
+        # this marker the record is byte-identical to a real hypothesis_wrong
+        # in every consumed field.
+        out["judge_parse_failed"] = True
+        print(f"[judge] WARN unparseable judge output (scored as NO): "
+              f"{text[:80]!r}", flush=True)
+    return out
 
 
 def grade_run(run_report_path: str) -> Dict[str, Any]:
@@ -194,6 +202,10 @@ def grade_run(run_report_path: str) -> Dict[str, Any]:
             "judge_raw": j["raw"],
             "comparison": j["comparison"],
             "judge_reasoning": j["reasoning"],
+            # THIS pass's parse-failure marker must land on the graded row —
+            # **r only carries a prior pass's marker (and would wrongly keep
+            # it after a clean re-grade). Always written, so it also clears.
+            "judge_parse_failed": bool(j.get("judge_parse_failed")),
         })
         by_axis.setdefault(r["axis"], []).append(j["correct"])
         comparison_counts[j["comparison"]] = comparison_counts.get(j["comparison"], 0) + 1
@@ -204,10 +216,14 @@ def grade_run(run_report_path: str) -> Dict[str, Any]:
     overall = sum(1 for g in graded if g.get("correct")) / len(graded) if graded else 0
     axis_scores = {axis: sum(v) / len(v) for axis, v in by_axis.items() if v}
 
+    ungraded = sum(1 for g in graded if g.get("judge_parse_failed"))
     summary = {
         "overall_score": overall,
         "items_count": len(graded),
         "correct_count": sum(1 for g in graded if g.get("correct")),
+        # Items whose judge output was unparseable — scored NO above, but
+        # they are ungraded, not measured failures.
+        "ungraded_count": ungraded,
         "axis_scores": axis_scores,
         "axis_counts": {axis: len(v) for axis, v in by_axis.items()},
         "comparison_counts": comparison_counts,
@@ -221,6 +237,9 @@ def grade_run(run_report_path: str) -> Dict[str, Any]:
 
     print(f"\n[judge] === RESULTS ===")
     print(f"[judge] overall: {overall:.1%} ({summary['correct_count']}/{summary['items_count']})")
+    if ungraded:
+        print(f"[judge] ⚠ {ungraded} item(s) UNGRADED (unparseable judge "
+              f"output, scored as NO)")
     print(f"[judge] per axis:")
     for axis, score in sorted(axis_scores.items()):
         count = summary["axis_counts"][axis]

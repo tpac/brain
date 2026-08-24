@@ -28,13 +28,22 @@ def load_run(run_name):
             results = data.get("results") or data.get("items") or []
             if results:
                 return {r["question_id"]: r for r in results}
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[compare_iter] WARN run_{run_name}.json unreadable ({e}) — "
+                  f"falling back to hypotheses jsonl",
+                  file=sys.stderr, flush=True)
 
-    # Fallback: hypotheses jsonl (minimal — no correct flag)
+    # Fallback: hypotheses jsonl (minimal — no correct flag). Loud (stderr —
+    # stdout IS the report): without verdicts every item reads as failed
+    # (0/N per axis, passes counted as 'lost'), a degraded view, not a
+    # measurement.
     path = REPORT_DIR / f"hypotheses_{run_name}.jsonl"
     if not path.exists():
         return None
+    print(f"[compare_iter] WARN {run_name}: run_{run_name}.json missing or "
+          f"verdict-less — using hypotheses_{run_name}.jsonl, which carries "
+          f"NO verdicts; all items will render as failures",
+          file=sys.stderr, flush=True)
     items = {}
     for line in path.open():
         r = json.loads(line)

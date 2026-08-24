@@ -47,8 +47,12 @@ TEMPORAL_RELATIONS = {
 }
 
 
-def _nodes_with_kv(nodes, kv_key):
-    return sum(1 for n in nodes if (n.get('kv') or {}).get(kv_key))
+def _nodes_with_kv(nodes, kv_key, *aliases):
+    """Count nodes carrying kv_key or any alias — one count per node even
+    when a node holds both key generations (pre/post a kv rename)."""
+    keys = (kv_key,) + aliases
+    return sum(1 for n in nodes
+               if any((n.get('kv') or {}).get(k) for k in keys))
 
 
 def _nodes_by_type(nodes, type_name):
@@ -64,8 +68,12 @@ def _node_aspects(bundle: Dict[str, Any]) -> Dict[str, Any]:
         'node_count': nc,
         'event_time_count': _nodes_with_kv(nodes, 'event_time'),
         'event_time_rate': _nodes_with_kv(nodes, 'event_time') / nc if nc else 0,
-        'their_raw_quote': _nodes_with_kv(nodes, 'their_raw_quote'),
-        'my_raw_quote': _nodes_with_kv(nodes, 'my_raw_quote'),
+        # Both voice-field generations: pre-v31 bundles carry the old names,
+        # and counting only the new ones renders the rename as a behavior Δ.
+        'their_raw_quote': _nodes_with_kv(nodes, 'their_raw_quote',
+                                          'user_raw_quote'),
+        'my_raw_quote': _nodes_with_kv(nodes, 'my_raw_quote',
+                                       'anchor_raw_quote'),
         'reasoning': _nodes_with_kv(nodes, 'reasoning'),
         'keywords': _nodes_with_kv(nodes, 'keywords'),
         'situation': _nodes_with_kv(nodes, 'situation'),
@@ -99,8 +107,10 @@ def _dated_events(bundle: Dict[str, Any]) -> List[Dict[str, Any]]:
             'type': n.get('type'),
             'title': (n.get('title') or '')[:90],
             'event_time': et,
-            'user_quote': bool(kv.get('their_raw_quote')),
-            'anchor_quote': bool(kv.get('my_raw_quote')),
+            'user_quote': bool(kv.get('their_raw_quote')
+                               or kv.get('user_raw_quote')),
+            'anchor_quote': bool(kv.get('my_raw_quote')
+                                 or kv.get('anchor_raw_quote')),
         })
     out.sort(key=lambda r: r['event_time'])
     return out
@@ -283,6 +293,11 @@ def render_report(runs: List[str], items_by_qid: Dict[str, Dict[str, Dict[str, A
             if not gold_keys:
                 row.append('—')
                 continue
+            if b.get('nodes') is None:
+                # Bundle absent — "✗ no anchor" is an ENCODER verdict and
+                # must not be issued for an item whose artifacts are missing.
+                row.append('? no bundle')
+                continue
             hit = _gold_anchor_hit(b, gold_keys)
             if hit:
                 exp = probe.get('expected_event_time') or ''
@@ -344,6 +359,7 @@ def main():
     # Collect bundles per qid per run (intersection of items)
     all_qids = set()
     by_run: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    load_failures = []
     for run in runs:
         qids = set(list_items(run))
         by_run[run] = {}
@@ -351,6 +367,7 @@ def main():
             try:
                 by_run[run][qid] = load_artifacts(run, qid)
             except Exception as e:
+                load_failures.append(f'{run}/{qid}: {e}')
                 print(f'  load failed run={run} qid={qid}: {e}')
         all_qids = all_qids | qids
     common = sorted(q for q in all_qids if all(q in by_run[r] for r in runs))
@@ -360,6 +377,14 @@ def main():
     print(f'comparing {len(common)} common items across {len(runs)} runs', flush=True)
 
     md = render_report(runs, items_by_qid, labels)
+    if load_failures:
+        # A failed load silently shrinks the cohort denominator — say so in
+        # the persisted md, not just the run-time console.
+        md = (f'⚠ {len(load_failures)} bundle(s) failed to load and are '
+              f'EXCLUDED from the cohort: '
+              + '; '.join(load_failures[:5])
+              + ('; …' if len(load_failures) > 5 else '')
+              + '\n\n' + md)
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(md)

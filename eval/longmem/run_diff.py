@@ -29,12 +29,16 @@ from eval.longmem.artifacts import load_artifacts, list_items
 
 # ─── behavioral signal probes ────────────────────────────────────────
 
-def _count_nodes_with_field(nodes, field_name):
-    """Count nodes whose `kv` dict contains a non-empty value for field_name."""
+def _count_nodes_with_field(nodes, field_name, *aliases):
+    """Count nodes whose `kv` dict has a non-empty value for field_name or
+    any alias — bundles dumped before a kv rename carry the old key (e.g.
+    schema v31's user_raw_quote → their_raw_quote), and counting only the
+    new name renders a rename artifact as a behavioral delta."""
+    names = (field_name,) + aliases
     n = 0
     for node in nodes or []:
         kv = node.get('kv') or {}
-        if kv.get(field_name):
+        if any(kv.get(name) for name in names):
             n += 1
     return n
 
@@ -53,7 +57,8 @@ def _count_third_party_quotes(nodes):
         if node.get('type') != 'quote':
             continue
         kv = node.get('kv') or {}
-        if not kv.get('their_raw_quote') and not kv.get('my_raw_quote'):
+        if not any(kv.get(k) for k in ('their_raw_quote', 'my_raw_quote',
+                                       'user_raw_quote', 'anchor_raw_quote')):
             n += 1
     return n
 
@@ -65,7 +70,12 @@ def _interaction_used(interactions, name):
     rows = [i for i in (interactions or []) if i.get('name') == name]
     if not rows:
         return (None, 0)
-    latest = max(rows, key=lambda r: r.get('version', 0))
+    # Tie-break on template presence: dump_interactions writes a template-less
+    # kind='effective' row alongside the same-version kind='version' row, and
+    # a bare max() returns the first maximal element — reporting 0 chars for
+    # a successfully applied override.
+    latest = max(rows, key=lambda r: (r.get('version') or 0,
+                                      bool(r.get('template'))))
     return (latest.get('version'), len(latest.get('template') or ''))
 
 
@@ -92,6 +102,27 @@ def _summarize_tool_trace(recall):
     return out
 
 
+def _s1e_stamp_from_traces(bundle):
+    """K-provenance from the encoding_run delta traces — the stamp the
+    runner wrote AT ENCODE TIME (interaction_version / fingerprint /
+    source). This is what actually answers "which s1e prompt did this arm
+    run"; the interactions.jsonl snapshot only says what was registered."""
+    for t in bundle.get('traces') or []:
+        if t.get('ref_type') != 'encoding_run' or t.get('scale') != 's1':
+            continue
+        md = t.get('metadata') or {}
+        if isinstance(md, str):
+            try:
+                md = json.loads(md)
+            except Exception:
+                md = {}
+        if md.get('interaction_fingerprint'):
+            return {'version': md.get('interaction_version'),
+                    'fingerprint': md.get('interaction_fingerprint'),
+                    'source': md.get('interaction_source')}
+    return None
+
+
 def _gather_item_signals(bundle):
     """Per-item behavioral signal sample."""
     nodes = bundle.get('nodes') or []
@@ -99,16 +130,23 @@ def _gather_item_signals(bundle):
     recall = bundle.get('recall') or {}
     s1e_v, s1e_chars = _interaction_used(interactions, 's1e')
     surface_v, _ = _interaction_used(interactions, 'surface')
+    stamp = _s1e_stamp_from_traces(bundle)
+    if stamp:
+        s1e_v = stamp['version']
     return {
         'node_count': len(nodes),
-        'with_their_raw_quote': _count_nodes_with_field(nodes, 'their_raw_quote'),
-        'with_my_raw_quote': _count_nodes_with_field(nodes, 'my_raw_quote'),
+        'with_their_raw_quote': _count_nodes_with_field(
+            nodes, 'their_raw_quote', 'user_raw_quote'),
+        'with_my_raw_quote': _count_nodes_with_field(
+            nodes, 'my_raw_quote', 'anchor_raw_quote'),
         'with_entity_field': _count_nodes_with_field(nodes, 'entity'),  # scout handoff
         'with_event_time': _count_nodes_with_field(nodes, 'event_time'),  # L4 + v15.8 temporal
         'open_nodes': _count_open_nodes(nodes),
         'third_party_quote_nodes': _count_third_party_quotes(nodes),
         's1e_version': s1e_v,
         's1e_chars': s1e_chars,
+        's1e_fingerprint': (stamp or {}).get('fingerprint', ''),
+        's1e_source': (stamp or {}).get('source', ''),
         'surface_version': surface_v,
         'surface_tools': _summarize_tool_trace(recall),
     }
@@ -196,8 +234,13 @@ def diff_runs(run_a: str, run_b: str) -> dict:
 
         sig_a = _gather_item_signals(ba)
         sig_b = _gather_item_signals(bb)
-        signals_a.append(sig_a)
-        signals_b.append(sig_b)
+        # Only bundles that exist feed the cohort totals — a qid known solely
+        # from results_*.jsonl has no artifacts, and its all-zero signals
+        # would read as "this arm encoded nothing".
+        if ba:
+            signals_a.append(sig_a)
+        if bb:
+            signals_b.append(sig_b)
 
         movement = (
             'unchanged_pass' if a_correct and b_correct else
@@ -230,6 +273,8 @@ def diff_runs(run_a: str, run_b: str) -> dict:
             'b_surface_tools': sig_b.get('surface_tools') or {},
             'b_s1e_version': sig_b['s1e_version'],
             'b_s1e_chars': sig_b['s1e_chars'],
+            'b_s1e_fingerprint': sig_b['s1e_fingerprint'],
+            'b_s1e_source': sig_b['s1e_source'],
         })
 
     movement_counts = Counter(r['movement'] for r in rows)
@@ -254,10 +299,19 @@ def diff_runs(run_a: str, run_b: str) -> dict:
         'bucket_b': dict(bucket_b),
         'movement_counts': dict(movement_counts),
         'rows': rows,
+        # Numeric fields only — string fields (fingerprint/source) would
+        # coerce to a meaningless 0 in the totals.
         'signal_totals': {
-            'a': {f: _sum(f, signals_a) for f in signals_a[0]} if signals_a else {},
-            'b': {f: _sum(f, signals_b) for f in signals_b[0]} if signals_b else {},
+            'a': {f: _sum(f, signals_a) for f in signals_a[0]
+                  if any(isinstance(s.get(f), (int, float)) for s in signals_a)}
+            if signals_a else {},
+            'b': {f: _sum(f, signals_b) for f in signals_b[0]
+                  if any(isinstance(s.get(f), (int, float)) for s in signals_b)}
+            if signals_b else {},
         },
+        # How many common items actually had an artifact bundle per arm —
+        # the denominator behind signal_totals.
+        'artifact_coverage': {'a': len(signals_a), 'b': len(signals_b)},
     }
 
 
@@ -329,6 +383,16 @@ def render_md(diff: dict) -> str:
     # Behavioral signals — total across the cohort
     lines.append('## Behavioral signal totals (cohort-wide)')
     lines.append('')
+    cov = diff.get('artifact_coverage') or {}
+    if cov:
+        lines.append(f"Artifact coverage: A {cov.get('a', 0)}/{diff['common_count']}, "
+                     f"B {cov.get('b', 0)}/{diff['common_count']} common items "
+                     f"(totals sum only items with bundles)")
+        if (cov.get('a', 0) < diff['common_count']
+                or cov.get('b', 0) < diff['common_count']):
+            lines.append('⚠ Coverage is incomplete — totals are not comparable '
+                         'across arms with different coverage.')
+        lines.append('')
     lines.append('| Signal | A total | B total | Δ | What this measures |')
     lines.append('|---|---:|---:|---:|---|')
     sa, sb = diff['signal_totals']['a'], diff['signal_totals']['b']
@@ -432,12 +496,18 @@ def render_md(diff: dict) -> str:
                      f"`{r['b_bucket'] or '-'}` | {r['a_nodes']} | {r['b_nodes']} |")
     lines.append('')
 
-    # B-run prompt sanity
+    # B-run prompt sanity — the encode-time K stamp (from encoding_run
+    # traces) is authoritative; version/chars from the interactions
+    # snapshot are the fallback view.
     if diff['rows']:
         b_versions = Counter(r['b_s1e_version'] for r in diff['rows'])
         b_chars = Counter(r['b_s1e_chars'] for r in diff['rows'])
+        b_stamps = Counter(f"{r.get('b_s1e_source') or '?'}:"
+                           f"{r.get('b_s1e_fingerprint') or '?'}"
+                           for r in diff['rows'])
         lines.append('## Sanity: which s1e prompt did B actually run?')
         lines.append('')
+        lines.append(f"- encode-time K stamps (source:fingerprint): {dict(b_stamps)}")
         lines.append(f"- s1e versions seen in B: {dict(b_versions)}")
         lines.append(f"- s1e prompt char counts: {dict(b_chars)}")
         lines.append('')
