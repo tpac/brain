@@ -83,52 +83,41 @@ def stratified_sample(data: List[Dict[str, Any]], per_axis: int = 2,
 
 
 def _snapshot_error_count(brain) -> int:
-    """Count error rows now — a monotonic counter to detect errors logged during
-    a single item's ingest/query phase.
-
-    Errors live in `debug_log` (event_type='error') via `brain._log_error`, NOT a
-    `brain_errors` table. The prior query here hit a non-existent table and the
-    bare `except` swallowed it to 0 — so this guardrail was a silent no-op. Fixed
-    2026-05-29 (same bug class flagged in docs/WRITE-TXN-ISOLATION-ROOTFIX.md)."""
+    """Watermark for the error delta: the newest debug_log error-row id in
+    the last 24h (0 when clean). Ids, not COUNT(*) — log retention prunes
+    rows mid-run, so count deltas go flaky (they can even turn negative);
+    ids only grow. Reads through `brain.query_logs` — the log door — never
+    raw SQL (the traces-layer law: generic query tools serve consumers)."""
     try:
-        return brain.logs_conn.execute(
-            "SELECT COUNT(*) FROM debug_log WHERE event_type='error'").fetchone()[0]
+        entries = (brain.query_logs(source='debug', level='error',
+                                    hours=24, limit=1) or {}).get('entries') or []
+        return int(entries[0]['id']) if entries else 0
     except Exception as e:
         # Loud: a failed read here makes the "silent errors" guardrail (and
         # the smoke gate's brain_errors_new threshold) pass vacuously.
-        print(f"[harness] WARN error-count read failed ({e}) — "
+        print(f"[harness] WARN error-watermark read failed ({e}) — "
               f"brain_errors guardrail is blind this item", flush=True)
         return 0
 
 
-def _new_errors_since(brain, baseline_count: int) -> List[Dict[str, Any]]:
-    """Return error rows logged since baseline_count. Limited to 20 for sanity.
-
-    Error detail is JSON in `debug_log.metadata` ({error, type, context})."""
+def _new_errors_since(brain, baseline_id: int) -> List[Dict[str, Any]]:
+    """Error rows with id > baseline_id, same 24h window as the watermark.
+    Limited to 20. Shape: {type, message, context} — `type` is the
+    _log_error key (debug_log.source, exposed as `origin` by query_logs),
+    which names the failure class better than the metadata's exception
+    class ever did."""
     try:
-        rows = brain.logs_conn.execute(
-            "SELECT source, metadata FROM debug_log WHERE event_type='error' "
-            "ORDER BY id DESC LIMIT ?", (20,)).fetchall()
+        entries = (brain.query_logs(source='debug', level='error',
+                                    hours=24, limit=20) or {}).get('entries') or []
     except Exception as e:
         print(f"[harness] WARN error-rows read failed ({e}) — "
               f"brain_errors guardrail is blind this item", flush=True)
         return []
-    current = _snapshot_error_count(brain)
-    n_new = max(0, current - baseline_count)
-    if n_new == 0:
-        return []
-    out = []
-    for source, meta_json in rows[:n_new]:
-        try:
-            meta = json.loads(meta_json) if meta_json else {}
-        except Exception:
-            meta = {}
-        out.append({
-            "type": meta.get("type") or source,
-            "message": (meta.get("error") or "")[:200],
-            "context": (meta.get("context") or "")[:100],
-        })
-    return out
+    return [{
+        "type": e.get("origin") or "unknown",
+        "message": (e.get("message") or "")[:200],
+        "context": (e.get("context") or "")[:100],
+    } for e in entries if int(e.get("id") or 0) > baseline_id]
 
 
 def _preflight(oracle_path: str, min_oracle_items: int = 100,

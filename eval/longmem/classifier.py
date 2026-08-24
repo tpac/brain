@@ -330,18 +330,17 @@ def _recall_relevant_nodes(brain, gold: str, top_n: int = 15) -> List[Dict[str, 
 
 
 def _read_s1r_trace(brain, query_session_id: str) -> Optional[Dict[str, Any]]:
-    """Read the S1R trace for the query session.
+    """Read the S1R trace for the query session — through query_traces (the
+    generic trace door; single-session pull, hours ignored). No raw SQL:
+    the traces layer serves its consumers.
 
     Returns unified view of candidates, selected, dropped, context.
     None if no trace exists (shouldn't happen, but defensive).
     """
     try:
-        row = brain.logs_conn.execute(
-            "SELECT chain_id, event_type, ref_type, summary, metadata, created_at "
-            "FROM trace_events "
-            "WHERE session_id = ? AND scale = 's1' "
-            "ORDER BY created_at ASC",
-            (query_session_id,)).fetchall()
+        events = (brain.query_traces(session_id=query_session_id, scale='s1',
+                                     hours=None, limit=200) or {}
+                  ).get('events') or []
     except Exception as e:
         # Loud: a failed trace read must not masquerade as "recall returned
         # zero candidates" (it flips the bucket to RECALL_MISS downstream).
@@ -349,8 +348,12 @@ def _read_s1r_trace(brain, query_session_id: str) -> Optional[Dict[str, Any]]:
               f"{query_session_id[:12]} ({e})", flush=True)
         return None
 
-    if not row:
+    if not events:
         return None
+
+    # Oldest-first so a later duplicate event wins — same behavior as the
+    # old created_at ASC scan.
+    events.sort(key=lambda e: e.get('created_at') or '')
 
     candidates = []
     selected = []
@@ -360,11 +363,15 @@ def _read_s1r_trace(brain, query_session_id: str) -> Optional[Dict[str, Any]]:
     tool_trace: List[Any] = []
     surface_variant = ""
 
-    for chain_id, etype, ref_type, summary, meta_json, _ in row:
-        try:
-            meta = json.loads(meta_json) if meta_json else {}
-        except Exception:
-            meta = {}
+    for ev in events:
+        etype = ev.get('event_type')
+        ref_type = ev.get('ref_type')
+        meta = ev.get('metadata') or {}
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except Exception:
+                meta = {}
         if etype == "O" and ref_type == "recall":
             for item in meta.get("candidates", []) or []:
                 parts = item.split("|", 3)
