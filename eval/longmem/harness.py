@@ -358,7 +358,8 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
         print(f"[harness] artifacts init failed (non-fatal): {e}", flush=True)
 
     t0 = time.time()
-    ingest_session_id = f"ingest-{qid}"
+    from eval.longmem.corpus import ingest_session_id as _ingest_sid
+    ingest_session_id = _ingest_sid(qid)
     ingest_stats = replay_item(brain, ingest_session_id, item["haystack_sessions"],
                                haystack_dates=item.get("haystack_dates"),
                                log_prefix=f"[item {item_idx+1}]",

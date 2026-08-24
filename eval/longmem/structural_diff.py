@@ -75,7 +75,6 @@ def _node_aspects(bundle: Dict[str, Any]) -> Dict[str, Any]:
         'my_raw_quote': _nodes_with_kv(nodes, 'my_raw_quote',
                                        'anchor_raw_quote'),
         'reasoning': _nodes_with_kv(nodes, 'reasoning'),
-        'keywords': _nodes_with_kv(nodes, 'keywords'),
         'situation': _nodes_with_kv(nodes, 'situation'),
         # Type breakdown
         'type_event': _nodes_by_type(nodes, 'event'),
@@ -236,7 +235,6 @@ def render_report(runs: List[str], items_by_qid: Dict[str, Dict[str, Dict[str, A
         ('their_raw_quote', 'Nodes with their_raw_quote'),
         ('my_raw_quote', 'Nodes with my_raw_quote'),
         ('reasoning', 'Nodes with reasoning kv'),
-        ('keywords', 'Nodes with keywords'),
         ('situation', 'Nodes with situation'),
         ('type_event', 'event-type nodes'),
         ('type_decision', 'decision-type nodes'),

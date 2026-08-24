@@ -288,8 +288,12 @@ def _runs(brain) -> Tuple[Dict[str, int], Dict[str, Any]]:
     return index, tally
 
 
-def _rate(hits: int, n: int) -> float:
-    return round(100.0 * hits / n, 1) if n else 0.0
+def _rate(hits: int, n: int) -> Optional[float]:
+    """None when the denominator is 0 — an UNMEASURED rate, not a measured
+    0.0. A zero-node/zero-edge item used to fold 0.0 rows into the per-arm
+    mean±sd, so 'one arm failed to encode an item' read as 'that arm's craft
+    is worse'. _cell renders None as '-'; _aggregate skips it."""
+    return round(100.0 * hits / n, 1) if n else None
 
 
 def score_item(brain, qid: str) -> Dict[str, Any]:
@@ -423,18 +427,20 @@ def score_item(brain, qid: str) -> Dict[str, Any]:
         'their_raw_quote_pct': _rate(field_hits['their_raw_quote'], n),
         'my_raw_quote_pct': _rate(field_hits['my_raw_quote'], n),
         # ── content ──
-        'content_chars_mean': round(mean(content_chars), 1) if content_chars else 0.0,
-        'title_chars_mean': round(mean(title_chars), 1) if title_chars else 0.0,
+        # Mean-style metrics use the same unmeasured convention as _rate:
+        # None when there is nothing to average, never a fake 0.0.
+        'content_chars_mean': round(mean(content_chars), 1) if content_chars else None,
+        'title_chars_mean': round(mean(title_chars), 1) if title_chars else None,
         # ── edges (encoder-written only; see NON_ENCODER_RELATIONS) ──
         'edges_total': n_edges,
-        'edges_per_node': round(n_edges / n, 2) if n else 0.0,
+        'edges_per_node': round(n_edges / n, 2) if n else None,
         'degree_hist': {str(k): v for k, v in sorted(deg_hist.items())},
-        'degree_mean': round(mean(degrees), 2) if degrees else 0.0,
+        'degree_mean': round(mean(degrees), 2) if degrees else None,
         'degree0_pct': _rate(deg_hist[0], n),
         'degree1_pct': _rate(deg_hist[1], n),
         'degree2_pct': _rate(deg_hist[2], n),
         'degree_0_2_pct': _rate(deg_hist[0] + deg_hist[1] + deg_hist[2], n),
-        'why_chars_mean': round(mean(why_lens), 1) if why_lens else 0.0,
+        'why_chars_mean': round(mean(why_lens), 1) if why_lens else None,
         'why_in_band_pct': _rate(
             sum(1 for L in why_lens if WHY_BAND[0] <= L <= WHY_BAND[1]), n_edges),
         'why_thin_pct': _rate(sum(1 for L in why_lens if L < WHY_THIN), n_edges),
@@ -449,7 +455,7 @@ def score_item(brain, qid: str) -> Dict[str, Any]:
         # ── everything else on the graph, for context ──
         'non_encoder_edges': sum(other_mix.values()),
         'non_encoder_relation_mix': dict(other_mix.most_common()),
-        'degree_all_mean': round(mean(deg_all), 2) if deg_all else 0.0,
+        'degree_all_mean': round(mean(deg_all), 2) if deg_all else None,
         'degree_all_0_2_pct': _rate(
             sum(1 for d in deg_all if d <= 2), n),
     }
@@ -544,7 +550,9 @@ AGG_KEYS = (
 def _aggregate(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     agg: Dict[str, Any] = {}
     for k in AGG_KEYS:
-        vals = [float(it[k]) for it in items]
+        # None = unmeasured on that item (zero denominator) — excluded, so
+        # the mean is over MEASURED items only and n says how many that was.
+        vals = [float(it[k]) for it in items if it.get(k) is not None]
         if not vals:
             agg[k] = {'mean': 0.0, 'sd': 0.0, 'min': 0.0, 'max': 0.0, 'n': 0}
             continue
@@ -634,10 +642,12 @@ def render_corpus(rep: Dict[str, Any]) -> str:
     L.append('-' * 140)
     agg = rep['aggregate']
     L.append('mean ' + ' '.join(
-        fmt % ('' if key in JOURNAL_COLS else agg[key]['mean'])
+        fmt % ('' if key in JOURNAL_COLS
+               else ('-' if agg[key]['n'] == 0 else agg[key]['mean']))
         for _, key, fmt in ITEM_COLS[1:]))
     L.append('sd   ' + ' '.join(
-        fmt % ('' if key in JOURNAL_COLS else agg[key]['sd'])
+        fmt % ('' if key in JOURNAL_COLS
+               else ('-' if agg[key]['n'] == 0 else agg[key]['sd']))
         for _, key, fmt in ITEM_COLS[1:]))
     p = rep['pooled']
     L.append('')
@@ -646,7 +656,7 @@ def render_corpus(rep: Dict[str, Any]) -> str:
              % (p['nodes_scored'], p['edges_total'], p['source_refs_total'],
                 p['why_empty'], p['emotion_singletons']))
     L.append('degree histogram (encoder edges): %s   (deg 0-2 = %.1f%% of nodes)'
-             % (p['degree_hist'], p['degree_0_2_pct']))
+             % (p['degree_hist'], p['degree_0_2_pct'] or 0.0))
     L.append('encoding_source mix: %s' % p['encoding_source_mix'])
     L.append('relations (%d distinct): %s'
              % (p['relations_distinct'],
@@ -662,7 +672,7 @@ def render_corpus(rep: Dict[str, Any]) -> str:
     orderings = sorted({it['catalog_ordering'] for it in rep['items']
                         if it['edges_total']})
     L.append('rescue-verb share: %.1f%%   catalog-targeting ordering: %s'
-             % (p['rescue_verb_pct'], ','.join(orderings) or '-'))
+             % (p['rescue_verb_pct'] or 0.0, ','.join(orderings) or '-'))
     if 'created_at' in orderings:
         L.append('  ⚠ created_at ordering OVERCOUNTS catalog targeting — with '
                  'no encoding_run traces, an edge to a sibling written '
@@ -706,7 +716,13 @@ def render_compare(reps: List[Dict[str, Any]]) -> str:
         row = '%-24s' % k
         for r in reps:
             a = r['aggregate'][k]
-            row += '%22s' % ('%.2f ± %.2f' % (a['mean'], a['sd']))
+            if not a['n']:
+                cell = 'unmeasured'
+            else:
+                cell = '%.2f ± %.2f' % (a['mean'], a['sd'])
+                if a['n'] < len(r['items']):
+                    cell += ' n=%d' % a['n']
+            row += '%22s' % cell
         L.append(row)
     L.append('-' * 100)
     for label, key in (('generic relations', 'generic_relation_count'),

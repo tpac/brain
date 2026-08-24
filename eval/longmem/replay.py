@@ -337,7 +337,10 @@ def query_brain(brain, question: str, question_date: Optional[str] = None,
         question_date: optional ISO-ish date string from LongMemEval (for temporal context)
 
     Returns:
-        {"additional_context": str | None, "s1r_ms": int, "query_session_id": str}
+        {"additional_context": str | None, "s1r_ms": int,
+         "query_session_id": str, "recall_mode": str, "harness_error": str}
+        recall_mode / harness_error are non-empty only on failure — the
+        validity layer marks those reps measurement_suspect.
     """
     from servers.daemon_hooks import hook_recall
     import uuid
@@ -354,23 +357,39 @@ def query_brain(brain, question: str, question_date: Optional[str] = None,
 
     print(f"{log_prefix} question: {question[:100]}{'...' if len(question) > 100 else ''}", flush=True)
     t0 = time.time()
+    harness_error = ""
     try:
         result = hook_recall(brain, {"prompt": prompt, "session_id": query_session_id}, [])
     except Exception as e:
+        # The empty context this produces is a harness failure, not a graph
+        # measurement — the marker rides the return so the rep gets stamped
+        # suspect instead of scoring as a clean brain miss.
         print(f"{log_prefix} WARN hook_recall failed: {e}", flush=True)
         result = {}
+        harness_error = str(e)[:300]
     elapsed_ms = int((time.time() - t0) * 1000)
 
     # hook_recall returns {"json": {"additionalContext": ...}} when surface selected nodes,
-    # or {"json": {"decision": "approve"}} when nothing was selected.
+    # or {"json": {"decision": "approve"}} when nothing was selected. On the
+    # empty exit it also carries "recall_mode" — non-empty failure modes
+    # (embedder_unavailable / embed_failed) mean the empty context is an
+    # infrastructure failure, NOT a measurement of the graph.
     additional_context = None
+    recall_mode = ""
     if isinstance(result, dict):
         inner = result.get("json", {}) if isinstance(result.get("json"), dict) else {}
         additional_context = inner.get("additionalContext")
+        recall_mode = result.get("recall_mode", "") or ""
 
+    from servers.brain_recall import RECALL_FAILURE_MODES
+    if recall_mode in RECALL_FAILURE_MODES:
+        print(f"{log_prefix} ⚠ recall DEGRADED ({recall_mode}) — empty context "
+              f"is not a graph measurement", flush=True)
     print(f"{log_prefix} s1r {elapsed_ms}ms, context {len(additional_context or '')} chars", flush=True)
     return {
         "additional_context": additional_context,
         "s1r_ms": elapsed_ms,
         "query_session_id": query_session_id,
+        "recall_mode": recall_mode,
+        "harness_error": harness_error,
     }

@@ -434,9 +434,16 @@ def hook_recall(brain, args, graph_changes):
         brain._log_error('surface_candidates_build', e, 'Failed to enrich candidates for surface')
 
     if not results:
+        # Empty is TWO different facts: "brain knows nothing" (healthy) vs
+        # "recall infrastructure failed" (_empty_recall's embedder_unavailable
+        # / embed_failed). recall() itself already logs the failure to the
+        # errors table; what the hook path swallowed was the MODE in the
+        # return value — carry it as a sibling key (the hook client reads
+        # only "json"; eval's query_brain reads this to mark the rep suspect).
         brain.save()
         pt.log(brain, 'hook_recall', n_results=0)
-        return {"json": {"decision": "approve"}}
+        return {"json": {"decision": "approve"},
+                "recall_mode": result.get('_recall_mode', '')}
 
     if not capped:
         # Every candidate was already surfaced this window (seen-dedup ate
