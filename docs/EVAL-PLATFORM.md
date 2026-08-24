@@ -453,8 +453,8 @@ aggregate. Recoverable by re-running individual items.
 
 ### 6. Per-axis quality dimensions (for preserved brains)
 ```bash
-./dev python3 eval/s1s_ab_quality_analyzer.py \
-  --run-dir eval/reports/snapshot_replay/replay_71857713
+./dev python3 eval/s1s_ab_quality_analyzer.py <run_name>
+# run_name resolves under eval/reports/s1s_ab_smoke/ and needs its results.jsonl
 # Reports: noun retention, two-register %, edge desc median chars, etc.
 ```
 
