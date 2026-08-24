@@ -520,6 +520,12 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
     from eval.longmem.replay import finalize_item
 
     _load_env()
+    # Pooled is the moment-stack VALIDATION substrate — it always builds the
+    # production arm. Pin lived explicitly (eval shells don't source
+    # brain-env.sh, so inheriting the shell silently built control-arm pooled
+    # corpora); there is no control-arm pooled build — pooled is not an
+    # encoder A/B, so no `lived` arg mirrors build_corpus's.
+    os.environ["BRAIN_S1E_LIVED_SEQUENCE"] = "1"
     with open(oracle) as f:
         data = json.load(f)
     if qids:
@@ -547,6 +553,10 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
         # trace-embedding substrate; v3: collision-free session ids) must
         # never collide with a corpus cached under the older behavior.
         "harness": 3,
+        # Pooled always builds lived (pinned above). Addressed unconditionally:
+        # pre-pin pooled corpora inherited the shell (control arm in practice)
+        # and keep their hashes — a fresh lived build never cache-hits one.
+        "s1e_lived": True,
         "s1e": source_token(s1e),
         "ingest_surface": source_token(ingest_surface),
         "s2_every_n": s2_every_n,
@@ -721,9 +731,10 @@ def main():
     p.add_argument("--pooled", action="store_true",
                    help="§20.18 pooled build: interleave the picked items' haystack "
                         "sessions by date into ONE brain (per-conversation session ids, "
-                        "one final S2 flush, V0 audit in the manifest). Incompatible "
-                        "with --lived/--interaction-override for now — the pooled arm "
-                        "is the moment-stack validation substrate, not an encoder A/B.")
+                        "one final S2 flush, V0 audit in the manifest). Always builds "
+                        "the production (lived) arm — pooled is the moment-stack "
+                        "validation substrate, not an encoder A/B, so it takes no "
+                        "--lived/--no-lived/--interaction-override.")
     args = p.parse_args()
 
     overrides = {}
@@ -734,8 +745,8 @@ def main():
                 overrides[n.strip()] = int(v.strip())
 
     if args.pooled:
-        # args.lived is None unless the user pinned an arm explicitly — the
-        # pooled build doesn't compose with the arm pin (it inherits the shell).
+        # args.lived is None unless the user pinned an arm explicitly — pooled
+        # takes no arm pin (it always builds lived; there is no control pooled).
         if args.lived is not None or overrides:
             p.error("--pooled does not compose with --lived/--no-lived/--interaction-override")
         build_pooled_corpus(args.oracle, args.qids, args.s1e, args.ingest_surface,
