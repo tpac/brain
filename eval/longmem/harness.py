@@ -430,6 +430,10 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
         "judge_raw": j["raw"],
         "comparison": j.get("comparison", ""),
         "judge_reasoning": j.get("reasoning", ""),
+        # Answerer API failure marker (e.g. a 529 killing the call): without
+        # it the row is a scored miss indistinguishable from a real brain
+        # failure. Key absent on clean rows.
+        **({"answerer_error": a_result["error"]} if a_result.get("error") else {}),
         "brain_errors_new": new_errors,
         **failure_info,
         "ingest": ingest_stats,

@@ -64,11 +64,12 @@ class TestSourceToken(unittest.TestCase):
 
 class TestSummarizeS2Deltas(unittest.TestCase):
     def test_aggregates_fires_work_actions(self):
+        # Deltas are run_s2() returns: units nested, elapsed_ms alongside.
         deltas = [
-            {"community_detection": {"actions": 2}, "healer": {"actions": 0},
-             "_elapsed_ms": 10},
-            {"community_detection": {"actions": 1},
-             "healer": {"skipped": "no gaps"}, "_elapsed_ms": 5},
+            {"units": {"community_detection": {"actions": 2},
+                       "healer": {"actions": 0}}, "elapsed_ms": 10},
+            {"units": {"community_detection": {"actions": 1},
+                       "healer": {"skipped": "no gaps"}}, "elapsed_ms": 5},
         ]
         s = summarize_s2_deltas(deltas)
         self.assertEqual(s["community_detection"]["fires"], 2)
@@ -79,7 +80,7 @@ class TestSummarizeS2Deltas(unittest.TestCase):
         self.assertEqual(s["healer"]["skipped"], 1)
 
     def test_counts_errors_and_samples(self):
-        deltas = [{"consolidation": {"error": "cannot start a transaction"}}]
+        deltas = [{"units": {"consolidation": {"error": "cannot start a transaction"}}}]
         s = summarize_s2_deltas(deltas)
         self.assertEqual(s["consolidation"]["errors"], 1)
         self.assertEqual(len(s["consolidation"]["sample_errors"]), 1)
@@ -88,7 +89,11 @@ class TestSummarizeS2Deltas(unittest.TestCase):
         self.assertEqual(s["consolidation"]["actions"], 0)
 
     def test_ignores_elapsed_and_nondict(self):
-        s = summarize_s2_deltas([{"_elapsed_ms": 99, "x": "notadict"}])
+        # elapsed_ms and a skipped cycle carry no units; non-dict unit results drop.
+        s = summarize_s2_deltas([
+            {"units": {}, "skipped": "already running"},
+            {"units": {"x": "notadict"}, "elapsed_ms": 99},
+        ])
         self.assertEqual(s, {})
 
     def test_empty(self):

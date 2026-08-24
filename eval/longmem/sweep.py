@@ -68,13 +68,15 @@ def _norm_id(x) -> str:
 
 
 def _s2_origin_ids(brain) -> set:
-    """8-char ids of live S2-authored nodes (community / consolidation / healer)."""
-    try:
-        rows = brain.conn.execute(
-            "SELECT id FROM nodes WHERE archived = 0 AND encoding_source LIKE 's2:%'"
-        ).fetchall()
-    except Exception:
-        return set()
+    """8-char ids of live S2-authored nodes (community / consolidation / healer).
+
+    No except-to-empty here: a failed SELECT (schema drift — the dump_nodes
+    dropped-column class) must abort the sweep loudly, not read as "this
+    brain has zero S2 nodes" and silently kill the loop-closure probe.
+    """
+    rows = brain.conn.execute(
+        "SELECT id FROM nodes WHERE archived = 0 AND encoding_source LIKE 's2:%'"
+    ).fetchall()
     return {_norm_id(r[0]) for r in rows}
 
 
@@ -229,6 +231,10 @@ def sweep(corpus_hash: str, surface: str, variance: int, label: str,
                 "judge_raw": j["raw"],
                 "comparison": j.get("comparison", ""),
                 "judge_reasoning": j.get("reasoning", ""),
+                # Answerer API failure marker (e.g. a 529 killing the call):
+                # without it the row is a scored miss indistinguishable from a
+                # real brain failure. Key absent on clean rows.
+                **({"answerer_error": ar["error"]} if ar.get("error") else {}),
                 "s2_reach": reach,
                 **failure_info,
                 "ingest_ms": 0,            # sweep does no encoding
