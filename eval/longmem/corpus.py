@@ -106,18 +106,19 @@ def corpus_config_hash(config: Dict[str, Any]) -> str:
 def summarize_s2_deltas(deltas: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Aggregate every run_s2() return from a build into a per-unit summary.
 
-    Each delta is `{unit_name: result_dict, '_elapsed_ms': ...}`. We roll up,
-    per unit: how many times it fired, how often it did real work, total
-    actions, errors (with samples), and skips. Errors are the gold here — the
-    coordinator swallows unit exceptions into `{'error': ...}`, so this is
-    where an S2 unit that's quietly broken during ingest becomes visible.
+    Each delta is run_s2()'s return — `{'units': {unit_name: result_dict},
+    'elapsed_ms': ...}`. We roll up, per unit: how many times it fired, how
+    often it did real work, total actions, errors (with samples), and skips.
+    Errors are the gold here — the coordinator swallows unit exceptions into
+    `{'error': ...}`, so this is where an S2 unit that's quietly broken
+    during ingest becomes visible.
     """
     summary: Dict[str, Any] = {}
     for d in deltas or []:
         if not isinstance(d, dict):
             continue
-        for unit, res in d.items():
-            if unit == "_elapsed_ms" or not isinstance(res, dict):
+        for unit, res in (d.get("units") or {}).items():
+            if not isinstance(res, dict):
                 continue
             s = summary.setdefault(unit, {
                 "fires": 0, "did_work": 0, "actions": 0,
