@@ -1154,6 +1154,13 @@ class BrainRememberMixin:
         # encoding_source convention: "category:process" e.g. "encoder:sonnet", "idle:redistribution"
         if encoding_source and not encoding_source.startswith('anchor') and locked:
             locked = False
+            # The demotion is right; its silence wasn't — surface the drift
+            # so a caller teaching itself to lock is visible, not swallowed.
+            self._log_warning(
+                'locked_demoted',
+                "non-anchor locked:true demoted (encoding_source=%s, "
+                "title=%r)" % (encoding_source, (title or '')[:80]),
+                'write boundary')
 
         node_id = self._generate_id(type)
         ts = self.now()

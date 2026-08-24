@@ -282,5 +282,39 @@ class TestScaleDispatchSync(unittest.TestCase):
                          f"Scale WRITE_COMMANDS not in daemon: {missing}")
 
 
+class TestConnectToDescriptionContract(unittest.TestCase):
+    """The s1e prompt DELEGATES the edge vocabulary, the never-use rule, and
+    sibling resolution to the connect_to tool description (C3 coupling,
+    measured-deliberate). These strings are load-bearing: if one drifts, the
+    prompt's pointer dereferences to text that no longer says what it
+    promises. Guardrail from the v-next.5 ship package."""
+
+    def test_connect_to_load_bearing_strings(self):
+        from servers.contract import CONNECT_TO_ITEM_SCHEMA
+        relation_desc = CONNECT_TO_ITEM_SCHEMA['properties']['relation']['description']
+        title_desc = CONNECT_TO_ITEM_SCHEMA['properties']['title']['description']
+        # The never-use rule (the prompt's pointer target).
+        self.assertIn('NEVER', relation_desc)
+        self.assertIn('related_to', relation_desc)
+        # A vocabulary list exists (spot-check two verbs the prompt cites).
+        self.assertIn('grounds', relation_desc)
+        self.assertIn('supersedes', relation_desc)
+        # Sibling resolution + collision rule.
+        self.assertIn('NEW wins', title_desc)
+        self.assertIn('8-char hex id', title_desc)
+
+    def test_connect_to_why_admission_floor(self):
+        from servers.contract import CONNECT_TO_ITEM_SCHEMA
+        why_desc = CONNECT_TO_ITEM_SCHEMA['properties']['why']['description']
+        self.assertIn('30', why_desc)
+
+    def test_batch_connect_to_carries_double_emit_rule(self):
+        from servers import brain_mcp
+        tools = {t['name']: t for t in brain_mcp.TOOLS}
+        rb = tools['remember_batch']['inputSchema']['properties']['nodes'][
+            'items']['properties']['connect_to']['description']
+        self.assertIn('DOUBLE-EMIT', rb)
+
+
 if __name__ == '__main__':
     unittest.main()
