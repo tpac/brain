@@ -74,20 +74,29 @@ NEUTRAL_LABELS = {'', 'neutral', 'none'}
 KV_FIELDS = ('situation', 'reasoning', 'question', 'thought', 'event_time',
              'their_raw_quote', 'my_raw_quote')
 
-# ── Journal guardrails (encode-side, read off the captured prompt) ──
-# A run's journal is rendered into the NEXT run's prompt, so the LAST s1e
-# prompt capture is where run N-1's arc/notes are read. An item with fewer
-# than this many captures never had a journal rendered at all — it reports
-# null, not zero, and drops out of the rates.
-JOURNAL_MIN_RUNS = 2
-# Below this the `## Arc` section is a stub/placeholder, not an arc.
+# ── Journal guardrails ──
+# MEASURE THE STORED OBJECT, NOT THE RENDER. Two iterations of this block
+# were rebuilt because they parsed the captured s1e prompt: the first read
+# the `## Review` heading to the next h2 and swallowed the payload's own
+# `### Node Catalog` render as 20-37K of "over-production"; the second fixed
+# the boundary but still measured heading FORMAT — and the two gate arms
+# journal identically while rendering differently (legacy `## Encoding
+# Journal` per-run headers vs the `## Arc`/`## Review` contract sections),
+# so it reported the baseline as journaling nothing when it had written 45
+# notes. Notes now come from the journal_note trace rows and the arc from
+# the persisted journal blob. Neither can be spoofed by a render change.
+#
+# Below this the arc section is a stub/placeholder, not an arc.
 ARC_MIN_CHARS = 20
-# The prompt MIXES heading levels: `## Arc` / `## Review` are h2, but what
-# follows them (`### Node Catalog`, `### Conversation Timeline`) is h3. A
-# section therefore ends at the next h2 OR h3 — stopping only at `## ` reads
-# the catalog and transcript renders as Review content and reports a 20-37K
-# "over-production" that is really the payload's own render.
-JOURNAL_SECTION_RE = r'^## %s\s*$(.*?)(?=^#{2,3} |\Z)'
+# The arc inside the stored journal blob. Bounded by the next h2/h3 or the
+# next run delimiter — the blob concatenates runs, and mixed heading levels
+# (`### Node Catalog` under a `## Review`) mean h2 alone is not a boundary.
+ARC_SECTION_RE = re.compile(r'^## Arc\s*$(.*?)(?=^#{2,3} |^--- Run |\Z)',
+                            re.M | re.S)
+# Per-run delimiter written into `encoding_journal_{sid}`.
+JOURNAL_RUN_DELIM = '--- Run '
+# The blob is read whole, not through the surface's 1500-char recency slice.
+JOURNAL_BLOB_MAX = 1000000
 
 # Metrics that CANNOT come from a built corpus — the brain stores state, not
 # the ops that produced it. Reported in the output so nobody reads their
@@ -152,81 +161,91 @@ def _is_encoder(source: str) -> bool:
     return not any(src.startswith(p) for p in NON_ENCODER_SOURCE_PREFIXES)
 
 
-def _journal_section(text: str, name: str) -> Optional[str]:
-    """The `## {name}` body, bounded by the next h2/h3 heading or EOF.
+def score_journal(brain, session_ids: List[str]) -> Dict[str, Any]:
+    """Journal guardrails off the STORED objects (see the block comment).
 
-    None when the heading is absent — the renderer omits an empty section, so
-    absent and present-but-empty are different facts and must not collapse.
+    Notes: `journal_note` trace rows, through `query_traces` — the public
+    trace door, the same one `_runs` uses. NOT `brain.journal_notes()`: that
+    is the encoder's continuity VIEW (resolve-filtered, last-K-runs, open
+    pins) and would undercount what the run actually wrote. Full prose is
+    `metadata['note']`; `summary` is capped at 80 chars and would truncate
+    every note's length.
+
+    Arc: the persisted per-session journal blob (`encoding_journal_{sid}`,
+    read through `brain.get_recent_encoding_journal`), whose run bodies carry
+    the `## Arc` sections. The dedicated arc digest
+    (`session_context_{sid}` via `brain.session_context_for`) is preferred
+    when populated — it is the arc's own storage door — but `write_session_arc`
+    left it empty in both gate arms, so `arc_basis` names which one answered.
     """
-    m = re.search(JOURNAL_SECTION_RE % name, text, re.M | re.S)
-    return m.group(1).strip() if m else None
+    res = brain.query_traces(ref_type='journal_note', hours=None, limit=20000)
+    if res.get('truncated'):
+        raise RuntimeError('journal_note trace pull truncated: %s'
+                           % res['truncated'])
+    notes = res.get('events') or []
+    note_chars = 0
+    for ev in notes:
+        md = ev.get('metadata')
+        if isinstance(md, str):
+            md = json.loads(md or '{}')
+        note_chars += len((md or {}).get('note') or '')
 
+    digest = ''.join(brain.session_context_for(sid) for sid in session_ids)
+    blob = ''.join(brain.get_recent_encoding_journal(sid, JOURNAL_BLOB_MAX)
+                   for sid in session_ids)
+    if digest.strip():
+        arcs, basis = [digest.strip()], 'session_context_digest'
+    else:
+        arcs = [m.strip() for m in ARC_SECTION_RE.findall(blob)]
+        basis = 'stored_journal_blob' if blob else 'none'
 
-def score_journal(item_dir: str) -> Dict[str, Any]:
-    """Journal guardrails off the item's captured s1e prompts.
+    if not notes and not blob and not digest:
+        # No journal object of any kind — an older corpus, not a silent zero.
+        return {'journal_stored': None, 'arc_basis': 'none',
+                'arc_produced': None, 'arc_chars': None,
+                'arc_sections': None, 'journal_runs': None,
+                'review_chars': None, 'review_notes_count': None}
 
-    `capture_files_for` owns the recorder layout
-    ({item}/payloads/{date}/s1e-{sid8}-{stop}/000-prompt.md) and orders by
-    (stop, seq, attempt), so [-1] is the LAST run's prompt — the one carrying
-    the previous run's journal. Items below JOURNAL_MIN_RUNS captures report
-    null and are excluded from the rates; corpora with no captures at all
-    (older builds) report journal_captures=0 and null metrics.
-    """
-    from eval.longmem.fresh_brain import capture_files_for
-    files = capture_files_for(item_dir, prefix='s1e', kind='prompt')
-    rec: Dict[str, Any] = {
-        'journal_captures': len(files),
-        'journal_rendered': None, 'arc_produced': None, 'arc_chars': None,
-        'review_chars': None, 'review_notes_count': None,
+    return {
+        'journal_stored': bool(notes or blob or digest),
+        'arc_basis': basis,
+        'arc_produced': any(len(a) > ARC_MIN_CHARS for a in arcs),
+        'arc_chars': sum(len(a) for a in arcs),
+        'arc_sections': len(arcs),
+        'journal_runs': blob.count(JOURNAL_RUN_DELIM),
+        'review_chars': note_chars,
+        'review_notes_count': len(notes),
     }
-    if len(files) < JOURNAL_MIN_RUNS:
-        return rec
-
-    text = open(files[-1]).read()
-    arc = _journal_section(text, 'Arc')
-    review = _journal_section(text, 'Review')
-    rec.update({
-        # Neither heading present = the journal-dead case: the previous run
-        # wrote nothing for the renderer to emit.
-        'journal_rendered': arc is not None or review is not None,
-        'arc_produced': len(arc or '') > ARC_MIN_CHARS,
-        'arc_chars': len(arc or ''),
-        'review_chars': len(review or ''),
-        'review_notes_count': sum(1 for line in (review or '').splitlines()
-                                  if line.strip()),
-    })
-    return rec
 
 
 def _journal_aggregate(items: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Rates over the ELIGIBLE items only (>= JOURNAL_MIN_RUNS captures)."""
-    eligible = [it for it in items if it['arc_produced'] is not None]
-    captures = sum(it['journal_captures'] for it in items)
-    if not eligible:
-        return {'payloads': captures > 0, 'eligible_items': 0,
-                'items_with_captures': sum(1 for it in items
-                                           if it['journal_captures']),
-                'journal_rendered_rate': None, 'arc_produced_rate': None,
-                'review_chars_mean': None, 'review_chars_max': None,
-                'review_notes_mean': None}
-    reviews = [it['review_chars'] for it in eligible]
+    """Rates over items that stored a journal object at all."""
+    scored = [it for it in items if it['journal_stored'] is not None]
+    if not scored:
+        return {'journal': False, 'scored_items': 0,
+                'arc_basis': 'none', 'arc_produced_rate': None,
+                'notes_total': None, 'notes_mean': None,
+                'note_chars_total': None, 'note_chars_mean': None,
+                'note_chars_max': None}
+    notes = [it['review_notes_count'] for it in scored]
+    chars = [it['review_chars'] for it in scored]
     return {
-        'payloads': True,
-        'eligible_items': len(eligible),
-        'items_with_captures': sum(1 for it in items if it['journal_captures']),
-        'journal_rendered_rate': _rate(
-            sum(1 for it in eligible if it['journal_rendered']), len(eligible)),
+        'journal': True,
+        'scored_items': len(scored),
+        'arc_basis': ','.join(sorted({it['arc_basis'] for it in scored
+                                      if it['arc_basis'] != 'none'})) or 'none',
         'arc_produced_rate': _rate(
-            sum(1 for it in eligible if it['arc_produced']), len(eligible)),
-        'arc_chars_mean': round(mean(it['arc_chars'] for it in eligible), 1),
-        'review_chars_mean': round(mean(reviews), 1),
-        'review_chars_max': max(reviews),
-        'review_notes_mean': round(
-            mean(it['review_notes_count'] for it in eligible), 1),
+            sum(1 for it in scored if it['arc_produced']), len(scored)),
+        'arc_chars_mean': round(mean(it['arc_chars'] for it in scored), 1),
+        'notes_total': sum(notes),
+        'notes_mean': round(mean(notes), 1),
+        'note_chars_total': sum(chars),
+        'note_chars_mean': round(mean(chars), 1),
+        'note_chars_max': max(chars),
     }
 
 
-def _runs(brain) -> Tuple[Dict[str, int], Dict[str, int]]:
+def _runs(brain) -> Tuple[Dict[str, int], Dict[str, Any]]:
     """(node_id → s1e run ordinal, per-item op tallies) from `encoding_run`.
 
     One encoding_run event per s1e run (chain `s1e-{sid8}-{stop}`), its
@@ -245,8 +264,14 @@ def _runs(brain) -> Tuple[Dict[str, int], Dict[str, int]]:
     events = sorted(res.get('events') or [],
                     key=lambda e: e.get('created_at') or '')
     index: Dict[str, int] = {}
-    tally = {'s1e_runs': len(events), 'ops_created': 0, 'ops_revised': 0,
-             'ops_archived': 0}
+    tally: Dict[str, Any] = {
+        's1e_runs': len(events), 'ops_created': 0, 'ops_revised': 0,
+        'ops_archived': 0,
+        # The sessions that encoded this item — the key the journal blob and
+        # the arc digest are both stored under.
+        'session_ids': sorted({ev.get('session_id') or '' for ev in events
+                               if ev.get('session_id')}),
+    }
     for i, ev in enumerate(events):
         md = ev.get('metadata')
         if isinstance(md, str):
@@ -367,7 +392,7 @@ def score_item(brain, qid: str) -> Dict[str, Any]:
     deg_all = [len(s) for s in neighbors_all.values()]
 
     ops_write = tally['ops_created'] + tally['ops_revised']
-    return {
+    rec = {
         'qid': qid,
         'nodes_live_total': len(all_nodes),
         'nodes_scored': n,
@@ -424,6 +449,8 @@ def score_item(brain, qid: str) -> Dict[str, Any]:
         'degree_all_0_2_pct': _rate(
             sum(1 for d in deg_all if d <= 2), n),
     }
+    rec.update(score_journal(brain, tally['session_ids']))
+    return rec
 
 
 # ─── Corpus scoring ───────────────────────────────────────────────────────
@@ -477,12 +504,9 @@ def score_corpus(corpus_hash: str) -> Dict[str, Any]:
                     rec = score_item(brain, qid)
                 finally:
                     brain.close()
-            # Journal guardrails read the ORIGINAL item dir — payloads are
-            # deliberately not copied into the work dir.
-            rec.update(score_journal(src))
-            print('[shape] %s/%s  nodes=%d edges=%d journal_prompts=%d'
+            print('[shape] %s/%s  nodes=%d edges=%d journal_notes=%s'
                   % (corpus_hash, qid, rec['nodes_scored'], rec['edges_total'],
-                     rec['journal_captures']),
+                     rec['review_notes_count']),
                   file=sys.stderr, flush=True)
             items.append(rec)
         finally:
@@ -574,16 +598,15 @@ ITEM_COLS = (
     ('deg02', 'degree_0_2_pct', '%6s'), ('why', 'why_chars_mean', '%6s'),
     ('band', 'why_in_band_pct', '%5s'), ('resc', 'rescue_verb_pct', '%5s'),
     ('cat', 'catalog_target_pct', '%5s'),
-    # journal guardrails — null (printed '-') on items with < 2 captures
-    ('jrn', 'journal_captures', '%4s'), ('rndr', 'journal_rendered', '%5s'),
-    ('arc', 'arc_chars', '%5s'), ('rvw', 'review_chars', '%5s'),
-    ('note', 'review_notes_count', '%5s'),
+    # journal guardrails — null (printed '-') when no journal object stored
+    ('jrn', 'journal_stored', '%4s'), ('arc', 'arc_chars', '%5s'),
+    ('note', 'review_notes_count', '%5s'), ('nchr', 'review_chars', '%6s'),
 )
 
 # Columns fed by the journal block: no aggregate row (their rates are over
-# eligible items only, which the mean/sd row cannot express).
-JOURNAL_COLS = {'journal_captures', 'journal_rendered', 'arc_chars',
-                'review_chars', 'review_notes_count'}
+# journal-bearing items only, which the mean/sd row cannot express).
+JOURNAL_COLS = {'journal_stored', 'arc_chars', 'review_chars',
+                'review_notes_count'}
 
 
 def _cell(v: Any) -> Any:
@@ -646,19 +669,20 @@ def render_corpus(rep: Dict[str, Any]) -> str:
 
 
 def _render_journal(j: Dict[str, Any]) -> str:
-    if not j['payloads']:
-        return 'journal guardrails — payloads: none (corpus has no s1e prompt captures)'
-    if not j['eligible_items']:
-        return ('journal guardrails — %d item(s) captured but none reached %d '
-                'runs; no journal was ever rendered'
-                % (j['items_with_captures'], JOURNAL_MIN_RUNS))
-    return ('journal guardrails (%d eligible items): journal rendered %.1f%% '
-            '| arc produced %.1f%% (mean %.0f chars) | review chars mean %.0f '
-            'max %d | review notes mean %.1f'
-            % (j['eligible_items'], j['journal_rendered_rate'],
-               j['arc_produced_rate'], j['arc_chars_mean'],
-               j['review_chars_mean'], j['review_chars_max'],
-               j['review_notes_mean']))
+    if not j['journal']:
+        return ('journal guardrails — none: no stored journal object '
+                '(no journal_note rows, no encoding_journal blob)')
+    line = ('journal guardrails (%d items, stored objects): notes %d total '
+            '(mean %.1f/item, %d chars total, max %d) | arc produced %.1f%% '
+            '(mean %.0f chars, basis=%s)'
+            % (j['scored_items'], j['notes_total'], j['notes_mean'],
+               j['note_chars_total'], j['note_chars_max'],
+               j['arc_produced_rate'], j['arc_chars_mean'], j['arc_basis']))
+    if ',' in j['arc_basis']:
+        line += ('\n  ⚠ items in this corpus answered from DIFFERENT arc '
+                 'stores — the digest and the journal blob are not the same '
+                 'measurement; arc_chars is not comparable across them.')
+    return line
 
 
 COMPARE_KEYS = AGG_KEYS
@@ -688,17 +712,21 @@ def render_compare(reps: List[Dict[str, Any]]) -> str:
         L.append('%-24s' % label
                  + ''.join('%22s' % r['pooled'][key] for r in reps))
     L.append('-' * 100)
-    L.append('%-24s' % 'JOURNAL (eligible only)'
-             + ''.join('%22s' % ('n=%s' % r['journal']['eligible_items'])
+    L.append('%-24s' % 'JOURNAL (stored objects)'
+             + ''.join('%22s' % ('n=%s' % r['journal']['scored_items'])
                        for r in reps))
-    for label, key in (('journal_rendered_rate', 'journal_rendered_rate'),
+    for label, key in (('notes_total', 'notes_total'),
+                       ('notes_mean', 'notes_mean'),
+                       ('note_chars_total', 'note_chars_total'),
                        ('arc_produced_rate', 'arc_produced_rate'),
-                       ('review_chars_mean', 'review_chars_mean'),
-                       ('review_chars_max', 'review_chars_max'),
-                       ('review_notes_mean', 'review_notes_mean')):
+                       ('arc_chars_mean', 'arc_chars_mean'),
+                       ('arc_basis', 'arc_basis')):
         L.append('%-24s' % label
-                 + ''.join('%22s' % _cell(r['journal'].get(key))
+                 + ''.join('%22s' % str(_cell(r['journal'].get(key)))[:21]
                            for r in reps))
+    if len({r['journal']['arc_basis'] for r in reps}) > 1:
+        L.append('⚠ arms read the arc from DIFFERENT stores — compare '
+                 'arc_produced_rate only across a shared arc_basis.')
     return '\n'.join(L)
 
 
