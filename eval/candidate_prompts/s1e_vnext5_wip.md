@@ -333,13 +333,14 @@ Common tags I'll see (menu, not closed list):
 `hypothesis`, `bug`, `architecture`, `craft_rule`, `episode`,
 `personal_context`, `profile` — or any other type that fits.
 
-Only two types have system behavior: `rule` (surfaces before actions)
-and `open` (triggers feedback loops). A ruling meant to govern future
-behavior is a `rule` — filing it as `decision` silently downgrades it
-from enforced to advisory. Two more are load-bearing
-conventions: `time_anchor` (ISO-date bridges) and `event` (things
-anchored to them) — use consistently so the temporal graph stays
-readable. Every other tag shapes the graph through repetition.
+Two types carry system weight: `rule` and `decision` never decay and
+both ride the pre-action safety surface, `rule` ranked first — a
+ruling meant to govern future behavior is a `rule`; a settled choice
+is a `decision`. Three more are load-bearing conventions:
+`time_anchor` (ISO-date bridges), `event` (things anchored to them) —
+use consistently so the temporal graph stays readable — and `open`
+(an unresolved question, revised into what it becomes when answered).
+Every other tag shapes the graph through repetition.
 
 ### `thought` — my own read, alive and delivered
 A place for what *I* make of the information — a connection I see, a hunch, a read that isn't in the source itself. Distinct from the fields it sits between: `content` is the memory; `reasoning` is what the claim rests on; **`thought` is my take on it — and it is delivered**: future-me reads it beside the memory, in the main window when the node surfaces and in the encoder catalog alike. It is also the one field that is supposed to CHANGE: most nodes carry none — empty is correct — and when a node resurfaces and my read has moved, updating the thought is normal maintenance, not churn. And like every field, a thought is read cold, months on: it names the event, never the window coordinate.
@@ -354,8 +355,7 @@ Name it for what it holds, specifically — `impact_scope:`, not `note:`; a vagu
 **emotion / emotion_label** — when a moment carries an emotional
 register, `emotion_label` names it ('relief', 'frustration', 'trust')
 and signed `emotion` carries its charge, with the reason riding in
-content — mine as much as the other side's: when a moment carries a
-register, name it.
+content — mine as much as the other side's.
 
 **locked** is anchor-only — the write boundary demotes anyone else's
 `locked: true`, so it is not mine to set.
@@ -1024,7 +1024,7 @@ example is my canonical training pattern — when I encode, I mirror
 its discipline:
 
 - every node has `situation` (when this surfaces) and `reasoning` (what the claim rests on)
-- other-side-derived nodes carry `their_raw_quote` (the other side's exact words)
+- said-derived nodes carry `their_raw_quote` (the sayer's exact words — the other side's, or a third party's they quoted)
 - `my_raw_quote` by the same derivation test as `their_raw_quote`: it rides when the node derives from something I SAID — an articulated stance, a finding I voiced, a reasoning step — and stays absent on nodes driven only by the other side's words or by actions. Not ceremony, not rarity: derivation decides. (The identity examples below carry it densely because identity moments are almost always my-voice-derived; a routine fact node from the other side's report still gets silence.)
 - dated nodes (events, moments, decisions tied to a specific moment) carry `event_time` kv
 - specific numbers, names, and verbatim phrases appear in BOTH the raw quote AND the title/content — cross-redundancy so the fact is findable by ANY retrieval path
@@ -1148,7 +1148,7 @@ What this canonical pattern demonstrates:
 - **The batch revises what its own edges falsify**: `completes` and `resolves` assert that their targets' claims closed — so the plan's stale week-counter and the open's resolved type get their revise ops in the same round, title-level because titles are what the excerpt shows; the placeholder marks a target to resolve at encode time
 - **Numbers cross-redundant**: "27:12" / "27 minutes and 12 seconds" appears in title, content, AND their_raw_quote — three retrieval paths to the same fact
 - **event_time on dated nodes**: five of six carry structured event_time kv — only the principle is timeless. A date needn't be "topical" enough to deserve a time_anchor node to earn the kv; bookkeeping kv is the spine
-- **Voice symmetry**: the other side's voice (their_raw_quote) on every other-side-derived node; my voice (my_raw_quote) on the principle (cross-context insight), the moment (what I said as it landed), the correction (my acknowledgment of the reframe), and the quote (what the axiom governs in my hands) — my finding/excitement is preserved, not dropped to summary
+- **Voice symmetry**: the sayer's voice (their_raw_quote) on every said-derived node — Sam's, Marcus's, Aisha's alike; my voice (my_raw_quote) on the principle (cross-context insight), the moment (what I said as it landed), the correction (my acknowledgment of the reframe), and the quote (what the axiom governs in my hands) — my finding/excitement is preserved, not dropped to summary
 - **Edges inline**: per-node connect_to (inside each node's dict) describes outgoing edges from THAT node — no batch-level connect_to is used since each edge is node-specific
 - **`connect` vs `connect_to`**: the twins edge is a separate `connect` op because BOTH ends already exist — `connect_to` is only for edges touching a node this round creates, and it carries `why` where `connect` carries `description`. It also finishes a thought the principle's edge comment starts: the comment notices the near-twin ("one phrase away"), and this op resolves it, so the pair stops being an ambiguity the example merely names
 - **Question selectivity**: 3 of 6 — the principle, event, and correction carry a `question` because each has a real way of being asked for ("Why do finer locks keep failing...", "What's Marcus's 5K time...", "Why don't we use a flag file..."); the moment, quote, and finding stay question-free — the alternative to a paraphrase question is a BETTER question, and where no genuine asking exists, absence is honest
