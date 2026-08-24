@@ -248,7 +248,7 @@ def _k_fingerprints(override_templates: dict = None) -> dict:
 def build_corpus(items_per_axis: int, seed: int, oracle: str,
                  s1e: str, ingest_surface: str, s2_every_n: int,
                  label: str, qids: str = None, force: bool = False,
-                 interaction_overrides: dict = None, lived: bool = False) -> str:
+                 interaction_overrides: dict = None, lived: bool = True) -> str:
     _load_env()
 
     # The lived arm (BRAIN_S1E_LIVED_SEQUENCE) changes the ENCODED GRAPH — the
@@ -256,6 +256,11 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
     # notes all shape what S1E writes — so it must be pinned here, not inherited
     # from the shell: set it explicitly per the arg, and clear any leaked env
     # on the control arm so a stray export can't silently flip a build's arm.
+    # Default is LIVED — production's arm since v29 activation (brain-env.sh
+    # exports BRAIN_S1E_LIVED_SEQUENCE=1, 2026-07-03). A control-arm default
+    # made every post-activation default build run the retired legacy branch:
+    # no `## Arc` harvest → empty session_context_{sid} digests (the v-next.5
+    # gate corpora fcc338/a3be7a shipped arc-blind that way, 2026-08-24).
     if lived:
         os.environ["BRAIN_S1E_LIVED_SEQUENCE"] = "1"
     else:
@@ -703,10 +708,12 @@ def main():
     p.add_argument("--label", default="corpus", help="human label stored in the manifest")
     p.add_argument("--qids", default=None, help="comma-separated qids (overrides stratified sampling)")
     p.add_argument("--force", action="store_true", help="rebuild even if the corpus already exists")
-    p.add_argument("--lived", action="store_true",
-                   help="build the LIVED arm (BRAIN_S1E_LIVED_SEQUENCE on: XML lived-sequence "
-                        "input, widened catalog, 2 scouts, inline notes). Joins the content "
-                        "address — a lived corpus never collides with a control corpus.")
+    p.add_argument("--lived", action=argparse.BooleanOptionalAction, default=None,
+                   help="arm pin: --lived / --no-lived (BRAIN_S1E_LIVED_SEQUENCE: XML "
+                        "lived-sequence input, widened catalog, 2 scouts, inline notes, "
+                        "`## Arc` residue). Default LIVED — production's arm since v29 "
+                        "activation. Joins the content address — a lived corpus never "
+                        "collides with a control corpus.")
     p.add_argument("--interaction-override", dest="interaction_override", default=None,
                    help="Comma-separated name=version pairs, fetched from the live daemon's "
                         "registered (incl. DORMANT) versions and activated in each eval brain. "
@@ -727,8 +734,10 @@ def main():
                 overrides[n.strip()] = int(v.strip())
 
     if args.pooled:
-        if args.lived or overrides:
-            p.error("--pooled does not compose with --lived/--interaction-override")
+        # args.lived is None unless the user pinned an arm explicitly — the
+        # pooled build doesn't compose with the arm pin (it inherits the shell).
+        if args.lived is not None or overrides:
+            p.error("--pooled does not compose with --lived/--no-lived/--interaction-override")
         build_pooled_corpus(args.oracle, args.qids, args.s1e, args.ingest_surface,
                             args.s2_every_n, args.label, force=args.force,
                             items_per_axis=args.items, seed=args.seed)
@@ -736,7 +745,8 @@ def main():
 
     build_corpus(args.items, args.seed, args.oracle, args.s1e, args.ingest_surface,
                  args.s2_every_n, args.label, qids=args.qids, force=args.force,
-                 interaction_overrides=overrides or None, lived=args.lived)
+                 interaction_overrides=overrides or None,
+                 lived=(True if args.lived is None else args.lived))
 
 
 if __name__ == "__main__":
