@@ -96,7 +96,8 @@ def _gold_in_brain_for_item(run_name: str, r: Dict,
     """
     try:
         from eval.longmem.artifacts import load_artifacts
-        from eval.longmem.analyzer import _find_gold_bearing_nodes
+        from eval.longmem.analyzer import (_find_gold_bearing_nodes,
+                                           _gold_scan_basis)
     except Exception:
         return None
 
@@ -118,6 +119,10 @@ def _gold_in_brain_for_item(run_name: str, r: Dict,
     gold = r.get("answer_gold") or ""
     if isinstance(gold, list):
         gold = ", ".join(str(x) for x in gold)
+    if _gold_scan_basis(str(gold)) == 'unscannable':
+        # Gold too short to search either way — "not measurable", not
+        # "not in any node (encoder gap)".
+        return None
     try:
         bearing = _find_gold_bearing_nodes(nodes, str(gold))
     except Exception:

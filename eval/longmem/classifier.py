@@ -82,6 +82,12 @@ def _src_exclude(alias: str = "") -> str:
         for p in NON_TRANSCRIPT_SOURCE_PREFIXES)
 
 
+# Minimum gold length for an exact-phrase scan. Below this a substring
+# match asserts presence that isn't there ("AI" hits 'explain', "22" hits a
+# date). Shared with analyzer._gold_scan_basis — one gate, no drift.
+PHRASE_SCAN_MIN_CHARS = 4
+
+
 def _extract_key_terms(gold: str, limit: int = 10) -> List[str]:
     """Extract recall-signal terms from a gold answer string.
 
@@ -155,7 +161,8 @@ def _scan_brain_for_gold(brain, gold: str) -> Dict[str, Any]:
     # too weak to certify presence by itself. Drop it; the phrase pass still runs.
     if len(terms) == 1 and len(terms[0]) < 2:
         terms = []
-    phrase = gold_str.lower() if len(gold_str) > 3 else None
+    phrase = (gold_str.lower()
+              if len(gold_str) >= PHRASE_SCAN_MIN_CHARS else None)
 
     result: Dict[str, Any] = {
         "found": False,

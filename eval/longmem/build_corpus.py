@@ -36,7 +36,7 @@ from eval.longmem.classifier import _scan_brain_for_gold
 from eval.longmem.corpus import (
     corpus_config_hash, corpus_dir, corpus_item_dir, manifest_path,
     load_manifest, save_manifest, source_token, interaction_token,
-    summarize_s2_deltas, merge_s2_totals,
+    summarize_s2_deltas, merge_s2_totals, ingest_session_id,
 )
 from tests.interaction_override import override_interaction
 
@@ -385,7 +385,7 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
 
         t0 = time.time()
         stats = replay_item(
-            brain, f"ingest-{qid}", item["haystack_sessions"],
+            brain, ingest_session_id(qid), item["haystack_sessions"],
             haystack_dates=item.get("haystack_dates"),
             log_prefix=f"[item {idx+1}]", s2_every_n=s2_every_n,
         )

@@ -143,7 +143,6 @@ def _gather_item_signals(bundle):
             nodes, 'their_raw_quote', 'user_raw_quote'),
         'with_my_raw_quote': _count_nodes_with_field(
             nodes, 'my_raw_quote', 'anchor_raw_quote'),
-        'with_entity_field': _count_nodes_with_field(nodes, 'entity'),  # scout handoff
         'with_event_time': _count_nodes_with_field(nodes, 'event_time'),  # L4 + v15.8 temporal
         'open_nodes': _count_open_nodes(nodes),
         'third_party_quote_nodes': _count_third_party_quotes(nodes),
@@ -269,8 +268,6 @@ def diff_runs(run_a: str, run_b: str) -> dict:
             'b_open_nodes': sig_b['open_nodes'],
             'a_third_party_quotes': sig_a['third_party_quote_nodes'],
             'b_third_party_quotes': sig_b['third_party_quote_nodes'],
-            'a_entity_nodes': sig_a['with_entity_field'],
-            'b_entity_nodes': sig_b['with_entity_field'],
             'a_event_time': sig_a['with_event_time'],
             'b_event_time': sig_b['with_event_time'],
             'a_surface_tools': sig_a.get('surface_tools') or {},
@@ -404,13 +401,12 @@ def render_md(diff: dict) -> str:
         'node_count': 'Total nodes encoded',
         'with_their_raw_quote': 'Nodes preserving operator voice',
         'with_my_raw_quote': 'Nodes preserving Anchor voice (v15+ behavior)',
-        'with_entity_field': 'Nodes with entity field — scout-handoff signal',
         'with_event_time': 'Nodes with event_time kv — temporal anchor (v15.8 + L4)',
         'open_nodes': 'Open-type nodes — live-contradiction encoding (v15+)',
         'third_party_quote_nodes': 'Quote nodes with no participant attribution — third-party verbatim (v15.2+)',
     }
     for k in ['node_count', 'with_their_raw_quote', 'with_my_raw_quote',
-              'with_entity_field', 'with_event_time', 'open_nodes',
+              'with_event_time', 'open_nodes',
               'third_party_quote_nodes']:
         a_v = sa.get(k, 0)
         b_v = sb.get(k, 0)

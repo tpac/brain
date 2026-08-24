@@ -39,13 +39,16 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from eval.longmem.harness import _apply_surface_override
+from eval.longmem.harness import (_apply_surface_override,
+                                  _snapshot_error_count, _new_errors_since)
 from eval.longmem.replay import query_brain
+from eval.longmem.validity import preflight_item, suspect_reasons
 from eval.longmem.answerer import answer_question
 from eval.longmem.judge import judge_one
 from eval.longmem.classifier import classify_failure, _read_s1r_trace
 from eval.longmem.fresh_brain import create_fresh_eval_brain
-from eval.longmem.corpus import load_manifest, corpus_item_dir
+from eval.longmem.corpus import (load_manifest, corpus_item_dir,
+                                 ingest_session_id)
 
 
 def _load_env() -> None:
@@ -107,7 +110,8 @@ def _write_item_artifacts(reports_dir, run_name, artifact_qid, result, recall_bl
 
 
 def sweep(corpus_hash: str, surface: str, variance: int, label: str,
-          qids: str = None, surface_params: str = None) -> str:
+          qids: str = None, surface_params: str = None,
+          force_preflight: bool = False) -> str:
     _load_env()
     manifest = load_manifest(corpus_hash)
     if not manifest:
@@ -184,9 +188,41 @@ def sweep(corpus_hash: str, surface: str, variance: int, label: str,
             _apply_surface_override(brain, surface, params_json=surface_params)
         s2_ids = _s2_origin_ids(brain)
 
+        # ── Measurement-validity preflight (eval/longmem/validity.py) ──
+        # Gate BEFORE measuring: vector health (the repair+report door —
+        # it also drains what the open itself deferred, e.g. a seed-pack
+        # gap-fill), stored journal object, self-retrieval canaries. A
+        # failed item cannot yield valid recall measurements — refuse, or
+        # proceed annotated under --force-preflight (every rep then carries
+        # the labels). Pooled corpora skip the journal check (their
+        # per-conversation session ids aren't reconstructable from the qid)
+        # — skipped is printed, never silent. Detect pooled via the manifest
+        # CONFIG: per-item builds also stamp brain_dir on items.
+        pooled = bool((manifest.get("config") or {}).get("pooled"))
+        pf = preflight_item(
+            brain, ingest_session_id=('' if pooled else ingest_session_id(qid)))
+        if not pf["checks"].get("journal_checked"):
+            print(f"[sweep]   preflight: journal check SKIPPED "
+                  f"(pooled corpus — no per-item session id)", flush=True)
+        preflight_reasons = []
+        if not pf["ok"]:
+            print(f"[sweep] ✗ PREFLIGHT FAILED {qid}: {pf['failures']}",
+                  flush=True)
+            if not force_preflight:
+                brain.close()
+                shutil.rmtree(work_qid, ignore_errors=True)
+                shutil.rmtree(work_root, ignore_errors=True)
+                raise SystemExit(
+                    f"[sweep] corpus item {qid} failed measurement-validity "
+                    f"preflight: {pf['failures']} — results over this brain "
+                    f"would be artifacts, not measurements. Re-build the "
+                    f"corpus, or pass --force-preflight to sweep annotated.")
+            preflight_reasons = pf["reasons"]
+
         for rep in range(variance):
             artifact_qid = qid if variance == 1 else f"{qid}-r{rep}"
             t0 = time.time()
+            err_base = _snapshot_error_count(brain)
             qr = query_brain(brain, question, qdate)
             ar = answer_question(question, qr["additional_context"], qdate)
             j = judge_one(question, gold, ar["hypothesis"])
@@ -212,12 +248,25 @@ def sweep(corpus_hash: str, surface: str, variance: int, label: str,
                         qr["query_session_id"], ar["has_context"], ar["abstained"],
                         context=qr["additional_context"])
 
+            # ── Per-rep validity capture — the substrate knew, now the row
+            # does too: errors logged during THIS rep + recall degradation +
+            # harness failure markers. Suspect rows KEEP their judge verdict;
+            # reports partition aggregates, they never drop data.
+            new_errors = _new_errors_since(brain, err_base)
+            suspect = preflight_reasons + suspect_reasons(
+                recall_mode=qr.get("recall_mode", ""),
+                new_errors=new_errors,
+                answerer_error=ar.get("error", ""),
+                judge_parse_failed=bool(j.get("judge_parse_failed")),
+                harness_error=qr.get("harness_error", ""))
+
             total_ms = int((time.time() - t0) * 1000)
             mark = "✓" if correct else "✗"
             bucket = failure_info.get("failure_bucket", "")
+            sus = f" ⚠SUSPECT({','.join(suspect)})" if suspect else ""
             print(f"[sweep] {artifact_qid:<28} axis={axis:<16} {mark} "
                   f"{bucket} | s2_reach cand={reach['s2_in_candidates']}/{reach['s2_total']} "
-                  f"sel={reach['s2_in_selected']}", flush=True)
+                  f"sel={reach['s2_in_selected']}{sus}", flush=True)
 
             result = {
                 "question_id": qid,
@@ -239,6 +288,11 @@ def sweep(corpus_hash: str, surface: str, variance: int, label: str,
                 **({"answerer_error": ar["error"]} if ar.get("error") else {}),
                 **({"judge_parse_failed": True}
                    if j.get("judge_parse_failed") else {}),
+                # Validity block: empty list = VALID measurement. Suspect rows
+                # keep their verdict — aggregates partition on this.
+                "measurement_suspect": suspect,
+                "recall_mode": qr.get("recall_mode", ""),
+                "brain_errors_new": len(new_errors),
                 "s2_reach": reach,
                 **failure_info,
                 "ingest_ms": 0,            # sweep does no encoding
@@ -300,6 +354,21 @@ def _write_run_report(reports_dir, run_name, corpus_hash, surface, variance,
                       results, total_ms, gate_unanswerable):
     correct_count = sum(1 for r in results if r["correct"])
     overall = correct_count / len(results) if results else 0
+
+    # VALID/SUSPECT partition — suspect rows keep their verdicts in
+    # `results` (nothing is dropped); the aggregates are reported on both
+    # cuts so a broken-infrastructure rep can't skew a score unseen.
+    suspect_rows = [r for r in results if r.get("measurement_suspect")]
+    valid_rows = [r for r in results if not r.get("measurement_suspect")]
+    valid_correct = sum(1 for r in valid_rows if r["correct"])
+    # None = UNMEASURED (every rep suspect), same convention as corpus_shape
+    # — a 0.0 here would read as a real score of zero.
+    overall_valid = (valid_correct / len(valid_rows)) if valid_rows else None
+    suspect_hist: dict = {}
+    for r in suspect_rows:
+        for reason in r["measurement_suspect"]:
+            suspect_hist[reason] = suspect_hist.get(reason, 0) + 1
+
     by_axis, by_qid, by_bucket, by_comparison = {}, {}, {}, {}
     reach_cand_sum = reach_sel_sum = reach_total_sum = reps_with_s2 = 0
     for r in results:
@@ -352,6 +421,13 @@ def _write_run_report(reports_dir, run_name, corpus_hash, surface, variance,
         },
         "encode_miss_count": encode_miss,
         "recall_conditional_pass": recall_conditional,
+        "validity": {
+            "valid_count": len(valid_rows),
+            "suspect_count": len(suspect_rows),
+            "valid_correct": valid_correct,
+            "overall_valid_only": overall_valid,
+            "suspect_reasons": suspect_hist,
+        },
         "gate_flagged_unanswerable": gate_unanswerable,
         "total_ms": total_ms,
         "results": results,
@@ -362,6 +438,14 @@ def _write_run_report(reports_dir, run_name, corpus_hash, surface, variance,
 
     print(f"\n[sweep] done in {total_ms/1000:.1f}s", flush=True)
     print(f"[sweep] overall (raw): {overall:.1%} ({correct_count}/{len(results)})", flush=True)
+    if suspect_rows:
+        vo = ('unmeasured' if overall_valid is None
+              else '%.1f%%' % (100 * overall_valid))
+        print(f"[sweep] ⚠ VALIDITY: {len(suspect_rows)}/{len(results)} reps "
+              f"SUSPECT ({json.dumps(suspect_hist)}) — valid-only: "
+              f"{vo} ({valid_correct}/{len(valid_rows)})", flush=True)
+    else:
+        print(f"[sweep] validity: all {len(results)} reps VALID", flush=True)
     print(f"[sweep] recall-conditional (excl. {encode_miss} ENCODE_MISS): "
           f"{recall_conditional:.1%} ({correct_count}/{recall_denom})", flush=True)
     print(f"[sweep] failure buckets: {json.dumps(by_bucket)}", flush=True)
@@ -382,9 +466,13 @@ def main():
     p.add_argument("--variance", type=int, default=1, help="repeat each item N times")
     p.add_argument("--label", default=None, help="run name (default: sweep_{corpus}_{ts})")
     p.add_argument("--qids", default=None, help="comma-separated subset of corpus qids")
+    p.add_argument("--force-preflight", dest="force_preflight", action="store_true",
+                   help="sweep even when an item fails the measurement-validity "
+                        "preflight; its reps are stamped measurement_suspect")
     args = p.parse_args()
     sweep(args.corpus, args.surface, args.variance, args.label, qids=args.qids,
-          surface_params=args.surface_params)
+          surface_params=args.surface_params,
+          force_preflight=args.force_preflight)
 
 
 if __name__ == "__main__":

@@ -297,6 +297,14 @@ def _rerank_by_relevance(conn, rich_nodes: list, query_text: str, limit: int,
         return rich_nodes[:limit]
 
 
+# The failure modes _empty_recall can return in `_recall_mode` — an empty
+# result under one of these is an infrastructure failure, NOT "the brain
+# knows nothing". Single source: consumers (hook exits, eval validity
+# marking) import this instead of copying the strings, so a new failure
+# mode cannot silently stop being flagged downstream.
+RECALL_FAILURE_MODES = ('embedder_unavailable', 'embed_failed')
+
+
 class BrainRecallMixin:
     """Recall methods for Brain."""
 

@@ -100,26 +100,66 @@ def _node_text(node: Dict[str, Any]) -> str:
     return ' '.join(p.lower() for p in parts if p)
 
 
+def _gold_scan_terms(gold: str) -> List[str]:
+    """Terms for the gold scan: this module's strict extractor, falling back
+    to the CLASSIFIER's (digits, 2-3-letter uppercase, ≥4-char words) so
+    short/numeric golds ("220", "AI", "6 PM") stay scannable exactly where
+    the classifier can scan them. Single source for the fallback — a local
+    copy of that rule set is how the two modules' verdicts drifted apart."""
+    from eval.longmem.classifier import _extract_key_terms
+    terms = _extract_gold_terms(gold)
+    if terms:
+        return terms
+    terms = _extract_key_terms(gold)
+    # The classifier's own guard (classifier.py, scan gate): a single
+    # sub-2-char term ("3") substring-matches everything — no verdict.
+    if len(terms) == 1 and len(terms[0]) < 2:
+        return []
+    return terms
+
+
+def _gold_scan_basis(gold: str) -> str:
+    """How _find_gold_bearing_nodes will search this gold: 'terms',
+    'phrase' (exact substring of the whole gold — gate shared with the
+    classifier via PHRASE_SCAN_MIN_CHARS), or 'unscannable'."""
+    from eval.longmem.classifier import PHRASE_SCAN_MIN_CHARS
+    if _gold_scan_terms(gold):
+        return 'terms'
+    if len((gold or '').strip()) >= PHRASE_SCAN_MIN_CHARS:
+        return 'phrase'
+    return 'unscannable'
+
+
 def _find_gold_bearing_nodes(nodes: List[Dict[str, Any]], gold: str,
                              ) -> List[Dict[str, Any]]:
     """Find nodes whose text contains all distinctive gold terms.
 
     Stricter than the harness's classifier scan because it requires ALL
     gold terms in one node (not just the title/content fields).
+
+    Short/numeric golds ("220", "6 PM") extract zero >=4-char terms —
+    returning [] for them used to render "gold NOT in any node (encoder
+    gap)" for golds that were never actually searched (32/163 on-disk items
+    contradicted the classifier's own scan). Falls back to an exact phrase
+    match on the whole gold, mirroring the classifier; 'unscannable' golds
+    return [] and the refined bucket says so instead of blaming the encoder.
     """
-    terms = _extract_gold_terms(gold)
-    if not terms:
+    basis = _gold_scan_basis(gold)
+    if basis == 'unscannable':
         return []
+    terms = _gold_scan_terms(gold)
+    phrase = (gold or '').lower().strip()
     out = []
     for n in nodes:
         text = _node_text(n)
-        if all(t in text for t in terms):
+        hit = all(t in text for t in terms) if terms else phrase in text
+        if hit:
             out.append({
                 'id': n['id'],
                 'title': n.get('title') or '',
                 'type': n.get('type') or '',
                 'encoding_source': n.get('encoding_source') or '',
-                'matched_terms': terms,
+                'matched_terms': terms or [phrase],
             })
     return out
 
@@ -243,7 +283,8 @@ def _refine_bucket(bundle: Dict[str, Any]
 
     evidence: Dict[str, Any] = {
         'original_bucket': original_bucket,
-        'gold_terms': _extract_gold_terms(gold),
+        'gold_terms': _gold_scan_terms(gold),
+        'gold_scan_basis': _gold_scan_basis(gold),
         'gold_bearing_nodes': bearing,
         'encoder_run_count': len(encoder_runs),
         'encoder_total_actions': sum(r['actions'] for r in encoder_runs),
@@ -272,6 +313,11 @@ def _refine_bucket(bundle: Dict[str, Any]
             evidence['fact_node_ranks'][b['id'][:8]] = r if r else 'NOT_IN_TOP_N'
 
     # Refined buckets
+    if evidence['gold_scan_basis'] == 'unscannable':
+        # Gold too short to search either way ("3") — an encoder-gap verdict
+        # here would be a coin flip dressed as a measurement.
+        return 'gold_unscannable', evidence
+
     if not bearing:
         # Gold fact NOT in any node — refine the encode-side miss
         if evidence['encoder_total_actions'] == 0:
@@ -380,9 +426,16 @@ def _markdown(bundle: Dict[str, Any], refined: str,
 
     lines.append('## Encoded knowledge — gold-fact match')
     bearing = evidence.get('gold_bearing_nodes') or []
-    if not bearing:
-        lines.append(f"- ❌ No node carries all distinctive gold terms: "
-                     f"`{evidence.get('gold_terms', [])}`")
+    if evidence.get('gold_scan_basis') == 'unscannable':
+        lines.append('- ⚠ gold too short to scan — no encoder verdict '
+                     'possible (not an encoder gap)')
+    elif not bearing:
+        if evidence.get('gold_scan_basis') == 'phrase':
+            lines.append('- ❌ No node carries the gold phrase '
+                         '(short gold — exact-substring scan)')
+        else:
+            lines.append(f"- ❌ No node carries all distinctive gold terms: "
+                         f"`{evidence.get('gold_terms', [])}`")
     else:
         lines.append(f"- ✅ {len(bearing)} node(s) carry the gold terms:")
         for b in bearing:

@@ -41,6 +41,14 @@ def corpus_item_dir(corpus_hash: str, qid: str) -> str:
     return os.path.join(corpus_dir(corpus_hash), qid)
 
 
+def ingest_session_id(qid: str) -> str:
+    """THE per-item ingest session id — the key session_context / journal /
+    trace rows are stored under in an item brain. One definition; builders
+    and readers that hand-rolled 'ingest-{qid}' drifted apart is exactly the
+    bug class this module's conventions exist to prevent."""
+    return "ingest-%s" % qid
+
+
 def manifest_path(corpus_hash: str) -> str:
     return os.path.join(corpus_dir(corpus_hash), "manifest.json")
 
