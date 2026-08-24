@@ -76,9 +76,33 @@ at the Validity-intervals discriminator. (9) The write boundary refuses a missin
 edge `relation` loudly (was: silent `related_to`) at _handle_connect (covers
 brain_batch's connect op) + the connect_batch loop.
 
+DONE 2026-08-23 — **The completion pass: ALL challenges ran over the settled draft.**
+E3 matrix walked (all boxes → carriers; empty cells named with owners); all 30 R-rows
+re-stamped blind (8 ABSENT → 0; row 13's question-scarcity was the one teach-against-
+evidence and is fixed — 3-of-6 selectivity, better-question-not-no-question); E2 example
+sweep ran blind (36 findings; 4 assets stamped fully clean; A5 sound; voice ratio 59%
+my-voice vs the 6% production baseline). The fix batch landed under Tom's
+go-with-your-recs ruling: canonical now revises what its own edges falsify (the
+closure teaching demonstrated at the highest-attention slot); temporal example fenced,
+reasoning on all 6 nodes, deictics out; §7.6 reasonings rewritten to evidence
+strength; ladder grounded by its own excerpt; future-target event_time doctrine
+reconciled; sensitivity floor + richness ceiling added; sweep refs justified as the
+correction-scene class. Ship-package code landed: source_refs 8-hex gate at the DAL
+(node writes unaffected — refs refused loudly via source_refs_persist*), locked-strip
+demotion now logs, connect_to description guardrail test in test_contract_sync.
+Considered-and-left: §7.6.A8's placeholder (retyping the title would model the
+anti-pattern). E7 redundancy re-audit running.
+
 REMAINING:
-1. **Tom's full read of the draft** before anything registers.
-2. **Ship gate** — the runbook below is complete: invocation, check-overrides pre-step,
+1. **Two held doubts (Tom + Anchor to discuss):** (a) the `rule`-type gap — retyping
+   the sweep decision teaches rule-minting, but rule has SYSTEM behavior
+   (surfaces before actions) and over-minting rules is pre-action noise; decision-vs-rule
+   boundary needs Tom. (b) third-party voice — their_raw_quote holds Marcus's and
+   Aisha's words; the rule says "the sayer's", the annotations say "the other side's",
+   and their_raw_quote feeds a VOICE lane — whether third parties belong in that lane
+   is a substrate-semantics question, not a wording fix. Both left untouched.
+2. **Tom's full read of the draft** before anything registers.
+3. **Ship gate** — the runbook below is complete: invocation, check-overrides pre-step,
    expected one-time cache miss, migrate-on-open pre-registered as first suspect, and both
    arm-integrity checks.
 

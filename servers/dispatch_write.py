@@ -60,8 +60,9 @@ def _validate_source_refs(refs, location: str):
       - Each item must be a string. Int input rejected loudly (no coercion);
         v29 contract is hex strings end-to-end (reviewer F2).
       - Empty strings rejected.
-      - Hex format mismatch (^[0-9a-f]{8}$): soft warn, write proceeds
-        (reviewer F6 — catches encoder regressions earlier than S2Healer).
+      - Hex format mismatch (^[0-9a-f]{8}$): soft warn here; the DAL
+        refuses non-hex refs at persist (logged as source_refs_persist*,
+        node/field writes unaffected — the ref is the only thing dropped).
       - >5 refs logged as sparseness warning (decision 13 / §7.5 v22 prompt:
         1-3 typical; second-guess at 5-6; 10+ is "ref everything" anti-pattern).
         Non-fatal — write proceeds, log fires.

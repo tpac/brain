@@ -27,10 +27,14 @@ Incrementally adoptable: brain.py can migrate one table at a time.
 Direct self.conn.execute() calls continue to work alongside the DAL.
 """
 
+import re
 import sqlite3
 from typing import Any, Dict, List, Optional
 
 from .clock import iso_now
+
+# v29 trace-id shape — the write boundary's gate in add/replace_source_refs.
+_TRACE_ID_HEX = re.compile(r'[0-9a-f]{8}')
 from .dal_graph import (EDGE_CONTEXT_EXCLUDED_RELATIONS,
                         EDGE_CONTEXT_MIN_DESC_LENGTH)
 from .db_backends.sqlite import commit_unless_batched
@@ -728,12 +732,21 @@ class SourceRefDAL:
         if not node_id or not trace_ids:
             return 0
         # Reject int input loudly — v29 contract is hex strings end-to-end.
+        # Shape gate: non-hex refs (leftover example placeholders like
+        # "{trace-...}") used to store silently and point at no moment —
+        # loud at the write boundary, same contract as the int rejection.
         for tid in trace_ids:
             if not isinstance(tid, str):
                 raise ValueError(
                     "add_source_refs: trace_ids must be strings, got "
                     "%s (%r). v29 trace ids are 8-char hex." % (
                         type(tid).__name__, tid))
+            if not _TRACE_ID_HEX.fullmatch(tid):
+                raise ValueError(
+                    "add_source_refs: %r is not an 8-char hex trace id — "
+                    "placeholders and malformed refs store silently and "
+                    "resolve to no moment; copy the id from the input's "
+                    "trace markers." % (tid,))
         now = _now()
         rows = [(node_id, tid, idx + 1, now)
                 for idx, tid in enumerate(trace_ids)]
@@ -767,6 +780,12 @@ class SourceRefDAL:
                     "replace_source_refs: trace_ids must be strings, got "
                     "%s (%r). v29 trace ids are 8-char hex." % (
                         type(tid).__name__, tid))
+            if not _TRACE_ID_HEX.fullmatch(tid):
+                raise ValueError(
+                    "replace_source_refs: %r is not an 8-char hex trace id — "
+                    "placeholders and malformed refs store silently and "
+                    "resolve to no moment; copy the id from the input's "
+                    "trace markers." % (tid,))
         now = _now()
         self.conn.execute(
             'DELETE FROM node_source_refs WHERE node_id = ?', (node_id,))
