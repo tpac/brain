@@ -1,6 +1,6 @@
 # S1E Prompt Checklist — the boxes every revision must check
 
-## Walk state — walk + weave + MCP membership COMPLETE; next: E1/E8/E10 → gate (2026-08-23) ◀ ACTIVE ARC
+## Walk state — EVERY challenge closed; next: KPI framework ruling → register v39 → gate (2026-08-24) ◀ ACTIVE ARC
 
 **Where this stands.** The section-by-section walk is finished and every Tom-ruled fix from
 it has landed and been probe-verified. The weave (5 moves) and the MCP membership change
@@ -93,18 +93,27 @@ demotion now logs, connect_to description guardrail test in test_contract_sync.
 Considered-and-left: §7.6.A8's placeholder (retyping the title would model the
 anti-pattern). E7 redundancy re-audit running.
 
-REMAINING:
-1. **Two held doubts (Tom + Anchor to discuss):** (a) the `rule`-type gap — retyping
-   the sweep decision teaches rule-minting, but rule has SYSTEM behavior
-   (surfaces before actions) and over-minting rules is pre-action noise; decision-vs-rule
-   boundary needs Tom. (b) third-party voice — their_raw_quote holds Marcus's and
-   Aisha's words; the rule says "the sayer's", the annotations say "the other side's",
-   and their_raw_quote feeds a VOICE lane — whether third parties belong in that lane
-   is a substrate-semantics question, not a wording fix. Both left untouched.
-2. **Tom's full read of the draft** before anything registers.
+DONE 2026-08-23/24 — **both held doubts resolved** (bbadf24): (a) the rule-type premise
+was false in code — rule+decision share the pre-action safety surface and never decay,
+'open' has no system machinery (the type paragraph now states the truth; retype
+dissolved; node id:6537771e); (b) Tom ruled their_raw_quote the SAYER's lane, speaker
+weighting later (id:bb94905b). E7 re-audit banked at
+eval/candidate_prompts/audits/e7_redundancy_vnext5.md — 28 scars DEFERRED post-gate
+(E5 + eval attribution; id:4f9a7e20). Draft: 111,498 chars. Completion-pass milestone:
+id:b5e358b7. Handoff: id:bb0740dd.
+
+REMAINING (fresh session — launch prompt armed):
+1. **KPI framework ruling (Tom)** — he ruled the four needles too shallow ("a much more
+   sophisticated KPIs and benchmark"); the draft framework (L0 integrity / L1
+   encode-shape script-computable / L2 brain-presence PRIMARY / L3 recall-differentiated,
+   judge-needing KPIs flagged with cost) lives in handoff id:bb0740dd. NOTHING evals
+   before he rules it.
+2. **Register** — step 0: strip the 7-line WIP header; re-verify pointer + version at
+   that moment; register v39 DORMANT.
 3. **Ship gate** — the runbook below is complete: invocation, check-overrides pre-step,
    expected one-time cache miss, migrate-on-open pre-registered as first suspect, and both
-   arm-integrity checks.
+   arm-integrity checks. Baseline arm = NO override. On Tom's pass: promote into
+   encoding_prompt.py SYSTEM_PROMPT, clear the override.
 
 **Deferred by design, with owners named:** the vertical axis beyond the pilot (six more
 teachings shaped like Emerging patterns — evidence in id:56631bce); the journal→graph
