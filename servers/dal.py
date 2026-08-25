@@ -381,10 +381,11 @@ class NodeDAL:
         """Filter nodes by any structural OR promoted-kv field.
 
         Args:
-            field: a nodes-table column (STRUCTURAL_FIELDS) or a promoted
-                metadata_kv field (PROMOTED_FIELDS, e.g. project) — the latter
-                is matched via a node_metadata_kv subquery, mirroring recall's
-                dict-filter kv lookup.
+            field: a nodes-table column (STRUCTURAL_FIELDS) or any
+                metadata_kv key — promoted keys accepted directly, other
+                keys accepted when any node stores them (else the error
+                carries `unknown_field: True`). kv keys are matched via a
+                node_metadata_kv subquery with the key BOUND as a parameter.
             include: list of values to match (exact, IN).
             exclude: list of values to exclude (exact, NOT IN).
             lt/gt: numeric comparisons — structural fields only.
@@ -405,17 +406,30 @@ class NodeDAL:
         """
         from .contract import STRUCTURAL_FIELDS, PROMOTED_FIELDS
 
-        # kv_field: a promoted metadata_kv field (project, situation, ...) —
-        # matched via node_metadata_kv, not a nodes column. field is whitelisted
-        # against known constants, so it's safe to inline into the subquery.
+        # kv_field: any metadata_kv key (promoted or free-form) — matched via
+        # node_metadata_kv, not a nodes column. The key is BOUND as a query
+        # parameter everywhere below, so no whitelist is needed for safety;
+        # unknown keys still error loudly (a typo'd key must not read as a
+        # measured zero) via a cheap existence probe, with the promoted set
+        # accepted without probing.
         _kv_fields = {k for k, v in PROMOTED_FIELDS.items()
                       if v.get('store') == 'metadata_kv'}
-        kv_field = field not in STRUCTURAL_FIELDS and field in _kv_fields
-
-        # Whitelist field
-        if field not in STRUCTURAL_FIELDS and not kv_field:
-            return {"error": "Unknown field '%s'. Valid: %s" % (
-                field, ', '.join(sorted(set(STRUCTURAL_FIELDS) | _kv_fields)))}
+        kv_field = field not in STRUCTURAL_FIELDS
+        if kv_field and field not in _kv_fields:
+            known = self.conn.execute(
+                'SELECT 1 FROM node_metadata_kv WHERE key = ? LIMIT 1',
+                (field,)).fetchone()
+            if not known:
+                # unknown_field lets a programmatic caller distinguish "no
+                # node stores this key" (a legitimate empty for a sweep over
+                # optional kv keys) from a malformed query — without parsing
+                # the message.
+                return {"error": "Unknown field '%s' — not a nodes column and "
+                                 "no node stores it as a kv key. Structural: "
+                                 "%s; promoted kv: %s"
+                                 % (field, ', '.join(sorted(STRUCTURAL_FIELDS)),
+                                    ', '.join(sorted(_kv_fields))),
+                        "unknown_field": True}
         if kv_field and (lt is not None or gt is not None):
             return {"error": "lt/gt not supported for metadata field '%s' "
                              "(text-valued)" % field}
@@ -446,7 +460,8 @@ class NodeDAL:
             if kv_field:
                 conditions.append(
                     "id IN (SELECT node_id FROM node_metadata_kv "
-                    "WHERE key = '%s' AND value IN (%s))" % (field, placeholders))
+                    "WHERE key = ? AND value IN (%s))" % placeholders)
+                params.append(field)
             else:
                 conditions.append('%s IN (%s)' % (field, placeholders))
             params.extend(include)
@@ -455,7 +470,8 @@ class NodeDAL:
             if kv_field:
                 conditions.append(
                     "id NOT IN (SELECT node_id FROM node_metadata_kv "
-                    "WHERE key = '%s' AND value IN (%s))" % (field, placeholders))
+                    "WHERE key = ? AND value IN (%s))" % placeholders)
+                params.append(field)
             else:
                 conditions.append('%s NOT IN (%s)' % (field, placeholders))
             params.extend(exclude)
@@ -477,7 +493,8 @@ class NodeDAL:
             if kv_field:
                 conditions.append(
                     "id IN (SELECT node_id FROM node_metadata_kv "
-                    "WHERE key = '%s' AND value LIKE ? ESCAPE '\\')" % field)
+                    "WHERE key = ? AND value LIKE ? ESCAPE '\\')")
+                params.append(field)
             else:
                 conditions.append("%s LIKE ? ESCAPE '\\'" % field)
             params.append(like)
@@ -490,18 +507,22 @@ class NodeDAL:
         ).fetchone()
         total_count = count_row[0] if count_row else 0
 
-        # Fetch results. kv fields select their value via a correlated
-        # subquery (they're not nodes columns); structural fields select direct.
+        # kv fields select their value via a correlated subquery with the key
+        # BOUND — its placeholder appears in the SELECT clause, i.e. before the
+        # WHERE placeholders in bind order; structural fields select direct.
         field_select = field
+        select_params: List[Any] = []
         if kv_field:
             field_select = ("(SELECT value FROM node_metadata_kv "
-                            "WHERE node_id = nodes.id AND key = '%s')" % field)
+                            "WHERE node_id = nodes.id AND key = ?)")
+            select_params = [field]
         base_sql = 'SELECT id, title, type, confidence, created_at, %s FROM nodes WHERE %s ORDER BY %s %s' % (
             field_select, where, sort_by, sort_order)
         if limit is None:
-            rows = self.conn.execute(base_sql, params).fetchall()
+            rows = self.conn.execute(base_sql, select_params + params).fetchall()
         else:
-            rows = self.conn.execute(base_sql + ' LIMIT ?', params + [limit]).fetchall()
+            rows = self.conn.execute(base_sql + ' LIMIT ?',
+                                     select_params + params + [limit]).fetchall()
 
         nodes = []
         for r in rows:
