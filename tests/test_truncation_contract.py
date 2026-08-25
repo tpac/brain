@@ -134,10 +134,12 @@ class TestRecallEpisodesTimePath(BrainTestBase):
 
 
 class TestProbeAliveAtTheCap(BrainTestBase):
-    """The 2026-08-07 review's finding 1: the +1 probe must survive the DAL
-    clamp AT the cap — EPISODE_MAX_LIMIT is exactly the limit S2's
-    _read_traces_since uses, and a clamp without probe headroom made the
-    flag structurally dead there (silent backlog skip)."""
+    """S2's _read_traces_since pulls at limit=EPISODE_MAX_LIMIT, and the +1
+    probe must fire the truncation flag at exactly that limit (2026-08-07
+    finding 1: a clamp without probe headroom made the flag structurally dead
+    there — silent backlog skip). The door is now honest — it no longer clamps
+    over-cap requests; the agent-facing clamp lives at the dispatch boundary —
+    but the probe at S2's operating point stays intact."""
     needs_embedder = False
 
     def test_recall_episodes_flags_at_episode_max_limit(self):
@@ -150,14 +152,20 @@ class TestProbeAliveAtTheCap(BrainTestBase):
         self.assertIsInstance(res['truncated'], dict)
         self.assertEqual(res['truncated']['limit'], EPISODE_MAX_LIMIT)
 
-    def test_over_cap_request_clamps_and_still_flags(self):
+    def test_over_cap_request_is_honest_at_the_door(self):
+        # The door no longer clamps an over-cap request — that clamp moved to
+        # the dispatch boundary. An internal caller asking above the cap gets
+        # every matching row honestly: asked for MAX+50, MAX+1 exist → all
+        # MAX+1 returned, nothing truncated (you got everything).
         from servers.brain_constants import EPISODE_MAX_LIMIT
         self.brain._trace_dal.append_batch(_events(EPISODE_MAX_LIMIT + 1))
         res = self.brain.recall_episodes(
             contains='event', scale='s0', ref_type='tool_result',
             limit=EPISODE_MAX_LIMIT + 50)
-        self.assertEqual(len(res['episodes']), EPISODE_MAX_LIMIT)
-        self.assertIsInstance(res['truncated'], dict)
+        self.assertEqual(len(res['episodes']), EPISODE_MAX_LIMIT + 1)
+        self.assertFalse(res['truncated'])
+        # (The relocated dispatch clamp is covered by TestAgentLimit in
+        # test_mcp_roundtrip.py — no need to restate it here.)
 
 
 if __name__ == '__main__':

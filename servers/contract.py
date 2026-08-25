@@ -491,6 +491,8 @@ GET_NODES_MEDIUM_MAX = 10
 # brain_constants.EPISODE_MAX_LIMIT — same pattern (named per-door cap), each
 # valued for its own cost. Internal Python callers bypass dispatch → uncapped.
 NODE_QUERY_MAX_LIMIT = 200
+# Default page an agent gets when it names no limit (mirrors EPISODE_DEFAULT_LIMIT).
+NODE_QUERY_DEFAULT_LIMIT = 50
 
 # Balanced: for 4-10 node batches (S1E, consolidation, Anchor multi-node)
 GET_NODES_BALANCED_FORMAT = {

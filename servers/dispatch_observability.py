@@ -6,6 +6,7 @@ Traces, logs, outcomes (the nervous system) and interactions (the K store).
 import json
 
 from .clock import iso_cutoff
+from .dispatch_common import _agent_limit
 
 
 def _handle_trace_append(brain, args, graph_changes):
@@ -120,6 +121,7 @@ def _handle_recall_episodes(brain, args, graph_changes):
     surface any ValueError as a structured error rather than crashing the
     daemon thread, same as query_traces.
     """
+    from .brain_constants import EPISODE_DEFAULT_LIMIT, EPISODE_MAX_LIMIT
     sids = args.get("session_ids")
     if sids is not None and not isinstance(sids, list):
         return {"ok": False, "error": "session_ids must be a list of strings"}
@@ -135,7 +137,8 @@ def _handle_recall_episodes(brain, args, graph_changes):
             older_than=args.get("older_than"),
             younger_than=args.get("younger_than"),
             sort_order=args.get("sort_order", "desc"),
-            limit=args.get("limit"))
+            limit=_agent_limit(args.get("limit"),
+                               EPISODE_DEFAULT_LIMIT, EPISODE_MAX_LIMIT))
         return {"ok": True, "result": result}
     except ValueError as e:
         return {"ok": False, "error": str(e)}

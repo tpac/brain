@@ -64,5 +64,57 @@ class TestQueryTracesTruncation(BrainTestBase):
         self.assertIn('truncated', res)
 
 
+class TestRecallEpisodesHonestLimit(BrainTestBase):
+    """recall_episodes honest limit: None → all events in the window (no silent
+    500 cap); a number is an honest page that flags loudly when the window
+    holds more. The agent-facing default+cap live at the dispatch door.
+
+    Scoped by session_id (bypasses the 7-day default window) and ref_type
+    (the tool_result events are excluded from the s0-conversational default).
+    """
+    needs_embedder = False
+
+    def setUp(self):
+        super().setUp()
+        self.brain._trace_dal.append_batch(_events(15))
+
+    def _episodes(self, **kw):
+        return self.brain.recall_episodes(
+            session_id='trunctest-session', ref_type='tool_result', **kw)
+
+    def test_limit_none_is_unbounded_past_the_old_500_cap(self):
+        # The removed cap was EPISODE_MAX_LIMIT=500 — limit=None must return
+        # every matching event PAST that boundary, not the old silent 500.
+        # (15 < 500 would prove None!=default but never exercise the cap.)
+        from servers.brain_constants import EPISODE_MAX_LIMIT
+        n = EPISODE_MAX_LIMIT + 50
+        self.brain._trace_dal.append_batch(
+            _events(n, session_id='bigcap-session'))
+        res = self.brain.recall_episodes(
+            session_id='bigcap-session', ref_type='tool_result', limit=None)
+        self.assertEqual(len(res['episodes']), n)    # all 550, no 500 clamp
+        self.assertFalse(res['truncated'])           # asked for all, got all
+        self.assertEqual(res['ranked_by'], 'time')
+
+    def test_numeric_limit_is_honest_page_and_flags(self):
+        res = self._episodes(limit=5)
+        self.assertEqual(len(res['episodes']), 5)
+        self.assertTrue(res['truncated'])            # 15 > 5 → loud payload
+        self.assertEqual(res['truncated']['limit'], 5)
+
+    def test_unsaturated_limit_no_flag(self):
+        res = self._episodes(limit=50)
+        self.assertEqual(len(res['episodes']), 15)
+        self.assertFalse(res['truncated'])           # +1 probe proves exhaustion
+
+    def test_omitted_limit_is_the_bounded_default_not_unbounded(self):
+        # Omitting limit → EPISODE_DEFAULT_LIMIT (bounded), NOT unbounded — the
+        # signature default matches filter_nodes; unbounded is explicit None.
+        from servers.brain_constants import EPISODE_DEFAULT_LIMIT
+        res = self._episodes()                       # no limit → default page
+        self.assertEqual(len(res['episodes']), EPISODE_DEFAULT_LIMIT)  # 10, not 15
+        self.assertTrue(res['truncated'])            # 15 > 10 → loud, not silent
+
+
 if __name__ == '__main__':
     unittest.main()
