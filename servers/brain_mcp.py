@@ -1070,30 +1070,6 @@ def _format_result(tool_name, result, get_nodes_config=None, rich=False):
         else:
             lines.append("No results found.")
 
-        # Graph neighbors from expansion (Layer 3 enrichment)
-        graph_nbs = result.get("_graph_neighbors", [])
-        if graph_nbs:
-            lines.append("Related knowledge (via graph):")
-            for nb in graph_nbs[:6]:
-                edge_desc = " — %s" % nb["edge_description"] if nb.get("edge_description") else ""
-                lines.append("  [%s] \"%s\" (%s%s)" % (
-                    nb.get("type", "?"),
-                    nb.get("title", "?")[:60],
-                    nb.get("edge_type", "related"),
-                    edge_desc))
-                content = (nb.get("content") or "")[:150]
-                if content:
-                    lines.append("    %s" % content)
-            lines.append("")
-
-        # Show vocab context (connectors, not primary results)
-        vocab = result.get("vocab_context", [])
-        if vocab:
-            lines.append("")
-            lines.append("Related vocabulary:")
-            for v in vocab[:5]:
-                lines.append("  %s (id:%s)" % (v.get('title', ''), v.get('id', '')[:8]))
-
         # Show gap info if present
         gap = result.get("_gap")
         if gap:

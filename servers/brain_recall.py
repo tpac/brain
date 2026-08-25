@@ -2131,9 +2131,7 @@ class BrainRecallMixin:
         ]
 
         # STEP 7: Hydrate full node data for top results
-        # v8.8: Vocab nodes go to separate list — they're connectors, not primary results
         final_results = []
-        vocab_context = []
         # Pre-batch the embedding-only nodes (those not already cached in
         # keyword_nodes) into one query instead of N get_naked_node calls
         # (C1 / H2). The per-node post-processing below is unchanged.
@@ -2279,7 +2277,6 @@ class BrainRecallMixin:
         # Build result
         result = {
             'results': final_results,
-            'vocab_context': vocab_context,  # v8.8: vocab nodes as connectors, not results
             '_recall_mode': 'laf_v1' if _laf_scores is not None else 'embeddings_first',
             '_embedding_stats': {
                 'embedder_ready': True,
