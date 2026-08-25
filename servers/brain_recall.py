@@ -284,8 +284,10 @@ def _rerank_by_relevance(conn, rich_nodes: list, query_text: str, limit: int,
             score = float(np.dot(query_vec, nv / nnorm))
             scored.append((score, n))
 
-        # Hybrid: top half by relevance, remainder by original (structural) order
-        relevance_slots = max(1, limit // 2)
+        # Hybrid: top half by relevance, remainder by original (structural)
+        # order. limit=None (unbounded relevance rank) → every scored node is
+        # a slot, so the whole matching set comes back relevance-first.
+        relevance_slots = len(scored) if limit is None else max(1, limit // 2)
         relevant = [n for _, n in sorted(scored, key=lambda x: -x[0])[:relevance_slots]]
         relevant_ids = {n.get('id') for n in relevant}
         # Remainder preserves the input order (which is the structural sort)
@@ -490,7 +492,7 @@ class BrainRecallMixin:
             scrub_node(r, veil)
 
     def filter_nodes(self, field: str, include=None, exclude=None,
-                     lt=None, gt=None, limit: int = 50,
+                     lt=None, gt=None, contains=None, prefix=None, limit: int = 50,
                      sort_by: str = 'created_at', sort_order: str = 'desc',
                      rich: bool = True,
                      relevance_query: str = None,
@@ -504,6 +506,15 @@ class BrainRecallMixin:
         reasoner; richness is the advantage (see node 9b938b91).
         rich=False: skinny shape (id/title/type/confidence/created_at), for
         discovery scans or feeding IDs to other ops.
+
+        contains: substring LIKE match on `field` (recall's dict-filter speaks
+        the same op). prefix: prefix LIKE match (prefix is new here — recall's
+        dict-filter has no prefix). limit=None returns every match unbounded
+        (e.g. every s2:* node for an internal id-set scan); a number is an
+        honest page. The agent-facing cap lives at the dispatch door. Pair
+        limit=None with rich=False: with the default rich=True it enriches
+        every match (get_node per row), which for a large set is the firehose
+        the cap exists to prevent.
 
         relevance_query (Frame Phase 2.5): when provided, the result is
         re-ranked by semantic relevance to the query text. The DAL pulls a
@@ -526,7 +537,11 @@ class BrainRecallMixin:
         # eaten by the veil cut and capped by the DAL clamp, both of which
         # silently un-flag saturated results (2026-08-07 review, finding 3).
         # The relevance path is ranked top-k — truncation is its contract.
-        dal_limit = limit * relevance_pool_multiplier if relevance_query else limit
+        # limit=None → unbounded pull (all matches); the pool-widening below
+        # (relevance pool, veil backfill) only applies to a finite page.
+        dal_limit = limit
+        if relevance_query and dal_limit is not None:
+            dal_limit = dal_limit * relevance_pool_multiplier
         # Scope veil: filter_nodes is an ambient ENUMERATION surface (a
         # structural sweep, not a reach for a known id) — rich=True would
         # otherwise hand out the walled corpus's full content in one call,
@@ -537,11 +552,12 @@ class BrainRecallMixin:
         # The veil cut does NOT slice on the relevance path — the widened
         # pool belongs to _rerank_by_relevance, which owns the trim.
         _veil = self.scope_veil(session_id or '')
-        if _veil:
+        if _veil and dal_limit is not None:
             dal_limit = dal_limit * 2
         result = node_dal.filter_nodes(
             field=field, include=include, exclude=exclude,
-            lt=lt, gt=gt, limit=dal_limit, sort_by=sort_by, sort_order=sort_order)
+            lt=lt, gt=gt, contains=contains, prefix=prefix,
+            limit=dal_limit, sort_by=sort_by, sort_order=sort_order)
         if _veil and result.get('nodes'):
             kept = [n for n in result['nodes'] if n.get('id') not in _veil]
             # The relevance path's trim belongs to _rerank_by_relevance; the
@@ -557,11 +573,13 @@ class BrainRecallMixin:
         # can over-flag (report truncated when the hidden remainder is all
         # walled) — conservative in the right direction: isolation governs
         # what rises, not what the count admits exists.
-        if not relevance_query:
+        if not relevance_query and limit is not None:
             result['nodes'] = result['nodes'][:limit]
             if result.get('total_count', 0) > limit:
                 result['truncated'] = truncation_payload(
                     limit, result['nodes'])
+        # limit is None → unbounded: every matching row is kept and total_count
+        # == len(nodes), so there is nothing to trim or flag.
 
         # Relevance ranking happens BEFORE enrichment. _rerank_by_relevance
         # scores by embedding (looked up by id) + structural order — it needs
