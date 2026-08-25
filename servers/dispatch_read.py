@@ -43,23 +43,37 @@ def _handle_recall(brain, args, graph_changes):
 
 
 def _handle_recall_batch(brain, args, graph_changes):
-    """Batch recall — multiple queries in one call."""
+    """Batch recall — N queries, each through the SAME door as single recall.
+
+    Delegates to _handle_recall per query instead of re-running the
+    recall + canonicalize sequence, so the batch cannot drift from single
+    recall: one handler body, one place a failure gets logged
+    (brain._log_error inside _handle_recall), one place mark_accessed /
+    source are honored. The per-query shape stays compact — {query, results}
+    — dropping the stats/gap chrome single recall renders, which is the
+    intended batch compaction, not drift. A canonicalize failure propagates
+    loud, exactly as it does for single recall — a batch is no reason to
+    swallow an unreadable correction chain.
+    """
     queries = args.get("queries", [])
-    limit = args.get("limit", 5)
-    batch_filter = args.get("filter")
-    sid = caller_session(args)  # identity: drives this session's fatigue/activity
+    # Control fields shared by every query — everything except the batch's own
+    # `queries` (and any by-id / single-query key a caller mis-bundled, so each
+    # delegated call is an unambiguous by-query recall). Carries the
+    # proxy-stamped caller session so identity resolves the same per call.
+    # `limit` is injected with the batch default (5, vs single recall's 8) so
+    # delegation honors the batch contract.
+    base = {k: v for k, v in args.items()
+            if k not in ("queries", "query", "node_id")}
+    base["limit"] = args.get("limit", 5)
     results = []
     for q in queries[:10]:  # cap at 10 queries
-        try:
-            result = brain.recall(query=q, filter=batch_filter, limit=limit,
-                                  session_id=sid, source='mcp')
-            # Same canonical door as single recall — a batch is no reason to
-            # hand back nodes with their corrections stripped off.
-            brain.canonicalize_results(result.get("results", []),
-                                       session_id=sid)
-            results.append({"query": q, "results": result.get("results", [])})
-        except Exception as e:
-            results.append({"query": q, "results": [], "error": str(e)})
+        r = _handle_recall(brain, {**base, "query": q}, graph_changes)
+        if r.get("ok"):
+            results.append(
+                {"query": q, "results": (r.get("result") or {}).get("results", [])})
+        else:
+            results.append(
+                {"query": q, "results": [], "error": r.get("error", "recall failed")})
     return {"ok": True, "result": results}
 
 
