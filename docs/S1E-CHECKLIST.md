@@ -1,6 +1,36 @@
 # S1E Prompt Checklist — the boxes every revision must check
 
-## Walk state — THREE-ARM NIGHT COMPLETE 2026-08-25: recommend PROMOTE v6 (v40) ◀ ACTIVE ARC
+## Walk state — SHIPPED 2026-08-25: v-next.6 IS the production default ◀ ACTIVE ARC
+
+**The arc closed.** `SYSTEM_PROMPT` in `scales/s1/encoding_prompt.py` is v6 (110,452 chars,
+was 86,833); merged as main `c9205a7`, daemon restarted, verified from the daemon itself —
+`get_interaction_effective('s1e')` → fingerprint `3817564d21c4`, `source=default`,
+pointer-less, `check-overrides` still at the permanent 2. Registered copy: **v41**.
+Ship record with full numbers: brain id:4f201dd1.
+
+**What shipped on top of the measured v40:** Tom's read of the prompt text produced four
+wording fixes — "3+ distinct turns" + trace ids (was "turn anchors", one step from the
+turn-coordinate leak a82d7b7d); the `locked` line stating code truth instead of colliding
+with the persona name; `## Speed` → `## Cadence and worked examples`; six `§7.6.Ax`
+headings renamed to what each teaches. Five of his six catches were production text we had
+been shipping for versions.
+
+**v-next.7 opens here, all measured, none speculative:**
+1. **Tier-1 claims-check banner** (assembly layer) — v6 moved stale-sibling *reach* (3/3 vs
+   1/3); fact-carriage is the proven residual, and the 2×2 says banner+template is what
+   wins (7/15; either alone ≈ baseline).
+2. **The atoms bar** — "keeps referencing" is stricter than the ruled retrieval-divergence
+   test (id:9f072492); the Rachel item (830ce83f, third-party fact in passing, skipped by
+   all three arms) is its ready-made probe.
+3. **The agent name** — hardcoded 7× incl. an identity *example* node, while
+   `BRAIN_AGENT_NAME` binding exists and every other layer respects it. Needs a token plus
+   substitution; where the substitution belongs (shared resolver vs s1e call site) is the
+   design question.
+4. **source_refs under-production** (~50% of nodes, 3 items at zero; phrasing ruled out).
+5. **The twin write-boundary warn** — a new node title-matching an unexpanded catalog title
+   with no correction edge; minted 3/3 in every arm ever tested.
+
+## Prior head — three-arm night (2026-08-25), superseded by the ship above
 
 **Overnight three-arm result (lived substrate, repaired instruments, validity-partitioned;
 full detail: brain id:7d301e3d, report artifact below):** gate-10 — prod 80.0 / v5 88.3 /
