@@ -1,6 +1,21 @@
 # S1E Prompt Checklist — the boxes every revision must check
 
-## Walk state — GATE RAN 2026-08-24: v39 wins every axis; awaiting Tom's promote pass ◀ ACTIVE ARC
+## Walk state — THREE-ARM NIGHT COMPLETE 2026-08-25: recommend PROMOTE v6 (v40) ◀ ACTIVE ARC
+
+**Overnight three-arm result (lived substrate, repaired instruments, validity-partitioned;
+full detail: brain id:7d301e3d, report artifact below):** gate-10 — prod 80.0 / v5 88.3 /
+**v6 90.0, perfect 1.00 on all 9 scorable items** (only fails = the user-turns-only
+abstention gold artifact); batch B — 57.1 / 71.4 / 73.8 (v5-v6 tie at valid-only);
+batch C (2-arm) — 71.4 / 81.0; run-44 — all arms fail gold, but v6 moves sibling REACH
+3/3 vs 1/3 (fact-carriage is the residual; twin stands). v6 = v5 + four surgical example
+revisions (registered v40 DORMANT, eval/candidate_prompts/s1e_vnext6_wip.md).
+**Recommendation: promote v6.** Ship act unchanged: template → SYSTEM_PROMPT in
+scales/s1/encoding_prompt.py, merge, install stays pointer-less. NOT promoted — Tom's pass.
+**v-next.7 spine (all measured):** Tier-1 claims-check banner (assembly layer — supplies
+the fact-carriage half v6 proved missing); source_refs under-production (~50%, deeper than
+phrasing); third-party-in-passing skip class (830ce83f, all arms); twin write-boundary warn.
+
+## Prior head — GATE RAN 2026-08-24 (superseded by the three-arm night above)
 
 **Where this stands.** v39 IS REGISTERED (dormant, 109,878 chars, header stripped) and the
 gate eval ran end-to-end: baseline (pointer-less code default, corpus fcc338, --force) vs
