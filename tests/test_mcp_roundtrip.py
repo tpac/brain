@@ -1178,5 +1178,24 @@ class TestMissingEnvelopeIsLoud(unittest.TestCase):
         self.assertIn("line", text)
 
 
+class TestAgentNodeLimit(unittest.TestCase):
+    """The filter_nodes agent-boundary clamp keeps the MCP surface bounded.
+
+    The DAL read is unbounded (limit=None) for internal id-set scans; the
+    dispatch door clamps the agent's request so results never flood context.
+    """
+
+    def test_clamp(self):
+        from servers.dispatch_read import _agent_node_limit
+        from servers.contract import NODE_QUERY_MAX_LIMIT
+        self.assertEqual(_agent_node_limit(None), 50)        # missing → default page
+        self.assertEqual(_agent_node_limit(10), 10)          # honest small page
+        self.assertEqual(_agent_node_limit(0), 1)            # floor of 1
+        # An agent can never exceed the ceiling — not even by asking for "all".
+        self.assertEqual(_agent_node_limit(10_000), NODE_QUERY_MAX_LIMIT)
+        self.assertEqual(_agent_node_limit(NODE_QUERY_MAX_LIMIT + 1),
+                         NODE_QUERY_MAX_LIMIT)
+
+
 if __name__ == "__main__":
     unittest.main()

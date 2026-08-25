@@ -73,14 +73,17 @@ def _norm_id(x) -> str:
 def _s2_origin_ids(brain) -> set:
     """8-char ids of live S2-authored nodes (community / consolidation / healer).
 
-    No except-to-empty here: a failed SELECT (schema drift — the dump_nodes
-    dropped-column class) must abort the sweep loudly, not read as "this
-    brain has zero S2 nodes" and silently kill the loop-closure probe.
+    Routes through the NodeDAL prefix door (unbounded — this is the whole S2
+    population, ~900 nodes, not a page) instead of raw SQL. The DAL read is
+    veil-free by design, which is exactly right here: this is a structural
+    completeness probe, not a scoped agent view, so it must count every S2
+    node. No except-to-empty: a failed query (schema drift — the dump_nodes
+    dropped-column class) aborts the sweep loudly, not as "this brain has zero
+    S2 nodes" that silently kills the loop-closure probe.
     """
-    rows = brain.conn.execute(
-        "SELECT id FROM nodes WHERE archived = 0 AND encoding_source LIKE 's2:%'"
-    ).fetchall()
-    return {_norm_id(r[0]) for r in rows}
+    res = brain._nodes.filter_nodes(
+        field='encoding_source', prefix='s2:', limit=None)
+    return {_norm_id(r['id']) for r in res['nodes']}
 
 
 def _s2_reach(s2_ids: set, trace: dict) -> dict:

@@ -484,6 +484,14 @@ GET_NODES_SMALL_MAX = 3
 # Threshold: up to this, use balanced config — more room than S2CE but bounded.
 GET_NODES_MEDIUM_MAX = 10
 
+# The agent-facing node-count cap for filter_nodes. The DAL read is unbounded
+# (limit=None → all matches — internal id-set scans need every row); this bound
+# lives at the dispatch door, where results render into the caller's context
+# and a flood is the real risk. Pairs with dal_logs.LOG_QUERY_MAX_LIMIT and
+# brain_constants.EPISODE_MAX_LIMIT — same pattern (named per-door cap), each
+# valued for its own cost. Internal Python callers bypass dispatch → uncapped.
+NODE_QUERY_MAX_LIMIT = 200
+
 # Balanced: for 4-10 node batches (S1E, consolidation, Anchor multi-node)
 GET_NODES_BALANCED_FORMAT = {
     'content_limit': 600,       # full enough for encoding decisions

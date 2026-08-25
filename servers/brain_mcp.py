@@ -647,6 +647,8 @@ def _build_tools():
          "exclude": {"type": "array", "items": {"type": "string"}, "description": "Hide nodes where field matches one of these values"},
          "lt": {"description": "Less than (for numeric fields like confidence, emotion, or ISO timestamps for created_at, updated_at)"},
          "gt": {"description": "Greater than (for numeric fields, or ISO timestamps for created_at, updated_at)"},
+         "contains": {"type": "string", "description": "Substring match on `field` (LIKE '%value%') — e.g. title contains a phrase. Bounded by `limit` like every filter here."},
+         "prefix": {"type": "string", "description": "Prefix match on `field` (LIKE 'value%') — e.g. encoding_source starting 's2:'. Bounded by `limit`."},
          "limit": {"type": "integer", "description": "Max results (default 50, max 200)", "default": 50},
          "sort_by": {"type": "string", "description": "Sort column: created_at (default), confidence, access_count, title", "default": "created_at"},
          "sort_order": {"type": "string", "description": "asc or desc (default)", "default": "desc"},

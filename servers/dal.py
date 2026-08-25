@@ -40,6 +40,14 @@ from .dal_graph import (EDGE_CONTEXT_EXCLUDED_RELATIONS,
 from .db_backends.sqlite import commit_unless_batched
 
 
+def _like_escape(s: str) -> str:
+    """Escape LIKE metachars (\\, %, _) so a caller-supplied value matches
+    literally under `... LIKE ? ESCAPE '\\'`. A '_' in a source like
+    's2:community_detection' must not act as a single-char wildcard. Mirrors
+    TraceDAL._like_suffix_param (dal_logs.py) for node-side text filters."""
+    return s.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+
+
 class BrainMetaDAL:
     """Access layer for brain_meta table — key-value config store."""
 
@@ -368,7 +376,7 @@ class NodeDAL:
         return row[0] if row else 0
 
     def filter_nodes(self, field: str, include=None, exclude=None,
-                     lt=None, gt=None, limit: int = 50,
+                     lt=None, gt=None, contains=None, prefix=None, limit: int = 50,
                      sort_by: str = 'created_at', sort_order: str = 'desc'):
         """Filter nodes by any structural OR promoted-kv field.
 
@@ -380,7 +388,16 @@ class NodeDAL:
             include: list of values to match (exact, IN).
             exclude: list of values to exclude (exact, NOT IN).
             lt/gt: numeric comparisons — structural fields only.
-            limit: max results (capped at 200).
+            contains: substring match on `field` (LIKE '%value%'). Works on
+                structural and kv fields. Same operator vocabulary as recall's
+                _apply_filter dict-filter (brain_recall.py); LIKE metachars in
+                the value are escaped so they match literally.
+            prefix: prefix match on `field` (LIKE 'value%'), escaped as above.
+            limit: max results. None → unbounded (all matches — an honest
+                id-set extraction). A number is an honest page with NO silent
+                ceiling: the caller's page is the caller's. The agent-facing
+                cap lives at the dispatch boundary (NODE_QUERY_MAX_LIMIT), not
+                here — a skinny internal scan is not a context-flood risk.
             sort_by: column to sort by.
             sort_order: 'asc' or 'desc'.
 
@@ -411,7 +428,11 @@ class NodeDAL:
         if sort_order not in ('asc', 'desc'):
             sort_order = 'desc'
 
-        limit = min(max(limit, 1), 200)
+        # None → unbounded (no LIMIT clause); a number is an honest floor-of-1
+        # page with no silent ceiling. Flooding is bounded at the agent door
+        # (dispatch), not here — see the `limit` arg note above.
+        if limit is not None:
+            limit = max(int(limit), 1)
 
         # Build WHERE clauses
         conditions = ['archived = 0']
@@ -446,6 +467,21 @@ class NodeDAL:
             conditions.append('%s > ?' % field)
             params.append(gt)
 
+        # Text ops (contains/prefix): a LIKE on `field`, kv-routed the same way
+        # include/exclude are. Additive (AND) with the clauses above. The
+        # metachars in the value are escaped so 's2:' or 'a_b' match literally.
+        for op_val, wrap in ((contains, '%%%s%%'), (prefix, '%s%%')):
+            if not op_val:
+                continue  # empty == not-provided, matching include/exclude
+            like = wrap % _like_escape(str(op_val))
+            if kv_field:
+                conditions.append(
+                    "id IN (SELECT node_id FROM node_metadata_kv "
+                    "WHERE key = '%s' AND value LIKE ? ESCAPE '\\')" % field)
+            else:
+                conditions.append("%s LIKE ? ESCAPE '\\'" % field)
+            params.append(like)
+
         where = ' AND '.join(conditions)
 
         # Count total matches
@@ -460,9 +496,12 @@ class NodeDAL:
         if kv_field:
             field_select = ("(SELECT value FROM node_metadata_kv "
                             "WHERE node_id = nodes.id AND key = '%s')" % field)
-        sql = 'SELECT id, title, type, confidence, created_at, %s FROM nodes WHERE %s ORDER BY %s %s LIMIT ?' % (
+        base_sql = 'SELECT id, title, type, confidence, created_at, %s FROM nodes WHERE %s ORDER BY %s %s' % (
             field_select, where, sort_by, sort_order)
-        rows = self.conn.execute(sql, params + [limit]).fetchall()
+        if limit is None:
+            rows = self.conn.execute(base_sql, params).fetchall()
+        else:
+            rows = self.conn.execute(base_sql + ' LIMIT ?', params + [limit]).fetchall()
 
         nodes = []
         for r in rows:

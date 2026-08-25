@@ -103,6 +103,19 @@ def _handle_find_node_by_title(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
+def _agent_node_limit(req):
+    """Clamp a filter_nodes limit request to the agent-facing ceiling.
+
+    The MCP surface renders results into the caller's context, so it stays
+    bounded — a missing/None request becomes the default page, and no request
+    exceeds NODE_QUERY_MAX_LIMIT. The DAL read itself is unbounded (limit=None)
+    for internal id-set scans; that path never comes through dispatch, so this
+    clamp does not touch it.
+    """
+    from servers.contract import NODE_QUERY_MAX_LIMIT
+    return min(max(int(req if req is not None else 50), 1), NODE_QUERY_MAX_LIMIT)
+
+
 def _handle_filter_nodes(brain, args, graph_changes):
     """Structured query: filter nodes by any structural field."""
     result = brain.filter_nodes(
@@ -111,7 +124,9 @@ def _handle_filter_nodes(brain, args, graph_changes):
         exclude=args.get("exclude"),
         lt=args.get("lt"),
         gt=args.get("gt"),
-        limit=args.get("limit", 50),
+        contains=args.get("contains"),
+        prefix=args.get("prefix"),
+        limit=_agent_node_limit(args.get("limit")),
         sort_by=args.get("sort_by", "created_at"),
         sort_order=args.get("sort_order", "desc"),
         rich=args.get("rich", True),
