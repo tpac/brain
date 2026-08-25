@@ -124,37 +124,22 @@ NOT_COMPUTABLE = [
 # ─── Item scoring ─────────────────────────────────────────────────────────
 
 def _all_live_node_ids(brain) -> List[str]:
-    """Every non-archived node id, paged past filter_nodes' 200-row cap.
+    """Every non-archived node id, in one honest unbounded pull.
 
-    `gt` filters the queried field, so the cursor field IS created_at. The
-    collected count is reconciled against the DAL's exact total_count from
-    the first (unbounded) page — a silent undercount here would deflate every
-    rate downstream.
+    The total_count cross-check matters: a silent undercount here would
+    deflate every rate downstream.
     """
-    collected: Dict[str, str] = {}
-    cursor: Optional[str] = None
-    total: Optional[int] = None
-    while True:
-        res = brain.filter_nodes(field='created_at', gt=cursor, rich=False,
-                                 limit=200, sort_by='created_at',
-                                 sort_order='asc')
-        if 'error' in res:
-            raise RuntimeError('filter_nodes: %s' % res['error'])
-        if total is None:
-            total = res.get('total_count', 0)
-        rows = res.get('nodes') or []
-        fresh = [r for r in rows if r['id'] not in collected]
-        if not fresh:
-            break
-        for r in fresh:
-            collected[r['id']] = r['created_at']
-        cursor = rows[-1]['created_at']
-    if total is not None and len(collected) != total:
+    res = brain.filter_nodes(field='created_at', rich=False, limit=None,
+                             sort_by='created_at', sort_order='asc')
+    if 'error' in res:
+        raise RuntimeError('filter_nodes: %s' % res['error'])
+    ids = [r['id'] for r in (res.get('nodes') or [])]
+    total = res.get('total_count', 0)
+    if len(ids) != total:
         raise RuntimeError(
-            'node sweep collected %d of %d live nodes — paging lost rows '
-            '(duplicate created_at at a page boundary?)'
-            % (len(collected), total))
-    return list(collected)
+            'node sweep returned %d of %d live nodes — unbounded pull '
+            'disagrees with total_count' % (len(ids), total))
+    return ids
 
 
 def _is_encoder(source: str) -> bool:

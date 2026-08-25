@@ -75,11 +75,30 @@ _STOPWORDS = frozenset([
 NON_TRANSCRIPT_SOURCE_PREFIXES = ('anchor:seed', 's2:', 'migration:', 'hook:')
 
 
-def _src_exclude(alias: str = "") -> str:
-    """SQL clause excluding non-transcript sources (constants only, no params)."""
-    return " AND ".join(
-        f"COALESCE({alias}encoding_source,'') NOT LIKE '{p}%'"
-        for p in NON_TRANSCRIPT_SOURCE_PREFIXES)
+def _door_ids(brain, field: str, *, contains: str = None,
+              prefix: str = None) -> set:
+    """Live-node id set where `field` matches — through the node filter door
+    (NodeDAL.filter_nodes). DAL-direct deliberately: the gold scan is a
+    completeness ground-truth probe and must see through any scope veil,
+    same choice as sweep._s2_origin_ids. An unknown kv key (no node stores
+    it) is a legitimate empty set here — the door flags it `unknown_field`;
+    any other error raises to the caller's per-pass db_error handling."""
+    res = brain._nodes.filter_nodes(field=field, contains=contains,
+                                    prefix=prefix, limit=None)
+    if 'error' in res:
+        if res.get('unknown_field'):
+            return set()
+        raise RuntimeError(res['error'])
+    return {n['id'] for n in res['nodes']}
+
+
+def _non_transcript_ids(brain) -> set:
+    """Ids of nodes whose encoding_source marks them non-transcript (seed /
+    S2 / migration / hook) — excluded from every gold-scan pass."""
+    out = set()
+    for p in NON_TRANSCRIPT_SOURCE_PREFIXES:
+        out |= _door_ids(brain, 'encoding_source', prefix=p)
+    return out
 
 
 # Minimum gold length for an exact-phrase scan. Below this a substring
@@ -174,103 +193,91 @@ def _scan_brain_for_gold(brain, gold: str) -> Dict[str, Any]:
     if not terms and not phrase:
         return result
 
+    matches: List[Dict[str, Any]] = []
+
+    # Everything below composes id-sets through the node filter door
+    # (SQLite LIKE is ASCII-case-insensitive, matching the old LOWER()
+    # scan; the door additionally escapes LIKE metachars in the needle,
+    # so a gold containing '_'/'%' now matches literally — stricter).
     try:
-        conn = brain.conn
-    except Exception:
+        excluded = _non_transcript_ids(brain)
+    except Exception as e:
+        result["db_error"] = f"source-exclusion scan failed: {e}"
         return result
 
-    matches: List[Dict[str, Any]] = []
+    def _title_content_ids(needle: str) -> set:
+        return (_door_ids(brain, 'title', contains=needle)
+                | _door_ids(brain, 'content', contains=needle))
+
+    def _node_matches(ids: set, source: str) -> List[Dict[str, Any]]:
+        """Match rows for title/content hits — title + content snippet from
+        the bulk node pull (bounded: <=10 ids)."""
+        rows = brain._nodes.get_bulk(sorted(ids)[:10])
+        return [{
+            "node_id": (nid or "")[:8],
+            "title_snippet": (row.get("title") or "")[:60],
+            "match_source": source,
+            "snippet": (row.get("content") or "")[:160],
+        } for nid, row in rows.items()]
 
     # Pass 1: phrase match on title + content
     if phrase:
         try:
-            rows = conn.execute(
-                "SELECT id, title, substr(content, 1, 200) "
-                "FROM nodes "
-                f"WHERE archived = 0 AND {_src_exclude()} "
-                "  AND (LOWER(title) LIKE ? OR LOWER(content) LIKE ?) "
-                "LIMIT 10",
-                (f"%{phrase}%", f"%{phrase}%"),
-            ).fetchall()
-            for nid, title, snippet in rows:
-                matches.append({
-                    "node_id": (nid or "")[:8],
-                    "title_snippet": (title or "")[:60],
-                    "match_source": "phrase:title_or_content",
-                    "snippet": (snippet or "")[:160],
-                })
+            ids = _title_content_ids(phrase) - excluded
+            matches.extend(_node_matches(ids, "phrase:title_or_content"))
         except Exception as e:
             result["db_error"] = f"phrase scan failed: {e}"
 
-    # Pass 2: AND-of-terms match on title + content
+    # Pass 2: AND-of-terms match on title + content (each term may land in
+    # either field — OR across fields, AND across terms, one node).
     if terms and not matches:
         try:
-            conditions = " AND ".join(
-                "(LOWER(title) LIKE ? OR LOWER(content) LIKE ?)" for _ in terms
-            )
-            params = [f"%{t}%" for t in terms for _ in range(2)]
-            rows = conn.execute(
-                f"SELECT id, title, substr(content, 1, 200) "
-                f"FROM nodes "
-                f"WHERE archived = 0 AND {_src_exclude()} AND {conditions} "
-                f"LIMIT 10",
-                params,
-            ).fetchall()
-            for nid, title, snippet in rows:
-                matches.append({
-                    "node_id": (nid or "")[:8],
-                    "title_snippet": (title or "")[:60],
-                    "match_source": "terms:title_or_content",
-                    "snippet": (snippet or "")[:160],
-                })
+            id_sets = [_title_content_ids(t) for t in terms]
+            ids = set.intersection(*id_sets) - excluded
+            matches.extend(_node_matches(ids, "terms:title_or_content"))
         except Exception as e:
             result["db_error"] = f"terms scan failed: {e}"
 
-    # Pass 3: metadata_kv scan for high-signal keys, still AND across terms
+    # Pass 3: metadata_kv scan for high-signal keys. Per key: phrase, else
+    # AND-across-terms within that key's value (the old SQL AND'd LIKEs on
+    # the same kv row). Snippet is the key's value, straight off the door
+    # row (filter_nodes returns the filtered field's value per node).
     if (terms or phrase) and not matches:
         try:
             kv_keys = (
                 "situation", "reasoning", "their_raw_quote", "my_raw_quote",
                 "event_description", "value", "entity", "handle",
             )
-            key_placeholders = ",".join("?" * len(kv_keys))
+            def _kv_pass(needles, mode):
+                """One sweep over the keys: a node matches a key when that
+                key's value contains ALL needles. Appends up to the 10-cap."""
+                for key in kv_keys:
+                    if len(matches) >= 10:
+                        return
+                    res = brain._nodes.filter_nodes(field=key,
+                                                    contains=needles[0],
+                                                    limit=None)
+                    if 'error' in res:
+                        if res.get('unknown_field'):
+                            continue
+                        raise RuntimeError(res['error'])
+                    rows = {n['id']: n for n in res['nodes']}
+                    ids = set(rows) - excluded
+                    for t in needles[1:]:
+                        ids &= _door_ids(brain, key, contains=t)
+                    for nid in sorted(ids)[:10 - len(matches)]:
+                        row = rows[nid]
+                        matches.append({
+                            "node_id": (nid or "")[:8],
+                            "title_snippet": (row.get("title") or "")[:60],
+                            "match_source": f"{mode}:meta.{key}",
+                            "snippet": (str(row.get(key) or ""))[:160],
+                        })
+
             if phrase:
-                rows = conn.execute(
-                    f"SELECT DISTINCT kv.node_id, kv.key, substr(kv.value, 1, 200), n.title "
-                    f"FROM node_metadata_kv kv "
-                    f"JOIN nodes n ON n.id = kv.node_id "
-                    f"WHERE n.archived = 0 AND {_src_exclude('n.')} "
-                    f"  AND kv.key IN ({key_placeholders}) "
-                    f"  AND LOWER(kv.value) LIKE ? "
-                    f"LIMIT 10",
-                    (*kv_keys, f"%{phrase}%"),
-                ).fetchall()
-                for nid, key, snippet, title in rows:
-                    matches.append({
-                        "node_id": (nid or "")[:8],
-                        "title_snippet": (title or "")[:60],
-                        "match_source": f"phrase:meta.{key}",
-                        "snippet": (snippet or "")[:160],
-                    })
+                _kv_pass([phrase], "phrase")
             if not matches and terms:
-                conditions = " AND ".join("LOWER(kv.value) LIKE ?" for _ in terms)
-                rows = conn.execute(
-                    f"SELECT DISTINCT kv.node_id, kv.key, substr(kv.value, 1, 200), n.title "
-                    f"FROM node_metadata_kv kv "
-                    f"JOIN nodes n ON n.id = kv.node_id "
-                    f"WHERE n.archived = 0 AND {_src_exclude('n.')} "
-                    f"  AND kv.key IN ({key_placeholders}) "
-                    f"  AND {conditions} "
-                    f"LIMIT 10",
-                    (*kv_keys, *(f"%{t}%" for t in terms)),
-                ).fetchall()
-                for nid, key, snippet, title in rows:
-                    matches.append({
-                        "node_id": (nid or "")[:8],
-                        "title_snippet": (title or "")[:60],
-                        "match_source": f"terms:meta.{key}",
-                        "snippet": (snippet or "")[:160],
-                    })
+                _kv_pass(terms, "terms")
         except Exception as e:
             result["db_error"] = f"metadata scan failed: {e}"
 
