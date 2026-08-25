@@ -1178,23 +1178,26 @@ class TestMissingEnvelopeIsLoud(unittest.TestCase):
         self.assertIn("line", text)
 
 
-class TestAgentNodeLimit(unittest.TestCase):
-    """The filter_nodes agent-boundary clamp keeps the MCP surface bounded.
-
-    The DAL read is unbounded (limit=None) for internal id-set scans; the
-    dispatch door clamps the agent's request so results never flood context.
+class TestAgentLimit(unittest.TestCase):
+    """The shared dispatch-door limit clamp keeps every agent-facing read
+    bounded. The underlying DAL read is unbounded (limit=None) for internal
+    scans; this clamp sits at the dispatch door those never come through.
+    One helper, parameterized per door (filter_nodes, recall_episodes).
     """
 
     def test_clamp(self):
-        from servers.dispatch_read import _agent_node_limit
-        from servers.contract import NODE_QUERY_MAX_LIMIT
-        self.assertEqual(_agent_node_limit(None), 50)        # missing → default page
-        self.assertEqual(_agent_node_limit(10), 10)          # honest small page
-        self.assertEqual(_agent_node_limit(0), 1)            # floor of 1
-        # An agent can never exceed the ceiling — not even by asking for "all".
-        self.assertEqual(_agent_node_limit(10_000), NODE_QUERY_MAX_LIMIT)
-        self.assertEqual(_agent_node_limit(NODE_QUERY_MAX_LIMIT + 1),
-                         NODE_QUERY_MAX_LIMIT)
+        from servers.dispatch_common import _agent_limit
+        # filter_nodes door (default 50, ceiling 200)
+        self.assertEqual(_agent_limit(None, 50, 200), 50)     # absent → default page
+        self.assertEqual(_agent_limit(10, 50, 200), 10)       # honest small page
+        self.assertEqual(_agent_limit(0, 50, 200), 1)         # floor of 1
+        self.assertEqual(_agent_limit(10_000, 50, 200), 200)  # never exceeds ceiling
+        # recall_episodes door (default 10, ceiling 500) — same clamp, its values
+        self.assertEqual(_agent_limit(None, 10, 500), 10)
+        self.assertEqual(_agent_limit(9_999, 10, 500), 500)
+        # A default larger than the ceiling is still clamped — the None branch
+        # routes the default THROUGH the ceiling, not around it.
+        self.assertEqual(_agent_limit(None, 999, 500), 500)
 
 
 if __name__ == "__main__":

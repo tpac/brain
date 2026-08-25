@@ -60,6 +60,20 @@ def sender_id(args):
     return caller_session(args) or args.get('from_session', '') or ''
 
 
+def _agent_limit(req, default, ceiling):
+    """Clamp an agent-facing read limit at the dispatch door.
+
+    Absent/None → the default page; no request exceeds `ceiling`. The MCP
+    surface renders results into the caller's context, so the agent path stays
+    bounded here — while the underlying DAL read is unbounded (limit=None) for
+    internal id-set / window scans, a path that never comes through dispatch.
+    One clamp, parameterized per door: filter_nodes (50, NODE_QUERY_MAX_LIMIT)
+    and recall_episodes (EPISODE_DEFAULT_LIMIT, EPISODE_MAX_LIMIT).
+    """
+    req = default if req is None else req
+    return min(max(int(req), 1), ceiling)
+
+
 def _pop_session_ctx(brain, args):
     """Resolve the calling session's ctx, popping BOTH identity keys.
 

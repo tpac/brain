@@ -30,7 +30,7 @@ import re
 import time
 from bisect import bisect_left
 from functools import lru_cache
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from . import embedder
 from .clock import iso_cutoff
@@ -501,7 +501,8 @@ class BrainTracesMixin:
                         scale: str = 's0', event_type: str = None,
                         ref_type=None, older_than: str = None,
                         younger_than: str = None, sort_order: str = 'desc',
-                        limit: int = None) -> Dict[str, Any]:
+                        limit: Optional[int] = EPISODE_DEFAULT_LIMIT
+                        ) -> Dict[str, Any]:
         """Search/filter trace_events and return full episode records — the
         decode-over-traces sibling of recall.
 
@@ -538,14 +539,15 @@ class BrainTracesMixin:
                  form carries coverage details (and triggers the MCP banner).
         """
         from .trace_contract import CONVERSATIONAL_REF_TYPES
-        from .brain_constants import EPISODE_MAX_LIMIT
-        # Clamp the REQUESTED limit at the door so the +1 probe survives the
-        # DAL cap: filter_events allows EPISODE_MAX_LIMIT+1 rows of headroom
-        # for exactly this probe. Without the door clamp, limit=500 fetched
-        # 501→clamped-to-500 and the probe was structurally dead at the one
-        # limit S2 uses (2026-08-07 review, finding 1).
-        limit = EPISODE_DEFAULT_LIMIT if limit is None else int(limit)
-        limit = min(max(limit, 1), EPISODE_MAX_LIMIT)
+        # Honest limit (mirrors filter_nodes): the signature default is a
+        # bounded page (EPISODE_DEFAULT_LIMIT), and EXPLICIT limit=None is the
+        # opt-in for unbounded (all episodes in the window — internal window
+        # pulls). A number is an honest page with no silent ceiling; the
+        # agent-facing default + cap live at the dispatch door
+        # (_handle_recall_episodes: absent → EPISODE_DEFAULT_LIMIT, clamp to
+        # EPISODE_MAX_LIMIT). The time path's +1 probe rides limit+1 directly.
+        if limit is not None:
+            limit = max(int(limit), 1)
         younger_iso = _resolve_time_bound(younger_than)
         older_iso = _resolve_time_bound(older_than)
         if (not younger_iso and not older_iso
@@ -588,7 +590,14 @@ class BrainTracesMixin:
                         episodes = [dict(recs[tid], _score=round(score, 4))
                                     for score, tid in scored if tid in recs]
                         return {'episodes': episodes,
-                                'truncated': len(cands) > limit,
+                                # Honest even at limit=None: the candidate scan
+                                # caps at EPISODE_SEMANTIC_CANDIDATE_CAP, so a
+                                # saturated scan means matches were dropped —
+                                # flag it (the docstring's "hit limit or the
+                                # candidate cap") rather than claim completeness.
+                                'truncated': (
+                                    len(cands) >= EPISODE_SEMANTIC_CANDIDATE_CAP
+                                    or (limit is not None and len(cands) > limit)),
                                 'ranked_by': 'relevance'}
                 else:
                     # embed_query returned no vector → embedder unavailable.
@@ -614,6 +623,12 @@ class BrainTracesMixin:
         # false-flagged exact fits). The semantic path above keeps its bare
         # bool: ranked top-k, where truncation is the contract, not a lie.
         order = sort_order if sort_order in ('asc', 'desc') else 'desc'
+        if limit is None:
+            # Unbounded: fetch every matching event. You asked for all and got
+            # all, so there is nothing to probe or flag.
+            fetched = self._trace_dal.filter_events(
+                sort_order=order, limit=None, **common)
+            return {'episodes': fetched, 'truncated': False, 'ranked_by': 'time'}
         fetched = self._trace_dal.filter_events(
             sort_order=order, limit=limit + 1, **common)
         return _flag_truncation(

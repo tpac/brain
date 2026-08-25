@@ -1092,30 +1092,36 @@ class TraceDAL(_LogsWriteBase):
                       session_id: str = '', session_ids: Optional[List[str]] = None,
                       younger_than: str = '', older_than: str = '',
                       sort_order: str = 'desc',
-                      limit: int = 10) -> List[Dict[str, Any]]:
+                      limit: Optional[int] = 10) -> List[Dict[str, Any]]:
         """Structured + lexical query over trace_events — the filter_nodes
         analog for the traces layer. Returns full DECODED records (same shape
         as get_by_ids), the substance recall_episodes returns to the caller.
         The time/no-query path: indexed WHERE + ORDER BY created_at + LIMIT
-        early-exits, so only `limit` rows are decoded. See _event_where for the
-        filter semantics (ref_types is an INCLUDE whitelist). Semantic ranking
-        lives in BrainTracesMixin.recall_episodes (brain_traces.py).
+        early-exits, so only `limit` rows are decoded (limit=None → all matching
+        rows). See _event_where for the filter semantics (ref_types is an
+        INCLUDE whitelist). Semantic ranking lives in
+        BrainTracesMixin.recall_episodes (brain_traces.py).
         """
-        from .brain_constants import EPISODE_MAX_LIMIT
-        # +1 headroom over the semantic cap: recall_episodes clamps requested
-        # limits to EPISODE_MAX_LIMIT and probes with limit+1 — admitting
-        # MAX+1 here is what keeps that probe alive at the cap
-        # (2026-08-07 review, finding 1).
-        limit = min(max(int(limit), 1), EPISODE_MAX_LIMIT + 1)
+        # Honest limit (the filter_nodes analog): None → no LIMIT clause (every
+        # matching event in the window — internal window pulls take all rows);
+        # a number is an honest page with no silent ceiling. The agent-facing
+        # cap lives at the recall_episodes dispatch door, not here. The +1 probe
+        # recall_episodes runs is just limit+1, honored directly now that
+        # nothing clamps it away.
+        if limit is not None:
+            limit = max(int(limit), 1)
         where, params = self._event_where(
             contains, scale, event_type, ref_types, session_id, session_ids,
             younger_than, older_than)
         order = 'ASC' if sort_order == 'asc' else 'DESC'
-        rows = self.conn.execute(
-            'SELECT %s FROM trace_events te '
-            'WHERE %s ORDER BY te.created_at %s LIMIT ?'
-            % (self._CANON_COLS_TE, where, order),
-            params + [limit]).fetchall()
+        base_sql = ('SELECT %s FROM trace_events te '
+                    'WHERE %s ORDER BY te.created_at %s'
+                    % (self._CANON_COLS_TE, where, order))
+        if limit is None:
+            rows = self.conn.execute(base_sql, params).fetchall()
+        else:
+            rows = self.conn.execute(
+                base_sql + ' LIMIT ?', params + [limit]).fetchall()
         return [self._row_to_event(r) for r in rows]
 
     def filter_event_vectors(self, contains: str = '', scale: str = '',
