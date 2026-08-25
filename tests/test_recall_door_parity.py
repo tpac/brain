@@ -14,13 +14,14 @@ shows the drift.
 
 Two ways the drift comes back, one test each:
 
-1. A NEW door is added that skips the canonical pull. Caught by
-   `test_recall_producing_handlers_are_known` — a tripwire on the set of
-   dispatch handlers that produce recall results, across every
-   `servers/dispatch_*.py`. It fails when someone adds one, which is the
-   moment to add it to the parity test below. Blind spot worth knowing: it
-   matches direct `brain.recall*` calls, so a door that reaches results
-   through a helper function would slip past.
+1. A NEW door is added that calls brain.recall* directly and skips the
+   canonical pull. Caught by `test_recall_producing_handlers_are_known` — a
+   tripwire on the set of dispatch handlers that call recall directly, across
+   every `servers/dispatch_*.py`. It fails when someone adds one, which is the
+   moment to add it to the parity test below. A door that instead DELEGATES to
+   `_handle_recall` (as `_handle_recall_batch` does) inherits the canonical
+   pull through the single door — it stays out of this set and is held by its
+   own behavioural parity case, not this tripwire.
 
 2. `get_node` GROWS an attachment that CANONICAL_ATTACHMENT_KEYS doesn't
    list. Then the doors diverge again on the new field, silently, because the
@@ -40,10 +41,15 @@ from servers.contract import CANONICAL_ATTACHMENT_KEYS
 from servers.dispatch_common import CALLER_SESSION_KEY
 from tests.brain_test_base import BrainTestBase
 
-# Dispatch handlers that turn a brain.recall*/recall_node call into results
-# handed to a caller. Each must appear in the parity test below. Adding a door
-# without adding it there is the regression this list exists to make loud.
-KNOWN_RECALL_DOORS = {'_handle_recall', '_handle_recall_batch'}
+# Dispatch handlers that call brain.recall*/recall_node DIRECTLY — the one
+# place the canonical pull is applied. _handle_recall_batch is deliberately
+# NOT here: it delegates to _handle_recall per query rather than calling
+# brain.recall itself, so it inherits canonicalization through the single door
+# and is verified behaviourally by test_batch_door_matches_the_canonical_pull
+# below. A NEW handler that calls brain.recall* directly must be added here
+# (and given its own parity case) — that addition is the regression this set
+# exists to make loud.
+KNOWN_RECALL_DOORS = {'_handle_recall'}
 
 # Node-returning recall entry points. `recall_episodes` is deliberately absent:
 # it returns trace episodes, not nodes, so it has no canonical node shape to
@@ -76,10 +82,12 @@ def test_recall_producing_handlers_are_known():
     """A new recall door must be added to the parity test, deliberately."""
     found = _handlers_producing_recall_results()
     assert found == KNOWN_RECALL_DOORS, (
-        'recall-producing dispatch handlers changed: %s. Every door must '
-        'route through Brain.canonicalize_results and get its own '
+        'handlers calling brain.recall* directly changed: %s. A new direct '
+        'door must route through Brain.canonicalize_results and get its own '
         '*_door_matches_the_canonical_pull case in TestRecallDoorParity '
-        'below — add it there, then update KNOWN_RECALL_DOORS.'
+        'below, then be added to KNOWN_RECALL_DOORS. (A handler that instead '
+        'delegates to _handle_recall inherits the pull and stays out of this '
+        'set.)'
         % sorted(found ^ KNOWN_RECALL_DOORS))
 
 
