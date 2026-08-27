@@ -82,14 +82,16 @@ replacement test's docstring so the eventual session starts from evidence instea
 re-measuring. Nothing about the current state is load-bearing enough to rush: the
 mechanism records, it just doesn't visibly bite.
 
-### 🔴 3. Migration runner rebuild (attempt 2) — unowned
-Attempt 1 was reverted: `MAIN_MIGRATIONS` was dead by construction (`ensure_schema`
-stamped `BRAIN_VERSION` at step 7, the runner re-read it at step 8, saw itself current,
-ran nothing). Verified 2026-08-13: **`MAIN_MIGRATIONS` no longer appears anywhere in
-`servers/`** — this is a build, not a patch. Fix: the runner owns the stamp; the
-logs-side integration was correct and is the model. Mechanism + repro: brain
-`b5b72b74`. Latent only because the list is empty — it detonates on the first real
-migration, which is exactly when strangers have brains nobody can hand-fix.
+### 🟢 3. Migration runner — SHIPPED `b11e45d` (2026-08-16). Open: its first customers.
+Attempt 1 was reverted because `MAIN_MIGRATIONS` was dead by construction
+(`ensure_schema` stamped `BRAIN_VERSION` at step 7, the runner re-read it at step 8,
+saw itself current, ran nothing — repro: brain `b5b72b74`). Attempt 2 fixed exactly
+that: `run_versioned_migrations` **owns the stamp**, and it is the one primitive for
+both DBs — `ensure_schema` (`brain_meta`/`BRAIN_VERSION`/`MAIN_MIGRATIONS`) and
+`ensure_logs_schema` (`logs_meta`/`LOGS_VERSION`/`LOGS_MIGRATIONS`).
+`MAIN_MIGRATIONS` carries a real step at v31; `tests/test_versioned_migrations.py`
+drives non-empty ladders on purpose, since an empty one is what hid the original bug.
+**The blocker is gone — what remains below is the work that was queued behind it.**
 **What a version bump costs — measured 2026-08-14, the backup is not the problem:**
 `_backup_before_migration` copies the live 723 MB `brain.db` in **0.121 s** (APFS
 copy-on-write clone), so the boot-stall fear here was wrong. The fleet rule (brain
@@ -108,8 +110,14 @@ existing installs that update keep their rows and re-expose them in exactly thre
 places whose hardcoded exclusions phase 2 deleted: the fatigue degree cache,
 get_node connections, and the community cohesion check. Their aspect-derived
 filters still hold (additive reconcile never removes the two names from an
-existing working copy); fresh installs have no rows at all. `brain_logs.db` has no migration mechanism at all after the revert — its
-half is blocked, not deferred.
+existing working copy); fresh installs have no rows at all.
+The old note here — *"`brain_logs.db` has no migration mechanism at all after the
+revert"* — was true only between the revert and `b11e45d`; `ensure_logs_schema` now
+runs the same versioned runner. Nothing in this list is blocked on infrastructure
+any more; each item needs a numbered ladder step and a version bump.
+**Recommended first customer (brain `d5a09dbc`): the dead-table drops** — destructive,
+so they exercise the runner's backup path the fleet rule requires; well-inventoried
+(brain `2b49ac02`); dependent on nothing else.
 
 ### 🔴 4. Generic-edge pollution — 18.1% of the live graph carries no relation signal
 7,243 of 39,975 live `edge_relations` are `related` (2,527) / `related_to` (4,716).
