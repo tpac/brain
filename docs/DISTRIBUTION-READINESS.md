@@ -1,6 +1,18 @@
 # Distribution Readiness — Sharing Anchor
 
-## §ACTIVE ARC (2026-08-14) — arch-plan steps 0–6 SHIPPED (7–10 open); next: 5.0 attempt 2 (thread launched, plan-gated), 5.0c
+## §ACTIVE ARC (2026-08-27) — every 5.0* prerequisite is SHIPPED; the publish path (5.0c → 5.7) is unstarted and **5.6 / D-5 is the gate**
+**Where the work actually is.** Nothing on the publish path has moved since 2026-08-16.
+Shipped and verified on main: 5.0 (`e3d9481`), the versioned migration runner
+(`b11e45d` — `run_versioned_migrations`, wired for **both** DBs, one real step at v31),
+5.0a (`89e8286`), 5.0b (`tests/test_deploy_contract.py`), arch-plan steps 0–6.
+Unstarted, in order: **5.0c** (name consolidation) · **5.1** (export script — no such
+script exists in `scripts/`) · **5.2** (rename — `plugin.json` still reads
+`name: brain`, `displayName: Anchor`, `repository: tpac/brain`) · **5.3** · **5.4**
+(README still carries its false claims) · **5.5** · **5.6** · **5.7**.
+Arch-plan steps 7–10 remain open but gate nothing. The only blockers that are not
+mechanical are operator decisions: **D-5** (§8 fork 2, gates 5.6 and therefore the
+publish), **`displayName`** (5.2), and whether Claude Code wipes
+`$CLAUDE_PLUGIN_DATA` on uninstall (sizes 5.2's residual risk).
 **Read first:** handoff node `[thread:d13-arch-plan]` + the 5.0a ruling (id:cfe2113b). Shipped
 2026-08-11: arch-plan steps 2+4+5. Shipped 2026-08-12 (5.0a, three-lens reviewed): new brains born
 at `${XDG_DATA_HOME:-~/.local/share}/brain`; adoption net refuses to create over an orphaned
@@ -247,8 +259,8 @@ the fetched `uv`. The earlier `!bin/brain-dashboard` gitignore fix no longer exi
 Ordered execution checklist as of 2026-08-06. Every naming/model decision is closed
 (D-6…D-9); only **5.6 (D-5 seed pack)** is still a design question.
 
-**5.0 Plugin updates reach existing installs — BUILT 2026-08-14 on branch
-`claude/keen-heisenberg-27bdb0`; pending merge + daemon restart.** The gap it
+**5.0 Plugin updates reach existing installs — SHIPPED. Merged `e3d9481`
+(2026-08-16); the runner landed the same day as `b11e45d`.** The gap it
 closes: seeding is create-only (`_register` no-ops once a name exists), so an
 install froze at first boot and **no prompt improvement ever reached anyone who
 had already installed**. Measured: the 8 shipped prompt files took 31 commits in
@@ -263,9 +275,21 @@ that day, with the fix getting harder per install.
 interaction collapse dissolved it: code owns every prompt/config default
 (`servers/interaction_defaults.py`), the DB holds only overrides, so editing a
 default reaches every install at the next daemon restart. `interaction_seed.py`,
-`sync_prompts.py`, and `SEED_PROMPTS_VERSION` are deleted. What remains live
-below is the **structural** migration runner (`brain.db` / `brain_logs.db`), which
-is still unbuilt — see BACKLOG item 3.
+`sync_prompts.py`, and `SEED_PROMPTS_VERSION` are deleted.
+
+**The structural half is also SHIPPED — this section's "still unbuilt" claim was
+false when written (corrected 2026-08-27).** `b11e45d` (2026-08-16) landed
+`run_versioned_migrations` in `servers/schema.py` as the single primitive, and it
+owns the stamp — the CRITICAL that killed attempt 1. It is wired at **both** call
+sites: `ensure_schema` (`brain_meta` / `BRAIN_VERSION`, ladder `MAIN_MIGRATIONS`)
+and `ensure_logs_schema` (`logs_meta` / `LOGS_VERSION`, ladder `LOGS_MIGRATIONS`),
+so *"`brain_logs.db` has no migration mechanism"* is no longer true either. The
+ladder is not empty-and-therefore-untested: `MAIN_MIGRATIONS` carries a real step
+at v31 (`_migrate_v31_voice_fields`), `LOGS_VERSION` is stamped at baseline 1 with
+an empty ladder by design, and `tests/test_versioned_migrations.py` drives
+**non-empty** ladders specifically because an empty one is what hid attempt 1's
+bug. What actually remains is not the runner but its **first customers** — the
+cleanups queued behind it in BACKLOG item 3, which are now unblocked.
 
 **The shape.** Not a deploy script — *code owns the defaults; each install
 migrates itself forward at open*, the same contract `BRAIN_VERSION` already has.
@@ -479,13 +503,15 @@ should be up to the standard of public repos"* (id:b99bfa36).
 **Re-rated M, not L.** 528 of the hits are dated + removal-verb comments, which
 triage fast (each is either a load-bearing why or history). The genuinely sensitive
 class — comments naming the operator — is **29 lines**, not the ~30-to-68 range
-previously carried. This is not the long pole; 5.6 and the fleet gap are.
+previously carried. This is not the long pole; **5.6 is** — the fleet gap that used to
+share that sentence shipped 2026-08-16.
 
 **5.4 README + CONTRIBUTING.** The existing `README.md` is a **rewrite, not a
 polish** — audited 2026-08-07, re-verified 2026-08-08, and it states things that
 are no longer true: *"the plugin will refuse to load without this key set"*
 (false since keyless boot, a1a620e); "seeds 16 anchor identity nodes" (**19** —
-`len(SEED_NODES)`); "schema (v25)" (**BRAIN_VERSION = 30**); lists the Cowork
+`len(SEED_NODES)`, re-confirmed 2026-08-27); "schema (v25)" (**`BRAIN_VERSION = 31`**
+as of 2026-08-27 — this doc said 30, itself now stale); lists the Cowork
 mount in the DB resolution order (deferred, unsupported); and links `CLAUDE.md`
 as the developer guide — **a broken link in the public repo, since CLAUDE.md is
 on the export denylist (5.1)**. It also still says "# brain" (D-6 renames it).
