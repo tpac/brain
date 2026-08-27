@@ -42,7 +42,7 @@ accurately into a channel nobody reads.
 | **F10** | The ratchet, dated: **418 communities archived to date, last one 2026-08-09.** 18 days with zero archives while adds ran. ⚠ Did not separate merge-archives from health-archives. | measured |
 | **F11** | Big communities are terminal homes, not umbrellas. Share of members whose **only** community is this one: `bc639843` 56% (206), `2e6986a2` 58% (175), `fe73f0b8` **72%** (164), `eb5bacb0` 59% (144), `fe1d5fd0` 39% (127). | measured via `get_communities_for` |
 | **F12** | Size distribution: **781 communities; 258 >10 members, 95 >20, 30 >40; largest 206.** This is why "render the decision set in full" cannot be literal. | measured |
-| **F13** | Orphan placement gate is **inert**. `sim = cosine_similarity(emb, centroid)` against `embedding_placement_threshold: 0.50` — raw cosine. Node↔node random-pair raw cosine measured at **0.6929** (`51b87c91`). A 0.50 raw threshold sits below the random baseline. Very likely the cause of F-census's 46 vocabulary-artifact rejections. | `community_decoder.py:1011-1024` |
+| **F13** | Orphan placement gate is **inert — measured 2026-08-27**: random node↔centroid raw cosine mean **0.7813** (higher than the 0.6929 node↔node figure — averaging amplifies the anisotropic common component), so **100% of random pairs pass 0.50**. Worse: raw cosine has **no viable operating point at all** (0.80 keeps 93.9% of members but still passes 33% of random; 0.85 passes 2.7% but loses 41% of members). Centred cosine separates cleanly: member LOO mean 0.347 vs random −0.002 (gap 0.349 ≈ 3σ); at **0.20** keep 79% / false-pass 4.6%. Full sweep: `eval/community_placement_baseline.py`. | `community_decoder.py:1011-1024`; measured, 601 communities / 8,891 member-LOO / 20,000 random pairs |
 | **F14** | Inter-community structure is improvised: 12 distinct verbs, mostly singletons, including an invented `sibling_community`. Only `absorbed_into` (20) is systematic — merge lineage. There is **no sanctioned parent/child verb**. | `edge_relations` census |
 | **F15** | **11 live `community_member` edges between two communities** — 9 parent communities, all created 2026-06-01→06-18, then it stops. Inflates `community_size`, can set `community_dominant_type='community'`. None of the F11 five is a parent, so that table is unaffected. | measured |
 | **F16** | **Three dead columns on `edges`**, all 35,918 rows: `relation` = `'related'` (one value), `edge_type` = `'related'` (one value), `description` = NULL/empty (all). Plus a dead index `idx_edges_type`. `schema.py:161-175` **already declares `edges` without them** and `:456-459` declares only 4 indexes — the install has drifted from its own schema. | measured + `schema.py` |
@@ -93,11 +93,27 @@ Net: one renderer, one disclosure rule, N budget profiles, zero bespoke paths.
 Captured 2026-08-27, in §1: F11 orphan table, F12 size distribution, the 152/46/20
 note census, F10 archive dates. Still to capture:
 
-- [ ] **node↔centroid cosine distribution.** ⚠ The 0.6929 figure is node↔node;
-      a centroid is an average and has its own distribution. This measurement
-      gates F13's fix and is the single highest-value cheap check in the plan.
+- [x] **node↔centroid cosine distribution — measured 2026-08-27**, instrument
+      is `eval/community_placement_baseline.py` (keeper: P6 re-runs it after
+      the fix). Production data, 601 communities ≥5 embedded members,
+      leave-one-out member sims (mirrors the decoder: orphans never
+      contribute to the centroid), 20K random pairs, hard negatives
+      (members of *other* communities) sampled per community.
+
+      | space | members (LOO) | other-community | random | gap |
+      |---|---|---|---|---|
+      | raw | 0.8544 ± 0.0335 | 0.7864 ± 0.0379 | 0.7813 ± 0.0397 | +0.073 |
+      | centred | 0.3470 ± 0.1746 | −0.0003 ± 0.1152 | −0.0018 ± 0.1149 | +0.349 |
+
+      Three verdicts: **(1)** 0.50 raw passes 100% of random pairs — the gate
+      is fully inert, F13 confirmed. **(2)** Raw has no viable operating point
+      anywhere — 0.80 keeps 93.9% members / passes 33.4% random; 0.85 passes
+      2.7% / loses 41% of members. "Raise the raw threshold" is dead. **(3)**
+      `other` ≈ `random` in both spaces — wrong-community looks like random to
+      a centroid, so one threshold suffices; no hard-negative special case.
 - [ ] payload chars and rounds per batch (baseline: last full run was 4 rounds
-      across 2 batches, 103.7s, 8→3698 tok, `cache_read 71023`).
+      across 2 batches, 103.7s, 8→3698 tok, `cache_read 71023`). Payload chars
+      are not logged today — this box closes with P4's logging, not before.
 
 ### P1 — Text only, no behavior risk
 
@@ -227,14 +243,34 @@ the cross-run version.
 
 ### P6 — Decoder precision (F13)
 
-- [ ] Run the node↔centroid baseline measurement (P0).
-- [ ] Then either raise the raw threshold into the real discriminating band, or
-      centre before comparing — `51b87c91` measured centring turning a +0.07 raw
-      gap into +0.23 against ~0.
-- [ ] ⚠ **Rejection fingerprints must be invalidated** or the improvement is
-      invisible for every pair already seen. `clear_unplaceable_rejections`
-      exists in `rejection_table.py` — **not yet traced**; confirm it is the
-      right lever and what re-opening costs.
+- [x] Run the node↔centroid baseline measurement (P0). **Done 2026-08-27 —
+      see P0 for the table.**
+- [ ] **Centre before comparing — the raise-raw fork is closed.** The
+      measurement shows raw cosine has no operating point (P0 verdict 2);
+      centred at **0.20** gives 79% member-band retention / 4.6% false-pass
+      (0.15 → 86%/9.5%, 0.25 → 70%/2.4% if the A/B argues for looser/tighter).
+      Implementation: `_compute_orphan_affinities` centres member vectors
+      before the centroid mean and orphan vectors before the dot — the global
+      mean comes from the embedding pass the function already makes. Keep the
+      config key but the value changes *meaning* (centred space): rename to
+      `embedding_placement_threshold_centred` so an old config can't silently
+      apply a raw-space value.
+- [x] ⚠ resolved — `clear_unplaceable_rejections` traced (`rejection_table.py:282`):
+      it deletes per-node `unplaceable` rows keyed `(proposal_type,
+      proposed_ids)` during normal re-proposal; it is NOT a deploy lever.
+      The real story: encoder-rejection fingerprints don't block the fix (a
+      centred gate proposes *different* (node, community) pairs → new
+      fingerprints), but the **whole-node `unplaceable` rest does** — a
+      sleeping node is skipped before affinities are computed, and a threshold
+      change moves no neighborhood fingerprint. **3,677 nodes (40% of the
+      9,163 embedded) sit in `unplaceable` rest today.** The fix ships with a
+      one-off `DELETE FROM s2_rejections WHERE proposal_type='unplaceable'`
+      (backup first), or the improvement is invisible for 40% of the graph.
+- [ ] A/B before/after via `eval/s2_community_decoder_eval.py` (production
+      decoder, IsolatedBrain, rejection loop simulated): proposal mix,
+      orphan-placement count, convergence. Expect add_to_existing to *shrink*
+      and precision to rise; the encoder's vocabulary-artifact journal rate
+      (instrument metric 1) is the post-deploy confirmation.
 
 ---
 
@@ -314,12 +350,28 @@ for a ~90K-char prompt. **S2CE is 8,160 chars with five decision branches.**
 2. the F11 orphan-in-big-community rate → should fall
 3. payload chars + rounds per batch → regression guards
 
-- [ ] ⚠ **Read before building anything eval-shaped.** `eval/` already has
-      `ab_community_model.py`, `s2_community_decoder_eval.py`,
-      `sim_community_journal.py`, `sim_community_structural.py`,
-      `diag_community_encode.py`. **None of these were read this session.**
-      Also read `docs/S1E-CHECKLIST.md` and the S1E probe method — Tom's note:
-      the S1E work is likely more advanced and worth borrowing from.
+- [x] **Read 2026-08-27 — Tom's flag was right: build nothing, all five carry.**
+      - `s2_community_decoder_eval.py` — production decoder + rejection loop
+        against IsolatedBrain, simulated encoder acceptance, multi-run
+        convergence metrics. **This is P6's A/B instrument as-is.**
+      - `ab_community_model.py` — one-arm-per-invocation encoder A/B on a
+        frozen `--source-dir` (identical decode across arms), reports
+        completion / edge-omission / journal / discipline / quality / cost.
+        **This is the P1/P3 prompt-A/B chassis** (arms differ by
+        `override_interaction` instead of model).
+      - `sim_community_structural.py` + `sim_community_journal.py` — the
+        **`make_vN()` house pattern**: candidate prompt derived from the live
+        one via exact-anchor edits, each anchor asserted unique (drift fails
+        loudly), the same transform reused verbatim at landing. **P1's edits
+        must be a `make_vN` transform, not a hand-edited prompt copy.**
+      - `diag_community_encode.py` — full qualitative dump of two arms
+        (proposals, actions, final_text, persisted journal) for eyeballing
+        what a metric diff hides.
+      - S1E method borrowed (`docs/S1E-CHECKLIST.md` §How-we-use-it): the ship
+        gate (override → eval, multiple reps, no single-run conclusions → Tom
+        approves → candidate replaces the code default) and the fresh-eyes
+        blank-page pass per edited section. The multi-stop walk / R-rows /
+        coverage matrix stay dropped (§5 proportionality ruling stands).
 
 ---
 
