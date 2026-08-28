@@ -68,15 +68,35 @@ _denylist_gate() {
 
 _scrub_gate() {
   local root="$1"
-  # every match, then subtract the allowlist pair by pair
+  # Every match, then filter through the allowlist in python: EXACT-string
+  # file match (a regex here let `Xclaude-plugin` inherit `.claude-plugin`'s
+  # allowance), and instead of dropping the whole line, STRIP the allowed
+  # pattern's occurrences and re-test what's left — an attribution line that
+  # also carries a leak ("Tom Pachys, /Users/tpac/…") must still fail.
   local hits
   hits="$(cd "$root" && grep -rIinE "$SCRUB_PATTERNS" . --exclude-dir=.git 2>/dev/null | sed 's|^\./||' || true)"
-  local remaining="$hits"
-  for pair in "${ALLOWLIST[@]}"; do
-    local f="${pair%%:*}" pat="${pair#*:}"
-    remaining="$(printf '%s\n' "$remaining" | grep -v "^$f:.*$pat" || true)"
-  done
-  remaining="$(printf '%s\n' "$remaining" | grep -v '^$' || true)"
+  local allow=""
+  for pair in "${ALLOWLIST[@]}"; do allow+="${pair%%:*}"$'\t'"${pair#*:}"$'\n'; done
+  local remaining
+  remaining="$(printf '%s' "$hits" | ALLOW="$allow" SCRUB="$SCRUB_PATTERNS" python3 -c '
+import os, re, sys
+scrub = re.compile(os.environ["SCRUB"], re.IGNORECASE)
+allow = {}
+for row in os.environ["ALLOW"].splitlines():
+    if row.strip():
+        f, pat = row.split("\t", 1)
+        allow.setdefault(f, []).append(pat)
+for line in sys.stdin:
+    line = line.rstrip("\n")
+    if not line:
+        continue
+    fname, _, rest = line.partition(":")
+    content = rest.partition(":")[2]
+    for pat in allow.get(fname, []):
+        content = content.replace(pat, "")
+    if scrub.search(content):
+        print(line)
+')"
   if [ -n "$remaining" ]; then
     printf '%s\n' "$remaining" | head -50 >&2
     local n; n="$(printf '%s\n' "$remaining" | wc -l | tr -d ' ')"
@@ -109,6 +129,12 @@ _denied() {
   done
   return 1
 }
+# Clobber guard: only wipe something that is empty, absent, or a previous
+# export of ours — never an arbitrary directory handed in by mistake.
+if [ -e "$OUT" ] && [ ! -e "$OUT/.claude-plugin" ] \
+   && [ -n "$(ls -A "$OUT" 2>/dev/null)" ]; then
+  fail "$OUT exists and does not look like a previous export — refusing to remove it"
+fi
 rm -rf "$OUT"
 mkdir -p "$OUT"
 _copy() { _denied "$1" && return 0
