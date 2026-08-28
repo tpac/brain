@@ -22,6 +22,7 @@ Design: docs/THALAMUS-DESIGN.md
 """
 
 import re
+from datetime import datetime as _dt, timezone as _tz
 
 from servers.trace_contract import REF_TYPES as _REF_TYPES
 from servers.loud_truncation import cap_text_loud
@@ -54,10 +55,29 @@ AUDIENCE_ONCE = 'once'   # first session that pulls after due — reminders/noti
 AUDIENCE_ALL = 'all'     # once per session inside the window — standing notices
                          # and asks ("push once per session, stay pullable")
 
+AUDIENCES = (AUDIENCE_ONCE, AUDIENCE_ALL)  # the closed set the pull predicate
+                                           # matches — a value outside it would
+                                           # never deliver and die silently at
+                                           # expiry; file() guards the door
+
 def default_audience(needs_answer):
     """An ask renders at each new session's boot until answered/expired; a
     reminder/notice fires once. Both overridable via for_whom."""
     return AUDIENCE_ALL if needs_answer else AUDIENCE_ONCE
+
+
+# ═══════════════════════════════════════════════════════════════
+# MOMENTS  —  the delivery moments a session pulls at. `via` is written to
+# the ledger verbatim, so it must be vocabulary, not free text — pull()
+# validates against MOMENTS loudly (a typo'd via would behave as Stop and
+# ledger the typo).
+# ═══════════════════════════════════════════════════════════════
+VIA_BOOT = 'boot'
+VIA_STOP = 'stop'
+MOMENTS = (VIA_BOOT, VIA_STOP)
+ASK_MOMENTS = (VIA_BOOT,)  # asks deliver at boot only — an architecture
+                           # question arriving mid-thread trains
+                           # reflex-deferral; at boot there is no thread
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -72,8 +92,35 @@ BODY_MAX = 1500            # per-item body at render — loud cap; storage is FU
 RENDER_REFS_MAX = 3        # refs resolved inline per item, rest named
 
 ASK_EXPIRES_DAYS = 14      # needs_answer window; expiry past it is LOUD
-NOTICE_EXPIRES_DAYS = 7    # audience-all notice window
-REMIND_GRACE_DAYS = 7      # once-items: expiry = (deliver_at or now) + grace
+NOTICE_EXPIRES_DAYS = 7    # undated-notice window
+REMIND_GRACE_DAYS = 7      # dated items: expiry = deliver_at + grace
+
+
+# ═══════════════════════════════════════════════════════════════
+# KIND  —  ONE derivation of what an item IS, feeding both the render verb
+# and the expiry-span lookup (three unnamed partitions of the item space
+# disagreeing was the root of the false-dead-letter defect). Internal and
+# DERIVED — never producer-set, never stored: the rejected producer-facing
+# kind vocabulary stays rejected. Producers state needs_answer / when /
+# for_whom; the kind falls out.
+# ═══════════════════════════════════════════════════════════════
+KIND_ASK = 'ask'            # needs an answer (needs_answer)
+KIND_REMINDER = 'reminder'  # carries a clock (deliver_at)
+KIND_NOTICE = 'notice'      # undated FYI
+
+KIND_VERB = {KIND_ASK: 'asks', KIND_REMINDER: 'reminds', KIND_NOTICE: 'notes'}
+KIND_EXPIRES_DAYS = {KIND_ASK: ASK_EXPIRES_DAYS,
+                     KIND_REMINDER: REMIND_GRACE_DAYS,
+                     KIND_NOTICE: NOTICE_EXPIRES_DAYS}
+
+
+def kind_of(item):
+    """item dict (needs_answer / deliver_at suffice) → its derived kind."""
+    if item.get('needs_answer'):
+        return KIND_ASK
+    if item.get('deliver_at'):
+        return KIND_REMINDER
+    return KIND_NOTICE
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -98,7 +145,6 @@ def resolve_when(value):
         kw = {'m': {'minutes': n}, 'h': {'hours': n},
               'd': {'days': n}, 'w': {'days': 7 * n}}[unit]
         return iso_after(**kw)
-    from datetime import datetime as _dt, timezone as _tz
     try:
         parsed = _dt.fromisoformat(s.replace('Z', '+00:00'))
     except ValueError:
@@ -108,6 +154,27 @@ def resolve_when(value):
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=_tz.utc)
     return parsed.astimezone(_tz.utc).isoformat()
+
+
+def window_for(needs_answer, deliver_at):
+    """The item's expiry when the producer names none: ANCHOR (deliver_at,
+    or now) × SPAN (per-kind days) — one composition, never branch-dependent.
+    Anchoring at the due date keeps a dated item's full window; expiry
+    before due would make it undeliverable and fire a FALSE loud
+    dead-letter."""
+    span = KIND_EXPIRES_DAYS[kind_of(
+        {'needs_answer': needs_answer, 'deliver_at': deliver_at})]
+    anchor = _dt.fromisoformat(deliver_at) if deliver_at else None
+    return iso_after(days=span, at=anchor)
+
+
+def extend_window(new_deliver, current_expires):
+    """Defer's window rule: the same ANCHOR × SPAN composition — expiry must
+    outlive the new due date by the grace span; a window already past that
+    keeps its length."""
+    return max(current_expires or '',
+               iso_after(days=REMIND_GRACE_DAYS,
+                         at=_dt.fromisoformat(new_deliver)))
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -164,36 +231,20 @@ if REF_THALAMUS_DELIVERY not in _REF_TYPES.get(('s0', 'K'), ()):
 # Single truncation point, always loud; storage keeps everything.
 # ═══════════════════════════════════════════════════════════════
 
-def _resolve_refs(brain, refs):
-    """refs (node ids) → ['id · title' ...] lines via the canonical pull.
-    Failure-isolated: a bad id renders bare rather than killing the block."""
-    lines = []
-    for ref in (refs or [])[:RENDER_REFS_MAX]:
-        try:
-            node = brain.get_node(ref)
-            title = (node or {}).get('title') or ''
-            lines.append('%s · %s' % (ref[:8], title) if title else ref[:8])
-        except Exception:
-            lines.append(ref[:8])
-    extra = len(refs or []) - RENDER_REFS_MAX
-    if extra > 0:
-        lines.append('(+%d more refs — get_nodes)' % extra)
-    return lines
-
-
-def render_item(item, brain=None):
+def render_item(item):
     """One due item. The verb points at Anchor and the exit is inline —
-    items arrive as asks/notices with affordances, not status to read past."""
+    items arrive as asks/notices with affordances, not status to read past.
+    Formats what it is handed: refs arrive pre-resolved as 'ref_lines'
+    (pull() owns resolution — batched, veil-aware; the contract never
+    reaches into the brain)."""
     body = cap_text_loud(
         (item.get('body') or '').strip(), BODY_MAX,
         marker='…[+%d chars — thalamus_list shows it in full]')
-    verb = ('asks' if item.get('needs_answer') else
-            ('reminds' if item.get('deliver_at') else 'notes'))
+    verb = KIND_VERB[kind_of(item)]
     head = '• %s · %s %s' % (item.get('id', '?'), item.get('source', '?'), verb)
     lines = [head, '  "%s"' % body]
-    if brain is not None and item.get('refs'):
-        for ref_line in _resolve_refs(brain, item['refs']):
-            lines.append('  ↳ %s' % ref_line)
+    for ref_line in item.get('ref_lines') or []:
+        lines.append('  ↳ %s' % ref_line)
     if item.get('needs_answer'):
         lines.append('  → thalamus_resolve("%s", answer=…) · defer_until=… · '
                      'dismiss=true' % item.get('id', '?'))
@@ -203,7 +254,7 @@ def render_item(item, brain=None):
     return '\n'.join(lines)
 
 
-def render_block(items, brain=None, overflow=0, cap=BLOCK_MAX):
+def render_block(items, overflow=0, cap=BLOCK_MAX):
     """Compose due items into ONE budgeted block ('' when empty). Two loud
     caps — per item (BODY_MAX, in render_item) and whole block (`cap`);
     overflow items are named at the tail, never silently cut. Items are from
@@ -214,7 +265,7 @@ def render_block(items, brain=None, overflow=0, cap=BLOCK_MAX):
     head = '🧠 from the brain (thalamus) — %d item(s)' % len(items)
     parts, used, dropped = [], len(head), 0
     for i, item in enumerate(items):
-        rendered = render_item(item, brain=brain).strip()
+        rendered = render_item(item).strip()
         if parts and used + len(rendered) + 2 > cap:  # always keep one
             dropped = len(items) - i
             break

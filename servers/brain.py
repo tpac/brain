@@ -1785,6 +1785,40 @@ class Brain(
         finally:
             conn.close()
 
+    def sweep_channels_if_due(self, now: Optional[float] = None) -> None:
+        """Expiry sweeps for the two channel stores — the courier reap
+        (self-channel dead messages) and the Thalamus window sweep (expired
+        items; an unanswered ask dead-letters LOUDLY). Like the payload
+        prune, these must NOT sit behind the S2 fire conditions: on a
+        keyless brain (llm_available False) the S2 cycle never runs, and a
+        gated sweep would mean the ask dead-letter never fires and expired
+        items linger. Each sweep is behind its own cheap hourly in-memory
+        throttle and failure-isolated (loud via _log_error)."""
+        import time as _time
+        now = now if now is not None else _time.time()
+        if now - getattr(self, '_courier_reap_checked', 0) >= 3_600:
+            self._courier_reap_checked = now
+            try:
+                from .scales.self_channel import signal as _self_signal
+                reaped = _self_signal.reap_expired(self)
+                if reaped:
+                    print('[brain] self-channel: reaped %d expired message(s)'
+                          % reaped, flush=True)
+            except Exception as e:
+                self._log_error('self_signal_reap', e,
+                                'reap_expired in channel sweep')
+        if now - getattr(self, '_thalamus_sweep_checked', 0) >= 3_600:
+            self._thalamus_sweep_checked = now
+            try:
+                from .scales.thalamus import thalamus as _thalamus
+                expired = _thalamus.expire_due(self)
+                if expired:
+                    print('[brain] thalamus: expired %d item(s) past their '
+                          'window' % expired, flush=True)
+            except Exception as e:
+                self._log_error('thalamus_expire', e,
+                                'expire_due in channel sweep')
+
     def run_maintenance_if_due(self, now: Optional[float] = None
                                ) -> Optional[Dict[str, Any]]:
         """Run S2 maintenance iff idle, min-interval, and activity conditions are met.
@@ -1818,6 +1852,9 @@ class Brain(
         # whose idle/encode gates rarely fire still needs its payloads/
         # pruned, or debug-mode capture grows unbounded.
         self.prune_payloads_if_due()
+        # Channel expiry sweeps self-gate the same way and for the same
+        # reason — a keyless brain still needs its dead-letters.
+        self.sweep_channels_if_due(now)
 
         # Keyless onboarding window: every S2 unit's encoder is LLM-driven —
         # skip the whole cycle until a key resolves (noted once, not per poll).

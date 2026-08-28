@@ -37,6 +37,13 @@ class ThalamusBase(BrainTestBase):
             ' target_session FROM thalamus_items WHERE id = ?',
             (item_id,)).fetchone()
 
+    def _age_out(self, item_id):
+        with self.brain.logs_write_lock:
+            self.brain.logs_conn_w.execute(
+                'UPDATE thalamus_items SET expires_at = ? WHERE id = ?',
+                (iso_cutoff(hours=1), item_id))
+            self.brain.logs_conn_w.commit()
+
 
 class TestFile(ThalamusBase):
 
@@ -277,15 +284,38 @@ class TestResolveWithdraw(ThalamusBase):
         thalamus.pull(self.brain, S1, via='stop')  # delivered
         out = thalamus.resolve(self.brain, r['id'], defer_until='1h')
         self.assertTrue(out['ok'])
-        # Ledger cleared, but not due yet → still nothing.
+        # Re-armed (new epoch), but not due yet → still nothing.
         _, n = thalamus.pull(self.brain, S1, via='stop')
         self.assertEqual(n, 0)
         deliver_at = self._row(r['id'])[3]
         self.assertGreater(deliver_at, iso_now())
+        # The ledger is APPEND-ONLY: defer preserves the delivery history —
+        # "delivered, then deferred" must stay distinguishable from "never
+        # delivered" (Phase 3 retry gates on unacked).
         ledger = self.brain.logs_conn.execute(
             'SELECT COUNT(*) FROM thalamus_deliveries WHERE item_id = ?',
             (r['id'],)).fetchone()[0]
-        self.assertEqual(ledger, 0)
+        self.assertEqual(ledger, 1)
+        epoch = self.brain.logs_conn.execute(
+            'SELECT armed_epoch FROM thalamus_items WHERE id = ?',
+            (r['id'],)).fetchone()[0]
+        self.assertEqual(epoch, 1)
+
+    def test_rearm_redelivers_to_same_session_and_keeps_history(self):
+        r = self._file('note')
+        _, n1 = thalamus.pull(self.brain, S1, via='stop')
+        self.assertEqual(n1, 1)
+        thalamus.resolve(self.brain, r['id'], defer_until='now')
+        _, n2 = thalamus.pull(self.brain, S1, via='stop')
+        self.assertEqual(n2, 1)  # same session, new epoch → delivers again
+        rows = self.brain.logs_conn.execute(
+            'SELECT armed_epoch FROM thalamus_deliveries WHERE item_id = ?'
+            ' ORDER BY armed_epoch', (r['id'],)).fetchall()
+        self.assertEqual([e for (e,) in rows], [0, 1])  # both generations kept
+        out = thalamus.list_items(self.brain)
+        item = next(i for i in out['items'] if i['id'] == r['id'])
+        self.assertEqual(item['deliveries'], 2)        # all-time
+        self.assertEqual(item['deliveries_epoch'], 1)  # current generation
 
     def test_resolve_unknown_or_closed(self):
         self.assertFalse(thalamus.resolve(self.brain, 'th_nope',
@@ -312,13 +342,6 @@ class TestResolveWithdraw(ThalamusBase):
 
 class TestExpiry(ThalamusBase):
 
-    def _age_out(self, item_id):
-        with self.brain.logs_write_lock:
-            self.brain.logs_conn_w.execute(
-                'UPDATE thalamus_items SET expires_at = ? WHERE id = ?',
-                (iso_cutoff(hours=1), item_id))
-            self.brain.logs_conn_w.commit()
-
     def test_notice_expires_naturally(self):
         r = self._file('old news')
         self._age_out(r['id'])
@@ -342,6 +365,109 @@ class TestExpiry(ThalamusBase):
         self._age_out(r['id'])
         _, n = thalamus.pull(self.brain, S1, via='boot')
         self.assertEqual(n, 0)
+
+
+class TestVocabulary(ThalamusBase):
+    """Contract-first: moments and audiences are closed vocabulary — unknown
+    values fail LOUDLY instead of silently behaving as a default."""
+
+    def test_unknown_via_is_loud(self):
+        self._file('x')
+        with self.assertRaises(ValueError):
+            thalamus.pull(self.brain, S1, via='bot')  # the ledgered-typo case
+
+    def test_internal_audience_drift_is_loud(self):
+        """An audience outside tc.AUDIENCES matches neither pull-predicate
+        branch (open forever, silent death at expiry) — the door rejects."""
+        from unittest import mock
+        with mock.patch.object(tc, 'resolve_for_whom',
+                               return_value=('queue', 'weekly', '')):
+            r = self._file('x')
+        self.assertFalse(r['filed'])
+        self.assertIn('audience', r['error'])
+
+    def test_kind_is_one_derivation_for_verb_and_span(self):
+        self.assertEqual(tc.kind_of({'needs_answer': 1}), tc.KIND_ASK)
+        self.assertEqual(tc.kind_of({'deliver_at': '2027-01-01T00:00:00+00:00'}),
+                         tc.KIND_REMINDER)
+        self.assertEqual(tc.kind_of({}), tc.KIND_NOTICE)
+        # Both partitions read the same derivation.
+        self.assertEqual(set(tc.KIND_VERB), set(tc.KIND_EXPIRES_DAYS))
+        # window_for anchors a dated item's span at its due date.
+        due = '2027-01-01T00:00:00+00:00'
+        self.assertGreater(tc.window_for(False, due), due)
+
+    def test_kind_verbs_render(self):
+        self._file('decide?', needs_answer=True)
+        self._file('fyi', source='s3')
+        block, _ = thalamus.pull(self.brain, S1, via='boot')
+        self.assertIn('asks', block)
+        self.assertIn('notes', block)
+
+
+class TestMaintenanceSweep(ThalamusBase):
+
+    def test_sweep_fires_without_s2_conditions(self):
+        """The channel sweeps run AHEAD of the S2 fire gate inside
+        run_maintenance_if_due — a brain whose S2 cycle declines (keyless,
+        boot grace, idle gates) still expires its items and dead-letters
+        unanswered asks."""
+        r = self._file('never answered?', needs_answer=True)
+        self._age_out(r['id'])
+        result = self.brain.run_maintenance_if_due()
+        # S2 itself must have declined (test brain: boot grace / no LLM) —
+        # the sweep firing anyway is exactly the point.
+        self.assertIsNone(result)
+        self.assertEqual(self._row(r['id'])[0], tc.STATE_EXPIRED)
+
+    def test_sweep_is_hourly_throttled(self):
+        self.brain.run_maintenance_if_due()
+        r = self._file('expires between polls')
+        self._age_out(r['id'])
+        self.brain.run_maintenance_if_due()  # within the hour — no sweep
+        self.assertEqual(self._row(r['id'])[0], tc.STATE_OPEN)
+        self.brain._thalamus_sweep_checked = 0  # an hour passes
+        self.brain.run_maintenance_if_due()
+        self.assertEqual(self._row(r['id'])[0], tc.STATE_EXPIRED)
+
+
+class TestRefs(ThalamusBase):
+    """pull() owns ref resolution — ONE veil-aware batch; the contract only
+    formats what it is handed (ref_lines)."""
+
+    def test_refs_resolve_in_one_batched_call(self):
+        from unittest import mock
+        from tests.test_scopes import _mint
+        a = _mint(self.brain, 'sess-a', '', 'first ref title')
+        b = _mint(self.brain, 'sess-a', '', 'second ref title')
+        self._file('note one', refs=[a, b])
+        self._file('note two', refs=[a], source='other')
+        with mock.patch.object(self.brain, 'filter_nodes',
+                               wraps=self.brain.filter_nodes) as fn:
+            block, n = thalamus.pull(self.brain, S1, via='boot')
+        self.assertEqual(n, 2)
+        self.assertEqual(fn.call_count, 1)  # batched: one call for the block
+        self.assertIn('first ref title', block)
+        self.assertIn('second ref title', block)
+
+    def test_walled_ref_renders_bare_not_title(self):
+        """A globally-filed item can ref a walled node — its title must not
+        print into another session's pull (default-deny outward veil)."""
+        from tests.test_scopes import _mint, _set_scopes, ISOLATE_CLIENT_X
+        walled = _mint(self.brain, 'sess-client', 'client-x',
+                       'client secret plan')
+        _set_scopes(self.brain, ISOLATE_CLIENT_X)
+        self._file('global note', refs=[walled])
+        block, n = thalamus.pull(self.brain, S1, via='boot')
+        self.assertEqual(n, 1)
+        self.assertNotIn('client secret plan', block)
+        self.assertIn(walled[:8], block)  # the ref itself renders bare
+
+    def test_bad_ref_renders_bare(self):
+        self._file('note', refs=['deadbeef'])
+        block, n = thalamus.pull(self.brain, S1, via='boot')
+        self.assertEqual(n, 1)
+        self.assertIn('deadbeef', block)
 
 
 class TestRender(ThalamusBase):

@@ -403,7 +403,9 @@ class BrainVoice:
         # of boot. Asks deliver here (boot-only), notices at boot or Stop.
         try:
             from servers.scales.thalamus import thalamus as _thalamus
-            th_block, _ = _thalamus.pull(brain, session_id, via='boot')
+            from servers.scales.thalamus.thalamus_contract import (
+                VIA_BOOT as _VIA_BOOT)
+            th_block, _ = _thalamus.pull(brain, session_id, via=_VIA_BOOT)
         except Exception as e:
             brain._log_error('boot_thalamus_failed', e,
                              'render_boot_v2: thalamus pull raised — boot continues without it')

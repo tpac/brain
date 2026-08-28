@@ -21,9 +21,8 @@ Design: docs/THALAMUS-DESIGN.md
 
 import json
 import uuid
-from datetime import datetime as _dt, timedelta as _td
 
-from servers.clock import iso_now, iso_after
+from servers.clock import iso_now
 from servers.scales.thalamus import thalamus_contract as tc
 
 
@@ -36,28 +35,13 @@ def _row_to_item(row):
         'needs_answer': bool(row[6]), 'dedup_key': row[7],
         'deliver_at': row[8], 'expires_at': row[9],
         'state': row[10], 'answer': row[11],
-        'created_at': row[12],
+        'created_at': row[12], 'armed_epoch': row[13],
     }
 
 
 _ITEM_COLS = ('id, source, body, refs, audience, target_session, '
               'needs_answer, dedup_key, deliver_at, expires_at, state, '
-              'answer, created_at')
-
-
-def _default_expires(needs_answer, audience, deliver_at):
-    """The item's window when the producer names none: ANCHOR (deliver_at, or
-    now) + SPAN (per-kind days) — composed, never branch-dependent. Anchoring
-    at the due date keeps a dated ask's full window; expiry before due would
-    make the item undeliverable and fire a FALSE loud dead-letter."""
-    if needs_answer:
-        span = tc.ASK_EXPIRES_DAYS
-    elif audience == tc.AUDIENCE_ALL:
-        span = tc.NOTICE_EXPIRES_DAYS
-    else:
-        span = tc.REMIND_GRACE_DAYS
-    anchor = _dt.fromisoformat(deliver_at) if deliver_at else None
-    return iso_after(days=span, at=anchor)
+              'answer, created_at, armed_epoch')
 
 
 def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
@@ -84,9 +68,16 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
             for_whom, needs_answer)
         deliver_at = tc.resolve_when(when)
         expires_at = (tc.resolve_when(expires) if expires
-                      else _default_expires(needs_answer, audience, deliver_at))
+                      else tc.window_for(needs_answer, deliver_at))
     except ValueError as e:
         return {'filed': False, 'error': str(e)}
+    if route == 'queue' and audience not in tc.AUDIENCES:
+        # Internal drift guard at the write boundary: an audience outside the
+        # closed set matches neither pull-predicate branch — the row would
+        # stay open forever and die silently at expiry.
+        return {'filed': False, 'error':
+                'thalamus.file: internal audience %r is not one of %s'
+                % (audience, tc.AUDIENCES)}
 
     now = iso_now()
     refs_json = json.dumps(list(refs or []))
@@ -177,27 +168,67 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
 def _due_filter(session_id, via, now):
     """The due predicate — WHERE clause + params, shared by pull()'s fetch and
     its overflow count so the two cannot drift (the signal._PENDING_INBOX_SQL
-    pattern). Asks (needs_answer) are due at boot only."""
-    sql = (" WHERE state = 'open'"
+    pattern). Asks (needs_answer) are due at tc.ASK_MOMENTS only."""
+    sql = (' WHERE state = ?'
            ' AND (deliver_at IS NULL OR deliver_at <= ?)'
            ' AND expires_at > ?'
            " AND (target_session = '' OR target_session = ?)")
-    params = [now, now, session_id]
-    if via != 'boot':
+    params = [tc.STATE_OPEN, now, now, session_id]
+    if via not in tc.ASK_MOMENTS:
         sql += ' AND needs_answer = 0'
-    sql += (" AND ((audience = 'once' AND NOT EXISTS ("
-            '   SELECT 1 FROM thalamus_deliveries d WHERE d.item_id = thalamus_items.id))'
-            "  OR (audience = 'all' AND NOT EXISTS ("
+    # The ledger is append-only across re-arms: only CURRENT-epoch rows
+    # block delivery — a defer bumps the item's armed_epoch, so prior
+    # generations' deliveries stay as history without suppressing the re-arm.
+    sql += (' AND ((audience = ? AND NOT EXISTS ('
             '   SELECT 1 FROM thalamus_deliveries d WHERE d.item_id = thalamus_items.id'
+            '   AND d.armed_epoch = thalamus_items.armed_epoch))'
+            '  OR (audience = ? AND NOT EXISTS ('
+            '   SELECT 1 FROM thalamus_deliveries d WHERE d.item_id = thalamus_items.id'
+            '   AND d.armed_epoch = thalamus_items.armed_epoch'
             '   AND d.session_id = ?)))')
-    params.append(session_id)
+    params.extend([tc.AUDIENCE_ONCE, tc.AUDIENCE_ALL, session_id])
     return sql, params
+
+
+def _attach_ref_lines(brain, items, session_id):
+    """Resolve every item's refs in ONE veil-aware batch and attach
+    'ref_lines' for the render — the contract only FORMATS (its own rule);
+    pull() holds both `brain` and `session_id`, so resolution lives here.
+    Routes through filter_nodes (the existing veil door, default-deny): a
+    globally-filed item can ref a walled node, and its title must not print
+    into another session's boot — an unreturned ref (walled, or a bad id)
+    renders bare. Failure-isolated: on any error every ref renders bare."""
+    want = []
+    for item in items:
+        for ref in (item['refs'] or [])[:tc.RENDER_REFS_MAX]:
+            if ref not in want:
+                want.append(ref)
+    titles = {}
+    if want:
+        try:
+            res = brain.filter_nodes(
+                field='id', include=want, rich=False,
+                session_id=session_id, limit=len(want))
+            for n in res.get('nodes') or []:
+                titles[n['id']] = n.get('title') or ''
+        except Exception:
+            pass
+    for item in items:
+        refs = item['refs'] or []
+        lines = []
+        for ref in refs[:tc.RENDER_REFS_MAX]:
+            title = titles.get(ref)
+            lines.append('%s · %s' % (ref[:8], title) if title else ref[:8])
+        extra = len(refs) - tc.RENDER_REFS_MAX
+        if extra > 0:
+            lines.append('(+%d more refs — get_nodes)' % extra)
+        item['ref_lines'] = lines
 
 
 def pull(brain, session_id, via):
     """Due items for this session at a delivery moment ('boot' | 'stop') —
     rendered block + count. Writes the ledger at render (INSERT OR IGNORE:
-    the PK makes re-render idempotent per session). Asks (needs_answer)
+    the PK makes re-render idempotent per session and epoch). Asks (needs_answer)
     deliver at BOOT ONLY — an architecture question arriving mid-thread
     trains reflex-deferral; at boot there is no thread to protect.
 
@@ -206,6 +237,12 @@ def pull(brain, session_id, via):
     once-item can each deliver it — rare and harmless (a reminder seen
     twice beats one lost); the ledger stays truthful about both.
     """
+    if via not in tc.MOMENTS:
+        # via is written to the ledger verbatim — vocabulary, not free text.
+        # A typo'd moment would behave as Stop (asks silently withheld) and
+        # ledger the typo.
+        raise ValueError('thalamus.pull: via=%r is not a delivery moment %s'
+                         % (via, tc.MOMENTS))
     if not session_id:
         return '', 0
     now = iso_now()
@@ -225,29 +262,38 @@ def pull(brain, session_id, via):
         params + [tc.PULL_MAX_ITEMS]).fetchall()
     overflow = total - len(rows)
     items = [_row_to_item(r) for r in rows]
+    _attach_ref_lines(brain, items, session_id)
     delivered_at = iso_now()
     with brain.logs_write_lock:
         brain.logs_conn_w.executemany(
             'INSERT OR IGNORE INTO thalamus_deliveries '
-            '(item_id, session_id, delivered_at, via) VALUES (?, ?, ?, ?)',
-            [(i['id'], session_id, delivered_at, via) for i in items])
+            '(item_id, session_id, delivered_at, via, armed_epoch) '
+            'VALUES (?, ?, ?, ?, ?)',
+            [(i['id'], session_id, delivered_at, via, i['armed_epoch'])
+             for i in items])
         brain.logs_conn_w.commit()
-    return tc.render_block(items, brain=brain, overflow=overflow), len(items)
+    return tc.render_block(items, overflow=overflow), len(items)
 
 
 def list_items(brain, include_closed=False, limit=50):
     """The pullable view — open items (default) with their delivery counts,
     newest first. include_closed adds terminal items for audit."""
-    where = '' if include_closed else "WHERE state = 'open'"
+    where, params = ('', []) if include_closed else ('WHERE state = ?',
+                                                     [tc.STATE_OPEN])
     rows = brain.logs_conn.execute(
-        'SELECT %s, (SELECT COUNT(*) FROM thalamus_deliveries d'
-        '            WHERE d.item_id = thalamus_items.id) AS deliveries'
+        'SELECT %s,'
+        ' (SELECT COUNT(*) FROM thalamus_deliveries d'
+        '  WHERE d.item_id = thalamus_items.id) AS deliveries,'
+        ' (SELECT COUNT(*) FROM thalamus_deliveries d'
+        '  WHERE d.item_id = thalamus_items.id'
+        '  AND d.armed_epoch = thalamus_items.armed_epoch) AS deliveries_epoch'
         ' FROM thalamus_items %s ORDER BY created_at DESC LIMIT ?'
-        % (_ITEM_COLS, where), (int(limit),)).fetchall()
+        % (_ITEM_COLS, where), params + [int(limit)]).fetchall()
     items = []
     for r in rows:
-        item = _row_to_item(r[:-1])
-        item['deliveries'] = r[-1]
+        item = _row_to_item(r[:-2])
+        item['deliveries'] = r[-2]        # all-time, across re-arms
+        item['deliveries_epoch'] = r[-1]  # since the last re-arm
         items.append(item)
     return {'items': items, 'count': len(items)}
 
@@ -264,9 +310,10 @@ def resolve(brain, item_id, answer=None, defer_until=None, dismiss=False):
 
     answer      → state 'answered'; the payload rides the item for the
                   producer's return surface (Phase 2 render-join).
-    defer_until → deliver_at moves forward, the item RE-ARMS (its ledger rows
-                  are cleared so it delivers again when due) and the window
-                  stretches to cover the new date.
+    defer_until → deliver_at moves forward and the item RE-ARMS as a new
+                  generation (armed_epoch bump — prior deliveries stay in the
+                  ledger as history but stop blocking); the window stretches
+                  to cover the new date.
     dismiss     → state 'dismissed' (closed without an answer).
     """
     actions = [a for a in (answer, defer_until, True if dismiss else None)
@@ -304,17 +351,16 @@ def resolve(brain, item_id, answer=None, defer_until=None, dismiss=False):
                 return {'ok': False, 'error': str(e)}
             if new_deliver is None:
                 new_deliver = iso_now()
-            # Window must outlive the new due date by the grace period.
-            new_expires = max(
-                item['expires_at'] or '',
-                (_dt.fromisoformat(new_deliver)
-                 + _td(days=tc.REMIND_GRACE_DAYS)).isoformat())
+            new_expires = tc.extend_window(new_deliver, item['expires_at'])
+            # Re-arm is a GENERATION, not a deletion: bumping armed_epoch
+            # makes the pull predicate ignore prior-epoch ledger rows, so the
+            # item delivers again when due — while the ledger keeps truthful
+            # history ("delivered, then deferred" ≠ "never delivered";
+            # Phase 3 retry gates on unacked).
             conn.execute(
                 'UPDATE thalamus_items SET deliver_at = ?, expires_at = ?, '
-                'updated_at = ? WHERE id = ?',
+                'armed_epoch = armed_epoch + 1, updated_at = ? WHERE id = ?',
                 (new_deliver, new_expires, now, item_id))
-            conn.execute('DELETE FROM thalamus_deliveries WHERE item_id = ?',
-                         (item_id,))
             result = {'ok': True, 'id': item_id, 'state': tc.STATE_OPEN,
                       'deliver_at': new_deliver, 'expires_at': new_expires}
         else:
@@ -371,12 +417,12 @@ def expire_due(brain):
         conn = brain.logs_conn_w
         dead_asks = conn.execute(
             'SELECT id, source, body FROM thalamus_items '
-            "WHERE state = 'open' AND expires_at <= ? AND needs_answer = 1",
-            (now,)).fetchall()
+            'WHERE state = ? AND expires_at <= ? AND needs_answer = 1',
+            (tc.STATE_OPEN, now)).fetchall()
         cur = conn.execute(
-            "UPDATE thalamus_items SET state = ?, updated_at = ? "
-            "WHERE state = 'open' AND expires_at <= ?",
-            (tc.STATE_EXPIRED, now, now))
+            'UPDATE thalamus_items SET state = ?, updated_at = ? '
+            'WHERE state = ? AND expires_at <= ?',
+            (tc.STATE_EXPIRED, now, tc.STATE_OPEN, now))
         expired = cur.rowcount or 0
         conn.commit()
     for item_id, source, body in dead_asks:
