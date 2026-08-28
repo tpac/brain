@@ -390,21 +390,25 @@ UPDATEs fail silently forever.
 declared schema.** House pattern exists and has been used twice: v28 and v30
 were both DROP COLUMN migrations (`_migrate_v30_project_to_kv` — *"mirroring v28"*).
 
-- [ ] `_migrate_v32_drop_dead_edge_columns(conn)` — drop `idx_edges_type`, then
-      DROP COLUMN `relation`, `edge_type`, `description`.
-- [ ] Self-detecting idempotency via `PRAGMA table_info`, like
-      `_trace_id_column_is_integer`.
-- [ ] `BRAIN_VERSION = 32` (currently 31, `schema.py:37`).
-- [ ] Remove or neuter the now-dead `from_version < 6` backfill block.
-
-Verified safe: SQLite 3.47.1 (DROP COLUMN needs 3.35+); **no `SELECT * FROM edges`**
-anywhere in `servers/`, `dashboard/`, `tests/`, `eval/`.
-
-⚠ **UNVERIFIED:** I grepped for readers of `edges.relation` and found only
-`temporal_extraction.py:361-380`, which *labels* its extraction source
-`'edge.relation'` but takes values from the caller (`edge_relations`). **I did
-not exhaustively audit every `FROM edges` site for a `.relation` read.** Do that
-before dropping.
+- [x] **Built 2026-08-28 — and the drift was worse than F16 recorded: FIVE
+      dead columns, not three.** Live PRAGMA showed `stability` (one constant
+      value × 36,129 rows) and `decay_rate` (NULL × all rows) alongside the
+      three; the v22 comment even names `stability` as deprecated. All five
+      verified zero-reader and dropped: `_migrate_v32_drop_dead_edge_columns`
+      on the `MAIN_MIGRATIONS` ladder (the modern v31 pattern, not
+      `_backfill_data`), PRAGMA-self-detecting, index-before-column,
+      fail-loud. `BRAIN_VERSION = 32`. The `from_version < 6` backfill block
+      deleted. Tests: `tests/test_schema_v32.py` (drifted 12-column fixture,
+      idempotency, data preservation, ladder registration).
+- [x] ⚠ resolved — exhaustive reader/writer audit: no production `INSERT`
+      names the columns (only `tests/archive/` scripts); dashboard JS
+      `e.relation` fields are fed by `er.relation` serializers
+      (`queries/graph.py:85-98`); `temporal_extraction` uses the string as a
+      label only. One legacy standalone script
+      (`tests/benchmark_multivec_encoding.py`, not pytest-collected) would
+      error if ever run — left as-is, noted.
+- [ ] **Deploy:** runs at next daemon restart; the migration framework takes
+      an automatic pre-migration backup on the version bump (`schema.py:1359`).
 
 **Why this matters beyond tidiness:** these columns produced a confidently wrong
 finding in this very session — a census of community→community edges read

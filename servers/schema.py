@@ -34,7 +34,8 @@ WHAT NOT TO DO:
 import sqlite3
 from datetime import datetime, timezone
 
-BRAIN_VERSION = 31  # v31: voice-quote fields renamed — user_raw_quote → their_raw_quote, anchor_raw_quote → my_raw_quote. _migrate_v31_voice_fields relabels both node_metadata_kv.key and node_enrichments.vector_type (the per-field embedding lane); no re-embed, field names never enter the embedded text. See v30 note below for prior version.
+BRAIN_VERSION = 32  # v32: drop dead edges columns — relation/edge_type/description/stability/decay_rate (v22 leftovers: constant or NULL on every row, zero readers; live relation data incl. decay_rate is edge_relations) plus index idx_edges_type. _migrate_v32_drop_dead_edge_columns converges drifted installs to the declared 7-column edges shape. See v31 note below for prior version.
+# v31: voice-quote fields renamed — user_raw_quote → their_raw_quote, anchor_raw_quote → my_raw_quote. _migrate_v31_voice_fields relabels both node_metadata_kv.key and node_enrichments.vector_type (the per-field embedding lane); no re-embed, field names never enter the embedded text.
 # v30: drop nodes.project column — project is now system-stamped kv provenance (node_metadata_kv['project']), not a nodes column. _migrate_v30_project_to_kv moves values (slug map: everything→brain except the EX.CO trio→ex.co) then DROP COLUMN. See v29 note below for prior version.
 BRAIN_VERSION_KEY = 'brain_schema_version'
 
@@ -683,15 +684,6 @@ def _backfill_data(conn, from_version):
         except Exception:
             pass
 
-    if from_version < 6:
-        try:
-            conn.execute("UPDATE edges SET edge_type = 'corrected_by' WHERE relation = 'corrected_by'")
-            conn.execute("UPDATE edges SET edge_type = 'part_of' WHERE relation = 'part_of'")
-            conn.execute("UPDATE edges SET edge_type = 'exemplifies' WHERE relation = 'example_of'")
-            conn.execute("UPDATE edges SET edge_type = 'related' WHERE edge_type IS NULL")
-        except Exception:
-            pass
-
     if from_version < 15:
         # v15: Generate content_summary for existing nodes that have content
         try:
@@ -1324,12 +1316,48 @@ def _migrate_v31_voice_fields(conn):
                  counts['node_enrichments']), flush=True)
 
 
+def _migrate_v32_drop_dead_edge_columns(conn):
+    """v32: drop the five dead edges columns and their index.
+
+    `relation` / `edge_type` / `description` / `stability` / `decay_rate`
+    are v22 leftovers — constant or NULL across every row, zero production
+    readers; the live relation data (including its decay_rate) lives on
+    edge_relations. The declared edges schema above has been the clean
+    7-column shape since v22, so this converges a drifted install to its
+    own declaration, mirroring v28/v30 (index before column).
+    Idempotent: PRAGMA-detected, a re-run finds the columns already gone.
+    """
+    cols = {row[1] for row in
+            conn.execute("PRAGMA table_info(edges)").fetchall()}
+    dead = [c for c in ('relation', 'edge_type', 'description',
+                        'stability', 'decay_rate') if c in cols]
+    if not dead:
+        print("[brain] v32: edges dead columns already absent — skipped")
+        return
+
+    try:
+        conn.execute("DROP INDEX IF EXISTS idx_edges_type")
+    except Exception as e:
+        print(f"[brain] v32: drop idx_edges_type warning: {e}")
+
+    # Fail loud — a silent half-migration (some columns dropped, others
+    # kept) would leave PRAGMA-based detection lying to the next run.
+    for col in dead:
+        try:
+            conn.execute("ALTER TABLE edges DROP COLUMN %s" % col)
+            print("[brain] v32: edges.%s dropped" % col)
+        except Exception as e:
+            print(f"[brain] v32: DROP COLUMN {col} failed: {e}")
+            raise
+
+
 # Numbered structural migrations for brain.db, for the runner to apply.
 # The declarative TABLES diff and the _backfill_data ladder both stay; this is
-# for changes neither can express. A v32+ change adds (32, _migrate_v32) here
+# for changes neither can express. A v33+ change adds (33, _migrate_v33) here
 # and bumps BRAIN_VERSION — nothing else.
 MAIN_MIGRATIONS = [
     (31, _migrate_v31_voice_fields),
+    (32, _migrate_v32_drop_dead_edge_columns),
 ]
 
 
