@@ -703,6 +703,31 @@ def _build_tools():
          "from_session": {"type": "string", "description": "Your own session id, to look up what you sent (optional; falls back to your session)."},
          "limit": {"type": "integer", "description": "Max recent sent messages to return (default 20).", "default": 20}}}},
 
+    # ── Thalamus — the brain speaking to its streams ──
+    {"name": "remind",
+     "description": "File a Thalamus item — the brain's standing-intent queue (a durable note-to-future-self with delivery policy). One verb, three shapes: a REMINDER (what + when — it fires at the first session after it's due), a NOTICE (for_whom='all' — every session sees it once at boot/stop inside its window; for_whom='live' — one-shot broadcast to streams alive right now), or an ASK (needs_answer=true — renders at each session's boot until answered via thalamus_resolve, expires loudly). Use it to make something surface later without relying on recall: 'remind me tomorrow', 'every session should know X this week', 'flag this question until it's answered'.",
+     "inputSchema": {"type": "object", "required": ["what"], "properties": {
+         "what": {"type": "string", "description": "The body — written for a reader with none of this session's context."},
+         "when": {"type": "string", "description": "When it becomes due: relative shorthand ('30m','2h','3d','1w'), an ISO timestamp, or omit/'now' for next opportunity."},
+         "for_whom": {"type": "string", "description": "Audience: omit for the default (asks → every session until answered; else → first session after due). 'live' = one-shot broadcast to live streams now. 'all' = every session in the window. A full session UUID = that session only."},
+         "needs_answer": {"type": "boolean", "description": "Ask semantics: delivered at session boot only, stays up until thalamus_resolve(answer=…), expiry is loud (dead-letter logged).", "default": False},
+         "refs": {"type": "array", "items": {"type": "string"}, "description": "Node ids for context — resolved to id · title at render."},
+         "dedup_key": {"type": "string", "description": "Producer-owned identity: re-filing the same (source, dedup_key) updates the open item instead of duplicating it."}}}},
+
+    {"name": "thalamus_list",
+     "description": "The Thalamus queue — open items (reminders, notices, asks) with their delivery counts, newest first. Pullable any time; items also arrive on their own at boot and Stop when due. include_closed=true adds answered/dismissed/withdrawn/expired items for audit.",
+     "inputSchema": {"type": "object", "properties": {
+         "include_closed": {"type": "boolean", "description": "Also show terminal items (answered/dismissed/withdrawn/expired/sent).", "default": False},
+         "limit": {"type": "integer", "description": "Max items (default 50).", "default": 50}}}},
+
+    {"name": "thalamus_resolve",
+     "description": "Close or defer one Thalamus item — pass exactly one of: answer (closes an ask; the text rides the item back to whoever filed it), defer_until (re-arms delivery at a later time — shorthand '2h'/'3d' or ISO), or dismiss=true (closes without an answer).",
+     "inputSchema": {"type": "object", "required": ["id"], "properties": {
+         "id": {"type": "string", "description": "The item id (th_xxxx), from the render or thalamus_list."},
+         "answer": {"type": "string", "description": "The answer — closes the item as 'answered'."},
+         "defer_until": {"type": "string", "description": "Push delivery to later: shorthand ('2h','3d','1w') or ISO. Clears its delivery ledger so it fires again when due."},
+         "dismiss": {"type": "boolean", "description": "Close without an answer.", "default": False}}}},
+
     # ── Traces & Interactions ──
     {"name": "query_traces",
      "description": "Search the fractal trace substrate — O (observed) / K (selected) / delta (changed) events at each scale. Pick the scale for the layer you want: s0 = raw conversation — for any s0 pull, incl. what you did with tools, use recall_episodes (the conversational lens; pass ref_type='tool_result' there); s1 = per-turn (ref_type recall = candidates pulled, surface_selected = the few that won, encoding_run = what the Scribe encoded, …); s2 = idle integration (consolidation_proposals, community_enriched, healer_proposals, …). ref_type is open-text — these are examples, not the full set. Common pull: what got encoded → scale='s1', ref_type='encoding_run'. Time & scope: `hours` bounds the window (default 24); session_id/session_ids are authoritative and ignore `hours` (full history for that stream — pass one, not both); chain_id pulls one full chain; grouped=true nests events by chain.",
@@ -838,6 +863,7 @@ CRITICAL_TOOLS = frozenset({
     "self_send",          # speak to a stream
     "self_inbox",         # drain own messages
     "self_outbox",        # track delivery
+    "remind",             # the Thalamus producer verb — file for later
 })
 
 

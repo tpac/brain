@@ -1691,6 +1691,43 @@ LOG_TABLES = {
         )""",
     },
 
+    # Thalamus — the brain speaking to its streams (servers/scales/thalamus/).
+    # One item is a STANDING INTENT that can deliver to N sessions over its
+    # window; the courier above stays one-shot. `deliver_at` NULL = next
+    # opportunity; `dedup_key` is producer-owned or '' (never derived from
+    # text); states in thalamus_contract. Delivery is pull-only: sessions
+    # self-serve at Stop/boot and record their delivery in the ledger below.
+    'thalamus_items': {
+        'create': """CREATE TABLE IF NOT EXISTS thalamus_items (
+            id TEXT PRIMARY KEY,
+            source TEXT NOT NULL,
+            body TEXT NOT NULL,
+            refs TEXT DEFAULT '',
+            audience TEXT DEFAULT 'once',
+            target_session TEXT DEFAULT '',
+            needs_answer INTEGER DEFAULT 0,
+            dedup_key TEXT DEFAULT '',
+            deliver_at TEXT,
+            expires_at TEXT NOT NULL,
+            state TEXT NOT NULL DEFAULT 'open',
+            answer TEXT DEFAULT '',
+            answered_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+        )""",
+    },
+    # One row per (item, session) delivery — the durable ledger the courier's
+    # expiring receipts can't be (annotate-at-render). PK guards re-render.
+    'thalamus_deliveries': {
+        'create': """CREATE TABLE IF NOT EXISTS thalamus_deliveries (
+            item_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            delivered_at TEXT NOT NULL,
+            via TEXT NOT NULL,
+            PRIMARY KEY (item_id, session_id)
+        )""",
+    },
+
     # Boot observability — the exact `for_claude` text the daemon rendered and
     # served to a session at SessionStart. context_boot is read-only re: the
     # knowledge graph, but it logs what it served here (the same pattern as
@@ -1749,6 +1786,8 @@ LOG_INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_self_inflight_created ON self_inflight(created_at)',
     'CREATE INDEX IF NOT EXISTS idx_self_inflight_expires ON self_inflight(expires_at)',
     'CREATE INDEX IF NOT EXISTS idx_self_delivered_to ON self_delivered(to_session)',
+    'CREATE INDEX IF NOT EXISTS idx_thalamus_items_state ON thalamus_items(state)',
+    'CREATE INDEX IF NOT EXISTS idx_thalamus_items_source ON thalamus_items(source)',
     # boot_renders — dashboard reads latest-per-session and newest-first
     'CREATE INDEX IF NOT EXISTS idx_boot_renders_session ON boot_renders(session_id)',
     'CREATE INDEX IF NOT EXISTS idx_boot_renders_created ON boot_renders(created_at)',

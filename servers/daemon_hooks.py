@@ -657,14 +657,18 @@ def hook_post_response_track(brain, args, graph_changes):
     )
     session_id = ctx.session_id
 
-    # Self-message delivery — the SOLE path (Stop-only, 2026-06-04). The
-    # prominent Stop block reliably reaches the model; the old PreToolUse
-    # additionalContext leg was missed (consumed the tap into context the model
-    # didn't act on), so it was removed. Drain any pending tap and block the stop
-    # so it's seen before the turn ends. Consume-once → blocks at most once per
-    # batch (next stop finds nothing and allows it). Only on the Stop event —
-    # this handler also runs on UserPromptSubmit, where blocking would be wrong.
+    # Self-message + Thalamus delivery — the SOLE push path (Stop-only,
+    # 2026-06-04). The prominent Stop block reliably reaches the model; the old
+    # PreToolUse additionalContext leg was missed (consumed the tap into context
+    # the model didn't act on), so it was removed. Two sources compose here,
+    # each failure-isolated: the courier drain (stream speech, consume-once)
+    # and the Thalamus pull (the brain's own due items — ledger-recorded, asks
+    # excluded at Stop, they deliver at boot). Blocks at most once per batch
+    # per source (next Stop finds nothing and allows it). Only on the Stop
+    # event — this handler also runs on UserPromptSubmit, where blocking would
+    # be wrong.
     if args.get("hook_event_name") == "Stop":
+        _parts = []
         try:
             from servers.scales.self_channel import signal as _self_signal
             _block, _n = _self_signal.drain_and_render(brain, session_id)
@@ -672,12 +676,27 @@ def hook_post_response_track(brain, args, graph_changes):
                 _s0_trace(
                     brain, ctx, event_type='K', ref_type='self_message',
                     summary='delivered %d self-message(s) via Stop block' % _n)
-                brain.save()
-                return {"output": "(stored)",
-                        "decision": "block", "reason": _block}
+                _parts.append(_block)
         except Exception as _self_err:
             brain._log_error('self_delivery_stop', _self_err,
                              'Stop self-message delivery (session=%s)' % session_id)
+        try:
+            from servers.scales.thalamus import thalamus as _thalamus
+            from servers.scales.thalamus.thalamus_contract import (
+                REF_THALAMUS_DELIVERY as _REF_TH)
+            _th_block, _th_n = _thalamus.pull(brain, session_id, via='stop')
+            if _th_n:
+                _s0_trace(
+                    brain, ctx, event_type='K', ref_type=_REF_TH,
+                    summary='delivered %d thalamus item(s) via Stop block' % _th_n)
+                _parts.append(_th_block)
+        except Exception as _th_err:
+            brain._log_error('thalamus_delivery_stop', _th_err,
+                             'Stop thalamus delivery (session=%s)' % session_id)
+        if _parts:
+            brain.save()
+            return {"output": "(stored)",
+                    "decision": "block", "reason": "\n\n".join(_parts)}
 
     brain.save()
     return {"output": "(stored)"}
