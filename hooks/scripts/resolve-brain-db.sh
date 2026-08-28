@@ -145,22 +145,40 @@ if [ -z "${BRAIN_DB_DIR:-}" ]; then
   fi
 fi
 
+# The service-owned data home (D-13): host-independent, never renames. New
+# brains are born here, relocation targets it, and boot's notices print it.
+# Exported so consumers (boot, relocate-brain.sh) reuse it instead of
+# re-deriving the literal — three copies of this expression already drifted
+# apart once.
+BRAIN_XDG_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/brain"
+export BRAIN_XDG_DIR
+
 # A resolved brain living under a host's plugin-data root is parked on a
 # trapdoor: `claude plugin uninstall` deletes that whole tree by default
-# (verified 2026-08-27; --keep-data is opt-in). Matched on the PATH SHAPE,
+# (--keep-data is opt-in; a plugin update is safe). Matched on the PATH,
 # not the rung that resolved it — a knob, env hint, or resolved.env pointing
-# into the same dir is parked all the same. Sets BRAIN_HOST_PARKED for boot
-# to surface the one-mv relocation; never moves anything itself.
+# into the same dir is parked all the same. The roots ARE the adoption net's
+# scan roots (the parent of $CLAUDE_PLUGIN_DATA — so renamed SIBLING plugin
+# dirs match — plus the default plugins-data root), never a bare unanchored
+# glob: a dev checkout that merely contains "plugins/data" must not warn.
+# BRAIN_PARKED_ACK (user knob, ~/.config/brain/env) is the informed-stay
+# opt-out. Sets BRAIN_HOST_PARKED for boot to surface relocation; never
+# moves anything itself.
 _brain_check_parked() {
   BRAIN_HOST_PARKED=""
-  case "$BRAIN_DB_DIR" in
-    */plugins/data/*) BRAIN_HOST_PARKED="$BRAIN_DB_DIR" ;;
-    *) if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
-         case "$BRAIN_DB_DIR" in
-           "$CLAUDE_PLUGIN_DATA"/*) BRAIN_HOST_PARKED="$BRAIN_DB_DIR" ;;
-         esac
-       fi ;;
-  esac
+  if [ -z "${BRAIN_PARKED_ACK:-}" ]; then
+    # ${...%/} / ${...%/*}: string builtins only — this runs on every hook.
+    # The sentinel is a path no real dir can live under (/dev/null is a
+    # character device), so an unset CPD can never match an absolute path.
+    _cpd="${CLAUDE_PLUGIN_DATA:-}"; _cpd="${_cpd%/}"
+    _cpd_root="${_cpd%/*}"
+    case "$BRAIN_DB_DIR" in
+      "$HOME/.claude/plugins/data"/*|\
+      "${_cpd:-/dev/null/no-cpd}"|\
+      "${_cpd_root:-/dev/null/no-cpd}"/*)
+        BRAIN_HOST_PARKED="$BRAIN_DB_DIR" ;;
+    esac
+  fi
   export BRAIN_HOST_PARKED
 }
 
@@ -183,10 +201,6 @@ fi
 # in explicitly) — and never while a candidate brain sits unreachable at an
 # old default (the adoption net below).
 DB_DIR=""
-
-# The service-owned data home (D-13): host-independent, never renames.
-# New brains are born here; a brain already living here is adopted first.
-_XDG_BRAIN="${XDG_DATA_HOME:-$HOME/.local/share}/brain"
 
 # 1. Explicit override — adopted outright only when a brain actually lives
 #    there. A dir WITHOUT brain.db is demoted to a hint of last resort (used
@@ -242,8 +256,8 @@ fi
 
 # 2b. The XDG service location — where new brains are born (D-13). A brain
 #     already living there is the native case and beats every legacy rung.
-if [ -z "$DB_DIR" ] && [ -f "$_XDG_BRAIN/brain.db" ]; then
-  DB_DIR="$_XDG_BRAIN"
+if [ -z "$DB_DIR" ] && [ -f "$BRAIN_XDG_DIR/brain.db" ]; then
+  DB_DIR="$BRAIN_XDG_DIR"
 fi
 
 # 3. Claude Code plugin data location — ADOPTION ONLY (pre-D-13 installs
@@ -254,7 +268,7 @@ if [ -z "$DB_DIR" ] && [ -n "${CLAUDE_PLUGIN_DATA:-}" ] && [ -f "$CLAUDE_PLUGIN_
 fi
 
 # 4. Legacy local path (~/AgentsContext/brain/) — adoption only, for
-#    pre-CLAUDE_PLUGIN_DATA installs. New installs land at $_XDG_BRAIN.
+#    pre-CLAUDE_PLUGIN_DATA installs. New installs land at $BRAIN_XDG_DIR.
 if [ -z "$DB_DIR" ] && [ -f "$HOME/AgentsContext/brain/brain.db" ]; then
   DB_DIR="$HOME/AgentsContext/brain"
 fi
@@ -323,7 +337,7 @@ if [ -z "$DB_DIR" ]; then
     fi
   done
   if [ -z "$BRAIN_ADOPTION_CANDIDATE" ]; then
-    DB_DIR="$_XDG_BRAIN"
+    DB_DIR="$BRAIN_XDG_DIR"
     # a failed create (read-only ~/.local, ...) must surface as the boot
     # hook's "auto-create failed" guidance, not a path that doesn't exist
     mkdir -p "$DB_DIR" 2>/dev/null || DB_DIR=""

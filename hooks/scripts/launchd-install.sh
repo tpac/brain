@@ -73,7 +73,14 @@ brain_launchd_render() {
         if [ -n "$_installed_db" ] && [ "$_installed_db" != "$_db_dir" ]; then
             _knob="$(brain_config_knob_db_dir 2>/dev/null)"
             _opt="$(brain_config_option_db_dir 2>/dev/null)"
-            if [ "$_db_dir" != "$_knob" ] && [ "$_db_dir" != "$_opt" ]; then
+            # The XDG service dir counts as a durable target alongside the
+            # two config channels: it is the D-13 service-owned default, so
+            # a resolver that landed there did so via a real brain.db — the
+            # relocation flow deliberately needs no pointer, and without
+            # this arm the guard would pin both plists to the vacated path
+            # forever (cmp then blesses the divergence every boot).
+            if [ "$_db_dir" != "$_knob" ] && [ "$_db_dir" != "$_opt" ] \
+               && [ "$_db_dir" != "${XDG_DATA_HOME:-$HOME/.local/share}/brain" ]; then
                 _db_dir="$_installed_db"
             fi
         fi

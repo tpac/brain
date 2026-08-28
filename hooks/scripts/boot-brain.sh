@@ -18,6 +18,10 @@ export BRAIN_HOOK_SESSION_ID
 # introspects the Claude env itself). See SessionContext.cwd / session_env_for.
 BRAIN_HOOK_CWD=$(echo "$HOOK_STDIN" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('cwd',''))" 2>/dev/null)
 export BRAIN_HOOK_CWD
+# source distinguishes a real session start from resume/compact — SessionStart
+# fires for all of them (empty matcher), and per-session notices must not
+# re-inject on every compaction of a long session.
+BRAIN_HOOK_SOURCE=$(echo "$HOOK_STDIN" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('source',''))" 2>/dev/null)
 
 # ── Resolve ANTHROPIC_API_KEY from canonical config location ──
 # Mechanism owned by api-key-env.sh (shared with brain-env.sh, which cannot be
@@ -200,7 +204,9 @@ fi
 # exact commands, both options inline.
 if [ -z "$BRAIN_DB_DIR" ]; then
   _CFG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/brain"
-  _XDG_FRESH="${XDG_DATA_HOME:-$HOME/.local/share}/brain"
+  # the resolver (sourced above) exports the service dir — one owner, no
+  # re-derived copy of the literal here
+  _XDG_FRESH="$BRAIN_XDG_DIR"
   # printf with a leading \n (not echo >>): a knob file whose last line lacks
   # a trailing newline must not have the new line glued onto it.
   _CFG_Q="'$(_sq "$_CFG_FILE")'"
@@ -222,23 +228,20 @@ without memory rather than silently starting a new, empty brain.
 Pick one, then start a new session:
 
   1. MOVE IT to the standard location (recommended — plugin renames,
-     updates, and uninstalls never touch it):
-       launchctl bootout gui/\$(id -u)/com.brain.daemon 2>/dev/null || true
-       mkdir -p '$(_sq "$(dirname "$_XDG_FRESH")")'
-       [ ! -e '$(_sq "$_XDG_FRESH")' ] && mv $_CAND_Q '$(_sq "$_XDG_FRESH")'
-     (the first line stops the background daemon so nothing writes during
-      the move; the next session starts it again automatically)
+     updates, and uninstalls never touch it). One command does it safely:
+     stops the daemon under the maintenance lock, verifies the copy, keeps
+     the original as a renamed spare, and restores services:
+       bash '$(_sq "$(dirname "$0")")/relocate-brain.sh' $_CAND_Q
      No pointer needed afterwards — it is found there automatically.
-     (If that reports the target exists and it is only an empty leftover
-      dir: rmdir '$(_sq "$_XDG_FRESH")' and rerun the mv.)
 
   2. KEEP IT WHERE IT IS — point Anchor at it:
        mkdir -p $_CFG_Q
        printf "\nBRAIN_DB_DIR='%s'\n" $_CAND_Q >> $_CFG_Q/env
      (or set the brain path field in the Anchor plugin's settings to that
       same folder)
-     ⚠ That path is under a plugin's data folder — uninstalling that plugin
-       deletes it, memories included. Prefer option 1.
+     ⚠ That folder is deleted by a default \`claude plugin uninstall\`
+       (only --keep-data spares it). A relocation notice will repeat each
+       session; silence it with BRAIN_PARKED_ACK=1 in $_CFG_Q/env.
 
   3. START FRESH — leave the old brain untouched on disk and begin a new
      one at the standard location:
@@ -286,46 +289,39 @@ fi
 [ "$BRAIN_KEYLESS_BOOT" = "1" ] && _keyless_notice
 
 # A resolved brain parked under a host plugin-data root (BRAIN_HOST_PARKED,
-# set by the resolver on path shape): memory works this session, but
-# `claude plugin uninstall` deletes that whole tree by default (verified
-# 2026-08-27; --keep-data is opt-in). Surface the one-mv relocation to the
-# service dir (D-13) and repeat until the brain leaves the trapdoor. The
-# move is the user's to run — boot never creates/moves/deletes brains.
+# set by the resolver on path shape): memory works this session, but a
+# default `claude plugin uninstall` deletes that whole tree. The relocation
+# itself lives in relocate-brain.sh — one owner for the lock/stop/verify
+# sequence; this notice only points at it. Gated on source=startup so a
+# resume or compaction doesn't re-inject it mid-session; repeats at each new
+# session until the brain is moved or BRAIN_PARKED_ACK acknowledges staying.
 _parked_notice() {
-  _P_XDG="${XDG_DATA_HOME:-$HOME/.local/share}/brain"
+  _P_ID="$(basename "$(dirname "$BRAIN_HOST_PARKED")")"
   cat <<EOF
 
-🧠 Anchor — your brain is loaded, but it lives where uninstall deletes
+🧠 Anchor — your brain lives in a folder \`claude plugin uninstall\` deletes
 
-Memory works normally this session. The brain's files, though, sit at:
+Memory works normally this session, but the brain's files sit at:
 
     $BRAIN_HOST_PARKED
 
-Claude Code's per-plugin data folder. A plugin UPDATE is safe there — but
-\`claude plugin uninstall\` deletes that entire folder by default, memories
-included. Recommended: move the brain to the standard location, which no
-plugin operation ever touches:
+A plugin UPDATE is safe there; a default UNINSTALL deletes that whole folder,
+memories included (only \`claude plugin uninstall $_P_ID --keep-data\` spares
+it). Recommended: move the brain to the standard location, which no plugin
+operation ever touches. One command does it safely — stops the daemon under
+the maintenance lock, verifies the copy, keeps the original as a renamed
+spare, and restores services:
 
-    launchctl bootout gui/\$(id -u)/com.brain.daemon 2>/dev/null || true
-    mkdir -p '$(_sq "$(dirname "$_P_XDG")")'
-    [ ! -e '$(_sq "$_P_XDG")' ] && mv '$(_sq "$BRAIN_HOST_PARKED")' '$(_sq "$_P_XDG")'
+    bash '$(_sq "$(dirname "$0")")/relocate-brain.sh'
 
-(The first line stops the background daemon so nothing writes mid-move — a
-cross-volume mv is a copy, and copying a live database can tear it. On
-Linux there is no launchd; the line is a harmless no-op.)
-Then start a new session — the brain is found there automatically and the
-daemon starts again on its own. If ~/.config/brain/env carries a BRAIN_DB_DIR line
-aiming at the old path, delete that line. If you must uninstall before
-moving: \`claude plugin uninstall <plugin> --keep-data\`.
-(If the mv reports the target exists and it is only an empty leftover dir:
- rmdir '$(_sq "$_P_XDG")' and rerun the mv.)
+Then start a new session. Prefer to stay put? Silence this notice with
+BRAIN_PARKED_ACK=1 in $BRAIN_ENV_FILE
 
-Claude: surface this to the user with the exact commands above. Do not run
-the move yourself unless the user explicitly asks. This notice repeats
-every session until the brain is moved.
+Claude: tell the user. Run the script only if they explicitly ask. This
+notice repeats at each new session until the brain is moved or acknowledged.
 EOF
 }
-[ -n "${BRAIN_HOST_PARKED:-}" ] && _parked_notice
+[ -n "${BRAIN_HOST_PARKED:-}" ] && [ "${BRAIN_HOOK_SOURCE:-startup}" = "startup" ] && _parked_notice
 
 # ── Provision the launchd service on fresh installs (macOS, idempotent) ──
 # Install the LaunchAgent BEFORE ensure_daemon() so launchd owns the daemon from
