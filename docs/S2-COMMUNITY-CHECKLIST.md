@@ -121,6 +121,7 @@ note census, F10 archive dates. Still to capture:
       | P5 census | **97.9% of the 3,689 sleeping nodes clear the pair-null p98 at their best community** — the gate decision is a MAX over 601 centroids, and real nodes are topical, so a pair-calibrated threshold barely gates at the node level |
       | P6 pollution | 3,655 S2 placements in 60d; **26.6% sit below the pair-null p98** — accepted with no more geometric evidence than noise, judged blind |
       | P7 kNN | kNN-10 sim-weighted vote beats centroid argmax on choice: **0.465 vs 0.393** |
+      | P8 judge history | Accepted vs rejected add_to_existing (6,190 vs 480 pairs; older rejection rows lack community ids — recent-era only): centred-sim AUC **0.634**, kNN-share AUC 0.587. **The judge's rejection median (0.262) sits exactly on the pair-null p98 (0.263)** — the encoder has been hand-rejecting noise-level pairs the floor gate would kill for free. 27% of blind accepts sit below that same line; 25% of rejects have zero kNN vote share (clean auto-rejects). AUC 0.63 ≪ 1: geometry cannot replicate the judge — it can only floor it and feed it. |
 - [ ] payload chars and rounds per batch (baseline: last full run was 4 rounds
       across 2 batches, 103.7s, 8→3698 tok, `cache_read 71023`). Payload chars
       are not logged today — this box closes with P4's logging, not before.
@@ -269,6 +270,10 @@ the cross-run version.
          false-pass budget, not a space-dependent constant (a 0.20 literal is
          the same bug class as the 0.50 it replaces: silently invalidated by
          an embedder swap). Kills the noise tail cheaply; nothing more.
+         **Doubly calibrated (P8):** the judge's own rejection median (0.262)
+         lands on the pair-null p98 (0.263) — the floor automates what the
+         encoder already rejects by hand, and ~25% of historical rejects
+         (zero kNN vote share) never deserved encoder attention at all.
       3. **Evidence to the judge** — the proposal render carries the numbers:
          centred sim + its member-band percentile + kNN vote share. P6 is
          the argument: 26.6% of accepted placements sit below the noise

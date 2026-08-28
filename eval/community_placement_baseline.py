@@ -266,6 +266,64 @@ def member_sim_array(S, idx, cids, memberships):
     return np.array(vals), per_comm
 
 
+def load_rejected_add_pairs(brain):
+    """(community_id, node_id) for every rejected add_to_existing — the pair
+    the encoder judged and declined. proposed_ids stores [node, *candidate
+    communities] with the strongest candidate first."""
+    comm = {r[0] for r in brain.conn.execute(
+        "SELECT id FROM nodes WHERE type = 'community'")}
+    pairs = []
+    for (blob,) in brain.conn.execute(
+            "SELECT proposed_ids FROM s2_rejections "
+            "WHERE proposal_type = 'add_to_existing'"):
+        try:
+            ids_ = json.loads(blob) or []
+        except (json.JSONDecodeError, TypeError):
+            continue
+        node = next((i for i in ids_ if i not in comm), None)
+        comms = [i for i in ids_ if i in comm]
+        if node and comms:
+            pairs.append((comms[0], node))
+    return pairs
+
+
+def pair_operator_scores(pairs, idx, cid_pos, S, mat, pool, member_of, k=10):
+    """Per (community, node) pair: centred sim + kNN-10 vote share for that
+    community. Pairs whose node/community fell out of the measured set are
+    dropped (returned count says how many survived)."""
+    valid = [(c, n) for c, n in pairs if n in idx and c in cid_pos]
+    if not valid:
+        return np.array([]), np.array([]), 0
+    sims = np.array([S[idx[n], cid_pos[c]] for c, n in valid])
+    pool_rows = np.array([idx[m] for m in pool])
+    pos_of = {m: i for i, m in enumerate(pool)}
+    Q = mat[[idx[n] for _, n in valid]] @ mat[pool_rows].T
+    shares = np.empty(len(valid))
+    for qi, (c, n) in enumerate(valid):
+        row = Q[qi]
+        if n in pos_of:
+            row[pos_of[n]] = -np.inf
+        top = np.argpartition(row, -k)[-k:]
+        votes, target = {}, 0.0
+        for t in top:
+            w = float(row[t])
+            for cc in member_of[pool[t]]:
+                votes[cc] = votes.get(cc, 0.0) + w
+                if cc == c:
+                    target += w
+        total = sum(votes.values()) or 1.0
+        shares[qi] = target / total
+    return sims, shares, len(valid)
+
+
+def auc(pos, neg):
+    """P(pos > neg) — rank-based, the single-number separation score."""
+    allv = np.concatenate([pos, neg])
+    ranks = allv.argsort().argsort().astype(np.float64) + 1
+    rp = ranks[:len(pos)].sum()
+    return (rp - len(pos) * (len(pos) + 1) / 2) / (len(pos) * len(neg))
+
+
 def knn_vote_probe(ids, idx, mat, cids, S, memberships, member_of, rng,
                    k=10, nq=1000):
     """Choice quality: kNN-10 sim-weighted vote vs centroid argmax, on
@@ -322,6 +380,8 @@ def main():
         node_meta = load_node_meta(brain)
         unplaceable = load_unplaceable_ids(brain)
         placements = load_recent_placements(brain, days=60)
+        placements_all = load_recent_placements(brain, days=100000)
+        rejected_pairs = load_rejected_add_pairs(brain)
 
     print('\n' + '=' * 70)
     print('COMMUNITY PLACEMENT BASELINE — node vs centroid, production data')
@@ -449,6 +509,29 @@ def main():
           '(%d single-community members):' % nq)
     print('  kNN vote accuracy %.3f vs centroid argmax %.3f' % (
         knn_acc, cent_acc))
+
+    # P8 — judge-history calibration: do the operators separate what the
+    # encoder ACCEPTED from what it REJECTED? (the real supervised labels)
+    pool = sorted({m for c in cids for m in memberships[c] if m in idx})
+    acc_sim, acc_share, n_acc = pair_operator_scores(
+        placements_all, idx, cid_pos, S_c, mat_c, pool, member_of)
+    rej_sim, rej_share, n_rej = pair_operator_scores(
+        rejected_pairs, idx, cid_pos, S_c, mat_c, pool, member_of)
+    print('\nP8 judge history — accepted (%d/%d scored) vs rejected '
+          '(%d/%d scored) add_to_existing pairs:' % (
+              n_acc, len(placements_all), n_rej, len(rejected_pairs)))
+    if n_acc and n_rej:
+        for name, a, r in (('centred sim', acc_sim, rej_sim),
+                           ('kNN vote share', acc_share, rej_share)):
+            print('  %-15s accepted p25/p50/p75: %.3f/%.3f/%.3f | '
+                  'rejected: %.3f/%.3f/%.3f | AUC %.3f' % (
+                      name, *np.percentile(a, [25, 50, 75]),
+                      *np.percentile(r, [25, 50, 75]), auc(a, r)))
+        both_a = np.stack([acc_sim, acc_share]).mean(axis=0)
+        both_r = np.stack([rej_sim, rej_share]).mean(axis=0)
+        print('  %-15s AUC %.3f' % ('mean of both', auc(both_a, both_r)))
+    print('  (caveat: centroids are today\'s — both classes scored against '
+          'current membership, and accepted nodes score LOO as members)')
 
     if args.save:
         payload = {}
