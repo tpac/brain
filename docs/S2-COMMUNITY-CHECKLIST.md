@@ -301,26 +301,79 @@ the cross-run version.
 
 ---
 
-### PX — Reshape-diff frame (opened 2026-08-28, Tom's plasticity directive)
+### PX — Reshape-diff: the plan of record (ratified direction, 2026-08-28)
 
-Tom's constraint: **keep the agent encoder; give decoder AND encoder
-plasticity; token economics manageable.** The probe (F18) says the frame is
-affordable at steady state (~5 structural events + ~41 births/week, matching
-silent) but exposes the two real design decisions:
+Tom: "we're heading in the right direction" — two-layer frame confirmed as
+the target. Constraints (`f3cb2f52`): agent encoder stays; plasticity both
+sides; token economics manageable. Sequencing follows the migration
+playbook (`a6e1fe54`): dangerous thinking front-loaded, instrument
+validated before it judges (A/A → concordance → cutover).
 
-- [ ] **Granularity — what earns a name.** The graph's own structure is fine
-      (median 4) and 99% stable; agent-named communities are the narrative
-      layer. Candidate shape: two layers — free algorithmic micro-structure
-      re-derived every run, and named communities as curated aggregates over
-      it, with hysteresis so the encoder judges only supra-threshold events.
-- [ ] **The one-time reorganization.** First reshape is a migration: 35%
-      identity survival at J≥0.5; the giants dissolve. Needs an explicit,
-      quota-drained plan (guided decomposition of the masses with lineage
-      edges), not a big-bang swap.
-- [ ] Kill or raise the >60% overlap-conversion (mechanism 2 of
-      centralization) — defensible under either frame.
-- [ ] ⚠ Held pending this frame decision: P6's deploy step that wakes the
-      3,694 sleepers into the old add-pipeline.
+**R0 — Design + contracts (1 session, ends with Tom's sign-off).**
+The dangerous thinking, all of it, before code: naming bar (what earns a
+name: size / stability-across-runs / narrative-worthiness), hysteresis
+thresholds (what Jaccard shift summons the encoder), event taxonomy
+(birth / split / merge / dispersal / umbrella-shift) with each event's
+render and encoder ops, membership write policy (algorithmic within named
+structure, provenance `s2:community_reshape`), micro-cluster stability
+tracking (needs cross-run state — a fingerprint table; design the owner),
+lineage verbs (aspects_v1.json human edit), and the retire list (orphan
+pipeline, drift, overlap-conversion, unplaceable rest). Lands in
+S2-COMMUNITY-DESIGN.md. **Tom ratifies: naming bar, hysteresis, migration
+pacing.**
+
+**R1 — The differ as an offline instrument (1–2 sessions).**
+Build matcher/differ as an owned module; extend `community_reshape_probe.py`
+to emit the actual event list. A/A validation: run across consecutive
+graph snapshots, tune hysteresis until the event stream is stable and
+within budget. Byproduct: the migration inventory (today's backlog:
+216 splits, 88 dispersals, 27 merges, 18 births). **Gate: events/run
+stable, single digits, zero churn on unchanged graph.**
+
+**R2 — Encoder side: renders + editorial prompt (2 sessions).**
+P1+P2 fold in here as dependencies: disclosure-invariant render, decision-set
+by id, full community render (§2a+b), prompt rebuilt around editorial verbs
+via a `make_vN` transform. Eval on REAL R1 event batches against isolated
+copies (probe-input fidelity — no synthetic events), via
+`interaction_override` + the ab_community chassis. **Gate: correct ops per
+event type on production-faithful batches, token cost per event measured.**
+
+**R3 — Shadow mode (1 session + ~1 week observation).**
+Daemon computes the diff every cycle, logs events + token estimates,
+writes nothing. **Gate: live event rate matches probe projection
+(~5 structural + ~41 births/week); no runaway against the real graph.**
+
+**R4 — Cutover, lowest-risk writes first (1–2 sessions).**
+(a) births replace `new_community` proposals; (b) algorithmic membership
+maintenance for matched named communities replaces `add_to_existing`;
+(c) old proposal types + orphan pipeline retire. Each flip independently
+deployable and revertible by config. **Gate: instrument metrics — journal
+noise classes → 0, placement precision, tokens/run.**
+
+**R5 — The migration (paced, weeks, low effort per session).**
+Quota-drained guided decomposition of the accreted structure using R1's
+inventory: K giants per run, encoder re-narrates children, lineage edges
+preserve identity (`split_from` / existing `absorbed_into`), umbrella
+narratives kept where the encoder chooses. `backup_before_destructive`
+per batch. C2 (11 community-as-member edges) and the fate of the 3,694
+unplaceable rows land here — likely retire-with-machinery rather than
+clear-and-rewake. **Gate: size distribution loses the fat tail; F11
+umbrella test passes on what remains.**
+
+**R6 — Retirement + docs (1 session).**
+Delete the dead machinery (loudly, same session — no TODO markers):
+orphan placement path, rest gate, drift proposals, overlap-conversion;
+rejection table shrinks to event fingerprints. C3 doc merge; DESIGN doc
+becomes current-state. Instruments keep running as regression guards.
+
+**Fate of the original phases:** P1, P2 → folded into R2. P3 → dies
+(add-judgment rules are moot; size-aware guidance becomes the naming bar).
+P4 → R2/R4 (event batches are small; payload logging still lands).
+P5 → dissolved into R1 (split is a diff row). P6 → dissolved: kNN/centring
+survive as matching+evidence machinery in R1; the floor becomes micro-
+cluster geometry; the sleeper wake is moot. C1 (dead edge columns) stays
+independent — any session. Instrument metrics (§5) unchanged — they are
+the success criteria throughout.
 
 ## 4. Standalone cleanups (approved, independent of the phases)
 
