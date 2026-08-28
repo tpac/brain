@@ -1233,35 +1233,6 @@ class BrainDaemon:
                 result.get('idle_seconds', 0),
                 ", ".join("%s=%s" % (u, str(r)[:60])
                           for u, r in result.get('units', {}).items())))
-            # Sweep expired self-channel messages (dead-letter) on the
-            # maintenance cadence — bounds self_inflight / self_delivered growth.
-            try:
-                from .scales.self_channel import signal as _self_signal
-                reaped = _self_signal.reap_expired(self.brain)
-                if reaped:
-                    self._log("self-channel: reaped %d expired message(s)" % reaped)
-            except Exception as _re:
-                try:
-                    self.brain._log_error('self_signal_reap', _re,
-                                          'reap_expired in idle maintenance')
-                except Exception:
-                    pass
-            # Thalamus window sweep on the same cadence — expired notices die
-            # naturally; expired ASKS are the dead-letter case and expire_due
-            # logs each one loudly (brain node dd2ad2e8: a permanently-pending
-            # item must never look like working delivery).
-            try:
-                from .scales.thalamus import thalamus as _thalamus
-                th_expired = _thalamus.expire_due(self.brain)
-                if th_expired:
-                    self._log("thalamus: expired %d item(s) past their window"
-                              % th_expired)
-            except Exception as _te:
-                try:
-                    self.brain._log_error('thalamus_expire', _te,
-                                          'expire_due in idle maintenance')
-                except Exception:
-                    pass
             self.brain.save()
         except Exception as e:
             self._log("Maintenance error: {}".format(e))

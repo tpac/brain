@@ -37,6 +37,13 @@ class ThalamusBase(BrainTestBase):
             ' target_session FROM thalamus_items WHERE id = ?',
             (item_id,)).fetchone()
 
+    def _age_out(self, item_id):
+        with self.brain.logs_write_lock:
+            self.brain.logs_conn_w.execute(
+                'UPDATE thalamus_items SET expires_at = ? WHERE id = ?',
+                (iso_cutoff(hours=1), item_id))
+            self.brain.logs_conn_w.commit()
+
 
 class TestFile(ThalamusBase):
 
@@ -312,13 +319,6 @@ class TestResolveWithdraw(ThalamusBase):
 
 class TestExpiry(ThalamusBase):
 
-    def _age_out(self, item_id):
-        with self.brain.logs_write_lock:
-            self.brain.logs_conn_w.execute(
-                'UPDATE thalamus_items SET expires_at = ? WHERE id = ?',
-                (iso_cutoff(hours=1), item_id))
-            self.brain.logs_conn_w.commit()
-
     def test_notice_expires_naturally(self):
         r = self._file('old news')
         self._age_out(r['id'])
@@ -342,6 +342,32 @@ class TestExpiry(ThalamusBase):
         self._age_out(r['id'])
         _, n = thalamus.pull(self.brain, S1, via='boot')
         self.assertEqual(n, 0)
+
+
+class TestMaintenanceSweep(ThalamusBase):
+
+    def test_sweep_fires_without_s2_conditions(self):
+        """The channel sweeps run AHEAD of the S2 fire gate inside
+        run_maintenance_if_due — a brain whose S2 cycle declines (keyless,
+        boot grace, idle gates) still expires its items and dead-letters
+        unanswered asks."""
+        r = self._file('never answered?', needs_answer=True)
+        self._age_out(r['id'])
+        result = self.brain.run_maintenance_if_due()
+        # S2 itself must have declined (test brain: boot grace / no LLM) —
+        # the sweep firing anyway is exactly the point.
+        self.assertIsNone(result)
+        self.assertEqual(self._row(r['id'])[0], tc.STATE_EXPIRED)
+
+    def test_sweep_is_hourly_throttled(self):
+        self.brain.run_maintenance_if_due()
+        r = self._file('expires between polls')
+        self._age_out(r['id'])
+        self.brain.run_maintenance_if_due()  # within the hour — no sweep
+        self.assertEqual(self._row(r['id'])[0], tc.STATE_OPEN)
+        self.brain._thalamus_sweep_checked = 0  # an hour passes
+        self.brain.run_maintenance_if_due()
+        self.assertEqual(self._row(r['id'])[0], tc.STATE_EXPIRED)
 
 
 class TestRender(ThalamusBase):
