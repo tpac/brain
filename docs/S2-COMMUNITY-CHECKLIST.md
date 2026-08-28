@@ -395,6 +395,63 @@ cluster geometry; the sleeper wake is moot. C1 (dead edge columns) stays
 independent — any session. Instrument metrics (§5) unchanged — they are
 the success criteria throughout.
 
+### PZ — The contrast plan: sharpen boundaries + split ⭐ PLAN OF RECORD (ratified 2026-08-28)
+
+**The consumer, finally.** Tom's ruling: co-membership *boost* is redundant —
+recall proximity already surfaces neighbors (and community↔member cosine is
+containment-inflated, `0bfb6c80`). The signal communities uniquely provide is
+the **contrast**: two candidates semantically close but in *different*
+communities are competing interpretations — same vocabulary, different
+stories. That consumer sets the requirement: **boundaries must mean
+something.** A sediment giant never generates a contrast; a noise member
+silently kills one. No recall A/B now — sharpness is measured geometrically
+with existing instruments; the contrast eval is one session whenever Tom
+wants it later.
+
+**Scope: three sessions. Everything else previously planned is dropped.**
+
+**PZ-1 — Honest candidate stream** (small diffs, decoder eval A/B after):
+- [ ] Deterministic tie-break — add `(a, b)` to the sort key at
+      `community_decoder.py:824`. One line; prerequisite for any
+      reproducible eval (F19a).
+- [ ] Kill the >60% overlap-conversion — the birth-eating mechanism (39% of
+      adds are converted births). Births stay births; the encoder judges
+      "new vs extension" with the target rendered.
+- [ ] Pause orphan placement (config; reversible). The 27%-noise channel; a
+      wrong member corrupts a boundary, an unplaced node costs nothing —
+      orphans re-enter via S1E edges. (Fallback if Tom wants a trickle: the
+      measured centred-floor + kNN gate from P6-v3.)
+- [ ] Gate: decoder eval before/after on the now-deterministic baseline.
+
+**PZ-2 — Split, decoder side:**
+- [ ] Split-candidate scan: communities large or geometrically loose
+      (dispersion stats from the geometry work) → re-cluster WITHIN the
+      member set, edges primary + centred geometry corroborating → proposal
+      carries evidence (internal cohesion, cross-affinity, sample titles).
+- [ ] Quota 1–2/run — the giants drain organically; no migration program.
+- [ ] Stability note: this inherits the persistent-anchors core principle
+      without ratifying the architecture — **an accepted split is a durable
+      agent decision; the algorithm only proposes.** No partition is ever
+      diffed, so F19 does not apply to this path.
+
+**PZ-3 — Split, encoder side:**
+- [ ] `## SPLIT` prompt section via `make_vN` (exact anchors, sim-harness
+      eval on real PZ-2 proposals).
+- [ ] Community decision-render fix, scoped to community decisions only
+      (NOT the universal disclosure invariant): full narrative + derived
+      member slice + geometry evidence numbers. Resolves F3 (MERGE) and F4
+      (HEALTH) blindness as side effects.
+- [ ] Lineage verb `split_from` — aspects_v1.json entry, **Tom's edit**.
+
+**Success metrics (existing instruments, after each deploy):** journal noise
+classes → 0 · size distribution loses the fat tail · F11 umbrella test ·
+NEW: cross-community contrast supply among high-similarity pairs.
+
+**Explicitly dropped:** universal disclosure (§2a wide version), P3/P4,
+migration program (R5), sleeper wake, persistent-anchors ratification
+(design stays on ice in DESIGN.md Part I; its durable-decision principle is
+absorbed into PZ-2), recall integration of any kind for now.
+
 ## 4. Standalone cleanups (approved, independent of the phases)
 
 ### C1 — `edges` dead columns (approved 2026-08-27)
@@ -518,12 +575,13 @@ for a ~90K-char prompt. **S2CE is 8,160 chars with five decision branches.**
 
 ## 7. Open decisions
 
-- [ ] **Is universal disclosure (§2a) approved?** It is the dramatic half and it
-      touches every render surface.
-- [ ] **P5 design now or after P1–P4?** Recommendation: **design now, build
-      after** — the member-slice render is shared between add and split.
+Resolved by PZ (2026-08-28): universal disclosure — dropped, not needed at PZ
+scope; P5 timing — dissolved into PZ-2/PZ-3. Still open:
+
 - [ ] Split's parent→child verb: which word, and its aspect entry (a human edit
-      to `aspects_v1.json` plus one `REQUIRED_ASPECTS` line).
+      to `aspects_v1.json` plus one `REQUIRED_ASPECTS` line). Lands in PZ-3.
+- [ ] Orphan placement: pause outright (PZ-1 default) or keep a trickle behind
+      the measured centred-floor + kNN gate — Tom's call at PZ-1.
 
 ## 8. Brain nodes from this session
 
