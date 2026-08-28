@@ -50,6 +50,8 @@ from .dispatch_ops import (
 from .dispatch_self import (
     _handle_self_presence, _handle_self_peek, _handle_self_send, _handle_self_inbox,
     _handle_self_inbox_peek, _handle_self_outbox)
+from .dispatch_thalamus import (
+    _handle_remind, _handle_thalamus_list, _handle_thalamus_resolve)
 
 
 COMMAND_TABLE: Dict[str, CmdEntry] = {
@@ -80,6 +82,12 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "self_inbox":               CmdEntry(_handle_self_inbox,           is_write=False),
     "self_inbox_peek":          CmdEntry(_handle_self_inbox_peek,      is_write=False),
     "self_outbox":              CmdEntry(_handle_self_outbox,          is_write=False),
+
+    # ── Thalamus — the brain speaking to its streams (writes brain_logs.db,
+    #    lock-guarded inside thalamus.py, so is_write=False at the daemon layer) ──
+    "remind":                   CmdEntry(_handle_remind,               is_write=False),
+    "thalamus_list":            CmdEntry(_handle_thalamus_list,        is_write=False),
+    "thalamus_resolve":         CmdEntry(_handle_thalamus_resolve,     is_write=False),
 
     # ── Writes (exclusive lock) ──
     "save":                CmdEntry(_handle_save,               is_write=True, marks_dirty=False),

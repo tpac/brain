@@ -1023,6 +1023,43 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertTrue(directed[0]["pending"])
         self.assertEqual(directed[0]["delivered_to"], [])
 
+    # ── Thalamus (the brain speaking to its streams) ──
+
+    def test_remind(self):
+        """remind files a Thalamus item — the producer verb. An ask
+        (needs_answer) defaults to the 'all' audience and queues for boot
+        delivery; the item lands open with a window."""
+        result = self._dispatch("remind", {
+            "what": "roundtrip: decide the thing", "needs_answer": True})
+        self.assertTrue(result["filed"])
+        self.assertTrue(result["id"].startswith("th_"))
+        self.assertEqual(result["route"], "queue")
+        self.assertEqual(result["audience"], "all")
+        self.assertTrue(result["expires_at"])
+
+    def test_thalamus_list(self):
+        """thalamus_list returns open items with delivery counts."""
+        filed = self._dispatch("remind", {"what": "roundtrip: listed item"})
+        result = self._dispatch("thalamus_list", {})
+        self.assertEqual(result["count"], 1)
+        item = result["items"][0]
+        self.assertEqual(item["id"], filed["id"])
+        self.assertEqual(item["body"], "roundtrip: listed item")
+        self.assertEqual(item["deliveries"], 0)
+
+    def test_thalamus_resolve(self):
+        """thalamus_resolve closes an item; a second close is a loud error,
+        and the answer payload rides the item."""
+        filed = self._dispatch("remind", {
+            "what": "roundtrip: answer me", "needs_answer": True})
+        result = self._dispatch("thalamus_resolve", {
+            "id": filed["id"], "answer": "the answer"})
+        self.assertEqual(result["state"], "answered")
+        raw = dispatch_command(self.brain, "thalamus_resolve",
+                               {"id": filed["id"], "dismiss": True}, [])
+        self.assertIs(raw.get("ok"), False,
+                      "re-resolving a closed item must be a loud error")
+
     def test_all_mcp_tools_have_roundtrip_tests(self):
         """Every MCP tool should have a corresponding test above."""
         mcp_tool_names = {t["name"] for t in TOOLS}

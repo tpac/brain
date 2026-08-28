@@ -1246,6 +1246,22 @@ class BrainDaemon:
                                           'reap_expired in idle maintenance')
                 except Exception:
                     pass
+            # Thalamus window sweep on the same cadence — expired notices die
+            # naturally; expired ASKS are the dead-letter case and expire_due
+            # logs each one loudly (brain node dd2ad2e8: a permanently-pending
+            # item must never look like working delivery).
+            try:
+                from .scales.thalamus import thalamus as _thalamus
+                th_expired = _thalamus.expire_due(self.brain)
+                if th_expired:
+                    self._log("thalamus: expired %d item(s) past their window"
+                              % th_expired)
+            except Exception as _te:
+                try:
+                    self.brain._log_error('thalamus_expire', _te,
+                                          'expire_due in idle maintenance')
+                except Exception:
+                    pass
             self.brain.save()
         except Exception as e:
             self._log("Maintenance error: {}".format(e))

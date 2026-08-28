@@ -63,6 +63,9 @@ REF_TYPES = {
     ("s0", "K"):       ["user_message",
                          "self_message",      # incoming turn from a stream of thought (self↔self),
                                               # not the operator — same exchange, different correspondent
+                         "thalamus_delivery", # Thalamus items rendered into this session at a Stop
+                                              # drain — the brain speaking to its streams; the boot
+                                              # leg's record is the ledger + boot_renders row
                          "heartbeat"],        # a /watch wakeup re-arm with no real input (no operator
                                               # prompt, empty inbox). Recorded for observability, but
                                               # NOT a conversational turn — see S0 TURN CLASSIFICATION.

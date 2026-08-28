@@ -397,6 +397,21 @@ class BrainVoice:
             out.append(standing)
             out.append("")
 
+        # ── Thalamus — due items for this session (the boot delivery
+        # moment). Pull-based: the queue never pushes; this render records
+        # its own deliveries in the ledger. Failure-isolated like the rest
+        # of boot. Asks deliver here (boot-only), notices at boot or Stop.
+        try:
+            from servers.scales.thalamus import thalamus as _thalamus
+            th_block, _ = _thalamus.pull(brain, session_id, via='boot')
+        except Exception as e:
+            brain._log_error('boot_thalamus_failed', e,
+                             'render_boot_v2: thalamus pull raised — boot continues without it')
+            th_block = ''
+        if th_block:
+            out.append(th_block)
+            out.append("")
+
         brain.save()
 
         # ── LLM layer state — the DAEMON's truth, not the hook's ──
