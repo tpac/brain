@@ -42,7 +42,7 @@ BRAIN_VERSION_KEY = 'brain_schema_version'
 # brain_logs.db structural version. v1 is the baseline stamp: the table shapes
 # that existed when versioning was introduced. Structural changes from here get
 # a numbered step in LOGS_MIGRATIONS and bump this.
-LOGS_VERSION = 1
+LOGS_VERSION = 2
 LOGS_VERSION_KEY = 'logs_schema_version'
 
 # ─── Allowed node types ───
@@ -1713,18 +1713,24 @@ LOG_TABLES = {
             answer TEXT DEFAULT '',
             answered_at TEXT,
             created_at TEXT NOT NULL,
-            updated_at TEXT
+            updated_at TEXT,
+            armed_epoch INTEGER DEFAULT 0
         )""",
     },
-    # One row per (item, session) delivery — the durable ledger the courier's
-    # expiring receipts can't be (annotate-at-render). PK guards re-render.
+    # One row per (item, session, epoch) delivery — the durable ledger the
+    # courier's expiring receipts can't be (annotate-at-render). APPEND-ONLY:
+    # a defer re-arms the item by incrementing its armed_epoch (a new
+    # generation), never by deleting ledger rows — "never delivered" and
+    # "delivered, then deferred" must stay distinguishable (Phase 3 retry
+    # gates on unacked). PK guards re-render idempotence per epoch.
     'thalamus_deliveries': {
         'create': """CREATE TABLE IF NOT EXISTS thalamus_deliveries (
             item_id TEXT NOT NULL,
             session_id TEXT NOT NULL,
             delivered_at TEXT NOT NULL,
             via TEXT NOT NULL,
-            PRIMARY KEY (item_id, session_id)
+            armed_epoch INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (item_id, session_id, armed_epoch)
         )""",
     },
 
@@ -1800,7 +1806,30 @@ LOG_INDEXES = [
 # have run unversioned for a long time; rewriting proven code to be
 # version-gated would risk the working path for no gain. New structural changes
 # ride these rails instead of adding another unversioned ALTER.
-LOGS_MIGRATIONS = []
+def _migrate_logs_v2_thalamus_armed_epoch(conn):
+    """Thalamus ledger goes append-only: armed_epoch on both tables; the
+    ledger PK widens to (item_id, session_id, armed_epoch). SQLite can't
+    alter a PK, so the ledger is recreated (it is days old — a handful of
+    rows, all epoch 0). Column-probe idempotent."""
+    cols = [r[1] for r in conn.execute(
+        'PRAGMA table_info(thalamus_deliveries)').fetchall()]
+    if 'armed_epoch' not in cols:
+        conn.execute('ALTER TABLE thalamus_deliveries '
+                     'RENAME TO thalamus_deliveries_old')
+        conn.execute(LOG_TABLES['thalamus_deliveries']['create'])
+        conn.execute(
+            'INSERT INTO thalamus_deliveries '
+            '(item_id, session_id, delivered_at, via, armed_epoch) '
+            'SELECT item_id, session_id, delivered_at, via, 0 '
+            'FROM thalamus_deliveries_old')
+        conn.execute('DROP TABLE thalamus_deliveries_old')
+    _add_column_if_missing(conn, 'thalamus_items', 'armed_epoch',
+                           'INTEGER DEFAULT 0')
+
+
+LOGS_MIGRATIONS = [
+    (2, _migrate_logs_v2_thalamus_armed_epoch),
+]
 
 
 def ensure_logs_schema(conn, db_path=None):

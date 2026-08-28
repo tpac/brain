@@ -725,7 +725,7 @@ def _build_tools():
      "inputSchema": {"type": "object", "required": ["id"], "properties": {
          "id": {"type": "string", "description": "The item id (th_xxxx), from the render or thalamus_list."},
          "answer": {"type": "string", "description": "The answer — closes the item as 'answered'."},
-         "defer_until": {"type": "string", "description": "Push delivery to later: shorthand ('2h','3d','1w') or ISO. Clears its delivery ledger so it fires again when due."},
+         "defer_until": {"type": "string", "description": "Push delivery to later: shorthand ('2h','3d','1w') or ISO. Re-arms it as a new generation so it fires again when due (prior deliveries stay in the ledger as history)."},
          "dismiss": {"type": "boolean", "description": "Close without an answer.", "default": False}}}},
 
     # ── Traces & Interactions ──

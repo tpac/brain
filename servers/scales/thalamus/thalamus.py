@@ -36,13 +36,13 @@ def _row_to_item(row):
         'needs_answer': bool(row[6]), 'dedup_key': row[7],
         'deliver_at': row[8], 'expires_at': row[9],
         'state': row[10], 'answer': row[11],
-        'created_at': row[12],
+        'created_at': row[12], 'armed_epoch': row[13],
     }
 
 
 _ITEM_COLS = ('id, source, body, refs, audience, target_session, '
               'needs_answer, dedup_key, deliver_at, expires_at, state, '
-              'answer, created_at')
+              'answer, created_at, armed_epoch')
 
 
 def _default_expires(needs_answer, audience, deliver_at):
@@ -185,10 +185,15 @@ def _due_filter(session_id, via, now):
     params = [now, now, session_id]
     if via != 'boot':
         sql += ' AND needs_answer = 0'
+    # The ledger is append-only across re-arms: only CURRENT-epoch rows
+    # block delivery — a defer bumps the item's armed_epoch, so prior
+    # generations' deliveries stay as history without suppressing the re-arm.
     sql += (" AND ((audience = 'once' AND NOT EXISTS ("
-            '   SELECT 1 FROM thalamus_deliveries d WHERE d.item_id = thalamus_items.id))'
+            '   SELECT 1 FROM thalamus_deliveries d WHERE d.item_id = thalamus_items.id'
+            '   AND d.armed_epoch = thalamus_items.armed_epoch))'
             "  OR (audience = 'all' AND NOT EXISTS ("
             '   SELECT 1 FROM thalamus_deliveries d WHERE d.item_id = thalamus_items.id'
+            '   AND d.armed_epoch = thalamus_items.armed_epoch'
             '   AND d.session_id = ?)))')
     params.append(session_id)
     return sql, params
@@ -232,7 +237,7 @@ def _attach_ref_lines(brain, items, session_id):
 def pull(brain, session_id, via):
     """Due items for this session at a delivery moment ('boot' | 'stop') —
     rendered block + count. Writes the ledger at render (INSERT OR IGNORE:
-    the PK makes re-render idempotent per session). Asks (needs_answer)
+    the PK makes re-render idempotent per session and epoch). Asks (needs_answer)
     deliver at BOOT ONLY — an architecture question arriving mid-thread
     trains reflex-deferral; at boot there is no thread to protect.
 
@@ -265,8 +270,10 @@ def pull(brain, session_id, via):
     with brain.logs_write_lock:
         brain.logs_conn_w.executemany(
             'INSERT OR IGNORE INTO thalamus_deliveries '
-            '(item_id, session_id, delivered_at, via) VALUES (?, ?, ?, ?)',
-            [(i['id'], session_id, delivered_at, via) for i in items])
+            '(item_id, session_id, delivered_at, via, armed_epoch) '
+            'VALUES (?, ?, ?, ?, ?)',
+            [(i['id'], session_id, delivered_at, via, i['armed_epoch'])
+             for i in items])
         brain.logs_conn_w.commit()
     return tc.render_block(items, overflow=overflow), len(items)
 
@@ -276,14 +283,19 @@ def list_items(brain, include_closed=False, limit=50):
     newest first. include_closed adds terminal items for audit."""
     where = '' if include_closed else "WHERE state = 'open'"
     rows = brain.logs_conn.execute(
-        'SELECT %s, (SELECT COUNT(*) FROM thalamus_deliveries d'
-        '            WHERE d.item_id = thalamus_items.id) AS deliveries'
+        'SELECT %s,'
+        ' (SELECT COUNT(*) FROM thalamus_deliveries d'
+        '  WHERE d.item_id = thalamus_items.id) AS deliveries,'
+        ' (SELECT COUNT(*) FROM thalamus_deliveries d'
+        '  WHERE d.item_id = thalamus_items.id'
+        '  AND d.armed_epoch = thalamus_items.armed_epoch) AS deliveries_epoch'
         ' FROM thalamus_items %s ORDER BY created_at DESC LIMIT ?'
         % (_ITEM_COLS, where), (int(limit),)).fetchall()
     items = []
     for r in rows:
-        item = _row_to_item(r[:-1])
-        item['deliveries'] = r[-1]
+        item = _row_to_item(r[:-2])
+        item['deliveries'] = r[-2]        # all-time, across re-arms
+        item['deliveries_epoch'] = r[-1]  # since the last re-arm
         items.append(item)
     return {'items': items, 'count': len(items)}
 
@@ -300,9 +312,10 @@ def resolve(brain, item_id, answer=None, defer_until=None, dismiss=False):
 
     answer      → state 'answered'; the payload rides the item for the
                   producer's return surface (Phase 2 render-join).
-    defer_until → deliver_at moves forward, the item RE-ARMS (its ledger rows
-                  are cleared so it delivers again when due) and the window
-                  stretches to cover the new date.
+    defer_until → deliver_at moves forward and the item RE-ARMS as a new
+                  generation (armed_epoch bump — prior deliveries stay in the
+                  ledger as history but stop blocking); the window stretches
+                  to cover the new date.
     dismiss     → state 'dismissed' (closed without an answer).
     """
     actions = [a for a in (answer, defer_until, True if dismiss else None)
@@ -345,12 +358,15 @@ def resolve(brain, item_id, answer=None, defer_until=None, dismiss=False):
                 item['expires_at'] or '',
                 (_dt.fromisoformat(new_deliver)
                  + _td(days=tc.REMIND_GRACE_DAYS)).isoformat())
+            # Re-arm is a GENERATION, not a deletion: bumping armed_epoch
+            # makes the pull predicate ignore prior-epoch ledger rows, so the
+            # item delivers again when due — while the ledger keeps truthful
+            # history ("delivered, then deferred" ≠ "never delivered";
+            # Phase 3 retry gates on unacked).
             conn.execute(
                 'UPDATE thalamus_items SET deliver_at = ?, expires_at = ?, '
-                'updated_at = ? WHERE id = ?',
+                'armed_epoch = armed_epoch + 1, updated_at = ? WHERE id = ?',
                 (new_deliver, new_expires, now, item_id))
-            conn.execute('DELETE FROM thalamus_deliveries WHERE item_id = ?',
-                         (item_id,))
             result = {'ok': True, 'id': item_id, 'state': tc.STATE_OPEN,
                       'deliver_at': new_deliver, 'expires_at': new_expires}
         else:

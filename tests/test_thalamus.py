@@ -284,15 +284,38 @@ class TestResolveWithdraw(ThalamusBase):
         thalamus.pull(self.brain, S1, via='stop')  # delivered
         out = thalamus.resolve(self.brain, r['id'], defer_until='1h')
         self.assertTrue(out['ok'])
-        # Ledger cleared, but not due yet → still nothing.
+        # Re-armed (new epoch), but not due yet → still nothing.
         _, n = thalamus.pull(self.brain, S1, via='stop')
         self.assertEqual(n, 0)
         deliver_at = self._row(r['id'])[3]
         self.assertGreater(deliver_at, iso_now())
+        # The ledger is APPEND-ONLY: defer preserves the delivery history —
+        # "delivered, then deferred" must stay distinguishable from "never
+        # delivered" (Phase 3 retry gates on unacked).
         ledger = self.brain.logs_conn.execute(
             'SELECT COUNT(*) FROM thalamus_deliveries WHERE item_id = ?',
             (r['id'],)).fetchone()[0]
-        self.assertEqual(ledger, 0)
+        self.assertEqual(ledger, 1)
+        epoch = self.brain.logs_conn.execute(
+            'SELECT armed_epoch FROM thalamus_items WHERE id = ?',
+            (r['id'],)).fetchone()[0]
+        self.assertEqual(epoch, 1)
+
+    def test_rearm_redelivers_to_same_session_and_keeps_history(self):
+        r = self._file('note')
+        _, n1 = thalamus.pull(self.brain, S1, via='stop')
+        self.assertEqual(n1, 1)
+        thalamus.resolve(self.brain, r['id'], defer_until='now')
+        _, n2 = thalamus.pull(self.brain, S1, via='stop')
+        self.assertEqual(n2, 1)  # same session, new epoch → delivers again
+        rows = self.brain.logs_conn.execute(
+            'SELECT armed_epoch FROM thalamus_deliveries WHERE item_id = ?'
+            ' ORDER BY armed_epoch', (r['id'],)).fetchall()
+        self.assertEqual([e for (e,) in rows], [0, 1])  # both generations kept
+        out = thalamus.list_items(self.brain)
+        item = next(i for i in out['items'] if i['id'] == r['id'])
+        self.assertEqual(item['deliveries'], 2)        # all-time
+        self.assertEqual(item['deliveries_epoch'], 1)  # current generation
 
     def test_resolve_unknown_or_closed(self):
         self.assertFalse(thalamus.resolve(self.brain, 'th_nope',
