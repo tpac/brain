@@ -58,6 +58,50 @@ def _scan():
     return counts
 
 
+# ── Write-connection cursor invariant (dal_logs.py docstring) ──────────────
+# A SELECT cursor BOUND to a name on the logs write connection holds a read
+# snapshot; the next write on that connection fails INSTANTLY with 'database
+# is locked' the moment another process commits in between (SQLITE_BUSY_
+# SNAPSHOT — busy_timeout does not apply; brain id:371895a8). The rule:
+# statements on logs_conn_w are fully consumed — `conn.execute(...).fetchone()`
+# / `.fetchall()`, never `cur = conn.execute('SELECT ...')`. DML bindings are
+# fine (the statement completes inside execute(); rowcount is immediate).
+# Empirically reproduced 2026-08-29 during the Thalamus review: the shape
+# fails whenever the SELECT matches 2+ rows. This scan resolves the common
+# alias form (`conn = brain.logs_conn_w`) per file.
+
+_WCONN_ALIAS_RE = re.compile(r'^\s*(\w+)\s*=\s*(?:\w+\.)*logs_conn_w\s*$',
+                             re.MULTILINE)
+
+
+def _bound_wconn_selects(text):
+    """Line numbers where a SELECT *cursor* is bound on the logs write conn
+    (direct or via a `x = ...logs_conn_w` alias). `x = conn.execute(...)
+    .fetchone()/.fetchall()` binds the consumed RESULT, not the cursor —
+    that's the safe idiom and is exempt (checked by walking to the balanced
+    close of the execute call; SQL text keeps its parens balanced)."""
+    names = set(_WCONN_ALIAS_RE.findall(text)) | {'logs_conn_w'}
+    pat = re.compile(
+        r'\w+\s*=\s*(?:\w+\.)*(%s)\.execute\(' % '|'.join(sorted(names)))
+    hits = []
+    for m in pat.finditer(text):
+        lit = re.match(r'\s*[rfbu]*(?:\'\'\'|"""|\'|")\s*SELECT\b',
+                       text[m.end():], re.IGNORECASE)
+        if not lit:
+            continue  # DML binding — statement completes inside execute()
+        depth, i = 1, m.end()
+        while i < len(text) and depth:
+            if text[i] == '(':
+                depth += 1
+            elif text[i] == ')':
+                depth -= 1
+            i += 1
+        if text[i:i + 8].lstrip().startswith('.fetch'):
+            continue  # fully consumed — the compliant shape
+        hits.append(text[:m.start()].count('\n') + 1)
+    return hits
+
+
 class TestRawSqlGuardrail(unittest.TestCase):
     def test_no_new_raw_dml_outside_dal(self):
         current = _scan()
@@ -78,6 +122,38 @@ class TestRawSqlGuardrail(unittest.TestCase):
                 "Raw-DML dropped below baseline (a migration landed — good). Tighten "
                 "ALLOWED so the ratchet stays honest:\n" + "\n".join(dropped))
         self.assertEqual(parts, [], "\n\n".join(parts))
+
+    def test_no_bound_select_cursors_on_write_conn(self):
+        """No `name = <write-conn>.execute('SELECT ...')` outside dal*.py —
+        the snapshot-upgrade hazard the dal_logs.py docstring documents."""
+        offenders = []
+        for p in sorted(SERVERS.rglob('*.py')):
+            if p.name in EXCLUDE:
+                continue
+            for line in _bound_wconn_selects(p.read_text()):
+                offenders.append('  %s:%d' % (p.relative_to(SERVERS), line))
+        self.assertEqual(offenders, [], (
+            "Bound SELECT cursor on the logs WRITE connection — a held read "
+            "snapshot makes the next write fail instantly under a concurrent "
+            "commit. Consume it instead: `conn.execute(...).fetchone()` / "
+            "`.fetchall()`:\n" + "\n".join(offenders)))
+
+    def test_wconn_detector_has_teeth(self):
+        catches = [
+            "cur = brain.logs_conn_w.execute('SELECT id FROM t')",
+            "conn = brain.logs_conn_w\nrow = conn.execute(\n    'SELECT x FROM t WHERE y = ?', (1,))",
+        ]
+        for s in catches:
+            self.assertTrue(_bound_wconn_selects(s), f"should flag: {s!r}")
+        ignores = [
+            # consumed result (the compliant shape), incl. multiline + COUNT parens
+            "conn = brain.logs_conn_w\nn = conn.execute(\n    'SELECT COUNT(*) FROM t WHERE x = ?',\n    (1,)).fetchone()[0]",
+            "conn = brain.logs_conn_w\nconn.execute('SELECT 1').fetchall()",   # unbound
+            "conn = brain.logs_conn_w\ncur = conn.execute('UPDATE t SET x=1')",  # DML binding is fine
+            "rows = brain.logs_conn.execute('SELECT 1')",       # read conn
+        ]
+        for s in ignores:
+            self.assertFalse(_bound_wconn_selects(s), f"should NOT flag: {s!r}")
 
     def test_detector_has_teeth(self):
         """The guardrail is only meaningful if DML_RE actually fires — assert it
