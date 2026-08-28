@@ -47,6 +47,9 @@ accurately into a channel nobody reads.
 | **F15** | **11 live `community_member` edges between two communities** — 9 parent communities, all created 2026-06-01→06-18, then it stops. Inflates `community_size`, can set `community_dominant_type='community'`. None of the F11 five is a parent, so that table is unaffected. | measured |
 | **F16** | **Three dead columns on `edges`**, all 35,918 rows: `relation` = `'related'` (one value), `edge_type` = `'related'` (one value), `description` = NULL/empty (all). Plus a dead index `idx_edges_type`. `schema.py:161-175` **already declares `edges` without them** and `:456-459` declares only 4 indexes — the install has drifted from its own schema. | measured + `schema.py` |
 
+| **F17** | **The decoder clusters only unplaced nodes** — `run()` passes `unplaced` as the clustering population; a placed node exits clustering forever. Placed structure is frozen by construction: plasticity is zero by design, not by tuning. | `community_decoder.py:101-140, 359-400` |
+| **F18** | **The giants are accretion artifacts, not derivable structure** (reshape probe, 2026-08-28): a fresh whole-graph derivation (decoder's own steps 1–4b, unanchored) yields 1,161 clusters, median 4, max **49**; no giant's best fresh core exceeds 16% coverage. `_seed_clusters` never unions two existing clusters, so a 206-member cluster is unreachable by clustering at all — the masses came from add-quota accretion + merges + overlap-conversion (39% of adds are converted births). Steady-state structural velocity is tiny: week-over-week fresh partitions are **99% stable (Jaccard ≥ 0.5)** — 2 splits, 0 merges, 3 dispersals, 41 births/week. First-reshape migration cost is real: only 35% of stored communities match a fresh cluster at Jaccard ≥ 0.5 (28% split, 11% disperse). ⚠ granularity caveat: the conservative seeder fragments even coherent large regions — "N parts" is partly algorithmic fineness. Instrument: `eval/community_reshape_probe.py`. | measured |
+
 ### The pattern under F4/F7/F9 and the journal census
 
 The encoder can see **four** structural moves it has no operation for: split a
@@ -297,6 +300,27 @@ the cross-run version.
       (instrument metric 1) is the post-deploy confirmation.
 
 ---
+
+### PX — Reshape-diff frame (opened 2026-08-28, Tom's plasticity directive)
+
+Tom's constraint: **keep the agent encoder; give decoder AND encoder
+plasticity; token economics manageable.** The probe (F18) says the frame is
+affordable at steady state (~5 structural events + ~41 births/week, matching
+silent) but exposes the two real design decisions:
+
+- [ ] **Granularity — what earns a name.** The graph's own structure is fine
+      (median 4) and 99% stable; agent-named communities are the narrative
+      layer. Candidate shape: two layers — free algorithmic micro-structure
+      re-derived every run, and named communities as curated aggregates over
+      it, with hysteresis so the encoder judges only supra-threshold events.
+- [ ] **The one-time reorganization.** First reshape is a migration: 35%
+      identity survival at J≥0.5; the giants dissolve. Needs an explicit,
+      quota-drained plan (guided decomposition of the masses with lineage
+      edges), not a big-bang swap.
+- [ ] Kill or raise the >60% overlap-conversion (mechanism 2 of
+      centralization) — defensible under either frame.
+- [ ] ⚠ Held pending this frame decision: P6's deploy step that wakes the
+      3,694 sleepers into the old add-pipeline.
 
 ## 4. Standalone cleanups (approved, independent of the phases)
 
