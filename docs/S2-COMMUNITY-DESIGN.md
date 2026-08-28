@@ -2,452 +2,305 @@
 
 Two parts, on purpose:
 
-- **Part I — Reshape-diff (R0 design, awaiting ratification).** The target
-  architecture. Nothing in it is built. Written 2026-08-28 against the plan of
-  record in `docs/S2-COMMUNITY-CHECKLIST.md` §PX.
+- **Part I — Persistent anchors + continuous evidence (design, awaiting
+  ratification).** The target architecture, rewritten 2026-08-28 after a day
+  of measurement refuted the previous draft. Nothing in it is built.
 - **Part II — The pipeline as it runs today.** Kept verbatim below. It is
   stale in places (dated 2026-04-11); correcting it is C3's job, scheduled for
-  R6 *after* the work lands, so the doc does not go stale against itself
-  mid-flight. Where Part I contradicts Part II, Part I is a proposal and
-  Part II is what production does today.
+  after the work lands, so the doc does not go stale against itself mid-flight.
+  Where Part I contradicts Part II, Part I is a proposal and Part II is what
+  production does today.
 
 ---
 
-# Part I — Reshape-Diff Architecture (R0)
+# Part I — Persistent Anchors, Continuous Membership
 
-**Status: DESIGN. Not built, not ratified.** Three decisions are Tom's:
-the naming bar (§1), hysteresis (§2), migration pacing (§8).
+**Status: DESIGN. Not built, not ratified.** Every number below was measured
+on 2026-08-28 against an `IsolatedBrain` copy of production; every claim about
+existing code carries a `file:line` opened the same day.
 
-The inversion, in one line: *the algorithm decides who clusters with whom;
-the agent decides which of those clusters deserve a name, what they mean, and
-what a structural change to one signifies.* Matched structure costs zero
-tokens. Agent tokens buy naming, narrative, and structural judgment — nothing
-else (`e40ebfee`).
+## 0. What this replaces, and why
 
-## 0. Evidence base
+The previous Part I (commit `13466fd`) specified **reshape-diff**: re-derive
+the whole-graph partition every run, diff it against the stored communities,
+and have the encoder judge only the structural delta. Six measurements
+retired it. The decisive one:
 
-Every number below was measured **this session (2026-08-28)** unless it cites
-a checklist F-row. Two instruments:
+> **A 2% edge cut moves 23.4% of the production seeder's communities. A 0.5%
+> cut moves 19%.** Every algorithm tested amplifies input change by more than
+> an order of magnitude.
 
-- **P** — `eval/community_reshape_probe.py`, rerun unmodified.
-- **A/A** — a throwaway harness importing that probe's own `fresh_partition`,
-  `diff_against_stored` and `merge_and_birth`, run in separate processes over
-  one `IsolatedBrain` copy. Not committed; R1 must land it as a real gate
-  (§9-P1).
+A partition is not a stable object for this graph, so it cannot be the thing
+you diff. That is not a bug in our seeder and it is not fixed by adopting a
+better algorithm — Louvain and SLPA were measured and are *worse* on this axis.
 
-| # | measurement | value |
+What replaces it is a different division of labour, and it is the answer to
+*"known methods never had an agent, we do — how do we close the gap?"*:
+
+> Classical community detection must re-partition from scratch every run
+> **because it has no way to persist a decision.** We have an agent that can
+> create a durable, named, meaningful object and stand behind it. So: **the
+> agent owns a persistent discrete layer; the algorithm supplies continuous
+> evidence against it.** Nothing is ever re-partitioned.
+
+The measured consequence: under the identical 2% perturbation, membership
+evidence against a fixed anchor flips **1.3%** of decisions where the
+partition moved **23.4%** — a ~20× reduction in churn.
+
+## 1. Evidence base
+
+Instruments: `eval/community_reshape_probe.py` (rerun unmodified) plus
+scratchpad probes reusing its own step functions and the production decoder's.
+The scratchpad probes are not committed; §9-P2 lands the load-bearing ones.
+
+| # | measurement | result |
 |---|---|---|
-| **M1** | fresh whole-graph partition (P) | 7,722 edge-connected nodes → **1,168 clusters**, median 4, >10: 74, >40: 2, max 48 (corridors 25, dissolved 10, absorbed 0). 790 live communities, 7,084 of their members edge-connected |
-| **M2** | stored vs fresh identity (P) | 770 scored / 20 too sparse. Jaccard ≥0.3: 395 (51%) · ≥0.5: 266 (35%) · ≥0.7: 134 (17%). **Split into ≥2 parts: 216 (28%) · dispersed: 86 (11%) · merge events: 27 · births: 17** |
-| **M3** | weekly velocity (P, arm D) | 1,068 old clusters scored; stable ≥0.5: 1,041 (**97%**); **22 splits, 0 merges, 3 dispersals, 43 births**; 489 new connected nodes |
-| **M4** | **A/A churn floor — same graph, two processes** | seed 0 vs seed 0: **1,168/1,168 identical (100%)**. seed 0 vs seed 1: **1,088/1,168 identical (93.2%)**, stable ≥0.5 1,140 (98%), and the probe's own differ reports **16 phantom splits, 12 phantom merges, 1 phantom dispersal, 0 phantom births** |
-| **M5** | fresh-partition size histogram (A/A dump) | size 3: 409 · ≥4: 759 (65%) covering 4,959 nodes (64% of connected) · ≥5: **501 (43%) covering 3,927 (51%)** · ≥6: 344 (29%)/3,142 (41%) · ≥8: 191 (16%)/2,162 (28%) · ≥10: 104 (9%)/1,438 (19%) · ≥15: 28/571 · ≥20: 7/221 · ≥40: 2/90 |
-| **M6** | run cadence (`query_traces` s2 `s1_delta`, 168h) | **31 decode runs / 7 days = 4.4/day**, one per ~5.4h. Community count in those traces: **744 → 787 (+43/week)**. Unplaced population 1,947–1,989; pending after the rest gate 9–47 → **the rest gate suppresses 97.6–99.5% of it every run** |
-| **M7** | encoder cost (`community_enriched` COMPLETE, 9 consecutive successful runs 08-25→08-28) | every run: **4 actions / 2 writes / 4 rounds across 2 batches**. Output tokens 2,903–7,397 (mean **5,308**, median 5,661); input 8 + `cache_read` ~71K; wall 76.6–176.6s. One run in the window lost both batches to a connection error |
+| **M1** | probe rerun, weekly velocity | **22 splits, 0 merges, 3 dispersals, 43 births, 97% stable.** The checklist F18 and node `7fbad66b` record *2 splits / 99%* — same instrument, same day. **Do not build on the "2".** |
+| **M2** | A/A, one graph, two processes | same `PYTHONHASHSEED` → 1,168/1,168 identical (100%); seed 0 vs 1 → **93.2% identical**, which the probe's own differ calls 16 splits + 12 merges + 1 dispersal, **0 births**. Mechanism traced: a str-keyed set materialised at `community_decoder.py:765` fixes dict order, which breaks ties in the stable sort at `community_decoder.py:824`. |
+| **M3** | z-score tie density | **14,830 seed pairs collapse onto 60 distinct z values; largest tie group 2,366 pairs.** The score is not ranking pairs, it is bucketing them; order within a bucket — which the greedy walk consumes — is arbitrary. |
+| **M4** | recursive clustering (clusters-of-clusters) | a meso layer **is** derivable: **174 groups**, median 23 nodes, max 149, 65% coverage, typed internal fraction **0.49–0.69**. |
+| **M5** | hybrid substrate (typed ∪ mutual-kNN-10 on centred embeddings) | **1,500 of 9,232 nodes have zero typed edges** and are unreachable at any threshold. With a semantic layer, coverage 67% → **90%**, and **92% of the 1,500** get clustered. |
+| **M6** | algorithm bake-off | Louvain hierarchy reaches **14 communities, median 645, covering 99%** (the project-scale layer). At matched granularity Louvain beats production on modularity (**Q +0.547 vs +0.473**). But cross-run stability: production **98%**, SLPA 82%, Louvain typed 83.5%, **Louvain hybrid 50%**. |
+| **M7** | consensus clustering ×9 | lifts stability to **90–94%** and then plateaus — τ 0.5→0.9 does not stabilise further (94.0→93.9) but destroys coverage (64%→46%). Best operating point: hybrid τ=0.5, 94% coverage, Q +0.549. |
+| **M8** | **perturbation sensitivity** | % of communities surviving a cut, hybrid substrate, fixed seeds: <br>`0.5% cut / 2% / 5%` → production **81.1 / 76.6 / 69.3**, Louvain **77.6 / 76.3 / 74.1**, Louvain-consensus **90.0 / 87.0 / 81.4**. |
+| **M9** | **evidence discrimination** (2,500 member pairs vs 2,500 non-member, leave-one-out) | AUC: `edge_frac` 0.976 ⚠circular · `sem_centred` **0.949** · `edge_sem` 0.893 · `knn_share` 0.860 · `co_surface` 0.689 · `co_anchored` 0.620. |
+| **M10** | **evidence stability**, same 2% cut | decisions flipped: `edge_frac` **1.3%**, `edge_sem` **0.9%**, embedding signals 0.0% (true by construction). Against the partition's **23.4%**. |
+| **M11** | placement rank of true anchor among 707 | full evidence: top-1 87%, top-3 97%, top-10 98% · **semantic only (a new, edgeless node): top-1 47%, top-3 68%, top-10 83%** · hub-scale pick: full 93%, **semantic 65%**. |
+| **M12** | operating context (`query_traces`, 168h) | **31 decode runs/week (4.4/day)**; communities 744 → 787 (**+43/week**); unplaced population 1,947–1,989 with 9–47 pending → the rest gate suppresses **97.6–99.5%** every run. Encoder cost: 9 consecutive runs at 4 actions / 2 writes, output tokens 2,903–7,397 (mean **5,308**). |
 
-### Two corrections to the checklist, from M3 and M4
+⚠ **`edge_frac`'s 0.976 must never be cited as validation.** These communities
+were *built* from typed edges, so members are members largely because they had
+edges to members. `edge_sem` inherits some of it. The non-circular signals are
+`sem_centred`, `knn_share`, `co_surface`, `co_anchored`.
 
-**(a) The weekly split count is not ~2.** F18 / `7fbad66b` record *2 splits,
-99% stable*. The same instrument, unmodified, on the same day reports **22
-splits, 97% stable**. Do not build on the "2".
+## 2. The eight first principles this must satisfy
 
-**(b) The fresh partition is not a pure function of graph state — and this is
-the single most consequential fact in the design.** M4 isolates it: two
-processes over *one* `IsolatedBrain` copy agree perfectly when they share a
-`PYTHONHASHSEED` and diverge on 6.8% of clusters when they don't. The
-mechanism is traced, not guessed: `_compute_pair_scores` materialises a
-str-keyed set as a list (`community_decoder.py:765`), which fixes the
-insertion order of `raw_shared`/`pair_zscores`, which breaks ties in the
-stable sort at `community_decoder.py:824` (`key=(-z, -is_direct)` — exact z
-ties are common, because `raw_shared` counts are small integers within a
-degree bucket).
+Stated by Tom on 2026-08-28 (`17abce4d`) after watching the measurements land.
 
-Consequence: **phantom structural events (16+12+1 = 29) exceed the real
-weekly structural signal (22+0+3 = 25).** Births are the one clean channel:
-0 phantom against 43 real.
+1. **Purpose is threefold** — activation areas (divisive normalisation: a
+   crowd dims, a lone node shines, `5e60e0a0`), project scoping (`6ee28032`),
+   and boot-time recognition (`531d1831`). Three consumers, three resolutions.
+2. **Aggregation gives more than a summary** — a community is a *reusable
+   computation*: a prevalence denominator, a region-level prior, a scoping
+   handle, context compression, and a change detector.
+3. **Nodes do not need edges to belong.** Overturns `77b2617c` as a universal
+   gate — edge fraction survives as a signal, not as the definition.
+4. **A new node joins a hub first, and differentiates later** as more nodes
+   arrive around it.
+5. **Communities split when there is a better definition** that groups them.
+6. **Lean on a hybrid substrate**, not edges alone.
+7. **Reduce recalculation to real change without killing plasticity.**
+8. **Slowly heal current state** — correction over time, not migration. True
+   for this brain and for the fleet.
 
-And hysteresis cannot fix it. Within one daemon process the hash seed is
-fixed, so a phantom partition *persists* across runs and any consecutive-run
-counter will happily **confirm** it; it flips only at daemon restart — which,
-in this repo, is every deploy. Determinism is therefore a hard prerequisite
-for cutover, not a tuning nicety (§9-P1).
+## 3. The architecture
 
-## 1. The naming bar
+### 3.1 Two layers, one of them persistent
 
-### The two layers
+| layer | what it is | owner | persistence |
+|---|---|---|---|
+| **anchor** | a `type='community'` node — title, narrative, situation, question | the agent | permanent until the agent retires it. **Never recomputed.** |
+| **evidence** | per `(node, anchor)` continuous scores | the algorithm | recomputed every cycle, cheap, zero tokens |
 
-| layer | what it is | who owns it | persistence | cost |
+There is no third object. Micro-clusters, fresh partitions and carry-forward
+cluster identities are all gone — they were the thing that churned.
+
+**The 790 existing communities are the initial anchor set.** There is no
+migration and no reorganisation (principle 8). The giants heal by being named
+apart over time, a piece at a time.
+
+### 3.2 The evidence vector
+
+Six signals, recomputed per cycle for every `(node, anchor)` pair with any
+non-zero term:
+
+| signal | what it is | AUC (M9) | coverage | notes |
 |---|---|---|---|---|
-| **micro-cluster** | a cluster in the fresh whole-graph partition | the algorithm | a row in the stability table (§5) — no node, no edges | 0 tokens |
-| **named community** | a `type='community'` node with title, narrative, situation, question | the agent | node + `community_member` edges | the naming event |
-| **umbrella** | a named community anchored to ≥2 micro-clusters | the agent, editorially | same as above + lineage edges to children | the umbrella event |
+| `edge_frac` | fraction of the node's typed neighbours inside the anchor | 0.976 ⚠ | 95% | circular for validation; still the strongest operational term |
+| `sem_centred` | centred cosine to the anchor's centroid | **0.949** | 97% | the strongest *independent* signal; reproduces the P0 baseline (0.349 vs 0.000) |
+| `edge_sem` | node's pooled edge-embedding vs the anchor's pooled internal-edge embedding | 0.893 | 98% | uses `edge_relations.embedding` (v26, `[relation] description`) — **built and never read by community detection** |
+| `knn_share` | fraction of top-10 semantic neighbours inside | 0.860 | 73% | reaches nodes edges cannot |
+| `co_surface` | fraction of co-surfaced partners inside | 0.689 | 38% | high-precision / low-recall — 100× lift over base rate |
+| `co_anchored` | fraction of `co_anchored` neighbours inside | 0.620 | 24% | currently filtered as `noise` |
 
-An umbrella is not a separate node type — it is a named community whose
-anchor set has more than one member. This is what preserves Tom's overlap
-principle (`df292d31`: *"a piece of knowledge is not part of a single
-community"*) and what gives today's giants somewhere to land in migration
-without a destructive re-partition.
+`sem_centred` and `knn_share` are what make principle 3 real: they score the
+1,500 edgeless nodes that `edge_frac` cannot see at all.
 
-### The bar: three gates in series
+⚠ `co_surface` was predicted to be the strongest "activation areas" signal and
+measured the weakest. It is corroboration, not foundation.
 
-A micro-cluster earns a name only if it clears all three.
+### 3.3 Membership
 
-1. **Size** — `size >= naming_min_size`. The clustering floor is already 3
-   (`min_community_size`, `community_contract.py:16`, enforced at
-   `community_decoder.py:855-859`); the *naming* floor is a separate,
-   higher dial. This is Decision 1.
-2. **Cross-run stability** — the cluster has been matched to itself for
-   `confirm_runs` consecutive decode runs at Jaccard ≥ `match_jaccard` (§2, §5).
-3. **Narrative-worth** — the agent's judgment, and it must be able to answer
-   *no*. A decline is recorded against the membership it was declined for
-   (§5), so it neither re-fires next run nor silences the same region forever
-   once it has genuinely grown.
+**Membership is a threshold on evidence against a fixed anchor** — algorithmic,
+no agent call (principle 7; Tom: *"an agent connecting to a big community isn't
+really necessary if the algo is good"*).
 
-Gate 3 is the one that cannot be automated and the reason the agent encoder
-stays (`f3cb2f52`). Gates 1 and 2 exist to keep gate 3's inbox small enough
-to be worth an agent's attention.
+- **Multi-membership is the default.** Evidence is computed against every
+  anchor independently, so a node joins each anchor it clears. That is
+  `df292d31`'s overlap made native rather than permitted.
+- **The edge carries confidence as weight.** `GraphDAL.add_relation`
+  (`dal_graph.py:999`) already takes `weight`; a node placed at 0.65 evidence
+  contributes proportionally less to the anchor's activation mass and its
+  narrative, so a weak placement costs little while it waits to be corrected.
+- **Provenance** is `encoding_source='s2:community_reshape'`, distinct from the
+  agent's `s2:community_detection`. Everything the mechanism ever wrote is one
+  query — which is what makes staged rollout and rollback tractable.
+- **Writer:** one owner, `servers/scales/s2/community_reshape.py`. Edge writes
+  route through `GraphDAL.add_relation`; removals through the DAL's archive
+  path. No raw SQL against `edges` / `edge_relations`.
+- **When:** after the agent's Δ in the same cycle, the position and pattern of
+  the existing structural stamp (`community_encoder.py:266-277`), which then
+  runs after it on the final edge state as it does today
+  (`community_encoder.py:318-369`).
 
-### What each size floor buys (M5)
+**Loud at the write boundary:**
+1. post-write parity — the anchor's live member set equals the thresholded
+   evidence set; a mismatch logs `_log_error` with the diff;
+2. a churn ceiling that **refuses the write and logs** rather than silently
+   rewriting an anchor's identity in one cycle;
+3. never remove membership from a `locked`/`critical` anchor — pre-filter as
+   `_auto_archive_dead` already does (`community.py:264-268`);
+4. `consecutive_failures` per the house S2 pattern.
 
-| `naming_min_size` | named objects if every cluster qualified | node coverage | vs today's 790 communities |
+### 3.4 Placement lifecycle (principle 4)
+
+Measured operating characteristic (M11), for a node with **no edges yet**:
+top-1 47%, top-10 83%, correct hub 65%.
+
+That is not enough to *assign* and it does not need to be:
+
+1. A new node is placed into the best **coarse** anchor its semantic evidence
+   clears — right about 65% of the time.
+2. Evidence is recomputed every cycle. As the node accumulates typed edges,
+   `edge_frac` and `edge_sem` come online and the full-evidence arm reaches
+   87% top-1 / 97% top-3.
+3. **A wrong early guess self-corrects**, because membership is fluid and the
+   anchor is fixed. This is the exact inverse of today's system, where
+   placement is frozen the moment it happens (F17,
+   `community_decoder.py:118-121, 383, 390-400`).
+
+Nobody is ever communityless, and no claim is made that isn't backed by
+evidence: a node with weak evidence sits in a coarse anchor at low weight.
+
+### 3.5 What summons the agent
+
+The agent is scarce (`e40ebfee`). It is called only for what cannot be computed:
+
+| event | trigger | the agent's job | failure mode |
 |---|---|---|---|
-| 3 | 1,168 | 80% | +48% |
-| **5** | **501** | **51%** | **−37%** |
-| 8 | 191 | 28% | −76% |
+| **birth (fission)** | a dense, separable sub-region *inside* an existing anchor, persisting N cycles | name the child, write its narrative, add lineage to the parent | fission along algorithmic fineness rather than a real seam |
+| **split gate** | same trigger | **decide.** Separability is necessary; **nameability is sufficient.** If the agent cannot articulate what makes the sub-region a different thing, there is no split, however good the numbers | — |
+| **dispersal** | an anchor's total evidence mass collapses, persisting N cycles | retire, keep ("a loose community is not a dead one"), or convert to an umbrella | archiving a live community whose members merely spread out (F4 today archives blind) |
+| **naming** | any new anchor | title, situation, question, narrative — the retrieval handle | — |
 
-Coverage is the ceiling, not the outcome — gates 2 and 3 cut it further, and
-nodes not in any named community are a *correct* resting state under this
-architecture, not a backlog.
+Births are **fission from a parent**, never a whole-graph discovery. That is
+principle 4 read backwards, and it is far more stable: *"this sub-region of
+anchor H got dense and distinct"* is a local judgment against a fixed
+reference, not a global re-derivation. It also matches the one clean channel in
+M2 — **0 phantom births** — because a birth only has to be right once, after
+which it becomes an anchor and stops being re-derived.
 
-**Recommendation: 5.** Size-3 clusters are 35% of the partition (409 of
-1,168) and are three-node fragments; a 3-node arc rarely has a story that its
-three members do not already tell. At 5 the named layer covers half the
-connected graph with fewer named objects than exist today — the giants'
-membership redistributed into things that were actually derived rather than
-accreted (F18).
+**Fresh clustering survives for exactly one job: finding fission candidates
+inside an anchor.** Never across the whole graph.
 
-⚠ **What is not measured:** the *birth rate* at each floor. The probe's birth
-definition is hard-coded at `len(fmem) >= 4` and ≥70% novel
-(`eval/community_reshape_probe.py:126-128`), giving 43/week (M3). R1's differ
-must emit births per candidate floor before the floor is finally set; the
-number above is the population, not the flow.
+## 4. What retires, with evidence
 
-## 2. Hysteresis
-
-### Move 1 — determinism first (prerequisite, not hysteresis)
-
-Given M4, smoothing must not be asked to hide a defect. `_seed_clusters`'s
-sort key must be total: `(-z, -is_direct, a, b)` at
-`community_decoder.py:824`. Gate: A/A across processes with differing
-`PYTHONHASHSEED` yields **100% identical partitions**. Proposal only — §9-P1.
-
-### Move 2 — confirmation counting on identity, not on diff magnitude
-
-The thing that must be stable before an agent is summoned is *a cluster's
-identity*, not the size of a delta. So hysteresis is a counter on the
-micro-cluster row (§5), not a threshold on a Jaccard difference.
-
-| parameter | value | why this number |
+| # | what | evidence |
 |---|---|---|
-| `match_jaccard` | **0.5** | the probe's own identity threshold (`eval/community_reshape_probe.py:216`), so instrument and production speak one vocabulary. 97% of clusters hold it week-over-week (M3) and 98% hold it even under tie-break churn (M4) |
-| `confirm_runs` | **2** | at 4.4 runs/day (M6) that is ~5–11h of confirmation. A cluster that forms and dissolves inside half a day is graph motion, not structure |
-| `event_min_size` | = `naming_min_size` | one dial, not two |
+| **R-1** | **Orphan placement pipeline** — `_compute_orphan_affinities` (`community_decoder.py:985-1029`), `embedding_placement_threshold: 0.50` (`community_contract.py:42`) | F13: 0.50 raw cosine passes **100%** of random pairs. **And its output is already inert:** it emits `type='node_affinities'` (`:1268-1277`), which is not in the encoder's actionable set (`community_encoder.py:63-66`) — so every run performs a per-member N+1 centroid scan (`:990-993`) that is then dropped. Replaced by `sem_centred` / `knn_share` as first-class evidence terms. |
+| **R-2** | **Cross-cutting proposals** — `_detect_cross_cutting` (`:971-981`) | Same inertness: `type='cross_cutting'` is not actionable. The render branches at `community_encoder.py:632` and `:641` are unreachable in production. |
+| **R-3** | **Unplaceable rest gate** — `community_decoder.py:127-145`, `community.py:325-356` | M12: suppresses 97.6–99.5% of the unplaced population every run. Under anchors there is no "unplaced" population — every node has evidence against every anchor, and being below threshold is a normal state, not a deferred decision. |
+| **R-4** | **Drift proposals** — Step 5c (`community_decoder.py:437-498`), prompt `## DRIFT`, plus per-node `_sys_drift_threshold` state (`:444`) | F5: the encoder moves a node between two communities seeing neither one's membership. Under §3.3 a node "drifts" when its evidence crosses a threshold — computed, not judged. |
+| **R-5** | **>60% overlap-conversion** — `cluster_overlap_threshold` (`community_contract.py:49`), conversion at `community_decoder.py:1194-1222` | F18: **39% of adds are converted births** — the mechanism that fed would-be communities into the masses. `_seed_clusters` never unions two clusters (`:832-845`), so a 206-member community is unreachable by clustering; conversion is how it was built. |
+| **R-6** | **`add_to_existing`** (quota 12/run) + Step 5b emitter (`:416-435`) + Step 9c contract (`:1288-1355`) | Replaced wholesale by §3.3. F1: judged through title + 150 chars, 0 edges, 0 metadata; `3e499972`: 26.6% of accepted placements sit below the noise line. |
+| **R-7** | **`health_update`** (quota 3/run) | Replaced by the dispersal event. The deterministic auto-archive below the cohesion floor (`community.py:241-289`) is **kept** — structural, not judged. |
+| **R-8** | **`merge_communities` decoder detection** — `_detect_merge_candidates` (`:928-967`) | Merge becomes two anchors whose evidence profiles converge — visible continuously rather than detected by stored-membership overlap. |
+| **R-9** | **Corridor pre-filter** — `community_encoder.py:79-90` | A corridor is a region whose evidence never concentrates. One mechanism, not a special case. |
+| **R-10** | **`community_members` / `community_key_decisions` metadata** | F6: zero code readers except `reconcile_community_membership` reading `community_members` as an orphan seed (`dal_graph.py:525-527`). Under §3.3 reconciliation is against the evidence set, so the seed goes dead — **retirement depends on §3.3 landing first.** |
 
-### The resulting budget
+### Two checklist rows resolved by reading the code
 
-43 births/week ÷ 31 runs/week = **~1.4 birth events per run**; 25 structural
-events/week = **~0.8 per run**. Against today's measured *actual* encoder
-throughput of 2 writes per run at ~5.3K output tokens (M7), the reshape
-event stream is the same order of work the encoder already does — it just
-buys structure instead of one-node adds.
+- **§P5's ⚠ "the parent→child verb probably must join `non_cohesion_relations`
+  or it distorts `internal_fraction`" is FALSE.** Both cohesion adjacency
+  builders require `type != 'community'` on *both* endpoints —
+  `community_decoder.py:732-735` and `community_structural.py:89-92` — so an
+  edge between two community nodes never enters the adjacency. Nothing to add.
+- **F15's stated harm is not reachable through the path I opened.** The claim
+  that 11 community-as-member edges *"inflate `community_size`, can set
+  `community_dominant_type='community'`"* fails against
+  `get_community_members` (`dal_graph.py:701`) and `get_members_bulk`
+  (`dal_graph.py:742`), which both filter `member.type != 'community'`; the
+  structural stamp reads through the latter (`community_structural.py:135`).
+  The edges are still junk worth removing; C2 should narrow its rationale.
 
-The independent cross-check: the current pipeline created **+43 communities
-in the last 7 days** (M6), and the probe projects **43 births/week** (M3).
-Different definitions, same order — reshape-diff is not a spend increase, it
-is a spend *redirection*.
+## 5. Lineage verbs
 
-**If Tom ships before the determinism fix**, `confirm_runs` must not be the
-mitigation — it does not work on this failure mode (§0(b)). The only
-pre-determinism mitigation is to enable **births only** (0 phantom, M4) and
-hold splits/merges/dispersals until the A/A gate is green.
+F14: 12 improvised inter-community verbs, only `absorbed_into` (20) systematic.
+**Extend before creating — the existing taxonomy already covers every case:**
 
-## 3. Event taxonomy
-
-Notation: *M* = a confirmed micro-cluster, *C* = a named community, `cover(M,C)
-= |M ∩ C| / |C|`. Thresholds reuse the probe's constants so the offline
-instrument and the daemon cannot disagree: `COVER_PART = 0.25`,
-`COVER_CONTAIN = 0.5`, `BIRTH_NOVEL = 0.7`
-(`eval/community_reshape_probe.py:41-43`).
-
-**The default event is no event.** A named community whose anchor set is
-unchanged is silent: no render, no call, no tokens. That is the majority of
-every run (97% week-over-week stability, M3).
-
-### 3.1 Birth
-
-| | |
-|---|---|
-| **Trigger** | *M* confirmed ≥ `confirm_runs`, `size ≥ naming_min_size`, and ≥70% of *M* lies outside the membership of every named community |
-| **Render** | today's `new_community` payload is already the right shape (timeline / hubs / edge signature / all members, built at `community_decoder.py:1224-1239`, formatted at `community_encoder.py:597`) **plus** the named communities *M*'s members already belong to, rendered in full through the R2 disclosure-invariant render |
-| **Encoder ops** | `remember` type=`community` + `connect_to` `community_member` for every member (as today, prompt line 42) — **or decline**, which is recorded (§5) |
-| **Failure mode** | **duplicate naming of an existing arc** — the cross-run duplicate the encoder journals today (checklist §P5: *"created today… was created last run on the same topic"*). Today it cannot see the target: `S2CE_COMMUNITY_FORMAT` is content 150 / edges 0 / metadata 0 (`community_contract.py:275-280`) and the community set comes from a member-title recall that need not contain the relevant one (`community_encoder.py:538-591`, F2). The mitigation is the render, not the prompt |
-
-### 3.2 Split
-
-| | |
-|---|---|
-| **Trigger** | *C*'s membership covered by ≥2 confirmed micro-clusters, each with `cover ≥ 0.25` — the probe's own `diff_against_stored` classification (`eval/community_reshape_probe.py:96-103`) — persisted `confirm_runs` |
-| **Render** | *C*'s full narrative + per-part bounded, disclosed member slice derived from edges + the remainder count. The checklist's P5 sketch is the shape; ~16 titles, never the parent's full membership |
-| **Encoder ops** | **additive** (`df292d31`): `remember` the child community/communities, connect their members, add lineage child→parent (§6), and `revise` the parent — either narrow its narrative to the surviving core, or promote it to umbrella. Never a destructive re-partition |
-| **Failure mode** | **splitting along algorithmic fineness rather than a real seam.** F18's own ⚠ caveat: the conservative seeder fragments genuinely coherent regions, so "N parts" overstates decomposition. Mitigations: the ≥2-parts-each-≥25% trigger, confirmation, and an explicit *"this is one story — keep it"* verdict that is recorded so it stops re-firing |
-
-### 3.3 Merge
-
-| | |
-|---|---|
-| **Trigger** | one confirmed *M* contains ≥50% of the membership of ≥2 named communities (`eval/community_reshape_probe.py:123-125`), persisted `confirm_runs` |
-| **Render** | **both** narratives in full + shared/unique member counts + the containing cluster |
-| **Encoder ops** | today's MERGE (revise survivor content, connect unique members, archive the smaller — prompt lines 132-141) **or** the editorial alternative: create an umbrella over both and archive neither |
-| **Failure mode** | **destructive rewrite from partial visibility** (F3: `## MERGE` tells the encoder to replace a 1,038–1,626-char narrative it can see 150 chars of). This event must not be enabled before the R2 full-content render lands. That ordering is a correctness constraint, not a preference |
-
-### 3.4 Dispersal
-
-| | |
-|---|---|
-| **Trigger** | no confirmed micro-cluster covers ≥25% of *C* (`eval/community_reshape_probe.py:99-101`), persisted `confirm_runs` |
-| **Render** | *C*'s full narrative + **where the members went** — the micro-clusters and named communities that now hold them |
-| **Encoder ops** | `archive` with reason · **keep** (*"a loose community is not a dead one"*, today's HEALTH UPDATE keep branch) · or convert to umbrella if its members now sit under several named children |
-| **Failure mode** | **archiving a live community whose members merely spread out.** This is F4 — today's `## HEALTH UPDATE` makes a membership judgment from zero members and its accept branch archives the whole community. The "where the members went" render is what makes the judgment possible at all; a *keep* verdict must be recorded (§5) or the event re-fires every run forever. The deterministic auto-archive below the cohesion floor (`community.py:241-289`) is a *separate*, structural seam and survives unchanged |
-
-### 3.5 Umbrella-shift
-
-| | |
-|---|---|
-| **Trigger** | *C*'s anchor set changes — a child cluster leaves, a new one arrives, or a one-cluster community becomes multi-cluster (or back) — while *C* still has ≥1 part at `cover ≥ 0.25`, persisted `confirm_runs`, and the arriving/leaving cluster is itself ≥ `naming_min_size` |
-| **Render** | *C* + its anchor set before/after + the arriving/leaving cluster's members |
-| **Encoder ops** | `revise` the narrative and `community_latest_development`; optionally add/remove lineage edges to child communities |
-| **Failure mode** | **this becomes the new `add_to_existing` noise channel.** It is structurally the highest-frequency event and the one most able to consume the whole budget. Mitigations: the minimum-shift size gate above, the hardest quota of the five, and — non-negotiable — it is the *last* event type enabled at cutover, after its live rate has been observed in shadow mode |
-
-## 4. Membership write policy
-
-**The agent decides which communities exist and what they mean. The algorithm
-decides who is in them.**
-
-- A named community *C* anchored to micro-clusters {M₁…Mₖ} has membership
-  `∪ Mᵢ` — computed, never judged. There is no per-node placement decision
-  left to make, which is what retires `add_to_existing`, `drift`, and the
-  orphan path in one stroke (§7).
-- **Who writes:** one new owner, `servers/scales/s2/community_reshape.py`.
-  Edge creation routes through `GraphDAL.add_relation` (`dal_graph.py:999`)
-  with `encoding_source='s2:community_reshape'`; removal routes through the
-  DAL's archive path with the same tag. No raw SQL against `edges` /
-  `edge_relations` (CLAUDE.md: route, don't reach).
-- **When:** after the agent's judgment Δ, in the same run, so communities born
-  this run get their membership immediately — the position and pattern of the
-  existing structural stamp (`community_encoder.py:266-277`). The structural
-  stamp then runs *after* it, on the final edge state, exactly as it does
-  today (`community_encoder.py:318-369`).
-- **Provenance:** `s2:community_reshape` is a distinct `category:process` tag
-  from the agent's `s2:community_detection`. That single distinction makes the
-  whole mechanism reversible — *everything this mechanism ever wrote* is one
-  query — which is what makes staged cutover (R4) and paced migration (R5)
-  safe to attempt.
-
-### What makes it loud (checks at the write boundary, per `feedback_loud_at_write_boundary`)
-
-1. **Post-write parity.** For every touched *C*, the live member set must
-   equal the anchored union. A mismatch logs
-   `_log_error('s2_community_reshape_membership', …)` carrying the diff.
-2. **Churn ceiling.** If a single run would change more than
-   `max_membership_churn` of a community's members, **refuse the write and
-   log** rather than silently rewriting a community's identity. A named
-   community whose membership turns over wholesale is a split, a dispersal,
-   or a bug — all three deserve an event, none deserves a quiet UPDATE.
-3. **Locked communities.** Never remove membership from a `locked` or
-   `critical` community; pre-filter as `_auto_archive_dead` already does
-   (`community.py:264-268`).
-4. **`consecutive_failures`** per the house S2 pattern, so a stuck reshaper
-   surfaces rather than degrades.
-
-## 5. Cross-run micro-cluster stability — new state
-
-**This does not exist today.** Micro-clusters have no persistent identity:
-cluster ids are per-run integers from a counter (`community_decoder.py:828`).
-
-### Owner and location
-
-Rejected: `s2_rejections` (a fingerprint suppression table keyed on proposal
-parameters, `rejection_table.py:46` — different lifecycle, and the reshape
-design retires most of its current uses); `brain_meta` (one key/value, and
-1,168 rows in a blob is a write-amplification and concurrency hazard);
-community-node metadata (micro-clusters are precisely the things that are
-*not* nodes).
-
-**Recommendation: a new table `s2_micro_clusters` in `brain.db`**, declared in
-`servers/schema.py` on the migration ladder with a version bump, with all its
-SQL owned by one module — the exact precedent `s2_rejections` set
-(`tests/test_raw_sql_guardrail.py:43` records it as an allowed exception:
-*"owns all s2_rejections SQL"*). That ratchet gets one new entry with a
-one-line why; growing it silently is what the test exists to prevent.
-
-Keep the store inside `community_reshape.py` until a second consumer appears
-(CLAUDE.md: extend before creating; a new module is a structural commitment).
-
-### Shape
-
-| column | meaning |
-|---|---|
-| `cluster_key` | PK. **Carried forward**, not derived from membership: a fresh cluster matching a stored row at Jaccard ≥ `match_jaccard` inherits its key; an unmatched cluster mints a new one. Membership-derived keys are useless here — they change the moment a member joins |
-| `members` / `member_hash` | JSON sorted member ids + a hash for cheap unchanged-detection |
-| `size` | current member count |
-| `first_seen_at` / `last_seen_at` | ISO, via `clock.iso_now()` — transaction-time, wall-clock anchored (CLAUDE.md time rule) |
-| `run_count` / `consecutive_runs` | total runs matched / consecutive runs matched. `consecutive_runs` is the hysteresis counter; it resets to 0 on a miss, and the row survives |
-| `named_community_id` | the named community this cluster anchors, or NULL. The anchor relation is many-to-one: an umbrella has several rows pointing at it |
-| `encoder_verdict` | `named` · `declined` · `keep` · NULL |
-| `verdict_at` / `verdict_member_hash` | **the verdict is scoped to the membership it was made about.** When membership moves materially past a threshold, the verdict expires and the cluster can be proposed again |
-
-That last row is the honest replacement for fingerprint suppression: a
-decline about 5 nodes should not silence a proposal about 12, and today's
-mechanism cannot tell the difference.
-
-### Lifecycle
-
-- **Written** once per decode run, after the fresh partition, before the
-  encoder — so the differ reads the previous run's state and writes this one's.
-- **Unmatched stored row:** `consecutive_runs = 0`, row retained. Clusters
-  vanish and come back; forgetting them costs confirmation history.
-- **Pruned** when `last_seen_at` is older than 30 days *and*
-  `named_community_id IS NULL`. Without a prune the table grows without bound.
-- **Dangling anchor:** if `named_community_id` points at an archived
-  community, clear the pointer — the community died, the cluster did not.
-- **Disposable by design.** Dropping the table costs only confirmation
-  history: every cluster restarts at `consecutive_runs = 1` and no event
-  fires for `confirm_runs` runs. State this property in the module docstring;
-  it is what makes the whole mechanism safe to reset during migration.
-- **Loud:** a fresh cluster matching ≥2 stored rows that anchor *different*
-  named communities is logged — that is either a merge signal or an identity
-  bug, and both want to be seen.
-
-## 6. Lineage verbs
-
-F14 measured the current state: 12 improvised inter-community verbs, mostly
-singletons, only `absorbed_into` (20) systematic, and no sanctioned
-parent/child verb.
-
-### ⚠ A checklist row resolved — no `non_cohesion_relations` entry is needed
-
-Checklist §P5 warns (⚠ UNVERIFIED) that a parent→child verb *"probably must
-join `non_cohesion_relations` or it distorts `internal_fraction`."* **Traced
-this session: false.** Both cohesion adjacency builders require
-`type != 'community'` on **both** endpoints — the decoder's at
-`community_decoder.py:732-735` and the structural stamp's at
-`community_structural.py:89-92`. An edge between two community nodes never
-enters the adjacency at all, so it cannot move `internal_fraction`. Nothing
-to add to `non_cohesion_relations` (`community_contract.py:91-93`).
-
-### The verbs
-
-**Extend before creating — the existing taxonomy already covers both cases:**
-
-| need | verb | aspect | edit required |
+| need | verb | aspect | edit |
 |---|---|---|---|
-| umbrella → child | `part_of` (child → umbrella) | `hierarchical_structure` — *"Edges expressing CONTAINMENT"* | **none** |
-| split lineage | `derived_from` (child → parent) | `extension_refinement` — *"the target gets richer, not changed"* | **none** |
-| merge lineage | `absorbed_into` | `survivor_lineage` | **none** — already systematic |
+| umbrella → child | `part_of` (child → umbrella) | `hierarchical_structure` | none |
+| fission lineage | `derived_from` (child → parent) | `extension_refinement` | none |
+| merge lineage | `absorbed_into` | `survivor_lineage` | none |
 
-**Explicitly ruled out:** putting split lineage in `survivor_lineage`. That
-aspect's contract is *"where an archived node's knowledge SURVIVED… the
-source was absorbed into the living target"*, and `resolve_live` walks it. A
-living split child pointing at its living parent through that aspect would
-make every reference to the child resolve to the parent. Actively harmful.
+**Explicitly ruled out:** putting fission lineage in `survivor_lineage`.
+`resolve_live` walks that aspect, so a living child pointing at its living
+parent would make every reference to the child resolve to the parent.
 
-**If Tom wants split lineage legible in its own right** — and there is a fair
-argument that "was carved out of" is not "was derived from" — the minimum
-edit is one string in `hierarchical_structure.edge_relations`:
-
-```json
-"edge_relations": ["part_of", "includes", "contains", "supersedes",
-                   "superseded_by", "section_of", "split_from", "…"]
-```
-
+If fission lineage should be legible in its own right, the minimum edit is one
+string (`split_from`) in `hierarchical_structure.edge_relations`.
 `aspects_v1.json` is a **human edit** and this doc does not make it. No
 `REQUIRED_ASPECTS` change is involved either way — that list
-(`servers/aspect_store.py:23`) gates adding an *aspect*, not a relation. My
-recommendation is to start with `derived_from` and mint `split_from` only if
-R1's real split inventory shows the distinction carrying weight.
+(`servers/aspect_store.py:23`) gates adding an *aspect*, not a relation.
 
-## 7. Retire list, with evidence per item
+## 6. Success metric
 
-| # | what | evidence | retires when |
-|---|---|---|---|
-| **R-1** | **Orphan placement pipeline** — `_compute_orphan_affinities` (`community_decoder.py:985-1029`), `embedding_placement_threshold: 0.50` (`community_contract.py:42`) | F13: 0.50 raw cosine passes **100%** of random pairs; raw has no viable operating point anywhere. `3e499972`: the gate is a max-over-601 decision — 97.9% of sleepers clear any pair-calibrated cut. **And its output is already inert:** it emits `type='node_affinities'` (`:1268-1277`), which is not in the encoder's actionable set (`community_encoder.py:63-66`), so every run computes a per-member N+1 centroid scan (`:990-993`) that is then dropped. Under reshape-diff "orphan" is not a category: an unclustered node is simply in no named community, which is the right answer | R6 (kNN/centred survive as matching + evidence machinery) |
-| **R-2** | **Cross-cutting proposals** — `_detect_cross_cutting` (`:971-981`) | Same inertness: `type='cross_cutting'` is not actionable (`community_encoder.py:63-66`). The render branches at `community_encoder.py:632` and `:641` are unreachable from the production path | R6, with R-1 |
-| **R-3** | **Unplaceable rest gate** — `community_decoder.py:127-145`, `community.py:325-356` | Measured (M6): 9–47 pending of 1,947–1,989 unplaced across 11 sampled runs — **the gate suppresses 97.6–99.5% of the population every run**. Its purpose (don't re-examine an unmoved neighborhood) is served for free by §5: an unchanged cluster produces no event. PX already expects the ~3,694 rows to retire with the machinery rather than be cleared and re-woken | R6 |
-| **R-4** | **Drift proposals** — Step 5c (`community_decoder.py:437-498`), prompt `## DRIFT`, quota 2/run, plus the per-node `_sys_drift_threshold` state (`:444`) | F5: the encoder moves a node between two communities while seeing neither one's membership. Under §4 membership is algorithmic — a node "drifts" when its cluster's anchoring changes, which is an umbrella-shift or a split, not a per-node judgment | R4(b), with algorithmic membership |
-| **R-5** | **>60% overlap-conversion** — `cluster_overlap_threshold: 0.60` (`community_contract.py:49`), conversion at `community_decoder.py:1194-1222` | F18 / `7fbad66b`: **39% of adds are converted births** — this is the mechanism that fed would-be new communities into the masses. `_seed_clusters` never unions two existing clusters (`:832-845`), so a 206-member community is unreachable by clustering; conversion is how it was built | R4(a), with births |
-| **R-6** | **`add_to_existing`** (quota 12/run) and its Step 5b emitter (`:416-435`) + Step 9c contract (`:1288-1355`) | Replaced wholesale by §4. F1: the encoder judges these seeing the target as title + 150 chars, 0 edges, 0 metadata. `3e499972`: 26.6% of accepted placements sit below the pair-noise line | R4(b) |
-| **R-7** | **`health_update`** (quota 3/run) | Replaced by the dispersal event, which renders where the members went. F4: today's accept branch archives a community from a zero-member judgment. The deterministic auto-archive seam below the cohesion floor (`community.py:241-289`) is **kept** — it is structural, not judged | R4(c) |
-| **R-8** | **`merge_communities` decoder detection** — `_detect_merge_candidates` (`:928-967`) | Replaced by the merge event, which is derived from the fresh partition rather than from stored-membership overlap | R4(c) |
-| **R-9** | **Corridor pre-filter** — `community_encoder.py:79-90` | A corridor is a micro-cluster that fails the naming bar. One mechanism instead of a special case | R4(a) |
-| **R-10** | **`community_members` / `community_key_decisions` metadata** | F6: zero code readers, except `reconcile_community_membership` reading `community_members` as a creation-time orphan seed (`dal_graph.py:525-527`). Under §4 reconciliation is against the anchored union, so the seed goes dead — **this item's retirement depends on §4 landing first** | R6 (P1's text edits may land earlier) |
+Not modularity and not internal fraction — both are proxies for a consumer.
+The measurable target is the stated purpose (`6ee28032`): **how many anchors
+must you suppress to mute a project?**
 
-### One checklist claim that needs re-checking before C2 cites it
+Measured today on the brain's real labels (10,099 `brain`, 255 `ex.co`, 3
+`abadai`): the ex.co nodes spread across **38–49** communities at production
+granularity, and **5–6** at a coarse level. Fewer handles is better, and it is
+a number that moves when the architecture improves.
 
-F15 says the 11 community-as-member edges *"inflate `community_size`, can set
-`community_dominant_type='community'`."* Both member readers used by the
-structural stamp exclude them: `get_community_members` filters
-`member.type != 'community'` (`dal_graph.py:701`) and `get_members_bulk` does
-the same (`dal_graph.py:742`), and `compute_community_structural` reads
-through the latter (`community_structural.py:135`). The 11 edges are still
-junk worth removing, but the stated harm is not reachable through the path I
-opened. C2 should re-derive its rationale or narrow its claim.
+Second-order: journal noise classes → 0, and the F11 umbrella rate.
 
-## 8. Migration pacing (Decision 3)
+## 7. What is NOT measured
 
-The first reshape is a one-time reorganisation, not a swap. M2 is the bill:
-only **35%** of stored communities match a fresh cluster at Jaccard ≥0.5;
-**28% (216) split**, **11% (86) disperse**, 27 merge events, 17 births. The
-giants do not decompose cleanly — `bc639843` (206 connected members) has
-exactly **one** fresh part covering ≥10% of it, at 13% coverage; `2e6986a2`
-(174) has **none**.
+Stated plainly so nothing here is mistaken for settled:
 
-That last fact sets the constraint: for the largest communities, reshape-diff
-has no opinion to offer. Their membership is not derivable structure (F18),
-so "re-anchor them to their fresh clusters" would strand 85%+ of their
-members. The migration is therefore **agent-led decomposition, paced**, not a
-mechanical re-anchoring:
+- **Whether fission candidates inside a giant are detectable and stable.** The
+  whole birth/split path rests on it. Next probe.
+- **Per-cycle wall-clock cost** of computing evidence for every
+  `(node, anchor)` pair with a non-zero term.
+- **Whether the agent judges these renders better than the current ones.**
+  That needs an encoder eval on production-faithful batches.
+- **Whether a coarse anchor layer should be seeded algorithmically** (M6 shows
+  Louvain's top level reaches it) or grown by fission from what exists.
 
-- **K giants per run**, largest first, each one an explicit event batch.
-- The encoder re-narrates children and **chooses** whether the parent becomes
-  an umbrella or narrows to its core.
-- Lineage edges preserve identity in both directions (§6).
-- `backup_before_destructive` per batch — no exceptions (CLAUDE.md).
-- Communities that match cleanly (35%) migrate silently: anchor set assigned,
-  membership reconciled, no agent call.
+## 8. Proposals — changes this doc does not make
 
-Pacing is Decision 3 below.
+| | proposal |
+|---|---|
+| **P1** | Total sort key `(-z, -is_direct, a, b)` at `community_decoder.py:824`. M3 shows 100% of seed pairs are tied; the ordering is currently arbitrary. Needed for *any* reproducible derivation, including fission-candidate detection. |
+| **P2** | Commit the load-bearing probes as instruments: evidence discrimination + stability (M9/M10) and perturbation sensitivity (M8). R0 measured with scratchpad code; gates need instruments in the repo. |
+| **P3** | New module `servers/scales/s2/community_reshape.py` — evidence computation + membership reconciliation. |
+| **P4** | Wire `edge_relations.embedding` into community evidence — the artifact exists (v26, 23,272 edges re-embedded at `f359f6f`) and community detection has never read it. |
+| **P5** | Decide whether `co_anchored` leaves the `noise` aspect for evidence purposes, or is read directly. It is locked into `noise` in `aspects_v1.json` and skipped by `_build_typed_adjacency`. |
+| **P6** | Re-run the probe after P1 and re-encode `7fbad66b` / F18 with the corrected weekly velocity (M1). |
 
-## 9. Proposals — changes this doc does not make
+## 9. Open decisions
 
-| | proposal | why it is here and not done |
-|---|---|---|
-| **P1** | Total sort key `(-z, -is_direct, a, b)` at `community_decoder.py:824` | Touching `servers/` is outside R0. This is the prerequisite for R1's "zero churn on unchanged graph" gate (§0(b)) |
-| **P2** | Land the A/A harness as a committed instrument alongside `community_reshape_probe.py`, with the two-seed run as its gate | R0 measured with a throwaway; a gate needs an instrument in the repo |
-| **P3** | New table `s2_micro_clusters` + `servers/schema.py` ladder entry + version bump + one `ALLOWED` entry in `tests/test_raw_sql_guardrail.py` | §5; a schema change is R1 work |
-| **P4** | New module `servers/scales/s2/community_reshape.py` (differ + membership reconciliation + state store) | §4, §5 |
-| **P5** | Optional `split_from` in `hierarchical_structure.edge_relations` | `aspects_v1.json` is a human edit (§6) |
-| **P6** | Re-run the probe **after** P1 and re-encode `7fbad66b` / F18 with the corrected weekly velocity | The recorded "2 splits / 99% stable" is wrong (§0(a)) and is a stated gate in R3 |
-
-## 10. Decisions for ratification
-
-1. **Naming bar** — `naming_min_size` ∈ {3, 5, 8}. Recommendation **5**.
-2. **Hysteresis** — `confirm_runs` and whether determinism (P1) gates cutover.
-   Recommendation: `confirm_runs = 2`, `match_jaccard = 0.5`, and **yes** —
-   P1 gates every event type except births.
-3. **Migration pacing** — K giants per run and whether migration begins before
-   or after steady-state cutover.
-
-Until these are ratified, nothing is built (checklist §PX, R0).
+1. **Evidence thresholds** — one per signal, or a combined score? Relative to
+   the run's own distribution (fleet-safe) rather than absolute constants; a
+   literal tuned on a 10,008-node brain is the same bug class as the inert
+   0.50 (`3e499972`).
+2. **Coarse anchor seeding** — algorithmic (M6's Louvain top level) or grown
+   by fission?
+3. **Confirmation window** — how many cycles a fission or dispersal signal must
+   persist before the agent is called. At 4.4 runs/day (M12), N=2 is ~5–11h.
 
 ---
 
