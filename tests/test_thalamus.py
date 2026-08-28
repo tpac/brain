@@ -101,6 +101,54 @@ class TestFile(ThalamusBase):
         ).fetchone()[0]
         self.assertEqual(n, 1)
 
+    def test_dated_item_keeps_full_window(self):
+        """Expiry anchors at deliver_at, not now — an ask due in 3 weeks must
+        not expire after 2 (it would be undeliverable and fire a FALSE loud
+        dead-letter)."""
+        r = self._file('late ask', needs_answer=True, when='3w')
+        _, _, _, deliver_at, expires_at, _ = self._row(r['id'])
+        self.assertGreater(expires_at, deliver_at)
+        r2 = self._file('late notice', for_whom='all', when='1w')
+        _, _, _, deliver_at2, expires_at2, _ = self._row(r2['id'])
+        self.assertGreater(expires_at2, deliver_at2)
+
+    def test_dedup_with_second_matching_row_still_files(self):
+        """Regression for the write-conn snapshot hazard: a second open row
+        sharing (source, dedup_key) must not break file() — the dedup lookup
+        is LIMIT 1 and its cursor unbound."""
+        r1 = self._file('first', dedup_key='dup')
+        with self.brain.logs_write_lock:
+            self.brain.logs_conn_w.execute(
+                'INSERT INTO thalamus_items (id, source, body, refs, audience,'
+                ' target_session, needs_answer, dedup_key, deliver_at,'
+                ' expires_at, state, answer, created_at)'
+                " VALUES ('th_dupdup', 'test', 'second', '', 'once', '', 0,"
+                " 'dup', NULL, ?, 'open', '', ?)",
+                (iso_cutoff(days=-7), iso_now()))
+            self.brain.logs_conn_w.commit()
+        r2 = self._file('updated', dedup_key='dup')
+        self.assertTrue(r2['filed'])
+        self.assertTrue(r2.get('updated'))
+
+    def test_live_rejects_queue_shaped_params(self):
+        r = self._file('fyi', for_whom='live', session_id=S1, when='2h')
+        self.assertFalse(r['filed'])
+        self.assertIn('live', r['error'])
+        r = self._file('fyi', for_whom='live', session_id=S1,
+                       needs_answer=True)
+        self.assertFalse(r['filed'])
+
+    def test_budget_ignores_expired_items(self):
+        for i in range(tc.MAX_OPEN_PER_SOURCE):
+            self._file('item %d' % i)
+        with self.brain.logs_write_lock:
+            self.brain.logs_conn_w.execute(
+                "UPDATE thalamus_items SET expires_at = ? WHERE state='open'",
+                (iso_cutoff(hours=1),))
+            self.brain.logs_conn_w.commit()
+        # Expired-but-unswept items must not wedge the producer at its cap.
+        self.assertTrue(self._file('fits without a sweep')['filed'])
+
     def test_budget_rejects_at_cap_with_guidance(self):
         for i in range(tc.MAX_OPEN_PER_SOURCE):
             self.assertTrue(self._file('item %d' % i)['filed'])
@@ -188,12 +236,12 @@ class TestPull(ThalamusBase):
         self._file('note')
         self.assertEqual(thalamus.pull(self.brain, '', via='boot'), ('', 0))
 
-    def test_overflow_is_named_not_silent(self):
-        for i in range(tc.PULL_MAX_ITEMS + 2):
+    def test_overflow_names_the_true_count(self):
+        for i in range(tc.PULL_MAX_ITEMS + 4):
             self._file('item %d' % i, source='src-%d' % i)  # distinct budgets
         block, n = thalamus.pull(self.brain, S1, via='boot')
         self.assertEqual(n, tc.PULL_MAX_ITEMS)
-        self.assertIn('more due', block)
+        self.assertIn('(+4 more due', block)  # the real number, not "+1"
 
 
 class TestResolveWithdraw(ThalamusBase):
@@ -215,6 +263,14 @@ class TestResolveWithdraw(ThalamusBase):
         self.assertFalse(out['ok'])
         out = thalamus.resolve(self.brain, r['id'])
         self.assertFalse(out['ok'])
+
+    def test_empty_answer_rejected(self):
+        r = self._file('decide?', needs_answer=True)
+        out = thalamus.resolve(self.brain, r['id'], answer='   ')
+        self.assertFalse(out['ok'])
+        self.assertIn('empty', out['error'])
+        # Item stays open and answerable.
+        self.assertEqual(self._row(r['id'])[0], tc.STATE_OPEN)
 
     def test_defer_rearms_delivery(self):
         r = self._file('note')

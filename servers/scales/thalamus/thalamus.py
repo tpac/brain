@@ -21,6 +21,7 @@ Design: docs/THALAMUS-DESIGN.md
 
 import json
 import uuid
+from datetime import datetime as _dt, timedelta as _td
 
 from servers.clock import iso_now, iso_after
 from servers.scales.thalamus import thalamus_contract as tc
@@ -45,18 +46,18 @@ _ITEM_COLS = ('id, source, body, refs, audience, target_session, '
 
 
 def _default_expires(needs_answer, audience, deliver_at):
-    """The item's window when the producer names none. Asks get the long loud
-    window; standing notices the notice window; once-items live until shortly
-    after they fire."""
+    """The item's window when the producer names none: ANCHOR (deliver_at, or
+    now) + SPAN (per-kind days) — composed, never branch-dependent. Anchoring
+    at the due date keeps a dated ask's full window; expiry before due would
+    make the item undeliverable and fire a FALSE loud dead-letter."""
     if needs_answer:
-        return iso_after(days=tc.ASK_EXPIRES_DAYS)
-    if audience == tc.AUDIENCE_ALL:
-        return iso_after(days=tc.NOTICE_EXPIRES_DAYS)
-    if deliver_at:
-        from datetime import datetime as _dt, timedelta as _td
-        base = _dt.fromisoformat(deliver_at)
-        return (base + _td(days=tc.REMIND_GRACE_DAYS)).isoformat()
-    return iso_after(days=tc.REMIND_GRACE_DAYS)
+        span = tc.ASK_EXPIRES_DAYS
+    elif audience == tc.AUDIENCE_ALL:
+        span = tc.NOTICE_EXPIRES_DAYS
+    else:
+        span = tc.REMIND_GRACE_DAYS
+    anchor = _dt.fromisoformat(deliver_at) if deliver_at else None
+    return iso_after(days=span, at=anchor)
 
 
 def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
@@ -94,6 +95,13 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
         # Fire-and-forget to whoever is alive NOW — the courier's contract.
         # Terminal 'sent' row kept for observability (thalamus_list), no
         # ledger lifecycle: the courier owns delivery and death (1h TTL).
+        # A queue-shaped param on a live send is an intent the route cannot
+        # honor — reject loudly rather than silently dropping it.
+        if deliver_at or needs_answer or dedup_key or expires:
+            return {'filed': False, 'error':
+                    "thalamus.file: for_whom='live' is fire-and-forget — it "
+                    "cannot honor when/needs_answer/dedup_key/expires; drop "
+                    "them, or queue instead (for_whom='all' or omit)"}
         if not session_id:
             return {'filed': False, 'error':
                     "thalamus.file: for_whom='live' requires a filing session "
@@ -119,11 +127,14 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
     with brain.logs_write_lock:
         conn = brain.logs_conn_w
         if dedup_key:
-            cur = conn.execute(
+            # Unbound one-step lookup + LIMIT 1 — the dal_logs.py write-conn
+            # invariant: a bound, unexhausted cursor on logs_conn_w holds a
+            # read snapshot and the next write fails INSTANTLY on a concurrent
+            # commit (SQLITE_BUSY_SNAPSHOT, busy_timeout bypassed).
+            existing = conn.execute(
                 'SELECT id FROM thalamus_items WHERE source = ? '
-                'AND dedup_key = ? AND state = ?',
-                (source, dedup_key, tc.STATE_OPEN))
-            existing = cur.fetchone()
+                'AND dedup_key = ? AND state = ? LIMIT 1',
+                (source, dedup_key, tc.STATE_OPEN)).fetchone()
             if existing:
                 conn.execute(
                     'UPDATE thalamus_items SET body = ?, refs = ?, '
@@ -135,10 +146,12 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
                 return {'filed': True, 'id': existing[0], 'updated': True,
                         'route': 'queue'}
 
-        cur = conn.execute(
+        # expires_at filter: expired-but-unswept items must not wedge a
+        # producer at its cap while being invisible to delivery.
+        open_count = conn.execute(
             'SELECT COUNT(*) FROM thalamus_items WHERE source = ? '
-            'AND state = ?', (source, tc.STATE_OPEN))
-        open_count = cur.fetchone()[0]
+            'AND state = ? AND expires_at > ?',
+            (source, tc.STATE_OPEN, now)).fetchone()[0]
         if open_count >= tc.MAX_OPEN_PER_SOURCE:
             return {'filed': False, 'error':
                     'thalamus budget: %r has %d open items (cap %d) — '
@@ -161,6 +174,26 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
             'expires_at': expires_at}
 
 
+def _due_filter(session_id, via, now):
+    """The due predicate — WHERE clause + params, shared by pull()'s fetch and
+    its overflow count so the two cannot drift (the signal._PENDING_INBOX_SQL
+    pattern). Asks (needs_answer) are due at boot only."""
+    sql = (" WHERE state = 'open'"
+           ' AND (deliver_at IS NULL OR deliver_at <= ?)'
+           ' AND expires_at > ?'
+           " AND (target_session = '' OR target_session = ?)")
+    params = [now, now, session_id]
+    if via != 'boot':
+        sql += ' AND needs_answer = 0'
+    sql += (" AND ((audience = 'once' AND NOT EXISTS ("
+            '   SELECT 1 FROM thalamus_deliveries d WHERE d.item_id = thalamus_items.id))'
+            "  OR (audience = 'all' AND NOT EXISTS ("
+            '   SELECT 1 FROM thalamus_deliveries d WHERE d.item_id = thalamus_items.id'
+            '   AND d.session_id = ?)))')
+    params.append(session_id)
+    return sql, params
+
+
 def pull(brain, session_id, via):
     """Due items for this session at a delivery moment ('boot' | 'stop') —
     rendered block + count. Writes the ledger at render (INSERT OR IGNORE:
@@ -176,27 +209,22 @@ def pull(brain, session_id, via):
     if not session_id:
         return '', 0
     now = iso_now()
-    params = [now, now, session_id]
-    sql = ('SELECT %s FROM thalamus_items WHERE state = \'open\''
-           ' AND (deliver_at IS NULL OR deliver_at <= ?)'
-           ' AND expires_at > ?'
-           ' AND (target_session = \'\' OR target_session = ?)'
-           % _ITEM_COLS)
-    if via != 'boot':
-        sql += ' AND needs_answer = 0'
-    sql += (' AND ((audience = \'once\' AND NOT EXISTS ('
-            '   SELECT 1 FROM thalamus_deliveries d WHERE d.item_id = thalamus_items.id))'
-            '  OR (audience = \'all\' AND NOT EXISTS ('
-            '   SELECT 1 FROM thalamus_deliveries d WHERE d.item_id = thalamus_items.id'
-            '   AND d.session_id = ?)))'
-            ' ORDER BY needs_answer DESC, COALESCE(deliver_at, created_at) ASC'
-            ' LIMIT ?')
-    params += [session_id, tc.PULL_MAX_ITEMS + 1]
-    rows = brain.logs_conn.execute(sql, params).fetchall()
-    if not rows:
+    where, params = _due_filter(session_id, via, now)
+    # True due count first, so the render's overflow tail names the real
+    # number — a "+1" hiding fifteen is the wallpaper defect one level down.
+    # Predicate shared with the item fetch below via _due_filter, so the two
+    # cannot drift.
+    total = brain.logs_conn.execute(
+        'SELECT COUNT(*) FROM thalamus_items' + where, params).fetchone()[0]
+    if not total:
         return '', 0
-    overflow = max(0, len(rows) - tc.PULL_MAX_ITEMS)
-    items = [_row_to_item(r) for r in rows[:tc.PULL_MAX_ITEMS]]
+    rows = brain.logs_conn.execute(
+        'SELECT %s FROM thalamus_items%s'
+        ' ORDER BY needs_answer DESC, COALESCE(deliver_at, created_at) ASC'
+        ' LIMIT ?' % (_ITEM_COLS, where),
+        params + [tc.PULL_MAX_ITEMS]).fetchall()
+    overflow = total - len(rows)
+    items = [_row_to_item(r) for r in rows]
     delivered_at = iso_now()
     with brain.logs_write_lock:
         brain.logs_conn_w.executemany(
@@ -247,6 +275,11 @@ def resolve(brain, item_id, answer=None, defer_until=None, dismiss=False):
         return {'ok': False, 'error':
                 'thalamus_resolve: pass exactly one of answer / defer_until / '
                 'dismiss'}
+    if answer is not None and not str(answer).strip():
+        # Same guard file() puts on the body — an ask must not close on an
+        # empty payload; the producer's return surface would render nothing.
+        return {'ok': False, 'error':
+                'thalamus_resolve: empty answer — pass real text, or dismiss'}
     with brain.logs_write_lock:
         conn = brain.logs_conn_w
         item = _get_item(conn, item_id)
@@ -272,7 +305,6 @@ def resolve(brain, item_id, answer=None, defer_until=None, dismiss=False):
             if new_deliver is None:
                 new_deliver = iso_now()
             # Window must outlive the new due date by the grace period.
-            from datetime import datetime as _dt, timedelta as _td
             new_expires = max(
                 item['expires_at'] or '',
                 (_dt.fromisoformat(new_deliver)
