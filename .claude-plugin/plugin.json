@@ -9,7 +9,7 @@
   },
   "homepage": "https://github.com/tpac/brain",
   "repository": "https://github.com/tpac/brain",
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0 OR PolyForm-Internal-Use-1.0.0",
   "keywords": [
     "identity",
     "memory",

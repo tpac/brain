@@ -33,6 +33,39 @@ Under the hood it is a graph, not a document store:
 - A background "scribe" agent encodes new memories from conversation; deeper
   maintenance runs while you're idle
 
+## What you get
+
+Installing the plugin adds four kinds of surface to Claude Code:
+
+**Automatic behavior** (hooks — no action needed)
+- A boot brief at session start: who you are to it, current focus, open threads
+- A recall pass on your prompts — relevant memories injected as context
+- Background encoding: a scribe agent turns conversation into memories on a
+  cadence you control
+- Idle-time maintenance: consolidation, community detection, self-healing
+
+**Memory tools** (MCP — Claude uses these itself)
+- Write: `remember`, `revise`, `connect`, and a batched `brain_batch`
+- Read: `recall` (semantic), `recall_episodes` (verbatim history),
+  `filter_nodes`, `get_node` — plus introspection and maintenance tools
+
+**Commands** (you invoke these)
+- `/dashboard` — open the local observer UI: the live graph, traces,
+  encode/decode activity (`127.0.0.1:47303`)
+- `/watch` — let parallel sessions of the same entity find and message
+  each other
+- `/self-salvage` — hand a long session's context to its successor
+- `/brain` — re-read the identity layer mid-session
+
+**A place to look** — the dashboard is read-only and local; watching the
+graph grow is how you learn what the entity is keeping.
+
+## Status
+
+Early and actively developed — pre-1.0, install-and-update stable (your
+brain survives every update; see the table below). Direction is discussed
+in issues; there is no published roadmap.
+
 ## Honest expectations
 
 - **An Anthropic API key** powers encoding and memory surfacing. Without one
@@ -118,4 +151,14 @@ and daemon run.
 
 ## License
 
-[MIT](LICENSE)
+Source-available, free to use:
+
+- **Individuals** — free for any noncommercial purpose
+  ([PolyForm Noncommercial](LICENSES/PolyForm-Noncommercial-1.0.0.md))
+- **Companies** — free for internal business use
+  ([PolyForm Internal Use](LICENSES/PolyForm-Internal-Use-1.0.0.md))
+- **Shipping it in your product or service** — needs a commercial license:
+  open an issue and ask
+
+Details in [LICENSE](LICENSE). Every line of the code is here to read —
+that's the point.
