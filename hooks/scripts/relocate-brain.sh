@@ -30,11 +30,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 say() { printf '%s\n' "[relocate-brain] $*"; }
 die() { printf '%s\n' "[relocate-brain] FATAL: $*" >&2; exit 1; }
 
-SRC="${1:-}"
-if [ -z "$SRC" ]; then
-  . "$SCRIPT_DIR/resolve-brain-db.sh"
-  SRC="${BRAIN_DB_DIR:-}"
-fi
+# Always source the resolver — it owns the config accessors
+# (brain_config_knob_db_dir / brain_config_option_db_dir, via api-key-env's
+# brain_user_env_file) and exports BRAIN_XDG_DIR. launchd-install.sh owns the
+# unload ritual (brain_launchd_unload). Route through them, never copy.
+. "$SCRIPT_DIR/resolve-brain-db.sh"
+. "$SCRIPT_DIR/launchd-install.sh"
+SRC="${1:-${BRAIN_DB_DIR:-}}"
 SRC="${SRC%/}"
 [ -n "$SRC" ] || die "no brain directory resolved and none given"
 [ -f "$SRC/brain.db" ] || die "no brain.db at $SRC"
@@ -66,8 +68,10 @@ say "maintenance lock on — daemon auto-recovery paused for the move"
 
 # Stop the writers, then wait for the daemon to actually exit (it has a 15s
 # shutdown budget; moving before it finishes flushing defeats the point).
-launchctl bootout "gui/$(id -u)/com.brain.daemon" 2>/dev/null
-launchctl bootout "gui/$(id -u)/com.brain.dashboard" 2>/dev/null
+if command -v launchctl >/dev/null 2>&1; then
+  brain_launchd_unload com.brain.daemon "[relocate-brain]" || true
+  brain_launchd_unload com.brain.dashboard "[relocate-brain]" || true
+fi
 PIDFILE="${BRAIN_DAEMON_PIDFILE:-/tmp/brain-daemon-$(id -u).pid}"
 if [ -f "$PIDFILE" ]; then
   _pid="$(cat "$PIDFILE" 2>/dev/null)"
@@ -103,10 +107,13 @@ mv "$SRC" "$RETIRED" \
 say "moved: $TARGET"
 say "spare copy kept at $RETIRED — delete it whenever you like; nothing references it"
 
-# Retire stale pointers. The env-file knob is commented out in place (with a
-# backup); the plugin brain-path setting can only be named, not edited.
-ENVF="${XDG_CONFIG_HOME:-$HOME/.config}/brain/env"
-if [ -f "$ENVF" ]; then
+# Retire stale pointers — read them through their owners (the resolver's
+# knob/option accessors), never re-grep the file. The env-file knob is
+# commented out in place (with a backup); the plugin brain-path setting can
+# only be named, not edited.
+ENVF="$(brain_user_env_file)"
+_knob="$(brain_config_knob_db_dir 2>/dev/null)"
+if [ -n "$_knob" ] && [ "${_knob%/}" = "$SRC" ] && [ -f "$ENVF" ]; then
   # python -c, not a heredoc-in-$(): bash 3.2 (macOS /bin/bash) miscounts
   # parens across a heredoc inside command substitution.
   _knob_out="$("$PY" -c "
@@ -126,13 +133,13 @@ if hit:
     open(path, \"w\").writelines(out)
 print(\"commented\" if hit else \"none\")
 " "$ENVF" "$SRC")"
-  if [ "$_knob_out" = "commented" ]; then
-    say "commented out the BRAIN_DB_DIR knob in $ENVF (backup: $ENVF.bak-relocate)"
-  elif grep -q '^[[:space:]]*BRAIN_DB_DIR=' "$ENVF" 2>/dev/null; then
-    say "NOTE: $ENVF carries a BRAIN_DB_DIR line that does not match the old path — check it points where you intend"
-  fi
+  [ "$_knob_out" = "commented" ] \
+    && say "commented out the BRAIN_DB_DIR knob in $ENVF (backup: $ENVF.bak-relocate)"
+elif [ -n "$_knob" ]; then
+  say "NOTE: $ENVF carries a BRAIN_DB_DIR knob that does not match the old path — check it points where you intend"
 fi
-if [ -n "${CLAUDE_PLUGIN_OPTION_BRAIN_PATH:-}${CLAUDE_PLUGIN_OPTION_brain_path:-}" ]; then
+_opt="$(brain_config_option_db_dir 2>/dev/null)"
+if [ -n "$_opt" ]; then
   say "NOTE: the plugin's brain-path setting still names the old dir — clear it in the plugin settings, or every hook will keep recreating an empty $SRC"
 fi
 

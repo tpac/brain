@@ -3236,7 +3236,7 @@ class TestRelocateBrain(unittest.TestCase):
         self._sd = os.path.join(self._home, "plugin", "hooks", "scripts")
         os.makedirs(self._sd)
         for name in ("relocate-brain.sh", "resolve-brain-db.sh",
-                     "brain-env.sh", "api-key-env.sh"):
+                     "brain-env.sh", "api-key-env.sh", "launchd-install.sh"):
             shutil.copy(os.path.join(self.SCRIPTS, name),
                         os.path.join(self._sd, name))
         self._svc_log = os.path.join(self._home, "svc-invoked")
