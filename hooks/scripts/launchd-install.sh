@@ -115,6 +115,26 @@ brain_launchd_render() {
 # the plist must be re-bootstrapped for a template change or a brain-location
 # adoption to reach the running service.
 #
+# Unload a service and VERIFY it actually unloaded. Bootout alone is
+# fire-and-forget; a service that survives it keeps its bootstrap-time env
+# and its open files. Returns 1 when the service is still loaded — the
+# caller decides how loud to be. Also the door for out-of-band consumers
+# (relocate-brain.sh) that must stop a service without copying this ritual.
+brain_launchd_unload() {
+    # $1 label  $2 log prefix
+    local _label="$1" _prefix="$2"
+    launchctl bootout "$_BRAIN_LAUNCHD_DOMAIN/$_label" >/dev/null 2>&1 || true
+    for _ in 1 2 3 4 5; do
+        brain_launchd_managed "$_label" || break
+        sleep 1
+    done
+    if brain_launchd_managed "$_label"; then
+        echo "$_prefix WARN: bootout did not unload $_label" >&2
+        return 1
+    fi
+    return 0
+}
+
 # Unload FIRST and VERIFY it unloaded before touching the file — a still-loaded
 # service keeps its bootstrap-time env, so overwriting the plist under it would
 # leave "file current, launchd stale", where every future diff blesses the
@@ -124,13 +144,8 @@ brain_launchd_reinstall() {
     # $1 label  $2 rendered  $3 log prefix
     local _label="$1" _rendered="$2" _prefix="$3"
 
-    launchctl bootout "$_BRAIN_LAUNCHD_DOMAIN/$_label" >/dev/null 2>&1 || true
-    for _ in 1 2 3 4 5; do
-        brain_launchd_managed "$_label" || break
-        sleep 1
-    done
-    if brain_launchd_managed "$_label"; then
-        echo "$_prefix WARN: bootout did not unload $_label — keeping installed plist (drift retries next run)" >&2
+    if ! brain_launchd_unload "$_label" "$_prefix"; then
+        echo "$_prefix WARN: keeping installed plist (drift retries next run)" >&2
         return 1
     fi
 

@@ -14,10 +14,12 @@ installs, let parked brains converge to XDG, THEN rename — `plugin update`
 cannot cross a rename (identity is `plugin@marketplace`; D-6 changes both
 halves), so anything the fleet needs before the rename must ship as a `brain`
 update first.
-Unstarted, in order: **version bump** (9.7.1 → next; ships relocation to the
-fleet) · **5.6 / D-5** (the design gate) · **5.0c** · **5.1** (export script —
-none exists in `scripts/`) · **5.2** (rename — `plugin.json` still
-`name: brain`) · **5.3** · **5.4** · **5.5** · **5.7**.
+**Version bump SHIPPED 2026-08-28: 9.7.2** — carries the relocation offer to
+the fleet; the rename soak clock starts when existing installs take it.
+Unstarted, in order: **5.6 / D-5** (the design gate) · **5.0c** · **5.1**
+(export script — none exists in `scripts/`) · **5.2** (rename —
+`plugin.json` still `name: brain`) · **5.3** · **5.4** (own session, see
+below) · **5.5** · **5.7**.
 Arch-plan steps 7–10 remain open but gate nothing. Operator decisions still
 open: **D-5** (§8 fork 2, gates 5.6 and therefore the publish) and
 **`displayName`** (5.2).
@@ -58,10 +60,13 @@ distribution repo.
 
 ## 1. Goal
 
-Make Anchor installable by someone who isn't Tom, on their own machine, to the
-standard of a public open-source repo. Each new user gets their **own** brain
-(their own daemon, their own DB) that becomes their own Anchor over time. We are
-not sharing Tom's brain — we are sharing the *substrate* that grows one.
+An official `entity` plugin on a clean public repo — no junk, no personal
+info — that people can use to **install and update** the plugin (Tom,
+2026-08-28). Installable by someone who isn't Tom, on their own machine, to
+the standard of a public open-source repo; updatable in place, with their
+brain surviving every update. Each new user gets their **own** brain (their
+own daemon, their own DB) that becomes their own Anchor over time. We are not
+sharing Tom's brain — we are sharing the *substrate* that grows one.
 
 ---
 
@@ -540,7 +545,13 @@ class — comments naming the operator — is **29 lines**, not the ~30-to-68 ra
 previously carried. This is not the long pole; **5.6 is** — the fleet gap that used to
 share that sentence shipped 2026-08-16.
 
-**5.4 README + CONTRIBUTING.** The existing `README.md` is a **rewrite, not a
+**5.4 README + CONTRIBUTING + plugin self-description — OWN SESSION (Tom,
+2026-08-28).** The public face as a whole — README, LICENSE presentation,
+`plugin.json` description/displayName copy, marketplace entry text — is one
+voice-and-claims pass, not a mechanical fix; it deserves a dedicated session
+like 5.6. (License substance is already clean: MIT outbound, the one inbound
+exception — `common_words_10k.txt` — was removed from the package.) The
+existing `README.md` is a **rewrite, not a
 polish** — audited 2026-08-07, re-verified 2026-08-08, and it states things that
 are no longer true: *"the plugin will refuse to load without this key set"*
 (false since keyless boot, a1a620e); "seeds 16 anchor identity nodes" (**19** —
