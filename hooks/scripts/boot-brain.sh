@@ -223,8 +223,11 @@ Pick one, then start a new session:
 
   1. MOVE IT to the standard location (recommended — plugin renames,
      updates, and uninstalls never touch it):
+       launchctl bootout gui/\$(id -u)/com.brain.daemon 2>/dev/null || true
        mkdir -p '$(_sq "$(dirname "$_XDG_FRESH")")'
        [ ! -e '$(_sq "$_XDG_FRESH")' ] && mv $_CAND_Q '$(_sq "$_XDG_FRESH")'
+     (the first line stops the background daemon so nothing writes during
+      the move; the next session starts it again automatically)
      No pointer needed afterwards — it is found there automatically.
      (If that reports the target exists and it is only an empty leftover
       dir: rmdir '$(_sq "$_XDG_FRESH")' and rerun the mv.)
@@ -303,11 +306,15 @@ Claude Code's per-plugin data folder. A plugin UPDATE is safe there — but
 included. Recommended: move the brain to the standard location, which no
 plugin operation ever touches:
 
+    launchctl bootout gui/\$(id -u)/com.brain.daemon 2>/dev/null || true
     mkdir -p '$(_sq "$(dirname "$_P_XDG")")'
     [ ! -e '$(_sq "$_P_XDG")' ] && mv '$(_sq "$BRAIN_HOST_PARKED")' '$(_sq "$_P_XDG")'
 
+(The first line stops the background daemon so nothing writes mid-move — a
+cross-volume mv is a copy, and copying a live database can tear it. On
+Linux there is no launchd; the line is a harmless no-op.)
 Then start a new session — the brain is found there automatically and the
-daemon re-points itself. If ~/.config/brain/env carries a BRAIN_DB_DIR line
+daemon starts again on its own. If ~/.config/brain/env carries a BRAIN_DB_DIR line
 aiming at the old path, delete that line. If you must uninstall before
 moving: \`claude plugin uninstall <plugin> --keep-data\`.
 (If the mv reports the target exists and it is only an empty leftover dir:
