@@ -422,3 +422,59 @@ class TestMechanismContainment:
         assert not strays, (
             f'{mechanism} is owned by {sorted(owners)} — call it, do not '
             f'copy it. Second copies found in: {strays}. Why it matters: {why}')
+
+
+class TestPublicTreeExport:
+    """5.1: the export script's three gates, exercised in sandboxes so they
+    are pinned independently of the repo's current cleanliness (the real
+    tree stays red until 5.3 clears the scrub worklist — that redness is
+    the gate working, not a signal to weaken here)."""
+
+    SCRIPT = os.path.join(os.path.dirname(__file__), '..',
+                          'scripts', 'export-public-tree.sh')
+    BUILDER = os.path.join(os.path.dirname(__file__), '..',
+                           'build-plugin.sh')
+
+    def _run(self, *args):
+        return subprocess.run(['bash', self.SCRIPT, *args],
+                              capture_output=True, text=True, timeout=60)
+
+    def test_manifest_list_mode_is_sane(self):
+        out = subprocess.run(['bash', self.BUILDER, '--list'],
+                             capture_output=True, text=True, timeout=60,
+                             cwd=os.path.dirname(self.BUILDER))
+        assert out.returncode == 0, out.stderr
+        files = [l for l in out.stdout.splitlines() if l.strip()]
+        assert len(files) > 100, 'manifest suspiciously small'
+        assert '.claude-plugin/plugin.json' in files
+        leaked = [f for f in files
+                  if f.startswith(('docs/', 'eval/', 'scripts/'))]
+        assert not leaked, f'dev-only paths in the package manifest: {leaked}'
+
+    def test_scrub_gate_catches_planted_leak(self, tmp_path):
+        (tmp_path / 'mod.py').write_text('# see /Users/tpac/brain for setup\n')
+        r = self._run('--scrub-only', str(tmp_path))
+        assert r.returncode != 0, 'planted personal path must fail the gate'
+        assert 'mod.py' in r.stderr
+
+    def test_scrub_gate_allows_attribution_in_named_files_only(self, tmp_path):
+        (tmp_path / 'LICENSE').write_text('Copyright (c) 2026 Tom Pachys\n')
+        (tmp_path / 'README.md').write_text('Built by Tom Pachys.\n')
+        assert self._run('--scrub-only', str(tmp_path)).returncode == 0
+        # the same string anywhere else is a leak — the allowlist is per-file
+        (tmp_path / 'other.py').write_text('# author: Tom Pachys\n')
+        r = self._run('--scrub-only', str(tmp_path))
+        assert r.returncode != 0
+        assert 'other.py' in r.stderr
+
+    def test_denylist_gate(self, tmp_path):
+        assert self._run('--denylist-only', str(tmp_path)).returncode == 0
+        (tmp_path / 'eval').mkdir()
+        (tmp_path / 'eval' / 'x.py').write_text('')
+        r = self._run('--denylist-only', str(tmp_path))
+        assert r.returncode != 0
+        assert 'eval' in r.stderr
+        (tmp_path / 'eval' / 'x.py').unlink(); (tmp_path / 'eval').rmdir()
+        (tmp_path / 'tests' / 'conversations').mkdir(parents=True)
+        assert self._run('--denylist-only', str(tmp_path)).returncode != 0, \
+            'real-session fixture dir must be denylisted'

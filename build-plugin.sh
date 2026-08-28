@@ -6,6 +6,14 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
+# --list: print the package manifest (one path per line) and exit — the ONE
+# owner of "what ships"; the public-tree export (scripts/export-public-tree.sh)
+# consumes this instead of re-deriving the list.
+LIST_ONLY=0
+if [ "${1:-}" = "--list" ]; then
+  LIST_ONLY=1
+  shift
+fi
 OUT="${1:-brain.plugin}"
 
 # Explicit file manifest — if it's not listed, it doesn't ship
@@ -81,6 +89,11 @@ for _dir in hooks skills; do
   fi
   while IFS= read -r _f; do FILES+=("$_f"); done <<< "$_files"
 done
+
+if [ "$LIST_ONLY" -eq 1 ]; then
+  printf '%s\n' "${FILES[@]}"
+  exit 0
+fi
 
 # Verify all files exist before packing
 missing=0
