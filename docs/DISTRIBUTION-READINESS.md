@@ -1,18 +1,26 @@
 # Distribution Readiness — Sharing Anchor
 
-## §ACTIVE ARC (2026-08-27) — every 5.0* prerequisite is SHIPPED; the publish path (5.0c → 5.7) is unstarted and **5.6 / D-5 is the gate**
-**Where the work actually is.** Nothing on the publish path has moved since 2026-08-16.
-Shipped and verified on main: 5.0 (`e3d9481`), the versioned migration runner
-(`b11e45d` — `run_versioned_migrations`, wired for **both** DBs, one real step at v31),
-5.0a (`89e8286`), 5.0b (`tests/test_deploy_contract.py`), arch-plan steps 0–6.
-Unstarted, in order: **5.0c** (name consolidation) · **5.1** (export script — no such
-script exists in `scripts/`) · **5.2** (rename — `plugin.json` still reads
-`name: brain`, `displayName: Anchor`, `repository: tpac/brain`) · **5.3** · **5.4**
-(README still carries its false claims) · **5.5** · **5.6** · **5.7**.
-Arch-plan steps 7–10 remain open but gate nothing. The only blockers that are not
-mechanical are operator decisions: **D-5** (§8 fork 2, gates 5.6 and therefore the
-publish), **`displayName`** (5.2), and whether Claude Code wipes
-`$CLAUDE_PLUGIN_DATA` on uninstall (sizes 5.2's residual risk).
+## §ACTIVE ARC (2026-08-28) — prerequisites SHIPPED incl. relocation; publish path (5.0c → 5.7) unstarted; **next: version bump, then 5.6 / D-5**
+**Where the work actually is.** Shipped and verified on main: 5.0 (`e3d9481`),
+the versioned migration runner (`b11e45d` — both DBs, one real step at v31),
+5.0a (`89e8286`) **completed 2026-08-28 by the relocation offer (`d4f4772`)**:
+`hooks/scripts/relocate-brain.sh` + parked-brain boot notice, so pre-08-12
+installs can converge on the XDG service dir. 5.0b gate, arch-plan steps 0–6.
+**The uninstall question is ANSWERED** (empirically, 2026-08-27): a default
+`claude plugin uninstall` DELETES `~/.claude/plugins/data/<plugin>-<mkt>/`;
+`--keep-data` is opt-in; `update` preserves. So relocation is a **rename
+precondition**: bump the plugin version so the notice + script reach existing
+installs, let parked brains converge to XDG, THEN rename — `plugin update`
+cannot cross a rename (identity is `plugin@marketplace`; D-6 changes both
+halves), so anything the fleet needs before the rename must ship as a `brain`
+update first.
+Unstarted, in order: **version bump** (9.7.1 → next; ships relocation to the
+fleet) · **5.6 / D-5** (the design gate) · **5.0c** · **5.1** (export script —
+none exists in `scripts/`) · **5.2** (rename — `plugin.json` still
+`name: brain`) · **5.3** · **5.4** · **5.5** · **5.7**.
+Arch-plan steps 7–10 remain open but gate nothing. Operator decisions still
+open: **D-5** (§8 fork 2, gates 5.6 and therefore the publish) and
+**`displayName`** (5.2).
 **Read first:** handoff node `[thread:d13-arch-plan]` + the 5.0a ruling (id:cfe2113b). Shipped
 2026-08-11: arch-plan steps 2+4+5. Shipped 2026-08-12 (5.0a, three-lens reviewed): new brains born
 at `${XDG_DATA_HOME:-~/.local/share}/brain`; adoption net refuses to create over an orphaned
@@ -487,17 +495,23 @@ reproduce on this CC version, so renaming `/dashboard` and `/watch` is **optiona
 hardening, not a required fix** — the upstream instability (§10.3) is the only
 reason to still consider it.
 
-**⚠ Migration hazard — the rename moves `$CLAUDE_PLUGIN_DATA` — NETTED by 5.0a
-(2026-08-12).** That variable is set **per-plugin** (the plugin-data adoption rung
-in `resolve-brain-db.sh`), so `brain` → `entity` changes the path and any brain
-living at `$CLAUDE_PLUGIN_DATA/brain/brain.db` goes invisible. Rescue layers now:
-`resolved.env` (4b, not plugin-scoped) rescues silently when present and current;
-otherwise the **adoption net** finds the orphaned brain under the plugin-data
-root, refuses to create, and surfaces guided adoption via the boot notice — the
-silent-fresh-brain path (the id:80f585de footgun) no longer exists. **Affected:**
-any clean install that landed at the `$CLAUDE_PLUGIN_DATA` default — Tom's second
-laptop and the friend install. *Not* affected: Tom's main machine (legacy
-`~/AgentsContext/brain`, adoption rung).
+**⚠ Migration hazard — the rename moves `$CLAUDE_PLUGIN_DATA` — NETTED by 5.0a,
+CONVERGED-AWAY by the relocation offer (2026-08-28).** That variable is keyed
+`<plugin>-<marketplace>`, so `brain@brain` → `entity@anchor` changes the path and
+any brain living at `$CLAUDE_PLUGIN_DATA/brain/brain.db` goes invisible — and a
+default `claude plugin uninstall brain` (the natural post-rename tidy-up)
+DELETES that dir. Layers, in order: (1) **relocation, before the rename** — the
+parked-brain boot notice + `relocate-brain.sh` move these brains to the XDG
+service dir, where plugin identity stops mattering; **ship this via a version
+bump and let it soak before executing 5.2**; (2) `resolved.env` (4b, not
+plugin-scoped) rescues silently when present and current; (3) the **adoption
+net** finds a still-parked orphan, refuses to create, and surfaces guided
+adoption — the silent-fresh-brain path (the id:80f585de footgun) no longer
+exists. **Affected:** any pre-08-12 install that landed at the
+`$CLAUDE_PLUGIN_DATA` default (whether the second laptop / friend install did is
+unverified — the one-liner check is in the relocation notice's own detection).
+*Not* affected: Tom's main machine (legacy `~/AgentsContext/brain`, adoption
+rung).
 
 **CORRECTION 2026-08-09 — "local cost is zero" was false.** The prior claim, *"no
 permission entry anywhere references `mcp__plugin_brain_brain__*`,"* is wrong:
@@ -583,6 +597,8 @@ marketplace has real installs. Mechanics in §10.1. *S.*
 5.0a safety net ─┐
 5.0b gate ───────┼─► 5.2 rename ──► 5.1 export ──► 5.5 green suite
 5.0c names ──────┘   (the gate protects the rename; the safety net precedes it)
+version bump ──► relocation reaches fleet ──► parked brains converge on XDG ──► 5.2
+                 (update can't cross the rename: identity is plugin@marketplace)
 5.3 comment audit / 5.4 README  (independent, anytime — 5.3 re-rated M)
 5.6 seed pack (D-5) ──► 5.7 publish ──► 5.8 official directory (after a soak)
 D-5 seed pack   (blocks a *polished* 1.2, 5.0c class 3, and every new brain)
