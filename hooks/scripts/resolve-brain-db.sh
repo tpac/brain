@@ -145,12 +145,32 @@ if [ -z "${BRAIN_DB_DIR:-}" ]; then
   fi
 fi
 
+# A resolved brain living under a host's plugin-data root is parked on a
+# trapdoor: `claude plugin uninstall` deletes that whole tree by default
+# (verified 2026-08-27; --keep-data is opt-in). Matched on the PATH SHAPE,
+# not the rung that resolved it — a knob, env hint, or resolved.env pointing
+# into the same dir is parked all the same. Sets BRAIN_HOST_PARKED for boot
+# to surface the one-mv relocation; never moves anything itself.
+_brain_check_parked() {
+  BRAIN_HOST_PARKED=""
+  case "$BRAIN_DB_DIR" in
+    */plugins/data/*) BRAIN_HOST_PARKED="$BRAIN_DB_DIR" ;;
+    *) if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
+         case "$BRAIN_DB_DIR" in
+           "$CLAUDE_PLUGIN_DATA"/*) BRAIN_HOST_PARKED="$BRAIN_DB_DIR" ;;
+         esac
+       fi ;;
+  esac
+  export BRAIN_HOST_PARKED
+}
+
 # If BRAIN_DB_DIR already set and valid (e.g. from boot), skip resolution.
 # Clear any inherited candidate first — a stale value from a parent process
 # must not survive past a successful resolution.
 BRAIN_ADOPTION_CANDIDATE=""
 if [ -n "$BRAIN_DB_DIR" ] && [ -f "$BRAIN_DB_DIR/brain.db" ]; then
   export BRAIN_DB_DIR BRAIN_SERVER_DIR PLUGIN_ROOT
+  _brain_check_parked
   _brain_persist_state
   return 0 2>/dev/null || true
 fi
@@ -312,4 +332,5 @@ fi
 
 BRAIN_DB_DIR="$DB_DIR"
 export BRAIN_DB_DIR BRAIN_SERVER_DIR PLUGIN_ROOT BRAIN_ADOPTION_CANDIDATE
+_brain_check_parked
 _brain_persist_state
