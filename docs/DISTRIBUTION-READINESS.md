@@ -16,10 +16,11 @@ halves), so anything the fleet needs before the rename must ship as a `brain`
 update first.
 **Version bump SHIPPED 2026-08-28: 9.7.2** — carries the relocation offer to
 the fleet; the rename soak clock starts when existing installs take it.
-Unstarted, in order: **5.6 / D-5** (the design gate) · **5.0c** · **5.1**
-(export script — none exists in `scripts/`) · **5.2** (rename —
-`plugin.json` still `name: brain`) · **5.3** · **5.4** (own session, see
-below) · **5.5** · **5.7**.
+**5.1 SHIPPED 2026-08-28** (`scripts/export-public-tree.sh` — see the item;
+its scrub gate emits the live 5.3 worklist: 217 hits / 81 files). **5.4 DONE**
+same day. Unstarted, in order: **5.6 / D-5** (the design gate) · **5.0c** ·
+**5.3** (worklist now concrete) · **5.2** (rename — `plugin.json` still
+`name: brain`) · **5.5** · **5.7**.
 Arch-plan steps 7–10 remain open but gate nothing. Operator decisions still
 open: **D-5** (§8 fork 2, gates 5.6 and therefore the publish) and
 **`displayName`** (5.2).
@@ -460,9 +461,26 @@ gains an acquisition path (`userConfig`, D-4 shape). Three unequal classes:
      seed-pack session's question, not this one's
 *M–L; classes 1–2 here, class 3 routes to D-5.*
 
-**5.1 Export script.** Materializes the public tree from the **build manifest**
-(D-7) + additive extras (README, LICENSE, CONTRIBUTING, `tests/`) − denylist.
-Two hard-fail gates, enforced in the script, not remembered:
+**5.1 Export script — SHIPPED 2026-08-28: `scripts/export-public-tree.sh`.**
+Materializes the public tree from `build-plugin.sh --list` (the builder grew
+a list mode — one owner of "what ships") + extras (README, CONTRIBUTING,
+LICENSES/, `tests/`) − denylist, where the copy filter DERIVES from the
+denylist (no second regex to drift). Three hard-fail gates on the RESULT:
+denylist-absence, scrub-grep with a per-file attribution allowlist (author
+credit in LICENSE/README/manifests; the legacy `AgentsContext` rung in its
+four resolver files), and plugin/marketplace version equality. Gates are
+pinned by sandbox tests (`TestPublicTreeExport` in `test_deploy_contract.py`)
+so they hold independent of the repo's current cleanliness. **First real run:
+gates A/C clean; gate B red with 217 hits / 81 files — that list IS the 5.3
+worklist** (split: ~55 test files incl. gold datasets carrying real session
+content; ~34 runtime files — largely the D-5-overlapping prompt class).
+**Found and denylisted: `tests/conversations/` — tracked REAL session logs
+as fixtures**, same class as tests/archive; consuming tests join the D-8
+graceful-skip set. Open decision for 5.3: gold data (`golden_dataset_v2.json`
+32 hits, `golden_canary.json`, `corpus/precision_corpus.json` — carries e.g.
+a real birthday) — sanitize or exclude+skip; sanitizing changes what the
+tests validate, so it is Tom's call.
+Original spec for reference:
   (a) **denylist** — `docs/DISTRIBUTION-READINESS.md` (this file names personal-data
       findings and internal paths — it must never be copied public), `eval/`,
       `CLAUDE.md` (dev guide naming internal streams), `docs/archive/` (65 tracked
