@@ -68,16 +68,27 @@ in issues; there is no published roadmap.
 
 ## Honest expectations
 
-- **An Anthropic API key** powers encoding and memory surfacing. Without one
-  the plugin still boots and local recall works, but nothing new is encoded —
-  set the key and the full loop turns on.
+- **Everything is saved privately, on your machine. No telemetry, no cloud
+  store, no account.** Memories live in SQLite files on your disk and never
+  leave it; the optional dashboard binds `127.0.0.1` only. The one network
+  path is the Anthropic API with your own key — conversation content goes
+  there to be turned into memories, under [Anthropic's API data
+  policy](https://www.anthropic.com/legal/privacy), and nowhere else.
+- **An Anthropic API key is required** for the full loop — it powers
+  encoding and memory surfacing. Without one the plugin still boots and
+  local recall works, but nothing new is learned. **It costs real money:**
+  expect on the order of a few tens of dollars a month for regular use —
+  cost scales with how much you converse (every encoding pass is an API
+  call), and heavy all-day use runs meaningfully higher.
+- **Not heavily tested alongside Obsidian or other memory tools — and not
+  trying to displace them.** Your notes are yours; this is the assistant's
+  own memory. The channels are different (their tools, its hooks), so they
+  coexist mechanically, but combined setups haven't seen much real-world
+  mileage yet.
 - **First boot downloads** a bundled Python runtime and a local embedding
   model (~200 MB, one time). Subsequent boots are near-instant.
 - **A background daemon runs** on your machine (launchd on macOS; a plain
   process on Linux) and holds the graph in memory.
-- **Everything is local. No telemetry.** Your memories live in SQLite files
-  on your disk; the optional dashboard binds `127.0.0.1` only; the only
-  network calls are to the Anthropic API with your key.
 - **Linux is graceful-degradation** — supported, tested lightly, no systemd
   integration yet. macOS is the primary platform. Windows untested.
 
