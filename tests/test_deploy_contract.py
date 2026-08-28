@@ -478,3 +478,18 @@ class TestPublicTreeExport:
         (tmp_path / 'tests' / 'conversations').mkdir(parents=True)
         assert self._run('--denylist-only', str(tmp_path)).returncode != 0, \
             'real-session fixture dir must be denylisted'
+
+    def test_scrub_allowlist_cannot_mask_a_colocated_leak(self, tmp_path):
+        # review finding: line-level subtraction hid a leak sharing a line
+        # with an allowed attribution — the gate must strip only the allowed
+        # pattern and re-test the remainder
+        (tmp_path / 'LICENSE').write_text(
+            'Copyright (c) 2026 Tom Pachys, /Users/tpac/secret\n')
+        r = self._run('--scrub-only', str(tmp_path))
+        assert r.returncode != 0, 'co-located leak masked by attribution'
+
+    def test_export_refuses_to_clobber_foreign_dir(self, tmp_path):
+        (tmp_path / 'precious.txt').write_text('mine')
+        r = self._run(str(tmp_path))
+        assert r.returncode != 0
+        assert (tmp_path / 'precious.txt').exists()
