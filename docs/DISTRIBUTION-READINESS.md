@@ -545,8 +545,8 @@ class — comments naming the operator — is **29 lines**, not the ~30-to-68 ra
 previously carried. This is not the long pole; **5.6 is** — the fleet gap that used to
 share that sentence shipped 2026-08-16.
 
-**5.4 README + CONTRIBUTING + plugin self-description — DRAFTED 2026-08-28
-(session ran same day it was scoped; pending Tom's read).** Landed: README
+**5.4 README + CONTRIBUTING + plugin self-description — DONE 2026-08-28
+(Tom read and approved: "Looks good for now").** Landed: README
 fully rewritten entity-era (first-person opening claim in the entity's voice,
 neutral body; honest-expectations block — key optional-but-degraded, ~200 MB
 first boot, background daemon, local-only/no-telemetry/127.0.0.1, Linux
