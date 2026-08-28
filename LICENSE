@@ -1,21 +1,21 @@
-MIT License
-
 Copyright (c) 2026 Tom Pachys
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This software is source-available under a dual grant. You may use it under
+EITHER of the following licenses, at your option:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+  1. PolyForm Noncommercial 1.0.0  — free for any noncommercial purpose
+     (personal use, research, education). Full text:
+     LICENSES/PolyForm-Noncommercial-1.0.0.md
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+  2. PolyForm Internal Use 1.0.0   — free for the internal business
+     operations of you and your company. Full text:
+     LICENSES/PolyForm-Internal-Use-1.0.0.md
+
+In plain words: individuals use it freely; companies use it freely inside
+their own walls. What neither grant covers is distribution — shipping this
+software (or a derivative of it) as part of a released product, bundling it,
+or offering it to third parties as a service. For a commercial distribution
+license, open an issue on the repository and ask.
+
+Versions released before this license change remain under their original
+MIT terms.
