@@ -48,7 +48,8 @@ accurately into a channel nobody reads.
 | **F16** | **Three dead columns on `edges`**, all 35,918 rows: `relation` = `'related'` (one value), `edge_type` = `'related'` (one value), `description` = NULL/empty (all). Plus a dead index `idx_edges_type`. `schema.py:161-175` **already declares `edges` without them** and `:456-459` declares only 4 indexes — the install has drifted from its own schema. | measured + `schema.py` |
 
 | **F17** | **The decoder clusters only unplaced nodes** — `run()` passes `unplaced` as the clustering population; a placed node exits clustering forever. Placed structure is frozen by construction: plasticity is zero by design, not by tuning. | `community_decoder.py:101-140, 359-400` |
-| **F18** | **The giants are accretion artifacts, not derivable structure** (reshape probe, 2026-08-28): a fresh whole-graph derivation (decoder's own steps 1–4b, unanchored) yields 1,161 clusters, median 4, max **49**; no giant's best fresh core exceeds 16% coverage. `_seed_clusters` never unions two existing clusters, so a 206-member cluster is unreachable by clustering at all — the masses came from add-quota accretion + merges + overlap-conversion (39% of adds are converted births). Steady-state structural velocity is tiny: week-over-week fresh partitions are **99% stable (Jaccard ≥ 0.5)** — 2 splits, 0 merges, 3 dispersals, 41 births/week. First-reshape migration cost is real: only 35% of stored communities match a fresh cluster at Jaccard ≥ 0.5 (28% split, 11% disperse). ⚠ granularity caveat: the conservative seeder fragments even coherent large regions — "N parts" is partly algorithmic fineness. Instrument: `eval/community_reshape_probe.py`. | measured |
+| **F18** | **The giants are accretion artifacts, not derivable structure** (reshape probe, 2026-08-28): a fresh whole-graph derivation (decoder's own steps 1–4b, unanchored) yields 1,161 clusters, median 4, max **49**; no giant's best fresh core exceeds 16% coverage. `_seed_clusters` never unions two existing clusters, so a 206-member cluster is unreachable by clustering at all — the masses came from add-quota accretion + merges + overlap-conversion (39% of adds are converted births). ~~Steady-state structural velocity is tiny: 2 splits/week, 99% stable~~ **FALSIFIED by F19 — the velocity number was a single unstable draw**: same instrument gives 22–27 splits depending on day and process hash seed. The accretion-artifact and migration-cost findings stand (35% match at J≥0.5; 28% split; 11% disperse). ⚠ granularity caveat: the conservative seeder fragments even coherent large regions — "N parts" is partly algorithmic fineness. Instrument: `eval/community_reshape_probe.py`. | measured, velocity claim corrected 2026-08-28 |
+| **F19** | **The partition is not a diffable object — three measurements, each independently reproduced by two streams (2026-08-28).** (a) *Non-determinism*: same graph, same seed → 100% identical; different process hash seed → **93.3% identical** — ~79 phantom clusters from tie order alone. Mechanism traced: `community_decoder.py:765` (`list(node_set)` fixes dict insertion order) + `:824` (stable sort on `(-z, -is_direct)` preserves it among ties); within one daemon process the phantom partition PERSISTS, so hysteresis confirms rather than filters it. (b) *Tie density*: 14,906 seed pairs collapse onto **60 distinct z values**, largest tie group **2,370** — the z-score buckets, it does not rank. (c) *Perturbation sensitivity*: a 2% random edge cut moves **23.8% of communities** (~12× amplification) — so even a deterministic tie-break leaves the diff noise-dominated; this holds for Louvain/SLPA too (⚠ that comparison is the R0 stream's measurement, not re-verified). Node `708b4b43`. | measured twice |
 
 ### The pattern under F4/F7/F9 and the journal census
 
@@ -301,7 +302,26 @@ the cross-run version.
 
 ---
 
-### PX — Reshape-diff: the plan of record (ratified direction, 2026-08-28)
+### PX — Reshape-diff plan: RETIRED BY MEASUREMENT (2026-08-28, same day)
+
+**F19 kills the frame's premise**: the partition is not a stable object, so
+it cannot be the thing you diff — R1's "zero churn on an unchanged graph"
+gate is unmeasurable as specified, and hysteresis cannot filter phantom
+partitions that persist per-process. The successor design — **persistent
+anchors + continuous evidence** (agent owns a durable discrete layer, the
+algorithm supplies evidence against it, nothing is re-partitioned) — is
+`docs/S2-COMMUNITY-DESIGN.md` Part I, **status DESIGN, awaiting Tom's
+ratification**. Its own load-bearing numbers (evidence-flip 1.3% under the
+same 2% cut; `sem_centred` AUC 0.949; 92% of the 1,478 edgeless nodes
+reachable via semantics) are the R0 stream's measurements, **not yet
+independently reproduced** — they are the ratification session's checklist.
+⚠ `edge_frac` AUC 0.976 is circular (communities were built from edges);
+`sem_centred` is the meaningful signal. What survives from the plan below:
+the instruments, the geometry machinery (kNN / centring / evidence-to-judge,
+`3e499972`), R2's render work (needed under any frame), and the retire-list
+targets. The phase text below is kept for the record:
+
+*(original plan, superseded)*
 
 Tom: "we're heading in the right direction" — two-layer frame confirmed as
 the target. Constraints (`f3cb2f52`): agent encoder stays; plasticity both
