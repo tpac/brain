@@ -164,26 +164,12 @@ if REF_THALAMUS_DELIVERY not in _REF_TYPES.get(('s0', 'K'), ()):
 # Single truncation point, always loud; storage keeps everything.
 # ═══════════════════════════════════════════════════════════════
 
-def _resolve_refs(brain, refs):
-    """refs (node ids) → ['id · title' ...] lines via the canonical pull.
-    Failure-isolated: a bad id renders bare rather than killing the block."""
-    lines = []
-    for ref in (refs or [])[:RENDER_REFS_MAX]:
-        try:
-            node = brain.get_node(ref)
-            title = (node or {}).get('title') or ''
-            lines.append('%s · %s' % (ref[:8], title) if title else ref[:8])
-        except Exception:
-            lines.append(ref[:8])
-    extra = len(refs or []) - RENDER_REFS_MAX
-    if extra > 0:
-        lines.append('(+%d more refs — get_nodes)' % extra)
-    return lines
-
-
-def render_item(item, brain=None):
+def render_item(item):
     """One due item. The verb points at Anchor and the exit is inline —
-    items arrive as asks/notices with affordances, not status to read past."""
+    items arrive as asks/notices with affordances, not status to read past.
+    Formats what it is handed: refs arrive pre-resolved as 'ref_lines'
+    (pull() owns resolution — batched, veil-aware; the contract never
+    reaches into the brain)."""
     body = cap_text_loud(
         (item.get('body') or '').strip(), BODY_MAX,
         marker='…[+%d chars — thalamus_list shows it in full]')
@@ -191,9 +177,8 @@ def render_item(item, brain=None):
             ('reminds' if item.get('deliver_at') else 'notes'))
     head = '• %s · %s %s' % (item.get('id', '?'), item.get('source', '?'), verb)
     lines = [head, '  "%s"' % body]
-    if brain is not None and item.get('refs'):
-        for ref_line in _resolve_refs(brain, item['refs']):
-            lines.append('  ↳ %s' % ref_line)
+    for ref_line in item.get('ref_lines') or []:
+        lines.append('  ↳ %s' % ref_line)
     if item.get('needs_answer'):
         lines.append('  → thalamus_resolve("%s", answer=…) · defer_until=… · '
                      'dismiss=true' % item.get('id', '?'))
@@ -203,7 +188,7 @@ def render_item(item, brain=None):
     return '\n'.join(lines)
 
 
-def render_block(items, brain=None, overflow=0, cap=BLOCK_MAX):
+def render_block(items, overflow=0, cap=BLOCK_MAX):
     """Compose due items into ONE budgeted block ('' when empty). Two loud
     caps — per item (BODY_MAX, in render_item) and whole block (`cap`);
     overflow items are named at the tail, never silently cut. Items are from
@@ -214,7 +199,7 @@ def render_block(items, brain=None, overflow=0, cap=BLOCK_MAX):
     head = '🧠 from the brain (thalamus) — %d item(s)' % len(items)
     parts, used, dropped = [], len(head), 0
     for i, item in enumerate(items):
-        rendered = render_item(item, brain=brain).strip()
+        rendered = render_item(item).strip()
         if parts and used + len(rendered) + 2 > cap:  # always keep one
             dropped = len(items) - i
             break

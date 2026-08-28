@@ -194,6 +194,41 @@ def _due_filter(session_id, via, now):
     return sql, params
 
 
+def _attach_ref_lines(brain, items, session_id):
+    """Resolve every item's refs in ONE veil-aware batch and attach
+    'ref_lines' for the render — the contract only FORMATS (its own rule);
+    pull() holds both `brain` and `session_id`, so resolution lives here.
+    Routes through filter_nodes (the existing veil door, default-deny): a
+    globally-filed item can ref a walled node, and its title must not print
+    into another session's boot — an unreturned ref (walled, or a bad id)
+    renders bare. Failure-isolated: on any error every ref renders bare."""
+    want = []
+    for item in items:
+        for ref in (item['refs'] or [])[:tc.RENDER_REFS_MAX]:
+            if ref not in want:
+                want.append(ref)
+    titles = {}
+    if want:
+        try:
+            res = brain.filter_nodes(
+                field='id', include=want, rich=False,
+                session_id=session_id, limit=len(want))
+            for n in res.get('nodes') or []:
+                titles[n['id']] = n.get('title') or ''
+        except Exception:
+            pass
+    for item in items:
+        refs = item['refs'] or []
+        lines = []
+        for ref in refs[:tc.RENDER_REFS_MAX]:
+            title = titles.get(ref)
+            lines.append('%s · %s' % (ref[:8], title) if title else ref[:8])
+        extra = len(refs) - tc.RENDER_REFS_MAX
+        if extra > 0:
+            lines.append('(+%d more refs — get_nodes)' % extra)
+        item['ref_lines'] = lines
+
+
 def pull(brain, session_id, via):
     """Due items for this session at a delivery moment ('boot' | 'stop') —
     rendered block + count. Writes the ledger at render (INSERT OR IGNORE:
@@ -225,6 +260,7 @@ def pull(brain, session_id, via):
         params + [tc.PULL_MAX_ITEMS]).fetchall()
     overflow = total - len(rows)
     items = [_row_to_item(r) for r in rows]
+    _attach_ref_lines(brain, items, session_id)
     delivered_at = iso_now()
     with brain.logs_write_lock:
         brain.logs_conn_w.executemany(
@@ -232,7 +268,7 @@ def pull(brain, session_id, via):
             '(item_id, session_id, delivered_at, via) VALUES (?, ?, ?, ?)',
             [(i['id'], session_id, delivered_at, via) for i in items])
         brain.logs_conn_w.commit()
-    return tc.render_block(items, brain=brain, overflow=overflow), len(items)
+    return tc.render_block(items, overflow=overflow), len(items)
 
 
 def list_items(brain, include_closed=False, limit=50):
