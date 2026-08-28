@@ -5,12 +5,12 @@
     "url": "https://github.com/tpac"
   },
   "metadata": {
-    "description": "Anchor — persistent identity for an AI assistant, built on a self-healing knowledge graph."
+    "description": "Entity — a persistent identity for an AI assistant, grown on a self-healing knowledge graph. Install it and grow your own."
   },
   "plugins": [
     {
       "name": "brain",
-      "displayName": "Anchor",
+      "displayName": "Entity",
       "source": "./",
       "description": "Persistent identity for an AI assistant — a self-healing knowledge graph that survives across sessions, learns from every conversation, and surfaces the right memory at the right moment. Not a RAG store.",
       "version": "9.7.2",
