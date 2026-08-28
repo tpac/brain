@@ -111,6 +111,16 @@ note census, F10 archive dates. Still to capture:
       2.7% / loses 41% of members. "Raise the raw threshold" is dead. **(3)**
       `other` ≈ `random` in both spaces — wrong-community looks like random to
       a centroid, so one threshold suffices; no hard-negative special case.
+- [x] **Operator probes (2026-08-27, same instrument, §P6 redesigned on these):**
+      | probe | result |
+      |---|---|
+      | P1 null stability | pair-null p98 = 0.262 ± 0.011 over 30×2000 samples — self-calibration is viable |
+      | P2 choice | centroid argmax hits one of the member's own communities only **42%**; centring does NOT improve choice (0.420→0.414) — it fixes the cut, not the pick |
+      | P3 margin | dead — member/nonmember margin distributions overlap heavily |
+      | P4 dispersion-z | comparable to absolute centred at pair level; worse max-inflation |
+      | P5 census | **97.9% of the 3,689 sleeping nodes clear the pair-null p98 at their best community** — the gate decision is a MAX over 601 centroids, and real nodes are topical, so a pair-calibrated threshold barely gates at the node level |
+      | P6 pollution | 3,655 S2 placements in 60d; **26.6% sit below the pair-null p98** — accepted with no more geometric evidence than noise, judged blind |
+      | P7 kNN | kNN-10 sim-weighted vote beats centroid argmax on choice: **0.465 vs 0.393** |
 - [ ] payload chars and rounds per batch (baseline: last full run was 4 rounds
       across 2 batches, 103.7s, 8→3698 tok, `cache_read 71023`). Payload chars
       are not logged today — this box closes with P4's logging, not before.
@@ -245,16 +255,25 @@ the cross-run version.
 
 - [x] Run the node↔centroid baseline measurement (P0). **Done 2026-08-27 —
       see P0 for the table.**
-- [ ] **Centre before comparing — the raise-raw fork is closed.** The
-      measurement shows raw cosine has no operating point (P0 verdict 2);
-      centred at **0.20** gives 79% member-band retention / 4.6% false-pass
-      (0.15 → 86%/9.5%, 0.25 → 70%/2.4% if the A/B argues for looser/tighter).
-      Implementation: `_compute_orphan_affinities` centres member vectors
-      before the centroid mean and orphan vectors before the dot — the global
-      mean comes from the embedding pass the function already makes. Keep the
-      config key but the value changes *meaning* (centred space): rename to
-      `embedding_placement_threshold_centred` so an old config can't silently
-      apply a raw-space value.
+- [ ] **Design (v3, after the operator probes — supersedes same-day v2
+      "constant centred 0.20"):** precision cannot come from the gate alone.
+      The gate asks a max-over-601-centroids question; 97.9% of real nodes
+      clear any pair-calibrated cut at their best community (P5), and even
+      genuine members' nearest centroid is their own community only 42% of
+      the time (P2). The judge is where precision lives — the operators'
+      job is to feed it. Three pieces:
+      1. **Choice** — rank/pick the candidate community by **kNN-vote**
+         (0.465 vs centroid's 0.393, P7), not centroid argmax.
+      2. **Floor gate** — centred sim, **self-calibrated per run** against a
+         sampled pair-null (p98 ≈ 0.26, stable ± 0.011 — P1). Config is a
+         false-pass budget, not a space-dependent constant (a 0.20 literal is
+         the same bug class as the 0.50 it replaces: silently invalidated by
+         an embedder swap). Kills the noise tail cheaply; nothing more.
+      3. **Evidence to the judge** — the proposal render carries the numbers:
+         centred sim + its member-band percentile + kNN vote share. P6 is
+         the argument: 26.6% of accepted placements sit below the noise
+         line and the encoder accepted them because it judged blind.
+         (Converges with P2-render; the fields come free from the decoder.)
 - [x] ⚠ resolved — `clear_unplaceable_rejections` traced (`rejection_table.py:282`):
       it deletes per-node `unplaceable` rows keyed `(proposal_type,
       proposed_ids)` during normal re-proposal; it is NOT a deploy lever.
