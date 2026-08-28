@@ -407,8 +407,10 @@ were both DROP COLUMN migrations (`_migrate_v30_project_to_kv` — *"mirroring v
       label only. One legacy standalone script
       (`tests/benchmark_multivec_encoding.py`, not pytest-collected) would
       error if ever run — left as-is, noted.
-- [ ] **Deploy:** runs at next daemon restart; the migration framework takes
-      an automatic pre-migration backup on the version bump (`schema.py:1359`).
+- [x] **Deployed 2026-08-28:** daemon restarted on main `deb4063`; verified
+      live — version 32, edges at the declared 7-column shape, index gone,
+      36,129 rows intact, pre-migration backup `brain.db.v31.bak` (766M)
+      beside the DB. **C1 closed.**
 
 **Why this matters beyond tidiness:** these columns produced a confidently wrong
 finding in this very session — a census of community→community edges read
