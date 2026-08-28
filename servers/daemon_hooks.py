@@ -683,8 +683,8 @@ def hook_post_response_track(brain, args, graph_changes):
         try:
             from servers.scales.thalamus import thalamus as _thalamus
             from servers.scales.thalamus.thalamus_contract import (
-                REF_THALAMUS_DELIVERY as _REF_TH)
-            _th_block, _th_n = _thalamus.pull(brain, session_id, via='stop')
+                REF_THALAMUS_DELIVERY as _REF_TH, VIA_STOP as _VIA_STOP)
+            _th_block, _th_n = _thalamus.pull(brain, session_id, via=_VIA_STOP)
             if _th_n:
                 _s0_trace(
                     brain, ctx, event_type='K', ref_type=_REF_TH,

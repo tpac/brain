@@ -367,6 +367,44 @@ class TestExpiry(ThalamusBase):
         self.assertEqual(n, 0)
 
 
+class TestVocabulary(ThalamusBase):
+    """Contract-first: moments and audiences are closed vocabulary — unknown
+    values fail LOUDLY instead of silently behaving as a default."""
+
+    def test_unknown_via_is_loud(self):
+        self._file('x')
+        with self.assertRaises(ValueError):
+            thalamus.pull(self.brain, S1, via='bot')  # the ledgered-typo case
+
+    def test_internal_audience_drift_is_loud(self):
+        """An audience outside tc.AUDIENCES matches neither pull-predicate
+        branch (open forever, silent death at expiry) — the door rejects."""
+        from unittest import mock
+        with mock.patch.object(tc, 'resolve_for_whom',
+                               return_value=('queue', 'weekly', '')):
+            r = self._file('x')
+        self.assertFalse(r['filed'])
+        self.assertIn('audience', r['error'])
+
+    def test_kind_is_one_derivation_for_verb_and_span(self):
+        self.assertEqual(tc.kind_of({'needs_answer': 1}), tc.KIND_ASK)
+        self.assertEqual(tc.kind_of({'deliver_at': '2027-01-01T00:00:00+00:00'}),
+                         tc.KIND_REMINDER)
+        self.assertEqual(tc.kind_of({}), tc.KIND_NOTICE)
+        # Both partitions read the same derivation.
+        self.assertEqual(set(tc.KIND_VERB), set(tc.KIND_EXPIRES_DAYS))
+        # window_for anchors a dated item's span at its due date.
+        due = '2027-01-01T00:00:00+00:00'
+        self.assertGreater(tc.window_for(False, due), due)
+
+    def test_kind_verbs_render(self):
+        self._file('decide?', needs_answer=True)
+        self._file('fyi', source='s3')
+        block, _ = thalamus.pull(self.brain, S1, via='boot')
+        self.assertIn('asks', block)
+        self.assertIn('notes', block)
+
+
 class TestMaintenanceSweep(ThalamusBase):
 
     def test_sweep_fires_without_s2_conditions(self):
