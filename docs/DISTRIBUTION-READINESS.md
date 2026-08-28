@@ -277,8 +277,7 @@ interaction collapse dissolved it: code owns every prompt/config default
 default reaches every install at the next daemon restart. `interaction_seed.py`,
 `sync_prompts.py`, and `SEED_PROMPTS_VERSION` are deleted.
 
-**The structural half is also SHIPPED — this section's "still unbuilt" claim was
-false when written (corrected 2026-08-27).** `b11e45d` (2026-08-16) landed
+**The structural half is also SHIPPED.** `b11e45d` (2026-08-16) landed
 `run_versioned_migrations` in `servers/schema.py` as the single primitive, and it
 owns the stamp — the CRITICAL that killed attempt 1. It is wired at **both** call
 sites: `ensure_schema` (`brain_meta` / `BRAIN_VERSION`, ladder `MAIN_MIGRATIONS`)
@@ -301,10 +300,12 @@ independently:
 |---|---|---|
 | brain.db structure | `brain_meta.brain_schema_version` = `BRAIN_VERSION` | `MAIN_MIGRATIONS` |
 | brain_logs.db structure | `logs_meta.logs_schema_version` = `LOGS_VERSION` | `LOGS_MIGRATIONS` |
-| shipped-prompt content | `logs_meta.seed_prompts_version` = `SEED_PROMPTS_VERSION` | the reconcile |
 
-Both ladders are empty; a change adds one `(version, fn)` entry and bumps its
-counter. **The runner owns the stamp** — it re-reads the version, so anything that
+*(The third stream — shipped-prompt content via `SEED_PROMPTS_VERSION` — was
+dissolved by the interaction collapse; code owns prompt defaults now.)*
+`MAIN_MIGRATIONS` carries one real step (v31, `_migrate_v31_voice_fields`);
+`LOGS_MIGRATIONS` is empty at baseline 1. A change adds one `(version, fn)`
+entry and bumps its counter. **The runner owns the stamp** — it re-reads the version, so anything that
 stamps ahead of it silently skips every step. It writes the stamp only after all
 steps pass, backs up any non-fresh DB with pending steps (including a
 pre-versioning DB at version 0), rolls back and leaves the stream unstamped on
@@ -388,13 +389,18 @@ present and current; missing/stale meant a silently created fresh brain.
   *finds* under a plugins-data root is working-but-parked-on-a-trapdoor. The
   resolver now flags that state (`BRAIN_HOST_PARKED`, matched on **path
   shape**, so the knob/env/resolved.env routes into the same dir warn too),
-  and boot renders a relocation notice: one atomic same-volume `mv` of the
-  whole brain dir to the XDG service dir (db+WAL+SHM keep their inodes; the
-  step-4 divergence check re-points the daemon; hint-demotion retires stale
-  pointers). Guarded against an existing target (the shadow-brain case).
-  The adoption-net notice's recommended option is now the same move, not a
-  knob pinning the user to the old path. User-run only — boot still never
-  creates, moves, or deletes.
+  and boot renders a relocation notice pointing at
+  **`hooks/scripts/relocate-brain.sh`** — the one owner of the move: daemon
+  held down under the maintenance lock (a bare bootout is undone by
+  auto-recovery within ~20s), portable pid-file stop (covers Linux and
+  detached daemons), dashboard stopped, copy → `PRAGMA quick_check` →
+  same-volume rename into place, source retired by rename (never deleted),
+  stale env-knob commented out, plists re-rendered (the launchd identity
+  guard accepts the XDG service dir as a durable target). Refuses loudly if
+  the target already holds a brain. `BRAIN_PARKED_ACK=1` is the
+  informed-stay opt-out; the notice renders only on `source=startup`. The
+  adoption-net notice's recommended option is the same script. User-run
+  only — boot still never creates, moves, or deletes.
 **Tests:** `tests/test_daemon_recovery.py::TestAdoptionNetAndXdgCreate` (shell
 ladder: fresh-install-at-XDG, net refusal, sibling scan, knob-beats-net,
 knob-beats-stale-hint, CPD adoption, parked-flag routes + safe-location

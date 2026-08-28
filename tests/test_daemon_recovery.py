@@ -2004,7 +2004,8 @@ class TestAdoptionNetAndXdgCreate(unittest.TestCase):
         import subprocess
         env = dict(os.environ, HOME=self._home, XDG_CONFIG_HOME=self._xdg)
         for k in ("BRAIN_DB_DIR", "CLAUDE_PLUGIN_DATA", "XDG_DATA_HOME",
-                  "BRAIN_ADOPTION_CANDIDATE", "BRAIN_HOST_PARKED"):
+                  "BRAIN_ADOPTION_CANDIDATE", "BRAIN_HOST_PARKED",
+                  "BRAIN_PARKED_ACK"):
             env.pop(k, None)
         env.update(env_extra or {})
         out = subprocess.run(
@@ -2129,6 +2130,50 @@ class TestAdoptionNetAndXdgCreate(unittest.TestCase):
         legacy = self._make_brain("AgentsContext", "brain")
         db_dir, _, parked = self._resolve()
         self.assertEqual(db_dir, legacy)
+        self.assertEqual(parked, "")
+
+    def test_parked_sibling_under_custom_cpd_root(self):
+        # the adoption net's own population: a renamed SIBLING plugin dir
+        # under a custom plugins root (no literal plugins/data segment).
+        # Detection must use the net's root — dirname of CPD — not just CPD.
+        d = self._make_brain("custom-root", "data", "old-name", "brain")
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % d)
+        cpd = os.path.join(self._home, "custom-root", "data", "new-name")
+        # trailing slash on CPD must not break the match either
+        db_dir, _, parked = self._resolve({"CLAUDE_PLUGIN_DATA": cpd + "/"})
+        self.assertEqual(db_dir, d)
+        self.assertEqual(parked, d,
+                         "sibling dirs under the CPD root are on the same trapdoor")
+
+    def test_parked_brain_exactly_at_cpd(self):
+        # brain.db directly AT the plugin-data dir (option/knob can name it)
+        cpd = os.path.join(self._home, "custom-root", "data", "brain-x")
+        d = self._make_brain("custom-root", "data", "brain-x")
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % d)
+        db_dir, _, parked = self._resolve({"CLAUDE_PLUGIN_DATA": cpd})
+        self.assertEqual(db_dir, d)
+        self.assertEqual(parked, d)
+
+    def test_unrelated_plugins_data_path_not_parked(self):
+        # a dev checkout that merely CONTAINS plugins/data must not warn —
+        # the pattern is anchored to real host roots, not a bare glob
+        d = self._make_brain("dev", "myapp", "plugins", "data", "brain")
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % d)
+        db_dir, _, parked = self._resolve()
+        self.assertEqual(db_dir, d)
+        self.assertEqual(parked, "",
+                         "unanchored substring match would false-positive here")
+
+    def test_parked_ack_suppresses(self):
+        # the informed-stay opt-out: BRAIN_PARKED_ACK silences the flag
+        d = self._make_brain(".claude", "plugins", "data", "brain-x", "brain")
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % d)
+        db_dir, _, parked = self._resolve({"BRAIN_PARKED_ACK": "1"})
+        self.assertEqual(db_dir, d)
         self.assertEqual(parked, "")
 
     # -- review-finding regressions (2026-08-12 multi-lens pass) --
@@ -3069,6 +3114,225 @@ class TestResolverChainPortability(unittest.TestCase):
                                  "unchanged record was rewritten — the "
                                  "existing-content read is broken in %s"
                                  % shell)
+
+
+class TestParkedNoticeRender(unittest.TestCase):
+    """The parked-brain relocation notice, rendered by a real boot-brain.sh.
+
+    The flag has resolver-level tests; this is the only coverage of the
+    render path — the guard line, the source gate, and the heredoc. Without
+    it, dropping the `&& _parked_notice` call (or a heredoc regression)
+    ships the whole feature silently disabled: boot still exits 0 and
+    memory still works.
+    """
+
+    SCRIPTS = os.path.join(os.path.dirname(__file__), '..',
+                           'hooks', 'scripts')
+
+    def setUp(self):
+        self._home = tempfile.mkdtemp(prefix="brain-parkednotice-home-")
+        self._xdg = os.path.join(self._home, ".config")
+        os.makedirs(os.path.join(self._xdg, "brain"))
+        self._tree = os.path.join(self._home, "plugin")
+        self._sd = os.path.join(self._tree, "hooks", "scripts")
+        os.makedirs(self._sd)
+        for name in ("boot-brain.sh", "api-key-env.sh", "runtime-state.sh",
+                     "resolve-brain-db.sh", "brain-env.sh"):
+            shutil.copy(os.path.join(self.SCRIPTS, name),
+                        os.path.join(self._sd, name))
+        for name in ("ensure-runtime.sh", "install-daemon-service.sh",
+                     "ensure-dashboard.sh"):
+            stub = os.path.join(self._sd, name)
+            with open(stub, "w") as f:
+                f.write("#!/bin/bash\nexit 0\n")
+            os.chmod(stub, 0o755)
+        with open(os.path.join(self._sd, "boot_brain.py"), "w") as f:
+            f.write("")
+        with open(os.path.join(self._tree, ".runtime-ready"), "w") as f:
+            f.write("ok\n")
+        vbin = os.path.join(self._tree, "venv", "bin")
+        os.makedirs(vbin)
+        os.symlink(sys.executable, os.path.join(vbin, "python"))
+        os.symlink(sys.executable, os.path.join(vbin, "python3"))
+        srv = os.path.join(self._tree, "servers")
+        os.makedirs(srv)
+        open(os.path.join(srv, "__init__.py"), "w").close()
+        with open(os.path.join(srv, "daemon_client.py"), "w") as f:
+            f.write("def ensure_daemon(db):\n    return True\n")
+        with open(os.path.join(srv, "brain_mcp.py"), "w") as f:
+            f.write("TOOLS = ['a', 'b']\n")
+        # a parked brain (host plugin-data shape) and a safe one
+        self._parked = os.path.join(self._home, ".claude", "plugins",
+                                    "data", "brain-x", "brain")
+        os.makedirs(self._parked)
+        open(os.path.join(self._parked, "brain.db"), "w").close()
+        self._safe = os.path.join(self._home, "braindb")
+        os.makedirs(self._safe)
+        open(os.path.join(self._safe, "brain.db"), "w").close()
+
+    def tearDown(self):
+        shutil.rmtree(self._home, ignore_errors=True)
+
+    def _boot(self, db_dir, source="startup", extra_env=None):
+        import json
+        import subprocess
+        env = dict(os.environ, HOME=self._home, XDG_CONFIG_HOME=self._xdg,
+                   ANTHROPIC_API_KEY="sk-ant-test", BRAIN_DB_DIR=db_dir)
+        for k in ("PYTHONPATH", "PYTHONHOME", "CLAUDE_PLUGIN_DATA",
+                  "CLAUDE_PLUGIN_OPTION_BRAIN_PATH",
+                  "CLAUDE_PLUGIN_OPTION_brain_path", "BRAIN_PARKED_ACK",
+                  "XDG_DATA_HOME"):
+            env.pop(k, None)
+        env.update(extra_env or {})
+        return subprocess.run(
+            ["bash", os.path.join(self._sd, "boot-brain.sh")],
+            input=json.dumps({"source": source}), cwd=self._home, env=env,
+            capture_output=True, text=True, timeout=60)
+
+    def test_parked_brain_renders_relocation_notice_on_startup(self):
+        r = self._boot(self._parked)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("relocate-brain.sh", r.stdout)
+        self.assertIn(self._parked, r.stdout)
+        self.assertIn("BRAIN_PARKED_ACK", r.stdout)
+        # the derived plugin id makes the --keep-data line paste-ready
+        self.assertIn("brain-x --keep-data", r.stdout)
+
+    def test_notice_quiet_on_resume_and_compact(self):
+        for source in ("resume", "compact"):
+            r = self._boot(self._parked, source=source)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertNotIn("relocate-brain.sh", r.stdout,
+                             "notice must not re-inject on %s" % source)
+
+    def test_notice_quiet_under_ack(self):
+        r = self._boot(self._parked, extra_env={"BRAIN_PARKED_ACK": "1"})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("relocate-brain.sh", r.stdout)
+
+    def test_notice_quiet_for_safe_location(self):
+        r = self._boot(self._safe)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("relocate-brain.sh", r.stdout)
+
+
+class TestRelocateBrain(unittest.TestCase):
+    """relocate-brain.sh end to end in a sandbox: copy, verify, switch,
+    retire the source, comment the knob, re-render services, re-resolve.
+
+    launchctl is stubbed via PATH and the pid/lock files are pointed into
+    the sandbox — the test must never touch the real daemon on this
+    machine.
+    """
+
+    SCRIPTS = os.path.join(os.path.dirname(__file__), '..',
+                           'hooks', 'scripts')
+
+    def setUp(self):
+        import sqlite3
+        self._home = tempfile.mkdtemp(prefix="brain-relocate-home-")
+        self._xdg = os.path.join(self._home, ".config")
+        os.makedirs(os.path.join(self._xdg, "brain"))
+        self._sd = os.path.join(self._home, "plugin", "hooks", "scripts")
+        os.makedirs(self._sd)
+        for name in ("relocate-brain.sh", "resolve-brain-db.sh",
+                     "brain-env.sh", "api-key-env.sh"):
+            shutil.copy(os.path.join(self.SCRIPTS, name),
+                        os.path.join(self._sd, name))
+        self._svc_log = os.path.join(self._home, "svc-invoked")
+        with open(os.path.join(self._sd, "install-daemon-service.sh"), "w") as f:
+            f.write("#!/bin/bash\ntouch '%s'\nexit 0\n" % self._svc_log)
+        for name in ("install-daemon-service.sh", "relocate-brain.sh"):
+            os.chmod(os.path.join(self._sd, name), 0o755)
+        with open(os.path.join(self._sd, "ensure-runtime.sh"), "w") as f:
+            f.write("#!/bin/bash\nexit 0\n")
+        os.chmod(os.path.join(self._sd, "ensure-runtime.sh"), 0o755)
+        # fake launchctl so bootout can never reach the real services
+        self._bin = os.path.join(self._home, "bin")
+        os.makedirs(self._bin)
+        with open(os.path.join(self._bin, "launchctl"), "w") as f:
+            f.write("#!/bin/bash\nexit 0\n")
+        os.chmod(os.path.join(self._bin, "launchctl"), 0o755)
+        # a real (tiny) brain at a plugins-data path, knob pointing at it
+        self._src = os.path.join(self._home, ".claude", "plugins", "data",
+                                 "brain-b", "brain")
+        os.makedirs(self._src)
+        for db in ("brain.db", "brain_logs.db"):
+            conn = sqlite3.connect(os.path.join(self._src, db))
+            conn.execute("CREATE TABLE t (v TEXT)")
+            conn.execute("INSERT INTO t VALUES ('payload-%s')" % db)
+            conn.commit()
+            conn.close()
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % self._src)
+        self._target = os.path.join(self._home, ".local", "share", "brain")
+
+    def tearDown(self):
+        shutil.rmtree(self._home, ignore_errors=True)
+
+    def _run(self, *args):
+        import subprocess
+        env = dict(os.environ, HOME=self._home, XDG_CONFIG_HOME=self._xdg,
+                   PATH=self._bin + os.pathsep + os.environ.get("PATH", ""),
+                   BRAIN_MAINTENANCE_LOCK=os.path.join(self._home, "m.lock"),
+                   BRAIN_DAEMON_PIDFILE=os.path.join(self._home, "d.pid"))
+        for k in ("BRAIN_DB_DIR", "CLAUDE_PLUGIN_DATA", "XDG_DATA_HOME",
+                  "BRAIN_PARKED_ACK", "CLAUDE_PLUGIN_OPTION_BRAIN_PATH",
+                  "CLAUDE_PLUGIN_OPTION_brain_path"):
+            env.pop(k, None)
+        return subprocess.run(
+            ["bash", os.path.join(self._sd, "relocate-brain.sh")] + list(args),
+            env=env, capture_output=True, text=True, timeout=120)
+
+    def test_relocates_verifies_and_retires_source(self):
+        import glob
+        import sqlite3
+        r = self._run()
+        out = r.stdout + r.stderr
+        self.assertEqual(r.returncode, 0, out)
+        # moved and intact
+        for db in ("brain.db", "brain_logs.db"):
+            conn = sqlite3.connect(os.path.join(self._target, db))
+            self.assertEqual(conn.execute("SELECT v FROM t").fetchone()[0],
+                             "payload-" + db)
+            conn.close()
+        # source retired (renamed, never deleted), nothing left at the path
+        self.assertFalse(os.path.exists(self._src))
+        self.assertEqual(len(glob.glob(self._src + ".relocated-*")), 1)
+        # knob commented with a backup, services re-rendered, ladder verified
+        env_text = open(os.path.join(self._xdg, "brain", "env")).read()
+        self.assertIn("# relocated to the standard location:", env_text)
+        self.assertTrue(os.path.exists(
+            os.path.join(self._xdg, "brain", "env.bak-relocate")))
+        self.assertTrue(os.path.exists(self._svc_log),
+                        "install-daemon-service.sh must be re-run")
+        self.assertIn("verified: the resolver finds the brain at", out)
+        # the maintenance lock is gone
+        self.assertFalse(os.path.exists(os.path.join(self._home, "m.lock")))
+
+    def test_second_run_is_a_noop(self):
+        self.assertEqual(self._run().returncode, 0)
+        r = self._run()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("nothing to do", r.stdout)
+
+    def test_occupied_target_refuses_loudly_and_touches_nothing(self):
+        import sqlite3
+        os.makedirs(self._target)
+        conn = sqlite3.connect(os.path.join(self._target, "brain.db"))
+        conn.execute("CREATE TABLE other (v TEXT)")
+        conn.commit()
+        conn.close()
+        r = self._run()
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("already holds a brain.db", r.stderr)
+        # both brains untouched
+        self.assertTrue(os.path.exists(os.path.join(self._src, "brain.db")))
+        conn = sqlite3.connect(os.path.join(self._target, "brain.db"))
+        self.assertEqual(
+            conn.execute("SELECT name FROM sqlite_master").fetchone()[0],
+            "other")
+        conn.close()
 
 
 if __name__ == "__main__":
