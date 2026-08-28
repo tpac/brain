@@ -545,15 +545,23 @@ class — comments naming the operator — is **29 lines**, not the ~30-to-68 ra
 previously carried. This is not the long pole; **5.6 is** — the fleet gap that used to
 share that sentence shipped 2026-08-16.
 
-**5.4 README + CONTRIBUTING + plugin self-description — OWN SESSION (Tom,
-2026-08-28).** The public face as a whole — README, LICENSE presentation,
-`plugin.json` description/displayName copy, marketplace entry text — is one
-voice-and-claims pass, not a mechanical fix; it deserves a dedicated session
-like 5.6. (License substance is already clean: MIT outbound, the one inbound
-exception — `common_words_10k.txt` — was removed from the package.) The
-existing `README.md` is a **rewrite, not a
-polish** — audited 2026-08-07, re-verified 2026-08-08, and it states things that
-are no longer true: *"the plugin will refuse to load without this key set"*
+**5.4 README + CONTRIBUTING + plugin self-description — DRAFTED 2026-08-28
+(session ran same day it was scoped; pending Tom's read).** Landed: README
+fully rewritten entity-era (first-person opening claim in the entity's voice,
+neutral body; honest-expectations block — key optional-but-degraded, ~200 MB
+first boot, background daemon, local-only/no-telemetry/127.0.0.1, Linux
+graceful-degradation; storage truth — XDG birth, survives
+update/uninstall/rename, adoption + relocation story; no benchmark claims
+per D-8/eval-exclusion; no version literals that rot; no CLAUDE.md link).
+CONTRIBUTING.md created (D-9 issues-only + never-paste-memories privacy
+note). **`displayName` RULED: `Entity`** (D-12 — manifest names the product,
+config names the instance) and shipped in both manifests; marketplace
+metadata description de-Anchored. Install instructions are written for
+`entity@anchor` and activate at publish. (License substance already clean:
+MIT outbound; `common_words_10k.txt` removed.) The prior README's false
+claims, for the record — it was a **rewrite, not a
+polish** — audited 2026-08-07, re-verified 2026-08-08, and it stated things
+that were no longer true: *"the plugin will refuse to load without this key set"*
 (false since keyless boot, a1a620e); "seeds 16 anchor identity nodes" (**19** —
 `len(SEED_NODES)`, re-confirmed 2026-08-27); "schema (v25)" (**`BRAIN_VERSION = 31`**
 as of 2026-08-27 — this doc said 30, itself now stale); lists the Cowork
