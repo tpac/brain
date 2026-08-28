@@ -1999,21 +1999,23 @@ class TestAdoptionNetAndXdgCreate(unittest.TestCase):
         shutil.rmtree(self._home, ignore_errors=True)
 
     def _resolve(self, env_extra=None):
-        """Returns (BRAIN_DB_DIR, BRAIN_ADOPTION_CANDIDATE) after sourcing."""
+        """Returns (BRAIN_DB_DIR, BRAIN_ADOPTION_CANDIDATE, BRAIN_HOST_PARKED)
+        after sourcing."""
         import subprocess
         env = dict(os.environ, HOME=self._home, XDG_CONFIG_HOME=self._xdg)
         for k in ("BRAIN_DB_DIR", "CLAUDE_PLUGIN_DATA", "XDG_DATA_HOME",
-                  "BRAIN_ADOPTION_CANDIDATE"):
+                  "BRAIN_ADOPTION_CANDIDATE", "BRAIN_HOST_PARKED"):
             env.pop(k, None)
         env.update(env_extra or {})
         out = subprocess.run(
             ["bash", "-c",
              'source "%s" >/dev/null 2>&1; '
-             'printf "%%s\\n%%s" "$BRAIN_DB_DIR" "$BRAIN_ADOPTION_CANDIDATE"'
+             'printf "%%s\\n%%s\\n%%s" "$BRAIN_DB_DIR" '
+             '"$BRAIN_ADOPTION_CANDIDATE" "$BRAIN_HOST_PARKED"'
              % self.RESOLVER],
             env=env, capture_output=True, text=True, timeout=60)
-        parts = out.stdout.split("\n")
-        return parts[0].strip(), (parts[1].strip() if len(parts) > 1 else "")
+        parts = (out.stdout.split("\n") + ["", ""])[:3]
+        return parts[0].strip(), parts[1].strip(), parts[2].strip()
 
     def _make_brain(self, *segments):
         d = os.path.join(self._home, *segments)
@@ -2022,7 +2024,7 @@ class TestAdoptionNetAndXdgCreate(unittest.TestCase):
         return d
 
     def test_fresh_install_creates_at_xdg(self):
-        db_dir, cand = self._resolve()
+        db_dir, cand, _parked = self._resolve()
         self.assertEqual(db_dir, self._native,
                          "nothing anywhere: a new brain is born at the XDG service dir")
         self.assertEqual(cand, "")
@@ -2031,13 +2033,13 @@ class TestAdoptionNetAndXdgCreate(unittest.TestCase):
     def test_xdg_existing_brain_adopted_over_legacy(self):
         native = self._make_brain(".local", "share", "brain")
         self._make_brain("AgentsContext", "brain")
-        db_dir, _ = self._resolve()
+        db_dir, _, _parked = self._resolve()
         self.assertEqual(db_dir, native)
 
     def test_candidate_at_plugin_data_blocks_create(self):
         cand_dir = self._make_brain(".claude", "plugins", "data",
                                     "old-plugin-name", "brain")
-        db_dir, cand = self._resolve()
+        db_dir, cand, _parked = self._resolve()
         self.assertEqual(db_dir, "",
                          "the net must refuse to create while a candidate exists")
         self.assertEqual(cand, cand_dir)
@@ -2050,7 +2052,7 @@ class TestAdoptionNetAndXdgCreate(unittest.TestCase):
         cand_dir = self._make_brain("custom-root", "data", "old-name", "brain")
         cpd = os.path.join(self._home, "custom-root", "data", "new-name")
         os.makedirs(cpd, exist_ok=True)
-        db_dir, cand = self._resolve({"CLAUDE_PLUGIN_DATA": cpd})
+        db_dir, cand, _parked = self._resolve({"CLAUDE_PLUGIN_DATA": cpd})
         self.assertEqual(db_dir, "")
         self.assertEqual(cand, cand_dir)
 
@@ -2058,7 +2060,7 @@ class TestAdoptionNetAndXdgCreate(unittest.TestCase):
         d = self._make_brain("my-brain")
         with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
             f.write("BRAIN_DB_DIR='%s'\n" % d)
-        db_dir, _ = self._resolve()
+        db_dir, _, _parked = self._resolve()
         self.assertEqual(db_dir, d)
 
     def test_config_knob_beats_adoption_net(self):
@@ -2067,7 +2069,7 @@ class TestAdoptionNetAndXdgCreate(unittest.TestCase):
         fresh = os.path.join(self._home, "chosen-fresh")
         with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
             f.write("BRAIN_DB_DIR='%s'\n" % fresh)
-        db_dir, cand = self._resolve()
+        db_dir, cand, _parked = self._resolve()
         self.assertEqual(db_dir, fresh,
                          "an explicit knob is a choice — the net must not fire")
         self.assertEqual(cand, "")
@@ -2079,18 +2081,55 @@ class TestAdoptionNetAndXdgCreate(unittest.TestCase):
         knob = os.path.join(self._home, "knob-choice")
         with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
             f.write("BRAIN_DB_DIR='%s'\n" % knob)
-        db_dir, _ = self._resolve({"BRAIN_DB_DIR": stale})
+        db_dir, _, _parked = self._resolve({"BRAIN_DB_DIR": stale})
         self.assertEqual(db_dir, knob,
                          "durable knob beats a stale plist-baked empty dir")
 
     def test_cpd_existing_brain_still_adopted(self):
         # pre-D-13 install: brain at the live $CLAUDE_PLUGIN_DATA — adopted,
-        # no net, no XDG create
+        # no net, no XDG create — and flagged parked: `claude plugin
+        # uninstall` deletes that tree by default (verified 2026-08-27)
         cpd = os.path.join(self._home, ".claude", "plugins", "data", "brain-x")
         d = self._make_brain(".claude", "plugins", "data", "brain-x", "brain")
-        db_dir, cand = self._resolve({"CLAUDE_PLUGIN_DATA": cpd})
+        db_dir, cand, parked = self._resolve({"CLAUDE_PLUGIN_DATA": cpd})
         self.assertEqual(db_dir, d)
         self.assertEqual(cand, "")
+        self.assertEqual(parked, d,
+                         "a plugin-data brain must be flagged for relocation")
+
+    def test_knob_into_plugin_data_flags_parked(self):
+        # a knob written by the OLD adoption notice points INTO plugins/data:
+        # resolves at the knob rung, never rung 3 — parked detection is by
+        # path shape, so it must fire on this route too
+        d = self._make_brain(".claude", "plugins", "data", "brain-x", "brain")
+        with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % d)
+        db_dir, _, parked = self._resolve()
+        self.assertEqual(db_dir, d)
+        self.assertEqual(parked, d,
+                         "the knob route into plugins/data is parked all the same")
+
+    def test_resolved_env_into_plugin_data_flags_parked(self):
+        # the non-hook-shell route (4b): resolved.env persisted by a prior
+        # hook points at a plugin-data brain the shell can't see via env
+        d = self._make_brain(".claude", "plugins", "data", "brain-x", "brain")
+        with open(os.path.join(self._xdg, "brain", "resolved.env"), "w") as f:
+            f.write("BRAIN_DB_DIR='%s'\n" % d)
+        db_dir, _, parked = self._resolve()
+        self.assertEqual(db_dir, d)
+        self.assertEqual(parked, d)
+
+    def test_xdg_and_legacy_brains_not_parked(self):
+        # the two safe locations must never trip the relocation warning
+        native = self._make_brain(".local", "share", "brain")
+        db_dir, _, parked = self._resolve()
+        self.assertEqual(db_dir, native)
+        self.assertEqual(parked, "")
+        os.remove(os.path.join(native, "brain.db"))
+        legacy = self._make_brain("AgentsContext", "brain")
+        db_dir, _, parked = self._resolve()
+        self.assertEqual(db_dir, legacy)
+        self.assertEqual(parked, "")
 
     # -- review-finding regressions (2026-08-12 multi-lens pass) --
 
@@ -2100,7 +2139,7 @@ class TestAdoptionNetAndXdgCreate(unittest.TestCase):
         d = self._make_brain("my-brain")
         with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
             f.write('echo "loading brain env"\nBRAIN_DB_DIR=\'%s\'\n' % d)
-        db_dir, _ = self._resolve()
+        db_dir, _, _parked = self._resolve()
         self.assertEqual(db_dir, d)
 
     def test_quoted_tilde_knob_is_expanded(self):
@@ -2109,14 +2148,14 @@ class TestAdoptionNetAndXdgCreate(unittest.TestCase):
         d = self._make_brain("tilde-brain")
         with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
             f.write('BRAIN_DB_DIR="~/tilde-brain"\n')
-        db_dir, _ = self._resolve()
+        db_dir, _, _parked = self._resolve()
         self.assertEqual(db_dir, d)
 
     def test_relative_knob_is_ignored(self):
         # a relative path would resolve against each consumer's cwd — ignore
         with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
             f.write("BRAIN_DB_DIR=relative-dir\n")
-        db_dir, cand = self._resolve()
+        db_dir, cand, _parked = self._resolve()
         self.assertEqual(db_dir, self._native)
         self.assertEqual(cand, "")
 
@@ -2125,7 +2164,7 @@ class TestAdoptionNetAndXdgCreate(unittest.TestCase):
         # come up empty (no glob abort, no false candidate) and create at XDG
         os.makedirs(os.path.join(self._home, ".claude", "plugins", "data",
                                  "some-other-plugin"), exist_ok=True)
-        db_dir, cand = self._resolve()
+        db_dir, cand, _parked = self._resolve()
         self.assertEqual(db_dir, self._native)
         self.assertEqual(cand, "")
 
@@ -2155,7 +2194,7 @@ class TestAdoptionNetAndXdgCreate(unittest.TestCase):
             f.write("BRAIN_DB_DIR='%s'\n" % old)
         cpd = os.path.join(self._home, ".claude", "plugins", "data", "new-name")
         os.makedirs(cpd, exist_ok=True)
-        db_dir, cand = self._resolve({"CLAUDE_PLUGIN_DATA": cpd})
+        db_dir, cand, _parked = self._resolve({"CLAUDE_PLUGIN_DATA": cpd})
         self.assertEqual(db_dir, old)
         self.assertEqual(cand, "")
 
@@ -2165,7 +2204,7 @@ class TestAdoptionNetAndXdgCreate(unittest.TestCase):
         old = self._make_brain(".claude", "plugins", "data", "old-name", "brain")
         with open(os.path.join(self._xdg, "brain", "resolved.env"), "w") as f:
             f.write("BRAIN_DB_DIR='%s'\n" % os.path.join(self._home, "deleted"))
-        db_dir, cand = self._resolve()
+        db_dir, cand, _parked = self._resolve()
         self.assertEqual(db_dir, "")
         self.assertEqual(cand, old)
 

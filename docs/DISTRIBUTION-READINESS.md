@@ -381,10 +381,24 @@ present and current; missing/stale meant a silently created fresh brain.
   contexts).
 - Python resolvers (`daemon_config.resolve_db_dir`, dashboard `_brain_dir`)
   mirror the new tail: XDG-with-brain → legacy-with-brain → XDG default.
+- **Relocation offer (added 2026-08-28 — the missing half of D-13's "single
+  location").** Verified 2026-08-27: `claude plugin uninstall` deletes the
+  whole `~/.claude/plugins/data/<plugin>-<mkt>/` tree by default
+  (`--keep-data` is opt-in); `update` preserves it. So a brain the ladder
+  *finds* under a plugins-data root is working-but-parked-on-a-trapdoor. The
+  resolver now flags that state (`BRAIN_HOST_PARKED`, matched on **path
+  shape**, so the knob/env/resolved.env routes into the same dir warn too),
+  and boot renders a relocation notice: one atomic same-volume `mv` of the
+  whole brain dir to the XDG service dir (db+WAL+SHM keep their inodes; the
+  step-4 divergence check re-points the daemon; hint-demotion retires stale
+  pointers). Guarded against an existing target (the shadow-brain case).
+  The adoption-net notice's recommended option is now the same move, not a
+  knob pinning the user to the old path. User-run only — boot still never
+  creates, moves, or deletes.
 **Tests:** `tests/test_daemon_recovery.py::TestAdoptionNetAndXdgCreate` (shell
 ladder: fresh-install-at-XDG, net refusal, sibling scan, knob-beats-net,
-knob-beats-stale-hint, CPD adoption) + `tests/test_db_resolution.py` (Python
-tail). *M.*
+knob-beats-stale-hint, CPD adoption, parked-flag routes + safe-location
+negatives) + `tests/test_db_resolution.py` (Python tail). *M.*
 **Acceptance criterion shipped 2026-08-11 (arch-plan step 4):** the daemon can no
 longer diverge from an adopted path — `brain-daemon` re-runs the resolution
 ladder on every launch (the plist-baked `BRAIN_DB_DIR` is a fast-path hint, not a
@@ -785,7 +799,7 @@ fast, exits cleanly for a next-session fast path otherwise).
 | Marketplace name becomes reserved → **every install breaks retroactively** | D-6 / §10.2 | Chose `anchor` (project umbrella), not a generic category noun. Anthropic's reserved list is brand + vertical words and is **re-checked on every load** |
 | Skill slash commands lose their `entity:` prefix → collide in a public user's namespace | 5.2 / §10.3 | Upstream namespacing is unstable (4+ open issues). Verify empirically before the rename; don't rely on the prefix for collision safety |
 | Public repo becomes an unmergeable-PR magnet | D-9 | CONTRIBUTING states issues-only up front, not after the first rejected PR |
-| ~~**Plugin rename orphans an existing brain → silent empty brain**~~ **CLOSED 2026-08-12 by 5.0a** | 5.0a / 5.2 | The silent-create path is gone: creation moved to the XDG service dir and the adoption net refuses to create while an orphaned brain sits under a plugin-data root — guided adoption via the `~/.config/brain/env` knob / `brain_path`; never auto-move. Residual: a rescued-by-4b brain still physically lives under the *old* plugin's dir until the user adopts it elsewhere — uninstalling that plugin may still delete it (surface at 5.2 rename time) |
+| ~~**Plugin rename orphans an existing brain → silent empty brain**~~ **CLOSED 2026-08-12 by 5.0a** | 5.0a / 5.2 | The silent-create path is gone: creation moved to the XDG service dir and the adoption net refuses to create while an orphaned brain sits under a plugin-data root — guided adoption via the `~/.config/brain/env` knob / `brain_path`; never auto-move. Residual **CLOSED 2026-08-28**: a brain resolved under any plugins-data root now trips `BRAIN_HOST_PARKED` and boot renders the relocation notice every session until the user moves it (uninstall deleting that tree was verified 2026-08-27; `--keep-data` named as the stopgap) |
 | Fresh installs write traces with **no identity stamping** | 5.0c (was §8 #3) | Same defect as the 182 hardcoded names: slots that ship empty and unread. Fill via `userConfig` (D-4 shape, env wins) and read from config everywhere. Publish blocker |
 | A shipped manifest carries one install's instance name | D-12 / 5.0c | `displayName: Anchor` and 182 literals pre-name every stranger's entity, contradicting "identity is accumulated, not issued". Derive from `BRAIN_AGENT_NAME` |
 | A rename touches a place no list knows about | 5.0b | Two hand-lists already failed (62-file manifest; the `.claude/settings.json` permission entry). Gate by **shape-scan over the tree**, never by enumeration |

@@ -66,6 +66,12 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ] || [[ "${ANTHROPIC_API_KEY}" != sk-* ]]; then
   BRAIN_KEYLESS_BOOT=1   # read below: keyless warm boots bring the dashboard up
 fi
 
+# Paths embedded in commands the USER will paste: single-quote them with
+# internal quotes escaped, so a path carrying spaces/$/backticks can neither
+# break the command nor be expanded by the user's shell. Shared by every
+# notice below that prints a path-bearing command.
+_sq() { printf %s "$1" | sed "s/'/'\\\\''/g"; }
+
 # Emitted at the two points a keyless boot actually proceeds (cold install,
 # and warm boot after DB resolution succeeds) — NOT at detection: a boot the
 # adoption net blocks must not first promise "memory works from this session
@@ -195,12 +201,8 @@ fi
 if [ -z "$BRAIN_DB_DIR" ]; then
   _CFG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/brain"
   _XDG_FRESH="${XDG_DATA_HOME:-$HOME/.local/share}/brain"
-  # The paths below are embedded in commands the USER will paste: single-quote
-  # them with internal quotes escaped, so a path carrying spaces/$/backticks
-  # can neither break the command nor be expanded by the user's shell. printf
-  # with a leading \n (not echo >>): a knob file whose last line lacks a
-  # trailing newline must not have the new line glued onto it.
-  _sq() { printf %s "$1" | sed "s/'/'\\\\''/g"; }
+  # printf with a leading \n (not echo >>): a knob file whose last line lacks
+  # a trailing newline must not have the new line glued onto it.
   _CFG_Q="'$(_sq "$_CFG_FILE")'"
   if [ -n "${BRAIN_ADOPTION_CANDIDATE:-}" ]; then
     _CAND_Q="'$(_sq "$BRAIN_ADOPTION_CANDIDATE")'"
@@ -219,22 +221,32 @@ without memory rather than silently starting a new, empty brain.
 
 Pick one, then start a new session:
 
-  1. KEEP THIS BRAIN (recommended) — point Anchor at it:
+  1. MOVE IT to the standard location (recommended — plugin renames,
+     updates, and uninstalls never touch it):
+       mkdir -p '$(_sq "$(dirname "$_XDG_FRESH")")'
+       [ ! -e '$(_sq "$_XDG_FRESH")' ] && mv $_CAND_Q '$(_sq "$_XDG_FRESH")'
+     No pointer needed afterwards — it is found there automatically.
+     (If that reports the target exists and it is only an empty leftover
+      dir: rmdir '$(_sq "$_XDG_FRESH")' and rerun the mv.)
+
+  2. KEEP IT WHERE IT IS — point Anchor at it:
        mkdir -p $_CFG_Q
        printf "\nBRAIN_DB_DIR='%s'\n" $_CAND_Q >> $_CFG_Q/env
      (or set the brain path field in the Anchor plugin's settings to that
       same folder)
+     ⚠ That path is under a plugin's data folder — uninstalling that plugin
+       deletes it, memories included. Prefer option 1.
 
-  2. START FRESH — leave the old brain untouched on disk and begin a new
+  3. START FRESH — leave the old brain untouched on disk and begin a new
      one at the standard location:
        mkdir -p $_CFG_Q
        printf "\nBRAIN_DB_DIR='%s'\n" '$(_sq "$_XDG_FRESH")' >> $_CFG_Q/env
 
-Claude: present these two options to the user now, with the exact commands
+Claude: present these three options to the user now, with the exact commands
 above — everything needed is in this notice, no lookups required. Do not
 run the commands or create/move/delete anything yourself unless the user
 explicitly chooses an option and asks you to apply it. This notice repeats
-every session until BRAIN_DB_DIR is set.
+every session until the brain is moved or BRAIN_DB_DIR is set.
 EOF
     echo "[brain-boot] adoption net: candidate brain at $BRAIN_ADOPTION_CANDIDATE — refused silent create" >&2
     exit 0
@@ -269,6 +281,44 @@ fi
 # Keyless warm boot proceeds with a resolved brain — now the setup notice is
 # true (local memory works this session; only encode/surface need the key).
 [ "$BRAIN_KEYLESS_BOOT" = "1" ] && _keyless_notice
+
+# A resolved brain parked under a host plugin-data root (BRAIN_HOST_PARKED,
+# set by the resolver on path shape): memory works this session, but
+# `claude plugin uninstall` deletes that whole tree by default (verified
+# 2026-08-27; --keep-data is opt-in). Surface the one-mv relocation to the
+# service dir (D-13) and repeat until the brain leaves the trapdoor. The
+# move is the user's to run — boot never creates/moves/deletes brains.
+_parked_notice() {
+  _P_XDG="${XDG_DATA_HOME:-$HOME/.local/share}/brain"
+  cat <<EOF
+
+🧠 Anchor — your brain is loaded, but it lives where uninstall deletes
+
+Memory works normally this session. The brain's files, though, sit at:
+
+    $BRAIN_HOST_PARKED
+
+Claude Code's per-plugin data folder. A plugin UPDATE is safe there — but
+\`claude plugin uninstall\` deletes that entire folder by default, memories
+included. Recommended: move the brain to the standard location, which no
+plugin operation ever touches:
+
+    mkdir -p '$(_sq "$(dirname "$_P_XDG")")'
+    [ ! -e '$(_sq "$_P_XDG")' ] && mv '$(_sq "$BRAIN_HOST_PARKED")' '$(_sq "$_P_XDG")'
+
+Then start a new session — the brain is found there automatically and the
+daemon re-points itself. If ~/.config/brain/env carries a BRAIN_DB_DIR line
+aiming at the old path, delete that line. If you must uninstall before
+moving: \`claude plugin uninstall <plugin> --keep-data\`.
+(If the mv reports the target exists and it is only an empty leftover dir:
+ rmdir '$(_sq "$_P_XDG")' and rerun the mv.)
+
+Claude: surface this to the user with the exact commands above. Do not run
+the move yourself unless the user explicitly asks. This notice repeats
+every session until the brain is moved.
+EOF
+}
+[ -n "${BRAIN_HOST_PARKED:-}" ] && _parked_notice
 
 # ── Provision the launchd service on fresh installs (macOS, idempotent) ──
 # Install the LaunchAgent BEFORE ensure_daemon() so launchd owns the daemon from
