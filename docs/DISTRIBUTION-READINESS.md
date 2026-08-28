@@ -602,7 +602,14 @@ dashboard binds `127.0.0.1`** (load-bearing for a trust-me-with-your-identity pi
 and **Linux is graceful-degradation only, no systemd** (D-3) — say it or field issues
 you've already decided not to serve. CONTRIBUTING carries D-9. *M.*
 
-**5.5 Green suite on a clean export.** Full suite must pass on a fresh clone of the
+**5.5 Green suite on a clean export.** *Scope grew 2026-08-28: the D-8
+"6 coupled test files" number is stale — the graceful-skip set now also
+includes every consumer of `tests/conversations/` (denylisted by 5.1) and,
+depending on the 5.3 gold-data ruling, the gold-dataset tests. Re-derive the
+set by running the suite against `dist/public-tree`, not from the old count.
+Optional hardening while here: an automated update-path test (install prior
+version → update → brain intact) — today that property rests on the manual
+2026-08-27 matrix.* Full suite must pass on a fresh clone of the
 *exported* tree, not the working tree. Known landmines: a fresh venv is runtime-only
 (no pytest), and "eval FileNotFound on clone" was a deferred code-review finding that
 would now surface publicly (D-8 skips address it). Plus a secrets scan on the tree
@@ -612,13 +619,22 @@ before first push. *M.*
 functional pack exists (19 nodes, cold-install validated §6b); this is the quality
 pass. **§5 sequencing: the publish must not happen before this.** *L.*
 
-**5.7 [LAST — one-way door] Publish.** Fresh public repo `tpac/entity`, clean
+**5.7 [LAST — one-way door] Publish.** *Mechanics gap named 2026-08-28: the
+release step itself is unbuilt — a `release` command that runs
+`export-public-tree.sh`, REFUSES on any red gate, folds the version bump
+(plugin+marketplace together), squash-commits the tree to the public repo,
+and tags. Small now that the tree-building and gating exist; it should
+absorb what the abandoned release-ratchet rebuild (BACKLOG item 4) was for.
+One release = one command that cannot push a dirty tree.* Fresh public repo `tpac/entity`, clean
 history, only after 5.1–5.6 are verifiably clean. **Irreversible: git history is
 forever; the current repo's history carries the personal data** — `docs/archive/`
 (65 files of session logs) is gitignored *but tracked*, so it is in history right
 now. *L.*
 
-**5.8 [AFTER A SOAK] Official directory submission.** Only once the self-hosted
+**5.8 [AFTER A SOAK] Official directory submission.** *Check first
+(2026-08-28): whether the directory has LICENSE requirements — the dual
+PolyForm grant is source-available, not OSI open source, and a
+permissive-only directory policy would force a decision here.* Only once the self-hosted
 marketplace has real installs. Mechanics in §10.1. *S.*
 
 ---
