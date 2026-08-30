@@ -1,28 +1,42 @@
 # Thalamus — architecture review plan (2026-08-29)
 
-## §2026-08-30 — Steps 1–6 + two review fix rounds live on main ◀ ACTIVE ARC
+## §2026-08-30 — canonical-pull resolution ruled; three gates closed ◀ ACTIVE ARC
 
-**Read first:** handoff node id:9ca1577a; round-2 milestone id:17d39138.
+**Read first:** canonical-pull ruling id:d42a49ce; handoff id:9ca1577a.
 
-Steps 1–6 shipped (merges 43f946e, 54984a3) then a fleet review (8 Opus
-angles, 10 findings, 9 CONFIRMED) drove two fix rounds (merges 1182d92,
-9766ca7): atomic v2 migration (BEGIN IMMEDIATE — lesson id:1f3f7e2c),
-change-gated dedup re-arm, ledger-after-render, extend_window through
-window_for, loud ref-batch, doc reconcile. Logs schema v2 live.
+Steps 1–6 + two review fix rounds live (merge 9766ca7, logs schema v2).
+Three of the four operator gates ruled 2026-08-30:
+
+- **Archived refs — WIDENED (id:d42a49ce):** survivor resolution moves INTO
+  the canonical pull (get_node / get_nodes / filter_nodes-by-id), not into
+  thalamus. Absorb is an identity claim by the brain's own machinery: an
+  absorbed id redirects loudly to its live survivor (both ids shown); a
+  retired node (no survivor) keeps the honest ⚠ ARCHIVED render; WRITES
+  never redirect (refuse with the pointer); the corpse stays readable via
+  an opt-in; predicate scans keep `archived = 0`; recall is untouched
+  (queries live directly). Consolidation becomes invisible above the store.
+  Supersedes the thalamus-local design (id:4df6150b — mechanism kept,
+  placement moved) and collapses most of TRACE-NODE-RESOLUTION.md's
+  per-site migration queue. **The session converted to implement this
+  first; thalamus `_attach_ref_lines` inherits redirect + titles through
+  filter_nodes.**
+- **Backup policy (id:54160417):** a general TTL reaper in db_backup.py —
+  a retention-policy enabler routine backups can adopt, NOT a
+  migration-specific patch; the 888MB `.v1.bak` is its first reap. Own
+  small commit.
+- **Sweep-block consolidation (id:23cd4d61):** folds into Step 11.
+
+**Still open:** audience-guard placement — fuller context delivered
+(rec: contract test `resolve_for_whom outputs ⊆ AUDIENCES` riding Step 7,
+runtime tripwire kept); awaiting Tom's judgment.
 
 **Locked:** append-only epoch ledger (re-arm = generation); change-gated
 re-file (identical re-file refreshes window only, never re-delivers);
 kept-count rendering (head/tail/ledger/count agree); sweeps ahead of the
 S2 gate.
 
-**Open — operator gates:** archived-ref resolution (design id:4df6150b —
-resolve_live walk + marked redirect, awaiting explicit go); backup policy
-for single-table logs migrations (888MB unreaped .v1.bak); sweep-block
-consolidation (rec: fold into Step 11); audience-guard relocation (rec:
-contract test riding Step 7).
-
-**Next builds:** Step 7 (door polish — before Phase 2 producers), then
-8–11 below.
+**Next builds:** canonical-pull resolution (this session), TTL reaper,
+then Step 7 (door polish — before Phase 2 producers) and 8–11 below.
 
 **Do not reopen:** ThalamusDAL; producer-facing kind vocabulary; sweep
 placement (Step 3's directive); delete-on-defer; unconditional dedup bump.

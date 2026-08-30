@@ -719,7 +719,11 @@ class BrainRememberMixin:
         if absorbed_id not in rows:
             return {'ok': False, 'error': 'absorbed not found', 'node_id': absorbed_id}
         if rows[survivor_id][3]:
-            return {'ok': False, 'error': 'survivor is archived', 'node_id': survivor_id}
+            live = self._nodes.survivor_of(survivor_id)
+            hint = (' — itself absorbed into %s; use that as survivor'
+                    % live[:8]) if live else ''
+            return {'ok': False, 'error': 'survivor is archived%s' % hint,
+                    'node_id': survivor_id}
 
         a_locked, a_critical, a_archived, a_access = rows[absorbed_id][1:]
         if a_locked or a_critical:
@@ -1560,6 +1564,14 @@ class BrainRememberMixin:
         if not row:
             return {'error': 'Node not found', 'node_id': node_id}
         if row[4] == 1:
+            # Writes never redirect (the canonical-pull contract) — an
+            # absorbed node refuses WITH the pointer so the caller re-aims.
+            surv = self._nodes.survivor_of(node_id)
+            if surv:
+                return {'error': 'Cannot revise %s — absorbed into %s; '
+                                 'revise that node instead'
+                                 % (node_id[:8], surv[:8]),
+                        'node_id': node_id, 'survivor_id': surv}
             return {'error': 'Cannot revise archived node', 'node_id': node_id}
 
         existing_id, node_type, title, old_content, _ = row

@@ -434,17 +434,12 @@ def _fetch_edges_with_endpoints(brain, edge_ids: List[str]) -> List[Dict[str, An
     except Exception:
         nodes_map = {}
 
-    # Endpoint liveness (2026-06-12, bc34734d handoff): get_node is a point
-    # lookup and correctly returns archived nodes — but endpoints flow to
-    # Haiku as candidates, so archived endpoints are dropped HERE at the
-    # source. Loud, never stat-only.
-    _dead_endpoints = brain._nodes.archived_subset(endpoint_ids)
-    if _dead_endpoints:
-        brain._log_error(
-            'fetch_by_time_archived_endpoint',
-            RuntimeError('%d archived endpoint nodes reached '
-                         '_fetch_edges_with_endpoints' % len(_dead_endpoints)),
-            'dropped at source; sample=%s' % sorted(_dead_endpoints)[:5])
+    # Endpoint liveness: get_node follows an ABSORBED endpoint to its live
+    # survivor (the canonical-pull contract) — the survivor IS the right
+    # candidate for Haiku. Only RETIRED corpses (archived, no successor)
+    # are dropped, counted via a low-severity warning: routine retrieval,
+    # not a producer bug (docs/TRACE-NODE-RESOLUTION.md §6).
+    _retired_dropped: set = set()
 
     seen_endpoint_ids: set = set()
     for edge_id, source_id, target_id, relation, description in rows:
@@ -464,19 +459,33 @@ def _fetch_edges_with_endpoints(brain, edge_ids: List[str]) -> List[Dict[str, An
             },
             'tier': 'edge_time',
         })
-        # Source / target as context candidates (one per endpoint, dedup'd).
+        # Source / target as context candidates (one per endpoint, dedup'd
+        # by the node that actually becomes the candidate — two absorbed
+        # endpoints can collapse onto one survivor).
         for endpoint_id, role in [(source_id, 'edge_source'),
                                     (target_id, 'edge_target')]:
-            if endpoint_id in seen_endpoint_ids or endpoint_id in _dead_endpoints:
+            if endpoint_id in seen_endpoint_ids:
                 continue
             seen_endpoint_ids.add(endpoint_id)
             node = nodes_map.get(endpoint_id)
             if not node:
                 continue
+            if node.get('archived'):
+                _retired_dropped.add(endpoint_id)
+                continue
+            if node['id'] in seen_endpoint_ids:
+                continue
+            seen_endpoint_ids.add(node['id'])
             cand = _to_candidate(node, 0.4, 'recall_by_time')
             if cand:
                 cand['tier'] = role
                 out.append(cand)
+    if _retired_dropped:
+        brain._log_warning(
+            'fetch_by_time_retired_endpoint',
+            '%d retired endpoint nodes dropped (archived, no live successor)'
+            % len(_retired_dropped),
+            'sample=%s' % sorted(_retired_dropped)[:5])
     return out
 
 
@@ -604,8 +613,7 @@ def recall_by_time(brain, start_when: str = '', end_when: str = '',
         # 'created'/'updated'/'event' already filter archived in SQL, so for
         # them this is a single passthrough query.
         if time_node_ids:
-            _resolved = brain._nodes.resolve_live(
-                time_node_ids, on_orphan='mark')
+            _resolved = brain.resolve_live(time_node_ids, on_orphan='mark')
             time_node_ids = set(_resolved['live'])
             _orphans = _resolved.get('orphans') or []
             if _orphans:

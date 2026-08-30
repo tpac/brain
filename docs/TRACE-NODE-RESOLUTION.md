@@ -1,15 +1,26 @@
 # Historical-id → Live-node Resolution — the survivor-redirect contract
 
-**Status:** design locked (2026-06-13). Implementation pending. Motivated by
-the `spread_seed_no_vectors` incident class and the `discussed`-anchor
-archived leak (brain nodes `232fa024`, `01c687bc`, `9c1f5b20`).
+**Status:** LIVE AT THE CANONICAL PULL (2026-08-30, ruling id:d42a49ce).
+`brain.get_node` / `get_nodes` / `filter_nodes(field='id')` resolve absorbed
+ids to their live survivor themselves — keyed by the requested id, stamped
+`_redirected_from`, marked in every render (`old ↦ new`). Consumers of the
+canonical pull no longer route through `resolve_live` per-site; consolidation
+is invisible above the store. What remains per-site: raw-DAL scaffolding
+paths (`get_title`, direct `get_bulk`) keep filter-at-source per the
+scaffolding-vs-answer principle, and WRITES never redirect — `revise` /
+`connect_typed` / `absorb` refuse an absorbed id loudly with the pointer.
+The audit hatch is `get_node(id, follow_absorbed=False)`. A RETIRED node
+(archived, no survivor) returns itself, rendered `⚠ ARCHIVED`.
+Originally motivated by the `spread_seed_no_vectors` incident class and the
+`discussed`-anchor archived leak (brain nodes `232fa024`, `01c687bc`,
+`9c1f5b20`); tests: `tests/test_canonical_pull_redirect.py`.
 
 > **The rule, in one line:** a node id that came from *history* (a trace, a
 > surface-output log, a prior S2 decision, an LLM re-selection) is **not** a
 > live node id. Any path that turns such an id into a node MUST resolve it
 > forward to the **live** node — returning the living descendant of what was
-> referenced, or nothing. One centralized resolver; bespoke `resolve_id` /
-> `get_bulk` on a history-sourced id is forbidden.
+> referenced, or nothing. The canonical pull does this itself; only paths
+> that bypass it (raw DAL reads) still owe their own answer.
 
 ---
 
@@ -145,16 +156,20 @@ Returns `ResolveResult{ live, redirected: {input_id→survivor_id}, orphans }`.
 
 ## 5. Call-site map — every history→node path
 
-Audited 2026-06-13. LIVE/LEAK rows = required migration to `resolve_live`.
-SAFE rows already filter archived but should route through the resolver to gain
-survivor-redirect (recall quality) under one contract.
+Audited 2026-06-13. **Since the canonical-pull ship (2026-08-30), every row
+that reaches nodes through `brain.get_node` / `get_nodes` /
+`filter_nodes(field='id')` inherits resolution automatically** — no per-site
+migration remains for those (e.g. #6, the Scribe catalog, now sees live
+survivors with the redirect marked). The rows stay for the raw-DAL paths:
+`get_title`-style scaffolding keeps filter-at-source; S2 decoders (#7/#8)
+stay deferred.
 
 | # | Site | file:line | id source | today | required |
 |---|------|-----------|-----------|-------|----------|
 | 1 | `recall_by_time` **discussed** | `scales/s1/fetch_tools.py` (anchor + source gate) | `surface_selected` traces (JSON ref_id) | ✅ **resolve_live** — redirects to survivor, drops orphans quietly (2026-06-14) | done |
 | 2 | `recall_by_time` **event** | `fetch_tools.py:507` | `entity_dates` (DAL) | archived filtered (`n.archived=0`) ✓ | route through resolver for survivor-redirect |
 | 3 | `_get_recently_surfaced` (surface dedup) | `scales/s1/surface.py:21-55` | `surface_selected` traces → `get_title` | **no liveness** — archived titles enter dedup set | resolve_live — track survivor, not dead id |
-| 4 | Hebbian drain | `daemon_hooks.py:473-525` | surfaced-ids tmp file → `resolve_id` | archived dropped + loud (bc34734d) | resolve_live — strengthen edges on survivor |
+| 4 | Hebbian drain | REMOVED — `_hebbian_strengthen` deleted 2026-05-18, surface-picks successor retired 2026-08-17 (node ab56d25a) | — | gone | nothing to migrate |
 | 5 | Surface outside-candidate recovery | `surface.py:716-741` (`_drop_archived_selected`) | Haiku id not in menu → `resolve_id` | archived dropped + loud (bc34734d) | resolve_live — absorbed id → its survivor (this is the `spread_seed_no_vectors` self-heal) |
 | 6 | S1 Scribe catalog | `scales/s1/encode.py:462-475` | `recalled_raw` surface output → ids | **no liveness** | resolve_live — encoder sees live survivors, not dead ids it then tries to revise |
 | 7 | S2 community decoder | `scales/s2/community_decoder.py:189` | own S2 traces (ref_id) | reads ids (suppression) | **deferred** (Q3) — audit only |

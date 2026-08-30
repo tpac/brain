@@ -836,6 +836,10 @@ def render_rich_node(node, config=None):
     # Header — individual parts are opt-out via cfg flags (defaults preserve
     # current behavior for callers that don't set them, e.g. Anchor's MCP queries).
     parts = ["id:%s" % nid[:8]]
+    # A retired node renders honestly — without this flag an archived hit
+    # (audit hatch, orphaned pointer) reads as current.
+    if node.get('archived'):
+        parts.append("⚠ ARCHIVED")
     # 2026-05-31: confidence display defaults OFF. The field is dormant — set
     # from TYPE_CONFIDENCE at creation, never maintained, read by no ranking
     # path. Showing it to Anchor/Haiku/encoders is false authority (a number
@@ -865,6 +869,13 @@ def render_rich_node(node, config=None):
 
     lines = ['[%s] "%s" (%s)' % (
         node.get('type', '?'), node.get('title', '?'), ", ".join(parts))]
+
+    # Canonical-pull redirect: the consumer asked for an absorbed id and got
+    # this survivor — say so, always, with both ids (a silent swap would breed
+    # the confusion class the redirect exists to prevent).
+    for _src in node.get('_redirected_from') or ():
+        lines.append('  ⚠ %s ↦ %s — requested id was absorbed into this node'
+                     % (str(_src)[:8], nid[:8]))
 
     # Content (None = no truncation, 0 = hide, N = truncate to N chars)
     content_limit = cfg.get('content_limit')

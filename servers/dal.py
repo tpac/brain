@@ -342,6 +342,15 @@ class NodeDAL:
                        if on_orphan == 'mark' else [],
         }
 
+    def survivor_of(self, node_id: str) -> Optional[str]:
+        """Live terminal for an ABSORBED node id, else None (live, retired,
+        orphaned, or missing all return None). One-id convenience over
+        resolve_live for write-door refusal messages — writes never redirect,
+        they point the producer at the survivor and refuse."""
+        if not node_id:
+            return None
+        return self.resolve_live([node_id])['redirected'].get(node_id)
+
     def count(self, archived: bool = False) -> int:
         """Count nodes, optionally excluding archived."""
         if archived:

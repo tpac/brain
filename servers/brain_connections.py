@@ -153,6 +153,19 @@ class BrainConnectionsMixin:
             revived_from_archive, updated, deltas, warnings) — used by callers
             that want to emit trace events.
         """
+        # Writes never redirect (the canonical-pull contract): an edge aimed
+        # at an absorbed node is a producer holding a stale alias — refuse
+        # with the pointer so it re-aims, never silently re-point. Machinery
+        # below this door (absorb's own edge migration) keeps its latitude by
+        # calling GraphDAL.add_relation directly. Retired endpoints (archived,
+        # no survivor) keep add_relation's existing behavior.
+        for nid in self._nodes.archived_subset([source_id, target_id]):
+            surv = self._nodes.survivor_of(nid)
+            if surv:
+                raise ValueError(
+                    "Cannot connect %s: it was absorbed into %s — "
+                    "connect that node instead" % (nid[:8], surv[:8]))
+
         # Known types get configured weight; unknown types get 0.5 default
         edge_def = EDGE_TYPES.get(relation)
         actual_weight = weight if weight is not None else (

@@ -351,12 +351,30 @@ class BrainRecallMixin:
         full = self._nodes.resolve_id(node_id) if len(str(node_id)) < 16 else node_id
         return self._source_refs.get_source_refs(full) if full else []
 
-    def get_node(self, node_id_or_ids):
+    def resolve_live(self, ids, *, on_orphan: str = 'drop'):
+        """Owner door for the survivor walk (NodeDAL.resolve_live) — id-SET
+        conversion for callers that transform an id collection BEFORE any
+        node fetch (candidate feeds, ref lists). Node-returning reads never
+        need it: get_node / filter_nodes(field='id') resolve themselves."""
+        return self._nodes.resolve_live(ids, on_orphan=on_orphan)
+
+    def get_node(self, node_id_or_ids, follow_absorbed: bool = True):
         """Fully assembled node(s): content + metadata + correction chain + connections.
 
         Accepts a single node_id (str) or a list of node_ids.
         - Single ID → returns one rich node dict, or None if not found.
-        - List of IDs → returns dict {node_id: rich_node_dict}. Missing nodes omitted.
+        - List of IDs → returns dict keyed by the REQUESTED id. Missing nodes omitted.
+
+        Absorbed ids resolve to their live survivor (the canonical-pull
+        contract): an absorb is the store's own identity claim, so an
+        id-keyed read of the absorbed id returns the survivor node, keyed
+        by the requested id, carrying `_redirected_from` so the renderer
+        marks the redirect — the consumer always learns the id moved. A
+        RETIRED node (archived, no survivor) returns itself, honestly
+        archived. `follow_absorbed=False` is the audit hatch: return the
+        absorbed node's own record instead of walking the pointer.
+        Writes never follow this redirect — the write doors refuse with
+        the pointer instead.
 
         When given a list, uses batched queries (5 queries total instead of N×4).
         This is the canonical way to get a node. For the bare DB row, use NodeDAL.get_naked_node().
@@ -385,6 +403,31 @@ class BrainRecallMixin:
 
         if not nodes:
             return None if single else {}
+
+        # ── 1b. Absorbed-id redirect. Zero extra queries when every hit is
+        # live (the common case): detection rides get_bulk's own archived
+        # flag; only actual archived hits pay the survivor walk.
+        alias = {}  # requested id -> live terminal id (redirects only)
+        if follow_absorbed:
+            archived_hits = [nid for nid, n in nodes.items()
+                             if n.get('archived')]
+            if archived_hits:
+                redirected = ndal.resolve_live(archived_hits)['redirected']
+                missing = [t for t in set(redirected.values())
+                           if t not in nodes]
+                if missing:
+                    nodes.update(ndal.get_bulk(missing))
+                for src, terminal in redirected.items():
+                    if terminal in nodes:
+                        alias[src] = terminal
+                        nodes[terminal].setdefault(
+                            '_redirected_from', []).append(src)
+                for src in alias:
+                    # The corpse leaves the working set — its requested id
+                    # re-enters at return time, keyed onto the survivor.
+                    nodes.pop(src, None)
+                # Orphans (retired / dead chain) keep their corpse row —
+                # honest archived render, nothing to resolve to.
 
         found_ids = list(nodes.keys())
 
@@ -436,10 +479,20 @@ class BrainRecallMixin:
             conns.sort(key=lambda x: x.get('weight', 0), reverse=True)
             nodes[nid]['connections'] = conns
 
-        # ── Return ──
+        # ── Return: keyed by the REQUESTED id (a redirected request maps
+        # to its survivor's dict — `node['id']` names the survivor,
+        # `_redirected_from` names the request) ──
         if single:
-            return nodes.get(full_ids[0])
-        return nodes
+            fid = full_ids[0]
+            return nodes.get(alias.get(fid, fid))
+        if not alias:
+            return nodes
+        out = {}
+        for fid in full_ids:
+            t = alias.get(fid, fid)
+            if t in nodes:
+                out[fid] = nodes[t]
+        return out
 
     def canonicalize_results(self, results, session_id: str = '') -> None:
         """Overlay the canonical pull onto recall results, in place.
@@ -531,6 +584,32 @@ class BrainRecallMixin:
         """
         from .contract import truncation_payload
         node_dal = self._nodes
+        # Id-keyed access resolves (the canonical-pull contract, same as
+        # get_node): an absorbed id in an `include` list redirects to its
+        # live survivor before the query — the DAL's archived=0 would
+        # otherwise silently drop it (how thalamus refs lost their titles).
+        # Survivor rows carry `_redirected_from` (stamped at the exits
+        # below) so id-storing surfaces can mark the redirect. Retired /
+        # missing ids drop exactly as archived=0 drops them today.
+        _absorbed_from = {}  # survivor id -> [requested ids]
+        if field == 'id' and include:
+            _res = node_dal.resolve_live([i for i in include if i])
+            if _res['redirected']:
+                for _src, _dst in _res['redirected'].items():
+                    _absorbed_from.setdefault(_dst, []).append(_src)
+                # `live` = pass-through live inputs + redirect terminals,
+                # deduped; retired/missing inputs drop here exactly as the
+                # DAL's archived=0 drops them today. Non-empty whenever
+                # `redirected` is (terminals are live by construction).
+                include = _res['live']
+
+        def _stamp_redirects(node_list):
+            if not _absorbed_from:
+                return
+            for n in node_list:
+                srcs = _absorbed_from.get(n.get('id'))
+                if srcs:
+                    n['_redirected_from'] = list(srcs)
         # Widen the pool when relevance ranking is requested. The structural
         # path's truncation detection rides the DAL's exact total_count (an
         # unclamped COUNT(*) on the same WHERE) — no +1 probe: a probe row is
@@ -595,6 +674,7 @@ class BrainRecallMixin:
         # No relevance: the truncation block above already trimmed to `limit`.
 
         if not rich:
+            _stamp_redirects(nodes)
             result['nodes'] = nodes
             return result
 
@@ -602,6 +682,9 @@ class BrainRecallMixin:
         ids = [n['id'] for n in nodes]
         rich_map = self.get_node(ids)
         result['nodes'] = [rich_map[i] for i in ids if i in rich_map]
+        # After enrichment — get_node returns fresh dicts, so the skinny
+        # rows' stamps don't survive it.
+        _stamp_redirects(result['nodes'])
         return result
 
     def query_logs(self, source: str = 'all', hours: int = 24,
@@ -2363,6 +2446,15 @@ class BrainRecallMixin:
         node = self._nodes.get_naked_node(node_id)
         if not node:
             return {'results': []}
+        if node.get('archived'):
+            # Canonical id-keyed read: follow the absorb redirect (a retired
+            # node stays, honestly archived). Without this, the canonicalize
+            # pull below — which redirects — would overlay the SURVIVOR's
+            # attachments onto the corpse row.
+            surv = self._nodes.survivor_of(node_id)
+            if surv:
+                node = self._nodes.get_naked_node(surv)
+                node['_redirected_from'] = [node_id]
 
         # Set display fields for format compatibility
         node['effective_activation'] = node.get('activation', 0)
