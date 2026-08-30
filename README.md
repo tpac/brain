@@ -132,7 +132,8 @@ else is discussed in issues.
   local, yours, no telemetry.
 - **One brain, one human.** Recall has no per-person boundary — anything
   one person tells the entity can surface to anyone else sharing its brain.
-  Each person should run their own; that separation is by design.
+  Each person should run their own — per-person boundaries inside one brain
+  are not built yet.
 - **Not heavily tested alongside Obsidian or other memory tools — and not
   trying to displace them.** Your notes are yours; this is the assistant's
   own memory. The channels are different (their tools, its hooks), so they
