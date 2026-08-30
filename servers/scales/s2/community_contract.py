@@ -39,13 +39,21 @@ COMMUNITY_DETECTION = {
     'add_candidates_cap': 3,
 
     # ── Embedding placement for orphans ──
+    # Paused (PZ-1): the 0.50 raw-cosine gate is below the measured random
+    # node↔centroid baseline (0.78) and ~27% of accepted placements scored
+    # at noise level. A wrong member corrupts a community boundary; an
+    # unplaced node costs nothing and re-enters via S1E edges. Flip to True
+    # to restore the channel (the threshold below then applies again).
+    'orphan_placement_enabled': False,
     'embedding_placement_threshold': 0.50,
 
-    # ── Cluster-to-community overlap (duplicate prevention) ──
+    # ── Cluster-to-community overlap (duplicate disclosure) ──
     # Before proposing new_community, check if cluster members mostly
-    # connect to an existing community. If fraction of cluster nodes
-    # with neighbors in the same existing community >= this threshold,
-    # convert to add_to_existing instead.
+    # connect to an existing community. If the fraction of cluster nodes
+    # with neighbors in the same existing community >= this threshold, the
+    # proposal carries `overlaps_existing` and the encoder judges
+    # new-story-vs-extension. (PZ-1: this used to CONVERT the cluster into
+    # add_to_existing proposals — measured eating 94% of births.)
     'cluster_overlap_threshold': 0.60,
 
     # ── Drift detection ──

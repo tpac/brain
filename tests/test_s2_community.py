@@ -700,49 +700,55 @@ class TestAddBatchContract(BrainTestBase):
              'new_node_ids': set(), 'co_surface_pairs': []},
             state, is_cold_start=True)
 
+    # ── _seed_clusters determinism (F19) ──
+
+    def test_seed_clusters_deterministic_under_insertion_order(self):
+        """Tie-heavy pair sets must yield identical clusters regardless of
+        dict insertion order. Without the (a, b) sort-key suffix, a bridge
+        pair processed early vs late changes the partition — the F19
+        per-process hash-order defect: {a,b}+{c,d} in one order, {a,b,c,d}
+        in the other."""
+        pairs = [(('a', 'b'), 2.0), (('c', 'd'), 2.0), (('b', 'c'), 2.0)]
+        d = self._decoder()
+        fwd = d._seed_clusters(dict(pairs), set())
+        rev = d._seed_clusters(dict(reversed(pairs)), set())
+        self.assertEqual({frozenset(m) for m in fwd.values()},
+                         {frozenset(m) for m in rev.values()})
+
     # ── _finalize_add_proposals unit behavior ──
 
     def test_duplicate_adds_merge_to_one_proposal(self):
-        """Same node from both emitters → one proposal. Per community the
+        """Same node from two emitters → one proposal. Per community the
         HIGHER-affinity entry survives (fingerprint tier, quota rank, and
-        prior suppressions key on the strongest candidate), and the
-        algorithmic-source label follows the winning head candidate."""
-        conv = {'type': 'add_to_existing', 'node_id': 'n1',
-                'source': 'overlap_check', 'overlap_frac': 0.9,
-                'communities': [{'id': 'X', 'title': 'x', 'affinity': 0.9,
-                                 'source': 'overlap_check'}]}
-        aff = {'type': 'add_to_existing', 'node_id': 'n1',
-               'communities': [{'id': 'X', 'title': 'x', 'affinity': 0.5},
-                               {'id': 'Y', 'title': 'y', 'affinity': 0.3}]}
-        out = self._decoder()._finalize_add_proposals([conv, aff], [])
+        prior suppressions key on the strongest candidate)."""
+        first = {'type': 'add_to_existing', 'node_id': 'n1',
+                 'communities': [{'id': 'X', 'title': 'x', 'affinity': 0.9}]}
+        second = {'type': 'add_to_existing', 'node_id': 'n1',
+                  'communities': [{'id': 'X', 'title': 'x', 'affinity': 0.5},
+                                  {'id': 'Y', 'title': 'y', 'affinity': 0.3}]}
+        out = self._decoder()._finalize_add_proposals([first, second], [])
         self.assertEqual(len(out), 1)
         merged = out[0]
         by_id = {c['id']: c['affinity'] for c in merged['communities']}
         self.assertEqual(by_id, {'X': 0.9, 'Y': 0.3})
-        # Head candidate is the conversion's — label kept.
-        self.assertEqual(merged.get('source'), 'overlap_check')
         # Sorted by affinity, strongest first (feeds the fingerprint).
         affs = [c['affinity'] for c in merged['communities']]
         self.assertEqual(affs, sorted(affs, reverse=True))
 
-    def test_merge_head_from_affinity_emitter_drops_label(self):
-        """When the per-node affinity signal outranks the conversion's, the
-        head candidate is not algorithmic and the proposal loses the
-        not-agent-reviewed label."""
-        conv = {'type': 'add_to_existing', 'node_id': 'n1',
-                'source': 'overlap_check', 'overlap_frac': 0.62,
-                'communities': [{'id': 'X', 'title': 'x', 'affinity': 0.62,
-                                 'source': 'overlap_check'}]}
-        aff = {'type': 'add_to_existing', 'node_id': 'n1',
-               'communities': [{'id': 'Z', 'title': 'z', 'affinity': 0.8},
-                               {'id': 'X', 'title': 'x', 'affinity': 0.5}]}
-        out = self._decoder()._finalize_add_proposals([conv, aff], [])
+    def test_merge_ranks_head_across_emitters(self):
+        """The head candidate is the strongest across BOTH emitters, and a
+        community present in both keeps its higher affinity."""
+        first = {'type': 'add_to_existing', 'node_id': 'n1',
+                 'communities': [{'id': 'X', 'title': 'x', 'affinity': 0.62}]}
+        second = {'type': 'add_to_existing', 'node_id': 'n1',
+                  'communities': [{'id': 'Z', 'title': 'z', 'affinity': 0.8},
+                                  {'id': 'X', 'title': 'x', 'affinity': 0.5}]}
+        out = self._decoder()._finalize_add_proposals([first, second], [])
         self.assertEqual(len(out), 1)
         merged = out[0]
         self.assertEqual([c['id'] for c in merged['communities']], ['Z', 'X'])
-        # X keeps the conversion's higher 0.62 over the affinity 0.5.
+        # X keeps the first emitter's higher 0.62 over the second's 0.5.
         self.assertEqual(merged['communities'][1]['affinity'], 0.62)
-        self.assertNotIn('source', merged)
         self.assertNotIn('overlap_frac', merged)
 
     def test_member_candidates_dropped_and_empty_proposal_removed(self):

@@ -608,6 +608,16 @@ class CommunityEncoder(IntegrationUnit):
                     prop['member_count'],
                     prop['internal_fraction'] * 100))
 
+                ov = prop.get('overlaps_existing')
+                if ov:
+                    lines.append(
+                        '    ⚠ %.0f%% of members connect into existing '
+                        'community "%s" (community_id: %s) — judge: '
+                        'genuinely new story, or an extension of that one?' % (
+                            ov.get('connected_frac', 0) * 100,
+                            ov.get('title', '?'),
+                            (ov.get('id') or '?')[:8]))
+
                 # Edge signature — what kind of story
                 sig = prop.get('edge_signature', {})
                 if sig:
@@ -651,8 +661,6 @@ class CommunityEncoder(IntegrationUnit):
                     prop.get('node_type', '?'),
                     prop.get('node_title', '?'),
                     node_id[:8] if node_id else '?'))
-                if prop.get('source') == 'overlap_check':
-                    lines.append('    (Algorithmic placement — not agent-reviewed)')
                 for comm in prop.get('communities', []):
                     lines.append('    → connect to "%s" (community_id: %s, affinity: %.0f%%)' % (
                         comm.get('title', '?'),

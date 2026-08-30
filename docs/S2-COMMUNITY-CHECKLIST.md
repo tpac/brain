@@ -410,18 +410,24 @@ wants it later.
 
 **Scope: three sessions. Everything else previously planned is dropped.**
 
-**PZ-1 — Honest candidate stream** (small diffs, decoder eval A/B after):
-- [ ] Deterministic tie-break — add `(a, b)` to the sort key at
-      `community_decoder.py:824`. One line; prerequisite for any
-      reproducible eval (F19a).
-- [ ] Kill the >60% overlap-conversion — the birth-eating mechanism (39% of
-      adds are converted births). Births stay births; the encoder judges
-      "new vs extension" with the target rendered.
-- [ ] Pause orphan placement (config; reversible). The 27%-noise channel; a
-      wrong member corrupts a boundary, an unplaced node costs nothing —
-      orphans re-enter via S1E edges. (Fallback if Tom wants a trickle: the
-      measured centred-floor + kNN gate from P6-v3.)
-- [ ] Gate: decoder eval before/after on the now-deterministic baseline.
+**PZ-1 — Honest candidate stream** — **SHIPPED 2026-08-29:**
+- [x] Deterministic tie-break — `(a, b)` appended to the seed sort key;
+      regression test locks the bridge-pair failure mode. **Cross-seed
+      partition identity 93.3% → 100.0%; weekly velocity now
+      seed-invariant** (20/0/3/46 identical across seeds).
+- [x] Overlap-conversion killed → `overlaps_existing` evidence on the
+      proposal + rendered ⚠ line for the encoder. Frozen-copy A/B showed
+      the mechanism was eating **94% of births (153 of 163 clusters
+      converted; 10 survived)** — post-change: **154 new_community
+      proposals**, 149 carrying overlap evidence. Dead label machinery
+      (finalize recompute, encoder render line) removed same-session.
+- [x] Orphan placement paused — `orphan_placement_enabled: False` in the
+      contract (one flag to restore; threshold semantics preserved).
+      Orphan channel 1,500 → 0; raw proposals/run 5,110 → 3,726 (−27%).
+- [x] Gate: frozen-copy A/B at pinned seed, both arms rest-cleared; tier
+      `-k "s2 or community or rejection or fingerprint or contract or
+      dispatch"` — 515 passed. (Trickle fallback stays available: P6-v3
+      gate design, unbuilt by choice.)
 
 **PZ-2 — Split, decoder side:**
 - [ ] Split-candidate scan: communities large or geometrically loose

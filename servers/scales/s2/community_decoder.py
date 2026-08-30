@@ -561,9 +561,17 @@ class CommunityDecoder(IntegrationUnit):
         cross_cutting = self._detect_cross_cutting(
             node_affinities, degrees)
 
-        # Step 7: Orphan embedding affinities
-        orphan_affinities = self._compute_orphan_affinities(
-            valid_clusters, typed_neighbors)
+        # Step 7: Orphan embedding affinities. Gated off by default (PZ-1):
+        # raw-cosine placement was measured noise-level for ~27% of accepts,
+        # and a wrong member corrupts a community boundary while an unplaced
+        # node costs nothing — orphans re-enter via S1E edges.
+        if self.config.get('orphan_placement_enabled', True):
+            orphan_affinities = self._compute_orphan_affinities(
+                valid_clusters, typed_neighbors)
+        else:
+            orphan_affinities = {}
+            print('[s2cd] orphan placement paused '
+                  '(orphan_placement_enabled=False)', flush=True)
 
         # Step 8: Tie analysis
         tie_analysis = self._analyze_ties(
@@ -821,7 +829,11 @@ class CommunityDecoder(IntegrationUnit):
             is_direct = (a, b) in direct_pairs
             if is_direct or z >= z_threshold:
                 seed_pairs.append((a, b, z, is_direct))
-        seed_pairs.sort(key=lambda x: (-x[2], -x[3]))
+        # Deterministic tie-break: z-scores bucket heavily (60 distinct
+        # values across ~15K pairs), and without the (a, b) suffix the order
+        # within a tie group inherits str-hash-dependent dict insertion
+        # order — a different process yields a different partition (F19).
+        seed_pairs.sort(key=lambda x: (-x[2], -x[3], x[0], x[1]))
 
         clusters = {}
         node_home = {}
@@ -1083,7 +1095,7 @@ class CommunityDecoder(IntegrationUnit):
                 if comm_members else set()
 
         overlap_threshold = self.config.get('cluster_overlap_threshold', 0.60)
-        converted_to_add = 0
+        flagged_overlap = 0
 
         # ── Community proposals ──
         for cid, members in sorted(valid_clusters.items(),
@@ -1191,38 +1203,25 @@ class CommunityDecoder(IntegrationUnit):
                         best_overlap_frac = frac
                         best_overlap_comm = comm_id
 
+            # Births stay births (PZ-1): the overlap used to CONVERT this
+            # cluster into add_to_existing proposals for the overlapping
+            # community — feeding the accretion giants (measured: 94% of
+            # fresh clusters converted). Now it rides the proposal as
+            # evidence and the encoder judges new-story-vs-extension.
+            overlaps_existing = None
             if best_overlap_frac >= overlap_threshold and best_overlap_comm:
-                # Convert: route unplaced members to the overlapping community.
-                # UNPLACED only — a cluster can contain nodes already placed
-                # elsewhere (seed pairs need just one unplaced endpoint), and a
-                # placed node pulled toward a foreign community is drift's
-                # concern (thresholds, per-node escalation), not an add.
-                comm_title = next(
-                    (c['title'] for c in community_state
-                     if c['id'] == best_overlap_comm), '?')
-                for nid in ms:
-                    if nid not in already_placed:
-                        proposals.append({
-                            'type': 'add_to_existing',
-                            'node_id': nid,
-                            'node_title': titles.get(nid, nid[:8]),
-                            'node_type': types_map.get(nid, '?'),
-                            'source': 'overlap_check',
-                            'overlap_frac': round(best_overlap_frac, 2),
-                            'communities': [
-                                # Candidate-level source survives the Step 9c
-                                # merge, where the proposal-level label is
-                                # recomputed from the winning head candidate.
-                                {'id': best_overlap_comm,
-                                 'title': comm_title,
-                                 'affinity': best_overlap_frac,
-                                 'source': 'overlap_check'}],
-                        })
-                converted_to_add += 1
-                continue
+                overlaps_existing = {
+                    'id': best_overlap_comm,
+                    'title': next(
+                        (c['title'] for c in community_state
+                         if c['id'] == best_overlap_comm), '?'),
+                    'connected_frac': round(best_overlap_frac, 2),
+                }
+                flagged_overlap += 1
 
             proposals.append({
                 'type': 'new_community',
+                'overlaps_existing': overlaps_existing,
                 'cluster_id': cid,
                 'members': list(members),
                 'member_count': len(members),
@@ -1276,10 +1275,10 @@ class CommunityDecoder(IntegrationUnit):
                 'method': 'embedding',
             })
 
-        if converted_to_add:
-            print('[s2cd] Overlap check: converted %d clusters to add_to_existing '
-                  '(threshold %.0f%%)' % (converted_to_add, overlap_threshold * 100),
-                  flush=True)
+        if flagged_overlap:
+            print('[s2cd] Overlap check: flagged %d new_community proposals '
+                  'with an overlapping existing community (threshold %.0f%%)'
+                  % (flagged_overlap, overlap_threshold * 100), flush=True)
 
         return proposals
 
@@ -1346,12 +1345,6 @@ class CommunityDecoder(IntegrationUnit):
             ranked = sorted(cands.values(),
                             key=lambda c: -c.get('affinity', 0))[:cap]
             held['communities'] = ranked
-            if ranked[0].get('source') == 'overlap_check':
-                held['source'] = 'overlap_check'
-                held['overlap_frac'] = round(ranked[0].get('affinity', 0), 2)
-            else:
-                held.pop('source', None)
-                held.pop('overlap_frac', None)
         return finalized
 
     # ── Decode helpers ──
