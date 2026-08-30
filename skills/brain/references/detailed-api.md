@@ -1,151 +1,218 @@
-# brain — Detailed API Reference (v5.2)
+# brain — Detailed API Reference
+
+Tool signatures and field reference for the brain plugin. The MCP tool schemas
+are the authoritative signatures — they are generated from `servers/contract.py`
+at daemon startup and carry full per-parameter documentation. This file is the
+map: what exists, how the pieces relate, and the semantics that don't fit in a
+parameter description.
 
 ## Architecture
 
-Serverless Python module. 11 mixin modules assembled by `brain.py`. No HTTP server.
-DB resolved automatically by hooks via `resolve-brain-db.sh`.
+A launchd-managed daemon (`servers/daemon_server.py`) owns the databases and the
+embedder; the MCP server (`servers/brain_mcp.py`) is a thin stdio proxy that
+forwards tool calls to it over TCP localhost. Hooks observe the session
+(SessionStart, Stop, ...) and talk to the same daemon.
 
-## Node Types (37 types, schema v16)
+Two databases:
 
-| Category | Types | Decay |
-|----------|-------|-------|
-| **Core** | decision, rule | Never (locked) |
-| **Core** | concept | 7 days |
-| **Core** | task | 2 days |
-| **Core** | context | 1 day |
-| **Core** | person, project, object | 30 days |
-| **Core** | file | 7 days |
-| **Core** | intuition | 12 hours |
-| **Core** | thought | 3 hours |
-| **Core** | procedure | Never |
-| **Engineering** | purpose, mechanism, impact, constraint, convention, lesson, vocabulary | Varies (constraint/lesson: never) |
-| **Cognitive** | mental_model, reasoning_trace, uncertainty, correction, validation | Varies |
-| **Evolution** | tension, hypothesis, pattern, catalyst, aspiration | Varies (720-2160h) |
-| **Self-reflection** | performance, failure_mode, capability, interaction, meta_learning | Varies |
-| **Code cognition** | fn_reasoning, param_influence, code_concept, arch_constraint, causal_chain, bug_lesson, comment_anchor | Varies |
+- **`brain.db`** — the knowledge graph: nodes, edges, embeddings, metadata.
+- **`brain_logs.db`** — the operational substrate: trace events, session state,
+  interaction templates, errors.
 
-### Critical flag (v5.2)
-Any node can be marked `critical=1` via operator approval. Critical nodes:
-- Get 3x recall boost in both `recall()` and `recall_with_embeddings()`
-- Have lowered similarity threshold (0.20 vs normal)
-- Always appear at TOP of `context_boot()` output
-- Are surfaced by `safety_check()` when destructive commands detected
+## Tools
 
-## Scoring Formula (v5.2)
+### Writing memory
 
-**Combined score blend:**
-- 35% relevance (keyword + TF-IDF + embeddings)
-- 30% recency (time-banded)
-- 25% emotion (intensity 0-1)
-- 10% frequency (access count)
+| Tool | Purpose |
+|---|---|
+| `remember` | Create one node. Required: `type`, `title`, `content`. Returns `related_nodes` — the top 5 most similar existing nodes — so edges can be drawn without a second recall round. |
+| `remember_batch` | Create many nodes in one call. Per-node `connect_to` draws typed edges to siblings (created in the same batch) or catalog nodes. |
+| `revise` | Update fields on an existing node. Required: `node_id`, `reason` (audit note recorded in trace events, not stored on the node). Specified fields are replaced, unspecified preserved. `content_edits: [{old, new}]` patches specific claims without re-authoring the content. |
+| `revise_batch` | Many revisions in one call. On revise, `source_refs` has REPLACE semantics — omit to preserve, `[]` wipes. |
+| `connect` | Create/update a typed edge between two existing nodes. Idempotent upsert; repeated calls do not auto-strengthen weight. |
+| `connect_batch` | Many edges in one call, same upsert contract. |
+| `revise_edge` | Rename/redescribe an existing edge relation in place — same edge, weight, and history. |
+| `brain_batch` | Mixed operations in one transaction. Six ops: `remember`, `revise`, `connect`, `disconnect` (soft-archive one relation on an edge), `archive` (soft-archive a node; `survivor_id` records supersession lineage), `absorb` (fold one node into another — edges, refs, and metadata transfer; pass a merged `content` or the absorbed content is lost). |
+| `set_node_lock` | The one door for lock flips (`revise` treats `locked` as immutable). Two-phase: first call returns a one-shot `confirm_token` + summary; relay to the human, get an explicit yes, then re-call with the token. Tokens expire in 10 minutes. |
+| `enrich` | Store extra recall vectors for a node: `question`, `anchor`, `bridge`, `keywords`. Each is embedded and searched alongside the node's own vectors. |
 
-**Modifiers applied to relevance:**
-- Hub dampening: nodes with 40+ connections get reduced
-- Type dampening: project/person nodes × 0.5
-- Intent boost: query intent → type-specific multipliers
-- Critical boost: critical=1 nodes × 3.0
-- Confidence weighting: node confidence affects final score
+Edge rules that apply everywhere: relations are open-text verbs, but never
+`related`/`related_to` — generic relations pollute the activation kernel and
+match no query. Every edge `why`/`description` should be ≥30 chars naming the
+insight between the two nodes; edge descriptions are embedded and searched at
+recall. For an edge involving a node being created in the same call, use
+`connect_to` (sibling titles resolve after all creates; NEW wins on title
+collision) — never a separate `connect` op, whose ids don't exist yet.
 
-**Locked nodes:** Skip decay entirely. Relevance weight increased.
+### Reading memory
 
-**Ebbinghaus retention:** `2^(-hours / half_life)` with time-dilation for personal/fluid nodes.
+| Tool | Purpose |
+|---|---|
+| `recall` | Semantic search over nodes by meaning. `query` (or `node_id` for direct lookup), optional dict `filter`, `limit` (default 8). Phrase queries as what you'd remember, not keywords. |
+| `recall_batch` | Multiple recall queries in one call (default 5 results each). |
+| `get_node` | Fetch one node by id. Bounded view by default (full content, top edges, correction gist); `rich=true` for everything. |
+| `get_nodes` | Batch fetch. Render is batch-size-aware: 1-3 ids full content, 4-10 a 600-char excerpt, 11+ a 400-char gist. `rich=true` overrides at any size. |
+| `find_node_by_title` | Fuzzy title match via embedding similarity. `threshold` default 0.75, `top_k` default 1. |
+| `filter_nodes` | Structured query on any structural field: `include`/`exclude` value lists, `lt`/`gt` ranges, `contains`/`prefix` LIKE matches. `limit` default 50, max 200. `rich=true` (default) returns enriched nodes; `rich=false` a skinny id/title/type list. |
 
-## Recency Bands
+The `filter` dict (recall/recall_batch) supports per-key operators: `exists`,
+`equals`, `in`, `contains`, `gte`, `lte`. Node columns are checked on the
+result row; other keys are checked in metadata. Example:
+`{"type": {"in": ["decision"]}, "their_raw_quote": {"exists": true}}`.
 
-| Hours ago | Score |
-|-----------|-------|
-| < 1h | 1.0 |
-| < 6h | 0.9 |
-| < 24h | 0.75 |
-| < 3 days | 0.5 |
-| < 1 week | 0.3 |
-| < 1 month | 0.15 |
-| older | 0.05 |
+Every canonical node pull walks correction edges and attaches `_corrections` —
+renders show `⚠ Corrects:` / `⚠ Updated by:` lines so a stale claim is never
+served without its correction. Edges arrive as `connections` with direction,
+relation, and description.
 
-## Recall Pipeline
+Bounded window reads that hit their row limit attach a `truncated` payload and
+render a `⚠ TRUNCATED` banner naming the covered time slice — a partial result
+never silently reads as a complete one. Ranked top-k reads (recall) are exempt:
+there, truncation is the contract.
 
-1. **Step 0.5**: Vocabulary expansion — `_expand_query_with_vocabulary()` resolves operator terms
-2. **Step 1a**: Keyword search + embedding scan (if available)
-3. **Step 1b**: Direct keyword match strength per seed
-4. **Step 2**: Spreading activation (3 hops, decay 0.5^hop)
-5. **Step 3**: TF-IDF cosine similarity (batch scoring)
-6. **Step 4**: Combined scoring with all modifiers
-7. **Step 5**: Intent detection → type boosting
-8. **Step 6**: Critical node boost
-9. **Step 7**: Ebbinghaus retention decay
-10. **Step 8**: Threshold filtering (0.05 normal, 0.20 for critical)
+### Traces and episodes
 
-## Intent Detection
+Every scale of the system writes its activity to `trace_events`: `scale` `s0`
+(the conversation itself), `s1` (per-turn recall/surface/encoding runs), `s2`
+(idle integration units); `event_type` `O` (observed), `K` (knowledge selected),
+`delta` (changed). Events group into chains (`chain_id`), and ids are 8-char
+hex strings — the same ids `source_refs` on nodes point at.
 
-| Intent | Trigger patterns | Boosted types |
-|--------|-----------------|---------------|
-| decision_lookup | "what did we decide", "decision about" | decision, rule, lesson, correction |
-| reasoning_chain | "why did we", "reason for" | decision, mechanism, reasoning_trace |
-| state_query | "what's the current", "status of" | context, project, task, object |
-| temporal | "when did", "last week", "recently" | decision, context |
-| correction_lookup | "what mistake", "lessons learned" | decision, correction, lesson |
-| how_to | "how do", "best way" | rule, mechanism, convention, constraint |
-| list_query | "list all", "show me all" | rule, decision, object |
+| Tool | Purpose |
+|---|---|
+| `recall_episodes` | Episodic recall — the verbatim record of what was said and done, with attribution. `query` (semantic) and/or `contains` (exact substring), composable. Defaults to conversation messages at s0; `ref_type='tool_result'` for the "what I did" lens. `limit` default 10, cap 500. |
+| `query_traces` | Search trace events by scale / event_type / ref_type / chain / session. `hours` default 24; a `session_id` filter is authoritative and ignores the window. `grouped=true` nests events by chain. |
+| `get_trace` / `get_traces` | Point-lookup by id (batch up to 50) — the natural way to expand a node's `source_refs`. `rich=true` for full verbatim metadata. |
+| `count_traces` | Group-by counts over trace events (`event_type`, `ref_type`, `chain_id`, `scale`). |
 
-## Edge Types
+Rule of thumb: `recall` answers "what do I know", `recall_episodes` answers
+"what actually happened" — memories can be stale about an event; the episodes
+never are.
 
-| Type | Weight | Decays | Purpose |
-|------|--------|--------|---------|
-| reasoning_step | 0.9 | Never | Steps in reasoning chain |
-| produced | 0.85 | Never | Chain → decision link |
-| corrected_by | 0.85 | Never | Correction events |
-| exemplifies | 0.8 | Never | Rule → example |
-| part_of | 0.7 | Never | Structural hierarchy |
-| depends_on | 0.7 | Never | Dependency |
-| related | 0.5 | Never | General association |
+### Self channel (parallel sessions)
 
-## Confidence System
+Concurrent sessions are streams of the same agent, discoverable and reachable:
 
-- Each node has `confidence` (0.1-1.0), auto-set by type
-- Defaults: rule=0.85, decision=0.80, hypothesis=0.50, intuition=0.40, thought=0.35
-- At session boundaries: emotional cooling, temporal-external decay, silent validation boost
-- `record_validation(node_id)` increases confidence
-- Corrections decrease target confidence (× 0.7)
+| Tool | Purpose |
+|---|---|
+| `self_presence` | Roster of live streams, each with its arc and recent activity. |
+| `self_peek` | Read one stream's current focus. Read-only, no interruption. |
+| `self_send` | Message a stream's inbox (id-prefix, full session id, or `broadcast`). Consumed once. |
+| `self_inbox` | Drain messages other streams sent you. |
+| `self_outbox` | Delivery receipts for what you sent — distinguishes "delivered, not acted on" from "never delivered". |
 
-## Signal Queue (replaces consciousness signals)
+### Thalamus (standing intents)
 
-Signals flow through a priority queue with budget-aware assembly. 4 producers:
+| Tool | Purpose |
+|---|---|
+| `remind` | File an item with delivery policy: a reminder (`what` + `when` — fires at the first session after due), a notice (`for_whom='all'` window broadcast, or `'live'` one-shot to live streams), or an ask (`needs_answer=true` — renders at every session boot until answered). `dedup_key` makes re-filing update instead of duplicate. |
+| `thalamus_list` | The open queue; `include_closed=true` adds terminal items. |
+| `thalamus_resolve` | Close or defer one item: exactly one of `answer`, `defer_until`, or `dismiss=true`. |
 
-- **reminders**: Due/overdue reminders. PREEMPT after 24h overdue.
-- **encoding_gap**: Long session with no remember() calls.
-- **vocabulary_gap**: Operator terms with no mapping.
-- **system_health**: Hook errors, brain errors, rule conflicts. PREEMPT for critical errors.
+### Interactions (the K store)
 
-Tools: `dismiss_signal(signal_id)`, `queue_state()`
-- **session_health**: Overall health scoring (gaps + healthy dimensions)
-- **density_shift**: Sudden change in encoding rate
-- **emotional_trajectory**: Trending emotion across session
-- **novelty**: Concepts created in last 2 hours
+Every learnable boundary (surface prompt, encoder prompt, S2 units, ...) is a
+named interaction. The code default is authoritative; the database holds only
+deployed overrides.
 
-## Destructive Pattern Detection (v5.2)
+| Tool | Purpose |
+|---|---|
+| `list_interactions` | All names with version counts and the active override pointer (null = running on code default). |
+| `get_interaction` | One registered version's raw template row. |
+| `get_interaction_effective` | What actually runs: code default with any active override overlaid, plus provenance stamp. |
+| `register_interaction` | Register version N+1. Never activates. |
+| `set_interaction_active` | Deploy a registered version as the override. |
+| `clear_interaction_override` | Delete the pointer — revert to the code default immediately. |
 
-`safety_check(command)` matches against:
-- `rm -rf`, `rm --force`, `rmdir`
-- `git reset --hard`, `git clean -fd`, `git checkout --`
-- `git worktree remove`, `git push --force`
-- `DROP TABLE`, `DELETE FROM`, `TRUNCATE`
-- `xargs rm`
+### Operational
 
-When matched: recalls critical nodes, returns risk level (high/medium/low).
+| Tool | Purpose |
+|---|---|
+| `query_logs` | Operational logs: `source` = `errors` (hook failures), `debug` (daemon events), or `all` (merged timeline). Filter by `level` or `hook_name`. |
+| `clear_errors` | Clear hook errors (and optionally debug log entries). |
+| `restart` | Reload the daemon in place with fresh code (same PID, ~2-4s). |
+| `eval` | Escape hatch — evaluate a Python expression with the `brain` instance in scope. |
 
-## Database Schema (v16)
+## Node fields
 
-**Main tables:** nodes, edges, access_log, brain_meta, summaries, version_history, emotion_calibration, dream_log, node_metadata, node_embeddings, reasoning_chains, reasoning_steps, bridge_proposals, staged_learnings, procedures
+Defined in `servers/contract.py` — the single source every layer (schema, DAL,
+dispatch, recall, MCP schemas, encoder prompts) derives from.
 
-**Key node columns:** id, type, title, content, keywords, activation, stability, access_count, locked, archived, critical, recency_score, emotion, emotion_label, confidence, personal, personal_context, project, last_accessed, created_at, updated_at
+**Agent-writable fields** (`remember` / `revise` / batch ops):
 
-**Logs DB (brain_logs.db):** recall_log, miss_log, eval_snapshots, tuning_log, dream_log, curiosity_log, health_log, staged_learnings, error_log
+| Field | Type | Notes |
+|---|---|---|
+| `type` | str | Required. Open vocabulary — no constraint; use what fits (`decision`, `lesson`, `mechanism`, `correction`, `moment`, `open`, ...). |
+| `title` | str | Required. Itself an embedded recall vector — specificity is findability. |
+| `content` | str | Required. Rich — future readers have zero context. |
+| `situation` | str | "When is this relevant?" — one sentence, its own embedding. The single biggest lever for recall. |
+| `question` | str | The question this node answers, as the other side would ask it. Own embedding. |
+| `reasoning` | str | What the claim rests on — how established, how strongly, what would change it. |
+| `thought` | str | The agent's own read on the memory — rendered beside it at recall. |
+| `their_raw_quote` / `my_raw_quote` | str | Verbatim words — meaning paraphrase loses. |
+| `event_time` | str | When the thing HAPPENED (ISO 8601), distinct from `created_at` (when written). |
+| `confidence` | float | 0.0-1.0; below 1.0 for hedged/contested/inferred claims. |
+| `emotion` / `emotion_label` | float / str | Signed charge + felt register. |
+| `evolution_status` | str | Claim lifecycle: `active`, `resolved`, `validated`, `confirmed`, `disproven`, `dismissed`. |
+| `correction_pattern` | str | Behavioral pattern behind a correction. |
+| `source_context` | str | Session/context when encoded. |
+| `source_turn_id` | str | Episode linkage id. |
+| `locked` | bool | Set at creation only; flips go through `set_node_lock`. |
+| `source_refs` | array | 1-3 8-char hex trace ids anchoring the node to the moments that generated it (join table, not a column). |
 
-## Environment Variables
+**System-stamped fields** — never agent-authored; the write boundary derives
+them and drops supplied values: `project` (repo provenance — where this was
+learned), `counterpart` (who the session was with), `encoding_source` (who
+wrote the node: `anchor`, `encoder:sonnet`, `s2:<unit>`, `hook:<event>`;
+only `anchor` can lock).
 
-| Variable | Purpose |
-|----------|---------|
-| BRAIN_DB_DIR | Directory containing brain.db |
-| BRAIN_SERVER_DIR | Path to servers/brain.py |
-| BRAIN_PROJECT | Default project name |
-| BRAIN_USER | Default user name |
+**Immutable**: `id`, `created_at`, `updated_at`. Revision history lives in
+trace events (`ref_type='node_revised'`), not on the node.
+
+### Embedding views
+
+Each node is searchable through multiple vectors, not one: `title`, the
+title+content blend (`_primary`), `question`, `_situation`, a
+situation+quotes blend, a reasoning blend, and `edge_context` (concatenated
+edge descriptions — a node is findable through its relationships). Title and
+question are the highest-weighted views. Per-field vectors additionally feed
+the per-turn surface kernel. Registry: `EMBEDDING_GROUPS` in
+`servers/pipeline_contract.py`.
+
+## Edge model
+
+Two tables: `edges` holds one physical row per node pair (`edge_id`,
+`source_id` = actor, `target_id` = acted-upon, aggregate `weight`);
+`edge_relations` holds one or more semantic relations per edge, each with its
+own open-text `relation`, `description`, `weight`, and stored embedding.
+Disconnect soft-archives a single relation; other relations on the pair
+survive.
+
+Relations and node types are grouped into semantic roles by the aspect
+taxonomy (`servers/scales/s2/aspects_v1.json`, read via `brain.aspects`) —
+e.g. the `correction_improvement` aspect (`corrects`, `supersedes`,
+`reframes`, `resolves`, `fixes`, ...) is what makes an edge behave as a
+correction at recall time, and `noise` relations (`community_member`, ...) are
+excluded from standard edge renders. Adding an aspect is a human edit to the
+JSON; encoders route strings into existing aspects only.
+
+## Database schema
+
+`brain.db` (schema v32): `nodes`, `edges`, `edge_relations`,
+`node_source_refs`, `node_metadata_kv` (promoted fields live here as K/V),
+`node_enrichments` (all embedding vectors), `node_vectors` + `doc_freq`
+(TF-IDF terms), `node_communities`, `s2_rejections`, `entity_dates` (temporal
+index), `embedding_fidelity`, `emotion_calibration`, `session_activity`,
+`brain_meta`.
+
+Key `nodes` columns: `id`, `type`, `title`, `content`, `confidence`, `locked`,
+`archived`, `critical`, `emotion`, `emotion_label`, `evolution_status`,
+`encoding_source`, `revised_at`, `last_accessed`, `created_at`, `updated_at`.
+Everything else (situation, question, reasoning, quotes, project, ...) lives
+in `node_metadata_kv`.
+
+`brain_logs.db`: `trace_events` + `trace_embeddings` (the episodic substrate),
+`session_state`, `interactions` + `interaction_active` (the K store),
+`hook_errors`, `debug_log`, `self_inflight` + `self_delivered` (self channel),
+`thalamus_items` + `thalamus_deliveries`, `boot_renders`, `dream_log`,
+`logs_meta`.
