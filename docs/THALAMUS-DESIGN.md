@@ -25,7 +25,7 @@ to each other, ephemeral, consume-once).
 | What it is | a stream speaking to a stream | the brain speaking to its streams |
 | Lifetime | ephemeral — TTL (1h/24h), reaped | durable — until answered / withdrawn / expired |
 | Cardinality | one send, one pickup | **one item → N deliveries** |
-| Memory | receipt dies at TTL | ledger `(item, session, when, via)`, forever |
+| Memory | receipt dies at TTL | ledger `(item, session, epoch, when, via)`, forever — append-only across re-arms |
 
 One item ≠ one message: "every session should know X on boot for the next
 month" is one row, delivered N times — once per session that boots inside the
@@ -61,8 +61,13 @@ the locked stream-speech render stays honest. Machine live-now needs the
 ```
 thalamus_items:      id (th_xxxx) · source · body · refs · audience ·
                      deliver_at · expires_at · needs_answer · dedup_key? ·
-                     state · answer · created_at
-thalamus_deliveries: item_id · session_id · delivered_at · via (boot|stop)
+                     state · answer · created_at · armed_epoch
+thalamus_deliveries: item_id · session_id · delivered_at · via (boot|stop) ·
+                     armed_epoch — PK (item_id, session_id, armed_epoch);
+                     APPEND-ONLY: a re-arm (defer, dedup re-file) bumps the
+                     item's armed_epoch instead of deleting rows, so
+                     "delivered, then deferred" stays distinguishable from
+                     "never delivered" (Phase 3 retry gates on unacked)
 ```
 
 Item states: `open` → `answered` | `dismissed` (by Anchor) | `withdrawn` (by its
@@ -99,7 +104,9 @@ roster.
 - **Boot render** — replaces the `journals-escalation` standing-items block.
 
 Pull predicate: `state=open ∧ deliver_at ≤ now < expires_at ∧ audience matches
-∧ no ledger row (item, this session)`. The ledger is written at render —
+∧ no ledger row (item, this session, CURRENT armed_epoch)` — only
+current-generation deliveries block; prior generations are history. The
+ledger is written at render, for exactly the items the block shows —
 annotate-at-render is the only visibility mechanism that survives receipt
 expiry (id:8a170558). Each delivery also writes a trace event (new ref_type;
 sync `trace_contract` + its test) — untraced delivery *is* the visibility
@@ -165,10 +172,13 @@ the salience gate that fully earns the name.
 
 ## Open / carried constraints
 
-- **Scope veil — deliberately deferred.** Items aren't nodes and carry no
-  provenance stamp. v-first producers are global (Anchor, S2 units, the
-  Scribe), so nothing walled can leak; the moment a session-scoped producer
-  files, items need a scope story.
+- **Scope veil — deferred for ITEMS, shipped for REFS.** Items aren't nodes
+  and carry no provenance stamp. v-first producers are global (Anchor, S2
+  units, the Scribe), so no walled item body can leak; the moment a
+  session-scoped producer files, items need a scope story. Refs are nodes
+  and DO carry walls: `pull()` resolves them through the veil-aware
+  `filter_nodes` door (default-deny) — a walled node's ref renders as a bare
+  id, never its title.
 - Stale comments still describing the removed PreToolUse leg —
   `daemon_hooks.py:530`, `signal.py:266` — clean up in passing during Phase 1.
 - Prior ruling to discharge in Phase 2 verification: LATERAL-SCALES' *"the
