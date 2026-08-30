@@ -28,6 +28,13 @@ Retention is GFS:
 - `keep_monthly` — newest snapshot of each of the most recent N months
 A snapshot survives if any tier selects it (union). At daily cadence this
 holds ~keep_daily + keep_weekly + keep_monthly files at steady state.
+
+Tagged `.bak[.gz]` files get TTL retention instead of GFS: a
+pre-destructive backup is a verification net, not an archive — its value
+decays with time since the operation it guarded, not with snapshot
+density (an unreaped one measured 888MB). `reap_by_ttl` is the generic
+age-gated primitive (other retention policies can compose it);
+`backup_database`'s daily rotation feeds it the tagged set beside the DB.
 """
 
 from __future__ import annotations
@@ -54,6 +61,17 @@ BACKUP_INTERVAL_S = 24 * 60 * 60
 # no-op whenever the scheduler is healthy and only snapshots inline when the
 # daemon has been down past a full cycle (fresh install, multi-day outage).
 _DEFAULT_MAX_AGE_S = int(1.5 * BACKUP_INTERVAL_S)
+
+# Tagged pre-destructive backups (`{db}.{tag}.bak[.gz]`) live this long
+# after their mtime, then the daily rotation reaps them. Long enough that
+# the operation they guard has been verified in real use; a retried
+# operation past the TTL simply takes a fresh backup (the idempotent-reuse
+# guard in backup_before_destructive protects attempts, not archaeology).
+TAGGED_BAK_TTL_DAYS = 14
+
+# `{db_basename}.{tag}.bak` or `.bak.gz` — cannot match the DB itself, its
+# -wal/-shm siblings, or rolling `.{ts}.gz` snapshots.
+_TAGGED_BAK_RE = re.compile(r'\.[A-Za-z0-9_.-]+\.bak(\.gz)?$')
 
 
 def default_backup_dir(db_path: str) -> str:
@@ -144,6 +162,53 @@ def prune(db_path: str, backup_dir: str,
     return {'kept': len(retained), 'deleted': deleted}
 
 
+def list_tagged_backups(db_path: str) -> List[Tuple[float, str]]:
+    """Tagged pre-destructive backups beside the DB, newest first:
+    [(mtime_epoch, path)] for every `{db_basename}.{tag}.bak[.gz]` in the
+    DB's own directory. The rolling backups/ subdir is not scanned — its
+    files belong to GFS retention, not TTL."""
+    d = os.path.dirname(db_path) or '.'
+    prefix = os.path.basename(db_path) + '.'
+    out: List[Tuple[float, str]] = []
+    try:
+        names = os.listdir(d)
+    except OSError:
+        return out
+    for name in names:
+        if not (name.startswith(prefix) and _TAGGED_BAK_RE.search(name)):
+            continue
+        path = os.path.join(d, name)
+        try:
+            out.append((os.path.getmtime(path), path))
+        except OSError:
+            continue
+    out.sort(reverse=True)
+    return out
+
+
+def reap_by_ttl(files: List[str], ttl_days: float,
+                now: Optional[datetime] = None) -> Dict:
+    """Generic age-gated reaper: delete the given files whose mtime is older
+    than `ttl_days`. The TTL-retention primitive other policies compose —
+    deletion is age-gated only; the CALLER owns the listing and therefore
+    the blast radius. Returns {'reaped': [basenames], 'kept': n}."""
+    if now is None:
+        now = datetime.now(timezone.utc)
+    cutoff = now.timestamp() - ttl_days * 86400
+    reaped: List[str] = []
+    kept = 0
+    for path in files:
+        try:
+            if os.path.getmtime(path) < cutoff:
+                os.remove(path)
+                reaped.append(os.path.basename(path))
+            else:
+                kept += 1
+        except OSError:
+            pass
+    return {'reaped': reaped, 'kept': kept}
+
+
 def seconds_since_last_backup(db_path: str, backup_dir: str,
                               now: Optional[datetime] = None) -> float:
     """Age of the newest auto-backup, in seconds. `inf` if none exist.
@@ -176,6 +241,15 @@ def backup_database(db_path: str, backup_dir: str, *,
 
     result['dest'] = os.path.basename(dest)
     result.update(prune(db_path, backup_dir, keep_daily, keep_weekly, keep_monthly))
+    # TTL pass over tagged pre-destructive backups beside the DB — rides the
+    # same daily rotation so no second scheduler entry exists to drift.
+    tagged = reap_by_ttl([p for _, p in list_tagged_backups(db_path)],
+                         TAGGED_BAK_TTL_DAYS, now=now)
+    if tagged['reaped']:
+        result['tagged_reaped'] = tagged['reaped']
+        print('[brain] Reaped %d tagged backup(s) past %dd TTL: %s'
+              % (len(tagged['reaped']), TAGGED_BAK_TTL_DAYS,
+                 ', '.join(tagged['reaped'])), flush=True)
     return result
 
 

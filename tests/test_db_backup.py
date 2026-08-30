@@ -309,5 +309,67 @@ class TestEnsureBackupFresh(unittest.TestCase):
             db_backup.ensure_backup_fresh(missing, self.backup_dir))
 
 
+class TestTaggedBakTTL(unittest.TestCase):
+    """TTL retention for tagged pre-destructive backups — the generic
+    reap_by_ttl primitive, the tagged-set lister, and the wire into
+    backup_database's rotation."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.tmp, 'brain_logs.db')
+        conn = sqlite3.connect(self.db_path)
+        sqlite_backend.apply_pragmas(conn)
+        conn.execute('CREATE TABLE t (id INTEGER PRIMARY KEY)')
+        conn.commit()
+        conn.close()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _touch(self, name, age_days=0.0):
+        path = os.path.join(self.tmp, name)
+        open(path, 'w').close()
+        if age_days:
+            old = datetime.now(UTC).timestamp() - age_days * 86400
+            os.utime(path, (old, old))
+        return path
+
+    def test_lister_matches_only_tagged_bak_scheme(self):
+        want_old = self._touch('brain_logs.db.v1.bak', age_days=20)
+        want_gz = self._touch('brain_logs.db.pre-rebuild.bak.gz')
+        self._touch('brain_logs.db.20260625T120000Z.gz')   # rolling scheme
+        self._touch('brain_logs.db-wal')                   # sibling
+        self._touch('other.db.v1.bak')                     # different DB
+        found = {p for _, p in db_backup.list_tagged_backups(self.db_path)}
+        self.assertEqual(found, {want_old, want_gz})
+        # the live DB itself is never listed
+        self.assertNotIn(self.db_path, found)
+
+    def test_reap_by_ttl_deletes_old_keeps_young(self):
+        old = self._touch('brain_logs.db.v1.bak', age_days=20)
+        young = self._touch('brain_logs.db.v2.bak', age_days=2)
+        res = db_backup.reap_by_ttl([old, young], ttl_days=14)
+        self.assertEqual(res['reaped'], ['brain_logs.db.v1.bak'])
+        self.assertEqual(res['kept'], 1)
+        self.assertFalse(os.path.exists(old))
+        self.assertTrue(os.path.exists(young))
+
+    def test_rotation_reaps_expired_tagged_bak(self):
+        old = self._touch('brain_logs.db.v1.bak',
+                          age_days=db_backup.TAGGED_BAK_TTL_DAYS + 1)
+        young = self._touch('brain_logs.db.v2.bak', age_days=1)
+        backup_dir = os.path.join(self.tmp, 'backups')
+        result = db_backup.backup_database(self.db_path, backup_dir)
+        self.assertEqual(result.get('tagged_reaped'),
+                         ['brain_logs.db.v1.bak'])
+        self.assertFalse(os.path.exists(old))
+        self.assertTrue(os.path.exists(young))
+
+    def test_rotation_with_no_tagged_baks_is_silent(self):
+        backup_dir = os.path.join(self.tmp, 'backups')
+        result = db_backup.backup_database(self.db_path, backup_dir)
+        self.assertNotIn('tagged_reaped', result)
+
+
 if __name__ == '__main__':
     unittest.main()
