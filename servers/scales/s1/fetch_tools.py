@@ -459,14 +459,15 @@ def _fetch_edges_with_endpoints(brain, edge_ids: List[str]) -> List[Dict[str, An
             },
             'tier': 'edge_time',
         })
-        # Source / target as context candidates (one per endpoint, dedup'd
-        # by the node that actually becomes the candidate — two absorbed
-        # endpoints can collapse onto one survivor).
+        # Source / target as context candidates. Dedup on the node that
+        # actually becomes the candidate (node['id']) — ONE id-space: it
+        # covers both a repeated endpoint across edges (same live id) and
+        # two absorbed endpoints collapsing onto one survivor. Deduping on
+        # the requested endpoint_id as well was the 2026-08-30 regression:
+        # for a live endpoint the two ids are equal, so the second check
+        # saw the first's insert and dropped every live candidate.
         for endpoint_id, role in [(source_id, 'edge_source'),
                                     (target_id, 'edge_target')]:
-            if endpoint_id in seen_endpoint_ids:
-                continue
-            seen_endpoint_ids.add(endpoint_id)
             node = nodes_map.get(endpoint_id)
             if not node:
                 continue

@@ -33,8 +33,9 @@ Tagged `.bak[.gz]` files get TTL retention instead of GFS: a
 pre-destructive backup is a verification net, not an archive — its value
 decays with time since the operation it guarded, not with snapshot
 density (an unreaped one measured 888MB). `reap_by_ttl` is the generic
-age-gated primitive (other retention policies can compose it);
-`backup_database`'s daily rotation feeds it the tagged set beside the DB.
+age-gated primitive for EXPLICIT, scoped invocations — it is deliberately
+not wired into the rotation, because the tagged corpus has readers (the
+recovery scripts glob `brain.db.*.bak[.gz]` as their data source).
 """
 
 from __future__ import annotations
@@ -62,11 +63,10 @@ BACKUP_INTERVAL_S = 24 * 60 * 60
 # daemon has been down past a full cycle (fresh install, multi-day outage).
 _DEFAULT_MAX_AGE_S = int(1.5 * BACKUP_INTERVAL_S)
 
-# Tagged pre-destructive backups (`{db}.{tag}.bak[.gz]`) live this long
-# after their mtime, then the daily rotation reaps them. Long enough that
-# the operation they guard has been verified in real use; a retried
-# operation past the TTL simply takes a fresh backup (the idempotent-reuse
-# guard in backup_before_destructive protects attempts, not archaeology).
+# Default age for explicit tagged-bak reaps (`{db}.{tag}.bak[.gz]`) —
+# long enough that the operation the backup guards has been verified in
+# real use. Callers of reap_by_ttl own the listing and the blast radius;
+# nothing reaps automatically.
 TAGGED_BAK_TTL_DAYS = 14
 
 # `{db_basename}.{tag}.bak` or `.bak.gz` — cannot match the DB itself, its
@@ -241,15 +241,14 @@ def backup_database(db_path: str, backup_dir: str, *,
 
     result['dest'] = os.path.basename(dest)
     result.update(prune(db_path, backup_dir, keep_daily, keep_weekly, keep_monthly))
-    # TTL pass over tagged pre-destructive backups beside the DB — rides the
-    # same daily rotation so no second scheduler entry exists to drift.
-    tagged = reap_by_ttl([p for _, p in list_tagged_backups(db_path)],
-                         TAGGED_BAK_TTL_DAYS, now=now)
-    if tagged['reaped']:
-        result['tagged_reaped'] = tagged['reaped']
-        print('[brain] Reaped %d tagged backup(s) past %dd TTL: %s'
-              % (len(tagged['reaped']), TAGGED_BAK_TTL_DAYS,
-                 ', '.join(tagged['reaped'])), flush=True)
+    # The tagged-.bak TTL pass is deliberately NOT wired into this rotation:
+    # the 2026-08-30 review found the tagged corpus has READERS — the
+    # recovery scripts (scripts/orphan_edge_recovery.py,
+    # consolidation_edge_recovery/plan.py, backfill_project_provenance.py)
+    # glob brain.db.*.bak[.gz] as their data source — so automatic reaping
+    # destroys forensic state. reap_by_ttl stays available for explicit,
+    # scoped invocations; re-wiring requires an exemption for
+    # reader-consumed sets (operator decision pending).
     return result
 
 
