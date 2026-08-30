@@ -1,5 +1,32 @@
 # Thalamus — architecture review plan (2026-08-29)
 
+## §2026-08-30 — Steps 1–6 + two review fix rounds live on main ◀ ACTIVE ARC
+
+**Read first:** handoff node id:9ca1577a; round-2 milestone id:17d39138.
+
+Steps 1–6 shipped (merges 43f946e, 54984a3) then a fleet review (8 Opus
+angles, 10 findings, 9 CONFIRMED) drove two fix rounds (merges 1182d92,
+9766ca7): atomic v2 migration (BEGIN IMMEDIATE — lesson id:1f3f7e2c),
+change-gated dedup re-arm, ledger-after-render, extend_window through
+window_for, loud ref-batch, doc reconcile. Logs schema v2 live.
+
+**Locked:** append-only epoch ledger (re-arm = generation); change-gated
+re-file (identical re-file refreshes window only, never re-delivers);
+kept-count rendering (head/tail/ledger/count agree); sweeps ahead of the
+S2 gate.
+
+**Open — operator gates:** archived-ref resolution (design id:4df6150b —
+resolve_live walk + marked redirect, awaiting explicit go); backup policy
+for single-table logs migrations (888MB unreaped .v1.bak); sweep-block
+consolidation (rec: fold into Step 11); audience-guard relocation (rec:
+contract test riding Step 7).
+
+**Next builds:** Step 7 (door polish — before Phase 2 producers), then
+8–11 below.
+
+**Do not reopen:** ThalamusDAL; producer-facing kind vocabulary; sweep
+placement (Step 3's directive); delete-on-defer; unconditional dedup bump.
+
 **Scope.** Five-angle Opus review (placement, unification-across-callers, cohesion,
 coupling, altitude) of the freshly shipped Phase 1 Thalamus: `servers/scales/thalamus/`,
 `dispatch_thalamus.py`, and its seams (Stop hook, boot render, idle maintenance, schema,
