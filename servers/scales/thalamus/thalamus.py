@@ -216,8 +216,11 @@ def _attach_ref_lines(brain, items, session_id):
     pull() holds both `brain` and `session_id`, so resolution lives here.
     Routes through filter_nodes (the existing veil door, default-deny): a
     globally-filed item can ref a walled node, and its title must not print
-    into another session's boot — an unreturned ref (walled, archived, or a
-    bad id) renders bare. Failure-isolated and LOUD: refs left untitled by a
+    into another session's boot — an unreturned ref (walled, retired, or a
+    bad id) renders bare. A ref whose node was ABSORBED rides filter_nodes'
+    canonical redirect: the survivor comes back stamped `_redirected_from`
+    and renders as `old ↦ new · Title (absorbed)`.
+    Failure-isolated and LOUD: refs left untitled by a
     failed batch render bare AND the failure is logged — bare ids are also
     the normal walled/bad-id output, so an unlogged dead resolution path
     would be invisible forever."""
@@ -227,6 +230,7 @@ def _attach_ref_lines(brain, items, session_id):
             if ref not in want:
                 want.append(ref)
     titles = {}
+    redirects = {}  # stored ref id -> (survivor id, survivor title)
     if want:
         try:
             res = brain.filter_nodes(
@@ -234,6 +238,11 @@ def _attach_ref_lines(brain, items, session_id):
                 session_id=session_id, limit=len(want))
             for n in res.get('nodes') or []:
                 titles[n['id']] = n.get('title') or ''
+                # Canonical-pull redirect: a stored ref whose node was
+                # absorbed resolves to its live survivor — render both ids
+                # so the consumer knows the ref migrated.
+                for src in n.get('_redirected_from') or ():
+                    redirects[src] = (n['id'], n.get('title') or '')
         except Exception as e:
             brain._log_error('thalamus_ref_resolve', e,
                              'pull ref batch failed — refs render bare')
@@ -241,6 +250,11 @@ def _attach_ref_lines(brain, items, session_id):
         refs = item['refs'] or []
         lines = []
         for ref in refs[:tc.RENDER_REFS_MAX]:
+            if ref in redirects:
+                sid, title = redirects[ref]
+                lines.append('%s ↦ %s · %s (absorbed)'
+                             % (ref[:8], sid[:8], title))
+                continue
             title = titles.get(ref)
             lines.append('%s · %s' % (ref[:8], title) if title else ref[:8])
         extra = len(refs) - tc.RENDER_REFS_MAX
