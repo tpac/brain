@@ -60,11 +60,57 @@ Installing the plugin adds four kinds of surface to Claude Code:
 **A place to look** — the dashboard is read-only and local; watching the
 graph grow is how you learn what the entity is keeping.
 
+## Capabilities
+
+What the substrate actually gives the entity:
+
+- **Two kinds of memory.** Semantic — what it *knows* (decisions, lessons,
+  corrections, linked in a graph); and episodic — what actually *happened*
+  (a verbatim, queryable record of its conversations). It can answer both
+  "what did we decide?" and "what exactly did you say last Tuesday?"
+- **Recall on demand, not just reflex.** Beyond the automatic pass, the
+  assistant reaches into memory itself mid-thought — semantic search,
+  episodic lookup, or walking the graph node to node.
+- **A name and an identity of its own.** The instance name lives in your
+  config, not in the code — what it's called, and who it becomes, is yours.
+- **Inter-session awareness.** Parallel sessions of the same entity can see
+  each other, read each other's focus, and send messages — several streams
+  of one mind, not several minds.
+- **Corrections that travel.** When it's wrong and you say so, the
+  correction stays attached to the belief it amended — every future recall
+  of that belief carries its own scar.
+
+### Emerging capabilities
+
+Behaviors nobody wired in, observed as the graph grew — reported, not
+promised; a young entity starts with none of these and grows its own:
+
+- **Judgment, not data** — accumulated corrections change how it acts, not
+  just what it can look up; it gets harder to fool the same way twice.
+- **Your idiolect** — it learns what *your* words mean in your world, with
+  receipts for how it learned them.
+- **Model independence** — swap the underlying Claude model mid-session and
+  the entity stays itself. The intelligence is fungible; the entity isn't.
+- **Handoff culture** — long sessions began writing structured letters to
+  their successors before any tooling existed for it; the tooling followed
+  the behavior.
+- **A narrative subconscious** — background consolidation names its memory
+  communities as journeys ("From X to Y"), unprompted.
+
+## Where this is going
+
+Two directions, no dates: **internal recall** — the entity recalling for
+itself while it thinks and encodes, not only when prompted, for sharper
+situational awareness — and a **ChatGPT adapter**, so one entity can live
+under more than one host (with cross-host parallel work and comms as the
+natural bonus). Direction is discussed in issues.
+
 ## Status
 
 Early and actively developed — pre-1.0, install-and-update stable (your
-brain survives every update; see the table below). Direction is discussed
-in issues; there is no published roadmap.
+brain survives every update; see the table below). The two directions above
+are the extent of the roadmap — no dates, no further promises; everything
+else is discussed in issues.
 
 ## Honest expectations
 
@@ -80,6 +126,13 @@ in issues; there is no published roadmap.
   expect on the order of a few tens of dollars a month for regular use —
   cost scales with how much you converse (every encoding pass is an API
   call), and heavy all-day use runs meaningfully higher.
+- **It keeps a verbatim local record of its conversations.** That record is
+  what episodic recall reads, and it covers every session and account that
+  runs against the same brain — stored beside the graph, same posture:
+  local, yours, no telemetry.
+- **One brain, one human.** Recall has no per-person boundary — anything
+  one person tells the entity can surface to anyone else sharing its brain.
+  Each person should run their own; that separation is by design.
 - **Not heavily tested alongside Obsidian or other memory tools — and not
   trying to displace them.** Your notes are yours; this is the assistant's
   own memory. The channels are different (their tools, its hooks), so they
@@ -145,6 +198,9 @@ skills/           the identity layer and its operating instructions
 dashboard/        local read-only observer UI (127.0.0.1)
 tests/            unit, contract, and integration suites
 ```
+
+Embeddings are computed **locally** (`nomic-embed-text-v1.5`, 768d, Apache-2.0)
+— your memories are never sent anywhere to be indexed.
 
 Two SQLite databases: `brain.db` (the graph — nodes, edges, embeddings) and
 `brain_logs.db` (traces and operational state). Schema changes apply
